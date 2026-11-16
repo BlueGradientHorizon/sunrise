@@ -1345,3 +1345,70 @@ fn reopening_one_id_with_any_seed_reuses_the_metadata_its_first_open_leaked() {
         }
     });
 }
+
+/// Churning ids, known dimension types and ordered level tables keeps only the bounded recent
+/// metadata needed by the renderer; the process does not retain one entry for every old open
+/// (#1367).
+#[test]
+#[ignore = "daily"]
+fn churning_runtime_level_metadata_stays_within_the_retention_bound() {
+    with_opener("cycle", "cycle:seed", flat(), |game, _| {
+        for batch in 0..(super::runtime_levels::RETAINED_TABLE_LIMIT * 2) {
+            let left = format!("cycle:left-{batch}");
+            let right = format!("cycle:right-{batch}");
+            let left_type = match batch % 3 {
+                0 => "minecraft:overworld",
+                1 => "minecraft:the_nether",
+                _ => "minecraft:the_end",
+            };
+            let right_type = match (batch + 1) % 3 {
+                0 => "minecraft:overworld",
+                1 => "minecraft:the_nether",
+                _ => "minecraft:the_end",
+            };
+            let mut ordered = vec![(left.as_str(), left_type), (right.as_str(), right_type)];
+            if batch % 2 == 1 {
+                ordered.reverse();
+            }
+            for (index, (id, dimension_type)) in ordered.iter().enumerate() {
+                game.levels
+                    .runtime
+                    .queue_open(
+                        "cycle",
+                        id,
+                        RuntimeLevel::new(
+                            *dimension_type,
+                            RuntimeGenerator::Flat,
+                            (batch * 2 + index) as i64,
+                        ),
+                    )
+                    .unwrap();
+                game.apply_runtime_levels();
+                assert!(game.runtime_level_is_open(id));
+            }
+            assert_eq!(
+                game.level_shapes
+                    .extra
+                    .iter()
+                    .map(|level| level.id)
+                    .collect::<Vec<_>>(),
+                ordered.iter().map(|(id, _)| *id).collect::<Vec<_>>()
+            );
+            for (id, _) in ordered.into_iter().rev() {
+                game.levels.runtime.queue_unload(id).unwrap();
+                game.apply_runtime_levels();
+                assert!(!game.runtime_level_is_open(id));
+            }
+        }
+    });
+
+    let (types, tables) = super::runtime_levels::retained_metadata_counts();
+    assert!(
+        types <= sunrise_world::worldgen::overrides::mod_dimensions().len() + 4,
+        "runtime dimension facts grew beyond startup-known types: {types}"
+    );
+    assert!(
+        tables <= super::runtime_levels::RETAINED_TABLE_LIMIT,
+        "runtime level tables grew beyond their retention bound: {tables}"
+    );
+}
