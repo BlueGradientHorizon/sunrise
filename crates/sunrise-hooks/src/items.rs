@@ -1,13 +1,10 @@
-//! Items as vanilla's own catalogs list them (docs/layers.md, "Item catalog"): reads any crate may
-//! use, filled by the engine from its loaded data. Nothing here is per feature.
+//! Vanilla's own item catalogs as the engine loaded them (docs/layers.md, "Item catalog").
 use crate::containers::Stack;
 use std::sync::RwLock;
 
 static CREATIVE_ORDER: RwLock<Option<engine::CreativeOrder>> = RwLock::new(None);
 
-/// Where `stack` comes in vanilla's creative inventory, the search tab's order: the place of the
-/// same stack (same item and components), else its item's first place; `None` for an item the
-/// creative tabs don't show, or before the game has loaded them.
+/// `stack`'s place in the creative search tab: its own, else its item's first; `None` if unlisted.
 pub fn creative_order(stack: &Stack) -> Option<u32> {
     let order = CREATIVE_ORDER.read().unwrap_or_else(|e| e.into_inner());
     order.as_ref()?.of(&stack.item, stack.kind)
@@ -26,8 +23,7 @@ pub mod engine {
     }
 
     impl CreativeOrder {
-        /// From the search tab's stacks in order, each as its item id and its merge kind
-        /// ([`Stack::kind`]); a stack or item listed again keeps its first place.
+        /// The search tab's stacks in order as (item id, [`Stack::kind`]); repeats keep the first.
         pub fn new<'a>(stacks: impl IntoIterator<Item = (&'a str, u64)>) -> Self {
             let mut order = Self::default();
             for (place, (item, kind)) in stacks.into_iter().enumerate() {

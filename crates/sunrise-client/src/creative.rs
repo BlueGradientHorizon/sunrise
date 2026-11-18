@@ -85,8 +85,7 @@ pub struct Creative {
     pub search: EditBox,
     /// The search tab's stacks, in its display order.
     search_items: Vec<ItemStack>,
-    /// The window's own creative inventory: each rebuild publishes its order
-    /// (`sunrise_hooks::items::creative_order`).
+    /// The window's own creative inventory: each rebuild publishes its order to the item catalog.
     publishes: bool,
     search_index: Vec<SearchEntry>,
     /// Definitions from the same catalog snapshot, rendered in the active language.
