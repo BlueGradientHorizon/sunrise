@@ -267,10 +267,8 @@ pub fn ai_step(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
         m.air = 300;
     } else if m.on_ground {
         let r = &mut m.random;
-        let (x, z) = (r.next_float() * 2.0 - 1.0, r.next_float() * 2.0 - 1.0);
-        m.velocity = m
-            .velocity
-            .add_vector(Vec3::new(f64::from(x) * 0.4, 0.5, f64::from(z) * 0.4));
+        let (x, z) = (r.next_float(), r.next_float());
+        m.velocity = m.velocity.add_vector(flop_kick(x, z));
         m.yaw = m.random.next_float() * 360.0;
         m.on_ground = false;
         if !m.silent {
@@ -603,11 +601,26 @@ pub fn attack_scale(m: &Mob) -> f32 {
         0.0
     }
 }
+/// `Guardian.aiStep`'s flop on land: `(nextFloat() * 2 - 1) * 0.4F` for x and
+/// z, in float and only then widened to double, and 0.5 up.
+fn flop_kick(x: f32, z: f32) -> Vec3 {
+    let kick = |f: f32| f64::from((f * 2.0 - 1.0) * 0.4);
+    Vec3::new(kick(x), 0.5, kick(z))
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::mobs::world::with_test_world;
+
+    /// `0.5F * 0.4F` widened is `(double) 0.2F`, not the double 0.2.
+    #[test]
+    fn a_flop_kicks_in_float() {
+        let kick = flop_kick(0.75, 0.25);
+        assert_eq!(kick.x.to_bits(), 0.20000000298023224f64.to_bits());
+        assert_eq!(kick.y, 0.5);
+        assert_eq!(kick.z.to_bits(), (-0.20000000298023224f64).to_bits());
+    }
     use std::sync::Arc;
 
     fn flop(kind: &str, silent: bool) -> Option<(Mob, Vec<MobEvent>)> {
