@@ -584,6 +584,48 @@ mod tests {
         assert_eq!(ui.selected_page_key, None);
     }
 
+    /// A key row, recording what it hears.
+    struct Binds(Mutex<Vec<String>>);
+    impl added::Page for Binds {
+        fn id(&self) -> &'static str {
+            "test.binds"
+        }
+        fn title(&self) -> &'static str {
+            "sunrise.extras.header.inventory"
+        }
+        fn place(&self) -> added::Place {
+            added::Place::Extras
+        }
+        fn rows(&self, rows: &mut Vec<added::Row>) {
+            rows.push(added::Row::key("test.binds.key", "key.keyboard.r"));
+        }
+        fn act(&self, _: usize, act: added::Act) {
+            self.0.lock().unwrap().push(format!("{act:?}"));
+        }
+    }
+
+    /// A key row on the Extras page waits by its page and row; the next key goes to it.
+    #[test]
+    fn a_page_key_capture_binds_the_rows_key() {
+        use crate::settings_shell::{Capture, Output};
+        static BINDS: Binds = Binds(Mutex::new(Vec::new()));
+        static BINDS_PAGES: [&dyn added::Page; 1] = [&BINDS];
+        TEST_PAGES.set(Some(&BINDS_PAGES));
+        let mut ui = OptionsUi::default();
+        let mut s = Settings::default();
+        ui.shell_events(&mut s, vec![Output::Bind(Capture::Page(0, 0))]);
+        assert_eq!(ui.waiting(), Some(Capture::Page(0, 0)));
+        assert_eq!(
+            ui.bind_key(&mut s, "key.keyboard.c".into()),
+            vec![Event::Changed]
+        );
+        assert_eq!(ui.waiting(), None);
+        assert_eq!(
+            *BINDS.0.lock().unwrap(),
+            [format!("{:?}", added::Act::Bind("key.keyboard.c".into()))]
+        );
+    }
+
     /// A key row whose greying the test controls, recording what it hears.
     struct Fading {
         active: Mutex<bool>,
