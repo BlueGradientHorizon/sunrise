@@ -480,6 +480,10 @@ pub struct AnimateContext<'a> {
     pub thundering: bool,
     /// The dimension has `water_evaporates` and drips lava from dripstone (the Nether).
     pub ultrawarm: bool,
+    /// Told each picked position's state and position after its block's vanilla effects, for
+    /// the mod block parts' `animate_tick`: the game keeps the picks a part answers and calls
+    /// them once the sampling ends. `None` (no part answers it) asks nothing.
+    pub block_parts: Option<&'a dyn Fn(BlockStateId, [i32; 3])>,
 }
 
 /// `ClientLevel.getMarkerParticleTarget`: only the selected main-hand item counts.
@@ -665,6 +669,10 @@ fn animate_at(
     // A Polytone block modifier's `disable_particles` stops the block's own animate tick.
     if !engine.polytone_disables_particles(state) {
         block_animate_tick(tables, engine, ctx, state, pos, center);
+        // `Block.animateTick` of a mod block's parts, after the block's own effects.
+        if let Some(block_parts) = ctx.block_parts {
+            block_parts(state, pos);
+        }
     }
     // Resource packs' Polytone block emitters (#11486): nothing without such a pack.
     if level {
@@ -2294,6 +2302,7 @@ mod tests {
                 thundering: false,
                 ultrawarm: false,
                 enchant_power: &EnchantPower::default(),
+                block_parts: None,
             };
             let mut engine = ParticleEngine::new(
                 &crate::resource_source::ResourceSource::directory(Path::new("").to_path_buf()),
@@ -2376,3 +2385,7 @@ mod tests {
 #[cfg(test)]
 #[path = "animate_tick_biome_tests.rs"]
 mod biome_particle_tests;
+
+#[cfg(test)]
+#[path = "animate_tick_parts_tests.rs"]
+mod parts_tests;

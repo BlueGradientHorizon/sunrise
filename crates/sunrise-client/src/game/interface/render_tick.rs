@@ -701,6 +701,13 @@ impl Game<'_> {
         };
         // Level.isThundering: a thunder level above 0.9 where the sky is open.
         let thundering = self.can_have_weather() && world.weather.levels(1.0).1 > 0.9;
+        // The picks whose block has a part answering `animate_tick`, for after the sampling.
+        let mod_picks = self.mod_animate_picks();
+        let record_pick = |state, pos| {
+            if let Some(picks) = &mod_picks {
+                picks.record(state, pos);
+            }
+        };
         let ctx = AnimateContext {
             enchant_power: &self.ambience.enchant_power,
             world,
@@ -718,6 +725,9 @@ impl Game<'_> {
             gateway_particles: &gateway_particles,
             thundering,
             ultrawarm: self.dimension_type().water_evaporates,
+            block_parts: mod_picks
+                .is_some()
+                .then_some(&record_pick as &dyn Fn(BlockStateId, [i32; 3])),
         };
         if let Some(e) = eye {
             let block = [
@@ -825,6 +835,12 @@ impl Game<'_> {
             );
         }
         laps.lap("tp_rain_campfire");
+        // `Block.animateTick` of the picked mod blocks' parts, before the particles tick.
+        if let Some(picks) = mod_picks {
+            self.mod_animate_ticks(picks);
+        }
+        let world = &self.world;
+        let facts = self.res.facts();
         // SpellParticle.isCloseToScopingPlayer: the eye of a local player looking
         // through a spyglass in first person.
         let scope_eye = self

@@ -1,0 +1,2 @@
+# animate_tick (#2645): the sampler's picks and the parts they reach, over the test resources.
+sunrise-client game::native_hooks::animate_tick_tests::sampled_picks_reach_the_parts_of_their_block_only lib daily resources

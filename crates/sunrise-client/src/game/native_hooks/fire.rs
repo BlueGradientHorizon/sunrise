@@ -3,5 +3,6 @@
 use super::mod_api_host::FireOddsLevel;
 use super::*;
 use mod_api::BlockFace;
+use mod_api::RandomSource;
 
 include!(concat!(env!("OUT_DIR"), "/mod_api_fire_generated.rs"));
