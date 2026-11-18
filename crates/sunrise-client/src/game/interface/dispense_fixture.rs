@@ -1286,6 +1286,19 @@ impl Game<'_> {
                 }
             }
         }
+        // VanillaDispenserOracle's target has ticked since it was equipped: its
+        // collectEquipmentChanges put the worn pieces' armor and other modifiers
+        // on its attributes, which the hit's absorption reads.
+        if e["equip"]
+            .as_object()
+            .is_some_and(|equip| !equip.is_empty())
+        {
+            crate::game::living_attributes::collect_equipment(
+                &self.motion.attributes,
+                world_items!(self),
+                &mut mob,
+            );
+        }
         self.mobs.push(mob);
         Ok(Target::Mob(id))
     }
