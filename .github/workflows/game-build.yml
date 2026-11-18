@@ -378,11 +378,14 @@ jobs:
         run: |
           set -euo pipefail
           bin=$BIN
+          # Only the programs this commit's release folder takes (`PROGRAMS`).
+          takes() { [[ " $PROGRAMS " == *" $1 "* ]]; }
           "$bin/sunrise-client${{ matrix.exe }}" --help | grep -q -- '--resources'
-          "$bin/sunrise-ctl${{ matrix.exe }}" --help > /dev/null
-          "$bin/sunrise-prepare${{ matrix.exe }}" --help | grep -q -- '--minecraft-dir'
+          if takes sunrise-ctl; then "$bin/sunrise-ctl${{ matrix.exe }}" --help > /dev/null; fi
+          if takes sunrise-prepare; then "$bin/sunrise-prepare${{ matrix.exe }}" --help | grep -q -- '--minecraft-dir'; fi
           # The version is the release's.
           for binary in sunrise-prepare sunrise-server sunrise-port-pack; do
+            takes "$binary" || continue
             out=$("$bin/$binary${{ matrix.exe }}" --version | tr -d '\r')
             echo "$out"
             [[ "$out" == "$binary $SUNRISE_VERSION" ]] || { echo "::error::expected $binary $SUNRISE_VERSION"; exit 1; }
@@ -524,10 +527,12 @@ jobs:
           [[ "$(uname -m)" == x86_64 && "$(sysctl -n sysctl.proc_translated 2>/dev/null || echo 0)" == 0 ]] \
             || { echo "::error::not a native Intel runner"; exit 1; }
           "$BIN/sunrise-client" --help | grep -q -- '--resources'
-          "$BIN/sunrise-ctl" --help > /dev/null
-          "$BIN/sunrise-prepare" --help | grep -q -- '--minecraft-dir'
+          # The other programs the archive holds: its build leg chose them from the commit's own list.
+          if [[ -f "$BIN/sunrise-ctl" ]]; then "$BIN/sunrise-ctl" --help > /dev/null; fi
+          if [[ -f "$BIN/sunrise-prepare" ]]; then "$BIN/sunrise-prepare" --help | grep -q -- '--minecraft-dir'; fi
           # The version is the release's.
           for binary in sunrise-prepare sunrise-server; do
+            [[ -f "$BIN/$binary" ]] || continue
             out=$("$BIN/$binary" --version | tr -d '\r')
             echo "$out"
             [[ "$out" == "$binary $SUNRISE_VERSION" ]] || { echo "::error::expected $binary $SUNRISE_VERSION"; exit 1; }
