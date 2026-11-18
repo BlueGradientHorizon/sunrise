@@ -1015,3 +1015,53 @@ fn anger_at_a_mob_not_saved_yet_names_it() {
         game.persist.uuid_of(2).as_ref().map(|u| &u[..])
     );
 }
+
+/// `Entity.saveWithoutId` writes an experience orb's live `remainingFireTicks`
+/// and `airSupply`: an orb loaded with `Fire:40s` that burned for a tick saves
+/// `39s`, not the loaded `40s`, while a field it doesn't simulate
+/// (`Invulnerable`) still comes from the loaded compound.
+#[test]
+fn an_orb_saves_its_live_fire_and_air_over_the_loaded_ones() {
+    let raw = sunrise_core::nbt::parse_snbt(
+        "{Pos:[4.5d,100d,4.5d],Fire:40s,Air:300s,Invulnerable:1b}",
+    )
+    .unwrap()
+    .0;
+    let mut orb = entity_nbt::orbs_from_nbt(&raw).remove(0);
+    (orb.fire_ticks, orb.air) = (39, 299);
+    let saved = with_raw_over(entity_nbt::orb_to_nbt(&orb, [0; 4]), Some(&raw), ORB_LIVE);
+    assert_eq!(saved.get("Fire"), Some(&Tag::Short(39)));
+    assert_eq!(saved.get("Air"), Some(&Tag::Short(299)));
+    assert_eq!(saved.get("Invulnerable"), Some(&Tag::Byte(1)));
+}
+
+/// `Entity.saveWithoutId` writes the live `portalCooldown` that
+/// `processPortalCooldown` counts down, in the chunk save and in `/data get`:
+/// an orb loaded with `PortalCooldown:20` reads 19 after one tick.
+#[test]
+#[ignore = "daily"]
+fn an_orb_saves_its_live_portal_cooldown() {
+    crate::game::native_entity_refs::tests::with_game(|game| {
+        game.load_orb(
+            sunrise_core::nbt::parse_snbt(
+                "{Pos:[4.5d,100d,4.5d],Value:3s,Count:1,Fire:40s,PortalCooldown:20}",
+            )
+            .unwrap()
+            .0,
+            Some([9, 0, 0, 1]),
+        );
+        let id = game.orbs[0].id;
+        // What one tick does: Entity.processPortalCooldown and the fire step.
+        game.portals.entities.get_mut(&id).unwrap().cooldown -= 1;
+        game.orbs[0].fire_ticks -= 1;
+        let keys = [chunk_of(game.orbs[0].position)].into_iter().collect();
+        let (_, saved) = game.save_orb(0, &keys).unwrap();
+        let read = game
+            .command_target_nbt(crate::game::commands::Target::Orb(id))
+            .unwrap();
+        for tag in [saved, read] {
+            assert_eq!(tag.get("PortalCooldown"), Some(&Tag::Int(19)));
+            assert_eq!(tag.get("Fire"), Some(&Tag::Short(39)));
+        }
+    });
+}
