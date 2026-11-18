@@ -337,7 +337,7 @@ impl Game<'_> {
     /// The items [`Self::brushable_geometry`] draws.
     pub(super) fn brushable_items(&self, camera: glam::DVec3, mut draw: impl FnMut(BlockItemDraw)) {
         use sunrise_assets::item_model::DisplayContext;
-        for (key, entity) in &self.world.block_entities {
+        for (key, entity) in self.world.block_entities.near(camera.x, camera.z, 64.0) {
             let BlockEntity::Brushable(b) = entity else {
                 continue;
             };

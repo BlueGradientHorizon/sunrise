@@ -159,7 +159,7 @@ impl Game<'_> {
 
     /// The items [`Self::campfire_geometry`] draws, in `CampfireRenderer.submit`'s order.
     pub(super) fn campfire_items(&self, camera: glam::DVec3, mut draw: impl FnMut(BlockItemDraw)) {
-        for (key, entity) in &self.world.block_entities {
+        for (key, entity) in self.world.block_entities.near(camera.x, camera.z, 64.0) {
             let BlockEntity::Campfire(c) = entity else {
                 continue;
             };

@@ -302,7 +302,7 @@ impl Game<'_> {
         alpha: f64,
         mut draw: impl FnMut(BlockItemDraw),
     ) {
-        for (key, entity) in &self.world.block_entities {
+        for (key, entity) in self.world.block_entities.near(camera.x, camera.z, 64.0) {
             let BlockEntity::Vault(vault) = entity else {
                 continue;
             };
