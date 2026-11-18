@@ -649,7 +649,7 @@ impl AnimateSampling {
             animate_rest(tables, engine, ctx, state, pos, true);
         }
         while self.picks < 2 * 667 {
-            let r = if self.picks % 2 == 0 { 16 } else { 32 };
+            let r = if self.picks.is_multiple_of(2) { 16 } else { 32 };
             self.picks += 1;
             let pos = pick(engine, self.player, r);
             let Some((state, part)) = animate_block(tables, engine, ctx, pos, self.player) else {
