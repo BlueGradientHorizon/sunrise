@@ -153,16 +153,26 @@ impl Game<'_> {
             return Ok(None);
         }
         self.close_for_open(conn, replace);
-        let host = self.lan.as_mut().ok_or(OpenMenuError::PlayerUnavailable)?;
-        let window = host.hub.open_menu_window(
-            conn,
-            &id,
-            component_nbt(&title.component()),
-            pos.map(|[x, y, z]| (x, y, z)),
-            sunrise_client::lan::menu::Slots::Native,
-            vec![None; kind.slots],
-            Some(extra),
-        );
+        let hidden =
+            self.native_hidden_slots_for_menu(&id, pos.map(|[x, y, z]| (x, y, z)), kind.slots);
+        let window = {
+            let host = self.lan.as_mut().ok_or(OpenMenuError::PlayerUnavailable)?;
+            host.hub.open_menu_window(
+                conn,
+                &id,
+                component_nbt(&title.component()),
+                pos.map(|[x, y, z]| (x, y, z)),
+                sunrise_client::lan::menu::Slots::Native,
+                vec![None; kind.slots],
+                Some(extra),
+            )
+        };
+        if window.is_some()
+            && !hidden.is_empty()
+            && let Some(host) = self.lan.as_mut()
+        {
+            host.hub.hide_menu_slots(conn, hidden);
+        }
         if window.is_some() {
             self.player_menu_opening(conn);
         }

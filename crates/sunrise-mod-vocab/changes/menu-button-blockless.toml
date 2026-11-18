@@ -1,0 +1,3 @@
+ids = ["hook:menu_button", "method:MenuPart::menu_button", "type:MenuButtonEvent", "type:MenuButtonContext"]
+why = "`menu_button` is routed by menu type and now reaches blockless menus; its event exposes an optional backing block entity and an optional block position."
+migrate = "Rebuild against this SDK. Move `menu_button` from `BlockEntityPart` to `MenuPart`; handle `event.entity` as an Option and `event.context.pos` as an Option."

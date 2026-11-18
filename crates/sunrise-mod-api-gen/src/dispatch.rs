@@ -528,7 +528,9 @@ pub(super) fn emit<'a>(
             if collect_cancel && name == "cancel" {
                 continue;
             }
-            let mutable_entity = ty.to_token_stream().to_string() == "& mut ModBlockEntity";
+            let ty_tokens = ty.to_token_stream().to_string();
+            let mutable_entity = ty_tokens == "& mut ModBlockEntity";
+            let optional_mutable_entity = ty_tokens == "Option < & mut ModBlockEntity >";
             // An answered collect hook's mods each push plain entries into their own batch;
             // dispatch, not the mod, names the mod on each.
             let batch_entry =
@@ -540,6 +542,8 @@ pub(super) fn emit<'a>(
                     .flatten();
             let field_ty = if mutable_entity {
                 syn::parse_quote!(ModBlockEntityView<'_>)
+            } else if optional_mutable_entity {
+                syn::parse_quote!(Option<ModBlockEntityView<'_>>)
             } else if let Some(entry) = batch_entry {
                 syn::parse_quote!(&mut Vec<#entry>)
             } else {
@@ -574,6 +578,8 @@ pub(super) fn emit<'a>(
                 write_back.push_str(&format!("*{name} = {event}.{name};"));
             } else if mutable_entity {
                 inits.push(format!("{name}: ModBlockEntityView::new({name})"));
+            } else if optional_mutable_entity {
+                inits.push(format!("{name}: {name}.map(ModBlockEntityView::new)"));
             } else if batch_entry.is_some() {
                 inits.push(format!("{name}: &mut {batch}"));
             } else {

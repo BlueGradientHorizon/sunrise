@@ -8,15 +8,31 @@ impl Game<'_> {
         let Some(menu) = self.mod_menu_at(pos) else {
             return Vec::new();
         };
-        let block = self
-            .res
-            .facts()
-            .get(self.world.block(pos.0, pos.1, pos.2))
-            .name
-            .to_string();
+        self.native_hidden_slots_for_menu(menu, Some(pos), size)
+    }
+
+    /// The container slots a registered or block-provided mod screen does not
+    /// show. A blockless content menu has no block screen to consult, so its
+    /// registered menu layout is the sole source of truth.
+    pub(in crate::game) fn native_hidden_slots_for_menu(
+        &self,
+        menu: &str,
+        pos: Option<Pos>,
+        size: usize,
+    ) -> Vec<usize> {
+        let block = pos.map(|pos| {
+            self.res
+                .facts()
+                .get(self.world.block(pos.0, pos.1, pos.2))
+                .name
+                .to_string()
+        });
         let mut screen = mod_api::RecipeBookLayout::registered_screen(menu);
         if screen.is_none() {
-            self.native_screen(&block, &mut screen);
+            let Some(block) = block.as_deref() else {
+                return Vec::new();
+            };
+            self.native_screen(block, &mut screen);
         }
         let Some(screen) = screen else {
             return Vec::new();
@@ -39,33 +55,35 @@ impl Game<'_> {
     ) {
         self.clear_mod_book_placement_screen();
         self.mod_screen = None;
-        let Some(t) = target else {
-            return;
-        };
-        let block = self
-            .res
-            .facts()
-            .get(self.world.block(t.0, t.1, t.2))
-            .name
-            .to_string();
-        if block.starts_with("minecraft:") {
-            return;
-        }
-        // Only when this is the menu the clicked block opens: `target` outlives the
-        // use that set it, so another menu opened later (a command's, another
-        // mod's) would otherwise get the last clicked machine's screen. Asked
-        // here, as the window's world has no mod containers.
-        let mut container = None;
-        self.native_block_entity_container(&block, &mut container);
-        let opens = container.and_then(|c| mod_menu(c.menu.as_deref()?).map(|(m, _)| m));
-        if opens != Some(menu) {
-            return;
-        }
+        let target_block = target.map(|t| {
+            self.res
+                .facts()
+                .get(self.world.block(t.0, t.1, t.2))
+                .name
+                .to_string()
+        });
         let mut screen = mod_api::RecipeBookLayout::registered_screen(menu);
         if screen.is_none() {
-            self.native_screen(&block, &mut screen);
+            let Some(block) = target_block.as_deref() else {
+                return;
+            };
+            if block.starts_with("minecraft:") {
+                return;
+            }
+            // Only when this is the menu the clicked block opens: `target` outlives the
+            // use that set it, so another menu opened later (a command's, another
+            // mod's) would otherwise get the last clicked machine's screen. Asked
+            // here, as the window's world has no mod containers.
+            let mut container = None;
+            self.native_block_entity_container(block, &mut container);
+            let opens = container.and_then(|c| mod_menu(c.menu.as_deref()?).map(|(m, _)| m));
+            if opens != Some(menu) {
+                return;
+            }
+            self.native_screen(block, &mut screen);
         }
         if let Some(mut screen) = screen {
+            let block = target_block.unwrap_or_else(|| menu.to_owned());
             // Resolve sprite identifiers once at the client declaration boundary.
             for slot in screen.slots.iter_mut().flatten() {
                 if let Some(icon) = &mut slot.no_item_icon {

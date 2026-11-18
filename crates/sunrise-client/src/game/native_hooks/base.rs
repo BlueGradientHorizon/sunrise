@@ -1371,16 +1371,18 @@ impl Game<'_> {
     ) {
         self.fire_screen_tooltip(block, data, at, slot, lines);
     }
-    /// A player pressed a mod container's button (`clickMenuButton`), on
-    /// the server. The block entity is out of the world during the call;
-    /// mods may change it and the clicking player's carried stack.
+    /// A player pressed a mod menu's button (`clickMenuButton`), on the
+    /// server. The block entity is out of the world during the call when the
+    /// menu has one; blockless menus pass None. Mods may change it and the
+    /// clicking player's carried stack.
     pub(in crate::game) fn native_menu_button(
         &mut self,
+        menu: &str,
         context: &mod_api::item::menu::MenuButtonContext,
-        entity: &mut ModBlockEntity,
+        entity: Option<&mut ModBlockEntity>,
         carried: &mut Option<mod_api::ItemStack>,
     ) {
-        self.fire_menu_button(context, entity, carried);
+        self.fire_menu_button(menu, context, entity, carried);
     }
     /// A player shift-clicked slot `slot` of the menu of the mod block
     /// entity at `pos` (`AbstractContainerMenu.quickMoveStack`, the method a

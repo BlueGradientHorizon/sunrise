@@ -76,7 +76,8 @@ pub enum DragKind {
 pub struct MenuButtonContext {
     pub player: u128,
     pub player_entity_id: i32,
-    pub pos: [i32; 3],
+    /// The block backing the menu, or None when the menu was opened without a block.
+    pub pos: Option<[i32; 3]>,
     pub id: i32,
 }
 /// The logical side on which a menu click runs.
