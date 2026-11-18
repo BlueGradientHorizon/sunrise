@@ -818,7 +818,10 @@ impl Game<'_> {
         player.fall_distance = op["fall"].as_f64().unwrap_or(0.0);
         player.fall_flying = op["fall_flying"].as_bool().unwrap_or(false);
         player.flying = op["flying"].as_bool().unwrap_or(false);
+        // A creative player's abilities: it may fly and is invulnerable, as
+        // `GameType.updatePlayerAbilities` sets them (a victim's Thorns hurts no one then).
         player.may_fly = self.creative;
+        player.invulnerable = self.creative;
         if !op["impact"].is_null() {
             player.impulse.impact_position = Some(v3(&op["impact"]));
         }
