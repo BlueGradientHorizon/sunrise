@@ -184,6 +184,17 @@ of that item; `false` stops the use as another item would, without a release. It
 server and on a server's client, before `living_entity_use_item_tick`; `event.entity` is `None` for a player. An
 emptied hand stops the use without asking, and so does a hotbar switch, which stops a main-hand use first.
 
+## Stopping a use
+
+`ItemPart::on_stop_using` is `IItemExtension.onStopUsing`: the use of `event.stack` in `event.hand` is over, with
+`event.time_left` ticks of it left (0 for a finished use). It comes once per stop, where `LivingEntity.stopUsingItem`
+runs, whatever stopped the use: a release, a finish, another item in the hand, a brush with nothing to brush, a
+mob's release (`event.entity` is `Some`) and the server's own stops (a hotbar switch, swapped hands, a disabled
+shield, spectator mode, a dimension trip). The use is already cleared, so releasing again from here finds nothing,
+and it comes after `release_using` and `living_entity_use_item_finish`. An emptied hand is a used-up stack, not a
+stop. On a server's client it comes where the client ends its own use; change the world only on the server side of
+`HostSide`.
+
 ## Grindstone, repair combining and container items
 
 Three methods answer item questions that vanilla asks inside its menus and recipe matching. They run on both
