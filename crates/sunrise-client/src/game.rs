@@ -13209,6 +13209,13 @@ impl Game<'_> {
         if let Some(overlay) = overlay {
             return Ok(left && overlay == "dialog" && self.dialog_drag());
         }
+        // A press on the item panel's list is the panel's until its release:
+        // neither the menu nor its slots hear the drag.
+        if matches!(self.screen, Screen::Inventory | Screen::Creative) && self.mod_browser_holding()
+        {
+            self.mod_browser_drag_move();
+            return Ok(true);
+        }
         if !self.pad_synthetic_input() && self.container_drag() {
             return Ok(true);
         }
