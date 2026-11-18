@@ -1,7 +1,22 @@
-//! `AnimateContext::block_parts`: the sampler tells the game each picked loaded position, after
-//! the block's own vanilla effects, for the mod block parts' `animate_tick`.
+//! `AnimateContext::block_parts` and [`AnimateSampling`]: the sampling stops in each loaded pick
+//! whose block has a part, after the block's own vanilla effects and before the rest of the
+//! pick and the next pick, and stepping it changes no vanilla effect or draw.
 use super::*;
-use std::cell::RefCell;
+
+/// A plane of torches around `[8, 64, 8]` in a loaded chunk.
+fn torches(facts: &BlockFacts, torch: BlockStateId) -> World {
+    let mut world = World::new(facts.air, 0);
+    world.chunks.insert(
+        (0, 0),
+        std::sync::Arc::new(crate::chunk::Chunk::empty(0, 0)),
+    );
+    for x in 0..16 {
+        for z in 0..16 {
+            world.set(x, 64, z, torch).unwrap();
+        }
+    }
+    world
+}
 
 #[test]
 #[ignore = "daily"]
@@ -16,14 +31,8 @@ fn each_loaded_pick_is_told_to_the_block_parts_after_its_vanilla_effects() {
     ))
     .unwrap();
     let torch = assets.registry.default_state("minecraft:torch").unwrap();
-    let mut world = World::new(facts.air, 0);
-    world.chunks.insert(
-        (0, 0),
-        std::sync::Arc::new(crate::chunk::Chunk::empty(0, 0)),
-    );
-    world.set(4, 64, 4, torch).unwrap();
-    let told = RefCell::new(Vec::new());
-    let block_parts = |state: BlockStateId, pos: [i32; 3]| told.borrow_mut().push((state, pos));
+    let world = torches(&facts, torch);
+    let has_part = |state: BlockStateId| state == torch;
     let ctx = AnimateContext {
         enchant_power: &EnchantPower::default(),
         world: &world,
@@ -41,40 +50,62 @@ fn each_loaded_pick_is_told_to_the_block_parts_after_its_vanilla_effects() {
         gateway_particles: &|_, _| 0,
         thundering: false,
         ultrawarm: false,
-        block_parts: Some(&block_parts),
+        block_parts: Some(&has_part),
     };
-    let mut engine = ParticleEngine::new(
-        &sunrise_assets::resource_source::ResourceSource::directory(root),
-        &Default::default(),
-        &Default::default(),
-    );
-    engine.seed_randoms(5, 9, 0);
-    engine.created_requests = Some(Vec::new());
-    engine.camera = [4.5, 64.5, 4.5];
-    // A radius of 1 picks the centre itself: the torch's own smoke and flame, then its parts.
-    do_animate_tick(&tables, &mut engine, &ctx, [4, 64, 4], 1, true);
-    assert_eq!(*told.borrow(), [(torch, [4, 64, 4])]);
-    let made = engine.created_requests.take().unwrap();
-    assert!(made.iter().any(|(options, ..)| options.ty == T::Flame));
-    // A pick in a chunk that isn't loaded draws nothing and tells nobody.
-    told.borrow_mut().clear();
-    do_animate_tick(&tables, &mut engine, &ctx, [40, 64, 40], 1, true);
-    assert!(told.borrow().is_empty());
-    // A whole tick: every loaded pick, each within the sampled cube around the player.
-    animate_tick(&tables, &mut engine, &ctx, [8, 64, 8]);
-    let told = told.take();
-    assert!(!told.is_empty() && told.len() <= 2 * 667);
-    for (state, pos) in told {
-        assert!(world.loaded(pos[0], pos[2]));
-        assert!(pos.iter().zip([8, 64, 8]).all(|(p, c)| (p - c).abs() < 32));
-        assert_eq!(state, world.block(pos[0], pos[1], pos[2]));
+    let engine = || {
+        let mut engine = ParticleEngine::new(
+            &sunrise_assets::resource_source::ResourceSource::directory(root.clone()),
+            &Default::default(),
+            &Default::default(),
+        );
+        engine.seed_randoms(5, 9, 0);
+        engine.requested = Some(Vec::new());
+        engine.camera = [8.5, 64.5, 8.5];
+        engine
+    };
+    // Stepped: each stop is a torch pick whose own smoke and flame are the last requests; the
+    // "part" adds a heart there, and the next run ends that pick and goes on.
+    let mut stepped = engine();
+    let mut sampling = AnimateSampling::new([8, 64, 8]);
+    assert!(!sampling.started());
+    let mut stops = 0;
+    while let Some((state, pos)) = sampling.run(&tables, &mut stepped, &ctx) {
+        assert!(sampling.started());
+        assert_eq!(state, torch);
+        assert_eq!(world.block(pos[0], pos[1], pos[2]), torch);
+        let made = stepped.requested.as_ref().unwrap();
+        let tail: Vec<_> = made[made.len() - 2..].iter().map(|r| r.0.ty).collect();
+        assert_eq!(
+            tail,
+            [T::Smoke, T::Flame],
+            "the torch's own effects come first"
+        );
+        let at = pos.map(|v| f64::from(v) + 0.5);
+        stepped.add(&ParticleOptions::simple(T::Heart), at, [0.0; 3]);
+        stops += 1;
     }
-    // Without a recorder the sampler asks nothing: the vanilla effects alone.
+    assert!(stops > 0, "the tick picked a torch");
+    // Unstepped (no part asked): the same vanilla requests and draws, without the hearts.
+    let mut plain = engine();
     let quiet = AnimateContext {
         block_parts: None,
         ..ctx
     };
-    engine.created_requests = Some(Vec::new());
-    do_animate_tick(&tables, &mut engine, &quiet, [4, 64, 4], 1, true);
-    assert!(!engine.created_requests.take().unwrap().is_empty());
+    animate_tick(&tables, &mut plain, &quiet, [8, 64, 8]);
+    let hearts = |r: &&(ParticleOptions, _, _)| r.0.ty == T::Heart;
+    let stepped_made = stepped.requested.take().unwrap();
+    assert_eq!(stepped_made.iter().filter(hearts).count(), stops);
+    let without: Vec<_> = stepped_made.iter().filter(|r| !hearts(r)).collect();
+    let plain_made = plain.requested.take().unwrap();
+    assert_eq!(without, plain_made.iter().collect::<Vec<_>>());
+    assert_eq!(stepped.random().next_long(), plain.random().next_long());
+    assert_eq!(
+        stepped.level_random().next_long(),
+        plain.level_random().next_long()
+    );
+    // A pick in a chunk that isn't loaded draws nothing and asks nobody.
+    let mut far = engine();
+    let mut sampling = AnimateSampling::new([400, 64, 400]);
+    assert!(sampling.run(&tables, &mut far, &ctx).is_none());
+    assert!(far.requested.take().unwrap().is_empty());
 }

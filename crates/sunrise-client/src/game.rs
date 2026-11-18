@@ -1179,6 +1179,9 @@ struct Game<'a> {
     /// A client mod asked to clear the particles (`clear_particles`), done before
     /// the next frame or particle tick (`apply_mod_particle_clear`).
     mod_clear_particles: std::cell::Cell<bool>,
+    /// The level random a block part's `animate_tick` holds as `event.random`, while it runs:
+    /// the game's own draws during the call go through it (`with_lent_level_random`).
+    lent_level_random: Option<std::rc::Rc<std::cell::RefCell<mod_api::LegacyRandomSource>>>,
     /// The shader pack's entity and block entity ids, while one draws entities.
     pack_ids: Option<shader_packs::PackIds>,
     started: Instant,
@@ -10794,6 +10797,7 @@ impl<'a> Game<'a> {
             glowing_vertices: Default::default(),
             mod_sounds: Default::default(),
             mod_clear_particles: Default::default(),
+            lent_level_random: None,
             pack_ids: None,
             health_hud: hud_layout::HealthHud::default(),
             started: now,

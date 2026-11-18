@@ -9,7 +9,8 @@ fn animate_tick(&self, host: &mut dyn ClientHost, event: &mut AnimateTickEvent<'
 
 Each client tick, `ClientLevel.animateTick` picks 667 random positions within 16 blocks of the player
 and 667 within 32. When a picked position's block has a part with `animate_tick`, that part is called
-once for the pick, after the position's own vanilla effects. A block near the player is picked more
+once for the pick, inside it as vanilla calls a block's `animateTick`: after the block's own vanilla
+effects, before its fluid's effects and the next pick. A block near the player is picked more
 often than one far away, so the effect thins out with distance as vanilla's does.
 
 `AnimateTickEvent` carries:
@@ -19,7 +20,8 @@ often than one far away, so the effect thins out with distance as vanilla's does
 - `random`: the level's random (`ClientLevel.random`), a `&mut dyn RandomSource`. Java's
   `random.nextFloat()` is `next_float()`, `nextInt(bound)` is `next_int_bound(bound)`,
   `nextDouble()` is `next_double()` and `nextBoolean()` is `next_boolean()`. Drawing from it keeps a
-  port's odds.
+  port's odds. It is the level's random itself: `host.add_particle`'s roll under the Decreased
+  Particles option draws from it too, in call order, as `ClientLevel.addParticle` does.
 
 Draw through the client host you are given:
 
