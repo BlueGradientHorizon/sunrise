@@ -515,10 +515,14 @@ impl Game<'_> {
         } else {
             GameMode::Survival
         };
-        self.player = Some(PlayerMotion::new(
+        let mut player = PlayerMotion::new(
             self.motion,
             sunrise_core::geometry::Vec3::new(0.0, 0.0, 0.0),
-        )?);
+        )?;
+        // A creative player is invulnerable (`GameType.updatePlayerAbilities`): the
+        // arrow's hurt is refused before the shield is reached.
+        player.invulnerable = self.creative;
+        self.player = Some(player);
         self.yaw = 0.0;
         self.armor = Default::default();
         self.offhand = Some(stack);
