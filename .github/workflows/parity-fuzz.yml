@@ -28,6 +28,8 @@ jobs:
           root="${DYNA_CI_KEEP:?}/fuzz"
           dir="$root/$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           mkdir -p "$root"
+          # Earlier attempts' private reports are kept for two weeks.
+          find "$root" -mindepth 1 -maxdepth 1 -type d -mtime +14 -exec rm -rf -- {} +
           mkdir "$dir"
           echo "FUZZ_DIR=$dir" >> "$GITHUB_ENV"
           # Reserve time for the issue filer even if the harness needs to be stopped.

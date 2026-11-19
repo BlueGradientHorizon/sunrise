@@ -150,6 +150,14 @@ class DailyWorkflowTests(unittest.TestCase):
             self.assertNotIn('fuzz', dependencies(job))
         self.assertEqual(daily['fuzz']['uses'], './.github/workflows/parity-fuzz.yml')
 
+    def test_private_directory_prunes_old_runs_before_creating_this_attempt(self):
+        workflow = yaml.load((ROOT / '.github/workflows/parity-fuzz.yml').read_text(), Loader=yaml.BaseLoader)
+        step = next(s for job in workflow['jobs'].values() for s in job['steps'] if s.get('id') == 'private')
+        script = step['run']
+        prune = script.index('-mtime +14')
+        self.assertIn('rm -rf', script[prune:])
+        self.assertLess(prune, script.index('mkdir "$dir"'))
+
 
 if __name__ == '__main__':
     unittest.main()
