@@ -39,14 +39,18 @@ impl MotionWorld<'_, '_, '_> {
         // of the tick's earlier processing, is not undone.
         let mut input = input;
         let mut velocity = self.player.velocity;
-        if !crate::travel_gate::decide(
-            self.loop_context,
-            self.player.entity_id as u32,
-            "minecraft:player",
-            || self.travel_mode(),
-            &mut input,
-            &mut velocity,
-        ) {
+        // A replayed tick runs the resolved values: replay callbacks never
+        // reach a listener.
+        if !self.player.replaying
+            && !crate::travel_gate::decide(
+                self.loop_context,
+                self.player.entity_id as u32,
+                "minecraft:player",
+                || self.travel_mode(),
+                &mut input,
+                &mut velocity,
+            )
+        {
             return Ok(());
         }
         self.player.velocity = velocity;
@@ -247,5 +251,16 @@ mod tests {
         };
         assert_eq!(position, start);
         assert_eq!(velocity, Vec3::new(0.2, 0.5, 0.0));
+    }
+
+    /// A replayed tick never reaches a listener: its cancel does not hold the
+    /// travel, which moves the player along its velocity.
+    #[test]
+    #[ignore = "daily"]
+    fn a_replayed_travel_ignores_a_cancel() {
+        let Some((position, _, start)) = flying_travel(Decide(Flow::Cancel, None), true) else {
+            return;
+        };
+        assert_ne!(position, start);
     }
 }
