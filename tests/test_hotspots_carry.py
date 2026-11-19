@@ -71,8 +71,8 @@ class IgnoredTestCarryTest(unittest.TestCase):
 
 
 
-PARTS = "crates/horizon-mod-vocab/src/parts"
-EXPORTS = "crates/horizon-mod-vocab/src/exports"
+PARTS = "crates/sunrise-mod-vocab/src/parts"
+EXPORTS = "crates/sunrise-mod-vocab/src/exports"
 TABLE = """mod parts;
 pub use parts::{Attached, BlockProvider};
 mod __private {
@@ -93,7 +93,7 @@ class PartTableCarryTest(unittest.TestCase):
                       f"{PARTS}/attributes.rs": "pub struct AttributeDeclaration;\n"
                                                 "pub fn attribute_declarations() {}\n"}
         self.base = r.commit("main", {**self.parts, f"{EXPORTS}/part_table.rs": TABLE})
-        # The switch on main, as tools/refactors/split_part_table.py writes it.
+        # The switch on main, with per-source export fragments.
         r.git("rm", "-q", f"{EXPORTS}/part_table.rs")
         r.commit("main", {
             f"{EXPORTS}/parts.rs": "mod parts;\n",
@@ -223,7 +223,7 @@ class DispatchStubCarryTest(unittest.TestCase):
         self.addCleanup(self.repo.close)
         r = self.repo
         self.base = r.commit("main", {carry.SHARED: OLD_SHARED})
-        # The switch on main, as tools/refactors/split_dispatch_stand_ins.py writes it.
+        # The switch on main, with per-name stand-in fixtures.
         found, rest = carry.stand_ins(OLD_SHARED)
         r.commit("main", {carry.SHARED: rest, **{f"{STUBS}/{scope}/{name}.rs": text
                                                  for (scope, name), text in found.items()}}, "switch")

@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from tools import check_addresses, check_file_size
+from tools import check_addresses, merge_base
 
 
 def strings(source):
@@ -18,23 +18,23 @@ def strings(source):
 
 
 CONFIG = {
-    "homes": ["crates/horizon-addresses/src/lib.rs"],
+    "homes": ["crates/sunrise-addresses/src/lib.rs"],
     "vanilla": {"textures.minecraft.net": "skins"},
-    "not_addresses": {"ddns.net": "a suffix"},
-    "allowed": ["crates/horizon-telemetry/src/lib.rs telemetry.playhorizon.dev"],
+    "not_addresses": {"discord.com": "a webhook host"},
+    "allowed": ["crates/sunrise-telemetry/src/lib.rs telemetry.playsunrise.net"],
 }
 
 
 class HostsTests(unittest.TestCase):
     def test_urls_and_whole_host_strings(self):
-        self.assertEqual(check_addresses.hosts("https://cosmetics.playhorizon.dev/v1/presence"),
-                         ["cosmetics.playhorizon.dev"])
+        self.assertEqual(check_addresses.hosts("https://telemetry.playsunrise.net/v1/report"),
+                         ["telemetry.playsunrise.net"])
         self.assertEqual(check_addresses.hosts("stun.l.google.com:19302"), ["stun.l.google.com"])
-        self.assertEqual(check_addresses.hosts("wss://user:pw@relay.playhorizon.dev:443/x"),
-                         ["relay.playhorizon.dev"])
+        self.assertEqual(check_addresses.hosts("wss://user:pw@relay.playsunrise.net:443/x"),
+                         ["relay.playsunrise.net"])
 
     def test_text_translation_keys_and_placeholders_are_not_hosts(self):
-        for text in ["Download it at playhorizon.dev, then press Play.", "options.online", "mco.info",
+        for text in ["Download it at playsunrise.net, then press Play.", "options.online", "mco.info",
                      "https://example.com/a", "https://foo.test", "http://127.0.0.1:8080", "http://192.168.1.1/",
                      "https://map.example.net", "http://192.0.2.7:8100", "vertex.xyz * 2.0"]:
             self.assertEqual(check_addresses.hosts(text), [], text)
@@ -72,32 +72,32 @@ class CheckTests(unittest.TestCase):
         return check_addresses.check(CONFIG, set(found), base)
 
     def test_home_vanilla_not_addresses_and_allowed_pass(self):
-        found = [("crates/horizon-addresses/src/lib.rs", "cosmetics.playhorizon.dev"),
-                 ("crates/horizon-client-render/src/skins.rs", "textures.minecraft.net"),
-                 ("crates/horizon-client-render/src/bluemap_detect.rs", "ddns.net"),
-                 ("crates/horizon-telemetry/src/lib.rs", "telemetry.playhorizon.dev")]
+        found = [("crates/sunrise-addresses/src/lib.rs", "playsunrise.net"),
+                 ("crates/sunrise-client-render/src/skins.rs", "textures.minecraft.net"),
+                 ("crates/sunrise-server/src/discord.rs", "discord.com"),
+                 ("crates/sunrise-telemetry/src/lib.rs", "telemetry.playsunrise.net")]
         self.assertEqual(self.run_check(found), ([], []))
 
     def test_a_new_address_outside_the_home_fails_and_names_the_doc(self):
-        problems, _ = self.run_check([("crates/horizon-client/src/net.rs", "relay.playhorizon.dev")])
-        self.assertIn("relay.playhorizon.dev", problems[0])
+        problems, _ = self.run_check([("crates/sunrise-client/src/net.rs", "relay.playsunrise.net")])
+        self.assertIn("relay.playsunrise.net", problems[0])
         self.assertIn("docs/layers.md#built-in-addresses", problems[0])
 
     def test_an_address_that_left_its_file_is_a_note(self):
         problems, notes = self.run_check([])
         self.assertEqual(problems, [])
-        self.assertIn("telemetry.playhorizon.dev", notes[0])
+        self.assertIn("telemetry.playsunrise.net", notes[0])
 
     def test_the_list_may_not_take_new_hosts_or_grow(self):
-        config = dict(CONFIG, allowed=CONFIG["allowed"] + ["crates/x/src/lib.rs relay.playhorizon.dev"])
+        config = dict(CONFIG, allowed=CONFIG["allowed"] + ["crates/x/src/lib.rs relay.playsunrise.net"])
         problems, _ = check_addresses.check(config, set(), {"allowed": CONFIG["allowed"]})
-        self.assertTrue(any("relay.playhorizon.dev: added" in p for p in problems))
+        self.assertTrue(any("relay.playsunrise.net: added" in p for p in problems))
         self.assertTrue(any("grew from 1 to 2" in p for p in problems))
 
     def test_an_entry_may_move_with_its_code(self):
-        moved = {"allowed": ["crates/horizon-telemetry/src/upload.rs telemetry.playhorizon.dev"]}
+        moved = {"allowed": ["crates/sunrise-telemetry/src/upload.rs telemetry.playsunrise.net"]}
         config = dict(CONFIG, allowed=moved["allowed"])
-        found = {("crates/horizon-telemetry/src/upload.rs", "telemetry.playhorizon.dev")}
+        found = {("crates/sunrise-telemetry/src/upload.rs", "telemetry.playsunrise.net")}
         self.assertEqual(check_addresses.check(config, found, {"allowed": CONFIG["allowed"]}), ([], []))
 
 
@@ -111,15 +111,13 @@ class UpstreamRestorationTests(unittest.TestCase):
         self.git("config", "user.email", "fixture@example.invalid")
         (self.root / "tools").mkdir()
         (self.root / "tools/addresses.json").write_text('{"allowed": []}')
-        (self.root / "tools/file_size_baseline.txt").write_text("")
         self.git("add", "tools")
         self.git("commit", "-q", "-m", "base")
         self.base = self.git("rev-parse", "HEAD").strip()
-        self.row = "crates/service/src/lib.rs telemetry.playhorizon.dev"
+        self.row = "crates/service/src/lib.rs telemetry.playsunrise.net"
         self.git("checkout", "-q", "-b", "upstream")
         (self.root / "tools/addresses.json").write_text(json.dumps({"allowed": [self.row]}))
         self.git("commit", "-q", "-am", "upstream address")
-        upstream = self.git("rev-parse", "HEAD").strip()
         remote = self.root / "remote.git"
         self.git("init", "-q", "--bare", str(remote))
         self.git("push", "-q", str(remote), "HEAD:refs/heads/main")
@@ -128,10 +126,9 @@ class UpstreamRestorationTests(unittest.TestCase):
         self.git("add", "fork")
         self.git("commit", "-q", "-m", "fork")
         self.git("merge", "-q", "--no-edit", "upstream")
-        (self.root / "tools/file_size_baseline.txt").write_text(f"# sync-baseline: {upstream}\n")
         for patch in (mock.patch.object(check_addresses, "ROOT", self.root),
-                      mock.patch.object(check_file_size, "ROOT", self.root),
-                      mock.patch.dict(os.environ, {"HORIZON_UPSTREAM_URL": str(remote)})):
+                      mock.patch.object(merge_base, "ROOT", self.root),
+                      mock.patch.dict(os.environ, {"SUNRISE_UPSTREAM_URL": str(remote)})):
             patch.start()
             self.addCleanup(patch.stop)
 
@@ -149,20 +146,24 @@ class UpstreamRestorationTests(unittest.TestCase):
         self.assertEqual(self.problems(self.row), [])
 
     def test_fork_only_row_fails(self):
-        self.assertTrue(self.problems("crates/fork/src/lib.rs fork.playhorizon.dev"))
+        self.assertTrue(self.problems("crates/fork/src/lib.rs fork.playsunrise.net"))
 
     def test_one_character_change_to_upstream_row_fails(self):
         self.assertTrue(self.problems(self.row.replace("service/", "service2/")))
 
     def test_forged_sync_provenance_cannot_restore_rows(self):
-        marker = self.git("rev-parse", "HEAD").strip()
-        (self.root / "tools/file_size_baseline.txt").write_text(f"# sync-baseline: {marker}\n")
+        self.git("reset", "-q", "--hard", "HEAD^")
+        self.git("checkout", "-q", "-b", "forgery", self.base)
+        (self.root / "tools/addresses.json").write_text(json.dumps({"allowed": [self.row]}))
+        self.git("commit", "-q", "-am", "forged upstream address")
+        self.git("checkout", "-q", "work")
+        self.git("merge", "-q", "--no-edit", "forgery")
         rows, errors = check_addresses.restored_upstream_rows(self.base)
         self.assertEqual(rows, set())
-        self.assertTrue(errors)
+        self.assertEqual(errors, [])
 
-    def test_verbatim_row_without_changed_sync_declaration_fails(self):
-        (self.root / "tools/file_size_baseline.txt").write_text("")
+    def test_verbatim_row_without_a_merge_of_upstream_fails(self):
+        self.git("reset", "-q", "--hard", "HEAD^")
         self.assertTrue(self.problems(self.row))
 
 
@@ -184,7 +185,6 @@ class PullRequestMergeTests(unittest.TestCase):
             run("init", "-q", "-b", "main")
             (root / "tools").mkdir()
             (root / "tools/addresses.json").write_text(config([]))
-            (root / "tools/file_size_baseline.txt").write_text("")
             (root / "tools/layers.json").write_text('{"crates": {}}')
             (root / "crates/a/src").mkdir(parents=True)
             (root / "crates/a/src/lib.rs").write_text("pub fn a() {}\n")
@@ -196,18 +196,23 @@ class PullRequestMergeTests(unittest.TestCase):
             run("commit", "-q", "-am", "unrelated change")
             run("checkout", "-q", "main")
             (root / "crates/x/src").mkdir(parents=True)
-            (root / "crates/x/src/lib.rs").write_text('pub const URL: &str = "https://relay.playhorizon.dev";\n')
-            (root / "tools/addresses.json").write_text(config(["crates/x/src/lib.rs relay.playhorizon.dev"]))
+            (root / "crates/x/src/lib.rs").write_text('pub const URL: &str = "https://relay.playsunrise.net";\n')
+            (root / "tools/addresses.json").write_text(config(["crates/x/src/lib.rs relay.playsunrise.net"]))
             run("add", ".")
             run("commit", "-q", "-m", "main allows an address")
             run("checkout", "-q", "--detach", "main")
             run("merge", "-q", "--no-ff", "-m", "merge work", "work")
-            with mock.patch.object(check_addresses, "ROOT", root), mock.patch.object(check_file_size, "ROOT", root), \
+            fetch = mock.Mock(return_value=["no network"])
+            with mock.patch.object(check_addresses, "ROOT", root), mock.patch.object(merge_base, "ROOT", root), \
+                    mock.patch.object(merge_base, "fetch_upstream_main", fetch), \
                     mock.patch("sys.stdout", new_callable=io.StringIO) as out:
                 self.assertEqual(check_addresses.main(["--base", base, "--pull-request-merge"]), 0)
-                # Against the branch's old base, main's new entry was charged to the pull request.
+                fetch.assert_not_called()  # a merge and no violation never reaches the network
+                # Against the branch's old base, main's new entry was charged to the pull request, and only that
+                # violation looks for an upstream inventory that could excuse it.
                 self.assertEqual(check_addresses.main(["--base", base]), 1)
-            self.assertIn("relay.playhorizon.dev", out.getvalue())
+                fetch.assert_called_once()
+            self.assertIn("relay.playsunrise.net", out.getvalue())
 
 
 class BaseConfigTests(unittest.TestCase):
@@ -226,7 +231,7 @@ class BaseConfigTests(unittest.TestCase):
                 (root / "tools" / "addresses.json").write_text(json.dumps({"allowed": list(entries)}))
 
             run("init", "-q", "-b", "main")
-            allow("crates/horizon-telemetry/src/lib.rs telemetry.playhorizon.dev")
+            allow("crates/sunrise-telemetry/src/lib.rs telemetry.playsunrise.net")
             run("add", ".")
             run("commit", "-q", "-m", "base")
             run("checkout", "-q", "-b", "work")
@@ -236,7 +241,7 @@ class BaseConfigTests(unittest.TestCase):
             run("commit", "-q", "-am", "main drops the entry")
             run("checkout", "-q", "work")
             with mock.patch.object(check_addresses, "ROOT", root):
-                self.assertEqual(check_addresses.base_config("main"), {"allowed": ["crates/horizon-telemetry/src/lib.rs telemetry.playhorizon.dev"]})
+                self.assertEqual(check_addresses.base_config("main"), {"allowed": ["crates/sunrise-telemetry/src/lib.rs telemetry.playsunrise.net"]})
 
 
 if __name__ == "__main__":

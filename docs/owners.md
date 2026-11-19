@@ -1,19 +1,19 @@
 # For server owners: `server.properties` to `server.toml`
 
-You run a vanilla server today and edit `server.properties`. With `horizon-server` you edit one file,
+You run a vanilla server today and edit `server.properties`. With `sunrise-server` you edit one file,
 `server.toml`, instead. Before every start the server writes `server.properties` from it, so the game reads
 exactly what a vanilla server reads. This page maps one to the other. The full guide is
 [hosting.md](hosting.md); the design is [server.md](server.md), section 4.
 
 ## Moving over
 
-Run `horizon-server init` in your server folder, or `horizon-server import server.properties`. It reads the
+Run `sunrise-server init` in your server folder, or `sunrise-server import server.properties`. It reads the
 file with vanilla's own parser:
 
 - keys that have a field below go into their section of `server.toml`;
 - any other key that differs from vanilla's default goes into `[properties]`;
 - keys left at their defaults are dropped, so the file stays short;
-- your original is kept as `server.properties.imported`.
+- `init` keeps your original as `server.properties.imported`; `import` leaves the file it read where it is.
 
 The world folder, `ops.json`, `whitelist.json`, the ban lists and `usercache.json` keep vanilla's names and
 formats, so going back to a vanilla server works too.
@@ -31,6 +31,7 @@ formats, so going back to a vanilla server works too.
 | `enforce-whitelist` | `[server] enforce_whitelist` | `false` |
 | `view-distance` | `[server] view_distance` | `10` |
 | `simulation-distance` | `[server] simulation_distance` | `10` |
+| `sunrise-admin-feedback-to-ops` | `[server] admin_feedback_to_ops` | `true` |
 | `level-name` | `[world] name` | `"world"` |
 | `level-seed` | `[world] seed` | `""` (random on first start) |
 | `gamemode` | `[world] game_mode` | `"survival"` |
@@ -38,7 +39,8 @@ formats, so going back to a vanilla server works too.
 | `hardcore` | `[world] hardcore` | `false` |
 
 Two details differ from vanilla's file: `white-list` becomes `whitelist`, and a seed may be a number or any
-text (vanilla hashes text), written as a string.
+text (vanilla hashes text), written as a string. The three `sunrise-` keys are Sunrise's own: vanilla has no
+such keys, and the server writes them into `server.properties` for the game.
 
 ## Every other key
 
@@ -54,7 +56,7 @@ A key that has a field above is an error under `[properties]`; set it in its sec
 
 ## Settings that are not in `server.properties`
 
-These belong to `horizon-server`, not to the game:
+These belong to `sunrise-server`, not to the game:
 
 | `server.toml` | Meaning |
 |---|---|
@@ -69,20 +71,21 @@ These belong to `horizon-server`, not to the game:
 - **Mistakes stop the start.** Unknown keys and values vanilla would refuse are errors, not ignored.
 - **In-game changes survive.** When the game changes a setting itself (`/whitelist on`), the supervisor copies
   it back into `server.toml` after the game stops, and keeps your comments and order.
-- **Changes apply at the next restart.** `horizon-server config set KEY=VALUE` edits the file without opening
-  it; on a running server it applies `difficulty`, `defaultgamemode` and `whitelist on|off` live. There is no
-  full live reload yet.
+- **Changes apply at the next restart.** `sunrise-server config set KEY=VALUE` edits the file without opening
+  it; on a running server it applies the difficulty, the default game mode, the whitelist switch, `motd`,
+  `max_players` and the `[backups]` and `[updates]` settings at once, and says which settings wait for the next
+  start. There is no full live reload yet.
 
-## Planned: limiting a server to Horizon clients
+## Planned: limiting a server to Sunrise clients
 
 The design ([server-next.md](server-next.md#6-who-can-join), section 6) adds one more setting. It is not in
 `server.toml` yet.
 
 ```toml
 [clients]
-allow = "any"        # "any" (vanilla Java and Horizon) or "horizon" (Horizon clients only)
+allow = "any"        # "any" (vanilla Java and Sunrise) or "sunrise" (Sunrise clients only)
 ```
 
-With `"horizon"` the server refuses a client that does not identify as Horizon. This is a convenience filter,
-not security: Horizon's client is open source, so a modified client can claim to be Horizon. The real gate
+With `"sunrise"` the server refuses a client that does not identify as Sunrise. This is a convenience filter,
+not security: Sunrise's client is open source, so a modified client can claim to be Sunrise. The real gate
 stays `online_mode`, plus the whitelist and bans on top of it.

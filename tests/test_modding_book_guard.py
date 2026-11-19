@@ -63,8 +63,8 @@ class BookGuardTests(unittest.TestCase):
         present = "steps.book.outputs.present == 'true'"
         self.assertEqual(scan['if'], present)
         self.assertEqual(scan['env']['BOOK_EVENT'], '${{ github.event_name }}')
-        for command in ['RUSTDOCFLAGS="-D warnings" cargo doc -p horizon-mod-api --no-deps',
-                        'cargo test -p horizon-modding-examples']:
+        for command in ['RUSTDOCFLAGS="-D warnings" cargo doc -p sunrise-mod-api --no-deps',
+                        'cargo test -p sunrise-modding-examples']:
             step = next(step for step in steps if step.get('run') == command)
             self.assertEqual(step['if'], present + " && github.event_name != 'pull_request'")
 

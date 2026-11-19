@@ -24,6 +24,49 @@ beside the bed with the normal wake animation, teleport and pose sync; the usual
 occupying a bed or playing a wake animation. The next entity sync publishes the changed pose and bed to clients.
 Villagers use `start_sleeping`/`stop_sleeping`, not the raw player position setters.
 
+## Sprinting
+
+`EntityRef::is_sprinting` reads `Entity.isSprinting` and `EntityRef::set_sprinting(host, sprinting)` sets it
+(`Entity.setSprinting`, server only): a player's flag with the movement speed modifier that goes with it, or a mob's flag, which the
+mob's movement speed already reads as that modifier (a cat's or ocelot's own AI may set it again on its next step). It returns `false` for a stale
+handle, on a client and for a kind with no sprinting flag. It is the flag `Entity.isSprinting` reads, not
+the player's sprint key: a player's own client sets its flag again from its input.
+
+## Fire, water and consumption
+
+`EntityRef::is_on_fire(host)` reads vanilla `Entity.isOnFire` on either side: an entity that is not
+fire immune and has positive fire ticks or, on a client, synced shared flag 0. It covers players,
+mobs, armor stands, dropped items and tracked remote players. On a client it reads that
+client's copy, including the local player's predicted timer, not a server query.
+
+`EntityRef::fire_immune(host)` reads type immunity or a live grant on that side, not
+separate species-specific damage rules. On the server, use `set_fire_immunity(host, immune)` for a player, mob or armor
+stand. Granting it stops ignition and fire damage and silently clears any existing burn.
+Clearing the grant cannot remove built-in immunity. The grant belongs to the live body:
+it is not saved, a replacement body (including a respawn) starts without it, and a level
+transfer keeps it only if it carries the same body. The last write wins.
+
+For equipment-driven immunity, recompute the grant from the wearer's gear on the server and
+use `set_client_fire_immunity(host, immune)` on the client copy from its synced equipment.
+There is no grant packet: fire itself still uses vanilla's synced flag. The client grant only
+affects local prediction and drawing, without replacing remote entities' synced fire state.
+It ends when that entity copy is discarded.
+
+`EntityRef::is_under_water(host)` reads `Entity.isUnderWater` for players and mobs on either side:
+the previous eye-in-water sample AND current water contact. The local client player follows the
+`LocalPlayer.isUnderWater` override instead: its saved eye sample alone, even when current water
+contact is false. It is deliberately not equivalent to checking `eye_fluid` now. Both reads return
+`None` for unsupported kinds or stale handles.
+
+`PlayerRef::trigger_consume_item(host, &stack)` is server-only and fires just
+`CriteriaTriggers.CONSUME_ITEM.trigger(serverPlayer, stack)`, the vanilla public call that NeoForge
+mods can also use. It uses the same advancement path as food and potions, with the supplied stack,
+in the player's own level. It does not eat, update inventory, or award a used statistic.
+`Ok(())` means reached, whether or not a criterion matched. Invalid stacks return
+`TriggerCriterionError::Stack` before firing; clients return `NotServer`, and stale, offline or
+nested-turn displaced players return `PlayerUnavailable`. The generic `trigger_criterion` still
+refuses `minecraft:` trigger identifiers.
+
 ## Portals and leashes
 
 `EntityRef::portal_cooldown` takes `&dyn Host` and reads the remaining portal cooldown in ticks from the
@@ -54,6 +97,9 @@ fence as `Leashable.setLeashedTo` does: the entity lets go of any other holder a
 `canBeLeashed` nor the distance is asked, so a holder too far away snaps the lead on the next tick. `detach_leash`
 drops the lead as an item or removes it; a mob's removal fires `entity_unleash`.
 
+A successful mob mount through `EntityRef::start_riding` drops the mob's lead as an item without a sound
+and emits `entity_unleash`. A refused mount leaves the leash alone. Natural mob boarding follows the same rule.
+
 ## Physics
 
 `EntityRef::no_physics` takes `&dyn Host` and reads `Entity.noPhysics`: whether the entity's moves pass
@@ -76,6 +122,27 @@ baby age (`-48000` for a sniffer, otherwise `-24000`) or become adults at `0`, i
 attribute, navigation and AI changes. Their age is saved as `Age` where the kind saves one. Non-ageable babies,
 such as zombies and piglins, keep their non-growing baby state instead. A species with no baby form refuses
 `set_baby` without changing anything. Neither `set_baby` nor `set_no_ai` changes `PersistenceRequired`.
+
+`ai_paused`/`set_ai_paused` pause a mob's AI step while its physics runs on, as vanilla's `isImmobile` does for a
+dying mob or a stunned ravager. A paused mob skips `Mob.serverAiStep` whole: its Brain or its goal and target
+selectors, its navigation and its controls, for brain mobs (allays, piglins, villagers) and goal mobs alike.
+`LivingEntity.aiStep` runs with every move input and the jump flag zeroed, so it still falls, swims, is pushed,
+knocked back, hurt and killed, which `NoAI` does not allow. Its path, move target, target, running goals and brain
+memories are kept and resume on the next AI step, and the navigation timeout does not count the pause. `NoAI` is
+neither read nor written. The pause is saved with the mob as an attachment-style value (`sunrise:attachments`,
+`sunrise` / `ai_paused`, never a vanilla key) and read back on load. A refusal is a `MobAiPauseRefusal`: `Stale`
+(another epoch's handle or no such entity), `Client`, `HeldOut` (a mob held out of the level for its own tick),
+`NoAiStep` (the dragon and its parts) or `NotAMob` (a player, an armor stand). None changes anything.
+
+For an Allay, the expiring liked-player memory, liked-note-block cooldown and item-pickup cooldown also
+stop during the pause. Passive healing, the duplication countdown, dancing and animation continue.
+
+```rust
+// A spawner's movable no-AI mob: paused once, and still paused after a reload.
+if let Some(mob) = host.mob(entity) {
+    let _ = mob.set_ai_paused(host, true);
+}
+```
 
 The persistence pair `persistence_required`/`set_persistence_required` reads and sets `Mob.isPersistenceRequired`;
 vanilla gives that setter no way back. `requires_custom_persistence` is a separate despawn predicate

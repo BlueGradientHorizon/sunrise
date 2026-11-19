@@ -1,10 +1,10 @@
 # Design: pending children
 
-Provisional answer to [#825](https://github.com/arismoko/horizon/issues/825): the engine owns an action-local ordered collection of fully constructed, unspawned children. Listeners borrow editors; the engine validates and consumes the final collection exactly once at the original insertion boundary. This is a proposal, not an implemented API or an issue decision. Ari's side posts the decision on the issue. No implementation stages have been filed.
+Implemented collection contract for [#825](https://github.com/arismoko/horizon/issues/825): the engine owns an action-local ordered collection of fully constructed, unspawned children. Listeners borrow editors; the engine validates and consumes the final collection exactly once at the original insertion boundary. The implementation status below distinguishes the shipped collection from the transaction-coordinator work still outstanding. The evidence and acceptance matrix record the original design investigation, not executed verification of the implementation.
 
 ## Evidence and limits
 
-Vanilla 26.3 was queried from `/workspace/horizon` using `python3 tools/rea_vanilla.py method net.minecraft.world.entity.animal.Animal spawnChildFromBreeding`. The returned method calls getBreedOffspring, returns for null, sets the baby flag and position, calls finalizeSpawnChildFromBreeding, then addFreshEntityWithPassengers. Thus the proposed callback observes a constructed child before finalization and insertion. Queries for Slime and AbstractCubeMob in the monster package failed class resolution; exact vanilla split method contents and species overrides remain unverified. Horizon's inspected owners below identify AbstractCubeMob.remove as their reference; those comments are not independent vanilla verification.
+Vanilla 26.3 was queried from `/workspace/sunrise` using `python3 tools/rea_vanilla.py method net.minecraft.world.entity.animal.Animal spawnChildFromBreeding`. The returned method calls getBreedOffspring, returns for null, sets the baby flag and position, calls finalizeSpawnChildFromBreeding, then addFreshEntityWithPassengers. Thus the proposed callback observes a constructed child before finalization and insertion. Queries for Slime and AbstractCubeMob in the monster package failed class resolution; exact vanilla split method contents and species overrides remain unverified. Sunrise's inspected owners below identify AbstractCubeMob.remove as their reference; those comments are not independent vanilla verification.
 
 The issue names NeoForge 26.3 MobSplitEvent.getChildren and BabyEntitySpawnEvent.setChild. Requests to the public [MobSplitEvent Javadoc](https://aldak.netlify.app/javadoc/26.3.x/net/neoforged/neoforge/event/entity/living/MobSplitEvent.html) and [BabyEntitySpawnEvent Javadoc](https://aldak.netlify.app/javadoc/26.3.x/net/neoforged/neoforge/event/entity/living/BabyEntitySpawnEvent.html) failed in the web reader. Exact mutability, null-child, cancellation, parent side effects and supported breeding routes are **unverified**. The issue establishes the desired capability, not proof of NeoForge behavior. No NeoForge source, patches or other project's source was read. Public-contract and remaining vanilla verification gate implementation.
 
@@ -28,19 +28,19 @@ Follow [#1606](https://github.com/arismoko/horizon/issues/1606): pending childre
 
 ## Owning routes and hook migration
 
-Paths and line numbers are inspected Horizon owners at this note's base. Vanilla method names in this table are reference targets, not claims that all were independently queried.
+Paths and line numbers are inspected Sunrise owners at this note's base. Vanilla method names in this table are reference targets, not claims that all were independently queried.
 
 | Route | Owner and treatment |
 | --- | --- |
-| Slime, magma cube, sulfur cube death | `crates/horizon-client/src/game/mobs/creatures/mod.rs:1745` split_dead_cube explicitly covers all three; replace count loop at 1754 with constructed collection. Reference AbstractCubeMob.remove. Size 1 and primed sulfur producing zero children do not dispatch. |
-| Split child initialization | `crates/horizon-client/src/mobs/cube.rs:90` specializes sulfur size/baby state; yaw draws follow at 96. Preserve these draws and list order even on veto. |
-| Live animal breeding | `crates/horizon-client/src/game/mobs/creatures/mod.rs:3948` breed is the common owner, reached at 3614; inheritance construction precedes finalization at 4226 and insertion at 4231/4237. Move the existing early callback after actual child construction. Include horse/donkey mule, equine inheritance, fox trust, color and variant paths in this common owner. Reference Animal.spawnChildFromBreeding and species getBreedOffspring overrides. |
+| Slime, magma cube, sulfur cube death | `crates/sunrise-client/src/game/mobs/creatures/mod.rs:1745` split_dead_cube explicitly covers all three; replace count loop at 1754 with constructed collection. Reference AbstractCubeMob.remove. Size 1 and primed sulfur producing zero children do not dispatch. |
+| Split child initialization | `crates/sunrise-client/src/mobs/cube.rs:90` specializes sulfur size/baby state; yaw draws follow at 96. Preserve these draws and list order even on veto. |
+| Live animal breeding | `crates/sunrise-client/src/game/mobs/creatures/mod.rs:3948` breed is the common owner, reached at 3614; inheritance construction precedes finalization at 4226 and insertion at 4231/4237. Move the existing early callback after actual child construction. Include horse/donkey mule, equine inheritance, fox trust, color and variant paths in this common owner. Reference Animal.spawnChildFromBreeding and species getBreedOffspring overrides. |
 | Turtle/frog eggs | Same file:4006–4015 excludes live children and preserves finalization/XP. References TurtleBreedGoal.breed and frog breeding behavior; exact vanilla frog method unverified. No baby callback for egg laying. |
 | Sniffer egg | Same file:4004–4008 finalizes then lays an egg. Reference Sniffer.spawnChildFromBreeding; no live-child callback. |
 | Turtle hatch | Same file:3789 hatch_turtles, reference TurtleEggBlock.randomTick. Hatching is independent spawning, outside breeding callback. |
 | Spawn egg offspring | Same file:7696 spawn_egg_offspring, reference SpawnEggItem spawning behavior. Excluded from this breeding moment. |
-| Villager/armadillo | Existing baby_entity_spawn declaration explicitly excludes their own paths. Exact owners and vanilla methods remain unverified; implementation must trace these before claiming full live-breeding coverage. Recommend include only if public counterpart and vanilla moment agree, otherwise document the distinct moment. |
-| Native pending lend | `crates/horizon-client/src/game/modding/native_unspawned_mob.rs:107` lend_unspawned already owns scoped lending and unwind restoration. Extend its ownership discipline; do not treat the stand-in clone as a child. |
+| Villager/armadillo | Armadillos use the ordinary animal breeding route. Villagers retain their separate `villager_birth` moment and do not fire `baby_entity_spawn`. |
+| Native pending lend | `crates/sunrise-client/src/game/modding/native_unspawned_mob.rs:107` lend_unspawned already owns scoped lending and unwind restoration. Extend its ownership discipline; do not treat the stand-in clone as a child. |
 
 Change mob_split and baby_entity_spawn in place, once per vanilla moment. Delete count/kind-only transport, obsolete helpers and the stale “handle does not exist” prose in both declarations, hook notes, generated native/wasm bindings and samples together. Retain parent/player metadata. Do not add parallel legacy hooks or a second post-construction hook.
 
@@ -73,11 +73,55 @@ Expected implementation outcomes below are fixtures to write, not tests already 
 | Outer abort | Zero children/joins/sends; original parent state, RNG and attachment values restored. |
 | No listeners | Exact vanilla child fields, ordering, RNG, XP and parent effects; zero added payload allocations. |
 
-## Proposed stages
+## Implementation status
+
+**This is staged work.** `mob_split` and `baby_entity_spawn` now hand their listeners the engine-owned
+list described here, natively and through wasm. The pieces that need a transaction coordinator wait for
+[#784](https://github.com/arismoko/horizon/issues/784), which is not in main: outer rollback of a vetoed
+listener's Host writes and per-child join recovery. Until it lands, a veto or a stale refusal spawns no
+child but cannot undo what a listener wrote through the host. #825 stays open for that stage.
+
+What is built:
+
+- **Hooks.** `edits` (`&dyn PendingChildrenEdits`) and the action's `dimension` replace the old count and
+  kind string; each callback gets its list with `edits.children()`. The wasm bindings are generated from
+  the same declarations.
+- **Construction first.** A split constructs every child, with its yaw draw, before the hook; breeding
+  calls the hook after the baby is built and has inherited, before finalization and insertion.
+- **Operations.** `len`, `child`, `construct`, `append`, `replace` and `remove`, plus `set_position`,
+  `set_yaw`, `set_baby` and `set_size` on a child, with `Expired`, `Ownership`, `Capacity` and `Invalid`
+  refusals. A split holds at most 64 children, breeding one baby that must stay a baby.
+- **One listener per lease.** Entering any next listener (including a different nested hook) ends the
+  previous listener's leases, so a list, child or ownership token kept from an earlier listener answers
+  `Expired`. This holds for native and wasm listeners alike.
+- **Consumed once.** After dispatch the list is frozen and validated (kind, dimension, finite position and
+  yaw, baby state, species size), and the survivors join in order. A cancel, an emptied list, a trapped wasm
+  listener, a parent or world that changed under the listener (a parent's position, kind, age, love,
+  variant, colour or tameness differs from what the baby was built from), or an invalid final child spawns
+  nothing and replays nothing. Cancelling keeps the construction draws and the parent's death; breeding's
+  veto leaves both parents at age 6000 and love 0 with no experience, statistic or hearts.
+- **Unpublished while waiting.** A baby breeding hands over keeps its UUID, and its constructor
+  attachments when nothing is bound to them, outside the game's tables until it joins; a split child
+  has none before it joins. A removed or replaced baby, and a panicking listener, leave no state behind.
+- **No listener.** The vanilla loop and the vanilla breeding path run as before, with no list.
+- **Eggs.** Turtle and frog breeding, sniffer egg laying and turtle hatching still make no baby and never
+  fire the hook; armadillos use the ordinary animal path and do. Villagers keep their own path
+  (`villager_birth`, `VillagerMakeLove.breed`), a separate vanilla moment, and fire nothing.
+
+Not done, and why:
+
+- Outer abort (a surrounding transaction restoring parent state, RNG and attachment values) and per-child
+  join-veto recovery: #784. This change supplies what that coordinator consumes, a frozen, validated list
+  consumed exactly once with no retry of an entered consumer, but no outer-abort fixture exists.
+- A native listener's constructor attachments that are bound to an index stay published while the baby
+  waits (they cannot be withheld without the coordinator's rollback).
+- Equipment and attribute edits of a pending child: only position, yaw, baby state and size are editable.
+
+## Historical proposed stages
 
 File none. First verify the public counterpart and remaining vanilla routes and decide the questions below. Then extend the shared pending ownership boundary and native/wasm operations together. Next migrate both hooks and all authoritative routes, coordinate recovery foundations, and delete obsolete transport. Finally add oracle-backed species, reentrancy, transaction and fault fixtures plus no-listener measurements. These are proposed stages, not filed issues or authorized Rust changes.
 
-## Open questions
+## Historical investigation questions
 
 - Exact NeoForge 26.3 cancellation and null-child behavior? Recommend verify public Javadoc before implementation; retain the explicit proposed parent/RNG policy until Ari decides.
 - Are all live births in scope, including villager and armadillo paths? Recommend trace exact owners and counterpart call moments first; do not quietly inherit today's exclusions as proven parity.

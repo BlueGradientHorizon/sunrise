@@ -1,6 +1,6 @@
 # Testing a mod
 
-Enable the `testing` feature on your `horizon-mod-api` test dependency. Then
+Enable the `testing` feature on your `sunrise-mod-api` test dependency. Then
 `testing::with_mods` takes an owned `Mods` list and runs a closure with it installed on the current thread.
 It restores the previous list even if the closure panics. The test allocation is retained because dispatch exposes
 a static slice. Call `dispatch_<hook>(&mut host, args…)` inside the closure to build the event as the game does.
@@ -44,6 +44,15 @@ Sounds and game events a hook plays in the level are kept in `host.sounds` and `
 outside the journal, as the game sends them at once. Fluids a test uses are resolved with
 `host.registries.resolve_fluids([...])`, and `host.registries.fluid_sounds(fluid, fill, empty)` gives one the
 bucket sounds `fluid_pickup_sound` and `fluid_empty_sound` answer.
+
+A fake's constructors do not install or resolve entity types. Declare its entities with
+`host.level.entity(id, kind)`, then call `host.resolve_entity_types().unwrap()` explicitly.
+This freezes the current load's table with requested mod keys, the player type and every kind in
+that fake level. After `host.join(1, 10)` and this explicit setup,
+`host.player(1).unwrap().entity().kind(&host).unwrap().id(&host)` is
+`"minecraft:player"` (with `PlayersHost` in scope). Existing kinds may be instantiated after
+resolution; inserting a new undeclared kind panics at the fake setup boundary. Repeated resolution
+checks the frozen table rather than extending it. A new load requires a new part installation.
 
 An unsupported host method panics with its name, so an unexpected call fails
 loudly. You can write your own double for behavior the fakes do not model,

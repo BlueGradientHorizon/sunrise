@@ -4,9 +4,9 @@ on:
   push:
     branches: [main]
     paths:
-      - 'crates/horizon-perf/**'
-      - 'crates/horizon-perf-format/**'
-      - 'crates/horizon-bench/**'
+      - 'crates/sunrise-perf/**'
+      - 'crates/sunrise-perf-format/**'
+      - 'crates/sunrise-bench/**'
       - 'xtask/**'
       - 'Cargo.lock'
       - 'Cargo.toml'
@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      HORIZON_TELEMETRY_URL: "off"
+      SUNRISE_TELEMETRY_URL: "off"
     steps:
       - uses: actions/checkout@v7
       - name: The pinned Rust (tools/ci/rust-version)
@@ -36,12 +36,15 @@ jobs:
         with:
           toolchain: ${{ steps.rust.outputs.version }}
           targets: wasm32-unknown-unknown
+      # Pull requests read main's cache and save none: ten pull requests' caches (~300 MB each) filled the
+      # repository's 10 GB and pushed main's own caches out (2026-11-14).
       - uses: Swatinem/rust-cache@v2
         with:
           key: perf-wasm
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       # The agreement test: the C ABI, called natively, must print the bytes the CLI prints.
       - name: The wasm ABI agrees with the CLI
-        run: cargo test -p horizon-perf --features wasm --test wasm
+        run: cargo test -p sunrise-perf --features wasm --test wasm
       - name: Build the wasm the page loads
         run: cargo run -p xtask -- perf-wasm
       - uses: actions/upload-artifact@v4
