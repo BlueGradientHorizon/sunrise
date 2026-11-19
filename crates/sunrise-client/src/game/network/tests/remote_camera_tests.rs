@@ -121,3 +121,60 @@ fn a_frame_camera_turns_with_its_facing() {
     assert_eq!(view(1), (0.0, -90.0));
     assert_eq!(view(0), (0.0, 90.0));
 }
+
+/// Minecraft 26.3: the real `Camera.alignWithEntity` (first person) on a real
+/// sleeping `Villager` and `RemotePlayer` at each bed facing, recorded by
+/// `tools/record_remote_camera_sleeping.py`: the view turns to the bed
+/// (`toYRot() - 180`, pitch 0) and drops 0.15.
+#[test]
+#[ignore = "daily"]
+fn a_spectated_sleeping_villager_shows_the_bed_view() {
+    use super::mob_camera_entity;
+    use sunrise_client::camera::{Camera, CameraType};
+
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/game/network/tests/fixtures/remote_camera_sleeping");
+    let cases = std::fs::read_to_string(dir.join("cases.jsonl")).unwrap();
+    let vanilla = std::fs::read_to_string(dir.join("vanilla.txt")).unwrap();
+    let frames: Vec<&str> = vanilla.lines().filter(|l| l.starts_with("frame ")).collect();
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../.local/sunrise-client")
+        .join(sunrise_core::VANILLA_VERSION);
+    let types = sunrise_client::mobs::MobTypes::load(&root).unwrap();
+    let bits = |v: &serde_json::Value| u64::from_str_radix(v.as_str().unwrap(), 16).unwrap();
+    let mut checked = 0;
+    for (case, frame) in cases.lines().zip(&frames) {
+        let case: serde_json::Value = serde_json::from_str(case).unwrap();
+        let ops = case["ops"].as_array().unwrap();
+        let s = &ops[0][1];
+        // Only villagers track a bed today; the sleeping remote player stays a recorded lead.
+        if s["kind"] != "villager" {
+            continue;
+        }
+        let f = |v: &serde_json::Value| f32::from_bits(bits(v) as u32);
+        let d = |v: &serde_json::Value| f64::from_bits(bits(v));
+        let v3 = |v: &serde_json::Value| Vec3::new(d(&v[0]), d(&v[1]), d(&v[2]));
+        let id = "minecraft:villager";
+        let mut mob = sunrise_client::mobs::Mob::new(1, std::sync::Arc::new(types.types[id].clone()), v3(&s["pos"]), 0.0);
+        mob.previous = v3(&s["prev"]);
+        mob.head_pitch = f(&s["xr"]);
+        mob.head_yaw = f(&s["yr"]);
+        mob.previous_head_pitch = f(&s["xro"]);
+        mob.previous_head_yaw = f(&s["yro"]);
+        // Villager.sleeping: the bed's facing code (1 north, 2 south, 3 west, 4 east) from Direction.get2DDataValue.
+        mob.extra.ints[1] = [2, 3, 1, 4][case["bed"][3].as_u64().unwrap() as usize];
+        let entity = mob_camera_entity(&mob);
+        let mut camera = Camera::default();
+        camera.tick(Some(entity.eye_height), 1.0);
+        camera.align_with_entity(&entity, f(&ops[2][1]), CameraType::FirstPerson, |_, _| None);
+        let q = camera.rotation;
+        let got = format!(
+            "frame {:016x} {:016x} {:016x} {:08x} {:08x} {:08x} {:08x} {:08x} {:08x}",
+            camera.position[0].to_bits(), camera.position[1].to_bits(), camera.position[2].to_bits(),
+            camera.x_rot.to_bits(), camera.y_rot.to_bits(), q.x.to_bits(), q.y.to_bits(), q.z.to_bits(), q.w.to_bits(),
+        );
+        let want: Vec<&str> = frame.split(' ').take(10).collect();
+        assert_eq!(got, want.join(" "), "{id} bed {} case {checked}", case["bed"][3]);
+        checked += 1;
+    }
+    assert_eq!(checked, 20);
+}

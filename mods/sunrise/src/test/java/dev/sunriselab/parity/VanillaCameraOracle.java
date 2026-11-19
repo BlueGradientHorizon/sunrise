@@ -92,7 +92,7 @@ public final class VanillaCameraOracle {
     }
 
     static final class Level extends net.minecraft.server.level.ServerLevel {
-        Map<BlockPos, State> cells = new HashMap<>();
+        Map<BlockPos, BlockState> cells = new HashMap<>();
         State air;
 
         Level() {
@@ -149,6 +149,7 @@ public final class VanillaCameraOracle {
         @Override public boolean isDescending() { return false; }
     }
 
+    static Level stubLevel;
     static Minecraft shell;
     static Options options;
     static Field position, xRot, yRot, eyeHeight, vehicle, abilities;
@@ -249,6 +250,13 @@ public final class VanillaCameraOracle {
         level.cells = new HashMap<>();
         level.air = make(State.class);
         level.air.visual = Shapes.empty();
+        stubLevel = level;
+        if (c.has("bed")) {
+            var b = c.getAsJsonArray("bed");
+            level.cells.put(new BlockPos(b.get(0).getAsInt(), b.get(1).getAsInt(), b.get(2).getAsInt()),
+                net.minecraft.world.level.block.Blocks.BED.red().defaultBlockState()
+                    .setValue(net.minecraft.world.level.block.BedBlock.FACING, Direction.from2DDataValue(b.get(3).getAsInt())));
+        }
         for (var e : c.getAsJsonObject("cells").entrySet()) {
             var at = e.getKey().split(" ");
             var s = make(State.class);
@@ -329,7 +337,10 @@ public final class VanillaCameraOracle {
     /** Applies an entity op: a player (with fov fields) or a non-living marker. */
     static Entity entity(JsonObject s, Entity previous) throws Exception {
         Entity entity;
-        if (s.get("kind").getAsString().equals("player")) {
+        String kind = s.get("kind").getAsString();
+        if (kind.equals("villager") || kind.equals("remote_player")) {
+            entity = realLiving(s, kind);
+        } else if (kind.equals("player")) {
             StubPlayer p = previous instanceof StubPlayer old ? old : make(StubPlayer.class);
             fill(p, s);
             p.dead = !s.get("dead").isJsonNull();
@@ -355,6 +366,10 @@ public final class VanillaCameraOracle {
             entity = previous instanceof StubMarker old ? old : make(StubMarker.class);
         }
         position.set(entity, vec(s.get("pos")));
+        if (entity instanceof LivingEntity) {
+            ((LivingEntity) entity).yHeadRot = f(s.get("yr"));
+            ((LivingEntity) entity).yHeadRotO = f(s.get("yro"));
+        }
         var prev = vec(s.get("prev"));
         entity.xo = prev.x;
         entity.yo = prev.y;
@@ -365,6 +380,39 @@ public final class VanillaCameraOracle {
         entity.yRotO = f(s.get("yro"));
         eyeHeight.setFloat(entity, f(s.get("eye")));
         return entity;
+    }
+
+    /** A real Villager or RemotePlayer (no constructor run): its own synched data, attributes and level, asleep at "sleeping_pos". */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    static Entity realLiving(JsonObject s, String kind) throws Exception {
+        boolean villager = kind.equals("villager");
+        LivingEntity e = villager ? make(net.minecraft.world.entity.npc.villager.Villager.class)
+            : make(net.minecraft.client.player.RemotePlayer.class);
+        field(Entity.class, "level").set(e, stubLevel);
+        var builder = new net.minecraft.network.syncher.SynchedEntityData.Builder(e);
+        for (var pair : new Object[][] {{"DATA_SHARED_FLAGS_ID", (byte) 0}, {"DATA_AIR_SUPPLY_ID", 300}, {"DATA_CUSTOM_NAME_VISIBLE", false},
+            {"DATA_CUSTOM_NAME", Optional.empty()}, {"DATA_SILENT", false}, {"DATA_NO_GRAVITY", false}, {"DATA_POSE", Pose.STANDING},
+            {"DATA_TICKS_FROZEN", 0}}) {
+            builder.define((net.minecraft.network.syncher.EntityDataAccessor) field(Entity.class, (String) pair[0]).get(null), pair[1]);
+        }
+        method(Entity.class, "defineSynchedData", net.minecraft.network.syncher.SynchedEntityData.Builder.class).invoke(e, builder);
+        field(Entity.class, "entityData").set(e, builder.build());
+        var map = new AttributeMap(villager ? net.minecraft.world.entity.npc.villager.Villager.createAttributes().build()
+            : Player.createAttributes().build());
+        map.getInstance(Attributes.SCALE).setBaseValue(d(s.get("scale_attr")));
+        map.getInstance(Attributes.CAMERA_DISTANCE).setBaseValue(d(s.get("dist")));
+        field(LivingEntity.class, "attributes").set(e, map);
+        if (!villager) {
+            var a = new Abilities();
+            a.flying = s.get("flying").getAsBoolean();
+            a.setWalkingSpeed(f(s.get("ws")));
+            abilities.set(e, a);
+            map.getInstance(Attributes.MOVEMENT_SPEED).setBaseValue(d(s.get("speed")));
+        }
+        var at = s.getAsJsonArray("sleeping_pos");
+        var accessor = (net.minecraft.network.syncher.EntityDataAccessor) field(LivingEntity.class, "SLEEPING_POS_ID").get(null);
+        e.getEntityData().set(accessor, Optional.of(new BlockPos(at.get(0).getAsInt(), at.get(1).getAsInt(), at.get(2).getAsInt())));
+        return e;
     }
 
     static void bob(JsonObject c, PrintWriter out) throws Exception {
