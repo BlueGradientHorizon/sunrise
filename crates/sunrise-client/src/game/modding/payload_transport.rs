@@ -295,6 +295,24 @@ impl IPayloadContext for MainContext<'_, '_> {
     fn check_payload_token(&self, token: &mod_api::PayloadToken) -> Result<(), PayloadSendError> {
         mod_api::__private::game::check_payload_token(token)
     }
+    /// The main thread's group send is transactional, as every main-thread send.
+    fn send_to(
+        &mut self,
+        players: &[PlayerRef],
+        id: &PayloadId,
+        bytes: PayloadBytes,
+    ) -> Result<u32, PayloadSendError> {
+        if self.disconnect.is_some() {
+            return Err(PayloadSendError::Disconnected);
+        }
+        if self.endpoint.side() != Side::Server {
+            return Err(PayloadSendError::WrongDirection(id.clone()));
+        }
+        if self.endpoint.transport().local.droppable(&id.0).is_none() {
+            return Err(PayloadSendError::NotDroppable(id.clone()));
+        }
+        Ok(self.game.players_send_payload(players, id, bytes))
+    }
     fn disconnect(&mut self, reason: Text) {
         self.disconnect = Some(reason);
     }

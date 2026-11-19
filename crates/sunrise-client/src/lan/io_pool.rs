@@ -108,6 +108,8 @@ pub(super) struct Outbox {
     // Body-framing calls are frames for raw payloads, not necessarily adapters.
     probe: [AtomicUsize; 8],
     queue: Mutex<Queue>,
+    /// The connection's `Droppable` sends, framed by its thread when it has room.
+    droppable: OnceLock<Arc<crate::raw_payloads::droppable::Queue>>,
     /// The bytes queued and not framed yet (`PlayerSender::pending`).
     pending: Arc<AtomicUsize>,
     /// Whether [`MAX_PENDING`] applies. A client in this process (a memory connection) reads
@@ -150,6 +152,7 @@ impl Outbox {
             #[cfg(any(test, feature = "test-payload-probe"))]
             probe: std::array::from_fn(|_| AtomicUsize::new(0)),
             queue: Mutex::default(),
+            droppable: OnceLock::new(),
             pending,
             capped,
             worker: worker.clone(),
@@ -238,17 +241,37 @@ impl Outbox {
             return false;
         }
         q.bodies.push(packet);
+        self.list(q);
+        true
+    }
+    /// Have the thread look at this outbox, if it is on one and not listed already.
+    fn list(&self, mut q: MutexGuard<'_, Queue>) {
         let At::Slot(slot) = q.at else {
-            return true;
+            return;
         };
         if std::mem::replace(&mut q.listed, true) {
-            return true;
+            return;
         }
         drop(q);
         if self.worker.post(|i| i.serve.push(slot)) {
             self.worker.wake();
         }
-        true
+    }
+    /// Serve `queue`'s `Droppable` sends on this connection's thread.
+    pub(super) fn attach_droppable(
+        self: &Arc<Self>,
+        queue: Arc<crate::raw_payloads::droppable::Queue>,
+    ) {
+        let this = Arc::downgrade(self);
+        queue.set_wake(Box::new(move || {
+            if let Some(outbox) = this.upgrade() {
+                let q = outbox.queue();
+                if !matches!(q.at, At::Closed) && q.end.is_none() {
+                    outbox.list(q);
+                }
+            }
+        }));
+        let _ = self.droppable.set(queue);
     }
     /// What waits, for the thread.
     /// What waits, for the thread: the bodies and the end after them with
@@ -673,6 +696,19 @@ impl Conn {
             }
             // A close is seen even while the client takes nothing.
             let room = !self.draining && self.out.len() - self.written <= AHEAD;
+            // Droppable sends go first while there is room: they are small, and late is
+            // worthless; vanilla's packets keep their own order.
+            if room
+                && let Some(queue) = self.outbox.droppable.get().cloned()
+                && let Some(body) = queue.pop(now)
+            {
+                if let Err(e) =
+                    super::conn::frame_body(&mut self.writer, &Body::from(body), &mut self.out)
+                {
+                    return self.end(now, e.to_string());
+                }
+                continue;
+            }
             let (bodies, end) = self.outbox.take(room);
             if end == Some(End::Close) {
                 return self.end(now, "Disconnected");

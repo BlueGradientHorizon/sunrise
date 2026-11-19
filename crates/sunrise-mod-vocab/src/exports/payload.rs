@@ -2,15 +2,16 @@ mod payload;
 pub mod __private {
     pub mod game {
         pub use crate::parts::{
-            PayloadReceiver, Payloads, check_payload_token, installed_payloads,
+            DropCounters, PayloadReceiver, Payloads, check_payload_token, installed_payloads,
+            payload_drop_counts,
         };
     }
 }
 pub use payload::{
     HandlerThread, IPayloadContext, IPayloadHandler, PayloadAccepted, PayloadBytes,
-    PayloadContextError, PayloadDeclaration, PayloadDirection, PayloadFrameStage, PayloadId,
-    PayloadProtocol, PayloadRegistrar, PayloadSendError, PayloadWork, PayloadWorkStatus,
+    PayloadContextError, PayloadDeclaration, PayloadDelivery, PayloadDirection, PayloadFrameStage,
+    PayloadId, PayloadProtocol, PayloadRegistrar, PayloadSendError, PayloadWork, PayloadWorkStatus,
     RegisterClientPayloadHandlersEvent, RegisterPayloadHandlersEvent,
 };
-pub use payload::{PayloadBusy, PayloadHandleError};
+pub use payload::{PAYLOAD_DROPPABLE_MARKER, PayloadBusy, PayloadDropCounts, PayloadHandleError};
 pub use payload::{PayloadToken, ToClient, ToServer};
