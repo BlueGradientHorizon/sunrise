@@ -103,6 +103,13 @@
     "sunrise-mod-vocab": "engine",
     "sunrise-engine-slots": "engine"
   },
+  "sides": {
+    "_doc": "Gameplay's two sides (#2210): neither may depend on the other, directly or through another crate.",
+    "crates": [
+      "sunrise-gameplay",
+      "sunrise-client-gameplay"
+    ]
+  },
   "portable": {
     "_doc": "docs/layers.md#engine: vanilla's rules and data with no desktop in them, which a port builds on. They depend only on each other, and never on a forbidden library.",
     "crates": [
