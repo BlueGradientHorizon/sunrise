@@ -262,7 +262,9 @@ impl Game<'_> {
             })
             .collect();
         let mut out = Vec::new();
-        for (_, tags) in self.entity_chunks(&chunks, false) {
+        for (_, tags) in
+            self.snapshot_entity_chunks(&chunks, super::persist::EntitySnapshot::Structure)
+        {
             for tag in tags {
                 let Some(Tag::List(pos)) = tag.get("Pos") else {
                     continue;
