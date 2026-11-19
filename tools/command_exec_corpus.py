@@ -7314,8 +7314,8 @@ def dying_selector_candidates():
     ]
     origin = f'x={x0 + 3}.5,y={y0},z={z0 + 4}.5,distance=..12'
 
-    def reads():
-        for uuid in (dying, living, stand):
+    def reads(*bodies):
+        for uuid in bodies:
             ops.append(cmd(f'/data get entity {uuid} Health'))
         ops.append(cmd(f'/execute if entity @e[type=!item,{origin}]'))
         ops.append(cmd(f'/execute if entity @e[type=pig,{origin}]'))
@@ -7324,11 +7324,12 @@ def dying_selector_candidates():
         ops.append(cmd(f'/data get entity @n[type=!item,{origin}] UUID'))
         ops.append(cmd(f'/data get entity @e[type=!item,{origin},sort=nearest,limit=1] UUID'))
 
-    reads()
+    # The stand is read only before it ticks: how long its body then stays (`tickDeath`) is not this group's.
+    reads(dying, living, stand)
     ops.append({'op': 'tick', 'n': 1})
-    reads()
+    reads(dying, living)
     ops.append({'op': 'tick', 'n': 20})
-    reads()
+    reads(dying, living)
     return ops + setup(f'/kill @e[type=!player,x={x0},y={y0 - 8},z={z0},dx=16,dy=32,dz=16]',
                        f'/fill {x0} {y0 - 1} {z0} {x0 + 15} {y0 - 1} {z0 + 15} air',
                        f'/forceload remove {x0} {z0}')
