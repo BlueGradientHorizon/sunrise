@@ -139,7 +139,6 @@
   "How fast the right stick turns the view.": "Баруун саваа харагдацыг хэр хурдан эргүүлэхийг тохируулна.",
   "How fast the stick moves the crosshair in inventories.": "Агуулахад саваа хөндлөн зураасыг хэр хурдан зөөхийг тохируулна.",
   "How frames reach the screen while VSync is off.": "VSync унтраалттай үед фреймүүд дэлгэцэнд хэрхэн хүрдэг вэ.",
-  "How frames reach the screen, and the performance overlay.": "Фреймүүд дэлгэцэнд хэрхэн хүрэх, гүйцэтгэлийн давхардал.",
   "How long a held direction takes between repeats.": "Барьсан чиглэлийн давталтуудын хооронд хэр удаан байхыг тохируулна.",
   "How long a held direction waits before it repeats.": "Барьсан чиглэл давтахаас өмнө хэр удаан хүлээхийг тохируулна.",
   "How many particles effects spawn.": "Хичнээн ширхэг тоосонцор үржүүлдэг.",
