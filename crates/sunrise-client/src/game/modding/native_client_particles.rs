@@ -9,8 +9,6 @@ const MAX_FIREWORK_EXPLOSIONS: usize = 256;
 
 fn finite_options(options: &ParticleOptions) -> bool {
     options.color.into_iter().all(f32::is_finite)
-        && (!options.ty.is_item_crumb()
-            || options.color.into_iter().all(|c| (0.0..=1.0).contains(&c)))
         && options.to_color.into_iter().all(f32::is_finite)
         && options.scale.is_finite()
         && options
