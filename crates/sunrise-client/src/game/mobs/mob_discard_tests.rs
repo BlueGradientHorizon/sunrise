@@ -198,3 +198,78 @@ fn discarded_mob_leaves_selectors_and_saves_while_frozen() {
         Some(commands::Target::Mob(46))
     );
 }
+
+/// A registered selector type keeps every candidate it is offered.
+struct Fallen;
+impl mod_api::EntitySelectorType for Fallen {
+    fn base(&self) -> mod_api::SelectorBase {
+        mod_api::SelectorBase::new(false, None, mod_api::SelectorSort::Arbitrary, "test.fallen")
+    }
+    fn matches(
+        &self,
+        _: &mut dyn mod_api::ServerHost,
+        _: &mod_api::CommandSource,
+        _: mod_api::EntityRef,
+    ) -> bool {
+        true
+    }
+}
+struct FallenMod;
+#[mod_api::__subscriptions]
+impl mod_api::Hooks for FallenMod {
+    fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+        r.register_entity_selector("fallen", Fallen);
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn dead_guest_leaves_at_e_but_reaches_a_registered_selector() {
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "fallen_fixture",
+        Box::new(FallenMod),
+    )]
+    .into();
+    crate::game::api_values::install_parts(&mods).unwrap();
+    mod_platform::testing::with_mods(mods, || {
+        crate::game::native_guest_turn_tests::with_guests(|game| {
+            game.build_registries();
+            game.lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .update_guest(13, |guest| {
+                    guest.health = 0.0;
+                    guest.dead = true;
+                })
+                .unwrap();
+            game.as_guest(12, |game| {
+                let selector = |token: Option<&str>| sunrise_client::command::args::Selector {
+                    kind: 'e',
+                    include_entities: true,
+                    token: token.map(Into::into),
+                    limit: usize::MAX,
+                    ..Default::default()
+                };
+                let guests = |game: &mut Game<'_>, token| {
+                    let mut found: Vec<_> = game
+                        .select(&selector(token))
+                        .into_iter()
+                        .filter(|t| {
+                            matches!(t, commands::Target::Player | commands::Target::Guest(_))
+                        })
+                        .collect();
+                    found.sort_by_key(|t| matches!(t, commands::Target::Guest(_)));
+                    found
+                };
+                // EntitySelectorParser gives the built-in @e `Entity::isAlive`;
+                // a registered type decides for itself and sees the dead guest.
+                assert_eq!(guests(game, None), [commands::Target::Player]);
+                assert_eq!(
+                    guests(game, Some("fallen")),
+                    [commands::Target::Player, commands::Target::Guest(13)]
+                );
+            });
+        });
+    });
+}

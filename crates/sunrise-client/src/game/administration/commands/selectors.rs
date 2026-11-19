@@ -42,7 +42,7 @@ impl Game<'_> {
             _ => {}
         }
         if s.kind != 's' {
-            source_candidates.extend(self.player_candidates(s));
+            source_candidates.extend(self.player_candidates(s, alive_only));
         }
         let source_dim = self.dim;
         // A selector with a spatial constraint reaches the level the command
