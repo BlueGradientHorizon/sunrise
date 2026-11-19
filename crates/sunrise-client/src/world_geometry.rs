@@ -31,7 +31,6 @@ pub struct ModelCopy {
 pub struct ModelBatch {
     pub slot: u32,
     pub generation: u64,
-    pub translucent: bool,
     pub bounds: [[f32; 3]; 2],
 }
 
@@ -730,7 +729,6 @@ mod tests {
         let batch = ModelBatch {
             slot: 3,
             generation: 9,
-            translucent: false,
             bounds: [[0.0; 3], [1.0; 3]],
         };
         let oversized = vec![ModelInstance::at([f64::NAN; 3], 0); 16_385];
@@ -808,7 +806,6 @@ mod tests {
         let batch = ModelBatch {
             slot: 7,
             generation: 3,
-            translucent: false,
             bounds: [[0.0; 3], [1.0; 3]],
         };
         let mut draw = WorldGeometry::default();
@@ -860,7 +857,6 @@ mod tests {
         let batch = ModelBatch {
             slot: 7,
             generation: 3,
-            translucent: false,
             bounds: [[0.0; 3], [1.0; 3]],
         };
         let copy = ModelInstance::at([1.0, 2.0, 3.0], u32::MAX);

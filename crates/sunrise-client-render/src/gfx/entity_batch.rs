@@ -157,33 +157,50 @@ pub(super) struct EntityBatch {
     // frame, keeping their storage.
     runs: [Vec<(usize, usize)>; MATERIALS],
     pub(super) combined: Vec<Vertex>,
+    sort: QuadSort,
     /// Additive quads tagged `OIT_ENTITY` that the last `update` moved into the
     /// last material (improved transparency on): the dragon's eyes, which share
     /// the additive buffer with its rays.
     pub(super) moved_additive: u32,
 }
 
-/// `runs` of `entities` appended to `combined`, their quads far to near.
-fn append_sorted(combined: &mut Vec<Vertex>, entities: &[Vertex], runs: &[(usize, usize)]) {
+/// The buffers [`append_sorted`] sorts through, kept between frames so a sort allocates nothing
+/// once warm.
+#[derive(Default)]
+struct QuadSort {
+    /// Each quad's distance and its place before the sort.
+    keys: Vec<(f32, u32)>,
+    quads: Vec<[Vertex; 4]>,
+}
+
+/// `runs` of `entities` appended to `combined`, their quads far to near, quads at one distance
+/// in the order they came: the order a stable sort gives, by an in-place unstable one on
+/// (distance, original index).
+fn append_sorted(
+    sort: &mut QuadSort,
+    combined: &mut Vec<Vertex>,
+    entities: &[Vertex],
+    runs: &[(usize, usize)],
+) {
     let start = combined.len();
     for &(first, count) in runs {
         combined.extend_from_slice(&entities[first * 4..(first + count) * 4]);
     }
-    // In place, with no scratch buffer: quads at one distance keep a fixed order by their
-    // first vertex's position bits, so the picture does not shimmer between frames.
-    combined[start..]
-        .as_chunks_mut::<4>()
-        .0
-        .sort_unstable_by(|a, b| {
-            let distance = |q: &[Vertex; 4]| {
-                (0..3)
-                    .map(|i| ((q[0].pos[i] + q[2].pos[i]) * 0.5).powi(2))
-                    .sum::<f32>()
-            };
-            distance(b)
-                .total_cmp(&distance(a))
-                .then_with(|| a[0].pos.map(f32::to_bits).cmp(&b[0].pos.map(f32::to_bits)))
-        });
+    let quads = combined[start..].as_chunks_mut::<4>().0;
+    sort.keys.clear();
+    sort.keys.extend(quads.iter().enumerate().map(|(i, q)| {
+        let distance = (0..3)
+            .map(|axis| ((q[0].pos[axis] + q[2].pos[axis]) * 0.5).powi(2))
+            .sum::<f32>();
+        (distance, i as u32)
+    }));
+    sort.keys
+        .sort_unstable_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
+    sort.quads.clear();
+    sort.quads.extend_from_slice(quads);
+    for (quad, &(_, from)) in quads.iter_mut().zip(&sort.keys) {
+        *quad = sort.quads[from as usize];
+    }
 }
 
 impl EntityBatch {
@@ -247,7 +264,7 @@ impl EntityBatch {
         // near. Fluid precedes both world-canvas layers, after existing materials
         // (including eyes moved out of additive).
         for runs in &self.runs[10..13] {
-            append_sorted(&mut self.combined, entities, runs);
+            append_sorted(&mut self.sort, &mut self.combined, entities, runs);
         }
         // Native solid/cutout models are depth writing and keep their submission order.
         for runs in &self.runs[13..16] {
@@ -257,7 +274,7 @@ impl EntityBatch {
             }
         }
         // Native translucent models sort their quads far to near, as `sortOnUpload` does.
-        append_sorted(&mut self.combined, entities, &self.runs[16]);
+        append_sorted(&mut self.sort, &mut self.combined, entities, &self.runs[16]);
         if self.moved_additive == 0 {
             self.combined.extend_from_slice(additive);
         } else {
@@ -424,6 +441,33 @@ mod tests {
         let expected = ordinary_vertices_before(&stream, end, true);
         assert!(out.iter().all(|cut| *cut == expected));
         assert_eq!(out.len(), draws as usize);
+    }
+    #[test]
+    fn sorted_quads_go_far_to_near_and_those_at_one_distance_keep_their_order() {
+        // x is the distance; y marks the original order of the two quads at x = 5.
+        let quad = |x: f32, y: f32| {
+            [Vertex {
+                layer: TERRAIN_MODEL_TRANSLUCENT_OVERLAY,
+                pos: [x, y, 0.0],
+                ..geometry(1, false)[0]
+            }; 4]
+        };
+        let entities: Vec<_> = [(2.0, 0.0), (5.0, 1.0), (9.0, 0.0), (5.0, 2.0), (5.0, 3.0)]
+            .into_iter()
+            .flat_map(|(x, y)| quad(x, y))
+            .collect();
+        let mut batch = EntityBatch::default();
+        batch.update(&entities, &[], &[], &[], false);
+        let order: Vec<_> = batch
+            .combined
+            .iter()
+            .step_by(4)
+            .map(|v| (v.pos[0], v.pos[1]))
+            .collect();
+        assert_eq!(
+            order,
+            [(9.0, 0.0), (5.0, 1.0), (5.0, 2.0), (5.0, 3.0), (2.0, 0.0)]
+        );
     }
     #[test]
     fn native_models_keep_opaque_order_and_do_not_move_existing_materials_or_tails() {

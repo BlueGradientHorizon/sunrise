@@ -574,7 +574,8 @@ pub trait WorldDrawContext {
     /// pack, a copy with an [`Overlay`], a [`ModelInstance::color`] other than white, a
     /// [`ModelInstance::hidden_faces`] or another route cannot take instances. A
     /// `shaders/` pack shades those copies as block entities, with the program that shades
-    /// [`BlockEntityDrawContext::model`]. A copy with a colour alpha below `0xFF`, or of a model
+    /// [`BlockEntityDrawContext::model`], except the translucent copies below and copies of a
+    /// block state model, which take the terrain model materials. A copy with a colour alpha below `0xFF`, or of a model
     /// with a translucent face, is drawn in the sorted translucent material vanilla uses for a
     /// translucent block outside the terrain (`translucent_moving_block`: alpha blended, depth
     /// tested, depth written, back faces culled), their quads sorted far to near each frame as

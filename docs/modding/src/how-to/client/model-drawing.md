@@ -202,7 +202,9 @@ tint conversion, but cull and stage visible copies each frame. Every visible
 GPU-routed copy uploads each frame; groups do not retain a private GPU buffer.
 Frequent whole-group pose changes rebuild every live record and can cost more than
 uncached transient copies. Shader-pack selection, missing prepared GPU records and
-overlays use the same CPU baking path as transient batches, including tint and light.
+overlays use the same CPU baking path as transient batches, including tint and light. Translucent
+copies and copies of a block state model take the terrain model materials, not the
+block-entity program a `shaders/` pack replaces.
 There is no simulation-tick work.
 
 Only the creating mod can access a group. A foreign handle returns `GroupError::Stale`,

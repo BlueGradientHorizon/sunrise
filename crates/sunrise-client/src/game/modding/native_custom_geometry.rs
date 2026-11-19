@@ -267,7 +267,6 @@ impl Game<'_> {
             ModelBatch {
                 slot: fields.slot,
                 generation: fields.generation,
-                translucent: slot.translucent,
                 bounds: slot.bounds,
             },
             instances,
@@ -540,6 +539,69 @@ mod tests {
         let generation = mod_api::__private::game::Fields::fields(&model).generation;
         sunrise_client::gfx::set_test_prepared_generation(Some(generation));
         model
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn an_opaque_copy_with_a_colour_or_hidden_faces_is_baked_on_the_cpu() {
+        let _fixture =
+            sunrise_client::models::standalone_fixture(vec!["minecraft:block/grass_block".into()]);
+        super::super::native_entity_refs::tests::with_client_game(|game| {
+            let _restore = Restore;
+            let model = grass(game);
+            let camera = DVec3::new(0.0, 70.0, 0.0);
+            let half_red = 0xFF80_FFFF;
+            let mut draw = WorldGeometry::default();
+            draw.reset(camera.to_array(), Mat4::IDENTITY, [0.0, 0.0]);
+            // One whole copy, and one with its bottom faces hidden (direction bit 0).
+            context(&game, &mut draw)
+                .draw_model_instances(
+                    model,
+                    &[
+                        ModelInstance::at([3.0, 70.0, 0.0], half_red),
+                        ModelInstance::at([9.0, 70.0, 0.0], half_red).with_hidden_faces(0b1),
+                    ],
+                )
+                .unwrap();
+            let mut entities = Vec::new();
+            game.commit_model_instances(&mut draw, camera, &mut entities);
+            assert!(game.prepared_model_draws.borrow().is_empty(), "no GPU copy");
+            let slot = mod_api::__private::game::Fields::fields(&model).slot;
+            let faces = game
+                .standalone_geometry
+                .faces(slot)
+                .expect("prepared faces")
+                .len();
+            // The first copy holds every face; the second lacks the hidden ones.
+            assert!(entities.len() > faces * 4, "the whole copy is there");
+            assert!(entities.len() < faces * 8, "the hidden faces are absent");
+            // Vertex colours are ABGR: the red channel is at most half of full.
+            assert!(entities.iter().all(|v| v.color & 0xFF <= 0x80));
+            assert!(entities.iter().all(|v| v.color >> 24 == 0xFF));
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_block_state_resolves_once_and_an_unknown_state_is_refused() {
+        let _fixture = sunrise_client::models::standalone_fixture(Vec::new());
+        super::super::native_entity_refs::tests::with_client_game(|game| {
+            let slot = |state: u32| {
+                game.native_block_state_model(mod_api::BlockStateId(state))
+                    .map(|model| mod_api::__private::game::Fields::fields(&model).slot)
+            };
+            // Air has no model, and a state past the registry's table is not a panic.
+            assert_eq!(
+                slot(game.world.air.0),
+                Err(mod_api::ModelError::UnknownModel)
+            );
+            assert_eq!(slot(u32::MAX), Err(mod_api::ModelError::UnknownModel));
+            // The first state with a model resolves to the same slot every time.
+            let (state, first) = (1..)
+                .find_map(|state| slot(state).ok().map(|slot| (state, slot)))
+                .expect("some block state has a model");
+            assert_eq!(slot(state), Ok(first));
+        });
     }
 
     #[test]
@@ -1183,12 +1245,19 @@ mod tests {
             let mean_x = |verts: &[Vertex]| {
                 verts.iter().map(|vertex| vertex.pos[0]).sum::<f32>() / verts.len() as f32
             };
+            // The two translucent copies' quads and none of the fully hidden copy's.
+            let slot = mod_api::__private::game::Fields::fields(&model).slot;
+            let faces = game
+                .standalone_geometry
+                .faces(slot)
+                .expect("prepared faces")
+                .len();
+            assert_eq!(entities.len(), faces * 2 * 4);
+            // In submission order (the far-to-near sort is the renderer's): the cube at x 3
+            // spans 3..4, mean 3.5, and the one at x 9 spans 9..10, mean 9.5.
             let half = entities.len() / 2;
-            assert!(
-                (mean_x(&entities[..half]) - 3.5).abs() < 1.0,
-                "submission order"
-            );
-            assert!((mean_x(&entities[half..]) - 9.5).abs() < 1.0);
+            assert_eq!(mean_x(&entities[..half]), 3.5);
+            assert_eq!(mean_x(&entities[half..]), 9.5);
             assert!(entities.iter().all(|v| v.color >> 24 == 0x80));
         });
     }

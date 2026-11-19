@@ -37,7 +37,9 @@ pub(super) struct StandaloneGeometry {
     /// The first slot past the baked store's: block state `n` is slot `states_from + n`.
     states_from: u32,
     /// Block states resolved by `block_state_model`, each once per generation.
-    states: Vec<std::cell::OnceCell<StateModel>>,
+    states: std::cell::OnceCell<Box<[std::cell::OnceCell<StateModel>]>>,
+    /// How many block states the registry has: the table's size once a mod resolves one.
+    state_count: usize,
 }
 
 /// A block state's faces as vanilla draws it outside the terrain: default tints in the colour.
@@ -110,15 +112,14 @@ impl StandaloneGeometry {
             translucent,
             bounds,
             states_from: catalog.model_count(),
-            states: std::iter::repeat_with(Default::default)
-                .take(pack.assets.registry.len())
-                .collect(),
+            states: std::cell::OnceCell::new(),
+            state_count: pack.assets.registry.len(),
         }
     }
 
     pub(super) fn instance_slot(&self, slot: u32) -> Option<InstanceSlot> {
         if let Some(state) = slot.checked_sub(self.states_from) {
-            let model = self.states.get(state as usize)?.get()?;
+            let model = self.states.get()?.get(state as usize)?.get()?;
             return Some(InstanceSlot {
                 translucent: false,
                 state: true,
@@ -139,7 +140,12 @@ impl StandaloneGeometry {
         state: u32,
         faces: impl FnOnce() -> Vec<sunrise_client::models::catalog::BakedFace>,
     ) -> Option<u32> {
-        let model = self.states.get(state as usize)?.get_or_init(|| {
+        let states = self.states.get_or_init(|| {
+            std::iter::repeat_with(Default::default)
+                .take(self.state_count)
+                .collect()
+        });
+        let model = states.get(state as usize)?.get_or_init(|| {
             let faces = faces();
             let mut min = [f32::INFINITY; 3];
             let mut max = [f32::NEG_INFINITY; 3];
@@ -165,7 +171,7 @@ impl StandaloneGeometry {
         slot: u32,
     ) -> Option<&[sunrise_client::models::catalog::BakedFace]> {
         let state = slot.checked_sub(self.states_from)?;
-        Some(&self.states.get(state as usize)?.get()?.faces)
+        Some(&self.states.get()?.get(state as usize)?.get()?.faces)
     }
 
     pub(super) fn faces(&self, slot: u32) -> Option<&[super::minecarts::PreparedModelFace]> {
