@@ -850,6 +850,7 @@ mod tests {
             |_, _| {},
             |w, _| {
                 let w = MobWorld {
+                    side: sunrise_client::motion::dry_side(),
                     passenger_objects: &retained,
                     ..w.clone()
                 };

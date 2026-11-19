@@ -19,7 +19,7 @@ const COMMANDS: &[Command] = &[
     Command {
         name: "build",
         everyday: true,
-        usage: "build [--wasm] [--update-lock]",
+        usage: "build [--wasm [--catalog <points.json>] [--with <mod>]…] [--update-lock]",
         summary: "Packs the mod into target/sunrise-mod/<id>.smod; a native mod is compiled too, and --wasm builds a wasm mod's mod.wasm first.",
     },
     Command {
@@ -67,7 +67,7 @@ const COMMANDS: &[Command] = &[
     Command {
         name: "wasm-std",
         everyday: false,
-        usage: "wasm-std <out.wasm>",
+        usage: "wasm-std <out.wasm> [--catalog <points.json>]",
         summary: "Writes the standard library member the game ships for wasm mods.",
     },
     Command {

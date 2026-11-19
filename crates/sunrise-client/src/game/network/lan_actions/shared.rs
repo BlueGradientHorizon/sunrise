@@ -261,6 +261,26 @@ pub(super) struct GuestSwap {
 }
 
 impl GuestPlay {
+    #[cfg(test)]
+    pub(in crate::game) fn arm_mining_for_test(
+        &mut self,
+        pos: [i32; 3],
+        start: u64,
+        delayed: Option<([i32; 3], u64)>,
+    ) {
+        self.digging = Some((pos, [0, 1, 0]));
+        self.dig_start = start;
+        self.mining = Some(Mining {
+            pos,
+            progress: 0.0,
+            per_tick: 0.0,
+            ticks: 1,
+            crack: None,
+        });
+        self.delayed = delayed;
+        self.last_progress = -1;
+    }
+
     /// The guest's `Player.attackStrengthTicker` outside its turn.
     pub(in crate::game) fn attack_ticks(&self) -> u32 {
         self.attack_ticks
@@ -382,20 +402,19 @@ thread_local! {
 /// The hub's current bodies, across dimensions. A borrowed ancestor's
 /// live body takes precedence over this saved state until its turn returns.
 fn building_players(host: &LanHost) -> HubBodies {
-    let guests: Vec<_> = host.hub.guests.simulation_iter().collect();
     let kept = BUILDING_CACHE.with(|c| {
         c.borrow()
             .as_ref()
             .filter(|list| {
-                list.len() == guests.len()
-                    && list
-                        .iter()
-                        .zip(&guests)
-                        .all(|(p, g)| p.get().conn == Some(g.conn))
+                list.iter().map(|p| p.get().conn).eq(host
+                    .hub
+                    .guests
+                    .simulation_iter()
+                    .map(|g| Some(g.conn)))
             })
             .cloned()
     });
-    kept.unwrap_or_else(|| shared(guests.into_iter().map(building_player)))
+    kept.unwrap_or_else(|| shared(host.hub.guests.simulation_iter().map(building_player)))
 }
 
 /// Builds the hub's bodies once for the turns to come (`Some`), or drops them.

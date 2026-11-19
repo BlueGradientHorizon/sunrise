@@ -10,8 +10,9 @@ use sunrise_core::geometry::Vec3;
 /// A macro so that the borrow can end where the game itself is needed (a hook's owning host)
 /// and begin again after it.
 macro_rules! motion_world {
-    ($game:ident, $player:ident) => {
+    ($game:ident, $side:ident, $player:ident) => {
         MotionWorld {
+            side: &$side,
             entities: &[],
             player: $player,
             scene: &mut $game.world,
@@ -75,8 +76,8 @@ pub(super) fn initialize(resources: &MotionResources, guest: &mut Guest) -> bool
 }
 
 impl Game<'_> {
-    /// The guest's body on the server each tick: ServerPlayer.tick's damage
-    /// clock and Entity.baseTick's fluid phase (burning), then for each move
+    /// The guest's connection-path body: Entity.baseTick's fluid phase
+    /// (burning), then for each move
     /// ServerPlayer.doCheckFallDamage (the fall distance grows while they go
     /// down and hurts them where they land, as the host's own landing does;
     /// water resets it, lava halves it) and checkMovementStatistics (the
@@ -85,7 +86,6 @@ impl Game<'_> {
     /// regeneration and the food tick (ServerPlayer.doTick). Their hurt
     /// sounds are heard at the guest.
     pub(super) fn guest_server_tick(&mut self, conn: u32, body: bool) {
-        self.guest_vehicle_tick(conn);
         // The last move's fall stands in for the server's delta movement.
         let Some(host) = self.lan.as_mut() else {
             return;
@@ -134,8 +134,7 @@ impl Game<'_> {
                 let Some(player) = game.player.as_mut() else {
                     return;
                 };
-                // Entity.baseTick's clocks (hurtTime, invulnerableTime) run too.
-                player.health.advance_clock();
+                player.health.advance_body_clock();
                 let _ = player.peaceful_regeneration(&game.loop_context, rules);
                 let _ = player.food_tick(
                     &game.loop_context,
@@ -178,8 +177,9 @@ impl Game<'_> {
             player.fluids.boat = boat;
             // The supporting-block scan for this tick's moves reads the boots.
             player.leather_boots = leather_boots;
-            let mut w = motion_world!(game, player);
-            w.player.health.advance_clock();
+            let mut side = game_side!(game);
+            let mut w = motion_world!(game, side, player);
+            w.player.health.advance_body_clock();
             let _ = w.fluid_base_tick();
             w.player.ground.on_ground = from_ground;
             // Player.aiStep: a flying player that isn't riding starts every tick
@@ -274,7 +274,8 @@ impl Game<'_> {
                 let Some(player) = game.player.as_mut() else {
                     return (Vec::new(), None);
                 };
-                w = motion_world!(game, player);
+                side = game_side!(game);
+                w = motion_world!(game, side, player);
                 if let Some((step, breath)) = answer {
                     let _ = w.apply_air(step, breath);
                 }
@@ -347,7 +348,8 @@ impl Game<'_> {
             );
             events.append(&mut player.events);
             player.carry_client_movement(tick_movement);
-            let _ = motion_world!(game, player).server_travel();
+            let side = game_side!(game);
+            let _ = motion_world!(game, side, player).server_travel();
             // Player.aiStep's entity contacts run with the player's body,
             // even when the level and its mobs are frozen. Flush their damage
             // events and marked velocity through the existing guest path.

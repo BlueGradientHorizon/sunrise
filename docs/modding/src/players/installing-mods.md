@@ -52,7 +52,7 @@ id, version, license, authors, credits and description:
 - **Config** opens the settings page of a mod that registers settings.
 - A mod that is installed but off says so. A mod that could not load shows the reason in red.
 
-The screen has no on/off switch; the launcher and `sunrise-mods.txt` decide which mods run.
+The screen has no on/off switch; `sunrise-mods.txt` decides which mods run.
 
 ## Making a mod
 
