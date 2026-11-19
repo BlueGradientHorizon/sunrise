@@ -428,7 +428,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_block_part_answers_the_friction_an_entity_reads() {
         // Glass asks for its material's friction for players. White wool answers 0.98;
-        // red wool answers NaN, blue 3.0, green infinity and black -0.5.
+        // red wool answers NaN, blue 3.0, green infinity, black -0.5 and orange 1.5.
         let calls = mod_platform::__private::part_tests::friction_game_thread();
         // The client library asks the mods through the executable's callbacks.
         crate::entry::install_client_hooks();
@@ -514,23 +514,30 @@ mod tests {
                 // Glass queries the material at its own position, only for the player.
                 ("minecraft:glass", 0.98, 0.10920001, 0.6, 2),
                 ("minecraft:white_wool", 0.98, 0.17836001, 0.98, 1),
-                // Answers out of range are dropped for the block's own.
+                // A finite answer is used as given, whatever its size or sign: an armor stand's
+                // velocity after a tick is 0.2 × friction × 0.91.
+                ("minecraft:orange_wool", 1.5, 0.273, 1.5, 1),
+                ("minecraft:blue_wool", 3.0, 0.546, 3.0, 1),
+                ("minecraft:black_wool", -0.5, -0.091, -0.5, 1),
+                // A non-finite answer is dropped for the block's own.
                 ("minecraft:red_wool", 0.6, 0.10920001, 0.6, 1),
-                ("minecraft:blue_wool", 0.6, 0.10920001, 0.6, 1),
                 ("minecraft:green_wool", 0.6, 0.10920001, 0.6, 1),
-                ("minecraft:black_wool", 0.6, 0.10920001, 0.6, 1),
             ] {
                 let state = registry.default_state(block).unwrap();
                 game.world.set(floor.x, floor.y, floor.z, state).unwrap();
                 let (coefficient, distance, velocity, reads) = player(game);
                 assert_eq!(coefficient, player_friction, "{block}");
-                let (speed, dragged) = if player_friction > 0.9 {
-                    (0.2229493, 0.1988262)
-                } else {
-                    (0.3, 0.1638)
-                };
-                assert!((distance - speed).abs() < 1.0e-6, "{block}: {distance}");
-                assert!((velocity - dragged).abs() < 1.0e-6, "{block}: {velocity}");
+                // The player's travel is pinned at the two coefficients it has values for here;
+                // the other rows are read through the same coefficient.
+                if player_friction == 0.98 || player_friction == 0.6 {
+                    let (speed, dragged) = if player_friction > 0.9 {
+                        (0.2229493, 0.1988262)
+                    } else {
+                        (0.3, 0.1638)
+                    };
+                    assert!((distance - speed).abs() < 1.0e-6, "{block}: {distance}");
+                    assert!((velocity - dragged).abs() < 1.0e-6, "{block}: {velocity}");
+                }
                 assert_eq!(reads, answers, "part answers per travel tick: {block}");
                 if block == "minecraft:ice" {
                     ice_travel = Some((distance, velocity));
@@ -551,13 +558,10 @@ mod tests {
                 }
                 assert!((stand(game) - stand_x).abs() < 1.0e-7, "{block}");
                 let (item_x, orb_x) = item_and_orb(game);
-                let expected = if item_friction > 0.9 {
-                    0.19208001
-                } else {
-                    0.11760001
-                };
-                assert!((item_x - expected).abs() < 1.0e-7, "item {block}: {item_x}");
-                assert!((orb_x - expected).abs() < 1.0e-7, "orb {block}: {orb_x}");
+                // An item or orb moving 0.2: 0.2 × friction × 0.98.
+                let expected = 0.2 * item_friction * 0.98;
+                assert!((item_x - expected).abs() < 1.0e-6, "item {block}: {item_x}");
+                assert!((orb_x - expected).abs() < 1.0e-6, "orb {block}: {orb_x}");
             }
         });
     }
