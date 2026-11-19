@@ -40,11 +40,14 @@ fn pack() -> ResourceSource {
     )
 }
 
+/// The sky's vertex stage: the disc over the frame, its rim past the screen's edges.
+const SKY_VSH: &str = "#version 330\nlayout(location = 0) in vec3 Position;\nvoid main() {\n    \
+    gl_Position = vec4(Position.x / 300.0, Position.z / 300.0, 0.0, 1.0);\n}\n";
+
 /// A pack whose sky writes its `Tint` (0.2: 51) in red, from its own file, and whose stars and
 /// block outline read a `Tint` of their own files (0.5, 0.75): those of `shaders` only.
 fn sky_pack(shaders: &[&str]) -> ResourceSource {
-    let vsh = "#version 330\nlayout(location = 0) in vec3 Position;\nvoid main() {\n    \
-               gl_Position = vec4(Position.x / 300.0, Position.z / 300.0, 0.0, 1.0);\n}\n";
+    let vsh = SKY_VSH;
     let fsh = "#version 330\nlayout(std140) uniform Tint {\n    float value;\n};\n\
                layout(location = 0) out vec4 fragColor;\n\
                void main() {\n    fragColor = vec4(value, 0.0, 0.0, 1.0);\n}\n";
@@ -94,12 +97,19 @@ fn drawn_texture(game: &mut super::Game<'_>) -> [u8; 16 * 16 * 4] {
 #[test]
 #[ignore = "daily"]
 fn a_packs_lightmap_draws_its_expression_uniform() {
-    if run_fresh_cases(NAME, CASE, &["pack", "fullbright", "sky", "outline"]) {
+    if run_fresh_cases(
+        NAME,
+        CASE,
+        &["pack", "fullbright", "sky", "outline", "globals"],
+    ) {
         return;
     }
     let case = std::env::var(CASE).unwrap();
     if case == "sky" {
         return the_sky_draws_its_expression_uniform();
+    }
+    if case == "globals" {
+        return the_sky_draws_poly_globals();
     }
     if case == "outline" {
         // A pack whose only expression uniform is the block outline's: the frame evaluates it.
@@ -156,19 +166,74 @@ fn the_sky_draws_its_expression_uniform() {
         assert_eq!(values(&atlas.lines_expressions), [0.75]);
         let _event_loop = frame_scene(game);
         assert!(game.reads_pack_expressions());
-        game.renderer.as_mut().unwrap().screenshot = Some(sunrise_client::gfx::ScreenshotRequest {
-            path: "unused.png".into(),
-            size: None,
-            scaled: false,
-            background: false,
-        });
-        game.render_with(|renderer, frame| renderer.render(frame))
-            .unwrap();
-        let result = game.renderer.as_mut().unwrap().screenshot_result.take();
-        let mut pending = result.unwrap().unwrap();
-        let image = pending.image_mut();
-        let width = image.width as usize;
-        let corner = &image.rgba[(2 * width + 2) * 4..(2 * width + 2) * 4 + 3];
-        assert_eq!(corner, [51, 0, 0]);
+        // No shader imports `PolyGlobals`: the frame makes none for them.
+        assert!(!game.reads_poly_globals());
+        assert_eq!(corner(game), [51, 0, 0]);
+    });
+}
+
+/// A frame's screenshot: the colour of the pixel two in from the top left corner.
+fn corner(game: &mut super::Game<'_>) -> [u8; 3] {
+    game.renderer.as_mut().unwrap().screenshot = Some(sunrise_client::gfx::ScreenshotRequest {
+        path: "unused.png".into(),
+        size: None,
+        scaled: false,
+        background: false,
+    });
+    game.render_with(|renderer, frame| renderer.render(frame))
+        .unwrap();
+    let result = game.renderer.as_mut().unwrap().screenshot_result.take();
+    let mut pending = result.unwrap().unwrap();
+    let image = pending.image_mut();
+    let width = image.width as usize;
+    image.rgba[(2 * width + 2) * 4..(2 * width + 2) * 4 + 3]
+        .try_into()
+        .unwrap()
+}
+
+/// The globals case: a pack's sky and lightmap importing Polytone's `polytone_globals.glsl`,
+/// which the pack doesn't ship, write the player's block height (64, where the scene stands it)
+/// in red beside their `Tint` (0.2: 51) in green: the frame gives the shaders the game's
+/// `PolyGlobals`.
+fn the_sky_draws_poly_globals() {
+    with_client_game(|game| {
+        let fsh = "#version 330\n#moj_import <polytone_globals.glsl>\n\
+                   layout(std140) uniform Tint {\n    float value;\n};\n\
+                   layout(location = 0) out vec4 fragColor;\n\
+                   void main() {\n    fragColor = vec4(float(PolyPlayerBlockPos.y) / 255.0, \
+                   value, 0.0, 1.0);\n}\n";
+        let screenquad = "#version 330\nlayout(location = 0) out vec2 texCoord;\nvoid main() {\n    \
+             vec2 uv = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2);\n    \
+             gl_Position = vec4(uv * 2.0 - 1.0, 0.0, 1.0);\n    texCoord = uv;\n}\n";
+        let tint = r#"{"Tint": "0.2"}"#;
+        let files = [
+            ("assets/minecraft/shaders/core/sky.vsh", SKY_VSH),
+            ("assets/minecraft/shaders/core/sky.fsh", fsh),
+            (
+                "assets/minecraft/polytone/shader_modifiers/core/sky.json",
+                tint,
+            ),
+            ("assets/minecraft/shaders/core/screenquad.vsh", screenquad),
+            ("assets/minecraft/shaders/core/lightmap.fsh", fsh),
+            (
+                "assets/minecraft/polytone/shader_modifiers/core/lightmap.json",
+                tint,
+            ),
+        ];
+        let pack = ResourceSource::indexed(
+            files
+                .into_iter()
+                .map(|(path, text)| (path.to_owned(), Resource::bytes(text.as_bytes().to_vec())))
+                .collect(),
+        );
+        game.gui = crate::game::UiResources::load(&pack, std::path::Path::new("")).unwrap();
+        assert!(game.gui.atlas.sky_shader.is_some());
+        assert!(game.gui.atlas.lightmap_shader.is_some());
+        let _event_loop = frame_scene(game);
+        assert!(game.reads_poly_globals());
+        assert_eq!(corner(game), [64, 51, 0]);
+        for texel in drawn_texture(game).chunks(4) {
+            assert_eq!(texel, [64, 51, 0, 255]);
+        }
     });
 }

@@ -156,9 +156,14 @@ fn translate_pair(
     };
     // The first include the stack doesn't have, which the translator then fails on.
     let missing = std::cell::RefCell::new(None);
+    // Polytone's `polytone_globals.glsl`, where a pack imports it without shipping it.
+    let builtin = |id: &str| {
+        sunrise_polytone::globals::is_include(id)
+            .then(|| sunrise_polytone::globals::GLSL.to_owned())
+    };
     let include = |id: &str| {
         let (namespace, path) = id.split_once(':')?;
-        let text = read(root, &format!("assets/{namespace}/{path}"));
+        let text = read(root, &format!("assets/{namespace}/{path}")).or_else(|| builtin(id));
         if text.is_none() {
             missing.borrow_mut().get_or_insert_with(|| id.to_owned());
         }
@@ -223,15 +228,16 @@ fn load_lightmap(
     let shaders = crate::gfx::core_lightmap::SHADERS;
     let names = modifiers.names(&shaders);
     let info = crate::gfx::core_lightmap::INFO_BLOCK;
+    let globals = sunrise_polytone::globals::BLOCK;
     let program = load_pair(
         root,
         defaults,
         ("screenquad", "lightmap"),
         &[],
         &crate::gfx::core_lightmap::GLUE,
-        &|block| block == info || names.iter().any(|n| n == block),
+        &|block| block == info || block == globals || names.iter().any(|n| n == block),
     )?;
-    match modifiers.resolve((shaders[0], shaders[1]), &program, &[info]) {
+    match modifiers.resolve((shaders[0], shaders[1]), &program, &[info, globals]) {
         Ok(expressions) => Some((program, expressions)),
         Err(e) => {
             log::warn!("the resource pack's lightmap shader is not used: {e}");
@@ -286,9 +292,10 @@ fn load_with_expressions(
 )> {
     let name = id.strip_prefix("minecraft:core/")?;
     let names = modifiers.names(&[id]);
-    let provided = |block: &str| names.iter().any(|n| n == block);
+    let globals = sunrise_polytone::globals::BLOCK;
+    let provided = |block: &str| block == globals || names.iter().any(|n| n == block);
     let program = load_pair(root, defaults, (name, name), &[], glue, &provided)?;
-    match modifiers.resolve((id, id), &program, &[]) {
+    match modifiers.resolve((id, id), &program, &[globals]) {
         Ok(expressions) => Some((program, expressions)),
         Err(e) => {
             log::warn!("the resource pack's {name} shader is not used: {e}");
@@ -683,6 +690,31 @@ mod tests {
         assert!(
             lightmap(&[(fsh, tinted), (&on("sky"), r#"{"Tint": "1"}"#)]).is_none(),
             "another shader's"
+        );
+    }
+
+    /// A pack's lightmap importing Polytone's `polytone_globals.glsl` is given `PolyGlobals`
+    /// without shipping the file (or with its own copy), beside the expression uniforms; the
+    /// block is the game's, not an expression a modifier gives.
+    #[test]
+    fn a_lightmap_shader_is_given_poly_globals() {
+        let fsh = "assets/minecraft/shaders/core/lightmap.fsh";
+        let reading = "#version 330\n#moj_import <polytone_globals.glsl>\n\
+                       layout(std140) uniform LightmapInfo {\n    float SkyFactor;\n} info;\n\
+                       layout(location = 0) in vec2 texCoord;\nlayout(location = 0) out vec4 fragColor;\n\
+                       void main() {\n    fragColor = vec4(PolySunAngle, info.SkyFactor, 0.0, 1.0);\n}\n";
+        let (program, expressions) =
+            lightmap_with_expressions(&[(fsh, reading)]).expect("the built-in include");
+        assert_eq!(program.other, ["PolyGlobals", "LightmapInfo"]);
+        assert!(expressions.is_empty());
+        let include = "assets/minecraft/shaders/include/polytone_globals.glsl";
+        let own = "layout(std140) uniform PolyGlobals {\n    mat4 a;\n    mat4 b;\n    float PolySunAngle;\n};\n";
+        let (program, _) =
+            lightmap_with_expressions(&[(fsh, reading), (include, own)]).expect("the pack's own");
+        assert_eq!(program.other, ["PolyGlobals", "LightmapInfo"]);
+        assert!(
+            lightmap(&[(fsh, &reading.replace("polytone_globals", "other"))]).is_none(),
+            "another missing import"
         );
     }
 

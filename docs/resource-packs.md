@@ -114,6 +114,14 @@ doesn't yet:
   log.
 - The programs are resolved once, when the pack's shaders load; a frame only evaluates them, and uploads 16 bytes
   for each.
+- Polytone's `PolyGlobals` block (wiki "Extra Shader Uniforms": the projection and model-view matrices, the sun's
+  angle, the day time, the frame's ticks, and the player's block and position) is given to each of these shaders
+  that reads it, with the values the packs' post chains get, in the same std140 layout (`sunrise-polytone`
+  `globals.rs`). `#moj_import <polytone_globals.glsl>` declares it, with its `polyPlayerPos` and
+  `polyPositionFromDepth` helpers, where the pack doesn't ship that file (in core shaders and post chains alike);
+  a pack's own file is read instead. It is bound before the expression uniforms, only to the stages that read it,
+  counts against the same limit, and is made and uploaded (176 bytes) only while a drawn shader reads it (the
+  lightmap's not under fullbright, which keeps the light texture white).
 
 ## Gaps and their work
 

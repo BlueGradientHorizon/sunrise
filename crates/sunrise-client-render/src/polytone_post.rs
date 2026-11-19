@@ -43,25 +43,17 @@ pub struct PolyGlobals {
 }
 
 impl PolyGlobals {
-    /// The std140 block: `mat4, mat4, float, float, float, ivec3, vec3`.
-    pub fn bytes(&self) -> Vec<u8> {
-        let mut out = Vec::with_capacity(176);
-        for m in [self.projection, self.model_view] {
-            out.extend(m.to_cols_array().iter().flat_map(|v| v.to_le_bytes()));
+    /// The std140 block (`sunrise_polytone::globals`).
+    pub fn bytes(&self) -> [u8; sunrise_polytone::globals::BLOCK_SIZE] {
+        sunrise_polytone::globals::Globals {
+            projection: self.projection.to_cols_array(),
+            model_view: self.model_view.to_cols_array(),
+            sun_angle: self.sun_angle,
+            day_time: self.day_time,
+            delta_time: self.delta_time,
+            player: self.player,
         }
-        for v in [self.sun_angle, self.day_time, self.delta_time, 0.0] {
-            out.extend(v.to_le_bytes());
-        }
-        let block = self.player.map(f64::floor);
-        for v in block {
-            out.extend((v as i32).to_le_bytes());
-        }
-        out.extend(0i32.to_le_bytes());
-        for i in 0..3 {
-            out.extend(((block[i] - self.player[i]) as f32).to_le_bytes());
-        }
-        out.extend(0f32.to_le_bytes());
-        out
+        .std140()
     }
 }
 
@@ -164,9 +156,10 @@ impl PolytonePost {
             targets: self.targets.clone(),
             blocks: Default::default(),
         };
-        extras
-            .blocks
-            .insert("PolyGlobals".to_owned(), globals.bytes());
+        extras.blocks.insert(
+            sunrise_polytone::globals::BLOCK.to_owned(),
+            globals.bytes().to_vec(),
+        );
         for chain in &self.chains {
             let on = chain.activation.as_ref().is_none_or(|c| {
                 crate::environment::eval_frame(c, frame, &self.configs).is_some_and(|v| v.truthy())

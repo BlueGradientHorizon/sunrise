@@ -1,8 +1,10 @@
 //! A pack core shader pipeline's blocks: vanilla's four bound only to the stages that read them,
-//! and its Polytone expression uniforms (`shader_modifiers`, wiki "Expression Uniforms on Any
-//! Shader"), resolved when the shader loaded (`polytone_post::ShaderModifiers::resolve`), each a
-//! block of one float after the pipeline's own, holding its program's value this frame. The
-//! lightmap, sky, stars and block outline pipelines lay theirs out with this.
+//! and its Polytone blocks after the pipeline's own: `PolyGlobals` (wiki "Extra Shader
+//! Uniforms", `sunrise_polytone::globals`), the frame's, and its expression uniforms
+//! (`shader_modifiers`, wiki "Expression Uniforms on Any Shader"), resolved when the shader
+//! loaded (`polytone_post::ShaderModifiers::resolve`), each a block of one float holding its
+//! program's value this frame. The lightmap, sky, stars and block outline pipelines lay theirs out
+//! with this; any other pack core shader pipeline can.
 
 use crate::core_shader::CoreProgram;
 use crate::polytone_post::ExpressionUniform;
@@ -54,25 +56,49 @@ pub(crate) fn block_entry(
     }
 }
 
-/// The expression uniforms of one pipeline, laid out in its uniform buffer from `base`, 256 bytes
-/// apart (the uniform offset alignment), with this frame's values.
+/// `PolyGlobals`' std140 size.
+const GLOBALS: u64 = sunrise_polytone::globals::BLOCK_SIZE as u64;
+
+/// The frame's `PolyGlobals` bytes (`polytone_post::PolyGlobals::bytes`).
+pub type PolyGlobalsBytes = [u8; sunrise_polytone::globals::BLOCK_SIZE];
+
+/// A pipeline's Polytone blocks, laid out in its uniform buffer from `base`, 256 bytes apart (the
+/// uniform offset alignment): `PolyGlobals` first when a stage reads it, then the expression
+/// uniforms with this frame's values.
 #[derive(Debug)]
 pub(crate) struct ExpressionBlocks {
+    /// `PolyGlobals`' binding, the stages that read it and the frame's bytes (zeros until the
+    /// game gives them).
+    globals: Option<(u32, wgpu::ShaderStages, PolyGlobalsBytes)>,
     uniforms: Vec<(ExpressionUniform, f32)>,
     base: u64,
 }
 
 impl ExpressionBlocks {
-    /// `uniforms` (the blocks its stages read) from `base` in the pipeline's buffer.
-    pub(crate) fn new(uniforms: &[ExpressionUniform], base: u64) -> Self {
+    /// The Polytone blocks `program`'s stages read: `PolyGlobals`, when a stage reads it, and
+    /// `uniforms` (resolved when it loaded), from `base` in the pipeline's buffer.
+    pub(crate) fn new(program: &CoreProgram, uniforms: &[ExpressionUniform], base: u64) -> Self {
+        let globals = (program.other.iter())
+            .position(|name| name == sunrise_polytone::globals::BLOCK)
+            .map(crate::core_shader::other_binding)
+            .map(|binding| {
+                (
+                    binding,
+                    program.stages_reading(binding),
+                    [0; GLOBALS as usize],
+                )
+            })
+            .filter(|(_, stages, _)| !stages.is_empty());
         Self {
+            globals,
             uniforms: uniforms.iter().map(|u| (u.clone(), 0.0)).collect(),
             base,
         }
     }
 
+    /// The offset of the `i`th expression uniform's block.
     fn offset(&self, i: usize) -> u64 {
-        self.base + 256 * i as u64
+        self.base + 256 * (i as u64 + u64::from(self.globals.is_some()))
     }
 
     /// The uniform buffer's size with these blocks from `base`: `base` without any.
@@ -82,37 +108,59 @@ impl ExpressionBlocks {
 
     /// Their layout entries, each visible to the stages that read it.
     pub(crate) fn layout(&self) -> impl Iterator<Item = wgpu::BindGroupLayoutEntry> + '_ {
-        (self.uniforms.iter()).map(|(u, _)| block_entry(u.binding, BLOCK, u.stages))
+        let globals = (self.globals.iter())
+            .map(|&(binding, stages, _)| block_entry(binding, GLOBALS, stages));
+        globals.chain((self.uniforms.iter()).map(|(u, _)| block_entry(u.binding, BLOCK, u.stages)))
     }
 
     pub(crate) fn entries<'a>(
         &'a self,
         buffer: &'a wgpu::Buffer,
     ) -> impl Iterator<Item = wgpu::BindGroupEntry<'a>> + 'a {
-        self.uniforms
-            .iter()
-            .enumerate()
-            .map(move |(i, (u, _))| wgpu::BindGroupEntry {
-                binding: u.binding,
-                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                    buffer,
-                    offset: self.offset(i),
-                    size: wgpu::BufferSize::new(BLOCK),
-                }),
-            })
+        let entry = move |binding, offset, size| wgpu::BindGroupEntry {
+            binding,
+            resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                buffer,
+                offset,
+                size: wgpu::BufferSize::new(size),
+            }),
+        };
+        let globals =
+            (self.globals.iter()).map(move |&(binding, ..)| entry(binding, self.base, GLOBALS));
+        globals.chain(
+            (self.uniforms.iter().enumerate())
+                .map(move |(i, (u, _))| entry(u.binding, self.offset(i), BLOCK)),
+        )
     }
 
-    /// Each block's value this frame, 16 bytes each, into `buffer`.
+    /// The frame's blocks into `buffer`: `PolyGlobals` when a stage reads them, then each
+    /// expression uniform's value, 16 bytes each.
     pub(crate) fn upload(
         &self,
         uploads: &mut super::upload::Uploads,
         encoder: &mut wgpu::CommandEncoder,
         buffer: &wgpu::Buffer,
     ) {
+        if let Some((.., bytes)) = &self.globals {
+            uploads.buffer(encoder, buffer, self.base, bytes);
+        }
         for (i, (_, value)) in self.uniforms.iter().enumerate() {
             let mut block = [0u8; BLOCK as usize];
             block[..4].copy_from_slice(&value.to_le_bytes());
             uploads.buffer(encoder, buffer, self.offset(i), &block);
+        }
+    }
+
+    /// Whether a stage reads `PolyGlobals`.
+    pub(crate) fn reads_globals(&self) -> bool {
+        self.globals.is_some()
+    }
+
+    /// The frame's `PolyGlobals` (`polytone_post::PolyGlobals::bytes`) for the stages that read
+    /// them; none gives zeros.
+    pub(crate) fn set_globals(&mut self, globals: Option<&PolyGlobalsBytes>) {
+        if let Some((.., bytes)) = &mut self.globals {
+            *bytes = globals.copied().unwrap_or([0; GLOBALS as usize]);
         }
     }
 
@@ -123,8 +171,9 @@ impl ExpressionBlocks {
         }
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
-        self.uniforms.is_empty()
+    /// Whether a stage reads an expression uniform.
+    pub(crate) fn has_uniforms(&self) -> bool {
+        !self.uniforms.is_empty()
     }
 
     /// The uniforms and their values, for tests to set and read.
@@ -134,33 +183,47 @@ impl ExpressionBlocks {
     }
 }
 
-/// The packs' core shader pipelines' expression uniforms, for the game to evaluate.
+/// The packs' core shader pipelines' Polytone blocks, for the game to give their values.
 impl super::Renderer {
-    /// The pack pipelines whose stages read expression uniforms and that draw: the lightmap's
-    /// (not under fullbright, which keeps the texture white), the block outline's, the sky's
-    /// and the stars'.
-    fn expression_blocks(&mut self) -> impl Iterator<Item = &mut ExpressionBlocks> {
+    /// The pack pipelines that draw (the lightmap's not under fullbright, which keeps the
+    /// texture white), with their Polytone blocks: the block outline's, the sky's and the
+    /// stars'.
+    fn polytone_blocks(&mut self) -> impl Iterator<Item = &mut ExpressionBlocks> {
         let fullbright = self.fullbright;
         let lightmap = (self.core_lightmap.as_mut())
             .filter(|_| !fullbright)
             .map(|core| &mut core.extra);
         let lines = self.core_lines.as_mut().map(|core| &mut core.extra);
         let sky = (self.core_sky.iter_mut()).flat_map(|core| core.expression_blocks());
-        (lightmap.into_iter().chain(lines).chain(sky)).filter(|blocks| !blocks.is_empty())
+        lightmap.into_iter().chain(lines).chain(sky)
     }
 
     /// Whether this frame has expression uniforms to evaluate: a drawn pack core shader reads
     /// one. Only then does the game make the frame's expression context for them.
     pub fn reads_pack_expressions(&mut self) -> bool {
-        self.expression_blocks().next().is_some()
+        self.polytone_blocks().any(|blocks| blocks.has_uniforms())
     }
 
     /// Evaluates the expression uniforms the drawn pack core shaders read, from `frame` (the
     /// packs' expression context): their programs, resolved when the shaders loaded, and
     /// nothing else.
     pub fn evaluate_pack_expressions(&mut self, frame: &crate::environment::Frame) {
-        for blocks in self.expression_blocks() {
+        for blocks in self.polytone_blocks() {
             blocks.evaluate(frame);
+        }
+    }
+
+    /// Whether a drawn pack core shader reads `PolyGlobals`: only then does the game make them
+    /// for it ([`Self::set_poly_globals`]).
+    pub fn reads_poly_globals(&mut self) -> bool {
+        self.polytone_blocks().any(|blocks| blocks.reads_globals())
+    }
+
+    /// The frame's `PolyGlobals` (`polytone_post::PolyGlobals::bytes`) for the drawn pack core
+    /// shaders that read them, which their next uploads write; none gives zeros.
+    pub fn set_poly_globals(&mut self, globals: Option<&PolyGlobalsBytes>) {
+        for blocks in self.polytone_blocks() {
+            blocks.set_globals(globals);
         }
     }
 }
@@ -189,27 +252,79 @@ mod tests {
         modifiers.uniform_for_test(name, binding, stages)
     }
 
+    /// A program whose fragment stage reads `Tint`, and `PolyGlobals` when `globals` (which it
+    /// otherwise imports without reading).
+    fn program(globals: bool) -> CoreProgram {
+        let include = |id: &str| {
+            sunrise_polytone::globals::is_include(id)
+                .then(|| sunrise_polytone::globals::GLSL.to_owned())
+        };
+        let import = "#moj_import <polytone_globals.glsl>\n";
+        let read = if globals {
+            " + float(PolyPlayerBlockPos.y)"
+        } else {
+            ""
+        };
+        let fsh = format!(
+            "#version 330\n{import}layout(std140) uniform Tint {{\n    float value;\n}};\n\
+             layout(location = 0) out vec4 fragColor;\n\
+             void main() {{\n    fragColor = vec4(value{read});\n}}\n"
+        );
+        crate::core_shader::translate_core_with(
+            "#version 330\nlayout(location = 0) in vec3 Position;\n\
+             void main() {\n    gl_Position = vec4(Position, 1.0);\n}\n",
+            &fsh,
+            &[],
+            &include,
+            &super::super::core_sky::GLUE,
+            &|_| true,
+        )
+        .expect("the shaders translate")
+    }
+
     /// The blocks bind after the pipeline's own, 256 bytes apart from `base`, each visible to
-    /// the stages that read it, and hold their programs' values.
+    /// the stages that read it: `PolyGlobals` first when a stage reads it, then the expression
+    /// uniforms, which hold their programs' values.
     #[test]
     fn expression_blocks_lay_out_and_hold_their_values() {
         let (v, f) = (wgpu::ShaderStages::VERTEX, wgpu::ShaderStages::FRAGMENT);
-        let mut blocks = ExpressionBlocks::new(
-            &[
-                uniform("Tint", 18, f, "0.25"),
-                uniform("Fade", 20, v | f, "0.5 * 3"),
-            ],
-            1024,
-        );
-        let layout: Vec<(u32, wgpu::ShaderStages)> =
-            blocks.layout().map(|e| (e.binding, e.visibility)).collect();
-        assert_eq!(layout, [(18, f), (20, v | f)]);
+        let uniforms = [
+            uniform("Tint", 18, f, "0.25"),
+            uniform("Fade", 20, v | f, "0.5 * 3"),
+        ];
+        let mut blocks = ExpressionBlocks::new(&program(false), &uniforms, 1024);
+        assert!(!blocks.reads_globals() && blocks.has_uniforms());
+        let layout: Vec<(u32, wgpu::ShaderStages, u64)> = blocks
+            .layout()
+            .map(|e| match e.ty {
+                wgpu::BindingType::Buffer {
+                    min_binding_size, ..
+                } => (e.binding, e.visibility, min_binding_size.unwrap().get()),
+                _ => unreachable!(),
+            })
+            .collect();
+        assert_eq!(layout, [(18, f, 16), (20, v | f, 16)]);
         assert_eq!(blocks.size(), 1024 + 512);
         blocks.evaluate(&Default::default());
         let values: Vec<f32> = blocks.values().iter().map(|(_, v)| *v).collect();
         assert_eq!(values, [0.25, 1.5]);
-        let none = ExpressionBlocks::new(&[], 1024);
-        assert!(none.is_empty());
+        // `PolyGlobals` read: its 176 bytes at `base`, the uniforms after it.
+        let reading = program(true);
+        let globals = crate::core_shader::other_binding(
+            reading
+                .other
+                .iter()
+                .position(|n| n == "PolyGlobals")
+                .unwrap(),
+        );
+        let with = ExpressionBlocks::new(&reading, &uniforms[..1], 1024);
+        assert!(with.reads_globals());
+        let layout: Vec<(u32, wgpu::ShaderStages)> =
+            with.layout().map(|e| (e.binding, e.visibility)).collect();
+        assert_eq!(layout, [(globals, f), (18, f)]);
+        assert_eq!(with.size(), 1024 + 512);
+        let none = ExpressionBlocks::new(&program(false), &[], 1024);
+        assert!(!none.has_uniforms() && !none.reads_globals());
         assert_eq!(none.size(), 1024);
     }
 }

@@ -8534,26 +8534,32 @@ impl Game<'_> {
         let delta_ticks = (game_ticks - self.polytone_post_ticks).clamp(0.0, 20.0) as f32;
         self.polytone_post_ticks = game_ticks;
         self.evaluate_pack_expressions(polytone_frame.as_ref());
-        let polytone_extras = match (&self.pack.polytone_post, &polytone_frame) {
-            (Some(post), Some(frame)) => {
-                let view = bob * spin * sunrise_client::camera::view_matrix(yaw, pitch);
-                let globals = sunrise_client::polytone_post::PolyGlobals {
-                    // 26.3's reverse-Z projection, as the world's (and its depth) is.
-                    projection: glam::Mat4::perspective_rh(
-                        fov_degrees.to_radians(),
-                        size[0] as f32 / size[1].max(1) as f32,
-                        depth_far,
-                        0.05,
-                    ),
-                    model_view: view,
-                    sun_angle: sky.sun_angle.to_radians() - std::f32::consts::FRAC_PI_2,
-                    day_time: self.view_day_time().rem_euclid(24000) as f32,
-                    delta_time: delta_ticks,
-                    player: self.player.as_ref().map_or(camera.to_array(), |p| {
-                        [p.position.x, p.position.y, p.position.z]
-                    }),
-                };
-                let (effects, extras) = post.frame(frame, &globals);
+        // Polytone's globals (wiki "Extra Shader Uniforms"), which the packs' post chains and the
+        // pack core shaders that read them take: made only for those.
+        let shaders_read_globals = self.reads_poly_globals();
+        let chains = self.pack.polytone_post.is_some() && polytone_frame.is_some();
+        let poly_globals = (chains || shaders_read_globals).then(|| {
+            sunrise_client::polytone_post::PolyGlobals {
+                // 26.3's reverse-Z projection, as the world's (and its depth) is.
+                projection: glam::Mat4::perspective_rh(
+                    fov_degrees.to_radians(),
+                    size[0] as f32 / size[1].max(1) as f32,
+                    depth_far,
+                    0.05,
+                ),
+                model_view: bob * spin * sunrise_client::camera::view_matrix(yaw, pitch),
+                sun_angle: sky.sun_angle.to_radians() - std::f32::consts::FRAC_PI_2,
+                day_time: self.view_day_time().rem_euclid(24000) as f32,
+                delta_time: delta_ticks,
+                player: self.player.as_ref().map_or(camera.to_array(), |p| {
+                    [p.position.x, p.position.y, p.position.z]
+                }),
+            }
+        });
+        self.give_poly_globals(poly_globals.as_ref().filter(|_| shaders_read_globals));
+        let polytone_extras = match (&self.pack.polytone_post, &polytone_frame, &poly_globals) {
+            (Some(post), Some(frame), Some(globals)) => {
+                let (effects, extras) = post.frame(frame, globals);
                 requested_post_effects.extend(effects);
                 Some(extras)
             }

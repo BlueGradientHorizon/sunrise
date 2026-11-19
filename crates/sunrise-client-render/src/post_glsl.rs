@@ -76,7 +76,11 @@ fn include(root: &ResourceSource, src: &str, depth: u32) -> Result<String, Strin
     let mut out = String::new();
     for line in src.lines() {
         let t = line.trim_start();
-        if let Some(rest) = t.strip_prefix("#include") {
+        // `#moj_import`, as vanilla's own core shaders and Polytone's wiki write it, too.
+        if let Some(rest) = t
+            .strip_prefix("#include")
+            .or_else(|| t.strip_prefix("#moj_import"))
+        {
             let name = rest
                 .trim()
                 .trim_start_matches(['<', '"'])
@@ -84,9 +88,13 @@ fn include(root: &ResourceSource, src: &str, depth: u32) -> Result<String, Strin
                 .trim();
             let (ns, path) = name.split_once(':').unwrap_or(("minecraft", name));
             let file = format!("assets/{ns}/shaders/include/{path}");
-            let text = root
-                .read_to_string(&file)
-                .map_err(|e| format!("#include <{name}>: {file}: {e}"))?;
+            // Polytone's `polytone_globals.glsl`, where the pack doesn't ship it.
+            let builtin =
+                sunrise_polytone::globals::is_include(&format!("{ns}:shaders/include/{path}"));
+            let text = match root.read_to_string(&file) {
+                Err(_) if builtin => sunrise_polytone::globals::GLSL.to_owned(),
+                read => read.map_err(|e| format!("#include <{name}>: {file}: {e}"))?,
+            };
             out.push_str(&include(root, &text, depth + 1)?);
         } else if t.starts_with("#version") || t.starts_with("#extension") {
             // Re-added below, for the translator.
@@ -280,6 +288,55 @@ mod tests {
         ]));
         translate(&source, "custom:post/test", "custom:post/test").unwrap();
         assert!(translate(&source, "custom:missing", "custom:post/test").is_err());
+    }
+
+    /// `#moj_import`, as Polytone's wiki writes it, and its `polytone_globals.glsl` built in:
+    /// the `PolyGlobals` block without the pack shipping the file, which the pack's own file
+    /// replaces; any other missing import still fails.
+    #[test]
+    fn a_post_shader_imports_poly_globals_built_in() {
+        use sunrise_assets::resource_source::Resource;
+        let vsh = b"#version 330\nvoid main() { gl_Position = vec4(0.0, 0.0, 0.0, 1.0); }";
+        let fsh = |import: &str| {
+            format!(
+                "#version 330\n#moj_import <{import}>\nlayout(location=0) out vec4 fragColor;\n\
+                 void main() {{ fragColor = vec4(PolySunAngle); }}"
+            )
+            .into_bytes()
+        };
+        let pack = |import: &str, shipped: Option<&[u8]>| {
+            let mut files = std::collections::BTreeMap::from([
+                (
+                    "assets/p/shaders/post/a.vsh".into(),
+                    Resource::bytes(vsh.to_vec()),
+                ),
+                (
+                    "assets/p/shaders/post/a.fsh".into(),
+                    Resource::bytes(fsh(import)),
+                ),
+            ]);
+            if let Some(text) = shipped {
+                files.insert(
+                    "assets/minecraft/shaders/include/polytone_globals.glsl".into(),
+                    Resource::bytes(text.to_vec()),
+                );
+            }
+            ResourceSource::indexed(files)
+        };
+        let blocks = |source: &ResourceSource| {
+            translate(source, "p:post/a", "p:post/a").map(|p| {
+                p.blocks
+                    .into_iter()
+                    .map(|(name, _)| name)
+                    .collect::<Vec<_>>()
+            })
+        };
+        let built_in = blocks(&pack("polytone_globals.glsl", None)).unwrap();
+        assert_eq!(built_in, ["PolyGlobals"]);
+        let own = b"layout(std140) uniform Own {\n    float PolySunAngle;\n};\n";
+        let shipped = blocks(&pack("polytone_globals.glsl", Some(own))).unwrap();
+        assert_eq!(shipped, ["Own"]);
+        assert!(blocks(&pack("other.glsl", None)).is_err());
     }
 
     #[test]

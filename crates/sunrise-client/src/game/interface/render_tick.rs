@@ -1013,6 +1013,23 @@ impl Game<'_> {
             .is_some_and(|r| r.reads_pack_expressions())
     }
 
+    /// Whether a drawn pack core shader reads Polytone's `PolyGlobals`.
+    pub(in crate::game) fn reads_poly_globals(&mut self) -> bool {
+        self.renderer
+            .as_mut()
+            .is_some_and(|r| r.reads_poly_globals())
+    }
+
+    /// The frame's `PolyGlobals` for the pack core shaders that read them; none leaves them 0.
+    pub(in crate::game) fn give_poly_globals(
+        &mut self,
+        globals: Option<&sunrise_client::polytone_post::PolyGlobals>,
+    ) {
+        if let Some(renderer) = self.renderer.as_mut() {
+            renderer.set_poly_globals(globals.map(|g| g.bytes()).as_ref());
+        }
+    }
+
     /// The values of the expression uniforms the drawn pack core shaders read, from `frame`
     /// (the packs' expression context): their programs, resolved when the shaders loaded.
     pub(in crate::game) fn evaluate_pack_expressions(
