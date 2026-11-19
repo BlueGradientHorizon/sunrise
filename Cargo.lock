@@ -4827,10 +4827,13 @@ dependencies = [
 name = "sunrise-gameplay"
 version = "0.1.0"
 dependencies = [
+ "log",
  "serde_json",
  "sunrise-client-core",
  "sunrise-client-lib",
  "sunrise-core",
+ "sunrise-mod-runtime",
+ "sunrise-mod-vocab",
  "sunrise-threads",
  "sunrise-world",
 ]
