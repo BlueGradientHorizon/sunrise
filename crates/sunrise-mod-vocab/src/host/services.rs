@@ -348,12 +348,12 @@ pub trait RenderAssets {
     }
     /// Side: client.
     /// Published asset/data read: available in Setup, Reloading and World.
-    /// Keys of every baked model block state `state` can draw in the published store, in bake
+    /// Keys of every baked model `state` can draw in the current published generation, in bake
     /// order without repeats: each weighted alternative and each multipart part its properties
-    /// select, whichever one a position's seed would pick. Empty for a state no blockstate file
-    /// binds (air) and on a store that bakes no models. `ModelError::UnknownModel` for an id
-    /// past the block state table. Ask once in `model_baking_completed`, not each frame.
-    fn block_state_models(&self, state: BlockStateId) -> Result<Vec<BakedModelKey>, ModelError> {
+    /// select, whichever one a position's seed would pick. A valid state with no baked binding
+    /// returns an empty list. An unknown block key or state ordinal returns
+    /// `ModelError::UnknownModel`. Cache keys until the next `model_baking_completed`.
+    fn block_state_models(&self, state: BlockState) -> Result<Vec<BakedModelKey>, ModelError> {
         crate::world::phase::unprovided(
             "RenderAssets::block_state_models",
             "block_state_models",
