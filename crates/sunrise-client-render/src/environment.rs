@@ -147,8 +147,9 @@ impl PackModifiers {
 }
 
 /// What a pack's expression can ask about the frame (wiki "Scripting Expressions": the global,
-/// player, camera and positional contexts), set before the frame samples the sky.
-#[derive(Clone, Debug, Default)]
+/// player, camera and positional contexts), set before the frame samples the sky. `clone_from`
+/// keeps the destination's strings, so a context copied into every frame allocates nothing.
+#[derive(Debug, Default, PartialEq)]
 pub struct Frame {
     pub rain: f32,
     pub thunder: f32,
@@ -172,6 +173,47 @@ pub struct Frame {
     pub biome: String,
     pub temperature: f32,
     pub downfall: f32,
+}
+
+impl Clone for Frame {
+    fn clone(&self) -> Self {
+        let mut frame = Self::default();
+        frame.clone_from(self);
+        frame
+    }
+
+    /// Every field copied, the strings into the destination's own buffers.
+    fn clone_from(&mut self, source: &Self) {
+        let Self {
+            rain,
+            thunder,
+            game_time,
+            day_time,
+            render_distance,
+            sky_type,
+            dimension,
+            player,
+            player_velocity,
+            player_on_ground,
+            in_water,
+            camera,
+            sky_light,
+            block_light,
+            biome,
+            temperature,
+            downfall,
+        } = source;
+        self.dimension.clone_from(dimension);
+        self.biome.clone_from(biome);
+        (self.rain, self.thunder, self.game_time, self.day_time) =
+            (*rain, *thunder, *game_time, *day_time);
+        (self.render_distance, self.sky_type) = (*render_distance, *sky_type);
+        (self.player, self.player_velocity, self.player_on_ground) =
+            (*player, *player_velocity, *player_on_ground);
+        (self.in_water, self.camera, self.sky_light, self.block_light) =
+            (*in_water, *camera, *sky_light, *block_light);
+        (self.temperature, self.downfall) = (*temperature, *downfall);
+    }
 }
 
 impl Frame {
@@ -1042,9 +1084,9 @@ impl Environment {
     }
 
     /// Sets what the packs' expressions read for the next samples.
-    pub fn set_frame(&self, frame: Frame) {
+    pub fn set_frame(&self, frame: &Frame) {
         if let Ok(mut f) = self.frame.write() {
-            *f = frame;
+            f.clone_from(frame);
         }
     }
 
@@ -1185,6 +1227,48 @@ pub fn sky_darken(environment: &Environment, day_time: i64, rain: f32, thunder: 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `Frame::clone_from` copies every field and writes the strings into the destination's own
+    /// buffers (their address and capacity kept), so a context copied each frame allocates
+    /// nothing; `clone` gives an equal frame.
+    #[test]
+    fn a_frame_copies_into_its_own_strings() {
+        let source = Frame {
+            rain: 0.25,
+            thunder: 0.5,
+            game_time: 7,
+            day_time: 8,
+            render_distance: 9,
+            sky_type: 2,
+            dimension: "minecraft:the_end".to_owned(),
+            player: [1.0, 2.0, 3.0],
+            player_velocity: [4.0, 5.0, 6.0],
+            player_on_ground: true,
+            in_water: true,
+            camera: [7.0, 8.0, 9.0],
+            sky_light: 10,
+            block_light: 11,
+            biome: "minecraft:the_void".to_owned(),
+            temperature: 0.75,
+            downfall: 0.125,
+        };
+        let mut frame = Frame {
+            dimension: String::with_capacity(64),
+            biome: String::with_capacity(64),
+            ..Default::default()
+        };
+        let buffers = |f: &Frame| [&f.dimension, &f.biome].map(|s| (s.as_ptr(), s.capacity()));
+        let before = buffers(&frame);
+        frame.clone_from(&source);
+        assert_eq!(buffers(&frame), before);
+        assert_eq!(frame, source);
+        assert_eq!(source.clone(), source);
+        // The environment's own copy, the one its attribute expressions read.
+        let environment = with_packs(&[]);
+        environment.set_frame(&source);
+        let held = environment.frame.read().unwrap();
+        assert_eq!(*held, source);
+    }
 
     /// The level table is global, so the tests that set it take turns.
     static LEVEL_TABLE: std::sync::Mutex<()> = std::sync::Mutex::new(());
@@ -1371,7 +1455,7 @@ mod tests {
             r#"{"attributes_modifiers": {"visual/fog_end_distance": "64 - (p.y < 0) * 80"}}"#,
         )]);
         let end_at = |y: f64| {
-            env.set_frame(Frame {
+            env.set_frame(&Frame {
                 player: [0.5, y, 0.5],
                 ..Frame::default()
             });
@@ -1397,7 +1481,7 @@ mod tests {
             ),
         ]);
         let at = |rain: f32, thunder: f32, chunks: i32| {
-            env.set_frame(Frame {
+            env.set_frame(&Frame {
                 rain,
                 thunder,
                 render_distance: chunks,
@@ -1450,7 +1534,7 @@ mod tests {
             ("assets/mypack/polytone/colormaps/sky.png", &png),
         ]);
         let sky = |rain: f32, thunder: f32| {
-            env.set_frame(Frame {
+            env.set_frame(&Frame {
                 rain,
                 thunder,
                 ..Frame::default()
@@ -1571,7 +1655,7 @@ mod tests {
             ),
         ]);
         let sky = |biome: &str| {
-            env.set_frame(Frame {
+            env.set_frame(&Frame {
                 biome: biome.to_owned(),
                 ..Frame::default()
             });

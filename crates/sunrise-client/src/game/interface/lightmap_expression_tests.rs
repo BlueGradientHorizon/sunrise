@@ -119,7 +119,28 @@ fn a_packs_lightmap_draws_its_expression_uniform() {
         assert_eq!(game.gui.atlas.lightmap_expressions.len(), 1);
         let _event_loop = frame_scene(game);
         game.renderer.as_mut().unwrap().fullbright = fullbright;
+        // The expression context's strings, given room up front: every frame rewrites them in
+        // place, so their buffers (address and capacity) are the same after the frames.
+        let context = &mut game.polytone_frame;
+        context.dimension = String::with_capacity(64);
+        context.biome = String::with_capacity(64);
+        let buffers = |game: &super::Game<'_>| {
+            let context = &game.polytone_frame;
+            [&context.dimension, &context.biome].map(|s| (s.as_ptr(), s.capacity()))
+        };
+        let before = buffers(game);
         let texture = drawn_texture(game);
+        if !fullbright {
+            for _ in 0..3 {
+                game.render_with(|renderer, frame| renderer.render(frame))
+                    .unwrap();
+            }
+            assert_eq!(buffers(game), before);
+            assert_eq!(before.map(|(_, capacity)| capacity), [64, 64]);
+            let context = &game.polytone_frame;
+            assert_eq!(context.dimension, "minecraft:overworld");
+            assert!(context.biome.starts_with("minecraft:"), "{}", context.biome);
+        }
         if fullbright {
             // Fullbright keeps the texture white, and nothing is evaluated.
             assert!(!game.reads_pack_expressions());
