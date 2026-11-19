@@ -19,7 +19,8 @@ def package(name, directory=None, kinds=("lib",), dependencies=(), source=None):
 
 
 def node(name, *edges):
-    return {"id": name, "deps": [{"pkg": dependency, "dep_kinds": [{"kind": kind}]} for dependency, kind in edges]}
+    return {"id": name, "deps": [{"pkg": dependency, "name": dependency, "dep_kinds": [{"kind": kind}]}
+                                 for dependency, kind in edges]}
 
 
 def metadata():
@@ -155,6 +156,25 @@ class ManifestTests(unittest.TestCase):
                 api_source.normalise_manifest(manifest, self.WORKSPACE, crate, {"vocab": crate}, {},
                                               {"serde": resolved})
             self.assertEqual(refused.exception.code, "E_FEATURES")
+
+    def test_a_dependency_only_another_target_names_needs_no_resolved_features(self):
+        crate = Crate("core", "crates/core", False)
+        manifest = {"package": {"name": "core", "version": "0.1.0"},
+                    "dependencies": {"serde": "1"},
+                    "target": {"cfg(target_arch = \"x86_64\")": {"dependencies": {"safe_arch": "=1.2.0"}}}}
+        registry = "registry+https://github.com/rust-lang/crates.io-index"
+        metadata = {"packages": [package("core"), package("serde", source=registry),
+                                 package("safe_arch", source=registry)],
+                    "resolve": {"nodes": [node("core", ("serde", None), ("safe_arch", None)),
+                                          node("serde"), node("safe_arch")]}}
+        game = {"serde 0.1.0": {"default"}}
+        self.assertEqual(api_source.requested_features(metadata, crate, manifest, game),
+                         {"serde": ({"default"}, True)})
+        with self.assertRaises(Refusal) as refused:
+            api_source.requested_features(metadata, crate,
+                                          {**manifest, "dependencies": {"serde": "1", "safe_arch": "=1.2.0"}},
+                                          game)
+        self.assertEqual(refused.exception.code, "E_FEATURES")
 
 
 class RootTests(unittest.TestCase):
