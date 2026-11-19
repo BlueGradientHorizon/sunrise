@@ -1013,21 +1013,18 @@ mod tests {
         served.outbox.attach_droppable(queue.clone());
         let counters = Arc::default();
         // The opening delimiter is on the wire and the thread is idle between batches when the
-        // droppable frame arrives: it must wait for the closing delimiter.
+        // droppable frame arrives. The thread looks at the droppable queue before it takes the
+        // next batch, so a probe packet read back proves it declined to frame the droppable one.
         served.send(vec![body(delimiter, 0)], None);
         assert_eq!(client.recv().unwrap(), packet(&body(delimiter, 0)));
         queue.push(Instant::now(), &counters, body(0x40, 4));
-        // The thread has woken for it by now if it were going to frame it.
-        std::thread::sleep(Duration::from_millis(200));
+        served.send(vec![body(0x7d, 0)], None);
+        assert_eq!(client.recv().unwrap(), packet(&body(0x7d, 0)));
+        // Once the bundle closes, the waiting frame follows it.
         served.send(vec![body(0x30, 3), body(delimiter, 0)], None);
-        // The bundle is closed: the waiting frame follows it, before the sentinel.
-        std::thread::sleep(Duration::from_millis(200));
-        served.send(vec![body(0x7e, 0)], None);
-        let ids: Vec<i32> = read_until_sentinel(&mut client)
-            .into_iter()
-            .map(|(id, _)| id)
-            .collect();
-        assert_eq!(ids, [0x30, 0, 0x40]);
+        assert_eq!(client.recv().unwrap(), packet(&body(0x30, 3)));
+        assert_eq!(client.recv().unwrap(), packet(&body(delimiter, 0)));
+        assert_eq!(client.recv().unwrap(), packet(&body(0x40, 4)));
     }
 
     #[test]
