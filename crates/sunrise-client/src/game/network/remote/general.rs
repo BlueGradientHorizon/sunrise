@@ -6,6 +6,7 @@
 //! never seen without its initial fields. No mod code runs here: a row's behaviour is the
 //! server's.
 use super::{Game, Lerp, Remote};
+use indexmap::IndexMap;
 use std::collections::HashMap;
 use sunrise_protocol::general_entity::{self, Message};
 
@@ -25,12 +26,15 @@ pub(in crate::game) struct RemoteGeneral {
     pub age: u32,
     /// Its first attachment snapshot has arrived too: the row is shown, with its fields.
     pub shown: bool,
+    /// Frozen synced fields, rebuilt at the packet boundary once the first snapshot arrives.
+    pub render_attachments: Option<mod_api::EntityRenderAttachments>,
 }
 
 /// The rows the server shows the window, by network id, and the warnings already given.
 #[derive(Default)]
 pub(in crate::game) struct RemoteGenerals {
-    pub rows: HashMap<i32, RemoteGeneral>,
+    /// Client entity lookup order: inserts append; removing one keeps the others in order.
+    pub rows: IndexMap<i32, RemoteGeneral>,
     /// Type keys this client's catalog does not hold, each warned about once.
     unknown: std::collections::HashSet<String>,
     /// Whether a spawn for an id already held was refused before, warned about once.
@@ -44,9 +48,18 @@ impl RemoteGenerals {
     }
 
     /// A whole attachment snapshot for entity `id` arrived: a row waiting for it is shown.
-    pub fn snapshot_arrived(&mut self, id: i32) {
+    pub fn attachments_arrived(
+        &mut self,
+        id: i32,
+        replace: bool,
+        attachments: &sunrise_mod_runtime::attachments::Attachments,
+    ) {
         if let Some(row) = self.rows.get_mut(&id) {
-            row.shown = true;
+            row.shown |= replace;
+            if row.shown {
+                row.render_attachments =
+                    Some(mod_api::EntityRenderAttachments::from_synced(attachments));
+            }
         }
     }
 }
@@ -83,9 +96,10 @@ impl Game<'_> {
         };
         // The snapshot may come first: a removal drops what the client held of an id, so a
         // copy held now is this row's.
-        let shown = r
+        let attachments = r
             .attachments
-            .contains_key(&sunrise_mod_runtime::attachments::Holder::Entity(id as u32));
+            .get(&sunrise_mod_runtime::attachments::Holder::Entity(id as u32));
+        let shown = attachments.is_some();
         if r.general.rows.contains_key(&id) {
             if !std::mem::replace(&mut r.general.duplicate, true) {
                 log::warn!("Sunrise: the server sent general entity {id} twice; the first stays");
@@ -103,6 +117,8 @@ impl Game<'_> {
                 previous_rotation: rotation,
                 age: 0,
                 shown,
+                render_attachments: attachments
+                    .map(|map| mod_api::EntityRenderAttachments::from_synced(map)),
             },
         );
         self.persist
@@ -122,14 +138,14 @@ impl Game<'_> {
 
     /// The server removed general row `id` from the window.
     pub(super) fn forget_remote_general(r: &mut Remote, id: i32) {
-        r.general.rows.remove(&id);
+        r.general.rows.shift_remove(&id);
     }
 }
 
 /// One client tick of the rows: `setOldPosAndRot`, then a step of the non-living
 /// `InterpolationHandler` (`Entity.moveOrInterpolateTo`, 3 steps) toward the server's last move.
 pub(super) fn tick_remote_general(
-    rows: &mut HashMap<i32, RemoteGeneral>,
+    rows: &mut IndexMap<i32, RemoteGeneral>,
     lerps: &mut HashMap<i32, Lerp>,
 ) {
     for (id, row) in rows.iter_mut() {
@@ -167,12 +183,13 @@ mod tests {
             previous_rotation: [0.0, 0.0],
             age: 0,
             shown: true,
+            render_attachments: None,
         }
     }
 
     #[test]
     fn a_move_is_reached_in_three_ticks_and_each_tick_keeps_the_one_before() {
-        let mut rows = HashMap::from([(5, row([0.0, 70.0, 0.0]))]);
+        let mut rows = IndexMap::from([(5, row([0.0, 70.0, 0.0]))]);
         let mut lerps = HashMap::from([(
             5,
             Lerp {
@@ -265,7 +282,7 @@ mod tests {
         ids
     }
 
-    fn rows(game: &Game<'_>) -> HashMap<i32, RemoteGeneral> {
+    fn rows(game: &Game<'_>) -> IndexMap<i32, RemoteGeneral> {
         game.remote.as_ref().unwrap().general.rows.clone()
     }
 

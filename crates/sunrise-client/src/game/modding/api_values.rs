@@ -1145,13 +1145,13 @@ pub(crate) fn install_stack_hooks() {
     });
 }
 
-/// Adapt a player's block menu `stillValid` check; the game asks only for a menu
+/// Adapt a player's menu `stillValid` check; the game asks only for a menu
 /// whose type has a part answering it (`menu_still_valid_listens`, when it opened).
 pub(crate) fn menu_still_valid(
     context: &sunrise_world::native_load_context::LoopContext,
     player: u128,
     menu: &str,
-    pos: [i32; 3],
+    pos: Option<[i32; 3]>,
     eye: [f64; 3],
     valid: &mut bool,
 ) {

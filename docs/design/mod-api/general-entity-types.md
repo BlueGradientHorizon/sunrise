@@ -67,6 +67,9 @@ Use one dense general-entity store per level, with constant-time identity-to-slo
 
 EntityPart is shared behavior, not mutable per-instance storage. Follow [PR #2328](https://github.com/arismoko/horizon/pull/2328), the provisional #796 state design: existing attachments are the sole Part-data store, with typed authoring erased at registration, snapshot reads and checked transactional edits. Do not introduce a parallel entity data map. #779 supplies entity scope and scoped moments; it does not by itself supply entity ownership. Generate new methods only for named verified moments, with ServerHost or ClientHost and the existing dependency dispatch order. No Game references escape.
 
+Content entity types and general entity types share one key space. A package that declares the same
+key through both routes is refused when its content loads.
+
 ## Tick and residency
 
 At the authoritative entity phase, walk eligible general rows once in stable join order, with an indexed iteration schedule maintained on mutation rather than sorting each tick. For each root run common bookkeeping, its subscribed server behavior, then its passenger subtree. A passenger is not also ticked as a root. Newly committed spawns first tick next phase; a row removed before its turn receives no tick. Buffer structural edits until safe boundaries. Revalidate deferred operations after listener writes and refuse stale decisions without recomputing.
@@ -89,7 +92,7 @@ Persistence does not imply synchronization: only declared fields cross the netwo
 
 The [moving-structures carrier](moving-structures.md) remains a game-owned specialized type and does not depend on general registration. Share identity, residency, tracking and save boundaries; its cell ownership, swept collision and assembly journal remain specialized. Never create two carrier tickers or serialize its cells twice.
 
-### Implemented: tracking and the client table (stage 5, first part)
+### Implemented: tracking, the client table and the renderer handoff (stage 5)
 
 - **The tracker.** General rows join the level's one tracker (`lan_general_states` in `game/network/lan_entities.rs`). A row's range and interval are its declaration's (`tracking::general` in `lan/tracking.rs`): the range in chunks is capped by the view distance, and an interval of `i32::MAX` or below 1 never updates. Deltas are on. A quarantined record never becomes a row, so it is never tracked.
 - **Pairing.** A general key is in no client registry, so pairing sends a `sunrise:general_entity` spawn (`crates/sunrise-protocol/src/general_entity.rs`) in place of `AddEntity`. Only a client that negotiated that engine channel is paired (`Viewer::general_entity`, `Guest::negotiated_general_entity`). After the spawn:
@@ -97,7 +100,8 @@ The [moving-structures carrier](moving-structures.md) remains a game-owned speci
   - the row's declared fields are its synced attachments, whose snapshot tracking start queues as for any entity.
 - **Vanilla clients.** A vanilla client is never paired with a row: no packet names it. Refusing such a client when required general types exist is still the open question below.
 - **The client.** A Sunrise client keeps the rows it was shown in `game/network/remote/general.rs`. Each row's type is resolved in the client's frozen catalog. It moves with the non-living interpolation (3 steps), keeps the position and rotation of the tick before for a frame's partial tick, and is dropped on removal or a world change. An unknown key or a duplicate id is ignored with one warning. No mod code runs on the client.
-- **Still to come.** The renderer handoff follows in the next part: renderer slots for general types, and drawing a row from its synced attachments.
+- **Shown with its fields.** The server sends every row its first attachment snapshot at tracking start, empty or not, and the client shows a row only once the spawn and that snapshot are both there.
+- **The renderer handoff.** `resolve_entity_renderers` resolves a renderer registered for a general key into a slot per catalog slot (`EntityRendererTable`, `game/modding/native_entity_renderers.rs`), so a frame does no lookup by name. Each frame, shown rows are culled by distance, frustum and section eligibility. The visible list preserves client entity lookup order. Each extracted row goes to its type's renderer (`game/mobs/general_draw.rs`) through the guard every route shares, at `lerp(previous, position, partial)`, with `EntityRenderState`'s identity, age and angles interpolated the same way. Extraction captures a bounded, immutable snapshot of only that row's synced attachments, built when sync changes. Native and Wasm renderers both read it via `EntityRenderState::attachments` and draw through `EntityRenderer::submit`, without a live host. A type with no renderer draws nothing and is named once a resource load; a failed renderer draws nothing until the next load, and a reload re-resolves the slots without touching the rows.
 
 ## Lifecycle route owners and migration obligations
 

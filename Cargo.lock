@@ -4454,6 +4454,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "sunrise-border"
+version = "0.1.0"
+dependencies = [
+ "sunrise-core",
+]
+
+[[package]]
 name = "sunrise-bots"
 version = "0.1.0"
 dependencies = [
@@ -4478,6 +4485,7 @@ dependencies = [
  "fs4",
  "gilrs",
  "glam",
+ "indexmap",
  "libc",
  "log",
  "naga",
@@ -4662,6 +4670,7 @@ dependencies = [
  "sha2",
  "smallvec",
  "sunrise-assets",
+ "sunrise-border",
  "sunrise-client-core",
  "sunrise-client-input",
  "sunrise-command",
@@ -4683,6 +4692,7 @@ dependencies = [
  "sunrise-perf-format",
  "sunrise-polytone",
  "sunrise-protocol",
+ "sunrise-render-core",
  "sunrise-shader-api",
  "sunrise-shaders",
  "sunrise-system",
@@ -5384,6 +5394,13 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "ring",
+]
+
+[[package]]
+name = "sunrise-render-core"
+version = "0.1.0"
+dependencies = [
+ "glam",
 ]
 
 [[package]]

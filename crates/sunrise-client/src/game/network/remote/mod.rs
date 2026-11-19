@@ -14,7 +14,7 @@ mod break_prediction;
 use break_prediction::Prediction;
 mod connection;
 mod fall_sound;
-mod general;
+pub(in crate::game) mod general;
 mod interaction_actions;
 mod interaction_prediction;
 mod level_format;
@@ -671,6 +671,7 @@ pub(super) struct Remote {
     /// (`handleRespawn`: `newPlayer.setDeltaMovement(oldPlayer.getDeltaMovement())`),
     /// for the player made at the next teleport: a portal's teleport adds to it.
     respawn_velocity: Option<Vec3>,
+    /// ServerboundPlayerLoadedPacket went out: the tick's keybinds act from then on.
     pub(in crate::game) loaded_sent: bool,
     /// The dimension of the client level the mods heard made
     /// (`native_client_level_load`), to be told dropped once.
@@ -2246,6 +2247,14 @@ impl Game<'_> {
     /// are handled, the terrain the server sent is not all there.
     pub(super) fn remote_backlog(&self) -> usize {
         self.remote.as_ref().map_or(0, |r| r.backlog.len())
+    }
+
+    /// The attack clicks queued for the next tick (`KeyMapping.click`, not yet handled).
+    pub(in crate::game) fn remote_attack_clicks_queued(&self) -> u32 {
+        self.remote.as_ref().map_or(0, |r| {
+            r.input
+                .queued(sunrise_client::interaction_input::Button::Attack)
+        })
     }
 
     /// A headless command oracle has a real connection but no movement tick.
@@ -9082,7 +9091,7 @@ impl Game<'_> {
         }
     }
 
-    fn remote_handle_input(&mut self) {
+    pub(in crate::game) fn remote_handle_input(&mut self) {
         let Some(r) = self.remote.as_mut() else {
             return;
         };
@@ -9106,10 +9115,15 @@ impl Game<'_> {
             self.hotbar_presses
                 .iter_mut()
                 .for_each(sunrise_client::input_queue::ClickQueue::clear);
+            self.agent_attack_clicks_left(0);
             return;
         }
         let (attack, use_item) = (self.left, self.right);
         input.tick(&mut RemoteInputWorld(self), attack, use_item);
+        // An item in use drains the queues without acting on them.
+        self.agent_attack_clicks_left(
+            input.queued(sunrise_client::interaction_input::Button::Attack),
+        );
         self.remote_count_miss_time();
         if let Some(r) = self.remote.as_mut() {
             input.merge_queued(std::mem::take(&mut r.input));

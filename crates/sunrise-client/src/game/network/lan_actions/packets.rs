@@ -156,18 +156,28 @@ impl Game<'_> {
         {
             return;
         }
-        if matches!(
-            packet,
-            S::ContainerClick(_)
-                | S::ContainerButtonClick(_)
-                | S::ContainerSlotStateChanged(_)
-                | S::RenameItem(_)
-                | S::SetBeacon(_)
-                | S::SelectTrade(_)
-                | S::SelectBundleItem(_)
-                | S::PlaceRecipe(_)
-        ) {
-            self.guest_validate_menu(conn);
+        let validate_menu = match &packet {
+            S::ContainerClick(click) => {
+                // handleContainerClick ignores another window's click. A spectator's
+                // click goes straight to the menu's resync path, without a validity ask.
+                let window = super::super::native_menus::open_menu_of(host, conn)
+                    .map_or(0, |(window, _, _)| window);
+                if click.container != window {
+                    return;
+                }
+                !host.hub.guests[gi].spectator()
+            }
+            S::ContainerButtonClick(_)
+            | S::ContainerSlotStateChanged(_)
+            | S::RenameItem(_)
+            | S::SetBeacon(_)
+            | S::SelectTrade(_)
+            | S::SelectBundleItem(_)
+            | S::PlaceRecipe(_) => true,
+            _ => false,
+        };
+        if validate_menu && !self.guest_validate_menu(conn) {
+            return;
         }
         let Some(host) = self.lan.as_ref() else {
             return;

@@ -11,9 +11,10 @@ use std::path::Path;
 use std::process::{Command, ExitCode};
 use sunrise_mod_package::{
     Manifest, Package,
-    manifest::{MANIFEST, MAX_MANIFEST, MAX_USES},
+    manifest::{MANIFEST, MAX_MANIFEST, MAX_USES, revision},
     sdk::{self, ChangeNote, Index},
 };
+use sunrise_native_build::game_uses;
 
 /// One searchable record: its id, its doc text and its names in other mod APIs.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -227,6 +228,8 @@ enum Subject {
     Table {
         name: String,
         table: UsesTable,
+        /// The mod's manifest: the game code it declares is judged with the list.
+        manifest: Box<Manifest>,
     },
     /// The answer to print, with exit status 2.
     NotApplicable(String),
@@ -239,9 +242,11 @@ fn package_subject(path: &Path) -> Result<Subject, String> {
         .ok_or_else(|| format!("{}: no {MANIFEST}", path.display()))?;
     let manifest = String::from_utf8(manifest).map_err(|e| format!("{MANIFEST}: {e}"))?;
     let name = display_name(&manifest)?;
-    let table: toml::Table = toml::from_str(&manifest).map_err(|e| format!("{MANIFEST}: {e}"))?;
-    if let Some(why) = mod_source::mod_uses::exact(&table) {
-        return Ok(Subject::NotApplicable(exact_text(&name, &why)));
+    if let Some(table) = game_uses::unjudged(&package.manifest) {
+        return Ok(Subject::NotApplicable(exact_text(
+            &name,
+            &format!("it has a {table} table"),
+        )));
     }
     if package.manifest.native.is_none() && package.manifest.wasm.is_none() {
         return Ok(Subject::NotApplicable(content_text(&name)));
@@ -257,7 +262,34 @@ fn package_subject(path: &Path) -> Result<Subject, String> {
         )));
     };
     let table = UsesTable::read(&bytes).map_err(|e| format!("{USES_FILE}: {e}"))?;
-    Ok(Subject::Table { name, table })
+    // A native mod pins its build in its manifest, a wasm mod in the `Cargo.toml` it packs.
+    let pin = match &package.manifest.native {
+        Some(native) => Some(native.sunrise.clone()),
+        None => Package::entry(path, "Cargo.toml", MAX_MANIFEST)?
+            .and_then(|bytes| String::from_utf8(bytes).ok())
+            .and_then(|text| text.parse::<toml::Table>().ok())
+            .and_then(|cargo| {
+                let sdk = cargo.get("package")?.get("metadata")?.get("sunrise")?;
+                let pin = sdk.get("sdk")?.as_str()?;
+                revision(pin).then(|| pin.to_owned())
+            }),
+    };
+    let Some(pin) = pin else {
+        return Ok(Subject::NotApplicable(format!(
+            "{name}: fit not known; its packed `Cargo.toml` does not pin a full commit SHA (40 lowercase hex digits) in `[package.metadata.sunrise] sdk`. Pack it again with `cargo sunrise-mod build`."
+        )));
+    };
+    if pin != table.made_for {
+        return Ok(Subject::NotApplicable(format!(
+            "{name} pins build {pin} and its list of what it uses was made for {}, so the list says nothing about the pinned build. Pack it again with `cargo sunrise-mod build`.",
+            table.made_for
+        )));
+    }
+    Ok(Subject::Table {
+        name,
+        table,
+        manifest: Box::new(package.manifest),
+    })
 }
 
 /// The table of the mod folder at `root`, scanned against its pinned build.
@@ -265,19 +297,22 @@ fn folder_subject(entry: ChildEntry, root: &Path) -> Result<Subject, String> {
     let manifest =
         std::fs::read_to_string(root.join(MANIFEST)).map_err(|e| format!("{MANIFEST}: {e}"))?;
     let parsed = Manifest::parse(&manifest)?;
-    let name = parsed.name;
+    let name = parsed.name.clone();
     if parsed.native.is_none() && parsed.wasm.is_none() {
         return Ok(Subject::NotApplicable(content_text(&name)));
     }
-    let table: toml::Table = toml::from_str(&manifest).map_err(|e| format!("{MANIFEST}: {e}"))?;
-    if let Some(why) = mod_source::mod_uses::exact(&table) {
-        return Ok(Subject::NotApplicable(exact_text(&name, &why)));
+    if let Some(table) = game_uses::unjudged(&parsed) {
+        return Ok(Subject::NotApplicable(exact_text(
+            &name,
+            &format!("it has a {table} table"),
+        )));
     }
     let sdk = ensure_sdk(root)?;
     match uses_table::scan(entry, root, &surface_of(&sdk)?)? {
         Scanned::Uses(uses) => Ok(Subject::Table {
             name,
-            table: uses.table(sdk.build),
+            table: uses_table::table(&uses, root, &sdk)?,
+            manifest: Box::new(parsed),
         }),
         Scanned::Exact(why) => Ok(Subject::NotApplicable(exact_text(&name, &why))),
         Scanned::Unread(why) => Err(why),
@@ -299,6 +334,7 @@ pub(crate) fn fits(entry: ChildEntry, args: &[String]) -> ExitCode {
     match fits_lines(entry, args) {
         Ok(Answer::Fits) => ExitCode::SUCCESS,
         Ok(Answer::DoesNotFit) => ExitCode::from(1),
+        Ok(Answer::Unknown) => ExitCode::from(2),
         // An answer, not a failure: printed plainly.
         Ok(Answer::NotApplicable(text)) => {
             println!("{text}");
@@ -315,6 +351,8 @@ pub(crate) fn fits(entry: ChildEntry, args: &[String]) -> ExitCode {
 enum Answer {
     Fits,
     DoesNotFit,
+    /// No build misfits, and for one the list cannot say; its line is printed.
+    Unknown,
     /// The question does not apply: why, not yet printed.
     NotApplicable(String),
 }
@@ -334,25 +372,104 @@ fn fits_lines(entry: ChildEntry, args: &[String]) -> Result<Answer, String> {
         Some(path) => package_subject(path)?,
         None => folder_subject(entry, project)?,
     };
-    let (name, mut table) = match subject {
-        Subject::Table { name, table } => (name, table),
+    let (name, mut table, manifest) = match subject {
+        Subject::Table {
+            name,
+            table,
+            manifest,
+        } => (name, table, manifest),
         Subject::NotApplicable(text) => return Ok(Answer::NotApplicable(text)),
     };
-    // A list an older tool wrote names no hook versions: the build it was made for has them.
-    if table.schema != USES_SCHEMA {
-        let made_for = fetch_build(project, &table.made_for)?;
-        table.pin_hook_versions(&surface_of(&made_for)?);
-    }
+    // Whether the build the list was made for gave the hook versions a list of an older tool
+    // lacks: asked for once, and only when a target leaves nothing else to judge.
+    let mut baseline: Option<Result<(), String>> = None;
     println!("{name}:");
-    let mut all = true;
+    let (mut all, mut known) = (true, true);
     for build in builds {
         let target = fetch_build(project, build)?;
         if target.build == table.made_for {
             println!("{}  made for", target.name);
             continue;
         }
-        match fit(&table.entries, &surface_of(&target)?) {
+        let target_surface = surface_of(&target)?;
+        // The mod API's items are judged by the surface, the game code the mod declares by the
+        // target's build data: one list holds both.
+        let api = |table: &UsesTable| {
+            fit(
+                table
+                    .entries
+                    .iter()
+                    .filter(|entry| !entry.id.starts_with(game_uses::PREFIX)),
+                &target_surface,
+            )
+        };
+        let (mut compared, uncompared) = game_fit(project, &manifest, &table, &target)?;
+        let mut answer = api(&table);
+        let mut unfetched = None;
+        if matches!(answer, Fit::Unversioned(_)) && table.schema != USES_SCHEMA {
+            let fetched = baseline.get_or_insert_with(|| {
+                let made_for = fetch_build(project, &table.made_for)?;
+                table.pin_hook_versions(&surface_of(&made_for)?);
+                Ok(())
+            });
+            match fetched {
+                Ok(()) => answer = api(&table),
+                Err(why) => unfetched = Some(why.clone()),
+            }
+        }
+        if !compared.misfits.is_empty() {
+            let mut misfits = match answer {
+                Fit::DoesNotFit(misfits) => misfits,
+                Fit::Fits | Fit::Unversioned(_) => Vec::new(),
+            };
+            misfits.append(&mut compared.misfits);
+            misfits.sort();
+            answer = Fit::DoesNotFit(misfits);
+        }
+        // What is already known to have changed is said, whatever the build data would add; with
+        // nothing known, a comparison that could not be made is the answer.
+        if let Some(why) = &uncompared
+            && !matches!(answer, Fit::DoesNotFit(_))
+        {
+            return Err(why.clone());
+        }
+        match answer {
+            Fit::Fits if !compared.unjudged.is_empty() => {
+                known = false;
+                println!(
+                    "{}  not known: nothing the list can judge changed, but the build's data cannot show {} unchanged (it holds no body for a function the mod calls, or not every part of a loop).",
+                    target.name,
+                    compared
+                        .unjudged
+                        .iter()
+                        .map(|id| format!("`{}`", id.rsplit(':').next().unwrap_or(id)))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+            }
+            Fit::Fits if compared.unrecorded => {
+                known = false;
+                println!(
+                    "{}  not known: nothing the list can judge changed, but it holds no record of game code the mod declares. Pack the mod again with `cargo sunrise-mod build`, which records it.",
+                    target.name
+                );
+            }
             Fit::Fits => println!("{}  fits", target.name),
+            Fit::Unversioned(hooks) => {
+                known = false;
+                println!(
+                    "{}  not known: nothing the list can judge changed, but it holds no version of {}{}. Pack the mod again with `cargo sunrise-mod build`, which records them.",
+                    target.name,
+                    hooks
+                        .iter()
+                        .map(|id| format!("`{}`", leaf(id)))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    unfetched.map_or(String::new(), |why| format!(
+                        ", and the build it was made for could not be read for them ({why})"
+                    ))
+                );
+            }
             Fit::DoesNotFit(misfits) => {
                 all = false;
                 let count = misfits
@@ -365,14 +482,51 @@ fn fits_lines(entry: ChildEntry, args: &[String]) -> Result<Answer, String> {
                 for misfit in misfits {
                     println!("    {misfit}");
                 }
+                if let Some(why) = uncompared {
+                    println!("    the game code it declares could not be compared: {why}");
+                }
             }
         }
     }
-    Ok(if all {
-        Answer::Fits
-    } else {
-        Answer::DoesNotFit
+    Ok(match (all, known) {
+        (false, _) => Answer::DoesNotFit,
+        (true, false) => Answer::Unknown,
+        (true, true) => Answer::Fits,
     })
+}
+
+/// The game code `manifest` declares, as `target` has it, against `table`'s record of it, and
+/// the horizon-mixins revision the mod pins against the one `target`'s tool builds with. A
+/// misfit already known stays when the build data cannot be read: why it cannot comes second.
+fn game_fit(
+    project: &Path,
+    manifest: &Manifest,
+    table: &UsesTable,
+    target: &PinnedSdk,
+) -> Result<(game_uses::Compared, Option<String>), String> {
+    let path = target.dir.join(sdk::INDEX);
+    let bytes = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let index =
+        Index::read(&bytes, &target.build).map_err(|e| format!("{}: {e}", path.display()))?;
+    let mut compared = game_uses::Compared::default();
+    let mut uncompared = None;
+    if game_uses::declared(manifest) {
+        let recorded: Vec<_> = table
+            .entries
+            .iter()
+            .filter(|entry| entry.id.starts_with(game_uses::PREFIX))
+            .collect();
+        match crate::sdk_fetch::build_data(project, &target.build)
+            .and_then(|data| game_uses::entries(manifest, &data, &target.build))
+        {
+            Ok(now) => compared = game_uses::compare(&recorded, now),
+            Err(why) => uncompared = Some(why),
+        }
+    }
+    compared
+        .misfits
+        .extend(game_uses::tool(manifest, &index.mixins.rev));
+    Ok((compared, uncompared))
 }
 
 /// What the mod nearest to a removed item may use now, in `new`: the hook with one of the same
@@ -417,13 +571,13 @@ pub(crate) fn update_report(
     let exact_line = || {
         println!("{name} is made for exactly one build; its declarations are checked as it moves.")
     };
-    let table: toml::Table = toml::from_str(&manifest).map_err(|e| format!("{MANIFEST}: {e}"))?;
+    let parsed = Manifest::parse(&manifest)?;
     // A wasm mod links by interface: there is no API-use report and no compatibility check.
-    if !table.contains_key("native") {
+    if parsed.native.is_none() {
         return Ok(());
     }
     // Known from the manifest: such a mod has no table to compare, so nothing is fetched for it.
-    if mod_source::mod_uses::exact(&table).is_some() {
+    if game_uses::unjudged(&parsed).is_some() {
         exact_line();
         return Ok(());
     }
@@ -444,6 +598,38 @@ pub(crate) fn update_report(
         "{}",
         report(&name, &old, &new, &uses, &old_surface, &new_surface, &notes)
     );
+    // The game code the mod declares, by the new build's build data.
+    let made = uses_table::table(&uses, root, &old)?;
+    let (compared, uncompared) = game_fit(root, &parsed, &made, &new)?;
+    for misfit in &compared.misfits {
+        println!("{misfit}");
+    }
+    let mut settled = compared.misfits.is_empty();
+    if let Some(why) = uncompared {
+        settled = false;
+        println!("The game code it declares could not be compared: {why}");
+    }
+    if compared.unrecorded {
+        settled = false;
+        println!(
+            "The pinned build's data holds no fingerprint for some game code it declares, so nothing can be said of it."
+        );
+    }
+    if !compared.unjudged.is_empty() {
+        settled = false;
+        println!(
+            "The new build's data holds no fingerprint for {}, so nothing can be said of it.",
+            compared
+                .unjudged
+                .iter()
+                .map(|id| format!("`{}`", id.rsplit(':').next().unwrap_or(id)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
+    if settled && game_uses::declared(&parsed) {
+        println!("None of the game code it declares changed.");
+    }
     Ok(())
 }
 
@@ -482,7 +668,8 @@ fn report(
 ) -> String {
     let total = uses.items.len();
     let misfits = match fit(uses.entries(), new_surface) {
-        Fit::Fits => vec![],
+        // A fresh scan names every hook's version.
+        Fit::Fits | Fit::Unversioned(_) => vec![],
         Fit::DoesNotFit(misfits) => misfits,
     };
     let mut changed: Vec<&str> = misfits.iter().map(|m| m.id.as_str()).collect();
@@ -686,6 +873,117 @@ mod tests {
         assert_eq!(ids("breakevent"), ["hook:block_broken"]);
         assert_eq!(ids("DAMAGE post"), ["hook:living_damage_post"]);
         assert!(ids("teleport").is_empty());
+    }
+
+    const BUILD: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const OTHER_BUILD: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+    fn packed_subject(
+        kind: &str,
+        sdk: Option<&str>,
+        wasm: Option<&[u8]>,
+        made_for: &str,
+    ) -> Subject {
+        let manifest = format!(
+            "id='greeter'\nname='Greeter'\nversion='0.1.0'\napi='0.2'\ncapabilities=['registries']\n{kind}"
+        );
+        let mut cargo = "[package]\nname='greeter'\nversion='0.1.0'\n".to_owned();
+        if let Some(sdk) = sdk {
+            cargo.push_str(&format!("[package.metadata.sunrise]\nsdk='{sdk}'\n"));
+        }
+        let uses = UsesTable {
+            schema: USES_SCHEMA,
+            made_for: made_for.into(),
+            entries: vec![],
+        }
+        .to_json();
+        let mut files = vec![
+            ("Cargo.toml", cargo.as_bytes()),
+            ("src/lib.rs", b"pub fn greet() {}".as_slice()),
+            (USES_FILE, uses.as_bytes()),
+        ];
+        if let Some(wasm) = wasm {
+            files.push((sunrise_mod_package::manifest::WASM, wasm));
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("greeter.smod");
+        std::fs::write(&path, Package::write_files(&manifest, &files).unwrap()).unwrap();
+        package_subject(&path).unwrap()
+    }
+
+    #[test]
+    fn packed_wasm_uses_need_a_matching_full_sdk_pin() {
+        use wasm_encoder::{
+            CodeSection, CustomSection, ExportKind, ExportSection, Function, FunctionSection,
+            Instruction, Module, TypeSection,
+        };
+
+        // A minimal shared member with the required guest exports; no wasm toolchain needed.
+        let mut types = TypeSection::new();
+        types.ty().function([], []);
+        let mut functions = FunctionSection::new();
+        functions.function(0);
+        let mut exports = ExportSection::new();
+        exports.export("sunrise_in", ExportKind::Func, 0);
+        exports.export("sunrise_hook", ExportKind::Func, 0);
+        let mut function = Function::new([]);
+        function.instruction(&Instruction::End);
+        let mut code = CodeSection::new();
+        code.function(&function);
+        let mut module = Module::new();
+        module
+            .section(&CustomSection {
+                name: "dylink.0".into(),
+                data: (&[1, 4, 0, 0, 0, 0][..]).into(),
+            })
+            .section(&types)
+            .section(&functions)
+            .section(&exports)
+            .section(&code);
+        let wasm = module.finish();
+        let hash = sunrise_mod_package::manifest::sha512_of(&wasm);
+        let kind = format!("[wasm]\nsha512='{hash}'\ntoolchain='test'\n");
+        let stale_list = "the list says nothing about the pinned build";
+        let unknown_pin = "fit not known; its packed `Cargo.toml` does not pin a full commit SHA";
+        for (pin, made_for, refusal) in [
+            (Some(BUILD), BUILD, None),
+            (Some(BUILD), OTHER_BUILD, Some(stale_list)),
+            (None, BUILD, Some(unknown_pin)),
+            // Matching aliases still do not establish a build.
+            (Some("nightly"), "nightly", Some(unknown_pin)),
+        ] {
+            let subject = packed_subject(&kind, pin, Some(&wasm), made_for);
+            match (subject, refusal) {
+                (Subject::Table { name, table, .. }, None) => {
+                    assert_eq!(name, "Greeter");
+                    assert_eq!(table.made_for, made_for);
+                }
+                (Subject::NotApplicable(message), Some(reason)) => {
+                    assert!(message.contains("Greeter"), "{message}");
+                    assert!(message.contains(reason), "{message}");
+                    assert!(
+                        message.contains("Pack it again with `cargo sunrise-mod build`"),
+                        "{message}"
+                    );
+                }
+                _ => {
+                    panic!("unexpected packaged wasm fit subject for {pin:?}, made for {made_for}")
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn packed_native_uses_follow_the_manifest_pin_not_cargo_metadata() {
+        let kind = format!("[native]\ngame='26.3'\nsunrise='{BUILD}'\n");
+        assert!(matches!(
+            packed_subject(&kind, Some(OTHER_BUILD), None, BUILD),
+            Subject::Table { table, .. } if table.made_for == BUILD
+        ));
+        assert!(matches!(
+            packed_subject(&kind, Some(OTHER_BUILD), None, OTHER_BUILD),
+            Subject::NotApplicable(message) if message.contains("the list says nothing about the pinned build")
+        ));
     }
 
     fn note(ids: &[&str], why: &str, migrate: Option<&str>) -> ChangeNote {

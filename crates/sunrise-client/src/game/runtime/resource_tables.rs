@@ -269,15 +269,7 @@ impl PackResources {
             render.model_library.clone(),
             item_data,
         )?;
-        Ok(Self::assemble(
-            root,
-            assets,
-            render,
-            tables,
-            item_renderer,
-            biomes,
-            light,
-        ))
+        Self::assemble(root, assets, render, tables, item_renderer, biomes, light)
     }
     /// The workers' context over `biomes`: this pack's own when `biomes` is
     /// the table it was built with, else the same parts with that table.
@@ -297,7 +289,8 @@ impl PackResources {
         })
     }
     /// The pack tables over their parts, which `load_resources` builds on
-    /// separate workers.
+    /// separate workers. A cloud texture vanilla refuses fails it, as it fails vanilla's reload
+    /// (`sunrise_client::clouds::load`).
     pub(super) fn assemble(
         root: &sunrise_assets::resource_source::ResourceRoot,
         assets: Arc<Assets>,
@@ -306,14 +299,16 @@ impl PackResources {
         item_renderer: sunrise_client::item_render::ItemRenderer,
         biomes: Arc<Biomes>,
         light: Arc<LightTables>,
-    ) -> Self {
+    ) -> Result<Self> {
         // These pack-local resources do not depend on one another. Decode the
         // images and language map together so a custom-sky pack cannot put all
         // of the pack assembly on the critical path behind its own files.
         let (names, clouds, forcefield, custom_sky, environments, polytone_particles) =
             std::thread::scope(|scope| {
                 let names = named_scope(scope, "pack.names", || Names::load(root.source()));
-                let clouds = named_scope(scope, "pack.clouds", || load_clouds(root.source()));
+                let clouds = named_scope(scope, "pack.clouds", || {
+                    sunrise_client::clouds::load(root.source())
+                });
                 let forcefield =
                     named_scope(scope, "pack.forcefield", || load_forcefield(root.source()));
                 let custom_sky = named_scope(scope, "pack.custom_sky", || {
@@ -333,6 +328,7 @@ impl PackResources {
                     particles.join().unwrap(),
                 )
             });
+        let clouds = clouds.map_err(|e| e.to_string())?;
         let polytone_post = sunrise_client::polytone_post::PolytonePost::read(
             root.source(),
             sunrise_client::packs::polytone_configs(&sunrise_client::packs::Source::Opened(
@@ -340,7 +336,7 @@ impl PackResources {
             )),
         )
         .map(Arc::new);
-        Self {
+        Ok(Self {
             layer_names: Arc::new(sunrise_client::block_sprites::texture_names(
                 &render.sprite_layers,
             )),
@@ -370,7 +366,7 @@ impl PackResources {
             polytone_particles,
             polytone_post,
             polytone_colors: Arc::new(read_colors(root)),
-        }
+        })
     }
 }
 

@@ -111,6 +111,11 @@ pub mod hud {
     pub use sunrise_hooks::hud::{Canvas, Corner, Layer, Stage, register};
 }
 
+/// What the engine draws differently, per player; not [`hooks::Look`] (players::Look).
+pub mod look {
+    pub use sunrise_hooks::look::{Chat, Look, update};
+}
+
 /// Build-time mod source generation and point signature inspection.
 #[cfg(feature = "mod-build")]
 pub mod mod_build {

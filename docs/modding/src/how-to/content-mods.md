@@ -1045,7 +1045,7 @@ mod's own screen (`screen`); without one it closes again. Clients join a server 
 types, as with its blocks, and a client that isn't Sunrise's is never sent one: the block opens nothing for it. Its
 clicks run on the server's vanilla menu engine (`menu::Kind::Mod`), shift-clicks routed as `ChestMenu`'s, and a native
 mod can decide what a slot takes in code with `menu_slot_rules` ([hook notes](https://github.com/sunrise-org/sunrise/blob/main/crates/sunrise-mod-vocab/src/hooks/menu_slot_rules.rs))
-and how far away the menu stays open with `menu_still_valid` ([hook notes](https://github.com/sunrise-org/sunrise/blob/main/crates/sunrise-mod-vocab/src/hooks/menu_still_valid.rs)).
+and whether the menu stays open, with or without a backing block, with [`menu_still_valid`](../concepts/capabilities/menu-slots.md#keeping-a-mod-menu-open).
 The declaration specifies per-slot rules through `results`; clicks are handled by the server.
 
 ##### Lending ingredients and linking containers
@@ -1124,7 +1124,10 @@ Paths use vanilla's resource characters, at most 65,536 files, 16 MiB each and 5
 content is refused is left out, with the reason in the log. The game reads this content into its block and item
 tables (`sunrise_client::mod_content`, [modpacks.md](https://github.com/sunrise-org/sunrise/blob/main/docs/modpacks.md)). A tag entry
 naming an id nobody registers (a block a port left out, another mod's item) is dropped, so the rest of the tag
-loads; vanilla would drop the whole tag.
+loads; vanilla would drop the whole tag. In a block or item tag, an entry naming a `#minecraft:…` tag that neither
+vanilla nor an installed mod defines is also dropped. The warning names the entry and its file; an optional
+entry (`"required": false`) is dropped silently. If the base has no tag folder for that registry, the reference is
+left in place.
 
 Tags merge as a data pack's do. Every mod's file for one tag (vanilla's `data/minecraft/tags/`, the convention
 `data/c/tags/`, or another mod's) adds its values after vanilla's and the mods' before it, in load order. A file with

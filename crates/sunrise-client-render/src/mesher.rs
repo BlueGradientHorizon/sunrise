@@ -40,6 +40,7 @@ use std::sync::Arc;
 use sunrise_assets::model::Direction as ModelDirection;
 use sunrise_core::{biome::BiomeZoom, geometry::Direction, position::BlockPos};
 use sunrise_optifine::ctm::connect::{Axes as CtmAxes, Face as CtmFace};
+pub use sunrise_render_core::UV_STEPS;
 use sunrise_world::{
     block_render::FaceVisibility,
     fluid::{FluidKind, FluidState},
@@ -102,8 +103,6 @@ fn round_to_u16(v: f32) -> u16 {
     let whole = v as u32;
     (whole + u32::from(v - whole as f32 >= 0.5)) as u16
 }
-/// Fixed-point steps per unit of `TerrainVertex` UVs, which span `[0, 2)`.
-pub const UV_STEPS: f32 = 32768.0;
 /// A model quad's own UVs in `TerrainVertex` fixed point, the packing
 /// `TerrainVertex::new` does, baked once per face (`BakedFace::uv_fixed`).
 pub(crate) fn baked_uv(uv: [[f32; 2]; 4]) -> [[u16; 2]; 4] {

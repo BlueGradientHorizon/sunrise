@@ -164,8 +164,12 @@ casts a new ray. Without listeners the decision is the vanilla block/entity pick
 It can be read with a screen open. `entity` is an `EntityRef` carrying the current
 client level's epoch and network entity ID, including dragon parts. It becomes stale
 when the client level is replaced or the client disconnects; a same-level respawn
-keeps its epoch. Unlike `view_hit` and `raycast`, this does not find blocks
-in distant terrain or return a block behind a targeted entity.
+keeps its epoch. Unlike `view_hit` and `raycast`, this does not return a block
+behind a targeted entity.
+
+`ClientHost::view_hit()` and `raycast(distance)` cast their own ray along the view, up
+to 1024 blocks, and hit blocks in loaded chunks only: far terrain is never hit. Both
+return `None` on a miss.
 
 A client `EntityRef` supports `bounding_box(host)`, `eye_height(host)` and
 `eye_position(host)`. For the local player these use the current predicted body and pose;

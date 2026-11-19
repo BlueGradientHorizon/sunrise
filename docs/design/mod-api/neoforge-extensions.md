@@ -298,8 +298,8 @@ cargo test -p sunrise-client --lib game::native_hooks::on_block_placed_by_tests:
 
 Menu types are content data (`MenuType` in `crates/sunrise-mod-package/src/content.rs`, files under
 `data/<id>/sunrise/menu/`), and the game's own menu engine opens them (`menu::Kind::Mod`). A `MenuPart` can answer
-slot rules and whether a player's block menu stays open (`menu_still_valid`, vanilla's `stillValid`), not
-construct a menu.
+slot rules and whether a player's mod menu stays open, with or without a backing block (`menu_still_valid`,
+vanilla's `stillValid`), not construct a menu.
 
 | Method | Verdict | Sunrise | Notes |
 | --- | --- | --- | --- |

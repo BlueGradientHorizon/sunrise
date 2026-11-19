@@ -126,7 +126,7 @@ chunks; a world without structures, a structure this level cannot generate, an o
 world's 30,000,000-block edge and a radius out of range give `None`.
 
 `ChunkRef::watchers(host)` is `ChunkMap.getPlayers(pos, false)`: the players the chunk was sent to
-and is inside the view of, from their `chunk_watch` until they move away from it. Sunrise's
-far-ring columns past the view distance are not watched, and fake players watch nothing."#]
+and is inside the view of, from their `chunk_watch` until they move away from it. Fake players
+watch nothing."#]
     fn level_reads_note5();
 }

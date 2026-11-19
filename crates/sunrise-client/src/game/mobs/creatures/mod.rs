@@ -1112,7 +1112,9 @@ impl Game<'_> {
                     "size": m.extra.size,
                     "leash": m.extra.leash.map(|h| format!("{h:?}")),
                     "tame": m.extra.tame,
-                    "sitting": m.extra.sitting,
+                    // TamableAnimal.isInSittingPose, what this side draws: a server's client
+                    // has only that bit of DATA_FLAGS_ID, never the saved order to sit.
+                    "sitting": m.extra.sitting_pose,
                     "temper": if sunrise_client::mobs::equine::is_equine(m.species()) {
                         sunrise_client::mobs::equine::temper(m)
                     } else { i32::from(m.extra.variant3) },
@@ -8223,8 +8225,9 @@ impl Game<'_> {
         for mob in &self.mobs {
             self.living_geometry::<PRECHECK>(mob, &frame, out);
         }
-        // What follows isn't a tracked mob: close the last one's span.
+        // Close the last tracked mob's span before the remaining world entities.
         self.mark_motion(out.len(), 0);
+        self.general_entity_geometry(camera, alpha, out);
         self.elder_apparition_geometry(alpha, out);
         self.spawner_geometry(camera, alpha, out);
         let live = self.creatures.projectiles.iter().map(|a| {
@@ -8704,6 +8707,9 @@ impl Game<'_> {
 #[cfg(test)]
 #[path = "mob_griefing_tests.rs"]
 mod mob_griefing_tests;
+
+#[cfg(test)]
+mod control_mobs_sitting_tests;
 
 #[cfg(test)]
 mod living_visibility_tests;

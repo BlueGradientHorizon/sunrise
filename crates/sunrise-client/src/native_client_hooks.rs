@@ -6,9 +6,11 @@ use sunrise_core::position::BlockPos;
 use sunrise_world::native_load_context::LoopContext;
 use sunrise_world::registry::BlockStateId;
 
+type MenuValidity = fn(&LoopContext, u128, &str, Option<[i32; 3]>, [f64; 3], &mut bool);
+
 /// Client-library hooks, installed before any menu, entity or recipe is used.
 pub struct NativeClientHooks {
-    pub menu_still_valid: fn(&LoopContext, u128, &str, [i32; 3], [f64; 3], &mut bool),
+    pub menu_still_valid: MenuValidity,
     pub menu_still_valid_listens: fn(&str) -> bool,
     pub living_heal: fn(&LoopContext, u32, &mut f32, &mut bool),
     pub living_breathe: fn(&LoopContext, u32, &str, [i32; 2], &mut bool, &mut i32, &mut i32),
@@ -63,6 +65,31 @@ pub struct NativeClientHooks {
 
 static HOOKS: OnceLock<NativeClientHooks> = OnceLock::new();
 
+#[cfg(feature = "test-menu-validity")]
+mod menu_validity_fixture {
+    use super::MenuValidity;
+    use std::{cell::Cell, marker::PhantomData, rc::Rc};
+
+    type MenuValidityHooks = (MenuValidity, fn(&str) -> bool);
+    thread_local! {
+        pub(super) static HOOKS: Cell<Option<MenuValidityHooks>> = const { Cell::new(None) };
+    }
+
+    struct Restore(Option<MenuValidityHooks>, PhantomData<Rc<()>>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            HOOKS.set(self.0);
+        }
+    }
+
+    /// Use these callbacks on this thread until the returned guard is dropped.
+    pub fn scoped_menu_validity_hooks(ask: MenuValidity, listens: fn(&str) -> bool) -> impl Drop {
+        Restore(HOOKS.replace(Some((ask, listens))), PhantomData)
+    }
+}
+#[cfg(feature = "test-menu-validity")]
+pub use menu_validity_fixture::scoped_menu_validity_hooks;
+
 #[cfg(test)]
 #[path = "native_client_hooks_tests.rs"]
 pub(crate) mod test_hooks;
@@ -78,10 +105,15 @@ pub(crate) fn menu_still_valid(
     context: &LoopContext,
     player: u128,
     menu: &str,
-    pos: [i32; 3],
+    pos: Option<[i32; 3]>,
     eye: [f64; 3],
     valid: &mut bool,
 ) {
+    #[cfg(feature = "test-menu-validity")]
+    if let Some((ask, _)) = menu_validity_fixture::HOOKS.get() {
+        ask(context, player, menu, pos, eye, valid);
+        return;
+    }
     if let Some(hooks) = HOOKS.get() {
         (hooks.menu_still_valid)(context, player, menu, pos, eye, valid);
     }
@@ -89,6 +121,10 @@ pub(crate) fn menu_still_valid(
 
 /// Whether a part on the menu type `menu` answers `menu_still_valid`.
 pub(crate) fn menu_still_valid_listens(menu: &str) -> bool {
+    #[cfg(feature = "test-menu-validity")]
+    if let Some((_, listens)) = menu_validity_fixture::HOOKS.get() {
+        return listens(menu);
+    }
     HOOKS
         .get()
         .is_some_and(|hooks| (hooks.menu_still_valid_listens)(menu))

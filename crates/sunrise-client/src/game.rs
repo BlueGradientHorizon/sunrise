@@ -126,6 +126,7 @@ use resource_loader::{
     run_loading, write_report,
 };
 use sunrise_client::random_source;
+use sunrise_client_render::block_entity_reach::Reach;
 // `Action` here is the title screen's buttons (`title::Action`).
 use self::api_values::TryIntoApi;
 pub(crate) use api_values::{block_jump_factor, block_speed_factor, is_ladder};
@@ -1019,12 +1020,8 @@ struct Game<'a> {
     lod_observe: sunrise_client::fast_hash::FxHashSet<(i32, i32)>,
     /// The server level far terrain keeps the chunks of.
     lod_level: Option<String>,
-    /// The server's BlueMap far terrain draws from, when the player named one
-    /// or Find BlueMap found it.
+    /// The server's BlueMap far terrain draws from, when the player named one.
     lod_blue_map: Option<Arc<sunrise_client::bluemap::BlueMap>>,
-    /// Beacon beam sections kept after their chunk unloads, so far terrain
-    /// LOD still draws their beams (`beacon_geometry` refreshes them).
-    far_beacons: HashMap<(i32, i32, i32), Vec<(u32, i32)>>,
     /// The detail revision, centre and radius `Lod::update` last had covered for.
     lod_covered_at: Option<(u64, (i32, i32), i32)>,
     /// Whether the view's columns have all arrived, and how new it is: large
@@ -1179,6 +1176,8 @@ struct Game<'a> {
     /// Runs of `entity_vertices` by entity, for a shader pack's per-entity draws; recorded only
     /// while `pack_ids` is set (game/interface/shader_packs.rs).
     entity_spans: std::cell::RefCell<Vec<sunrise_client::gfx::pack_draw::EntitySpan>>,
+    // Extracted general rows; keep the capacity between frames.
+    general_render_states: std::cell::RefCell<Vec<general_draw::ExtractedGeneral>>,
     /// Which entity this frame's entity vertices belong to (`Frame::entity_motion`).
     entity_motion: std::cell::RefCell<Vec<(u32, u64)>>,
     /// The GPU-posed vertex count at each of `entity_motion`'s marks (`Frame::entity_motion_posed`).
@@ -1447,6 +1446,7 @@ struct Game<'a> {
     use_clicks: sunrise_client::input_queue::ClickQueue,
     hand_strength: sunrise_client::attack_strength::AttackStrength,
     settings: Settings,
+    look: look::LookCache,
     tutorial: tutorial::Tutorial,
     tutorial_toasts: Vec<tutorial::HintToast>,
     /// The `SystemToastId.NARRATOR_TOGGLE` toast, wherever the player is.
@@ -5667,19 +5667,9 @@ impl Game<'_> {
             let view = self.view_frustum;
             // Beams and structure outlines reach far outside their block
             // (BlockEntityRenderer.shouldRenderOffScreen): never culled.
-            let off_screen = |state: u32| {
-                let name = &*self.res.facts().get(BlockStateId(state)).name;
-                matches!(
-                    name,
-                    "minecraft:beacon"
-                        | "minecraft:end_gateway"
-                        | "minecraft:structure_block"
-                        | "minecraft:test_instance_block"
-                )
-            };
-            let long_range = |state: u32| {
-                &*self.res.facts().get(BlockStateId(state)).name == "minecraft:end_gateway"
-            };
+            let off_screen = |state: u32| self.block_entity_reach(state).off_screen();
+            // Sections past 64 blocks are kept for the End gateway's 256.
+            let long_range = |state: u32| self.block_entity_reach(state) == Reach::EndGateway;
             let in_view = |p: &[i32; 3]| {
                 view.is_none_or(|v| {
                     let o = (glam::DVec3::new(f64::from(p[0]), f64::from(p[1]), f64::from(p[2]))
@@ -6061,6 +6051,7 @@ impl Game<'_> {
                         orb_value: Some(o.value),
                         painting: None,
                         item_frame: None,
+                        attachments: None,
                     }
                     .into();
                 let light = self.world.light(
@@ -8052,6 +8043,9 @@ impl Game<'_> {
                 && let Some(renderer) = &mut self.renderer
             {
                 renderer.wait_submissions();
+                if renderer.device_lost() {
+                    return Ok(false);
+                }
             }
             self.native_flip_frame();
         }
@@ -10602,20 +10596,6 @@ impl Game<'_> {
         }
     }
 }
-/// clouds.png as filled cells (`CloudRenderer.prepare`: alpha 10 or more).
-fn load_clouds(root: &sunrise_assets::resource_source::ResourceSource) -> (u32, u32, Vec<bool>) {
-    root.read("assets/minecraft/textures/environment/clouds.png")
-        .map_err(Into::into)
-        .and_then(|bytes| sunrise_client::hud::decode_bytes(&bytes))
-        .map(|(w, h, px)| {
-            (
-                w,
-                h,
-                px.as_chunks::<4>().0.iter().map(|p| p[3] >= 10).collect(),
-            )
-        })
-        .unwrap_or((1, 1, vec![false]))
-}
 /// misc/forcefield.png for the world border wall (square, power of two).
 fn load_forcefield(root: &sunrise_assets::resource_source::ResourceSource) -> (u32, u32, Vec<u8>) {
     root.read("assets/minecraft/textures/misc/forcefield.png")
@@ -10734,7 +10714,6 @@ impl<'a> Game<'a> {
             streaming,
             lod: None,
             lod_source_attempted: false,
-            far_beacons: HashMap::new(),
             lod_observe: Default::default(),
             lod_level: None,
             lod_blue_map: None,
@@ -10827,6 +10806,7 @@ impl<'a> Game<'a> {
             see_through_vertices: Vec::new(),
             shadow_only_vertices: Default::default(),
             entity_spans: Default::default(),
+            general_render_states: Default::default(),
             entity_motion: Default::default(),
             entity_motion_posed: Default::default(),
             skin_models: Default::default(),
@@ -10974,6 +10954,7 @@ impl<'a> Game<'a> {
             use_clicks: hand::USE_CLICKS,
             hand_strength: Default::default(),
             settings,
+            look: Default::default(),
             tutorial,
             tutorial_toasts: Vec::new(),
             narrator_toast: None,
@@ -11861,3 +11842,11 @@ mod sign_chain_tests;
 #[cfg(test)]
 #[path = "game/interface/tests/sign_use_tests.rs"]
 mod sign_use_tests;
+
+impl Game<'_> {
+    /// How far the block entity of a block state is drawn: its `BlockEntityRenderer`'s reach, which
+    /// every block entity draw and the frame's block entity selection ask.
+    pub(super) fn block_entity_reach(&self, state: u32) -> Reach {
+        Reach::of(&self.res.facts().get(BlockStateId(state)).name)
+    }
+}

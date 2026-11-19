@@ -4142,7 +4142,7 @@ mod classic_tests {
         .enumerate()
         {
             atlas.sprites.insert(
-                format!("gui/sprites/{icon}"),
+                icon.to_string(),
                 crate::hud::Rect {
                     u0: 0.25 + i as f32 * 0.125,
                     w: 15,

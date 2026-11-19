@@ -111,6 +111,8 @@ wgpu = { version = "30.0.1", default-features = false, features = ["dx12"] }
 wgpu = { version = "30.0.1", default-features = false, features = ["gles"] }
 
 [features]
+# Thread-local menu callbacks for resource-backed game fixtures only.
+test-menu-validity = []
 # Scoped observations for compiled-guest executor tests only.
 test-payload-probe = []
 # Isolated server-publication slots for resource-backed game fixtures only.

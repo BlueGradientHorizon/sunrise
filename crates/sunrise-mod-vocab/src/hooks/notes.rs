@@ -1363,8 +1363,8 @@ as the terrain samples them.
   grass. The model is the state's first random variant; faces that don't lie flat on a side (a flower's crossed
   planes) are left out, and the `particle` sprite stands for them. Fluids give their still texture on every side.
 - `native_texture_sprites(textures)`: a texture's sprite by name (`block/stone`), none for one no model uses.
-- `native_gui_sprite(sprite)`: a GUI atlas sprite's `AtlasRegion` by `Identifier` (`minecraft:gui/sprites/container/slot`,
-  `minecraft:particle/flame`, `mymod:gui/panel`), its UV rect and its size in its own pixels, none for one the atlas
+- `native_gui_sprite(sprite)`: a GUI atlas sprite's `AtlasRegion` by `Identifier` (`minecraft:container/slot`,
+  `minecraft:particle/flame`, `mymod:panel`), its UV rect and its size in its own pixels, none for one the atlas
   lacks. Plain data, right until the next `texture_atlas_stitched` for `TextureAtlas::Gui`.
 - `native_block_sprites_version()` changes each time the resources load (a resource pack turned on or off moves the
   layers, and the arrays are new): ask again then.
@@ -1640,7 +1640,7 @@ one, where vanilla gives the `by` one.
   teleport, a respawn) and when they disconnect, in the level it was watched in. Vanilla watches a chunk when it queues it; Sunrise
   picks a chunk only as it sends it, so the watch comes just before the send. The hub records them only while a mod listens and
   the game tells them after the hub's network step for that level, so a handler sees the state after that step; the order per
-  player and chunk is vanilla's. The far ring's columns past the view distance aren't told, and the server stopping doesn't unwatch.
+  player and chunk is vanilla's. The server stopping doesn't unwatch.
 - A chunk's ticket level changing, on the server: `chunk_ticket_level_updated(chunk, old, new)` (NeoForge's
   `ChunkTicketLevelUpdatedEvent`). The level is the chunk's loading level from its tickets (a player, a forced chunk, a portal
   ticket, the dragon fight's arena), on `ChunkLevel`'s scale: 31 and lower entity ticking, 32 block ticking, 33 loaded without
@@ -2161,7 +2161,7 @@ registration path.
 - A player respawning: `player_respawned(player, name)` is heard once at the end of `PlayerList.respawn`, with the player placed and their health, food and experience reset (NeoForge's `PlayerRespawnEvent`), on a server, with their state swapped in so the helpers reach them.
 - Where a player respawns (`PlayerRespawnPositionEvent`): `native_player_respawn_position(player, original_level, original_position, missing_respawn_block, level, position, yaw, pitch, copy_original_spawn_position)`, on a server, once the respawn point is found. `player` is the player's handle. The mods may change the level, the position, the facing and whether the fresh player keeps its respawn point (default: yes, unless the bed or anchor was missing). Vanilla finds the point inside `PlayerList.respawn`. Sunrise places the player first and finds a bed or anchor's spot, or the world spawn's free column, once its chunks have loaded, so for those the hook fires then, after `player_respawned`. There a new point in the same level is a teleport, and another level is a level change: one extra Respawn packet, heard as `player_teleported`. An Overworld forced point needs no block: the hook fires at once, before the Respawn packet, and a changed level, point or facing is simply where the player respawns. The point the mods choose is not block-checked and the hook doesn't fire again. Not for the End exit, which isn't a respawn here.
 
-- A client mod's view and items: `native_raycast(distance)` and `native_view_hit()` (the first block along the view, up to 1024 blocks, across the distant terrain past the loaded chunks), and `native_claim_items(mod_id, ids)`: a right-click with one of those items is the mod's alone, the server never hears of it, and `native_poll(mod_id)` gives `UseStart` and `UseStop` with the stack (its custom name and data as SNBT) and the ticks it was held.
+- A client mod's view and items: `native_raycast(distance)` and `native_view_hit()` (the first block along the view, up to 1024 blocks, in the loaded chunks), and `native_claim_items(mod_id, ids)`: a right-click with one of those items is the mod's alone, the server never hears of it, and `native_poll(mod_id)` gives `UseStart` and `UseStop` with the stack (its custom name and data as SNBT) and the ticks it was held.
 
 - `render_fog(partial, camera, fog_type, fog)` adjusts final FogData after normal environment/effect/render-distance calculation and Sunrise's fog option, before GPU upload. Title panoramas skip it. The whole request is accepted only when color components are finite in 0..=1, all distances are finite, environmental and render-distance ends exceed their starts, and sky/cloud ends are nonnegative. Negative near planes remain valid (water/lava). Invalid requests retain the original whole fog.
 

@@ -53,7 +53,8 @@ pub trait DrawContext {
         unimplemented!("DrawContext::fill_gradient")
     }
     /// Part `src` (`[x, y, w, h]` in the sprite's own pixels) of sprite
-    /// `name` (vanilla's `gui/...`, a content mod's GUI texture `mymod:gui/...`, or
+    /// `name` (a GUI atlas sprite by its id, `container/slot` or a mod's `mymod:panel`, another
+    /// texture the atlas holds such as vanilla's `gui/...` files, or
     /// a client mod's dynamic texture, `ClientRenderClientHost::create_dynamic_texture`),
     /// drawn stretched into `dst` (`[x, y, w, h]` in GUI pixels), every texel multiplied by
     /// `tint` (`0xAARRGGBB`, a fluid's colour) when there is one. False when there is

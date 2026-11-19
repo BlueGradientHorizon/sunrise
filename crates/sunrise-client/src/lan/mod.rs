@@ -29,7 +29,6 @@ pub mod discovery;
 mod effect_meta;
 pub mod entity;
 pub mod equipment_cache;
-pub mod far;
 pub mod guest;
 pub mod guest_list;
 pub mod handoff;
