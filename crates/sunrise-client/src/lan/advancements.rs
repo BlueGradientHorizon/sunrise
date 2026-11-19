@@ -1756,6 +1756,8 @@ mod tests {
                 maps: None,
                 limited_crafting: false,
                 known_recipes: None,
+                slot_rules: None,
+                stacked: None,
             };
             let mut menu = Menu::new(Kind::Stonecutter);
             menu.set_slot(&env, 0, Some(ItemStack::new("minecraft:raw_copper", 1)));

@@ -1,8 +1,8 @@
 use super::*;
+use std::io::Write as _;
 use sunrise_client::crafting::ResolvedSources;
 use sunrise_mod_package::manifest::JarRef;
 use sunrise_world::{loot::PackOverlay, native_load_context::DataLoadOrigin};
-use std::io::Write as _;
 
 fn write(path: &Path, bytes: impl AsRef<[u8]>) {
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -205,8 +205,9 @@ fn check_layers(kind: &str, identical_path: bool, replace_allowed: bool) {
 }
 
 #[test]
+#[ignore = "daily"]
 fn enabled_passive_recipe_priorities_preserve_dependency_layers_and_conditions() {
-    const MODE: &str = "HORIZON_PASSIVE_RECIPE_PRIORITIES_TEST";
+    const MODE: &str = "SUNRISE_PASSIVE_RECIPE_PRIORITIES_TEST";
     if std::env::var_os(MODE).is_none() {
         run_in_child(
             "game::mods::tests::recipe_priorities::enabled_passive_recipe_priorities_preserve_dependency_layers_and_conditions",
