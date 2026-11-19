@@ -3,6 +3,11 @@
 //! take is silent; and a failing listener undoes its writes with the take. The fixtures need
 //! prepared resources.
 use crate::game::native_guest_turn_tests::with_guests;
+use mod_api::{
+    BlockEntityPart, BlockPart, Hooks, HostTransaction, ItemPlace, ItemResource, MenuPart,
+    MenuSlotRulesEvent, MenuSlotTakeEvent, ModEntry, Mods, Registrar,
+};
+use std::{cell::RefCell, sync::Arc};
 use sunrise_client::{
     chunk::Chunk,
     containers::{
@@ -13,11 +18,6 @@ use sunrise_client::{
     menu::{Input, Kind, Menu},
 };
 use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
-use mod_api::{
-    BlockEntityPart, BlockPart, Hooks, HostTransaction, ItemPlace, ItemResource, MenuPart,
-    MenuSlotRulesEvent, MenuSlotTakeEvent, ModEntry, Mods, Registrar,
-};
-use std::{cell::RefCell, sync::Arc};
 
 /// The menu type the pot opens: a prepared registry slot (`minecraft:generic_9x3`) for a
 /// synthetic mod menu type, so the guest's click names it.
