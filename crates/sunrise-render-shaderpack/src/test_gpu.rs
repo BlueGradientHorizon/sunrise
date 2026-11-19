@@ -16,3 +16,23 @@ pub(crate) fn instance() -> wgpu::Instance {
     }
     wgpu::Instance::new(descriptor.with_env())
 }
+
+#[cfg(test)]
+pub(crate) fn adapter() -> Option<wgpu::Adapter> {
+    let instance = instance();
+    let adapter = match pollster::block_on(instance.request_adapter(&Default::default())) {
+        Ok(adapter) => adapter,
+        Err(error @ wgpu::RequestAdapterError::NotFound { .. }) => {
+            eprintln!("skipped: no adapter: {error}");
+            return None;
+        }
+        Err(error) => panic!("GPU test adapter request failed: {error}"),
+    };
+    Some(adapter)
+}
+
+#[cfg(test)]
+pub(crate) fn device(adapter: &wgpu::Adapter) -> (wgpu::Device, wgpu::Queue) {
+    pollster::block_on(adapter.request_device(&Default::default()))
+        .expect("GPU test device creation failed")
+}

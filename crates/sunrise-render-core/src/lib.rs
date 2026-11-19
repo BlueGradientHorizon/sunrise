@@ -17,3 +17,6 @@ pub use terrain::{
     OPAQUE_LAYER, SectionKey, TerrainSource, TerrainVertex, UV_STEPS, VERY_BRIGHT, Vertex, WHOLE,
     WeatherTime, WeatherVertex, chunk_visibility, emitting, fade_millis, section_instance,
 };
+
+pub mod entity;
+pub use entity::{EntityVertex, TRANSLUCENT_GLINT_ITEM_OVERLAY, TRANSLUCENT_ITEM_OVERLAY};
