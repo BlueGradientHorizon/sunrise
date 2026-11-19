@@ -7,6 +7,7 @@ pub trait Hooks {
     /// one, out of the world during the call; it is None for a blockless
     /// menu. Mods may change it and the clicking player's carried stack.
     #[hook(
+        version = 2,
         side = "server",
         contract = "listen",
         scope = "menu",

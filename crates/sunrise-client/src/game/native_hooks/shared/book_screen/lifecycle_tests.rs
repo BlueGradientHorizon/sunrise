@@ -144,13 +144,12 @@ fn a_registered_recipe_book_screen_opens_for_a_blockless_menu() {
                 }),
             );
             assert_eq!(
-                game.mod_screen.as_ref().map(|screen| screen.block.as_str()),
+                game.mod_screen
+                    .as_ref()
+                    .and_then(|screen| screen.block.as_deref()),
                 Some("bound:menu")
             );
-            assert_eq!(
-                game.native_hidden_slots_for_menu("bound:menu", None, 3),
-                vec![2]
-            );
+            assert_eq!(game.native_hidden_slots("bound:menu", None, 3), vec![2]);
         });
     });
 }

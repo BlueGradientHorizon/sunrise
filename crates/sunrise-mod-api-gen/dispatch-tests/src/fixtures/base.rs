@@ -200,6 +200,7 @@ fn menu_button_mutates_entity_and_cursor_once() {
     dispatch_menu_button(
         &mut TestHost,
         "test:menu",
+        None,
         &context,
         Some(&mut entity),
         &mut carried,
@@ -223,7 +224,14 @@ fn menu_button_reaches_a_blockless_menu() {
         id: 9,
     };
     let mut carried = None;
-    dispatch_menu_button(&mut TestHost, "test:menu", &context, None, &mut carried);
+    dispatch_menu_button(
+        &mut TestHost,
+        "test:menu",
+        None,
+        &context,
+        None,
+        &mut carried,
+    );
     assert_eq!(carried.unwrap().item.as_ref(), "bucket");
 }
 

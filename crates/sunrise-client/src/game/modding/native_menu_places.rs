@@ -735,13 +735,19 @@ mod tests {
                 back(game, places),
                 Err(MenuSlotBackRefusal::PlaceUnresolved { index: 1 })
             );
-            // A native window with hidden slots has no live menu handle, even in its own turn.
-            edit_guest(game, |g| g.menu.as_mut().unwrap().hidden.push(0));
-            let refused = Err(MenuSlotBackRefusal::NoPlayerOrWindow);
-            assert_eq!(back(game, held_places(Hand::Main, 0..1)), refused);
+            // Hiding one slot leaves the menu handle live for its visible slots.
+            edit_guest(game, |g| g.menu.as_mut().unwrap().hidden.push(1));
+            assert_eq!(back(game, held_places(Hand::Main, 0..1)), Ok(()));
+            let host: &mut dyn ServerHost = game;
+            let menu = host.menu(123, window).unwrap();
+            assert!(matches!(
+                menu.slot_backing(host, 0),
+                Some(MenuSlotBacking::Place(_))
+            ));
+            assert_eq!(menu.slot_backing(host, 1), None);
             assert_eq!(
                 game.as_guest(1, |game| back(game, held_places(Hand::Main, 0..1))),
-                Some(refused)
+                Some(Ok(()))
             );
             // A block's menu shows its block's slots: no backing is stored for it.
             edit_guest(game, |g| {

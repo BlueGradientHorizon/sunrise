@@ -1355,11 +1355,23 @@ impl Game<'_> {
     pub(in crate::game) fn native_menu_button(
         &mut self,
         menu: &str,
+        block: Option<&str>,
         context: &mod_api::item::menu::MenuButtonContext,
         entity: Option<&mut ModBlockEntity>,
         carried: &mut Option<mod_api::ItemStack>,
     ) {
-        self.fire_menu_button(menu, context, entity, carried);
+        self.fire_menu_button(menu, block, context, entity, carried);
+    }
+    /// Whether the owner of this menu accepts button `id`. The active menu's owner
+    /// decides its own IDs; the game does not impose a shared numeric range.
+    pub(in crate::game) fn native_menu_button_valid(
+        &self,
+        menu: &str,
+        block: Option<&str>,
+        id: i32,
+        accepted: &mut bool,
+    ) {
+        self.fire_menu_button_valid(menu, block, id, accepted);
     }
     /// A player shift-clicked slot `slot` of the menu of the mod block
     /// entity at `pos` (`AbstractContainerMenu.quickMoveStack`, the method a

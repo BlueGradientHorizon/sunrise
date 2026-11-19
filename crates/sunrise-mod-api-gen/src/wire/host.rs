@@ -1044,6 +1044,9 @@ impl Cx {
                                     write!(take, "let {local} = {owner}.__wire_checked({local})?;")
                                         .unwrap();
                                     write!(apply, "{owner}.__wire_apply({local});").unwrap();
+                                } else if leaf.view && leaf.optional {
+                                    write!(take,"if {path}.is_some() != {local}.is_some() {{ return Err(WireError::Tag(u32::MAX)); }}").unwrap();
+                                    write!(apply,"if let (Some(view),Some(snapshot)) = ({path}.as_mut(),{local}) {{ view.__wire_apply(snapshot); }}").unwrap();
                                 } else if leaf.view {
                                     if tick_reply.is_some() {
                                         write!(apply, "if let Some(snapshot) = {local} {{ {path}.__wire_apply(snapshot); }}").unwrap();

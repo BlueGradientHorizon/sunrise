@@ -1579,7 +1579,9 @@ And `/damage` on a mob `by` one entity `from` another with a melee damage type g
 one, where vanilla gives the `by` one.
 
 
-`menu_button` handles a mod menu's button (`AbstractContainerMenu.clickMenuButton(Player, int)`) on the server, for single player and LAN guests. It is routed by the menu type and exposes the player identity, button, optional block position, optional backing block entity and mutable carried stack, so a widget outside the slots can take or give what the player carries. A blockless menu supplies None for the position and entity.
+`menu_button_valid` asks the owner of the active menu whether it accepts a button ID. The owner chooses its IDs; there is no shared range. Only an accepted ID reaches `menu_button`.
+
+`menu_button` handles a mod menu's button (`AbstractContainerMenu.clickMenuButton(Player, int)`) on the server, for single player and LAN guests. It is routed to the active menu type's owner and exposes the player identity, button, optional block position, optional backing block entity and mutable carried stack, so a widget outside the slots can take or give what the player carries. A blockless menu supplies None for the position and entity.
 
 - `native_block_entity_sync(pos)`, which sends the block and its update tag to clients again
   (`Level.sendBlockUpdated`): with the level's block changes, to the players who see its chunk, once per position

@@ -1856,6 +1856,7 @@ impl super::Game<'_> {
     pub(in crate::game) fn api_menu_button(
         &mut self,
         menu: &str,
+        block: Option<&str>,
         context: &mod_api::item::menu::MenuButtonContext,
         entity: Option<&mut crate::containers::ModBlockEntity>,
         carried: &mut Option<EngineStack>,
@@ -1872,15 +1873,18 @@ impl super::Game<'_> {
         };
         let revision = api_entity.as_ref().map(|entity| entity.revision());
         let original = cursor.clone();
-        self.native_menu_button(menu, context, api_entity.as_mut(), &mut cursor);
-        let cursor = if cursor == original {
-            Ok(None)
-        } else {
-            cursor
-                .try_into_engine(self.items())
-                .map(Some)
-                .map_err(|_| BlockEntitySnapshotError::InvalidStack)
-        };
+        self.native_menu_button(menu, block, context, api_entity.as_mut(), &mut cursor);
+        // The outer Option means whether the callback changed the cursor; the inner one is its
+        // new value. `Some(None)` is an explicit consume, while `None` leaves it untouched.
+        let cursor: Result<Option<Option<EngineStack>>, BlockEntitySnapshotError> =
+            if cursor == original {
+                Ok(None)
+            } else {
+                cursor
+                    .try_into_engine(self.items())
+                    .map(Some)
+                    .map_err(|_| BlockEntitySnapshotError::InvalidStack)
+            };
         if let (Some(entity), Some(api), Some(revision)) = (entity, api_entity.as_ref(), revision) {
             if let Ok(Some(cursor)) = finish_block_entity_writeback(
                 entity,
