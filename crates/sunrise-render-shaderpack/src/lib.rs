@@ -1,0 +1,9 @@
+//! Shader pack pipeline implementation for Sunrise (OptiFine / Iris).
+//!
+//! Provides GPU timing, atlas stitching, passes, and shaderpack uniforms.
+
+pub mod pack_timing;
+pub(crate) mod timing;
+
+#[cfg(test)]
+pub(crate) mod test_gpu;

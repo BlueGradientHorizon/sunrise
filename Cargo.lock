@@ -4694,6 +4694,7 @@ dependencies = [
  "sunrise-polytone",
  "sunrise-protocol",
  "sunrise-render-core",
+ "sunrise-render-shaderpack",
  "sunrise-shader-api",
  "sunrise-shaders",
  "sunrise-system",
@@ -5391,6 +5392,19 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "glam",
+]
+
+[[package]]
+name = "sunrise-render-shaderpack"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "glam",
+ "log",
+ "pollster",
+ "serde_json",
+ "sunrise-render-core",
+ "wgpu",
 ]
 
 [[package]]
