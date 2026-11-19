@@ -2,11 +2,11 @@
 """Parity measured by gaps: the player-visible differences the port ledger found, and how many are still open.
 
     parity_gaps.py count            the open and closed rows of each gap list (GitHub issues #3512 to #3521)
-    parity_gaps.py readme           prints the README's gap block as it would be now
+    parity_gaps.py readme           prints the status page's gap block (docs/status.md) as it would be now
     parity_gaps.py readme --write   rewrites it (the block under "Project status" and the badge), then commit it
 
 The harness count says that what is tested passes; it can't say what isn't tested. The port ledger
-(tools/port_ledger.py) read every vanilla 26.3 method against Horizon's code, and the rows a player would notice went
+(tools/port_ledger.py) read every vanilla 26.3 method against Sunrise's code, and the rows a player would notice went
 into ten issues, one per area, as a checklist: a row is ticked when it is fixed (or turns out wrong). The headline
 is the number of rows not ticked yet, and it goes down as gaps close. Run it after ticking rows, and in each weekly
 roadmap pass (roadmap/README.md).
@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-README = ROOT / "README.md"
+README = ROOT / "docs" / "status.md"
 REPO = "horizon-rust/horizon"
 # The gap lists, one per area, filed from the port ledger on 2026-10-28 (#3859 step 5).
 ISSUES = list(range(3512, 3522))
@@ -61,14 +61,14 @@ def block(lists: list[dict]) -> str:
     total = still + sum(l["closed"] for l in lists)
     parts = "; ".join(f"{l['area']} [{l['open']}](https://github.com/{REPO}/issues/{l['number']})"
                       for l in sorted(lists, key=lambda l: -l["open"]))
-    return (f"**Player-visible gaps: {still} open** of the {total} the [port ledger](tools/port_ledger.py) found, "
-            "reading every vanilla 26.3 method against Horizon's code: vanilla behaviour a player would notice that "
-            f"Horizon doesn't have yet. By area: {parts}. This number goes down as gaps close "
+    return (f"**Player-visible gaps: {still} open** of the {total} the [port ledger](../tools/port_ledger.py) found, "
+            "reading every vanilla 26.3 method against Sunrise's code: vanilla behaviour a player would notice that "
+            f"Sunrise doesn't have yet. By area: {parts}. This number goes down as gaps close "
             "(`tools/parity_gaps.py`); the table below says what the harnesses compare.")
 
 
 def written(text: str) -> tuple[int, list[int]] | None:
-    """(the open total, each area's number) of the README's block, or None without one."""
+    """(the open total, each area's number) of the status page's block, or None without one."""
     m = LINE.search(text)
     if not m:
         return None
@@ -84,7 +84,7 @@ def rewrite(text: str, new_block: str, still: int) -> str:
     if BADGE.search(text):
         return BADGE.sub(lambda m: f"{m.group(1)}{still}{m.group(3)}", text)
     # No badge yet: it goes last in the badge row, the paragraph that closes just above the title.
-    row_end = text.find("</p>\n\n# Horizon")
+    row_end = text.find("</p>\n\n# Sunrise")
     badge = (f'  <a href="#project-status"><img src="https://img.shields.io/badge/player--visible%20gaps-{still}'
              f'%20open-F0795A" alt="Player-visible gaps open"></a>\n')
     return text[:row_end] + badge + text[row_end:] if row_end >= 0 else text
@@ -105,7 +105,7 @@ def main(argv: list[str]) -> int:
             return 0
         text = README.read_text(encoding="utf-8")
         README.write_text(rewrite(text, new, sum(l["open"] for l in lists)), encoding="utf-8")
-        print("README.md: gap block written")
+        print("docs/status.md: gap block written")
         return 0
     print(__doc__, file=sys.stderr)
     return 2

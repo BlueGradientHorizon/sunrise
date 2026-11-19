@@ -55,6 +55,13 @@ The same registrar owns default storage declarations: `block_container(&block, M
 `block_fluids(&block, ModFluidTanks)`, `block_energy(&block, ModEnergyBuffer)` and
 `item_container(&item, provider)`. Their declarations supply both the game's runtime handlers and
 registration-time coverage; the item provider's dynamic slot callback is never invoked by a coverage query.
+`ModContainer::insert_rules` gives slots a default admission rule: an empty-only slot uses
+`ModContainerInsertRule::OnlyWhenEmpty`, while a same-kind slot uses `ModContainerInsertRule::SameKind`
+and accepts an empty slot or a stack with the same item and components. Missing entries are
+unrestricted. In world insertion, a `BlockEntityPart::can_place_item` answer replaces this rule
+when it returns `Some`. The default `ITEMS` handler's `capacity` remains a limit, not a promise of
+admission; `insert` applies the rule. See [Block entity containers](../how-to/content-mods.md#block-entity-containers)
+for the distinction from menu slots.
 The three block-storage declarations accept mod blocks only, not `minecraft` blocks; use
 `block_capability` to expose storage on a vanilla block. The first enabled declaration for a block
 type supplies its default storage. Item-container declarations may target vanilla items too, and
@@ -114,7 +121,49 @@ is undone and `Overanswered` identifies the provider in `owner`. Propagate the e
 
 There is no `simulate` parameter. To try an operation without keeping its changes, run it in a
 transaction and return `Err` to abort. See [Transactions](transactions.md).
-Hoppers use registered block and block entity type handlers, with each move in its own transaction.
+
+### Hopper and dropper attempts
+
+Vanilla containers, composter-provided containers and container entities keep their direct
+automation paths even if a mod also exposes storage. Only blocks without a vanilla container
+use the storage attempt path, identically for native and portable handlers.
+
+- A pull skips only a fully stacked hopper. It visits every nonempty index of the source's
+  bottom-face storage in order, extracts one in a fresh transaction, then chooses the first
+  receptive hopper slot (empty or matching item and components with room). An empty lower
+  index wins over a matching later stack. It commits success; otherwise it aborts and continues.
+- A push skips only storage whose slots are all at capacity. One root transaction covers the
+  hopper slots in order: snapshot and remove one, ask the destination's indexless insertion,
+  restore a refused source slot by direct write, and continue. Commit the first success or
+  abort all refusals. The destination face is opposite the hopper's facing.
+- A dropper inserts one in one transaction and always commits the attempt, including refusal.
+  An accepted item is removed from the source before root-commit callbacks run, so a writable
+  destination callback cannot move the same source item a second time.
+- Hopper ticks push before pulling; a push can make room for a pull in the same tick. A push
+  makes no decrement/commit changed mark. A pull marks after writing its hopper slot, before
+  commit. The single final mark and eight-tick cooldown happen only after an actual move.
+- A failed block-hopper pull does not try item entities. A hopper minecart still tries item
+  entities after failure and has no block-hopper transfer cooldown.
+
+Notifications your extract/insert issues happen immediately and survive abort. Silent mod
+storage writes/restores do not manufacture notifications; game-held vanilla containers alone
+retain implicit root-commit coalescing. Keep storage in the transaction journal: a handler that
+ignores it can lose an extracted item on abort. The hopper does not guard or repair that loss.
+
+The ignored `sunrise-client` library tests under
+`game::machines::native_items::storage_attempt_tests::` exercise real ticks and Parts storage,
+including literal attempt/commit/abort/restore/mark traces, cooldowns, comparator scheduling,
+direct vanilla/saved-pot paths, writable notification callbacks and the minecart fallback. They require prepared `SUNRISE_TEST_RESOURCES`
+and scratch homes/cwd.
+The comparator regression uses a supported comparator in a forced, lit chunk with its 3x3
+neighbours loaded. It drives the real scheduler before each hopper tick, retaining literal
+comparator executions on game ticks 3 and 5 rather than manually firing those ticks.
+
+`game::machines::native_items::storage_attempt_wasm_tests::compiled_guest_storage_notifies_reentrantly_before_actual_hopper_abort`
+loads the repository's compiled `wasm-fixture` package and matching shared standard library
+(`SUNRISE_WASM_FIXTURE`, `SUNRISE_WASM_STD`). Its pull and push cases invoke real guest storage,
+reenter that same active guest through `contents_changed`, and retain the callback observations
+across actual Game transaction aborts.
 
 Composters need no block entity. Their top and unsided `ITEMS` ports each expose one empty input
 slot: below level seven, each insertion consumes **one** compostable item, even when offered a
@@ -127,9 +176,9 @@ level without those effects. The capability also journals its composter-local ra
 so an aborted transfer attempt and its retry have the same chance outcome, without rewinding
 unrelated world randomness. This ownership follows NeoForge's public
 [`TransactionalRandom` contract](https://aldak0.ru/javadoc/26.3.x/net/neoforged/neoforge/transfer/item/TransactionalRandom.html).
-Horizon initializes each position's stream once by copying the current level random state;
+Sunrise initializes each position's stream once by copying the current level random state;
 capability composting then neither advances nor rewinds the ordinary level stream. This
-initialization is Horizon's mapping, not a claim about NeoForge's unspecified initial seed.
+initialization is Sunrise's mapping, not a claim about NeoForge's unspecified initial seed.
 Cached streams retire with their chunk or world epoch. Direct hand, villager and vanilla
 container paths keep their existing level-random behavior.
 

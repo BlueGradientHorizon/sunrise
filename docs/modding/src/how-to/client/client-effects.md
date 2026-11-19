@@ -9,6 +9,21 @@ Read `ClientHost::gui_options().advanced_item_tooltips` for the current
 setting on native and wasm; request a new snapshot after a toggle. This is separate
 from the advanced flag supplied to an individual tooltip request.
 
+## Showing an item's tooltip in your screen
+
+Call `ItemResource::tooltip(host, advanced, creative)` for the same item lines the
+inventory builds, including item parts, component appenders and `item_tooltip`
+edits. Use the GUI option above for `advanced`; set `creative` only for a creative
+tab's own slot. The request returns text elements, not images or a render request.
+Pass their text to `DrawContext::gui_tooltip` at your GUI cursor position. If a line
+has a separate RGBA colour, use its RGB channels as the fallback text style colour;
+`u32::MAX` means keep the text's own style.
+
+During item tooltip line construction, the request returns base lines without
+running line callbacks again. Outside line construction, including in gather or
+pre-render callbacks, the request runs line callbacks. It never gathers images or
+draws a tooltip.
+
 ## Adding tooltip lines
 
 Use `ItemPart::tooltip` for an attached item's own lines at the vanilla
@@ -48,6 +63,14 @@ flipped left to right, with face culling flipped to match, so the same faces are
 culled as in an unmirrored view. A clip plane with a zero normal, a value that is
 not finite, or the camera in front of it refuses the view.
 
+A view draws the player's level unless it names another with
+`with_level(Some(level))`, a `LevelRef` from `host.level(dimension)`; `None` is the
+player's level, and so is a handle naming it. Viewed levels are not drawn yet: a view
+of any other level (one the server keeps open for viewing, a handle from an earlier
+epoch, a level closed or never open) is refused as `WorldViewRefusalReason::Level`
+and logged once. The handle is resolved once a frame, so a stale one is refused from
+the next frame on.
+
 Use `world_view_drawn` to copy a still to your own buffer or draw into the supplied
 target with its encoder. Copy a picture you need to preserve: targets are reused
 while requested and retired when absent. Views draw before `world_drawn`, where
@@ -56,6 +79,12 @@ rendering work and do not include particles, weather, hands or shader-pack passe
 Extra views also omit the sun, moon, stars, clouds and block outline. Translucent
 terrain uses the player camera's sorting. See the generated `world_views` hook notes
 for the rendering contract.
+
+Views draw the player's own level for now. The other levels a server opens for the
+client (viewed levels) are meshed only while a view names one, after the player's own
+level's work and on one worker at a time, and their meshes stay 5 seconds after no view
+names the level. Once views of a viewed level are drawn, such a view draws the sections
+meshed so far and nothing where a section is not meshed yet.
 
 ## Muffling sounds
 
@@ -66,6 +95,13 @@ for the rendering contract.
 - Both effects start at full strength and fade linearly over `ticks` client ticks. The fade waits while the game is paused.
 - The sound events in `exempt` remain clear, including ones already playing. Use this for the mod's ringing sound. Other sounds already playing, music and interface clicks are muffled too.
 
-A new call replaces the current muffle; `ticks` of 0 ends it immediately. The effect belongs to the sound output, so every splitscreen player hears it. The call refuses an amount or strength outside 0 to 1, more than 64 exempt events, or an exempt event that is not a namespaced sound ID, without changing the output. Server code cannot call this client-only service.
+A new call replaces the current muffle; `ticks` of 0 ends it immediately. The effect belongs to the client’s sound output. The call refuses an amount or strength outside 0 to 1, more than 64 exempt events, or an exempt event that is not a namespaced sound ID, without changing the output. Server code cannot call this client-only service.
 
 Play the accompanying sound through `ClientHost::play_local_sound` with a `SoundPlay`.
+
+The `SoundRef` it returns controls that play: `state`, `stop`, `fade(host, volume, ticks)`, and the live changes
+`move_to(host, position)` and `set_pitch(host, pitch)`. Both changes land at the next audio update on the same
+instance, so a looping sound is not restarted: use them to follow a moving machine or a rising whine. `move_to`
+takes a position in the client's level (finite, within 30 million blocks) and has no effect on a sound played at the
+listener (`SoundPlay::ui`); `set_pitch` takes a pitch at or above 0, as `SoundPlay::pitch`. Each returns `false`,
+changing nothing, for a bad value or a sound that is over.

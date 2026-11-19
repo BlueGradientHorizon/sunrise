@@ -2,7 +2,7 @@
 
 Design for [#1023](https://github.com/arismoko/horizon/issues/1023).
 Storage, registration, player settings handles and negotiated synchronization
-are implemented. This is a Horizon design; vanilla 26.3 is the reference for the
+are implemented. This is a Sunrise design; vanilla 26.3 is the reference for the
 four existing books. No other project's implementation is a reference.
 
 ## Player settings operations
@@ -48,7 +48,7 @@ handle; it cannot directly mutate server state. Do not add player-id helpers to
 `Host`. Registration uses its existing registration receiver.
 
 Book identities are separate from `RecipeBookCategory` in
-`crates/horizon-mod-vocab/src/item/recipe_book.rs`. Categories group recipes and provide
+`crates/sunrise-mod-vocab/src/item/recipe_book.rs`. Categories group recipes and provide
 icons; a book owns two flags. A screen associates categories with a registered
 book explicitly through `Screen.recipe_book`. Neither category registration nor
 recipe-type registration implicitly registers a book. Recipe unlocking and
@@ -65,6 +65,14 @@ checks membership in this process's installed registry. No public unchecked
 constructor exists. Native and wasm share the same registrar method through
 the generated Wire boundary; the key explicitly derives `Wire`.
 
+For Java-compatible flat persistence, call
+`r.recipe_book_type_with_fields(id, open_field, filtering_field)` instead. Both
+methods return the same key and enforce the same ID rules. The explicit field
+names are case-sensitive nonempty strings of at most 256 UTF-8 bytes, with no
+character-set restriction. Reject equal names and collisions with vanilla's eight
+flag fields, `recipes`, `toBeDisplayed`, `sunrise:book_settings`, or another book's
+fields. Invalid field declarations refuse installation even if ignored.
+
 This registration does not create a category, settings handle, UI or network
 payload. Successful installation freezes the registry; resource reload does
 not reopen it. The settings and synchronization operations described here are
@@ -74,17 +82,24 @@ implemented on the typed player handle.
 
 Keep `Settings.open` and `Settings.filtering` as `[bool; 4]`. Add a custom map
 from validated key to a value `{ open: bool, filtering: bool }` alongside them in
-`crates/horizon-client/src/recipe_book.rs`. Missing keys read as `(false,false)`.
+`crates/sunrise-client/src/recipe_book.rs`. Missing keys read as `(false,false)`.
 There is no fifth vanilla index. Use one shared map implementation for local,
 host and guest players, persistence and payload application.
 
-Persist the map inside `recipeBook` under `horizon:book_settings`, a compound
+For books without explicit fields, persist the map inside `recipeBook` under `sunrise:book_settings`, a compound
 whose keys are book ids and whose values contain byte booleans `open` and
 `filtering`. Write both flags, including zero, and sort keys for stable output.
 Missing extension means an empty map. Preserve well-formed entries even when
 the owning mod is absent; registration is required for live access and sync,
 not for retention. Parse the extension independently of vanilla recipe-list
 validation so an invalid recipe list does not erase retained custom flags.
+
+Books declaring explicit fields instead read their flags directly from those
+fields in `recipeBook`. Save each true flag as Byte(1) and omit each false flag,
+as vanilla's `TypeSettings` codec does. Do not also write those books to the
+extension and do not fall back to extension entries for them. Like existing custom
+flags, read the flat fields independently of recipe-list validation. In-memory
+state and synchronization continue to use the book ID, not its saved field names.
 
 Bound the extension to 1024 entries, 256 bytes per key and 512 KiB encoded data.
 Check lengths before allocating or iterating nested values. Accept only a
@@ -170,7 +185,7 @@ Use these independent expectations in implementation tests:
 ## Current routes to update
 
 References below are verified against this worktree at `84e57e6a79`; paths are
-relative to `crates/horizon-client/src/`. Implementation must keep each route
+relative to `crates/sunrise-client/src/`. Implementation must keep each route
 on the shared settings operations rather than duplicate custom-map handling.
 
 | Route | Current file:line | Required handling |
@@ -189,7 +204,7 @@ on the shared settings operations rather than duplicate custom-map handling.
 The vanilla reference queries are `rea_vanilla.py method
 net.minecraft.stats.RecipeBookSettings replaceFrom` and `rea_vanilla.py method
 net.minecraft.stats.ServerRecipeBook sendInitialRecipeBook`. Custom registration,
-retention and negotiation are Horizon decisions, not claims about vanilla.
+retention and negotiation are Sunrise decisions, not claims about vanilla.
 
 ## Recipe displays and category membership (#828)
 
@@ -267,7 +282,7 @@ the frozen registry. No vanilla book ordinal or packet meaning changes.
 
 ## Transport and cost
 
-The dedicated `horizon:recipe_book_settings` channel is used only after the
+The dedicated `sunrise:recipe_book_settings` channel is used only after the
 server announces mod transport and the client offers its frozen registered
 keys. The server intersects those keys with its own registry before replying
 with the initial snapshot. Vanilla clients never send the offer and receive no
@@ -289,10 +304,13 @@ amplification without leaving a lost resnapshot or pending UI intent unresolved.
 
 ## Toggle layout and large books
 
-`Screen.recipe_book_toggle` optionally reserves a 20 × 18 GUI-pixel toggle at
-an `[x, y]` offset from the menu origin. Like vanilla's screen-specific button
-positions, this is space the screen author must keep clear of slots and labels.
-Both native and wasm declarations carry the same optional value over Wire.
+`Screen.recipe_book_toggle` optionally reserves a 20 × 18 GUI-pixel toggle:
+`RecipeBookToggle { x, y, from }` puts it `x` pixels right of the menu's left edge and `y` below the
+menu's top edge (`from: Menu`) or below the window's centre (`from: ScreenCentre`, vanilla's
+`height / 2` with integer division, so `leftPos + 5, height / 2 - 49` is `x: 5.0, y: -49.0`).
+Like vanilla's screen-specific button positions, this is space the screen author must keep
+clear of slots and labels. Both native and wasm declarations carry the same optional value
+over Wire.
 
 Without an anchor, the client tries an external right, left, then above-menu
 gutter, rejecting positions covered by the overlay panel. Menus wider than 176
@@ -326,6 +344,8 @@ same native and wasm transport.
 - `Furnace { input, fuel, result }` supports cooking displays.
 - `Stonecutter { input, result }` supports stonecutting displays.
 - `Smithing { template, base, addition, result }` supports smithing displays.
+- `Mod` declares no roles: the menu's `MenuPart` answers a click with `recipe_book_place` and places with
+  `ServerHost::place_recipe_in_grid`, vanilla's `ServerPlaceRecipe.placeRecipe` with the mod's own grid.
 
 These are container slots, not the appended player inventory. Overlapping roles,
 invalid dimensions and indices outside the 256-slot menu bound refuse registration.
@@ -388,4 +408,4 @@ screen's native slot geometry, never built-in slot coordinates.
 Displays are pictures, not ingredient predicates; declaring a result ghost never
 grants a real stack. NeoForge 26.3 public documentation names no registration
 counterpart for vanilla's internal `GhostSlots.setInput` and `setResult`; these
-declaration names are Horizon's.
+declaration names are Sunrise's.
