@@ -1002,13 +1002,12 @@ impl Game<'_> {
 
 /// The packs' expression uniforms on core shaders (`shader_modifiers`, wiki "Shaders").
 impl Game<'_> {
-    /// Whether an installed pack core shader (the lightmap, the sky, the stars, the block outline
-    /// or the text) reads expression uniforms this frame. Fullbright excludes the lightmap only.
-    /// The frame's expression context is made only when needed.
+    /// Whether an installed pack core shader reads expression uniforms this frame. Fullbright
+    /// excludes the lightmap only. The frame's expression context is made only when needed.
     pub(in crate::game) fn reads_pack_expressions(&mut self) -> bool {
         self.renderer
             .as_mut()
-            .is_some_and(|r| r.reads_pack_expressions())
+            .is_some_and(|r| r.reads_pack_expressions() || r.reads_text_expressions())
     }
 
     /// Evaluate the installed pack pipelines' expression uniforms from `frame`, skipping the
@@ -1019,6 +1018,7 @@ impl Game<'_> {
     ) {
         if let (Some(frame), Some(renderer)) = (frame, self.renderer.as_mut()) {
             renderer.evaluate_pack_expressions(frame);
+            renderer.evaluate_text_expressions(frame);
         }
     }
 }

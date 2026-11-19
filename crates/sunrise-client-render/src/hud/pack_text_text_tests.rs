@@ -66,7 +66,7 @@ fn packs(
     (source(&pack), source(&game()))
 }
 
-/// Loads the three text programs as the atlas does.
+/// The three text programs and their expression uniforms, as the atlas loads them.
 fn text_programs(
     root: &ResourceSource,
     defaults: &ResourceSource,
@@ -74,19 +74,16 @@ fn text_programs(
     Arc<CoreProgram>,
     Vec<crate::polytone_post::ExpressionUniform>,
 )>; 3] {
-    let modifiers = crate::polytone_post::ShaderModifiers::read(root, Default::default());
-    let text = |defines: &[&str], glue| {
-        let shader = (crate::gfx::core_text::SHADER, defines);
-        load_with_expressions(root, defaults, &modifiers, shader, glue)
-    };
+    let mut atlas = super::super::HudAtlas::boot();
+    load_shaders(&mut atlas, root, defaults);
+    let shaders = atlas.text_shaders;
+    let expressions = shaders.expressions;
     [
-        text(&["IS_GUI"], &GLUE),
-        text(&[], &crate::gfx::core_text::WORLD_GLUE),
-        text(
-            &["IS_SEE_THROUGH"],
-            &crate::gfx::core_text::SEE_THROUGH_GLUE,
-        ),
+        (shaders.gui, expressions.gui),
+        (shaders.world, expressions.world),
+        (shaders.see_through, expressions.see_through),
     ]
+    .map(|(program, expressions)| program.map(|program| (program, expressions)))
 }
 
 /// A pack's text shader reading `Wave` in its fragment stage and `Lift` in its vertex stage,

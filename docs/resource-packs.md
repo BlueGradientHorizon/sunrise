@@ -80,7 +80,7 @@ harness named checks that loader against vanilla).
 | Paintings, mob effect icons | `atlases/paintings.json`, `textures/mob_effect/` | works | loaded from the overlay |
 | Locator bar styles | `waypoint_style/` | works | `locator_bar.rs` loads `waypoint_style/*.json` (`WaypointStyleManager`); `game/locator_bar.rs` draws the bar |
 | Post effects (spectating a creeper, spider or enderman; glowing outlines) | `post_effect/`, `shaders/post/` | works | `post_chain.rs` reads `post_effect/*.json` and `post_glsl.rs` translates the `shaders/post/*.vsh`/`.fsh` with naga, with depth inputs, persistent targets and `TextureInput` |
-| Core shaders | `shaders/core/`, `shaders/include/` | partly | `core/text` draws the GUI's text (HUDs moved by its vertex shader, text effects), `core/rendertype_lines` the block outline (both strokes of a high contrast one; hitboxes, chunk borders and other debug lines still draw natively), `core/sky` and `core/stars` the overworld's sky disc and stars, and `core/lightmap` (with `core/screenquad`) the 16x16 light texture from `LightmapInfo`; each of these takes the packs' Polytone expression uniforms on its own shaders (`polytone/shader_modifiers`, `polytone_post.rs`, `gfx/expression_blocks.rs`), translated by naga (`sunrise-client-render` `core_shader.rs`, `hud/pack_text.rs`, `gfx/core_lines.rs`, `gfx/core_sky.rs`, `gfx/core_lightmap.rs`, `gfx/core_text.rs`); the other core shaders aren't run (#13218) |
+| Core shaders | `shaders/core/`, `shaders/include/` | partly | `core/text` draws the GUI's text (HUDs moved by its vertex shader, text effects) and the world's and see-through text (text displays, name tags), `core/rendertype_lines` the block outline (both strokes of a high contrast one; hitboxes, chunk borders and other debug lines still draw natively), `core/sky` and `core/stars` the overworld's sky disc and stars, and `core/lightmap` (with `core/screenquad`) the 16x16 light texture from `LightmapInfo`; each of these takes the packs' Polytone expression uniforms on its own shaders (`polytone/shader_modifiers`, `polytone_post.rs`, `gfx/expression_blocks.rs`), translated by naga (`sunrise-client-render` `core_shader.rs`, `hud/pack_text.rs`, `gfx/core_lines.rs`, `gfx/core_sky.rs`, `gfx/core_lightmap.rs`, `gfx/core_text.rs`); the other core shaders aren't run (#13218) |
 | OptiFine / CIT Resewn custom item textures (`type=item`: `texture`, `model`, `texture.<name>`, `model.<name>`; `type=armor`: `texture`, `texture.<layer>` with the pre-1.21.2 layer names such as `diamond_layer_1`, `leather_layer_2_overlay`; `type=elytra`: `texture`; `type=enchantment` layers on GUI items; `useGlint=false` in `cit.properties`, which removes vanilla's glint from items) | `optifine/cit/`, `mcpatcher/cit/`, `citresewn/cit/` | partly | `item_render/cit.rs`, `cit_armor.rs`, `cit_glint.rs` and `hud/cit_glint.rs` tests; enchantment layers on held, dropped, framed and worn items, and `anim/` glints, come later; special renderers (heads, shields, banners) keep their vanilla look; only players and armour stands wear CIT armour and elytra, other mobs keep vanilla's; worn trims are unchanged; armour textures above 1024x512 (16 times vanilla's 64x32) draw vanilla |
 | GPU warn list, regional compliance | `gpu_warnlist.json`, `regional_compliancies.json` | n/a | OpenGL driver warnings and play-time notices for some regions; not used |
 
@@ -94,7 +94,8 @@ A pack's `assets/<ns>/polytone/shader_modifiers/<shader>.json` (`minecraft/.../c
 `minecraft:core/lightmap`) maps uniform block names to expressions (wiki "Expression Uniforms on Any Shader"). The
 packs' lightmap (`core/lightmap` with `core/screenquad`), sky (`core/sky`), stars (`core/stars`), block outline
 (`core/rendertype_lines`) and text (`core/text`: the GUI's, the world's and the see-through text, each pipeline
-with its own blocks) take them, each from its own shaders' files (`gfx/expression_blocks.rs`):
+with its own blocks) take them, each from its own shaders' files (`gfx/expression_blocks.rs`). A text shader that
+reads Polytone's `PolyGlobals` block is refused at load (no file gives it), and that text draws natively:
 
 - A block one of its stages reads, declared `uniform Name { float value; };`, holds its expression's value each
   frame. The sky, stars, outline and text each use a single modifier file (the text's for all three of its
@@ -116,10 +117,6 @@ with its own blocks) take them, each from its own shaders' files (`gfx/expressio
   log.
 - The programs are resolved once when the pack's shaders load. Each frame evaluates them for the installed pack
   pipelines; each pipeline uploads 16 bytes per expression uniform when it prepares a draw.
-
-Not in this change: Polytone's `PolyGlobals` block on the text shaders. A text shader that reads it is refused
-at load (no file gives the block) and the text draws natively; it plugs in where the text programs load
-(`hud/pack_text.rs` `load_shaders`) once the core shaders' `PolyGlobals` lands.
 
 ## Gaps and their work
 

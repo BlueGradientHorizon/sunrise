@@ -255,14 +255,14 @@ impl UnzipOrDefault
 }
 
 /// The packs' core shader `id` (`minecraft:core/<name>`, one shader for both stages: the sky,
-/// the stars, the block outline and the text) with `defines` and the blocks its file of
-/// `modifiers` names, and its expression uniforms resolved for the blocks its stages read; none
-/// when no pack replaces it, it doesn't translate, or a block refuses it (named in the log).
+/// the stars and the block outline) with the blocks its file of `modifiers` names, and its
+/// expression uniforms resolved for the blocks its stages read; none when no pack replaces it,
+/// it doesn't translate, or a block refuses it (named in the log).
 fn load_with_expressions(
     root: &ResourceSource,
     defaults: &ResourceSource,
     modifiers: &crate::polytone_post::ShaderModifiers,
-    (id, defines): (&str, &[&str]),
+    id: &str,
     glue: &Glue,
 ) -> Option<(
     Arc<CoreProgram>,
@@ -271,11 +271,39 @@ fn load_with_expressions(
     let name = id.strip_prefix("minecraft:core/")?;
     let names = modifiers.names(&[id]);
     let provided = |block: &str| names.iter().any(|n| n == block);
-    let program = load_pair(root, defaults, (name, name), defines, glue, &provided)?;
+    let program = load_pair(root, defaults, (name, name), &[], glue, &provided)?;
     match modifiers.resolve((id, id), &program, &[]) {
         Ok(expressions) => Some((program, expressions)),
         Err(e) => {
             log::warn!("the resource pack's {name} shader is not used: {e}");
+            None
+        }
+    }
+}
+
+/// The packs' text shader (`core/text`, one shader for the GUI's, the world's and the
+/// see-through text) with `defines` (`IS_GUI`, none for world text, `IS_SEE_THROUGH`) and the
+/// blocks its file of `modifiers` names, and its expression uniforms resolved for the blocks its
+/// stages read; none when no pack replaces it, it doesn't translate, or a block refuses it
+/// (named in the log). Only those blocks: a text shader reading `PolyGlobals` is refused.
+fn load_text(
+    root: &ResourceSource,
+    defaults: &ResourceSource,
+    modifiers: &crate::polytone_post::ShaderModifiers,
+    defines: &[&str],
+    glue: &Glue,
+) -> Option<(
+    Arc<CoreProgram>,
+    Vec<crate::polytone_post::ExpressionUniform>,
+)> {
+    let id = crate::gfx::expression_blocks::TEXT[0];
+    let names = modifiers.names(&[id]);
+    let provided = |block: &str| names.iter().any(|n| n == block);
+    let program = load_pair(root, defaults, ("text", "text"), defines, glue, &provided)?;
+    match modifiers.resolve((id, id), &program, &[]) {
+        Ok(expressions) => Some((program, expressions)),
+        Err(e) => {
+            log::warn!("the resource pack's text shader is not used: {e}");
             None
         }
     }
@@ -295,14 +323,12 @@ pub(super) fn load_shaders(
         root,
         defaults,
         &modifiers,
-        (blocks[0], &[]),
+        blocks[0],
         &crate::gfx::core_lines::GLUE,
     );
     (atlas.lines_shader, atlas.lines_expressions) = lines.unzip_or_default();
-    let sky = |id| {
-        let glue = &crate::gfx::core_sky::GLUE;
-        load_with_expressions(root, defaults, &modifiers, (id, &[]), glue)
-    };
+    let sky =
+        |id| load_with_expressions(root, defaults, &modifiers, id, &crate::gfx::core_sky::GLUE);
     (atlas.sky_shader, atlas.sky_expressions) =
         sky(crate::gfx::expression_blocks::SKY[0]).unzip_or_default();
     (atlas.stars_shader, atlas.stars_expressions) =
@@ -310,13 +336,8 @@ pub(super) fn load_shaders(
     let lightmap = load_lightmap(root, defaults, &modifiers);
     atlas.lightmap_shader = lightmap.as_ref().map(|(program, _)| program.clone());
     atlas.lightmap_expressions = lightmap.map(|(_, e)| e).unwrap_or_default();
-    // The GUI's, the world's and the see-through text: one shader, three programs. Not yet
-    // here: Polytone's `PolyGlobals` block, which a text shader reading it is refused for (no
-    // file gives it); it plugs in as a block `provided` to these loads with the core shaders'.
-    let shader = crate::gfx::core_text::SHADER;
-    let text = |defines: &[&str], glue| {
-        load_with_expressions(root, defaults, &modifiers, (shader, defines), glue)
-    };
+    // The GUI's, the world's and the see-through text: one shader, three programs.
+    let text = |defines: &[&str], glue| load_text(root, defaults, &modifiers, defines, glue);
     let gui = text(&["IS_GUI"], &GLUE);
     let world = text(&[], &crate::gfx::core_text::WORLD_GLUE);
     let see_through = text(
@@ -330,7 +351,6 @@ pub(super) fn load_shaders(
     (shaders.see_through, expressions.see_through) = see_through.unzip_or_default();
 }
 
-/// Each uniform block's offset in the one buffer (`core_shader::BLOCKS` order).
 /// The pipeline and its resources.
 pub(super) struct PackText {
     pipeline: Pipeline,
@@ -357,71 +377,31 @@ impl PackText {
         };
         let vertex = module("Resource pack text (vertex)", &program.vertex);
         let fragment = module("Resource pack text (fragment)", &program.fragment);
-        let visibility = wgpu::ShaderStages::VERTEX_FRAGMENT;
-        // Each block a stage reads, bound to the stages reading it: vanilla's four, then the
-        // expression uniforms; then the samplers, each reading the atlas.
+        // Each block and sampler bound only to the stages that read it: vanilla's four blocks,
+        // then the expression uniforms; every sampler a pack names reads the atlas.
         let blocks = crate::gfx::expression_blocks::vanilla_blocks(program);
         let extra = crate::gfx::expression_blocks::ExpressionBlocks::new(expressions, 1024);
-        let mut entries: Vec<wgpu::BindGroupLayoutEntry> = (blocks.iter())
-            .map(|&(binding, _, size, stages)| {
-                crate::gfx::expression_blocks::block_entry(binding, size, stages)
-            })
-            .chain(extra.layout())
-            .collect();
-        for (_, binding) in crate::core_shader::SAMPLERS {
-            entries.push(wgpu::BindGroupLayoutEntry {
-                binding,
-                visibility,
-                ty: wgpu::BindingType::Texture {
-                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                    view_dimension: wgpu::TextureViewDimension::D2,
-                    multisampled: false,
-                },
-                count: None,
-            });
-            entries.push(wgpu::BindGroupLayoutEntry {
-                binding: binding + 1,
-                visibility,
-                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                count: None,
-            });
-        }
-        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Resource pack text"),
-            entries: &entries,
-        });
         let uniform = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Resource pack text uniforms"),
             size: extra.size(),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        // The font textures' nearest filtering; every sampler a pack names reads the atlas.
+        // The font textures' nearest filtering.
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("Resource pack text"),
             ..Default::default()
         });
-        let mut resources: Vec<wgpu::BindGroupEntry> = (blocks.iter())
-            .map(|&(binding, offset, size, _)| wgpu::BindGroupEntry {
-                binding,
-                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                    buffer: &uniform,
-                    offset,
-                    size: wgpu::BufferSize::new(size),
-                }),
-            })
-            .chain(extra.entries(&uniform))
-            .collect();
-        for (_, binding) in crate::core_shader::SAMPLERS {
-            resources.push(wgpu::BindGroupEntry {
-                binding,
-                resource: wgpu::BindingResource::TextureView(atlas),
-            });
-            resources.push(wgpu::BindGroupEntry {
-                binding: binding + 1,
-                resource: wgpu::BindingResource::Sampler(&sampler),
-            });
-        }
+        let (mut entries, mut resources) =
+            crate::gfx::expression_blocks::bindings(&blocks, &extra, &uniform);
+        let textures = crate::core_shader::SAMPLERS.map(|(_, binding)| (binding, atlas, &sampler));
+        let (layout, group) = crate::gfx::core_text::sampler_bindings(program, &textures);
+        entries.extend(layout);
+        resources.extend(group);
+        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Resource pack text"),
+            entries: &entries,
+        });
         let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Resource pack text"),
             layout: &layout,

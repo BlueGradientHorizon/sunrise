@@ -78,33 +78,17 @@ impl CoreLines {
         // expression uniforms.
         let extra = super::expression_blocks::ExpressionBlocks::new(expressions, 1024);
         let blocks = super::expression_blocks::vanilla_blocks(program);
-        let entries: Vec<wgpu::BindGroupLayoutEntry> = (blocks.iter())
-            .map(|&(binding, _, size, stages)| {
-                super::expression_blocks::block_entry(binding, size, stages)
-            })
-            .chain(extra.layout())
-            .collect();
-        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Resource pack lines"),
-            entries: &entries,
-        });
         let uniform = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Resource pack lines uniforms"),
             size: extra.size(),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let resources: Vec<wgpu::BindGroupEntry> = (blocks.iter())
-            .map(|&(binding, offset, size, _)| wgpu::BindGroupEntry {
-                binding,
-                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                    buffer: &uniform,
-                    offset,
-                    size: wgpu::BufferSize::new(size),
-                }),
-            })
-            .chain(extra.entries(&uniform))
-            .collect();
+        let (entries, resources) = super::expression_blocks::bindings(&blocks, &extra, &uniform);
+        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Resource pack lines"),
+            entries: &entries,
+        });
         let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Resource pack lines"),
             layout: &layout,
@@ -211,10 +195,10 @@ pub(super) fn uniforms(
     layering: f32,
     fog_color: [f32; 4],
     fog: [f32; 6],
-) -> Vec<u8> {
+) -> [u8; 1024] {
     let projection = jitter * view.projection * pose;
     let model_view = view.view * Mat4::from_scale(glam::Vec3::splat(layering));
-    let mut data = vec![0f32; 256];
+    let mut data = [0f32; 256];
     data[64..80].copy_from_slice(&projection.to_cols_array());
     let transforms = 128;
     data[transforms..transforms + 16].copy_from_slice(&model_view.to_cols_array());
@@ -222,7 +206,7 @@ pub(super) fn uniforms(
     data[transforms + 32..transforms + 36].fill(1.0);
     data[192..196].copy_from_slice(&fog_color);
     data[196..202].copy_from_slice(&fog);
-    let mut bytes: Vec<u8> = bytemuck::cast_slice(&data).to_vec();
+    let mut bytes: [u8; 1024] = bytemuck::cast(data);
     bytes[..48].copy_from_slice(&globals);
     bytes
 }

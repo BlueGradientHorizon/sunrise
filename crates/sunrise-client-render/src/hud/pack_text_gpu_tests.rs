@@ -30,7 +30,7 @@ fn a_pack_gui_text_reads_its_expression_uniform() {
         .collect(),
     );
     let modifiers = crate::polytone_post::ShaderModifiers::read(&pack, Default::default());
-    let shader = crate::gfx::core_text::SHADER;
+    let shader = crate::gfx::expression_blocks::TEXT[0];
     let names = modifiers.names(&[shader]);
     let program =
         crate::core_shader::translate_core_with(VSH, FSH, &["IS_GUI"], &|_| None, &GLUE, &|b| {

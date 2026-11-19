@@ -40,6 +40,11 @@ impl Renderer {
             self.follow_translucent_layout();
             self.follow_packed_layout();
         }
+        // No world runs on a title or loading frame: the text's expression uniforms are 0 there,
+        // whatever the game last evaluated.
+        if frame.title {
+            self.zero_text_expressions();
+        }
         let released = self.arena.trim();
         self.graveyard.add(released);
         let left = self.compact_arena();
@@ -1224,7 +1229,13 @@ impl Renderer {
             )
         };
         let pack = self.pack_blocks(frame, fog, globals.fog_ends);
-        self.write_core_text(&pack, views.primary(), pose, jitter, fog_color);
+        // The pack's world text: vanilla's blocks, then its expression uniforms.
+        if let Some(core) = &self.core_text {
+            let view = views.primary();
+            let data =
+                core_lines::uniforms(pack.globals, view, pose, jitter, 1.0, fog_color, pack.fog);
+            core.prepare(&mut self.uploads, &mut encoder, &data);
+        }
         let outline_edges = frame.outline.len().min(MAX_OUTLINE_EDGES as usize);
         if outline_edges > 0 {
             // The same per-line colour and pixel width layout as the gizmo lines. A high
@@ -1302,6 +1313,7 @@ impl Renderer {
             .prepare_frame(&self.device, &self.queue, frame.title, || {
                 let view = views.primary();
                 core_lines::uniforms(pack.globals, view, pose, jitter, 1.0, fog_color, pack.fog)
+                    .to_vec()
             });
         let skin = frame.skin.filter(|skin| match &mut self.entity_skin {
             Some(skinner) => skinner.register(&self.device, &mut self.uploads, &mut encoder, skin),

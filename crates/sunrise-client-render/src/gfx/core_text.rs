@@ -31,11 +31,6 @@ pub(crate) const SEE_THROUGH_GLUE: Glue = Glue {
     vertex_id: "int(gl_VertexIndex)",
 };
 
-/// The text shader's id, which a pack's `shader_modifiers` file names it by
-/// (`polytone/shader_modifiers/core/text.json`): one shader, `text.vsh` and `text.fsh`, for
-/// the GUI's, the world's and the see-through text.
-pub const SHADER: &str = "minecraft:core/text";
-
 #[derive(Default)]
 pub struct TextShaders {
     pub gui: Option<Arc<CoreProgram>>,
@@ -96,20 +91,35 @@ impl super::Renderer {
         }
     }
 
-    pub(super) fn write_core_text(
-        &self,
-        pack: &PackBlocks,
-        view: &super::View,
-        pose: glam::Mat4,
-        jitter: glam::Mat4,
-        fog_color: [f32; 4],
-    ) {
-        let Some(core) = &self.core_text else {
-            return;
-        };
-        let data =
-            super::core_lines::uniforms(pack.globals, view, pose, jitter, 1.0, fog_color, pack.fog);
-        core.write(&self.queue, &data);
+    /// The text pipelines' expression uniforms: the world's and the see-through text's, then the
+    /// GUI's, of those whose stages read any.
+    fn text_blocks(
+        &mut self,
+    ) -> impl Iterator<Item = &mut super::expression_blocks::ExpressionBlocks> {
+        let world = (self.core_text.iter_mut()).flat_map(|core| core.expression_blocks());
+        (world.chain(self.hud.text_expression_blocks())).filter(|blocks| !blocks.is_empty())
+    }
+
+    /// Whether a pack's text shader reads expression uniforms: the game then makes the frame's
+    /// expression context for them too. Fullbright doesn't change it.
+    pub fn reads_text_expressions(&mut self) -> bool {
+        self.text_blocks().next().is_some()
+    }
+
+    /// Evaluates the text pipelines' expression uniforms from `frame`; each pipeline uploads its
+    /// values as it prepares its draw.
+    pub fn evaluate_text_expressions(&mut self, frame: &crate::environment::Frame) {
+        for blocks in self.text_blocks() {
+            blocks.evaluate(frame);
+        }
+    }
+
+    /// The text's expression uniforms are 0 where no world runs (a menu or a loading screen):
+    /// a frame of [`super::Frame::title`].
+    pub(super) fn zero_text_expressions(&mut self) {
+        for blocks in self.text_blocks() {
+            blocks.zero();
+        }
     }
 
     pub(super) fn bind_world_text(
@@ -140,21 +150,78 @@ impl super::Renderer {
     }
 }
 
-/// One of the pack's world text pipelines, with its own blocks: the world's and the
-/// see-through text are the text shader with different defines, so each may read different
-/// expression uniforms.
+/// The texture and sampler pairs (a texture at `binding`, its sampler at `binding + 1`) of
+/// `textures` that a stage of `program` reads, bound only to the stages that read either: their
+/// layout entries and their bind group entries.
+pub(crate) fn sampler_bindings<'a>(
+    program: &CoreProgram,
+    textures: &[(u32, &'a wgpu::TextureView, &'a wgpu::Sampler)],
+) -> (
+    Vec<wgpu::BindGroupLayoutEntry>,
+    Vec<wgpu::BindGroupEntry<'a>>,
+) {
+    let (mut layout, mut group) = (Vec::new(), Vec::new());
+    for &(binding, view, sampler) in textures {
+        let stages = program.stages_reading(binding) | program.stages_reading(binding + 1);
+        if stages.is_empty() {
+            continue;
+        }
+        layout.push(wgpu::BindGroupLayoutEntry {
+            binding,
+            visibility: stages,
+            ty: wgpu::BindingType::Texture {
+                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                view_dimension: wgpu::TextureViewDimension::D2,
+                multisampled: false,
+            },
+            count: None,
+        });
+        layout.push(wgpu::BindGroupLayoutEntry {
+            binding: binding + 1,
+            visibility: stages,
+            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+            count: None,
+        });
+        group.push(wgpu::BindGroupEntry {
+            binding,
+            resource: wgpu::BindingResource::TextureView(view),
+        });
+        group.push(wgpu::BindGroupEntry {
+            binding: binding + 1,
+            resource: wgpu::BindingResource::Sampler(sampler),
+        });
+    }
+    (layout, group)
+}
+
+/// One of the pack's world text pipelines: the world's and the see-through text are the text
+/// shader with different defines, so each has its own layout and may read different blocks.
 pub(super) struct Part {
     pub(super) pipeline: wgpu::RenderPipeline,
     pub(super) group: wgpu::BindGroup,
-    uniform: wgpu::Buffer,
-    /// The packs' expression uniforms its stages read (`shader_modifiers`).
+    /// The packs' expression uniforms its stages read (`shader_modifiers`), in the shared buffer
+    /// after vanilla's blocks.
     extra: super::expression_blocks::ExpressionBlocks,
 }
 
+/// The pack's world text pipelines over one uniform buffer: vanilla's four blocks once, then the
+/// world text's expression uniforms, then the see-through text's.
 pub(super) struct CoreText {
     pub(super) polygon_offset: Option<Part>,
     pub(super) see_through: Option<Part>,
+    uniform: wgpu::Buffer,
 }
+
+/// What [`CoreText::new`] builds a pipeline from: its name in the log, its program with its
+/// expression uniforms, and its depth state.
+type PartSpec<'a> = (
+    &'a str,
+    Option<(
+        &'a CoreProgram,
+        &'a [crate::polytone_post::ExpressionUniform],
+    )>,
+    wgpu::DepthStencilState,
+);
 
 impl CoreText {
     pub(super) fn new(
@@ -168,141 +235,6 @@ impl CoreText {
         if world.is_none() && see_through.is_none() {
             return None;
         }
-        let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
-        let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
-        let texture = |binding| wgpu::BindGroupLayoutEntry {
-            binding,
-            visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-            ty: wgpu::BindingType::Texture {
-                sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                view_dimension: wgpu::TextureViewDimension::D2,
-                multisampled: false,
-            },
-            count: None,
-        };
-        let sampler = |binding| wgpu::BindGroupLayoutEntry {
-            binding,
-            visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-            count: None,
-        };
-        let glyphs = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("Resource pack world text glyphs"),
-            ..Default::default()
-        });
-        let attributes = wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x2,2=>Uint32,3=>Unorm8x4,4=>Uint8x4,5=>Snorm8x4,6=>Float32x2];
-        let buffers = [Some(wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<crate::mesher::Vertex>() as u64,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &attributes,
-        })];
-        let part =
-            |label,
-             (program, expressions): (&CoreProgram, &[crate::polytone_post::ExpressionUniform]),
-             depth: wgpu::DepthStencilState| {
-                // Each block a stage reads, bound to the stages reading it: vanilla's four, then
-                // the expression uniforms; then the glyphs and the lightmap.
-                let extra = super::expression_blocks::ExpressionBlocks::new(expressions, 1024);
-                let blocks = super::expression_blocks::vanilla_blocks(program);
-                let entries: Vec<wgpu::BindGroupLayoutEntry> = (blocks.iter())
-                    .map(|&(binding, _, size, stages)| {
-                        super::expression_blocks::block_entry(binding, size, stages)
-                    })
-                    .chain(extra.layout())
-                    .chain([texture(4), sampler(5), texture(8), sampler(9)])
-                    .collect();
-                let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    label: Some(label),
-                    entries: &entries,
-                });
-                let uniform = device.create_buffer(&wgpu::BufferDescriptor {
-                    label: Some(label),
-                    size: extra.size(),
-                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                    mapped_at_creation: false,
-                });
-                let resources: Vec<wgpu::BindGroupEntry> = (blocks.iter())
-                    .map(|&(binding, offset, size, _)| wgpu::BindGroupEntry {
-                        binding,
-                        resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
-                            buffer: &uniform,
-                            offset,
-                            size: wgpu::BufferSize::new(size),
-                        }),
-                    })
-                    .chain(extra.entries(&uniform))
-                    .chain([
-                        wgpu::BindGroupEntry {
-                            binding: 4,
-                            resource: wgpu::BindingResource::TextureView(atlas),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 5,
-                            resource: wgpu::BindingResource::Sampler(&glyphs),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 8,
-                            resource: wgpu::BindingResource::TextureView(lightmap.0),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 9,
-                            resource: wgpu::BindingResource::Sampler(lightmap.1),
-                        },
-                    ])
-                    .collect();
-                let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some(label),
-                    layout: &layout,
-                    entries: &resources,
-                });
-                let pipeline_layout =
-                    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                        label: Some(label),
-                        bind_group_layouts: &[Some(&layout)],
-                        ..Default::default()
-                    });
-                let module = |module: &naga::Module| {
-                    device.create_shader_module(wgpu::ShaderModuleDescriptor {
-                        label: Some(label),
-                        source: wgpu::ShaderSource::Naga(std::borrow::Cow::Owned(module.clone())),
-                    })
-                };
-                let (vertex, fragment) = (module(&program.vertex), module(&program.fragment));
-                let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                    label: Some(label),
-                    layout: Some(&pipeline_layout),
-                    vertex: wgpu::VertexState {
-                        module: &vertex,
-                        entry_point: Some("main"),
-                        compilation_options: Default::default(),
-                        buffers: &buffers,
-                    },
-                    primitive: wgpu::PrimitiveState {
-                        cull_mode: Some(wgpu::Face::Back),
-                        ..Default::default()
-                    },
-                    depth_stencil: Some(depth),
-                    multisample: Default::default(),
-                    fragment: Some(wgpu::FragmentState {
-                        module: &fragment,
-                        entry_point: Some("main"),
-                        compilation_options: Default::default(),
-                        targets: &[Some(wgpu::ColorTargetState {
-                            format,
-                            blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                            write_mask: wgpu::ColorWrites::ALL,
-                        })],
-                    }),
-                    multiview_mask: None,
-                    cache: None,
-                });
-                Part {
-                    pipeline,
-                    group,
-                    uniform,
-                    extra,
-                }
-            };
         let depth = |write, compare, bias| wgpu::DepthStencilState {
             format: wgpu::TextureFormat::Depth32Float,
             depth_write_enabled: Some(write),
@@ -315,40 +247,170 @@ impl CoreText {
             slope_scale: 1.0,
             clamp: 0.0,
         };
-        let polygon_offset = world.map(|program| {
-            part(
-                "Resource pack polygon offset text",
-                program,
+        let specs: [PartSpec; 2] = [
+            (
+                "world",
+                world,
                 depth(true, wgpu::CompareFunction::GreaterEqual, offset),
-            )
-        });
-        let see_through = see_through.map(|program| {
-            part(
-                "Resource pack see-through text",
-                program,
+            ),
+            (
+                "see-through",
+                see_through,
                 depth(false, wgpu::CompareFunction::Always, Default::default()),
-            )
+            ),
+        ];
+        // Vanilla's blocks first, then each pipeline's expression uniforms after the last's.
+        let mut base = 1024;
+        let extras = specs.each_ref().map(|(_, program, _)| {
+            program.map(|(_, expressions)| {
+                let extra = super::expression_blocks::ExpressionBlocks::new(expressions, base);
+                base = extra.size();
+                extra
+            })
         });
-        let internal = pollster::block_on(internal.pop());
-        if let Some(e) = internal.or(pollster::block_on(validation.pop())) {
-            log::warn!("the resource pack's world text shader is not used: {e}");
-            return None;
+        let uniform = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Resource pack world text uniforms"),
+            size: base,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let glyphs = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("Resource pack world text glyphs"),
+            ..Default::default()
+        });
+        let textures = [(4, atlas, &glyphs), (8, lightmap.0, lightmap.1)];
+        let mut parts = [None, None];
+        for (slot, ((name, program, depth), extra)) in
+            parts.iter_mut().zip(specs.into_iter().zip(extras))
+        {
+            let (Some((program, _)), Some(extra)) = (program, extra) else {
+                continue;
+            };
+            let label = format!("Resource pack {name} text");
+            // Each pipeline is refused on its own: a pack's shader is untrusted, and the backend
+            // failing to compile it is an internal error.
+            let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
+            let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
+            let part = Self::part(
+                device,
+                format,
+                &label,
+                program,
+                extra,
+                depth,
+                (&uniform, &textures),
+            );
+            let internal = pollster::block_on(internal.pop());
+            match internal.or(pollster::block_on(validation.pop())) {
+                Some(e) => log::warn!("the resource pack's {name} text shader is not used: {e}"),
+                None => *slot = Some(part),
+            }
         }
-        Some(Self {
+        let [polygon_offset, see_through] = parts;
+        (polygon_offset.is_some() || see_through.is_some()).then_some(Self {
             polygon_offset,
             see_through,
+            uniform,
         })
     }
 
-    /// Vanilla's blocks (`data`, as `core_lines::uniforms` lays them out) into each pipeline's
-    /// buffer, then its expression uniforms' values.
-    pub(super) fn write(&self, queue: &wgpu::Queue, data: &[u8]) {
+    /// One pipeline of `program` over the shared `uniform` buffer: each block and sampler bound
+    /// only to the stages that read it (vanilla's blocks, then `extra`'s; the glyphs at 4 and 5,
+    /// the lightmap at 8 and 9, `textures`).
+    fn part(
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+        label: &str,
+        program: &CoreProgram,
+        extra: super::expression_blocks::ExpressionBlocks,
+        depth: wgpu::DepthStencilState,
+        (uniform, textures): (
+            &wgpu::Buffer,
+            &[(u32, &wgpu::TextureView, &wgpu::Sampler); 2],
+        ),
+    ) -> Part {
+        let blocks = super::expression_blocks::vanilla_blocks(program);
+        let (mut entries, mut resources) =
+            super::expression_blocks::bindings(&blocks, &extra, uniform);
+        let (layout, group) = sampler_bindings(program, textures);
+        entries.extend(layout);
+        resources.extend(group);
+        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some(label),
+            entries: &entries,
+        });
+        let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(label),
+            layout: &layout,
+            entries: &resources,
+        });
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some(label),
+            bind_group_layouts: &[Some(&layout)],
+            ..Default::default()
+        });
+        let attributes = wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x2,2=>Uint32,3=>Unorm8x4,4=>Uint8x4,5=>Snorm8x4,6=>Float32x2];
+        let buffers = [Some(wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<crate::mesher::Vertex>() as u64,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &attributes,
+        })];
+        let module = |module: &naga::Module| {
+            device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some(label),
+                source: wgpu::ShaderSource::Naga(std::borrow::Cow::Owned(module.clone())),
+            })
+        };
+        let (vertex, fragment) = (module(&program.vertex), module(&program.fragment));
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some(label),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &vertex,
+                entry_point: Some("main"),
+                compilation_options: Default::default(),
+                buffers: &buffers,
+            },
+            primitive: wgpu::PrimitiveState {
+                cull_mode: Some(wgpu::Face::Back),
+                ..Default::default()
+            },
+            depth_stencil: Some(depth),
+            multisample: Default::default(),
+            fragment: Some(wgpu::FragmentState {
+                module: &fragment,
+                entry_point: Some("main"),
+                compilation_options: Default::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            multiview_mask: None,
+            cache: None,
+        });
+        Part {
+            pipeline,
+            group,
+            extra,
+        }
+    }
+
+    /// Vanilla's blocks (`data`, as `core_lines::uniforms` lays them out) once into the shared
+    /// buffer, then each pipeline's expression uniforms' values.
+    pub(super) fn prepare(
+        &self,
+        uploads: &mut super::upload::Uploads,
+        encoder: &mut wgpu::CommandEncoder,
+        data: &[u8; 1024],
+    ) {
+        uploads.buffer(encoder, &self.uniform, 0, data);
         for part in [&self.polygon_offset, &self.see_through]
             .into_iter()
             .flatten()
         {
-            queue.write_buffer(&part.uniform, 0, data);
-            part.extra.write(queue, &part.uniform);
+            part.extra.upload(uploads, encoder, &self.uniform);
         }
     }
 

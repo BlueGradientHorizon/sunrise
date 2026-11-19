@@ -2,7 +2,7 @@
 //! and its Polytone expression uniforms (`shader_modifiers`, wiki "Expression Uniforms on Any
 //! Shader"), resolved when the shader loaded (`polytone_post::ShaderModifiers::resolve`), each a
 //! block of one float after the pipeline's own, holding its program's value this frame. The
-//! lightmap, sky, stars, block outline and text pipelines lay theirs out with this.
+//! lightmap, sky, stars and block outline pipelines lay theirs out with this.
 
 use crate::core_shader::CoreProgram;
 use crate::polytone_post::ExpressionUniform;
@@ -12,6 +12,9 @@ pub const LINES: [&str; 1] = ["minecraft:core/rendertype_lines"];
 /// The sky disc's and the stars' shaders.
 pub const SKY: [&str; 1] = ["minecraft:core/sky"];
 pub const STARS: [&str; 1] = ["minecraft:core/stars"];
+/// The text's shader, one for the GUI's, the world's and the see-through text
+/// (`polytone/shader_modifiers/core/text.json`).
+pub(crate) const TEXT: [&str; 1] = ["minecraft:core/text"];
 
 /// An expression uniform's block: one float, as std140 rounds a block.
 const BLOCK: u64 = 16;
@@ -19,6 +22,36 @@ const BLOCK: u64 = 16;
 /// Each vanilla uniform block's offset in a pipeline's buffer (`core_shader::BLOCKS` order).
 pub(crate) const VANILLA_OFFSETS: [u64; 4] = [0, 256, 512, 768];
 pub(crate) const VANILLA_SIZES: [u64; 4] = [48, 64, 160, 48];
+
+/// A pipeline's uniform blocks in `buffer`: `blocks` (binding, offset, size and the stages
+/// reading it: vanilla's, [`vanilla_blocks`], and any of the pipeline's own), then `extra`'s
+/// expression uniforms. Their layout entries, each visible to the stages that read it, and their
+/// bind group entries.
+pub(crate) fn bindings<'a>(
+    blocks: &[(u32, u64, u64, wgpu::ShaderStages)],
+    extra: &'a ExpressionBlocks,
+    buffer: &'a wgpu::Buffer,
+) -> (
+    Vec<wgpu::BindGroupLayoutEntry>,
+    Vec<wgpu::BindGroupEntry<'a>>,
+) {
+    let layout = (blocks.iter())
+        .map(|&(binding, _, size, stages)| block_entry(binding, size, stages))
+        .chain(extra.layout())
+        .collect();
+    let group = (blocks.iter())
+        .map(|&(binding, offset, size, _)| wgpu::BindGroupEntry {
+            binding,
+            resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                buffer,
+                offset,
+                size: wgpu::BufferSize::new(size),
+            }),
+        })
+        .chain(extra.entries(buffer))
+        .collect();
+    (layout, group)
+}
 
 /// Vanilla's blocks a stage of `program` reads: binding, offset, size and the stages reading it.
 pub(crate) fn vanilla_blocks(program: &CoreProgram) -> Vec<(u32, u64, u64, wgpu::ShaderStages)> {
@@ -80,6 +113,13 @@ impl ExpressionBlocks {
         self.offset(self.uniforms.len())
     }
 
+    /// Each value 0, as a frame where no world runs gives them (a menu, a loading screen).
+    pub(crate) fn zero(&mut self) {
+        for (_, value) in &mut self.uniforms {
+            *value = 0.0;
+        }
+    }
+
     /// Their layout entries, each visible to the stages that read it.
     pub(crate) fn layout(&self) -> impl Iterator<Item = wgpu::BindGroupLayoutEntry> + '_ {
         (self.uniforms.iter()).map(|(u, _)| block_entry(u.binding, BLOCK, u.stages))
@@ -102,15 +142,6 @@ impl ExpressionBlocks {
             })
     }
 
-    /// Each block's offset in the buffer and its 16 bytes this frame.
-    fn blocks(&self) -> impl Iterator<Item = (u64, [u8; BLOCK as usize])> + '_ {
-        self.uniforms.iter().enumerate().map(|(i, (_, value))| {
-            let mut block = [0u8; BLOCK as usize];
-            block[..4].copy_from_slice(&value.to_le_bytes());
-            (self.offset(i), block)
-        })
-    }
-
     /// Each block's value this frame, 16 bytes each, into `buffer`.
     pub(crate) fn upload(
         &self,
@@ -118,15 +149,10 @@ impl ExpressionBlocks {
         encoder: &mut wgpu::CommandEncoder,
         buffer: &wgpu::Buffer,
     ) {
-        for (offset, block) in self.blocks() {
-            uploads.buffer(encoder, buffer, offset, &block);
-        }
-    }
-
-    /// [`Self::upload`] through the queue, for a pipeline whose own blocks are written so.
-    pub(crate) fn write(&self, queue: &wgpu::Queue, buffer: &wgpu::Buffer) {
-        for (offset, block) in self.blocks() {
-            queue.write_buffer(buffer, offset, &block);
+        for (i, (_, value)) in self.uniforms.iter().enumerate() {
+            let mut block = [0u8; BLOCK as usize];
+            block[..4].copy_from_slice(&value.to_le_bytes());
+            uploads.buffer(encoder, buffer, self.offset(i), &block);
         }
     }
 
@@ -150,10 +176,8 @@ impl ExpressionBlocks {
 
 /// The packs' core shader pipelines' expression uniforms, for the game to evaluate.
 impl super::Renderer {
-    /// The installed pack pipelines whose stages read expression uniforms: the lightmap's, the
-    /// block outline's, the sky's, the stars', and the GUI's, the world's and the see-through
-    /// text's. Fullbright excludes the lightmap only. Evaluation does not depend on which
-    /// pipelines draw this frame.
+    /// The installed pack pipelines whose stages read expression uniforms. Fullbright excludes
+    /// the lightmap only. Evaluation does not depend on which pipelines draw this frame.
     fn expression_blocks(&mut self) -> impl Iterator<Item = &mut ExpressionBlocks> {
         let fullbright = self.fullbright;
         let lightmap = (self.core_lightmap.as_mut())
@@ -161,15 +185,7 @@ impl super::Renderer {
             .map(|core| &mut core.extra);
         let lines = self.core_lines.as_mut().map(|core| &mut core.extra);
         let sky = (self.core_sky.iter_mut()).flat_map(|core| core.expression_blocks());
-        let text = (self.core_text.iter_mut()).flat_map(|core| core.expression_blocks());
-        let gui_text = self.hud.text_expression_blocks();
-        (lightmap
-            .into_iter()
-            .chain(lines)
-            .chain(sky)
-            .chain(text)
-            .chain(gui_text))
-        .filter(|blocks| !blocks.is_empty())
+        (lightmap.into_iter().chain(lines).chain(sky)).filter(|blocks| !blocks.is_empty())
     }
 
     /// Whether the game needs an expression context for the installed pack pipelines this frame.
