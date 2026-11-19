@@ -453,6 +453,12 @@ impl RenderAssets {
             // A side's sprite, for rules that connect by tile: the first quad facing it.
             let catalog = &models.catalog;
             let mut found = Vec::new();
+            // Which states are panes, read only when a rule can draw on a pane by its sprite.
+            let panes = if ctm_rules.iter().any(|rule| rule.match_blocks.is_empty()) {
+                Some(crate::blocks::BlockFacts::load(root.prepared(), registry)?)
+            } else {
+                None
+            };
             crate::connected::ConnectedTextures::load(
                 root.source(),
                 ctm_rules,
@@ -472,6 +478,12 @@ impl RenderAssets {
                         .flat_map(|m| &m.faces)
                         .find(|f| f.quad.facing == side)
                         .map(|f| f.layer)
+                },
+                |state| {
+                    panes
+                        .as_ref()
+                        .and_then(|facts| facts.states.get(state.0 as usize))
+                        .is_some_and(|facts| facts.is_pane())
                 },
             )
         } else {

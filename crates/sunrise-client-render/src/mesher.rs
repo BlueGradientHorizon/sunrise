@@ -746,7 +746,7 @@ struct Info {
     overlay: bool,
     /// `LeavesBlock`: with opaque leaves the faces between two leaf blocks are skipped.
     leaves: bool,
-    /// A glass pane: connected-texture tiles take the cube's UVs on it (OptiFine's pane models
+    /// A pane-shaped block (`StateFacts::is_pane`): connected-texture tiles take the cube's UVs on it (OptiFine's pane models
     /// drop vanilla's mirrored faces).
     pane: bool,
     /// A full opaque cube: `RenderShape::Model`, `can_occlude`, `solid_render`
@@ -1068,7 +1068,7 @@ impl MeshTables {
                 legacy_solid: s.legacy_solid,
                 overlay: s.has_class("HalfTransparentBlock") || s.has_class("LeavesBlock"),
                 leaves: s.has_class("LeavesBlock"),
-                pane: s.has_class("IronBarsBlock") && name.ends_with("glass_pane"),
+                pane: s.is_pane(),
                 opaque_cube: leaf_culling::opaque_cube(
                     s.render_shape,
                     s.can_occlude,

@@ -140,6 +140,11 @@ impl StateFacts {
     pub fn has_class(&self, name: &str) -> bool {
         self.classes.iter().any(|c| &**c == name)
     }
+    /// A pane-shaped block: `IronBarsBlock`, which glass panes, stained glass panes and iron
+    /// bars share, and which a mod block declared on that template belongs to.
+    pub fn is_pane(&self) -> bool {
+        self.has_class("IronBarsBlock")
+    }
     /// `OffsetType.XZ`/`XYZ` with `getMaxHorizontalOffset` and
     /// `getMaxVerticalOffset`, as (max horizontal, max vertical): vertical 0
     /// for XZ. None without an offset function.

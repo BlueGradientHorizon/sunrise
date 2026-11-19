@@ -167,12 +167,14 @@ impl ConnectedTextures {
 
     /// Loaded rules with their tiles inserted into `sprites` (before it finishes).
     /// `face_layer` answers a block state's sprite on a side, for rules that connect by tile.
+    /// `is_pane` says which states are pane-shaped (`StateFacts::is_pane`).
     pub fn load(
         _root: &ResourceSource,
         mut rules: Vec<Rule>,
         registry: &BlockRegistry,
         sprites: &mut Sprites,
         mut face_layer: impl FnMut(BlockStateId, Face) -> Option<u32>,
+        is_pane: impl Fn(BlockStateId) -> bool,
     ) -> Self {
         // Rule indices are `u16`.
         rules.truncate(usize::from(u16::MAX));
@@ -273,24 +275,29 @@ impl ConnectedTextures {
                 })
                 .collect();
         }
-        // Panes whose sprites tile rules name (`matchTiles=glass`) are connected too, by a rule
-        // that can draw on them: here, one naming no block (a rule naming the pane is in its
-        // own list already).
-        for id in (0..out.states.len()).filter(|_| !out.by_layer.is_empty()) {
-            let pane = registry
-                .state(BlockStateId(id as u32))
-                .is_some_and(|s| s.name.ends_with("glass_pane"));
-            if pane && !out.states[id].has_rules {
-                out.states[id].has_rules = Face::ALL.into_iter().any(|f| {
+        out.connect_panes(face_layer, is_pane);
+        out
+    }
+
+    /// Panes whose sprites tile rules name (`matchTiles=glass`) are connected too, by a rule that
+    /// can draw on them: here, one naming no block (a rule naming the pane is in its own list
+    /// already). `is_pane` says which states are panes, whatever their name.
+    fn connect_panes(
+        &mut self,
+        mut face_layer: impl FnMut(BlockStateId, Face) -> Option<u32>,
+        is_pane: impl Fn(BlockStateId) -> bool,
+    ) {
+        for id in (0..self.states.len()).filter(|_| !self.by_layer.is_empty()) {
+            if is_pane(BlockStateId(id as u32)) && !self.states[id].has_rules {
+                self.states[id].has_rules = Face::ALL.into_iter().any(|f| {
                     face_layer(BlockStateId(id as u32), f).is_some_and(|l| {
-                        out.list(&out.by_layer, l as usize)
+                        self.list(&self.by_layer, l as usize)
                             .iter()
-                            .any(|&i| out.rules[usize::from(i)].rule.match_blocks.is_empty())
+                            .any(|&i| self.rules[usize::from(i)].rule.match_blocks.is_empty())
                     })
                 });
             }
         }
-        out
     }
 
     /// The lookups for `rules` (already ordered) over every block state (`None` for an id the
@@ -1673,6 +1680,26 @@ mod tests {
     }
 
     #[test]
+    fn a_pane_is_what_the_block_facts_say_not_what_its_name_ends_with() {
+        let none = BlockProperties::default();
+        // 0 a mod's pane, named like no vanilla one; 1 a block named like a glass pane that
+        // is not one.
+        let states = [
+            ("mymod:crystal_lattice", &none),
+            ("mymod:fake_glass_pane", &none),
+        ];
+        let mut ctm = ConnectedTextures::build(
+            rules(&[("pane.properties", "matchTiles=glass\nmethod=fixed\ntiles=0")]),
+            states.iter().map(|&s| Some(s)),
+            |name| (name == "minecraft:block/glass").then_some(3),
+        );
+        // Both states draw the sprite a rule that names no block matches.
+        ctm.connect_panes(|_, _| Some(3), |id| id == BlockStateId(0));
+        assert!(ctm.states[0].has_rules);
+        assert!(!ctm.states[1].has_rules);
+    }
+
+    #[test]
     fn rules_name_the_sprites_they_match() {
         // `matchTiles` among the textures and beside the file (a chain onto another rule's
         // tile), and `connectTiles`: each as the sprite name the textures and tiles are inserted
@@ -1814,7 +1841,14 @@ mod tests {
             .unwrap();
         let face = &catalog.standalone("demo:block/panel").unwrap().faces[0];
         assert_ne!(face.layer, sprites.layers["demo:block/panel"]);
-        let ctm = ConnectedTextures::load(&source, rules, &registry, &mut sprites, |_, _| None);
+        let ctm = ConnectedTextures::load(
+            &source,
+            rules,
+            &registry,
+            &mut sprites,
+            |_, _| None,
+            |_| false,
+        );
         let Pick::Tile(TileLayer::Layer { layer, .. }) = ctm.pick(
             0,
             u16::try_from(face.layer).unwrap(),
@@ -1890,6 +1924,7 @@ mod tests {
                 &registry,
                 &mut sprites,
                 |_, _| None,
+                |_| false,
             )
         };
         assert!(!load("demo:block/row").is_empty());
