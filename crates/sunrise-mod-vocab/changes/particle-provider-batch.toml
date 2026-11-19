@@ -1,0 +1,3 @@
+ids = ["method:ParticleProvider::tick", "type:ModParticle", "type:ParticleFacing", "trait:ParticleLevelView"]
+why = "A particle provider's tick now takes every live particle of its type at once with a read-only view of the level (block states and stored light), and a particle carries a facing (camera, around Y, or a world-fixed quaternion) and a roll (#1158)."
+migrate = "Change tick(&self, particle: &mut ModParticle) to tick(&self, particles: &mut ParticleBatch, level: &dyn ParticleLevelView) and loop over the slice; a struct literal of ModParticle gains facing and roll."

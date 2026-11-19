@@ -1270,6 +1270,8 @@ mod tests {
             frame: 3,
             removed: true,
             state: [8.0, -9.0, 10.0, 11.0],
+            facing: crate::ParticleFacing::Fixed([0.5, -0.5, 0.5, 0.5]),
+            roll: 0.75,
         });
     }
 

@@ -6,6 +6,7 @@
 //! `sunrise:behaviour` of `assets/<namespace>/particles/<path>.json` give its spawn values) and the
 //! provider then moves it every tick. The game resolves a type's provider once, when the particle
 //! sprite sets load, so a tick goes to the provider that owns the particle and to no other.
+use crate::{BlockState, LightLayer};
 use std::{collections::BTreeMap, sync::Arc};
 
 /// One particle of a provider's type, as its tick reads and writes it: the fields of vanilla's
@@ -42,25 +43,100 @@ pub struct ModParticle {
     /// Four numbers that stay with this particle from one tick to the next, zero when it
     /// spawns.
     pub state: [f64; 4],
+    /// How the quad turns toward the viewer (`SingleQuadParticle.getFacingCameraMode`).
+    pub facing: ParticleFacing,
+    /// `SingleQuadParticle.roll`: the quad's turn about its own normal, in radians. The game
+    /// interpolates it from the value the previous tick left, as vanilla's `oRoll` does.
+    pub roll: f32,
+}
+
+/// How a provider's particle quad is oriented (`SingleQuadParticle.FacingCameraMode`).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+// exhaustive: a closed set the game matches without a wildcard
+#[derive(sunrise_mod_api_macros::Wire)]
+pub enum ParticleFacing {
+    /// `LOOKAT_XYZ`: the quad faces the camera. The default.
+    #[default]
+    Camera,
+    /// `LOOKAT_Y`: the quad turns about the Y axis only, to face the camera's side.
+    AroundY,
+    /// A world-fixed orientation, as a unit quaternion `[x, y, z, w]` turning the quad's
+    /// default plane (corners in XY, facing +Z). A quad lying flat facing up is
+    /// `[-sin(pi/4), 0, 0, cos(pi/4)]`. `roll` turns the quad about its own normal after it.
+    Fixed([f32; 4]),
+}
+
+/// The particles of one provider's batch, in a fixed number and order: a tick edits them and
+/// cannot add or remove one (`ModParticle::removed` expires a particle).
+#[derive(Clone, Debug, PartialEq)]
+// exhaustive: its field is private; the game builds it
+#[derive(sunrise_mod_api_macros::Wire)]
+pub struct ParticleBatch(Vec<ModParticle>);
+
+impl ParticleBatch {
+    /// A batch of `particles`.
+    pub fn from_vec(particles: Vec<ModParticle>) -> Self {
+        Self(particles)
+    }
+    /// The particles back, for the game to reuse their storage.
+    pub fn into_vec(self) -> Vec<ModParticle> {
+        self.0
+    }
+    /// How many particles the batch holds.
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+    /// Whether the batch holds none.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+    /// The particle at `index`.
+    pub fn get_mut(&mut self, index: usize) -> Option<&mut ModParticle> {
+        self.0.get_mut(index)
+    }
+    /// Every particle, in order.
+    pub fn iter_mut(&mut self) -> std::slice::IterMut<'_, ModParticle> {
+        self.0.iter_mut()
+    }
+}
+impl<'a> IntoIterator for &'a mut ParticleBatch {
+    type Item = &'a mut ModParticle;
+    type IntoIter = std::slice::IterMut<'a, ModParticle>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter_mut()
+    }
+}
+
+/// What a provider's tick reads of the level around its particles: the loaded world as
+/// `Particle` code sees it (`level.getBlockState`, `level.getBrightness`). Read-only. A position
+/// in an unloaded chunk reads as air and, as an unloaded chunk does, full sky light and no block
+/// light.
+pub trait ParticleLevelView {
+    /// `BlockGetter.getBlockState`: the state at `pos`.
+    fn block_state(&self, pos: [i32; 3]) -> BlockState;
+    /// `BlockAndLightGetter.getBrightness`: the stored light of one layer at `pos`, 0 to 15.
+    fn brightness(&self, layer: LightLayer, pos: [i32; 3]) -> u8;
 }
 
 /// A mod's particle provider: NeoForge's `ParticleProvider`, held by the game for every particle
 /// of its type. Particles of a type share one provider, so per-particle data lives in
 /// [`ModParticle::state`], not in the provider.
 ///
-/// A tick has no `Host` and no level: the engine ticks particles inside the render crate, which
-/// reaches no gameplay. A provider that needs the world reads it in a hook and keeps what it read.
+/// A tick has no `Host`: the engine ticks particles inside the render crate, which reaches no
+/// gameplay. It does read the level through [`ParticleLevelView`].
 pub trait ParticleProvider: Send + Sync + 'static {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
         sunrise_mod_marks::particle_provider::<Self>();
     }
-    /// `Particle.tick`: advance `particle` by one tick. The game has set `previous` and `age`
-    /// already and expires the particle once `age` passes `lifetime`; the tick sets `position`,
-    /// `frame`, `size`, `rgba`, `lifetime` and `removed`. A number that is not finite expires the
-    /// particle.
-    fn tick(&self, particle: &mut ModParticle);
+    /// `Particle.tick` for every live particle of this provider's type: one call per type per
+    /// tick, native and wasm alike, with the whole batch. The game has set `previous` and `age`
+    /// on each already and expires a particle once `age` passes `lifetime`; the tick sets
+    /// `position`, `frame`, `size`, `rgba`, `lifetime`, `removed`, `facing` and `roll`. A number
+    /// that is not finite expires the particle. A tick edits the batch's particles and cannot
+    /// add or remove one. Not called when no particle of the type is alive.
+    fn tick(&self, particles: &mut ParticleBatch, level: &dyn ParticleLevelView);
 }
 
 /// The particle provider registry `register_particle_providers` hands out: NeoForge's
@@ -100,8 +176,10 @@ mod tests {
 
     struct Drift(f64);
     impl ParticleProvider for Drift {
-        fn tick(&self, particle: &mut ModParticle) {
-            particle.position[0] += self.0;
+        fn tick(&self, particles: &mut ParticleBatch, _: &dyn ParticleLevelView) {
+            for particle in particles {
+                particle.position[0] += self.0;
+            }
         }
     }
 
@@ -117,6 +195,18 @@ mod tests {
             frame: 0,
             removed: false,
             state: [0.0; 4],
+            facing: ParticleFacing::default(),
+            roll: 0.0,
+        }
+    }
+
+    struct Air;
+    impl ParticleLevelView for Air {
+        fn block_state(&self, _: [i32; 3]) -> BlockState {
+            unreachable!("the test providers read no blocks")
+        }
+        fn brightness(&self, _: LightLayer, _: [i32; 3]) -> u8 {
+            0
         }
     }
 
@@ -128,9 +218,11 @@ mod tests {
         registry.register("mymod:a".into(), Arc::new(Drift(3.0)));
         let providers = registry.into_providers();
         assert_eq!(providers.len(), 2);
-        let (mut a, mut b) = (particle(), particle());
-        providers["mymod:a"].tick(&mut a);
-        providers["mymod:b"].tick(&mut b);
-        assert_eq!((a.position[0], b.position[0]), (3.0, 2.0));
+        let mut a = ParticleBatch::from_vec(vec![particle()]);
+        let mut b = ParticleBatch::from_vec(vec![particle()]);
+        providers["mymod:a"].tick(&mut a, &Air);
+        providers["mymod:b"].tick(&mut b, &Air);
+        let at = |batch: &mut ParticleBatch| batch.get_mut(0).unwrap().position[0];
+        assert_eq!((at(&mut a), at(&mut b)), (3.0, 2.0));
     }
 }

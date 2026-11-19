@@ -19,16 +19,19 @@ particle tick dispatches to the provider that owns it: no lookup, no scan over t
 ```rust,ignore
 struct Orbit;
 impl ParticleProvider for Orbit {
-    fn tick(&self, particle: &mut ModParticle) {
-        let t = f64::from(particle.age) * 0.4;
-        particle.position = [
-            particle.state[0] + t.cos(),
-            particle.state[1] + f64::from(particle.age) * 0.05,
-            particle.state[2] + t.sin(),
-        ];
-        particle.rgba[3] = 1.0 - particle.age as f32 / particle.lifetime as f32;
-        if particle.age > 40 {
-            particle.removed = true;
+    fn tick(&self, particles: &mut ParticleBatch, _level: &dyn ParticleLevelView) {
+        for particle in particles {
+            let t = f64::from(particle.age) * 0.4;
+            particle.position = [
+                particle.state[0] + t.cos(),
+                particle.state[1] + f64::from(particle.age) * 0.05,
+                particle.state[2] + t.sin(),
+            ];
+            particle.rgba[3] = 1.0 - particle.age as f32 / particle.lifetime as f32;
+            particle.facing = ParticleFacing::AroundY;
+            if particle.age > 40 {
+                particle.removed = true;
+            }
         }
     }
 }
@@ -49,11 +52,14 @@ only the motion is the provider's. Before each `tick` the game advances `age` (1
 `previous`, and it expires the particle once `age` passes `lifetime`, or after a tick that sets `removed` or
 leaves a number that is not finite. The particle draws on the blended layer, so `rgba[3]` may fade it, unless a `register_particle_groups`
 group lists its type: it then draws in that group, on the group's blend.
-`position`, `frame` (a sprite of the set, clamped), `size`, `rgba`, `lifetime` and `removed` are the tick's to
-write. `state` is four numbers that stay with the particle, zero at spawn; it is the only per-particle data,
-since every particle of a type shares the one provider (the same for native and wasm mods: a wasm tick is one
-call with the particle copied in and out). A tick has no `Host` and no level, since the engine ticks particles
-below gameplay; a provider that needs the world reads it in a hook. A type with no provider keeps its
+`position`, `frame` (a sprite of the set, clamped), `size`, `rgba`, `lifetime`, `removed`, `facing` and `roll` are the tick's to
+write. `facing` is `Camera` (vanilla's `LOOKAT_XYZ`), `AroundY` (`LOOKAT_Y`) or `Fixed(quaternion)`, a world-fixed
+orientation such as a quad lying flat; `roll` turns the quad about its normal and is interpolated from the previous tick's. `state` is four numbers that stay with the particle, zero at spawn; it is the only per-particle data,
+since every particle of a type shares the one provider. `tick` is one call per type per tick with every live
+particle of the type, for native and wasm mods alike (a wasm tick copies the batch in and out once), and is not
+called when none is alive. A tick has no `Host`, since the engine ticks particles below gameplay, but it reads the
+level through `ParticleLevelView`: `block_state(pos)` and `brightness(layer, pos)` (vanilla's `getBrightness`),
+read-only, with an unloaded chunk reading as air with full sky light. A type with no provider keeps its
 declarative motion, and live provider particles are dropped when resources reload, as a compiled
 controller's are."#]
     #[hook(

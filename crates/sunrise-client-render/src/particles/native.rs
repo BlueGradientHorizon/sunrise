@@ -1,7 +1,10 @@
 //! Opt-in, compiled particle behavior. The ordinary engine still owns the
 //! particle, its sprite set, interpolation, rendering and total count limits.
-use super::{Particle, ParticleLevel, ParticleOptions};
-use mod_api::{ModParticle, ParticleProvider};
+use super::{Particle, ParticleLevel, ParticleOptions, polytone_gpu};
+use mod_api::{
+    BlockState, LightLayer, ModParticle, ParticleBatch, ParticleFacing, ParticleLevelView,
+    ParticleProvider,
+};
 use std::{collections::BTreeMap, fmt::Debug, sync::Arc, sync::OnceLock};
 
 /// Requests made by one particle tick, submitted through normal spawn limits.
@@ -59,9 +62,10 @@ pub(super) fn registered() -> &'static BTreeMap<String, Arc<dyn ParticleProvider
 /// not a number, the particle expires rather than reach the renderer.
 const LIMIT: f64 = 3.0e7;
 
-/// The controller of a particle of a mod's code-defined type. It owns the particle's behaviour for
-/// the engine: age and expiry stay the engine's, the motion is the provider's. Holds the provider
-/// the type resolved to when its sprite sets loaded, so a tick dispatches straight to it.
+/// A particle of a mod's code-defined type. It owns the particle's behaviour for the engine: age
+/// and expiry stay the engine's, the motion is the provider's, called once per type per tick with
+/// every live particle of the type ([`Batch::tick`]). Holds the provider the type resolved to when
+/// its sprite sets loaded, so a tick dispatches straight to it.
 #[derive(Clone)]
 pub(super) struct Provided {
     provider: Arc<dyn ParticleProvider>,
@@ -69,6 +73,8 @@ pub(super) struct Provided {
     state: [f64; 4],
     /// The frame of the sprite set drawn, as the provider last saw it.
     frame: u32,
+    /// The engine aged the particle this tick and the provider has not run on it yet.
+    pending: bool,
 }
 impl Debug for Provided {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -84,51 +90,160 @@ impl Provided {
             provider,
             state: [0.0; 4],
             frame,
+            pending: false,
+        }
+    }
+    /// The engine's part of the tick: age, `previous` and expiry. A particle that survives it
+    /// joins this tick's batch.
+    pub(super) fn age(&mut self, particle: &mut Particle) {
+        self.pending = particle.advance_age();
+    }
+}
+
+/// The batches of one tick, kept between ticks so a tick allocates nothing once warm.
+#[derive(Default)]
+pub(super) struct Batch {
+    providers: Vec<Arc<dyn ParticleProvider>>,
+    views: Vec<ModParticle>,
+    index: Vec<usize>,
+}
+impl Batch {
+    /// Calls each provider once with every particle of `particles` it owns that the engine aged
+    /// this tick, then takes the results back: a particle that leaves a number past the world's
+    /// limit or not finite expires.
+    pub(super) fn tick(
+        &mut self,
+        particles: &mut [Particle],
+        level: &dyn ParticleLevelView,
+        mut set_frame: impl FnMut(&mut Particle, usize),
+    ) {
+        self.providers.clear();
+        for p in particles.iter() {
+            if let Some(provided) = p.provided.as_ref().filter(|q| q.pending)
+                && !self
+                    .providers
+                    .iter()
+                    .any(|known| Arc::ptr_eq(known, &provided.provider))
+            {
+                self.providers.push(provided.provider.clone());
+            }
+        }
+        for provider in &self.providers {
+            self.views.clear();
+            self.index.clear();
+            for (i, p) in particles.iter().enumerate() {
+                let Some(provided) = p.provided.as_ref().filter(|q| q.pending) else {
+                    continue;
+                };
+                if Arc::ptr_eq(provider, &provided.provider) {
+                    self.views.push(ModParticle {
+                        position: p.position,
+                        previous: p.previous,
+                        velocity: p.velocity,
+                        age: p.age,
+                        lifetime: p.lifetime,
+                        size: p.size,
+                        rgba: p.rgba,
+                        frame: provided.frame,
+                        removed: false,
+                        state: provided.state,
+                        facing: p.facing(),
+                        roll: p.roll,
+                    });
+                    self.index.push(i);
+                }
+            }
+            let mut batch = ParticleBatch::from_vec(std::mem::take(&mut self.views));
+            provider.tick(&mut batch, level);
+            self.views = batch.into_vec();
+            for (view, &i) in self.views.iter().zip(&self.index) {
+                if let Some(frame) = particles[i].take(view) {
+                    set_frame(&mut particles[i], frame);
+                }
+            }
         }
     }
 }
-impl ParticleController for Provided {
-    fn tick(&mut self, particle: &mut Particle, _: &ParticleLevel<'_>) -> ParticleUpdate {
-        if !particle.advance_age() {
-            return ParticleUpdate::default();
+impl Particle {
+    /// The facing the provider sees.
+    fn facing(&self) -> ParticleFacing {
+        match (self.fixed_rotation, self.orientation) {
+            (Some(q), _) => ParticleFacing::Fixed(q.to_array()),
+            (None, polytone_gpu::Orientation::AroundY) => ParticleFacing::AroundY,
+            _ => ParticleFacing::Camera,
         }
-        let mut view = ModParticle {
-            position: particle.position,
-            previous: particle.previous,
-            velocity: particle.velocity,
-            age: particle.age,
-            lifetime: particle.lifetime,
-            size: particle.size,
-            rgba: particle.rgba,
-            frame: self.frame,
-            removed: false,
-            state: self.state,
-        };
-        self.provider.tick(&mut view);
+    }
+    /// What a provider's tick left of the particle, validated as the renderer needs it.
+    fn take(&mut self, view: &ModParticle) -> Option<usize> {
         let finite = |v: &[f64; 3]| v.iter().all(|c| c.abs() <= LIMIT);
+        let fixed = match view.facing {
+            ParticleFacing::Fixed(q) => {
+                let q = glam::Quat::from_array(q);
+                (q.is_finite() && q.length_squared() > 0.0).then(|| Some(q.normalize()))
+            }
+            _ => Some(None),
+        };
+        let provided = self.provided.as_mut()?;
+        provided.pending = false;
+        let Some(fixed) = fixed else {
+            self.remove();
+            return None;
+        };
         if view.removed
             || !finite(&view.position)
             || !finite(&view.previous)
             || !finite(&view.velocity)
             || !view.size.is_finite()
+            || !view.roll.is_finite()
             || !view.rgba.iter().all(|c| c.is_finite())
         {
-            particle.remove();
-            return ParticleUpdate::default();
+            self.remove();
+            return None;
         }
-        particle.position = view.position;
-        particle.previous = view.previous;
-        particle.velocity = view.velocity;
-        particle.lifetime = view.lifetime;
+        self.position = view.position;
+        self.previous = view.previous;
+        self.velocity = view.velocity;
+        self.lifetime = view.lifetime;
         // The declarative range of a mod particle's size (`sunrise:behaviour`) and of its colour.
-        particle.size = view.size.clamp(0.0, 16.0);
-        particle.rgba = view.rgba.map(|c| c.clamp(0.0, 1.0));
-        self.state = view.state;
-        let frame = (view.frame != self.frame).then_some(view.frame as usize);
-        self.frame = view.frame;
-        ParticleUpdate {
-            frame,
-            ..ParticleUpdate::default()
+        self.size = view.size.clamp(0.0, 16.0);
+        self.rgba = view.rgba.map(|c| c.clamp(0.0, 1.0));
+        self.roll = view.roll;
+        self.fixed_rotation = fixed;
+        self.orientation = match view.facing {
+            ParticleFacing::AroundY => polytone_gpu::Orientation::AroundY,
+            _ => polytone_gpu::Orientation::Camera,
+        };
+        provided.state = view.state;
+        let changed = view.frame != provided.frame;
+        provided.frame = view.frame;
+        changed.then_some(view.frame as usize)
+    }
+}
+
+/// `ParticleLevelView` over the engine's level: the loaded chunks' states and stored light.
+pub(super) struct ProviderLevel<'a, 'l> {
+    pub(super) level: &'a ParticleLevel<'l>,
+    /// Every engine state as a mod reads it, by state id.
+    pub(super) states: &'a [BlockState],
+}
+impl ParticleLevelView for ProviderLevel<'_, '_> {
+    fn block_state(&self, [x, y, z]: [i32; 3]) -> BlockState {
+        let id = self.level.block(x, y, z).0 as usize;
+        *self
+            .states
+            .get(id)
+            .or(self.states.first())
+            .expect("the game gives the particle engine its block states before a provider ticks")
+    }
+    fn brightness(&self, layer: LightLayer, [x, y, z]: [i32; 3]) -> u8 {
+        // An unloaded chunk reads as full sky and no block light.
+        let light = self
+            .level
+            .chunk(x >> 4, z >> 4)
+            .map_or(0xF0, |c| c.light(x & 15, y, z & 15));
+        match layer {
+            LightLayer::Block => light & 15,
+            LightLayer::Sky => light >> 4,
         }
     }
 }
@@ -136,7 +251,7 @@ impl ParticleController for Provided {
 #[cfg(test)]
 pub(super) mod tests {
     use super::super::*;
-    use mod_api::{ModParticle, ParticleProvider};
+    use mod_api::{ModParticle, ParticleBatch, ParticleLevelView, ParticleProvider};
     use std::sync::Arc;
     use {
         sunrise_core::nbt::Tag,
@@ -312,7 +427,14 @@ pub(super) mod tests {
     #[derive(Default)]
     struct Probe(std::sync::atomic::AtomicUsize);
     impl ParticleProvider for Probe {
-        fn tick(&self, particle: &mut ModParticle) {
+        fn tick(&self, particles: &mut ParticleBatch, _: &dyn ParticleLevelView) {
+            for particle in particles {
+                self.one(particle);
+            }
+        }
+    }
+    impl Probe {
+        fn one(&self, particle: &mut ModParticle) {
             self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             particle.position[0] = f64::from(particle.age) * 2.0;
             particle.position[1] = particle.state[0];
@@ -326,9 +448,16 @@ pub(super) mod tests {
     }
     struct Broken(fn(&mut ModParticle));
     impl ParticleProvider for Broken {
-        fn tick(&self, particle: &mut ModParticle) {
-            self.0(particle);
+        fn tick(&self, particles: &mut ParticleBatch, _: &dyn ParticleLevelView) {
+            for particle in particles {
+                self.0(particle);
+            }
         }
+    }
+    /// One engine tick of a single provider particle: the age step, then the provider's batch.
+    fn tick_one(e: &mut ParticleEngine, p: &mut Particle, level: &ParticleLevel<'_>) {
+        e.tick_particle(p, level);
+        e.tick_providers(std::slice::from_mut(p), level);
     }
     fn provided(e: &mut ParticleEngine, provider: Arc<dyn ParticleProvider>) -> Particle {
         e.mod_sets.get_mut("example:orbit").unwrap().provider = Some(provider);
@@ -349,16 +478,16 @@ pub(super) mod tests {
         let mut p = provided(&mut e, probe.clone());
         p.lifetime = 20;
         let mut copy = p.clone();
-        e.tick_particle(&mut p, &level);
+        tick_one(&mut e, &mut p, &level);
         assert_eq!((p.position, p.previous), ([2.0, 0.0, 1.0], [1.0; 3]));
-        e.tick_particle(&mut p, &level);
+        tick_one(&mut e, &mut p, &level);
         assert_eq!((p.position, p.previous), ([4.0, 0.5, 1.0], [2.0, 0.0, 1.0]));
         assert!(matches!(p.sprite, Sprite::Index(1))); // frame 2, clamped to the 2-sprite set
         // State is per particle: the copy starts from zero state, not the original's.
-        e.tick_particle(&mut copy, &level);
+        tick_one(&mut e, &mut copy, &level);
         assert_eq!(copy.position, [2.0, 0.0, 1.0]);
         // The third tick of `p` removes it before its 20-tick lifetime, and its writes are dropped.
-        e.tick_particle(&mut p, &level);
+        tick_one(&mut e, &mut p, &level);
         assert!(p.removed);
         assert_eq!(p.position, [4.0, 0.5, 1.0]);
     }
@@ -371,10 +500,10 @@ pub(super) mod tests {
         let mut p = provided(&mut e, probe.clone());
         p.lifetime = 2;
         for _ in 0..2 {
-            e.tick_particle(&mut p, &level);
+            tick_one(&mut e, &mut p, &level);
             assert!(!p.removed);
         }
-        e.tick_particle(&mut p, &level);
+        tick_one(&mut e, &mut p, &level);
         assert!(p.removed);
         assert_eq!(probe.0.load(std::sync::atomic::Ordering::Relaxed), 2);
     }
@@ -392,7 +521,7 @@ pub(super) mod tests {
         ];
         for tick in bad {
             let mut p = provided(&mut e, Arc::new(Broken(tick)));
-            e.tick_particle(&mut p, &level);
+            tick_one(&mut e, &mut p, &level);
             assert!(p.removed);
             assert_eq!(p.position, [1.0; 3]);
         }
@@ -406,12 +535,12 @@ pub(super) mod tests {
                 p.age = i32::MAX;
             })),
         );
-        e.tick_particle(&mut p, &level);
+        tick_one(&mut e, &mut p, &level);
         assert!(!p.removed);
         assert_eq!((p.size, p.rgba), (16.0, [1.0, 0.0, 0.5, 1.0]));
         assert!(matches!(p.sprite, Sprite::Index(1)));
         assert_eq!((p.lifetime, p.age), (i32::MIN, 1)); // the age stays the engine's
-        e.tick_particle(&mut p, &level);
+        tick_one(&mut e, &mut p, &level);
         assert!(p.removed);
     }
     #[test]

@@ -232,6 +232,9 @@ enum DripStage {
     Land,
 }
 
+/// Every engine block state as a mod reads it, by state id, shared with the game.
+pub type BlockStates = Arc<dyn AsRef<[mod_api::BlockState]> + Send + Sync>;
+
 /// A native mod's sprite set: its handle in `set_sprites`, the behaviour its JSON declares,
 /// the provider that moves its particles, if a mod registered one, and the render group they
 /// draw in, if a mod listed the type in one. Resolved at load, so a spawn, a tick and a draw
@@ -289,6 +292,10 @@ pub struct Particle {
     /// `Particle.random`: the particle's own generator (`RandomSource.create()`).
     random: LegacyRandom,
     controller: Option<Box<dyn native::Controller>>,
+    /// A mod provider's particle: its state, ticked in the provider's batch.
+    provided: Option<native::Provided>,
+    /// A provider's world-fixed orientation (`ParticleFacing::Fixed`), turning the quad before `roll`.
+    fixed_rotation: Option<Quat>,
     /// A resource pack's Polytone custom particle type, for its `limit` and `exclusion_radius`.
     polytone_type: Option<std::sync::Arc<str>>,
     /// A Polytone model particle's faces, drawn instead of its sprite quad.
@@ -653,6 +660,8 @@ impl Particle {
             frame_ticks: 0,
             random: LegacyRandom::new(0),
             controller: None,
+            provided: None,
+            fixed_rotation: None,
             polytone_type: None,
             model: None,
             orientation: polytone_gpu::Orientation::Camera,
@@ -992,17 +1001,19 @@ impl<'a> ParticleLevel<'a> {
         ]
     }
     #[inline]
-    pub fn block(&self, x: i32, y: i32, z: i32) -> sunrise_world::registry::BlockStateId {
-        let (cx, cz) = (x >> 4, z >> 4);
-        let chunk = match self.cached_chunk.get() {
+    pub(crate) fn chunk(&self, cx: i32, cz: i32) -> Option<&'a crate::chunk::Chunk> {
+        match self.cached_chunk.get() {
             Some(((ccx, ccz), c)) if ccx == cx && ccz == cz => c,
             _ => {
                 let c = self.world.chunks.get(&(cx, cz)).map(|c| c.as_ref());
                 self.cached_chunk.set(Some(((cx, cz), c)));
                 c
             }
-        };
-        chunk.map_or(self.world.air, |c| c.block(x & 15, y, z & 15))
+        }
+    }
+    pub fn block(&self, x: i32, y: i32, z: i32) -> sunrise_world::registry::BlockStateId {
+        self.chunk(x >> 4, z >> 4)
+            .map_or(self.world.air, |c| c.block(x & 15, y, z & 15))
     }
     /// The fluid at a block and `FluidState.getHeight`.
     fn fluid(&self, b: [i32; 3]) -> (Fluid, f64) {
@@ -1108,6 +1119,9 @@ pub struct ParticleEngine {
     /// The code providers of mods' particle types, by name: `register_particle_providers`' registrations as
     /// this engine was built, applied to `mod_sets` at every load.
     providers: BTreeMap<String, Arc<dyn ParticleProvider>>,
+    /// Every engine block state as a mod reads it, for the providers' `ParticleLevelView`.
+    block_states: Option<BlockStates>,
+    batch: native::Batch,
     set_sprites: Vec<Vec<u32>>,
     /// How many live particles it takes to tick them on several threads (`tick_all`), and how many threads.
     parallel_min: usize,
@@ -1228,6 +1242,8 @@ impl ParticleEngine {
             sets: HashMap::new(),
             mod_sets: HashMap::new(),
             providers: native::registered().clone(),
+            block_states: None,
+            batch: native::Batch::default(),
             set_sprites: Vec::new(),
             parallel_min: PARALLEL_MIN,
             live_limit: None,
@@ -1249,6 +1265,19 @@ impl ParticleEngine {
         engine.reload(root, atlas, translucent);
         engine
     }
+    /// The block states a provider's level view reads, by engine state id: set when a game holds
+    /// providers, and again when the registry changes.
+    pub fn set_block_states(&mut self, states: BlockStates) {
+        if self.providers.is_empty()
+            || self
+                .block_states
+                .as_ref()
+                .is_some_and(|known| Arc::ptr_eq(known, &states))
+        {
+            return;
+        }
+        self.block_states = Some(states);
+    }
     /// `onResourceManagerReload`: sprite rects and sets come from the
     /// reloaded atlas and pack; a live particle keeps drawing its sprite by
     /// name or index.
@@ -1260,12 +1289,17 @@ impl ParticleEngine {
     ) {
         // Controllers' numeric sprite-set handles belong to this resource
         // generation. Discard them rather than selecting another set after reload.
-        self.particles.retain(|p| p.controller.is_none());
+        self.particles
+            .retain(|p| p.controller.is_none() && p.provided.is_none());
         for group in &mut self.groups {
-            group.particles.retain(|p| p.controller.is_none());
+            group
+                .particles
+                .retain(|p| p.controller.is_none() && p.provided.is_none());
         }
-        self.pending
-            .retain(|p| p.ordinary().is_none_or(|p| p.controller.is_none()));
+        self.pending.retain(|p| {
+            p.ordinary()
+                .is_none_or(|p| p.controller.is_none() && p.provided.is_none())
+        });
         self.atlas = atlas
             .iter()
             .map(|(name, &rect)| (name.clone(), (rect, translucent.contains(name))))
@@ -1902,7 +1936,7 @@ impl ParticleEngine {
                     .unwrap_or(0);
                 q.set = Some(set);
                 q.behaviour = Behaviour::Controlled { translucent: true };
-                q.controller = Some(Box::new(native::Provided::new(provider, frame as u32)));
+                q.provided = Some(native::Provided::new(provider, frame as u32));
             }
             return Some(q);
         }
@@ -3551,6 +3585,7 @@ impl ParticleEngine {
         let mut particles = std::mem::take(&mut self.particles);
         self.spawned_in_tick = Some(Vec::new());
         self.tick_all(&mut particles, level);
+        self.tick_providers(&mut particles, level);
         particles.retain(|p| !p.removed);
         self.particles = particles;
         for handle in 0..self.groups.len() {
@@ -3558,6 +3593,7 @@ impl ParticleEngine {
             for p in &mut particles {
                 self.tick_particle(p, level);
             }
+            self.tick_providers(&mut particles, level);
             particles.retain(|p| !p.removed);
             self.groups[handle].particles = particles;
         }
@@ -3602,6 +3638,20 @@ impl ParticleEngine {
             }
         }
     }
+    /// The providers' part of a tick: each provider once with every particle of its type that
+    /// `tick_particle` aged.
+    fn tick_providers(&mut self, particles: &mut [Particle], level: &ParticleLevel) {
+        if self.providers.is_empty() {
+            return;
+        }
+        let view = native::ProviderLevel {
+            level,
+            states: self.block_states.as_deref().map_or(&[], AsRef::as_ref),
+        };
+        let mut batch = std::mem::take(&mut self.batch);
+        batch.tick(particles, &view, |p, frame| self.set_sprite_frame(p, frame));
+        self.batch = batch;
+    }
     /// `ParticleGroup.add`: each group's last quarter fills with decreasing probability.
     fn group_has_space(&mut self, size: usize) -> bool {
         if size >= MAX_PARTICLES {
@@ -3626,7 +3676,10 @@ impl ParticleEngine {
                 self.finish_simple(p, simple);
             }
             Behaviour::Controlled { .. } => {
-                if let Some(mut controller) = p.controller.take() {
+                if let Some(mut provided) = p.provided.take() {
+                    provided.age(p);
+                    p.provided = Some(provided);
+                } else if let Some(mut controller) = p.controller.take() {
                     let update = controller.tick(p, level);
                     p.controller = Some(controller);
                     if let Some(frame) = update.frame {
@@ -4533,7 +4586,9 @@ impl ParticleEngine {
                 ) - camera;
                 (pos.as_vec3(), p.quad_size(partial))
             });
-            let rotation = if p.orientation != polytone_gpu::Orientation::Camera {
+            let rotation = if let Some(fixed) = p.fixed_rotation {
+                fixed * Quat::from_rotation_z(p.o_roll + (p.roll - p.o_roll) * partial)
+            } else if p.orientation != polytone_gpu::Orientation::Camera {
                 // A custom particle's `movement_aligned` quad has its texture's top against
                 // its motion (measured in Java: a light ray rising toward the noon sun hangs
                 // below the leaves it starts at); a GPU particle's has it along its motion.

@@ -1,3 +1,4 @@
 pub use client::particle_providers::{
-    ModParticle, ParticleProvider, ParticleProviderRegistry, ParticleProviders,
+    ModParticle, ParticleBatch, ParticleFacing, ParticleLevelView, ParticleProvider,
+    ParticleProviderRegistry, ParticleProviders,
 };
