@@ -2138,6 +2138,10 @@ impl Entity for ArmorStand {
     fn reset_fall_distance(&mut self) {
         self.enchantment_fall_distance = 0.0;
     }
+    /// `LivingEntity.isAlive`: health above 0 (removal is the level's).
+    fn is_alive(&self) -> bool {
+        self.health > 0.0
+    }
     fn move_entity(&mut self, gate: &mut MoveGate, movement: Vec3) {
         if gate.skipped() {
             return;

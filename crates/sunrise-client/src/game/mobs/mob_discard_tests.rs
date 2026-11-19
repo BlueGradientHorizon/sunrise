@@ -182,4 +182,19 @@ fn discarded_mob_leaves_selectors_and_saves_while_frozen() {
     game.save_every_entity(&keys, &mut saved);
     assert_eq!(saved[&(0, 0)].len(), 1);
     assert!(saved[&(0, 0)][0].2.get("Passengers").is_none());
+    // EntitySelectorParser gives @e and @n `Entity::isAlive`: a nearer mob at
+    // no health is skipped before its death timer starts (a /kill in the
+    // same tick), though its UUID still resolves.
+    let kind = game.res.mob_types().get("minecraft:blaze").unwrap().clone();
+    let mut killed = Mob::new(46, kind, Vec3::new(0.5, 64.0, 1.5), 0.0);
+    killed.health = 0.0;
+    game.mobs.push(killed);
+    let killed_uuid = game.uuid_for(46);
+    assert_eq!(game.select(&all), [commands::Target::Mob(44)]);
+    let nearest = selector(&game, "@n[type=minecraft:blaze]");
+    assert_eq!(game.select(&nearest), [commands::Target::Mob(44)]);
+    assert_eq!(
+        game.target_with_uuid(killed_uuid),
+        Some(commands::Target::Mob(46))
+    );
 }

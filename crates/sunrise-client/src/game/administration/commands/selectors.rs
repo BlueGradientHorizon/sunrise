@@ -20,6 +20,9 @@ impl Game<'_> {
                 s.pos[2].unwrap_or(p[2]),
             ]
         };
+        // EntitySelectorParser: `@e` and `@n` keep only `Entity::isAlive`. A
+        // registered selector type decides for itself (`native_selector_kept`).
+        let alive_only = matches!(s.kind, 'e' | 'n') && s.token.is_none();
         let mut source_candidates: Vec<Target> = Vec::new();
         match (s.kind, self.command_source) {
             // @s: the executing entity (none for a server source).
@@ -27,7 +30,9 @@ impl Game<'_> {
             ('s', None) => source_candidates.extend(self.source_entity()),
             // A guest in place is among the players, in join order.
             _ if self.player.is_some() && self.lan_acting.is_none() => {
-                source_candidates.push(Target::Player);
+                if !alive_only || self.player.as_ref().is_some_and(|p| p.health() > 0.0) {
+                    source_candidates.push(Target::Player);
+                }
             }
             _ => {}
         }
@@ -52,17 +57,9 @@ impl Game<'_> {
             }
             if s.kind != 's' {
                 if s.kind == 'e' && matches!(s.sort, Sort::Arbitrary) && !s.world_limited() {
-                    candidates.extend(self.global_selector_candidates());
+                    candidates.extend(self.global_selector_candidates_where(alive_only));
                 } else {
-                    candidates.extend(self.level_candidates());
-                }
-            }
-            // EntitySelectorParser: `@e` and `@n` keep only `Entity::isAlive`
-            // (the players were sorted in `player_candidates`).
-            if matches!(s.kind, 'e' | 'n') {
-                let dying = self.dying_targets();
-                if !dying.is_empty() {
-                    candidates.retain(|t| !dying.contains(t));
+                    candidates.extend(self.level_candidates_where(alive_only));
                 }
             }
             out.extend(self.native_selector_kept(s, candidates, origin));
