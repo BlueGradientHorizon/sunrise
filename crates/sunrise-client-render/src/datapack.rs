@@ -585,16 +585,10 @@ fn stringify(tag: &Tag) -> String {
 }
 /// `DecimalFormat("#")` with up to 15 fraction digits.
 fn decimal(v: f64) -> String {
-    if v.is_nan() {
-        return "NaN".into();
-    }
-    let s = format!("{v:.15}");
-    let s = s.trim_end_matches('0').trim_end_matches('.');
-    if s == "-0" || s.is_empty() {
-        "0".into()
-    } else {
-        s.to_owned()
-    }
+    use sunrise_core::java_number::{DecimalPattern, format_decimal};
+    // FloatTag.valueOf and DoubleTag.valueOf collapse signed zero. A negative
+    // nonzero argument that later rounds to zero must still come out as -0.
+    format_decimal(if v == 0.0 { 0.0 } else { v }, DecimalPattern::Macro)
 }
 fn substitute(template: &str, values: &BTreeMap<&str, String>) -> String {
     let mut out = String::new();
@@ -722,14 +716,16 @@ pub struct DataStore {
     /// `<kind-dir>/<ns>:<path>`, each id's files in pack order. The tables
     /// merge them over what they read from the resource root.
     pub files: BTreeMap<String, Vec<Vec<u8>>>,
+    /// Failed reads of the highest-priority resources, keyed like `files`.
+    pub file_errors: BTreeMap<String, String>,
     /// Functions that failed to parse (id, message), for logging.
     pub errors: Vec<(String, String)>,
 }
 /// `<kind-dir>/<ns>:<path>` for a pack file the content tables read:
 /// `recipe/`, `recipe_filter/`, `loot_table/`, `advancement/`, `trade_set/`,
 /// `villager_trade/`, `dialog/`, `damage_type/`, `dimension_type/`, `data_maps/`, enchantments, songs,
-/// instruments, predicates, item modifiers, `world_clock/`, `worldgen/biome/` or `tags/<sub>/`,
-/// where the id keeps the subpath so a nested tag kind stays addressable.
+/// instruments, painting variants, banner patterns, predicates, item modifiers, `world_clock/`,
+/// `worldgen/biome/` or `tags/<sub>/`, where the id keeps the subpath for nested tag kinds.
 fn content_id(file: &str) -> Option<String> {
     let rest = file.strip_prefix("data/")?;
     let (ns, rest) = rest.split_once('/')?;
@@ -737,8 +733,8 @@ fn content_id(file: &str) -> Option<String> {
     let kind = match kind {
         "recipe" | "recipe_filter" | "loot_table" | "advancement" | "trade_set"
         | "villager_trade" | "dialog" | "damage_type" | "dimension_type" | "data_maps"
-        | "enchantment" | "jukebox_song" | "instrument" | "predicate" | "item_modifier"
-        | "world_clock" => kind,
+        | "enchantment" | "jukebox_song" | "instrument" | "painting_variant" | "banner_pattern"
+        | "predicate" | "item_modifier" | "world_clock" => kind,
         "worldgen" => {
             return resource_id(file, "worldgen/biome", ".json")
                 .map(|id| format!("worldgen/biome/{id}"));
@@ -851,6 +847,7 @@ impl DataStore {
             let builtin = pack.id == "vanilla";
             for f in pack.list_kinds(&[
                 "advancement",
+                "banner_pattern",
                 "damage_type",
                 "data_maps",
                 "dialog",
@@ -861,6 +858,7 @@ impl DataStore {
                 "item_modifier",
                 "jukebox_song",
                 "loot_table",
+                "painting_variant",
                 "predicate",
                 "recipe",
                 "recipe_filter",
@@ -877,11 +875,16 @@ impl DataStore {
                 // Preserve JSON stacks independently of the command views
                 // below. World-table readers evaluate the winning resource's
                 // conditions using their captured server inventory.
-                if !builtin
-                    && let Some(id) = content_id(&f)
-                    && let Some(bytes) = pack.read(&f)
-                {
-                    s.files.entry(id).or_default().push(bytes);
+                if !builtin && let Some(id) = content_id(&f) {
+                    match pack.source().read(&f) {
+                        Ok(bytes) => {
+                            s.file_errors.remove(&id);
+                            s.files.entry(id).or_default().push(bytes);
+                        }
+                        Err(error) => {
+                            s.file_errors.insert(id, format!("{}: {error}", pack.id));
+                        }
+                    }
                 }
                 if let Some(id) = resource_id(&f, "function", ".mcfunction")
                     && let Some(bytes) = pack.read(&f)
@@ -1745,6 +1748,21 @@ mod tests {
         // A plain function needs no arguments.
         let plain = parse_function("a:p", "say 1").unwrap();
         assert_eq!(plain.instantiate(None).unwrap(), ["say 1"]);
+    }
+
+    #[test]
+    fn macro_arguments_use_decimal_format_not_fixed_precision() {
+        // Temurin 25 DecimalFormat("#") with 15 fractional places.
+        for (tag, expected) in [
+            (Tag::Float(0.1_f32.to_bits()), ".100000001490116"),
+            (Tag::Double(0.5_f64.to_bits()), ".5"),
+            (Tag::Double((-0.0_f64).to_bits()), "0"),
+            (Tag::Double((-1e-16_f64).to_bits()), "-0"),
+            (Tag::Double(f64::INFINITY.to_bits()), "∞"),
+            (Tag::Double(1e23_f64.to_bits()), "99999999999999990000000"),
+        ] {
+            assert_eq!(stringify(&tag), expected);
+        }
     }
 
     /// `StringTemplate.fromString` throws "No variables in macro" for a `$`

@@ -112,7 +112,7 @@ fn a_packs_lightmap_draws_its_expression_uniform() {
         return the_sky_draws_poly_globals();
     }
     if case == "outline" {
-        // A pack whose only expression uniform is the block outline's: the frame evaluates it.
+        // An outline-only modifier is enough to enable expression evaluation.
         return with_client_game(|game| {
             let pack = sky_pack(&["rendertype_lines"]);
             game.gui = crate::game::UiResources::load(&pack, std::path::Path::new("")).unwrap();

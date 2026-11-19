@@ -33,7 +33,10 @@ use std::{
     fmt, fs,
     path::{Path, PathBuf},
 };
-use sunrise_core::nbt::{self, JavaString, Limits, NamedTag, Tag};
+use sunrise_core::{
+    crc32::Crc32,
+    nbt::{self, JavaString, Limits, NamedTag, Tag},
+};
 use sunrise_server_files::durable;
 use sunrise_world::compression::{Compression, decode_single_gzip_member};
 
@@ -1387,7 +1390,7 @@ fn slot_crc_input(version: u16, entry_no: u64, body_len: usize, body: &[u8]) -> 
     input.extend_from_slice(&entry_no.to_le_bytes());
     input.extend_from_slice(&(body_len as u32).to_le_bytes());
     input.extend_from_slice(body);
-    crc32fast::hash(&input)
+    Crc32::checksum(&input)
 }
 
 /// The CRC of an encoded slot record, [`slot_crc_input`] over its own

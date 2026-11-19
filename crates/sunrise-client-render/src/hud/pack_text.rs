@@ -61,7 +61,7 @@ pub(super) fn load_pair(
     let name = names.1;
     match translate_pair(root, defaults, names, defines, glue, provided)? {
         Ok(program) => {
-            log::info!("the resource pack's {name} shader is used");
+            log::info!("the resource pack's {name} shader translated");
             Some(Arc::new(program))
         }
         Err(e) => {

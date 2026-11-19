@@ -59,7 +59,9 @@ pub trait ScreensClientHost {
     /// box around it), its highlight, its contents, its empty-slot icon and the recipe book's
     /// ghost items; a hidden one is none of these. A position outside the image is allowed.
     /// The change lasts until the screen closes, and the next open starts from the declared
-    /// layout. Only the mod whose part owns the open screen moves its slots. Nothing is sent:
+    /// layout. Only the mod that owns the open screen moves its slots: the mod that registered
+    /// its recipe-book layout (`MenusRegistrar`), with or without a screen part, else the mod
+    /// whose screen part lays it out. Nothing is sent:
     /// the server's menu keeps every slot, so a hidden slot keeps its
     /// item and a shift-click may still fill it, as a deactivated Java slot does, and a slot
     /// the screen hid when it opened stays hidden. It takes `&self`, so a screen hook may call

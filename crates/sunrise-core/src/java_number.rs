@@ -315,9 +315,32 @@ pub fn format_fixed2(value: f64) -> String {
     format_fixed(value, 2)
 }
 
-/// US/ROOT `DecimalFormat`: no grouping, two fractional places, and either
-/// `#.##` (optional fractional digits) or `0.00` (mandatory fractional digits).
+/// US/ROOT `DecimalFormat` patterns used by the game, without grouping.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DecimalPattern {
+    /// `#.##`, with DecimalFormat's implicit minimum of one integer digit.
+    Tooltip,
+    /// `########0.00`.
+    Statistic,
+    /// `0.0###`.
+    Integrity,
+    /// `#` after setting the maximum fraction digits to 15, no leading zero.
+    Macro,
+}
+
+/// US/ROOT `DecimalFormat` with two optional or mandatory fractional digits.
 pub fn format_decimal2(value: f64, trim: bool) -> String {
+    let pattern = if trim {
+        DecimalPattern::Tooltip
+    } else {
+        DecimalPattern::Statistic
+    };
+    format_decimal(value, pattern)
+}
+
+/// Locale-independent game patterns. Round half-even on the binary value
+/// when shortening the selected digits, not half-up as `String.format` does.
+pub fn format_decimal(value: f64, pattern: DecimalPattern) -> String {
     if value.is_infinite() {
         return if value.is_sign_negative() {
             "-∞"
@@ -329,6 +352,14 @@ pub fn format_decimal2(value: f64, trim: bool) -> String {
     if value.is_nan() {
         return "NaN".into();
     }
+    // Below these binary exponents the rounding interval is less than half
+    // of a decimal unit at the pattern's maximum precision.
+    let (min_fraction, max_fraction, check_digits_at) = match pattern {
+        DecimalPattern::Tooltip => (0, 2, 45),
+        DecimalPattern::Statistic => (2, 2, 45),
+        DecimalPattern::Integrity => (1, 4, 38),
+        DecimalPattern::Macro => (0, 15, 2),
+    };
     let magnitude = value.abs();
     let binary_exponent = ((magnitude.to_bits() >> 52) as i32) - 1023;
     if binary_exponent >= 53 {
@@ -339,32 +370,47 @@ pub fn format_decimal2(value: f64, trim: bool) -> String {
         } else {
             decimal_format_large_integer(magnitude, binary_exponent)
         };
-        let mut out = String::with_capacity(integer.len() + 4);
+        if min_fraction == 0 && !value.is_sign_negative() {
+            return integer;
+        }
+        let mut out = String::with_capacity(integer.len() + min_fraction + 2);
         if value.is_sign_negative() {
             out.push('-');
         }
         out.push_str(&integer);
-        if !trim {
-            out.push_str(".00");
+        if min_fraction != 0 {
+            out.push('.');
+            out.extend(std::iter::repeat_n('0', min_fraction));
         }
         return out;
     }
-    let mut out = if binary_exponent >= 45 {
+    let mut out = if binary_exponent >= check_digits_at {
         let digits = double_digits(magnitude);
-        if digits.point + 2 >= digits.len as i32 {
-            digits.fixed_string(value.is_sign_negative(), 2)
+        if digits.point + max_fraction as i32 >= digits.len as i32 {
+            digits.fixed_string(value.is_sign_negative(), max_fraction)
         } else {
-            format!("{value:.2}")
+            format!("{value:.max_fraction$}")
         }
     } else {
-        // At this spacing the shortest decimal can't be a whole cent if the
-        // exact value is more than half a cent away. Round the binary value,
-        // half-even, rather than using String.format's half-up semantics.
-        format!("{value:.2}")
+        format!("{value:.max_fraction$}")
     };
-    if trim {
-        let len = out.trim_end_matches('0').trim_end_matches('.').len();
-        out.truncate(len);
+    if min_fraction < max_fraction {
+        let fraction_start = out.len() - max_fraction;
+        let trimmed = out
+            .trim_end_matches('0')
+            .len()
+            .max(fraction_start + min_fraction);
+        out.truncate(if trimmed == fraction_start {
+            fraction_start - 1
+        } else {
+            trimmed
+        });
+    }
+    if pattern == DecimalPattern::Macro {
+        let start = usize::from(value.is_sign_negative());
+        if out.as_bytes().get(start..start + 2) == Some(b"0.") {
+            out.remove(start);
+        }
     }
     out
 }

@@ -1742,6 +1742,11 @@ pub fn encode_components(stack: &ItemStack, items: &crate::items::Items) -> Opti
     // Equality belongs to the component codec, not its saved NBT numeric width.
     if let Tag::Compound(entries) = &mut components {
         entries.retain(|id, _| {
+            // PatchedDataComponentMap: a removal stays in the patch only where
+            // the prototype has the component; elsewhere nothing is removed.
+            if let Some(removed) = id.0.strip_prefix(&[u16::from(b'!')]) {
+                return prototype.contains_key(&JavaString(removed.to_vec()));
+            }
             !prototype.contains_key(id)
                 || !ingredient_components::component_equal(
                     &id.to_string_lossy(),
@@ -3109,10 +3114,16 @@ mod tests {
             ("audit:unknown", 7, false),
         ] {
             assert!(encode_components(&ItemStack::new(id, 1), &items).is_none());
-            for (key, value) in [
-                ("minecraft:max_stack_size", Tag::Int(prototype)),
-                ("minecraft:max_stack_size", Tag::Int(3)),
-                ("!minecraft:max_stack_size", parse("{}")),
+            for (key, value, elided) in [
+                ("minecraft:max_stack_size", Tag::Int(prototype), has_default),
+                ("minecraft:max_stack_size", Tag::Int(3), false),
+                // In this catalog, only audit:missing has a loaded prototype
+                // without max_stack_size. audit:unknown has no prototype.
+                (
+                    "!minecraft:max_stack_size",
+                    parse("{}"),
+                    id == "audit:missing",
+                ),
             ] {
                 let input = Tag::compound([
                     (key, value.clone()),
@@ -3138,10 +3149,7 @@ mod tests {
                     Some(input.clone()),
                     "context-free API stays unchanged"
                 );
-                let default = key == "minecraft:max_stack_size"
-                    && value == Tag::Int(prototype)
-                    && has_default;
-                let expected = if default {
+                let expected = if elided {
                     Some(parse(r#"{"minecraft:custom_data":{keep:88}}"#))
                 } else {
                     Some(input.clone())
@@ -3157,12 +3165,16 @@ mod tests {
                 );
                 assert_eq!(stack, before, "no live stack mutation");
                 assert_eq!(components_tag(stack.damage, stack.data()), Some(input));
+
+                // When the elided entry was the only one, omit the field itself.
+                stack.data_mut().set_other("minecraft:custom_data", None);
+                let expected = (!elided).then(|| Tag::compound([(key, value)]));
+                assert_eq!(
+                    crate::item_nbt::item_to_nbt(&stack, &items).get("components"),
+                    expected.as_ref(),
+                    "{id}, {key} alone, decoded={decoded}"
+                );
             }
-            // Removing a sole default must also omit the empty components compound.
-            let mut only = ItemStack::new(id, 1);
-            only.data_mut()
-                .set_other("minecraft:max_stack_size", Some(Tag::Int(prototype)));
-            assert_eq!(encode_components(&only, &items).is_none(), has_default);
         }
         // Reload the same known item's prototype through the real catalog loader.
         std::fs::write(

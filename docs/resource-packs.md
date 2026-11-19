@@ -97,30 +97,31 @@ packs' lightmap (`core/lightmap` with `core/screenquad`), sky (`core/sky`), star
 doesn't yet:
 
 - A block one of its stages reads, declared `uniform Name { float value; };`, holds its expression's value each
-  frame. The file of the stage that reads it gives it; a block both stages read, or that both files give, takes
-  the fragment shader's (`core/lightmap`) first, then the vertex shader's (`core/screenquad`). A block no stage reads
-  is not bound, and a stage that only declares it doesn't decide its shape. A block a stage reads that is not one
-  float, or that no file of its shaders gives, refuses the shader, and the light texture is computed natively.
+  frame. The sky, stars and outline each use a single modifier file. Only the lightmap uses two files: for a block
+  read by both stages or defined in both files, it looks in the fragment shader's (`core/lightmap`) first, then in
+  the vertex shader's (`core/screenquad`). Otherwise, it uses the file for the stage that reads the block. A block
+  no stage reads is not bound, and a stage that only declares it doesn't decide its shape. If a block a stage reads
+  is not one float, or has no expression, the affected pipeline uses its built-in shader.
 - Each block, vanilla's and `LightmapInfo` included, of each of these pipelines is bound only to the stages that read it, and counts against
   the device's limit of uniform blocks per stage (`max_uniform_buffers_per_shader_stage`, 12 by default) for those
   stages only: a shader over it in either stage is refused.
 - The expression context is the frame's, as the packs' post chains and particles see it: the weather, the game and
   day time, the dimension and its sky, the player's place and motion, the camera's light, biome and climate, and
-  the packs' config entries (`polytone/config_entries`). Under fullbright nothing is evaluated.
+  the packs' config entries (`polytone/config_entries`). Fullbright skips only the lightmap's expressions.
 - Limits: a file is read up to 64 KiB, with at most 16 uniforms, each a GLSL identifier of at most 64 characters
   not starting `gl_`. An expression has at most 1024 tokens; its tree is at most 64 levels high and its parse
   nests at most 16 levels deep (a statement, its expression, each bracket and each unary operator), both checked as
   it is parsed. A file over any of these, or whose path names no shader, is refused whole, named by its path in the
   log.
-- The programs are resolved once, when the pack's shaders load; a frame only evaluates them, and uploads 16 bytes
-  for each.
+- The programs are resolved once when the pack's shaders load. Each frame evaluates them for the installed pack
+  pipelines; each pipeline uploads 16 bytes per expression uniform when it prepares a draw.
 - Polytone's `PolyGlobals` block (wiki "Extra Shader Uniforms": the projection and model-view matrices, the sun's
   angle, the day time, the frame's ticks, and the player's block and position) is given to each of these shaders
   that reads it, with the values the packs' post chains get, in the same std140 layout (`sunrise-polytone`
   `globals.rs`). `#moj_import <polytone_globals.glsl>` declares it, with its `polyPlayerPos` and
   `polyPositionFromDepth` helpers, where the pack doesn't ship that file (in core shaders and post chains alike);
   a pack's own file is read instead. It is bound before the expression uniforms, only to the stages that read it,
-  counts against the same limit, and is made and uploaded (176 bytes) only while a drawn shader reads it (the
+  counts against the same limit, and is made and uploaded (176 bytes) only while an installed pack shader reads it (the
   lightmap's not under fullbright, which keeps the light texture white).
 
 ## Gaps and their work
