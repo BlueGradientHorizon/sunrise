@@ -1953,9 +1953,10 @@ impl Game<'_> {
         let mut roots: HashMap<ChunkKey, Vec<(u32, JoinSeq, Tag)>> = HashMap::new();
         // Every kind in `entity_lists!` saves itself (`Entity::save_nbt`).
         self.save_every_entity(keys, &mut roots, include_transient);
+        // Owned, since saving a passenger tree borrows `self` mutably.
+        let transient = self.persist.transient.clone();
         let include = |id, at| {
-            keys.contains(&chunk_of(at))
-                && (include_transient || !self.persist.transient.contains(&id))
+            keys.contains(&chunk_of(at)) && (include_transient || !transient.contains(&id))
         };
         if let Some(d) = self.dragon.as_ref()
             && include(d.id, d.position)
