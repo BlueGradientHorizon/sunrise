@@ -434,6 +434,7 @@ impl Game<'_> {
             let mut written = stack.transmute("minecraft:written_book", stack.count);
             let data = written.data_mut();
             data.writable_pages = Vec::new();
+            data.writable_filtered = Vec::new();
             data.written = Some(WrittenBook {
                 title,
                 author,
@@ -446,7 +447,10 @@ impl Game<'_> {
             });
             *stack = written;
         } else {
-            stack.data_mut().writable_pages = if pages.iter().all(String::is_empty) {
+            let data = stack.data_mut();
+            // `updateBookContents`: new `Filterable` pages, unfiltered while no text filter runs.
+            data.writable_filtered = Vec::new();
+            data.writable_pages = if pages.iter().all(String::is_empty) {
                 Vec::new()
             } else {
                 pages
