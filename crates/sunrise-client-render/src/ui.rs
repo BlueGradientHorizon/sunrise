@@ -5,6 +5,7 @@ use crate::{
     hud::{HudAtlas, HudBatch, Rect, rgba},
     text::Text,
 };
+use mod_api::ButtonSprites;
 use std::{collections::HashMap, sync::RwLock, time::Instant};
 use sunrise_assets::resource_source::ResourceSource;
 
@@ -440,27 +441,46 @@ pub fn scrolling_text_around_at(
     now_ms: i64,
     color: u32,
 ) {
+    scrolling_text_with_offset(
+        batch, atlas, text, center_x, left, right, top, bottom, y, now_ms, color, None,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn scrolling_text_with_offset(
+    batch: &mut HudBatch,
+    atlas: &HudAtlas,
+    text: &Text,
+    center_x: f32,
+    left: f32,
+    right: f32,
+    top: f32,
+    bottom: f32,
+    y: f32,
+    now_ms: i64,
+    color: u32,
+    offset: Option<[f32; 2]>,
+) {
     let text = text.resolved();
     let width = atlas.font.width_text(&text);
     let room = right - left;
-    if width <= room {
+    let fits = width <= room;
+    let x = if fits {
         let half = (width / 2.0).floor();
-        let text_x = center_x.max(left + half).min(right - half);
-        batch.text_styled(atlas, &text, text_x - half, y, color, true);
-        return;
-    }
-    // Scissored to the widget: what does not fit is read as the label
-    // slides, never dropped.
+        center_x.max(left + half).min(right - half) - half
+    } else {
+        scrolled_left(left, width - room, now_ms)
+    };
+    let [x, y] = match offset {
+        Some([dx, dy]) => [x + dx, y + dy],
+        None => [x, y],
+    };
     let start = batch.vertices.len();
-    batch.text_styled(
-        atlas,
-        &text,
-        scrolled_left(left, width - room, now_ms),
-        y,
-        color,
-        true,
-    );
-    batch.clip_since(start, left, top, right, bottom);
+    batch.text_styled(atlas, &text, x, y, color, true);
+    if !fits {
+        // Scissored to the widget: what does not fit is read as the label slides.
+        batch.clip_since(start, left, top, right, bottom);
+    }
 }
 
 /// [`scrolling_text_at`] at `Util.getMillis`.
@@ -533,9 +553,16 @@ pub fn button(
     active: bool,
     hover: bool,
 ) {
-    button_as(batch, atlas, x, y, w, h, label, active, hover, |rect| {
-        crate::widgets::Narratable::button(label.plain(), rect, active)
-    });
+    button_as(
+        batch,
+        atlas,
+        [x, y, w, h],
+        label,
+        active,
+        hover,
+        None,
+        |rect| crate::widgets::Narratable::button(label.plain(), rect, active),
+    );
 }
 /// A [`button`] with a job on its screen: its controller button and glyph come from `action`, so
 /// a new screen gets them by drawing this for its Done, Back, Cancel or Apply.
@@ -567,35 +594,25 @@ pub fn action_button(
         hover,
         false,
         room,
+        None,
         |rect| crate::widgets::Narratable::button(label.plain(), rect, active),
     );
 }
-/// A [`button`] that vanilla narrates as another widget (a `CycleButton`, a
-/// `LockIconButton`): `narration` builds what it records from its rectangle,
-/// and only while the narrator records.
+/// A [`button`] with optional custom art and narration. `narration` builds the record from the
+/// button's rectangle, only while the narrator records (for example as a `CycleButton`).
 #[allow(clippy::too_many_arguments)]
 pub fn button_as(
     batch: &mut HudBatch,
     atlas: &HudAtlas,
-    x: f32,
-    y: f32,
-    w: f32,
-    h: f32,
+    rect: [f32; 4],
     label: &Text,
     active: bool,
     hover: bool,
+    sprites: Option<&ButtonSprites>,
     narration: impl FnOnce([f32; 4]) -> crate::widgets::Narratable,
 ) {
     button_with_room(
-        batch,
-        atlas,
-        [x, y, w, h],
-        label,
-        active,
-        hover,
-        false,
-        0.0,
-        narration,
+        batch, atlas, rect, label, active, hover, false, 0.0, sprites, narration,
     );
 }
 /// An options button whose focus highlights it without changing the mouse cursor.
@@ -630,6 +647,7 @@ pub(crate) fn focused_button(
         hover,
         focused,
         room,
+        None,
         |rect| crate::widgets::Narratable::button(label.plain(), rect, active),
     );
 }
@@ -644,6 +662,7 @@ fn button_with_room(
     hover: bool,
     focused: bool,
     room: f32,
+    sprites: Option<&ButtonSprites>,
     narration: impl FnOnce([f32; 4]) -> crate::widgets::Narratable,
 ) {
     let plain = label.plain();
@@ -654,21 +673,41 @@ fn button_with_room(
     }
     crate::widgets::narratable(|| narration([x, y, w, h]).hovered(hover || focused));
     crate::widgets::widget_cursor(hover, active);
-    let sprite = if !active {
-        "gui/sprites/widget/button_disabled"
-    } else if hover || focused {
-        "gui/sprites/widget/button_highlighted"
+    let highlighted = hover || focused;
+    let custom = sprites.and_then(|sprites| {
+        let state = if !active {
+            sprites.disabled.as_deref()
+        } else if highlighted {
+            sprites.highlighted.as_deref()
+        } else {
+            None
+        };
+        state
+            .and_then(|id| atlas.sprites.get(id))
+            .or_else(|| atlas.sprites.get(sprites.normal.as_str()))
+    });
+    if let Some(&sprite) = custom {
+        batch.rect_uv(x, y, w, h, sprite, u32::MAX);
     } else {
-        "gui/sprites/widget/button"
-    };
-    nine_slice(batch, atlas, sprite, x, y, w, h, u32::MAX);
+        let vanilla = if !active {
+            "gui/sprites/widget/button_disabled"
+        } else if highlighted {
+            "gui/sprites/widget/button_highlighted"
+        } else {
+            "gui/sprites/widget/button"
+        };
+        nine_slice(batch, atlas, vanilla, x, y, w, h, u32::MAX);
+    }
     let color = if active {
         rgba(255, 255, 255, 255)
     } else {
         rgba(160, 160, 160, 255)
     };
-    // Centred on the button, as the title's are, and only moved out from under a glyph.
-    scrolling_text_around_at(
+    // Centre the label (keeping it out from under a glyph), then apply the mod's offset.
+    let offset = sprites
+        .map(|sprites| sprites.label_offset)
+        .filter(|offset| offset.iter().all(|coord| coord.is_finite()));
+    scrolling_text_with_offset(
         batch,
         atlas,
         label,
@@ -680,6 +719,7 @@ fn button_with_room(
         y + ((h - 8.0) / 2.0).floor(),
         crate::hud_overlays::now_ms(),
         color,
+        offset,
     );
 }
 /// AbstractSliderButton: track, 8px handle at `value` (0..1) and the label.
@@ -1991,6 +2031,141 @@ mod tests {
             (std::path::Path::new("/nonexistent/sunrise-test-assets")).to_owned(),
         ))
         .unwrap()
+    }
+
+    #[test]
+    fn button_art_selects_the_state_then_its_fallbacks() {
+        let mut atlas = atlas();
+        for (n, name) in [
+            "test:normal",
+            "test:hover",
+            "test:disabled",
+            "gui/sprites/widget/button",
+            "gui/sprites/widget/button_highlighted",
+            "gui/sprites/widget/button_disabled",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            atlas.sprites.insert(
+                name.into(),
+                Rect {
+                    u0: n as f32 / 8.0,
+                    v0: 0.0,
+                    u1: (n as f32 + 0.5) / 8.0,
+                    v1: 0.25,
+                    w: 200,
+                    h: 20,
+                },
+            );
+        }
+        let draw = |active, highlighted, sprites: Option<&ButtonSprites>| {
+            let mut batch = HudBatch::scratch([640, 480]);
+            button_as(
+                &mut batch,
+                &atlas,
+                [10.0, 20.0, 14.0, 15.0],
+                &Text::empty(),
+                active,
+                highlighted,
+                sprites,
+                |rect| crate::widgets::Narratable::button("", rect, active),
+            );
+            batch.vertices
+        };
+        let mut art = ButtonSprites::new("test:normal");
+        art.highlighted = Some("test:hover".into());
+        art.disabled = Some("test:disabled".into());
+        for (active, highlighted, u) in
+            [(true, false, 0.0), (true, true, 0.125), (false, true, 0.25)]
+        {
+            let vertices = draw(active, highlighted, Some(&art));
+            assert_eq!(vertices.len(), 6, "custom art stretches as one quad");
+            assert_eq!(vertices[0].uv, [u, 0.0]);
+            assert!(vertices.iter().any(|v| v.uv == [u + 0.0625, 0.25]));
+            assert_eq!(vertices[0].pos, [10.0, 20.0]);
+            assert!(vertices.iter().any(|v| v.pos == [24.0, 35.0]));
+        }
+        art.highlighted = Some("test:missing".into());
+        art.disabled = None;
+        for active in [true, false] {
+            assert_eq!(draw(active, true, Some(&art))[0].uv, [0.0, 0.0]);
+        }
+        art.normal = "test:also_missing".into();
+        for (active, highlighted, vanilla_u) in [
+            (true, false, 0.375),
+            (true, true, 0.5),
+            (false, true, 0.625),
+        ] {
+            let vanilla = draw(active, highlighted, None);
+            assert_eq!(vanilla[0].uv, [vanilla_u, 0.0]);
+            assert_eq!(
+                bytemuck::cast_slice::<_, u8>(&draw(active, highlighted, Some(&art))),
+                bytemuck::cast_slice::<_, u8>(&vanilla),
+            );
+        }
+    }
+
+    #[test]
+    fn button_label_offset_moves_text_without_moving_the_overflow_clip() {
+        let atlas = atlas();
+        let short = Text::literal("Run");
+        let button_text = |art: Option<&ButtonSprites>| {
+            let mut batch = HudBatch::scratch([640, 480]);
+            button_as(
+                &mut batch,
+                &atlas,
+                [10.0, 20.0, 100.0, 20.0],
+                &short,
+                true,
+                false,
+                art,
+                |rect| crate::widgets::Narratable::button("Run", rect, true),
+            );
+            batch.vertices
+        };
+        let centered = button_text(None);
+        let mut art = ButtonSprites::new("test:missing");
+        art.label_offset = [2.0, -1.0];
+        let shifted = button_text(Some(&art));
+        assert!(!centered.is_empty());
+        assert_eq!(centered.len(), shifted.len());
+        for (a, b) in centered.iter().zip(&shifted) {
+            assert_eq!(b.pos, [a.pos[0] + 2.0, a.pos[1] - 1.0]);
+        }
+        art.label_offset = [f32::NAN, -1.0];
+        assert_eq!(
+            bytemuck::cast_slice::<_, u8>(&button_text(Some(&art))),
+            bytemuck::cast_slice::<_, u8>(&centered),
+        );
+
+        let long = Text::literal("MMMMMMMMMMMM");
+        let overflowing_text = |offset| {
+            let mut batch = HudBatch::scratch([640, 480]);
+            scrolling_text_with_offset(
+                &mut batch,
+                &atlas,
+                &long,
+                17.0,
+                10.0,
+                24.0,
+                20.0,
+                40.0,
+                24.0,
+                0,
+                u32::MAX,
+                offset,
+            );
+            batch.vertices
+        };
+        let clipped = overflowing_text(Some([5.0, 1.0]));
+        assert!(!clipped.is_empty());
+        assert!(clipped.iter().all(|v| (10.0..=24.0).contains(&v.pos[0])));
+        let unshifted = overflowing_text(None);
+        assert_ne!(
+            bytemuck::cast_slice::<_, u8>(&clipped),
+            bytemuck::cast_slice::<_, u8>(&unshifted),
+        );
     }
 
     /// `defaultScrollingHelper` draws an overflowing label from `left` less the

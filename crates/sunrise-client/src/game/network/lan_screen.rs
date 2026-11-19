@@ -1007,13 +1007,11 @@ impl Game<'_> {
             ui::button_as(
                 batch,
                 atlas,
-                bx,
-                by,
-                bw,
-                20.0,
+                [bx, by, bw, 20.0],
                 &o.label(b),
                 active,
                 hover,
+                None,
                 |rect| o.narration(b, rect, tr),
             );
             if b == Button::Lan {
