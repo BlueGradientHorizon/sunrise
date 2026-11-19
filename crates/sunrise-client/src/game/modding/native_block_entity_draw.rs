@@ -1244,7 +1244,14 @@ impl Game<'_> {
             return false;
         };
         let pose = draw.pose();
-        self.block_model_vertices(id, 42, pose, draw.light, true, &mut draw.vertices);
+        self.block_model_vertices(
+            id,
+            Self::BLOCK_MODEL_SEED,
+            pose,
+            draw.light,
+            true,
+            &mut draw.vertices,
+        );
         true
     }
 
@@ -1260,10 +1267,9 @@ impl Game<'_> {
             .pack
             .render
             .model_catalog
-            .collect_seeded(id, 42)
+            .collect_seeded(id, Self::BLOCK_MODEL_SEED)
             .map_err(|_| ModelError::UnknownModel)?;
-        let grass = self.pack.item_renderer.grass_color(0.5, 1.0) as u32;
-        let tables = &self.pack.context.tables;
+        let default_tint = self.default_block_tint(id);
         let slot = self
             .standalone_geometry
             .state_slot(state.0, || {
@@ -1273,14 +1279,12 @@ impl Game<'_> {
                     .flat_map(|(_, model)| &model.faces)
                     .map(|face| {
                         let mut quad = face.quad.clone();
-                        if let Some(tint) = tables.default_tint(id, quad.tint_index, grass) {
+                        if let Some(tint) = default_tint(quad.tint_index) {
                             let base = quad.color.map_or(u32::MAX, |v| v as u32);
-                            let channel = |shift: u32| {
-                                (base >> shift & 0xff) * (tint >> shift & 0xff) / 255 << shift
-                            };
-                            quad.color = Some(
-                                (base & 0xFF00_0000 | channel(16) | channel(8) | channel(0)) as i32,
-                            );
+                            quad.color = Some(sunrise_client::hud_layout::multiply(
+                                base,
+                                0xFF00_0000 | tint,
+                            ) as i32);
                         }
                         BakedFace::new(quad, face.layer, face.opaque, face.translucent, None)
                     })

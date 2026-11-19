@@ -2497,6 +2497,9 @@ impl Game<'_> {
             }
         }
     }
+    /// The seed vanilla picks a block state model's weighted alternatives with outside the
+    /// world (`BlockModelResolver.MODEL_SEED`).
+    pub(super) const BLOCK_MODEL_SEED: i64 = 42;
     /// Baked block-state faces with default block tints and terrain shade or diffuse lighting.
     pub(super) fn block_model_vertices(
         &self,
@@ -2507,11 +2510,17 @@ impl Game<'_> {
         diffuse: bool,
         out: &mut Vec<Vertex>,
     ) {
-        // BlockTintSource.color(state) with no level: each tinted face's default colour.
+        let tint = self.default_block_tint(state);
+        self.tinted_block_model_vertices(state, seed, m, |_| light, diffuse, tint, out);
+    }
+    /// `BlockTintSource.color(state)` with no level: each tinted face's default colour.
+    pub(super) fn default_block_tint(
+        &self,
+        state: BlockStateId,
+    ) -> impl Fn(i32) -> Option<u32> + '_ {
         let grass = self.pack.item_renderer.grass_color(0.5, 1.0) as u32;
         let tables = &self.pack.context.tables;
-        let tint = |index: i32| tables.default_tint(state, index, grass);
-        self.tinted_block_model_vertices(state, seed, m, |_| light, diffuse, tint, out);
+        move |index| tables.default_tint(state, index, grass)
     }
     /// `block_model_vertices` with each face multiplied by `tint` of its
     /// tint index (RGB, `None` for untinted faces) and lit by `light` of

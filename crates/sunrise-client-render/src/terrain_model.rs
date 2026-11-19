@@ -2,16 +2,6 @@
 use crate::{gfx, mesher::Vertex, models::catalog::BakedFace};
 use glam::{Mat3, Mat4, Vec3};
 use sunrise_assets::bake::RenderType;
-/// The directional shade of a face on a block (`ModelBlockRenderer`'s 1, 0.5, 0.8, 0.6), in 255ths.
-fn face_shade(facing: sunrise_assets::model::Direction) -> u32 {
-    use sunrise_assets::model::Direction as D;
-    match facing {
-        D::Up => 255,
-        D::Down => 127,
-        D::North | D::South => 204,
-        D::West | D::East => 153,
-    }
-}
 fn same_sprite(left: &str, right: &str) -> bool {
     left.strip_prefix("minecraft:").unwrap_or(left)
         == right.strip_prefix("minecraft:").unwrap_or(right)
@@ -101,10 +91,11 @@ fn route(face: &BakedFace, policy: NativeModelMaterial, faded: bool) -> Option<R
         M::Cutout => Route::Terrain(gfx::TERRAIN_MODEL_CUTOUT_OVERLAY),
         M::CutoutMipped => Route::Terrain(gfx::TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY),
         M::Model => match face.quad.render_type.unwrap_or(RenderType::Solid) {
-            RenderType::Solid if !face.quad.material.force_translucent => {
-                Route::Terrain(gfx::TERRAIN_MODEL_SOLID_OVERLAY)
-            }
-            RenderType::Solid | RenderType::Translucent => Route::Translucent,
+            // A solid quad whose material is `forceTranslucent` (`Material.Baked`: the sprite is
+            // drawn as translucent whatever its texels say) is a translucent quad.
+            RenderType::Solid if face.quad.material.force_translucent => Route::Translucent,
+            RenderType::Solid => Route::Terrain(gfx::TERRAIN_MODEL_SOLID_OVERLAY),
+            RenderType::Translucent => Route::Translucent,
             RenderType::Cutout => Route::Terrain(gfx::TERRAIN_MODEL_CUTOUT_OVERLAY),
             RenderType::CutoutMipped => Route::Terrain(gfx::TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY),
             _ => return None,
@@ -115,11 +106,7 @@ fn route(face: &BakedFace, policy: NativeModelMaterial, faded: bool) -> Option<R
 /// `color` (ABGR, as vertices hold it) times the `0xAARRGGBB` draw colour `draw`, channel by
 /// channel.
 pub fn multiply_draw_color(color: u32, draw: u32) -> u32 {
-    let abgr = (draw & 0xff00_ff00) | (draw >> 16 & 0xff) | (draw & 0xff) << 16;
-    (0..4).fold(0, |out, k| {
-        let shift = 8 * k;
-        out | ((color >> shift & 0xff) * (abgr >> shift & 0xff) / 255) << shift
-    })
+    crate::hud_layout::multiply(color, crate::hud_layout::abgr(draw))
 }
 
 /// A whole draw validates before its first vertex. No temporary geometry allocation, resource
@@ -256,10 +243,12 @@ pub fn draw_model(
             Route::Translucent => {
                 // `ALPHA_CUTOUT` 0.1 (`glint_uv.y`), and no normal lighting: the directional
                 // shade is in the colour, as a block quad's is.
-                let shade = if shaded { face_shade(quad.facing) } else { 255 };
-                let color = (0..3).fold(color & 0xff00_0000, |out, k| {
-                    out | ((color >> (8 * k) & 0xff) * shade / 255) << (8 * k)
-                });
+                let color = if shaded {
+                    let shade = (crate::models::cube::shade(face) * 255.0) as u32;
+                    crate::hud_layout::multiply(color, 0xFF00_0000 | shade * 0x01_0101)
+                } else {
+                    color
+                };
                 std::array::from_fn(|i| Vertex {
                     pos: positions[i].to_array(),
                     uv: uv[i],
