@@ -9,9 +9,9 @@ pub mod __private {
 }
 pub use payload::{
     HandlerThread, IPayloadContext, IPayloadHandler, PayloadAccepted, PayloadBytes,
-    PayloadContextError, PayloadDeclaration, PayloadDelivery, PayloadDirection, PayloadFrameStage,
-    PayloadId, PayloadProtocol, PayloadRegistrar, PayloadSendError, PayloadWork, PayloadWorkStatus,
+    PayloadContextError, PayloadDeclaration, PayloadDirection, PayloadFrameStage, PayloadId,
+    PayloadProtocol, PayloadRegistrar, PayloadSendError, PayloadWork, PayloadWorkStatus,
     RegisterClientPayloadHandlersEvent, RegisterPayloadHandlersEvent,
 };
 pub use payload::{PAYLOAD_DROPPABLE_MARKER, PayloadBusy, PayloadDropCounts, PayloadHandleError};
-pub use payload::{PayloadToken, ToClient, ToServer};
+pub use payload::{PayloadDelivery, PayloadToken, ToClient, ToServer};
