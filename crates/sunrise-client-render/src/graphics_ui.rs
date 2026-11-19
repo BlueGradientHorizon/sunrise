@@ -1343,6 +1343,31 @@ fn parts(item: Item, s: &Settings, out: &EffectiveOutput) -> (String, Option<Str
     shell::name_and_value(&item.label(s, out).plain())
 }
 
+/// Render distances up to this one get no memory hint; vanilla's slider stops at 32.
+const MEMORY_HINT_ABOVE: i32 = 48;
+/// Section mesh bytes per loaded column, from one world (#3299's capture: 13.4 GiB for 52,653 columns at 128).
+const MESH_BYTES_PER_COLUMN: f64 = 256.0 * 1024.0;
+
+/// About how many GB (10^9 bytes) of section meshes a render distance keeps; none up to `MEMORY_HINT_ABOVE`.
+fn render_distance_mesh_gb(distance: i32) -> Option<f64> {
+    if distance <= MEMORY_HINT_ABOVE {
+        return None;
+    }
+    // Vanilla's ChunkTrackingView keeps the columns within distance + 1 of the centre's.
+    let columns = std::f64::consts::PI * f64::from(distance + 1).powi(2);
+    Some(columns * MESH_BYTES_PER_COLUMN / 1e9)
+}
+
+/// What a render distance past `MEMORY_HINT_ABOVE` can cost in memory, and what to use instead.
+fn render_distance_memory(distance: i32) -> Option<Text> {
+    render_distance_mesh_gb(distance).map(|gb| {
+        Text::tr(
+            "sunrise.options.renderDistance.memory",
+            &[&format!("{gb:.1}")],
+        )
+    })
+}
+
 /// A setting's row: its control, what it does (and what its chosen value does), what it costs,
 /// and why it can't be used now.
 fn row(setting: Setting, s: &Settings, out: &EffectiveOutput) -> Row<Item> {
@@ -1360,7 +1385,7 @@ fn row(setting: Setting, s: &Settings, out: &EffectiveOutput) -> Row<Item> {
     let about = lang::get(setting.text);
     let chosen = match item {
         Item::Vanilla(Opt::RenderDistance) => {
-            crate::options_ui::render_distance_memory(s.render_distance).map(|t| t.plain())
+            render_distance_memory(s.render_distance).map(|t| t.plain())
         }
         _ => Some(lang::get(description(item, s, out, setting.text))).filter(|c| *c != about),
     };
@@ -1599,7 +1624,15 @@ mod tests {
         let (shown, _) = lang::scoped(lang::Language::load(&[], "en_us"), || {
             super::row(setting, &s, &NONE).chosen.unwrap()
         });
-        assert!(shown.contains("about 12.8 GB"), "{shown}");
+        assert!(shown.contains("about 13.7 GB"), "{shown}");
+    }
+
+    #[test]
+    fn render_distance_memory_estimate_matches_a_measured_world() {
+        assert_eq!(render_distance_mesh_gb(48), None);
+        // #3299's capture at distance 128: the section buffer arena held 13.4 GiB, 14.4 GB.
+        let at_128 = render_distance_mesh_gb(128).unwrap();
+        assert!((13.0..15.5).contains(&at_128), "{at_128}");
     }
 
     pub(super) type Ui = Shell<GraphicsScreen>;

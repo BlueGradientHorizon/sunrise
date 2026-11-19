@@ -2020,31 +2020,6 @@ enum Row {
     Note(String),
     Buttons(Widget, Option<Widget>),
 }
-/// Render distances up to this one get no memory hint; vanilla's slider stops at 32.
-const MEMORY_HINT_ABOVE: i32 = 48;
-/// Section mesh bytes per loaded column, from #3299's capture: 13.4 GiB for 52,653 columns at distance 128.
-const MESH_BYTES_PER_COLUMN: f64 = 256.0 * 1024.0;
-
-/// About how many GiB of section meshes a render distance keeps; none up to `MEMORY_HINT_ABOVE`.
-fn render_distance_mesh_gib(distance: i32) -> Option<f64> {
-    if distance <= MEMORY_HINT_ABOVE {
-        return None;
-    }
-    // Vanilla's ChunkTrackingView keeps the columns within distance + 1 of the centre's.
-    let columns = std::f64::consts::PI * f64::from(distance + 1).powi(2);
-    Some(columns * MESH_BYTES_PER_COLUMN / f64::from(1u32 << 30))
-}
-
-/// What a render distance past `MEMORY_HINT_ABOVE` costs in memory, and what to use instead.
-pub(crate) fn render_distance_memory(distance: i32) -> Option<Text> {
-    render_distance_mesh_gib(distance).map(|gib| {
-        Text::tr(
-            "sunrise.options.renderDistance.memory",
-            &[&format!("{gib:.1}")],
-        )
-    })
-}
-
 /// A widget's tooltip (`setTooltip`), unwrapped: drawn while hovered, and
 /// its narration's hint.
 fn tooltip_text(s: &Settings, wd: &Widget) -> Option<Text> {
@@ -2052,9 +2027,6 @@ fn tooltip_text(s: &Settings, wd: &Widget) -> Option<Text> {
         let WKind::Slider { opt, .. } = &wd.kind else {
             return None;
         };
-        if *opt == Opt::RenderDistance {
-            return render_distance_memory(s.render_distance);
-        }
         let key = opt.tooltip_key(s);
         let Opt::Page(page, row) = opt else {
             return lang::has(&key).then(|| tr(&key));
@@ -4545,15 +4517,6 @@ mod tests {
 
     /// A renderer whose destination offers nothing and whose display reports nothing.
     const NONE: EffectiveOutput = EffectiveOutput::NONE;
-
-    #[test]
-    fn render_distance_memory_hint_starts_past_48_and_matches_a_measured_world() {
-        assert_eq!(render_distance_mesh_gib(32), None);
-        assert_eq!(render_distance_mesh_gib(48), None);
-        // #3299's capture at distance 128: the section buffer arena held 13.4 GiB.
-        let at_128 = render_distance_mesh_gib(128).unwrap();
-        assert!((12.0..14.5).contains(&at_128), "{at_128}");
-    }
 
     #[test]
     fn pack_options_leave_with_a_change_and_with_nothing_after_its_undo() {
