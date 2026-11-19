@@ -130,6 +130,7 @@ const HOOKS: &[&str] = &[
     "hook:Hooks::recipe_sources",
     "hook:Hooks::register",
     "hook:Hooks::register_commands",
+    "hook:Hooks::register_entity_renderers",
     "hook:Hooks::register_json_animation_types",
     "hook:Hooks::render_gui_pre",
     "hook:Hooks::render_level_stage",
