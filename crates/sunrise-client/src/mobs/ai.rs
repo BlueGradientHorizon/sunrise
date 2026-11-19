@@ -1995,7 +1995,7 @@ fn base_tick(
         super::undead::drowned_update_swimming(m, w);
     }
     let fire = crate::motion::environment::fire_contact(w.world, w.registry, m.bounds());
-    let lava = m.fluids.in_lava;
+    let lava = m.fluids.in_lava || touches_lava_cauldron(m, w);
     let contact_at = m.position;
     if fire > 0.0 {
         m.ticks_frozen = 0;
@@ -2151,7 +2151,7 @@ fn base_tick(
     } else {
         (
             crate::motion::environment::fire_contact(w.world, w.registry, m.bounds()),
-            touches_lava(m, w),
+            touches_lava(m, w) || touches_lava_cauldron(m, w),
         )
     };
     block_contact_damage(m, w, level, fire, lava);
@@ -2209,6 +2209,35 @@ fn touches_lava(m: &Mob, w: &MobWorld) -> bool {
         for y in min.y.floor() as i32..=max.y.floor() as i32 {
             for z in min.z.floor() as i32..=max.z.floor() as i32 {
                 if &*w.facts.get(w.world.block(x, y, z)).name == "minecraft:lava" {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+/// `LavaCauldronBlock.entityInside` (LAVA_IGNITE, then `lavaHurt`, as lava's own) for a mob
+/// whose box meets `getEntityInsideCollisionShape`'s `FILLED_SHAPE`: the cauldron's own shape
+/// and its lava, `Block.column(12, 4, 15)`. A mob standing on the rim is not inside.
+fn touches_lava_cauldron(m: &Mob, w: &MobWorld) -> bool {
+    let b = m.bounds().deflate(Vec3::new(1e-5, 1e-5, 1e-5));
+    let (min, max) = (b.min_position(), b.max_position());
+    for x in min.x.floor() as i32..=max.x.floor() as i32 {
+        for y in min.y.floor() as i32..=max.y.floor() as i32 {
+            for z in min.z.floor() as i32..=max.z.floor() as i32 {
+                let state = w.world.block(x, y, z);
+                if &*w.facts.get(state).name != "minecraft:lava_cauldron" {
+                    continue;
+                }
+                let at = Vec3::new(f64::from(x), f64::from(y), f64::from(z));
+                let lava = Aabb::new(
+                    Vec3::new(2.0 / 16.0, 4.0 / 16.0, 2.0 / 16.0),
+                    Vec3::new(14.0 / 16.0, 15.0 / 16.0, 14.0 / 16.0),
+                );
+                let shell = w.collision.static_shape(state).ok().flatten();
+                if lava.move_by(at).intersects(b)
+                    || shell.is_some_and(|s| s.boxes().iter().any(|c| c.move_by(at).intersects(b)))
+                {
                     return true;
                 }
             }
@@ -6139,6 +6168,33 @@ mod burn_and_rose_tests {
             }
             world.set(0, 64, 0, state).unwrap();
         }
+    }
+
+    /// `LavaCauldronBlock.entityInside`: a pig in a lava cauldron is set alight and takes lava's
+    /// 4, as a cooking chicken farm needs; one standing on the rim is not inside (#455).
+    #[test]
+    #[ignore = "daily"]
+    fn a_mob_in_a_lava_cauldron_burns() {
+        let ran = crate::mobs::world::with_built_test_world(
+            &[],
+            build_with("minecraft:lava_cauldron"),
+            |w, types| {
+                for (y, hurt) in [(64.25, true), (65.0, false)] {
+                    let kind = Arc::new(types.types["minecraft:pig"].clone());
+                    let mut m = Mob::new(1, kind, Vec3::new(0.5, y, 0.5), 0.0);
+                    register(&mut m);
+                    m.no_ai = true;
+                    m.no_gravity = true;
+                    let start = m.health;
+                    let (mut lr, mut events) = (crate::health::TestLevel::new(0), Vec::new());
+                    assert!(tick(&mut m, w, &mut lr.level(), &mut events));
+                    let expected = if hurt { start - 4.0 } else { start };
+                    assert_eq!(m.health, expected, "at y {y}");
+                    assert_eq!(m.fire_ticks > 0, hurt, "at y {y}");
+                }
+            },
+        );
+        assert!(ran, "vanilla data is missing");
     }
 
     fn golem(types: &crate::mobs::MobTypes) -> Mob {
