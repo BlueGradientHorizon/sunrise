@@ -982,5 +982,13 @@
     "path": "crates/sunrise-mod-wasm/tests/import_identity.rs",
     "reason": "needs SUNRISE_WASM_OLD_FIXTURE and SUNRISE_WASM_OLD_STD: the fixture and std built by the SDK before the per-item imports",
     "rationale": "Existing explicit manual runner by-hand in tools/ci/ignored-tests/manual-sunrise-mod-wasm.txt: needs SUNRISE_WASM_OLD_FIXTURE and SUNRISE_WASM_OLD_STD: the fixture and std built by the SDK before the per-item imports. Not selected by daily shards."
+  },
+  {
+    "package": "sunrise-mod-wasm",
+    "target": "test:library_features",
+    "test": "a_library_is_built_with_the_same_features_in_its_dependents_workspace",
+    "path": "crates/sunrise-mod-wasm/tests/library_features.rs",
+    "reason": "reads the library fixtures' lockfiles, which the wasm-mods workflow writes when it builds them",
+    "rationale": "Run by wasm-mods.yml (tools/ci/ignored-tests/manual-sunrise-mod-wasm.txt) after it builds the library fixtures: the test reads each fixture's Cargo.lock, which is not tracked and exists only after that build, so no daily shard can run it."
   }
 ]
