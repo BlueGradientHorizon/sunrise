@@ -169,3 +169,70 @@ fn a_deduplicated_array_layer_is_not_the_same_named_source_sprite() {
     assert_eq!(output[4].uv, [0.0, 0.0]);
     assert_eq!(output[6].uv, [1.0, 1.0]);
 }
+#[test]
+fn the_draw_colour_multiplies_every_channel_and_white_changes_nothing() {
+    let tinted = || {
+        let mut tinted = face();
+        tinted.quad.tint_index = 0;
+        tinted
+    };
+    // The tint (0x80 red) first, then the draw colour 0x80/0xFF/0x40 and alpha 0xC0, as ABGR.
+    let options = NativeModelRenderOptions {
+        tint: 0x80_ffff,
+        color: 0xC0_80_FF_40,
+        ..Default::default()
+    };
+    let (accepted, output) = draw(&[tinted(), face()], Mat4::IDENTITY, options);
+    assert!(accepted);
+    // Red: 255 * 0x80 / 255 = 0x80, then * 0x80 / 255 = 0x40. Green and blue: 255, then * 0xFF
+    // and * 0x40 / 255.
+    assert_eq!(output[0].color, 0xC0 << 24 | 0x40 << 16 | 0xFF << 8 | 0x40);
+    // The untinted quad takes the draw colour alone, and the alpha makes it translucent.
+    assert_eq!(output[4].color, 0xC0 << 24 | 0x40 << 16 | 0xFF << 8 | 0x80);
+    assert!(
+        output
+            .iter()
+            .all(|v| v.layer & 0xffff == gfx::TERRAIN_MODEL_TRANSLUCENT_OVERLAY)
+    );
+    let (_, plain) = draw(&[tinted()], Mat4::IDENTITY, Default::default());
+    assert_eq!(plain[0].layer & 0xffff, gfx::TERRAIN_MODEL_SOLID_OVERLAY);
+    assert_eq!(plain[0].color, 0xFFFF_FF80);
+}
+#[test]
+fn hidden_faces_skip_quads_by_cull_side_and_keep_those_without() {
+    let south = || {
+        let mut south = face();
+        south.quad.cull = Some(Direction::South);
+        south
+    };
+    let open = || {
+        let mut open = face();
+        open.quad.cull = None;
+        open
+    };
+    let hide = |hidden_faces| {
+        let options = NativeModelRenderOptions {
+            hidden_faces,
+            ..Default::default()
+        };
+        draw(&[south(), open()], Mat4::IDENTITY, options).1.len() / 4
+    };
+    assert_eq!(hide(0), 2);
+    assert_eq!(hide(1 << 3), 1, "south is bit 3");
+    assert_eq!(hide(!(1 << 3)), 2);
+    assert_eq!(hide(0b11_1111), 1);
+}
+#[test]
+fn translucent_quads_bake_their_shade_into_the_colour_and_discard_alpha_below_a_tenth() {
+    let mut glass = face();
+    glass.quad.render_type = Some(RenderType::Translucent);
+    glass.layer = 7;
+    let (accepted, output) = draw(&[glass], Mat4::IDENTITY, Default::default());
+    assert!(accepted);
+    // South faces shade 204/255 (0.8), baked into the colour; the sprite layer rides the high
+    // half of `layer`.
+    assert_eq!(output[0].color & 0xff, 204);
+    assert_eq!(output[0].layer >> 16, 7);
+    assert_eq!(output[0].glint_uv, [0.0; 2]);
+    assert_eq!(output[0].normal, [0; 4]);
+}
