@@ -61,20 +61,37 @@ pub struct CoreProgram {
     /// binding unused).
     pub other: Vec<String>,
     /// The resources of set 0 the stages' entry points read, each with those stages
-    /// ([`bindings_read`], analysed once when the program is made).
+    /// ([`bindings_read`], from the validation that made the program).
     pub read: Vec<(u32, wgpu::ShaderStages)>,
 }
 
 impl CoreProgram {
-    /// The program of two validated stages, with what they read ([`CoreProgram::read`]).
-    pub fn new(vertex: naga::Module, fragment: naga::Module, other: Vec<String>) -> Self {
-        let read = bindings_read([&vertex, &fragment]);
+    /// The program of two stages and their validation, with what they read
+    /// ([`CoreProgram::read`]).
+    pub fn new(
+        (vertex, vertex_info): (naga::Module, naga::valid::ModuleInfo),
+        (fragment, fragment_info): (naga::Module, naga::valid::ModuleInfo),
+        other: Vec<String>,
+    ) -> Self {
+        let read = bindings_read([(&vertex, &vertex_info), (&fragment, &fragment_info)]);
         Self {
             vertex,
             fragment,
             other,
             read,
         }
+    }
+
+    /// [`CoreProgram::new`] for stages not yet validated (tests that build their own).
+    #[cfg(test)]
+    pub fn validated(vertex: naga::Module, fragment: naga::Module, other: Vec<String>) -> Self {
+        let validate = |module: naga::Module| {
+            let info = Validator::new(ValidationFlags::all(), Capabilities::all())
+                .validate(&module)
+                .expect("the module validates");
+            (module, info)
+        };
+        Self::new(validate(vertex), validate(fragment), other)
     }
 
     /// The stages whose entry points read the resource at `binding` of set 0, through any
@@ -148,26 +165,23 @@ pub fn other_binding(index: usize) -> u32 {
     OTHER_BINDINGS + 2 * index as u32
 }
 
-/// The resources of set 0 that the entry points of `[vertex, fragment]` read, through any
-/// function they call (naga's per entry point use), each with the stages reading it: one
-/// validation per module, whatever the number of bindings. A module that doesn't validate (it
-/// did when it was translated) counts as reading every resource it declares.
-pub(crate) fn bindings_read(modules: [&naga::Module; 2]) -> Vec<(u32, wgpu::ShaderStages)> {
+/// The resources of set 0 that the entry points of each stage read, through any function they
+/// call (naga's per entry point use, from the stage's own validation), each with the stages
+/// reading it.
+pub(crate) fn bindings_read(
+    stages: [(&naga::Module, &naga::valid::ModuleInfo); 2],
+) -> Vec<(u32, wgpu::ShaderStages)> {
     let mut read: Vec<(u32, wgpu::ShaderStages)> = Vec::new();
-    for (module, stage) in modules
+    for ((module, info), stage) in stages
         .into_iter()
         .zip([wgpu::ShaderStages::VERTEX, wgpu::ShaderStages::FRAGMENT])
     {
-        let info = Validator::new(ValidationFlags::empty(), Capabilities::all())
-            .validate(module)
-            .ok();
         for (handle, global) in module.global_variables.iter() {
             let Some(binding) = global.binding.as_ref().filter(|b| b.group == 0) else {
                 continue;
             };
-            let reads = info.as_ref().is_none_or(|info| {
-                (0..module.entry_points.len()).any(|i| !info.get_entry_point(i)[handle].is_empty())
-            });
+            let reads =
+                (0..module.entry_points.len()).any(|i| !info.get_entry_point(i)[handle].is_empty());
             if !reads {
                 continue;
             }
@@ -262,8 +276,8 @@ pub fn translate_core_at(
         provided,
     )
     .map_err(|e| format!("fragment shader: {e}"))?;
-    let given = locations(&vertex, false);
-    if let Some(missing) = locations(&fragment, true)
+    let given = locations(&vertex.0, false);
+    if let Some(missing) = locations(&fragment.0, true)
         .into_iter()
         .find(|l| !given.contains(l))
     {
@@ -818,7 +832,7 @@ fn compile(
     defines: &[&str],
     names: &Names,
     provided: &dyn Fn(&str) -> bool,
-) -> Result<naga::Module, String> {
+) -> Result<(naga::Module, naga::valid::ModuleInfo), String> {
     let mut options = Options::from(stage);
     for define in defines {
         let (name, value) = define.split_once(' ').unwrap_or((define, ""));
@@ -863,7 +877,7 @@ fn compile(
             return Err(format!("{name} is not a block or sampler of this pipeline"));
         }
     }
-    Ok(module)
+    Ok((module, info))
 }
 
 /// The locations the entry point reads (`inputs`) or writes.

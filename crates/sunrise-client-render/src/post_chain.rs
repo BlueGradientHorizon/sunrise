@@ -403,8 +403,9 @@ struct Translated {
     samplers: Vec<(u32, usize)>,
 }
 
-/// Why a translated pass is refused, which refuses its effect unless the built-in shaders stand
-/// in for it.
+/// Why a translated pass is refused: one rule, whether the translator, the pass's configuration
+/// or the device (its modules, layout or pipeline) refuses it. A pass naming vanilla's shaders
+/// then runs on the built-in stand-ins; any other refuses its effect, named in the log.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum PassRefusal {
     /// More `what` than the device binds: declared by both stages (`stage` none, checked before
@@ -621,19 +622,32 @@ struct Pass {
     info: wgpu::Buffer,
     vs_block: wgpu::Buffer,
     fs_block: wgpu::Buffer,
+    /// For a translated pass naming vanilla's shaders: the built-in stand-in it falls back to
+    /// when the device refuses its pipeline, as a pass the translator refuses does.
+    fallback: Option<Box<Pass>>,
 }
 
 impl Chain {
-    /// Each translated pass's pipeline for `format`; the first the device refuses, named.
+    /// Each translated pass's pipeline for `format`. A pass whose pipeline the device refuses
+    /// is replaced by its built-in stand-in when it has one; else the refusal, named.
     fn ensure_pipelines(
         &mut self,
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
     ) -> Result<(), LoadError> {
         for (n, pass) in self.passes.iter_mut().enumerate() {
-            if let Some(translated) = &mut pass.translated {
-                (translated.ensure_pipeline(device, format))
-                    .map_err(|e| LoadError::Pass(n, PassRefusal::Pipeline(e)))?;
+            let Some(translated) = &mut pass.translated else {
+                continue;
+            };
+            let Err(e) = translated.ensure_pipeline(device, format) else {
+                continue;
+            };
+            match pass.fallback.take() {
+                Some(standin) => {
+                    log::debug!("post effect pass {n} uses the built-in shaders: {e}");
+                    *pass = *standin;
+                }
+                None => return Err(LoadError::Pass(n, PassRefusal::Pipeline(e))),
             }
         }
         Ok(())
@@ -667,9 +681,10 @@ pub struct Request<'a> {
     pub globals: Globals,
     /// What resource packs' Polytone post chains add, when a pack has some.
     pub extras: Option<&'a Extras>,
-    /// The game's `PolyGlobals` this frame, which every pass reading the block is given,
-    /// whichever effect it is in (zeros without them).
-    pub poly_globals: Option<crate::gfx::expression_blocks::PolyGlobalsBytes>,
+    /// Builds the game's `PolyGlobals` for this frame: called at most once, and only when an
+    /// applied effect has a pass reading the block (whichever effect it is in). Without it such
+    /// a pass reads zeros.
+    pub poly_globals: Option<&'a dyn Fn() -> crate::gfx::expression_blocks::PolyGlobalsBytes>,
 }
 
 /// What resource packs' Polytone post chains add to every chain (#11486, wiki "Shaders"): their
@@ -711,6 +726,14 @@ impl Globals {
         out.extend_from_slice(&menu_blur_radius.to_le_bytes());
         out.extend_from_slice(&i32::from(self.use_rgss).to_le_bytes());
         out.try_into().expect("48 bytes")
+    }
+}
+
+impl PostEffects {
+    /// Whether the last frame's effects were given the game's `PolyGlobals`: only when one of
+    /// them has a pass reading the block.
+    pub fn gave_poly_globals(&self) -> bool {
+        self.poly_globals.is_some()
     }
 }
 
@@ -756,7 +779,8 @@ pub struct PostEffects {
     pending: HashSet<String>,
     /// This frame's `Extras::blocks`.
     extra_blocks: BTreeMap<String, Vec<u8>>,
-    /// This frame's `PolyGlobals` ([`Request::poly_globals`]).
+    /// This frame's `PolyGlobals` ([`Request::poly_globals`]), built only when an applied
+    /// effect's pass reads them.
     poly_globals: Option<crate::gfx::expression_blocks::PolyGlobalsBytes>,
     /// The frame's depth with GL's rows, for the passes that read `minecraft:main`'s: the
     /// pipeline, and the texture at the frame's size.
@@ -1108,7 +1132,13 @@ impl PostEffects {
                 &mut images,
                 extras,
             ) {
-                Ok(pass) => pass,
+                Ok(mut pass) => {
+                    // What a pipeline the device refuses falls back to, as below.
+                    pass.fallback = (Self::standin_pass(device, queue, n, p, output, &index))
+                        .ok()
+                        .map(Box::new);
+                    pass
+                }
                 Err(e) => match Self::standin_pass(device, queue, n, p, output, &index) {
                     Ok(pass) => {
                         log::debug!("post effect {id} pass {n} uses the built-in shaders: {e}");
@@ -1155,8 +1185,8 @@ impl PostEffects {
         .map_err(|e| PassRefusal::Translator(format!("the shader translator failed: {e}")))?
         .map_err(PassRefusal::from)?;
         let modules = [&program.vertex, &program.fragment];
-        // What each stage reads: one analysis of each module for every binding.
-        let read = crate::core_shader::bindings_read(modules);
+        // What each stage reads, from the translator's validation of each stage.
+        let read = &program.read;
         let config = PassRefusal::Config;
         let mut refs = Vec::new();
         for input in &p.inputs {
@@ -1191,7 +1221,7 @@ impl PostEffects {
             }
             // Bound only to the stages that read it: one only declared (an imported block the
             // shader doesn't use) binds nothing.
-            let stages = crate::core_shader::stages_reading(&read, *binding);
+            let stages = crate::core_shader::stages_reading(read, *binding);
             if stages.is_empty() {
                 continue;
             }
@@ -1248,7 +1278,7 @@ impl PostEffects {
             let slot = (p.inputs.iter())
                 .position(|i| i.sampler == input)
                 .ok_or_else(|| config(format!("no input for the sampler {name}")))?;
-            let stages = crate::core_shader::stages_reading(&read, *texture);
+            let stages = crate::core_shader::stages_reading(read, *texture);
             if stages.is_empty() {
                 continue;
             }
@@ -1469,7 +1499,7 @@ impl PostEffects {
         self.use_root(req.root);
         self.collect_preloaded();
         self.extra_blocks = req.extras.map(|e| e.blocks.clone()).unwrap_or_default();
-        self.poly_globals = req.poly_globals;
+        self.poly_globals = None;
         let mut applied = Vec::new();
         for effect in req.effects {
             let id = normalise(effect);
@@ -1510,6 +1540,19 @@ impl PostEffects {
         });
         if applied.is_empty() {
             return false;
+        }
+        let reads_globals = |chain: &Chain| {
+            (chain.passes.iter().filter_map(|p| p.translated.as_ref())).any(|t| {
+                t.blocks
+                    .iter()
+                    .any(|(_, b)| matches!(b, Block::PolyGlobals(_)))
+            })
+        };
+        if applied
+            .iter()
+            .any(|id| matches!(self.chains.get(id), Some(Some(c)) if reads_globals(c)))
+        {
+            self.poly_globals = req.poly_globals.map(|build| build());
         }
         if self.work.as_ref().is_none_or(|(t, _)| {
             t.size().width != size[0] || t.size().height != size[1] || t.format() != format
@@ -2076,6 +2119,7 @@ impl Pass {
             fs_block: buffer("Post effect fragment uniforms", BLOCK_BYTES as u64),
             refs: Vec::new(),
             translated: None,
+            fallback: None,
         }
     }
 }
@@ -2295,6 +2339,7 @@ mod tests {
         extras: Option<&Extras>,
         poly_globals: Option<crate::gfx::expression_blocks::PolyGlobalsBytes>,
     ) -> (bool, [u8; 4]) {
+        let build = poly_globals.map(|bytes| move || bytes);
         let frame = device.create_texture(&wgpu::TextureDescriptor {
             label: None,
             size: wgpu::Extent3d {
@@ -2345,7 +2390,7 @@ mod tests {
                 menu_blur_radius: 5.0,
                 globals: Globals::default(),
                 extras,
-                poly_globals,
+                poly_globals: build.as_ref().map(|b| b as _),
             },
             None,
         );
@@ -2651,6 +2696,81 @@ mod tests {
             effects.collect_preloaded();
         }
         assert!(effects.failed.contains("minecraft:unmatched"));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    /// One rule for a refused pass: a pass naming vanilla's shaders whose pipeline the device
+    /// refuses (the pack's `blit.fsh` reads an input its `screenquad.vsh` doesn't write) runs on
+    /// the built-in stand-ins, as one the translator refuses does, and the effect runs: the
+    /// frame (0.2, 0.4, 0.6) times (1, 0, 1). The same pass naming no vanilla shader is refused
+    /// with its effect (the limits test's `unmatched`).
+    #[test]
+    #[ignore = "daily"]
+    fn a_pass_whose_pipeline_is_refused_falls_back_to_the_stand_in() {
+        let _gpu = crate::gfx::test_gpu::lock();
+        let Some((device, queue)) = device() else {
+            return;
+        };
+        let blit = |from: &str, to: &str, modulate: &str| {
+            format!(
+                r#"{{"vertex_shader":"minecraft:core/screenquad","fragment_shader":"minecraft:post/blit",
+                    "inputs":[{{"sampler_name":"In","target":"{from}"}}],"output":"{to}",
+                    "uniforms":{{"BlitConfig":[{{"name":"ColorModulate","type":"vec4","value":{modulate}}}]}}}}"#
+            )
+        };
+        let root = scratch(
+            "refused_blit",
+            &format!(
+                r#"{{"targets":{{"swap":{{}}}},"passes":[{},{}]}}"#,
+                blit("minecraft:main", "swap", "[1.0, 0.0, 1.0, 1.0]"),
+                blit("swap", "minecraft:main", "[1.0, 1.0, 1.0, 1.0]")
+            ),
+        );
+        let shaders = root.join("assets/minecraft/shaders");
+        std::fs::create_dir_all(shaders.join("core")).unwrap();
+        std::fs::create_dir_all(shaders.join("post")).unwrap();
+        std::fs::write(
+            shaders.join("core/screenquad.vsh"),
+            "#version 330\nvoid main() {\n  vec2 uv = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2);\n\
+               gl_Position = vec4(uv * 2.0 - 1.0, 0.0, 1.0);\n}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            shaders.join("post/blit.fsh"),
+            "#version 330\nuniform sampler2D InSampler;\n\
+             layout(std140) uniform BlitConfig { vec4 ColorModulate; };\n\
+             layout(location = 0) in vec2 texCoord;\nlayout(location = 0) out vec4 fragColor;\n\
+             void main() {\n  fragColor = texture(InSampler, texCoord) * ColorModulate;\n}\n",
+        )
+        .unwrap();
+        let source = ResourceSource::directory(root.clone());
+        // It loads translated, with its stand-in kept for the pipeline the device refuses.
+        let mut chain = PostEffects::load(
+            &source,
+            &device,
+            &queue,
+            "minecraft:refused_blit",
+            &Extras::default(),
+        )
+        .unwrap()
+        .unwrap();
+        assert!(
+            chain
+                .passes
+                .iter()
+                .all(|p| p.translated.is_some() && p.fallback.is_some())
+        );
+        assert_eq!(
+            chain.ensure_pipelines(&device, wgpu::TextureFormat::Rgba8Unorm),
+            Ok(())
+        );
+        assert!(chain.passes.iter().all(|p| p.translated.is_none()));
+        let mut effects = PostEffects::new(&device);
+        let names = ["minecraft:refused_blit".to_owned()];
+        let (ran, px) = run(&device, &queue, &mut effects, &source, &names);
+        assert!(ran);
+        assert_eq!(px, [51, 0, 153, 255]);
+        assert!(effects.failed.is_empty());
         std::fs::remove_dir_all(root).unwrap();
     }
 

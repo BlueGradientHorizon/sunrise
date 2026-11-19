@@ -301,6 +301,12 @@ impl super::Renderer {
         self.polytone_blocks().any(|blocks| blocks.reads_globals())
     }
 
+    /// Whether the last frame's post effects were given `PolyGlobals`, which they ask for only
+    /// when one of their passes reads the block.
+    pub fn post_effects_read_poly_globals(&self) -> bool {
+        (self.post_effects.as_ref()).is_some_and(|effects| effects.gave_poly_globals())
+    }
+
     /// The frame's `PolyGlobals` (`polytone_post::PolyGlobals::bytes`) for the installed pack core
     /// shaders that read them, which their next uploads write; none gives zeros.
     pub fn set_poly_globals(&mut self, globals: Option<&PolyGlobalsBytes>) {

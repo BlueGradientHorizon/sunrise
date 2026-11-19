@@ -5,7 +5,8 @@
 //! The built-in file and its helpers follow the wiki, which describes Polytone's newer releases:
 //! Polytone 26.3 (6.8.6, the only build for 26.3) has no such file, so a pack importing it loads
 //! here and not in that Java build; a pack declaring the block itself reads the same values in
-//! both (compared pixel for pixel). The helpers' math is the wiki's, not checked against
+//! both (its pixels within the spread a control pack without the block shows between the two).
+//! The helpers' math is the wiki's, not checked against
 //! Polytone's: in particular `polyPositionFromDepth` takes the depth as the depth buffer holds it
 //! (26.3's reverse-Z, 0 to 1), which Polytone may treat otherwise.
 
@@ -163,9 +164,9 @@ mod tests {
             ]
         );
         let mut projection = [0.0; 16];
-        projection[15] = 1.0;
+        (projection[0], projection[15]) = (11.0, 1.0);
         let mut model_view = [0.0; 16];
-        model_view[15] = 2.0;
+        (model_view[0], model_view[15]) = (12.0, 2.0);
         let bytes = Globals {
             projection,
             model_view,
@@ -176,14 +177,16 @@ mod tests {
         }
         .std140();
         let word = |at: usize| <[u8; 4]>::try_from(&bytes[at..at + 4]).unwrap();
-        let last = |member: usize, words: usize| LAYOUT[member].2 + 4 * (words - 1);
-        assert_eq!(f32::from_le_bytes(word(last(0, 16))), 1.0);
-        assert_eq!(f32::from_le_bytes(word(last(1, 16))), 2.0);
-        assert_eq!(f32::from_le_bytes(word(LAYOUT[2].2)), 3.0);
-        assert_eq!(f32::from_le_bytes(word(LAYOUT[3].2)), 4.0);
-        assert_eq!(f32::from_le_bytes(word(LAYOUT[4].2)), 5.0);
-        assert_eq!(i32::from_le_bytes(word(last(5, 3))), 8);
-        assert_eq!(f32::from_le_bytes(word(last(6, 3))), -0.5);
+        let float = |at| f32::from_le_bytes(word(at));
+        let int = |at| i32::from_le_bytes(word(at));
+        // Each member at its std140 offset (literal, not LAYOUT's), its first and last word.
+        assert_eq!((float(0), float(60)), (11.0, 1.0));
+        assert_eq!((float(64), float(124)), (12.0, 2.0));
+        assert_eq!((float(128), float(132), float(136)), (3.0, 4.0, 5.0));
+        assert_eq!((int(144), int(152)), (6, 8));
+        assert_eq!((float(160), float(168)), (-0.5, -0.5));
+        let offsets: Vec<usize> = LAYOUT.iter().map(|(.., at)| *at).collect();
+        assert_eq!(offsets, [0, 64, 128, 132, 136, 144, 160]);
     }
 
     #[test]

@@ -169,9 +169,18 @@ fn the_sky_draws_its_expression_uniform() {
         assert_eq!(values(&atlas.lines_expressions), [0.75]);
         let _event_loop = frame_scene(game);
         assert!(game.reads_pack_expressions());
-        // No shader imports `PolyGlobals`: the frame makes none for them.
+        // No shader imports `PolyGlobals`: the frame makes none for them, though in a world it
+        // requests a post effect (vanilla's `end_of_frame`).
         assert!(!game.reads_poly_globals());
         assert_eq!(corner(game), [51, 0, 0]);
+        assert_eq!(game.requested_post_effects(), ["minecraft:end_of_frame"]);
+        assert!(
+            !game
+                .renderer
+                .as_ref()
+                .unwrap()
+                .post_effects_read_poly_globals()
+        );
     });
 }
 
@@ -271,7 +280,22 @@ fn a_post_effect_reads_poly_globals() {
         game.pack.source = pack;
         let _event_loop = frame_scene(game);
         assert!(!game.reads_poly_globals());
+        // Only `end_of_frame` requested: nothing reads them, nothing builds them.
+        corner(game);
+        assert!(
+            !game
+                .renderer
+                .as_ref()
+                .unwrap()
+                .post_effects_read_poly_globals()
+        );
         game.post_effects = vec!["minecraft:globals".to_owned()];
         assert_eq!(corner(game), [64, 51, 0]);
+        assert!(
+            game.renderer
+                .as_ref()
+                .unwrap()
+                .post_effects_read_poly_globals()
+        );
     });
 }

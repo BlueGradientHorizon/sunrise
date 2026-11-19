@@ -27,6 +27,8 @@ pub struct Program {
     pub blocks: Vec<(String, u32)>,
     /// Every sampler (`NameSampler`): the texture's binding; the sampler object is the next.
     pub samplers: Vec<(String, u32)>,
+    /// What each stage reads (`core_shader::bindings_read`, from the stages' validation).
+    pub read: Vec<(u32, wgpu::ShaderStages)>,
 }
 
 fn is_ident(c: u8) -> bool {
@@ -145,16 +147,24 @@ fn stage(root: &ResourceSource, id: &str, ext: &str) -> Result<String, Refused> 
 
 /// Every `uniform` declaration of a source: (start of the declaration including a
 /// `layout(...)` before it, end of the type or of the whole `;`, type, name, is a sampler).
-fn declarations(src: &str) -> Vec<(usize, usize, String, String, bool)> {
+/// Refused, with how many it has found, once the source holds more than `max` `uniform`
+/// keywords: each one costs a look back for its `layout(...)`, so their count is bounded before
+/// the source is scanned further.
+fn declarations(src: &str, max: usize) -> Result<Vec<(usize, usize, String, String, bool)>, usize> {
     let plain = blank_comments(src);
     let b = plain.as_bytes();
     let mut out = Vec::new();
     let mut at = 0;
+    let mut keywords = 0;
     while let Some(found) = plain[at..].find("uniform") {
         let start = at + found;
         at = start + 7;
         if (start > 0 && is_ident(b[start - 1])) || b.get(start + 7).is_some_and(|c| is_ident(*c)) {
             continue;
+        }
+        keywords += 1;
+        if keywords > max {
+            return Err(keywords);
         }
         let word = |from: usize| -> Option<(usize, usize)> {
             let mut s = from;
@@ -195,14 +205,15 @@ fn declarations(src: &str) -> Vec<(usize, usize, String, String, bool)> {
             }
         }
     }
-    out
+    Ok(out)
 }
 
 /// The source with each declaration given its binding from the shared tables.
 fn rewrite(src: &str, blocks: &[(String, u32)], samplers: &[(String, u32)]) -> String {
     let mut out = String::new();
     let mut pos = 0;
-    for (start, end, ty, name, sampler) in declarations(src) {
+    // `translate` bounded the keywords before.
+    for (start, end, ty, name, sampler) in declarations(src, usize::MAX).unwrap_or_default() {
         out.push_str(&src[pos..start]);
         pos = end;
         if sampler {
@@ -248,7 +259,10 @@ fn wrap_main(src: &str) -> Result<String, String> {
     Err("no main".into())
 }
 
-fn parse(stage: ShaderStage, text: &str) -> Result<naga::Module, String> {
+fn parse(
+    stage: ShaderStage,
+    text: &str,
+) -> Result<(naga::Module, naga::valid::ModuleInfo), String> {
     let module = Frontend::default()
         .parse(&Options::from(stage), text)
         .map_err(|e| {
@@ -258,10 +272,10 @@ fn parse(stage: ShaderStage, text: &str) -> Result<naga::Module, String> {
                 .collect::<Vec<_>>()
                 .join("; ")
         })?;
-    Validator::new(ValidationFlags::all(), Capabilities::empty())
+    let info = Validator::new(ValidationFlags::all(), Capabilities::empty())
         .validate(&module)
         .map_err(|e| format!("{:?}", e.into_inner()))?;
-    Ok(module)
+    Ok((module, info))
 }
 
 /// Translates the vertex and fragment shader a pass names (`minecraft:post/invert`), refused
@@ -277,8 +291,14 @@ pub fn translate(
     // Blocks and samplers are shared by name across the stages, so both agree on a binding.
     let mut blocks: Vec<(String, u32)> = Vec::new();
     let mut names: Vec<String> = Vec::new();
+    let keywords = declarable.blocks + declarable.samplers;
     for src in [&vs, &fs] {
-        for (_, _, _, name, sampler) in declarations(src) {
+        let declared = declarations(src, keywords).map_err(|found| Refused::Declares {
+            what: "uniform declarations",
+            declared: found,
+            limit: keywords,
+        })?;
+        for (_, _, _, name, sampler) in declared {
             if sampler {
                 if !names.contains(&name) {
                     names.push(name);
@@ -308,11 +328,16 @@ pub fn translate(
         .map_err(|e| Refused::Translator(format!("{vertex}: {e}")))?;
     let fragment_module = parse(ShaderStage::Fragment, &format!("#version 450\n{fs}"))
         .map_err(|e| Refused::Translator(format!("{fragment}: {e}")))?;
+    let read = crate::core_shader::bindings_read([
+        (&vertex_module.0, &vertex_module.1),
+        (&fragment_module.0, &fragment_module.1),
+    ]);
     Ok(Program {
-        vertex: vertex_module,
-        fragment: fragment_module,
+        vertex: vertex_module.0,
+        fragment: fragment_module.0,
         blocks,
         samplers,
+        read,
     })
 }
 
@@ -484,6 +509,8 @@ mod tests {
 
     /// A pass declaring more blocks or samplers than the device binds to both stages is refused
     /// before any analysis, however few it reads; up to that many, used or not, it translates.
+    /// So is a source with more `uniform` keywords than both caps together, before the rest of
+    /// it is scanned.
     #[test]
     fn a_pass_declaring_past_the_device_is_refused_first() {
         use sunrise_assets::resource_source::Resource;
@@ -531,6 +558,31 @@ mod tests {
                 limit: 4
             })
         );
+        // A megabyte of `uniform` keywords after a `)` (each a look back for its `layout`) is
+        // refused at the first past what the two caps allow, before the rest is scanned.
+        let crowded = format!(
+            "#version 330\n{}layout(location=0) out vec4 fragColor;\n\
+             void main() {{ fragColor = vec4(0.0); }}\n",
+            "f()uniform sampler2D S;\n".repeat(40_000)
+        );
+        let source = ResourceSource::indexed(std::collections::BTreeMap::from([
+            (
+                "assets/p/shaders/post/a.vsh".into(),
+                Resource::bytes(b"#version 330\nvoid main() { gl_Position = vec4(0.0); }".to_vec()),
+            ),
+            (
+                "assets/p/shaders/post/a.fsh".into(),
+                Resource::bytes(crowded.into_bytes()),
+            ),
+        ]));
+        assert_eq!(
+            translate(&source, "p:post/a", "p:post/a", declarable).map(|_| ()),
+            Err(Refused::Declares {
+                what: "uniform declarations",
+                declared: 29,
+                limit: 28
+            })
+        );
     }
 
     #[test]
@@ -562,7 +614,7 @@ mod tests {
     #[test]
     fn sampler_and_block_bindings() {
         let src = "layout(std140) uniform A {\n float x;\n};\nuniform sampler2D InSampler; // c\nvoid main(){}\n";
-        let d = declarations(src);
+        let d = declarations(src, usize::MAX).unwrap();
         assert_eq!(d.len(), 2);
         let out = rewrite(src, &[("A".into(), 0)], &[("InSampler".into(), 1)]);
         assert!(out.contains("layout(std140, set = 0, binding = 0) uniform A {"));
