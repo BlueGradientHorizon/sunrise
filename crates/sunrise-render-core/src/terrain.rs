@@ -1,5 +1,7 @@
 //! Core terrain types, coordinate keys, and chunk visibility/fade calculations.
 
+use alloc::vec::Vec;
+
 /// A chunk section coordinate key `(x, y, z)`.
 pub type SectionKey = (i32, i32, i32);
 
@@ -165,4 +167,58 @@ pub fn emitting(color: u32, tier: u8) -> u32 {
         level
     };
     color | (u32::from(code) << 24)
+}
+
+/// Where a run of `Frame::entities` begins, and what it is (slice 7): the run lasts until the
+/// next span. Recorded only while a shader pack draws entities, so Sunrise's own frames carry
+/// none; Sunrise itself still draws the whole list at once.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct EntitySpan {
+    /// The first vertex.
+    pub start: u32,
+    /// The render stage (5.4: `ENTITIES`, `BLOCK_ENTITIES`, `PARTICLES`, `DESTROY`), which picks
+    /// the program.
+    pub stage: u32,
+    /// `entityId` for entities, `blockEntityId` for block entities (5.3), else 0.
+    pub id: i32,
+    /// An entity part that blends (a name tag, a shadow): `gbuffers_entities_translucent`.
+    pub translucent: bool,
+    /// Hidden from the camera (Sunrise's entity culling, the player in first person): only the
+    /// shadow pass draws it.
+    pub hidden: bool,
+    /// The local player (`shadowPlayer`).
+    pub player: bool,
+    /// A block entity whose block emits light (`shadowLightBlockEntities`).
+    pub emissive: bool,
+}
+
+impl EntitySpan {
+    /// Marks vertices `start..end` of `spans`' list (one entity) as hidden: the span covering
+    /// `start` is split there, the spans inside are hidden, and the geometry after `end` goes
+    /// on in the last span's kind. False when no span covers `start`.
+    pub fn hide(spans: &mut Vec<EntitySpan>, start: usize, end: usize) -> bool {
+        let Some(i) = spans.iter().rposition(|s| s.start as usize <= start) else {
+            return false;
+        };
+        let after = spans[spans.len() - 1];
+        if spans[i].start as usize != start {
+            let split = EntitySpan {
+                start: start as u32,
+                ..spans[i]
+            };
+            spans.insert(i + 1, split);
+        }
+        for s in spans.iter_mut().skip(i) {
+            if s.start as usize >= start {
+                s.hidden = true;
+            }
+        }
+        if end > start {
+            spans.push(EntitySpan {
+                start: end as u32,
+                ..after
+            });
+        }
+        true
+    }
 }
