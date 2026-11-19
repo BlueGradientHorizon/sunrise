@@ -13,7 +13,7 @@ pub trait EnergyHandler: Send + Sync {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        __sunrise_handler_marks!(EnergyHandler);
+        sunrise_mod_marks::energy_handler::<Self>();
     }
     /// How much it holds.
     fn amount(&self, host: &mut dyn ServerHost) -> u32;

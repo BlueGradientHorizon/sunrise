@@ -12,7 +12,7 @@ pub trait ResourceReader: Send + Sync + 'static {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        __sunrise_handler_marks!(ResourceReader);
+        sunrise_mod_marks::resource_reader::<Self>();
     }
     /// The winning copy of `path`, the topmost pack's (`ResourceManager.getResource`); `None`
     /// where no pack provides it.

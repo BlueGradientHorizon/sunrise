@@ -73,7 +73,7 @@ pub trait ServerReloadListener: Send + Sync + 'static {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        __sunrise_handler_marks!(ServerReloadListener);
+        sunrise_mod_marks::server_reload_listener::<Self>();
     }
     /// Parse and validate new data without changing the listener's live state.
     ///

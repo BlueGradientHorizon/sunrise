@@ -166,7 +166,7 @@ pub trait CommandArgumentType: Send + Sync + 'static {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        __sunrise_handler_marks!(CommandArgumentType);
+        sunrise_mod_marks::command_argument_type::<Self>();
     }
     /// The part of the line the argument takes. The same on every client.
     fn kind(&self) -> CommandArgumentKind;

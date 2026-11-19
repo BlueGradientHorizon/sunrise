@@ -160,7 +160,7 @@ pub trait SpecialModelRenderer: Send + Sync + 'static {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        __sunrise_handler_marks!(SpecialModelRenderer);
+        sunrise_mod_marks::special_model_renderer::<Self>();
     }
     /// `extractArgument` and `submit` in one: the models to draw for `stack`, in order, from the
     /// special model's `model` object (`config`, its JSON as NBT, converted once at load). Asked

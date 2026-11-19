@@ -43,7 +43,7 @@ pub trait ModLootFunction: Send + Sync + 'static {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        __sunrise_handler_marks!(ModLootFunction);
+        sunrise_mod_marks::mod_loot_function::<Self>();
     }
     /// Decode-equivalent field validation, run once per entry at load, not roll time.
     /// A failure refuses the entire candidate data generation.
@@ -73,7 +73,7 @@ pub trait ModLootCondition: Send + Sync + 'static {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        __sunrise_handler_marks!(ModLootCondition);
+        sunrise_mod_marks::mod_loot_condition::<Self>();
     }
     /// Validate this entry once at load; failures refuse the candidate generation.
     fn validate(&self, data: &LootEntryData) -> Result<(), String>;

@@ -24,7 +24,7 @@ pub trait EnchantmentDamageEffect: Send + Sync + 'static {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        __sunrise_handler_marks!(EnchantmentDamageEffect);
+        sunrise_mod_marks::enchantment_damage_effect::<Self>();
     }
     /// Transform the value at this node, in vanilla enchantment and node order.
     /// NaN retains the input. Other results, including infinities, are clamped

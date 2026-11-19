@@ -54,7 +54,7 @@ pub trait ParticleProvider: Send + Sync + 'static {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        __sunrise_handler_marks!(ParticleProvider);
+        sunrise_mod_marks::particle_provider::<Self>();
     }
     /// `Particle.tick`: advance `particle` by one tick. The game has set `previous` and `age`
     /// already and expires the particle once `age` passes `lifetime`; the tick sets `position`,

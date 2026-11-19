@@ -59,7 +59,7 @@ pub trait BlockEntityTransform: Send + Sync + 'static {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        __sunrise_handler_marks!(BlockEntityTransform);
+        sunrise_mod_marks::block_entity_transform::<Self>();
     }
     /// Transform saved data; no Host or world handle is supplied.
     fn transform(

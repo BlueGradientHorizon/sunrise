@@ -14,7 +14,7 @@ pub trait CrashSection: Send + Sync + 'static {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        __sunrise_handler_marks!(CrashSection);
+        sunrise_mod_marks::crash_section::<Self>();
     }
     /// The line's text, or `None` to leave it out of this report. The report keeps it on one
     /// line (control characters become spaces) and cuts it to 4096 bytes.

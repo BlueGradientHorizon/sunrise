@@ -137,7 +137,7 @@ pub trait CraftingRecipeHandler: Send + Sync {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        __sunrise_handler_marks!(CraftingRecipeHandler);
+        sunrise_mod_marks::crafting_recipe_handler::<Self>();
     }
     /// Decode one recipe object.
     fn decode(&self, json: &str) -> Result<CraftingRecipeValue, String>;

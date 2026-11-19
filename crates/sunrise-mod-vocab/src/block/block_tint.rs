@@ -70,7 +70,7 @@ pub trait BiomeColorResolver: Send + Sync + 'static {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        __sunrise_handler_marks!(BiomeColorResolver);
+        sunrise_mod_marks::biome_color_resolver::<Self>();
     }
     /// `getColor(biome, x, z)`: the colour of `biome` (`minecraft:plains`) at block column
     /// `(x, z)`, 0xRRGGBB.
@@ -145,7 +145,7 @@ pub trait BlockTintSource: Send + Sync + 'static {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        __sunrise_handler_marks!(BlockTintSource);
+        sunrise_mod_marks::block_tint_source::<Self>();
     }
     /// `color(state)`: the colour without a world, where the block is drawn away from a level (a
     /// block in a minecart, a mod's drawn block). Also the default of the two below.

@@ -43,7 +43,7 @@ pub trait StartupScreen: Send + Sync + 'static {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        __sunrise_handler_marks!(StartupScreen);
+        sunrise_mod_marks::startup_screen::<Self>();
     }
     /// Open a bar of `steps` steps under the stage bar; the answer names it.
     /// Returns `StartupProgressError::TooManyBars` if 64 bars are already open.

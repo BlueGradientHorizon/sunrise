@@ -42,7 +42,7 @@ pub trait EntityRenderLayer: Send + Sync + 'static {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        __sunrise_handler_marks!(EntityRenderLayer);
+        sunrise_mod_marks::entity_render_layer::<Self>();
     }
     /// `RenderLayer.submit`: draw over `entity` with `draw`'s helpers (`quad`, `cube`, `block`,
     /// `item`, `model_part`), after its model and the layers before this one. The pose stack starts

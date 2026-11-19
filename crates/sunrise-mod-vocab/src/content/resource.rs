@@ -492,7 +492,7 @@ pub trait ResourceHandler<R> {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        __sunrise_handler_marks!(ResourceHandler);
+        sunrise_mod_marks::resource_handler::<Self>();
     }
     /// Set the container limit transactionally, accepting 1..=99 (vanilla's upper bound).
     /// Existing oversized stacks remain extractable. The game persists this with block entity data.

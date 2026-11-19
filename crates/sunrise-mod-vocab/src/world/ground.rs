@@ -18,7 +18,7 @@ pub trait GroundStateProvider: Send + Sync + 'static {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        __sunrise_handler_marks!(GroundStateProvider);
+        sunrise_mod_marks::ground_state_provider::<Self>();
     }
     /// `StateProvider.getState`: the state to place at `pos`, or None to try
     /// the next position down the column, as the decorator's own provider

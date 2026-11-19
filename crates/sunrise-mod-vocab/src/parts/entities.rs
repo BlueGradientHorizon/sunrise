@@ -6,7 +6,7 @@ pub trait EntityCapabilityProvider<T: ?Sized, C>: Send + Sync {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        __sunrise_handler_marks!(EntityCapabilityProvider);
+        sunrise_mod_marks::entity_capability_provider::<Self>();
     }
     /// The handler for `entity`, asked with `context`, or none.
     fn provide(&self, host: &mut dyn ServerHost, entity: EntityRef, context: C) -> Option<Box<T>>;

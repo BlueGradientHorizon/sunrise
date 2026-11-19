@@ -85,7 +85,7 @@ pub trait Interaction: Send + Sync + 'static {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        __sunrise_handler_marks!(Interaction);
+        sunrise_mod_marks::interaction::<Self>();
     }
     /// Decide through read-only host access on either side, without authoritative writes.
     fn decide(&self, host: &dyn Host, input: &CauldronUse) -> CauldronDecision;

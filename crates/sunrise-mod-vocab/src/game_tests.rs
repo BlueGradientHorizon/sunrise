@@ -50,7 +50,7 @@ pub trait GameTestFunction: Send + Sync {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        __sunrise_handler_marks!(GameTestFunction);
+        sunrise_mod_marks::game_test_function::<Self>();
     }
     /// Return an outcome; the runner owns retries, timeouts and completion.
     fn run(&self, host: &mut dyn ServerHost, context: &GameTestContext) -> GameTestResult;

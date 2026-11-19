@@ -50,7 +50,7 @@ pub trait TooltipAppender: Send + Sync + 'static {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        __sunrise_handler_marks!(TooltipAppender);
+        sunrise_mod_marks::tooltip_appender::<Self>();
     }
     /// Add lines to `lines` for `stack`, each with a colour as `rgba` packs it (`u32::MAX` keeps
     /// the text's own). `context` is the tooltip's player, flags and client-level tick rate.

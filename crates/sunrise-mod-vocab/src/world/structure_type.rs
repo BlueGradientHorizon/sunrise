@@ -59,7 +59,7 @@ pub trait StructureType: Send + Sync + 'static {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        __sunrise_handler_marks!(StructureType);
+        sunrise_mod_marks::structure_type::<Self>();
     }
     /// `Structure.findGenerationPoint` with `generatePieces`: the start's
     /// position and its pieces for the chunk `context` names, or `None` for
@@ -138,7 +138,7 @@ pub trait StructurePiece: std::fmt::Debug + Send + Sync {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        __sunrise_handler_marks!(StructurePiece);
+        sunrise_mod_marks::structure_piece::<Self>();
     }
     /// `StructurePiece.getBoundingBox`: the piece's box, in world blocks.
     fn bounding_box(&self) -> BoundingBox;

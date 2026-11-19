@@ -104,7 +104,7 @@ pub trait SuggestionProvider: Send + Sync + 'static {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        __sunrise_handler_marks!(SuggestionProvider);
+        sunrise_mod_marks::suggestion_provider::<Self>();
     }
     /// The candidates for `request`: the text typed, the arguments before it and the sender.
     fn suggest(&self, request: &SuggestionRequest) -> SuggestionReply;

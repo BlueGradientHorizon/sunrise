@@ -8,7 +8,7 @@ pub trait ItemContainerProvider: Send + Sync {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        __sunrise_handler_marks!(ItemContainerProvider);
+        sunrise_mod_marks::item_container_provider::<Self>();
     }
     /// The item's slot count now, or none to let the next registration answer.
     fn slots(&self, host: &dyn Host) -> Option<u32>;
