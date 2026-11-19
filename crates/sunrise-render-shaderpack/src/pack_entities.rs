@@ -8,11 +8,16 @@ use std::ops::Range;
 
 use sunrise_shaders::render_stage;
 
+// `FLUID_OVERLAY` and the terrain overlays are only read by the tests' probes.
 use sunrise_render_core::{
-    EntitySpan, EntityVertex as Vertex, FLUID_OVERLAY, OIT_ENTITY,
-    TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY, TERRAIN_MODEL_CUTOUT_OVERLAY, TERRAIN_MODEL_SOLID_OVERLAY,
-    TRANSLUCENT_GLINT_ITEM_OVERLAY, TRANSLUCENT_ITEM_OVERLAY, TRANSLUCENT_PARTICLE_OVERLAY,
-    WATER_MASK_OVERLAY, is_native_terrain, skin_runs,
+    EntitySpan, EntityVertex as Vertex, OIT_ENTITY, TRANSLUCENT_GLINT_ITEM_OVERLAY,
+    TRANSLUCENT_ITEM_OVERLAY, TRANSLUCENT_PARTICLE_OVERLAY, WATER_MASK_OVERLAY, is_native_terrain,
+    skin_runs,
+};
+#[cfg(test)]
+use sunrise_render_core::{
+    FLUID_OVERLAY, TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY, TERRAIN_MODEL_CUTOUT_OVERLAY,
+    TERRAIN_MODEL_SOLID_OVERLAY,
 };
 
 /// `HzDraw`'s size (pack_draw.rs).

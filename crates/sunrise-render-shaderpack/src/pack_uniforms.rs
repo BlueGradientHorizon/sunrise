@@ -30,9 +30,10 @@
 use glam::{DMat4, DVec3, Mat4, Vec3, Vec4};
 use sunrise_shaders::Shadow;
 
-use sunrise_render_core::{
-    EntityVertex as Vertex, FogView, SkyView, UniformFrameView as Frame, WATER_MASK_OVERLAY,
-};
+// `SkyView` is only read by a test helper; `FogView` is named in full where the tests use it.
+#[cfg(test)]
+use sunrise_render_core::SkyView;
+use sunrise_render_core::{EntityVertex as Vertex, UniformFrameView as Frame, WATER_MASK_OVERLAY};
 
 /// What the game passes for the pack's uniforms, beyond what `Frame` carries.
 #[derive(Clone, Copy, Debug, Default)]
