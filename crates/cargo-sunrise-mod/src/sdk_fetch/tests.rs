@@ -2,8 +2,6 @@ use super::*;
 use ring::signature::{Ed25519KeyPair, KeyPair};
 
 const BUILD: &str = "0123456789abcdef0123456789abcdef01234567";
-/// The tool a release's `sdk.json` names: never the one this binary carries.
-const MIXINS: &str = "fedcba9876543210fedcba9876543210fedcba98";
 
 /// A release folder `sdk-<BUILD>` under a base folder, signed with a fresh key: the base and the
 /// key.
@@ -26,8 +24,7 @@ fn release(nightly: Option<&str>) -> (tempfile::TempDir, PublicKey) {
         date: "2026-11-13".into(),
         nightly: nightly.map(str::to_owned),
     };
-    let mut index = Index::of_folder(&folder, build, "1.99.1".into()).unwrap();
-    index.mixins.rev = MIXINS.into();
+    let index = Index::of_folder(&folder, build, "1.99.1".into()).unwrap();
     fs::write(folder.join(sdk::INDEX), index.to_json()).unwrap();
     let digest = |name: &str| format!("{:x}", Sha256::digest(fs::read(folder.join(name)).unwrap()));
     let sums = sunrise_release_sign::sums_file(
@@ -57,7 +54,6 @@ fn a_signed_release_is_unpacked_once_and_reused() {
     let pinned = fetch(&base, &[key], BUILD, &dir, true).unwrap();
     assert_eq!(pinned.build, BUILD);
     assert_eq!(pinned.name, "nightly-2026-11-13 (0123456)");
-    assert_eq!(pinned.mixins, MIXINS);
     assert!(dir.join(SURFACE).is_file());
     assert!(dir.join("api/deps/a.rmeta").is_file());
     assert!(!dir.join(API_SOURCE).exists());

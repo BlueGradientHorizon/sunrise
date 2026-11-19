@@ -1,8 +1,8 @@
 # Your first native mod
 
 A native mod is a Rust crate that implements hooks from the mod API. `cargo sunrise-mod` compiles it on your
-machine against the exact Sunrise build it is pinned to and starts the game with it; no launcher is involved. In this
-page you make a mod that greets every player who joins, compile it, run it, and test it.
+machine against the exact Sunrise build it is pinned to and starts the game with it: the tool is all you install. In
+this page you make a mod that greets every player who joins, compile it, run it, and test it.
 
 You need [rustup](https://rustup.rs) (the tool installs the Rust the SDK was built with, and says so when it does),
 and, to run the game, resources prepared from your own Minecraft: Java Edition 26.3 (step 6).
@@ -10,7 +10,8 @@ and, to run the game, resources prepared from your own Minecraft: Java Edition 2
 ## 1. Install the mod tool
 
 Follow [Install the mod tool](install-tool.md) for your computer. When `cargo sunrise-mod` prints its usage, come
-back here.
+back here. This page needs a tool that answers `cargo sunrise-mod --version` with a commit; one that prints the usage
+instead is older, and the [newest tool from main](install-tool.md#newest-tool-from-main) replaces it.
 
 ## 2. Make the project
 
@@ -61,15 +62,13 @@ After a fresh clone, run `cargo sunrise-mod check` once before opening the proje
 
 ## 4. Check that it compiles
 
-`check` compiles for wasm32 as well as for this computer, so install that target for the project's toolchain once:
-
 ```sh
-rustup target add wasm32-unknown-unknown
 cargo sunrise-mod check
 ```
 
-`check` applies the package rules, then compiles the crate with `cargo check` against the pinned SDK's API source,
-for this computer and for wasm32, and lists what the mod uses of its build. The expected end of the output (the compile runs twice, once for each target):
+`check` applies the package rules, runs `cargo check` against the pinned SDK's API source, and lists what the mod
+uses of that build. Native projects check for this computer by default; wasm projects check for wasm32. Pass
+`--wasm` or `--native` to select a target explicitly, or both flags to check both. The expected end of the output:
 
 ```text
     Checking mod-greeter v0.1.0 (…/greeter)
@@ -115,11 +114,23 @@ cargo sunrise-mod run --resources <folder> -- --world Greeter --creative
 ```
 
 `run` builds, stages the game with your mod in `target/sunrise-mod/run/` and starts it, with its game folder and its
-logs inside that folder, so nothing of a player's is touched. Everything after `--` goes to the game. The game needs
-resources prepared from your own Minecraft: play 26.3 once in your launcher, then make them with
-`sunrise-prepare --prepare --output <folder>` (`sunrise-prepare` is in the game's download; `--help` lists where it
-reads your copy). The tool never downloads or bundles Mojang's files. Join a world; the greeting appears in chat, and
-the mod is listed on the game's **Mods** screen. On Linux without a display, start `run` under `xvfb-run`.
+logs inside that folder, so nothing of a player's is touched. Everything after `--` goes to the game. Join a world;
+the greeting appears in chat, and the mod is listed on the game's **Mods** screen. On Linux without a display, start
+`run` under `xvfb-run`. If your mod uses [`[[jar]]` originals](../how-to/content-mods.md#java-jars-as-external-assets),
+`run` stages them in its development home. Use `--jars <dir>` to choose a different source folder.
+
+### Prepared resources
+
+The game needs resources prepared from your own Minecraft: Java Edition 26.3. The tool never downloads or bundles
+Mojang's files. Make them once and name the folder with `--resources`:
+
+1. Play 26.3 once from the Minecraft Launcher, so its files are on your computer.
+2. Download the 26.3 server jar yourself: from `minecraft.net/download/server` while 26.3 is the current release,
+   otherwise from the address `downloads.server.url` in the Minecraft Launcher's `versions/26.3/26.3.json`.
+3. Run `sunrise-prepare --prepare --server-jar <server.jar> --output <folder>`. `sunrise-prepare` is in the game
+   download for your computer in the [Nightly release](https://github.com/sunrise-org/sunrise/releases/tag/nightly); `sunrise-prepare --help`
+   lists where it reads your copy. A Prism Launcher or MultiMC install is read with `--prism-dir` and needs no
+   server jar.
 
 ## 7. Test it
 
@@ -134,8 +145,7 @@ without the game.
 
 A build server can run the compile itself: `native-build` takes the plan as one line of JSON on standard input and
 prints one JSON event per line. That contract ([`native-build`](../reference/sdk/08-native-build.md)) is what `build`
-and the launcher call; the launcher also installs the result into an instance, and its **Mods** page does the same
-from the window ([Installing and using mods](installing.md)).
+itself calls.
 
 ## Next
 
@@ -143,6 +153,6 @@ from the window ([Installing and using mods](installing.md)).
 - [Hooks and the Host](../concepts/hooks-and-the-host.md) and [Parts](../concepts/parts.md): how a mod reaches
   the game.
 - [Your first WebAssembly mod](first-wasm-mod.md): the same code, sandboxed.
-- [Native mods: building and shipping](../how-to/native-mods.md): what the launcher does, trust, multiplayer and
-  servers.
+- [Native mods: building and shipping](../how-to/native-mods.md): how a native mod reaches players, trust,
+  multiplayer and servers.
 - [Using an AI agent](../for-agents.md): the same steps on one page for a coding agent.

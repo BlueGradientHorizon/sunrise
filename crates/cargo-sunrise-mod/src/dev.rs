@@ -12,8 +12,6 @@ use sunrise_native_build::{contract, library_record::Library, prebuilt::Route, r
 
 /// Names the cache's folder instead of the platform's.
 const CACHE_ENV: &str = "SUNRISE_MOD_CACHE";
-/// What `run` stages, in the project's `target/sunrise-mod/`.
-const RUN: &str = "run";
 
 /// Whether `dir`'s package is a native mod.
 pub(crate) fn is_native(dir: &Path) -> Result<bool, String> {
@@ -23,7 +21,7 @@ pub(crate) fn is_native(dir: &Path) -> Result<bool, String> {
 }
 
 /// The per-user cache folder: `SUNRISE_MOD_CACHE`, else the platform's cache folder.
-fn cache_dir() -> Result<PathBuf, String> {
+pub(crate) fn cache_dir() -> Result<PathBuf, String> {
     let env = |name: &str| std::env::var_os(name).filter(|v| !v.is_empty());
     cache_in(
         &env,
@@ -179,11 +177,53 @@ fn toolchain(want: &str, target: &str, cargo_home: PathBuf) -> Result<Unpacked, 
     })
 }
 
+/// Verified SDK metadata and the compiler it pins, shared by native builds and source discovery.
+pub(crate) struct NativeSdk {
+    pub index: Index,
+    pub rust: Unpacked,
+    base: Base,
+    dir: PathBuf,
+}
+
+impl NativeSdk {
+    fn slices(&self) -> Result<sunrise_native_build::prebuilt::Package, String> {
+        sdk_fetch::fetch_slices(
+            &self.base,
+            &self.index,
+            &self.rust.target,
+            &self.dir,
+            &|line| println!("{line}"),
+        )
+    }
+}
+
+pub(crate) fn native_sdk(cache: &Path, build: &str) -> Result<NativeSdk, String> {
+    let target = computer()?;
+    let base = Base::from_env();
+    let dir = cache.join("sdk").join(build);
+    sdk_fetch::fetch(&base, &sdk_fetch::keys(), build, &dir, false)?;
+    let index = Index::read(
+        &std::fs::read(dir.join(sunrise_mod_package::sdk::INDEX))
+            .map_err(|e| format!("{}: {e}", dir.display()))?,
+        build,
+    )
+    .map_err(|e| format!("sdk-{build}: {e}"))?;
+    let rust = toolchain(&index.toolchain.rust, target, cache.join("cargo-home"))?;
+    Ok(NativeSdk {
+        index,
+        rust,
+        base,
+        dir,
+    })
+}
+
 /// What a native build made.
 pub(crate) struct Built {
     binary: PathBuf,
     libraries: Vec<PathBuf>,
     records: Vec<Library>,
+    /// Revision for the package manifest: checked for mixins, inherited when they are unused.
+    pub(crate) mixins: String,
 }
 
 /// Turns the build's event lines into the lines a developer reads, and keeps its result.
@@ -223,19 +263,20 @@ pub(crate) fn build(project: &Path, update_lock: bool) -> Result<Built, String> 
         .ok_or_else(|| format!("{} is not a native mod", project.display()))?;
     let id = bundle.manifest.id.clone();
     let cache = cache_dir()?;
-    let target = computer()?;
-    let base = Base::from_env();
-    let sdk_dir = cache.join("sdk").join(&build);
-    sdk_fetch::fetch(&base, &sdk_fetch::keys(), &build, &sdk_dir, false)?;
-    let index = Index::read(
-        &std::fs::read(sdk_dir.join(sunrise_mod_package::sdk::INDEX))
-            .map_err(|e| format!("{}: {e}", sdk_dir.display()))?,
-        &build,
-    )
-    .map_err(|e| format!("sdk-{build}: {e}"))?;
-    let rust = toolchain(&index.toolchain.rust, target, cache.join("cargo-home"))?;
-    let package =
-        sdk_fetch::fetch_slices(&base, &index, target, &sdk_dir, &|line| println!("{line}"))?;
+    let sdk = native_sdk(&cache, &build)?;
+    let mixins = if bundle.needs_mixins() {
+        sunrise_native_build::MixinsIdentity::resolve([&bundle], Some(&sdk.index.mixins))?
+            .revision()
+    } else {
+        bundle
+            .native()
+            .mixins
+            .as_deref()
+            .unwrap_or(&sdk.index.mixins.rev)
+    }
+    .to_owned();
+    let package = sdk.slices()?;
+    let rust = sdk.rust;
 
     let work = cache.join("work").join(&id);
     std::fs::create_dir_all(&work).map_err(|e| format!("{}: {e}", work.display()))?;
@@ -309,6 +350,7 @@ pub(crate) fn build(project: &Path, update_lock: bool) -> Result<Built, String> 
         binary,
         libraries,
         records,
+        mixins,
     })
 }
 
@@ -327,11 +369,16 @@ fn copy(from: &Path, to: &Path) -> Result<(), String> {
 /// Builds the native mod in `project`, stages it beside the SDK's game under
 /// `target/sunrise-mod/run/` (`app/` is made afresh; `game/` and `home/` keep worlds and logs
 /// between runs, so nothing of a player's is touched) and starts it with `args`.
-pub(crate) fn run(project: &Path, resources: Option<&str>, args: &[String]) -> Result<(), String> {
+pub(crate) fn run(
+    project: &Path,
+    resources: Option<&str>,
+    jars: Option<&Path>,
+    args: &[String],
+) -> Result<(), String> {
     let resources = resources.map(PathBuf::from).ok_or_else(|| {
         "the game needs prepared resources made from your own Minecraft: pass --resources <folder>. \
          Make them with `sunrise-prepare --prepare --output <folder>` (it comes with the game's download; play \
-         Minecraft Java Edition 26.3 once in your launcher first; sunrise-prepare --help lists the other places it reads)"
+         Minecraft Java Edition 26.3 once first; sunrise-prepare --help lists the other places it reads)"
             .to_owned()
     })?;
     if !resources.is_dir() {
@@ -340,8 +387,11 @@ pub(crate) fn run(project: &Path, resources: Option<&str>, args: &[String]) -> R
             resources.display()
         ));
     }
+    let stage = project.join(crate::RUN_DIR);
+    let mod_package = sunrise_mod_package::Package::read(project)?;
+    let home = crate::jar::stage_for_run(&mod_package.manifest, project, jars, args)?
+        .unwrap_or_else(|| stage.join("home"));
     let built = build(project, false)?;
-    let stage = project.join("target/sunrise-mod").join(RUN);
     let app = stage.join("app");
     match std::fs::remove_dir_all(&app) {
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
@@ -350,9 +400,8 @@ pub(crate) fn run(project: &Path, resources: Option<&str>, args: &[String]) -> R
         _ => {}
     }
     let package = app.join(sunrise_mod_package::mod_list::NATIVE_DIR);
-    let id = sunrise_mod_package::Package::read(project)?.manifest.id;
+    let id = &mod_package.manifest.id;
     let game = stage.join("game");
-    let home = stage.join("home");
     for folder in [&app, &game, &home] {
         std::fs::create_dir_all(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
     }
@@ -372,9 +421,9 @@ pub(crate) fn run(project: &Path, resources: Option<&str>, args: &[String]) -> R
     let record_path = app.join("native-mods.json");
     std::fs::write(&record_path, record(&built.records)?)
         .map_err(|e| format!("{}: {e}", record_path.display()))?;
-    let files = sunrise_mod_package::Package::read(project)?.directory_files(project)?;
+    let files = mod_package.directory_files(project)?;
     for (name, bytes) in files {
-        let to = package.join(&id).join(&name);
+        let to = package.join(id).join(&name);
         std::fs::create_dir_all(to.parent().expect("a file in the package"))
             .map_err(|e| e.to_string())?;
         std::fs::write(&to, bytes).map_err(|e| format!("{}: {e}", to.display()))?;
@@ -387,7 +436,9 @@ pub(crate) fn run(project: &Path, resources: Option<&str>, args: &[String]) -> R
         .arg("--resources")
         .arg(&resources)
         .args(args)
-        .env("SUNRISE_HOME", &home);
+        .env("SUNRISE_HOME", &home)
+        // A session file handed to this process is the caller's: the game would read and delete it.
+        .env_remove("SUNRISE_SESSION_FILE");
     #[cfg(target_os = "linux")]
     command.env("LD_LIBRARY_PATH", &app);
     let status = command
