@@ -7,6 +7,8 @@ mod engine;
 pub use engine::{is_engine, negotiated};
 #[cfg(test)]
 mod engine_tests;
+#[cfg(test)]
+mod droppable_wire_tests;
 pub use encode::{encode, encoded_len};
 mod incoming;
 pub use incoming::{Body, Classified, Failure, Incoming};

@@ -88,3 +88,21 @@ fn the_budget_refills_over_time() {
     queue.push(now + Duration::from_millis(500), &c, vec![0; 50]);
     assert_eq!(c.budget.load(Relaxed), 1);
 }
+
+#[test]
+fn budgets_read_their_settings_and_keep_the_default_for_a_bad_value() {
+    let get = |name: &str| match name {
+        "SUNRISE_DROPPABLE_CLIENTBOUND_BYTES_PER_SECOND" => Some(" 1000 ".to_owned()),
+        "SUNRISE_DROPPABLE_SERVERBOUND_BYTES_PER_SECOND" => Some("lots".to_owned()),
+        _ => None,
+    };
+    let budgets = Budgets::read(get);
+    assert_eq!(budgets.clientbound, 1000);
+    assert_eq!(budgets.serverbound, SERVERBOUND_BUDGET);
+    let unset = Budgets::read(|_| None);
+    assert_eq!(
+        (unset.clientbound, unset.serverbound),
+        (CLIENTBOUND_BUDGET, SERVERBOUND_BUDGET)
+    );
+    assert_eq!(Budgets::read(|_| Some("0".into())).clientbound, 0);
+}
