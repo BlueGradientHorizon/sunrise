@@ -125,18 +125,7 @@ pub(crate) fn install() {
                     *amount += 1.0;
                 }
             },
-            living_breathe: |context, _, kind, air, can_breathe, consume, _| {
-                if context.setting("rules_mod", "stack").is_some() {
-                    // A cod breathes on land; an axolotl gets a refill at -19 air.
-                    *can_breathe = kind == "minecraft:cod"
-                        || (kind == "minecraft:axolotl" && air == [-19, 6000]);
-                    *consume = match kind {
-                        "minecraft:salmon" => i32::MAX,
-                        "minecraft:zombie" if air == [-19, 300] => *consume + 4,
-                        _ => *consume,
-                    };
-                }
-            },
+            living_breathe_heard: || false,
             farmland_trample: |context, _, _, _, _, cancel| {
                 *cancel = context.setting("rules_mod", "stack").is_some();
             },

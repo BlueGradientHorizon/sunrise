@@ -4288,21 +4288,10 @@ pub(crate) mod tests {
             (4.0, 2.0, false, true, [1.0, 3.0, 3.0], true)
         );
         assert_eq!(JUMPS.get(), 2);
-        // Heal, breathe and drown read it as well.
+        // Heal and drown read it as well.
         let health = |context: &LoopContext| {
             let (mut amount, mut cancel) = (2.0, false);
             crate::hunger::native_living_heal(context, 1, &mut amount, &mut cancel);
-            let breath = crate::breathing::breathe(
-                context,
-                1,
-                "minecraft:zombie",
-                [-19, 300],
-                crate::breathing::Breath {
-                    can_breathe: true,
-                    consume: 1,
-                    refill: 4,
-                },
-            );
             let (mut drowning, mut damage, mut cancel_drown) = (false, 2.0, false);
             crate::breathing::native_living_drown(
                 context,
@@ -4313,29 +4302,10 @@ pub(crate) mod tests {
                 &mut 8,
                 &mut cancel_drown,
             );
-            (
-                amount,
-                cancel,
-                breath.can_breathe,
-                breath.consume,
-                drowning,
-                damage,
-            )
+            (amount, cancel, drowning, damage)
         };
-        assert_eq!(health(&before), (2.0, false, true, 1, false, 2.0));
-        assert_eq!(health(&after), (3.0, true, false, 5, true, 3.0));
-        // A listener that lets a cod breathe: on land for 300 ticks it keeps
-        // full air and takes no damage.
-        let mut air = 300;
-        for _ in 0..300 {
-            let hurt = crate::breathing::own_air(&after, 1, "minecraft:cod", &mut air, false, 300);
-            assert_eq!(hurt, None);
-        }
-        assert_eq!(air, 300);
-        // The listener gives a landbound axolotl a refill at -19 air.
-        air = -19;
-        let hurt = crate::breathing::own_air(&after, 1, "minecraft:axolotl", &mut air, false, 6000);
-        assert_eq!((hurt, air), (None, 6000));
+        assert_eq!(health(&before), (2.0, false, false, 2.0));
+        assert_eq!(health(&after), (3.0, true, true, 3.0));
         // A listener that sets `bubble_count` to 0: a drowning player takes the
         // damage and shows no bubbles (`drown_bubbles` sends nothing for 0).
         let gasp = crate::breathing::Breath {

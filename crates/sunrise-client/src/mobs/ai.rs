@@ -22,7 +22,7 @@ use super::{
     undead,
 };
 use crate::blocks::Fluid;
-use crate::breathing::{Breath, breathe, drown, own_air};
+use crate::breathing::{AirStep, Breath};
 use crate::health::DamageLevel;
 use sunrise_core::{
     geometry::{Aabb, Axis, ShapeOp, Vec3, VoxelShape},
@@ -1086,37 +1086,102 @@ fn drop_invalid_player_target(m: &mut Mob, w: &MobWorld) {
         }
     }
 }
-/// A tick either completed or paused at the fox's inline consumption boundary.
+/// A tick either completed or paused where its owner must provide a mutable host.
 #[derive(Debug)]
 pub enum TickProgress {
     Complete(bool),
+    Paused(Pause),
+}
+
+/// Where a tick paused: the fox's inline consumption, or the air update
+/// `living_breathe` is asked about.
+#[derive(Debug)]
+pub enum Pause {
     Consumption {
         decision: super::fox::Consumption,
         /// The base-tick snapshot, before contact ignition or listener writes.
         was_on_fire: bool,
     },
+    Breathing {
+        air: AirPause,
+        /// `Entity.computeSpeed`, read before the tick moved the mob.
+        known_speed: Vec3,
+    },
 }
 
-/// Run a whole mob tick when no owning-host pause is needed by the caller.
+/// A mob's air update, decided and waiting for its owner to ask the mods:
+/// the entity it concerns, what was decided, and what the base tick had read
+/// before the air that its second half still needs.
+#[derive(Debug)]
+pub struct AirPause {
+    pub mob: u32,
+    pub step: AirStep,
+    join: crate::join_seq::JoinSeq,
+    damage: AirDamage,
+    contact: Contact,
+}
+
+/// What a mob that runs out of air takes, and how it shows.
+#[derive(Clone, Copy, Debug)]
+enum AirDamage {
+    /// `LivingEntity.baseTick`: drowning, with bubbles and a teleport after the hurt.
+    Generic,
+    /// `WaterAnimal.handleAirSupply`: drowning, without bubbles.
+    Drown,
+    /// `Axolotl` and `Nautilus.handleAirSupply`: drying out.
+    DryOut,
+}
+
+/// The fire and lava contact `Entity.baseTick` read before the air, and where.
+#[derive(Debug)]
+struct Contact {
+    fire: f32,
+    lava: bool,
+    at: Vec3,
+}
+
+impl AirPause {
+    /// Whether the mob is still the live one the air was decided for, with the
+    /// air and maximum the decision read. Otherwise the update is refused.
+    pub fn still_valid(&self, m: &Mob) -> bool {
+        m.id == self.mob
+            && m.join == self.join
+            && !m.removed
+            && m.alive()
+            && m.air == self.step.air
+            && m.max_air_supply() == self.step.max
+    }
+}
+
+/// Run a whole mob tick when no owning-host pause is needed by the caller: the
+/// mods are not asked about its air, and a fox consumes without a host.
 pub fn tick(
     m: &mut Mob,
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
 ) -> bool {
-    match tick_until_consumption(m, w, level, events) {
-        TickProgress::Complete(kept) => kept,
-        TickProgress::Consumption {
-            decision,
-            was_on_fire,
-        } => {
-            super::fox::apply_consumption(&decision, w, m, level, events);
-            resume_after_consumption(m, w, level, was_on_fire, events)
-        }
+    let mut progress = tick_until_consumption(m, w, level, events);
+    loop {
+        progress = match progress {
+            TickProgress::Complete(kept) => return kept,
+            TickProgress::Paused(Pause::Consumption {
+                decision,
+                was_on_fire,
+            }) => {
+                super::fox::apply_consumption(&decision, w, m, level, events);
+                TickProgress::Complete(resume_after_consumption(m, w, level, was_on_fire, events))
+            }
+            TickProgress::Paused(Pause::Breathing { air, known_speed }) => {
+                let breath = Some(air.step.vanilla);
+                resume_after_breathing(m, w, level, events, air, known_speed, breath)
+            }
+        };
     }
 }
 
-/// Stop before a fox's effect draws so its owner can provide a mutable host.
+/// Stop before a fox's effect draws, or before the air update when a mod listens to
+/// `living_breathe`, so the owner can provide a mutable host.
 pub fn tick_until_consumption(
     m: &mut Mob,
     w: &MobWorld,
@@ -1164,7 +1229,45 @@ pub fn tick_until_consumption(
     if m.species() == Species::Strider {
         super::strider::pre_tick(m, w, events);
     }
-    let was_on_fire = base_tick(m, w, level, events);
+    match base_tick(m, w, level, events) {
+        BaseTick::Done(was_on_fire) => {
+            after_base_tick(m, w, level, events, was_on_fire, known_speed)
+        }
+        BaseTick::Air(air) => TickProgress::Paused(Pause::Breathing { air, known_speed }),
+    }
+}
+
+/// Resume a mob after its owner asked `living_breathe`: apply `breath` to the air
+/// that was decided on (`None`: the answer was refused, the air stays), then the
+/// rest of the base tick and the tick.
+pub fn resume_after_breathing(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+    air: AirPause,
+    known_speed: Vec3,
+    breath: Option<Breath>,
+) -> TickProgress {
+    if m.removed {
+        return TickProgress::Complete(false);
+    }
+    if let Some(breath) = breath {
+        finish_air(m, w, level, events, air.step, air.damage, breath);
+    }
+    let was_on_fire = base_tick_after_air(m, w, level, events, air.contact);
+    after_base_tick(m, w, level, events, was_on_fire, known_speed)
+}
+
+/// The tick after `Entity.baseTick`, up to the fox's consumption boundary.
+fn after_base_tick(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+    was_on_fire: bool,
+    known_speed: Vec3,
+) -> TickProgress {
     if m.impulse_grace_time > 0 {
         m.impulse_grace_time -= 1;
     }
@@ -1204,10 +1307,10 @@ pub fn tick_until_consumption(
         && !m.no_ai
         && let Some(decision) = super::fox::ai_step_until_consumption(m, w, events)
     {
-        return TickProgress::Consumption {
+        return TickProgress::Paused(Pause::Consumption {
             decision,
             was_on_fire,
-        };
+        });
     }
     TickProgress::Complete(ai_and_finish_tick(m, w, level, was_on_fire, events))
 }
@@ -1857,35 +1960,66 @@ pub(super) fn in_rain(m: &Mob, w: &MobWorld) -> bool {
 /// `Axolotl.handleAirSupply` (unless the mob has no AI): water or rain fills
 /// it, anywhere else it runs down from the pre-tick value, and at -20 the
 /// axolotl dries out.
-fn axolotl_air_supply(m: &mut Mob, w: &MobWorld, level: &mut DamageLevel<'_>) {
+fn axolotl_air_step(m: &mut Mob, w: &MobWorld) -> Option<AirStep> {
     if m.no_ai {
         m.air = (m.air + 4).min(super::axolotl::MAX_AIR);
-        return;
+        return None;
     }
     let breathes = m.fluids.in_water || in_rain(m, w);
-    let (cx, max) = (w.loop_context, super::axolotl::MAX_AIR);
-    if let Some(damage) = own_air(cx, m.id, &m.kind.id, &mut m.air, breathes, max) {
-        m.damage(level, damage, Damage::of(DamageKind::DryOut));
-    }
+    Some(AirStep::own(m.air, super::axolotl::MAX_AIR, breathes))
 }
 /// `Nautilus.baseTick`: `LivingEntity.baseTick` refills the air of this
 /// water breather, then, unless it has no AI, `Nautilus.handleAirSupply`
 /// takes it back out of water, where the nautilus dries out.
-fn nautilus_air_supply(m: &mut Mob, w: &MobWorld, level: &mut DamageLevel<'_>) {
+fn nautilus_air_step(m: &mut Mob) -> Option<AirStep> {
     const MAX_AIR: i32 = 300;
     if m.no_ai {
         if m.alive() {
             m.air = (m.air + 4).min(MAX_AIR);
         }
-        return;
+        return None;
     }
     if !m.alive() {
         m.air = MAX_AIR;
-        return;
+        return None;
     }
-    let (cx, wet) = (w.loop_context, m.fluids.in_water);
-    if let Some(damage) = own_air(cx, m.id, &m.kind.id, &mut m.air, wet, MAX_AIR) {
-        m.damage(level, damage, Damage::of(DamageKind::DryOut));
+    Some(AirStep::own(m.air, MAX_AIR, m.fluids.in_water))
+}
+/// Apply `breath` to the air `step` decided on, and what running out of air does.
+fn finish_air(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+    step: AirStep,
+    damage: AirDamage,
+    breath: Breath,
+) {
+    let Some(drowning) = step.finish(w.loop_context, m.id, &m.kind.id, &mut m.air, breath) else {
+        return;
+    };
+    match damage {
+        AirDamage::Generic => {
+            events.push(MobEvent::Drown {
+                mob: m.id,
+                at: [m.position.x, m.position.y, m.position.z],
+                bubbles: drowning.bubbles,
+            });
+            if let Some(amount) = drowning.damage {
+                m.damage(level, amount, Damage::of(DamageKind::Drown));
+                hurt_teleports(m, w, events);
+            }
+        }
+        AirDamage::Drown | AirDamage::DryOut => {
+            if let Some(amount) = drowning.damage {
+                let kind = if matches!(damage, AirDamage::Drown) {
+                    DamageKind::Drown
+                } else {
+                    DamageKind::DryOut
+                };
+                m.damage(level, amount, Damage::of(kind));
+            }
+        }
     }
 }
 /// The thin box at a body's eyes `Entity.isInWall` tests: 0.8 of the width wide (a float
@@ -1958,13 +2092,21 @@ fn keeps_its_air(m: &Mob) -> bool {
     m.species() == Species::IronGolem
 }
 
-/// Entity.baseTick + LivingEntity.baseTick + Mob.baseTick.
+/// `base_tick` finished, or stopped at its air update for the owner to ask
+/// the mods (`living_breathe`) with a host.
+enum BaseTick {
+    Done(bool),
+    Air(AirPause),
+}
+
+/// Entity.baseTick + LivingEntity.baseTick + Mob.baseTick, up to its air update when a mod
+/// listens to `living_breathe`.
 fn base_tick(
     m: &mut Mob,
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
-) -> bool {
+) -> BaseTick {
     if m.first_tick {
         super::villager::refresh_sleeping_position(m, w);
     }
@@ -2070,15 +2212,15 @@ fn base_tick(
         // Air supply and drowning (WaterAnimal.handleAirSupply for aquatic mobs).
         // Nautilus.baseTick: NoAI skips only the custom handler; the
         // superclass Breath/drown path must still process its air.
-        if m.species() == Species::Axolotl {
-            axolotl_air_supply(m, w, level);
+        let step = if m.species() == Species::Axolotl {
+            axolotl_air_step(m, w).map(|step| (step, AirDamage::DryOut))
         } else if m.species() == Species::Nautilus {
-            nautilus_air_supply(m, w, level);
+            nautilus_air_step(m).map(|step| (step, AirDamage::DryOut))
         } else if m.kind.flags.needs_water {
-            let (cx, wet) = (w.loop_context, m.fluids.in_water);
-            if let Some(damage) = own_air(cx, m.id, &m.kind.id, &mut m.air, wet, 300) {
-                m.damage(level, damage, Damage::of(DamageKind::Drown));
-            }
+            Some((
+                AirStep::own(m.air, 300, m.fluids.in_water),
+                AirDamage::Drown,
+            ))
         } else {
             // LivingEntity.baseTick / MobEffectUtil: bubble columns and breathing
             // effects protect submerged mobs. Nautilus alone holds air rather
@@ -2108,28 +2250,52 @@ fn base_tick(
                     4
                 },
             };
-            let breath = breathe(w.loop_context, m.id, &m.kind.id, [m.air, max], vanilla);
-            if let Some(drowning) = drown(
-                w.loop_context,
-                m.id,
-                &m.kind.id,
-                &mut m.air,
-                max,
-                breath,
-                true,
-            ) {
-                events.push(MobEvent::Drown {
+            Some((AirStep::generic(m.air, max, vanilla), AirDamage::Generic))
+        };
+        if let Some((step, damage)) = step {
+            // The owner asks `living_breathe` with its host between deciding and applying.
+            if crate::breathing::heard() {
+                return BaseTick::Air(AirPause {
                     mob: m.id,
-                    at: [m.position.x, m.position.y, m.position.z],
-                    bubbles: drowning.bubbles,
+                    step,
+                    join: m.join,
+                    damage,
+                    contact: Contact {
+                        fire,
+                        lava,
+                        at: contact_at,
+                    },
                 });
-                if let Some(damage) = drowning.damage {
-                    m.damage(level, damage, Damage::of(DamageKind::Drown));
-                    hurt_teleports(m, w, events);
-                }
             }
+            finish_air(m, w, level, events, step, damage, step.vanilla);
         }
     }
+    BaseTick::Done(base_tick_after_air(
+        m,
+        w,
+        level,
+        events,
+        Contact {
+            fire,
+            lava,
+            at: contact_at,
+        },
+    ))
+}
+
+/// What `Entity.baseTick` does after the air update, and whether the mob was on fire.
+fn base_tick_after_air(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+    contact: Contact,
+) -> bool {
+    let Contact {
+        fire,
+        lava,
+        at: contact_at,
+    } = contact;
     if m.species() == Species::Illusioner {
         super::illusioner::tick(m, events);
     }

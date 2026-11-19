@@ -613,6 +613,27 @@ pub fn resume_after_consumption(
     })
 }
 
+/// Resume the paused tick after `living_breathe` with the current vehicle/navigation owner.
+pub fn resume_after_breathing(
+    mobs: &mut JoinList<Mob>,
+    index: usize,
+    w: &MobWorld,
+    level: &mut super::DamageLevel<'_>,
+    air: super::ai::AirPause,
+    known_speed: sunrise_core::geometry::Vec3,
+    breath: Option<crate::breathing::Breath>,
+    events: &mut Vec<super::MobEvent>,
+) -> super::ai::TickProgress {
+    tick_with(mobs, index, w, level, events, |m, w, level, events| {
+        let progress =
+            super::ai::resume_after_breathing(m, w, level, events, air, known_speed, breath);
+        if matches!(progress, super::ai::TickProgress::Complete(_)) {
+            super::neutral_anger::after_tick(m, w.game_time);
+        }
+        progress
+    })
+}
+
 fn tick_with<R>(
     mobs: &mut JoinList<Mob>,
     index: usize,

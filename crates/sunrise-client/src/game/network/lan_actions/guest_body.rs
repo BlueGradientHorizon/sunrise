@@ -6,6 +6,27 @@ use sunrise_client::{
 };
 use sunrise_core::geometry::Vec3;
 
+/// The server copy of the acting guest's body, borrowing its player and the level from `game`.
+/// A macro so that the borrow can end where the game itself is needed (a hook's owning host)
+/// and begin again after it.
+macro_rules! motion_world {
+    ($game:ident, $player:ident) => {
+        MotionWorld {
+            entities: &[],
+            player: $player,
+            scene: &mut $game.world,
+            assets: &$game.pack.assets,
+            collision_binding: $game.collision,
+            resources: $game.motion,
+            health: &$game.health_resources,
+            tag_items: Some(world_items!($game)),
+            loop_context: &$game.loop_context,
+            damage_hooks: &$game.damage_hooks,
+            block_registries: Some(&$game.pack.block_registries),
+        }
+    };
+}
+
 pub(super) fn initialize(resources: &MotionResources, guest: &mut Guest) -> bool {
     let p = Vec3::new(guest.position[0], guest.position[1], guest.position[2]);
     let Ok(motion) = PlayerMotion::new(resources, p) else {
@@ -157,19 +178,7 @@ impl Game<'_> {
             player.fluids.boat = boat;
             // The supporting-block scan for this tick's moves reads the boots.
             player.leather_boots = leather_boots;
-            let mut w = MotionWorld {
-                entities: &[],
-                player,
-                scene: &mut game.world,
-                assets: &game.pack.assets,
-                collision_binding: game.collision,
-                resources: game.motion,
-                health: &game.health_resources,
-                tag_items: Some(world_items!(game)),
-                loop_context: &game.loop_context,
-                damage_hooks: &game.damage_hooks,
-                block_registries: Some(&game.pack.block_registries),
-            };
+            let mut w = motion_world!(game, player);
             w.player.health.advance_clock();
             let _ = w.fluid_base_tick();
             w.player.ground.on_ground = from_ground;
@@ -253,7 +262,24 @@ impl Game<'_> {
             w.player.burn_from_stepping_immune = burn_immune;
             let _ = w.server_block_damage(start);
             let _ = w.update_soul_speed_block();
-            let _ = w.tick_environment_damage();
+            // LivingEntity.baseTick's air supply: decided here, then `living_breathe` is
+            // asked with the game itself, which `w` borrows, and its answer applied.
+            if let Ok(step) = w.decide_air() {
+                let answer = match step {
+                    Some(step) if sunrise_client::breathing::heard() => {
+                        game.ask_player_breath(step).map(|breath| (step, breath))
+                    }
+                    step => step.map(|step| (step, step.vanilla)),
+                };
+                let Some(player) = game.player.as_mut() else {
+                    return (Vec::new(), None);
+                };
+                w = motion_world!(game, player);
+                if let Some((step, breath)) = answer {
+                    let _ = w.apply_air(step, breath);
+                }
+                let _ = w.tick_lava_contact();
+            }
             let _ = w.apply_fire_contact();
             let _ = w.server_hazards_tick(in_wall);
             // LivingEntity.aiStep: a Riptide spin counts down on the server's
@@ -321,20 +347,7 @@ impl Game<'_> {
             );
             events.append(&mut player.events);
             player.carry_client_movement(tick_movement);
-            let _ = MotionWorld {
-                entities: &[],
-                player,
-                scene: &mut game.world,
-                assets: &game.pack.assets,
-                collision_binding: game.collision,
-                resources: game.motion,
-                health: &game.health_resources,
-                tag_items: Some(world_items!(game)),
-                loop_context: &game.loop_context,
-                damage_hooks: &game.damage_hooks,
-                block_registries: Some(&game.pack.block_registries),
-            }
-            .server_travel();
+            let _ = motion_world!(game, player).server_travel();
             // Player.aiStep's entity contacts run with the player's body,
             // even when the level and its mobs are frozen. Flush their damage
             // events and marked velocity through the existing guest path.

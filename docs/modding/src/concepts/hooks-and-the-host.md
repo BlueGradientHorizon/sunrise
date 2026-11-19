@@ -337,12 +337,6 @@ both the saved point and the block above. This includes a bed or anchor at which
 set. `Some(true)` accepts that state, `Some(false)` rejects it, and `None` keeps vanilla's predicate.
 It does not select a bed or anchor's stand-up position; `respawn_position` handles those.
 
-The server-only `living_breathe` hook takes a `LoopContext` rather than a world host. Read
-`event.air` as `[current, maximum]` before the tick's breathing update; current air can be negative.
-For example, compare current air to half the maximum before raising `event.refill`. Every listener
-gets the original pair: editing it has no effect. Only `event.can_breathe`, `event.consume` and
-`event.refill` carry forward and change the update. Native and wasm mods must rebuild for version 3.
-
 `LevelHost` has no random access: a draw from a read-only hook inside a level write would shift the level's random sequence away from vanilla's order. A hook that may draw is given a `LevelRandomHost`.
 `LevelRandomHost` provides vanilla's `Level.random` so
 mod draws come in vanilla's order. `LevelTicksHost` adds scheduling through

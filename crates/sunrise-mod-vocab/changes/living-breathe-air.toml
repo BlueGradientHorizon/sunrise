@@ -1,3 +1,0 @@
-ids = ["hook:living_breathe"]
-why = "Version 3 supplies the signed current and maximum air before the update, so a listener can decide whether or how much to refill without a Host. Every listener gets the original air pair; breathing answers still carry forward."
-migrate = "Rebuild native and wasm mods. Read event.air as [current, maximum] and continue changing only can_breathe, consume and refill."
