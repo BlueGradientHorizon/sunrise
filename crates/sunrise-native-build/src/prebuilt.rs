@@ -1,6 +1,6 @@
 //! Native mods compile and link against the pinned prebuilt game.
 //! Unsupported inputs and unavailable SDKs are refused, never rebuilt locally.
-use super::{Target, api, dependencies, internals};
+use super::{MixinsIdentity, Target, api, dependencies, internals};
 use crate::host::{tr, trf};
 use crate::rust::Toolchain;
 use sha2::{Digest, Sha256};
@@ -409,7 +409,7 @@ pub fn library(deps: &Path, krate: &str) -> Result<PathBuf, String> {
     match candidates.as_slice() {
         [path] => Ok(path.clone()),
         [] => Err(trf(
-            "The prebuilt game has no {crate}.",
+            "The prebuilt game has no {crate}, a library this tool needs: the SDK it comes from is older than the tool. Pin a current build (`cargo sunrise-mod update --sunrise nightly`), or build with the tool in that SDK's own release (`sdk-<build>/tool-<target>.tar.xz`).",
             &[("crate", krate)],
         )),
         _ => Err(facade_refused(krate)),
@@ -616,6 +616,31 @@ fn registry_dependency(project: &api::Project<'_>) -> bool {
     })
 }
 
+/// Creates `out`, a build folder directly under `builds`, itself directly under the native work
+/// folder, refusing either when it is a link (a symlink or a Windows junction) or resolves outside
+/// its parent: the build clears folders inside `out`, and must never reach a folder elsewhere
+/// through it.
+fn own_folder(builds: &Path, out: &Path) -> Result<(), String> {
+    let work = builds
+        .parent()
+        .ok_or_else(|| format!("{}: no work folder above it", builds.display()))?;
+    for (parent, dir) in [(work, builds), (builds, out)] {
+        fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        let meta = fs::symlink_metadata(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        let inside = || -> std::io::Result<bool> {
+            Ok(fs::canonicalize(dir)?.parent() == Some(fs::canonicalize(parent)?.as_path()))
+        };
+        if meta.file_type().is_symlink() || !meta.is_dir() || !inside().unwrap_or(false) {
+            return Err(format!(
+                "{}: not a folder of its own under {}; remove it and build again",
+                dir.display(),
+                parent.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Compiles the mods (`resolution`'s order, each with its installed mod dependencies) and the
 /// launcher's executable against the prebuilt game `package`, by `route` ([`Route::of`] the same
 /// `projects`), under `builds` (`native/prebuilt-build`), in folders keyed by the SDK's inputs
@@ -639,8 +664,8 @@ pub fn compile(
     // Each mod is its own library: told which one starts, and how far through them.
     on_mod: &dyn Fn(&str, usize, usize),
 ) -> Result<(PathBuf, Vec<PathBuf>), String> {
-    let mut names = std::collections::HashSet::new();
-    names.insert(dylib_name("sunrise_patch").to_ascii_lowercase());
+    let mixins = MixinsIdentity::resolve(projects.iter().map(|project| project.bundle), None)?;
+    let mut names = reserved_library_names();
     for item in fs::read_dir(package.runtime.join("deps")).map_err(|e| e.to_string())? {
         names.insert(
             item.map_err(|e| e.to_string())?
@@ -687,6 +712,7 @@ pub fn compile(
             super::registry_compile::Options {
                 consent,
                 adapter: &std::env::current_exe().map_err(|e| e.to_string())?,
+                mixins: &mixins,
             },
         )?;
         // The Storage page's Build files row ages this unit by its last use.
@@ -701,7 +727,7 @@ pub fn compile(
     for project in projects {
         catalog.log_mixins(&project.bundle.manifest)?;
     }
-    fs::create_dir_all(out).map_err(|e| e.to_string())?;
+    own_folder(builds, out)?;
     crate::host::mark_used(out)?;
     let deps = game.join("deps");
     let sdk = identity(game)?;
@@ -788,6 +814,7 @@ pub fn compile(
         &rlibs,
         &crate_names,
         &sdk,
+        &mixins,
         |edition| rustc(rust, game, out, edition),
     )?;
     let mut installed = runtime_libraries(rust, &sdk, game)?;
@@ -992,6 +1019,18 @@ pub fn compile_mod<'a>(
 
 /// Refuses mod `id`'s library file `name` when another library already takes it. Names compare
 /// without case, as Windows' and macOS's default file systems do.
+/// The library files the build makes beside the mods': the patch library, and the one the registry
+/// route links the mods' registry crates from when it writes one. Lowercase, as compared.
+fn reserved_library_names() -> std::collections::HashSet<String> {
+    [
+        dylib_name("sunrise_patch"),
+        dylib_name(super::registry_shared::CRATE),
+    ]
+    .into_iter()
+    .map(|name| name.to_ascii_lowercase())
+    .collect()
+}
+
 fn check_library_name(
     names: &mut std::collections::HashSet<String>,
     name: &str,
@@ -1180,10 +1219,72 @@ pub fn runtime_libraries(
 
 #[cfg(test)]
 mod tests {
+    /// A build folder, or the builds folder above it, that is a link to a folder elsewhere is
+    /// refused before anything inside it is cleared, so the build never deletes the other
+    /// folder's `patch-applied`.
+    #[test]
+    fn a_build_folder_linked_elsewhere_is_refused_and_the_other_folder_kept() {
+        #[cfg(unix)]
+        fn link(to: &Path, at: &Path) -> std::io::Result<()> {
+            std::os::unix::fs::symlink(to, at)
+        }
+        #[cfg(windows)]
+        fn link(to: &Path, at: &Path) -> std::io::Result<()> {
+            std::os::windows::fs::symlink_dir(to, at)
+        }
+        let work = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let builds = work.path().join("prebuilt-build");
+        let out = builds.join("rustc-key");
+        super::own_folder(&builds, &out).unwrap();
+        super::own_folder(&builds, &out).unwrap();
+        for stale in [
+            outside.path().join("patch-applied"),
+            outside.path().join("rustc-key/patch-applied"),
+        ] {
+            fs::create_dir_all(&stale).unwrap();
+            fs::write(stale.join("keep"), "kept").unwrap();
+        }
+        // Windows grants symlinks only to developer mode or an administrator: a link it refuses
+        // for that is skipped, and any other failure fails the test.
+        let made = |link: std::io::Result<()>| match link {
+            Ok(()) => true,
+            Err(e) if cfg!(windows) && e.raw_os_error() == Some(1314) => false,
+            Err(e) => panic!("{e}"),
+        };
+        fs::remove_dir(&out).unwrap();
+        if made(link(outside.path(), &out)) {
+            let refused = super::own_folder(&builds, &out).unwrap_err();
+            assert!(refused.contains("not a folder of its own"), "{refused}");
+            fs::remove_file(&out)
+                .or_else(|_| fs::remove_dir(&out))
+                .unwrap();
+        }
+        fs::remove_dir(&builds).unwrap();
+        if made(link(outside.path(), &builds)) {
+            let refused = super::own_folder(&builds, &out).unwrap_err();
+            assert!(
+                refused.contains("prebuilt-build: not a folder of its own"),
+                "{refused}"
+            );
+        }
+        for kept in ["patch-applied/keep", "rustc-key/patch-applied/keep"] {
+            assert_eq!(
+                fs::read_to_string(outside.path().join(kept)).unwrap(),
+                "kept"
+            );
+        }
+    }
+
     #[test]
     fn library_names_are_case_insensitive_and_entry_lints_are_checked() {
         let mut names = std::collections::HashSet::new();
         super::check_library_name(&mut names, "Example.dll", "one").unwrap();
+        // A mod library taking the shared registry library's file is refused, naming both.
+        let mut reserved = super::reserved_library_names();
+        let file = super::dylib_name("Sunrise_Registry_Shared");
+        let error = super::check_library_name(&mut reserved, &file, "taker").unwrap_err();
+        assert!(error.contains("taker") && error.contains(&file), "{error}");
         assert!(
             super::check_library_name(&mut names, "example.dll", "two")
                 .unwrap_err()

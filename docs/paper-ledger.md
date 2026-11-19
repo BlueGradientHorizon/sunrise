@@ -49,7 +49,7 @@ Scope: the twenty `misc-add` hooks below.
 | `bonemeal` | **Gap:** none (nearest [`BlockFertilizeEvent`][paper-BlockFertilizeEvent]) | The event reports resulting fertilization block changes after any `StructureGrowEvent`, rather than Sunrise's pre-growth validity and success/cancel decision with the bone meal stack and player-or-dispenser-or-villager cause. No key. |
 | `can_continue_sleeping` | **Gap:** none | No Paper event covers the per-tick check that a sleeping player, villager or wandering trader may continue sleeping; the supplied block-build event is unrelated. No key. |
 | `can_player_sleep` | **Partial:** [`PlayerBedEnterEvent`][paper-PlayerBedEnterEvent] | `PlayerBedEnterEvent` fires as a player is about to enter a bed and exposes the bed and a vanilla result, but its `BedEnterResult` is read-only and only allow/deny can be set. Sunrise lets mods replace the specific problem, including `other_problem`. No key. |
-| `chunk_sent` | **Partial:** [`PlayerChunkLoadEvent`][paper-PlayerChunkLoadEvent] | The non-cancellable server packet notification identifies the player and chunk when the player receives that chunk, matching `run_chunk_watches` after the chunk packet was sent and its listen-only result; the Javadoc recommends this moment for sending client-related data such as fake entities. Key added. Not told for the far ring's columns (a Sunrise server option, off by default), which a server may still send to players, so a port that sends data per received chunk misses those. No key. |
+| `chunk_sent` | **Partial:** [`PlayerChunkLoadEvent`][paper-PlayerChunkLoadEvent] | The non-cancellable server packet notification identifies the player and chunk when the player receives that chunk, matching `run_chunk_watches` after the chunk packet was sent and its listen-only result; the Javadoc recommends this moment for sending client-related data such as fake entities. Key added. |
 
 [paper-PlayerResourcePackStatusEvent]: https://jd.papermc.io/paper/26.3/org/bukkit/event/player/PlayerResourcePackStatusEvent.html
 [paper-PrepareAnvilEvent]: https://jd.papermc.io/paper/26.3/org/bukkit/event/inventory/PrepareAnvilEvent.html
@@ -255,7 +255,7 @@ Scope: the 20 base-entity hooks below, comparing each Javadoc moment, side, expo
 |---|---|---|
 | `entity_teleport` | **Partial:** [`PlayerTeleportEvent`][paper-PlayerTeleportEvent] | A player command teleport carries the same from/to coordinates and a `getCause()` field, but the event is players-only, fires before the move and is cancellable, while the hook reports every server entity after its same-level command teleport and is listen-only. No key. |
 | `entity_tick_listened` | **Gap:** none | No Paper/Bukkit event describes whether a mod listens to entity ticks; the hook is Sunrise's opt-in gate asked before the tick round and has no game moment to map. No key. |
-| `entity_tick_post` | **Gap:** none | The Paper API has no per-entity tick event and none of the candidates mark the after-tick moment for mobs, items, minecarts or boats. No key. |
+| `entity_tick_post` | **Gap:** none | The Paper API has no per-entity tick event and none of the candidates mark the after-tick moment of an entity. No key. |
 | `entity_tick_pre` | **Gap:** none | For the same reason no event marks an entity about to tick, so the hook's pre-tick cancel (no AI, physics, ageing or merging) has no counterpart. No key. |
 | `entity_toggle_glide` | **Partial:** [`EntityToggleGlideEvent`][paper-EntityToggleGlideEvent] | Same server-side gliding toggle for a player and the `isGliding()` fact, but the event fires before the toggle is applied and is cancellable, while the hook reports a guest's change after it was applied and is listen-only. No key. |
 | `entity_unleash` | **Partial:** [`EntityUnleashEvent`][paper-EntityUnleashEvent] | Same entity and server-side unleash, but the event is "immediately prior to" it and cancellable with `isDropLeash()`/`setDropLeash()`, while the hook fires after the leash is removed (before the lead drop is handled) and cannot cancel or choose the drop. No key. |
@@ -1064,7 +1064,6 @@ one of these moments has to move that logic into a client native mod.
 | `register_item_tint_sources.rs` | `register_item_tint_sources` |
 | `register_layer_definitions.rs` | `register_layer_definitions` |
 | `register_range_select_item_model_property.rs` | `register_range_select_item_model_property` |
-| `register_runtime_sprites.rs` | `register_runtime_sprites` |
 | `register_texture_atlases.rs` | `register_texture_atlases` |
 | `render_arm.rs` | `render_arm` |
 | `render_frame_post.rs` | `render_frame_post` |

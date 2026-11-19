@@ -14,7 +14,6 @@ impl Game<'_> {
         self.lod_source_attempted = false;
         self.lod_observe.clear();
         self.lod_blue_map = None;
-        self.far_beacons.clear();
         self.lod_covered_at = None;
         if let Some(renderer) = &mut self.renderer {
             renderer.clear_lods();
@@ -74,26 +73,18 @@ impl Game<'_> {
                 let root = home.join("server-terrain");
                 let dir = terrain::level_dir(&root, address, remote.hashed_seed, &remote.level);
                 self.lod_level = Some(remote.level.clone());
-                // Past them, the server's BlueMap, if the player named it or
-                // lets Sunrise look for it (on the BlueMap worker).
+                // Past them, the server's BlueMap, if the player named it.
                 let maps = root.join(terrain::server_folder(address)).join("BlueMap");
                 let settings = &self.settings.sunrise.blue_map;
-                let blue_map = sunrise_client::bluemap_detect::source(
-                    settings,
-                    address,
-                    &maps,
-                    std::time::SystemTime::now(),
-                )
-                .map(|source| {
-                    use sunrise_client::{bluemap, bluemap_detect::Source};
+                let blue_map = settings.server(address).map(|server| {
+                    use sunrise_client::bluemap;
                     // The map's address only at debug: logs land in crash reports.
                     log::info!("Sunrise: far terrain also draws {}'s BlueMap", remote.level);
-                    if let Source::Url { url, .. } = &source {
-                        log::debug!("Sunrise: BlueMap at {url}");
-                    }
-                    let map = Arc::new(bluemap::BlueMap::from_source(
-                        source,
+                    log::debug!("Sunrise: BlueMap at {}", server.url);
+                    let map = Arc::new(bluemap::BlueMap::new(
+                        &server.url,
                         &remote.level,
+                        server.maps.clone(),
                         maps,
                         settings.radius_blocks(),
                         bluemap::Palette::from_game(self.pack.assets.registry, self.res.biomes()),
@@ -102,35 +93,7 @@ impl Game<'_> {
                     map
                 });
                 self.lod_blue_map = blue_map.clone();
-                // And the player's Bobby cache of the level, only read.
-                let bobby = terrain::bobby_level_dir(
-                    &terrain::minecraft_dir().join(".bobby"),
-                    address,
-                    remote.hashed_seed,
-                    &remote.level,
-                )
-                .map(|bobby| {
-                    log::info!(
-                        "Sunrise: far terrain also reads Bobby's chunks of {}",
-                        remote.level
-                    );
-                    let registry = self.pack.assets.registry;
-                    let biomes = self.res.biomes().clone();
-                    let dimension = &remote.dimension;
-                    let layout = sunrise_client::chunk::ColumnLayout::of_level(
-                        dimension.min_y,
-                        dimension.height,
-                    );
-                    let sky_light = dimension.has_skylight;
-                    let decode: terrain::DecodeChunk =
-                        Box::new(move |root: &sunrise_core::nbt::NamedTag| {
-                            sunrise_client::save::decode_lit(
-                                root, registry, &biomes, layout, sky_light,
-                            )
-                        });
-                    terrain::Bobby::new(bobby, decode, self.res.facts())
-                });
-                terrain::ServerTerrain::with_bobby(dir, blue_map, bobby) as _
+                terrain::ServerTerrain::new(dir, blue_map) as _
             }),
             _ => Some(self.streaming.lod_source()),
         };
@@ -184,6 +147,7 @@ impl Game<'_> {
                 (p.position.x.floor() as i32) >> 4,
                 (p.position.z.floor() as i32) >> 4,
             );
+            self.streaming.center_y = p.position.y.floor() as i32;
         }
         sunrise_client::spans::time("tick_pregen", || self.tick_pregen());
         // A headless game has nothing to draw sections with: like a server's, they aren't
@@ -232,18 +196,24 @@ impl Game<'_> {
         }
         let dirty: Vec<_> = unloaded
             .iter()
-            .filter(|c| self.world.modified.remove(&(c.x, c.z)))
+            .filter(|c| self.world.modified.contains(&(c.x, c.z)))
             .cloned()
             .collect();
         let modified = sunrise_client::spans::time("with_entities", || self.with_entities(&dirty));
         self.native_full_chunk_snapshots(&modified);
-        if !modified.is_empty()
-            && let Err(e) = sunrise_client::spans::time("save_chunks", || {
+        if !modified.is_empty() {
+            match sunrise_client::spans::time("save_chunks", || {
                 self.save
                     .save_later(&modified, self.pack.assets.registry, world_biomes!(self))
-            })
-        {
-            log::warn!("Sunrise: failed to save unloaded chunks: {e}");
+            }) {
+                // The writer's pending snapshots now hold the dirty data until sync.
+                Ok(_) => {
+                    for chunk in &dirty {
+                        self.world.modified.remove(&(chunk.x, chunk.z));
+                    }
+                }
+                Err(e) => log::warn!("Sunrise: failed to save unloaded chunks: {e}"),
+            }
         }
         sunrise_client::spans::time("spawn_fresh_chunks", || self.spawn_fresh_chunks());
         self.ask_loaded_light_emission();

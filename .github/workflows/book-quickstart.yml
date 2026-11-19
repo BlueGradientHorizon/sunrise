@@ -1,0 +1,45 @@
+name: book quickstart
+# The modding book's start pages, run as a reader would with the mod tool alone (tools/book_quickstart.py): every
+# ```sh block of docs/modding/src/start/ in a fresh home on a runner with no launcher, first with the tool the install
+# page downloads, then with the tool built from this commit for the mod pages. It downloads the published tool, SDK
+# and a Rust toolchain, so it runs by dispatch and by call only, never on a push or pull request. Nothing is published.
+on:
+  workflow_call:
+    inputs:
+      commit:
+        description: The commit whose book and tool are checked
+        type: string
+        default: ''
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: book-quickstart-${{ inputs.commit && github.run_id || github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  quickstart:
+    # GitHub's runner: a clean machine with rustup and no launcher, which is what the pages assume.
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.commit }}
+      # cargo-sunrise-mod is built with the Rust it was built for: tools/ci/rust-version, read at compile time.
+      - name: The pinned Rust (tools/ci/rust-version)
+        id: rust
+        run: echo "version=$(cat tools/ci/rust-version)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.rust.outputs.version }}
+      - name: Build this commit's tool
+        run: cargo build --locked -p cargo-sunrise-mod
+      - name: The start pages run with the mod tool alone
+        run: python3 tools/book_quickstart.py --tool target/debug/cargo-sunrise-mod

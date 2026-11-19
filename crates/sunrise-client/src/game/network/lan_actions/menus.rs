@@ -228,7 +228,7 @@ impl Game<'_> {
         // handle open has no earlier `startOpen`; only it starts the block's lid.
         let counts_openers =
             !opener_started && matches!(slots, Slots::Block(_) | Slots::Double(_, _));
-        let hidden = self.native_hidden_slots(pos, items.len());
+        let hidden = self.native_hidden_slots(menu, Some(pos), items.len());
         // A mod menu type's block tells the client where it is, with what its
         // mod writes (`openMenu` with an extra-data writer); a stock menu
         // sends nothing more.
@@ -521,7 +521,7 @@ impl Game<'_> {
             .hub
             .guests
             .iter()
-            .filter(|g| host.hub.here(g))
+            .filter(|g| host.hub.here(g) && !self.player_tick_canceled(g.conn))
             .filter(|g| {
                 (g.dead && super::super::native_menus::open_menu_of(host, g.conn).is_some())
                     || !self.container_menu_valid(g)
@@ -542,10 +542,9 @@ impl Game<'_> {
         g.menu.as_ref().is_none_or(|m| {
             m.slots.valid(&self.world)
                 && m.still_valid(&host.hub.loop_context, &self.world, g)
-                && !m.pos.is_some_and(|k| {
-                    k.1 == crate::game::minecarts::CART_KEY_Y
-                        && !self.chest_vehicle_still_valid(k.2, g)
-                })
+                && !matches!(m.slots, Slots::Block((_, y, id))
+                    if y == crate::game::minecarts::CART_KEY_Y
+                        && !self.chest_vehicle_still_valid(id, g))
         })
     }
 
@@ -589,11 +588,12 @@ impl Game<'_> {
     /// window with it, so the click lands on nothing
     /// (`ServerGamePacketListenerImpl.handleContainerClick` and the others
     /// ask `stillValid` first).
-    pub(super) fn guest_validate_menu(&mut self, conn: u32) {
+    pub(super) fn guest_validate_menu(&mut self, conn: u32) -> bool {
         if self.guest_menu_still_valid(conn) {
-            return;
+            return true;
         }
         self.guest_close_menus_and_tell(conn);
+        false
     }
 
     /// `ServerPlayer.closeContainer`: the client is told to close each window first, and

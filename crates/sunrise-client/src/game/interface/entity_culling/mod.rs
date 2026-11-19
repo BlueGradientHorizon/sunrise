@@ -366,17 +366,19 @@ impl Game<'_> {
 }
 
 impl Game<'_> {
-    /// Entity.setViewScale (LevelExtractor.extractVisibleEntities): the entity
-    /// distance option times the render distance's boost — 1 at 8 chunks, 2.5
-    /// at 20 or more. The render distance is the client setting, capped by
-    /// the server's view distance when connected
-    /// (Options.getEffectiveRenderDistance).
-    pub(super) fn view_scale(&self) -> f64 {
-        let distance = match &self.remote {
+    /// Options.getEffectiveRenderDistance: the client setting, capped by the server's view distance.
+    pub(super) fn effective_render_distance(&self) -> i32 {
+        match &self.remote {
             Some(r) => self.settings.render_distance.min(r.view_distance),
             None => self.settings.render_distance,
-        };
-        entity_view_scale(distance, self.settings.entity_distance)
+        }
+    }
+    /// Entity.setViewScale: entity distance times the render distance's boost (1 at 8 chunks, 2.5 at 20+).
+    pub(super) fn view_scale(&self) -> f64 {
+        entity_view_scale(
+            self.effective_render_distance(),
+            self.settings.entity_distance,
+        )
     }
 }
 
@@ -384,8 +386,8 @@ impl Game<'_> {
 /// entityDistanceScaling`. Every entity's draw distance is scaled by it, so
 /// a small mob is drawn nearer than a big one and a longer render distance
 /// draws both further away.
-pub(super) fn entity_view_scale(render_distance: i32, entity_distance: f32) -> f64 {
-    (f64::from(render_distance) / 8.0).clamp(1.0, 2.5) * f64::from(entity_distance)
+pub(super) fn entity_view_scale(render_distance: i32, entity_distance: f64) -> f64 {
+    (f64::from(render_distance) / 8.0).clamp(1.0, 2.5) * entity_distance
 }
 
 /// Entity.shouldRenderAtSqrDistance's default range: 64 times the bounding

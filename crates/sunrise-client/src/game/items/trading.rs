@@ -607,22 +607,23 @@ impl Game<'_> {
             }
         }
     }
-    /// `MerchantMenu.tryMoveItems` for the selected offer (the select trade packet).
+    /// `MerchantScreen.postButtonClick` for offer `index`: this client's menu takes the
+    /// selection and moves the payment itself (`setSelectionHint`, `tryMoveItems`), so its
+    /// result and the clicks after it are its own; a server is then told
+    /// (ServerboundSelectTradePacket) and does the same.
     fn try_move_items(&mut self, index: usize) {
+        self.menu_session(|menu, env, _| {
+            menu.merchant_select(env, index);
+            Some(true)
+        });
         if self.remote.is_some() {
-            // ServerboundSelectTradePacket; the server moves the items.
             if let Some(m) = self.station.as_mut().and_then(|s| s.merchant.as_mut()) {
                 m.session.selection_hint = index;
             }
             self.send(sunrise_protocol::packets::play::Serverbound::SelectTrade(
                 sunrise_protocol::packets::play::SelectTrade { item: index as i32 },
             ));
-            return;
         }
-        self.menu_session(|menu, env, _| {
-            menu.merchant_select(env, index);
-            Some(true)
-        });
     }
     /// Clicks on the offer list; true when one was hit. A press on the
     /// scroller holds it (`MerchantScreen.mouseClicked`).
@@ -783,7 +784,7 @@ impl Game<'_> {
         if offers.get(shop).is_some_and(MerchantOffer::out_of_stock) {
             batch.sprite(
                 atlas,
-                "gui/sprites/container/villager/out_of_stock",
+                "container/villager/out_of_stock",
                 ox + SHIFT + 182.0,
                 oy + 35.0,
             );
@@ -792,7 +793,7 @@ impl Game<'_> {
         if progress && level < 5 {
             batch.sprite(
                 atlas,
-                "gui/sprites/container/villager/experience_bar_background",
+                "container/villager/experience_bar_background",
                 ox + SHIFT + 136.0,
                 oy + 16.0,
             );
@@ -802,7 +803,7 @@ impl Game<'_> {
                 let w = ((mult * (xp - min) as f32).floor()).min(102.0);
                 batch.sprite_part(
                     atlas,
-                    "gui/sprites/container/villager/experience_bar_current",
+                    "container/villager/experience_bar_current",
                     ox + SHIFT + 136.0,
                     oy + 16.0,
                     w / 102.0,
@@ -811,7 +812,7 @@ impl Game<'_> {
                     let fw = (future as f32 * mult).floor().min(102.0 - w);
                     if let Some(mut r) = atlas
                         .sprites
-                        .get("gui/sprites/container/villager/experience_bar_result")
+                        .get("container/villager/experience_bar_result")
                         .copied()
                     {
                         let du = (r.u1 - r.u0) / r.w as f32;
@@ -824,19 +825,14 @@ impl Game<'_> {
         }
         // Scroller (`extractScroller`): its thumb, or the disabled sprite.
         if let Some([x, y, w, h]) = scroller_rect(offers.len(), scroll) {
-            batch.sprite(
-                atlas,
-                "gui/sprites/container/villager/scroller",
-                ox + x,
-                oy + y,
-            );
+            batch.sprite(atlas, "container/villager/scroller", ox + x, oy + y);
             if let Some(cursor) = scroller_cursor(local, [x, y, w, h], dragging) {
                 request_cursor(cursor);
             }
         } else {
             batch.sprite(
                 atlas,
-                "gui/sprites/container/villager/scroller_disabled",
+                "container/villager/scroller_disabled",
                 ox + SHIFT + 94.0,
                 oy + 18.0,
             );
@@ -850,9 +846,9 @@ impl Game<'_> {
                 && local.1 >= 18.0 + 20.0 * row as f32
                 && local.1 < 38.0 + 20.0 * row as f32;
             let sprite = if hover || focused == Some(row) {
-                "gui/sprites/widget/button_highlighted"
+                "widget/button_highlighted"
             } else {
-                "gui/sprites/widget/button"
+                "widget/button"
             };
             batch.sprite_scaled(&self.gui.atlas, sprite, bx, by, 88.0, 20.0, u32::MAX);
             let y = oy + 16.0 + 1.0 + 20.0 * row as f32 + 2.0;
@@ -893,7 +889,7 @@ impl Game<'_> {
                 );
                 batch.sprite(
                     atlas,
-                    "gui/sprites/container/villager/discount_strikethrough",
+                    "container/villager/discount_strikethrough",
                     x + 7.0,
                     y + 12.0,
                 );
@@ -908,7 +904,7 @@ impl Game<'_> {
             };
             batch.sprite(
                 &self.gui.atlas,
-                &format!("gui/sprites/container/villager/{arrow}"),
+                &format!("container/villager/{arrow}"),
                 ox + SHIFT + 60.0,
                 y + 3.0,
             );
@@ -1082,5 +1078,87 @@ mod tests {
         assert_eq!(at(45.0, 45.0, false), Some(Cursor::PointingHand));
         // 7 offers: the disabled scroller takes no cursor.
         assert!(scroller_rect(7, 0).is_none());
+    }
+}
+
+#[cfg(test)]
+mod select_on_a_server_tests {
+    use crate::game::native_entity_refs::tests::with_game;
+    use sunrise_client::items::ItemStack;
+    use sunrise_client::merchant::{ItemCost, MerchantOffer};
+    use sunrise_protocol::packets::play::Serverbound as S;
+
+    /// MerchantScreen.postButtonClick on a server: picking an offer moves its payment into
+    /// the menu on this client too (tryMoveItems), then tells the server (SelectTrade); the
+    /// click that then takes the result predicts the trade, and the merchant's effects are
+    /// left to the server (ClientSideMerchant).
+    #[test]
+    #[ignore = "daily"]
+    fn picking_a_trade_on_a_server_moves_the_payment_here_too() {
+        with_game(|game| {
+            let (mut peer, _writer) = crate::game::remote::tests::connect_menu_test(game);
+            peer.set_read_timeout(Some(std::time::Duration::from_millis(50)))
+                .unwrap();
+            game.remote_open_merchant(1, String::new(), sunrise_client::text::Text::literal(""));
+            let offer = MerchantOffer {
+                base_cost_a: ItemCost {
+                    stack: ItemStack::new("minecraft:emerald", 1),
+                },
+                cost_b: None,
+                result: ItemStack::new("minecraft:bread", 6),
+                uses: 0,
+                max_uses: 12,
+                reward_exp: true,
+                special_price_diff: 0,
+                demand: 0,
+                price_multiplier: 0.05,
+                xp: 1,
+            };
+            if let Some(m) = game.station.as_mut().and_then(|s| s.merchant.as_mut()) {
+                m.session.offers = vec![offer];
+            }
+            game.inventory[0] = Some(ItemStack::new("minecraft:emerald", 5));
+            while peer.recv().is_ok() {}
+            game.try_move_items(0);
+            let mut payment = None;
+            game.menu_session(|menu, _, _| {
+                payment = menu.slot(0).map(|s| (s.item.to_string(), s.count));
+                Some(false)
+            });
+            assert_eq!(payment, Some(("minecraft:emerald".to_owned(), 5)));
+            let mut picked = Vec::new();
+            while let Ok((id, bytes)) = peer.recv() {
+                if let Ok(S::SelectTrade(p)) = S::decode(id, &bytes) {
+                    picked.push(p.item);
+                }
+            }
+            assert_eq!(picked, [0]);
+            // The result, shift-clicked before the server answers: the click carries what this
+            // client's menu moved (payment and result emptied, the bread in the hotbar's last
+            // slot), and the merchant's own effects stay the server's (no orb, no trade stat).
+            let traded = game.stats.get("custom", "minecraft:traded_with_villager");
+            game.remote_menu_ops(&[(
+                Some(super::RESULT),
+                0,
+                sunrise_client::menu::Input::QuickMove,
+            )]);
+            let mut changed = Vec::new();
+            while let Ok((id, bytes)) = peer.recv() {
+                if let Ok(S::ContainerClick(p)) = S::decode(id, &bytes) {
+                    changed.extend(
+                        p.changed
+                            .iter()
+                            .map(|(slot, stack)| (*slot, stack.is_some())),
+                    );
+                }
+            }
+            changed.sort();
+            assert_eq!(changed, [(0, false), (2, false), (38, true)]);
+            assert!(game.orbs.is_empty());
+            assert_eq!(
+                game.stats.get("custom", "minecraft:traded_with_villager"),
+                traded
+            );
+        });
     }
 }

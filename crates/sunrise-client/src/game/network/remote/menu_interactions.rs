@@ -221,6 +221,12 @@ impl Game<'_> {
         self.send(S::ContainerClose(play::ContainerClose { container: id }));
         self.remote_close_local();
     }
+    /// `LocalPlayer.closeContainer` as the creative inventory closes: its
+    /// `ItemPickerMenu` is window 0, and a server hears the close as it does
+    /// any container screen's (`AbstractContainerScreen.onClose`).
+    pub(in crate::game) fn close_creative_menu(&self) {
+        self.send(S::ContainerClose(play::ContainerClose { container: 0 }));
+    }
     /// `MultiPlayerGameMode.handleInventoryButtonClick`: button `button` of
     /// the menu the server opened goes to it (`ContainerButtonClick`), whose
     /// menu decides what it does (`clickMenuButton`). No sound: that is the
@@ -289,7 +295,8 @@ impl Game<'_> {
                 .set(Some((container, "minecraft:merchant".to_owned())));
             r.set_menu_title(Some(text.clone()));
         }
-        let session = sunrise_client::merchant::Session::new(Vec::new(), true);
+        let mut session = sunrise_client::merchant::Session::new(Vec::new(), true);
+        session.client_side = true;
         self.open_remote_merchant(session, (!title.is_empty()).then_some(text));
     }
     /// ClientboundMerchantOffersPacket.
@@ -496,14 +503,26 @@ impl Game<'_> {
     /// inventory; for another entity the window is closed again.
     pub(in crate::game) fn remote_open_mount(&mut self, p: play::MountScreenOpen) {
         let columns = usize::try_from(p.columns).unwrap_or(0).min(5);
+        let record = |game: &mut Self| {
+            if let Some(r) = game.remote.as_mut() {
+                r.menu
+                    .set(Some((p.container, format!("{MOUNT_MENU}{columns}"))));
+                r.set_menu_title(None);
+            }
+        };
+        // With a screen hook listening, the window is recorded before the
+        // screen opens, so a mod's answer that replaces it closes this window
+        // (a rejection clears it again); otherwise after, as vanilla's order.
+        let staged = self.screen_hooks_heard();
+        if staged {
+            record(self);
+        }
         if !self.open_remote_mount_menu(p.entity as u32, columns) {
             self.remote_reject_container(p.container);
             return;
         }
-        if let Some(r) = self.remote.as_mut() {
-            r.menu
-                .set(Some((p.container, format!("{MOUNT_MENU}{columns}"))));
-            r.set_menu_title(None);
+        if !staged {
+            record(self);
         }
     }
     /// The type of the menu a server opened (`MenuType`'s id).

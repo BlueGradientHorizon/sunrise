@@ -561,6 +561,13 @@ impl Game<'_> {
     }
     /// The armor stand under the crosshair, its distance and the hit point.
     pub(super) fn armor_stand_hit(&self) -> Option<(usize, f64, [f64; 3])> {
+        let mut pick = crate::game::pick_accumulator::PickAccumulator::new(self.entity_reach);
+        self.armor_stand_hit_with_pick(&mut pick)
+    }
+    pub(super) fn armor_stand_hit_with_pick(
+        &self,
+        pick: &mut crate::game::pick_accumulator::PickAccumulator,
+    ) -> Option<(usize, f64, [f64; 3])> {
         if let Some(hit) = self.cached_entity_pick() {
             let (entity, distance, point) = hit?;
             let index = self.armor_stands.iter().position(|f| f.id == entity.id())?;
@@ -571,7 +578,7 @@ impl Game<'_> {
         let mut best: Option<(usize, f64, [f64; 3])> = None;
         for (i, a) in self.armor_stands.iter().enumerate() {
             // Minecraft.pick never hits the camera entity it looks from.
-            if a.marker || self.remote_camera_id() == Some(a.id) {
+            if a.marker {
                 continue;
             }
             let b = a.bounds();
@@ -591,7 +598,7 @@ impl Game<'_> {
                 t0 = t0.max(ta);
                 t1 = t1.min(tb);
             }
-            if hit && t0 <= t1 && best.is_none_or(|b| t0 < b.1) {
+            if hit && t0 <= t1 && pick.consider(self, a.id, t0) {
                 best = Some((i, t0, std::array::from_fn(|k| eye[k] + dir[k] * t0)));
             }
         }
@@ -1325,7 +1332,7 @@ impl Game<'_> {
                 }
                 let params = sunrise_world::loot::EntityLootParams {
                     this: sunrise_world::loot::LootEntity {
-                        on_fire: stand.fire_ticks > 0,
+                        on_fire: stand.is_on_fire(),
                         baby: false,
                         ..sunrise_world::loot::LootEntity::new("minecraft:armor_stand")
                     },
@@ -1393,11 +1400,10 @@ impl Game<'_> {
         let Some(i) = self.armor_stands.iter().position(|a| a.id == id) else {
             return false;
         };
-        let registry = &self.motion.health.damage;
-        let Some(kind) = registry.id(damage_type) else {
+        let Some(kind) = self.health_resources.damage.id(damage_type) else {
             return false;
         };
-        let tagged = |tag: &str| registry.in_tag(kind, tag);
+        let tagged = |game: &Self, tag: &str| game.health_resources.damage.in_tag(kind, tag);
         if !self
             .ui
             .rules
@@ -1406,7 +1412,7 @@ impl Game<'_> {
         {
             return false;
         }
-        if tagged("minecraft:bypasses_invulnerability") {
+        if tagged(self, "minecraft:bypasses_invulnerability") {
             self.kill_target(Target::Stand(id));
             return false;
         }
@@ -1424,6 +1430,7 @@ impl Game<'_> {
         // Entity.isInvulnerableTo: the flag, then EnchantmentHelper.isImmuneToDamage.
         let a = &self.armor_stands[i];
         if (invulnerable && !creative)
+            || (a.mod_fire_immune && tagged(self, "minecraft:is_fire"))
             || a.invisible
             || a.marker
             || self.stand_immune_to_damage(i, damage_type, causing)
@@ -1437,23 +1444,26 @@ impl Game<'_> {
             _ => None,
         };
         let (explosion, ignites, burns) = (
-            tagged("minecraft:is_explosion"),
-            tagged("minecraft:ignites_armor_stands"),
-            tagged("minecraft:burns_armor_stands"),
+            tagged(self, "minecraft:is_explosion"),
+            tagged(self, "minecraft:ignites_armor_stands"),
+            tagged(self, "minecraft:burns_armor_stands"),
         );
         let causing_id = causing
             .and_then(|target| self.network_entity_id(target))
             .unwrap_or(0) as u32;
         let (breaks, always_kills) = (
-            tagged("minecraft:can_break_armor_stand"),
-            tagged("minecraft:always_kills_armor_stands"),
+            tagged(self, "minecraft:can_break_armor_stand"),
+            tagged(self, "minecraft:always_kills_armor_stands"),
         );
         if explosion {
             self.break_armor_stand_by_anything(i, damage_type, causing_id);
             return false;
         }
         if ignites {
-            if self.armor_stands[i].fire_ticks > 0 {
+            if self.armor_stands[i].mod_fire_immune {
+                return false;
+            }
+            if self.armor_stands[i].is_on_fire() {
                 self.cause_stand_damage(i, 0.15, damage_type, causing_id);
             } else {
                 // igniteForSeconds(5.0f): at least 100 ticks, and

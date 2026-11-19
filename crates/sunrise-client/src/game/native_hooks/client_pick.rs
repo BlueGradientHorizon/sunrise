@@ -16,10 +16,19 @@ pub(in crate::game) struct ClientPick {
     entity_reach: f64,
     result: Option<CrosshairTarget>,
     pub entity_metadata: (bool, bool),
+    pub rider_candidates: Vec<crate::game::pick_accumulator::PickCandidate>,
     dispatching: bool,
+    /// How many picks have been taken.
+    taken: u64,
 }
 
 impl Game<'_> {
+    /// How many picks (a tick's or a frame's) have been taken: an agent command that turned
+    /// waits for the count to move before it reads the target.
+    pub(in crate::game) fn client_picks(&self) -> u64 {
+        self.client_pick.taken
+    }
+
     pub(in crate::game) fn uses_stored_pick(&self) -> bool {
         self.native_window() && self.client_pick.ray.is_none()
     }
@@ -140,8 +149,19 @@ impl Game<'_> {
                     hit: hit.native(),
                 })
             });
+        let camera_id = self.pick_camera_id();
         let attack_candidate = self.attack_range_pick_entity();
         let entity_candidate = attack_candidate.or_else(|| self.pick_entity_candidate());
+        // A rider listener may change the camera. Neither the entity nor
+        // the block traced from the old camera belongs to the new pick.
+        if camera_id != self.pick_camera_id()
+            || self.client_pick.epoch != self.native_lifecycle.epoch()
+            || self.client_pick.dimension != Some(self.dim)
+        {
+            self.client_pick.ray = None;
+            self.publish_client_pick(None);
+            return;
+        }
         let original = attack_candidate.or_else(|| match entity_candidate {
             Some(CrosshairTarget::Entity { point, .. })
                 if occluder.is_none_or(|distance| self.pick_distance(point) < distance) =>
@@ -151,6 +171,7 @@ impl Game<'_> {
             _ => block_candidate,
         });
         self.publish_client_pick(original);
+        self.client_pick.taken += 1;
         self.client_pick.ray = None;
         if !mod_api::__private::listened(mod_api::HookId::ClientPick) {
             return;
@@ -163,6 +184,7 @@ impl Game<'_> {
         let mut result = original;
         self.native_client_pick(mod_api::__private::ClientPickCall {
             partial_tick,
+            origin,
             original,
             block_candidate,
             entity_candidate,
@@ -194,6 +216,13 @@ impl Game<'_> {
             ),
             _ => (false, false),
         };
+    }
+
+    pub(in crate::game) fn native_can_rider_interact(
+        &mut self,
+        call: mod_api::__private::CanRiderInteractCall<'_>,
+    ) {
+        self.fire_can_rider_interact(call);
     }
 
     pub(in crate::game) fn native_client_pick(

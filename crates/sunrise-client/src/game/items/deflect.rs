@@ -76,6 +76,13 @@ impl Game<'_> {
     /// The redirectable projectile under the crosshair within the attack
     /// reach, and how far along the view it is.
     pub(super) fn redirectable_hit(&self) -> Option<(usize, f64)> {
+        let mut pick = crate::game::pick_accumulator::PickAccumulator::new(self.entity_reach);
+        self.redirectable_hit_with_pick(&mut pick)
+    }
+    pub(super) fn redirectable_hit_with_pick(
+        &self,
+        pick: &mut crate::game::pick_accumulator::PickAccumulator,
+    ) -> Option<(usize, f64)> {
         if let Some(hit) = self.cached_entity_pick() {
             let (entity, distance, _) = hit?;
             let index = self
@@ -92,8 +99,12 @@ impl Game<'_> {
             .iter()
             .enumerate()
             .filter(|(_, p)| attackable(p))
-            .filter_map(|(i, p)| ray_box(eye, dir, reach, pick_box(p)).map(|t| (i, t)))
-            .min_by(|a, b| a.1.total_cmp(&b.1))
+            .filter_map(|(i, p)| {
+                ray_box(eye, dir, reach, pick_box(p))
+                    .filter(|&t| pick.consider(self, p.id, t))
+                    .map(|t| (i, t))
+            })
+            .last()
     }
 
     /// `Player.attack` on a redirectable projectile nearer than any mob or

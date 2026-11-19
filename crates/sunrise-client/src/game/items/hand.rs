@@ -143,6 +143,13 @@ impl Game<'_> {
             .unwrap_or(otherwise)
     }
 
+    /// `Player.entityInteractionRange`/`blockInteractionRange` for the tick's
+    /// picks: the attribute carries creative's and a server's modifiers.
+    pub(super) fn update_interaction_ranges(&mut self) {
+        self.entity_reach = self.interaction_range("minecraft:entity_interaction_range", 3.0, 5.0);
+        self.block_reach = self.interaction_range("minecraft:block_interaction_range", 4.5, 5.0);
+    }
+
     /// A stack's `minecraft:attack_range` component, falling back to the spear's
     /// default reach (`spear::REACH`) for spear items unless explicitly removed.
     fn attack_range_component(&self, stack: &ItemStack) -> Option<serde_json::Value> {
@@ -331,10 +338,17 @@ impl Game<'_> {
     }
     /// `handleKeybinds`' number keys: keys 1 to 9 in that order, one click of each
     /// (`keyHotbarSlots[i].consumeClick`), so the highest key clicked this tick wins and a
-    /// key's further clicks wait for the next ticks.
+    /// key's further clicks wait for the next ticks. A creative player holding the load or
+    /// save toolbar key loads or saves that toolbar instead (load first when both are held).
     pub(super) fn select_queued_hotbar(&mut self) {
-        for (slot, clicks) in self.hotbar_presses.iter_mut().enumerate() {
-            if clicks.take_tick() > 0 {
+        for slot in 0..self.hotbar_presses.len() {
+            if self.hotbar_presses[slot].take_tick() == 0 {
+                continue;
+            }
+            let load = self.creative && self.mapped_key_down("key.loadToolbarActivator");
+            if load || (self.creative && self.mapped_key_down("key.saveToolbarActivator")) {
+                self.hotbar_load_or_save(slot, load);
+            } else {
                 self.selected = slot;
             }
         }
@@ -403,8 +417,10 @@ impl Game<'_> {
         };
         let reach = attack_reach(range, self.creative);
         let camera = self.remote_camera_id();
+        // AttackRange uses getManyEntityHitResult, which does not exclude
+        // entities sharing the camera's root vehicle.
         let boxes = (self.mobs.iter().enumerate())
-            .filter(|(_, m)| !m.removed && Some(m.id) != self.riding && Some(m.id) != camera)
+            .filter(|(_, m)| !m.removed && Some(m.id) != camera)
             .map(|(i, m)| (i, m.bounds()));
         let clip = |from: Vec3, to: Vec3| {
             let length = from.distance_squared(to).sqrt();

@@ -15,17 +15,7 @@ use sunrise_core::{
     random::RandomSource,
 };
 
-/// A `painting_variant` and whether `#placeable` lists it (in tag order).
-#[derive(Clone, Debug)]
-pub(super) struct Variant {
-    pub id: Arc<str>,
-    pub asset: String,
-    pub width: i32,
-    pub height: i32,
-    /// `PaintingVariant.title` and `author`: text components.
-    pub title: Option<serde_json::Value>,
-    pub author: Option<serde_json::Value>,
-}
+pub(super) use sunrise_client::entities::PaintingVariant as Variant;
 /// Variants by id plus the `#minecraft:placeable` list.
 #[derive(Default)]
 pub(super) struct PaintingVariants {
@@ -44,18 +34,9 @@ impl PaintingVariants {
                 else {
                     continue;
                 };
-                all.push(Variant {
-                    id: Arc::from(format!("minecraft:{name}")),
-                    asset: v["asset_id"]
-                        .as_str()
-                        .unwrap_or(name)
-                        .trim_start_matches("minecraft:")
-                        .to_owned(),
-                    width: v["width"].as_i64().unwrap_or(1) as i32,
-                    height: v["height"].as_i64().unwrap_or(1) as i32,
-                    title: v.get("title").cloned(),
-                    author: v.get("author").cloned(),
-                });
+                if let Ok(variant) = Variant::decode(&format!("minecraft:{name}"), &v) {
+                    all.push(variant);
+                }
             }
         }
         let placeable =
@@ -327,6 +308,13 @@ impl Game<'_> {
     }
     /// The painting under the crosshair within reach and its distance.
     pub(super) fn painting_hit(&self) -> Option<(usize, f64)> {
+        let mut pick = crate::game::pick_accumulator::PickAccumulator::new(self.entity_reach);
+        self.painting_hit_with_pick(&mut pick)
+    }
+    pub(super) fn painting_hit_with_pick(
+        &self,
+        pick: &mut crate::game::pick_accumulator::PickAccumulator,
+    ) -> Option<(usize, f64)> {
         if let Some(hit) = self.cached_entity_pick() {
             let (entity, distance, _) = hit?;
             let index = self.paintings.iter().position(|f| f.id == entity.id())?;
@@ -351,7 +339,7 @@ impl Game<'_> {
                 t0 = t0.max(ta);
                 t1 = t1.min(tb);
             }
-            if hit && t0 <= t1 && best.is_none_or(|b| t0 < b.1) {
+            if hit && t0 <= t1 && pick.consider(self, p.id, t0) {
                 best = Some((i, t0));
             }
         }
@@ -511,6 +499,7 @@ impl Game<'_> {
                             height: p.height,
                         }),
                         item_frame: None,
+                        attachments: None,
                     }
                     .into();
                 let light = self.world.light(p.pos[0], p.pos[1], p.pos[2]);

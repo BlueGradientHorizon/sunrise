@@ -42,6 +42,9 @@ mod content {
         ) -> Option<&'static str> {
             Some("test:counter")
         }
+        pub(in crate::tests) fn entity_type_name(_: u32) -> Option<&'static str> {
+            Some("test:entity")
+        }
         pub(in crate::tests) fn item_id(key: super::super::ItemKey<'_>) -> Option<&str> {
             Some(key.0)
         }
@@ -51,7 +54,9 @@ mod content {
 struct BlockEntityDraw(Vec<u32>);
 use serde_json::{Map, Value};
 use stubs::*;
+#[derive(Clone)]
 struct Text;
+#[derive(Clone)]
 struct ScreenshotImage;
 #[derive(Debug, PartialEq)]
 struct Zoom(u32);
@@ -127,6 +132,7 @@ mod generated {
         pub(super) use super::super::{
             Command, Config, Dispensed, InteractionResult, MapDecoration, MapInfo, Screen, Zoom,
         };
+        #[derive(Clone)]
         pub struct FluidModel;
         #[derive(Clone, Copy)]
         pub struct EntityRef;
@@ -328,6 +334,9 @@ impl Parts {
         &self.items
     }
     fn menu<'k>(&self, _: impl FnOnce() -> Option<&'k str>) -> &[&'static dyn MenuPart] {
+        &self.menus
+    }
+    fn menu_screen(&self, _: &str, _: Option<&str>) -> &[&'static dyn MenuPart] {
         &self.menus
     }
     fn fluid<'k>(&self, _: impl FnOnce() -> Option<&'k str>) -> &[&'static dyn FluidPart] {

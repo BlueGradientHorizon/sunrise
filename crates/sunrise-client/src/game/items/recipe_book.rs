@@ -190,7 +190,7 @@ fn inside(p: (f32, f32), x: f32, y: f32, w: f32, h: f32) -> bool {
     p.0 >= x && p.1 >= y && p.0 < x + w && p.1 < y + h
 }
 fn sprite(name: &str) -> String {
-    format!("gui/sprites/recipe_book/{name}")
+    format!("recipe_book/{name}")
 }
 
 impl Game<'_> {
@@ -686,7 +686,10 @@ impl Game<'_> {
                         stack,
                         self.items().get(&stack.item),
                         &crate::game::native_hooks::HookedAttributeTooltips::new(self, None),
-                        self.item_enchantments(),
+                        sunrise_client::item_tooltip::TooltipHolders::Definitions(
+                            self.item_enchantments(),
+                        ),
+                        false,
                         &|k| self.pack.names.display_get(k),
                         &|attribute| self.attribute_style(attribute, false),
                     )
@@ -2188,18 +2191,17 @@ impl Game<'_> {
                     }
                 }
                 Call::Sprite { id, x, y, w, h } => {
-                    let name = sunrise_client::hud::atlas_key_of_gui_sprite(id);
+                    let name = id.as_str();
                     let native = atlas
-                        .sprites
-                        .get(&name)
+                        .gui_rect(name)
                         .is_some_and(|r| r.w as i32 == *w && r.h as i32 == *h);
                     if native {
-                        batch.sprite(atlas, &name, *x as f32, *y as f32);
+                        batch.sprite(atlas, name, *x as f32, *y as f32);
                     } else {
                         sunrise_client::ui::nine_slice(
                             batch,
                             atlas,
-                            &name,
+                            name,
                             *x as f32,
                             *y as f32,
                             *w as f32,

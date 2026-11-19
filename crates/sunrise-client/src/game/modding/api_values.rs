@@ -480,7 +480,7 @@ pub(crate) trait TryIntoEngine<Context: ?Sized = Items> {
     fn try_into_engine(&self, context: &Context) -> Result<Self::Engine, Self::Error>;
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum StackReadError {
     UnknownItem,
     Empty,
@@ -878,7 +878,7 @@ fn encode_stack(
         damage: value.damage(),
         extra,
     };
-    content_declarations::validate_decoded_effects(patch.as_ref(), &stack)?;
+    content_declarations::validate_decoded_components(patch.as_ref(), &stack)?;
     Ok(stack)
 }
 
@@ -1145,13 +1145,13 @@ pub(crate) fn install_stack_hooks() {
     });
 }
 
-/// Adapt a player's block menu `stillValid` check; the game asks only for a menu
+/// Adapt a player's menu `stillValid` check; the game asks only for a menu
 /// whose type has a part answering it (`menu_still_valid_listens`, when it opened).
 pub(crate) fn menu_still_valid(
     context: &sunrise_world::native_load_context::LoopContext,
     player: u128,
     menu: &str,
-    pos: [i32; 3],
+    pos: Option<[i32; 3]>,
     eye: [f64; 3],
     valid: &mut bool,
 ) {

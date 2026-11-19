@@ -62,6 +62,8 @@ pub(super) struct Loading {
     pub(super) started: Instant,
     pub(super) panorama_rotation: sunrise_client::gfx::panorama::Rotation,
     pub(super) progress: Progress,
+    /// The bar as drawn, easing toward `progress` (`LoadingOverlay.currentProgress`).
+    pub(super) bar: f32,
     pub(super) receiver: Receiver<LoaderMsg>,
     pub(super) loaded: Option<std::result::Result<Loaded, String>>,
     /// The loader's `Done` arrived: its channel closing afterwards is expected.
@@ -101,8 +103,9 @@ impl Loading {
             .map_or([1280, 720], |o| o.window_size)
             .map(f64::from);
         self.fullscreen = sunrise_client::window::FullscreenState::new(fullscreen);
-        let attributes =
-            sunrise_client::window::with_icon(Window::default_attributes().with_title("Sunrise"));
+        let attributes = sunrise_client::window::with_icon(
+            Window::default_attributes().with_title(super::window_title::base()),
+        );
         // Wayland names the window by its app id, which the horizon.desktop entry matches.
         #[cfg(target_os = "linux")]
         let attributes = winit::platform::wayland::WindowAttributesExtWayland::with_name(
