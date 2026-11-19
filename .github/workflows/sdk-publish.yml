@@ -5,13 +5,13 @@ name: sdk publish
 # after a green summary (daily.yml, sdk-publish) and by prebuilt-game.yml's hand dispatch.
 # - `index` (no secrets): gathers every leg's assets once, after checking that each copy of the build data and the
 #   surface is the same (tools/prebuilt_game.py gather), compares the surface with the SDK published before it on
-#   this commit's history (horizon-stage surface-diff), writes the API source (tools/sdk_api_source.py), and writes
+#   this commit's history (sunrise-stage surface-diff), writes the API source (tools/sdk_api_source.py), and writes
 #   sdk.json over every asset (prebuilt_game.py index).
 # - `sign` is the only job with the release key, and only on main with `publish` set (the `release` environment):
 #   it checks out nothing but tools/ci/sign_release.sh, which hashes the assets and signs SHA256SUMS for the tag
-#   `sdk-<sha>`, so the signature never passes for a game release (horizon-release-sign: sdk_digest), and refuses a
+#   `sdk-<sha>`, so the signature never passes for a game release (sunrise-release-sign: sdk_digest), and refuses a
 #   commit that is not on main. Any other run signs with a throwaway key.
-# - `publish` checks the signature as the launcher does (horizon-release-sign verify) and that the release holds
+# - `publish` checks the signature as the launcher does (sunrise-release-sign verify) and that the release holds
 #   exactly the assets a Nightly needs (tools/ci/nightly.py sdk-assets), then creates `sdk-<sha>`: only on main
 #   with `publish` set. A branch run, or a dry run, publishes nothing.
 on:
@@ -43,8 +43,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # The history, to find the SDK published before this one on it.
+          # The history, to find the SDK published before this one on it: its commits and trees, without the older
+          # files' contents, which Git fetches if a step reads one (the change notes `git archive` takes).
           fetch-depth: 0
+          filter: blob:none
           persist-credentials: false
           ref: ${{ inputs.commit }}
       - name: The launcher's pinned Rust
@@ -55,15 +57,22 @@ jobs:
           toolchain: ${{ steps.rust.outputs.version }}
           # The API source is checked for wasm32 too (tools/sdk_api_source.py build).
           targets: wasm32-unknown-unknown
+      # As the legs' caches: main's runs save it, every branch restores it.
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: sdk-publish
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       # Each leg's assets in a folder of its own (sdk-leg-<leg>), so a file two legs both made is seen, not
       # overwritten. Only the legs' artifacts: never this workflow's own from an earlier attempt.
       - uses: actions/download-artifact@v4
         with:
           pattern: sdk-leg-*
           path: legs
+      # The Linux leg's sunrise-stage, compiled from this commit (prebuilt-game-build.yml).
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdk-stage-tool
+          path: ${{ runner.temp }}/stage-tool
       - name: Gather the legs' assets, with one build data and surface
         run: python3 tools/prebuilt_game.py gather legs dist
       - name: The API source, with its generated code written out
@@ -84,13 +93,16 @@ jobs:
           fi
           # The change notes added since that build: those its tree did not have.
           mkdir -p base
-          if git cat-file -e "$previous:crates/horizon-mod-vocab/changes" 2> /dev/null; then
-            git archive "$previous" crates/horizon-mod-vocab/changes | tar -x -C base
+          if git cat-file -e "$previous:crates/sunrise-mod-vocab/changes" 2> /dev/null; then
+            git archive "$previous" crates/sunrise-mod-vocab/changes | tar -x -C base
           fi
-          # A stale note fails the PR report, not the publish: the diff is written either way.
-          cargo run --locked --release -q -p horizon-mod-api-gen --bin horizon-stage -- surface-diff \
-            previous-surface.json dist/surface.json --notes crates/horizon-mod-vocab/changes \
-            --base-notes base/crates/horizon-mod-vocab/changes --json surface-diff.json | tee -a "$GITHUB_STEP_SUMMARY" \
+          # CI checks engine notes; the SDK's surfaces contain only API records.
+          # A stale API note warns here: the diff is written either way.
+          stage="$RUNNER_TEMP/stage-tool/sunrise-stage"
+          chmod +x "$stage"
+          "$stage" surface-diff \
+            previous-surface.json dist/surface.json --notes crates/sunrise-mod-vocab/changes \
+            --base-notes base/crates/sunrise-mod-vocab/changes --api-notes-only --json surface-diff.json | tee -a "$GITHUB_STEP_SUMMARY" \
             || echo "::warning::a change note names an id that did not change since $previous"
           test -s surface-diff.json
       - name: Write sdk.json over every asset
@@ -186,7 +198,7 @@ jobs:
       - name: The signature, checked as the launcher checks it
         run: |
           key=(); [[ "$PUBLISH" != true ]] && key=(--key "$(cat key/ephemeral.pub)")
-          cargo run --locked --quiet -p horizon-release-sign -- verify --repository "$GITHUB_REPOSITORY" --tag "$TAG" \
+          cargo run --locked --quiet -p sunrise-release-sign -- verify --repository "$GITHUB_REPOSITORY" --tag "$TAG" \
             --publishing "${key[@]}" dist
       - name: Exactly the assets a Nightly needs
         run: |

@@ -31,9 +31,9 @@ jobs:
       self_hosted: ${{ steps.runner.outputs.self_hosted }}
     steps:
       - uses: actions/checkout@v4
-      # The pool's switch and lease are read live: `vars` is fixed when the run is created, and a main run
+      # The pool's switch and lease (tools/ci/dyna_ci_route.sh): `vars` is fixed when the run is created, and a run
       # that waits in the concurrency group would otherwise see a lease that expired while it waited.
-      # A fork's pull request gets no token to read them and stays on GitHub's runners.
+      # A fork's pull request stays on GitHub's runners.
       - id: runner
         env:
           GH_TOKEN: ${{ github.token }}
@@ -42,16 +42,7 @@ jobs:
           VARS_LEASE: ${{ vars.DYNA_CI_POOL_UNTIL }}
           EVENT: ${{ github.event_name }}
           SAME_REPO: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
-        run: |
-          if [ "$SAME_REPO" = true ]; then
-            ENABLED=$(gh api "repos/$GITHUB_REPOSITORY/actions/variables/DYNA_CI_SELF_HOSTED" -q .value 2>/dev/null || true)
-            LEASE=$(gh api "repos/$GITHUB_REPOSITORY/actions/variables/DYNA_CI_POOL_UNTIL" -q .value 2>/dev/null || true)
-          fi
-          # A refused read prints GitHub's error JSON: keep only a well-formed answer, else use the snapshot.
-          case "${LEASE:-}" in '' | *[!0-9]*) LEASE= ;; esac
-          case "${ENABLED:-}" in true | false) ;; *) ENABLED= ;; esac
-          echo "pool lease: live=${LEASE:-unreadable} snapshot=${VARS_LEASE:-none}"
-          ENABLED=${ENABLED:-$VARS_ENABLED} LEASE=${LEASE:-$VARS_LEASE} bash tools/ci/dyna_ci_runner.sh >> "$GITHUB_OUTPUT"
+        run: bash tools/ci/dyna_ci_route.sh >> "$GITHUB_OUTPUT"
 
   wasm-coverage:
     needs: runner
@@ -111,10 +102,10 @@ jobs:
         run: python3 tools/ci/cargo_jobs.py --job-mib 3072 --cap
       - name: Every crossable real internal has compiling host and guest bindings
         run: |
-          export HORIZON_COVERAGE_WASM_CARGO="$(rustup which --toolchain "$(cat tools/ci/rust-version)" cargo)"
-          export HORIZON_COVERAGE_WASM_RUSTC="$(rustup which --toolchain "$(cat tools/ci/rust-version)" rustc)"
-          cargo test -j4 -p horizon-mod-api-gen --lib guest_compiler_ignores_another_toolchains_driver -- --ignored --nocapture
-          cargo test -j4 -p horizon-mod-api-gen --lib real_catalog_has_compiling_host_and_guest_bindings -- --ignored --nocapture
+          export SUNRISE_COVERAGE_WASM_CARGO="$(rustup which --toolchain "$(cat tools/ci/rust-version)" cargo)"
+          export SUNRISE_COVERAGE_WASM_RUSTC="$(rustup which --toolchain "$(cat tools/ci/rust-version)" rustc)"
+          cargo test -j4 -p sunrise-mod-api-gen --lib guest_compiler_ignores_another_toolchains_driver -- --ignored --nocapture
+          cargo test -j4 -p sunrise-mod-api-gen --lib real_catalog_has_compiling_host_and_guest_bindings -- --ignored --nocapture
       - uses: actions/cache/save@v4
         if: runner.environment == 'github-hosted' && steps.coverage-cache.outputs.cache-hit != 'true'
         with:

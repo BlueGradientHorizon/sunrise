@@ -11,6 +11,11 @@ binary and is printed whole when the binary ends. Binaries start largest first, 
 Every binary runs; one that fails, crashes, is killed or cannot start fails the run, and the run ends with a list of
 the failing binaries and their failed tests' names. A listing with no test binaries fails too.
 
+`--network-guard LIBRARY` (Linux verify) preloads each binary and records inet and resolver calls. Green
+binaries run normally, with the same timing logs and output. Only a binary recording a violation is rerun one
+test at a time to name the culprits, even when they swallow the refusal. A binary still fails if isolation cannot
+reproduce its violation. Missing preload fails closed by scheduled PID. Unix sockets remain allowed.
+
 `--time-limits WARN,FAIL` (verify uses `2,5`) is the unit tier's timing guard (CONTRIBUTING.md "CI tiers"): every
 binary also gets libtest's `-Z unstable-options --report-time --logfile FILE`. libtest then adds each test's time to
 its result line and writes one record per test (`ok a::b <0.012s>`) to FILE, from its own thread, apart from the
@@ -18,12 +23,18 @@ output that tests and their child processes interleave on stdout; the same tests
 flags need RUSTC_BOOTSTRAP=1, set in the test processes only (never for the build), so a test's own child processes
 inherit it. The guard fails closed: each binary is also listed (`--list`), and a binary that passed but whose log
 lacks a timed record for one of its listed, not ignored tests fails the run, naming the binary and the tests.
-A test over FAIL seconds fails the run by name, with the instruction to move it to the daily run; one over WARN only
-warns. The time is libtest's elapsed (wall) time with `--jobs` binaries and each binary's test threads running at
+A test over FAIL seconds is rerun once, alone after all binary workers finish, with the same binary and environment.
+Only a second time over FAIL fails the timing guard; a failed or unmeasurable rerun also fails closed. Both times
+are printed. One over WARN only warns. The time is libtest's elapsed (wall) time with `--jobs` binaries and each binary's test threads running at
 once, not an isolated measurement, so FAIL keeps a margin over the 2 s target. A `harness = false` target runs its own main, not libtest: it runs, untimed. Only these binaries are timed: the
 documentation examples and the Python steps of `verify` are not under the guard. The run ends with the slowest five
 tests and the summed test seconds. (libtest's own `--ensure-time` was the alternative: it fails a slow test inside
 the binary with libtest's words, not the instruction, and needs a threshold variable per kind of test target.)
+
+`--no-data-skips` (verify) fails the run when a test that ran prints the `skipped: no vanilla data; test=NAME` line of
+the shared helper (`crates/sunrise-client/src/test_fixtures.rs`, `report_missing`): such a test returns early and is
+counted as passed, though verify has no prepared resources. Every one is listed with its package and the fix. The
+daily run has the data, so those tests print nothing there and do not pass the flag.
 """
 import argparse
 import json
@@ -38,6 +49,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import network_guard
+
 
 def package_identity(package_id: str) -> tuple[str, str]:
     """(name, version) from a Cargo package id, old (`name 1.0 (path+...)`) or new (`path+...#name@1.0`)."""
@@ -45,7 +58,7 @@ def package_identity(package_id: str) -> tuple[str, str]:
         return found[1], found[2]
     fragment = package_id.rsplit("#", 1)[-1]
     name, _, version = fragment.rpartition("@")
-    if not name:  # `path+file:///x/horizon-world#0.1.0`: the name is the last path segment.
+    if not name:  # `path+file:///x/sunrise-world#0.1.0`: the name is the last path segment.
         name = package_id.split("#", 1)[0].rstrip("/").rsplit("/", 1)[-1]
     return name, version
 
@@ -126,7 +139,7 @@ def read_log(text: str) -> dict[str, tuple[str, float | None]]:
     return records
 
 
-def run_one(binary: dict, extra_env: dict, test_args: list[str], timed: bool = False) -> dict:
+def run_one(binary: dict, extra_env: dict, test_args: list[str], timed: bool = False, *, listing_env: dict | None = None) -> dict:
     """Run one test binary with its output in a temporary file, never raising: a binary that cannot start fails.
 
     `timed`: also list its tests and write libtest's per-test log, for the timing guard (`listed`, `log`)."""
@@ -135,7 +148,8 @@ def run_one(binary: dict, extra_env: dict, test_args: list[str], timed: bool = F
     log = None
     timed = timed and binary.get("libtest", True)
     if timed:
-        result["listed"] = listed_tests(binary, env, test_args)
+        list_env = env if listing_env is None else {**os.environ, **listing_env, **binary["env"]}
+        result["listed"] = [binary["isolated_test"]] if "isolated_test" in binary else listed_tests(binary, list_env, test_args)
         handle, log = tempfile.mkstemp(prefix="libtest-", suffix=".log")
         os.close(handle)
         test_args = [*test_args, "--logfile", log]
@@ -148,6 +162,7 @@ def run_one(binary: dict, extra_env: dict, test_args: list[str], timed: bool = F
         if log:
             os.unlink(log)
         return result
+    result["pid"] = process.pid
     _, wait_status, usage = os.wait4(process.pid, 0)
     process.returncode = code = os.waitstatus_to_exitcode(wait_status)
     status = "ok" if code == 0 else f"killed by signal {-code}" if code < 0 else f"exit {code}"
@@ -175,21 +190,35 @@ def untimed(result: dict) -> list[str]:
 # A libtest result line, with the time --report-time adds.
 # A failed result line, with the time --report-time adds.
 FAILED = re.compile(r"^test (\S+)(?: - should panic)? \.\.\. FAILED(?: <\d+(?:\.\d+)?s>)?$")
+# The line `report_missing` writes when a test returns early for want of prepared data. It is searched for, not
+# anchored: libtest's own `test a::b ... ` may be on the same line, since both write to one file.
+DATA_SKIP = re.compile(r"skipped: no vanilla data; test=([^;\n]+); skipped tests=\d+")
 
 
 def report(result: dict) -> list[str]:
-    """Print one finished binary's output, streamed from its file, and return its failed test names."""
+    """Print one finished binary's output, streamed from its file, and return its failed test names.
+
+    The tests that skipped for missing data are left in `result["data_skips"]`."""
     print(f"     Running {result['binary']['label']} [{result['seconds']:.1f}s, "
           f"max RSS {result['max_rss_kib'] // 1024} MiB]")
     output, failed_tests = result["output"], []
+    result["data_skips"] = []
     output.seek(0)
     for line in output:
         print(line, end="")
+        result["data_skips"].extend(name for name in DATA_SKIP.findall(line) if name not in result["data_skips"])
         if found := FAILED.match(line.rstrip("\n")):
             failed_tests.append(found[1])
     output.close()
     print(flush=True)
     return failed_tests
+
+
+def data_skip_errors(skips: list[tuple[str, str]]) -> list[str]:
+    """One error per (binary label, test) that skipped for want of prepared data, with the fix."""
+    return [f"{label}: {test} returns early without vanilla data and counts as passed: mark it "
+            '#[ignore = "daily"] with a `resources` row (tools/ci/move_to_daily.py, tools/ci/ignored-tests/README.md), '
+            "or give it a fixture" for label, test in skips]
 
 
 def timing_verdict(times: list[tuple[float, str, str]], warn: float, fail: float) -> tuple[list[str], list[str]]:
@@ -205,11 +234,46 @@ def timing_verdict(times: list[tuple[float, str, str]], warn: float, fail: float
     return errors, warnings
 
 
+def confirm_slow_tests(times: list[tuple[float, str, str]], binaries: list[dict], extra_env: dict,
+                       test_args: list[str], fail: float, guard: Path | None = None,
+                       data_skips: list[tuple[str, str]] | None = None) -> list[str]:
+    """Retry only hard-limit candidates, serially after the pool drains; never forgive a functional failure.
+    With `guard` the rerun is preloaded with the network guard like the first run. A test that prints the
+    missing-data line in its rerun is added to `data_skips` as (binary label, test), like one from a first run."""
+    errors = []
+    by_label = {binary["label"]: binary for binary in binaries}
+    for first, test, label in sorted(times, reverse=True):
+        if first <= fail:
+            continue
+        # Replace filters/thread counts rather than append: libtest ORs positional filters. Keep ignored selection
+        # when this runner is used outside verify, but run exactly this test on one libtest thread.
+        selection = [arg for arg in test_args if arg in ("--ignored", "--include-ignored")]
+        args = ["-Z", "unstable-options", "--report-time", *selection, "--exact", test, "--test-threads=1"]
+        result = (network_guard.run((by_label[label], args), extra_env, True, guard, run_one) if guard
+                  else run_one(by_label[label], extra_env, args, timed=True))
+        report(result)
+        if data_skips is not None:
+            data_skips.extend((label, name) for name in result["data_skips"] if (label, name) not in data_skips)
+        status, seconds = result.get("log", {}).get(test, (None, None))
+        measured = f"{seconds:.2f}s" if seconds is not None else "unavailable"
+        print(f"timing confirmation: {label}: {test}: first {first:.2f}s, isolated {measured}", flush=True)
+        if result["status"] != "ok" or status != "ok" or seconds is None:
+            errors.append(f"{label}: {test}: timing rerun failed or has no passing timed record "
+                          f"({result['status']}); first {first:.2f}s, isolated {measured}")
+        elif seconds > fail:
+            failures, _ = timing_verdict([(seconds, test, label)], fail, fail)
+            errors.append(f"{failures[0]} (first {first:.2f}s, isolated {seconds:.2f}s)")
+    return errors
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--network-guard", type=Path, help="Linux preload library; fail recorded inet and resolver calls, rerunning only a violating binary test by test")
     parser.add_argument("--jobs", type=int, required=True, help="test binaries running at once")
     parser.add_argument("--time-limits", metavar="WARN,FAIL", help="seconds: warn about a test over WARN, fail one "
                         "over FAIL (adds libtest's --report-time)")
+    parser.add_argument("--no-data-skips", action="store_true", help="fail the run when a test prints the missing-"
+                        "vanilla-data skip line: it returns early and counts as passed")
     parser.add_argument("cargo", nargs=argparse.REMAINDER,
                         help="the cargo test command, after --; arguments after its own -- go to every test binary")
     args = parser.parse_args(argv)
@@ -253,22 +317,32 @@ def main(argv: list[str]) -> int:
     if limits:
         extra_env["RUSTC_BOOTSTRAP"] = "1"
     print(f"running {len(binaries)} test binaries, {args.jobs} at a time", flush=True)
-    failures, peaks, times, missing, started = [], [], [], [], time.monotonic()
-    with ThreadPoolExecutor(args.jobs) as pool:
-        for result in pool.map(lambda b: run_one(b, extra_env, test_args, timed=bool(limits)), binaries):
-            failed_tests = report(result)
-            times.extend((seconds, test, result["binary"]["label"])
-                         for test, (_, seconds) in result.get("log", {}).items() if seconds is not None)
-            if limits and (lost := untimed(result)):
-                missing.append((result["binary"]["label"], lost))
-            peaks.append((result["max_rss_kib"], result["binary"]["label"]))
-            if result["status"] != "ok":
-                failures.append((result["binary"]["label"], result["status"], failed_tests))
+    failures, peaks, times, missing, data_skips, started = [], [], [], [], [], time.monotonic()
+    def results():
+        with ThreadPoolExecutor(args.jobs) as pool:
+            if not args.network_guard:
+                yield from pool.map(lambda b: run_one(b, extra_env, test_args, timed=bool(limits)), binaries)
+                return
+            yield from pool.map(lambda b: network_guard.run_binary(
+                b, extra_env, test_args, bool(limits), args.network_guard.resolve(), run_one, listed_tests), binaries)
+    for result in results():
+        failed_tests = report(result)
+        data_skips.extend((result["binary"]["label"], test) for test in result["data_skips"])
+        failed_tests.extend(name for name in result.get("network_tests", []) if name not in failed_tests)
+        times.extend((seconds, test, result["binary"]["label"])
+                     for test, (_, seconds) in result.get("log", {}).items() if seconds is not None)
+        if limits and (lost := untimed(result)):
+            missing.append((result["binary"]["label"], lost))
+        peaks.append((result["max_rss_kib"], result["binary"]["label"]))
+        if result["status"] != "ok":
+            failures.append((result["binary"]["label"], result["status"], failed_tests))
     print(f"ran {len(binaries)} test binaries in {time.monotonic() - started:.1f}s; {len(failures)} failed")
     print("largest resident sets: " + ", ".join(f"{label} {kib // 1024} MiB" for kib, label in sorted(peaks)[-5:][::-1]))
     slow = []
     if limits:
-        slow, warnings = timing_verdict(times, *limits)
+        _, warnings = timing_verdict(times, *limits)
+        slow = confirm_slow_tests(times, binaries, extra_env, test_args, limits[1],
+                                  args.network_guard.resolve() if args.network_guard else None, data_skips)
         print(f"{len(times)} tests timed, {sum(seconds for seconds, _, _ in times):.1f} test-seconds in total; "
               "slowest: " + ", ".join(f"{test} {seconds:.2f}s" for seconds, test, _ in sorted(times)[-5:][::-1]))
         for warning in warnings:
@@ -286,7 +360,12 @@ def main(argv: list[str]) -> int:
             print(f"::error::{label}: {status}")
             for name in failed_tests:
                 print(f"    {name}")
-    return 1 if failures or slow else 0
+    skipped = args.no_data_skips and data_skips
+    if skipped:
+        print(f"::error::{len(data_skips)} tests skipped for missing vanilla data and were counted as passed:")
+        for error in data_skip_errors(data_skips):
+            print(f"::error::{error}")
+    return 1 if failures or slow or skipped else 0
 
 
 if __name__ == "__main__":

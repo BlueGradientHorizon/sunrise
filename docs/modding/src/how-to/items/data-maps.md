@@ -47,7 +47,8 @@ Its values are `data/mymod/data_maps/item/emc.json` in any data pack, and files 
 through `data_pack_files` under `data_maps/mymod:item/emc`. The folder is the registry's path for
 a `minecraft` registry (`entity_type`, `worldgen/biome`) and `<namespace>/<path>` for another.
 An id the registry doesn't hold is skipped, with one warning per file. A value may carry its own
-load conditions (`WithConditions`): it counts only when they hold.
+load conditions (`WithConditions`): it counts only when they hold. A top-level
+`neoforge:conditions` key on the data-map file is ignored.
 
 ```json
 { "values": {
@@ -69,7 +70,7 @@ id order (`IRegistryExtension.getDataMap`). The answers are:
 - `Ok(Some(value))`: the merged value. The newest file wins, a `#tag` gives every entry in it the
   value, `replace` drops what earlier files set and `remove` takes entries away.
 - `Ok(None)`: the map gives this entry no value.
-- `Err(DataMapError::UnknownType)`: no mod registered the map for that registry in this load.
+- `Err(DataMapError::UnknownType)`: neither the engine nor a mod registered the map for that registry in this load.
 - `Err(DataMapError::Undecodable)`: the value is not one `decode` takes.
 - `Err(DataMapError::Unavailable)`: no maps are loaded here. Data maps live on the server (the
   single player server thread included) and are not synced to clients, so a client returns
@@ -82,6 +83,46 @@ values. Reads also work in world hooks. A lookup reads the loaded map: it parses
 touches no file.
 
 Wasm mods read data maps the same way, with the same answers.
+
+## NeoForge's built-in mob and item maps
+
+These maps are already registered in the server's common store. Do not register them again.
+Their files are `data/neoforge/data_maps/<registry path>/<name>.json`:
+
+| Name | Registry path | Codec field |
+| --- | --- | --- |
+| `acceptable_villager_distances` | `entity_type` | `acceptable_villager_distance` |
+| `parrot_imitations` | `entity_type` | `sound` |
+| `villager_types` | `worldgen/biome` | `villager_type` |
+| `raid_hero_gifts` | `villager_profession` | `loot_table` |
+| `vibration_frequencies` | `game_event` | `frequency` |
+| `villager_compostables` | `item` | `can_villager_compost` |
+
+Every name has the `neoforge:` namespace. Values may be a scalar, a record with the codec
+field above, or the usual conditional `{"value": ..., "replace": false}` wrapper.
+File and entry conditions run before merging. Every value is decoded before applying the
+file's replacement, values or removals: one invalid value refuses that whole file, even
+when its target is unknown. Valid unknown targets and unknown removals are skipped. Tags
+use the target registry, including profession and game-event tags.
+
+Distances parse the original decimal directly to `f32`, including negative values,
+signed zero and overflow to infinity (`1e500`). Frequencies truncate the exact decimal,
+retain the low 32 bits as a signed integer, then require 1 through 15: `4294967297`
+becomes 1, `4294967311` becomes 15, and `15.999999999999999999999` becomes 15.
+Sound and villager-type values must name registered sounds and supported villager types;
+loot tables are resource identifiers. Compostability is boolean.
+
+Builtin reads return canonical NBT compounds with the field above, rather than the
+input's shorthand: distances are `Float`, frequencies `Int`, compostability `Byte`, and
+identifiers `String`. Infinity remains an NBT Float, never JSON null. Biome values
+are queryable through `BiomeKey`; typed game-event coverage remains in #4199.
+Registering these stores and firing `data_maps_updated` does not sync them to clients.
+
+The gameplay readers and structure generation use immutable world-owned snapshots.
+Villager types apply to finalizeSpawn only; bred villagers retain the existing biome-facts
+rule rather than reading this map. Reload replaces the whole generation; a structure finalization already in progress may
+finish with its old snapshot. Custom entity types are matched by their exact registered
+ID, not by the vanilla species used as their behaviour template.
 
 ## NeoForge's built-in block maps
 
@@ -105,7 +146,7 @@ files on every server data load, merged as your own maps are, and each load repl
 The axe reads the inverse maps before its own transform table: the oxidation inverse scrapes one
 stage back, the waxing inverse takes the wax off. They are derived from the forward maps on every
 load, never declared. Where several blocks share a next stage or a waxed twin, the one with the
-lowest block registry id is the one given back. That is a Horizon choice: NeoForge keeps whichever
+lowest block registry id is the one given back. That is a Sunrise choice: NeoForge keeps whichever
 its map iteration met last.
 
 Random-tick oxidation, honeycomb, dispenser waxing and the axe each move exactly one step, so a
@@ -117,4 +158,26 @@ back to a block it already passed. Lightning's waxed check, the carved pumpkin a
 keep vanilla's own lists. A block the maps don't name keeps vanilla's behaviour.
 
 `generate_block_transform`, `neoforge:transformables` and `block_transform_appenders` are not read
-yet ([#3359](https://github.com/arismoko/horizon/issues/3359)).
+yet.
+
+`host.biome_key("minecraft:plains")` resolves a `BiomeKey` in the installed
+server world registry. Its `id(host)` returns `Ok(canonical_id)`, and
+`data(host, &map)` reads maps whose `DataMap::Entry` is `BiomeKey`, including
+`neoforge:villager_types` in `minecraft:worldgen/biome`. Missing entries return
+`Ok(None)`. Lookup returns `None` on clients and before world data is installed;
+data maps there return `DataMapError::Unavailable`. Reacquire biome keys after
+reload: tokens from earlier generations or another world return
+`BiomeKeyError::WrongGeneration` from `id`, or `DataMapError::InvalidKey` from
+`data`. An unavailable host returns `BiomeKeyError::Unavailable` from `id`.
+Validation uses the receiving host’s installed snapshot, so a mod retaining a
+key across reload receives an error without panicking the server.
+Native and wasm use the same generated route and installed snapshot.
+
+Game events use `GameEventKey`, resolved with `host.game_event_key("minecraft:step")`
+after startup registry completion. The key is load-owned and survives world data
+reloads. `key.id(host)` returns the exact namespaced name or `GameEventKeyError`;
+unknown slots return `InvalidKey` rather than panicking. A `DataMap` whose `Entry`
+is `GameEventKey` reads `minecraft:game_event`, including
+`neoforge:vibration_frequencies` (canonical NBT compound with an `Int` `frequency` field). Missing values return
+`Ok(None)`; clients and reads before data installation return
+`DataMapError::Unavailable`. Invalid keys return `DataMapError::InvalidKey`.

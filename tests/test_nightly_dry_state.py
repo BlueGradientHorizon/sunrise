@@ -76,18 +76,20 @@ class DryStateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder)
             curl = path / "curl"
-            curl.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$CAPTURE"\nprintf "%s" "$STATUS"\n')
+            curl.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$CAPTURE"\n'
+                            'case "$*" in *DELETE*) printf "%s" "$STATUS";; *) printf "%s" "$LOOKUP";; esac\n')
             curl.chmod(0o755)
             for status, success in (("204", True), ("404", True), ("403", False), ("500", False)):
                 with self.subTest(status=status):
                     env = {**os.environ, "PATH": folder + os.pathsep + os.environ["PATH"],
                            "GITHUB_RUN_ID": "123", "GITHUB_RUN_ATTEMPT": "2", "GH_TOKEN": "test",
                            "GITHUB_API_URL": "https://api.github.com", "GITHUB_REPOSITORY": "arismoko/horizon",
-                           "RUNNER_TEMP": folder, "CAPTURE": str(path / "request"), "STATUS": status}
+                           "RUNNER_TEMP": folder, "CAPTURE": str(path / "request"), "STATUS": status, "LOOKUP": "200" if status == "204" else status}
                     result = subprocess.run(["bash", "-euo", "pipefail", "-c", script], env=env, capture_output=True)
                     self.assertEqual(result.returncode == 0, success)
                     last_attempt = 2 if success else 1
-                    self.assertIn(f"https://api.github.com/repos/arismoko/horizon/git/refs/heads/nightly/dry-run-123-{last_attempt}",
+                    endpoint = "refs" if status == "204" else "ref"
+                    self.assertIn(f"https://api.github.com/repos/arismoko/horizon/git/{endpoint}/heads/nightly/dry-run-123-{last_attempt}",
                                   (path / "request").read_text().splitlines())
 
     def test_failed_cleanup_retry_removes_the_producers_earlier_attempt_only(self):
@@ -104,15 +106,17 @@ class DryStateTests(unittest.TestCase):
             curl.write_text('''#!/usr/bin/env python3
 import json, os, pathlib, sys
 root = pathlib.Path(os.environ["RUNNER_TEMP"])
-ref = sys.argv[-1].split("/git/refs/heads/", 1)[1]
+ref = sys.argv[-1].split("/heads/", 1)[1]
 if (root / "fail-once").exists():
     (root / "fail-once").unlink()
     print("500", end="")
 else:
     refs = set(json.loads((root / "refs").read_text()))
-    status = "204" if ref in refs else "404"
-    refs.discard(ref)
-    (root / "refs").write_text(json.dumps(sorted(refs)))
+    deleting = "DELETE" in sys.argv
+    status = ("204" if deleting else "200") if ref in refs else "404"
+    if deleting:
+        refs.discard(ref)
+        (root / "refs").write_text(json.dumps(sorted(refs)))
     print(status, end="")
 ''')
             curl.chmod(0o755)
