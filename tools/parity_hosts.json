@@ -42,7 +42,7 @@
   "save_roundtrip": "runs the game on a virtual screen (vscreen) with a null ALSA device, or offscreen in the logged-in macOS session"
  },
  "linux_only": {
-  "save_kill": "uses Linux-only save fixture points and SIGKILL",
+  "save_kill": "uses SIGKILL to stop the server at a save fixture point",
   "save_corruption": "part of the Linux-only save-fault suite"
  },
  "solo": {

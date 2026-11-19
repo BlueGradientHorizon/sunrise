@@ -372,7 +372,6 @@ impl RegionFile {
             return Err(e);
         }
         let old = self.offsets[i];
-        #[cfg(target_os = "linux")]
         if !external
             && old != 0
             && crate::crash_fixture::selected()
