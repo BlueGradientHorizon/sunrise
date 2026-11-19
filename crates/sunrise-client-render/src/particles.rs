@@ -1058,6 +1058,16 @@ impl PendingParticle {
     }
 }
 
+thread_local! {
+    static REQUESTED: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+/// How many particle requests this thread's captures (`Particles::requested`) have taken. A
+/// sound captured beside them records it (`CapturedSound::particles_before`), so a test reads
+/// the two captures as one ordered stream.
+pub fn requested_count() -> u64 {
+    REQUESTED.get()
+}
+
 /// `ParticleEngine` plus the sprite sets of `ParticleResources`.
 pub struct ParticleEngine {
     particles: Vec<Particle>,
@@ -1542,6 +1552,7 @@ impl ParticleEngine {
         let d2 = (p[0] - c[0]).powi(2) + (p[1] - c[1]).powi(2) + (p[2] - c[2]).powi(2);
         if let Some(requested) = &mut self.requested {
             requested.push((options.clone(), p, v));
+            REQUESTED.set(REQUESTED.get() + 1);
             return;
         }
         let minimal = self.calculate_particle_level(always_show) == 2;
