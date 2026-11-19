@@ -2,7 +2,8 @@
 //! and its Polytone expression uniforms (`shader_modifiers`, wiki "Expression Uniforms on Any
 //! Shader"), resolved when the shader loaded (`polytone_post::ShaderModifiers::resolve`), each a
 //! block of one float after the pipeline's own, holding its program's value this frame. The
-//! lightmap, sky, stars and block outline pipelines lay theirs out with this.
+//! lightmap, sky, stars, block outline and text (GUI, world, see-through) pipelines lay theirs out
+//! with this.
 
 use crate::core_shader::CoreProgram;
 use crate::polytone_post::ExpressionUniform;
@@ -50,6 +51,50 @@ pub(crate) fn bindings<'a>(
         })
         .chain(extra.entries(buffer))
         .collect();
+    (layout, group)
+}
+
+/// The texture and sampler pairs (a texture at `binding`, its sampler at `binding + 1`) of
+/// `textures` that a stage of `program` reads, bound only to the stages that read either: their
+/// layout entries and their bind group entries.
+pub(crate) fn sampler_bindings<'a>(
+    program: &CoreProgram,
+    textures: &[(u32, &'a wgpu::TextureView, &'a wgpu::Sampler)],
+) -> (
+    Vec<wgpu::BindGroupLayoutEntry>,
+    Vec<wgpu::BindGroupEntry<'a>>,
+) {
+    let (mut layout, mut group) = (Vec::new(), Vec::new());
+    for &(binding, view, sampler) in textures {
+        let stages = program.stages_reading(binding) | program.stages_reading(binding + 1);
+        if stages.is_empty() {
+            continue;
+        }
+        layout.push(wgpu::BindGroupLayoutEntry {
+            binding,
+            visibility: stages,
+            ty: wgpu::BindingType::Texture {
+                sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                view_dimension: wgpu::TextureViewDimension::D2,
+                multisampled: false,
+            },
+            count: None,
+        });
+        layout.push(wgpu::BindGroupLayoutEntry {
+            binding: binding + 1,
+            visibility: stages,
+            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+            count: None,
+        });
+        group.push(wgpu::BindGroupEntry {
+            binding,
+            resource: wgpu::BindingResource::TextureView(view),
+        });
+        group.push(wgpu::BindGroupEntry {
+            binding: binding + 1,
+            resource: wgpu::BindingResource::Sampler(sampler),
+        });
+    }
     (layout, group)
 }
 

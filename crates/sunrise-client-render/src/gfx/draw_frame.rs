@@ -1313,7 +1313,6 @@ impl Renderer {
             .prepare_frame(&self.device, &self.queue, frame.title, || {
                 let view = views.primary();
                 core_lines::uniforms(pack.globals, view, pose, jitter, 1.0, fog_color, pack.fog)
-                    .to_vec()
             });
         let skin = frame.skin.filter(|skin| match &mut self.entity_skin {
             Some(skinner) => skinner.register(&self.device, &mut self.uploads, &mut encoder, skin),

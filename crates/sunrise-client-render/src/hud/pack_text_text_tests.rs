@@ -154,3 +154,19 @@ fn a_text_program_reading_no_expression_uniform_has_none() {
         assert!(expressions.is_empty());
     }
 }
+
+/// Each text program is refused on its own, through the atlas's load: a pack whose see-through
+/// stage alone reads a block its file doesn't give loads the GUI's and the world's programs and
+/// refuses the see-through one (logged as the see-through text shader).
+#[test]
+fn a_text_program_reading_an_unknown_block_is_refused_alone() {
+    let fsh = "#version 330\nlayout(location = 0) out vec4 fragColor;\n\
+               #ifdef IS_SEE_THROUGH\nlayout(std140) uniform Missing {\n    float value;\n};\n\
+               #else\nconst float value = 1.0;\n#endif\n\
+               void main() {\n    fragColor = vec4(value);\n}\n"
+        .to_owned();
+    let (root, defaults) = packs(vsh(false), fsh, Some(r#"{"Other": "1"}"#));
+    let [gui, world, see_through] = text_programs(&root, &defaults);
+    assert!(gui.is_some() && world.is_some());
+    assert!(see_through.is_none());
+}

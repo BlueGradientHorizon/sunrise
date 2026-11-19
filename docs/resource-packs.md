@@ -117,13 +117,15 @@ reads Polytone's `PolyGlobals` block is refused at load (no file gives it), and 
   log.
 - The programs are resolved once when the pack's shaders load. Each frame evaluates them for the installed pack
   pipelines; each pipeline uploads 16 bytes per expression uniform when it prepares a draw.
+- Where no world runs (the title screen and its menus, a loading screen, the file fixer, the saving screen), the
+  text's expression uniforms are 0: the game evaluates none of them, and the frame writes zeros.
 
 ## Gaps and their work
 
 | Gap | Size | Where |
 | --- | --- | --- |
 | GUI scaling `tile`, `stretch` | small | `ui.rs` |
-| Core shaders but GUI text, the block outline, the sky and the stars | large | [#13218](https://github.com/horizon-rust/horizon/issues/13218) |
+| Core shaders but the text (GUI, world, see-through), the block outline, the sky, the stars and the lightmap | large | [#13218](https://github.com/horizon-rust/horizon/issues/13218) |
 
 ## Testing a pack
 

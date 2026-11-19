@@ -18,7 +18,7 @@ const FSH: &str = "#version 330\n\
 const MODIFIERS: &str = r#"{"Tint": "0.1 + 0.1", "Fade": "0.3 * 2"}"#;
 
 /// One pass of the world text (`see_through` false) or the see-through text after
-/// `CoreText::write` wrote the blocks: the red of the target's middle.
+/// `CoreText::prepare` uploaded the blocks: the red of the target's middle.
 fn red(device: &wgpu::Device, queue: &wgpu::Queue, text: &CoreText, see_through: bool) -> u8 {
     const SIZE: u32 = 16;
     let target = |format, usage| {
@@ -135,48 +135,32 @@ fn red(device: &wgpu::Device, queue: &wgpu::Queue, text: &CoreText, see_through:
     pixels[8 * 256 + 8 * 4]
 }
 
-/// The world text reads `Tint` and the see-through text `Fade`, both from the text shader's
-/// file, each in its own pipeline's block after vanilla's four, holding its expression's value
-/// once evaluated.
-#[test]
-#[ignore = "daily"]
-fn a_pack_world_and_see_through_text_read_their_expression_uniforms() {
-    let _gpu = crate::gfx::test_gpu::lock();
-    let Some((_, device, queue)) = crate::gfx::test_gpu::optional_device() else {
-        eprintln!("skipped: no adapter");
-        return;
-    };
-    let pack = sunrise_assets::resource_source::ResourceSource::indexed(
-        [(
-            "assets/minecraft/polytone/shader_modifiers/core/text.json".to_owned(),
-            sunrise_assets::resource_source::Resource::bytes(MODIFIERS.as_bytes().to_vec()),
-        )]
-        .into_iter()
-        .collect(),
+/// A pack with the text shader `vsh` and `fsh` and its `shader_modifiers` file `modifiers`, its
+/// text programs loaded as the atlas loads them (`hud::pack_text::load_shaders`).
+fn text_shaders(vsh: &str, fsh: &str, modifiers: &str) -> crate::gfx::core_text::TextShaders {
+    use sunrise_assets::resource_source::{Resource, ResourceSource};
+    let files = [
+        ("assets/minecraft/shaders/core/text.vsh", vsh),
+        ("assets/minecraft/shaders/core/text.fsh", fsh),
+        (
+            "assets/minecraft/polytone/shader_modifiers/core/text.json",
+            modifiers,
+        ),
+    ];
+    let pack = ResourceSource::indexed(
+        files
+            .into_iter()
+            .map(|(path, text)| (path.to_owned(), Resource::bytes(text.as_bytes().to_vec())))
+            .collect(),
     );
-    let modifiers = crate::polytone_post::ShaderModifiers::read(&pack, Default::default());
-    let names = modifiers.names(&[super::super::expression_blocks::TEXT[0]]);
-    let load = |defines: &[&str], glue| {
-        let program =
-            crate::core_shader::translate_core_with(VSH, FSH, defines, &|_| None, glue, &|b| {
-                names.iter().any(|n| n == b)
-            })
-            .expect("the shaders translate");
-        let expressions = modifiers
-            .resolve(
-                (
-                    super::super::expression_blocks::TEXT[0],
-                    super::super::expression_blocks::TEXT[0],
-                ),
-                &program,
-                &[],
-            )
-            .unwrap();
-        (program, expressions)
-    };
-    let world = load(&[], &WORLD_GLUE);
-    let see_through = load(&["IS_SEE_THROUGH"], &SEE_THROUGH_GLUE);
-    let texture = device
+    let mut atlas = crate::hud::HudAtlas::boot();
+    atlas.load_pack_shaders(&pack, &ResourceSource::default());
+    atlas.text_shaders
+}
+
+/// A 1 by 1 texture for the glyphs and the lightmap.
+fn texture(device: &wgpu::Device) -> wgpu::TextureView {
+    device
         .create_texture(&wgpu::TextureDescriptor {
             label: None,
             size: wgpu::Extent3d {
@@ -191,17 +175,40 @@ fn a_pack_world_and_see_through_text_read_their_expression_uniforms() {
             usage: wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         })
-        .create_view(&Default::default());
+        .create_view(&Default::default())
+}
+
+/// The world text pipelines of `shaders`, over a 1 by 1 glyph texture and lightmap.
+fn core_text(
+    device: &wgpu::Device,
+    shaders: &crate::gfx::core_text::TextShaders,
+) -> Option<CoreText> {
+    let view = texture(device);
     let sampler = device.create_sampler(&Default::default());
-    let mut text = CoreText::new(
-        &device,
+    let expressions = &shaders.expressions;
+    CoreText::new(
+        device,
         wgpu::TextureFormat::Rgba8Unorm,
-        Some((&world.0, &world.1)),
-        Some((&see_through.0, &see_through.1)),
-        &texture,
-        (&texture, &sampler),
+        (shaders.world.as_deref()).map(|p| (p, &expressions.world[..])),
+        (shaders.see_through.as_deref()).map(|p| (p, &expressions.see_through[..])),
+        &view,
+        (&view, &sampler),
     )
-    .expect("the pipelines");
+}
+
+/// The world text reads `Tint` and the see-through text `Fade`, both from the text shader's
+/// file, each in its own pipeline's block after vanilla's four, holding its expression's value
+/// once evaluated.
+#[test]
+#[ignore = "daily"]
+fn a_pack_world_and_see_through_text_read_their_expression_uniforms() {
+    let _gpu = crate::gfx::test_gpu::lock();
+    let Some((_, device, queue)) = crate::gfx::test_gpu::optional_device() else {
+        eprintln!("skipped: no adapter");
+        return;
+    };
+    let shaders = text_shaders(VSH, FSH, MODIFIERS);
+    let mut text = core_text(&device, &shaders).expect("the pipelines");
     // Before the frame's context evaluates them, the blocks hold 0.
     assert_eq!(red(&device, &queue, &text, false), 0);
     for blocks in text.expression_blocks() {
@@ -242,55 +249,13 @@ fn a_world_text_pipeline_over_the_block_limit_is_refused_alone() {
         .map(|name| format!("\"{name}\": \"0\", "))
         .collect::<String>()
         + "\"Tint\": \"0.2\"";
-    let pack = sunrise_assets::resource_source::ResourceSource::indexed(
-        [(
-            "assets/minecraft/polytone/shader_modifiers/core/text.json".to_owned(),
-            sunrise_assets::resource_source::Resource::bytes(format!("{{{file}}}").into_bytes()),
-        )]
-        .into_iter()
-        .collect(),
+    let shaders = text_shaders(VSH, &fsh, &format!("{{{file}}}"));
+    let expressions = &shaders.expressions;
+    assert_eq!(
+        (expressions.world.len(), expressions.see_through.len()),
+        (1, 13)
     );
-    let id = super::super::expression_blocks::TEXT[0];
-    let modifiers = crate::polytone_post::ShaderModifiers::read(&pack, Default::default());
-    let names = modifiers.names(&[id]);
-    let load = |defines: &[&str], glue| {
-        let program =
-            crate::core_shader::translate_core_with(VSH, &fsh, defines, &|_| None, glue, &|b| {
-                names.iter().any(|n| n == b)
-            })
-            .expect("the shaders translate");
-        let expressions = modifiers.resolve((id, id), &program, &[]).unwrap();
-        (program, expressions)
-    };
-    let world = load(&[], &WORLD_GLUE);
-    let see_through = load(&["IS_SEE_THROUGH"], &SEE_THROUGH_GLUE);
-    assert_eq!((world.1.len(), see_through.1.len()), (1, 13));
-    let texture = device
-        .create_texture(&wgpu::TextureDescriptor {
-            label: None,
-            size: wgpu::Extent3d {
-                width: 1,
-                height: 1,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-        })
-        .create_view(&Default::default());
-    let sampler = device.create_sampler(&Default::default());
-    let text = CoreText::new(
-        &device,
-        wgpu::TextureFormat::Rgba8Unorm,
-        Some((&world.0, &world.1)),
-        Some((&see_through.0, &see_through.1)),
-        &texture,
-        (&texture, &sampler),
-    )
-    .expect("the world text's pipeline");
+    let text = core_text(&device, &shaders).expect("the world text's pipeline");
     assert!(text.polygon_offset.is_some());
     assert!(text.see_through.is_none());
 }
@@ -309,27 +274,13 @@ fn a_world_text_sampler_is_bound_to_the_stage_that_reads_it() {
     let fsh = "#version 330\nuniform sampler2D Sampler0;\nuniform sampler2D Sampler2;\n\
                layout(location = 0) out vec4 fragColor;\n\
                void main() {\n    fragColor = texture(Sampler0, vec2(0.5));\n}\n";
-    let program =
-        crate::core_shader::translate_core_with(VSH, fsh, &[], &|_| None, &WORLD_GLUE, &|_| false)
-            .expect("the shaders translate");
-    let view = device
-        .create_texture(&wgpu::TextureDescriptor {
-            label: None,
-            size: wgpu::Extent3d {
-                width: 1,
-                height: 1,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-        })
-        .create_view(&Default::default());
-    let sampler = device.create_sampler(&Default::default());
-    let (layout, group) = sampler_bindings(&program, &[(4, &view, &sampler), (8, &view, &sampler)]);
+    let shaders = text_shaders(VSH, fsh, "{}");
+    let program = shaders.world.as_deref().expect("the world text's program");
+    let (view, sampler) = (texture(&device), device.create_sampler(&Default::default()));
+    let (layout, group) = super::super::expression_blocks::sampler_bindings(
+        program,
+        &[(4, &view, &sampler), (8, &view, &sampler)],
+    );
     let fragment = wgpu::ShaderStages::FRAGMENT;
     let layout: Vec<_> = layout.iter().map(|e| (e.binding, e.visibility)).collect();
     assert_eq!(layout, [(4, fragment), (5, fragment)]);

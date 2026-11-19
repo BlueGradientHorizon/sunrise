@@ -19,27 +19,36 @@ const FSH: &str = "#version 330\nlayout(std140) uniform Tint {\n    float value;
 fn a_pack_gui_text_reads_its_expression_uniform() {
     let _gpu = crate::gfx::test_gpu::lock();
     let Some(mut gpu) = Gpu::new() else {
+        eprintln!("skipped: no adapter");
         return;
     };
+    // The pack's text shader and its file, loaded as the atlas loads them.
+    let files = [
+        ("assets/minecraft/shaders/core/text.vsh", VSH),
+        ("assets/minecraft/shaders/core/text.fsh", FSH),
+        (
+            "assets/minecraft/polytone/shader_modifiers/core/text.json",
+            r#"{"Tint": "0.1 + 0.1"}"#,
+        ),
+    ];
     let pack = ResourceSource::indexed(
-        [(
-            "assets/minecraft/polytone/shader_modifiers/core/text.json".to_owned(),
-            sunrise_assets::resource_source::Resource::bytes(br#"{"Tint": "0.1 + 0.1"}"#.to_vec()),
-        )]
-        .into_iter()
-        .collect(),
+        files
+            .into_iter()
+            .map(|(path, text)| {
+                let bytes = text.as_bytes().to_vec();
+                (
+                    path.to_owned(),
+                    sunrise_assets::resource_source::Resource::bytes(bytes),
+                )
+            })
+            .collect(),
     );
-    let modifiers = crate::polytone_post::ShaderModifiers::read(&pack, Default::default());
-    let shader = crate::gfx::expression_blocks::TEXT[0];
-    let names = modifiers.names(&[shader]);
-    let program =
-        crate::core_shader::translate_core_with(VSH, FSH, &["IS_GUI"], &|_| None, &GLUE, &|b| {
-            names.iter().any(|n| n == b)
-        })
-        .expect("the shaders translate");
-    let expressions = modifiers.resolve((shader, shader), &program, &[]).unwrap();
+    let mut atlas = super::super::HudAtlas::boot();
+    load_shaders(&mut atlas, &pack, &ResourceSource::default());
+    let text = &atlas.text_shaders;
+    let gui = text.gui.as_deref().expect("the GUI text's program");
     gpu.hud
-        .set_text_shader(&gpu.device, Some((&program, &expressions)));
+        .set_text_shader(&gpu.device, Some((gui, &text.expressions.gui)));
     let mut batch = HudBatch::new(
         [4, 2],
         GuiScale {

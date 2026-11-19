@@ -150,50 +150,6 @@ impl super::Renderer {
     }
 }
 
-/// The texture and sampler pairs (a texture at `binding`, its sampler at `binding + 1`) of
-/// `textures` that a stage of `program` reads, bound only to the stages that read either: their
-/// layout entries and their bind group entries.
-pub(crate) fn sampler_bindings<'a>(
-    program: &CoreProgram,
-    textures: &[(u32, &'a wgpu::TextureView, &'a wgpu::Sampler)],
-) -> (
-    Vec<wgpu::BindGroupLayoutEntry>,
-    Vec<wgpu::BindGroupEntry<'a>>,
-) {
-    let (mut layout, mut group) = (Vec::new(), Vec::new());
-    for &(binding, view, sampler) in textures {
-        let stages = program.stages_reading(binding) | program.stages_reading(binding + 1);
-        if stages.is_empty() {
-            continue;
-        }
-        layout.push(wgpu::BindGroupLayoutEntry {
-            binding,
-            visibility: stages,
-            ty: wgpu::BindingType::Texture {
-                sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                view_dimension: wgpu::TextureViewDimension::D2,
-                multisampled: false,
-            },
-            count: None,
-        });
-        layout.push(wgpu::BindGroupLayoutEntry {
-            binding: binding + 1,
-            visibility: stages,
-            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-            count: None,
-        });
-        group.push(wgpu::BindGroupEntry {
-            binding,
-            resource: wgpu::BindingResource::TextureView(view),
-        });
-        group.push(wgpu::BindGroupEntry {
-            binding: binding + 1,
-            resource: wgpu::BindingResource::Sampler(sampler),
-        });
-    }
-    (layout, group)
-}
-
 /// One of the pack's world text pipelines: the world's and the see-through text are the text
 /// shader with different defines, so each has its own layout and may read different blocks.
 pub(super) struct Part {
@@ -332,7 +288,7 @@ impl CoreText {
         let blocks = super::expression_blocks::vanilla_blocks(program);
         let (mut entries, mut resources) =
             super::expression_blocks::bindings(&blocks, &extra, uniform);
-        let (layout, group) = sampler_bindings(program, textures);
+        let (layout, group) = super::expression_blocks::sampler_bindings(program, textures);
         entries.extend(layout);
         resources.extend(group);
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {

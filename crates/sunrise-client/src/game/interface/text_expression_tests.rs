@@ -70,10 +70,11 @@ fn frame(game: &mut super::Game<'_>) -> sunrise_client::Result<bool> {
 #[test]
 #[ignore = "daily"]
 fn a_packs_text_draws_its_expression_uniforms() {
-    if run_fresh_cases(NAME, CASE, &["world", "loading"]) {
+    if run_fresh_cases(NAME, CASE, &["world", "fullbright", "loading"]) {
         return;
     }
-    let loading = std::env::var(CASE).unwrap() == "loading";
+    let case = std::env::var(CASE).unwrap();
+    let (loading, fullbright) = (case == "loading", case == "fullbright");
     with_client_game(|game| {
         game.gui = crate::game::UiResources::load(&pack(), std::path::Path::new("")).unwrap();
         let frame_context = sunrise_client::environment::Frame::default();
@@ -106,18 +107,18 @@ fn a_packs_text_draws_its_expression_uniforms() {
         };
         game.text_displays.insert(1, display);
         game.tick_text_displays();
-        for fullbright in [false, true] {
-            game.renderer.as_mut().unwrap().fullbright = fullbright;
-            // The world text over the frame with the GUI hidden (F1), then the GUI's (F3's
-            // text) over it.
-            game.ui.hide_gui = true;
-            assert_eq!(corner(game, frame), [153, 0, 0], "fullbright {fullbright}");
-            game.ui.hide_gui = false;
-            game.debug = true;
-            assert_eq!(corner(game, frame), [51, 0, 0], "fullbright {fullbright}");
-        }
+        // Fullbright, in its own process, is on from the first frame: it changes nothing.
+        game.renderer.as_mut().unwrap().fullbright = fullbright;
+        // The world text over the frame with the GUI hidden (F1), then the GUI's (F3's text)
+        // over it.
+        game.ui.hide_gui = true;
+        assert_eq!(corner(game, frame), [153, 0, 0], "fullbright {fullbright}");
+        game.ui.hide_gui = false;
+        game.debug = true;
+        assert_eq!(corner(game, frame), [51, 0, 0], "fullbright {fullbright}");
         // The title screen: no world runs, the GUI text's value is 0.
         game.title = Some(game.new_title(std::path::PathBuf::from("saves")));
+        assert!(!game.reads_pack_expressions(), "none to evaluate");
         assert_eq!(corner(game, frame), [0, 0, 0]);
     });
 }

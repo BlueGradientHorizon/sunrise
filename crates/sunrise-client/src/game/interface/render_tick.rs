@@ -1005,9 +1005,11 @@ impl Game<'_> {
     /// Whether an installed pack core shader reads expression uniforms this frame. Fullbright
     /// excludes the lightmap only. The frame's expression context is made only when needed.
     pub(in crate::game) fn reads_pack_expressions(&mut self) -> bool {
+        // The text's are 0 where no world runs (the renderer writes them so on a title frame).
+        let world = !self.shows_panorama();
         self.renderer
             .as_mut()
-            .is_some_and(|r| r.reads_pack_expressions() || r.reads_text_expressions())
+            .is_some_and(|r| r.reads_pack_expressions() || (world && r.reads_text_expressions()))
     }
 
     /// Evaluate the installed pack pipelines' expression uniforms from `frame`, skipping the
@@ -1016,9 +1018,12 @@ impl Game<'_> {
         &mut self,
         frame: Option<&sunrise_client::environment::Frame>,
     ) {
+        let world = !self.shows_panorama();
         if let (Some(frame), Some(renderer)) = (frame, self.renderer.as_mut()) {
             renderer.evaluate_pack_expressions(frame);
-            renderer.evaluate_text_expressions(frame);
+            if world {
+                renderer.evaluate_text_expressions(frame);
+            }
         }
     }
 }

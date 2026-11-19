@@ -1048,6 +1048,12 @@ impl HudAtlas {
     /// and its atlas does not grow. `game` is the game's own resources, without the packs: a
     /// pack's core shader (text, block outline, sky, stars, lightmap) is one that differs from
     /// the game's, so a `root` given as its own `game` loads none.
+    /// The packs' core shaders at `root` over the game's own resources `game`, as
+    /// [`Self::build_over_with_dynamic_textures`] loads them, for tests of the pipelines.
+    #[cfg(test)]
+    pub(crate) fn load_pack_shaders(&mut self, root: &ResourceSource, game: &ResourceSource) {
+        pack_text::load_shaders(self, root, game);
+    }
     pub fn build_over_with_dynamic_textures(
         root: &ResourceSource,
         defaults: &ResourceSource,

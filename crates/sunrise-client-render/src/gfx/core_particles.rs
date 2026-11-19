@@ -219,18 +219,15 @@ impl CoreParticles {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         title: bool,
-        vanilla: impl FnOnce() -> Vec<u8>,
+        vanilla: impl FnOnce() -> [u8; 1024],
     ) {
         let mut batches = std::mem::take(&mut self.batches);
         if title {
             batches.clear();
         }
-        let vanilla = if batches.is_empty() {
-            Vec::new()
-        } else {
-            vanilla()
-        };
-        self.prepare(device, queue, &batches, &vanilla);
+        let vanilla = (!batches.is_empty()).then(vanilla);
+        let vanilla = vanilla.as_ref().map_or(&[][..], |v| &v[..]);
+        self.prepare(device, queue, &batches, vanilla);
     }
 
     /// This frame's batches, for the shaders [`Self::decide`] drew: their uniforms and records
