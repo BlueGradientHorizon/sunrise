@@ -31,7 +31,7 @@ pub(crate) fn module_files(
         dir,
         every_build,
         false,
-        crate::game_modules::parse,
+        crate::game_modules::parse_signatures,
     )?;
     WALKS.with(|walks| {
         if let Some(walks) = walks.borrow_mut().as_mut() {

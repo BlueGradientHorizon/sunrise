@@ -1,6 +1,7 @@
 //! Cargo-facing generation: the mod API's and the game's generated files.
 use super::{Catalog, Target, free_function_source, host, sources};
 use quote::ToTokens;
+use sha2::{Digest, Sha256};
 use std::{fs, path::Path};
 mod vocab_boundary;
 
@@ -310,15 +311,66 @@ pub(super) fn wire_types_from_sources(
         ("mod_api_generated.rs", generated.hooks.as_str()),
         ("mod_api_generated_host.rs", generated.host.as_str()),
     ];
+    // The resolution reads the three sources and the indexed crates' files, and nothing a game
+    // edit changes: it is cached by their contents, and recomputed when any of them differs.
+    let name = wire_entry(root, &included)?;
+    if let Some(cached) = crate::interface_cache::load(&name)? {
+        return Ok(cached.lines().map(str::to_owned).collect());
+    }
     // The resolver recurses through the API's types: give it a deep stack.
-    std::thread::scope(|scope| {
+    let types = std::thread::scope(|scope| {
         std::thread::Builder::new()
             .stack_size(64 << 20)
             .spawn_scoped(scope, || super::wire::owned_types(root, &included))
             .map_err(|e| e.to_string())?
             .join()
             .map_err(|_| "reading the wire types panicked".to_string())?
-    })
+    })?;
+    let body = types
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .join("\n");
+    crate::interface_cache::store(&name, &body)?;
+    Ok(types)
+}
+
+/// The cache entry of the wire types resolved from `included` and the indexed crates below `root`.
+fn wire_entry(root: &Path, included: &[(&str, &str)]) -> Result<String, String> {
+    let mut key = Sha256::new();
+    for (name, code) in included {
+        key.update([name.as_bytes(), &[0], code.as_bytes(), &[0]].concat());
+    }
+    for (_, directory) in crate::index::CRATES {
+        hash_tree(root, &root.join(directory), &mut key)?;
+    }
+    Ok(format!("wire-types-{:x}.cache", key.finalize()))
+}
+
+/// Feeds `key` every file below `directory`, in path order: each one's path below `root` and its bytes.
+fn hash_tree(root: &Path, directory: &Path, key: &mut Sha256) -> Result<(), String> {
+    // A tree without one of the crates reads none of it.
+    if !directory.is_dir() {
+        return Ok(());
+    }
+    let mut entries = fs::read_dir(directory)
+        .map_err(|e| format!("{}: {e}", directory.display()))?
+        .map(|entry| entry.map(|entry| entry.path()))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    entries.sort();
+    for path in entries {
+        if path.is_dir() {
+            hash_tree(root, &path, key)?;
+        } else {
+            let bytes = fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+            let relative = path.strip_prefix(root).unwrap_or(&path);
+            key.update(relative.as_os_str().as_encoded_bytes());
+            key.update([0]);
+            key.update(Sha256::digest(bytes));
+        }
+    }
+    Ok(())
 }
 
 /// `sunrise-mod-points`' generated file: each point's record, `PointId` and typed function constructors,
@@ -457,4 +509,43 @@ pub(super) fn track(root: &Path, all_game: bool) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A cached wire result follows every input it was derived from: the generated API sources (the
+    /// catalog and hooks) and each indexed crate's files (mod-vocab's among them), and not the game.
+    #[test]
+    fn the_wire_cache_entry_follows_the_catalog_and_vocab_but_not_the_game() {
+        let root = std::env::temp_dir().join(format!("wire-entry-{}", std::process::id()));
+        let vocab = root.join("crates/sunrise-mod-vocab/src");
+        let game = root.join("crates/sunrise-client/src/game");
+        fs::create_dir_all(vocab.join("hooks")).unwrap();
+        fs::create_dir_all(&game).unwrap();
+        fs::write(
+            vocab.join("hooks/delivery.rs"),
+            "pub struct PayloadDeclaration;",
+        )
+        .unwrap();
+        fs::write(game.join("boat.rs"), "fn paddle() {}").unwrap();
+        let entry = |hooks: &str| wire_entry(&root, &[("mod_api_generated.rs", hooks)]).unwrap();
+        let before = entry("pub trait Hooks {}");
+        assert_eq!(before, entry("pub trait Hooks {}"));
+        fs::write(game.join("boat.rs"), "fn paddle() { edited(); }").unwrap();
+        assert_eq!(before, entry("pub trait Hooks {}"), "a game edit");
+        assert_ne!(
+            before,
+            entry("pub trait Hooks { fn added(); }"),
+            "a catalog change"
+        );
+        fs::write(
+            vocab.join("hooks/delivery.rs"),
+            "pub struct PayloadDeclaration { pub delivery: u8 }",
+        )
+        .unwrap();
+        assert_ne!(before, entry("pub trait Hooks {}"), "a vocab change");
+        fs::remove_dir_all(root).unwrap();
+    }
 }
