@@ -100,6 +100,7 @@ impl OptionsUi {
         let page = self
             .selected_page_key
             .filter(|_| self.selected_key == Some(super::pages::PAGE_KEY))
+            .and_then(super::pages::find_page_key)
             .map(|(page, row)| shell::Capture::Page(page, row));
         pad.or(page).or(self.selected_key.map(shell::Capture::Key))
     }
@@ -115,8 +116,8 @@ impl OptionsUi {
                 shell::Output::Event(event) => events.push(event),
                 shell::Output::Bind(shell::Capture::Key(name)) => self.selected_key = Some(name),
                 shell::Output::Bind(shell::Capture::Page(page, row)) => {
-                    self.selected_key = Some(super::pages::PAGE_KEY);
-                    self.selected_page_key = Some((page, row));
+                    self.selected_page_key = super::pages::page_key_at(page, row);
+                    self.selected_key = self.selected_page_key.map(|_| super::pages::PAGE_KEY);
                 }
                 shell::Output::Bind(shell::Capture::Pad(action)) => {
                     self.selected_pad_action = Some(action)
