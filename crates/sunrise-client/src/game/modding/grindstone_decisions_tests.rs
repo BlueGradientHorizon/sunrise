@@ -5,13 +5,13 @@ use crate::game::{
     native_guest_turn_tests::with_guests,
     stations::{Kind as StationKind, Station},
 };
-use sunrise_client::items::ItemStack;
-use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
 use mod_api::{
     Flow, GrindstonePlaceEvent, GrindstoneTakeEvent, Hooks, ItemPlace, ItemResource, ModEntry,
     Mods, Registrar, ServerHost,
 };
 use std::cell::{Cell, RefCell};
+use sunrise_client::items::ItemStack;
+use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
 
 #[derive(Clone, Default)]
 struct Script {
@@ -20,6 +20,9 @@ struct Script {
     place_write: bool,
     place_bad_xp: bool,
     take_panic: bool,
+    take_write: bool,
+    take_cancel: bool,
+    take_bad_xp: bool,
 }
 
 thread_local! {
@@ -93,6 +96,16 @@ impl Hooks for Mod {
         assert!(host.transaction_current().is_some());
         if SCRIPT.with(|s| s.borrow().take_panic) {
             panic!("a listener failed");
+        }
+        let s = SCRIPT.with(|s| s.borrow().clone());
+        if s.take_write {
+            write_dirt(host);
+        }
+        if s.take_bad_xp {
+            event.take.xp = -2;
+        }
+        if s.take_cancel {
+            event.cancelled = true;
         }
         Flow::Continue
     }
@@ -180,7 +193,7 @@ fn inventory(game: &crate::game::Game<'_>, index: usize) -> u32 {
     count(&game.lan.as_ref().unwrap().hub.guests[0].inventory[index])
 }
 
-fn container_click(window: i32, slot: i16, button: i8) -> Serverbound {
+fn container_click(window: i32, slot: i16, button: i8, input: i32) -> Serverbound {
     Serverbound::ContainerClick(ContainerClick {
         state: 0,
         changed: Vec::new(),
@@ -188,16 +201,16 @@ fn container_click(window: i32, slot: i16, button: i8) -> Serverbound {
         container: window,
         slot,
         button,
-        input: 0,
+        input,
     })
 }
 
 fn click(game: &mut crate::game::Game<'_>, window: i32, slot: i16, button: i8) {
-    game.lan_guest_packet(12, container_click(window, slot, button));
+    game.lan_guest_packet(12, container_click(window, slot, button, 0));
 }
 
 #[test]
-#[ignore = "needs prepared resources in HORIZON_TEST_RESOURCES"]
+#[ignore = "daily"]
 fn a_place_listener_sets_the_grindstone_result() {
     with_mod(|| {
         with_guests(|game| {
@@ -224,7 +237,7 @@ fn a_place_listener_sets_the_grindstone_result() {
 }
 
 #[test]
-#[ignore = "needs prepared resources in HORIZON_TEST_RESOURCES"]
+#[ignore = "daily"]
 fn a_cancelled_place_leaves_no_grindstone_result() {
     with_mod(|| {
         with_guests(|game| {
@@ -245,7 +258,7 @@ fn a_cancelled_place_leaves_no_grindstone_result() {
 }
 
 #[test]
-#[ignore = "needs prepared resources in HORIZON_TEST_RESOURCES"]
+#[ignore = "daily"]
 fn a_stale_place_is_refused_and_the_listener_write_undone() {
     with_mod(|| {
         with_guests(|game| {
@@ -269,7 +282,7 @@ fn a_stale_place_is_refused_and_the_listener_write_undone() {
 }
 
 #[test]
-#[ignore = "needs prepared resources in HORIZON_TEST_RESOURCES"]
+#[ignore = "daily"]
 fn an_invalid_place_answer_is_refused() {
     with_mod(|| {
         with_guests(|game| {
@@ -291,7 +304,7 @@ fn an_invalid_place_answer_is_refused() {
 }
 
 #[test]
-#[ignore = "needs prepared resources in HORIZON_TEST_RESOURCES"]
+#[ignore = "daily"]
 fn a_panicking_take_listener_leaves_the_grindstone_as_it_was() {
     with_mod(|| {
         with_guests(|game| {
@@ -323,7 +336,7 @@ fn a_panicking_take_listener_leaves_the_grindstone_as_it_was() {
 }
 
 #[test]
-#[ignore = "needs prepared resources in HORIZON_TEST_RESOURCES"]
+#[ignore = "daily"]
 fn a_grindstone_without_a_listener_keeps_the_vanilla_result() {
     without_mod(|| {
         with_guests(|game| {
@@ -358,6 +371,67 @@ fn a_grindstone_without_a_listener_keeps_the_vanilla_result() {
             let mut expected = ItemStack::new("minecraft:iron_sword", 1);
             expected.damage = 88;
             assert_eq!(slot(game, 2), Some(expected));
+        });
+    });
+}
+
+/// A sword in the grindstone's top input with a place listener's result in the output, ready for
+/// the take click.
+fn placed(game: &mut crate::game::Game<'_>) -> (i32, ItemStack) {
+    let window = open_grindstone(game);
+    let sword = enchanted_sword(game, 200);
+    let original = sword.clone();
+    script(Script {
+        place_output: true,
+        ..Script::default()
+    });
+    game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+        g.carried = Some(sword);
+    });
+    click(game, window, 0, 0);
+    (window, original)
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_cancelled_take_keeps_the_click_and_undoes_the_listener_write() {
+    with_mod(|| {
+        with_guests(|game| {
+            let (window, original) = placed(game);
+            script(Script {
+                take_write: true,
+                take_cancel: true,
+                ..Script::default()
+            });
+            click(game, window, 2, 0);
+            // The result is still taken and the inputs stay, but the listener's write is undone.
+            assert_eq!(
+                game.lan.as_ref().unwrap().hub.guests[0].carried,
+                Some(ItemStack::new("minecraft:dirt", 1))
+            );
+            assert_eq!(slot(game, 0), Some(original));
+            assert_eq!(inventory(game, 20), 0);
+            assert!(game.transactions.is_empty());
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_refused_quick_move_take_puts_the_moved_result_back() {
+    with_mod(|| {
+        with_guests(|game| {
+            let (window, original) = placed(game);
+            script(Script {
+                take_bad_xp: true,
+                ..Script::default()
+            });
+            game.lan_guest_packet(12, container_click(window, 2, 0, 1));
+            let moved: u32 = (0..36).map(|i| inventory(game, i)).sum();
+            assert_eq!(moved, 0, "the result stays in the grindstone's output");
+            assert_eq!(slot(game, 2), Some(ItemStack::new("minecraft:dirt", 1)));
+            assert_eq!(slot(game, 0), Some(original));
+            assert!(game.transactions.is_empty());
         });
     });
 }
