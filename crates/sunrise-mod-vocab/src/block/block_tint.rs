@@ -67,7 +67,7 @@ pub struct ResolverBiome {
 /// radius) and caches per section while it meshes. Held by the game and asked on the meshing
 /// workers, so it keeps no mutable state and gets no `Host`.
 pub trait BiomeColorResolver: Send + Sync + 'static {
-    // hidden: it marks the trait\'s methods as imports of a mod that implements it; nothing calls it.
+    // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
         __sunrise_handler_marks!(BiomeColorResolver);
@@ -142,7 +142,7 @@ pub trait BlockAndTintGetter {
 /// is multiplied by their RGB, as vanilla's block renderer does. Implemented once, held by the game, asked on the meshing workers, so it
 /// keeps no mutable state.
 pub trait BlockTintSource: Send + Sync + 'static {
-    // hidden: it marks the trait\'s methods as imports of a mod that implements it; nothing calls it.
+    // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
         __sunrise_handler_marks!(BlockTintSource);

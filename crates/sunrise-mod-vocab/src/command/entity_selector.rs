@@ -67,7 +67,7 @@ impl SelectorBase {
 /// The game keeps one value per token and calls it on the server thread: implement it to be
 /// shared, without mutable state.
 pub trait EntitySelectorType: Send + Sync + 'static {
-    // hidden: it marks the trait\'s methods as imports of a mod that implements it; nothing calls it.
+    // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
         __sunrise_handler_marks!(EntitySelectorType);

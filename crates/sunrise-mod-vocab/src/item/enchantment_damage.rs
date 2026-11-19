@@ -21,7 +21,7 @@ pub struct EnchantmentDamageContext<'a> {
 /// A registered value transformation. Called only for nodes naming this effect.
 /// The host is read-only; callbacks may be nested and must not retain hit context.
 pub trait EnchantmentDamageEffect: Send + Sync + 'static {
-    // hidden: it marks the trait\'s methods as imports of a mod that implements it; nothing calls it.
+    // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
         __sunrise_handler_marks!(EnchantmentDamageEffect);

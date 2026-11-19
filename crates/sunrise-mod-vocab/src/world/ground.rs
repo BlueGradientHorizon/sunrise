@@ -15,7 +15,7 @@ use std::sync::Arc;
 /// A mod's ground provider: NeoForge's `AlterGroundEvent.StateProvider`.
 /// Implemented once, kept by the game, deterministic and stateless.
 pub trait GroundStateProvider: Send + Sync + 'static {
-    // hidden: it marks the trait\'s methods as imports of a mod that implements it; nothing calls it.
+    // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
         __sunrise_handler_marks!(GroundStateProvider);

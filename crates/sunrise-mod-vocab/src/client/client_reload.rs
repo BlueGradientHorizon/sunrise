@@ -73,7 +73,7 @@ impl ClientReloadContext {
 /// not remove the barrier. On any error all pending applies are dropped,
 /// keeping every listener's previous assets.
 pub trait ClientReloadListener: Send + Sync + 'static {
-    // hidden: it marks the trait\'s methods as imports of a mod that implements it; nothing calls it.
+    // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
         __sunrise_handler_marks!(ClientReloadListener);

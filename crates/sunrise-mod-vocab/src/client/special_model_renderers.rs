@@ -157,7 +157,7 @@ pub const MAX_SPECIAL_MODEL_PARTS: usize = 256;
 /// drawn unchanged stack, and answers drop after all views stop drawing the stack or resources
 /// reload. Under `Frame` an answer is kept for one frame of one view only.
 pub trait SpecialModelRenderer: Send + Sync + 'static {
-    // hidden: it marks the trait\'s methods as imports of a mod that implements it; nothing calls it.
+    // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
         __sunrise_handler_marks!(SpecialModelRenderer);

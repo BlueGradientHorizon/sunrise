@@ -56,7 +56,7 @@ impl From<(crate::Identifier, String)> for TransformRefusal {
 /// (64 MiB, one million nodes, depth 512); invalid output keeps the original.
 /// Do not panic: native unwinds are caught, and wasm traps refuse the call.
 pub trait BlockEntityTransform: Send + Sync + 'static {
-    // hidden: it marks the trait\'s methods as imports of a mod that implements it; nothing calls it.
+    // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
         __sunrise_handler_marks!(BlockEntityTransform);

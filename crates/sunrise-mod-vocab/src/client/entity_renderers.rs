@@ -130,7 +130,7 @@ pub struct ItemFrameRenderState {
 /// renderer (`declare_general_entity`) reads its synced fields from the snapshot in
 /// [`EntityRenderState::attachments`].
 pub trait EntityRenderer: Send + Sync + 'static {
-    // hidden: it marks the trait\'s methods as imports of a mod that implements it; nothing calls it.
+    // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
         __sunrise_handler_marks!(EntityRenderer);

@@ -47,7 +47,7 @@ impl GameTestContext {
 }
 /// A function run once at the start of each attempt, with the owning server level.
 pub trait GameTestFunction: Send + Sync {
-    // hidden: it marks the trait\'s methods as imports of a mod that implements it; nothing calls it.
+    // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
         __sunrise_handler_marks!(GameTestFunction);
