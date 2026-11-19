@@ -746,8 +746,8 @@ struct Info {
     overlay: bool,
     /// `LeavesBlock`: with opaque leaves the faces between two leaf blocks are skipped.
     leaves: bool,
-    /// A pane-shaped block (`StateFacts::is_pane`): connected-texture tiles take the cube's UVs on it (OptiFine's pane models
-    /// drop vanilla's mirrored faces).
+    /// A pane-shaped block (`StateFacts::is_pane`): connected-texture tiles take the cube's
+    /// UVs on it (OptiFine's pane models drop vanilla's mirrored faces).
     pane: bool,
     /// A full opaque cube: `RenderShape::Model`, `can_occlude`, `solid_render`
     /// and a full collision shape. The only block leaf culling treats as solid.
