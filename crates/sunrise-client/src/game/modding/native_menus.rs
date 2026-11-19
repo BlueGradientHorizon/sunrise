@@ -1300,7 +1300,7 @@ mod tests {
     /// registering first nor touches the one-shot process table.
     fn with_mod_menu_game(test: impl FnOnce(&mut Game<'_>)) {
         sunrise_client::containers::with_mod_menu_types(
-            [(MOD_MENU.into(), 9, 0, Vec::new(), None, None)],
+            [(MOD_MENU.into(), 9, 0, Vec::new(), Vec::new(), None, None)],
             || with_game(test),
         );
     }

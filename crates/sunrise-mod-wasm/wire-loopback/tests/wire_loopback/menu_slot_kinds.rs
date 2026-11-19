@@ -24,6 +24,7 @@ impl MenusClientBackend for Client {
             Result,
             Equipment,
             Other,
+            Input,
         ])
     }
 }
@@ -42,9 +43,10 @@ fn menu_slot_kinds_native_and_guest_round_trip() {
     );
     let mut client = Client;
     let expected = menu.slot_kinds(&client);
-    for kind in expected.as_ref().unwrap() {
+    for (tag, kind) in expected.as_ref().unwrap().iter().enumerate() {
         let mut writer = Writer::new();
         writer.put(kind);
+        assert_eq!(writer.bytes()[..4], (tag as u32).to_le_bytes());
         assert_eq!(
             Reader::decode::<mod_api::MenuSlotKind>(writer.bytes()).unwrap(),
             *kind

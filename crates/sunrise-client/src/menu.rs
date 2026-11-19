@@ -4034,6 +4034,7 @@ pub(crate) mod tests {
             slots: 2,
             data_slots: 0,
             results: vec![],
+            inputs: Vec::new(),
             links: None,
             crafting: None,
         })));
@@ -4069,6 +4070,7 @@ pub(crate) mod tests {
             slots: 1,
             data_slots: 0,
             results: vec![],
+            inputs: Vec::new(),
             links: None,
             crafting: None,
         })));
@@ -4364,6 +4366,7 @@ pub(crate) mod tests {
                 slots: 27,
                 data_slots: 0,
                 results: vec![],
+                inputs: Vec::new(),
                 links: None,
                 crafting: None,
             }));
@@ -4531,6 +4534,7 @@ pub(crate) mod tests {
             slots: 4,
             data_slots: 0,
             results: vec![3],
+            inputs: Vec::new(),
             links: None,
             crafting: None,
         })))
@@ -4638,6 +4642,7 @@ pub(crate) mod tests {
             slots: 10,
             data_slots: 0,
             results: vec![],
+            inputs: Vec::new(),
             links: None,
             crafting: Some(crate::containers::ModCrafting {
                 grid: 1,
