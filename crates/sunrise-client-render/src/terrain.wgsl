@@ -842,7 +842,8 @@ fn solid_finish_at(in: TerrainOut, texel: vec4<f32>, color: vec4<f32>, du: vec2<
 }
 
 // Native still-fluid boxes use block sprites and lightmap without terrain AO/emission
-// packing or entity-model diffuse shading. The absolute sprite layer occupies glint UV x.
+// packing or entity-model diffuse shading. The absolute sprite layer occupies glint UV x, and
+// glint UV y is 1 for a translucent block drawn outside the terrain (alpha below 0.1 discarded).
 struct NativeFluidOut {
     @builtin(position) clip: vec4<f32>,
     @location(0) uv: vec2<f32>,
@@ -850,6 +851,7 @@ struct NativeFluidOut {
     @location(2) @interpolate(flat) sprite: u32,
     @location(3) spherical: f32,
     @location(4) cylindrical: f32,
+    @location(5) @interpolate(flat) cutout: f32,
 }
 @vertex fn vs_native_fluid(@location(0) position: vec3<f32>, @location(1) uv: vec2<f32>,
     @location(3) color: vec4<f32>, @location(4) light: vec4<u32>,
@@ -860,11 +862,16 @@ struct NativeFluidOut {
         lit = vec4(min(lit.rgb + color.rgb * native_colored_light(position), vec3(1.0)), lit.a);
     }
     return NativeFluidOut(globals.view_proj * vec4(position, 1.0), uv, lit, u32(sprite.x),
-        length(position), max(length(position.xz), abs(position.y)));
+        length(position), max(length(position.xz), abs(position.y)), sprite.y);
 }
 @fragment fn fs_native_fluid(in: NativeFluidOut) -> @location(0) vec4<f32> {
-    // The source translucent shader has no alpha discard; transparent texels write depth too.
     let color = sprite_grad(in.uv, in.sprite, dpdx(in.uv), dpdy(in.uv)) * in.color;
+    // The fluid's translucent shader has no alpha discard; transparent texels write depth too.
+    // A translucent block outside the terrain (`translucent_moving_block`, `cutout` 1) is
+    // `core/block` with `ALPHA_CUTOUT` 0.1.
+    if in.cutout > 0.5 && color.a < 0.1 {
+        discard;
+    }
     return apply_fog(color, in.spherical, in.cylindrical);
 }
 

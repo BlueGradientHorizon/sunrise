@@ -34,11 +34,23 @@ pub(super) struct StandaloneGeometry {
     slots: Vec<Option<Vec<super::minecarts::PreparedModelFace>>>,
     translucent: Vec<bool>,
     bounds: Vec<[[f32; 3]; 2]>,
+    /// The first slot past the baked store's: block state `n` is slot `states_from + n`.
+    states_from: u32,
+    /// Block states resolved by `block_state_model`, each once per generation.
+    states: Vec<std::cell::OnceCell<StateModel>>,
+}
+
+/// A block state's faces as vanilla draws it outside the terrain: default tints in the colour.
+pub(super) struct StateModel {
+    faces: Vec<sunrise_client::models::catalog::BakedFace>,
+    bounds: [[f32; 3]; 2],
 }
 
 /// Whether a resolved slot can take instances, and the local box used to cull copies.
 pub(super) struct InstanceSlot {
     pub translucent: bool,
+    /// A block state's model: drawn on the CPU route only, never as a GPU instance.
+    pub state: bool,
     pub bounds: [[f32; 3]; 2],
 }
 
@@ -97,15 +109,63 @@ impl StandaloneGeometry {
             slots,
             translucent,
             bounds,
+            states_from: catalog.model_count(),
+            states: std::iter::repeat_with(Default::default)
+                .take(pack.assets.registry.len())
+                .collect(),
         }
     }
 
     pub(super) fn instance_slot(&self, slot: u32) -> Option<InstanceSlot> {
+        if let Some(state) = slot.checked_sub(self.states_from) {
+            let model = self.states.get(state as usize)?.get()?;
+            return Some(InstanceSlot {
+                translucent: false,
+                state: true,
+                bounds: model.bounds,
+            });
+        }
         let index = slot as usize;
         self.slots.get(index)?.is_some().then_some(InstanceSlot {
             translucent: self.translucent[index],
+            state: false,
             bounds: self.bounds[index],
         })
+    }
+
+    /// The slot of block state `state`, resolved with `faces` the first time.
+    pub(super) fn state_slot(
+        &self,
+        state: u32,
+        faces: impl FnOnce() -> Vec<sunrise_client::models::catalog::BakedFace>,
+    ) -> Option<u32> {
+        let model = self.states.get(state as usize)?.get_or_init(|| {
+            let faces = faces();
+            let mut min = [f32::INFINITY; 3];
+            let mut max = [f32::NEG_INFINITY; 3];
+            for pos in faces.iter().flat_map(|face| face.quad.positions) {
+                for axis in 0..3 {
+                    min[axis] = min[axis].min(pos[axis]);
+                    max[axis] = max[axis].max(pos[axis]);
+                }
+            }
+            let bounds = if min[0].is_finite() {
+                [min, max]
+            } else {
+                [[0.0; 3], [0.0; 3]]
+            };
+            StateModel { faces, bounds }
+        });
+        (!model.faces.is_empty()).then_some(self.states_from + state)
+    }
+
+    /// The baked faces of a block state's slot.
+    pub(super) fn state_faces(
+        &self,
+        slot: u32,
+    ) -> Option<&[sunrise_client::models::catalog::BakedFace]> {
+        let state = slot.checked_sub(self.states_from)?;
+        Some(&self.states.get(state as usize)?.get()?.faces)
     }
 
     pub(super) fn faces(&self, slot: u32) -> Option<&[super::minecarts::PreparedModelFace]> {
@@ -1186,6 +1246,64 @@ impl Game<'_> {
         let pose = draw.pose();
         self.block_model_vertices(id, 42, pose, draw.light, true, &mut draw.vertices);
         true
+    }
+
+    /// Block state `state` as one model: what `native_draw_block` draws, the blockstate file's
+    /// parts for its properties at seed 42, each tinted face holding the block's default tint
+    /// (no position) in its colour. Resolved once per state in this generation.
+    pub(super) fn native_block_state_model(
+        &self,
+        state: mod_api::BlockStateId,
+    ) -> Result<ModelRef, ModelError> {
+        let id = BlockStateId(state.0);
+        let models = self
+            .pack
+            .render
+            .model_catalog
+            .collect_seeded(id, 42)
+            .map_err(|_| ModelError::UnknownModel)?;
+        let grass = self.pack.item_renderer.grass_color(0.5, 1.0) as u32;
+        let tables = &self.pack.context.tables;
+        let slot = self
+            .standalone_geometry
+            .state_slot(state.0, || {
+                use sunrise_client::models::catalog::BakedFace;
+                models
+                    .iter()
+                    .flat_map(|(_, model)| &model.faces)
+                    .map(|face| {
+                        let mut quad = face.quad.clone();
+                        if let Some(tint) = tables.default_tint(id, quad.tint_index, grass) {
+                            let base = quad.color.map_or(u32::MAX, |v| v as u32);
+                            let channel = |shift: u32| {
+                                (base >> shift & 0xff) * (tint >> shift & 0xff) / 255 << shift
+                            };
+                            quad.color = Some(
+                                (base & 0xFF00_0000 | channel(16) | channel(8) | channel(0)) as i32,
+                            );
+                        }
+                        BakedFace::new(quad, face.layer, face.opaque, face.translucent, None)
+                    })
+                    .collect()
+            })
+            .ok_or(ModelError::UnknownModel)?;
+        Ok(mod_api::__private::built::model_ref(
+            self.standalone_geometry.generation(),
+            slot,
+        ))
+    }
+
+    /// The baked faces a slot draws through the terrain materials: a standalone model's, or a
+    /// block state's from `native_block_state_model`.
+    pub(super) fn model_faces(
+        &self,
+        slot: u32,
+    ) -> Option<&[sunrise_client::models::catalog::BakedFace]> {
+        let catalog = &self.pack.render.model_catalog;
+        match catalog.model_by_slot(slot) {
+            Some(model) => Some(&model.faces),
+            None => self.standalone_geometry.state_faces(slot),
+        }
     }
 
     /// Resolve a registered standalone model once in `client_setup` and again in

@@ -3079,6 +3079,8 @@ pub(super) struct PreparedModelFace {
     uv: [[f32; 2]; 4],
     pub(super) facing: sunrise_assets::model::Direction,
     pub(super) tint_index: i32,
+    /// The side that hides this face when a neighbour covers it (`ModelQuad::cull`).
+    pub(super) cull: Option<sunrise_assets::model::Direction>,
     light_emission: u8,
 }
 
@@ -3097,8 +3099,14 @@ impl PreparedModelFace {
             }),
             facing: quad.facing,
             tint_index: quad.tint_index,
+            cull: quad.cull,
             light_emission: quad.light_emission,
         }
+    }
+
+    /// Whether `hidden` (`ModelInstance::hidden_faces`) leaves this face out.
+    pub(super) fn hidden_by(&self, hidden: u8) -> bool {
+        self.cull.is_some_and(|side| hidden >> side as u8 & 1 != 0)
     }
 
     pub(super) fn positions(&self) -> [[f32; 3]; 4] {
@@ -3188,9 +3196,9 @@ pub(super) fn emit_model_faces(
 }
 
 /// Vanilla multiplies tint, alpha included, only when `tintIndex != -1`.
-pub(in crate::game) fn scale_tint_alpha(
+pub(in crate::game) fn scale_tint_alpha<'f>(
     vertices: &mut [Vertex],
-    faces: &[PreparedModelFace],
+    faces: impl IntoIterator<Item = &'f PreparedModelFace>,
     tint: u32,
 ) {
     let alpha = tint >> 24;
@@ -3198,7 +3206,7 @@ pub(in crate::game) fn scale_tint_alpha(
         return;
     }
     let (quads, _) = vertices.as_chunks_mut::<4>();
-    for (face, quad) in faces.iter().zip(quads) {
+    for (face, quad) in faces.into_iter().zip(quads) {
         if face.tint_index < 0 {
             continue;
         }

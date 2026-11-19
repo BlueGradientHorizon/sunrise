@@ -21,6 +21,9 @@ pub struct ModelCopy {
     pub tint: u32,
     pub light: u32,
     pub overlay: u32,
+    /// `ModelInstance::color` and `hidden_faces`, as given.
+    pub color: u32,
+    pub hidden_faces: u8,
 }
 
 /// The model a batch draws. Resolved once, then applied to every copy.
@@ -184,9 +187,6 @@ impl WorldGeometry {
         if instances.len() > INSTANCE_CAPACITY as usize {
             return Err(InstanceError::CapacityExceeded);
         }
-        if batch.translucent {
-            return Err(InstanceError::Translucent);
-        }
         let start = self.copies.len();
         let accepted = self.accepted_models;
         for (index, instance) in instances.iter().enumerate() {
@@ -214,6 +214,8 @@ impl WorldGeometry {
                 tint: instance.tint,
                 light: pack_light(instance.light),
                 overlay: pack_overlay(instance.overlay),
+                color: instance.color,
+                hidden_faces: instance.hidden_faces,
             };
             if !stage(index, &copy) {
                 self.copies.push(copy);
@@ -761,18 +763,6 @@ mod tests {
         assert_eq!(
             draw.submit_model(batch, &[bad], None::<&NearX>, |_| false),
             Err(InstanceError::NonFinite)
-        );
-        assert_eq!(
-            draw.submit_model(
-                ModelBatch {
-                    translucent: true,
-                    ..batch
-                },
-                &[ModelInstance::at([1.0, 0.0, 0.0], 1)],
-                None::<&NearX>,
-                |_| false,
-            ),
-            Err(InstanceError::Translucent)
         );
         assert_eq!(draw.usage(), kept);
         let near = ModelInstance::at([1.0, 2.0, 3.0], 0xFF80_C040);

@@ -8,6 +8,7 @@ use mod_api::{
 };
 use sunrise_client::mesher::Vertex;
 use sunrise_client::screen_effects::{CameraQuads, sampling};
+use sunrise_client::terrain_model;
 use sunrise_client::world_geometry::{self, ModelBatch, WorldGeometry};
 
 impl Game<'_> {
@@ -258,6 +259,7 @@ impl Game<'_> {
         } else {
             0
         };
+        let cpu_only = slot.translucent || slot.state;
         let cut = draw.model_cut();
         let camera = DVec3::from(draw.camera());
         let mut builder = sunrise_client::gfx::PreparedInstanceBuilder::default();
@@ -271,7 +273,14 @@ impl Game<'_> {
             instances,
             self.view_frustum.as_ref(),
             |index, copy| {
-                if copy.overlay != 0 || gpu_left == 0 {
+                // The instance route draws one fixed index range per model: a copy that needs
+                // other faces, another colour, translucency or a block state takes the CPU route.
+                if copy.overlay != 0
+                    || copy.color != u32::MAX
+                    || copy.hidden_faces != 0
+                    || cpu_only
+                    || gpu_left == 0
+                {
                     return false;
                 }
                 gpu_left -= 1;
@@ -307,8 +316,10 @@ impl Game<'_> {
         }
         result
     }
-    /// Bake copies the instance route could not take onto the entity stream, where a pack
-    /// draws them as block entities (`mark_model_copies`), one run per overlay.
+    /// Bake copies the instance route could not take onto the entity stream. Opaque ones of a
+    /// standalone model go as block entities (`mark_model_copies`), one run per overlay. Copies
+    /// with a colour alpha below `0xFF`, of a translucent model or of a block state go through
+    /// the terrain materials (`terrain_model::draw_model`), far to near by origin, after them.
     pub(super) fn commit_model_instances(
         &mut self,
         draw: &mut WorldGeometry,
@@ -316,8 +327,18 @@ impl Game<'_> {
         entities: &mut Vec<Vertex>,
     ) {
         let mut run_overlay = None;
+        let mut materials = std::mem::take(&mut self.model_copy_order);
+        materials.clear();
         for index in 0..draw.copy_count() {
             let copy = draw.copy(index);
+            let Some(slot) = self.standalone_geometry.instance_slot(copy.slot) else {
+                continue;
+            };
+            if slot.translucent || slot.state || copy.color >> 24 != 0xFF {
+                let from = (DVec3::from(copy.origin) - camera).length_squared() as f32;
+                materials.push((from, index as u32));
+                continue;
+            }
             let Some(faces) = self.standalone_geometry.faces(copy.slot) else {
                 continue;
             };
@@ -326,8 +347,13 @@ impl Game<'_> {
                 run_overlay = Some(copy.overlay);
                 self.mark_model_copies(start);
             }
+            let shown = || {
+                faces
+                    .iter()
+                    .filter(|face| !face.hidden_by(copy.hidden_faces))
+            };
             super::minecarts::emit_model_faces(
-                faces.iter().copied().map(|face| (face, copy.light)),
+                shown().copied().map(|face| (face, copy.light)),
                 world_geometry::row_major_3x4(copy.transform),
                 true,
                 |index| (index >= 0).then_some(copy.tint & 0xFF_FFFF),
@@ -339,10 +365,57 @@ impl Game<'_> {
                 for vertex in quad.iter_mut() {
                     vertex.pos = (Vec3::from(vertex.pos) + shift).to_array();
                     vertex.layer = copy.overlay;
+                    if copy.color != u32::MAX {
+                        vertex.color = terrain_model::multiply_draw_color(vertex.color, copy.color);
+                    }
                 }
             }
-            super::minecarts::scale_tint_alpha(&mut entities[start..], faces, copy.tint);
+            super::minecarts::scale_tint_alpha(&mut entities[start..], shown(), copy.tint);
         }
+        if !materials.is_empty() {
+            materials.sort_unstable_by(|a, b| b.0.total_cmp(&a.0));
+            self.mark_model_copies(entities.len());
+            let layers = &self.pack.render.sprite_layers;
+            for &(_, index) in &materials {
+                let copy = draw.copy(index as usize);
+                let Some(faces) = self.model_faces(copy.slot) else {
+                    continue;
+                };
+                let state = self
+                    .standalone_geometry
+                    .instance_slot(copy.slot)
+                    .is_some_and(|slot| slot.state);
+                let shift = (DVec3::from(copy.origin) - camera).as_vec3();
+                let pose =
+                    Mat4::from_translation(shift) * world_geometry::row_major_3x4(copy.transform);
+                let options = terrain_model::NativeModelRenderOptions {
+                    shade: if state {
+                        terrain_model::NativeModelShade::Model
+                    } else {
+                        terrain_model::NativeModelShade::Entity
+                    },
+                    tint: copy.tint & 0xFF_FFFF,
+                    tint_alpha: (copy.tint >> 24) as u8,
+                    color: copy.color,
+                    hidden_faces: copy.hidden_faces,
+                    ..Default::default()
+                };
+                terrain_model::draw_model(
+                    faces,
+                    pose,
+                    copy.light,
+                    options,
+                    |name| {
+                        layers
+                            .get(name)
+                            .or_else(|| layers.get(name.strip_prefix("minecraft:")?))
+                            .copied()
+                    },
+                    |vertex| entities.push(vertex),
+                );
+            }
+        }
+        self.model_copy_order = materials;
         draw.clear_copies();
     }
 }
@@ -495,7 +568,7 @@ mod tests {
             let glass = game
                 .native_model(&Identifier::parse("minecraft:block/glass").unwrap())
                 .unwrap();
-            assert_eq!(game.create_group(glass, 1), Err(GroupError::Translucent));
+            assert!(game.create_group(glass, 1).is_ok());
             let group = game.create_group(model, 8).unwrap();
             let near = ModelInstance::at([0.0; 3], 0xFF80_C040);
             let far = ModelInstance::at([40.0, 0.0, 0.0], 0xFFFF_FFFF);
@@ -1074,6 +1147,55 @@ mod tests {
                 worst_pixels(game, &entities, &instance, slot, uploaded, view);
             eprintln!("partial worst {worst} cpu {cpu_px:?} gpu {gpu_px:?}");
             assert_eq!(worst, 0, "partial tint alpha differed by {worst}");
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn translucent_and_hidden_copies_take_the_cpu_routes() {
+        let _fixture =
+            sunrise_client::models::standalone_fixture(vec!["minecraft:block/grass_block".into()]);
+        super::super::native_entity_refs::tests::with_client_game(|game| {
+            let _restore = Restore;
+            let model = grass(game);
+            let camera = DVec3::new(0.0, 70.0, 0.0);
+            let at = |x: f64| ModelInstance::at([x, 70.0, 0.0], 0xFFFF_FFFF);
+            let mut draw = WorldGeometry::default();
+            draw.reset(camera.to_array(), Mat4::IDENTITY, [0.0, 0.0]);
+            // A near and a far translucent copy, submitted near first, and an opaque copy with
+            // every face hidden that draws nothing.
+            context(&game, &mut draw)
+                .draw_model_instances(
+                    model,
+                    &[
+                        at(3.0).with_color(0x80FF_FFFF),
+                        at(9.0).with_color(0x80FF_FFFF),
+                        at(6.0).with_hidden_faces(0b11_1111),
+                    ],
+                )
+                .unwrap();
+            let mut entities = Vec::new();
+            game.commit_model_instances(&mut draw, camera, &mut entities);
+            assert!(game.prepared_model_draws.borrow().is_empty(), "no GPU copy");
+            assert!(!entities.is_empty());
+            assert!(
+                entities
+                    .iter()
+                    .all(|v| v.layer & 0xFFFF == sunrise_client::gfx::FLUID_OVERLAY)
+            );
+            let mean_x = |verts: &[Vertex]| {
+                verts.iter().map(|vertex| vertex.pos[0]).sum::<f32>() / verts.len() as f32
+            };
+            let half = entities.len() / 2;
+            assert!(
+                (mean_x(&entities[..half]) - 9.5).abs() < 1.0,
+                "far copy first"
+            );
+            assert!(
+                (mean_x(&entities[half..]) - 3.5).abs() < 1.0,
+                "near copy last"
+            );
+            assert!(entities.iter().all(|v| v.color >> 24 == 0x80));
         });
     }
 

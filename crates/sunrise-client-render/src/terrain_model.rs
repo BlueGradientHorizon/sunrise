@@ -2,6 +2,16 @@
 use crate::{gfx, mesher::Vertex, models::catalog::BakedFace};
 use glam::{Mat3, Mat4, Vec3};
 use sunrise_assets::bake::RenderType;
+/// The directional shade of a face on a block (`ModelBlockRenderer`'s 1, 0.5, 0.8, 0.6), in 255ths.
+fn face_shade(facing: sunrise_assets::model::Direction) -> u32 {
+    use sunrise_assets::model::Direction as D;
+    match facing {
+        D::Up => 255,
+        D::Down => 127,
+        D::North | D::South => 204,
+        D::West | D::East => 153,
+    }
+}
 fn same_sprite(left: &str, right: &str) -> bool {
     left.strip_prefix("minecraft:").unwrap_or(left)
         == right.strip_prefix("minecraft:").unwrap_or(right)
@@ -9,7 +19,10 @@ fn same_sprite(left: &str, right: &str) -> bool {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum NativeModelMaterial {
-    /// Use each baked quad's material; unsupported translucent/tripwire quads fail the whole call.
+    /// Use each baked quad's material: solid and cutout ones the terrain's, a translucent one the
+    /// sorted translucent material ([`gfx::FLUID_OVERLAY`]'s, with vanilla's `ALPHA_CUTOUT`).
+    /// Tripwire quads fail the whole call. A `color` alpha below 255 puts every quad in the
+    /// translucent material, whatever the policy.
     #[default]
     Model,
     Solid,
@@ -47,6 +60,14 @@ pub struct NativeModelRenderOptions<'a> {
     pub uv_shrink_ratio: f32,
     /// RGB multiplier on quads with a tint index; other quads keep their baked color.
     pub tint: u32,
+    /// `0xAARRGGBB` multiplied into every quad's vertex colour after the baked colour and the
+    /// tint, alpha included. `u32::MAX` multiplies nothing.
+    pub color: u32,
+    /// The alpha (`0..=255`) multiplied into quads with a tint index, whose `tint` has none of its own.
+    pub tint_alpha: u8,
+    /// Faces left out, one bit per [`sunrise_assets::model::Direction`] (down, up, north, south,
+    /// west, east): a quad whose `cull` side is set is skipped.
+    pub hidden_faces: u8,
 }
 impl Default for NativeModelRenderOptions<'_> {
     fn default() -> Self {
@@ -56,24 +77,48 @@ impl Default for NativeModelRenderOptions<'_> {
             uv_shift: None,
             uv_shrink_ratio: 0.0,
             tint: 0xff_ffff,
+            color: u32::MAX,
+            tint_alpha: 255,
+            hidden_faces: 0,
         }
     }
 }
 
-fn overlay(face: &BakedFace, policy: NativeModelMaterial) -> Option<u32> {
+/// How a quad is drawn: a terrain model material's overlay, or the translucent one.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Route {
+    Terrain(u32),
+    Translucent,
+}
+
+fn route(face: &BakedFace, policy: NativeModelMaterial, faded: bool) -> Option<Route> {
     use NativeModelMaterial as M;
+    if faded {
+        return Some(Route::Translucent);
+    }
     Some(match policy {
-        M::Solid => gfx::TERRAIN_MODEL_SOLID_OVERLAY,
-        M::Cutout => gfx::TERRAIN_MODEL_CUTOUT_OVERLAY,
-        M::CutoutMipped => gfx::TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY,
+        M::Solid => Route::Terrain(gfx::TERRAIN_MODEL_SOLID_OVERLAY),
+        M::Cutout => Route::Terrain(gfx::TERRAIN_MODEL_CUTOUT_OVERLAY),
+        M::CutoutMipped => Route::Terrain(gfx::TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY),
         M::Model => match face.quad.render_type.unwrap_or(RenderType::Solid) {
             RenderType::Solid if !face.quad.material.force_translucent => {
-                gfx::TERRAIN_MODEL_SOLID_OVERLAY
+                Route::Terrain(gfx::TERRAIN_MODEL_SOLID_OVERLAY)
             }
-            RenderType::Cutout => gfx::TERRAIN_MODEL_CUTOUT_OVERLAY,
-            RenderType::CutoutMipped => gfx::TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY,
+            RenderType::Solid | RenderType::Translucent => Route::Translucent,
+            RenderType::Cutout => Route::Terrain(gfx::TERRAIN_MODEL_CUTOUT_OVERLAY),
+            RenderType::CutoutMipped => Route::Terrain(gfx::TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY),
             _ => return None,
         },
+    })
+}
+
+/// `color` (ABGR, as vertices hold it) times the `0xAARRGGBB` draw colour `draw`, channel by
+/// channel.
+pub fn multiply_draw_color(color: u32, draw: u32) -> u32 {
+    let abgr = (draw & 0xff00_ff00) | (draw >> 16 & 0xff) | (draw & 0xff) << 16;
+    (0..4).fold(0, |out, k| {
+        let shift = 8 * k;
+        out | ((color >> shift & 0xff) * (abgr >> shift & 0xff) / 255) << shift
     })
 }
 
@@ -125,9 +170,15 @@ pub fn draw_model(
         }
         None => None,
     };
+    let faces = faces.iter().filter(|face| {
+        !face
+            .quad
+            .cull
+            .is_some_and(|side| options.hidden_faces >> side as u8 & 1 != 0)
+    });
     let vertices = |face: &BakedFace| -> Option<[Vertex; 4]> {
         let quad = &face.quad;
-        let overlay = overlay(face, options.material)?;
+        let route = route(face, options.material, options.color >> 24 != 0xff)?;
         let mut layer = sprite(&quad.material.sprite)?;
         if layer > u16::MAX.into() || layer != face.layer {
             return None;
@@ -175,10 +226,13 @@ pub fn draw_model(
         if quad.tint_index >= 0 {
             let tint = options.tint;
             let rgb = (tint >> 16 & 0xff) | (tint & 0xff00) | (tint & 0xff) << 16;
-            color = (color & 0xff00_0000)
+            color = (((color >> 24) * u32::from(options.tint_alpha) / 255) << 24)
                 | ((color & 0xff) * (rgb & 0xff) / 255)
                 | (((color >> 8 & 0xff) * (rgb >> 8 & 0xff) / 255) << 8)
                 | (((color >> 16 & 0xff) * (rgb >> 16 & 0xff) / 255) << 16);
+        }
+        if options.color != u32::MAX {
+            color = multiply_draw_color(color, options.color);
         }
         let light = (light & 0xff).max(u32::from(quad.light[1]) * 16)
             | ((light >> 8 & 0xff).max(u32::from(quad.light[0].max(quad.light_emission)) * 16)
@@ -189,17 +243,36 @@ pub fn draw_model(
         if positions.iter().any(|p| !p.is_finite()) || uv.iter().flatten().any(|v| !v.is_finite()) {
             return None;
         }
-        Some(std::array::from_fn(|i| Vertex {
-            pos: positions[i].to_array(),
-            uv: uv[i],
-            layer: overlay | layer << 16,
-            color,
-            light,
-            normal: normal_bits,
-            glint_uv: [normal.x, normal.y],
-        }))
+        Some(match route {
+            Route::Terrain(overlay) => std::array::from_fn(|i| Vertex {
+                pos: positions[i].to_array(),
+                uv: uv[i],
+                layer: overlay | layer << 16,
+                color,
+                light,
+                normal: normal_bits,
+                glint_uv: [normal.x, normal.y],
+            }),
+            Route::Translucent => {
+                // `ALPHA_CUTOUT` 0.1 (`glint_uv.y`), and no normal lighting: the directional
+                // shade is in the colour, as a block quad's is.
+                let shade = if shaded { face_shade(quad.facing) } else { 255 };
+                let color = (0..3).fold(color & 0xff00_0000, |out, k| {
+                    out | ((color >> (8 * k) & 0xff) * shade / 255) << (8 * k)
+                });
+                std::array::from_fn(|i| Vertex {
+                    pos: positions[i].to_array(),
+                    uv: uv[i],
+                    layer: gfx::FLUID_OVERLAY,
+                    color,
+                    light,
+                    normal: [0; 4],
+                    glint_uv: [layer as f32, 1.0],
+                })
+            }
+        })
     };
-    if faces.iter().any(|face| vertices(face).is_none()) {
+    if faces.clone().any(|face| vertices(face).is_none()) {
         return false;
     }
     for face in faces {
