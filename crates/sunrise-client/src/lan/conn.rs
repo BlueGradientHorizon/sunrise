@@ -1920,6 +1920,14 @@ fn play(
             return;
         }
     };
+    if let Some(queue) = parts
+        .payload_transport
+        .connection
+        .as_ref()
+        .and_then(|connection| connection.droppable())
+    {
+        outbox.attach_droppable(queue.clone());
+    }
     let latency = Arc::new(AtomicI32::new(0));
     let watch = Arc::new(KeepAliveWatch {
         start: Instant::now(),
