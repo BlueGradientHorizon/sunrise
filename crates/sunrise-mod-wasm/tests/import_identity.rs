@@ -108,8 +108,8 @@ fn a_changed_call_the_fixture_uses_refuses_it_by_name() {
 }
 
 /// Every hook, Part method, Part subscription and point the fixture's source implements or
-/// configures, as it is named without its hash, written out by hand from the fixture's sources:
-/// the import section names exactly these, so losing one (or gaining one nothing wrote) fails.
+/// configures, as it is named without its hash and version, written out by hand from the fixture's
+/// sources: the import section names exactly these, so losing one (or gaining one nothing wrote) fails.
 const HOOKS: &[&str] = &[
     "hook:Hooks::baby_entity_spawn",
     "hook:Hooks::blocks",
