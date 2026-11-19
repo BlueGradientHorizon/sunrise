@@ -100,20 +100,6 @@ mod tests {
         let mut bad = good.clone();
         bad.to_color[0] = f32::NAN;
         assert!(!finite_options(&bad));
-        // An item crumb's colour is also kept inside 0..=1; other particles' is not.
-        let crumb = ParticleOptions {
-            color: [0.8, 0.8, 0.8, 1.0],
-            ..ParticleOptions::simple(ParticleType::Item)
-        };
-        assert!(finite_options(&crumb));
-        assert!(!finite_options(&ParticleOptions {
-            color: [1.5, 0.0, 0.0, 1.0],
-            ..crumb.clone()
-        }));
-        assert!(finite_options(&ParticleOptions {
-            color: [1.5, 0.0, 0.0, 1.0],
-            ..ParticleOptions::simple(ParticleType::Smoke)
-        }));
         bad = good.clone();
         bad.trail = Some(([f64::INFINITY, 0.0, 0.0], 3));
         assert!(!finite_options(&bad));

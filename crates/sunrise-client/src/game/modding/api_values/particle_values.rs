@@ -154,7 +154,12 @@ mod tests {
     fn prepare() {
         mod_platform::__private::part_tests::install_parts_fixture(&[]).unwrap();
         mod_api::__private::resolve_particles(
-            ["minecraft:smoke", "minecraft:trail", "test:spark"],
+            [
+                "minecraft:smoke",
+                "minecraft:trail",
+                "minecraft:item",
+                "test:spark",
+            ],
             |id| {
                 if id == "test:spark" {
                     Some(ParticleKind::Custom)
@@ -246,6 +251,32 @@ mod tests {
         assert_eq!(
             options.try_into_engine(&()),
             Err(ParticleValueError::NonFinite)
+        );
+    }
+    #[test]
+    fn an_item_crumbs_colour_must_stay_inside_zero_to_one() {
+        prepare();
+        let colour = |ty, color| {
+            let mut options = EngineOptions::simple(ty).try_into_api().unwrap();
+            options.color = color;
+            options.try_into_engine(&())
+        };
+        assert_eq!(
+            colour(ParticleType::Item, [1.5, 0.0, 0.0, 1.0]).map(|_| ()),
+            Err(ParticleValueError::ColorRange)
+        );
+        assert_eq!(
+            colour(ParticleType::Item, [0.8, 0.5, 0.0, 1.0])
+                .unwrap()
+                .color,
+            [0.8, 0.5, 0.0, 1.0]
+        );
+        // Another particle's colour is not bounded here.
+        assert_eq!(
+            colour(ParticleType::Smoke, [1.5, 0.0, 0.0, 1.0])
+                .unwrap()
+                .color,
+            [1.5, 0.0, 0.0, 1.0]
         );
     }
 }
