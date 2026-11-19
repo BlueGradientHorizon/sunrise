@@ -1135,6 +1135,12 @@ impl Projectile {
         self.previous_yaw = self.yaw;
         self.previous_pitch = self.pitch;
     }
+    /// `AbstractHurtingProjectile.tick`'s `rotateTowardsMovement(this, 0.2F)`, before the hit is handled, so on a hit tick too.
+    fn turn_hurting(&mut self) {
+        if self.is_fireball() || self.is_hurting() {
+            self.rotate_towards_movement(0.2);
+        }
+    }
     /// `ProjectileUtil.rotateTowardsMovement`: eases the rotation from the
     /// previous tick's towards the movement by `t`.
     fn rotate_towards_movement(&mut self, t: f32) {
@@ -1157,12 +1163,6 @@ impl Projectile {
         self.previous_yaw = shift_by_turns(self.previous_yaw, y_rot);
         self.pitch = self.previous_pitch + t * (x_rot - self.previous_pitch);
         self.yaw = self.previous_yaw + t * (y_rot - self.previous_yaw);
-    }
-    /// `AbstractHurtingProjectile.tick`'s `rotateTowardsMovement(this, 0.2F)`, before the hit is handled, so on a hit tick too.
-    fn turn_hurting(&mut self) {
-        if self.is_fireball() || self.is_hurting() {
-            self.rotate_towards_movement(0.2);
-        }
     }
     /// The kinds whose tick turns them with `Projectile.updateRotation`: a
     /// `ThrowableProjectile` (the thrown kinds and the experience bottle) and
