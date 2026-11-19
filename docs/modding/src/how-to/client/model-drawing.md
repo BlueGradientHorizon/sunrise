@@ -121,8 +121,7 @@ This API bakes quads only, not a mod-defined baked result type.
   `cull` side is set, so a structure of many copies can drop the sides its neighbours cover.
 
 A copy whose colour alpha is below `0xFF`, or of a model with a translucent face, is drawn in
-the translucent material described below, copies far to near by origin and a copy's faces in
-bake order; nothing is drawn when a view has no such copy. Copies with a colour other than
+the translucent material described below; nothing is drawn when a view has no such copy. Copies with a colour other than
 white, hidden faces or a block state model are baked on the CPU instead of drawn as GPU
 instances; the 16,384-copy budget bounds that cost, and native and wasm are identical. `overlay`
 (the hurt tint) has no effect on a block state model.
@@ -165,8 +164,9 @@ draw.terrain_model(self.belt, options)?;
   translucent material.
 - **Translucent material.** The one vanilla draws a translucent block with outside the terrain
   (`translucent_moving_block`): alpha blended, back faces culled, depth tested **and written**,
-  fragments under alpha 0.1 discarded, the quad's directional shade baked into its colour. A
-  draw sorts nothing itself: quads keep bake order, so submit translucent models far to near.
+  fragments under alpha 0.1 discarded, the quad's directional shade baked into its colour. The
+  renderer sorts the quads of all translucent models far to near each frame, as vanilla's
+  `sortOnUpload` does, so submission order does not matter.
 - A stale handle returns `TerrainModelError::Model(ModelError)`. If any quad can't be drawn, the result is
   `TerrainModelError::Refused` and nothing is drawn. That covers an unknown render type, a
   missing sprite, a pose that flattens the model, a ratio out of range, and a shift

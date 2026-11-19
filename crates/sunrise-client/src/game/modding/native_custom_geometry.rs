@@ -319,7 +319,8 @@ impl Game<'_> {
     /// Bake copies the instance route could not take onto the entity stream. Opaque ones of a
     /// standalone model go as block entities (`mark_model_copies`), one run per overlay. Copies
     /// with a colour alpha below `0xFF`, of a translucent model or of a block state go through
-    /// the terrain materials (`terrain_model::draw_model`), far to near by origin, after them.
+    /// the terrain materials (`terrain_model::draw_model`), after them; the renderer sorts their
+    /// quads far to near.
     pub(super) fn commit_model_instances(
         &mut self,
         draw: &mut WorldGeometry,
@@ -335,8 +336,7 @@ impl Game<'_> {
                 continue;
             };
             if slot.translucent || slot.state || copy.color >> 24 != 0xFF {
-                let from = (DVec3::from(copy.origin) - camera).length_squared() as f32;
-                materials.push((from, index as u32));
+                materials.push(index as u32);
                 continue;
             }
             let Some(faces) = self.standalone_geometry.faces(copy.slot) else {
@@ -373,10 +373,9 @@ impl Game<'_> {
             super::minecarts::scale_tint_alpha(&mut entities[start..], shown(), copy.tint);
         }
         if !materials.is_empty() {
-            materials.sort_unstable_by(|a, b| b.0.total_cmp(&a.0));
             self.mark_model_copies(entities.len());
             let layers = &self.pack.render.sprite_layers;
-            for &(_, index) in &materials {
+            for &index in &materials {
                 let copy = draw.copy(index as usize);
                 let Some(faces) = self.model_faces(copy.slot) else {
                     continue;
@@ -1162,7 +1161,7 @@ mod tests {
             let at = |x: f64| ModelInstance::at([x, 70.0, 0.0], 0xFFFF_FFFF);
             let mut draw = WorldGeometry::default();
             draw.reset(camera.to_array(), Mat4::IDENTITY, [0.0, 0.0]);
-            // A near and a far translucent copy, submitted near first, and an opaque copy with
+            // A near and a far translucent copy and an opaque copy with
             // every face hidden that draws nothing.
             context(&game, &mut draw)
                 .draw_model_instances(
@@ -1178,23 +1177,18 @@ mod tests {
             game.commit_model_instances(&mut draw, camera, &mut entities);
             assert!(game.prepared_model_draws.borrow().is_empty(), "no GPU copy");
             assert!(!entities.is_empty());
-            assert!(
-                entities
-                    .iter()
-                    .all(|v| v.layer & 0xFFFF == sunrise_client::gfx::FLUID_OVERLAY)
-            );
+            assert!(entities.iter().all(
+                |v| v.layer & 0xFFFF == sunrise_client::gfx::TERRAIN_MODEL_TRANSLUCENT_OVERLAY
+            ));
             let mean_x = |verts: &[Vertex]| {
                 verts.iter().map(|vertex| vertex.pos[0]).sum::<f32>() / verts.len() as f32
             };
             let half = entities.len() / 2;
             assert!(
-                (mean_x(&entities[..half]) - 9.5).abs() < 1.0,
-                "far copy first"
+                (mean_x(&entities[..half]) - 3.5).abs() < 1.0,
+                "submission order"
             );
-            assert!(
-                (mean_x(&entities[half..]) - 3.5).abs() < 1.0,
-                "near copy last"
-            );
+            assert!((mean_x(&entities[half..]) - 9.5).abs() < 1.0);
             assert!(entities.iter().all(|v| v.color >> 24 == 0x80));
         });
     }

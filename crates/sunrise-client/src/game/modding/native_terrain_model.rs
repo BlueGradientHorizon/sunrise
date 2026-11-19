@@ -210,7 +210,7 @@ mod tests {
             materials(&vertices),
             [
                 TERRAIN_MODEL_SOLID_OVERLAY,
-                sunrise_client::gfx::FLUID_OVERLAY
+                sunrise_client::gfx::TERRAIN_MODEL_TRANSLUCENT_OVERLAY
             ]
         );
         let (result, vertices) = drawn(

@@ -192,7 +192,7 @@ fn the_draw_colour_multiplies_every_channel_and_white_changes_nothing() {
     assert!(
         output
             .iter()
-            .all(|v| v.layer & 0xffff == gfx::FLUID_OVERLAY)
+            .all(|v| v.layer & 0xffff == gfx::TERRAIN_MODEL_TRANSLUCENT_OVERLAY)
     );
     let (_, plain) = draw(&[tinted()], Mat4::IDENTITY, Default::default());
     assert_eq!(plain[0].layer & 0xffff, gfx::TERRAIN_MODEL_SOLID_OVERLAY);
@@ -229,9 +229,10 @@ fn translucent_quads_bake_their_shade_into_the_colour_and_discard_alpha_below_a_
     glass.layer = 7;
     let (accepted, output) = draw(&[glass], Mat4::IDENTITY, Default::default());
     assert!(accepted);
-    // South faces shade 204/255 (0.8); the sprite layer rides glint x, and glint y flags the
-    // alpha discard.
+    // South faces shade 204/255 (0.8), baked into the colour; the sprite layer rides the high
+    // half of `layer`.
     assert_eq!(output[0].color & 0xff, 204);
-    assert_eq!(output[0].glint_uv, [7.0, 1.0]);
+    assert_eq!(output[0].layer >> 16, 7);
+    assert_eq!(output[0].glint_uv, [0.0; 2]);
     assert_eq!(output[0].normal, [0; 4]);
 }

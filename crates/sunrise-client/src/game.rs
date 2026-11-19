@@ -1217,8 +1217,8 @@ struct Game<'a> {
     text_patches: std::cell::RefCell<Vec<sunrise_client::font::Patch>>,
     /// Prepared block-entity copies for this frame, in entity-stream order.
     prepared_model_draws: std::cell::RefCell<Vec<sunrise_client::gfx::PreparedModelDraw>>,
-    /// Scratch for the copies a frame draws through the terrain materials, ordered far to near.
-    model_copy_order: Vec<(f32, u32)>,
+    /// Scratch for the copies a frame draws through the terrain materials.
+    model_copy_order: Vec<u32>,
     world_geometry: Option<sunrise_client::world_geometry::WorldGeometry>,
     /// `DebugRenderer.renderers`: the ids `debug_renderer_draw` is asked about.
     debug_renderers: Vec<String>,

@@ -10,7 +10,7 @@ fn same_sprite(left: &str, right: &str) -> bool {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum NativeModelMaterial {
     /// Use each baked quad's material: solid and cutout ones the terrain's, a translucent one the
-    /// sorted translucent material ([`gfx::FLUID_OVERLAY`]'s, with vanilla's `ALPHA_CUTOUT`).
+    /// sorted translucent material (vanilla's `translucent_moving_block`).
     /// Tripwire quads fail the whole call. A `color` alpha below 255 puts every quad in the
     /// translucent material, whatever the policy.
     #[default]
@@ -241,8 +241,7 @@ pub fn draw_model(
                 glint_uv: [normal.x, normal.y],
             }),
             Route::Translucent => {
-                // `ALPHA_CUTOUT` 0.1 (`glint_uv.y`), and no normal lighting: the directional
-                // shade is in the colour, as a block quad's is.
+                // No normal lighting: the directional shade is in the colour, as a block quad's is.
                 let color = if shaded {
                     let shade = (crate::models::cube::shade(face) * 255.0) as u32;
                     crate::hud_layout::multiply(color, 0xFF00_0000 | shade * 0x01_0101)
@@ -252,11 +251,11 @@ pub fn draw_model(
                 std::array::from_fn(|i| Vertex {
                     pos: positions[i].to_array(),
                     uv: uv[i],
-                    layer: gfx::FLUID_OVERLAY,
+                    layer: gfx::TERRAIN_MODEL_TRANSLUCENT_OVERLAY | layer << 16,
                     color,
                     light,
                     normal: [0; 4],
-                    glint_uv: [layer as f32, 1.0],
+                    glint_uv: [0.0; 2],
                 })
             }
         })

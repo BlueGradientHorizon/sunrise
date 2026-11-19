@@ -577,8 +577,8 @@ pub trait WorldDrawContext {
     /// [`BlockEntityDrawContext::model`]. A copy with a colour alpha below `0xFF`, or of a model
     /// with a translucent face, is drawn in the sorted translucent material vanilla uses for a
     /// translucent block outside the terrain (`translucent_moving_block`: alpha blended, depth
-    /// tested, depth written, back faces culled): copies far to near by origin, the faces of one
-    /// copy in bake order.
+    /// tested, depth written, back faces culled), their quads sorted far to near each frame as
+    /// vanilla's `sortOnUpload` does.
     /// Tint is `0xAARRGGBB` and light is [`LightCoords`]: both stay in
     /// vanilla's space, and the engine converts them to the frame. A tint's alpha
     /// multiplies only faces that have a tint index, the same as vanilla's model
