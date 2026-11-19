@@ -1,7 +1,7 @@
 # Dependencies between mods
 
 A mod can publish functions and statics from its root crate for another mod to call.
-Declare dependencies in `horizon-mod.toml`, not `Cargo.toml`:
+Declare dependencies in `sunrise-mod.toml`, not `Cargo.toml`:
 
 ```toml
 [dependencies]
@@ -9,20 +9,29 @@ base_mod = "^1"
 extra_mod = { version = "^2", optional = true }
 ```
 
-Requirements use Cargo semver syntax and are checked against each installed mod's `horizon-mod.toml`
-`version`, not its Cargo package version. Content-only mods use these declarations to validate their
+Requirements use Cargo semver syntax and are checked against each installed mod's `sunrise-mod.toml`
+`version`, not its Cargo package version. That version is semver, checked when the manifest is read,
+so a mod whose version isn't semver never loads, whatever requirement a dependent states. Content-only mods use these declarations to validate their
 requirements and, by default, load their layers after dependencies. Code dependencies additionally require
 API packages for the dependent and every installed dependency. Missing required dependencies,
 incompatible versions and cycles refuse resolution with the mods named. An absent optional dependency
 is permitted; an installed optional dependency must match its requirement.
+
+The [registry index and installers](../reference/registry-index.md#planning-installs-and-removals) use these
+same manifest declarations. A new submission must resolve with the listed dependencies on its Minecraft release.
+Optional dependencies never install automatically, but an installed or selected target must match the declared range.
+`cargo sunrise-mod check <file>` shows both kinds.
+
+A version such as `3.6.30-sunrise.1` is a SemVer prerelease, even when the mod author uses the suffix to name
+an ordinary port release. `^3.6` cannot select it. To require that release, declare `"=3.6.30-sunrise.1"`.
 
 Detailed rows also accept `side`, `order`, `reason` and `url`; see the
 [complete manifest schema](../reference/manifest.md). Side filters the declaration by installation
 before checking it: an integrated server is client, a dedicated server is server. `order = "before"`
 or `"none"` changes listener/content dispatch, not compiler staging or actual imports.
 
-The instance's `horizon-mods/dependency-overrides.toml` can drop a logical constraint/dispatch edge
-or make it a warning. These overrides also cover ordinary dependency rows. This policy is a Horizon
+The instance's `sunrise-mods/dependency-overrides.toml` can drop a logical constraint/dispatch edge
+or make it a warning. These overrides also cover ordinary dependency rows. This policy is a Sunrise
 addition: it cannot fabricate a code library or bypass native Cargo or wasm ABI/hash/toolchain checks.
 A code dependency still links dependency-first or is refused by name. Selected content and loaded
 native/wasm code share one rule resolver; warnings and every applied override appear on both affected

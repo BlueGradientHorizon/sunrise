@@ -6,6 +6,123 @@ through `RenderAssets::model` after resources are published. World render hooks 
 copies in a group. GUI scenes, mobs and kept/spinning renderers use their
 CPU routes; groups are a world-drawing facility, not another renderer.
 
+## Local player skins
+
+Implement `Hooks::resolve_player_skin` to change the local player's appearance
+without changing their profile. Upload the skin with
+[`create_dynamic_texture`](dynamic-textures.md) as a 64×64 RGBA image once per
+skin file. Normalize legacy 64×32 skins before uploading. Keep the texture id
+and its model width, then select them in the hook:
+
+```rust,ignore
+fn resolve_player_skin(&self, _: &dyn ClientHost, event: &mut ResolvePlayerSkinEvent<'_>) {
+    if let Some(skin) = self.selected_skin() {
+        *event.selection = Some(PlayerSkinOverride::new(skin.texture.clone(), skin.model));
+    }
+}
+```
+
+Use `PlayerModel::Wide` for four-pixel arms and `PlayerModel::Slim` for
+three-pixel arms. The selection starts at `None` each frame; listeners can leave
+an earlier answer alone or clear it with `*event.selection = None`. A missing,
+freed or wrongly sized texture keeps the original texture **and** model.
+The selection affects the third-person avatar and its skin layers, first-person
+arms, and inventory and creative previews. It does not change the cape, tab
+list, or anyone else's view. Native and wasm mods use the same hook.
+
+## Third-person held items
+
+Attach an `ItemPart` with `Registrar::item_part` (or `item_part_tag`) to tint an
+item in players', mobs' or armor stands' hands in the world, including vanilla
+items. `held_item_tint` runs on the client just before the resolved item is
+submitted. Use the holder's current level entity ID and logical `Hand::Main`
+or `Hand::Off`, not the left or right arm:
+
+```rust,ignore
+#[mod_api::sunrise_part]
+impl ItemPart for ChargedTint {
+    fn held_item_tint(
+        &self,
+        _host: &dyn ClientHost,
+        event: &mut HeldItemTintEvent<'_>,
+    ) -> Option<u32> {
+        self.is_charged(event.entity_id, event.hand).then_some(0xFFA040)
+    }
+}
+```
+
+The event also borrows the rendered stack and carries the frame's `partial_tick`.
+The first `Some(0xRRGGBB)` wins; return `None` to let the next Part answer or keep
+the model's colors. The multiplier applies to that draw's RGB before lighting,
+including a shield's base and banner patterns. It leaves alpha, glint, outline
+and pose alone, and does not affect first person, GUI previews, worn armor, item
+frames or dropped items. Keep the handler fast: it can run once for each held
+stack submitted during a frame. Rendering is not a source of combat state; see
+[Syncing remote item cooldowns](networking.md#syncing-remote-item-cooldowns).
+
+## Worn humanoid equipment
+
+An item attaches one `ClientItemExtensions` Part in
+`Hooks::register_client_item_extensions`, on the client at every resource load.
+The event's `extensions: &mut dyn ClientItemExtensionsRegistrar` registers the
+models, textures and item providers together. There is no startup provider
+registration path: request your `ItemKey` during ordinary registration, then
+attach its provider during this resource-load event.
+
+```rust,ignore
+let inner = event.extensions.register_model("mymod:inner_chest", &inner_tree)?;
+let outer = event.extensions.register_model("mymod:outer_chest", &outer_tree)?;
+let inner_texture = event.extensions.register_texture("mymod:entity/equipment/inner")?;
+let outer_texture = event.extensions.register_texture("mymod:entity/equipment/outer")?;
+event.extensions.client_item_extensions(item, Arc::new(ChestLayers {
+    models: [inner, outer],
+    textures: [inner_texture, outer_texture],
+}))?;
+```
+
+Trees are API-owned `ModelPart` trees, built directly or baked from a
+`LayerDefinition`. Register them once per resource load, never during a frame.
+Model names belong to the registering mod's namespace. Duplicate model names,
+non-finite geometry or poses, an unknown texture, an unknown item and two
+providers for one item refuse the resource-load registration by name. A duplicate
+item diagnostic names both providers. Disabling the owning mod stops its Part.
+A server-only package cannot declare this client registration hook.
+
+The worn stack must first pass the equippable component's asset and matching-slot
+checks, and the asset must have layers. Only the visible equipped item's provider
+is queried; random-texture inventory enumeration does not run frame callbacks.
+Every callback takes `&dyn ClientHost` and `&ItemStack`:
+
+1. `default_dye_color` runs once and returns packed ARGB, or zero when undyed.
+2. `armor_layer_tint_color` runs in asset layer order, with the layer and its index.
+   Exactly zero skips the layer, without calling its texture or model method.
+   The default is white for a nondyeable layer, or its dye/optional undyed colour
+   for a dyeable layer. Without either colour, a dyeable layer is skipped.
+3. `armor_texture` receives the layer type, layer and the resolved default texture
+   reference, including pack/CIT selection. A returned override is final for that
+   layer; it is not replaced by another random-texture or custom-model texture.
+4. `armor_layer_model` chooses the registered tree for that layer. Returning
+   `ArmorModelRef::VANILLA` keeps the original model. The humanoid pose is copied
+   onto the chosen tree, with only the current slot's parts visible.
+
+Per-layer model selection deliberately differs from NeoForge's one model per
+piece. It lets a chest item draw an inner shape with one texture and an outer
+shape with another, without painting both textures on both shapes. There are no
+additional per-piece `humanoid_armor_model` or `generic_armor_model` callbacks.
+The trim draws once on the last material layer actually drawn's tree; if no
+material drew, it uses vanilla's model. The trim does not call the model method
+again. Babies do not draw trims. Foil goes on the first drawn material when there
+is no trim, and on the trim otherwise.
+
+Model and texture references are scoped to the resource load. A stale reference
+returned during drawing uses vanilla's model or the supplied default texture,
+with one diagnostic per provider until reload, never a panic. A failed callback
+discards all of the piece's custom layers, draws the piece with vanilla behaviour,
+and disables that provider until reload, with one diagnostic. This includes refused
+or trapped wasm callbacks, even after an earlier layer succeeded. Native and
+wasm use the same Part, methods and handler tokens. Only references and layer
+values cross Wire during a frame: no geometry, rebakes or native-only escape path.
+
 ## Bake-time standalone forms
 
 `standalone_models` contract version 2 keeps `event.models: &mut Vec<String>` for plain
@@ -130,14 +247,21 @@ let options = FluidBoxOptions::new(false, 4.0 / 1024.0);
 draw.fluid_box(&tank.stack, [0.125, 0.0625, 0.125, 0.875, level, 0.875], options)?;
 ```
 
-- The stack is `minecraft:water` or `minecraft:lava` with no components. Any other fluid,
-  an unresolved one or a component patch is `FluidBoxError::UnsupportedFluid`.
-- Each face tiles the fluid's animated still sprite once per block, cut at whole-block lines.
+- The stack's fluid is `minecraft:water`, `minecraft:lava` or any fluid with a look
+  (`data/<mod>/sunrise/fluid/<name>.json`: `sprite`, `tint`; [fluid looks](../content-mods/fluid-container-models.md)
+  holds the format). A stack with components is drawn like one without: they change neither the
+  sprite nor the tint, so a mod colours a potion-like stack with `with_argb` from its own
+  components. A registered fluid with no look is `FluidBoxError::MissingSprite`; an unresolved
+  fluid and the empty fluid are `FluidBoxError::UnsupportedFluid`.
+- Each face tiles the fluid's animated still sprite (a look's `sprite`; a look with no sprite
+  draws its tint as a flat colour) once per block, cut at whole-block lines.
   Each tile keeps its place in the sprite. The box is not inset. `uv_shrink_ratio` is the
   sprite's `TextureAtlasSprite.uvShrinkRatio` (`0.0..=1.0`), and `render_bottom` adds the bottom face.
-- The colour is the stack's tint (plain water `0xFF3F76E4`, lava white), never the biome's
-  water colour. `with_argb` replaces it, alpha included. Faces have no directional shading.
-  Sky light is the draw's own, and block light rises to the fluid's (lava 15).
+- The colour is the fluid's tint (water `0xFF3F76E4`, lava white, a mod fluid's look `tint`, grey
+  `0xFF9A9A9A` when it has none, as `DrawContext::fluid` draws it), never the biome's water colour. `with_argb` replaces it, alpha
+  included. Faces have no directional shading. Sky light is the draw's own, and block light
+  rises to the fluid's `light_level` (lava 15, water 0, a mod fluid's block's).
+- Each fluid's look is resolved once per resource load; a box does one indexed read.
 - The faces use a material of their own: sorted far to near, alpha blended, culled from behind,
   and depth-writing. They draw with the block entities, before the level's translucent terrain,
   under shader packs too.

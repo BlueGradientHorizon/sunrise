@@ -15,7 +15,7 @@ Attach a `MenuPart` to the registered menu type and filter its input slot with t
 
 ```rust,ignore
 struct PotInput;
-#[mod_api::horizon_part]
+#[mod_api::sunrise_part]
 impl mod_api::MenuPart for PotInput {
     fn menu_slot_rules(
         &self,
@@ -39,9 +39,10 @@ The server reads its owning load; the client reads local preload sets before its
 `UpdateRecipes`, then the authoritative server generation. A packet replaces the entire
 generation, including an empty one. Closing a screen or changing dimension retains it;
 disconnecting discards it. Reads allocate nothing and do not rescan recipes or registries.
+A client without this mod predicts vanilla here; the server corrects it.
 
 Parts that read `context.setting(..)` or `side()` have no counterpart on the Host.
-Named injections for `menu_slot_rules` request `hook_version = 4`.
+Named injections for `menu_slot_rules` request `hook_version = 5`.
 
 ### Who and where: the slot's context
 
@@ -84,27 +85,87 @@ opened with no block by `player_open_mod_menu`, a vehicle's); a slot that cannot
 shows empty, and `slot` reads nothing for `MenuContainer::Player` or past a container's end. The
 context is built once per click plan, and only for a menu type a part answers: vanilla menus and
 types with no listening part never pay for it, and the asks of one click share one copy.
+## Slots that keep what they show
 
-## Keeping a block menu open
+On a mod menu type, `menu_slot_rules` also answers `Slot.mayPickup` in `event.may_pickup`. It arrives true and
+is asked with the stack the slot holds, on the server and in client prediction alike. A slot that only shows
+something, such as a cooking pot's preview of its result, refuses both rules: nothing can be taken from it and
+nothing put in it.
 
-The server closes a player's block menu when `AbstractContainerMenu.stillValid` says no: by default when the
-block entity is gone or the player's eyes are farther than their block interaction range plus 4 from it. A
-large machine whose menu belongs to a core block deep inside it answers `menu_still_valid` on its menu type
-instead, as a Java menu overrides `stillValid`:
+```rust,ignore
+struct PotPreview;
+#[mod_api::sunrise_part]
+impl mod_api::MenuPart for PotPreview {
+    fn menu_slot_rules(
+        &self,
+        _: &dyn mod_api::Host,
+        event: &mut mod_api::MenuSlotRulesEvent<'_>,
+    ) {
+        if event.slot == 6 {
+            event.may_pickup = false;
+            event.may_place = false;
+        }
+    }
+}
+// In Hooks::register:
+// registrar.menu_part("mymod:cooking_pot", PotPreview);
+```
+
+Every click that would take from the slot asks it: a pickup click with either button (after
+`item_stacked_on_other`, before any take, merge or exchange), a shift-click (once, before the move), a hotbar or
+offhand swap that takes the slot's item, a throw (a refusal drops nothing), and a double-click's pick-all
+(it gathers from the other slots when the clicked one refuses, and skips each slot that refuses). A drag
+spread, a creative clone, putting a stack into an empty slot and a click outside the window never ask it; a drag
+that ends on a single slot is a pickup click on that slot. A refused click leaves the slot and the cursor as they
+were, and the server sends back the slots and cursor a client predicted otherwise. A slot that refuses placement
+gives up all of its stack or none of it. The slot's own rule comes first, and one ask answers `may_place` and
+`may_pickup` together. Vanilla menu types keep their slots' own `mayPickup`, and a shift-click a part answers
+with `menu_quick_move` is asked the pickup rule before that hook. A click asks once for each slot and stack: the
+take, the all-or-nothing check and a shift-click the parts leave to the game reuse that answer, so the server and
+the client's prediction ask the same number of times.
+
+## Crafted-by processing for held stacks
+
+After delivering an item into a menu slot or onto the cursor, server-side code can use the
+held `place`, the caller's transaction `tx`, and the actual crafted count `amount` (`i32`):
+
+```rust,ignore
+place.on_crafted_by(host, tx, amount)?;
+```
+
+The operation applies vanilla crafted-by processing to the held stack: it awards the crafted
+statistic, applies item-specific post-processing such as a filled map's pending scale or lock,
+and runs the normal stat hook. The statistic and any newly materialized map data are committed
+with the caller's transaction. A stack not held in a menu slot or cursor is refused with
+`CraftedByError::NotHeld`. This operation does **not** perform the separate
+`recipe_crafted` criterion ([tracking](https://github.com/sunrise-org/sunrise/issues/1977)).
+
+## Keeping a mod menu open
+
+The server asks the open mod menu's `MenuPart` for `menu_still_valid` each tick and before processing a
+matching non-spectator container click, as a Java menu overrides `AbstractContainerMenu.stillValid`. A click
+for a different window is dropped; a matching spectator click resends the menu without asking the part.
+`event.menu` is the menu type. For menus opened without a backing block, `event.valid` starts true and
+`event.pos` is `None`, even if `player_open_mod_menu` was given a position for the client's screen. Set
+`valid` to false to close the menu and return the cursor stack as on a normal close.
+
+For a block menu, `event.pos` is the backing block and `valid` starts as the reach check: the player's
+eyes must be within their block interaction range plus 4 of each backing block. A large machine with a
+core block deep inside it can override that answer:
 
 ```rust,ignore
 struct ShellReach;
-#[mod_api::horizon_part]
+#[mod_api::sunrise_part]
 impl mod_api::MenuPart for ShellReach {
     fn menu_still_valid(
         &self,
         _: &dyn mod_api::LoopContext,
         event: &mut mod_api::MenuStillValidEvent<'_>,
     ) {
-        // `event.valid` arrives as the game's answer; keep the menu open while
-        // the player stands within 12 blocks of the core.
+        // Keep the block's menu open while the player stands within 12 blocks of the core.
+        let Some(pos) = event.pos else { return };
         let d: f64 = (0..3)
-            .map(|k| (event.eye[k] - (f64::from(event.pos[k]) + 0.5)).powi(2))
+            .map(|k| (event.eye[k] - (f64::from(pos[k]) + 0.5)).powi(2))
             .sum();
         event.valid = d < 12.0 * 12.0;
     }
@@ -113,9 +174,9 @@ impl mod_api::MenuPart for ShellReach {
 // registrar.menu_part("mymod:torus", ShellReach);
 ```
 
-It is asked each tick the menu is open and before each click on it, on the server only, and only for a mod
-menu type: vanilla menu types keep their own check. A part that leaves `valid` alone keeps the game's answer,
-and a menu whose block entity is gone closes without asking. Answer from the event and `LoopContext` alone; this callback has no `Host`.
+Vanilla menu types keep their own check. A part that leaves `valid` alone keeps the game's answer, and a menu
+whose block entity is gone closes without asking. Answer from the event and `LoopContext` alone; this
+callback has no `Host`.
 
 
 ## Reading and clicking
@@ -126,6 +187,11 @@ read on either side; `slot` and `carried` return an outer `None` when the handle
 unavailable and `Some(None)` for an empty slot. Each read checks the world epoch and menu generation,
 so a handle cannot read a replacement, reopened or respawned menu. These methods do not click or
 change slots.
+
+Server hooks can also read the acting player's supported menu through
+`player.container_menu(host)`. Inventory, equipment, cursor and ender contents come from
+that player's current turn state, not the temporarily swapped-out record. The unsupported
+menu kinds, hidden-slot refusal and stale-generation checks still apply.
 
 Mutable client hooks can submit a vanilla click with
 `menu.click(host, &[mod_api::MenuClick::QuickMove { slot }])`. The slot is the same menu-order
@@ -182,6 +248,19 @@ host.transaction(|host, tx| {
     if took == 4 && slot.insert(host, tx, &emerald, 4) == 4 { Ok(()) } else { Err(()) }
 })
 ```
+
+`menu_clicked` (contract version 2) and `menu_quick_move` (contract version 3, with an optional remainder where `None` empties the clicked slot) each run as one action: what a listener writes
+through the `Host` stays when it returns and is undone with the rest of the action when a listener fails. A
+`menu_quick_move` answer that is invalid, or a `Host` write to a player's inventory, cursor or menu storage,
+refuses the whole click instead of falling back to the game's routing. `menu_clicked` hears the raw slot, button
+and click type on a menu a mod opened (a single-slot drag once); menu-button clicks, recipe placement and creative
+set-slot never reach it, and it cannot know whether the click changes anything.
+
+Inside `menu_clicked`, `ItemPlace::MenuSlot` can take from and give to the clicking
+player's inventory and hotbar slots as well as the menu's own storage. Inserts fill
+only the named slot and return the amount that fits. Abort the transaction if a
+partial move should leave both places unchanged. Stale menu or player identities
+refuse writes. The same storage path is used by native and wasm listeners.
 
 ## A mod's chest menu
 
@@ -265,6 +344,10 @@ if let Some(window) = window {
     }
 }
 ```
+
+The open and the backing can sit in the hook that reacts to the player, such as the backpack's own use. The menu
+handle resolves and the backing is set during the action; only mirroring the backed slots to the client waits until
+the action is over, later in the same tick.
 
 A vanilla menu and a menu no mod backed never take this path: their slots keep the backing they had.
 

@@ -12,6 +12,9 @@ table before taking the write lock, then replace the old table in one operation.
 An empty table must replace the old one too: pack overrides and removals matter.
 Tag-only reloads also rebuild the ingredients. A failed engine reload does not fire
 the publication hook, so the previous definitions remain in force.
+One malformed file of a known recipe type refuses the entire engine recipe load,
+not just that file. The error names the file and reason; dedicated startup stops
+with the same error instead of publishing an incomplete set.
 
 A reload listener's prepare/apply phase lets you read your own resources,
 but is too early to cache the final recipe table. Do not move this work into the
@@ -52,5 +55,5 @@ Keep capability, pipe, inventory and world reads live too. Caching definitions
 does not authorize a write or reserve output capacity. A blocked machine resets
 progress according to its existing policy.
 
-The [machine sample](https://github.com/arismoko/horizon-machine-sample) demonstrates
+The [machine sample](https://github.com/sunrise-org/sunrise-machine-sample) demonstrates
 the full processing and transfer path.

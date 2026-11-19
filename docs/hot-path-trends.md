@@ -1,16 +1,17 @@
 # Hot-path performance trends
 
-The `hot-paths` workflow measures the game's hot paths on main once a day and records the result, so a slow drift over many
+The `hot-paths` workflow measures the game's hot paths on main once a day (its schedule dispatches it on main, since Dyna's
+runners take dispatches, not scheduled events) and records the result, so a slow drift over many
 small merges shows up as a trend. It measures; it never judges: nothing in it fails on a slow result, it never runs
 on a pull request, and no contributor has to run it.
 
-The trend page is `index.html` on the [`perf-history`](https://github.com/arismoko/horizon/tree/perf-history) branch
+The trend page is `index.html` on the [`perf-history`](https://github.com/sunrise-org/sunrise/tree/perf-history) branch
 (download it, or read the run's summary in Actions); `runs/` beside it holds one small JSON record per run.
 
 ## What is measured
 
 Each workload is fixed and seeded, built by the benchmark itself on a server `Game`
-(`crates/horizon-client/src/game/runtime/hot_paths/`), in the release profile players get (ThinLTO). Every number
+(`crates/sunrise-client/src/game/runtime/hot_paths/`), in the release profile players get (ThinLTO). Every number
 is divided by the workload's operations.
 
 | Workload | What runs | One operation |
@@ -60,9 +61,9 @@ already produce, so that a run costs only the measuring and can follow every mer
 It needs the prepared resources ([docs/parity-workflow.md](parity-workflow.md)) and, for the counts, Valgrind.
 
 ```sh
-cargo build --release -p horizon-hot-paths-game
-python3 tools/hot_paths.py measure --game target/release/horizon-hot-paths-game \
-    --resources .local/horizon-client/26.3 --out hot-paths.json
+cargo build --release -p sunrise-hot-paths-game
+python3 tools/hot_paths.py measure --game target/release/sunrise-hot-paths-game \
+    --resources .local/sunrise-client/26.3 --out hot-paths.json
 python3 tools/hot_paths.py measure ... --only server.tick.mobs      # some workloads only
 ```
 
