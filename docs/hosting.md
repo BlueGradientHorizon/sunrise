@@ -188,7 +188,8 @@ parallel_tick = false        # reserved: parallel phases are disabled in this fo
 
 [backups]
 every = "6h"                 # 30m, 6h, 1d...; "0" turns automatic backups off
-keep = 12                    # automatic backups kept; backups made by hand are never deleted
+keep = 12                    # 1–1000 automatic backups kept; backups made by hand are never deleted
+                             # Fix an invalid value directly here: config set must load this file first.
 
 [updates]
 keep = 1                     # other releases kept by updates, besides the one in use and the one rollback goes to

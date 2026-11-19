@@ -1329,23 +1329,40 @@ fn recipe_refused(name: &str, reason: &str) -> String {
     let (namespace, path) = id.split_once(':').unwrap();
     format!("recipes: data/{namespace}/recipe/{path}.json refused: {reason}")
 }
-/// One message for every recipe that failed the load, in registration order
-/// (vanilla collects every element's error, then fails). The error-level
-/// diagnostic naming the files (#1273); the load returns the same message,
-/// which its caller may log again at its own level.
+/// Recipes explicitly refused during a load, distinct from failures to read resources.
+#[derive(Debug)]
+pub struct RecipeLoadRefusals(Vec<(String, String)>);
+
+impl RecipeLoadRefusals {
+    /// Whether exactly this named recipe was refused.
+    pub fn only_recipe(&self, name: &str) -> bool {
+        matches!(self.0.as_slice(), [(refused, _)] if refused == name)
+    }
+}
+
+impl std::fmt::Display for RecipeLoadRefusals {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let count = self.0.len();
+        write!(
+            f,
+            "{count} {} failed to load:",
+            if count == 1 { "recipe" } else { "recipes" }
+        )?;
+        for (_, failure) in &self.0 {
+            write!(f, "\n  {failure}")?;
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for RecipeLoadRefusals {}
+
+/// Report every recipe refusal in registration order, then return the same diagnostic to the caller.
 fn load_failed(mut failures: Vec<(String, String)>) -> Box<dyn std::error::Error> {
     failures.sort_by_cached_key(|(name, _)| registration_key(name));
-    let count = failures.len();
-    let mut message = format!(
-        "{count} {} failed to load:",
-        if count == 1 { "recipe" } else { "recipes" }
-    );
-    for (_, failure) in failures {
-        message.push_str("\n  ");
-        message.push_str(&failure);
-    }
-    log::error!("{message}");
-    message.into()
+    let refusals = RecipeLoadRefusals(failures);
+    log::error!("{refusals}");
+    Box::new(refusals)
 }
 
 /// The keys of a minecraft-typed recipe that hold an ingredient: one entry

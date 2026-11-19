@@ -447,6 +447,9 @@ impl Transfer {
     }
 }
 
+/// Accepted values for `backups.keep` in the file and the configuration command.
+pub const BACKUP_KEEP_RANGE: std::ops::RangeInclusive<i64> = 1..=1000;
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Backups {
@@ -644,6 +647,14 @@ impl Config {
             ));
         }
         self.backups.interval()?;
+        let keep = self.backups.keep;
+        if !BACKUP_KEEP_RANGE.contains(&i64::from(keep)) {
+            return Err(format!(
+                "backups.keep is {keep}: use {} to {}",
+                BACKUP_KEEP_RANGE.start(),
+                BACKUP_KEEP_RANGE.end()
+            ));
+        }
         self.panel.address()?;
         self.api.check()?;
         self.transfer.check()?;
@@ -1044,6 +1055,21 @@ mod tests {
         assert!(interval("6é").is_err());
         assert!(interval("é").is_err());
         assert!(interval(&format!("{}d", u64::MAX)).is_err());
+    }
+
+    #[test]
+    fn backup_retention_must_be_between_1_and_1000() {
+        for keep in [0, 1001] {
+            let error = Config::parse(&format!("[backups]\nkeep = {keep}\n")).unwrap_err();
+            assert!(error.contains("backups.keep"), "{error}");
+            assert!(error.contains("1 to 1000"), "{error}");
+        }
+        for keep in [1, 1000] {
+            let config = Config::parse(&format!("[backups]\nkeep = {keep}\n")).unwrap();
+            assert_eq!(config.backups.keep, keep);
+        }
+        let config = Config::parse("[backups]\nevery = \"0\"\n").unwrap();
+        assert_eq!(config.backups.interval().unwrap(), None);
     }
 
     #[test]

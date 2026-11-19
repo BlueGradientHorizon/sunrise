@@ -318,17 +318,15 @@ mod tests {
     /// One edge across the middle of a 64 by 64 target, 4 pixels wide, blue (ARGB `ff0000ff`),
     /// at `GameTime` 0.25, drawn with `program`: the RGBA rows read back.
     fn draw_edge(device: &wgpu::Device, queue: &wgpu::Queue, program: &CoreProgram) -> Vec<u8> {
-        draw_edge_with(device, queue, program, &[], 0.0)
+        draw_edge_with(device, queue, program, &[])
     }
 
-    /// [`draw_edge`] with `expressions`, each holding `value`, uploaded as a frame uploads them
-    /// (`CoreLines::upload`).
+    /// [`draw_edge`] with `expressions` evaluated and uploaded as in a frame (`CoreLines::upload`).
     fn draw_edge_with(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         program: &CoreProgram,
         expressions: &[ExpressionUniform],
-        value: f32,
     ) -> Vec<u8> {
         const SIZE: u32 = 64;
         let mut lines = CoreLines::new(
@@ -338,9 +336,7 @@ mod tests {
             expressions,
         )
         .expect("the pack's pipelines");
-        for (_, v) in lines.extra.values() {
-            *v = value;
-        }
+        lines.extra.evaluate(&Default::default());
         let target = |format, usage| {
             device.create_texture(&wgpu::TextureDescriptor {
                 label: None,
@@ -477,7 +473,7 @@ mod tests {
         )
         .expect("the shaders translate");
         let id = super::super::expression_blocks::LINES[0];
-        let modifiers = modifiers(r#"{"Tint": "0.1"}"#);
+        let modifiers = modifiers(r#"{"Tint": "0.2"}"#);
         let expressions = modifiers.resolve((id, id), &program, &[]).unwrap();
         let fragment = wgpu::ShaderStages::FRAGMENT;
         assert_eq!(
@@ -487,7 +483,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             [("Tint", fragment)]
         );
-        let pixels = draw_edge_with(&device, &queue, &program, &expressions, 0.2);
+        let pixels = draw_edge_with(&device, &queue, &program, &expressions);
         let middle = &pixels[(32 * 64 + 32) * 4..(32 * 64 + 32) * 4 + 4];
         assert_eq!(middle, [51, 0, 255, 255]);
     }

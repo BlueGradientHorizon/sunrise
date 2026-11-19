@@ -97,24 +97,25 @@ packs' lightmap (`core/lightmap` with `core/screenquad`), sky (`core/sky`), star
 with its own blocks) take them, each from its own shaders' files (`gfx/expression_blocks.rs`):
 
 - A block one of its stages reads, declared `uniform Name { float value; };`, holds its expression's value each
-  frame. The file of the stage that reads it gives it; a block both stages read, or that both files give, takes
-  the fragment shader's (`core/lightmap`) first, then the vertex shader's (`core/screenquad`). A block no stage reads
-  is not bound, and a stage that only declares it doesn't decide its shape. A block a stage reads that is not one
-  float, or that no file of its shaders gives, refuses the shader, and that pipeline draws with its built-in
-  shader (the light texture is computed natively, the text drawn natively).
+  frame. The sky, stars, outline and text each use a single modifier file (the text's for all three of its
+  programs). Only the lightmap uses two files: for a block read by both stages or defined in both files, it looks in
+  the fragment shader's (`core/lightmap`) first, then in the vertex shader's (`core/screenquad`). Otherwise, it uses
+  the file for the stage that reads the block. A block no stage reads is not bound, and a stage that only declares
+  it doesn't decide its shape. If a block a stage reads is not one float, or has no expression, the affected
+  pipeline uses its built-in shader (the light texture is computed natively, the text drawn natively).
 - Each block, vanilla's and `LightmapInfo` included, of each of these pipelines is bound only to the stages that read it, and counts against
   the device's limit of uniform blocks per stage (`max_uniform_buffers_per_shader_stage`, 12 by default) for those
   stages only: a shader over it in either stage is refused.
 - The expression context is the frame's, as the packs' post chains and particles see it: the weather, the game and
   day time, the dimension and its sky, the player's place and motion, the camera's light, biome and climate, and
-  the packs' config entries (`polytone/config_entries`). Fullbright skips only the lightmap's, which it keeps white.
+  the packs' config entries (`polytone/config_entries`). Fullbright skips only the lightmap's expressions.
 - Limits: a file is read up to 64 KiB, with at most 16 uniforms, each a GLSL identifier of at most 64 characters
   not starting `gl_`. An expression has at most 1024 tokens; its tree is at most 64 levels high and its parse
   nests at most 16 levels deep (a statement, its expression, each bracket and each unary operator), both checked as
   it is parsed. A file over any of these, or whose path names no shader, is refused whole, named by its path in the
   log.
-- The programs are resolved once, when the pack's shaders load; a frame only evaluates them, and uploads 16 bytes
-  for each.
+- The programs are resolved once when the pack's shaders load. Each frame evaluates them for the installed pack
+  pipelines; each pipeline uploads 16 bytes per expression uniform when it prepares a draw.
 
 Not in this change: Polytone's `PolyGlobals` block on the text shaders. A text shader that reads it is refused
 at load (no file gives the block) and the text draws natively; it plugs in where the text programs load

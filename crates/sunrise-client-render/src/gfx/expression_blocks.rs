@@ -150,10 +150,10 @@ impl ExpressionBlocks {
 
 /// The packs' core shader pipelines' expression uniforms, for the game to evaluate.
 impl super::Renderer {
-    /// The pack pipelines whose stages read expression uniforms and that draw: the lightmap's
-    /// (not under fullbright, which keeps the texture white; fullbright skips only the
-    /// lightmap's), the block outline's, the sky's, the stars', and the GUI's, the world's and
-    /// the see-through text's.
+    /// The installed pack pipelines whose stages read expression uniforms: the lightmap's, the
+    /// block outline's, the sky's, the stars', and the GUI's, the world's and the see-through
+    /// text's. Fullbright excludes the lightmap only. Evaluation does not depend on which
+    /// pipelines draw this frame.
     fn expression_blocks(&mut self) -> impl Iterator<Item = &mut ExpressionBlocks> {
         let fullbright = self.fullbright;
         let lightmap = (self.core_lightmap.as_mut())
@@ -172,15 +172,13 @@ impl super::Renderer {
         .filter(|blocks| !blocks.is_empty())
     }
 
-    /// Whether this frame has expression uniforms to evaluate: a drawn pack core shader reads
-    /// one. Only then does the game make the frame's expression context for them.
+    /// Whether the game needs an expression context for the installed pack pipelines this frame.
     pub fn reads_pack_expressions(&mut self) -> bool {
         self.expression_blocks().next().is_some()
     }
 
-    /// Evaluates the expression uniforms the drawn pack core shaders read, from `frame` (the
-    /// packs' expression context): their programs, resolved when the shaders loaded, and
-    /// nothing else.
+    /// Evaluates the installed pack pipelines' expression uniforms from `frame`. The values
+    /// are uploaded separately as each pipeline prepares its draw.
     pub fn evaluate_pack_expressions(&mut self, frame: &crate::environment::Frame) {
         for blocks in self.expression_blocks() {
             blocks.evaluate(frame);
