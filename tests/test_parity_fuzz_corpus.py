@@ -17,6 +17,30 @@ PASS = {'failures': [], 'invalid': None, 'vanilla-unstable': []}
 FAIL = {'failures': [('persist|chest|live|Items', 'read', [])], 'invalid': None}
 
 
+class StepKindTests(unittest.TestCase):
+    SAMPLES = {
+        'summon': {'type': 'pig', 'at': [1, 0, 1], 'n': 0, 'nbt': {}},
+        'block': {'block': 'chest', 'at': [7, 0, 7]},
+        'cmd': {'cmd': '/say hi'},
+        'tick': {'n': 1},
+        'dispense': {'at': [1, 0, 1]},
+        'reload': {},
+        'read_entity': {'n': 0},
+        'read_near': {'type': 'pig', 'at': [1, 0, 1]},
+        'read_items': {},
+        'read_block': {'at': [7, 0, 7]},
+    }
+
+    def test_every_corpus_step_kind_renders_and_other_kinds_are_refused(self):
+        self.assertEqual(self.SAMPLES.keys(), corpus.STEP_FIELDS.keys())
+        for kind, fields in self.SAMPLES.items():
+            with self.subTest(kind=kind):
+                scenario = {'family': 'persist', 'seed': 1, 'steps': [{'k': kind, **fields}]}
+                self.assertTrue(fuzz.render(scenario, 0))
+        with self.assertRaises(ValueError):
+            fuzz.render({'family': 'persist', 'seed': 1, 'steps': [{'k': 'unknown'}]}, 0)
+
+
 class CorpusTests(unittest.TestCase):
     def run_cli(self, directory, args, results):
         argv = ['parity_fuzz.py', '--work-dir', str(directory / 'run'), *args]
