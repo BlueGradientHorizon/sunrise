@@ -1,61 +1,74 @@
-# Contributing to Horizon
+# Contributing to Sunrise
 
-Thanks for helping. Horizon is Minecraft: Java Edition 26.3 rewritten in Rust, and the one rule that shapes
+Thanks for helping. Sunrise is Minecraft: Java Edition 26.3 rewritten in Rust, and the one rule that shapes
 everything is that **it plays exactly like vanilla**. This page is the short version of how we work; questions are
-welcome on [Discord](https://discord.gg/playhorizon).
+welcome on [Discord](https://discord.gg/playsunrise).
 
 This repository holds the game and the launcher, plus the tools, tests and docs that build, check and release them.
-The website (playhorizon.dev) is built in a separate repository from this one's README, `docs/api/` and roadmap. Anything
+The website (playsunrise.net) is built in a separate repository from this one's README, `docs/api/` and roadmap. Anything
 else (videos, Discord and other community material) lives elsewhere.
 
-**Where to start: [playhorizon.dev/hub](https://playhorizon.dev/hub).** It shows what is being done now and next
+**Where to start: [playsunrise.net/hub](https://playsunrise.net/hub).** It shows what is being done now and next
 ([ROADMAP.md](ROADMAP.md) in the repository), the work board, good first tasks, and the forms to report a bug or
 suggest something. A pull request for a roadmap item carries its `roadmap:<id>` label; ideas go to the suggestion
 queue (the hub, or `/suggest` on Discord) rather than to issues, which are for bugs.
 
-**Mod-related pull requests go to [arismoko/horizon](https://github.com/arismoko/horizon)**, the fork that carries the
-mod API and reviews and merges that work. That covers the mod API, native hooks and events for mods, native mods,
-content mods (`.hmod`), mixins, wasm mods, `cargo horizon-mod`, `horizon-mods`, mod builds and the registry, and
-their docs ([mods](docs/mods.md), [native mods](docs/native-mods.md)). Open the pull request there from your usual
-branch. Mod-related pull requests opened here are closed with a pointer to it. Engine extension points that Horizon's
-own crates register (the [layer split](docs/layers.md)), resource and shader pack formats, and gameplay fixes stay
-here.
+**Mod-related pull requests come here too.** Sunrise is where the mod API is built: the mod API, native hooks and
+events for mods, native mods, content mods (`.smod`), mixins, wasm mods, `cargo sunrise-mod`, `sunrise-mods`, mod
+builds and the registry, and their docs ([mods](docs/mods.md), [native mods](docs/native-mods.md)). A change to the mod
+API follows its clean-break rules ([AGENTS.md](AGENTS.md#mod-api-the-clean-break)).
 
 ## Build it
 
 - **Prerequisites:** Rust (stable), Python 3.11+, JDK 25, git 2.38 or newer, and on Linux the ALSA and udev headers
   (`libasound2-dev libudev-dev`).
-- **Resources:** Horizon never downloads the game; it prepares its resources from your own copy of Minecraft 26.3, as
+- **Resources:** Sunrise never downloads the game; it prepares its resources from your own copy of Minecraft 26.3, as
   described in [Build from source](README.md#build-from-source).
 - **Commands:**
 
   ```sh
-  cargo run --release -p horizon-prepare -- --prepare --server-jar ~/Downloads/server.jar
-  cargo run --release -p horizon-game
+  cargo run --release -p sunrise-prepare -- --prepare --server-jar ~/Downloads/server.jar
+  cargo run --release -p sunrise-game
   ```
 
-- **Launcher:** its own Cargo workspace in `launcher/` (`cd launcher && cargo run`; on NixOS, `nix-shell` first).
+- **Launcher:** its own repository, [sunrise-org/sunrise-launcher](https://github.com/sunrise-org/sunrise-launcher) (`cargo run` there; on NixOS, `nix-shell` first).
 
 ## Vanilla first
 
-Wherever vanilla has a feature, vanilla is the specification, down to the order of random calls. "Parity" here means
-Horizon gives the same results as the pinned 26.3 client and server for the same inputs, checked by a **harness**: a
-`tools/test_*_parity.py` script that runs a small Java oracle against the real game and a Rust probe against Horizon,
-and compares their outputs.
+Wherever vanilla has a feature, vanilla is the specification, down to the order of random calls. **Parity** means
+Sunrise behaves and looks bit-exactly like Minecraft: Java Edition 26.3 on the same machine: the same inputs give the
+same outputs, every float, random draw and pixel. A **harness** checks it: a `tools/test_*_parity.py` script that
+runs a small Java oracle against the real game and a Rust probe against Sunrise, and compares their outputs exactly.
+A harness compares the values that decide behaviour and the picture: floats, random draws, entity and block state,
+model and mesh data, colours, draw lists, HUD draw calls and sound events, and the images the CPU builds (atlases,
+mipmaps). The screen picture is compared between builds, pixel for pixel (`tools/parity.py frame_identity`), so a
+change can prove it leaves it alone. Comparing it with vanilla's needs both games offscreen on the same graphics API
+and driver; never a tolerance on a screenshot.
+Out of scope: what no run repeats, such as timing, thread scheduling, frame pacing and the mixed audio (the sound
+events are in scope).
+A measured gap that isn't fixed yet, such as a `Math` result next to a rounding tie where HotSpot's own routine
+misrounds, is listed in #2295 until it is. So are the harnesses that still compare with a tolerance: they lose it area
+by area. A pull request never adds one, and isn't held back by one it didn't add.
 
-- **Read the vanilla code before writing Horizon's.** `tools/rea_vanilla.py` queries the pinned game bytecode:
+- **Read the vanilla code for what it does, not how.** `tools/rea_vanilla.py` queries the pinned game bytecode:
   `python3 tools/rea_vanilla.py method net.minecraft.world.level.block.DispenserBlock dispenseFrom`.
-  Say in your pull request which vanilla classes and methods you followed.
+  Java is the reference for behaviour, never for structure or speed: code that looks like Java proves nothing, a
+  bit-exact harness does. Say in your pull request which vanilla classes and methods you read.
 - **One version: 26.3.** Parity work targets 26.3 until its parity is good, redstone first. Don't open pull requests
-  that move Horizon to a newer Minecraft version for now; to join servers on a newer version, put a Via proxy
+  that move Sunrise to a newer Minecraft version for now; to join servers on a newer version, put a Via proxy
   (ViaVersion, ViaProxy) in front of them.
 - **Gameplay changes come with a harness**, new or extended, so the next change can't silently break them.
   [The parity workflow](docs/parity-workflow.md) shows how harnesses run; copy a nearby one.
-- **Horizon's own features** (the launcher, the new menus) follow [the design system](docs/design-system.md) and are
+- **Performance work stays bit-exact.** A faster path gives the same results, random draws and pixels as the code it
+  replaces. The area's harnesses prove it; if none covers the code, add one first. Add a before/after benchmark.
+- **No workarounds.** When a harness differs, fix the cause until it matches bit for bit. Never add a tolerance,
+  rounding, a special case or a compensating patch to make it pass. Removing a workaround, or a tolerance from a
+  harness, is welcome when the harnesses stay bit-exact: smaller code is a goal.
+- **Sunrise's own features** (the launcher, the new menus) follow [the design system](docs/design-system.md) and are
   off by default wherever they would change the vanilla look.
-- **Three layers: engine, platform, Horizon.** Vanilla code never depends on the platform (mods, shader packs,
-  Horizon-only settings) or on Horizon (cosmetics, the shop, official servers, telemetry), and the platform never
-  depends on Horizon. [docs/layers.md](docs/layers.md) says where a new feature goes; CI checks the dependencies.
+- **Three layers: engine, platform, Sunrise.** Vanilla code never depends on the platform (mods, shader packs,
+  Sunrise-only settings) or on Sunrise (Discord, Play with Friends, telemetry), and the platform never
+  depends on Sunrise. [docs/layers.md](docs/layers.md) says where a new feature goes; CI checks the dependencies.
 - **Everything players run is Rust.** Python and Java are fine for dev tools and harness drivers in `tools/`, never
   for player-facing code.
 - **No game files in the repo.** Never commit game files, decompiled source or prepared resources (`.local/`):
@@ -65,7 +78,8 @@ and compares their outputs.
 
 ## Only original code, or code whose license allows it
 
-Horizon is MIT. Its code is written from Minecraft 26.3 itself and from public documentation. Since 30 October 2026
+Sunrise's code is under the PolyForm Shield licence ([LICENSING.md](LICENSING.md)).
+Its code is written from Minecraft 26.3 itself and from public documentation. Since 30 October 2026
 another project's source may also be read and used, **only when that project's license allows it**:
 
 - **Allowed:** MIT, MIT-0, BSD-2-Clause, BSD-3-Clause, 0BSD, ISC, zlib, Apache-2.0, Unlicense, and the CC0-1.0
@@ -78,7 +92,7 @@ another project's source may also be read and used, **only when that project's l
 - **Java's own library is GPL too.** OpenJDK's source (`java.lang.Math`, `StrictMath`, `FdLibm`, `HashMap`, the
   sorts, `Double.toString`, HotSpot's intrinsics...) is GPL-2.0, so it is off limits like the rest. Reproduce Java's
   behaviour from its API documentation (the Javadoc) and from what a JVM returns, or from a permissive original such
-  as Sun's fdlibm C sources (see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)); see horizon-rust/horizon#6741.
+  as Sun's fdlibm C sources (see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)).
 - **Check the license yourself.** Read the LICENSE file at the commit you use and the header of each file you take:
   some repositories mix licenses, and a file under another license is off limits. A license that changed: the one at
   your commit counts. In doubt, don't: ask in #contributors first.
@@ -89,8 +103,8 @@ another project's source may also be read and used, **only when that project's l
   was changed.
 
 User documentation and file formats are fine to read, and packs and mods are fine to run and observe, whatever their
-license. Shader packs are a clean-room rewrite of the pack format, produced from a written description of it (see
-#1561): the [specification and its provenance log](docs/cleanroom/README.md) are public. They carry no foreign
+license. Shader packs are a clean-room rewrite of the pack format, produced from a written description of it:
+the [specification and its provenance log](docs/cleanroom/README.md) are public. They carry no foreign
 source, and the rules above still apply to anything you read while working on them. A shader-pack pull request
 names its sources: the sections of that specification, the documentation pages and the packs it ran.
 
@@ -101,7 +115,7 @@ names its sources: the sections of that specification, the documentation pages a
   that downloads NVIDIA's files itself, on the player's machine. No NVIDIA binaries, headers or SDK files in the
   repository.
 - **The JVM bridge** (running Java mods) is only ever a separate, optional download, never installed or on by
-  default. The game may offer to turn it on when it finds a Java mod; the player decides. Promotion out of beta requires MSPT and RAM benchmarks against Java with the same mods ([horizon-rust/horizon#13914](https://github.com/horizon-rust/horizon/issues/13914)).
+  default. The game may offer to turn it on when it finds a Java mod; the player decides. Promotion out of beta requires MSPT and RAM benchmarks against Java with the same mods.
 
 ## Before asking for review
 
@@ -112,14 +126,50 @@ python3 tools/pr_ready.py --base upstream/main   # or origin/main if you work on
 ```
 
 It looks at what your branch changes and runs what matters: rustfmt, clippy with warnings denied, the tests of the
-crates you touched (and the launcher's), generated files, `Cargo.lock` and the Python tests. Like CI, it runs the
-vanilla harnesses only when your branch changes a harness, an oracle, a probe or the runner; otherwise it lists the
-ones your change can affect, and main's parity run checks them after the merge. `--harnesses` runs them on your
-machine anyway (it needs the vanilla data). It exits non-zero when something fails.
+crates you touched (and the launcher's), generated files, `Cargo.lock` and the Python tests. It runs the
+vanilla harnesses locally only when your branch changes a harness, an oracle, a probe or the runner; otherwise it
+lists the ones your change can affect. The daily checks the automatic harnesses after the merge. `--harnesses` runs them on your
+machine anyway, and a change to mod content, assets, blocks or items also runs the `#[ignore]`d content-root tests;
+both need the prepared vanilla data and are reported as not run without it. `--quick` never runs the harnesses.
+It exits non-zero when something fails.
 
-Reviews on this fork read the diff, the design and CI; they do not run your change. So for anything a player or a
+### CI tiers
+
+CI is split by how long a test takes and what it needs. Main and rollups run only quick checks and unit tests;
+every test that boots the game runs once a day. `tools/ci/move_to_daily.py` moves an existing `verify` test that
+needs prepared resources, a child process or the network.
+
+| Tier | Runs on | What |
+| --- | --- | --- |
+| Push | every pull request push | `format`, `verify-static` |
+| Gate | rollup and sync pull requests, pushes to main | `lint`, `verify` (unit tests only), `verify-static` |
+| Daily | once a day on main's head | every test that boots the game or needs prepared resources, the wasm fixture, `fn-replace-check`, the SDK build and its linkage probe, the machine sample built against the mod API, and vanilla parity on the main head captured at dispatch |
+
+**A unit test** uses no prepared resources, boots no game, starts no child process, uses no network and no compiled
+wasm fixture, and finishes in under 2 seconds. Any other test is a daily test: it carries `#[ignore]` and a row in
+`tools/ci/ignored-tests/` (the format is in that folder's README). `verify` fails a unit test that takes over 5
+seconds and `verify-static` one that boots the game.
+In Linux `verify`, test binaries run normally under an inet guard: opening, binding or connecting an IPv4/IPv6
+socket or calling libc name-resolution APIs (`getaddrinfo`, `gethostbyname`/`gethostbyname2`/`gethostbyaddr`, their reentrant
+variants, or `getnameinfo`) fails the test by its full name, even if it handles the refusal. Unix sockets remain
+allowed. Only binaries recording violations are rerun per test to name the culprits; an unreproducible violation
+still fails by binary name. Move a network test with `tools/ci/move_to_daily.py`, using reason `network`; daily runs without the guard.
+
+- A pull request is reviewed and merged on the push and gate tiers. Nothing else is asked of you.
+- Write a quick test where a quick test can catch the mistake. A test that needs the game or prepared resources is
+  welcome: mark it `#[ignore]` with its policy row, and say in the pull request that it has not run if you could not
+  run it.
+- If a daily run fails on a test your pull request added or touched, an issue is filed that names the test, where it
+  panicked and the pull requests merged since the last green daily run. The fix is an ordinary pull request.
+
+Three kinds of build: a **snapshot**, from main's head on request, needs only the gate tier and no in-game tests
+(it is published as `snapshot-<date>-<short>`, which no launcher offers, to test packages and platforms after a
+merge); the **nightly** is published by the daily run when every part of it is green; a **release** is cut from a
+nightly.
+
+Reviews here read the diff, the design and CI; they do not run your change. So for anything a player or a
 mod author can see, please start the game once and try it (single player is enough:
-`cargo build --profile fast -p horizon-game`, or `horizon-ctl` for agents) and say in one line what you did, under
+`cargo build --profile fast -p sunrise-game`, or `sunrise-ctl` for agents) and say in one line what you did, under
 "Tried in game" in the template. It is not a gate: "no, could not run it here" is an acceptable answer, and it tells
 the reviewer where to look harder.
 
@@ -128,9 +178,11 @@ including examples. The dependency scope includes optional, platform, build and 
 library, binary, integration and doc tests without building unrelated example executables. Shared Cargo
 configuration and toolchain changes select the whole workspace; CI also keeps its workspace-wide checks.
 
+For a quick check while you work, `python3 tools/check_changed.py` runs rustfmt, clippy and tests for only the crates your branch changed and the crates that depend on them (`--dry-run` lists the commands).
+
 ### Translations
 
-Most translations are machine-written and remain unreviewed until a speaker checks them. See [docs/translations.md](docs/translations.md). Never mark machine-written text as reviewed.
+Machine-written translations remain unreviewed until a speaker checks them. See [docs/translations.md](docs/translations.md). Never mark machine-written text as reviewed.
 
 ## Claim before you start
 
@@ -157,28 +209,39 @@ it (edited on every push, never repeated): talk to its author in the thread befo
   needs. There's no line limit; split by concern, never by size, and don't bundle unrelated changes.
 - **Fill in the template**: what and why, the vanilla reference, the pr_ready block, screenshots for anything you
   can see.
-- **We never push to your branch on this fork.** When something small is left (a lint, a rebase, a nit) we carry
+- **We never push to your branch.** When something small is left (a lint, a rebase, a nit) we carry
   it in our own commits on top of yours in a rollup, and your pull request shows as merged with your commits
   intact; only design questions come back to you. You don't need to tick "Allow edits by maintainers".
 - **Keep your branch yours.** You can push to it as you like. If you want to bring it up to date, `git merge
   origin/main` is the safe way; a rebase or force-push is fine too, since nothing of ours lives on your branch.
-- **Tick its kind** in the template: `parity` (Horizon now does what vanilla does), `bug` (a crash or breakage),
-  `perf`, `feature` (new for players), `extra` (Horizon-only, off by default), `tooling` or `docs`. A workflow sets
-  that label, and area labels (`launcher`, `mobs`, `worldgen`, `rendering`...) from the paths you change.
+- **Title: `kind(area): what changes`**, so the queue reads at a glance: `parity(mobs): a ghast's fireball uses its
+  ExplosionPower`, `perf(launcher): download the game's files in parallel`, `bug(saves): keep /attribute modifiers
+  through a save`. The kind is one of the words below; the area is an area label, several with commas
+  (`perf(chunks,rendering): ...`), or leave it out (`docs: ...`). Release notes drop the prefix.
+- **Tick its kind** in the template: `parity` (Sunrise now does what vanilla does), `bug` (a crash or breakage),
+  `perf`, `feature` (new for players), `extra` (Sunrise-only, off by default), `tooling` or `docs`. A workflow sets
+  that label from the box, else from the title, and area labels (`launcher`, `mobs`, `worldgen`, `rendering`...)
+  from the title and the paths you change.
   `label:parity` is the list of real progress toward vanilla.
 - **Release labels** (we set them if you can't): `feature` also puts it under "New" in the release notes,
   `skip-release` when players see no change (tooling, docs, tests), nothing for a fix. `release-now` is for crash
   fixes that shouldn't wait. pr_ready suggests one.
+- **`breaking`** when players or server owners must do something after they update: a save or settings format that
+  changes, a removed feature, a changed command or `server.toml` key. Say what they must do under a
+  `## Breaking change` heading in the description, for example "Set your render distance again in Options." Sunrise's
+  Discord feed posts that text as a ⚠️ breaking-change notice, so write it for players. Mod API breaks don't need the
+  label: the `migrate` line of their change note in `crates/sunrise-mod-vocab/changes/` says what mod makers do.
 
-Who reviews and merges: the Horizon Team, on CI for ordinary pull requests; risky ones (saves, network, world
+Who reviews and merges: the Sunrise Team, on CI for ordinary pull requests; risky ones (saves, network, world
 generation, the launcher's updates) wait for a local proof first ([merging](docs/release-flow.md#merging)).
 
-Every merge to main is released automatically ([release flow](docs/release-flow.md)), so main always stays playable.
+Merges reach players through the nightly, which the daily run publishes only when every in-game test passed
+([release flow](docs/release-flow.md)).
 How agents, checks, releases and signed updates keep this safe: [security](docs/security.md).
 
 ### Large pull requests
 
-500 lines stays the default. A pull request that can't be split below it starts from a spec:
+A change too big to review as one concern starts from a spec:
 
 1. **Open an issue with the spec** before the code: what changes, the files it touches, the behaviour players and
    other code will see, and the tests or harnesses that prove it.
@@ -189,16 +252,23 @@ How agents, checks, releases and signed updates keep this safe: [security](docs/
    cover, or that it promises and the code doesn't do, comes back to you.
 5. **Then the normal review**, as for any pull request.
 
-## Parity checks on forks
+## Parity checks
 
-The `verify` check (formatting, lints, tests) runs on every pull request. The `parity` check runs the affected
-harnesses on a maintainer's machine, which holds the game files, so it never runs a fork's code on its own: a
-maintainer reads your change, then adds the `run-parity` label, which runs it once on your current commit. After
-new pushes, we add it again.
+A pull request from a fork gets the push tier ([CI tiers](#ci-tiers)); the gate runs when a rollup carries it. Vanilla
+parity never runs on a pull request or rollup. Run a relevant harness locally if you have prepared vanilla data;
+the [daily](docs/release-flow.md#parity-on-main) checks the automatic harnesses after merge.
 
 ## Talk to us
 
-[Discord](https://discord.gg/playhorizon) for questions and ideas, [issues](https://github.com/horizon-rust/horizon/issues)
+[Discord](https://discord.gg/playsunrise) for questions and ideas, [issues](https://github.com/sunrise-org/sunrise/issues)
 for bugs. To take something on, `/claim` its issue ([above](#claim-before-you-start)).
 
-How Horizon is run, and how people join the Team or lead a group: [GOVERNANCE.md](GOVERNANCE.md).
+How Sunrise is run, and how people join the Team or lead a group: [GOVERNANCE.md](GOVERNANCE.md).
+
+## Licence and DCO
+
+Sunrise's code is under the [PolyForm Shield licence](LICENSE), and so is what you contribute: it comes in under the same
+licence it goes out under, and you keep your copyright. There is no CLA. Instead, sign off every commit (`git commit -s`)
+to certify the [Developer Certificate of Origin](https://developercertificate.org/): that you wrote it, or have the
+right to submit it under the project's licence. The DCO check fails a pull request with a commit that isn't signed off;
+`git rebase --signoff origin/main` fixes a branch.

@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 @unittest.skipUnless(shutil.which("rustc"), "requires Rust")
 class RemoteMiningTests(unittest.TestCase):
     def test_break_timing_and_packets(self):
-        source = (next(ROOT.glob('crates/horizon-client/src/game/*/remote/mod.rs'))).read_text()
+        source = (next(ROOT.glob('crates/sunrise-client/src/game/*/remote/mod.rs'))).read_text()
         start = source.index("    pub(super) fn stop_remote_mining(")
         end = source.index("    fn veto_mining_prediction(", start)
         fixture = r'''
@@ -27,7 +27,8 @@ class RemoteMiningTests(unittest.TestCase):
 struct Hit { pos: [i32; 3], face: u8 }
 /// The held stack: `ItemStack.item`, which the debug-stick check reads.
 struct Stack { item: &'static str }
-struct Mining { pos: [i32; 3], progress: f32, per_tick: f32, ticks: u32 }
+// Display-only crack state is covered by the client crack integration tests.
+struct Mining { pos: [i32; 3], progress: f32, per_tick: f32, ticks: u32, crack: Option<()> }
 #[derive(Default)]
 struct Remote { destroy_delay: u32, destroying: Option<([i32; 3], u8, f32)>, destroying_item: String, is_destroying: bool }
 struct Ground { on_ground: bool }
@@ -76,7 +77,10 @@ struct Game {
     veto: bool,
 }
 impl Game {
+    // No display subscribers in this packet/gameplay fixture.
+    fn set_client_mining(&mut self, mining: Option<Mining>) { self.mining = mining; }
     fn main_hand_key(&self) -> String { String::new() }
+    fn same_destroying_item(&self, began: &String) -> bool { *began == self.main_hand_key() }
     fn reset_attack_strength(&mut self) {}
     fn new(hardness: f32, speed: f32, creative: bool) -> Self {
         Self {
@@ -226,6 +230,29 @@ fn main() {
         assert!(game.mining.is_none());
         assert!(game.remote.as_ref().unwrap().destroying.is_none());
     }
+    // A gradual break at A, then an instant break at B, then another at C: the instant
+    // break leaves A as the running target, so each later start aborts A again.
+    let mut game = Game::new(1.0, 1.0, false);
+    game.hit.pos = [1, 64, 0];
+    game.remote_mining(true);
+    game.res.speed = 60.0;
+    game.hit.pos = [2, 64, 0];
+    game.remote_mining(true);
+    assert_eq!(game.remote.as_ref().unwrap().destroying.map(|(p, _, _)| p), Some([1, 64, 0]));
+    assert!(game.remote.as_ref().unwrap().is_destroying);
+    game.hit.pos = [3, 64, 0];
+    game.remote_mining(true);
+    assert_eq!(
+        game.packets.iter().map(|p| (p.action, p.pos)).collect::<Vec<_>>(),
+        [
+            (0, [1, 64, 0]),
+            (2, [1, 64, 0]),
+            (0, [2, 64, 0]),
+            (2, [1, 64, 0]),
+            (0, [3, 64, 0]),
+        ]
+    );
+    assert_eq!(game.world.broken, [[2, 64, 0], [3, 64, 0]]);
 }
 '''.replace("METHOD", source[start:end].replace("pub(super) fn", "fn"))
         with tempfile.TemporaryDirectory(prefix="remote-mining-") as directory:

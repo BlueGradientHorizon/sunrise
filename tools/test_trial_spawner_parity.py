@@ -27,6 +27,8 @@ ominous (Bad Omen becoming Trial Omen, the spawner's mobs discarded, the
 ominous config starting over), and some spawners start ominous. Ominous
 spawners drop ominous item spawners above a player or a mob (item, exact
 position and delay compared); the item spawners themselves are not ticked.
+A paired case checks that reloading with a grown UUID table can pick a different
+player than a fresh load of the same data with the same random draw.
 
 finalizeSpawn runs with a fixed random in the oracle; its own outcomes are not
 compared. Spawned mobs get UUIDs in spawn order on both sides, so the
@@ -157,9 +159,28 @@ def players(w, rng, spos, half, height):
         w.players.append(f'{x:.3f},{y:.3f},{z:.3f}/{mode}{omen}')
 
 
+def target_order_cases():
+    w = natural.World(None)
+    # Seed 13 chooses the first player in the set's traversal order.
+    w.kv.update(spos='0,0,0', state='active', ominous=1, t0=1, seed=13)
+    # The harness gives players sequential UUIDs. Only players 1 and 16 are
+    # targets: fresh buckets 1 and 0, but buckets 1 and 16 after growth.
+    w.players = ['2.5,0,0.5/survival'] + ['0.5,0,2.5/spectator'] * 14 + ['-1.5,0,0.5/survival']
+    # No detection on tick 1 and no normal mob spawn due this tick.
+    tag = ('{registered_players:[[I;0,0,0,1],[I;0,0,0,16]],'
+           'spawn_data:{entity:{id:"minecraft:zombie"}},next_mob_spawns_at:100L}')
+    w.kv['snbt'] = base64.b64encode(tag.encode()).decode()
+    yield f'trial/target_fresh mode=trial {w.tokens()}'
+    # Thirteen distinct UUIDs grow the live table from 16 to 32. The next
+    # load clears them without shrinking the table, then replays 1 and 16.
+    ids = ','.join(f'[I;0,0,0,{i}]' for i in range(32, 45))
+    w.kv['warmup_snbt'] = base64.b64encode(f'{{registered_players:[{ids}]}}'.encode()).decode()
+    yield f'trial/target_reloaded mode=trial {w.tokens()}'
+
+
 def corpus():
     rng = random.Random(0x54524941)
-    cases = []
+    cases = list(target_order_cases())
     for k in range(2500):
         w, spos, half, height = room(rng)
         players(w, rng, spos, half, height)
@@ -193,15 +214,15 @@ def main():
         lab.prepare()
     lock, jars, libraries = base.verify_artifacts()
     resources = lab.RESOURCES
-    oracle = lab.ROOT / 'mods/horizon/src/test/java/dev/horizonlab/parity/VanillaNaturalSpawnOracle.java'
-    sources = [oracle, Path(__file__), lab.ROOT / 'crates/horizon-client/examples/probe/natural_spawn_fixture.rs',
-               lab.ROOT / 'crates/horizon-client/src/mobs/trial_spawner.rs',
-               lab.ROOT / 'crates/horizon-client/src/mobs/spawner.rs',
-               lab.ROOT / 'crates/horizon-client-render/src/chunk/block_entity.rs',
-               lab.ROOT / 'crates/horizon-client-core/src/identifier.rs',
-               lab.ROOT / 'crates/horizon-client/src/mobs/spawn_selection.rs',
-               lab.ROOT / 'crates/horizon-client-render/src/biome.rs',
-               lab.ROOT / 'crates/horizon-client/src/mobs/spawn_rules.rs']
+    oracle = lab.ROOT / 'mods/sunrise/src/test/java/dev/sunriselab/parity/VanillaNaturalSpawnOracle.java'
+    sources = [oracle, Path(__file__), lab.ROOT / 'crates/sunrise-client/examples/probe/natural_spawn_fixture.rs',
+               lab.ROOT / 'crates/sunrise-client/src/mobs/trial_spawner.rs',
+               lab.ROOT / 'crates/sunrise-client/src/mobs/spawner.rs',
+               lab.ROOT / 'crates/sunrise-client-render/src/chunk/block_entity.rs',
+               lab.ROOT / 'crates/sunrise-client-core/src/identifier.rs',
+               lab.ROOT / 'crates/sunrise-client/src/mobs/spawn_selection.rs',
+               lab.ROOT / 'crates/sunrise-client-render/src/biome.rs',
+               lab.ROOT / 'crates/sunrise-client/src/mobs/spawn_rules.rs']
     tested = base.source_hashes(sources)
     inputs = build / 'inputs.txt'
     cases = corpus()
@@ -213,11 +234,11 @@ def main():
     def run(command, name):
         with (build / (name + '.log')).open('w', encoding='utf-8') as log:
             base.run(list(map(str, command)), stdout=log, stderr=subprocess.STDOUT)
-    run(['javac', '--release', lock['minecraft']['java_major'], '-proc:none', '-sourcepath', str(lab.ROOT / 'mods/horizon/src/test/java'),
+    run(['javac', '--release', lock['minecraft']['java_major'], '-proc:none', '-sourcepath', str(lab.ROOT / 'mods/sunrise/src/test/java'),
          '-cp', str(jars['server']) + os.pathsep + deps, '-d', classes, oracle], 'compile-java')
     run(['java', '-Xmx3G', '-cp', os.pathsep.join([str(classes), str(jars['server']), deps]),
-         'dev.horizonlab.parity.VanillaNaturalSpawnOracle', inputs, build / 'server.txt'], 'server')
-    run(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-client-lib', '--example', 'client_probe'], 'compile-rust')
+         'dev.sunriselab.parity.VanillaNaturalSpawnOracle', inputs, build / 'server.txt'], 'server')
+    run(['cargo', 'build', '--profile', 'fast', '-p', 'sunrise-client-lib', '--example', 'client_probe'], 'compile-rust')
     metadata = json.loads(subprocess.check_output(['cargo', 'metadata', '--no-deps', '--format-version', '1'], cwd=lab.ROOT, text=True))
     binary = Path(metadata['target_directory']) / 'fast/examples/client_probe'
     run([binary, 'natural_spawn_fixture', resources, inputs, build / 'rust.txt'], 'rust')
@@ -225,6 +246,14 @@ def main():
     errors = [l for l in vanilla if ' error ' in l]
     if errors:
         raise SystemExit(f'oracle errors ({len(errors)}): {errors[:5]}')
+    # Require an order-sensitive pick in both cases, not just matching logs
+    # that might both omit the item-spawner event. X is logged in f64 bits.
+    for kind, x in [('fresh', 'bff8000000000000'), ('reloaded', '4004000000000000')]:
+        name = f'trial/target_{kind}'
+        log = next((line.split(' ', 1)[1] for line in vanilla if line.startswith(name + ' ')), '')
+        targets = [event.split()[4] for event in log.split(' ; ') if event.startswith('0 ispawner ')]
+        if targets != [x]:
+            raise SystemExit(f'{name}: expected exactly one item spawner at x={x}, got {targets}')
     rust = (build / 'rust.txt').read_text().splitlines()
     bad = [(a, b) for a, b in zip(vanilla, rust) if a != b]
     if bad or len(vanilla) != len(rust):

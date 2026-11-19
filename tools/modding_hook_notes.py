@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""mdBook preprocessor: render generated chapters (catalog notes, wasm boundary coverage)
-without writing a generated source page."""
+"""mdBook preprocessor: render a catalog chapter (the hook notes, the NeoForge counterparts) from
+what `cargo run -p xtask -- mod-api <chapter>` prints for the declarations, without writing a
+generated source page."""
 import json
 from pathlib import Path
 import subprocess
 import sys
 
 PAGE = "reference/hook-notes.md"
-COVERAGE_PAGE = "wasm-coverage.md"
 
 
 def expand(book, content, title, path):
@@ -38,12 +38,14 @@ def generated(context, chapter):
     ).stdout
 
 
+def chapter(context, book, name, title, path):
+    """Fill one draft chapter with the page `mod-api <name>` renders."""
+    return expand(book, generated(context, name), title, path)
+
+
 def preprocess(context, book):
-    return expand(book, generated(context, "notes"), "Hook notes", PAGE)
+    return chapter(context, book, "notes", "Hook notes", PAGE)
 
-
-def coverage(context, book):
-    return expand(book, generated(context, "coverage"), "Wasm boundary coverage", COVERAGE_PAGE)
 
 
 if __name__ == "__main__" and sys.argv[1:2] != ["supports"]:

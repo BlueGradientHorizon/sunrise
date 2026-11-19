@@ -1,6 +1,6 @@
 [book]
-title = "Modding Horizon"
-description = "Guide and reference for making Horizon mods: content, native and WebAssembly"
+title = "Modding Sunrise"
+description = "Guide and reference for making Sunrise mods: content, native and WebAssembly"
 language = "en"
 src = "src"
 
@@ -22,18 +22,6 @@ print(json.dumps(notes.preprocess(context, book)))
 '"""
 before = ["concept-pages", "links"]
 
-[preprocessor.wasm-coverage]
-command = """python3 -c '
-import json, pathlib, sys
-if sys.argv[1:2] == ["supports"]:
-    sys.exit(0)
-context, book = json.load(sys.stdin)
-sys.path.insert(0, str(pathlib.Path(context["root"]).resolve().parents[1] / "tools"))
-import modding_hook_notes as notes
-print(json.dumps(notes.coverage(context, book)))
-'"""
-before = ["concept-pages", "links"]
-
 [preprocessor.neoforge-counterparts]
 command = """python3 -c '
 import json, pathlib, sys
@@ -41,20 +29,8 @@ if sys.argv[1:2] == ["supports"]:
     sys.exit(0)
 context, book = json.load(sys.stdin)
 sys.path.insert(0, str(pathlib.Path(context["root"]).resolve().parents[1] / "tools"))
-import neoforge_counterparts as counterparts
-print(json.dumps(counterparts.preprocess(context, book)))
-'"""
-before = ["concept-pages", "links"]
-
-[preprocessor.extension-counts]
-command = """python3 -c '
-import json, pathlib, sys
-if sys.argv[1:2] == ["supports"]:
-    sys.exit(0)
-context, book = json.load(sys.stdin)
-sys.path.insert(0, str(pathlib.Path(context["root"]).resolve().parents[1] / "tools"))
-import neoforge_extension_counts as counterparts
-print(json.dumps(counterparts.preprocess(context, book)))
+import modding_hook_notes as notes
+print(json.dumps(notes.chapter(context, book, "counterparts", "NeoForge counterparts", "reference/neoforge-counterparts.md")))
 '"""
 before = ["concept-pages", "links"]
 
@@ -71,6 +47,33 @@ print(json.dumps(pages.expand(book, root / context["config"]["book"]["src"])))
 '"""
 before = ["links"]
 
+# The mod SDK reference's tables, from the published asset list, the input list and this checkout's surface export.
+# After concept-pages, which makes the SDK pages chapters.
+[preprocessor.sdk-tables]
+command = """python3 -c '
+import json, pathlib, sys
+if sys.argv[1:2] == ["supports"]:
+    sys.exit(0)
+context, book = json.load(sys.stdin)
+sys.path.insert(0, str(pathlib.Path(context["root"]).resolve().parents[1] / "tools"))
+import modding_sdk_tables as tables
+print(json.dumps(tables.preprocess(context, book)))
+'"""
+after = ["concept-pages"]
+before = ["links"]
+
 [output.html]
-git-repository-url = "https://github.com/arismoko/horizon"
-edit-url-template = "https://github.com/arismoko/horizon/edit/main/docs/modding/{path}"
+default-theme = "light"
+preferred-dark-theme = "coal"
+additional-css = ["theme/sunrise.css"]
+git-repository-url = "https://github.com/sunrise-org/sunrise"
+edit-url-template = "https://github.com/sunrise-org/sunrise/edit/main/docs/modding/{path}"
+
+# Pages that moved keep their old address.
+[output.html.redirect]
+"/start/installing.html" = "../players/installing-mods.html"
+
+# The how-to groups are long: show each part's top chapters, open one to see its pages.
+[output.html.fold]
+enable = true
+level = 0

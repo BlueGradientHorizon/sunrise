@@ -1,17 +1,17 @@
 # Shader API reference (0.2)
 
-Generated from `crates/horizon-shader-api` (`HORIZON_WRITE_DOCS=1 cargo test -p horizon-shader-api --test reference`
+Generated from `crates/sunrise-shader-api` (`SUNRISE_WRITE_DOCS=1 cargo test -p sunrise-shader-api --test it reference::`
 rewrites it; the test fails when it drifts). The API's design and pack format: [shaders.md](shaders.md).
 
-**Experimental** ([stability.md](stability.md)): `horizon-shader check` takes 0.2 packs, the game draws them only
-with `HORIZON_HDR_FRAME=float` set, the registry doesn't list them, and anything here may change in any release.
+**Experimental** ([stability.md](stability.md)): `sunrise-shader check` takes 0.2 packs, the game draws them only
+with `SUNRISE_HDR_FRAME=float` set, the registry doesn't list them, and anything here may change in any release.
 The design: [hdr-linear-light.md](../design/hdr-linear-light.md).
 
 ## Colour
 
 Every colour a 0.2 stage reads or returns is **linear light**: BT.709 (sRGB) primaries by default, scene-referred,
 1.0 is vanilla's white at paper white, more is brighter. A pack may ask for BT.2020 primaries, which hold colours
-outside sRGB, with `[frame] primaries` (below). Horizon decodes vanilla's values with a 2.2 power (vanilla's, not
+outside sRGB, with `[frame] primaries` (below). Sunrise decodes vanilla's values with a 2.2 power (vanilla's, not
 the piecewise sRGB curve), replacing negatives and NaN with 0 first, and encodes a stage's result the same way where
 the frame stores gamma (`[frame] blend`, below).
 
@@ -21,7 +21,7 @@ the frame stores gamma (`[frame] blend`, below).
   `opaque_color`, `reflection`, `shadow_color`).
 - **Data, as in 0.1:** depth, normals, `light` levels, `emission`, every channel of the LabPBR maps, and the pack's
   `[[textures]]`.
-- **`[[lights]]` and `[[particle_lights]]` colours** are written as in 0.1, in vanilla's gamma, and Horizon decodes
+- **`[[lights]]` and `[[particle_lights]]` colours** are written as in 0.1, in vanilla's gamma, and Sunrise decodes
   them: `block_light_color` and `colored_light` are linear. `block_light_colors` holds them as written; read it through
   `block_light_color`.
 - **Alpha is coverage only**, never light: brightness is in rgb alone. A post pass's alpha is ignored.
@@ -29,14 +29,14 @@ the frame stores gamma (`[frame] blend`, below).
 ## Room to grow
 
 `Frame`, the stage inputs (`SkyInput`, `VertexInput`, `MaterialInput`, `DisplacementInput`, `WeatherInput`,
-`PostInput`, `TonemapInput`) and `surface_at`'s `SurfaceData` may gain fields in later releases. Read their fields and
-pass them along, but don't construct them: `horizon-shader check` refuses `PostInput(...)` and the like. `Surface` is
-yours to construct and keeps its one field; later material outputs come as helpers.
+`PostInput`, `TonemapInput`, `EntityInput`) and `surface_at`'s `SurfaceData` may gain fields in later releases. Read
+their fields and pass them along, but don't construct them: `sunrise-shader check` refuses `PostInput(...)` and the
+like. `Surface` is yours to construct and keeps its one field; later material outputs come as helpers.
 
 **New names reach a stage only if the pack asked for them.** A later release puts a new name before your files (a
 helper, a struct, a resource, a constant) only under a manifest key the pack sets, or in a stage added later, whose
 prelude is its own. A stage a pack has today keeps the names it has today, so a name of your own that is free now
-stays yours: an addition doesn't break a pack that didn't ask for it. Names starting with `horizon_` are Horizon's
+stays yours: an addition doesn't break a pack that didn't ask for it. Names starting with `sunrise_` are Sunrise's
 already, and new fields can't collide, since you don't construct those structs.
 
 ## The display
@@ -45,19 +45,19 @@ already, and new fields can't collide, since you don't construct those structs.
 on, where the device keeps the HUD on a layer of its own, a 0.2 pack sees the display's: `hdr` 1, `paper_white` and
 `peak` in nits, `headroom` the peak over paper white (at least 1) and `black_level` the display's black in nits.
 Otherwise it sees SDR: `hdr` 0, `headroom` 1, `paper_white` and `peak` 80, `black_level` 0, and its picture ends on an
-8-bit frame, clipped at white, before the camera overlays and the HUD draw. Horizon lifts the shadows onto
+8-bit frame, clipped at white, before the camera overlays and the HUD draw. Sunrise lifts the shadows onto
 `black_level` after `[tonemap]`: read it, but don't apply it.
 
 ## `[frame] blend`
 
-`blend = "gamma"` (the default) keeps the frame in vanilla's gamma, values above 1 kept: Horizon encodes the material,
+`blend = "gamma"` (the default) keeps the frame in vanilla's gamma, values above 1 kept: Sunrise encodes the material,
 sky and weather stages' results before they are stored and blended, so glass, water, clouds and particles blend as
-vanilla's. `blend = "linear"` stores linear light, so see-through draws blend as light does: Horizon stores those
+vanilla's. `blend = "linear"` stores linear light, so see-through draws blend as light does: Sunrise stores those
 stages' results as they are and decodes its own draws (entities, particles, clouds, weather, the stages a pack leaves
 out), so a solid surface looks as under `"gamma"`. A stage sees the same values either way. Where the device can't
 draw a float frame the pack draws on an 8-bit one, in gamma. Under `"linear"` resource packs' `core/sky`,
-`core/stars` and `core/rendertype_lines` shaders, which write gamma, give way to Horizon's own sky, stars and block
-outline.
+`core/stars`, `core/rendertype_lines` and `core/clouds` shaders, which write gamma, give way to Sunrise's own sky,
+stars, block outline and clouds. A resource pack's `core/lightmap` is kept: it draws the light texture, not the frame.
 
 ## `[frame] primaries`
 
@@ -67,13 +67,25 @@ It needs `blend = "linear"`, since a change of primaries is only right in linear
 space the pack's colours are in, and `frame.luminance` holds that space's luminance weights: compute luminance as
 `dot(color, frame.luminance)` and it is right in either. `"bt2020"` passes the check; the game doesn't serve it yet.
 
-A stage is a function your WGSL defines, with the signature below; Horizon puts the prelude (these structs, the
+A stage is a function your WGSL defines, with the signature below; Sunrise puts the prelude (these structs, the
 resources and helpers) before your files and calls the function from its own pass. Your files declare no
-bindings and no entry points, and no names starting with `horizon_`.
+bindings and no entry points, and no names starting with `sunrise_`.
+
+## `[material] coverage`
+
+Which points of terrain are drawn is the engine's unless the pack says otherwise. Under `coverage = "engine"` (the
+default) solid and cutout terrain keep Sunrise's alpha test on the texture's own alpha (cut below 0.5, except the
+leaves Sunrise draws opaque), and the alpha `material` returns is ignored there; translucent terrain is cut where the
+texture's alpha is below 0.01, and the returned alpha is its opacity, so water and glass still set how see-through
+they are. `material`, and every function it calls, may not `discard`: the check refuses it. A pack that cuts its own
+holes sets `coverage = "pack"`: the returned alpha then drives the alpha test (below 0.5 on solid and cutout
+terrain, below 0.01 on translucent) and the stage may `discard`. Normal and parallax shading that keeps the
+silhouette needs no `"pack"`, and neither do `[vertex]` and `[displacement]`, which move geometry, not coverage.
+The stage writes no depth of its own either way.
 
 ## Stages
 
-| Stage | In `horizon-shaders.toml` | Your function |
+| Stage | In `sunrise-shaders.toml` | Your function |
 | --- | --- | --- |
 | sky | `[sky]` | `fn sky(input: SkyInput) -> vec4<f32>` |
 | vertex | `[vertex]` | `fn vertex(input: VertexInput) -> vec3<f32>` |
@@ -81,6 +93,7 @@ bindings and no entry points, and no names starting with `horizon_`.
 | weather | `[weather]` | `fn weather(input: WeatherInput) -> vec4<f32>` |
 | post | `[[post]]` | `fn post(input: PostInput) -> vec4<f32>` |
 | tonemap | `[tonemap]` | `fn tonemap(input: TonemapInput) -> vec3<f32>` |
+| entity | `[entity]` | `fn entity(input: EntityInput) -> Surface` |
 
 ## sky
 
@@ -161,11 +174,11 @@ One point of a block's surface, for `fn material(input: MaterialInput) -> Surfac
 
 ### `Surface`
 
-What `material` returns. Vanilla's own is `albedo * tint * vec4(lightmap, 1.0)`; Horizon then applies the alpha test (cutout and translucent) and fog.
+What `material` returns. Vanilla's own is `albedo * tint * vec4(lightmap, 1.0)`; Sunrise then applies the alpha test (cutout and translucent; on the texture's alpha unless `[material] coverage = "pack"`) and fog.
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `color` | `vec4<f32>` | The lit colour: rgb linear light, 0 or more and unbounded (more than 1 is brighter than white); alpha its coverage. |
+| `color` | `vec4<f32>` | The lit colour: rgb linear light, 0 or more and unbounded (more than 1 is brighter than white); alpha translucent terrain's opacity, and what the alpha test reads under `[material] coverage = "pack"`. |
 
 Under `[displacement]` the stage also defines `fn displacement(input: DisplacementInput) -> f32`, called for each corner of the grid the faces near the camera are cut into; the corner moves along the face's normal by the depth it gives at the point's height less the depth at the texture's mean height, pinned at the face's edges and easing out over the last quarter of the distance.
 
@@ -293,7 +306,7 @@ pass reads a blank one in place of the target it writes).
 
 ### `TonemapInput`
 
-One pixel of an output (the window), for `fn tonemap(input: TonemapInput) -> vec3<f32>`, which returns its colour for the output `frame` describes: linear light, 1.0 at paper white, from 0 to `frame.headroom` (Horizon clamps it there).
+One pixel of an output (the window), for `fn tonemap(input: TonemapInput) -> vec3<f32>`, which returns its colour for the output `frame` describes: linear light, 1.0 at paper white, from 0 to `frame.headroom` (Sunrise clamps it there).
 
 | Field | Type | Meaning |
 | --- | --- | --- |
@@ -312,13 +325,82 @@ Resources (bind group 3):
 
 It is a pure mapping from the scene's light to the output its `frame` describes, run once per pixel of
 each output, after the post chain and before the camera overlays and the HUD. Today the display is the
-only output; Horizon may add others for the same frame, such as an SDR screenshot or icon, where `frame`'s
+only output; Sunrise may add others for the same frame, such as an SDR screenshot or icon, where `frame`'s
 display fields describe SDR (`hdr` 0, `headroom` 1, `paper_white` and `peak` 80, `black_level` 0). Its
 only output is the colour it returns, so nothing carries from one call to the next. A pack without it gets
-Horizon's: a clip at white in SDR, and in HDR the curve Horizon uses without a pack, which keeps light up
-to 60% of the peak as it is and rolls it off into the peak above. Either runs once: Horizon doesn't map a pack's
-result again. Horizon holds the result to 0 to `frame.headroom`, then lifts the shadows onto
+Sunrise's: a clip at white in SDR, and in HDR the curve Sunrise uses without a pack, which keeps light up
+to 60% of the peak as it is and rolls it off into the peak above. Either runs once: Sunrise doesn't map a pack's
+result again. Sunrise holds the result to 0 to `frame.headroom`, then lifts the shadows onto
 `frame.black_level`.
+
+## entity
+
+`fn entity(input: EntityInput) -> Surface`
+
+### `EntityInput`
+
+One point of the surface of an entity, a block entity, an item or a particle, for `fn entity(input: EntityInput) -> Surface`.
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `albedo` | `vec4<f32>` | The texture's colour here. |
+| `tint` | `vec4<f32>` | The vertex colour without vanilla's directional shade (dyes, particle colours, fades). |
+| `overlay` | `vec4<f32>` | The flash vanilla lays over the surface (hurt, TNT, a creeper's swelling): rgb its colour, alpha how much of the surface it replaces. Alpha 0 without one. |
+| `lightmap` | `vec3<f32>` | Vanilla's light colour for `light` this frame. |
+| `shade` | `f32` | Vanilla's directional shade for this face as a factor on linear light, 0..1 (vanilla's value decoded with the 2.2 power, as every 0.2 colour is). 1 where vanilla applies none. |
+| `position` | `vec3<f32>` | The point, camera-relative, in blocks. |
+| `emission` | `f32` | 1 on a layer vanilla draws at full brightness (spider and enderman eyes, the warden's glow), else 0. There `lightmap` is full light; `shade` stays vanilla's, which shades the warden's glow and not the eyes. |
+| `normal` | `vec3<f32>` | The surface's geometric normal, a unit vector in world axes, facing the camera, from the position's screen derivatives (as `MaterialInput.normal`, without its snap to the axes). |
+| `kind` | `u32` | What is drawn: 0 an entity (mobs, players, armour, vehicles), 1 a block entity (chests, signs, banners, beds), 2 a dropped or framed item, 3 reserved for the first-person hand, 4 a particle. |
+| `colored_light` | `vec3<f32>` | As `MaterialInput.colored_light`: the frame's coloured lights at this point, 0..1; 0 where none reaches. |
+| `translucent` | `bool` | Drawn with blending. |
+| `light` | `vec2<f32>` | Block and sky light, 0..1. |
+| `uv` | `vec2<f32>` | The texture coordinate. |
+| `screen` | `vec2<f32>` | Where the point is on the screen, 0..1 from the top left (as `MaterialInput.screen`). |
+
+`entity` lights what is no block terrain: `input.kind` says which. It returns the same `Surface` as `material` (rgb
+linear light, 0 or more and unbounded; alpha its coverage), so a pack writes its lighting once and calls it from both
+stages. Around it Sunrise keeps vanilla's order: the alpha test on the returned alpha, then the enchantment glint
+added on top, then fog. `sunrise-shader check` takes the stage; **the game doesn't draw it yet** and refuses a pack
+that has it. A pack without `[entity]` is drawn as before, and sees none of this stage's names. Until the game draws
+the stage its prelude may still gain names; from then on the rule for new names holds for it too.
+
+Vanilla's own, the picture a pack without the stage gets:
+
+```wgsl
+fn entity(input: EntityInput) -> Surface {
+    let base = input.albedo.rgb * input.tint.rgb * input.shade;
+    // Vanilla lays the flash over the surface in its gamma (the 2.2 power), before the light.
+    let gamma = vec3<f32>(1.0 / 2.2);
+    let flashed = pow(mix(pow(base, gamma), pow(input.overlay.rgb, gamma), input.overlay.a), vec3<f32>(2.2));
+    return Surface(vec4<f32>(flashed * input.lightmap, input.albedo.a * input.tint.a));
+}
+```
+
+Without a flash (`overlay.a` 0) that is `albedo * tint * shade * lightmap`. In linear light alone,
+`mix(base, input.overlay.rgb, input.overlay.a) * input.lightmap` is the same flash a little brighter. The shade and
+the light act on rgb only. `lightmap` holds no coloured light: where `colored_light` is above 0, Sunrise's own draw
+adds it to the light colour, and the expression above leaves it out.
+
+Resources (bind group 3):
+
+| Binding | Declaration | Meaning |
+| --- | --- | --- |
+| 0 | `var<uniform> frame: Frame` | The frame (`Frame`). |
+| 2 | `var block_light_sampler: sampler` | Bilinear filtering, clamped to the edges: what `block_light_color` reads `block_light_colors` with. |
+| 3 | `var shadow_map: texture_depth_2d` | This frame's shadow map: the depth of the solid terrain and entities the light sees, 0 at the light, 1 away from it (and where nothing is), stored at `shadow_position`'s mapping. Valid while `frame.has_shadow` is 1 (the pack asks for it with `[shadow]`), else a 1×1 map that lights everything. |
+| 4 | `var shadow_sampler: sampler_comparison` | Depth comparison, bilinear (2×2 percentage-closer filtering): `textureSampleCompareLevel(shadow_map, shadow_sampler, p.xy, p.z)` is 1 where the point is lit, 0 in shadow. |
+| 7 | `var shadow_map_translucent: texture_depth_2d` | `shadow_map` with the translucent terrain (water, stained glass, ice) the light passes through drawn in too, read with `shadow_sampler` the same way: a point lit in `shadow_map` but not here lies under such a surface, which `shadow_color` gives the colour of. |
+| 8 | `var shadow_color: texture_2d<f32>` | The texture colour times the vertex colour (rgb: the tint, the face's directional shade and ambient occlusion) of the nearest translucent surface the light passes through at each texel of `shadow_map_translucent`, white where there is none; alpha is 1 on a fluid (water) and the texture's alpha, at most 0.99, on anything else. Read it with `textureLoad` at `shadow_position`'s xy times `textureDimensions(shadow_color)`. |
+| 9 | `var block_light_colors: texture_3d<f32>` | The colour of the block light around the camera, from the `[[lights]]` of the light sources nearby: rgb their colours averaged by how near each is, over 4; a how strongly they reach the cell. Read it through `block_light_color`. |
+| 10 | `var<uniform> block_light_grid: vec4<f32>` | Where `block_light_colors` lies: xyz its corner, camera-relative, w the side of one of its cells in blocks. |
+
+Helpers:
+
+- `fn block_light_color(position: vec3<f32>) -> vec4<f32>`: the colour of the block light at the camera-relative `position` (rgb) and how strongly it reaches it (a), as the material stage's.
+- `fn shadow_position(position: vec3<f32>) -> vec3<f32>`: where the camera-relative point `position` is
+  stored in the shadow map, for `textureSampleCompareLevel`.
+- `fn shadow_distort(xy: vec2<f32>) -> vec2<f32>`: the map's distortion of a point at shadow clip `xy`.
 
 ## The frame
 
@@ -388,8 +470,8 @@ The frame, as `frame` in every stage. Positions and directions are in world axes
 ## Anti-aliasing
 
 While a pack's `[[post]]` chain draws the frame, the player's anti-aliasing settings do not run: `taa`, `fxaa`
-and `upscaling` in `horizon-graphics.txt` have no effect, and the frame's projection is never jittered, because the
-last post pass draws the picture itself and Horizon's own resolve, which does TAA, FXAA and TAA upscaling, is the
+and `upscaling` in `sunrise-graphics.txt` have no effect, and the frame's projection is never jittered, because the
+last post pass draws the picture itself and Sunrise's own resolve, which does TAA, FXAA and TAA upscaling, is the
 step it replaces. The world is still rendered at `resolutionScale` before the pack reads it.
 
 A pack that wants smooth edges draws them itself, in a post pass: a spatial filter (FXAA, SMAA and the like) works on
@@ -419,7 +501,7 @@ Each `[[options]]` entry sets the WGSL `override` of the same name when the pipe
 
 ## The check
 
-A pack runs only after it passes `horizon_shader_api::check` (the game when it loads a pack, the launcher before it
+A pack runs only after it passes `sunrise_shader_api::check` (the game when it loads a pack, the launcher before it
 installs one, the registry's CI): each stage is parsed and validated by naga, checked against its signature and
 the rules above, and translated for Vulkan (SPIR-V), Metal and DirectX 12 (HLSL) with its options at their
 defaults, minimums and maximums. Every option must be an `override` of its type in some stage; an `override`
