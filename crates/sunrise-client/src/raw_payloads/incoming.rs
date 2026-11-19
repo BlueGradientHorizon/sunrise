@@ -182,7 +182,8 @@ impl Incoming {
             Err(error) => return Err(fail(error, packet)),
         };
         // A client over the serverbound byte budget loses the send, counted, never the session.
-        if epoch.peer.side == super::Side::Server
+        if epoch.peer.local.has_droppable()
+            && epoch.peer.side == super::Side::Server
             && let Some(counters) = epoch.peer.local.droppable(&packet.channel)
             && let Some(queue) = transport
                 .connection

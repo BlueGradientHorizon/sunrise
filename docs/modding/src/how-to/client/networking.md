@@ -166,7 +166,7 @@ anything a handler counts on (inventories, state changes): keep those `Reliable`
   that was never a delivery acknowledgement.
 - **Budgets** per connection: 256 KiB/s clientbound and 16 KiB/s serverbound by default, with one
   second of burst. The server's operator raises or lowers them with `droppable_clientbound` and
-  `droppable_serverbound` under `[engine]` in `server.toml` ([hosting](../../../../hosting.md)); 0 turns
+  `droppable_serverbound` under `[engine]` in `server.toml` ([hosting](https://github.com/sunrise-org/sunrise/blob/main/docs/hosting.md#droppable-mod-payloads-droppable_clientbound-and-droppable_serverbound)); 0 turns
   `Droppable` delivery off in that direction. A client sending over the serverbound budget loses those
   sends, and the server counts them as budget drops; nobody is kicked and `Reliable` traffic is never
   dropped. Over budget, stale sends go first, oldest first, then the new send.
