@@ -27,9 +27,17 @@ pub fn collision_heights(
         &prepared.join("cached-collision.nbt"),
         registry,
     )?;
-    let shapes =
-        sunrise_world::collision::CachedCollisionRegistry::from_table(file.table("collision")?)?;
-    (0..registry.len() as u32)
+    heights(
+        &sunrise_world::collision::CachedCollisionRegistry::from_table(file.table("collision")?)?,
+    )
+}
+
+/// [`collision_heights`] of a collision table already read: the states a mod block declares are
+/// in it with their declared shapes, as the content root rewrites the table.
+fn heights(
+    shapes: &sunrise_world::collision::CachedCollisionRegistry<'_>,
+) -> std::io::Result<Vec<f64>> {
+    (0..shapes.registry().len() as u32)
         .map(|id| {
             Ok(shapes
                 .cached_shape(BlockStateId(id))?
@@ -1144,6 +1152,53 @@ mod tests {
             p if p == tile(501) => false,
             p => panic!("{p:?}"),
         }
+    }
+
+    /// A mod block's state whose declared collision is a box 0.5 high, in the table the content
+    /// root writes: its height is 0.5, and air's is none.
+    #[test]
+    fn a_mod_blocks_declared_collision_top_is_its_height() {
+        use sunrise_core::nbt::Tag;
+        let names = || {
+            Tag::List(vec![
+                Tag::String("minecraft:air".into()),
+                Tag::String("demo:slab".into()),
+            ])
+        };
+        let version = || Tag::Int(sunrise_core::version::DATA_VERSION);
+        let registry = sunrise_world::registry::BlockRegistry::from_nbt(&Tag::compound([
+            ("DataVersion", version()),
+            ("states", names()),
+            (
+                "defaults",
+                Tag::compound([("minecraft:air", Tag::Int(0)), ("demo:slab", Tag::Int(1))]),
+            ),
+        ]))
+        .unwrap();
+        let bits =
+            |values: &[f64]| Tag::LongArray(values.iter().map(|v| v.to_bits() as i64).collect());
+        let half = Tag::compound([
+            ("canonical", Tag::Byte(0)),
+            ("cube", Tag::Byte(0)),
+            ("cube_axes", Tag::Byte(0)),
+            ("x", bits(&[0.0, 1.0])),
+            ("y", bits(&[0.0, 0.5])),
+            ("z", bits(&[0.0, 1.0])),
+            ("occupied", Tag::ByteArray(vec![1])),
+            ("discrete_min", Tag::IntArray(vec![0, 0, 0])),
+            ("discrete_max", Tag::IntArray(vec![1, 1, 1])),
+        ]);
+        let table = sunrise_world::collision::CachedCollisionRegistry::from_nbt(
+            &Tag::compound([
+                ("DataVersion", version()),
+                ("states", names()),
+                ("shapes", Tag::List(vec![half])),
+                ("cached_shapes", Tag::IntArray(vec![-1, 0])),
+            ]),
+            &registry,
+        )
+        .unwrap();
+        assert_eq!(heights(&table).unwrap(), [f64::NEG_INFINITY, 0.5]);
     }
 
     #[test]
