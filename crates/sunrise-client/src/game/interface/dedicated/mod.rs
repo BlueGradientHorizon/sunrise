@@ -44,7 +44,7 @@ mod missing_mods;
 pub(crate) use missing_mods::is_missing_mods_refusal;
 pub(super) mod events;
 mod management;
-mod predicate_graph;
+use sunrise_gameplay::dedicated::predicate_graph;
 pub(super) mod report;
 mod status;
 mod transfer;

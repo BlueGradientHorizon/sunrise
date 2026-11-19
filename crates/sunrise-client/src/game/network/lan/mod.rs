@@ -4,7 +4,7 @@
 //! costs one `Option` check per tick.
 mod event_timings;
 #[cfg(test)]
-mod level_event_targets;
+use sunrise_gameplay::lan::level_event_targets;
 mod mob_metadata;
 mod mob_states;
 mod raw_inbox;

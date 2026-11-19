@@ -94,6 +94,9 @@ fn pack_files(world_tables: &Option<WorldTables>) -> sunrise_world::loot::PackOv
     }
 }
 include!(concat!(env!("OUT_DIR"), "/game_modules.rs"));
+use sunrise_client_gameplay::occlusion_culling;
+use sunrise_gameplay::lan::idle as lan_idle;
+use sunrise_gameplay::{interaction_shapes, item_areas, mob_index, tick_profile};
 /// Installs the dispatcher of each injection point a mod listens at as its function's entry,
 /// once the points are sealed. The prebuilt game's staging pass writes the call; a build without
 /// points has none to arm.
