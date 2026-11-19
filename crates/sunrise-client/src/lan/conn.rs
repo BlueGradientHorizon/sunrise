@@ -455,6 +455,17 @@ impl PlayerSender {
             })
             .is_ok()
     }
+    /// Count a packet's bytes as queued; false past [`io_pool::MAX_PENDING`], where the caller
+    /// closes the connection. A memory connection's reader is this process and takes a join's
+    /// whole first view in one burst, so only a network client is capped
+    /// (as [`io_pool::Outbox`] does).
+    fn reserve_queued(&self, cost: usize) -> bool {
+        if matches!(self.framing, sunrise_protocol::connection::Framing::Memory) {
+            self.pending.fetch_add(cost, Ordering::AcqRel);
+            return true;
+        }
+        self.reserve(cost)
+    }
     /// Prepare a whole encoded packet without publishing it. The channel is diagnostic only;
     /// its wire identifier must already be included in `body`.
     pub fn prepare_payload(
@@ -505,7 +516,7 @@ impl PlayerSender {
         if matches!(self.to, To::Disabled) {
             return;
         }
-        if !self.reserve(io_pool::charge(body.retained())) {
+        if !self.reserve_queued(io_pool::charge(body.retained())) {
             self.close();
             return;
         }
@@ -549,7 +560,7 @@ impl PlayerSender {
         let mut held = self.held();
         for body in bodies {
             let body = body.into();
-            if !self.reserve(io_pool::charge(body.retained())) {
+            if !self.reserve_queued(io_pool::charge(body.retained())) {
                 self.close();
                 return;
             }
@@ -578,7 +589,7 @@ impl PlayerSender {
             To::Pool(outbox, _) => {
                 let body = play::Clientbound::Disconnect(cfg::Disconnect { reason }).encode();
                 let body = Body::from(body);
-                if !self.reserve(io_pool::charge(body.retained())) {
+                if !self.reserve_queued(io_pool::charge(body.retained())) {
                     self.close();
                     return;
                 }
@@ -3752,6 +3763,27 @@ mod outgoing_budget_tests {
         let reserved = s.prepare_payload(vec![1; 400], &id).unwrap();
         assert!(s.pending.load(Ordering::Relaxed) > before + 20000);
         drop(reserved);
+    }
+    /// #3423: a join's first view can queue more than the limit in one burst; a memory
+    /// connection (single player) outlasts it, a network client past it is closed.
+    #[test]
+    fn a_memory_connection_outlasts_a_burst_past_the_limit() {
+        let burst = io_pool::MAX_PENDING / 4;
+        let queue = |framing| {
+            let s = sender(framing);
+            for _ in 0..6 {
+                s.send(vec![0; burst]);
+            }
+            s
+        };
+        let To::Pool(outbox, _) = &queue(Framing::Memory).to else {
+            unreachable!()
+        };
+        assert!(outbox.alive());
+        let To::Pool(outbox, _) = &queue(Framing::Network(None)).to else {
+            unreachable!()
+        };
+        assert!(!outbox.alive());
     }
     #[test]
     fn network_refuses_before_queueing_and_empty_messages_cost_space() {
