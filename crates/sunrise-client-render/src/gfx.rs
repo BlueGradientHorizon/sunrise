@@ -281,7 +281,7 @@ fn sky_visible(frame: &Frame) -> bool {
 /// `gbuffers_skybasic` still draws a fan around the horizon (`pack_sky`), as our probe packs read
 /// it in Iris 1.11.7.
 fn end_fog_sky(frame: &Frame) -> bool {
-    !frame.title && frame.end_sky && frame.boss_world_fog
+    pack_sky::end_fog_sky(frame.title, frame.end_sky, frame.boss_world_fog)
 }
 
 /// The point a `shaders/` pack's terrain is drawn relative to: the camera with the fraction of

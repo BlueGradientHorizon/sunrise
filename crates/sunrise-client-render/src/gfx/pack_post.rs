@@ -3971,9 +3971,24 @@ impl PackPost {
         let Some(mut sky) = self.sky.take() else {
             return;
         };
+        let sky_frame = super::pack_sky::SkyFrame {
+            sun_angle: frame.sky.sun_angle,
+            sky_color: frame.sky.sky_color,
+            fog_color: frame.sky.fog_color,
+            sunset_color: frame.sky.sunrise_color,
+            fog: frame
+                .fog
+                .as_ref()
+                .map(|f| [f.color[0], f.color[1], f.color[2]]),
+            stars: frame.stars,
+            dark_disc: frame.dark_disc,
+            detail_distance: frame.detail_distance,
+            celestial: bytemuck::cast_slice(frame.celestial),
+            end_fog_sky: super::end_fog_sky(frame),
+        };
         let parts = sky
             .geometry
-            .prepare(queue, frame, self.uniforms.shadow.sun_path_rotation);
+            .prepare(queue, &sky_frame, self.uniforms.shadow.sun_path_rotation);
         let mut groups = [None, None];
         for (i, pass) in [&mut sky.basic, &mut sky.textured].into_iter().enumerate() {
             if let Some(pass) = pass {

@@ -11,5 +11,8 @@ mod fade_test;
 mod midpoint_test;
 
 #[cfg(test)]
+mod midpoint_support;
+
+#[cfg(test)]
 #[path = "pack_atlas/source_ownership_test.rs"]
 mod source_ownership_test;

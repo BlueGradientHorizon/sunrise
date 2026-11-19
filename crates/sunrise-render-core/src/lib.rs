@@ -6,6 +6,8 @@ extern crate alloc;
 
 pub mod cull;
 pub mod frustum;
+pub mod random;
+pub mod stars;
 pub mod terrain;
 
 pub use cull::{CODE_OFFSET, FADING, Record, UNBOUNDED, rounded_box};
