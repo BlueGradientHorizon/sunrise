@@ -411,7 +411,8 @@ pub trait BlockEntityDrawContext {
     }
     /// Draws the resolved standalone model under `draw`'s pose, as [`Self::model`] places it,
     /// with the terrain's own materials: the block sprites (animated, mipmapped as the options
-    /// set, sampled as vanilla's moving blocks are: linear minification, nearest magnification), back faces culled, colour and depth written as opaque terrain, lit by
+    /// set, sampled as vanilla's moving blocks are: linear minification, nearest
+    /// magnification), back faces culled, colour and depth written as opaque terrain, lit by
     /// `draw.light` raised by each quad's own emission. `options` picks the material
     /// (each quad's `solid`, `cutout` or `cutout_mipped`, or one for all: cutout discards
     /// under alpha 0.1, cutout-mipped under 0.5), the directional
