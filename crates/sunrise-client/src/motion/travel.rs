@@ -32,7 +32,6 @@ impl MotionWorld<'_, '_, '_> {
                 self.player.velocity.y += (look_y - self.player.velocity.y) * blend;
             }
         }
-        let flying_y = self.player.flying.then_some(self.player.velocity.y);
         // The living_travel hook (#2414): one decision before the branch
         // selection, on the authoritative side, one branch with no listener.
         // A cancel skips the invocation - the branch, its nested move and
@@ -51,6 +50,9 @@ impl MotionWorld<'_, '_, '_> {
             return Ok(());
         }
         self.player.velocity = velocity;
+        // The flying damping keeps 0.6 of the vertical speed the branch starts
+        // from: the accepted replacement's, when a listener replaced it.
+        let flying_y = self.player.flying.then_some(self.player.velocity.y);
         self.living_travel(&mut gate, input)?;
         if let Some(y) = flying_y {
             self.player.velocity.y = y * 0.6;
@@ -164,5 +166,86 @@ impl MotionWorld<'_, '_, '_> {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::motion::{MotionWorld, PlayerMotion, dry_side};
+    use crate::world::World;
+    use mod_api::{Flow, Hooks, LivingTravelEvent, LoopContext};
+    use sunrise_core::geometry::Vec3;
+
+    /// A listener that replaces the velocity (when it names one) and answers `Flow`.
+    struct Decide(Flow, Option<[f64; 3]>);
+
+    #[mod_api::__subscriptions]
+    impl Hooks for Decide {
+        fn living_travel(&self, _: &dyn LoopContext, event: &mut LivingTravelEvent<'_>) -> Flow {
+            if let Some(velocity) = self.1 {
+                *event.velocity = velocity;
+            }
+            self.0
+        }
+    }
+
+    /// One `player_travel` of a flying player standing at `(20.5, 4, 20.5)` with
+    /// velocity `(0.2, 0.5, 0)`, under a `living_travel` listener: the
+    /// position and velocity it leaves, and where it started.
+    fn flying_travel(listener: Decide, replaying: bool) -> Option<(Vec3, Vec3, Vec3)> {
+        let v = crate::test_fixtures::vanilla()?;
+        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
+        let mut scene = World::test_scene(assets, render, 1).unwrap();
+        let start = Vec3::new(20.5, 4.0, 20.5);
+        let mut player = PlayerMotion::new(resources, start).unwrap();
+        player.flying = true;
+        player.replaying = replaying;
+        player.velocity = Vec3::new(0.2, 0.5, 0.0);
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new("travel", Box::new(listener))].into();
+        mod_platform::testing::with_mods(mods, || {
+            MotionWorld {
+                side: dry_side(),
+                tag_items: None,
+                block_registries: None,
+                loop_context: crate::test_resources::server_loop_context(),
+                damage_hooks: &crate::health::DamageHooks::NONE,
+                entities: &[],
+                player: &mut player,
+                scene: &mut scene,
+                assets,
+                collision_binding: binding,
+                resources,
+                health: &resources.health,
+            }
+            .player_travel(Vec3::ZERO)
+            .unwrap();
+        });
+        Some((player.position, player.velocity, start))
+    }
+
+    /// A flying player keeps 0.6 of the vertical speed its branch started
+    /// from: a listener's replaced `0.5` -> `1.0` leaves `0.6`, not `0.3`.
+    #[test]
+    #[ignore = "daily"]
+    fn a_flying_player_damps_the_replaced_vertical_speed() {
+        let Some((_, velocity, _)) =
+            flying_travel(Decide(Flow::Continue, Some([0.2, 1.0, 0.0])), false)
+        else {
+            return;
+        };
+        assert_eq!(velocity.y, 0.6);
+    }
+
+    /// Cancel skips the branch, its move and the flying damping: the flying
+    /// player keeps its position and its `0.5` vertical speed.
+    #[test]
+    #[ignore = "daily"]
+    fn a_cancelled_flying_travel_moves_and_damps_nothing() {
+        let Some((position, velocity, start)) = flying_travel(Decide(Flow::Cancel, None), false)
+        else {
+            return;
+        };
+        assert_eq!(position, start);
+        assert_eq!(velocity, Vec3::new(0.2, 0.5, 0.0));
     }
 }
