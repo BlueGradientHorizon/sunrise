@@ -30,8 +30,7 @@ pub(super) fn upscaled_array(
             }
         }
     }
-    #[allow(clippy::let_and_return)]
-    let texture = device.create_texture_with_data(
+    device.create_texture_with_data(
         queue,
         &wgpu::TextureDescriptor {
             label: None,
@@ -49,6 +48,5 @@ pub(super) fn upscaled_array(
         },
         wgpu::util::TextureDataOrder::LayerMajor,
         &data,
-    );
-    texture
+    )
 }

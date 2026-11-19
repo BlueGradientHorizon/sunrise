@@ -2,9 +2,9 @@
 //! probe packs (#9307) read `gtexture` in gbuffers_terrain, and the atlas as a custom texture in
 //! composite, at levels 0.5 and 1.25 in Iris 1.11.7, and got the two nearest levels mixed.
 use super::destination_tests::Fixture;
-use super::tests::*;
 use super::*;
 use std::io::{Cursor, Write};
+use sunrise_shaders::Post;
 
 const VERTEX: &str = "#version 120\nvarying vec2 uv;\nvoid main() { uv = gl_MultiTexCoord0.xy; gl_Position = ftransform(); }\n";
 

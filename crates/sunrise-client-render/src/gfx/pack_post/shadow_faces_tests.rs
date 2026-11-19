@@ -2,9 +2,9 @@
 //! of ours writing `gl_FrontFacing` into `shadowcolor0` found back faces in Iris's shadow map and
 //! none in Sunrise's). The programs here are original.
 use super::destination_tests::Fixture;
-use super::tests::*;
 use super::*;
 use std::io::{Cursor, Write};
+use sunrise_shaders::Post;
 use wgpu::util::DeviceExt;
 
 const FINAL_VSH: &str = "#version 120\nvarying vec2 uv;\nvoid main() { uv=gl_MultiTexCoord0.xy; gl_Position=ftransform(); }\n";

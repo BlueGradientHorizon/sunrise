@@ -103,7 +103,7 @@ fn frame_view<'a>(frame: &'a Frame) -> UniformFrameView<'a> {
         }),
         night_vision: frame.night_vision,
         darkness: frame.darkness,
-        dynamic_lights: &frame.dynamic_lights,
+        dynamic_lights: frame.dynamic_lights,
         entities: frame.entities,
     }
 }

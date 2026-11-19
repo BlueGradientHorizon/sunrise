@@ -46,7 +46,7 @@ impl FrameUniformsExt for FrameUniforms {
             }),
             night_vision: frame.night_vision,
             darkness: frame.darkness,
-            dynamic_lights: &frame.dynamic_lights,
+            dynamic_lights: frame.dynamic_lights,
             entities: frame.entities,
         };
         self.update(&view, inputs, size);

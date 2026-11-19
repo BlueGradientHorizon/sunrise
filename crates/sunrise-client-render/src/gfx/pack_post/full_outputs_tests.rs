@@ -2,9 +2,9 @@
 //! water patches (`GbuffersInputs::water_patches`, one output more): translucent terrain gets
 //! the program without them, not no shadow program. The programs here are original.
 use super::destination_tests::Fixture;
-use super::tests::*;
 use super::*;
 use std::io::{Cursor, Write};
+use sunrise_shaders::Post;
 
 fn pack(outputs: u32) -> Post {
     let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
