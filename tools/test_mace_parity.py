@@ -32,9 +32,10 @@ fall distance, impulse impact and grace time and its landing-particle flag,
 sounds, level and game events, the used and damage_taken statistics, the held
 stack and the level random afterwards. Thorns' damage comes from the player's
 own unseeded random, so only its range is compared (`own_random`). The cases
-`exact_cases` adds after them (armored targets without Thorns, and Thorns
-targets a creative player hits) are compared token for token, with none of
-those allowances.
+`exact_cases` adds after them (armored targets without Thorns, and certain
+Thorns attempts on a creative player, each beside a twin without the armor or
+the Thorns) are compared whole, in raw float bits, with none of those
+allowances, and vanilla must show the equipment deciding the outcome.
 """
 import json
 import math
@@ -192,9 +193,17 @@ def cases(facts, count, seed):
 
 
 def exact_cases(facts, seed):
-    """Cases whose every line is decided by the seeded level random, compared token for token: an armored target the
-    fixture's equipment modifiers protect (no Thorns, so the player's own random is never drawn), and a Thorns target
-    a creative player hits, whose invulnerability refuses Thorns' hurt before its amount matters."""
+    """Cases whose every line is decided by the seeded level random, each with a twin, yielded as (case, twin, proof).
+
+    Both run `"exact": true`: the runs print raw float bits, vanilla's three runs must agree line for line (no merge)
+    and every line is compared, with no `--ignore` filter, range or tolerance. The cases are an armored target the
+    fixture's equipment modifiers protect (no Thorns, so the player's own random is never drawn; its twin wears
+    nothing), and a Thorns target a creative player hits (its twin's pieces have no Thorns). Thorns 7 makes the
+    attempt certain (`random_chance` 0.15 per level, 1.05 here) and its `change_item_damage` wears the piece by 2,
+    while the player's invulnerability refuses the hurt before its unseeded amount matters. `proof` is the line
+    prefix whose vanilla value must differ between case and twin: the target's health, which the armor lowers, or
+    the Thorns piece, which the attempt wore.
+    """
     rng = random.Random(seed ^ 0x3003)
     floor = d.States(facts).get('stone')
     fits = [
@@ -204,16 +213,20 @@ def exact_cases(facts, seed):
         {'feet': stack('leather_boots', None, 64), 'chest': stack('leather_chestplate')},
         {'legs': stack('golden_leggings', {'unbreaking': 3}), 'chest': stack('golden_chestplate', None, 109)},
     ]
+    # (slot, piece, damage, other pieces): no Unbreaking on a Thorns piece, whose roll could skip the attempt's wear.
     thorny = [
-        {'chest': stack('iron_chestplate', {'thorns': 3})},
-        {'chest': stack('diamond_chestplate', {'thorns': 3, 'unbreaking': 1}), 'feet': stack('diamond_boots')},
-        {'head': stack('leather_helmet', {'thorns': 2}, 53)},
+        ('chest', 'iron_chestplate', 0, {}),
+        ('chest', 'diamond_chestplate', 0, {'feet': stack('diamond_boots')}),
+        ('head', 'leather_helmet', 40, {}),
     ]
     hits = [(stack('mace'), 3.0), (stack('mace', {'density': 2, 'breach': 3}), 6.5),
             (stack('diamond_sword'), 0.0), ('-', 0.0)]
-    for equip, creative in [(e, False) for e in fits] + [(e, True) for e in thorny]:
+    setups = [(fit, {}, False, 'V 0 ') for fit in fits]
+    setups += [({**rest, slot: stack(piece, {'thorns': 7}, damage)}, {**rest, slot: stack(piece, None, damage)}, True,
+                f'W {slot} ') for slot, piece, damage, rest in thorny]
+    for equip, bare, creative, proof in setups:
         for item, fall in hits:
-            case = {**h.environment(rng), 'pos': [0, 0, 0]}
+            case = {**h.environment(rng), 'pos': [0, 0, 0], 'exact': True}
             case.pop('raining', None)
             case.pop('thundering', None)
             case['cells'] = [[x, -1, z, floor] for x in range(-6, 7) for z in range(-6, 7)]
@@ -223,7 +236,18 @@ def exact_cases(facts, seed):
                               'fall': fall, 'fall_flying': False, 'flying': False, 'base': round(rng.uniform(1.2, 7.0), 3)}
             case['items'] = []
             case['mode'] = 'dispense'
-            yield case
+            twin = json.loads(json.dumps(case))
+            twin['entities'][0]['equip'] = bare
+            yield case, twin, proof
+
+
+def proven(case_lines, twin_lines, proof):
+    """Whether vanilla's case and twin differ where the equipment should decide: the health token of the target's
+    `V 0` line, or the Thorns piece's `W` line (a worn-out piece has none)."""
+    def pick(lines):
+        picked = [line for line in lines if line.startswith(proof)]
+        return [line.split()[2] for line in picked] if proof == 'V 0 ' else picked
+    return pick(case_lines) != pick(twin_lines)
 
 
 def kind(case):
@@ -280,7 +304,10 @@ def main():
     all_cases = list(cases(facts, args.count, args.seed))
     # Past this index every case is exact (exact_cases): no range, filter or tolerance.
     first_exact = len(all_cases)
-    all_cases += exact_cases(facts, args.seed)
+    proofs = []
+    for case, twin, proof in exact_cases(facts, args.seed):
+        proofs.append((len(all_cases), proof))
+        all_cases += [case, twin]
     (work / 'cases.jsonl').write_text(''.join(json.dumps(case) + '\n' for case in all_cases))
     classes = work / 'classes'
     classes.mkdir(exist_ok=True)
@@ -295,8 +322,10 @@ def main():
     d.run([str(lab.cargo_target() / 'fast/sunrise-client'), '--resources', str(resources)], cwd=work,
           env=lab.game_env(SUNRISE_DISPENSE_FIXTURE=f'{work / "cases.jsonl"},{work / "rust.txt"}'))
     ignore = tuple(prefix + ' ' for prefix in args.ignore.split(',') if prefix) + ('D ',)
-    native = h.split_cases((work / 'native.txt').read_text(), ignore)
-    rust = h.split_cases((work / 'rust.txt').read_text(), ignore)
+    native_text, rust_text = (work / 'native.txt').read_text(), (work / 'rust.txt').read_text()
+    native, rust = h.split_cases(native_text, ignore), h.split_cases(rust_text, ignore)
+    # The exact cases' records, whole: no `--ignore` prefix and no `D` line is dropped from them.
+    native_whole, rust_whole = h.split_cases(native_text, ()), h.split_cases(rust_text, ())
     assert len(native) == len(rust) == len(all_cases), (len(native), len(rust), len(all_cases))
     groups, errors = {}, {}
     smashed = burst = thorned = 0
@@ -305,8 +334,9 @@ def main():
             errors.setdefault(a[0], []).append(case)
             continue
         if index >= first_exact:
-            if any('~' in line for line in a):
-                groups.setdefault('exact case with an unseeded draw: ' + kind(case), []).append((case, a, b))
+            a, b = native_whole[index], rust_whole[index]
+            if 'nondeterministic' in a:
+                groups.setdefault('exact case vanilla did not repeat: ' + kind(case), []).append((case, a, b))
             elif sorted(a) != sorted(b):
                 groups.setdefault('exact ' + kind(case), []).append((case, a, b))
             continue
@@ -318,6 +348,11 @@ def main():
         a, b = own_random(a), own_random(b)
         if not d.same(a, b):
             groups.setdefault(kind(case), []).append((case, a, b))
+    for index, proof in proofs:
+        if not proven(native_whole[index], native_whole[index + 1], proof):
+            what = 'the armor never lowered the health' if proof == 'V 0 ' else 'no Thorns attempt wore the piece'
+            groups.setdefault(f'exact case where {what}: ' + kind(all_cases[index]), []).append(
+                (all_cases[index], native_whole[index], native_whole[index + 1]))
     for name, entries in sorted(errors.items(), key=lambda e: -len(e[1])):
         print(f'oracle error x{len(entries)}: {name}')
     for name, entries in sorted(groups.items(), key=lambda e: -len(e[1])):
