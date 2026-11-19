@@ -154,9 +154,9 @@ button uses the vanilla sprites. With `Some`, it uses the same GUI sprite names 
 use mod_api::client::widgets::{Button, ButtonSprites, Widgets};
 
 let mut widgets = Widgets::new();
-let mut art = ButtonSprites::new("mymod:gui/sprites/open");
-art.highlighted = Some("mymod:gui/sprites/open_highlighted".into());
-art.disabled = Some("mymod:gui/sprites/open_disabled".into());
+let mut art = ButtonSprites::new("mymod:open");
+art.highlighted = Some("mymod:open_highlighted".into());
+art.disabled = Some("mymod:open_disabled".into());
 art.label_offset = [1.0, -1.0];
 let mut button = Button::new([20.0, 24.0, 80.0, 20.0], label);
 button.sprites = Some(art);
