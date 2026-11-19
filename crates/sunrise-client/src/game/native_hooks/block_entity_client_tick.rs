@@ -45,7 +45,7 @@ impl Game<'_> {
     /// `ClientLevel.tickBlockEntities` for the mod block entities of this client's level:
     /// the client's ticker list (`Level.blockEntityTickers`, kept in its world's block
     /// entities as a server keeps its own) holds the copies whose block state has a client
-    /// ticker, and each live one is told in its order. Nothing is asked or kept while no
+    /// ticker, and each live mod one is told in its order. Nothing is asked or kept while no
     /// part has a client tick, and nothing runs off a server's client (a window that
     /// simulates the world itself, or a server).
     pub(in crate::game) fn client_tick_mod_block_entities(&mut self) {
@@ -111,16 +111,22 @@ impl Game<'_> {
         }
         self.world.block_entities.keep_client_snapshots(snapshots);
     }
-    /// `BlockState.getTicker` with the client level, for every block state: a mod block's
-    /// states tick when a part says so (asked once per block), every other state never.
-    fn client_ticking_states(&self) -> Vec<Ticking> {
+    /// `BlockState.getTicker` with the client level, for every block state: spawners, trial
+    /// spawners and vaults always (`tick_remote_spawners`), a mod block's states when a part
+    /// says so (asked once per block), every other state never.
+    pub(in crate::game) fn client_ticking_states(&self) -> Vec<Ticking> {
         let registry = self.pack.assets.registry;
         let mut asked: std::collections::HashMap<&str, bool> = std::collections::HashMap::new();
         (0..registry.len())
             .map(|i| {
                 let name: &str = &self.res.facts().get(BlockStateId(i as u32)).name;
                 if name.starts_with("minecraft:") {
-                    return Ticking::No;
+                    return match name {
+                        "minecraft:spawner" | "minecraft:trial_spawner" | "minecraft:vault" => {
+                            Ticking::Yes
+                        }
+                        _ => Ticking::No,
+                    };
                 }
                 let ticks = *asked.entry(name).or_insert_with(|| {
                     let mut ticks = false;

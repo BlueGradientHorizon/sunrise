@@ -101,6 +101,10 @@ impl Game<'_> {
         for &key in keys {
             self.client_tick_spawner(key);
         }
+        self.forget_spawner_displays();
+    }
+    /// Drops the display mobs of spawners and trial spawners that are gone.
+    fn forget_spawner_displays(&mut self) {
         let entities = &self.world.block_entities;
         self.spawners.displays.retain(|k, _| {
             matches!(
@@ -591,27 +595,30 @@ impl Game<'_> {
         // The entity's own compound, its name and data merged in: it loads back.
         let _ = self.apply_entity_nbt(target, tag);
     }
-    /// Ticks spawners, trial spawners and vaults near the player on a remote
-    /// client (`tick_remote`).
+    /// `ClientLevel.tickBlockEntities` for spawners, trial spawners and vaults on a remote
+    /// client (`tick_remote`): every loaded one, however far from the player, in the level's
+    /// ticker order (`BlockEntities::tickers`), as they all draw from the one level random.
     pub(super) fn tick_remote_spawners(&mut self) {
-        let Some(p) = self.player.as_ref() else {
-            return;
-        };
-        let center = [
-            p.position.x.floor() as i32,
-            p.position.y.floor() as i32,
-            p.position.z.floor() as i32,
-        ];
-        let (keys, trial_keys, vault_keys) =
-            nearby_remote_spawner_keys(&self.world.block_entities, center);
-        self.client_tick_spawners(&keys);
-        for key in trial_keys {
-            self.client_tick_trial_spawner(key);
+        if !self.world.block_entities.has_states() {
+            let states = self.client_ticking_states();
+            self.world.block_entities.set_states(states);
         }
-        // VaultBlock.getTicker on the client: VaultBlockEntity.Client.tick.
-        for key in vault_keys {
-            self.client_tick_vault(key);
+        let tickers = self.world.block_entity_tickers();
+        for &ticker in tickers.iter() {
+            // Ticks before this one can remove it (`TickingBlockEntity.isRemoved`).
+            if !self.world.block_entities.is_live(ticker) {
+                continue;
+            }
+            let key = ticker.0;
+            match self.world.block_entities.get(&key) {
+                Some(BlockEntity::Spawner(_)) => self.client_tick_spawner(key),
+                Some(BlockEntity::TrialSpawner(_)) => self.client_tick_trial_spawner(key),
+                // VaultBlock.getTicker on the client: VaultBlockEntity.Client.tick.
+                Some(BlockEntity::Vault(_)) => self.client_tick_vault(key),
+                _ => {}
+            }
         }
+        self.forget_spawner_displays();
     }
     /// `SpawnerRenderer` and `TrialSpawnerRenderer`: the next mob of every
     /// spawner near the camera, small and turning.
@@ -687,36 +694,6 @@ impl Game<'_> {
     }
 }
 
-/// `SpawnerBlockEntity.clientTick` / `BaseSpawner.clientTick`: spawner, trial
-/// spawner and vault keys within 64 blocks (Chebyshev distance) of `center`
-/// among `entities`. Non-spawner block entities are ignored before distance
-/// calculation, and coordinate difference uses `abs_diff` to prevent overflow.
-pub(super) fn nearby_remote_spawner_keys<'a>(
-    entities: impl IntoIterator<Item = (&'a Pos, &'a BlockEntity)>,
-    center: [i32; 3],
-) -> (Vec<Pos>, Vec<Pos>, Vec<Pos>) {
-    let mut keys = Vec::new();
-    let mut trial_keys = Vec::new();
-    let mut vault_keys = Vec::new();
-    for (&pos, be) in entities {
-        let target = match be {
-            BlockEntity::Spawner(_) => &mut keys,
-            BlockEntity::TrialSpawner(_) => &mut trial_keys,
-            BlockEntity::Vault(_) => &mut vault_keys,
-            _ => continue,
-        };
-        let d = pos
-            .0
-            .abs_diff(center[0])
-            .max(pos.1.abs_diff(center[1]))
-            .max(pos.2.abs_diff(center[2]));
-        if d <= 64 {
-            target.push(pos);
-        }
-    }
-    (keys, trial_keys, vault_keys)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -768,102 +745,234 @@ mod tests {
         });
     }
 
+    /// tools/test_block_entity_client_tick_parity.py: each vanilla case through
+    /// `tick_remote_spawners`, logging every particle, sound and spin and the level random.
     #[test]
-    fn dummy_container_at_min_coordinate_does_not_panic_or_tick() {
-        let mut entities = HashMap::new();
-        // Client dummy container menu placed at (i32::MIN, 0, 0) when remote
-        // container lacks target block position (remote.rs:9393).
-        entities.insert((i32::MIN, 0, 0), BlockEntity::Chest(Vec::new()));
-        entities.insert(
-            (i32::MIN, i32::MIN, i32::MIN),
-            BlockEntity::Chest(Vec::new()),
-        );
-        entities.insert(
-            (i32::MAX, i32::MAX, i32::MAX),
-            BlockEntity::Chest(Vec::new()),
-        );
-
-        // Player at x = 1024: (pos.0 - center[0]) would be i32::MIN - 1024.
-        let (keys, trial_keys, vault_keys) = nearby_remote_spawner_keys(&entities, [1024, 64, -50]);
-        assert!(keys.is_empty());
-        assert!(trial_keys.is_empty());
-        assert!(vault_keys.is_empty());
-
-        // Player at x = 0: (pos.0 - center[0]) would be i32::MIN - 0, and i32::MIN.abs() panics.
-        let (keys, trial_keys, vault_keys) = nearby_remote_spawner_keys(&entities, [0, 0, 0]);
-        assert!(keys.is_empty());
-        assert!(trial_keys.is_empty());
-        assert!(vault_keys.is_empty());
+    #[ignore = "daily"]
+    fn client_ticks_match_the_vanilla_cases() {
+        let (Ok(cases), Ok(out)) = (
+            std::env::var("SUNRISE_CLIENT_TICK_CASES"),
+            std::env::var("SUNRISE_CLIENT_TICK_OUT"),
+        ) else {
+            panic!("run by tools/test_block_entity_client_tick_parity.py");
+        };
+        crate::game::native_entity_refs::tests::with_game(|game| {
+            let mut lines = String::new();
+            for line in std::fs::read_to_string(cases).unwrap().lines() {
+                let case: serde_json::Value = serde_json::from_str(line).unwrap();
+                lines += &client_tick_case(game, &case).to_string();
+                lines.push('\n');
+            }
+            std::fs::write(out, lines).unwrap();
+        });
     }
 
-    #[test]
-    fn spawner_outside_64_block_chebyshev_range_is_not_ticked() {
-        let mut entities = HashMap::new();
-        entities.insert((65, 0, 0), BlockEntity::Spawner(Box::default()));
-        entities.insert((0, -65, 0), BlockEntity::TrialSpawner(Box::default()));
-        entities.insert((0, 0, 65), BlockEntity::Vault(Box::default()));
-        entities.insert((-65, 65, -65), BlockEntity::Spawner(Box::default()));
-
-        let (keys, trial_keys, vault_keys) = nearby_remote_spawner_keys(&entities, [0, 0, 0]);
-        assert!(
-            keys.is_empty(),
-            "spawners outside 64 blocks must not be ticked"
-        );
-        assert!(
-            trial_keys.is_empty(),
-            "trial spawners outside 64 blocks must not be ticked"
-        );
-        assert!(
-            vault_keys.is_empty(),
-            "vaults outside 64 blocks must not be ticked"
-        );
+    fn hex_f64(v: f64) -> String {
+        format!("{:x}", v.to_bits())
     }
 
-    #[test]
-    fn spawners_within_64_block_chebyshev_range_are_ticked() {
-        let mut entities = HashMap::new();
-        let spawner_at_boundary = (164, 64, -200);
-        let spawner_near_player = (110, 69, -202);
-        let trial_at_boundary = (36, 128, -264); // Chebyshev dx=64, dy=64, dz=64
-        let vault_at_center = (100, 64, -200);
-
-        entities.insert(spawner_at_boundary, BlockEntity::Spawner(Box::default()));
-        entities.insert(spawner_near_player, BlockEntity::Spawner(Box::default()));
-        entities.insert(trial_at_boundary, BlockEntity::TrialSpawner(Box::default()));
-        entities.insert(vault_at_center, BlockEntity::Vault(Box::default()));
-
-        let (mut keys, trial_keys, vault_keys) =
-            nearby_remote_spawner_keys(&entities, [100, 64, -200]);
-        keys.sort_unstable();
-        let mut expected_spawners = vec![spawner_at_boundary, spawner_near_player];
-        expected_spawners.sort_unstable();
-
-        assert_eq!(keys, expected_spawners);
-        assert_eq!(trial_keys, vec![trial_at_boundary]);
-        assert_eq!(vault_keys, vec![vault_at_center]);
+    fn hex_f32(v: f32) -> String {
+        format!("{:x}", v.to_bits())
     }
 
-    #[test]
-    fn extreme_coordinate_boundary_does_not_overflow() {
-        let mut entities = HashMap::new();
-        let max_pos = (i32::MAX, i32::MAX, i32::MAX);
-        let min_pos = (i32::MIN, i32::MIN, i32::MIN);
-        let in_range_max = (i32::MAX, 10, -5);
+    /// One case's block entity as its chunk packet carries it, with its block state.
+    fn client_tick_entity(
+        game: &Game<'_>,
+        e: &serde_json::Value,
+    ) -> (Pos, sunrise_world::registry::BlockStateId, BlockEntity) {
+        let int = |v: &serde_json::Value| v.as_i64().unwrap() as i32;
+        let key = (int(&e["pos"][0]), int(&e["pos"][1]), int(&e["pos"][2]));
+        let text = |k: &str| e[k].as_str().unwrap().to_owned();
+        let flag = |k: &str| e[k].as_bool().unwrap().to_string();
+        let (name, properties, entity) = match e["kind"].as_str().unwrap() {
+            "spawner" => {
+                let mut mob = sunrise_core::nbt::Compound::new();
+                mob.insert("id".into(), Tag::String("minecraft:pig".into()));
+                let spawner = Spawner {
+                    required_player_range: int(&e["range"]),
+                    spawn_delay: int(&e["delay"]),
+                    client_delay: int(&e["delay"]),
+                    next: Some(sunrise_client::chunk::block_entity::Next::Own(
+                        sunrise_client::chunk::block_entity::SpawnData {
+                            entity: mob,
+                            ..Default::default()
+                        },
+                    )),
+                    ..Spawner::default()
+                };
+                (
+                    "minecraft:spawner",
+                    vec![],
+                    BlockEntity::Spawner(Box::new(spawner)),
+                )
+            }
+            "trial_spawner" => (
+                "minecraft:trial_spawner",
+                vec![
+                    ("trial_spawner_state", text("state")),
+                    ("ominous", flag("ominous")),
+                ],
+                BlockEntity::TrialSpawner(Box::new(
+                    sunrise_client::chunk::block_entity::TrialSpawner {
+                        next_mob_spawns_at: e["nextMobSpawnsAt"].as_i64().unwrap(),
+                        ..Default::default()
+                    },
+                )),
+            ),
+            _ => (
+                "minecraft:vault",
+                vec![
+                    ("facing", text("facing")),
+                    ("ominous", flag("ominous")),
+                    ("vault_state", text("state")),
+                ],
+                BlockEntity::Vault(Box::new(sunrise_client::chunk::block_entity::Vault {
+                    display_item: e["display"]
+                        .as_bool()
+                        .unwrap()
+                        .then(|| sunrise_client::items::ItemStack::new("minecraft:diamond", 1)),
+                    connected_players: if e["connected"].as_bool().unwrap() {
+                        vec![CLIENT_TICK_PLAYER]
+                    } else {
+                        Vec::new()
+                    },
+                    connected_particles_range: e["particlesRange"].as_f64().unwrap(),
+                    ..Default::default()
+                })),
+            ),
+        };
+        let registry = game.pack.assets.registry;
+        let mut state = registry
+            .state(registry.default_state(name).unwrap())
+            .unwrap()
+            .clone();
+        for (k, v) in properties {
+            state.properties.insert(k.into(), v);
+        }
+        (key, registry.id(&state).unwrap(), entity)
+    }
 
-        entities.insert(max_pos, BlockEntity::Spawner(Box::default()));
-        entities.insert(min_pos, BlockEntity::Spawner(Box::default()));
-        entities.insert(in_range_max, BlockEntity::Spawner(Box::default()));
+    const CLIENT_TICK_PLAYER: [i32; 4] = [0x5355_4e52, 0x4953_4500, 0, 1];
 
-        // Player at i32::MIN: distance to i32::MAX would overflow signed 32-bit arithmetic.
-        let (keys, _, _) = nearby_remote_spawner_keys(&entities, [i32::MIN, i32::MIN, i32::MIN]);
-        assert_eq!(keys, vec![min_pos]);
-
-        // Player at i32::MAX: distance to i32::MIN would overflow signed 32-bit arithmetic.
-        let (keys, _, _) = nearby_remote_spawner_keys(&entities, [i32::MAX, i32::MAX, i32::MAX]);
-        assert_eq!(keys, vec![max_pos]);
-
-        // Player at i32::MAX - 64: in_range_max should be included.
-        let (keys, _, _) = nearby_remote_spawner_keys(&entities, [i32::MAX - 64, 10, -5]);
-        assert!(keys.contains(&in_range_max));
+    fn client_tick_case(game: &mut Game<'_>, case: &serde_json::Value) -> serde_json::Value {
+        game.world.block_entities.clear();
+        game.world.chunks.clear();
+        let entities: Vec<_> = case["entities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|e| client_tick_entity(game, e))
+            .collect();
+        let column = |k: &Pos| (k.0 >> 4, k.2 >> 4);
+        for (key, state, _) in &entities {
+            let (x, z) = column(key);
+            if !game.world.chunks.contains_key(&(x, z)) {
+                game.world.chunks.insert(
+                    (x, z),
+                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(x, z)),
+                );
+            }
+            game.world.set(key.0, key.1, key.2, *state).unwrap();
+        }
+        for (key, _, entity) in &entities {
+            game.world.block_entities.insert(*key, entity.clone());
+        }
+        let p = &case["player"];
+        let at = |i: usize| p["pos"][i].as_f64().unwrap();
+        let mut player =
+            sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(at(0), at(1), at(2)))
+                .unwrap();
+        player.health.dead = p["dead"].as_bool().unwrap();
+        game.player = Some(player);
+        game.mode = if p["spectator"].as_bool().unwrap() {
+            sunrise_client::command::args::GameMode::Spectator
+        } else {
+            sunrise_client::command::args::GameMode::Survival
+        };
+        game.level.player_uuid = Some(CLIENT_TICK_PLAYER);
+        game.particles
+            .seed_randoms(0, case["seed"].as_i64().unwrap(), 0);
+        game.world.game_time = case["gameTime"].as_i64().unwrap();
+        let mut ticks = Vec::new();
+        for t in 0..case["ticks"].as_i64().unwrap() {
+            for op in case["events"][t.to_string()]
+                .as_array()
+                .into_iter()
+                .flatten()
+            {
+                let chunk = (
+                    op[1].as_i64().unwrap() as i32,
+                    op[2].as_i64().unwrap() as i32,
+                );
+                if op[0] == "unload" {
+                    game.world.block_entities.unload(|k| column(k) == chunk);
+                } else {
+                    // A chunk packet's block entities (`load_chunk` keeps the chunk map's order).
+                    let loaded = entities
+                        .iter()
+                        .filter(|(k, _, _)| column(k) == chunk)
+                        .map(|(k, _, e)| (*k, e.clone()))
+                        .collect();
+                    game.world.block_entities.load_chunk(loaded);
+                }
+            }
+            game.particles.requested = Some(Vec::new());
+            game.audio.capture = Some(Vec::new());
+            game.tick_remote_spawners();
+            let particles: Vec<_> = game
+                .particles
+                .requested
+                .take()
+                .unwrap()
+                .into_iter()
+                .map(|(o, p, v)| {
+                    let mut row = vec![
+                        serde_json::json!("particle"),
+                        serde_json::json!(format!("minecraft:{}", o.ty.name())),
+                    ];
+                    row.extend(p.iter().chain(&v).map(|d| serde_json::json!(hex_f64(*d))));
+                    row
+                })
+                .collect();
+            let sounds: Vec<_> = game
+                .audio
+                .capture
+                .take()
+                .unwrap()
+                .into_iter()
+                .map(|s| {
+                    let mut row = vec![serde_json::json!("sound"), serde_json::json!(s.event)];
+                    row.extend(s.position.iter().map(|d| serde_json::json!(hex_f64(*d))));
+                    row.push(serde_json::json!(hex_f32(s.volume)));
+                    row.push(serde_json::json!(hex_f32(s.pitch)));
+                    row
+                })
+                .collect();
+            // Vec3i.compareTo: y, then z, then x.
+            let mut spins: Vec<_> = (&game.world.block_entities)
+                .into_iter()
+                .filter_map(|(k, e)| {
+                    let (spin, o_spin) = match e {
+                        BlockEntity::Spawner(s) => (hex_f64(s.spin), hex_f64(s.o_spin)),
+                        BlockEntity::TrialSpawner(s) => (hex_f64(s.spin), hex_f64(s.o_spin)),
+                        BlockEntity::Vault(v) => (hex_f32(v.spin), hex_f32(v.o_spin)),
+                        _ => return None,
+                    };
+                    Some((
+                        (k.1, k.2, k.0),
+                        serde_json::json!([k.0, k.1, k.2, spin, o_spin]),
+                    ))
+                })
+                .collect();
+            spins.sort_by_key(|(order, _)| *order);
+            ticks.push(serde_json::json!({
+                "random": format!("{:x}", game.particles.level_random().state()),
+                "particles": particles,
+                "sounds": sounds,
+                "spins": spins.into_iter().map(|(_, s)| s).collect::<Vec<_>>(),
+            }));
+            game.world.game_time += 1;
+        }
+        serde_json::json!({ "ticks": ticks })
     }
 }
