@@ -2478,7 +2478,8 @@ mod tests {
     /// helpers' math: the player at (3.5, 64.25, -7.75) is block (3, 64, -8) less the offset
     /// (-0.5, -0.25, -0.25); a projection scaling x and y by 2 and a model-view moving by
     /// (1, 2, 3) take screen point (0.75, 0.25) at depth 0.5 to NDC (0.5, -0.5, 0.5), view
-    /// (0.25, -0.25, 0.5) and world (-0.75, -2.25, -2.5).
+    /// (0.25, -0.25, 0.5) and world (-0.75, -2.25, -2.5); and with the game's reverse-Z
+    /// projection, a point's depth back to the point (the geometric hit).
     #[test]
     #[ignore = "daily"]
     fn a_post_pass_reads_the_games_poly_globals() {
@@ -2509,6 +2510,14 @@ mod tests {
                     fsh(
                         "vec3 p = polyPlayerPos();\n  fragColor = vec4(p.x * 2.0 / 255.0, \
                          (p.y - 60.0) * 4.0 / 255.0, -p.z * 4.0 / 255.0, 1.0);",
+                    ),
+                    "",
+                ),
+                (
+                    "hit",
+                    fsh(
+                        "vec3 w = polyPositionFromDepth(vec2(0.75, 0.25), 2.45 / 99.95);\n  \
+                         fragColor = vec4((w + vec3(1.0, 4.0, 6.0)) * 100.0 / 255.0, 1.0);",
                     ),
                     "",
                 ),
@@ -2551,6 +2560,27 @@ mod tests {
         assert_eq!(drawn("player", Some(bytes)), [7, 17, 31, 255]);
         // (-0.75, -2.25, -2.5) + (1, 3, 3) = (0.25, 0.75, 0.5), times 100.
         assert_eq!(drawn("depth", Some(bytes)), [25, 75, 50, 255]);
+        // The game's own projection form: reverse-Z, `perspective_rh(90 degrees, 1, far 100,
+        // near 0.05)`, so r = 0.05 / 99.95 and a view point (x, y, z) has device depth
+        // (100 + z) r / -z. The point (1, -1, -2) (seen at uv (0.75, 0.25)) has depth 98 r / 2 =
+        // 2.45 / 99.95, and the model-view's move by (1, 2, 3) puts it at (0, -3, -5); plus
+        // (1, 4, 6), times 100. The depth taken as OpenGL's (depth * 2 - 1, as Polytone 6.11 on
+        // 26.2 does) would put it about 0.05 blocks behind the camera instead.
+        let r = 0.05f32 / 99.95;
+        let mut reverse_z = [0.0; 16];
+        (
+            reverse_z[0],
+            reverse_z[5],
+            reverse_z[10],
+            reverse_z[11],
+            reverse_z[14],
+        ) = (1.0, 1.0, r, -1.0, 100.0 * r);
+        let hit = sunrise_polytone::globals::Globals {
+            projection: reverse_z,
+            ..globals
+        }
+        .std140();
+        assert_eq!(drawn("hit", Some(hit)), [100, 100, 100, 255]);
         assert!(effects.failed.is_empty());
         std::fs::remove_dir_all(root).unwrap();
     }

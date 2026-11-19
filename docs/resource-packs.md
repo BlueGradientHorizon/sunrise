@@ -123,11 +123,15 @@ doesn't yet:
   the block shows between the two. It is bound only to the stages
   that read it, before the expression uniforms, and counts against the same limit.
 - `#moj_import <polytone_globals.glsl>` (or `#include`) declares the block with the `polyPlayerPos` and
-  `polyPositionFromDepth` helpers where the packs don't have that file: a built-in that follows the public wiki,
-  which describes Polytone's newer releases. Polytone 26.3 (6.8.6, the only build for 26.3) has no such file, so a
-  pack importing it loads here and not in that Java build. The helpers' math is the wiki's, not checked against
-  Polytone's; `polyPositionFromDepth` takes the depth as the depth buffer holds it (26.3's reverse-Z, 0 to 1). A
-  pack's own file is read instead of the built-in, and one that can't be read refuses the shader by its path.
+  `polyPositionFromDepth` helpers where the packs don't have that file: a built-in that follows the public wiki.
+  Polytone 26.3 (6.8.6, the only build for 26.3) has no such file, so a pack importing it loads here and not in that
+  Java build. Polytone 6.11 on 26.2 has it (through `#moj_import`) and gives the same block position, offset, sun
+  angle, delta time and projection form in the same scene; its `polyPositionFromDepth` takes the depth with OpenGL's
+  convention (`depth * 2 - 1`), which on 26.3's reverse-Z depth buffer (0 to 1) gives other positions. Sunrise
+  follows the wiki's contract (the position from the screen uv and the depth buffer's value) and gives the
+  geometric hit. Its day time read 6001 in a scene where Sunrise gives 6000 (both suns at 6000's angle); not
+  matched. A pack's own file is read instead of the built-in, and one that can't be read refuses the shader by its
+  path.
 - The game builds the block only when something reads it, at most once a frame: when an installed pack core shader
   reads it (the lightmap's not under fullbright, which keeps the light texture white), or when a post effect that
   runs has a pass reading it. Each reading core pipeline writes its 176 bytes to the GPU when it uploads its blocks

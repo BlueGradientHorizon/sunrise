@@ -2,13 +2,17 @@
 //! core shaders may read, and the built-in `polytone_globals.glsl` for a pack that imports it
 //! without shipping it. Written from the public wiki's member names and their meaning.
 //!
-//! The built-in file and its helpers follow the wiki, which describes Polytone's newer releases:
-//! Polytone 26.3 (6.8.6, the only build for 26.3) has no such file, so a pack importing it loads
-//! here and not in that Java build; a pack declaring the block itself reads the same values in
-//! both (its pixels within the spread a control pack without the block shows between the two).
-//! The helpers' math is the wiki's, not checked against
-//! Polytone's: in particular `polyPositionFromDepth` takes the depth as the depth buffer holds it
-//! (26.3's reverse-Z, 0 to 1), which Polytone may treat otherwise.
+//! The built-in file and its helpers follow the wiki. Polytone 26.3 (6.8.6, the only build for
+//! 26.3) has no such file, so a pack importing it loads here and not in that Java build; a pack
+//! declaring the block itself reads the same values in both (its pixels within the spread a
+//! control pack without the block shows between the two). Polytone 6.11 on 26.2 has the file
+//! (`#moj_import`), and gives the same `PolyPlayerBlockPos`, `PolyPlayerOffset`, `PolySunAngle`,
+//! `PolyDeltaTime` and projection form in the same scene. Its `polyPositionFromDepth` takes the
+//! depth as OpenGL's (`depth * 2 - 1`), which on 26.3's reverse-Z 0 to 1 depth buffer gives
+//! other positions; this one follows the wiki's contract (the position from the screen uv and the
+//! depth buffer's value) and gives the geometric hit. Its `PolyDayTime` read 6001 where this
+//! gives 6000 (the sun angle 6000's in both); 26.3's client clock advances only while ticks run
+//! normally (`ClientClockManager`), and this isn't matched to 26.2's value.
 
 /// The block's name.
 pub const BLOCK: &str = "PolyGlobals";
