@@ -104,7 +104,7 @@ impl Game<'_> {
         self.forget_spawner_displays();
     }
     /// Drops the display mobs of spawners and trial spawners that are gone.
-    fn forget_spawner_displays(&mut self) {
+    pub(super) fn forget_spawner_displays(&mut self) {
         let entities = &self.world.block_entities;
         self.spawners.displays.retain(|k, _| {
             matches!(
@@ -433,7 +433,7 @@ impl Game<'_> {
         }
     }
     /// The client copy's tick: particles and the spin while a player is near.
-    fn client_tick_spawner(&mut self, key: Pos) {
+    pub(super) fn client_tick_spawner(&mut self, key: Pos) {
         let near = {
             let Some(BlockEntity::Spawner(s)) = self.world.block_entities.get(&key) else {
                 return;
@@ -595,31 +595,6 @@ impl Game<'_> {
         // The entity's own compound, its name and data merged in: it loads back.
         let _ = self.apply_entity_nbt(target, tag);
     }
-    /// `ClientLevel.tickBlockEntities` for spawners, trial spawners and vaults on a remote
-    /// client (`tick_remote`): every loaded one, however far from the player, in the level's
-    /// ticker order (`BlockEntities::tickers`), as they all draw from the one level random.
-    pub(super) fn tick_remote_spawners(&mut self) {
-        if !self.world.block_entities.has_states() {
-            let states = self.client_ticking_states();
-            self.world.block_entities.set_states(states);
-        }
-        let tickers = self.world.block_entity_tickers();
-        for &ticker in tickers.iter() {
-            // Ticks before this one can remove it (`TickingBlockEntity.isRemoved`).
-            if !self.world.block_entities.is_live(ticker) {
-                continue;
-            }
-            let key = ticker.0;
-            match self.world.block_entities.get(&key) {
-                Some(BlockEntity::Spawner(_)) => self.client_tick_spawner(key),
-                Some(BlockEntity::TrialSpawner(_)) => self.client_tick_trial_spawner(key),
-                // VaultBlock.getTicker on the client: VaultBlockEntity.Client.tick.
-                Some(BlockEntity::Vault(_)) => self.client_tick_vault(key),
-                _ => {}
-            }
-        }
-        self.forget_spawner_displays();
-    }
     /// `SpawnerRenderer` and `TrialSpawnerRenderer`: the next mob of every
     /// spawner near the camera, small and turning.
     pub(super) fn spawner_geometry(
@@ -743,236 +718,5 @@ mod tests {
             assert!((200..800).contains(&delay(game)), "{}", delay(game));
             assert_ne!(game.world.random.next_long(), before.next_long());
         });
-    }
-
-    /// tools/test_block_entity_client_tick_parity.py: each vanilla case through
-    /// `tick_remote_spawners`, logging every particle, sound and spin and the level random.
-    #[test]
-    #[ignore = "daily"]
-    fn client_ticks_match_the_vanilla_cases() {
-        let (Ok(cases), Ok(out)) = (
-            std::env::var("SUNRISE_CLIENT_TICK_CASES"),
-            std::env::var("SUNRISE_CLIENT_TICK_OUT"),
-        ) else {
-            panic!("run by tools/test_block_entity_client_tick_parity.py");
-        };
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            let mut lines = String::new();
-            for line in std::fs::read_to_string(cases).unwrap().lines() {
-                let case: serde_json::Value = serde_json::from_str(line).unwrap();
-                lines += &client_tick_case(game, &case).to_string();
-                lines.push('\n');
-            }
-            std::fs::write(out, lines).unwrap();
-        });
-    }
-
-    fn hex_f64(v: f64) -> String {
-        format!("{:x}", v.to_bits())
-    }
-
-    fn hex_f32(v: f32) -> String {
-        format!("{:x}", v.to_bits())
-    }
-
-    /// One case's block entity as its chunk packet carries it, with its block state.
-    fn client_tick_entity(
-        game: &Game<'_>,
-        e: &serde_json::Value,
-    ) -> (Pos, sunrise_world::registry::BlockStateId, BlockEntity) {
-        let int = |v: &serde_json::Value| v.as_i64().unwrap() as i32;
-        let key = (int(&e["pos"][0]), int(&e["pos"][1]), int(&e["pos"][2]));
-        let text = |k: &str| e[k].as_str().unwrap().to_owned();
-        let flag = |k: &str| e[k].as_bool().unwrap().to_string();
-        let (name, properties, entity) = match e["kind"].as_str().unwrap() {
-            "spawner" => {
-                let mut mob = sunrise_core::nbt::Compound::new();
-                mob.insert("id".into(), Tag::String("minecraft:pig".into()));
-                let spawner = Spawner {
-                    required_player_range: int(&e["range"]),
-                    spawn_delay: int(&e["delay"]),
-                    client_delay: int(&e["delay"]),
-                    next: Some(sunrise_client::chunk::block_entity::Next::Own(
-                        sunrise_client::chunk::block_entity::SpawnData {
-                            entity: mob,
-                            ..Default::default()
-                        },
-                    )),
-                    ..Spawner::default()
-                };
-                (
-                    "minecraft:spawner",
-                    vec![],
-                    BlockEntity::Spawner(Box::new(spawner)),
-                )
-            }
-            "trial_spawner" => (
-                "minecraft:trial_spawner",
-                vec![
-                    ("trial_spawner_state", text("state")),
-                    ("ominous", flag("ominous")),
-                ],
-                BlockEntity::TrialSpawner(Box::new(
-                    sunrise_client::chunk::block_entity::TrialSpawner {
-                        next_mob_spawns_at: e["nextMobSpawnsAt"].as_i64().unwrap(),
-                        ..Default::default()
-                    },
-                )),
-            ),
-            _ => (
-                "minecraft:vault",
-                vec![
-                    ("facing", text("facing")),
-                    ("ominous", flag("ominous")),
-                    ("vault_state", text("state")),
-                ],
-                BlockEntity::Vault(Box::new(sunrise_client::chunk::block_entity::Vault {
-                    display_item: e["display"]
-                        .as_bool()
-                        .unwrap()
-                        .then(|| sunrise_client::items::ItemStack::new("minecraft:diamond", 1)),
-                    connected_players: if e["connected"].as_bool().unwrap() {
-                        vec![CLIENT_TICK_PLAYER]
-                    } else {
-                        Vec::new()
-                    },
-                    connected_particles_range: e["particlesRange"].as_f64().unwrap(),
-                    ..Default::default()
-                })),
-            ),
-        };
-        let registry = game.pack.assets.registry;
-        let mut state = registry
-            .state(registry.default_state(name).unwrap())
-            .unwrap()
-            .clone();
-        for (k, v) in properties {
-            state.properties.insert(k.into(), v);
-        }
-        (key, registry.id(&state).unwrap(), entity)
-    }
-
-    const CLIENT_TICK_PLAYER: [i32; 4] = [0x5355_4e52, 0x4953_4500, 0, 1];
-
-    fn client_tick_case(game: &mut Game<'_>, case: &serde_json::Value) -> serde_json::Value {
-        game.world.block_entities.clear();
-        game.world.chunks.clear();
-        let entities: Vec<_> = case["entities"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|e| client_tick_entity(game, e))
-            .collect();
-        let column = |k: &Pos| (k.0 >> 4, k.2 >> 4);
-        for (key, state, _) in &entities {
-            let (x, z) = column(key);
-            if !game.world.chunks.contains_key(&(x, z)) {
-                game.world.chunks.insert(
-                    (x, z),
-                    std::sync::Arc::new(sunrise_client::chunk::Chunk::empty(x, z)),
-                );
-            }
-            game.world.set(key.0, key.1, key.2, *state).unwrap();
-        }
-        for (key, _, entity) in &entities {
-            game.world.block_entities.insert(*key, entity.clone());
-        }
-        let p = &case["player"];
-        let at = |i: usize| p["pos"][i].as_f64().unwrap();
-        let mut player =
-            sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(at(0), at(1), at(2)))
-                .unwrap();
-        player.health.dead = p["dead"].as_bool().unwrap();
-        game.player = Some(player);
-        game.mode = if p["spectator"].as_bool().unwrap() {
-            sunrise_client::command::args::GameMode::Spectator
-        } else {
-            sunrise_client::command::args::GameMode::Survival
-        };
-        game.level.player_uuid = Some(CLIENT_TICK_PLAYER);
-        game.particles
-            .seed_randoms(0, case["seed"].as_i64().unwrap(), 0);
-        game.world.game_time = case["gameTime"].as_i64().unwrap();
-        let mut ticks = Vec::new();
-        for t in 0..case["ticks"].as_i64().unwrap() {
-            for op in case["events"][t.to_string()]
-                .as_array()
-                .into_iter()
-                .flatten()
-            {
-                let chunk = (
-                    op[1].as_i64().unwrap() as i32,
-                    op[2].as_i64().unwrap() as i32,
-                );
-                if op[0] == "unload" {
-                    game.world.block_entities.unload(|k| column(k) == chunk);
-                } else {
-                    // A chunk packet's block entities (`load_chunk` keeps the chunk map's order).
-                    let loaded = entities
-                        .iter()
-                        .filter(|(k, _, _)| column(k) == chunk)
-                        .map(|(k, _, e)| (*k, e.clone()))
-                        .collect();
-                    game.world.block_entities.load_chunk(loaded);
-                }
-            }
-            game.particles.requested = Some(Vec::new());
-            game.audio.capture = Some(Vec::new());
-            game.tick_remote_spawners();
-            let particles: Vec<_> = game
-                .particles
-                .requested
-                .take()
-                .unwrap()
-                .into_iter()
-                .map(|(o, p, v)| {
-                    let mut row = vec![
-                        serde_json::json!("particle"),
-                        serde_json::json!(format!("minecraft:{}", o.ty.name())),
-                    ];
-                    row.extend(p.iter().chain(&v).map(|d| serde_json::json!(hex_f64(*d))));
-                    row
-                })
-                .collect();
-            let sounds: Vec<_> = game
-                .audio
-                .capture
-                .take()
-                .unwrap()
-                .into_iter()
-                .map(|s| {
-                    let mut row = vec![serde_json::json!("sound"), serde_json::json!(s.event)];
-                    row.extend(s.position.iter().map(|d| serde_json::json!(hex_f64(*d))));
-                    row.push(serde_json::json!(hex_f32(s.volume)));
-                    row.push(serde_json::json!(hex_f32(s.pitch)));
-                    row
-                })
-                .collect();
-            // Vec3i.compareTo: y, then z, then x.
-            let mut spins: Vec<_> = (&game.world.block_entities)
-                .into_iter()
-                .filter_map(|(k, e)| {
-                    let (spin, o_spin) = match e {
-                        BlockEntity::Spawner(s) => (hex_f64(s.spin), hex_f64(s.o_spin)),
-                        BlockEntity::TrialSpawner(s) => (hex_f64(s.spin), hex_f64(s.o_spin)),
-                        BlockEntity::Vault(v) => (hex_f32(v.spin), hex_f32(v.o_spin)),
-                        _ => return None,
-                    };
-                    Some((
-                        (k.1, k.2, k.0),
-                        serde_json::json!([k.0, k.1, k.2, spin, o_spin]),
-                    ))
-                })
-                .collect();
-            spins.sort_by_key(|(order, _)| *order);
-            ticks.push(serde_json::json!({
-                "random": format!("{:x}", game.particles.level_random().state()),
-                "particles": particles,
-                "sounds": sounds,
-                "spins": spins.into_iter().map(|(_, s)| s).collect::<Vec<_>>(),
-            }));
-            game.world.game_time += 1;
-        }
-        serde_json::json!({ "ticks": ticks })
     }
 }
