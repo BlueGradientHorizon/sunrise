@@ -16,6 +16,30 @@ use sunrise_connected::{
 use sunrise_world::block_state_properties::BlockProperties;
 use sunrise_world::registry::{BlockRegistry, BlockStateId};
 
+/// The highest collision point of every block state of `registry`, by id, from the prepared
+/// `cached-collision.nbt`: `f64::NEG_INFINITY` for an empty shape and for a state whose shape
+/// depends on the world (read as empty, as the shape queries do).
+pub fn collision_heights(
+    prepared: &std::path::Path,
+    registry: &BlockRegistry,
+) -> std::io::Result<Vec<f64>> {
+    let file = sunrise_world::registry::BlockTableFile::open(
+        &prepared.join("cached-collision.nbt"),
+        registry,
+    )?;
+    let shapes =
+        sunrise_world::collision::CachedCollisionRegistry::from_table(file.table("collision")?)?;
+    (0..registry.len() as u32)
+        .map(|id| {
+            Ok(shapes
+                .cached_shape(BlockStateId(id))?
+                .map_or(f64::NEG_INFINITY, |s| {
+                    s.max(sunrise_core::geometry::Axis::Y)
+                }))
+        })
+        .collect()
+}
+
 /// The rules to load for `root`: those the installed pack formats read, then the mods' asset
 /// files, in the order they are tried.
 pub fn read_rules(root: &ResourceSource) -> Vec<Rule> {
@@ -123,6 +147,9 @@ pub struct ConnectedTextures {
     /// By block state: the sprite of its model's face on each side (`connect=tile`); empty
     /// when no rule connects by tile.
     face_layers: Vec<[u16; 6]>,
+    /// By block state: the highest point of its collision shape, for the rules that join by
+    /// height ([`Self::set_heights`]); an empty shape has none.
+    heights: Vec<f64>,
 }
 
 /// `list` appended to `lists`, as its range there.
@@ -337,7 +364,7 @@ impl ConnectedTextures {
         };
         for r in out.rules.iter_mut() {
             match r.rule.connect {
-                Connect::Blocks => r.listed = listed(&r.rule.connect_blocks),
+                Connect::Blocks | Connect::Height(_) => r.listed = listed(&r.rule.connect_blocks),
                 Connect::Properties => {
                     // States are alike when they are one block with the same values of the
                     // properties the rule names.
@@ -491,6 +518,26 @@ impl ConnectedTextures {
 
     pub fn is_empty(&self) -> bool {
         self.rules.is_empty()
+    }
+
+    /// Whether a rule joins by height, and the collision heights are needed.
+    pub fn joins_by_height(&self) -> bool {
+        self.rules
+            .iter()
+            .any(|r| matches!(r.rule.connect, Connect::Height(_)))
+    }
+
+    /// The highest collision point of every block state, by id (`f64::NEG_INFINITY` for a
+    /// state without a collision shape). Read when meshing: nothing is worked out per face.
+    pub fn set_heights(&mut self, heights: Vec<f64>) {
+        self.heights = heights;
+    }
+
+    fn height(&self, state: u32) -> f64 {
+        self.heights
+            .get(state as usize)
+            .copied()
+            .unwrap_or(f64::NEG_INFINITY)
     }
 
     /// Whether a pane's top or bottom strip, centred at `centre` (block-local x, z), is hidden by
@@ -681,6 +728,24 @@ impl ConnectedTextures {
                 }
                 Connect::State => other == state,
                 Connect::Blocks => r.listed.binary_search(&other).is_ok(),
+                Connect::Height(h) => {
+                    let own = self.height(state);
+                    let at = |cell: [i32; 3]| {
+                        let above = self.height(neighbour([cell[0], cell[1] + 1, cell[2]]));
+                        (self.height(neighbour(cell)), above)
+                    };
+                    let (height, above) = at(offset);
+                    let listed =
+                        r.rule.connect_blocks.is_empty() || r.listed.binary_search(&other).is_ok();
+                    h.joins(own, height, above, listed)
+                        || (h.side
+                            && geometry::beside(face.normal(), offset).is_some_and(|beside| {
+                                beside.into_iter().any(|cell| {
+                                    let (height, above) = at(cell);
+                                    h.joins_beside(own, height, above)
+                                })
+                            }))
+                }
                 Connect::Properties => r
                     .keys
                     .get(other as usize)
@@ -1052,6 +1117,126 @@ mod tests {
         assert_eq!(
             pick_in(&ctm, 1, 3, Face::North, &[([-1, 0, 0], 1)]),
             Pick::Nothing
+        );
+    }
+
+    /// Glass (state 1, a block 0.5 high) with a rule joining by `join`, the heights of states
+    /// 0 to 4 literal: air has none, glass 0.5, stone 1.0, the logs 0.5 and 0.25. The north
+    /// face's right is west: its one test joins the cell at `[-1, 0, 0]`.
+    fn height_world(join: sunrise_connected::HeightJoin, of: &[&str]) -> ConnectedTextures {
+        let table = Table::new(vec![geometry::R], false, (2, 1), vec![1, 0]).unwrap();
+        let of = of
+            .iter()
+            .map(|id| BlockSel {
+                id: id.to_string(),
+                states: Vec::new(),
+            })
+            .collect();
+        let mut ctm = table_world(table, false, Connect::Height(join), of);
+        ctm.set_heights(vec![f64::NEG_INFINITY, 0.5, 1.0, 0.5, 0.25]);
+        ctm
+    }
+
+    /// Whether the rule joins the cell west of the glass block, among `blocks`.
+    fn joins_west(ctm: &ConnectedTextures, blocks: &[([i32; 3], u32)]) -> bool {
+        match pick_in(ctm, 1, 3, Face::North, blocks) {
+            p if p == tile(500) => true,
+            p if p == tile(501) => false,
+            p => panic!("{p:?}"),
+        }
+    }
+
+    #[test]
+    fn a_table_can_join_a_neighbour_of_the_same_height() {
+        let same = sunrise_connected::HeightJoin {
+            same: true,
+            ..Default::default()
+        };
+        let ctm = height_world(same, &[]);
+        // Glass and the first log are 0.5 high; stone 1.0, the second log 0.25, air has none.
+        assert!(joins_west(&ctm, &[([-1, 0, 0], 1)]));
+        assert!(joins_west(&ctm, &[([-1, 0, 0], 3)]));
+        assert!(!joins_west(&ctm, &[([-1, 0, 0], 2)]));
+        assert!(!joins_west(&ctm, &[([-1, 0, 0], 4)]));
+        assert!(!joins_west(&ctm, &[]));
+        // `of` limits the blocks it compares: only the logs.
+        let ctm = height_world(same, &["minecraft:oak_log"]);
+        assert!(!joins_west(&ctm, &[([-1, 0, 0], 1)]));
+        assert!(joins_west(&ctm, &[([-1, 0, 0], 3)]));
+    }
+
+    #[test]
+    fn a_table_can_join_a_higher_or_a_lower_neighbour() {
+        let higher = sunrise_connected::HeightJoin {
+            higher: true,
+            ..Default::default()
+        };
+        // A block 0.5 high beside a 1.0 high one (Create's bottom slab beside a taller block).
+        let ctm = height_world(higher, &[]);
+        assert!(joins_west(&ctm, &[([-1, 0, 0], 2)]));
+        assert!(!joins_west(&ctm, &[([-1, 0, 0], 1)]));
+        assert!(!joins_west(&ctm, &[([-1, 0, 0], 4)]));
+        // Only blocks with a collision top are higher than this one: air is not.
+        assert!(!joins_west(&ctm, &[]));
+        let lower = sunrise_connected::HeightJoin {
+            lower: true,
+            ..Default::default()
+        };
+        let ctm = height_world(lower, &[]);
+        assert!(joins_west(&ctm, &[([-1, 0, 0], 4)]));
+        assert!(!joins_west(&ctm, &[([-1, 0, 0], 1)]));
+        assert!(!joins_west(&ctm, &[([-1, 0, 0], 2)]));
+        // Air has no top at all, so it is lower than every block.
+        assert!(joins_west(&ctm, &[]));
+    }
+
+    #[test]
+    fn a_table_can_join_a_neighbour_with_a_top_above_it() {
+        let above = sunrise_connected::HeightJoin {
+            above: true,
+            ..Default::default()
+        };
+        let ctm = height_world(above, &[]);
+        // Whatever the neighbour is, the cell above it has a collision top.
+        assert!(joins_west(&ctm, &[([-1, 1, 0], 2)]));
+        assert!(joins_west(&ctm, &[([-1, 0, 0], 4), ([-1, 1, 0], 4)]));
+        assert!(!joins_west(&ctm, &[([-1, 0, 0], 2)]));
+    }
+
+    #[test]
+    fn a_table_can_join_an_edge_by_the_cells_beside_the_block() {
+        use geometry::{R, UR};
+        let side = sunrise_connected::HeightJoin {
+            higher: true,
+            above: true,
+            side: true,
+            ..Default::default()
+        };
+        // The right edge (west) and the up-right corner (above it). The glass block's two cells
+        // beside it, along the north face's other axis, are the ones above and below it.
+        let table = Table::new(vec![R, UR], false, (4, 1), vec![0, 1, 2, 3]).unwrap();
+        let mut ctm = table_world(table, false, Connect::Height(side), Vec::new());
+        ctm.set_heights(vec![f64::NEG_INFINITY, 0.5, 1.0, 0.5, 0.25]);
+        let at = |blocks: &[([i32; 3], u32)]| pick_in(&ctm, 1, 3, Face::North, blocks);
+        // Nothing around: neither joins.
+        assert_eq!(at(&[]), tile(500));
+        // A higher block above joins the right edge, whatever is west, and not the corner.
+        assert_eq!(at(&[([0, 1, 0], 2)]), tile(501));
+        // The same one below the block.
+        assert_eq!(at(&[([0, -1, 0], 2)]), tile(501));
+        // A block that is not higher beside it joins nothing.
+        assert_eq!(at(&[([0, 1, 0], 4)]), tile(500));
+        // Without `side` the edge needs its own cell.
+        let plain = sunrise_connected::HeightJoin {
+            side: false,
+            ..side
+        };
+        let table = Table::new(vec![R, UR], false, (4, 1), vec![0, 1, 2, 3]).unwrap();
+        let mut ctm = table_world(table, false, Connect::Height(plain), Vec::new());
+        ctm.set_heights(vec![f64::NEG_INFINITY, 0.5, 1.0, 0.5, 0.25]);
+        assert_eq!(
+            pick_in(&ctm, 1, 3, Face::North, &[([0, 1, 0], 2)]),
+            tile(500)
         );
     }
 
