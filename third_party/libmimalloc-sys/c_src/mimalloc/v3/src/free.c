@@ -632,8 +632,14 @@ static void mi_stat_free(const mi_page_t* page, const mi_block_t* block) {
   }
 }
 #else
+// Sunrise: page.c counts huge blocks at every MI_STAT level, so their free is counted at every level too
 void mi_stat_free(const mi_page_t* page, const mi_block_t* block) {
-  MI_UNUSED(page); MI_UNUSED(block);
+  MI_UNUSED(block);
+  const size_t bsize = mi_page_block_size(page);
+  if mi_unlikely(bsize > MI_LARGE_MAX_OBJ_SIZE) {
+    mi_theap_t* const theap = _mi_theap_default();
+    if (mi_theap_is_initialized(theap)) { mi_theap_stat_decrease(theap, malloc_huge, bsize); }
+  }
 }
 #endif
 

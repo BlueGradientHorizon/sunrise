@@ -140,9 +140,11 @@ files ship beside the DLL as `DXC-LICENSE-MS.txt` and `DXC-LICENSE-LLVM.txt`, wi
 `third_party/libmimalloc-sys` is [libmimalloc-sys](https://github.com/purpleprotocol/mimalloc_rust)
 0.1.49 by Octavian Oncescu, with the [mimalloc](https://github.com/microsoft/mimalloc) v3 sources it
 bundles (Copyright (c) 2018-2025 Microsoft Corporation, Daan Leijen), both under the MIT license
-(`LICENSE.txt` and `c_src/mimalloc/v3/LICENSE` in that folder). It holds only the v3 sources. One
-change: `mi_popcount` in `include/mimalloc/bits.h` uses mimalloc's portable bit count on MSVC
-x86/x64 instead of the POPCNT instruction, which CPUs before Nehalem lack (#7264).
+(`LICENSE.txt` and `c_src/mimalloc/v3/LICENSE` in that folder). It holds only the v3 sources. Two
+changes: `mi_popcount` in `include/mimalloc/bits.h` uses mimalloc's portable bit count on MSVC
+x86/x64 instead of the POPCNT instruction, which CPUs before Nehalem lack (#7264); and
+`mi_stat_free` in `src/free.c` lowers the `malloc_huge` statistic when a huge block is freed in a
+build without detailed statistics (`MI_STAT` 0), as it is raised in every build (#3299).
 
 ## Pixelify Sans
 

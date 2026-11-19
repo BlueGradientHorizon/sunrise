@@ -11,10 +11,11 @@ fn field(line: &str, key: &str) -> Option<usize> {
     digits.parse().ok()
 }
 
-/// Bytes of the pages `malloc_bins` has in use, plus the huge blocks `malloc_huge` counts by size.
+/// Bytes of the pages `page_bins` has in use, plus the huge blocks `malloc_huge` counts by size.
+/// `malloc_bins` counts blocks, not pages, and only in builds with `MI_STAT` > 1.
 fn in_use(json: &str) -> Option<usize> {
     let huge = json.lines().find(|l| l.contains("\"malloc_huge\":"))?;
-    let bins = json.split("\"malloc_bins\"").nth(1)?;
+    let bins = json.split("\"page_bins\"").nth(1)?;
     let bins = bins.split(']').next()?;
     let mut total = field(huge, "current")?;
     for line in bins.lines().filter(|l| l.contains("\"block_size\"")) {
@@ -52,12 +53,15 @@ mod tests {
         let json = r#"{
   "malloc_huge": { "total": 9, "peak": 9, "current": 1000 },
   "malloc_bins": [
+    { "total": 900, "peak": 900, "current": 700, "block_size": 8, "page_size": 65536 }
+  ],
+  "page_bins": [
     { "total": 9, "peak": 9, "current": 0, "block_size": 8, "page_size": 65536 },
     { "total": 9, "peak": 9, "current": 3, "block_size": 112, "page_size": 65536 },
     { "total": 1, "peak": 1, "current": 2, "block_size": 524296, "page_size": 0 }
   ],
-  "page_bins": [
-    { "total": 5, "peak": 5, "current": 5, "block_size": 8, "page_size": 65536 }
+  "chunk_bins": [
+    { "total": 5, "peak": 5, "current": 5, "bin": "S" }
   ]
 }"#;
         assert_eq!(in_use(json), Some(1000 + 3 * 65536));
@@ -72,5 +76,16 @@ mod tests {
         // SAFETY: `block` came from `mi_malloc` above.
         unsafe { libmimalloc_sys::mi_free(block) };
         assert!(during >= before + (64 << 20), "{before} then {during}");
+    }
+
+    #[test]
+    fn live_bytes_fall_when_large_blocks_are_freed() {
+        let before = live_bytes().unwrap();
+        for _ in 0..8 {
+            // SAFETY: allocates and frees one block with mimalloc.
+            unsafe { libmimalloc_sys::mi_free(libmimalloc_sys::mi_malloc(64 << 20)) };
+        }
+        let after = live_bytes().unwrap();
+        assert!(after < before + (256 << 20), "{before} then {after}");
     }
 }
