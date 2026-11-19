@@ -272,7 +272,10 @@ For mods that run where the world is simulated: a dedicated server, a LAN host, 
   trade: its costs, `result`, `uses` (this trade counted), `max_uses` and `xp`. Listen only, heard once the whole click
   is done (its payments taken). The player's state is swapped in, so `host.players().acting_player` names
   them. Unlike `player_trade`, which is heard once per click with no offer. `MerchantRef` operations that
-  conflict with an active menu operation are refused.
+  conflict with an active menu operation are refused. Contract version `3`: a guest's result take with a
+  listener runs as one decided action, so a panic, an answer that cannot become a live offer, or an aborted
+  outer transaction undoes the whole take (every trade of a shift-click, the listener's writes), and what
+  others can see waits for the root commit.
 - **`player_shield_disable(player, name, ticks)`**: a blocked melee hit disabled the server player’s shield for `ticks` ticks. It fires just before the cooldown is set.
 - **`player_loom_pattern_select(player, name, pattern)`**: a server player selected loom pattern button `pattern`, after the menu accepted it.
 - **`player_name_entity(player, name, entity_id, entity_name)`**: a server player used a named name tag on a mob, after it became persistent and was named.
