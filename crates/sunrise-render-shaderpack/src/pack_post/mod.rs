@@ -12,11 +12,11 @@
 // - `types`: the pack's entries and exits (what it is handed, what it makes, what it refuses)
 //   and the puzzle of passes, buffers and bindings they are built from.
 // - `construction`: `PackPost` itself, `PackPost::new` and the pieces it builds them with.
-//
-// The frame's own work (`execution.rs`) stays in the client's `gfx::pack_post`, which uses
-// these names where they have always been.
+// - `execution`: the frame's work on a `PackPost` (its passes, flips, resize, shadow pass and
+//   `run`), as inherent methods taking the decoupled `UniformFrameView`.
 
 pub mod construction;
+pub mod execution;
 mod image_formats;
 mod packed;
 pub mod types;
@@ -24,6 +24,7 @@ pub mod types;
 pub use image_formats::{image_format, storage_formats_of};
 
 pub use construction::*;
+pub use execution::*;
 pub use types::*;
 
 #[cfg(test)]

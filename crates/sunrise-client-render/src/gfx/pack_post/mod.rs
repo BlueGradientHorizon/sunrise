@@ -3,51 +3,229 @@
 //! colortex0 and its depth `depthtex0`, then the pack's `prepare`, `deferred`, `composite` and
 //! `final` programs run in order, and `final` draws onto the screen under the hand and HUD.
 //!
-//! What the pack is and what it builds (`types`, `construction`: its entries and exits, its
-//! passes, buffers and bindings, and `PackPost::new`) lives in sunrise_render_shaderpack's
-//! `pack_post`; this module runs it. Its `types` and `construction` re-export that crate's,
-//! and `PackPost` wraps what `new` makes, so the names the game and the tests reach here are
-//! unchanged.
-//
-// - `types`: the pack's entries and exits and the puzzle of passes, buffers and bindings.
-// - `construction`: `PackPost` itself and `PackPost::new`.
-// - `execution`: from `take_center_depth` on: the frame's passes, its flips and resizes.
-mod construction;
-mod execution;
+//! What the pack is, what it builds and the frame's work on it now live in
+//! sunrise_render_shaderpack's `pack_post`: this module re-exports them unchanged. The few entry
+//! points that still take the client's own `Frame`, entity vertices and skin frame (though the
+//! shader pack crate stays clear of those) are `PackPostExt`, a thin bridge that builds the
+//! crate's decoupled `UniformFrameView`, `SkyInputs` and `HandInputs` from the frame.
+
+// `types` re-exports the crate's entries and exits; the rest comes straight from the crate.
 mod types;
 
-// The names other modules reach through `gfx::pack_post` keep the paths and visibility they had.
-pub(crate) use construction::{Geometry, TerrainList, TerrainPage};
-pub use construction::{PackPost, PackPostExt};
-pub use sunrise_render_shaderpack::pack_post::Refused;
-// The tests' fixtures reach these where they used to (one file had one namespace).
-#[cfg(test)]
-pub(crate) use construction::{TerrainDraw, block_ids, terrain_tables};
-#[allow(unused_imports)]
-pub(crate) use types::{Clouds, Lines, Weather, World};
+pub use types::*;
 
-// Every other name the tests reach unqualified through `super::*` (their modules name only
-// what they use, as the one file's tests did). The traits come first: a glob import names a
-// trait only as a value.
-#[cfg(test)]
-#[allow(unused_imports)]
-use construction::PackPostExt as _;
-#[cfg(test)]
-#[allow(unused_imports)]
-use sunrise_render_shaderpack::pack_post::*;
-#[cfg(test)]
-#[allow(unused_imports)]
-use types::*;
+pub use sunrise_render_shaderpack::pack_post::construction::*;
+pub use sunrise_render_shaderpack::pack_post::execution::*;
 
-pub use construction::PackPostExt as _;
+use super::pack_entities::PackEntitiesExt as _;
+use crate::gfx::Frame;
+use crate::gfx::entity_skin::SkinFrame;
+use crate::gfx::pack_draw::EntitySpan;
+use sunrise_render_core::{SkyView, UniformFrameView};
+use sunrise_render_shaderpack::pack_uniforms::PackInputs;
 
 pub(crate) use super::external::ShadowView;
+
+/// The path-facing names the game reaches through `gfx::pack_post` keep their visibility.
+pub(crate) use sunrise_render_shaderpack::pack_post::construction::{
+    Geometry, TerrainDraw, TerrainList, TerrainPage,
+};
+
+/// The shader pack's `PackPost` methods that still take the client's own `Frame`: `run`, whose
+/// `Frame` it turns into the crate's `UniformFrameView`, sky and hand inputs; `shadow_view`; and
+/// `prepare_entities`, which uploads the frame's `Vertex` runs and its `SkinFrame`.
+pub trait PackPostExt: Sized {
+    /// The shadow pass this frame wants, when the pack draws one.
+    fn shadow_view(&self, frame: &Frame) -> Option<ShadowView>;
+    /// The entities and block entities the pack draws this frame, into its own buffers.
+    #[allow(clippy::too_many_arguments)]
+    fn prepare_entities(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        entities: &[crate::gfx::Vertex],
+        spans: &[EntitySpan],
+        crumbling: [f32; 4],
+        portal: [f32; 4],
+        rest: &mut Vec<crate::gfx::Vertex>,
+        skin: Option<&SkinFrame>,
+        motion: (&[(u32, u64)], &[u32]),
+    );
+    /// Runs the pack over the world drawn into `world` (colour) and `world_depth`, then draws
+    /// the result onto `screen`.
+    #[allow(clippy::too_many_arguments)]
+    fn run(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        world: &wgpu::TextureView,
+        world_depth: &wgpu::TextureView,
+        screen: &wgpu::TextureView,
+        frame: &Frame,
+        inputs: &PackInputs,
+        size: [u32; 2],
+        window: [u32; 2],
+        pages: &[TerrainPage],
+        terrain: &mut TerrainDraw<'_>,
+    );
+}
+
+/// The shader pack crate's `UniformFrameView` for the client's `Frame`: the fields it reads.
+fn frame_view<'a>(frame: &'a Frame) -> UniformFrameView<'a> {
+    UniformFrameView {
+        camera: frame.camera,
+        yaw: frame.yaw,
+        pitch: frame.pitch,
+        fov_degrees: frame.fov_degrees,
+        eye: frame.eye,
+        eye_rotation: frame.eye_rotation,
+        first_person: frame.first_person,
+        bob: frame.bob,
+        spin: frame.spin,
+        sky: SkyView {
+            sun_angle: frame.sky.sun_angle,
+            moon_angle: frame.sky.moon_angle,
+            sky_color: frame.sky.sky_color,
+            fog_color: frame.sky.fog_color,
+        },
+        distance: frame.distance,
+        detail_distance: frame.detail_distance,
+        depth_far: frame.depth_far,
+        fog: frame.fog.as_ref().map(|f| sunrise_render_core::FogView {
+            color: [f.color[0], f.color[1], f.color[2]],
+            environmental_start: f.environmental_start,
+            environmental_end: f.environmental_end,
+        }),
+        night_vision: frame.night_vision,
+        darkness: frame.darkness,
+        dynamic_lights: &frame.dynamic_lights,
+        entities: frame.entities,
+    }
+}
+
+impl PackPostExt for PackPost {
+    /// The shadow camera this frame draws of the terrain, when the pack draws it.
+    fn shadow_view(&self, frame: &Frame) -> Option<ShadowView> {
+        if !self.has_shadow() {
+            return None;
+        }
+        let shadow = &self.uniforms.shadow;
+        let unculled = match self.shadow_culling {
+            sunrise_shaders::ShadowCulling::On => None,
+            sunrise_shaders::ShadowCulling::Off => Some(f32::INFINITY),
+            sunrise_shaders::ShadowCulling::Reversed => Some(shadow.voxel_distance),
+        };
+        Some(
+            ShadowView::new(
+                super::pack_uniforms::shadow_culling(frame, shadow),
+                super::pack_uniforms::shadow_light(frame, shadow),
+            )
+            .with_distance((shadow.render_mul > 0.0).then_some(shadow.distance * shadow.render_mul))
+            .with_unculled(unculled)
+            .with_every_face(true)
+            .with_view_casters(true),
+        )
+    }
+
+    /// Splits `entities` (`Frame::entities`) between the pack and Sunrise by its runs
+    /// (`spans`): the pack's part is uploaded for this frame's draw, Sunrise's goes to `rest`.
+    fn prepare_entities(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        entities: &[crate::gfx::Vertex],
+        spans: &[EntitySpan],
+        crumbling: [f32; 4],
+        portal: [f32; 4],
+        rest: &mut Vec<crate::gfx::Vertex>,
+        skin: Option<&SkinFrame>,
+        motion: (&[(u32, u64)], &[u32]),
+    ) {
+        self.portal_rect = portal;
+        let shadow = self.shadow_casters();
+        let Some(e) = &mut self.entities else {
+            rest.clear();
+            rest.extend_from_slice(entities);
+            return;
+        };
+        let drawn = e.passes.each_ref().map(Option::is_some);
+        e.geometry.prepare_client(
+            device,
+            queue,
+            &self.draws.layout,
+            entities,
+            spans,
+            drawn,
+            (crumbling, self.gui_size),
+            shadow,
+            rest,
+            skin,
+            motion,
+        );
+    }
+
+    /// Runs the pack over the world drawn into `world` (colour) and `world_depth`, then draws
+    /// the result onto `screen`.
+    fn run(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        world: &wgpu::TextureView,
+        world_depth: &wgpu::TextureView,
+        screen: &wgpu::TextureView,
+        frame: &Frame,
+        inputs: &PackInputs,
+        size: [u32; 2],
+        window: [u32; 2],
+        pages: &[TerrainPage],
+        terrain: &mut TerrainDraw<'_>,
+    ) {
+        let view = frame_view(frame);
+        let sky = SkyInputs {
+            sunset_color: frame.sky.sunrise_color,
+            stars: frame.stars,
+            dark_disc: frame.dark_disc,
+            celestial: frame.celestial,
+            visible: super::sky_visible(frame),
+            end_fog_sky: super::end_fog_sky(frame),
+        };
+        let hand = HandInputs {
+            vertices: frame.hand,
+            items: frame.hand_items,
+            fov_degrees: frame.hand_fov_degrees,
+            bob: frame.bob,
+            spin: frame.spin,
+        };
+        self.run_frame(
+            device,
+            queue,
+            encoder,
+            world,
+            world_depth,
+            screen,
+            &view,
+            &sky,
+            &hand,
+            inputs,
+            size,
+            window,
+            pages,
+            terrain,
+            frame.shadow_cache,
+            frame.shadow_scene_revision,
+            frame.ticks,
+            frame.pack.day_time,
+        );
+    }
+}
 
 // What `execution` and the tests reach through `super::*` (as they did when this was one file).
 #[allow(unused_imports)]
 use super::pack_draw::DrawUniforms;
 #[allow(unused_imports)]
-use super::pack_entities::{PROGRAMS, PackEntities, PackEntitiesExt};
+use super::pack_entities::{PROGRAMS, PackEntities};
 #[allow(unused_imports)]
 use super::pack_images;
 #[allow(unused_imports)]
@@ -55,7 +233,7 @@ use super::pack_sky::PackSky;
 #[allow(unused_imports)]
 use super::pack_textures;
 #[allow(unused_imports)]
-use super::pack_uniforms::{self, FrameUniforms, FrameUniformsExt, PackInputs};
+use super::pack_uniforms::{self, FrameUniforms, FrameUniformsExt};
 #[allow(unused_imports)]
 use glam::{DMat4, DVec3};
 #[allow(unused_imports)]

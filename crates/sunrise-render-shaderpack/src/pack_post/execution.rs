@@ -1,6 +1,11 @@
 //! The frame's work: the centre depth the finished frame copied, `reset_history`, the passes
 //! (bind, dispatch and draw, and the flip of each colortex buffer a pass wrote), the resize of
 //! `Targets`, the shadow pass and its cache, and `run`, which puts them in order.
+//!
+//! These are `PackPost`'s inherent methods. The frame inputs come from the decoupled
+//! `sunrise_render_core::UniformFrameView` and its own scalars, so the client's `gfx::Frame`
+//! never crosses into this crate (its `run`, `shadow_view` and `prepare_entities` shims build
+//! them).
 
 #![allow(unused_imports)]
 
@@ -8,21 +13,53 @@ use std::collections::HashMap;
 
 use glam::{DMat4, DVec3};
 use smallvec::SmallVec;
+use sunrise_render_core::UniformFrameView;
 use sunrise_shaders::{BUFFERS, Format, Group, Post, SHADOW_COLORS};
 
-use super::super::pack_draw::DrawUniforms;
-use super::super::pack_entities::{PROGRAMS, PackEntities, PackEntitiesExt};
-use super::super::pack_images;
-use super::super::pack_sky::PackSky;
-use super::super::pack_textures;
-use super::super::pack_uniforms::{self, FrameUniforms, FrameUniformsExt, PackInputs};
 use super::construction::*;
 use super::types::*;
-use crate::gfx::pack_post::{PackPost, PackPostExt, ShadowView};
+use crate::pack_center_depth;
+use crate::pack_draw::DrawUniforms;
+use crate::pack_entities::{PROGRAMS, PackEntities};
+use crate::pack_hand;
+use crate::pack_images;
+use crate::pack_shadow;
+use crate::pack_sky::{self, PackSky, SkyFrame};
+use crate::pack_textures;
+use crate::pack_uniforms::{self, FrameUniforms, PackInputs};
+use crate::pack_weather;
 
-impl PackPostExt for PackPost {
-    /// `Renderer::finish_sequence_frame`: the centre depth the finished frame copied.
-    fn take_center_depth(&mut self, device: &wgpu::Device) -> Result<(), String> {
+/// The frame's sky inputs, decoupled from the client's `Frame`: what `draw_sky` needs to build a
+/// `SkyFrame` (`view` gives the sun, colours and fog).
+#[derive(Clone, Copy)]
+pub struct SkyInputs<'a> {
+    /// The sky's sunset colour (`Sky::sunrise_color`).
+    pub sunset_color: [f32; 4],
+    /// The stars' rotation and brightness.
+    pub stars: Option<(glam::Mat4, f32)>,
+    /// The camera is low enough for the void disc.
+    pub dark_disc: bool,
+    /// Camera-relative sun and moon quads, each four `sunrise_render_core::Vertex`.
+    pub celestial: &'a [sunrise_render_core::EntityVertex],
+    /// The Overworld-style sky draws this frame (`sky_visible`).
+    pub visible: bool,
+    /// The End's fan draws though vanilla's sky does not (`end_fog_sky`).
+    pub end_fog_sky: bool,
+}
+
+/// The frame's first-person hand inputs, decoupled from the client's `Frame`: the vertices, the
+/// item runs, its own field of view, and the nausea spin the world turns with (`bob`, `spin`) so
+/// its projection can take it out.
+pub struct HandInputs<'a> {
+    pub vertices: &'a [sunrise_render_core::EntityVertex],
+    pub items: &'a [(u32, i32)],
+    pub fov_degrees: f32,
+    pub bob: glam::Mat4,
+    pub spin: glam::Mat4,
+}
+
+impl PackPost {
+    pub fn take_center_depth(&mut self, device: &wgpu::Device) -> Result<(), String> {
         self.center_depth
             .as_mut()
             .ok_or("the shader pack copied no centre depth")?
@@ -34,7 +71,7 @@ impl PackPostExt for PackPost {
     /// loaded pack's first: buffers, images, storage buffers and shadow maps start over (made
     /// again at their sizes when next drawn), the frame uniforms' history, the custom uniforms
     /// and the centre depth too. Compiled programs and the pack's textures stay.
-    fn reset_history(&mut self, device: &wgpu::Device) {
+    pub fn reset_history(&mut self, device: &wgpu::Device) {
         self.uniforms.reset_history();
         // A parsed pack's custom uniforms start at tick 0's seed, before any frame of the world.
         self.custom.restart_at(0);
@@ -55,7 +92,7 @@ impl PackPostExt for PackPost {
         if let Some(shadow) = &mut self.shadow_targets {
             shadow.reset_history(device, &self.uniforms.shadow);
         }
-        self.shadow.0 = super::super::pack_shadow::stand_in(device);
+        self.shadow.0 = crate::pack_shadow::stand_in(device);
         self.shadow_cleared = false;
         self.shadow_cache = Default::default();
         self.setup_pending = true;
@@ -90,55 +127,18 @@ impl PackPostExt for PackPost {
     }
     /// Splits `entities` (`Frame::entities`) between the pack and Sunrise by its runs
     /// (`spans`): the pack's part is uploaded for this frame's draw, Sunrise's goes to `rest`.
-    fn prepare_entities(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        entities: &[super::super::Vertex],
-        spans: &[super::super::pack_draw::EntitySpan],
-        crumbling: [f32; 4],
-        portal: [f32; 4],
-        rest: &mut Vec<super::super::Vertex>,
-        skin: Option<&super::super::entity_skin::SkinFrame>,
-        motion: (&[(u32, u64)], &[u32]),
-    ) {
-        self.portal_rect = portal;
-        let shadow = self.shadow_casters();
-        let Some(e) = &mut self.entities else {
-            rest.clear();
-            rest.extend_from_slice(entities);
-            return;
-        };
-        let drawn = e.passes.each_ref().map(Option::is_some);
-        e.geometry.prepare_client(
-            device,
-            queue,
-            &self.draws.layout,
-            entities,
-            spans,
-            drawn,
-            (crumbling, self.gui_size),
-            shadow,
-            rest,
-            skin,
-            motion,
-        );
-    }
-
-    /// Every stage a posable subject can use must have a compiled fallback.
-    /// Special models, player and eye/tagged layers retain their CPU paths.
-    fn skins_entities(&self) -> bool {
+    pub fn skins_entities(&self) -> bool {
         self.entities
             .as_ref()
             .is_some_and(|e| e.passes[..3].iter().all(Option::is_some))
     }
 
-    fn skin_target(&self) -> Option<&wgpu::Buffer> {
+    pub fn skin_target(&self) -> Option<&wgpu::Buffer> {
         self.entities.as_ref().map(|e| e.geometry.skin_target())
     }
 
     /// Which entity runs the shadow pass draws: none without it.
-    fn shadow_casters(&self) -> super::super::pack_entities::Casters {
+    pub fn shadow_casters(&self) -> crate::pack_entities::Casters {
         let Some(e) = self
             .entities
             .as_ref()
@@ -146,7 +146,7 @@ impl PackPostExt for PackPost {
         else {
             return Default::default();
         };
-        super::super::pack_entities::Casters {
+        crate::pack_entities::Casters {
             entities: e.shadow[0].is_some(),
             only_player: e.only.0,
             blocks: e.shadow[1].is_some(),
@@ -156,75 +156,51 @@ impl PackPostExt for PackPost {
 
     /// The centre depth the frame copied: its readback, started by calling it right after the
     /// frame's submission.
-    fn submitted(&mut self) -> Option<impl FnOnce() + Send + 'static> {
+    pub fn submitted(&mut self) -> Option<impl FnOnce() + Send + 'static> {
         self.center_depth.as_mut()?.submitted()
     }
 
     /// Whether the pack draws entities or block entities itself.
-    fn has_entities(&self) -> bool {
+    pub fn has_entities(&self) -> bool {
         self.entities.is_some()
     }
 
     /// Whether the pack draws the block outline itself.
-    fn has_lines(&self) -> bool {
+    pub fn has_lines(&self) -> bool {
         self.lines.is_some()
     }
 
     /// The block outline to draw this frame (`None`: none).
-    fn set_lines(&mut self, lines: Option<Lines>) {
+    pub fn set_lines(&mut self, lines: Option<Lines>) {
         self.line_draw = lines.filter(|l| l.count > 0);
     }
 
     /// Whether the pack draws the clouds itself (or hides them).
-    fn has_clouds(&self) -> bool {
+    pub fn has_clouds(&self) -> bool {
         self.hides_clouds
     }
 
     /// The clouds to draw this frame (`None`: none).
-    fn set_clouds(&mut self, clouds: Option<Clouds>) {
+    pub fn set_clouds(&mut self, clouds: Option<Clouds>) {
         self.cloud_draw = clouds.filter(|c| c.quads > 0);
     }
 
     /// Whether the pack draws rain and snow itself.
-    fn has_weather(&self) -> bool {
+    pub fn has_weather(&self) -> bool {
         self.weather.is_some()
     }
 
     /// The rain and snow to draw this frame (`None`: none).
-    fn set_weather(&mut self, weather: Option<Weather>) {
+    pub fn set_weather(&mut self, weather: Option<Weather>) {
         self.weather_draw = weather;
     }
 
-    /// What the shadow camera draws of the terrain this frame, when the pack draws it.
-    fn shadow_view(&self, frame: &super::super::Frame) -> Option<ShadowView> {
-        if !self.has_shadow() {
-            return None;
-        }
-        let shadow = &self.uniforms.shadow;
-        let unculled = match self.shadow_culling {
-            sunrise_shaders::ShadowCulling::On => None,
-            sunrise_shaders::ShadowCulling::Off => Some(f32::INFINITY),
-            sunrise_shaders::ShadowCulling::Reversed => Some(shadow.voxel_distance),
-        };
-        Some(
-            ShadowView::new(
-                pack_uniforms::shadow_culling(frame, shadow),
-                pack_uniforms::shadow_light(frame, shadow),
-            )
-            .with_distance((shadow.render_mul > 0.0).then_some(shadow.distance * shadow.render_mul))
-            .with_unculled(unculled)
-            .with_every_face(true)
-            .with_view_casters(true),
-        )
-    }
-
-    /// Whether the pack draws terrain itself, or has nothing draw it.
-    fn has_terrain(&self) -> bool {
+    pub fn has_terrain(&self) -> bool {
         self.terrain.is_some() || self.terrain_cutout.is_some() || self.terrain_undrawn
     }
 
     /// Whether the pack's shadow pass draws terrain (`shadow_view`).
-    fn has_shadow(&self) -> bool {
+    pub fn has_shadow(&self) -> bool {
         self.shadow_targets.is_some()
             && (self.shadow_terrain.is_some() || self.shadow_water.is_some())
     }
@@ -232,39 +208,38 @@ impl PackPostExt for PackPost {
     /// Whether the pack draws the sky (disc, sunset, stars, void) itself.
     /// What the world's background is when the pack draws the sky: colortex0's clear colour
     /// (`None`: the fog colour, its default).
-    fn sky_clear(&self) -> Option<[f32; 4]> {
+    pub fn sky_clear(&self) -> Option<[f32; 4]> {
         self.sky_clear.filter(|_| self.has_sky())
     }
 
     /// Whether the pack has a sky program, drawing or not: vanilla's sky is then not drawn.
-    fn has_sky(&self) -> bool {
+    pub fn has_sky(&self) -> bool {
         self.hides_sky
     }
 
     /// Whether the pack has the sun and moon's program, drawing or not.
-    fn has_celestial(&self) -> bool {
+    pub fn has_celestial(&self) -> bool {
         self.hides_celestial
     }
 
     /// Whether the pack draws translucent terrain itself.
-    fn has_water(&self) -> bool {
+    pub fn has_water(&self) -> bool {
         self.water.is_some() || self.water_undrawn
     }
 
     /// The names of the programs that run, in order.
-    fn programs(&self) -> Vec<&str> {
+    pub fn programs(&self) -> Vec<&str> {
         self.passes.iter().map(|p| p.name.as_str()).collect()
     }
 
     /// Whether the pack draws the first-person hand itself.
-    fn has_hand(&self) -> bool {
+    pub fn has_hand(&self) -> bool {
         self.hand.is_some()
     }
 
     /// Runs the pack over the world drawn into `world` (colour) and `world_depth`, then draws
     /// the result onto `screen`.
-    #[allow(clippy::too_many_arguments)]
-    fn run(
+    pub fn run_frame(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -272,12 +247,18 @@ impl PackPostExt for PackPost {
         world: &wgpu::TextureView,
         world_depth: &wgpu::TextureView,
         screen: &wgpu::TextureView,
-        frame: &super::super::Frame,
+        frame_view: &UniformFrameView<'_>,
+        sky: &SkyInputs<'_>,
+        hand: &HandInputs<'_>,
         inputs: &PackInputs,
         size: [u32; 2],
         window: [u32; 2],
         pages: &[TerrainPage],
         terrain: &mut TerrainDraw<'_>,
+        shadow_cache: bool,
+        shadow_scene_revision: (u64, u64),
+        ticks: u64,
+        day_time: i64,
     ) {
         self.resize(device, size);
         // Last frame's water patches (or a new texture's zeros) out: depth 1 is no patch.
@@ -360,9 +341,9 @@ impl PackPostExt for PackPost {
         }
         self.uniforms.center_depth_raw = self
             .center_depth
-            .get_or_insert_with(|| super::super::pack_center_depth::CenterDepth::new(device))
+            .get_or_insert_with(|| crate::pack_center_depth::CenterDepth::new(device))
             .collect(device);
-        self.uniforms.update_from_client_frame(frame, inputs, size);
+        self.uniforms.update(frame_view, inputs, size);
         // `smooth` starts on the first frame that knows the camera's biome.
         self.custom.world_frame(inputs.biome_known);
         self.uniforms.eval_custom(&mut self.custom);
@@ -594,12 +575,22 @@ impl PackPostExt for PackPost {
             }
             let early = matches!(pass.group, Group::Setup | Group::Begin);
             if !early && !shadow_drawn {
-                self.run_shadow(device, queue, encoder, terrain, frame);
+                self.run_shadow(
+                    device,
+                    queue,
+                    encoder,
+                    terrain,
+                    frame_view,
+                    shadow_cache,
+                    shadow_scene_revision,
+                    ticks,
+                    day_time,
+                );
                 shadow_drawn = true;
             }
             if !terrain_drawn && !early && pass.group != Group::Prepare {
                 terrain_drawn = true;
-                self.draw_opaque(device, queue, encoder, size, frame, terrain);
+                self.draw_opaque(device, queue, encoder, size, frame_view, sky, hand, terrain);
             }
             // As if the pack didn't have it: no compute stages, flips or stage changes.
             if self.sizes_differ(pass) {
@@ -697,10 +688,20 @@ impl PackPostExt for PackPost {
         self.passes = passes;
         self.setup_pending = false;
         if !shadow_drawn {
-            self.run_shadow(device, queue, encoder, terrain, frame);
+            self.run_shadow(
+                device,
+                queue,
+                encoder,
+                terrain,
+                frame_view,
+                shadow_cache,
+                shadow_scene_revision,
+                ticks,
+                day_time,
+            );
         }
         if !terrain_drawn {
-            self.draw_opaque(device, queue, encoder, size, frame, terrain);
+            self.draw_opaque(device, queue, encoder, size, frame_view, sky, hand, terrain);
         }
         if !water_drawn {
             self.draw_translucent(device, queue, encoder, size, terrain);
@@ -1075,7 +1076,7 @@ impl PackPost {
     }
 
     /// A render pass into the buffers `pass` writes, in place, tested against the world's depth.
-    pub(crate) fn begin<'e>(
+    pub fn begin<'e>(
         &mut self,
         encoder: &'e mut wgpu::CommandEncoder,
         pass: &Pass,
@@ -1084,7 +1085,7 @@ impl PackPost {
     }
 
     /// `begin`, or with `water_mask` into the water patches' depth instead of the frame's.
-    pub(crate) fn begin_with<'e>(
+    pub fn begin_with<'e>(
         &mut self,
         encoder: &'e mut wgpu::CommandEncoder,
         pass: &Pass,
@@ -1099,7 +1100,7 @@ impl PackPost {
         // one clearing them.
         let (depth_ops, shadow_ops) = match &mut self.shadow_targets {
             Some(s) if pass.group.shadow() => s.clear_ops(pass.writes.iter().map(|w| w.1)),
-            _ => (super::super::pack_shadow::load(), [load; SHADOW_COLORS]),
+            _ => (crate::pack_shadow::load(), [load; SHADOW_COLORS]),
         };
         let shadow = self.shadow_targets.as_ref().filter(|_| pass.group.shadow());
         let mut attachments: SmallVec<[Option<wgpu::RenderPassColorAttachment>; BUFFERS]> =
@@ -1224,37 +1225,39 @@ impl PackPost {
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
         size: [u32; 2],
-        frame: &super::super::Frame,
+        view: &UniformFrameView<'_>,
+        sky: &SkyInputs<'_>,
     ) {
-        let Some(mut sky) = self.sky.take() else {
+        let Some(mut sky_parts) = self.sky.take() else {
             return;
         };
-        let sky_frame = super::super::pack_sky::SkyFrame {
-            sun_angle: frame.sky.sun_angle,
-            sky_color: frame.sky.sky_color,
-            fog_color: frame.sky.fog_color,
-            sunset_color: frame.sky.sunrise_color,
-            fog: frame
-                .fog
-                .as_ref()
-                .map(|f| [f.color[0], f.color[1], f.color[2]]),
-            stars: frame.stars,
-            dark_disc: frame.dark_disc,
-            detail_distance: frame.detail_distance,
-            celestial: bytemuck::cast_slice(frame.celestial),
-            end_fog_sky: super::super::end_fog_sky(frame),
+        let sky_frame = SkyFrame {
+            sun_angle: view.sky.sun_angle,
+            sky_color: view.sky.sky_color,
+            fog_color: view.sky.fog_color,
+            sunset_color: sky.sunset_color,
+            fog: view.fog.map(|f| [f.color[0], f.color[1], f.color[2]]),
+            stars: sky.stars,
+            dark_disc: sky.dark_disc,
+            detail_distance: view.detail_distance,
+            celestial: bytemuck::cast_slice(sky.celestial),
+            end_fog_sky: sky.end_fog_sky,
         };
-        let parts = sky
-            .geometry
-            .prepare(queue, &sky_frame, self.uniforms.shadow.sun_path_rotation);
+        let parts =
+            sky_parts
+                .geometry
+                .prepare(queue, &sky_frame, self.uniforms.shadow.sun_path_rotation);
         let mut groups = [None, None];
-        for (i, pass) in [&mut sky.basic, &mut sky.textured].into_iter().enumerate() {
+        for (i, pass) in [&mut sky_parts.basic, &mut sky_parts.textured]
+            .into_iter()
+            .enumerate()
+        {
             if let Some(pass) = pass {
                 groups[i] = Some(self.bind(device, queue, encoder, pass, size));
                 self.mips_valid &= !pass.written;
             }
         }
-        let passes = [&sky.basic, &sky.textured];
+        let passes = [&sky_parts.basic, &sky_parts.textured];
         let mut open: Option<(wgpu::RenderPass<'_>, usize)> = None;
         for part in parts {
             let i = usize::from(part.textured);
@@ -1280,7 +1283,7 @@ impl PackPost {
                 {
                     rp.set_bind_group(4, g, &[]);
                 }
-                sky.geometry.bind(rp, part.textured);
+                sky_parts.geometry.bind(rp, part.textured);
                 open.as_mut().expect("open").1 = i;
             }
             let rp = &mut open.as_mut().expect("open").0;
@@ -1300,7 +1303,7 @@ impl PackPost {
             rp.draw(part.range, 0..1);
         }
         drop(open);
-        self.sky = Some(sky);
+        self.sky = Some(sky_parts);
     }
 
     /// Entities, block entities, translucent entity parts and particles with the pack's
@@ -1426,7 +1429,7 @@ impl PackPost {
             .as_ref()
             .is_none_or(|(rect, _)| *rect != self.portal_rect)
         {
-            let view = super::super::pack_weather::copy_sprite(
+            let view = crate::pack_weather::copy_sprite(
                 device,
                 encoder,
                 atlas.texture(),
@@ -1464,9 +1467,7 @@ impl PackPost {
                 continue;
             };
             let mut draws = (geometry.draws.iter())
-                .filter(|d| {
-                    d.shadow && super::super::pack_entities::shadow_program(d.program) == program
-                })
+                .filter(|d| d.shadow && crate::pack_entities::shadow_program(d.program) == program)
                 .peekable();
             if draws.peek().is_none() {
                 continue;
@@ -1480,7 +1481,7 @@ impl PackPost {
                 size,
                 (geometry.draws.iter()).any(|d| {
                     d.shadow
-                        && super::super::pack_entities::shadow_program(d.program) == program
+                        && crate::pack_entities::shadow_program(d.program) == program
                         && d.portal
                 }),
             );
@@ -1527,11 +1528,13 @@ impl PackPost {
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
         size: [u32; 2],
-        frame: &super::super::Frame,
+        view: &UniformFrameView<'_>,
+        sky: &SkyInputs<'_>,
+        hand: &HandInputs<'_>,
         terrain: &mut TerrainDraw<'_>,
     ) {
-        if super::super::sky_visible(frame) || super::super::end_fog_sky(frame) {
-            self.draw_sky(device, queue, encoder, size, frame);
+        if sky.visible || sky.end_fog_sky {
+            self.draw_sky(device, queue, encoder, size, view, sky);
         }
         self.draw_terrain(device, queue, encoder, size, TerrainList::Solid, terrain);
         self.draw_entities(device, queue, encoder, size, false);
@@ -1547,7 +1550,7 @@ impl PackPost {
                 t.depth_texture.size(),
             );
         }
-        self.draw_hand(device, queue, encoder, size, frame);
+        self.draw_hand(device, queue, encoder, size, view, hand);
         // Depth1 includes that hand, but still precedes translucent terrain.
         if let Some(t) = &self.targets
             && let Some((copy, _)) = &t.depth1
@@ -1567,20 +1570,21 @@ impl PackPost {
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
         size: [u32; 2],
-        frame: &super::super::Frame,
+        view: &UniformFrameView<'_>,
+        hand: &HandInputs<'_>,
     ) {
         let Some((mut pass, mut geometry)) = self.hand.take() else {
             return;
         };
         // The hand draws through `gbufferModelView`, which holds the nausea spin the world
         // turns with; the hand doesn't (as vanilla's), so its projection takes the spin out.
-        let unspin = frame.bob * frame.spin.inverse() * frame.bob.inverse();
-        let projection = super::super::pack_hand::projection(
-            frame.hand_fov_degrees,
+        let unspin = hand.bob * hand.spin.inverse() * hand.bob.inverse();
+        let projection = pack_hand::projection(
+            hand.fov_degrees,
             size[0] as f32 / size[1].max(1) as f32,
-            frame.depth_far,
+            view.depth_far,
         ) * unspin;
-        geometry.prepare(device, queue, frame.hand, frame.hand_items, projection);
+        geometry.prepare(device, queue, hand.vertices, hand.items, projection);
         if geometry.quads > 0 {
             let group = self.bind(device, queue, encoder, &mut pass, size);
             {
@@ -2078,17 +2082,21 @@ impl PackPost {
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
         terrain: &mut TerrainDraw<'_>,
-        frame: &super::super::Frame,
+        view: &UniformFrameView<'_>,
+        shadow_cache: bool,
+        shadow_scene_revision: (u64, u64),
+        ticks: u64,
+        day_time: i64,
     ) {
         // Opt-in only (`sunrise-graphics.txt` shadowCache). Off: always redraw, drop any cache.
-        if !frame.shadow_cache {
+        if !shadow_cache {
             self.shadow_cache = ShadowCache::default();
             self.draw_shadow_pass(device, queue, encoder, terrain);
             return;
         }
 
         // Compute the current frame's cache key before borrowing shadow_targets mutably.
-        let cache_key = self.compute_shadow_cache_key(frame);
+        let cache_key = self.compute_shadow_cache_key(view, shadow_scene_revision, ticks, day_time);
 
         // Entity vertices are interpolated each frame, so their shadows cannot be reused.
         let has_shadow_entities = self
@@ -2195,11 +2203,17 @@ impl PackPost {
     }
 
     /// Computes the cache key for the current frame.
-    pub fn compute_shadow_cache_key(&self, frame: &super::super::Frame) -> ShadowCacheKey {
+    pub fn compute_shadow_cache_key(
+        &self,
+        view: &UniformFrameView<'_>,
+        shadow_scene_revision: (u64, u64),
+        ticks: u64,
+        day_time: i64,
+    ) -> ShadowCacheKey {
         let shadow = &self.uniforms.shadow;
         // Use the same logic as shadow_camera to compute the light direction and snapped camera.
         // Use the public shadow_light function which returns the normalized light direction.
-        let light = super::super::pack_uniforms::shadow_light(frame, shadow);
+        let light = pack_uniforms::shadow_light(view, shadow);
         let light = light.as_dvec3();
         let up = if light.z.abs() > 0.99 {
             DVec3::Y
@@ -2207,7 +2221,7 @@ impl PackPost {
             DVec3::Z
         };
         let rotation = DMat4::look_to_rh(DVec3::ZERO, -light, up);
-        let at = rotation.transform_vector3(frame.camera);
+        let at = rotation.transform_vector3(view.camera);
         let step = f64::from(shadow.interval);
         let snapped_camera = if step > 0.0 {
             Some((at / step).floor() * step)
@@ -2243,13 +2257,13 @@ impl PackPost {
         let shadow_uniforms_hash = self.shadow_uniforms_hash();
 
         ShadowCacheKey {
-            sun_angle: frame.sky.sun_angle,
-            moon_angle: frame.sky.moon_angle,
+            sun_angle: view.sky.sun_angle,
+            moon_angle: view.sky.moon_angle,
             snapped_camera,
             shadow_settings_hash,
-            shadow_scene_revision: frame.shadow_scene_revision,
-            ticks: frame.ticks,
-            day_time: frame.pack.day_time,
+            shadow_scene_revision,
+            ticks,
+            day_time,
             shadow_uniforms_hash,
         }
     }

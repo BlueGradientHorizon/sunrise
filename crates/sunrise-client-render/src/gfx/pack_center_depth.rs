@@ -1,4 +1,5 @@
 //! `centerDepthSmooth`'s input: `depthtex0` at the centre of the screen (re-exported from sunrise_render_shaderpack).
+#[allow(unused_imports)]
 pub use sunrise_render_shaderpack::pack_center_depth::*;
 
 #[cfg(test)]

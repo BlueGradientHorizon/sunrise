@@ -2,7 +2,6 @@
 //! The expected values are Iris 1.11.7's, measured with probe packs of our own (#9009).
 use super::depth_test::VERTEX;
 use super::destination_tests::Fixture;
-use super::*;
 use std::io::{Cursor, Write};
 
 /// colortex6 is written three times a frame, the first write leaving the right half alone:

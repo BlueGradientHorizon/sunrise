@@ -1623,9 +1623,9 @@ impl Refused {
     }
 }
 
-/// What `PackPost::new`'s build makes: its passes, buffers, samplers and uniforms, for the
-/// client's `PackPost` (which runs them) to keep.
-pub struct PackPostBuild {
+/// A pack's post-processing pipelines and what they run on: its passes, buffers, samplers and
+/// uniforms (`new` makes them) and the frame's own work on them (`execution.rs`).
+pub struct PackPost {
     pub setup_pending: bool,
     pub notes: Vec<String>,
     pub passes: Vec<Pass>,
@@ -1787,7 +1787,7 @@ pub struct PackPostBuild {
     pub uniforms: FrameUniforms,
 }
 
-impl PackPostBuild {
+impl PackPost {
     /// Builds the pipelines of `post` for a screen of `screen` format. An error when the pack
     /// can't show anything on the screen: the game turns it off, as a pack that fails to load.
     ///
@@ -1805,11 +1805,11 @@ impl PackPostBuild {
         screen: wgpu::TextureFormat,
         world: World<'_>,
         cancel: &std::sync::atomic::AtomicBool,
-    ) -> Result<PackPostBuild, Refused> {
+    ) -> Result<PackPost, Refused> {
         use std::sync::atomic::Ordering;
         let spare = (post.clone(), world.clone());
         let (built, jobs) =
-            PackPostBuild::build(device, queue, adapter, post, screen, world, true, cancel)?;
+            PackPost::build(device, queue, adapter, post, screen, world, true, cancel)?;
         let refused = compile(device, &jobs, cancel);
         // Some pipelines may be left unmade: the pack can't draw.
         if cancel.load(Ordering::Relaxed) {
@@ -1823,7 +1823,7 @@ impl PackPostBuild {
         );
         drop((built, jobs));
         let (post, world) = spare;
-        PackPostBuild::build(device, queue, adapter, post, screen, world, false, cancel)
+        PackPost::build(device, queue, adapter, post, screen, world, false, cancel)
             .map(|(built, _)| built)
     }
 
@@ -1839,7 +1839,7 @@ impl PackPostBuild {
         world: World<'_>,
         defer: bool,
         cancel: &std::sync::atomic::AtomicBool,
-    ) -> Result<(PackPostBuild, Vec<Job>), Refused> {
+    ) -> Result<(PackPost, Vec<Job>), Refused> {
         // What the pack's shaders need of its storage buffers, before its parts move out.
         let minimums = post.buffer_minimums();
         let features = device.features();
@@ -2746,7 +2746,7 @@ impl PackPostBuild {
         let jobs = (pack.jobs.as_ref())
             .map(std::cell::RefCell::take)
             .unwrap_or_default();
-        let built = PackPostBuild {
+        let built = PackPost {
             notes,
             setup_pending: true,
             passes,
@@ -2924,7 +2924,7 @@ impl PackPostBuild {
     }
 }
 
-impl PackPostBuild {
+impl PackPost {
     /// The shared atlas's normal and specular paged maps (`paged_maps.rs`), which the programs
     /// drawing its geometry read as `normals` and `specular`; set before the first frame (a pass's
     /// bind groups are kept once made). A missing one reads as the dummy (flat, no specular).

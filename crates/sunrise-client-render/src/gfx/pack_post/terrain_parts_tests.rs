@@ -8,7 +8,6 @@
 //! the probes', cut down.
 use super::depth_test::{Gpu, SIZE, VERTEX, fixture_frame};
 use super::*;
-use super::*;
 use crate::hud::HudBatch;
 use wgpu::{TextureFormat as T, util::DeviceExt};
 

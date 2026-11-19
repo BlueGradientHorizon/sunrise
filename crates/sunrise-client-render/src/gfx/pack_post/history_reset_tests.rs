@@ -1,5 +1,4 @@
 //! `PackPost::reset_history`: a pack reset after some frames draws as a freshly loaded one.
-use super::PackPostExt as _;
 use super::destination_tests::Fixture;
 use std::io::{Cursor, Write};
 

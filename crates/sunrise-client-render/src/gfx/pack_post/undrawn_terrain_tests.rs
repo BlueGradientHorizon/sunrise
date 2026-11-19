@@ -2,7 +2,6 @@
 //! or translucent, into any buffer or depth with probe packs of ours having no gbuffers
 //! programs. The game hands the pack its terrain, so it doesn't draw it either. The programs
 //! here are original and cut down.
-use super::PackPostExt as _;
 use super::destination_tests::Fixture;
 use std::io::{Cursor, Write};
 
