@@ -11,8 +11,7 @@
 //! depth as OpenGL's (`depth * 2 - 1`), which on 26.3's reverse-Z 0 to 1 depth buffer gives
 //! other positions; this one follows the wiki's contract (the position from the screen uv and the
 //! depth buffer's value) and gives the geometric hit. Its `PolyDayTime` read 6001 where this
-//! gives 6000 (the sun angle 6000's in both); 26.3's client clock advances only while ticks run
-//! normally (`ClientClockManager`), and this isn't matched to 26.2's value.
+//! gives 6000 (the sun angle 6000's in both); that difference is not matched.
 
 /// The block's name.
 pub const BLOCK: &str = "PolyGlobals";
