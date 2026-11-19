@@ -2853,15 +2853,25 @@ impl HudRenderer {
             cit_glint::CitGlintPass::new(device, queue, self.format, &self.layout, t, self.coverage)
         });
     }
-    /// Draw the GUI's text with `shader` (`HudAtlas::text_shader`), or natively.
+    /// Draw the GUI's text with `shader` (`HudAtlas::text_shaders`' `gui`, with its expression
+    /// uniforms), or natively.
     pub fn set_text_shader(
         &mut self,
         device: &wgpu::Device,
-        shader: Option<&crate::core_shader::CoreProgram>,
+        shader: Option<(
+            &crate::core_shader::CoreProgram,
+            &[crate::polytone_post::ExpressionUniform],
+        )>,
     ) {
         self.pack_text = shader.and_then(|shader| {
             pack_text::PackText::new(device, self.format, &self.atlas_view, shader, self.coverage)
         });
+    }
+    /// The GUI text's expression uniforms, when a pack's text shader draws it.
+    pub(crate) fn text_expression_blocks(
+        &mut self,
+    ) -> Option<&mut crate::gfx::expression_blocks::ExpressionBlocks> {
+        self.pack_text.as_mut().map(|text| &mut text.extra)
     }
     /// Stage the batch's `patches` and `image_patches` (client mods' dynamic textures) into
     /// the shared atlas texture.

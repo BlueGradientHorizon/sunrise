@@ -45,7 +45,7 @@ pub(super) fn load_pair(
     let name = names.1;
     match translate_pair(root, defaults, names, defines, glue, provided)? {
         Ok(program) => {
-            log::info!("the resource pack's {name} shader is used");
+            log::info!("the resource pack's {name} shader translated");
             Some(Arc::new(program))
         }
         Err(e) => {
@@ -310,7 +310,9 @@ pub(super) fn load_shaders(
     let lightmap = load_lightmap(root, defaults, &modifiers);
     atlas.lightmap_shader = lightmap.as_ref().map(|(program, _)| program.clone());
     atlas.lightmap_expressions = lightmap.map(|(_, e)| e).unwrap_or_default();
-    // The GUI's, the world's and the see-through text: one shader, three programs.
+    // The GUI's, the world's and the see-through text: one shader, three programs. Not yet
+    // here: Polytone's `PolyGlobals` block, which a text shader reading it is refused for (no
+    // file gives it); it plugs in as a block `provided` to these loads with the core shaders'.
     let shader = crate::gfx::core_text::SHADER;
     let text = |defines: &[&str], glue| {
         load_with_expressions(root, defaults, &modifiers, (shader, defines), glue)
@@ -329,14 +331,13 @@ pub(super) fn load_shaders(
 }
 
 /// Each uniform block's offset in the one buffer (`core_shader::BLOCKS` order).
-const BLOCK_OFFSETS: [u64; 4] = [0, 256, 512, 768];
-const BLOCK_SIZES: [u64; 4] = [48, 64, 160, 48];
-
 /// The pipeline and its resources.
 pub(super) struct PackText {
     pipeline: Pipeline,
     group: wgpu::BindGroup,
     uniform: wgpu::Buffer,
+    /// The packs' expression uniforms its stages read (`shader_modifiers`).
+    pub(super) extra: crate::gfx::expression_blocks::ExpressionBlocks,
 }
 
 impl PackText {
@@ -344,7 +345,7 @@ impl PackText {
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
         atlas: &wgpu::TextureView,
-        program: &CoreProgram,
+        (program, expressions): (&CoreProgram, &[crate::polytone_post::ExpressionUniform]),
         coverage: bool,
     ) -> Option<Self> {
         let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
@@ -357,17 +358,15 @@ impl PackText {
         let vertex = module("Resource pack text (vertex)", &program.vertex);
         let fragment = module("Resource pack text (fragment)", &program.fragment);
         let visibility = wgpu::ShaderStages::VERTEX_FRAGMENT;
-        let mut entries: Vec<wgpu::BindGroupLayoutEntry> = (0..4)
-            .map(|binding| wgpu::BindGroupLayoutEntry {
-                binding,
-                visibility,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
+        // Each block a stage reads, bound to the stages reading it: vanilla's four, then the
+        // expression uniforms; then the samplers, each reading the atlas.
+        let blocks = crate::gfx::expression_blocks::vanilla_blocks(program);
+        let extra = crate::gfx::expression_blocks::ExpressionBlocks::new(expressions, 1024);
+        let mut entries: Vec<wgpu::BindGroupLayoutEntry> = (blocks.iter())
+            .map(|&(binding, _, size, stages)| {
+                crate::gfx::expression_blocks::block_entry(binding, size, stages)
             })
+            .chain(extra.layout())
             .collect();
         for (_, binding) in crate::core_shader::SAMPLERS {
             entries.push(wgpu::BindGroupLayoutEntry {
@@ -393,7 +392,7 @@ impl PackText {
         });
         let uniform = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Resource pack text uniforms"),
-            size: 1024,
+            size: extra.size(),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -402,15 +401,16 @@ impl PackText {
             label: Some("Resource pack text"),
             ..Default::default()
         });
-        let mut resources: Vec<wgpu::BindGroupEntry> = (0..4)
-            .map(|i| wgpu::BindGroupEntry {
-                binding: i as u32,
+        let mut resources: Vec<wgpu::BindGroupEntry> = (blocks.iter())
+            .map(|&(binding, offset, size, _)| wgpu::BindGroupEntry {
+                binding,
                 resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
                     buffer: &uniform,
-                    offset: BLOCK_OFFSETS[i],
-                    size: wgpu::BufferSize::new(BLOCK_SIZES[i]),
+                    offset,
+                    size: wgpu::BufferSize::new(size),
                 }),
             })
+            .chain(extra.entries(&uniform))
             .collect();
         for (_, binding) in crate::core_shader::SAMPLERS {
             resources.push(wgpu::BindGroupEntry {
@@ -477,10 +477,12 @@ impl PackText {
             pipeline,
             group,
             uniform,
+            extra,
         })
     }
 
-    /// The frame's blocks, as `GuiRenderer` sets them for the GUI.
+    /// The frame's blocks, as `GuiRenderer` sets them for the GUI, then the expression
+    /// uniforms' values.
     pub(super) fn prepare(
         &self,
         uploads: &mut crate::gfx::upload::Uploads,
@@ -490,6 +492,7 @@ impl PackText {
         scale: f32,
     ) {
         uploads.buffer(encoder, &self.uniform, 0, &uniforms(batch, size, scale));
+        self.extra.upload(uploads, encoder, &self.uniform);
     }
 
     /// Draw `range` (whole glyph quads) with the pack's shader; the caller sets its own
@@ -905,3 +908,7 @@ mod tests {
 #[cfg(test)]
 #[path = "pack_text_text_tests.rs"]
 mod text_tests;
+
+#[cfg(test)]
+#[path = "pack_text_gpu_tests.rs"]
+mod gpu_tests;

@@ -1005,7 +1005,7 @@ impl Game<'_> {
 /// The packs' expression uniforms on core shaders (`shader_modifiers`, wiki "Shaders").
 impl Game<'_> {
     /// Whether this frame has expression uniforms to evaluate: a drawn pack core shader (the
-    /// lightmap, the sky, the stars or the block outline) reads one. Only then is the frame's
+    /// lightmap, the sky, the stars, the block outline or the text) reads one. Only then is the frame's
     /// expression context made for them.
     pub(in crate::game) fn reads_pack_expressions(&mut self) -> bool {
         self.renderer

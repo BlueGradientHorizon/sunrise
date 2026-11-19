@@ -94,7 +94,19 @@ fn drawn_texture(game: &mut super::Game<'_>) -> [u8; 16 * 16 * 4] {
 #[test]
 #[ignore = "daily"]
 fn a_packs_lightmap_draws_its_expression_uniform() {
-    if run_fresh_cases(NAME, CASE, &["pack", "fullbright", "sky", "outline"]) {
+    if run_fresh_cases(
+        NAME,
+        CASE,
+        &[
+            "pack",
+            "fullbright",
+            "sky",
+            "outline",
+            "text_gui",
+            "text_world",
+            "text_see_through",
+        ],
+    ) {
         return;
     }
     let case = std::env::var(CASE).unwrap();
@@ -109,6 +121,9 @@ fn a_packs_lightmap_draws_its_expression_uniform() {
             let _event_loop = frame_scene(game);
             assert!(game.reads_pack_expressions());
         });
+    }
+    if let Some(program) = case.strip_prefix("text_") {
+        return the_text_evaluates_its_expression_uniform(program);
     }
     let fullbright = case == "fullbright";
     with_client_game(|game| {
@@ -130,6 +145,63 @@ fn a_packs_lightmap_draws_its_expression_uniform() {
                 assert_eq!(texel, [51, 0, 0, 255]);
             }
         }
+    });
+}
+
+/// The text cases: a pack whose only expression uniform is its text shader's (`core/text.json`,
+/// `0.1 + 0.1`), read by one of its three programs only (`program`: the GUI's, the world's or
+/// the see-through text's, by the shader's own defines). That program resolves it when the atlas
+/// loads, the others have none, and the frame evaluates it, under fullbright too (which skips
+/// only the lightmap's).
+fn the_text_evaluates_its_expression_uniform(program: &str) {
+    let reads = match program {
+        "gui" => "defined(IS_GUI)",
+        "world" => "!defined(IS_GUI) && !defined(IS_SEE_THROUGH)",
+        _ => "defined(IS_SEE_THROUGH)",
+    };
+    let fragment = format!(
+        "#version 330\n#if {reads}\nlayout(std140) uniform Tint {{\n    float value;\n}};\n\
+         #else\nconst float value = 1.0;\n#endif\n\
+         layout(location = 0) out vec4 fragColor;\n\
+         void main() {{\n    fragColor = vec4(value, 0.0, 0.0, 1.0);\n}}\n"
+    );
+    let files = [
+        (
+            "assets/minecraft/shaders/core/text.vsh",
+            "#version 330\nlayout(location = 0) in vec3 Position;\n\
+             void main() {\n    gl_Position = vec4(Position, 1.0);\n}\n"
+                .to_owned(),
+        ),
+        ("assets/minecraft/shaders/core/text.fsh", fragment),
+        (
+            "assets/minecraft/polytone/shader_modifiers/core/text.json",
+            r#"{"Tint": "0.1 + 0.1"}"#.to_owned(),
+        ),
+    ];
+    let pack = ResourceSource::indexed(
+        files
+            .into_iter()
+            .map(|(path, text)| (path.to_owned(), Resource::bytes(text.into_bytes())))
+            .collect(),
+    );
+    with_client_game(|game| {
+        game.gui = crate::game::UiResources::load(&pack, std::path::Path::new("")).unwrap();
+        let frame = sunrise_client::environment::Frame::default();
+        let text = &game.gui.atlas.text_shaders;
+        assert!(text.gui.is_some() && text.world.is_some() && text.see_through.is_some());
+        for (name, expressions) in [
+            ("gui", &text.expressions.gui),
+            ("world", &text.expressions.world),
+            ("see_through", &text.expressions.see_through),
+        ] {
+            let values: Vec<f32> = expressions.iter().map(|e| e.evaluate(&frame)).collect();
+            let expected: &[f32] = if name == program { &[0.2] } else { &[] };
+            assert_eq!(values, expected, "{name}");
+        }
+        let _event_loop = frame_scene(game);
+        assert!(game.reads_pack_expressions());
+        game.renderer.as_mut().unwrap().fullbright = true;
+        assert!(game.reads_pack_expressions());
     });
 }
 

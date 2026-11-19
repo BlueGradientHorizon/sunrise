@@ -2,7 +2,7 @@
 //! and its Polytone expression uniforms (`shader_modifiers`, wiki "Expression Uniforms on Any
 //! Shader"), resolved when the shader loaded (`polytone_post::ShaderModifiers::resolve`), each a
 //! block of one float after the pipeline's own, holding its program's value this frame. The
-//! lightmap, sky, stars and block outline pipelines lay theirs out with this.
+//! lightmap, sky, stars, block outline and text pipelines lay theirs out with this.
 
 use crate::core_shader::CoreProgram;
 use crate::polytone_post::ExpressionUniform;
@@ -102,6 +102,15 @@ impl ExpressionBlocks {
             })
     }
 
+    /// Each block's offset in the buffer and its 16 bytes this frame.
+    fn blocks(&self) -> impl Iterator<Item = (u64, [u8; BLOCK as usize])> + '_ {
+        self.uniforms.iter().enumerate().map(|(i, (_, value))| {
+            let mut block = [0u8; BLOCK as usize];
+            block[..4].copy_from_slice(&value.to_le_bytes());
+            (self.offset(i), block)
+        })
+    }
+
     /// Each block's value this frame, 16 bytes each, into `buffer`.
     pub(crate) fn upload(
         &self,
@@ -109,10 +118,15 @@ impl ExpressionBlocks {
         encoder: &mut wgpu::CommandEncoder,
         buffer: &wgpu::Buffer,
     ) {
-        for (i, (_, value)) in self.uniforms.iter().enumerate() {
-            let mut block = [0u8; BLOCK as usize];
-            block[..4].copy_from_slice(&value.to_le_bytes());
-            uploads.buffer(encoder, buffer, self.offset(i), &block);
+        for (offset, block) in self.blocks() {
+            uploads.buffer(encoder, buffer, offset, &block);
+        }
+    }
+
+    /// [`Self::upload`] through the queue, for a pipeline whose own blocks are written so.
+    pub(crate) fn write(&self, queue: &wgpu::Queue, buffer: &wgpu::Buffer) {
+        for (offset, block) in self.blocks() {
+            queue.write_buffer(buffer, offset, &block);
         }
     }
 
@@ -137,8 +151,9 @@ impl ExpressionBlocks {
 /// The packs' core shader pipelines' expression uniforms, for the game to evaluate.
 impl super::Renderer {
     /// The pack pipelines whose stages read expression uniforms and that draw: the lightmap's
-    /// (not under fullbright, which keeps the texture white), the block outline's, the sky's
-    /// and the stars'.
+    /// (not under fullbright, which keeps the texture white; fullbright skips only the
+    /// lightmap's), the block outline's, the sky's, the stars', and the GUI's, the world's and
+    /// the see-through text's.
     fn expression_blocks(&mut self) -> impl Iterator<Item = &mut ExpressionBlocks> {
         let fullbright = self.fullbright;
         let lightmap = (self.core_lightmap.as_mut())
@@ -146,7 +161,15 @@ impl super::Renderer {
             .map(|core| &mut core.extra);
         let lines = self.core_lines.as_mut().map(|core| &mut core.extra);
         let sky = (self.core_sky.iter_mut()).flat_map(|core| core.expression_blocks());
-        (lightmap.into_iter().chain(lines).chain(sky)).filter(|blocks| !blocks.is_empty())
+        let text = (self.core_text.iter_mut()).flat_map(|core| core.expression_blocks());
+        let gui_text = self.hud.text_expression_blocks();
+        (lightmap
+            .into_iter()
+            .chain(lines)
+            .chain(sky)
+            .chain(text)
+            .chain(gui_text))
+        .filter(|blocks| !blocks.is_empty())
     }
 
     /// Whether this frame has expression uniforms to evaluate: a drawn pack core shader reads

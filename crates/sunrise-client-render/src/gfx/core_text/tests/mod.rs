@@ -46,7 +46,7 @@ fn a_pack_text_shader_reads_the_light_as_vanilla_does() {
     let text = CoreText::new(
         &device,
         wgpu::TextureFormat::Rgba8Unorm,
-        Some(&program),
+        Some((&program, &[])),
         None,
         &atlas,
         (&atlas, &sampler),
@@ -115,8 +115,9 @@ fn a_pack_text_shader_reads_the_light_as_vanilla_does() {
             }),
             ..Default::default()
         });
-        pass.set_pipeline(text.polygon_offset.as_ref().unwrap());
-        pass.set_bind_group(0, &text.group, &[]);
+        let part = text.polygon_offset.as_ref().unwrap();
+        pass.set_pipeline(&part.pipeline);
+        pass.set_bind_group(0, &part.group, &[]);
         pass.set_vertex_buffer(0, vertices.slice(..));
         pass.draw(0..6, 0..1);
     }
@@ -193,8 +194,8 @@ fn vanillas_text_shader_makes_both_world_text_pipelines() {
     let text = CoreText::new(
         &device,
         wgpu::TextureFormat::Rgba8Unorm,
-        Some(&world),
-        Some(&see_through),
+        Some((&world, &[])),
+        Some((&see_through, &[])),
         &atlas,
         (&lightmap, &sampler),
     )
