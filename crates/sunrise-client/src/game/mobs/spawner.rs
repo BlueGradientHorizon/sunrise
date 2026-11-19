@@ -17,6 +17,7 @@ use sunrise_client::{
     },
     particles::{ParticleOptions, ParticleType},
 };
+use sunrise_client_render::block_entity_reach::Reach;
 use sunrise_core::nbt::Tag;
 use sunrise_core::{
     geometry::Vec3,
@@ -632,7 +633,7 @@ impl Game<'_> {
             .filter(|_| self.pack_ids.is_some() && self.pack_shadow_casters.0);
         for (key, (_, mob)) in &self.spawners.displays {
             let at = glam::DVec3::new(f64::from(key.0), f64::from(key.1), f64::from(key.2));
-            if at.distance_squared(camera) >= 64.0 * 64.0 {
+            if !Reach::Default.should_render([key.0, key.1, key.2], camera, 0) {
                 continue;
             }
             if let Some(r) = shadow_sections

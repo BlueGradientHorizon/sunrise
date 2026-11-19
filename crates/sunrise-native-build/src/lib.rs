@@ -18,6 +18,7 @@ pub mod contract;
 mod crates;
 mod diagnostics;
 pub mod discover;
+pub mod game_uses;
 pub mod host;
 mod inject;
 pub mod internals;

@@ -112,7 +112,13 @@ fn uses_command(entry: mod_surface::child::ChildEntry, args: &[PathBuf]) {
         }
     }
     let surface = read_surface(surface);
-    let input = mod_uses::read(dir).unwrap_or_else(|e| fail(e));
+    let input = mod_uses::read(dir, &[]).unwrap_or_else(|e| fail(e));
+    if input.game_code {
+        fail(
+            "the mod declares game code (a [native] row or internals), which a surface alone cannot judge: use `cargo sunrise-mod fits`"
+                .to_owned(),
+        );
+    }
     // No manifest form names a hook version today (the schema refuses `hook_version`).
     let manifest = ManifestFacts {
         names: input.manifest_names,
@@ -163,6 +169,16 @@ fn fits_command(args: &[PathBuf]) -> ! {
     let table =
         UsesTable::read(&bytes).unwrap_or_else(|e| fail(format!("{}: {e}", table.display())));
     let target = read_surface(target);
+    if table
+        .entries
+        .iter()
+        .any(|entry| entry.id.starts_with("game:"))
+    {
+        fail(
+            "the list records game code the mod declares, which a surface alone cannot judge: use `cargo sunrise-mod fits`"
+                .to_owned(),
+        );
+    }
     match fits(&table.entries, &target) {
         Fit::Fits => {
             println!(

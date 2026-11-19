@@ -531,7 +531,7 @@ fn new_code(
 
 /// Packs the mod in the current folder into `target/sunrise-mod/<id>.smod`: the manifest and
 /// the files in `assets/` and `data/`, and for a code mod its source and its uses table, scanned
-/// against the pinned build (none for a mod made for exactly one build, or built against the game
+/// against the pinned build (none for a mod with rows no list can judge, or built against the game
 /// checkout it lies in, which has no published surface to scan against).
 fn build(
     entry: mod_surface::child::ChildEntry,
@@ -548,7 +548,9 @@ fn build(
         let scanned = uses_table::scan(entry, root, &surface)?;
         api = Some(surface);
         match scanned {
-            uses_table::Scanned::Uses(uses) => Some(uses.table(sdk.build).to_json().into_bytes()),
+            uses_table::Scanned::Uses(uses) => {
+                Some(uses_table::table(&uses, root, &sdk)?.to_json().into_bytes())
+            }
             uses_table::Scanned::Exact(_) => None,
             uses_table::Scanned::Unread(why) => {
                 println!(
