@@ -1,14 +1,15 @@
 //! The heap the program has in use in mimalloc, from its statistics.
 
 /// The number after `"key":` on a line of mimalloc's JSON.
-fn field(line: &str, key: &str) -> Option<usize> {
+fn field(line: &str, key: &str) -> Option<i64> {
     let from = line.find(&format!("\"{key}\":"))? + key.len() + 3;
-    let digits: String = line[from..]
-        .trim_start()
+    let rest = line[from..].trim_start();
+    let sign = usize::from(rest.starts_with('-'));
+    let digits = rest[sign..]
         .chars()
         .take_while(char::is_ascii_digit)
-        .collect();
-    digits.parse().ok()
+        .count();
+    rest[..sign + digits].parse().ok()
 }
 
 /// Bytes of the pages `page_bins` has in use, plus the huge blocks `malloc_huge` counts by size.
@@ -21,20 +22,25 @@ fn in_use(json: &str) -> Option<usize> {
     for line in bins.lines().filter(|l| l.contains("\"block_size\"")) {
         total += field(line, "current")? * field(line, "page_size")?;
     }
-    Some(total)
+    // A block freed on another thread can be counted out before its allocating thread's count is merged in.
+    Some(usize::try_from(total).unwrap_or(0))
 }
 
 fn stats_json() -> Option<String> {
-    // SAFETY: a null buffer asks mimalloc for one of its own, freed below with its `mi_free`.
-    let raw = unsafe { libmimalloc_sys::mi_stats_get_json(0, std::ptr::null_mut()) };
+    // SAFETY: a null buffer asks mimalloc for one of its own, which `take_json` frees.
+    take_json(unsafe { libmimalloc_sys::mi_stats_get_json(0, std::ptr::null_mut()) }.cast())
+}
+
+/// The text of a JSON buffer mimalloc allocated for a stats call given no buffer, which this frees.
+fn take_json(raw: *mut std::ffi::c_char) -> Option<String> {
     if raw.is_null() {
         return None;
     }
-    // SAFETY: mimalloc returns a NUL-terminated string; `.cast()` bridges `cty::c_char` (`u8` on Windows ARM64) to `std::ffi::c_char`.
-    let text = unsafe { std::ffi::CStr::from_ptr(raw.cast()) }
+    // SAFETY: mimalloc returns a NUL-terminated string.
+    let text = unsafe { std::ffi::CStr::from_ptr(raw) }
         .to_string_lossy()
         .into_owned();
-    // SAFETY: `raw` came from `mi_stats_get_json` with no buffer given.
+    // SAFETY: `raw` came from a mimalloc stats call with no buffer given.
     unsafe { libmimalloc_sys::mi_free(raw.cast()) };
     Some(text)
 }
@@ -65,27 +71,49 @@ mod tests {
   ]
 }"#;
         assert_eq!(in_use(json), Some(1000 + 3 * 65536));
+        let behind = json.replace("\"current\": 1000", "\"current\": -400000");
+        assert_eq!(in_use(&behind), Some(0));
+    }
+
+    use libmimalloc_sys::{mi_free, mi_heap_delete, mi_heap_malloc, mi_heap_new, mi_heap_t};
+
+    unsafe extern "C" {
+        fn mi_heap_stats_get_json(
+            heap: *mut mi_heap_t,
+            buf_size: usize,
+            buf: *mut std::ffi::c_char,
+        ) -> *mut std::ffi::c_char;
+    }
+
+    /// The bytes in use in `heap` alone, which the other tests' threads never allocate from.
+    fn heap_live_bytes(heap: *mut mi_heap_t) -> usize {
+        // SAFETY: `heap` is live; a null buffer asks mimalloc for one, which `take_json` frees.
+        let raw = unsafe { mi_heap_stats_get_json(heap, 0, std::ptr::null_mut()) };
+        in_use(&take_json(raw).unwrap()).unwrap()
     }
 
     #[test]
-    fn live_bytes_follow_a_large_allocation() {
-        let before = live_bytes().unwrap();
-        // SAFETY: allocates and frees one block with mimalloc.
-        let block = unsafe { libmimalloc_sys::mi_malloc(64 << 20) };
-        let during = live_bytes().unwrap();
-        // SAFETY: `block` came from `mi_malloc` above.
-        unsafe { libmimalloc_sys::mi_free(block) };
+    fn live_bytes_follow_large_blocks_in_and_out() {
+        // SAFETY: a heap of this test's own, deleted at the end.
+        let heap = unsafe { mi_heap_new() };
+        let before = heap_live_bytes(heap);
+        // SAFETY: allocates from `heap` and frees what it allocated.
+        let during = unsafe {
+            let block = mi_heap_malloc(heap, 64 << 20);
+            let during = heap_live_bytes(heap);
+            mi_free(block);
+            for _ in 0..8 {
+                mi_free(mi_heap_malloc(heap, 64 << 20));
+            }
+            during
+        };
+        let after = heap_live_bytes(heap);
+        // SAFETY: nothing allocated from `heap` is still live.
+        unsafe { mi_heap_delete(heap) };
         assert!(during >= before + (64 << 20), "{before} then {during}");
-    }
-
-    #[test]
-    fn live_bytes_fall_when_large_blocks_are_freed() {
-        let before = live_bytes().unwrap();
-        for _ in 0..8 {
-            // SAFETY: allocates and frees one block with mimalloc.
-            unsafe { libmimalloc_sys::mi_free(libmimalloc_sys::mi_malloc(64 << 20)) };
-        }
-        let after = live_bytes().unwrap();
-        assert!(after < before + (256 << 20), "{before} then {after}");
+        assert_eq!(
+            after, before,
+            "{before} then {after} after freeing nine huge blocks"
+        );
     }
 }
