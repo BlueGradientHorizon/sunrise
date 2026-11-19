@@ -1,2 +1,3 @@
+sunrise-render-shaderpack pack_entities::gpu_span_tests::native_fluid_stays_native_while_model_uses_pack lib daily resources
 sunrise-render-shaderpack pack_timing::tests::stages_split_a_render_pass_in_a_plain_frame_and_kept_frames_hold_them lib daily slow
 sunrise-render-shaderpack pack_timing::tests::the_heavy_part_of_a_pass_has_the_largest_time lib daily slow

@@ -22,7 +22,7 @@ use smallvec::SmallVec;
 use sunrise_shaders::{BUFFERS, Format, Group, Kind, Post, SHADOW_COLORS};
 
 use super::pack_draw::DrawUniforms;
-use super::pack_entities::{PROGRAMS, PackEntities};
+use super::pack_entities::{PROGRAMS, PackEntities, PackEntitiesExt};
 use super::pack_images;
 use super::pack_sky::PackSky;
 use super::pack_textures;
@@ -4282,7 +4282,7 @@ impl PackPost {
             return;
         };
         let drawn = e.passes.each_ref().map(Option::is_some);
-        e.geometry.prepare(
+        e.geometry.prepare_client(
             device,
             queue,
             &self.draws.layout,

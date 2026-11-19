@@ -5,6 +5,7 @@
 pub mod pack_atlas;
 pub mod pack_center_depth;
 pub mod pack_draw;
+pub mod pack_entities;
 pub mod pack_hand;
 pub mod pack_images;
 pub mod pack_lines;
