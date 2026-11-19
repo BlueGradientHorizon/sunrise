@@ -22,14 +22,17 @@ struct NineSlice {
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Scaling {
     /// `GuiSpriteScaling.Tile`: the whole sprite repeated at `width` x `height` GUI pixels.
-    Tile { width: u32, height: u32 },
+    Tile {
+        width: u32,
+        height: u32,
+    },
     NineSlice(NineSlice),
 }
 /// GUI sprite scaling from `.png.mcmeta` files.
 static SCALING: RwLock<Option<HashMap<String, Scaling>>> = RwLock::new(None);
 
-/// A `gui.scaling` section of type `tile` or `nine_slice`; `stretch`, or one the codec refuses,
-/// is `None`.
+/// `GuiSpriteScaling.CODEC`: a `gui.scaling` section of type `tile` or `nine_slice`; `stretch`,
+/// or one the codec refuses, is `None`.
 fn parse_scaling(v: &serde_json::Value) -> Option<Scaling> {
     let s = &v["gui"]["scaling"];
     match s["type"].as_str()? {
@@ -231,6 +234,7 @@ pub fn blit_sprite(
         }
     }
 }
+/// `GuiGraphicsExtractor.blitSprite`'s switch on the sprite's `GuiSpriteScaling`.
 fn draw_sprite(
     batch: &mut HudBatch,
     r: Rect,
@@ -243,7 +247,14 @@ fn draw_sprite(
         // `blitTiledSprite(sprite, x, y, w, h, 0, 0, tileW, tileH, tileW, tileH)`.
         Some(Scaling::Tile { width, height }) => {
             let size = [width as f32, height as f32];
-            tile(batch, r, size, [0.0, 0.0, size[0], size[1]], [x, y, w, h], color);
+            tile(
+                batch,
+                r,
+                size,
+                [0.0, 0.0, size[0], size[1]],
+                [x, y, w, h],
+                color,
+            );
         }
         None => batch.rect_uv(x, y, w, h, r, color),
     }
@@ -2370,7 +2381,13 @@ mod tests {
             })
         );
         let mut batch = HudBatch::scratch([640, 480]);
-        draw_sprite(&mut batch, sprite(32, 32), tile, [0.0, 0.0, 40.0, 20.0], u32::MAX);
+        draw_sprite(
+            &mut batch,
+            sprite(32, 32),
+            tile,
+            [0.0, 0.0, 40.0, 20.0],
+            u32::MAX,
+        );
         let q = quads(&batch);
         assert_eq!(q.len(), 6);
         assert_quad(q[0], ([0.0, 0.0, 16.0, 16.0], [0.0, 0.0, 1.0, 1.0]));
@@ -2735,7 +2752,8 @@ mod tests {
             (20, 12, [3; 4])
         );
         // Another namespace's sprite is named with it, as the GUI atlas packs it.
-        let Some(Scaling::NineSlice(frame)) = metadata.0.get("lobby:gui/sprites/tooltip/gold_frame")
+        let Some(Scaling::NineSlice(frame)) =
+            metadata.0.get("lobby:gui/sprites/tooltip/gold_frame")
         else {
             panic!("no nine slice");
         };
