@@ -1970,7 +1970,17 @@ impl Game<'_> {
         if !self.portals.dirty || self.remote.is_some() {
             return;
         }
-        let list = self.portals.arrivals.iter().map(arrival_tag).collect();
+        let list = self
+            .portals
+            .arrivals
+            .iter()
+            .filter(|arrival| match &arrival.transferred {
+                Some(TransferredArrivalState::Entity(state)) => !state.transient,
+                Some(TransferredArrivalState::VehicleTree(tree)) => !tree.is_transient(),
+                None => true,
+            })
+            .map(arrival_tag)
+            .collect();
         let root = Tag::compound([("arrivals", Tag::List(list))]);
         if sunrise_client::save::write_dat(&self.arrivals_path(), root).is_ok() {
             self.portals.dirty = false;
@@ -2480,6 +2490,63 @@ mod tests {
                     .collect::<Vec<_>>(),
                 [101, 13, 102, 12]
             );
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn portal_arrivals_keep_the_live_opt_out_without_writing_a_waiting_entity() {
+        use mod_api::__private::{ModPhase, PhaseOwner};
+        mod_platform::testing::with_mods(Default::default(), || {
+            crate::game::native_entity_refs::tests::with_game(|game| {
+                let _world = PhaseOwner::scope(ModPhase::World);
+                let chunk = (0, 0);
+                let at = BlockPos::new(4, 64, 4);
+                let spawn = |game: &mut Game<'_>, nbt| {
+                    let target = game
+                        .summon_with_nbt("minecraft:text_display", [4.0, 64.0, 4.0], nbt)
+                        .unwrap()
+                        .unwrap();
+                    game.entity(game.resident_target_id(target).unwrap())
+                        .unwrap()
+                };
+                let transient = spawn(game, "{UUID:[I;0,0,0,583]}");
+                let persistent = spawn(game, "{UUID:[I;0,0,0,584]}");
+                assert_eq!(transient.set_persistent(game, false), Ok(true));
+                game.send_through_portal(transient.id(), at);
+                game.send_through_portal(persistent.id(), at);
+                let world = tempfile::tempdir().unwrap();
+                game.world_root = world.path().to_path_buf();
+                let path = game.arrivals_path();
+                std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+                game.save_portal_arrivals();
+                let written = sunrise_client::save::read_dat(&path).unwrap();
+                let Some(Tag::List(saved)) = written.get("arrivals") else {
+                    panic!("missing arrivals list");
+                };
+                assert_eq!(saved.len(), 1);
+                let saved = arrival_from_tag(&saved[0]).unwrap();
+                assert_eq!(
+                    sunrise_client::entity_nbt::uuid(&saved.tag),
+                    Some([0, 0, 0, 584])
+                );
+
+                let waiting = std::mem::take(&mut game.portals.arrivals);
+                assert_eq!(waiting.len(), 2);
+                for pending in waiting {
+                    let Some(TransferredArrivalState::Entity(state)) = pending.transferred else {
+                        panic!("display must carry its live transfer state");
+                    };
+                    game.spawn_teleported_entity(chunk, pending.tag.into(), Some(state));
+                }
+                assert!(game.entity_by_uuid(mod_api::EntityUuid(583)).is_some());
+                let records = game.entity_chunks(&std::collections::HashSet::from([chunk]), false);
+                assert_eq!(records[0].1.len(), 1);
+                assert_eq!(
+                    sunrise_client::entity_nbt::uuid(&records[0].1[0]),
+                    Some([0, 0, 0, 584])
+                );
+            });
         });
     }
 

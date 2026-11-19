@@ -170,9 +170,19 @@ pub(super) fn write_static_entity_fields(tag: &mut Tag) {
     }
 }
 
+/// Why the engine is collecting entity tags. Structure capture is not a world save.
+#[derive(Clone, Copy)]
+pub(super) enum EntitySnapshot {
+    Save,
+    Unload,
+    Structure,
+}
+
 /// What Sunrise remembers about loaded entities to save them faithfully.
 #[derive(Default)]
 pub struct EntityMemory {
+    /// Runtime-only opt-outs from saving the entity as a root.
+    pub(super) transient: HashSet<u32>,
     /// UUIDs of entities by Sunrise entity ID: the one each was loaded with,
     /// or made up once something needed it (a save, a native mod's attachment).
     pub(super) uuids: EntityUuids,
@@ -235,6 +245,9 @@ impl EntityMemory {
         if let Some(raw) = self.raw.remove(&id) {
             destination.raw.insert(id, raw);
         }
+        if self.transient.remove(&id) {
+            destination.transient.insert(id);
+        }
         if let Some(forced) = self.forced_meta.remove(&id) {
             destination.forced_meta.insert(id, forced);
         }
@@ -253,6 +266,12 @@ pub(super) struct TransferredVehicleTree {
     name: String,
     state: super::entity_initialization::TransferredEntityState,
     passengers: Vec<TransferredVehicleTree>,
+}
+
+impl TransferredVehicleTree {
+    pub(super) fn is_transient(&self) -> bool {
+        self.state.transient
+    }
 }
 
 pub(super) struct RestoredVehicleTree {
@@ -1408,9 +1427,35 @@ impl Game<'_> {
     ) -> Option<(Tag, u32, [i32; 4])> {
         let vehicle = vehicle?;
         let root = parent_vehicle_root(vehicle, others, |id| self.vehicle_of(id))?;
+        if self.persist.transient.contains(&root) {
+            return None;
+        }
         let entity = self.vehicle_tree_nbt(root)?;
         let attach = self.uuid_for(vehicle);
         Some((root_vehicle_tag(attach, entity), root, attach))
+    }
+
+    /// On logout the sole player's tree leaves even if its root opts out of saving.
+    pub(super) fn snapshot_parent_vehicle(
+        &mut self,
+        vehicle: u32,
+        others: &[u32],
+        remove: bool,
+    ) -> Option<(Tag, [i32; 4])> {
+        let saved = self.parent_vehicle_tag(Some(vehicle), others);
+        if remove {
+            let root = saved.as_ref().map(|(_, root, _)| *root).or_else(|| {
+                if self.persist.transient.is_empty() {
+                    return None;
+                }
+                parent_vehicle_root(vehicle, others, |id| self.vehicle_of(id))
+                    .filter(|root| self.persist.transient.contains(root))
+            });
+            if let Some(root) = root {
+                self.remove_vehicle_tree(root);
+            }
+        }
+        saved.map(|(tag, _, attach)| (tag, attach))
     }
     /// `PlayerList.remove`: the root vehicle and its passengers leave the
     /// world with the player (`setRemoved(UNLOADED_WITH_PLAYER)`).
@@ -1520,6 +1565,7 @@ impl Game<'_> {
     }
     /// Forget an entity that left the world (its UUID and loaded compound).
     pub(super) fn forget_entity(&mut self, id: u32) {
+        self.persist.transient.remove(&id);
         self.persist.uuids.remove(&id);
         self.persist.score_destroyed.remove(&id);
         self.forget_entity_initialization(mod_api::Holder::Entity(id));
@@ -1668,6 +1714,37 @@ impl Game<'_> {
         }
         self.persist.uuids.get_or_insert_with(id, random_uuid)
     }
+
+    pub(super) fn entity_set_persistent(
+        &mut self,
+        entity: mod_api::EntityRef,
+        persistent: bool,
+    ) -> std::result::Result<bool, mod_api::LevelWriteError> {
+        use super::commands::Target;
+        let id = entity.id();
+        match self.native_entity_target(entity) {
+            None | Some(Target::Player | Target::Guest(_) | Target::DragonPart(_)) => {
+                return Ok(false);
+            }
+            Some(Target::Spawner(_)) => {
+                // A freshly spawned ominous spawner already carries its save UUID.
+                let Some(spawner) = self.ominous_spawners.iter().find(|row| row.id == id) else {
+                    return Ok(false);
+                };
+                self.persist.uuids.get_or_insert_with(id, || spawner.uuid);
+            }
+            Some(_) => {
+                self.uuid_for(id);
+            }
+        }
+        if persistent {
+            self.persist.transient.remove(&id);
+        } else {
+            self.persist.transient.insert(id);
+        }
+        Ok(true)
+    }
+
     /// `BlockState.CODEC`: a block name or `{id, properties}` (or legacy `{Name, Properties}`).
     pub(super) fn state_from_nbt(&self, tag: &Tag) -> Option<BlockStateId> {
         entity_nbt::state_from_nbt(self.pack.assets.registry, tag)
@@ -1675,26 +1752,40 @@ impl Game<'_> {
     pub(in crate::game) fn state_to_nbt(&self, state: BlockStateId) -> Tag {
         entity_nbt::state_to_nbt(self.pack.assets.registry, state)
     }
-    /// The entity NBT of every simulated entity in `keys`, plus the unknown
-    /// entities kept for them. With `remove`, the entities leave the world
-    /// (their chunks unload).
-    ///
-    /// Every entity snapshot goes through here (the level save, the autosave,
-    /// the staged closing save, the unload save, a structure), so no snapshot
-    /// holds a player vehicle: a mob a mod seated on a player gets off first.
+    /// World-save snapshots, optionally removing the entities as their chunks unload.
     pub(super) fn entity_chunks(
         &mut self,
         keys: &HashSet<(i32, i32)>,
         remove: bool,
     ) -> Vec<((i32, i32), Vec<Tag>)> {
+        let purpose = if remove {
+            EntitySnapshot::Unload
+        } else {
+            EntitySnapshot::Save
+        };
+        self.snapshot_entity_chunks(keys, purpose)
+    }
+
+    /// The entity NBT in `keys`, plus any unknown entities kept for them.
+    /// No snapshot holds a player vehicle: a mob seated on a player gets off first.
+    pub(super) fn snapshot_entity_chunks(
+        &mut self,
+        keys: &HashSet<ChunkKey>,
+        purpose: EntitySnapshot,
+    ) -> Vec<(ChunkKey, Vec<Tag>)> {
         use sunrise_client::join_seq::{JoinSeq, Joined};
         self.eject_player_riders(None);
+        let include_transient = matches!(purpose, EntitySnapshot::Structure);
         // Each root with its id and join number, ordered once all are in.
-        let mut roots: HashMap<(i32, i32), Vec<(u32, JoinSeq, Tag)>> = HashMap::new();
+        let mut roots: HashMap<ChunkKey, Vec<(u32, JoinSeq, Tag)>> = HashMap::new();
         // Every kind in `entity_lists!` saves itself (`Entity::save_nbt`).
-        self.save_every_entity(keys, &mut roots);
+        self.save_every_entity(keys, &mut roots, include_transient);
+        let include = |id, at| {
+            keys.contains(&chunk_of(at))
+                && (include_transient || !self.persist.transient.contains(&id))
+        };
         if let Some(d) = self.dragon.as_ref()
-            && keys.contains(&chunk_of(d.position))
+            && include(d.id, d.position)
         {
             let raw = anon_raw(&self.persist, "minecraft:ender_dragon", d.position);
             let uuid = saved_uuid(&self.persist, d.id);
@@ -1711,7 +1802,7 @@ impl Game<'_> {
                 .push((d.id, d.join_seq(), tag));
         }
         for c in &self.crystals {
-            if keys.contains(&chunk_of(c.position)) {
+            if include(c.id, c.position) {
                 let raw = anon_raw(&self.persist, "minecraft:end_crystal", c.position);
                 let uuid = saved_uuid(&self.persist, c.id);
                 let mut tag = with_raw(c.to_nbt(uuid, raw.as_ref()), self.persist.raw.get(&c.id));
@@ -1724,7 +1815,7 @@ impl Game<'_> {
         }
         for s in &self.ominous_spawners {
             let at = Vec3::new(s.position[0], s.position[1], s.position[2]);
-            if keys.contains(&chunk_of(at)) {
+            if include(s.id, at) {
                 let mut tag = entity_nbt::ominous_item_spawner_to_nbt(
                     &s.item,
                     at,
@@ -1747,7 +1838,7 @@ impl Game<'_> {
                 (lo[1] + hi[1]) / 2.0,
                 (lo[2] + hi[2]) / 2.0,
             );
-            if keys.contains(&chunk_of(at)) {
+            if include(f.id, at) {
                 let uuid = self
                     .persist
                     .uuids
@@ -1768,7 +1859,7 @@ impl Game<'_> {
             }
         }
         for c in &self.cushions {
-            if keys.contains(&chunk_of(c.position)) {
+            if include(c.id, c.position) {
                 let uuid = self
                     .persist
                     .uuids
@@ -1785,7 +1876,7 @@ impl Game<'_> {
         }
         for p in &self.paintings {
             let at = painting_center(p);
-            if keys.contains(&chunk_of(at)) {
+            if include(p.id, at) {
                 let uuid = self
                     .persist
                     .uuids
@@ -1802,7 +1893,7 @@ impl Game<'_> {
         }
         for f in &self.fangs.list {
             let at = Vec3::new(f.pos[0], f.pos[1], f.pos[2]);
-            if keys.contains(&chunk_of(at)) {
+            if include(f.id, at) {
                 let uuid = self
                     .persist
                     .uuids
@@ -1822,7 +1913,7 @@ impl Game<'_> {
         // is not written.
         for c in &self.breath_clouds {
             let at = Vec3::new(c.at[0], c.at[1], c.at[2]);
-            if c.potion.is_none() || !keys.contains(&chunk_of(at)) {
+            if c.potion.is_none() || !include(c.id, at) {
                 continue;
             }
             let uuid = self
@@ -1840,7 +1931,7 @@ impl Game<'_> {
         }
         for o in &self.others {
             // EntityType.noSave: Entity.getEncodeId is null, so the chunk never stores it.
-            if keys.contains(&chunk_of(o.position)) && o.kind.as_str() != "minecraft:leash_knot" {
+            if include(o.id, o.position) && o.kind.as_str() != "minecraft:leash_knot" {
                 let uuid = self
                     .persist
                     .uuids
@@ -1878,8 +1969,9 @@ impl Game<'_> {
                     .extend(tags.into_iter().map(|(_, _, tag)| tag));
             }
         }
+        let unload = matches!(purpose, EntitySnapshot::Unload);
         for key in keys {
-            let unknown = if remove {
+            let unknown = if unload {
                 self.persist.unknown.remove(key)
             } else {
                 self.persist.unknown.get(key).cloned()
@@ -1888,7 +1980,7 @@ impl Game<'_> {
                 out.entry(*key).or_default().extend(list);
             }
         }
-        if remove {
+        if unload {
             self.unload_removed_entities(keys);
         }
         out.into_iter().collect()
@@ -2004,6 +2096,7 @@ impl Game<'_> {
             }
         }
         self.prune_entity_initializations(&alive);
+        self.persist.transient.retain(|id| alive.contains(id));
         self.persist.uuids.retain(|id, _| alive.contains(id));
         self.persist.raw.retain(|id, _| alive.contains(id));
         self.persist.score_destroyed.retain(|id| alive.contains(id));
