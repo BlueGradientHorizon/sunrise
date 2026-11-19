@@ -4332,12 +4332,17 @@ pub(crate) mod tests {
             ),
             (0, true)
         );
-        let mut air = -19;
-        let hurt = crate::breathing::own_air(&after, 4, "minecraft:salmon", &mut air, false, 300);
-        assert_eq!((hurt, air), (Some(3.0), 0));
-        let mut air = -19;
-        let hurt = crate::breathing::own_air(&after, 4, "minecraft:dolphin", &mut air, false, 4800);
-        assert_eq!((hurt, air), (Some(3.0), 0));
+        // Water animals out of water: the mods' damage comes back and the air is zero.
+        let out_of_water = |kind: &str, max: i32| {
+            let mut air = -19;
+            let step = crate::breathing::AirStep::own(air, max, false);
+            let hurt = step
+                .finish(&after, 4, kind, &mut air, step.vanilla)
+                .and_then(|drowning| drowning.damage);
+            (hurt, air)
+        };
+        assert_eq!(out_of_water("minecraft:salmon", 300), (Some(3.0), 0));
+        assert_eq!(out_of_water("minecraft:dolphin", 4800), (Some(3.0), 0));
         // A server's block menu: the game's `stillValid` answer arrives first and
         // the parts on its mod menu type may change it; a vanilla menu type never
         // asks them, and a menu whose block entity is gone closes without asking.

@@ -2099,6 +2099,17 @@ enum BaseTick {
     Air(AirPause),
 }
 
+#[cfg(test)]
+impl BaseTick {
+    /// Whether the mob was on fire, for a test with no listener, where the base tick never stops.
+    fn was_on_fire(self) -> bool {
+        match self {
+            Self::Done(was_on_fire) => was_on_fire,
+            Self::Air(_) => panic!("the base tick stopped at its air update"),
+        }
+    }
+}
+
 /// Entity.baseTick + LivingEntity.baseTick + Mob.baseTick, up to its air update when a mod
 /// listens to `living_breathe`.
 fn base_tick(
