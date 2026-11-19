@@ -30,7 +30,12 @@ impl Game<'_> {
             ('s', None) => source_candidates.extend(self.source_entity()),
             // A guest in place is among the players, in join order.
             _ if self.player.is_some() && self.lan_acting.is_none() => {
-                if !alive_only || self.player.as_ref().is_some_and(|p| p.health() > 0.0) {
+                if !alive_only
+                    || self
+                        .player
+                        .as_ref()
+                        .is_some_and(|p| p.health.health() > 0.0)
+                {
                     source_candidates.push(Target::Player);
                 }
             }
