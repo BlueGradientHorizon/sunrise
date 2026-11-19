@@ -1,16 +1,13 @@
-//! Core rendering types, GPU layouts, and geometric primitives for Sunrise.
-
-#![no_std]
-
-extern crate alloc;
+//! Core rendering primitives, math layouts, and GPU POD types for Sunrise.
 
 pub mod cull;
 pub mod frustum;
 pub mod terrain;
 
-pub use cull::{CODE_OFFSET, FADING, Record, UNBOUNDED, rounded_box};
-pub use frustum::{Cull, Frusta, Frustum, JoinedFrusta, MAX_WORLD_VIEWS};
+pub use cull::{BoundingBox, FrustumGpu, Record, SectionMeta, VisibleSection};
+pub use frustum::Frustum;
 pub use terrain::{
-    CHUNK_VISIBILITY_THRESHOLD, SectionKey, UV_STEPS, chunk_visibility, fade_millis,
+    BRIGHT, FLAT_NORMAL, INCANDESCENT, LOW, NO_SPECULAR, OPAQUE_LAYER, SectionKey, TerrainSource,
+    TerrainVertex, UV_STEPS, VERY_BRIGHT, Vertex, WHOLE, chunk_visibility, emitting, fade_millis,
     section_instance,
 };

@@ -2,6 +2,7 @@
 //!
 //! Provides GPU timing, atlas stitching, passes, and shaderpack uniforms.
 
+pub mod pack_atlas;
 pub mod pack_timing;
 pub(crate) mod timing;
 

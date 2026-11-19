@@ -74,3 +74,95 @@ mod tests {
         assert_eq!(inst[3], 1.0 / UV_STEPS);
     }
 }
+
+/// The default flat normal map texel value `[128, 128, 255, 255]`.
+pub const FLAT_NORMAL: [u8; 4] = [128, 128, 255, 255];
+
+/// The default empty specular map texel value `[0, 0, 0, 0]`.
+pub const NO_SPECULAR: [u8; 4] = [0, 0, 0, 0];
+
+/// Sprite array layer flag for opaque leaves and quads over opaque texels.
+pub const OPAQUE_LAYER: u16 = 1 << 15;
+
+/// An entity, item and effect vertex (the entity pipelines).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Vertex {
+    pub pos: [f32; 3],
+    pub uv: [f32; 2],
+    pub layer: u32,
+    pub color: u32,
+    pub light: u32,
+    pub normal: [i8; 4],
+    pub glint_uv: [f32; 2],
+}
+
+/// Section-relative terrain vertex.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct TerrainVertex {
+    pub pos: [f32; 3],
+    pub uv: [u16; 2],
+    pub layer: u16,
+    pub light: u16,
+    pub color: u32,
+}
+
+#[inline]
+fn round_to_u16(v: f32) -> u16 {
+    let v = v.clamp(0.0, f32::from(u16::MAX));
+    let whole = v as u32;
+    (whole + u32::from(v - whole as f32 >= 0.5)) as u16
+}
+
+impl TerrainVertex {
+    pub fn new(pos: [f32; 3], uv: [f32; 2], layer: u16, color: u32, light: u16) -> Self {
+        Self {
+            pos,
+            uv: uv.map(|v| round_to_u16(v * UV_STEPS)),
+            layer,
+            color,
+            light,
+        }
+    }
+}
+
+/// Source metadata for shader pack meshed terrain quads.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct TerrainSource {
+    pub state: u32,
+    pub cell: u32,
+}
+
+impl TerrainSource {
+    pub fn new(state: u32, pos: [i32; 3], emission: u8, fluid: bool) -> Self {
+        debug_assert!(pos.iter().all(|&v| (0..16).contains(&v)));
+        Self {
+            state,
+            cell: pos[0] as u32
+                | (pos[1] as u32) << 4
+                | (pos[2] as u32) << 8
+                | u32::from(fluid) << 12
+                | 1 << 13
+                | u32::from(emission.min(15)) << 14,
+        }
+    }
+}
+
+/// HDR tiers and light emission constants.
+pub const LOW: u8 = 1;
+pub const INCANDESCENT: u8 = 2;
+pub const BRIGHT: u8 = 3;
+pub const VERY_BRIGHT: u8 = 4;
+pub const WHOLE: u8 = 8;
+
+pub fn emitting(color: u32, tier: u8) -> u32 {
+    let level = (tier & !WHOLE).min(VERY_BRIGHT);
+    let code = if level > 0 && tier & WHOLE != 0 {
+        level + 4
+    } else {
+        level
+    };
+    color | (u32::from(code) << 24)
+}

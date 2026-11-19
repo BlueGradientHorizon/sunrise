@@ -5404,6 +5404,7 @@ dependencies = [
  "pollster",
  "serde_json",
  "sunrise-render-core",
+ "sunrise-shaders",
  "wgpu",
 ]
 
