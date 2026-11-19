@@ -13,15 +13,15 @@ use sunrise_assets::resource_source::ResourceSource;
 /// its texture's resolution, its borders (left, top, right, bottom) in the
 /// same units, and whether the edges and centre stretch rather than tile.
 #[derive(Clone, Copy, Debug, PartialEq)]
-struct NineSlice {
-    width: u32,
-    height: u32,
-    border: [u32; 4],
-    stretch_inner: bool,
+pub struct NineSlice {
+    pub width: u32,
+    pub height: u32,
+    pub border: [u32; 4],
+    pub stretch_inner: bool,
 }
 /// `GuiSpriteScaling` other than `Stretch`, which a sprite without `gui.scaling` metadata has.
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum Scaling {
+pub enum Scaling {
     /// `GuiSpriteScaling.Tile`: the whole sprite repeated at `width` x `height` GUI pixels.
     Tile {
         width: u32,
@@ -31,7 +31,7 @@ enum Scaling {
 }
 /// What a GUI sprite's `.png.mcmeta` leaves `GuiGraphicsExtractor.blitSprite`, when it isn't a stretch.
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum SpriteMetadata {
+pub enum SpriteMetadata {
     Scaled(Scaling),
     /// `SpriteResourceLoader` drops a sprite whose metadata doesn't decode: it draws as the missing sprite.
     Rejected,
@@ -44,24 +44,25 @@ type JsonObject = HashMap<String, Box<RawValue>>;
 fn json_object(raw: &RawValue) -> Result<JsonObject, ()> {
     serde_json::from_str(raw.get()).map_err(|_| ())
 }
-/// `JsonOps.getNumberValue` then `Number.intValue`: a number's own text, or a boolean as 1 or 0.
+/// A codec field: `JsonOps` reads a `null` member as an absent one.
+fn json_field<'a>(object: &'a JsonObject, key: &str) -> Option<&'a RawValue> {
+    object
+        .get(key)
+        .map(|raw| &**raw)
+        .filter(|raw| raw.get() != "null")
+}
+/// `JsonOps.getNumberValue` then `Number.intValue` of the number's own text.
 fn json_int(raw: &RawValue) -> Result<i32, ()> {
     match raw.get() {
-        "true" => Ok(1),
-        "false" => Ok(0),
         text if text.starts_with(|c: char| c == '-' || c.is_ascii_digit()) => {
             Ok(crate::java_text::Json::int_value(text))
         }
         _ => Err(()),
     }
 }
-/// `JsonOps.getBooleanValue`: a boolean, or a number's `byteValue() != 0`.
+/// `JsonOps.getBooleanValue`: a JSON boolean only.
 fn json_bool(raw: &RawValue) -> Result<bool, ()> {
-    match raw.get() {
-        "true" => Ok(true),
-        "false" => Ok(false),
-        _ => json_int(raw).map(|n| n as i8 != 0),
-    }
+    serde_json::from_str(raw.get()).map_err(|_| ())
 }
 /// `ExtraCodecs.POSITIVE_INT`.
 fn positive(raw: &RawValue) -> Result<u32, ()> {
@@ -77,11 +78,12 @@ fn decode_metadata(raw: &RawValue) -> Result<Option<Scaling>, ()> {
     let Some(gui) = json_object(raw)?.remove("gui") else {
         return Ok(None);
     };
-    let Some(scaling) = json_object(&gui)?.remove("scaling") else {
+    let gui = json_object(&gui)?;
+    let Some(scaling) = json_field(&gui, "scaling") else {
         return Ok(None);
     };
-    let scaling = json_object(&scaling)?;
-    let field = |key: &str| scaling.get(key).map(|raw| &**raw).ok_or(());
+    let scaling = json_object(scaling)?;
+    let field = |key: &str| json_field(&scaling, key).ok_or(());
     let kind: String = serde_json::from_str(field("type")?.get()).map_err(|_| ())?;
     match kind.as_str() {
         "stretch" => Ok(None),
@@ -97,14 +99,12 @@ fn decode_metadata(raw: &RawValue) -> Result<Option<Scaling>, ()> {
                 Ok(n) => [n; 4],
                 Err(()) => {
                     let sides = json_object(border)?;
-                    let side =
-                        |key: &str| sides.get(key).ok_or(()).and_then(|raw| non_negative(raw));
+                    let side = |key: &str| json_field(&sides, key).ok_or(()).and_then(non_negative);
                     [side("left")?, side("top")?, side("right")?, side("bottom")?]
                 }
             };
-            let stretch_inner = scaling
-                .get("stretch_inner")
-                .map_or(Ok(false), |raw| json_bool(raw))?;
+            let stretch_inner =
+                json_field(&scaling, "stretch_inner").map_or(Ok(false), json_bool)?;
             // `NineSlice.validate` in Java's int arithmetic: borders that meet leave no centre slice.
             let [l, t, r, b] = border.map(|side| side as i32);
             if l.wrapping_add(r) >= width as i32 || t.wrapping_add(b) >= height as i32 {
@@ -128,6 +128,12 @@ pub fn load_metadata(root: &ResourceSource) {
 /// render thread by a pack reload ([`read_metadata`]) and put in use with
 /// [`set_metadata`].
 pub struct UiMetadata(HashMap<String, SpriteMetadata>);
+impl UiMetadata {
+    /// A sprite's metadata, by its atlas name; none for a stretch.
+    pub fn get(&self, sprite: &str) -> Option<SpriteMetadata> {
+        self.0.get(sprite).copied()
+    }
+}
 /// Puts read metadata in use ([`load_metadata`] in two halves).
 pub fn set_metadata(metadata: UiMetadata) {
     *METADATA.write().unwrap_or_else(|e| e.into_inner()) = Some(metadata.0);
@@ -230,7 +236,14 @@ fn sub(r: Rect, size: [f32; 2], [x, y, w, h]: [f32; 4]) -> Rect {
 /// `blitTiledSprite` and `TiledBlitRenderState.buildVertices`: `src` (a region of a sprite `size` large,
 /// in its units) repeated over `dst` from its top left, column by column, the last row and column cut by
 /// `Mth.lerp` between the whole copy's UVs.
-fn tile(batch: &mut HudBatch, r: Rect, size: [f32; 2], src: [f32; 4], dst: [f32; 4], color: u32) {
+pub fn tile(
+    batch: &mut HudBatch,
+    r: Rect,
+    size: [f32; 2],
+    src: [f32; 4],
+    dst: [f32; 4],
+    color: u32,
+) {
     let [_, _, sw, sh] = src;
     let [dx, dy, dw, dh] = dst;
     if sw <= 0.0 || sh <= 0.0 || dw <= 0.0 || dh <= 0.0 {
