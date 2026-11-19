@@ -1,7 +1,13 @@
 //! Polytone's globals (wiki "Extra Shader Uniforms"): the `PolyGlobals` block a pack's post and
-//! core shaders may read, imported as `#moj_import <polytone_globals.glsl>`, and the built-in
-//! file for a pack that imports it without shipping it. Written from the wiki's member names
-//! and their meaning.
+//! core shaders may read, and the built-in `polytone_globals.glsl` for a pack that imports it
+//! without shipping it. Written from the public wiki's member names and their meaning.
+//!
+//! The built-in file and its helpers follow the wiki, which describes Polytone's newer releases:
+//! Polytone 26.3 (6.8.6, the only build for 26.3) has no such file, so a pack importing it loads
+//! here and not in that Java build; a pack declaring the block itself reads the same values in
+//! both (compared pixel for pixel). The helpers' math is the wiki's, not checked against
+//! Polytone's: in particular `polyPositionFromDepth` takes the depth as the depth buffer holds it
+//! (26.3's reverse-Z, 0 to 1), which Polytone may treat otherwise.
 
 /// The block's name.
 pub const BLOCK: &str = "PolyGlobals";
@@ -10,8 +16,9 @@ pub const BLOCK_SIZE: usize = 176;
 /// The include's file name; `<polytone_globals.glsl>` reads it from `shaders/include/`.
 pub const INCLUDE_FILE: &str = "polytone_globals.glsl";
 
-/// `polytone_globals.glsl`: the block and its two helpers. 26.3's projection keeps depth from 0
-/// to 1, so a depth read from the depth buffer is already the clip-space z.
+/// `polytone_globals.glsl` as the wiki describes it: the block and its two helpers (see the module
+/// notes: no counterpart in Polytone 26.3). 26.3's reverse-Z projection keeps depth from 0 to 1,
+/// so `polyPositionFromDepth` takes a depth read from the depth buffer as the clip-space z.
 pub const GLSL: &str = "#ifndef POLYTONE_GLOBALS_GLSL
 #define POLYTONE_GLOBALS_GLSL
 layout(std140) uniform PolyGlobals {
@@ -78,29 +85,27 @@ pub struct Globals {
 }
 
 impl Globals {
-    /// The std140 block.
+    /// The std140 block: each member written at its [`LAYOUT`] offset.
     pub fn std140(&self) -> [u8; BLOCK_SIZE] {
         let mut out = [0u8; BLOCK_SIZE];
-        let block = self.player.map(f64::floor);
-        // A float saturates into the int, NaN at 0.
-        let ints = block.map(|b| (b as i32).to_le_bytes());
-        let offset =
-            std::array::from_fn::<_, 3, _>(|i| ((block[i] - self.player[i]) as f32).to_le_bytes());
-        let words = |values: &[f32]| values.iter().map(|v| v.to_le_bytes()).collect::<Vec<_>>();
-        for (name, _, at) in LAYOUT {
-            let member = match name {
-                "PolyProjMat" => words(&self.projection),
-                "PolyModelViewMat" => words(&self.model_view),
-                "PolySunAngle" => words(&[self.sun_angle]),
-                "PolyDayTime" => words(&[self.day_time]),
-                "PolyDeltaTime" => words(&[self.delta_time]),
-                "PolyPlayerBlockPos" => ints.to_vec(),
-                _ => offset.to_vec(),
-            };
-            for (i, word) in member.iter().enumerate() {
+        let mut put = |member: usize, words: &[[u8; 4]]| {
+            let at = LAYOUT[member].2;
+            for (i, word) in words.iter().enumerate() {
                 out[at + 4 * i..at + 4 * i + 4].copy_from_slice(word);
             }
-        }
+        };
+        let block = self.player.map(f64::floor);
+        put(0, &self.projection.map(f32::to_le_bytes));
+        put(1, &self.model_view.map(f32::to_le_bytes));
+        put(2, &[self.sun_angle.to_le_bytes()]);
+        put(3, &[self.day_time.to_le_bytes()]);
+        put(4, &[self.delta_time.to_le_bytes()]);
+        // A float saturates into the int, NaN at 0.
+        put(5, &block.map(|b| (b as i32).to_le_bytes()));
+        put(
+            6,
+            &std::array::from_fn::<_, 3, _>(|i| ((block[i] - self.player[i]) as f32).to_le_bytes()),
+        );
         out
     }
 }
@@ -138,6 +143,47 @@ mod tests {
         .std140();
         let i = |at: usize| i32::from_le_bytes(far[at..at + 4].try_into().unwrap());
         assert_eq!((i(144), i(148), i(152)), (i32::MAX, 0, i32::MIN));
+    }
+
+    /// The writer follows [`LAYOUT`]: each member, given its own value, is found at its LAYOUT
+    /// offset, in the order the wiki lists them.
+    #[test]
+    fn the_writer_follows_the_layout() {
+        let names: Vec<&str> = LAYOUT.iter().map(|(name, ..)| *name).collect();
+        assert_eq!(
+            names,
+            [
+                "PolyProjMat",
+                "PolyModelViewMat",
+                "PolySunAngle",
+                "PolyDayTime",
+                "PolyDeltaTime",
+                "PolyPlayerBlockPos",
+                "PolyPlayerOffset"
+            ]
+        );
+        let mut projection = [0.0; 16];
+        projection[15] = 1.0;
+        let mut model_view = [0.0; 16];
+        model_view[15] = 2.0;
+        let bytes = Globals {
+            projection,
+            model_view,
+            sun_angle: 3.0,
+            day_time: 4.0,
+            delta_time: 5.0,
+            player: [6.5, 7.5, 8.5],
+        }
+        .std140();
+        let word = |at: usize| <[u8; 4]>::try_from(&bytes[at..at + 4]).unwrap();
+        let last = |member: usize, words: usize| LAYOUT[member].2 + 4 * (words - 1);
+        assert_eq!(f32::from_le_bytes(word(last(0, 16))), 1.0);
+        assert_eq!(f32::from_le_bytes(word(last(1, 16))), 2.0);
+        assert_eq!(f32::from_le_bytes(word(LAYOUT[2].2)), 3.0);
+        assert_eq!(f32::from_le_bytes(word(LAYOUT[3].2)), 4.0);
+        assert_eq!(f32::from_le_bytes(word(LAYOUT[4].2)), 5.0);
+        assert_eq!(i32::from_le_bytes(word(last(5, 3))), 8);
+        assert_eq!(f32::from_le_bytes(word(last(6, 3))), -0.5);
     }
 
     #[test]

@@ -1484,7 +1484,7 @@ fn gpu_shader(
         fragment: &fragment,
     };
     let translated = crate::crash::contain(|| {
-        crate::core_shader::translate_core_at(&stages, &[], &include, &GLUE, &provided)
+        crate::core_shader::translate_core_at(&stages, &[], &|id| Ok(include(id)), &GLUE, &provided)
     })
     .and_then(|translated| translated);
     let program = match translated {

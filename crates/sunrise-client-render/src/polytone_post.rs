@@ -1,7 +1,8 @@
 //! Resource packs' Polytone post chains (#11486, wiki "Shaders"): vanilla `post_effect` chains a
 //! pack runs over the world while their `activation_condition` holds, with uniform blocks from
-//! expressions (`expression_uniforms`), the `PolyGlobals` block, and targets of their own
-//! (`post_targets`) kept between frames. `post_chain` runs them; this reads what they add.
+//! expressions (`expression_uniforms`) and targets of their own (`post_targets`) kept between
+//! frames. `post_chain` runs them; this reads what they add. Their passes, as any effect's, read
+//! the game's `PolyGlobals` ([`PolyGlobals`], handed to `post_chain` with each frame's request).
 use crate::environment::Frame;
 use crate::post_chain::{Extras, InternalTarget};
 use serde_json::Value as Json;
@@ -157,8 +158,10 @@ impl PolytonePost {
         })
     }
 
-    /// The chains to run this frame (those whose condition holds), and what they add.
-    pub fn frame(&self, frame: &Frame, globals: &PolyGlobals) -> (Vec<String>, Extras) {
+    /// The chains to run this frame (those whose condition holds), and what they add. The
+    /// game's `PolyGlobals` reach every post pass that reads them through the request
+    /// (`post_chain::Request::poly_globals`), not here.
+    pub fn frame(&self, frame: &Frame) -> (Vec<String>, Extras) {
         let mut effects = Vec::new();
         let mut extras = Extras {
             targets: self.targets.clone(),
@@ -180,11 +183,6 @@ impl PolytonePost {
             }
             effects.push(chain.effect.clone());
         }
-        // The game's block, last: no chain's uniform stands in for it.
-        extras.blocks.insert(
-            sunrise_polytone::globals::BLOCK.to_owned(),
-            globals.bytes().to_vec(),
-        );
         (effects, extras)
     }
 }
@@ -669,7 +667,7 @@ mod tests {
             rain: 0.25,
             ..Frame::default()
         };
-        let (effects, extras) = post.frame(&frame, &PolyGlobals::default());
+        let (effects, extras) = post.frame(&frame);
         assert_eq!(effects, ["p:glare"]);
         // `g.rain` is the mean of rain (0.25) and thunder (0): 0.125.
         assert_eq!(
@@ -678,12 +676,12 @@ mod tests {
         );
         assert!(extras.targets["p:history"].persistent);
         frame.rain = 1.0;
-        assert!(post.frame(&frame, &PolyGlobals::default()).0.is_empty());
+        assert!(post.frame(&frame).0.is_empty());
         std::fs::remove_dir_all(root).unwrap();
     }
 
     /// `PolyGlobals` is the game's: a chain giving an expression uniform of that name is refused
-    /// (the others still run), and the frame's block holds the game's bytes.
+    /// (the others still run), and no chain's block of that name is handed on.
     #[test]
     fn a_chain_cannot_give_poly_globals() {
         use sunrise_assets::resource_source::{Resource, ResourceSource};
@@ -706,12 +704,8 @@ mod tests {
             .collect(),
         );
         let post = PolytonePost::read(&pack, Default::default()).unwrap();
-        let globals = PolyGlobals {
-            sun_angle: 0.5,
-            ..Default::default()
-        };
-        let (effects, extras) = post.frame(&Frame::default(), &globals);
+        let (effects, extras) = post.frame(&Frame::default());
         assert_eq!(effects, ["p:b"]);
-        assert_eq!(extras.blocks["PolyGlobals"], globals.bytes());
+        assert!(!extras.blocks.contains_key("PolyGlobals"));
     }
 }

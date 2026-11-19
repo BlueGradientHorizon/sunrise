@@ -100,7 +100,7 @@ fn a_packs_lightmap_draws_its_expression_uniform() {
     if run_fresh_cases(
         NAME,
         CASE,
-        &["pack", "fullbright", "sky", "outline", "globals"],
+        &["pack", "fullbright", "sky", "outline", "globals", "post"],
     ) {
         return;
     }
@@ -110,6 +110,9 @@ fn a_packs_lightmap_draws_its_expression_uniform() {
     }
     if case == "globals" {
         return the_sky_draws_poly_globals();
+    }
+    if case == "post" {
+        return a_post_effect_reads_poly_globals();
     }
     if case == "outline" {
         // An outline-only modifier is enough to enable expression evaluation.
@@ -235,5 +238,40 @@ fn the_sky_draws_poly_globals() {
         for texel in drawn_texture(game).chunks(4) {
             assert_eq!(texel, [64, 51, 0, 255]);
         }
+    });
+}
+
+/// The post case: a pack's own post effect, which the server has the screen run (no Polytone
+/// chain), importing the built-in `polytone_globals.glsl`: its pass reads the game's
+/// `PolyGlobals` too, the player's block height (64) in red over the whole frame.
+fn a_post_effect_reads_poly_globals() {
+    with_client_game(|game| {
+        let effect = r#"{"passes": [{"vertex_shader": "minecraft:post/globals",
+            "fragment_shader": "minecraft:post/globals", "inputs": [],
+            "output": "minecraft:main"}]}"#;
+        let fsh = "#version 330\n#moj_import <polytone_globals.glsl>\n\
+                   layout(location = 0) out vec4 fragColor;\n\
+                   void main() {\n    fragColor = vec4(float(PolyPlayerBlockPos.y) / 255.0, \
+                   0.2, 0.0, 1.0);\n}\n";
+        let vsh = "#version 330\nvoid main() {\n    \
+                   vec2 uv = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2);\n    \
+                   gl_Position = vec4(uv * 2.0 - 1.0, 0.0, 1.0);\n}\n";
+        let files = [
+            ("assets/minecraft/post_effect/globals.json", effect),
+            ("assets/minecraft/shaders/post/globals.vsh", vsh),
+            ("assets/minecraft/shaders/post/globals.fsh", fsh),
+        ];
+        let pack = ResourceSource::indexed(
+            files
+                .into_iter()
+                .map(|(path, text)| (path.to_owned(), Resource::bytes(text.as_bytes().to_vec())))
+                .collect(),
+        );
+        game.gui = crate::game::UiResources::load(&pack, std::path::Path::new("")).unwrap();
+        game.pack.source = pack;
+        let _event_loop = frame_scene(game);
+        assert!(!game.reads_poly_globals());
+        game.post_effects = vec!["minecraft:globals".to_owned()];
+        assert_eq!(corner(game), [64, 51, 0]);
     });
 }

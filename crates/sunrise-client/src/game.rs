@@ -8580,13 +8580,24 @@ impl Game<'_> {
         let delta_ticks = (game_ticks - self.polytone_post_ticks).clamp(0.0, 20.0) as f32;
         self.polytone_post_ticks = game_ticks;
         self.evaluate_pack_expressions(polytone_frame.as_ref());
-        // Polytone's globals (wiki "Extra Shader Uniforms"): built here once a frame, only while a
-        // pack's post chain runs or an installed pack core shader reads them. The renderer keeps
-        // the bytes in each reading pipeline's blocks, which write them to the GPU when that
-        // pipeline uploads its blocks for its draw; a post chain's pass writes them when it draws.
+        let polytone_extras = match (&self.pack.polytone_post, &polytone_frame) {
+            (Some(post), Some(frame)) => {
+                let (effects, extras) = post.frame(frame);
+                requested_post_effects.extend(effects);
+                Some(extras)
+            }
+            _ => None,
+        };
+        // Polytone's globals (wiki "Extra Shader Uniforms"): built here at most once a frame, when
+        // an installed pack core shader reads them or any post effect is requested (in a world,
+        // every frame: vanilla always requests `end_of_frame`), since a pass reading
+        // `PolyGlobals` in any effect is given them; a few matrix products, nothing allocated.
+        // The renderer keeps the bytes in each reading core pipeline's blocks, which write them
+        // to the GPU when that pipeline uploads its blocks for its draw; a post pass writes them
+        // when it draws.
         let shaders_read_globals = self.reads_poly_globals();
-        let chains = self.pack.polytone_post.is_some() && polytone_frame.is_some();
-        let poly_globals = (chains || shaders_read_globals).then(|| {
+        let effects_run = !requested_post_effects.is_empty();
+        let poly_globals = (shaders_read_globals || effects_run).then(|| {
             sunrise_client::polytone_post::PolyGlobals {
                 // 26.3's reverse-Z projection, as the world's (and its depth) is.
                 projection: glam::Mat4::perspective_rh(
@@ -8605,14 +8616,6 @@ impl Game<'_> {
             }
         });
         self.give_poly_globals(poly_globals.as_ref().filter(|_| shaders_read_globals));
-        let polytone_extras = match (&self.pack.polytone_post, &polytone_frame, &poly_globals) {
-            (Some(post), Some(frame), Some(globals)) => {
-                let (effects, extras) = post.frame(frame, globals);
-                requested_post_effects.extend(effects);
-                Some(extras)
-            }
-            _ => None,
-        };
         self.view_frustum =
             self.world_view_frustum(camera, [fov_degrees, yaw, pitch], bob * spin, depth_far);
         let billboard_frustum = if self.settings.sunrise.taa {
@@ -8915,6 +8918,7 @@ impl Game<'_> {
                 effects: &requested_post_effects,
                 root: &self.pack.source,
                 extras: polytone_extras.as_ref(),
+                poly_globals: poly_globals.as_ref().map(|g| g.bytes()),
                 menu_blur_radius: self.settings.menu_blur as f32,
                 // GlobalSettingsUniform.update.
                 globals: sunrise_client::post_chain::Globals {

@@ -155,19 +155,30 @@ fn translate_pair(
         return Some(Err(Refusal::StageHidden { path }));
     };
     // The first include the stack doesn't have, which the translator then fails on. A missing
-    // `polytone_globals.glsl` is Polytone's built-in one (`core_shader::expand_imports`); one the
-    // pack ships and can't be read refuses the shader by its path (`rejected`).
+    // `polytone_globals.glsl` is the built-in one (`core_shader::expand_imports`); one the pack
+    // ships and can't be read stops the translation, refused by its path.
     let missing = std::cell::RefCell::new(None);
-    let include = |id: &str| {
-        let (namespace, path) = id.split_once(':')?;
-        let text = read(root, &format!("assets/{namespace}/{path}"));
+    let include = |id: &str| -> Result<Option<String>, String> {
+        let Some((namespace, path)) = id.split_once(':') else {
+            return Ok(None);
+        };
+        let text = read_shader_file(root, &format!("assets/{namespace}/{path}")).map_err(|e| {
+            let why = e.to_string();
+            rejected.borrow_mut().get_or_insert(e);
+            why
+        })?;
         if text.is_none() && !sunrise_polytone::globals::is_include(id) {
             missing.borrow_mut().get_or_insert_with(|| id.to_owned());
         }
-        text
+        Ok(text)
+    };
+    let stages = crate::core_shader::Stages {
+        dir: "minecraft:shaders/core/",
+        vertex,
+        fragment,
     };
     let translated = contained(|| {
-        crate::core_shader::translate_core_with(vertex, fragment, defines, &include, glue, provided)
+        crate::core_shader::translate_core_at(&stages, defines, &include, glue, provided)
     });
     if let Some(refused) = refused() {
         return Some(refused);
@@ -191,7 +202,10 @@ fn contained(
 /// A shader file (a stage or an include) of `base`, read only up to the translator's budget
 /// for a whole shader (`core_shader::MAX_EXPANDED`, 1 MiB): none when `base` hasn't it, the
 /// refusal naming its path when it is over the budget or isn't text.
-fn read_shader_file(base: &ResourceSource, path: &str) -> Result<Option<String>, Refusal> {
+pub(crate) fn read_shader_file(
+    base: &ResourceSource,
+    path: &str,
+) -> Result<Option<String>, Refusal> {
     if !base.contains(path) {
         return Ok(None);
     }

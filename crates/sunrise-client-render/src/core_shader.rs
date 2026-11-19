@@ -60,47 +60,64 @@ pub struct CoreProgram {
     /// [`other_binding`]`(i)` (a sampler's object one after its texture; a block leaves that
     /// binding unused).
     pub other: Vec<String>,
+    /// The resources of set 0 the stages' entry points read, each with those stages
+    /// ([`bindings_read`], analysed once when the program is made).
+    pub read: Vec<(u32, wgpu::ShaderStages)>,
 }
 
 impl CoreProgram {
-    /// Whether either stage reads the resource at `binding` of set 0 (a sampler's texture,
-    /// [`SAMPLERS`]), not only declares it.
+    /// The program of two validated stages, with what they read ([`CoreProgram::read`]).
+    pub fn new(vertex: naga::Module, fragment: naga::Module, other: Vec<String>) -> Self {
+        let read = bindings_read([&vertex, &fragment]);
+        Self {
+            vertex,
+            fragment,
+            other,
+            read,
+        }
+    }
+
     /// The stages whose entry points read the resource at `binding` of set 0, through any
     /// function they call: what a pipeline layout must make that binding visible to. Empty
     /// for one a stage only declares (or the preprocessor kept but nothing reads).
     pub fn stages_reading(&self, binding: u32) -> wgpu::ShaderStages {
-        stages_reading([&self.vertex, &self.fragment], binding)
+        stages_reading(&self.read, binding)
     }
 
     /// Whether every stage that reads the block at `binding` of set 0 declares it as one float
     /// (`uniform Name { float value; };`), what an expression uniform holds. A stage that only
     /// declares it, whatever its shape, binds nothing of it.
     pub fn is_float_block(&self, binding: u32) -> bool {
-        [&self.vertex, &self.fragment]
-            .into_iter()
-            .filter(|module| entry_points_read(module, binding))
-            .all(|module| {
-                module
-                    .global_variables
-                    .iter()
-                    .filter(|(_, g)| {
-                        g.binding
-                            .as_ref()
-                            .is_some_and(|b| b.group == 0 && b.binding == binding)
-                    })
-                    .all(|(_, g)| match &module.types[g.ty].inner {
-                        naga::TypeInner::Struct { members, .. } => {
-                            matches!(
-                                members.as_slice(),
-                                [member] if matches!(
-                                    module.types[member.ty].inner,
-                                    naga::TypeInner::Scalar(naga::Scalar::F32)
-                                )
+        let stages = self.stages_reading(binding);
+        [
+            (&self.vertex, wgpu::ShaderStages::VERTEX),
+            (&self.fragment, wgpu::ShaderStages::FRAGMENT),
+        ]
+        .into_iter()
+        .filter(|(_, stage)| stages.contains(*stage))
+        .map(|(module, _)| module)
+        .all(|module| {
+            module
+                .global_variables
+                .iter()
+                .filter(|(_, g)| {
+                    g.binding
+                        .as_ref()
+                        .is_some_and(|b| b.group == 0 && b.binding == binding)
+                })
+                .all(|(_, g)| match &module.types[g.ty].inner {
+                    naga::TypeInner::Struct { members, .. } => {
+                        matches!(
+                            members.as_slice(),
+                            [member] if matches!(
+                                module.types[member.ty].inner,
+                                naga::TypeInner::Scalar(naga::Scalar::F32)
                             )
-                        }
-                        _ => false,
-                    })
-            })
+                        )
+                    }
+                    _ => false,
+                })
+        })
     }
 
     pub fn reads_binding(&self, binding: u32) -> bool {
@@ -131,37 +148,46 @@ pub fn other_binding(index: usize) -> u32 {
     OTHER_BINDINGS + 2 * index as u32
 }
 
-/// Whether an entry point of `module` reads the resource at `binding` of set 0, through any
-/// function it calls (naga's per entry point use). A module that doesn't validate (it did when
-/// it was translated) counts as reading it.
-fn entry_points_read(module: &naga::Module, binding: u32) -> bool {
-    let Some((handle, _)) = module.global_variables.iter().find(|(_, g)| {
-        g.binding
-            .as_ref()
-            .is_some_and(|b| b.group == 0 && b.binding == binding)
-    }) else {
-        return false;
-    };
-    let Ok(info) = Validator::new(ValidationFlags::empty(), Capabilities::all()).validate(module)
-    else {
-        return true;
-    };
-    (0..module.entry_points.len()).any(|i| !info.get_entry_point(i)[handle].is_empty())
-}
-
-/// The stages of `[vertex, fragment]` whose entry points read the resource at `binding` of set
-/// 0 ([`CoreProgram::stages_reading`]; the post shaders' too).
-pub(crate) fn stages_reading(modules: [&naga::Module; 2], binding: u32) -> wgpu::ShaderStages {
-    let mut stages = wgpu::ShaderStages::NONE;
+/// The resources of set 0 that the entry points of `[vertex, fragment]` read, through any
+/// function they call (naga's per entry point use), each with the stages reading it: one
+/// validation per module, whatever the number of bindings. A module that doesn't validate (it
+/// did when it was translated) counts as reading every resource it declares.
+pub(crate) fn bindings_read(modules: [&naga::Module; 2]) -> Vec<(u32, wgpu::ShaderStages)> {
+    let mut read: Vec<(u32, wgpu::ShaderStages)> = Vec::new();
     for (module, stage) in modules
         .into_iter()
         .zip([wgpu::ShaderStages::VERTEX, wgpu::ShaderStages::FRAGMENT])
     {
-        if entry_points_read(module, binding) {
-            stages |= stage;
+        let info = Validator::new(ValidationFlags::empty(), Capabilities::all())
+            .validate(module)
+            .ok();
+        for (handle, global) in module.global_variables.iter() {
+            let Some(binding) = global.binding.as_ref().filter(|b| b.group == 0) else {
+                continue;
+            };
+            let reads = info.as_ref().is_none_or(|info| {
+                (0..module.entry_points.len()).any(|i| !info.get_entry_point(i)[handle].is_empty())
+            });
+            if !reads {
+                continue;
+            }
+            match read.iter_mut().find(|(b, _)| *b == binding.binding) {
+                Some((_, stages)) => *stages |= stage,
+                None => read.push((binding.binding, stage)),
+            }
         }
     }
-    stages
+    read
+}
+
+/// The stages in `read` ([`bindings_read`]) that read the resource at `binding`.
+pub(crate) fn stages_reading(
+    read: &[(u32, wgpu::ShaderStages)],
+    binding: u32,
+) -> wgpu::ShaderStages {
+    (read.iter())
+        .find(|(b, _)| *b == binding)
+        .map_or(wgpu::ShaderStages::NONE, |(_, stages)| *stages)
 }
 
 /// The shaders of one pipeline (`text.vsh`, `text.fsh`) with vanilla's `defines` for it.
@@ -192,7 +218,7 @@ pub fn translate_core_with(
         vertex,
         fragment,
     };
-    translate_core_at(&sources, defines, include, glue, provided)
+    translate_core_at(&sources, defines, &|id| Ok(include(id)), glue, provided)
 }
 
 /// A pipeline's two stages and the folder they are in (`ns:shaders/core/...`), which their
@@ -203,11 +229,13 @@ pub struct Stages<'a> {
     pub fragment: &'a str,
 }
 
-/// [`translate_core_with`] for stages that aren't in `minecraft:shaders/core/`.
+/// [`translate_core_with`] for stages that aren't in `minecraft:shaders/core/`, with `read`
+/// answering a file id with its text, none when the packs haven't it, or why it can't be read
+/// ([`expand_imports`]).
 pub fn translate_core_at(
     sources: &Stages,
     defines: &[&str],
-    include: &dyn Fn(&str) -> Option<String>,
+    read: &dyn Fn(&str) -> Result<Option<String>, String>,
     glue: &Glue,
     provided: &dyn Fn(&str) -> bool,
 ) -> Result<CoreProgram, String> {
@@ -216,8 +244,9 @@ pub fn translate_core_at(
         vertex,
         fragment,
     } = *sources;
-    let vertex_text = glsl_fixups::fixups(&strip_comments(&expand(vertex, dir, include)?));
-    let fragment_text = glsl_fixups::fixups(&strip_comments(&expand(fragment, dir, include)?));
+    let expanded = |text| expand_imports(text, dir, read).map_err(|e| e.to_string());
+    let vertex_text = glsl_fixups::fixups(&strip_comments(&expanded(vertex)?));
+    let fragment_text = glsl_fixups::fixups(&strip_comments(&expanded(fragment)?));
     let mut names = Names::default();
     let vertex_code = rewrite(&vertex_text, ShaderStage::Vertex, glue, &mut names)
         .map_err(|e| format!("vertex shader: {e}"))?;
@@ -242,23 +271,61 @@ pub fn translate_core_at(
             "the fragment shader reads location {missing}, which the vertex shader doesn't write"
         ));
     }
-    Ok(CoreProgram {
-        vertex,
-        fragment,
-        other: names.other,
-    })
+    Ok(CoreProgram::new(vertex, fragment, names.other))
 }
 
 /// A bound on a pack's includes, which are pasted every time.
 const MAX_PASTES: u32 = 1024;
 pub(crate) const MAX_EXPANDED: usize = 1 << 20;
+/// A bound on the bytes the expansion scans (each pasted file, every time), however little of
+/// them it keeps: lines of imports already pasted add nothing to the shader.
+const MAX_SCANNED: usize = 8 * MAX_EXPANDED;
+
+/// Why a shader's includes refuse it ([`expand_imports`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ImportRefusal {
+    /// A target that is neither `<ns:path>` nor a quoted path from the including file's folder.
+    Bad(String),
+    /// A file the packs haven't (its id).
+    NotFound(String),
+    /// A file the packs have and that can't be read: why, naming it.
+    Unreadable(String),
+    /// Includes nested more than 16 deep.
+    TooDeep,
+    /// More than [`MAX_PASTES`] files pasted.
+    TooManyPastes,
+    /// The shader grown past [`MAX_EXPANDED`] bytes.
+    TooLarge,
+    /// More than [`MAX_SCANNED`] bytes scanned.
+    TooMuchScanned,
+}
+
+impl std::fmt::Display for ImportRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Bad(target) => write!(f, "bad include {target}"),
+            Self::NotFound(id) => write!(f, "{id} not found"),
+            Self::Unreadable(why) => f.write_str(why),
+            Self::TooDeep => f.write_str("includes nest more than 16 deep"),
+            Self::TooManyPastes => write!(f, "includes paste more than {MAX_PASTES} files"),
+            Self::TooLarge => write!(f, "includes grow the shader past {MAX_EXPANDED} bytes"),
+            Self::TooMuchScanned => {
+                write!(
+                    f,
+                    "includes make the translator read past {MAX_SCANNED} bytes"
+                )
+            }
+        }
+    }
+}
 
 /// [`expand_imports`] over `include`, which has a file or not.
+#[cfg(test)]
 fn expand(
     text: &str,
     dir: &str,
     include: &dyn Fn(&str) -> Option<String>,
-) -> Result<String, String> {
+) -> Result<String, ImportRefusal> {
     expand_imports(text, dir, &|id| Ok(include(id)))
 }
 
@@ -266,71 +333,86 @@ fn expand(
 /// including file's folder, and the same with `#moj_import`), `#version` and `#extension` lines
 /// dropped: the one resolver of the packs' core and post shaders. An `#include` is pasted every
 /// time, as vanilla's shaderc does (the files' `#ifndef` guards keep one copy); a `#moj_import`
-/// once per stage. The expansion is bounded (16 levels, [`MAX_PASTES`] pastes, [`MAX_EXPANDED`]
-/// bytes). `read` gives a file id's text, none when the packs haven't it, or why it can't be
-/// read, which refuses the shader. Only a missing `polytone_globals.glsl` is Polytone's built-in
-/// one (`sunrise_polytone::globals::GLSL`).
+/// once per stage. The expansion is bounded (16 levels,
+/// [`MAX_PASTES`] pastes, [`MAX_EXPANDED`] bytes kept, [`MAX_SCANNED`] bytes scanned). `read`
+/// gives a file id's text, none when the packs haven't it, or why it can't be read, which
+/// refuses the shader. Only a missing `polytone_globals.glsl` is the built-in one
+/// (`sunrise_polytone::globals::GLSL`).
 pub(crate) fn expand_imports(
     text: &str,
     dir: &str,
     read: &dyn Fn(&str) -> Result<Option<String>, String>,
-) -> Result<String, String> {
-    fn walk(
-        text: &str,
-        dir: &str,
-        include: &dyn Fn(&str) -> Result<Option<String>, String>,
-        seen: &mut HashSet<String>,
-        pastes: &mut u32,
-        depth: u32,
-        out: &mut String,
-    ) -> Result<(), String> {
-        if depth > 16 {
-            return Err("includes nest more than 16 deep".into());
-        }
-        for line in text.lines() {
-            let directive = line.trim_start().strip_prefix('#').map(str::trim_start);
-            let target = directive.and_then(|d| {
-                d.strip_prefix("include")
-                    .map(|t| (t.trim(), false))
-                    .or_else(|| d.strip_prefix("moj_import").map(|t| (t.trim(), true)))
-            });
-            if let Some((target, once)) = target {
-                let id = include_id(target, dir).ok_or_else(|| format!("bad include {target}"))?;
-                if seen.insert(id.clone()) || !once {
-                    *pastes += 1;
-                    if *pastes > MAX_PASTES {
-                        return Err(format!("includes paste more than {MAX_PASTES} files"));
-                    }
-                    let file = match include(&id)? {
-                        Some(file) => file,
-                        None if sunrise_polytone::globals::is_include(&id) => {
-                            sunrise_polytone::globals::GLSL.to_owned()
-                        }
-                        None => return Err(format!("{id} not found")),
-                    };
-                    let parent = &id[..id.rfind('/').map_or(id.len(), |i| i + 1)];
-                    walk(&file, parent, include, seen, pastes, depth + 1, out)?;
-                }
-                out.push('\n');
-            } else if directive
-                .is_some_and(|d| d.starts_with("version") || d.starts_with("extension"))
-            {
-                out.push('\n');
-            } else {
-                out.push_str(line);
-                out.push('\n');
-            }
-            if out.len() > MAX_EXPANDED {
-                return Err(format!(
-                    "includes grow the shader past {MAX_EXPANDED} bytes"
-                ));
-            }
-        }
-        Ok(())
+) -> Result<String, ImportRefusal> {
+    struct Walk<'a> {
+        read: &'a dyn Fn(&str) -> Result<Option<String>, String>,
+        seen: HashSet<String>,
+        pastes: u32,
+        scanned: usize,
+        out: String,
     }
-    let mut out = String::new();
-    walk(text, dir, read, &mut HashSet::new(), &mut 0, 0, &mut out)?;
-    Ok(out)
+    impl Walk<'_> {
+        fn file(&self, id: &str) -> Result<String, ImportRefusal> {
+            match (self.read)(id).map_err(ImportRefusal::Unreadable)? {
+                Some(text) => Ok(text),
+                None if sunrise_polytone::globals::is_include(id) => {
+                    Ok(sunrise_polytone::globals::GLSL.to_owned())
+                }
+                None => Err(ImportRefusal::NotFound(id.to_owned())),
+            }
+        }
+
+        fn walk(&mut self, text: &str, dir: &str, depth: u32) -> Result<(), ImportRefusal> {
+            if depth > 16 {
+                return Err(ImportRefusal::TooDeep);
+            }
+            self.scanned += text.len();
+            if self.scanned > MAX_SCANNED {
+                return Err(ImportRefusal::TooMuchScanned);
+            }
+            for line in text.lines() {
+                let directive = line.trim_start().strip_prefix('#').map(str::trim_start);
+                let target = directive.and_then(|d| {
+                    d.strip_prefix("include")
+                        .map(|t| (t.trim(), false))
+                        .or_else(|| d.strip_prefix("moj_import").map(|t| (t.trim(), true)))
+                });
+                if let Some((target, once)) = target {
+                    let id = include_id(target, dir)
+                        .ok_or_else(|| ImportRefusal::Bad(target.to_owned()))?;
+                    if self.seen.insert(id.clone()) || !once {
+                        self.pastes += 1;
+                        if self.pastes > MAX_PASTES {
+                            return Err(ImportRefusal::TooManyPastes);
+                        }
+                        let file = self.file(&id)?;
+                        let parent = &id[..id.rfind('/').map_or(id.len(), |i| i + 1)];
+                        self.walk(&file, parent, depth + 1)?;
+                    }
+                    self.out.push('\n');
+                } else if directive
+                    .is_some_and(|d| d.starts_with("version") || d.starts_with("extension"))
+                {
+                    self.out.push('\n');
+                } else {
+                    self.out.push_str(line);
+                    self.out.push('\n');
+                }
+                if self.out.len() > MAX_EXPANDED {
+                    return Err(ImportRefusal::TooLarge);
+                }
+            }
+            Ok(())
+        }
+    }
+    let mut walk = Walk {
+        read,
+        seen: HashSet::new(),
+        pastes: 0,
+        scanned: 0,
+        out: String::new(),
+    };
+    walk.walk(text, dir, 0)?;
+    Ok(walk.out)
 }
 
 /// `<ns:path>` under `shaders/include` (`minecraft` when there's no namespace), or `"path"` from
@@ -987,7 +1069,10 @@ mod tests {
         let dir = "minecraft:shaders/core/";
         let globals = "minecraft:shaders/include/polytone_globals.glsl";
         let built_in = expand_imports(import, dir, &|_| Ok(None)).unwrap();
-        assert!(built_in.contains("vec3 polyPlayerPos()"), "{built_in}");
+        let pasted: String = (sunrise_polytone::globals::GLSL.lines())
+            .map(|line| format!("{line}\n"))
+            .collect();
+        assert_eq!(built_in, format!("{pasted}\n"));
         let shipped = |id: &str| Ok((id == globals).then(|| "float shipped;\n".to_owned()));
         assert_eq!(
             expand_imports(import, dir, &shipped).unwrap().trim(),
@@ -995,14 +1080,15 @@ mod tests {
         );
         let unreadable = |id: &str| Err(format!("{id}: not text"));
         assert_eq!(
-            expand_imports(import, dir, &unreadable).unwrap_err(),
-            format!("{globals}: not text")
+            expand_imports(import, dir, &unreadable),
+            Err(ImportRefusal::Unreadable(format!("{globals}: not text")))
         );
         let other = expand_imports("#moj_import <fog.glsl>\n", dir, &|_| Ok(None));
-        assert!(
-            other
-                .unwrap_err()
-                .contains("minecraft:shaders/include/fog.glsl")
+        assert_eq!(
+            other,
+            Err(ImportRefusal::NotFound(
+                "minecraft:shaders/include/fog.glsl".into()
+            ))
         );
     }
 
@@ -1049,7 +1135,27 @@ mod tests {
             &file,
         )
         .unwrap_err();
-        assert!(error.contains("paste more than"), "{error}");
+        assert_eq!(error, ImportRefusal::TooManyPastes);
+    }
+
+    /// The bytes scanned are bounded too, not only those kept: a file of imports already pasted
+    /// keeps a line break each, and is still read in full every time it is included. Seven
+    /// pastes of 1.05 MB fit [`MAX_SCANNED`] (8 MiB), the eighth is refused.
+    #[test]
+    fn includes_that_keep_little_are_refused_once_scanned_past_the_budget() {
+        let seen = "#moj_import <b.glsl>\n".repeat(50_000);
+        let file = |id: &str| match id {
+            "minecraft:shaders/include/a.glsl" => Some(seen.clone()),
+            "minecraft:shaders/include/b.glsl" => Some(String::new()),
+            _ => None,
+        };
+        let main = |n: usize| format!("#moj_import <b.glsl>\n{}", "#include <a.glsl>\n".repeat(n));
+        let dir = "minecraft:shaders/core/";
+        assert!(expand(&main(7), dir, &file).is_ok());
+        assert_eq!(
+            expand(&main(8), dir, &file),
+            Err(ImportRefusal::TooMuchScanned)
+        );
     }
 
     #[test]

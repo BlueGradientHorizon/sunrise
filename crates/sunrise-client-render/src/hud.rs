@@ -22,7 +22,7 @@ mod gui_sprite;
 pub use gui_sprite::atlas_key_of_gui_sprite;
 mod menu_pictures;
 mod model_reducing;
-mod pack_text;
+pub(crate) mod pack_text;
 pub mod pictures;
 pub(crate) mod sprite_modifiers;
 

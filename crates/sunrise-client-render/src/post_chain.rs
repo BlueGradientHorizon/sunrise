@@ -387,6 +387,8 @@ enum Block {
     Custom(wgpu::Buffer),
     /// A block the request sets every frame (`Extras::blocks`), by name.
     Dynamic(String, wgpu::Buffer),
+    /// `PolyGlobals`, the game's ([`Request::poly_globals`]), written every draw.
+    PolyGlobals(wgpu::Buffer),
 }
 
 /// A pass running the resources' own GLSL, translated by `post_glsl`.
@@ -401,6 +403,166 @@ struct Translated {
     samplers: Vec<(u32, usize)>,
 }
 
+/// Why a translated pass is refused, which refuses its effect unless the built-in shaders stand
+/// in for it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum PassRefusal {
+    /// More `what` than the device binds: declared by both stages (`stage` none, checked before
+    /// any analysis) or read by one stage.
+    OverLimit {
+        what: &'static str,
+        stage: Option<wgpu::ShaderStages>,
+        count: usize,
+        limit: usize,
+    },
+    /// A `PolyGlobals` declaration the one rule refuses (`expression_blocks::check_poly_globals`).
+    Globals(crate::gfx::expression_blocks::GlobalsRefusal),
+    /// Its `uniforms` give `PolyGlobals`, the game's block.
+    GlobalsGiven,
+    /// The shader translator's refusal or fault.
+    Translator(String),
+    /// What the device refuses in the shader modules, the layout or the pipeline.
+    Pipeline(String),
+    /// The pass's own configuration (a missing target, input or uniform block).
+    Config(String),
+}
+
+impl From<crate::post_glsl::Refused> for PassRefusal {
+    fn from(refused: crate::post_glsl::Refused) -> Self {
+        match refused {
+            crate::post_glsl::Refused::Declares {
+                what,
+                declared,
+                limit,
+            } => Self::OverLimit {
+                what,
+                stage: None,
+                count: declared,
+                limit,
+            },
+            other => Self::Translator(other.to_string()),
+        }
+    }
+}
+
+impl std::fmt::Display for PassRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::OverLimit {
+                what,
+                stage: None,
+                count,
+                limit,
+            } => write!(
+                f,
+                "it declares {count} {what}, past the {limit} the device binds"
+            ),
+            Self::OverLimit {
+                what,
+                stage: Some(stage),
+                count,
+                limit,
+            } => write!(
+                f,
+                "its {stage:?} stage reads {count} {what}, past the device's {limit}"
+            ),
+            Self::Globals(refusal) => refusal.fmt(f),
+            Self::GlobalsGiven => write!(
+                f,
+                "its uniforms give {}, which the game fills",
+                sunrise_polytone::globals::BLOCK
+            ),
+            Self::Translator(e) | Self::Pipeline(e) | Self::Config(e) => f.write_str(e),
+        }
+    }
+}
+
+/// Why a chain doesn't load: one of its passes, or the chain itself.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum LoadError {
+    Pass(usize, PassRefusal),
+    Chain(String),
+}
+
+impl std::fmt::Display for LoadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Pass(n, refusal) => write!(f, "pass {n}: {refusal}"),
+            Self::Chain(e) => f.write_str(e),
+        }
+    }
+}
+
+impl From<String> for LoadError {
+    fn from(e: String) -> Self {
+        Self::Chain(e)
+    }
+}
+
+impl From<&str> for LoadError {
+    fn from(e: &str) -> Self {
+        Self::Chain(e.to_owned())
+    }
+}
+
+/// Whether a pass's bindings fit the device's limits for each stage (uniform blocks, sampled
+/// textures, samplers), before the layout is made: the refusal names the stage.
+fn within_limits(
+    entries: &[wgpu::BindGroupLayoutEntry],
+    limits: &wgpu::Limits,
+) -> Result<(), PassRefusal> {
+    for stage in [wgpu::ShaderStages::VERTEX, wgpu::ShaderStages::FRAGMENT] {
+        let count = |kind: fn(&wgpu::BindingType) -> bool| {
+            (entries.iter())
+                .filter(|e| e.visibility.contains(stage) && kind(&e.ty))
+                .count()
+        };
+        for (what, count, limit) in [
+            (
+                "uniform blocks",
+                count(|t| matches!(t, wgpu::BindingType::Buffer { .. })),
+                limits.max_uniform_buffers_per_shader_stage,
+            ),
+            (
+                "textures",
+                count(|t| matches!(t, wgpu::BindingType::Texture { .. })),
+                limits.max_sampled_textures_per_shader_stage,
+            ),
+            (
+                "samplers",
+                count(|t| matches!(t, wgpu::BindingType::Sampler(_))),
+                limits.max_samplers_per_shader_stage,
+            ),
+        ] {
+            if count > limit as usize {
+                return Err(PassRefusal::OverLimit {
+                    what,
+                    stage: Some(stage),
+                    count,
+                    limit: limit as usize,
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The error scopes a pack pass's GPU objects are made in: validation and internal errors, as the
+/// packs' core shader pipelines have them.
+fn gpu_scopes(device: &wgpu::Device) -> [wgpu::ErrorScopeGuard; 2] {
+    [
+        device.push_error_scope(wgpu::ErrorFilter::Validation),
+        device.push_error_scope(wgpu::ErrorFilter::Internal),
+    ]
+}
+
+/// What [`gpu_scopes`] caught, innermost first.
+fn gpu_refusal([validation, internal]: [wgpu::ErrorScopeGuard; 2]) -> Option<String> {
+    let internal = pollster::block_on(internal.pop());
+    let validation = pollster::block_on(validation.pop());
+    internal.or(validation).map(|e| e.to_string())
+}
+
 impl Translated {
     /// The pipeline for `format`, made once; a pipeline the device refuses is the refusal.
     fn ensure_pipeline(
@@ -411,7 +573,7 @@ impl Translated {
         if self.pipelines.contains_key(&format) {
             return Ok(());
         }
-        let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let scopes = gpu_scopes(device);
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Post effect"),
             bind_group_layouts: &[Some(&self.layout)],
@@ -439,8 +601,8 @@ impl Translated {
             multiview_mask: None,
             cache: None,
         });
-        if let Some(e) = pollster::block_on(scope.pop()) {
-            return Err(e.to_string());
+        if let Some(e) = gpu_refusal(scopes) {
+            return Err(e);
         }
         self.pipelines.insert(format, pipeline);
         Ok(())
@@ -467,12 +629,11 @@ impl Chain {
         &mut self,
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
-    ) -> Result<(), String> {
+    ) -> Result<(), LoadError> {
         for (n, pass) in self.passes.iter_mut().enumerate() {
             if let Some(translated) = &mut pass.translated {
-                translated
-                    .ensure_pipeline(device, format)
-                    .map_err(|e| format!("pass {n}: {e}"))?;
+                (translated.ensure_pipeline(device, format))
+                    .map_err(|e| LoadError::Pass(n, PassRefusal::Pipeline(e)))?;
             }
         }
         Ok(())
@@ -506,6 +667,9 @@ pub struct Request<'a> {
     pub globals: Globals,
     /// What resource packs' Polytone post chains add, when a pack has some.
     pub extras: Option<&'a Extras>,
+    /// The game's `PolyGlobals` this frame, which every pass reading the block is given,
+    /// whichever effect it is in (zeros without them).
+    pub poly_globals: Option<crate::gfx::expression_blocks::PolyGlobalsBytes>,
 }
 
 /// What resource packs' Polytone post chains add to every chain (#11486, wiki "Shaders"): their
@@ -513,7 +677,8 @@ pub struct Request<'a> {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Extras {
     pub targets: BTreeMap<String, InternalTarget>,
-    /// Each block's std140 bytes, by its name (`PolyGlobals`, an expression uniform's).
+    /// Each block's std140 bytes, by its name (an expression uniform's). `PolyGlobals` isn't one:
+    /// every pass reading it is given the game's ([`Request::poly_globals`]).
     pub blocks: BTreeMap<String, Vec<u8>>,
 }
 
@@ -558,6 +723,7 @@ impl<'a> Request<'a> {
             menu_blur_radius: 0.0,
             globals: Globals::default(),
             extras: None,
+            poly_globals: None,
         }
     }
 }
@@ -590,6 +756,8 @@ pub struct PostEffects {
     pending: HashSet<String>,
     /// This frame's `Extras::blocks`.
     extra_blocks: BTreeMap<String, Vec<u8>>,
+    /// This frame's `PolyGlobals` ([`Request::poly_globals`]).
+    poly_globals: Option<crate::gfx::expression_blocks::PolyGlobalsBytes>,
     /// The frame's depth with GL's rows, for the passes that read `minecraft:main`'s: the
     /// pipeline, and the texture at the frame's size.
     gl_depth: Option<(wgpu::BindGroupLayout, wgpu::RenderPipeline)>,
@@ -632,7 +800,7 @@ const GL_DEPTH_WGSL: &str = r#"
 "#;
 
 /// A chain [`PostEffects::preload`] loaded, by id.
-type Preloaded = (String, Result<Option<Chain>, String>);
+type Preloaded = (String, Result<Option<Chain>, LoadError>);
 
 fn empty_source() -> &'static ResourceSource {
     static EMPTY: std::sync::OnceLock<ResourceSource> = std::sync::OnceLock::new();
@@ -733,6 +901,7 @@ impl PostEffects {
             pending: HashSet::new(),
             root: empty_source().clone(),
             extra_blocks: BTreeMap::new(),
+            poly_globals: None,
             gl_depth: None,
             gl_depth_target: None,
             work: None,
@@ -894,7 +1063,7 @@ impl PostEffects {
         queue: &wgpu::Queue,
         id: &str,
         extras: &Extras,
-    ) -> Result<Option<Chain>, String> {
+    ) -> Result<Option<Chain>, LoadError> {
         let Some(text) = read_chain(root, id, crate::spectator_shaders::table())? else {
             return Ok(None);
         };
@@ -910,7 +1079,8 @@ impl PostEffects {
         if let Some(bad) = config.external_targets().into_iter().find(|t| *t != MAIN) {
             return Err(format!(
                 "Referenced external targets are not available in this context: [{bad}]"
-            ));
+            )
+            .into());
         }
         let targets: Vec<(String, InternalTarget)> = std::iter::once((
             MAIN.to_owned(),
@@ -932,7 +1102,6 @@ impl PostEffects {
                 root,
                 device,
                 queue,
-                n,
                 p,
                 output,
                 &index,
@@ -945,7 +1114,7 @@ impl PostEffects {
                         log::debug!("post effect {id} pass {n} uses the built-in shaders: {e}");
                         pass
                     }
-                    Err(_) => return Err(e),
+                    Err(_) => return Err(LoadError::Pass(n, e)),
                 },
             };
             passes.push(pass);
@@ -966,31 +1135,36 @@ impl PostEffects {
         root: &ResourceSource,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        n: usize,
         p: &PassConfig,
         output: usize,
         index: &dyn Fn(&str) -> Option<usize>,
         images: &mut Vec<(wgpu::Texture, wgpu::TextureView, [u32; 2])>,
         extras: &Extras,
-    ) -> Result<Pass, String> {
+    ) -> Result<Pass, PassRefusal> {
         let globals = sunrise_polytone::globals::BLOCK;
         if p.uniforms.contains_key(globals) {
-            return Err(format!(
-                "pass {n}: its uniforms give {globals}, which the game fills"
-            ));
+            return Err(PassRefusal::GlobalsGiven);
         }
-        // A pack's GLSL is untrusted: a fault the translator meets refuses the pass.
-        let program =
-            crate::crash::contain(|| crate::post_glsl::translate(root, &p.vertex, &p.fragment))
-                .map_err(|e| format!("pass {n}: the shader translator failed: {e}"))??;
+        let limits = device.limits();
+        // A pack's GLSL is untrusted: a fault the translator meets refuses the pass. Declaring
+        // more than the device binds refuses it before any analysis.
+        let declarable = crate::post_glsl::Declarable::of(&limits);
+        let program = crate::crash::contain(|| {
+            crate::post_glsl::translate(root, &p.vertex, &p.fragment, declarable)
+        })
+        .map_err(|e| PassRefusal::Translator(format!("the shader translator failed: {e}")))?
+        .map_err(PassRefusal::from)?;
         let modules = [&program.vertex, &program.fragment];
+        // What each stage reads: one analysis of each module for every binding.
+        let read = crate::core_shader::bindings_read(modules);
+        let config = PassRefusal::Config;
         let mut refs = Vec::new();
         for input in &p.inputs {
             let src = match &input.source {
                 Source::Target { id, depth } => {
-                    let target = index(id).ok_or("a target is missing")?;
+                    let target = index(id).ok_or(config("a target is missing".into()))?;
                     if target == output && !depth {
-                        return Err(format!("pass {n}: reads the target it writes"));
+                        return Err(config("it reads the target it writes".into()));
                     }
                     Src::Target {
                         index: target,
@@ -998,7 +1172,7 @@ impl PostEffects {
                     }
                 }
                 Source::Texture { location } => {
-                    images.push(Self::image(root, device, queue, location)?);
+                    images.push(Self::image(root, device, queue, location).map_err(config)?);
                     Src::Image(images.len() - 1)
                 }
             };
@@ -1013,26 +1187,26 @@ impl PostEffects {
         for (name, binding) in &program.blocks {
             if name == globals {
                 crate::gfx::expression_blocks::check_poly_globals(modules, *binding)
-                    .map_err(|e| format!("pass {n}: {e}"))?;
+                    .map_err(PassRefusal::Globals)?;
             }
             // Bound only to the stages that read it: one only declared (an imported block the
             // shader doesn't use) binds nothing.
-            let stages = crate::core_shader::stages_reading(modules, *binding);
+            let stages = crate::core_shader::stages_reading(&read, *binding);
             if stages.is_empty() {
                 continue;
             }
             let block = match name.as_str() {
                 "SamplerInfo" => Block::Info,
                 "Globals" => Block::Globals,
-                // The game's, set every frame ([`Extras::blocks`]): never a pass's own values.
+                // The game's, written every draw ([`Request::poly_globals`]), whichever effect
+                // the pass is in: never a pass's own values.
                 other if other == globals => {
-                    let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                    Block::PolyGlobals(device.create_buffer(&wgpu::BufferDescriptor {
                         label: Some("Post effect PolyGlobals"),
                         size: UNIFORM_BYTES,
                         usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                         mapped_at_creation: false,
-                    });
-                    Block::Dynamic(other.to_owned(), buffer)
+                    }))
                 }
                 other if !p.uniforms.contains_key(other) && extras.blocks.contains_key(other) => {
                     let buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -1044,17 +1218,15 @@ impl PostEffects {
                     Block::Dynamic(other.to_owned(), buffer)
                 }
                 other => {
-                    let values = p
-                        .uniforms
-                        .get(other)
-                        .ok_or(format!("pass {n}: the uniform block {other} is missing"))?;
+                    let values = (p.uniforms.get(other))
+                        .ok_or_else(|| config(format!("the uniform block {other} is missing")))?;
                     let buffer = device.create_buffer(&wgpu::BufferDescriptor {
                         label: Some("Post effect uniforms"),
                         size: UNIFORM_BYTES,
                         usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                         mapped_at_creation: false,
                     });
-                    queue.write_buffer(&buffer, 0, &pack_block(values)?);
+                    queue.write_buffer(&buffer, 0, &pack_block(values).map_err(config)?);
                     Block::Custom(buffer)
                 }
             };
@@ -1073,12 +1245,10 @@ impl PostEffects {
         let mut samplers = Vec::new();
         for (name, texture) in &program.samplers {
             let input = name.strip_suffix("Sampler").unwrap_or(name);
-            let slot = p
-                .inputs
-                .iter()
+            let slot = (p.inputs.iter())
                 .position(|i| i.sampler == input)
-                .ok_or(format!("pass {n}: no input for the sampler {name}"))?;
-            let stages = crate::core_shader::stages_reading(modules, *texture);
+                .ok_or_else(|| config(format!("no input for the sampler {name}")))?;
+            let stages = crate::core_shader::stages_reading(&read, *texture);
             if stages.is_empty() {
                 continue;
             }
@@ -1112,9 +1282,9 @@ impl PostEffects {
                 source: wgpu::ShaderSource::Naga(std::borrow::Cow::Owned(module)),
             })
         };
-        // The device refuses a layout past its limits for a stage (uniform blocks, textures,
-        // samplers): the pass is refused, named.
-        let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
+        within_limits(&entries, &limits)?;
+        // Anything else the device refuses in the modules or the layout refuses the pass too.
+        let scopes = gpu_scopes(device);
         let translated = Translated {
             layout: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("Post effect bindings"),
@@ -1126,9 +1296,7 @@ impl PostEffects {
             blocks,
             samplers,
         };
-        if let Some(e) = pollster::block_on(scope.pop()) {
-            return Err(format!("pass {n}: {e}"));
-        }
+        gpu_refusal(scopes).map_or(Ok(()), |e| Err(PassRefusal::Pipeline(e)))?;
         pass.refs = refs;
         pass.translated = Some(translated);
         Ok(pass)
@@ -1301,6 +1469,7 @@ impl PostEffects {
         self.use_root(req.root);
         self.collect_preloaded();
         self.extra_blocks = req.extras.map(|e| e.blocks.clone()).unwrap_or_default();
+        self.poly_globals = req.poly_globals;
         let mut applied = Vec::new();
         for effect in req.effects {
             let id = normalise(effect);
@@ -1732,6 +1901,11 @@ impl PostEffects {
                 Block::Info => &pass.info,
                 Block::Globals => &self.globals,
                 Block::Custom(buffer) => buffer,
+                Block::PolyGlobals(buffer) => {
+                    let zeros = [0; sunrise_polytone::globals::BLOCK_SIZE];
+                    queue.write_buffer(buffer, 0, self.poly_globals.as_ref().unwrap_or(&zeros));
+                    buffer
+                }
                 Block::Dynamic(name, buffer) => {
                     if let Some(bytes) = self.extra_blocks.get(name) {
                         let n = bytes.len().min(UNIFORM_BYTES as usize) & !3;
@@ -2108,7 +2282,7 @@ mod tests {
         root: &ResourceSource,
         names: &[String],
     ) -> (bool, [u8; 4]) {
-        run_with(device, queue, effects, root, names, None)
+        run_with(device, queue, effects, root, names, None, None)
     }
 
     /// [`run`] with what the packs' Polytone post chains add (`extras`).
@@ -2119,6 +2293,7 @@ mod tests {
         root: &ResourceSource,
         names: &[String],
         extras: Option<&Extras>,
+        poly_globals: Option<crate::gfx::expression_blocks::PolyGlobalsBytes>,
     ) -> (bool, [u8; 4]) {
         let frame = device.create_texture(&wgpu::TextureDescriptor {
             label: None,
@@ -2170,6 +2345,7 @@ mod tests {
                 menu_blur_radius: 5.0,
                 globals: Globals::default(),
                 extras,
+                poly_globals,
             },
             None,
         );
@@ -2251,8 +2427,9 @@ mod tests {
         root
     }
 
-    /// A pack post shader reads the `PolyGlobals` the frame gives (`Extras::blocks`): the block's
-    /// bytes as given, and Polytone's two helpers. Expected values worked out by hand from the
+    /// A pack post shader reads the `PolyGlobals` the frame gives (`Request::poly_globals`) in any
+    /// effect, not only a Polytone chain's: the block's bytes as given, zeros on a frame without
+    /// them, and the built-in include's two helpers. Expected values worked out by hand from the
     /// helpers' math: the player at (3.5, 64.25, -7.75) is block (3, 64, -8) less the offset
     /// (-0.5, -0.25, -0.25); a projection scaling x and y by 2 and a model-view moving by
     /// (1, 2, 3) take screen point (0.75, 0.25) at depth 0.5 to NDC (0.5, -0.5, 0.5), view
@@ -2311,44 +2488,34 @@ mod tests {
             delta_time: 0.0,
             player: [3.5, 64.25, -7.75],
         };
-        let extras = Extras {
-            targets: Default::default(),
-            blocks: [("PolyGlobals".to_owned(), globals.std140().to_vec())].into(),
-        };
+        let bytes = globals.std140();
         let source = ResourceSource::directory(root.clone());
         let mut effects = PostEffects::new(&device);
-        // Without Polytone's chains (no extras), the block is still the game's: zeros.
-        let names = ["minecraft:raw".to_owned()];
-        let unset = run_with(&device, &queue, &mut effects, &source, &names, None);
-        assert_eq!(unset, (true, [0, 0, 0, 255]));
-        let mut drawn = |chain: &str| {
+        // Plain effects (no Polytone chain, no extras): the pass reads the game's block.
+        let mut drawn = |chain: &str, given| {
             let names = [format!("minecraft:{chain}")];
-            let (ran, px) = run_with(
-                &device,
-                &queue,
-                &mut effects,
-                &source,
-                &names,
-                Some(&extras),
-            );
+            let (ran, px) = run_with(&device, &queue, &mut effects, &source, &names, None, given);
             assert!(ran, "{chain}");
             px
         };
         // Block height 64, sun angle 0.2 (51), day time 153.
-        assert_eq!(drawn("raw"), [64, 51, 153, 255]);
+        assert_eq!(drawn("raw", Some(bytes)), [64, 51, 153, 255]);
+        // A frame without them: zeros, never the last frame's bytes.
+        assert_eq!(drawn("raw", None), [0, 0, 0, 255]);
         // polyPlayerPos() (3.5, 64.25, -7.75): 3.5 * 2 = 7, 4.25 * 4 = 17, 7.75 * 4 = 31.
-        assert_eq!(drawn("player"), [7, 17, 31, 255]);
+        assert_eq!(drawn("player", Some(bytes)), [7, 17, 31, 255]);
         // (-0.75, -2.25, -2.5) + (1, 3, 3) = (0.25, 0.75, 0.5), times 100.
-        assert_eq!(drawn("depth"), [25, 75, 50, 255]);
+        assert_eq!(drawn("depth", Some(bytes)), [25, 75, 50, 255]);
         assert!(effects.failed.is_empty());
         std::fs::remove_dir_all(root).unwrap();
     }
 
     /// A post pass binds only the blocks its stages read: twelve read beside an imported, unused
-    /// `PolyGlobals` fit the device's twelve per stage and run. Thirteen read, a pass whose
-    /// uniforms give `PolyGlobals` (the game's), one declaring it other than its layout, and one
-    /// whose pipeline the device refuses (its fragment stage reads an input the vertex stage
-    /// doesn't write) refuse their effect by name, which is skipped.
+    /// `PolyGlobals`, or beside twelve only declared, fit the device's twelve per stage and run.
+    /// Refused, each for its own reason, and skipped: 25 declared (before any analysis),
+    /// thirteen read, a pass whose uniforms give `PolyGlobals` (the game's), one declaring it
+    /// other than its layout, and one whose pipeline the device refuses (its fragment stage
+    /// reads an input the vertex stage doesn't write), loaded in a frame or preloaded.
     #[test]
     #[ignore = "daily"]
     fn a_post_pass_binds_what_it_reads_and_is_refused_past_the_limits() {
@@ -2357,8 +2524,9 @@ mod tests {
             return;
         };
         assert_eq!(device.limits().max_uniform_buffers_per_shader_stage, 12);
-        let blocks = |n: usize, import: bool| {
-            let declared: String = (0..n)
+        // `n` blocks read, then `unused` only declared.
+        let blocks_with = |n: usize, unused: usize, import: bool| {
+            let declared: String = (0..n + unused)
                 .map(|i| format!("layout(std140) uniform B{i} {{ float b{i}; }};\n"))
                 .collect();
             let read: String = (0..n).map(|i| format!(" + b{i}")).collect();
@@ -2376,7 +2544,12 @@ mod tests {
                 .collect();
             (fsh, uniforms.join(","))
         };
+        let blocks = |n, import| blocks_with(n, 0, import);
         let (twelve, twelve_uniforms) = blocks(12, true);
+        // Declared by both stages: up to twice the per-stage limit, read or not, is fine; one
+        // more is refused before any analysis.
+        let (wide, wide_uniforms) = blocks_with(12, 12, false);
+        let (crowded, crowded_uniforms) = blocks_with(1, 24, false);
         let (thirteen, thirteen_uniforms) = blocks(13, false);
         let (one, _) = blocks(1, true);
         let taken = r#""B0":[{"name":"b0","type":"float","value":0.0}],
@@ -2393,6 +2566,8 @@ mod tests {
             "limits",
             &[
                 ("twelve", twelve, &twelve_uniforms),
+                ("wide", wide, &wide_uniforms),
+                ("crowded", crowded, &crowded_uniforms),
                 ("thirteen", thirteen, &thirteen_uniforms),
                 ("taken", one, taken),
                 ("short", short, ""),
@@ -2400,27 +2575,82 @@ mod tests {
             ],
         );
         let source = ResourceSource::directory(root.clone());
+        // Why each is refused.
+        let load = |chain: &str| {
+            let id = format!("minecraft:{chain}");
+            let loaded = PostEffects::load(&source, &device, &queue, &id, &Extras::default());
+            let mut chain = loaded?.expect("the chain");
+            chain.ensure_pipelines(&device, wgpu::TextureFormat::Rgba8Unorm)
+        };
+        assert_eq!(load("twelve"), Ok(()));
+        assert_eq!(load("wide"), Ok(()));
+        let fragment = Some(wgpu::ShaderStages::FRAGMENT);
+        let blocks_past = |stage, count, limit| {
+            Err(LoadError::Pass(
+                0,
+                PassRefusal::OverLimit {
+                    what: "uniform blocks",
+                    stage,
+                    count,
+                    limit,
+                },
+            ))
+        };
+        assert_eq!(load("crowded"), blocks_past(None, 25, 24));
+        assert_eq!(load("thirteen"), blocks_past(fragment, 13, 12));
+        assert_eq!(
+            load("taken"),
+            Err(LoadError::Pass(0, PassRefusal::GlobalsGiven))
+        );
+        assert!(matches!(
+            load("short"),
+            Err(LoadError::Pass(
+                0,
+                PassRefusal::Globals(crate::gfx::expression_blocks::GlobalsRefusal::Member {
+                    index: 0,
+                    ..
+                })
+            ))
+        ));
+        assert!(matches!(
+            load("unmatched"),
+            Err(LoadError::Pass(0, PassRefusal::Pipeline(_)))
+        ));
+        // In a frame: the refused ones are named in the log and skipped.
         let mut effects = PostEffects::new(&device);
         let mut ran = |chain: &str| {
             let names = [format!("minecraft:{chain}")];
             run(&device, &queue, &mut effects, &source, &names).0
         };
-        assert!(ran("twelve"));
-        assert!(!ran("thirteen"));
-        assert!(!ran("taken"));
-        assert!(!ran("short"));
-        assert!(!ran("unmatched"));
+        for chain in ["twelve", "wide"] {
+            assert!(ran(chain), "{chain}");
+        }
+        for chain in ["crowded", "thirteen", "taken", "short", "unmatched"] {
+            assert!(!ran(chain), "{chain}");
+        }
         let mut failed: Vec<&String> = effects.failed.iter().collect();
         failed.sort();
         assert_eq!(
             failed,
             [
+                "minecraft:crowded",
                 "minecraft:short",
                 "minecraft:taken",
                 "minecraft:thirteen",
                 "minecraft:unmatched"
             ]
         );
+        // A preloaded chain whose pipeline the device refuses arrives refused, named, too.
+        let mut effects = PostEffects::new(&device);
+        let format = wgpu::TextureFormat::Rgba8Unorm;
+        effects.preload(&device, &queue, &source, ["minecraft:unmatched"], format);
+        let started = std::time::Instant::now();
+        while !effects.pending.is_empty() {
+            assert!(started.elapsed().as_secs() < 60, "the chain never arrived");
+            std::thread::sleep(std::time::Duration::from_millis(1));
+            effects.collect_preloaded();
+        }
+        assert!(effects.failed.contains("minecraft:unmatched"));
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -2507,6 +2737,7 @@ mod tests {
                 menu_blur_radius: 0.0,
                 globals: Globals::default(),
                 extras: None,
+                poly_globals: None,
             },
             None,
         ));
@@ -2679,6 +2910,7 @@ mod tests {
                 menu_blur_radius: 0.0,
                 globals: Globals::default(),
                 extras: None,
+                poly_globals: None,
             },
             None,
         );

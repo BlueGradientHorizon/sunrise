@@ -63,11 +63,9 @@ pub enum GlobalsRefusal {
     NotBlock,
     /// It declares this many members, past the block's.
     PastLayout(usize),
-    /// Its member `declared` stands where `expected` (of another type) is.
-    Member {
-        declared: String,
-        expected: &'static str,
-    },
+    /// Its member `declared` stands where the `index`th of `sunrise_polytone::globals::LAYOUT`
+    /// should, and isn't of that member's type at its offset.
+    Member { declared: String, index: usize },
 }
 
 impl std::fmt::Display for GlobalsRefusal {
@@ -78,13 +76,12 @@ impl std::fmt::Display for GlobalsRefusal {
             Self::PastLayout(n) => {
                 write!(f, "{BLOCK} declares {n} members, past its {}", LAYOUT.len())
             }
-            Self::Member { declared, expected } => {
-                let (_, kind, at) = (LAYOUT.iter())
-                    .find(|(name, ..)| name == expected)
-                    .expect("a member of the layout");
+            Self::Member { declared, index } => {
+                let (name, kind, at) = LAYOUT[*index];
                 write!(
                     f,
-                    "{BLOCK}: its member {declared} is not {expected} ({kind:?} at byte {at})"
+                    "{BLOCK}'s member {} ({declared}) must be {name}, a {kind:?} at byte {at}",
+                    index + 1
                 )
             }
         }
@@ -93,9 +90,8 @@ impl std::fmt::Display for GlobalsRefusal {
 
 /// The one rule for `PolyGlobals` on the core and post paths alike (the game owns its bytes):
 /// each declaration of the block at `binding` in either stage is a struct whose members are
-/// `sunrise_polytone::globals::LAYOUT` or a leading part of it, each of its type: the block is
-/// std140 and the translator takes no member offsets, so the types in order give each member
-/// its offset. The refusal names the first member that isn't.
+/// `sunrise_polytone::globals::LAYOUT` or a leading part of it, each of its type at its std140
+/// offset. The refusal names the first member that isn't.
 pub(crate) fn check_poly_globals(
     modules: [&naga::Module; 2],
     binding: u32,
@@ -130,11 +126,12 @@ pub(crate) fn check_poly_globals(
             if members.len() > LAYOUT.len() {
                 return Err(GlobalsRefusal::PastLayout(members.len()));
             }
-            for (member, (name, want, _)) in members.iter().zip(LAYOUT) {
-                if kind(&module.types[member.ty].inner) != Some(want) {
+            for (index, (member, (_, want, at))) in members.iter().zip(LAYOUT).enumerate() {
+                let found = kind(&module.types[member.ty].inner);
+                if found != Some(want) || member.offset as usize != at {
                     return Err(GlobalsRefusal::Member {
                         declared: member.name.clone().unwrap_or_default(),
-                        expected: name,
+                        index,
                     });
                 }
             }
@@ -460,14 +457,14 @@ mod tests {
             )),
             Err(GlobalsRefusal::Member {
                 declared: "PolySunAngle".into(),
-                expected: "PolySunAngle"
+                index: 2
             })
         );
         assert_eq!(
             check(&declaring("    float PolySunAngle;\n", "PolySunAngle")),
             Err(GlobalsRefusal::Member {
                 declared: "PolySunAngle".into(),
-                expected: "PolyProjMat"
+                index: 0
             })
         );
         let full = "    mat4 PolyProjMat;\n    mat4 PolyModelViewMat;\n    float PolySunAngle;\n\
@@ -478,18 +475,49 @@ mod tests {
             check(&declaring(&format!("{full}    float Extra;\n"), "Extra")),
             Err(GlobalsRefusal::PastLayout(8))
         );
+        // A member of the right type at another offset (GLSL can't place one; a module can).
+        let moved = {
+            let program = declaring(full, "PolySunAngle");
+            let i = program
+                .other
+                .iter()
+                .position(|n| n == "PolyGlobals")
+                .unwrap();
+            let binding = crate::core_shader::other_binding(i);
+            let mut fragment = program.fragment;
+            let (handle, ty) = (fragment.global_variables.iter())
+                .find(|(_, g)| g.binding.as_ref().is_some_and(|b| b.binding == binding))
+                .map(|(handle, g)| (handle, g.ty))
+                .unwrap();
+            let mut block = fragment.types[ty].clone();
+            if let naga::TypeInner::Struct { members, .. } = &mut block.inner {
+                members[2].offset = 132;
+            }
+            block.name = Some("Moved".into());
+            let block = fragment.types.insert(block, naga::Span::UNDEFINED);
+            fragment.global_variables.get_mut(handle).ty = block;
+            check_poly_globals([&program.vertex, &fragment], binding)
+        };
+        assert_eq!(
+            moved,
+            Err(GlobalsRefusal::Member {
+                declared: "PolySunAngle".into(),
+                index: 2
+            })
+        );
         let ivec = full.replace("ivec3 PolyPlayerBlockPos", "vec3 PolyPlayerBlockPos");
         assert_eq!(
             check(&declaring(&ivec, "PolySunAngle")),
             Err(GlobalsRefusal::Member {
                 declared: "PolyPlayerBlockPos".into(),
-                expected: "PolyPlayerBlockPos"
+                index: 5
             })
         );
     }
 
-    /// The core shaders' loader refuses, named, a `shader_modifiers` file giving `PolyGlobals`
-    /// (the game's bytes) and a declaration the rule refuses.
+    /// The core shaders' loader refuses, named, a `shader_modifiers` file giving a block the
+    /// pipeline fills (`PolyGlobals`, the lightmap's `LightmapInfo`) and a declaration the rule
+    /// refuses.
     #[test]
     fn a_core_shader_cannot_take_over_poly_globals() {
         use crate::polytone_post::{ExpressionRefusal, ShaderModifiers};
@@ -515,11 +543,34 @@ mod tests {
             resolve(r#"{"Tint": "1", "PolyGlobals": "1"}"#, &program(true)),
             Err(ExpressionRefusal::Reserved(name)) if name == "PolyGlobals"
         ));
+        // Any block the pipeline fills itself: the lightmap's `LightmapInfo` too.
+        let lightmap = |file: &str| {
+            let pack = sunrise_assets::resource_source::ResourceSource::indexed(
+                [(
+                    "assets/minecraft/polytone/shader_modifiers/core/lightmap.json".to_owned(),
+                    sunrise_assets::resource_source::Resource::bytes(file.as_bytes().to_vec()),
+                )]
+                .into_iter()
+                .collect(),
+            );
+            let shaders = super::super::core_lightmap::SHADERS;
+            let own = [
+                super::super::core_lightmap::INFO_BLOCK,
+                sunrise_polytone::globals::BLOCK,
+            ];
+            ShaderModifiers::read(&pack, Default::default())
+                .resolve((shaders[0], shaders[1]), &program(true), &own)
+                .map(|u| u.len())
+        };
+        assert!(matches!(
+            lightmap(r#"{"LightmapInfo": "1"}"#),
+            Err(ExpressionRefusal::Reserved(name)) if name == "LightmapInfo"
+        ));
         let wrong = declaring("    float PolySunAngle;\n", "PolySunAngle");
         assert!(matches!(
             resolve("{}", &wrong),
             Err(ExpressionRefusal::Globals(GlobalsRefusal::Member {
-                expected: "PolyProjMat",
+                index: 0,
                 ..
             }))
         ));
