@@ -10,9 +10,9 @@ The parallel contributor sync, fork PR #3575 at `a0858ab2204f61e3c7312667f29be43
 
 | Path | Resolution and behavior |
 | --- | --- |
-| `crates/horizon-client/src/mobs/ai.rs` | Clean automatic merge. Vex gravity is reset in canonical `finish_tick`, after the living tick, for AI and NoAI routes alike. Registration-time initialization alone would not cover later gravity changes. Both endermite lifetime callers move to the hostile module. |
-| `crates/horizon-client/src/mobs/hostile.rs` | Clean automatic merge. `endermite_lifetime` moves unchanged with `pub(super)` visibility: counter increments, persistence and removal threshold remain identical. |
-| `crates/horizon-threads/src/stack_dump.rs` | Only conflict: two hunks overlap the fork's already-carried atomic readiness handshake with upstream's equivalent fix. Keep one release store inside the named busy frame, its acquire wait, and upstream's yielding wait rather than the fork's spin hint. No duplicate readiness store remains. Production stack capture is unchanged. |
+| `crates/sunrise-client/src/mobs/ai.rs` | Clean automatic merge. Vex gravity is reset in canonical `finish_tick`, after the living tick, for AI and NoAI routes alike. Registration-time initialization alone would not cover later gravity changes. Both endermite lifetime callers move to the hostile module. |
+| `crates/sunrise-client/src/mobs/hostile.rs` | Clean automatic merge. `endermite_lifetime` moves unchanged with `pub(super)` visibility: counter increments, persistence and removal threshold remain identical. |
+| `crates/sunrise-threads/src/stack_dump.rs` | Only conflict: two hunks overlap the fork's already-carried atomic readiness handshake with upstream's equivalent fix. Keep one release store inside the named busy frame, its acquire wait, and upstream's yielding wait rather than the fork's spin hint. No duplicate readiness store remains. Production stack capture is unchanged. |
 | `tools/command_exec_corpus.py` | Clean automatic merge. Retain the incoming Vex NoGravity command case and corpus registration, including NoAI and explicitly cleared gravity inputs, a tick, then saved-state queries. It requires the existing real-game/vanilla command harness resources; it was not run locally. |
 
 An independent static mob-area audit found no additional moved-equivalent port necessary. Typed ownership, mod hooks and player-kind boundaries remain unchanged. No retired file, string game-rule API, native diagnostic hook or alternate injection path is restored. No mod API contract or mod wasm runtime changes in this sync.
@@ -21,7 +21,7 @@ An independent static mob-area audit found no additional moved-equivalent port n
 
 Retain sync 33's independently measured CPU-timer calibration, scaled lower bounds, behavioral ratios and exact live-block checks unchanged. A requested 1 kHz CPU timer need not deliver 1 kHz on tick-accounted kernels; the affected WSL2 kernel has 250 Hz accounting. The resolution follow-up is horizon-rust/horizon#15721. The busy stack readiness handshake is distinct from those sampling tests.
 
-Only touched-file rustfmt and a full workspace/all-target compile-only check are permitted locally. No tests, clippy, parity corpus, harnesses or game runs are executed for this sync. CI supplies runtime evidence. Regenerate the sync-only file-size baseline with the tool, in its own commit, against the actual base and new upstream marker; never hand-edit its entries.
+Only touched-file rustfmt and a full workspace/all-target compile-only check are permitted locally. No tests, clippy, parity corpus, harnesses or game runs are executed for this sync. CI supplies runtime evidence.
 
 The separate generated-baseline commit `a98e61e6e0` contains zero caps: no oversized file grew relative to the actual fork base, so the prior sync's three caps are removed and the new upstream marker is recorded. The generator, not a hand edit, produced that result.
 

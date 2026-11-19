@@ -1,19 +1,19 @@
 # Items by kind
 
-Use `STORAGE` (`horizon:storage`) to move items by kind in bulk, rather than by slot.
+Use `STORAGE` (`sunrise:storage`) to move items by kind in bulk, rather than by slot.
 Use `ITEMS` (`Capabilities.Item.BLOCK` in NeoForge) when you need slot-indexed access.
 NeoForge 26.3's transfer API has no by-kind counterpart to `STORAGE`.
 
 A block's `ItemStorage` answers by kind, with `u64` amounts:
 
-- `amount(host, resource)` and `space_for(host, resource)`: how much of one kind it holds, and how much an insert
-  would take (a figure to plan by, not a promise).
+- `amount(host, resource)` and `space_for(host, resource)`: how much of one kind it holds, and the planning bound
+  for that kind. The default handler decides offer-dependent admission on the actual insert, not in `space_for`.
 - `insert(host, tx, resource, amount)` and `extract(...)`: writes in the caller's transaction, never more than asked.
 - `page(host, cursor, page)`: one page of what it holds. The cursor is a plain value the caller keeps (0 for the
   start); the answer is the cursor to ask for next, or `None` at the end. A listing that changes between pages can skip a kind or return it twice.
 
-**Who answers it.** The game answers `STORAGE` for every block entity `ITEMS` reaches. Its own containers are asked in
-one pass over the slots the side reaches, by the rules hoppers follow, so a chest, a hopper and a furnace give the same
+**Who answers it.** The game answers `STORAGE` for every container or composter port `ITEMS` reaches. Its own containers are asked in
+one pass over the slots the side reaches, by the rules hoppers follow, so a chest, a hopper, a composter and a furnace give the same
 answers through either capability. A container whose `ITEMS` a mod answers is wrapped slot by slot. A mod's bulk store
 (a drive, drawers, a vault) answers `STORAGE` with a provider of its own, one entry per kind however many items it
 holds: register it `before_game` if the block also has slots.

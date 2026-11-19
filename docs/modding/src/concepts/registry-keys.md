@@ -16,6 +16,43 @@ Keys identify entries for the running mod load, not persistent data. Persist can
 and property strings rather than registration slots or state ordinals. Reload preserves key identity;
 world numeric mappings and tag membership are separate reloadable data.
 
+## Item registry numbers
+
+`ItemKey::registry_id(host)` returns `Option<u32>` on either side and on both targets.
+This is the number the game uses for dropped-item scatter seeds, not the key's opaque slot.
+It returns `None` before registry completion or for an unresolved item. It reads this side's
+prepared registry, with mod items numbered after vanilla in content-plan order. A connected
+client still uses its local prepared numbering: these numbers are not synced by the server.
+
+Use `host.registry_protocol_id(registry, name)` when reading or writing a raw packet.
+That answer is tied to a connection and may be unavailable without one, even when
+`ItemKey::registry_id(host)` can return the local rendering number.
+
+Numbers are stable only within that game session. Save and send identifiers, never numbers.
+Add the stack's damage separately when reproducing vanilla's nonempty stack scatter seed.
+
+## Entity-type reads
+
+`EntityRef::kind(host)` and the handles that delegate to it return
+`Option<EntityTypeKey>`, using the existing entity-type registry. The key is a
+copyable scalar on native and wasm; compare it with a retained key instead of
+allocating and comparing a type-name string on every read. A stale or missing
+entity still returns `None`. There is no separate equipment-only type read.
+
+After the registry is available, resolve the type keys your Part needs once and
+retain them. `host.entity_type_keys()` enumerates that registry; `key.id(host)`
+explicitly requests its canonical namespaced name. Name resolution returns an
+owned diagnostic string and can allocate. Persist the name, never the scalar slot.
+For example, retain the zombie key at setup, then compare
+`entity.kind(host) == Some(zombie_key)` in a predicate.
+
+The key derives `Wire` through its scalar slot: host decoding checks the registered
+slot, while a wasm guest carries the host-issued key without a separate name table.
+
+This is a clean break from `Option<String>`: callers that need textual names must
+request `.id(host)` explicitly. `UnspawnedMobRef::kind` keeps its separate scoped
+`Identifier`/error contract, and block-entity type reads keep `BlockEntityTypeKey`.
+
 ## Block states
 
 `BlockState` is a small owned value with private fields, not a tint-specific snapshot or an
@@ -78,6 +115,22 @@ blocks, effects, fluids and items. Names are full registry names; the lookup rea
 registry and does not allocate, so a hook can call it. It returns `None` for a name the registry does
 not hold, and before the registry is complete, so a mod uses `r.block_key(id)` in `register`. These
 work on the client and the server, for native and wasm mods alike.
+
+```rust
+fn resolve(host: &dyn mod_api::Host) {
+    if let Some(block) = host.block_key("minecraft:stone") {
+        assert_eq!(block.id(host), "minecraft:stone");
+    }
+    if let Some(effect) = host.effect_key("minecraft:speed") {
+        assert_eq!(effect.id(host), "minecraft:speed");
+    }
+    assert!(host.block_key("test:missing_block").is_none());
+    assert!(host.effect_key("test:missing_effect").is_none());
+}
+```
+
+These calls are also available on `&dyn ServerHost` and `&dyn ClientHost`.
+Both lookups return `None` before their registry completes, including for vanilla names.
 
 ## Fluids and effects
 
@@ -162,7 +215,7 @@ Use API-owned values rather than importing engine or package-loader types.
 | `Suggestion` | Construct with `Suggestion::new((start, end), text)`. Offsets are bytes; `tooltip` and `int_value` are writable. |
 | `Block`, `Item` | Registration declarations. Component patches are `(String, Option<Tag>)` entries; `None` removes a component. Content-file admission checks apply. |
 | `BlockEntityTypeDecl` | Declaration snapshot produced by `r.block_entity_type(...).build()`. |
-| `GuiDraw` | GUI commands; `DrawContext::gui_paint` returns a typed text-conversion result. Handle refusal before drawing. HUD hooks reject invalid writeback as a whole. |
+| `GuiDraw` | GUI commands; `DrawContext::gui_paint` returns a `GuiPaintError` naming the op it could not draw (text conversion, an item slot, a texture or sprite), and draws nothing of that buffer. HUD hooks reject invalid writeback as a whole. |
 
 `ServerHost::game_rule(id)` reads the one server-wide rule store without a
 `LevelRef`, including in `server_about_to_start` and `server_starting`.
@@ -179,7 +232,8 @@ Level reads use the same store once the requested level exists.
 means the side or phase cannot read it. `level.game_rules(host)` returns the typed
 result containing every available rule, not an optional list. Use the boolean-key getter for a retained `BoolGameRuleKey`.
 
-`GameRuleDecl` records a mod's boolean rule name, category and default. Category references
+`GameRuleDecl` records a mod's rule name, category and `GameRuleDefault`: either `Bool(value)`
+or `Int { default, min, max }`. Category references
 resolve after all declarations; invalid declarations refuse installation without a partial table.
 
 ## Opaque NBT metadata

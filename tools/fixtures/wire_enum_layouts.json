@@ -185,7 +185,8 @@
     {
       "name": "DataMapError",
       "path": "crate::world::data_maps::DataMapError",
-      "hash": "38e6144ff0918aa9",
+      "hash": "3c338ccd2a00316e",
+      "contract_change": "arismoko/horizon#4199 appends DataMapError::InvalidKey; ordinals 0, 1, 2 remain unchanged; the frozen hash was 38e6144ff0918aa9",
       "canonical_path": "crate::world::data_maps::DataMapError"
     },
     {
@@ -257,7 +258,8 @@
     {
       "name": "DrawError",
       "path": "crate::client::world_draw::DrawError",
-      "hash": "6738751c2f3fac7a",
+      "hash": "7bfc4da231ac39e2",
+      "contract_change": "arismoko/horizon#4171 appends DrawError::TextTooDeep and DrawError::TextRefused; ordinals 0, 1, 2 remain unchanged; the frozen hash was 6738751c2f3fac7a",
       "canonical_path": "crate::client::world_draw::DrawError"
     },
     {
@@ -294,8 +296,10 @@
     {
       "name": "ExplosionInteraction",
       "path": "crate::world::types::ExplosionInteraction",
-      "hash": "649673fec35bab1f",
-      "canonical_path": "crate::world::types::ExplosionInteraction"
+      "hash": "1ede2797636bb977",
+      "canonical_path": "crate::world::types::ExplosionInteraction",
+      "baseline_hash": "649673fec35bab1f",
+      "contract_change": "#3929 takes vanilla's five ExplosionInteraction values in vanilla's order: None 0, Block 1, Mob 2, Tnt 3 (was 2), Trigger 4. Hash independently mixed from the five literal variant names using the original FNV layout algorithm."
     },
     {
       "name": "FakeEffect",
@@ -336,8 +340,9 @@
     {
       "name": "GameRuleError",
       "path": "crate::world::types::GameRuleError",
-      "hash": "e76f57d2c9f945cb",
-      "canonical_path": "crate::world::types::GameRuleError"
+      "hash": "b0678faa207c25fa",
+      "canonical_path": "crate::world::types::GameRuleError",
+      "contract_change": "arismoko/horizon#3316 appends GameRuleError::InvalidRange; ordinals 0, 1, 2 remain unchanged; the frozen hash was e76f57d2c9f945cb"
     },
     {
       "name": "Hand",
@@ -477,6 +482,12 @@
       "path": "crate::entity::types::MinecartKind",
       "hash": "3ee6a888c41a4aa0",
       "canonical_path": "crate::entity::types::MinecartKind"
+    },
+    {
+      "name": "MoveCause",
+      "path": "crate::entity::types::MoveCause",
+      "hash": "deed7d85fc9ecdfb",
+      "canonical_path": "crate::entity::types::MoveCause"
     },
     {
       "name": "MobCategory",
@@ -699,8 +710,10 @@
     {
       "name": "Shape",
       "path": "crate::item::crafting::Shape",
-      "hash": "a157d010a4183033",
-      "canonical_path": "crate::item::crafting::Shape"
+      "hash": "004a43af941b0c62",
+      "canonical_path": "crate::item::crafting::Shape",
+      "baseline_hash": "a157d010a4183033",
+      "contract_change": "#3737 adds CustomDisplay at ordinal 3; ordinals 0, 1, 2 remain unchanged. Hash independently mixed from the four literal variant names using the original FNV layout algorithm."
     },
     {
       "name": "ShapeEntityKind",
@@ -711,7 +724,7 @@
     {
       "name": "Side",
       "path": "crate::content::package_side::Side",
-      "hash": "dd28eeec22f3e455",
+      "hash": "a58ce85f7e9e9c30",
       "canonical_path": "crate::content::package_side::Side"
     },
     {
@@ -773,12 +786,6 @@
       "path": "crate::world::custom_spawners::SpawnerKind",
       "hash": "d2ddf2a44e7883db",
       "canonical_path": "crate::world::custom_spawners::SpawnerKind"
-    },
-    {
-      "name": "StackError",
-      "path": "crate::item::item_stack::StackError",
-      "hash": "e7f3dc8561be3e31",
-      "canonical_path": "crate::item::item_stack::StackError"
     },
     {
       "name": "StatType",
@@ -889,6 +896,15 @@
     "crate::content::payloads::ConnectionPhase",
     "crate::content::payloads::PayloadDirection",
     "crate::content::payloads::PayloadPhase",
-    "crate::content::payloads::PeerPolicy"
-  ]
+    "crate::content::payloads::PeerPolicy",
+    "crate::item::item_stack::StackError"
+  ],
+  "manual_contract_changes": {
+    "AttachmentError": {
+      "contract_change": "#4614 appends Undeclared at u32 ordinal 9 with package_id:String and attachment_id:String. Existing ordinals 0 through 8 remain unchanged. This manual data-carrying Wire enum is pinned by every_attachment_error_and_write_case_has_declared_tag_type; fieldless enum layouts are unchanged."
+    },
+    "PartStateRefusal": {
+      "contract_change": "#4614 removes the former UnownedNamespace refusal: attachment usages may reference another loaded owner. Incompatible and EntityKind move from ordinals 5 and 6 to 4 and 5; this data-carrying enum is outside the fieldless baseline. All declarations still require the declaring package namespace."
+    }
+  }
 }

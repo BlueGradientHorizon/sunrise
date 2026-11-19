@@ -16,7 +16,7 @@ The merge began with 80 conflicts. Resolution areas were mobs/entities (23), gam
 
 ## Conflict policy
 
-Keep fork typed ownership, attachment and join lifetimes, generated module discovery, canonical hook moments, native/wasm contracts and the launcher's repository/update route. Take upstream vanilla fixes and retain the restored Horizon layer, including telemetry, cosmetics, shop and Horizon extras. Do not revive deleted monoliths or add compatibility aliases when upstream extractions overlap existing fork modules.
+Keep fork typed ownership, attachment and join lifetimes, generated module discovery, canonical hook moments, native/wasm contracts and the launcher's repository/update route. Take upstream vanilla fixes and retain the restored Sunrise layer, including telemetry, cosmetics, shop and Sunrise extras. Do not revive deleted monoliths or add compatibility aliases when upstream extractions overlap existing fork modules.
 
 ### Mobs and entities
 
@@ -58,7 +58,7 @@ Keep fork typed ownership, attachment and join lifetimes, generated module disco
 
 - `AGENTS.md`: retain the fork package name and document the actual extras child paths.
 - `server_perf/samples.rs`: take upstream's Linux-only explanatory comment; retain the existing Linux cfg and all calibration/ratio/progress behavior.
-- `horizon-threads/stack_dump.rs`: one Release readiness store inside the busy frame, Acquire readiness wait using `yield_now`. Production capture is unchanged.
+- `sunrise-threads/stack_dump.rs`: one Release readiness store inside the busy frame, Acquire readiness wait using `yield_now`. Production capture is unchanged.
 - The independently merged sampler span-count fix remains unchanged.
 
 ## Maintainer-ratified query limit
@@ -76,7 +76,5 @@ The existing `upstream-parallel-mobs` Group/Islands quarantine remains at its pr
 ## Function-replacement inputs and verification
 
 Source implementation moves include renderer in-flight/frustum code, crystal construction, canonical extras children and shared mob item-stack configuration. Incoming duplicate gameplay extraction paths are rejected where the fork already owns canonical implementations. Native source patches must follow those actual owners; generated discovery remains authoritative. Client build wiring and mod-api-gen staged detection change. No point/injection mechanism or native game-rebuild fallback is introduced.
-
-The file-size baseline is generated separately from the integrated source against the actual fork base, with the pinned upstream marker. It is never hand-edited.
 
 Verification: both the initial integrated source and the authorized main refresh passed `CARGO_INCREMENTAL=0 cargo check --workspace --all-targets --keep-going -j 2`. Those checks reported unused incoming helpers. Static audit confirmed the active container-viewer implementation already exists, and the additional mod/helper sampler support has no imported consumer; duplicate/unconsumed helpers were removed without warning allowances. The full workspace/all-target compile-only check after that cleanup passed without source warnings (pass 7). Static-review carry corrections also passed the full compile-only command without source warnings (pass 9). After the opening main refresh and constructor-signature restoration, `CARGO_INCREMENTAL=0 cargo check --workspace --all-targets -j 2` passed without source warnings (pass 11). A fresh narrow Opus static review approved the three-file age/state correction. The post-rollup-68 refresh also passed the full compile-only command without warnings (pass 14), with independent static approval of the use-hand move and typed immediate-teleport resolution. Regression coverage is compiled but not run. No local tests, clippy, parity harnesses or game runs are permitted for this sync. Workers performed rustfmt parsing and static area audits only; CI remains the runtime proof.

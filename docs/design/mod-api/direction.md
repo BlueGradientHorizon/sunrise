@@ -7,7 +7,7 @@ today; the [project board](https://github.com/users/arismoko/projects/1) and the
 
 ## One clean break
 
-A mod is written against one API, `mod_api` (the crate `horizon-mod-api`), and the API keeps one hook per
+A mod is written against one API, `mod_api` (the crate `sunrise-mod-api`), and the API keeps one hook per
 moment. A hook whose NeoForge 26.3 counterpart exists takes its name, side and full contract. Two hooks at the
 same vanilla call site, `_v1` and `_v2` pairs included, are one hook, and the old one is deleted, not kept
 beside it. A veto before an action and a notice after it stay separate when vanilla runs code between them. A
@@ -18,7 +18,7 @@ branches. An old mod rebuilds, and the compiler says what moved. Removing a path
 catalog, these docs, the tests and the sample mod in the same change. A hook with no NeoForge counterpart is
 judged on its merits like any other.
 
-Every hook is declared once, in the catalog (`crates/horizon-mod-vocab/src/hooks/`): its name, side, contract,
+Every hook is declared once, in the catalog (`crates/sunrise-mod-vocab/src/hooks/`): its name, side, contract,
 scope and `doc`. The generator writes everything repeated from it: the `Hooks` trait, the part traits, the
 `Host` traits, the dispatch and the [reference](../../modding/src/reference/api.md). A hook is added by declaring it, not by
 editing match arms.
@@ -94,14 +94,15 @@ and [Parts](../../modding/src/concepts/parts.md).
 | HUD layers and F3 entries | `register_gui_layers` and `register_debug_entries` | Client startup | When the installed HUD order or debug entry list is used for drawing. |
 | World-space debug renderers | `register_debug_renderers` | Client, each refresh of the renderer list | The next debug draw uses the refreshed list. |
 | Model layers, colour resolvers, block and item tints, numeric and categorical item model properties | `register_layer_definitions`, `register_color_resolvers`, `register_block_tint_sources`, `register_item_tint_sources`, `register_range_select_item_model_property`, `register_select_item_model_property` | Client startup before resource loading | The client can resolve the declarations when it builds its models and rendering tables. |
-| Entity renderers | `register_entity_renderers` registers an `EntityRenderer` per entity type | Client startup before resource loading; resolved again on every resource load | When a frame draws an entity of the type through a route that reads the table: the content mods' thrown types so far ([entity renderers](../../modding/src/how-to/client/entity-renderers.md)). |
+| Entity renderers | `register_entity_renderers` registers an `EntityRenderer` per entity type | Client startup before resource loading; resolved again on every resource load | When a frame draws an entity of the type through a route that reads the table: the content mods' thrown types and the living types drawn as mobs so far ([entity renderers](../../modding/src/how-to/client/entity-renderers.md)). |
 | Entity layers | `register_entity_layers` adds an `EntityRenderLayer` to a living entity type or a player model | Client, on every resource load after the entity renderers resolve | When a frame draws a mob or player of the target, after its model and vanilla layers ([entity layers](../../modding/src/how-to/client/entity-layers.md)). |
+| Special item model renderers | `register_special_model_renderer` registers a `SpecialModelRenderer` per special model type, the last registration of a type winning | Client startup before resource loading; a failed renderer is asked again, and kept answers dropped, on every resource load | When an item whose definition holds a `minecraft:special` model of the type is drawn with a stack that model node has no kept answer for; every display context draws that answer ([special item renderers](../../modding/src/how-to/client/special-item-renderers.md)). |
 | Data map types | `data_map_types` | Server, at world data load and each reload | After the server publishes the loaded data maps. |
 | Recipe property additions | `recipe_property_sets` | Server data load and client preload, after recipes resolve, and again on reload | When station slot checks use the published sets. |
 | Mod configs | `register_configs` | Config phase on the owning side, once at startup for Client/Common and per world for Server | After the file is read and the mod receives its config loading callback. |
 
 [Content mods](../../modding/src/how-to/content-mods.md) declare identities and data such as blocks, items, entity types
-and menus in `data/<id>/horizon/`. These declarations supply the game's registry entries, models or
+and menus in `data/<id>/sunrise/`. These declarations supply the game's registry entries, models or
 templates and other data. The startup `blocks` and `items` hooks can submit the same declaration types
 from code and go through the same content checks. Attaching a Part or providing a callback adds behaviour
 to an identity. For example, a menu declaration describes its slots, while a `MenuPart` supplies code for
@@ -122,7 +123,7 @@ reload. Each builder should collect typed declarations and validate keys before 
 | Particle providers | Bind client provider factories to particle types before the particle engine spawns instances of those types. | [#822](https://github.com/arismoko/horizon/issues/822) |
 | Entity spawn placement | Bind the server placement rules and predicates to entity types before natural spawning. | [#847](https://github.com/arismoko/horizon/issues/847) |
 | Cauldron interactions | Bind item handlers to the relevant cauldron interaction table before gameplay. | [#854](https://github.com/arismoko/horizon/issues/854) |
-| Entity renderers | The other entity families' draw routes reading the renderer table, and the armour stand's and the ender dragon's draws running the layers. | [#860](https://github.com/arismoko/horizon/issues/860) |
+| Entity renderers | The other entity families' draw routes reading the renderer table (boats, displays, TNT, the armour stand, the ender dragon), and the armour stand's and the ender dragon's draws running the layers. | [#860](https://github.com/arismoko/horizon/issues/860) |
 | Biome colour resolvers | Register named client colour resolvers for block rendering and use them when meshing. | [#873](https://github.com/arismoko/horizon/issues/873) |
 | Special item models | Register client special model codecs and bake their renderers when loading item models. | [#876](https://github.com/arismoko/horizon/issues/876) |
 | Custom item models | Resolve named client item model codecs during resource decoding. | [#877](https://github.com/arismoko/horizon/issues/877) |
@@ -191,7 +192,7 @@ identities, and a per-hook part method stays when a system joins it.
 A mod can be built two ways, from the same source: native, compiled into the game, or to `mod.wasm`, which the
 game's one sandboxed runtime runs with no rebuild. The only difference between them is the build target.
 
-- `[dependencies]` in `horizon-mod.toml` means the same for both: required and optional dependencies, semver
+- `[dependencies]` in `sunrise-mod.toml` means the same for both: required and optional dependencies, semver
   against the manifest's versions, dispatch in dependency order, and a mod publishing functions and statics its
   dependents call. Native links through Cargo; wasm links through the runtime's linker, with one copy of each
   library shared by its dependents. Both targets use one resolver, keep bundle-order ties, and refuse cycles.
@@ -211,7 +212,7 @@ checked against the game, because they differ in what they link to:
 | Pinned to | the exact game build, in `[native]` | the interface: the hooks it imports |
 | Refused when | the build differs | an import it needs is missing or changed |
 
-A wasm mod keeps running on a newer game while the hooks it imports are unchanged. `horizon-mod-api` therefore
+A wasm mod keeps running on a newer game while the hooks it imports are unchanged. `sunrise-mod-api` therefore
 always builds for `wasm32-unknown-unknown`: a hook that needs an engine type takes a plain-data type of the
 API's own, converted on the game side.
 

@@ -6,6 +6,69 @@ through `RenderAssets::model` after resources are published. World render hooks 
 copies in a group. GUI scenes, mobs and kept/spinning renderers use their
 CPU routes; groups are a world-drawing facility, not another renderer.
 
+## Worn humanoid equipment
+
+An item attaches one `ClientItemExtensions` Part in
+`Hooks::register_client_item_extensions`, on the client at every resource load.
+The event's `extensions: &mut dyn ClientItemExtensionsRegistrar` registers the
+models, textures and item providers together. There is no startup provider
+registration path: request your `ItemKey` during ordinary registration, then
+attach its provider during this resource-load event.
+
+```rust,ignore
+let inner = event.extensions.register_model("mymod:inner_chest", &inner_tree)?;
+let outer = event.extensions.register_model("mymod:outer_chest", &outer_tree)?;
+let inner_texture = event.extensions.register_texture("mymod:entity/equipment/inner")?;
+let outer_texture = event.extensions.register_texture("mymod:entity/equipment/outer")?;
+event.extensions.client_item_extensions(item, Arc::new(ChestLayers {
+    models: [inner, outer],
+    textures: [inner_texture, outer_texture],
+}))?;
+```
+
+Trees are API-owned `ModelPart` trees, built directly or baked from a
+`LayerDefinition`. Register them once per resource load, never during a frame.
+Model names belong to the registering mod's namespace. Duplicate model names,
+non-finite geometry or poses, an unknown texture, an unknown item and two
+providers for one item refuse the resource-load registration by name. A duplicate
+item diagnostic names both providers. Disabling the owning mod stops its Part.
+A server-only package cannot declare this client registration hook.
+
+The worn stack must first pass the equippable component's asset and matching-slot
+checks, and the asset must have layers. Only the visible equipped item's provider
+is queried; random-texture inventory enumeration does not run frame callbacks.
+Every callback takes `&dyn ClientHost` and `&ItemStack`:
+
+1. `default_dye_color` runs once and returns packed ARGB, or zero when undyed.
+2. `armor_layer_tint_color` runs in asset layer order, with the layer and its index.
+   Exactly zero skips the layer, without calling its texture or model method.
+   The default is white for a nondyeable layer, or its dye/optional undyed colour
+   for a dyeable layer. Without either colour, a dyeable layer is skipped.
+3. `armor_texture` receives the layer type, layer and the resolved default texture
+   reference, including pack/CIT selection. A returned override is final for that
+   layer; it is not replaced by another random-texture or custom-model texture.
+4. `armor_layer_model` chooses the registered tree for that layer. Returning
+   `ArmorModelRef::VANILLA` keeps the original model. The humanoid pose is copied
+   onto the chosen tree, with only the current slot's parts visible.
+
+Per-layer model selection deliberately differs from NeoForge's one model per
+piece. It lets a chest item draw an inner shape with one texture and an outer
+shape with another, without painting both textures on both shapes. There are no
+additional per-piece `humanoid_armor_model` or `generic_armor_model` callbacks.
+The trim draws once on the last material layer actually drawn's tree; if no
+material drew, it uses vanilla's model. The trim does not call the model method
+again. Babies do not draw trims. Foil goes on the first drawn material when there
+is no trim, and on the trim otherwise.
+
+Model and texture references are scoped to the resource load. A stale reference
+returned during drawing uses vanilla's model or the supplied default texture,
+with one diagnostic per provider until reload, never a panic. A failed callback
+discards all of the piece's custom layers, draws the piece with vanilla behaviour,
+and disables that provider until reload, with one diagnostic. This includes refused
+or trapped wasm callbacks, even after an earlier layer succeeded. Native and
+wasm use the same Part, methods and handler tokens. Only references and layer
+values cross Wire during a frame: no geometry, rebakes or native-only escape path.
+
 ## Bake-time standalone forms
 
 `standalone_models` contract version 2 keeps `event.models: &mut Vec<String>` for plain
@@ -154,20 +217,23 @@ Each mob and player in view gets the render hook pair once a frame, NeoForge's
 1. `render_player_pre(player, who, draw, hidden, canceled)`, for a player only (`who` is its
    profile name and whether it is this window's own);
 2. `render_living_pre(entity, draw, hidden, canceled)`, before the entity's model;
-3. the model, its vanilla layers and the layers mods added to its type
+3. the model and its vanilla layers, or in their place the renderer a mod registered for its type
+   ([entity renderers](entity-renderers.md)), then the layers mods added to its type
    ([entity layers](entity-layers.md));
 4. `render_living_post(entity, parts, draw)`;
 5. `render_player_post(player, who, parts, draw)`, for a player only.
 
 The order today: the model and the layers are drawn before the post hooks; the entity's name tag, leash, flames
 and shadow are drawn in the frame's later passes, after them. The reference draws the leash and the name tag
-before the post (and queues the flames and the shadow after it): tracked in #3915.
+before the post (and queues the flames and the shadow after it): tracked in #3915. A type with a registered
+renderer has the same order, the renderer in the model's place, so it changes with #3915 too.
 
 `draw` starts at the entity's feet, turned with its body (+z the way it faces, +x its left, +y up,
 in blocks), and keeps what each hook draws. Setting `canceled` in a pre hook skips everything else
-of that entity this frame: its model, its layers, its name tag, shadow, flames, leash and glowing
-outline, and the post hooks. A mod that draws a model of its own draws it in `render_living_pre` and
-cancels; one that wants the name tag or the shadow then draws them itself, or doesn't cancel.
+of that entity this frame: its model (or its type's registered renderer), its layers, its name tag,
+shadow, flames, leash and glowing outline, and the post hooks. A mod that draws one entity's model of
+its own draws it in `render_living_pre` and cancels; one that draws every entity of a type registers
+a renderer for the type instead; one that wants the name tag or the shadow then draws them itself, or doesn't cancel.
 Canceling only `render_living_pre` of a player still asks its `render_player_post`. An entity the
 frame culls gets neither hook. The game asks once a frame whether any mod listens to the four, and
 with none builds nothing for them.
@@ -191,8 +257,9 @@ Typed humanoid parts have separate storage, so all twelve fit alongside the eigh
 
 - Hiding happens after Skin Customization, for this frame only.
 - A hidden part takes its children with it: the hat goes with the head, a sleeve with its arm.
-- Only the body loses the part. The armour, held items and other layers keep every part, and
-  the cape, a layer of its own, stays.
+- The body loses the part, and so do the layers drawn on the body's own model, as vanilla's
+  `getParentModel()` layers do: a villager's type, profession and level, a spider's eyes. The
+  armour, held items and other layers keep every part, and the cape, a layer of its own, stays.
 
 ## Text and animation in block entities
 

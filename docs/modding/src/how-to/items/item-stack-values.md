@@ -46,8 +46,11 @@ normalized just like `set_components`; malformed damage leaves the entire stack 
 including explicit zero damage. If `other` has no override, the target inherits too:
 no effective prototype value is materialized. `get` followed by `set` covers `update`.
 These owned-value operations require no host. To persist them on a whole stack, use
-server-side `ItemPlace::edit` inside a transaction; it preserves item/count and rolls
-back with its parent transaction instead of splitting one item off.
+server-side `ItemPlace::edit` inside a transaction. It preserves item/count, rolls
+back with its parent transaction and applies only changed components to player slots,
+hands and equipment without equipping the stack again. The cursor and virtual transfer
+wrappers do not support whole-stack edits. Use a normal slot write if you need to replace
+the item or change its count.
 
 `ItemResource::with_component` is also fallible for raw component values. Its default-value
 elision and `without_component` preserve the normal prototype-plus-patch semantics. The latter
@@ -57,7 +60,9 @@ records real NBT removal entries for default components; it is not an unknown-va
 
 A consume or death-protection override whose opaque native effect payload cannot be decoded
 refuses the whole stack write with `StackWriteError::InvalidEffectPayload`, before any
-resident state changes.
+resident state changes. A `villager_food` patch without positive nutrition is refused as
+`StackWriteError::InvalidComponents { reason: StackError::InvalidComponent { id } }`;
+`id` names `minecraft:villager_food`. An explicit removal remains valid.
 The items host area owns metadata reads such as `max_stack_size(ItemKey)` and
 `max_damage(ItemKey)`. A stack does not take a host just to read a maximum, and an unavailable
 maximum never turns into a fabricated limit of 64.
@@ -77,13 +82,19 @@ edits retain those captured engine values. Consuming mutable events such as `bon
 `item_after_vertical_collision` lend `Option<ItemStack>` so a listener can consume the value by
 setting `None`.
 
-The `item_stacked_on_other` bridge commits its clicked slot, cursor and cancellation flags as
-one unit, including the menu's slot-operation queues and map-id reservations. The block-entity
+The `item_stacked_on_other` hook runs on the authoritative side only (a client predicts vanilla and the server corrects it). It does not lend the slot: it hands the listener the cursor and
+the clicked slot's stack, frozen, and takes a typed answer (`StackedOnOtherResult`: `handled`, and
+`StackResult::Keep` or `Set` for the cursor and the slot) that the game validates once and applies
+once. A stack can be set only by a cancelled click that is also `handled`; any other answer that
+sets one is refused. A write through the `Host` to what the click read makes the click stale: it is
+refused and every write the listener made is undone. The block-entity
 tick, menu-button and menu-quick-move bridges validate their captured snapshot outputs together
 before applying them. These are output guarantees, not whole-world transactions: independent
 `ServerHost` storage writes, commands, messages and other effects are not rolled back on a
 refused output. Carrier-form callbacks such as `bonemeal` and `item_after_vertical_collision`
 also retain their captured stack outputs on refusal but do not journal independent host writes.
+
+A client without this mod predicts vanilla here; the server corrects it.
 
 Item-model callbacks receive the owned stack and a separate `bundle_selected` number (`-1`
 means none). Runtime selection is not a persistent component. Drawing receives the API-owned

@@ -11,8 +11,10 @@ sys.path.insert(0, str(ROOT / "tools/ci/vendor/pyyaml-6.0.3.zip"))
 import yaml
 
 WORKFLOWS = [ROOT / ".github/workflows/dyna-ci.yml"]
-# Main pushes and dispatch only (owner, 2026-11-12).
-MAIN_ONLY = [ROOT / ".github/workflows" / name for name in ("wasm-mods.yml", "fn-replace-check.yml")]
+# The daily run's legs: called by daily.yml or dispatched by hand, never on pull requests or main pushes (owner,
+# 2026-11-12; CI tiers 2026-11-13).
+DAILY_LEGS = [ROOT / ".github/workflows" / name for name in ("wasm-mods.yml", "fn-replace-check.yml",
+                                                                          "machine-sample.yml")]
 
 
 def expression_value(expression, github, inputs=None, matrix=None):
@@ -52,10 +54,10 @@ def expression_value(expression, github, inputs=None, matrix=None):
 
 
 def concurrency_for(path, event, sha, number=None, ref="refs/heads/main", inputs=None, job=None,
-                    matrix=None, run_id="1"):
+                    matrix=None, run_id="1", run_attempt="1"):
     workflow = yaml.safe_load(path.read_text())
     policy = workflow["jobs"][job]["concurrency"] if job else workflow["concurrency"]
-    github = {"event_name": event, "sha": sha, "ref": ref, "run_id": run_id,
+    github = {"event_name": event, "sha": sha, "ref": ref, "run_id": run_id, "run_attempt": run_attempt,
               "event": {"pull_request": {"number": number or ""}}}
     if number is not None:
         github["ref"] = f"refs/pull/{number}/merge"
@@ -73,17 +75,29 @@ def concurrency_for(path, event, sha, number=None, ref="refs/heads/main", inputs
 
 
 class ConcurrencyTests(unittest.TestCase):
-    def test_main_pushes_run_side_by_side_and_finish(self):
-        for path in WORKFLOWS:
+    def test_a_newer_main_push_replaces_the_older_and_a_main_dispatch_finishes(self):
+        for path in WORKFLOWS + [ROOT / ".github/workflows/modding-book.yml"]:
             with self.subTest(workflow=path.name):
                 first = concurrency_for(path, "push", "a" * 40)
                 next_push = concurrency_for(path, "push", "b" * 40)
-                self.assertNotEqual(first[0], next_push[0], "a main push must not wait behind another")
-                self.assertIs(first[1], False, "a main push must not cancel the running run")
-                self.assertIs(next_push[1], False)
+                self.assertEqual(first[0], next_push[0], "only the newest main head needs its checks")
+                self.assertIs(next_push[1], True, "a newer main push cancels the older run")
+        snapshot = concurrency_for(WORKFLOWS[0], "workflow_dispatch", "c" * 40)
+        snapshot_again = concurrency_for(WORKFLOWS[0], "workflow_dispatch", "d" * 40)
+        self.assertNotEqual(snapshot[0], snapshot_again[0], "a gate dispatched on a main commit is never replaced")
+        self.assertNotEqual(snapshot[0], concurrency_for(WORKFLOWS[0], "push", "c" * 40)[0])
+        self.assertIs(snapshot[1], False)
+
+    def test_a_main_push_run_started_again_for_a_release_is_never_cancelled(self):
+        first = concurrency_for(WORKFLOWS[0], "push", "a" * 40)
+        again = concurrency_for(WORKFLOWS[0], "push", "a" * 40, run_attempt="2")
+        next_push = concurrency_for(WORKFLOWS[0], "push", "b" * 40)
+        self.assertNotEqual(again[0], next_push[0], "the next push does not cancel a release's gate")
+        self.assertNotEqual(again[0], first[0])
+        self.assertIs(again[1], False, "a release's gate never cancels a running main gate")
 
     def test_pr_updates_cancel_only_the_same_pr_group(self):
-        for path in WORKFLOWS:
+        for path in WORKFLOWS + [ROOT / ".github/workflows" / name for name in ("modding-book.yml", "dco.yml")]:
             with self.subTest(workflow=path.name):
                 first = concurrency_for(path, "pull_request", "a" * 40, 101)
                 update = concurrency_for(path, "pull_request", "b" * 40, 101)
@@ -105,45 +119,35 @@ class ConcurrencyTests(unittest.TestCase):
                 self.assertNotEqual(one[0], other[0], "two reviewers' dispatches must not replace each other")
                 self.assertNotEqual(one[0], main[0], "a dispatch must not hold main's run")
 
-    def test_main_only_checks_never_run_on_pull_requests(self):
-        for path in MAIN_ONLY:
+    def test_daily_legs_never_run_on_pull_requests_or_pushes(self):
+        for path in DAILY_LEGS + [ROOT / ".github/workflows/ignored-tests.yml"]:
             with self.subTest(workflow=path.name):
                 triggers = yaml.load(path.read_text(), Loader=yaml.BaseLoader)["on"]
-                self.assertEqual(set(triggers), {"push", "workflow_dispatch"})
-                self.assertEqual(triggers["push"], {"branches": ["main"]})
+                self.assertEqual(set(triggers), {"workflow_call", "workflow_dispatch"})
+                # fn-replace-check also takes the daily run's routing, decided when the run started.
+                inputs = {"commit", "self_hosted"} if path.name == "fn-replace-check.yml" else {"commit"}
+                self.assertEqual(set(triggers["workflow_call"]["inputs"]), inputs)
 
-    def test_main_only_checks_coalesce_main_pushes_and_keep_dispatches_apart(self):
-        for path in MAIN_ONLY:
+    def test_daily_calls_finish_and_hand_dispatches_keep_apart(self):
+        for path in DAILY_LEGS:
             with self.subTest(workflow=path.name):
-                first = concurrency_for(path, "push", "a" * 40, run_id="10")
-                next_push = concurrency_for(path, "push", "b" * 40, run_id="11")
+                daily = concurrency_for(path, "workflow_dispatch", "a" * 40, ref="refs/heads/main",
+                                        inputs={"commit": "a" * 40}, run_id="10")
+                daily_branch = concurrency_for(path, "workflow_dispatch", "a" * 40, ref="refs/heads/suspect",
+                                               inputs={"commit": "a" * 40}, run_id="11")
                 main_dispatch = concurrency_for(path, "workflow_dispatch", "b" * 40, run_id="12")
                 main_again = concurrency_for(path, "workflow_dispatch", "b" * 40, run_id="13")
                 branch = concurrency_for(path, "workflow_dispatch", "c" * 40, ref="refs/heads/suspect")
                 branch_again = concurrency_for(path, "workflow_dispatch", "d" * 40, ref="refs/heads/suspect")
                 other_branch = concurrency_for(path, "workflow_dispatch", "c" * 40, ref="refs/heads/other")
-                self.assertEqual(first[0], next_push[0], "main pushes coalesce: only the newest waits")
-                for _, cancel in (first, next_push, main_dispatch, main_again):
-                    self.assertIs(cancel, False, "a main run always finishes")
-                self.assertNotIn(main_dispatch[0], (first[0], main_again[0]),
-                                 "a dispatch on main is never folded into another run")
+                for _, cancel in (daily, daily_branch, main_dispatch, main_again):
+                    self.assertIs(cancel, False, "a daily leg and a main dispatch always finish")
+                self.assertNotIn(daily_branch[0], (branch[0], daily[0]),
+                                 "a hand dispatch on a branch never displaces a daily leg")
+                self.assertNotEqual(main_dispatch[0], main_again[0], "a dispatch on main is never folded into another")
                 self.assertEqual(branch[0], branch_again[0], "a newer dispatch on a branch replaces the older")
                 self.assertIs(branch_again[1], True)
-                self.assertNotIn(other_branch[0], (branch[0], first[0]), "other refs never displace each other")
-
-    def test_slow_shards_coalesce_per_shard_on_main_only(self):
-        path = WORKFLOWS[0]
-        shard = lambda event, run_id, name: concurrency_for(
-            path, event, "a" * 40, job="ignored-tests-shards", matrix={"shard": name}, run_id=run_id)
-        first = shard("push", "10", "horizon-world")
-        newer = shard("push", "11", "horizon-world")
-        other = shard("push", "11", "horizon-items")
-        dispatch = shard("workflow_dispatch", "12", "horizon-world")
-        self.assertEqual(first[0], newer[0], "main pushes coalesce per shard")
-        self.assertNotEqual(newer[0], other[0], "different shards never displace each other")
-        self.assertNotEqual(dispatch[0], first[0], "a dispatch's shards are never folded into main's")
-        for _, cancel in (first, newer, other, dispatch):
-            self.assertIs(cancel, False, "a running shard always finishes")
+                self.assertNotEqual(other_branch[0], branch[0], "other refs never displace each other")
 
 if __name__ == "__main__":
     unittest.main()
