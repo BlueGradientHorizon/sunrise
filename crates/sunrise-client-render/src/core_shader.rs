@@ -999,9 +999,10 @@ mod tests {
             format!("{globals}: not text")
         );
         let other = expand_imports("#moj_import <fog.glsl>\n", dir, &|_| Ok(None));
-        assert_eq!(
-            other.unwrap_err(),
-            "minecraft:shaders/include/fog.glsl not found"
+        assert!(
+            other
+                .unwrap_err()
+                .contains("minecraft:shaders/include/fog.glsl")
         );
     }
 

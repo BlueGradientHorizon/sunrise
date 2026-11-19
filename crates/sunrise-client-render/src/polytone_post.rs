@@ -243,7 +243,7 @@ pub enum ExpressionRefusal {
     Reserved(String),
     /// The shaders declare `PolyGlobals` other than its layout
     /// (`expression_blocks::check_poly_globals`).
-    Globals(String),
+    Globals(crate::gfx::expression_blocks::GlobalsRefusal),
 }
 
 impl std::fmt::Display for ExpressionRefusal {
@@ -257,7 +257,7 @@ impl std::fmt::Display for ExpressionRefusal {
                 f,
                 "a shader_modifiers file of its shaders gives {name}, which the game fills"
             ),
-            Self::Globals(e) => f.write_str(e),
+            Self::Globals(e) => e.fmt(f),
         }
     }
 }

@@ -56,14 +56,52 @@ pub(crate) fn block_entry(
     }
 }
 
+/// Why a shader's `PolyGlobals` declaration is refused ([`check_poly_globals`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum GlobalsRefusal {
+    /// It isn't a uniform block.
+    NotBlock,
+    /// It declares this many members, past the block's.
+    PastLayout(usize),
+    /// Its member `declared` stands where `expected` (of another type) is.
+    Member {
+        declared: String,
+        expected: &'static str,
+    },
+}
+
+impl std::fmt::Display for GlobalsRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use sunrise_polytone::globals::{BLOCK, LAYOUT};
+        match self {
+            Self::NotBlock => write!(f, "{BLOCK} is not a uniform block"),
+            Self::PastLayout(n) => {
+                write!(f, "{BLOCK} declares {n} members, past its {}", LAYOUT.len())
+            }
+            Self::Member { declared, expected } => {
+                let (_, kind, at) = (LAYOUT.iter())
+                    .find(|(name, ..)| name == expected)
+                    .expect("a member of the layout");
+                write!(
+                    f,
+                    "{BLOCK}: its member {declared} is not {expected} ({kind:?} at byte {at})"
+                )
+            }
+        }
+    }
+}
+
 /// The one rule for `PolyGlobals` on the core and post paths alike (the game owns its bytes):
 /// each declaration of the block at `binding` in either stage is a struct whose members are
 /// `sunrise_polytone::globals::LAYOUT` or a leading part of it, each of its type: the block is
 /// std140 and the translator takes no member offsets, so the types in order give each member
 /// its offset. The refusal names the first member that isn't.
-pub(crate) fn check_poly_globals(modules: [&naga::Module; 2], binding: u32) -> Result<(), String> {
+pub(crate) fn check_poly_globals(
+    modules: [&naga::Module; 2],
+    binding: u32,
+) -> Result<(), GlobalsRefusal> {
     use naga::{Scalar, TypeInner, VectorSize};
-    use sunrise_polytone::globals::{BLOCK, LAYOUT, Member};
+    use sunrise_polytone::globals::{LAYOUT, Member};
     let kind = |inner: &TypeInner| match *inner {
         TypeInner::Matrix {
             columns: VectorSize::Quad,
@@ -87,21 +125,17 @@ pub(crate) fn check_poly_globals(modules: [&naga::Module; 2], binding: u32) -> R
         });
         for (_, global) in declared {
             let TypeInner::Struct { members, .. } = &module.types[global.ty].inner else {
-                return Err(format!("{BLOCK} is not a uniform block"));
+                return Err(GlobalsRefusal::NotBlock);
             };
             if members.len() > LAYOUT.len() {
-                return Err(format!(
-                    "{BLOCK}: it declares {} members, past its {}",
-                    members.len(),
-                    LAYOUT.len()
-                ));
+                return Err(GlobalsRefusal::PastLayout(members.len()));
             }
-            for (member, (name, want, at)) in members.iter().zip(LAYOUT) {
+            for (member, (name, want, _)) in members.iter().zip(LAYOUT) {
                 if kind(&module.types[member.ty].inner) != Some(want) {
-                    let declared = member.name.as_deref().unwrap_or("?");
-                    return Err(format!(
-                        "{BLOCK}: its member {declared} is not {name} ({want:?} at byte {at})"
-                    ));
+                    return Err(GlobalsRefusal::Member {
+                        declared: member.name.clone().unwrap_or_default(),
+                        expected: name,
+                    });
                 }
             }
         }
@@ -424,14 +458,17 @@ mod tests {
                 &format!("{matrices}    vec4 PolySunAngle;\n"),
                 "PolySunAngle.x"
             )),
-            Err(
-                "PolyGlobals: its member PolySunAngle is not PolySunAngle (Float at byte 128)"
-                    .into()
-            )
+            Err(GlobalsRefusal::Member {
+                declared: "PolySunAngle".into(),
+                expected: "PolySunAngle"
+            })
         );
         assert_eq!(
             check(&declaring("    float PolySunAngle;\n", "PolySunAngle")),
-            Err("PolyGlobals: its member PolySunAngle is not PolyProjMat (Mat4 at byte 0)".into())
+            Err(GlobalsRefusal::Member {
+                declared: "PolySunAngle".into(),
+                expected: "PolyProjMat"
+            })
         );
         let full = "    mat4 PolyProjMat;\n    mat4 PolyModelViewMat;\n    float PolySunAngle;\n\
             float PolyDayTime;\n    float PolyDeltaTime;\n    ivec3 PolyPlayerBlockPos;\n\
@@ -439,15 +476,15 @@ mod tests {
         assert_eq!(check(&declaring(full, "PolySunAngle")), Ok(()));
         assert_eq!(
             check(&declaring(&format!("{full}    float Extra;\n"), "Extra")),
-            Err("PolyGlobals: it declares 8 members, past its 7".into())
+            Err(GlobalsRefusal::PastLayout(8))
         );
         let ivec = full.replace("ivec3 PolyPlayerBlockPos", "vec3 PolyPlayerBlockPos");
         assert_eq!(
             check(&declaring(&ivec, "PolySunAngle")),
-            Err(
-                "PolyGlobals: its member PolyPlayerBlockPos is not PolyPlayerBlockPos (IVec3 at byte 144)"
-                    .into()
-            )
+            Err(GlobalsRefusal::Member {
+                declared: "PolyPlayerBlockPos".into(),
+                expected: "PolyPlayerBlockPos"
+            })
         );
     }
 
@@ -481,7 +518,10 @@ mod tests {
         let wrong = declaring("    float PolySunAngle;\n", "PolySunAngle");
         assert!(matches!(
             resolve("{}", &wrong),
-            Err(ExpressionRefusal::Globals(e)) if e.contains("PolyProjMat")
+            Err(ExpressionRefusal::Globals(GlobalsRefusal::Member {
+                expected: "PolyProjMat",
+                ..
+            }))
         ));
     }
 }
