@@ -18,11 +18,11 @@ pub(super) struct SceneBlock<'a> {
 
 /// A quad in the scene's blocks, before it is seen: its corners, UVs in the
 /// atlas, ABGR colour, and its outward normal.
-struct ProjectedQuad {
+pub(super) struct ProjectedQuad {
     depth: f32,
-    corners: [[f32; 3]; 4],
-    uv: [[f32; 2]; 4],
-    color: u32,
+    pub(super) corners: [[f32; 3]; 4],
+    pub(super) uv: [[f32; 2]; 4],
+    pub(super) color: u32,
 }
 
 pub(super) struct SceneQuad {
@@ -210,30 +210,8 @@ impl Game<'_> {
             }
         }
         extra(&mut quads);
-        let m = scene_matrix(rect, view);
-        let mut seen: Vec<ProjectedQuad> = quads
-            .into_iter()
-            .filter(|q| !q.cull || m.transform_vector3(q.normal).z > 0.0)
-            .map(|q| {
-                let p = q.corners.map(|c| m.transform_point3(c));
-                let depth = p.iter().map(|v| v.z).sum::<f32>() / 4.0;
-                ProjectedQuad {
-                    depth,
-                    corners: p.map(|v| v.to_array()),
-                    uv: q.uv,
-                    color: q.color,
-                }
-            })
-            .collect();
-        // Mod-chosen views and positions may overflow: refuse before any vertex.
-        let finite = |q: &ProjectedQuad| {
-            q.depth.is_finite() && q.corners.iter().flatten().all(|v| v.is_finite())
-        };
-        if !seen.iter().all(finite) {
-            return Err(mod_api::SceneError::BadView);
-        }
-        // Far to near, for the faces that let others show through.
-        seen.sort_by(|a, b| a.depth.total_cmp(&b.depth));
+        let seen =
+            project_quads(quads, scene_matrix(rect, view)).ok_or(mod_api::SceneError::BadView)?;
         let start = batch.vertices.len();
         for face in seen {
             batch.quad_3d(face.corners, face.uv, face.color);
@@ -241,6 +219,34 @@ impl Game<'_> {
         batch.depth_since(start, rect);
         Ok(())
     }
+}
+
+/// `quads` seen through `m`: the faces turned away dropped (those that cull), the rest far to
+/// near, for the faces that let others show through. None when a quad does not stay finite:
+/// a mod's view or position may overflow, and nothing may be drawn then.
+pub(super) fn project_quads(quads: Vec<SceneQuad>, m: Mat4) -> Option<Vec<ProjectedQuad>> {
+    let mut seen: Vec<ProjectedQuad> = quads
+        .into_iter()
+        .filter(|q| !q.cull || m.transform_vector3(q.normal).z > 0.0)
+        .map(|q| {
+            let p = q.corners.map(|c| m.transform_point3(c));
+            let depth = p.iter().map(|v| v.z).sum::<f32>() / 4.0;
+            ProjectedQuad {
+                depth,
+                corners: p.map(|v| v.to_array()),
+                uv: q.uv,
+                color: q.color,
+            }
+        })
+        .collect();
+    let finite = |q: &ProjectedQuad| {
+        q.depth.is_finite() && q.corners.iter().flatten().all(|v| v.is_finite())
+    };
+    if !seen.iter().all(finite) {
+        return None;
+    }
+    seen.sort_by(|a, b| a.depth.total_cmp(&b.depth));
+    Some(seen)
 }
 
 #[cfg(test)]

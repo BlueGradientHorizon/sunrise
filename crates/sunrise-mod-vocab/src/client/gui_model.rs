@@ -5,7 +5,7 @@ use crate::{ItemStack, ModelError, ModelRef};
 
 /// What [`DrawContext::model_3d`](crate::DrawContext::model_3d) draws.
 #[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
+// exhaustive: the two things the game draws in 3D, matched without a wildcard
 #[derive(sunrise_mod_api_macros::Wire)]
 pub enum Gui3dSubject {
     /// An item as `item_stack` draws it in a slot, without its count or decorations: its model's

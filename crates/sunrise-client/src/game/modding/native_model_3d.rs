@@ -3,7 +3,7 @@
 //! The item goes through the slot's own drawing, under a pose with the turn in it; the model
 //! is projected as a scene's blocks are, with a depth of its own.
 use super::Game;
-use super::native_scene::{face_shade, shaded};
+use super::native_scene::{SceneQuad, face_shade, project_quads, shaded};
 use glam::{Mat4, Vec3};
 use mod_api::{Gui3dError, Gui3dSubject, Gui3dView, ModelError};
 use sunrise_client::{hud::HudBatch, world_geometry::row_major_3x4};
@@ -51,7 +51,6 @@ impl Game<'_> {
                 self.draw_item_model_posed(batch, &stack, pose);
             }
             Gui3dSubject::Model(model) => self.draw_model_posed(batch, model, pose)?,
-            _ => unreachable!("Gui3dSubject: unhandled variant"),
         }
         // A turn can overflow a corner: draw nothing rather than something broken.
         if !batch.vertices[start..]
@@ -82,8 +81,7 @@ impl Game<'_> {
             .instance_slot(fields.slot)
             .and_then(|_| self.pack.render.model_catalog.model_by_slot(fields.slot))
             .ok_or(Gui3dError::Model(ModelError::UnknownModel))?;
-        let m = pose * Mat4::from_translation(Vec3::splat(-0.5));
-        let mut seen: Vec<(f32, [[f32; 3]; 4], [[f32; 2]; 4], u32)> = Vec::new();
+        let mut quads = Vec::with_capacity(model.faces.len());
         for face in &model.faces {
             let Some(sprite) = self
                 .pack
@@ -96,42 +94,32 @@ impl Game<'_> {
             let [nx, ny, nz] =
                 sunrise_core::geometry::Direction::ALL[face.quad.facing as usize].normal();
             let normal = Vec3::new(nx as f32, ny as f32, nz as f32);
-            if m.transform_vector3(normal).z <= 0.0 {
-                continue;
-            }
-            let corners = face
-                .quad
-                .positions
-                .map(|p| m.transform_point3(Vec3::from_array(p)));
-            seen.push((
-                corners.iter().map(|c| c.z).sum::<f32>() / 4.0,
-                corners.map(|c| c.to_array()),
-                face.quad.uv.map(|uv| {
+            quads.push(SceneQuad {
+                corners: face.quad.positions.map(Vec3::from_array),
+                uv: face.quad.uv.map(|uv| {
                     [
                         sprite.u0 + uv[0] * (sprite.u1 - sprite.u0),
                         sprite.v0 + uv[1] * (sprite.v1 - sprite.v0),
                     ]
                 }),
-                shaded(0xFFFF_FFFF, face_shade(normal)),
-            ));
+                color: shaded(0xFFFF_FFFF, face_shade(normal)),
+                normal,
+                cull: true,
+            });
         }
-        if seen.iter().any(|(depth, corners, ..)| {
-            !depth.is_finite() || corners.iter().flatten().any(|v| !v.is_finite())
-        }) {
-            return Err(Gui3dError::NotFinite);
-        }
-        // Far to near, for the faces that let others show through.
-        seen.sort_by(|a, b| a.0.total_cmp(&b.0));
+        // The scene's own projection, about the centre of the model's 0 to 1 cube.
+        let seen = project_quads(quads, pose * Mat4::from_translation(Vec3::splat(-0.5)))
+            .ok_or(Gui3dError::NotFinite)?;
         let start = batch.vertices.len();
         let (mut lo, mut hi) = ([f32::INFINITY; 2], [f32::NEG_INFINITY; 2]);
-        for (_, corners, uv, color) in seen {
-            for c in corners {
+        for face in seen {
+            for c in face.corners {
                 for axis in 0..2 {
                     lo[axis] = lo[axis].min(c[axis]);
                     hi[axis] = hi[axis].max(c[axis]);
                 }
             }
-            batch.quad_3d(corners, uv, color);
+            batch.quad_3d(face.corners, face.uv, face.color);
         }
         if batch.vertices.len() > start {
             batch.depth_since(start, [lo[0], lo[1], hi[0], hi[1]]);
