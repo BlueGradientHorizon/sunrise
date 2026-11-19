@@ -1358,9 +1358,14 @@ fn row(setting: Setting, s: &Settings, out: &EffectiveOutput) -> Row<Item> {
         _ => value.map_or(Value::Press, Value::Choice),
     };
     let about = lang::get(setting.text);
-    let chosen = lang::get(description(item, s, out, setting.text));
+    let chosen = match item {
+        Item::Vanilla(Opt::RenderDistance) => {
+            crate::options_ui::render_distance_memory(s.render_distance).map(|t| t.plain())
+        }
+        _ => Some(lang::get(description(item, s, out, setting.text))).filter(|c| *c != about),
+    };
     Row {
-        chosen: (chosen != about).then_some(chosen),
+        chosen,
         ..Row::new(item, name, value)
             .about(about)
             .cost(setting.cost)
@@ -1577,6 +1582,25 @@ mod tests {
     pub(super) const DRAGGED: Output = Output::Event(Event::SliderDrag);
     /// A renderer whose destination offers nothing and whose display reports nothing.
     pub(super) const NONE: EffectiveOutput = EffectiveOutput::NONE;
+
+    #[test]
+    fn render_distance_row_gives_its_memory_past_48_only() {
+        let setting = v(
+            Opt::RenderDistance,
+            Cost::High,
+            "Full-detail terrain range.",
+        );
+        let mut s = Settings {
+            render_distance: 32,
+            ..Settings::default()
+        };
+        assert_eq!(super::row(setting, &s, &NONE).chosen, None);
+        s.render_distance = 128;
+        let (shown, _) = lang::scoped(lang::Language::load(&[], "en_us"), || {
+            super::row(setting, &s, &NONE).chosen.unwrap()
+        });
+        assert!(shown.contains("about 12.8 GB"), "{shown}");
+    }
 
     pub(super) type Ui = Shell<GraphicsScreen>;
     pub(super) fn ui() -> Ui {

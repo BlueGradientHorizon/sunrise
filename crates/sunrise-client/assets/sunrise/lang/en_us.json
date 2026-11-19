@@ -642,6 +642,7 @@
   "sunrise.options.radial_stick.left.about": "The left stick points and you stand still. D-pad Right is under that thumb: pick an opener on the Radial Menu page.",
   "sunrise.options.radial_stick.right": "Right Stick",
   "sunrise.options.radial_stick.right.about": "The right stick points at the slots; the left still walks.",
+  "sunrise.options.renderDistance.memory": "At this distance chunk meshes take about %s GB of memory, in RAM or graphics memory. For long views, set 32 to 48 and turn on LOD Distance: far terrain costs far less.",
   "sunrise.options.repeat_delay": "Navigation Repeat Delay",
   "sunrise.options.repeat_interval": "Navigation Repeat Interval",
   "sunrise.options.scroll_speed": "Menu Scroll Speed",
