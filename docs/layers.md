@@ -85,9 +85,12 @@ reservations, and `sunrise-java-properties` reads and writes Java-properties fil
 and no engine crate outside the portable list. The platform sits on the desktop engine
 (`wgpu`, `winit`, `cpal`), which a handheld console or a browser can't run, so a port there builds on these crates
 instead. They stay that way: the layer check fails when one takes `winit`, `wgpu`, `cpal`, `gilrs`, `arboard` or
-`ureq`, or an engine crate outside the list (#13002). Gameplay itself still lives in `sunrise-client`; step P of
+`ureq`, or an engine crate outside the list (#13002). Most gameplay still lives in `sunrise-client`; step P of
 the [plan](#plan) moves it into `sunrise-gameplay` (what the server jar holds) and `sunrise-client-gameplay`
-(client only) over time. `sunrise-gameplay` is not on the list yet: `portable.pending` in `tools/layers.json`
+(client only) over time. Done so far (#2210, waves 1 and 2): the modules that need no `Game`, such as the mob
+families on `MobLevel` and `CustomSpawnerLevel`, stats, block entity ticks, the server halves of `lan/` and
+`dedicated/`, and occlusion and particle culling. Not done: `LanHost`, the types `World`, `ChunkMap`, `Mob` and
+`ItemEntity`, level events and the dispatchers (wave 3 and later). `sunrise-gameplay` is not on the list yet: `portable.pending` in `tools/layers.json`
 lets it take `sunrise-client-lib` until the types it needs move down, and only ever shrinks.
 
 ## Platform
@@ -737,7 +740,7 @@ mechanical steps (checks, M1–M4) continue meanwhile. M5 and M6 started on 2026
 | M4 | Cosmetics leave `sunrise-client-render` (#13094); Sunrise later removed them, with the player-model hooks they drew through | render → cosmetics | #13094, merged; then removed |
 | M5 | Sunrise's in-game parts (extras, Discord, Friends, ping, benchmark upload) leave `sunrise-client` for Sunrise crates linked into the official build through platform hooks | client, client-lib → friends, telemetry, bench | started 2026-11-09 |
 | M6 | The engine crates stop depending on platform crates: the renderer's shader-pack, pack-format, HDR and theme code moves behind engine extension points; the mod host and agent control move to platform crates; controllers, replay recording and the UI page API move to platform crates on the engine's input-source and screen hooks; the launcher and `sunrise-server` reach the engine through platform API (done, #13905) | the engine → platform and Sunrise → engine exceptions | started 2026-11-09; HDR's part with NikitaMGrimm, below |
-| P | Optional, longer: gameplay into the portable crates. `Game` holds the world and its presentation (renderer, screens, particles, sound): split its state module by module, turn gameplay's direct particle and sound calls into level events as vanilla's server sends them, then move each clean module into `sunrise-gameplay` (server side) or `sunrise-client-gameplay` (client only) | | any time, small PRs |
+| P | Optional, longer: gameplay into the portable crates. `Game` holds the world and its presentation (renderer, screens, particles, sound): split its state module by module, turn gameplay's direct particle and sound calls into level events as vanilla's server sends them, then move each clean module into `sunrise-gameplay` (server side) or `sunrise-client-gameplay` (client only); waves 1 and 2 of #2210 moved the modules that need no `Game`, and `LanHost`, `World`, `ChunkMap`, `Mob`, `ItemEntity` and the level events wait for wave 3+ | | any time, small PRs |
 | R | The Sunrise layer moves to its own repository and ships in every official download (the table above) | | after the split, Ludovic's call |
 
 HDR in M6: moving HDR behind engine extension points moves the frame pipeline (float targets, tone mapping,
