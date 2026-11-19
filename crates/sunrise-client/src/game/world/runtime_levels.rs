@@ -11,8 +11,8 @@ use super::{Dim, Game};
 use mod_api::{LevelRef, RuntimeGenerator, RuntimeLevel, RuntimeLevelError};
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::path::Path;
-use std::sync::{LazyLock, Mutex};
-use sunrise_client::chunk::{ExtraLevel, LevelShape};
+use std::sync::{Arc, LazyLock, Mutex};
+use sunrise_client::chunk::{ExtraLevel, ExtraLevelTable, LevelShape};
 use sunrise_core::LevelKey;
 use sunrise_world::{
     dimension_type::DimensionFacts,
@@ -273,21 +273,48 @@ fn mod_stem(dimension_type: &str, name: &str) -> serde_json::Value {
 }
 
 /// How many historical extra-level shape tables the process keeps so that a recent reopen can
-/// reuse the same table. `LevelShapes` is `Copy` because render and network state retain it, so
-/// its extra entries still need process-lifetime storage. The cache is bounded by the same cap as
-/// live runtime levels; older table layouts are not retained (#1367).
+/// reuse the same table. Reader snapshots share ownership with this bounded cache (#1367).
 const RETAINED_TABLE_CAP: usize = DEFAULT_CAP;
 
-/// What runtime levels' opens retain in the game's `&'static` tables. Names are the process-wide
-/// dimension-key identities, and facts are keyed by the startup-known dimension type rather than
-/// by each runtime level id. Only shape-table layouts need a bounded history (#1367).
+/// Recent extra-level shape tables. The cache owns one Arc per entry, while each current render or
+/// network snapshot owns another; eviction drops only the cache's Arc.
+#[derive(Default)]
+pub(super) struct ShapeTableCache {
+    tables: VecDeque<Arc<[ExtraLevel]>>,
+}
+
+impl ShapeTableCache {
+    pub(super) fn intern(&mut self, levels: Vec<ExtraLevel>) -> Arc<[ExtraLevel]> {
+        if levels.is_empty() {
+            return Arc::from([]);
+        }
+        if let Some(index) = self
+            .tables
+            .iter()
+            .position(|table| table.as_ref() == levels.as_slice())
+        {
+            let table = self.tables.remove(index).expect("the table was found");
+            self.tables.push_back(Arc::clone(&table));
+            return table;
+        }
+        let table: Arc<[ExtraLevel]> = Arc::from(levels);
+        if self.tables.len() >= RETAINED_TABLE_CAP {
+            self.tables.pop_front();
+        }
+        self.tables.push_back(Arc::clone(&table));
+        table
+    }
+}
+
+/// What runtime levels' opens retain. Names are the process-wide dimension-key identities, and
+/// facts are keyed by startup-known dimension type rather than by runtime level id. Shape tables
+/// are shared with readers and kept in a bounded cache (#1367).
 #[derive(Default)]
 struct Leaked {
     /// The facts of each dimension type a runtime level can name. Runtime level types are known
     /// at startup, so this does not grow with the number of ids opened and closed.
     types: HashMap<String, &'static DimensionFacts>,
-    /// Recent tables of extra levels an open or unload made, reused when the same set comes back.
-    tables: VecDeque<&'static [ExtraLevel]>,
+    tables: ShapeTableCache,
 }
 
 static LEAKED: LazyLock<Mutex<Leaked>> = LazyLock::new(Mutex::default);
@@ -317,34 +344,20 @@ fn leaked_level(
     (id_name, type_name, facts)
 }
 
-/// `levels` as a `&'static` table: one retained before with the same levels, or a new one. The
-/// oldest layout is discarded once the bounded history is full.
-fn leaked_table(levels: Vec<ExtraLevel>) -> &'static [ExtraLevel] {
-    if levels.is_empty() {
-        return &[];
-    }
-    let mut leaked = LEAKED.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(index) = leaked
+/// `levels` as a shared table: one retained before with the same levels, or a new one. The oldest
+/// layout is released from the cache once the bounded history is full; readers keep their own Arc.
+fn retained_table(levels: Vec<ExtraLevel>) -> Arc<[ExtraLevel]> {
+    LEAKED
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
         .tables
-        .iter()
-        .position(|table| *table == levels.as_slice())
-    {
-        let table = leaked.tables.remove(index).expect("the table was found");
-        leaked.tables.push_back(table);
-        return table;
-    }
-    let table: &'static [ExtraLevel] = levels.leak();
-    if leaked.tables.len() == RETAINED_TABLE_CAP {
-        leaked.tables.pop_front();
-    }
-    leaked.tables.push_back(table);
-    table
+        .intern(levels)
 }
 
 #[cfg(test)]
 pub(super) fn retained_metadata_counts() -> (usize, usize) {
     let leaked = LEAKED.lock().unwrap_or_else(|e| e.into_inner());
-    (leaked.types.len(), leaked.tables.len())
+    (leaked.types.len(), leaked.tables.tables.len())
 }
 
 #[cfg(test)]
@@ -845,9 +858,9 @@ impl Game<'_> {
             dimension_type,
             shape,
         });
-        self.level_shapes.extra = leaked_table(extras);
+        self.level_shapes.extra = ExtraLevelTable::from_shared(retained_table(extras));
         if let Some(host) = self.lan.as_mut() {
-            host.hub.config.levels = self.level_shapes;
+            host.hub.config.levels = self.level_shapes.clone();
             host.hub.config.level_seeds = self.levels.runtime.seeds();
         }
         if let Ok(key) = LevelKey::parse(id) {
@@ -953,9 +966,9 @@ impl Game<'_> {
             .copied()
             .filter(|level| level.id != id)
             .collect();
-        self.level_shapes.extra = leaked_table(extras);
+        self.level_shapes.extra = ExtraLevelTable::from_shared(retained_table(extras));
         if let Some(host) = self.lan.as_mut() {
-            host.hub.config.levels = self.level_shapes;
+            host.hub.config.levels = self.level_shapes.clone();
             host.hub.config.level_seeds = self.levels.runtime.seeds();
             host.hub.close_views_of(id);
         }

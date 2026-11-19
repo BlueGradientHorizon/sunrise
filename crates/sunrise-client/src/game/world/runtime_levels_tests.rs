@@ -7,7 +7,7 @@ use mod_api::{
     RuntimeGenerator, RuntimeLevel, RuntimeLevelError,
 };
 use std::sync::atomic::{AtomicU8, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 
 fn flat() -> RuntimeLevel {
     RuntimeLevel::new("minecraft:overworld", RuntimeGenerator::Flat, 1)
@@ -40,6 +40,81 @@ fn the_default_cap_is_64() {
     assert_eq!(
         table.queue_open("test", "cap:l64", flat()),
         Err(RuntimeLevelError::CapReached)
+    );
+}
+
+#[test]
+fn evicted_shape_tables_free_after_the_last_reader() {
+    use sunrise_client::chunk::{ExtraLevel, ExtraLevelTable, LevelShape, LevelShapes};
+
+    let limit = super::runtime_levels::RETAINED_TABLE_LIMIT;
+    let mut cache = super::runtime_levels::ShapeTableCache::default();
+    let ids: Vec<&'static str> = (0..=limit)
+        .map(|index| {
+            let id = format!("table-cycle:level-{index}");
+            let key = mod_api::__private::dimension_key(&id);
+            mod_api::__private::dimension_id(key).expect("the test interned this id")
+        })
+        .collect();
+    let mut tracked: Vec<Weak<[ExtraLevel]>> = Vec::new();
+    let mut first_reader = None;
+    let mut first_table = None;
+    let mut live_after_round = None;
+
+    for round in 0..3 {
+        for (index, &id) in ids.iter().enumerate() {
+            let table = cache.intern(vec![ExtraLevel {
+                id,
+                dimension_type: "minecraft:overworld",
+                shape: LevelShape::OVERWORLD,
+            }]);
+            let weak = Arc::downgrade(&table);
+            if !tracked.iter().any(|known| Weak::ptr_eq(known, &weak)) {
+                tracked.push(weak.clone());
+            }
+            if round == 0 && index == 0 {
+                first_table = Some(weak);
+                let shapes = LevelShapes {
+                    extra: ExtraLevelTable::from_shared(Arc::clone(&table)),
+                    ..LevelShapes::VANILLA
+                };
+                first_reader = Some(shapes.clone());
+            }
+        }
+
+        let live = tracked
+            .iter()
+            .filter(|table| table.strong_count() > 0)
+            .count();
+        assert_eq!(
+            live,
+            limit + 1,
+            "the cache retains {limit} tables and the evicted first table has one reader"
+        );
+        if let Some(previous) = live_after_round {
+            assert_eq!(live, previous, "outstanding storage grew on round {round}");
+        }
+        live_after_round = Some(live);
+    }
+
+    let first_table = first_table.expect("the first table was allocated");
+    assert_eq!(
+        first_reader.as_ref().unwrap().extra[0].id,
+        ids[0],
+        "a reader still sees its immutable snapshot after cache eviction"
+    );
+    drop(first_reader);
+    assert!(
+        first_table.upgrade().is_none(),
+        "eviction plus the final reader drop releases the table allocation"
+    );
+    assert_eq!(
+        tracked
+            .iter()
+            .filter(|table| table.strong_count() > 0)
+            .count(),
+        limit,
+        "only the bounded cache's tables remain"
     );
 }
 
@@ -1328,7 +1403,7 @@ fn reopening_one_id_with_any_seed_reuses_the_metadata_its_first_open_leaked() {
                 game.levels.runtime.seeds().get("cycle:a").copied(),
                 Some(seed)
             );
-            let table = game.level_shapes.extra;
+            let table = game.level_shapes.extra.clone();
             let level = table.iter().find(|level| level.id == "cycle:a").unwrap();
             let facts = sunrise_world::dimension_type::DimensionFacts::of_level(key);
             let leaked = (
