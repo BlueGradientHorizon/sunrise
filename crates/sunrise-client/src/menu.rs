@@ -3095,6 +3095,40 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_handled_replacement_goes_through_the_clicked_slots_rules() {
+        with_menu(Kind::Grindstone, |env, menu| {
+            menu.creative = false;
+            let handled = |clicked| StackedOutcome {
+                canceled: true,
+                handled: true,
+                clicked: Some(clicked),
+                ..StackedOutcome::default()
+            };
+            // The result slot's onTake would not run: nothing goes in, nothing is taken out.
+            menu.set_slot(env, 2, stack("dirt", 1));
+            for clicked in [None, stack("stone", 1)] {
+                let outcome = handled(clicked);
+                let env = Env {
+                    stacked: Some(&outcome),
+                    ..*env
+                };
+                menu.click(&env, 2, 0, Input::Pickup).unwrap();
+                assert!(outcome.refused.get());
+                assert_eq!(menu.slot(2), stack("dirt", 1).as_ref());
+            }
+            // An input takes a damageable item the slot's own rules admit, and only that.
+            let outcome = handled(stack("dirt", 1));
+            let env = Env {
+                stacked: Some(&outcome),
+                ..*env
+            };
+            menu.click(&env, 0, 0, Input::Pickup).unwrap();
+            assert!(outcome.refused.get());
+            assert_eq!(menu.slot(0), None);
+        });
+    }
+
+    #[test]
     fn menu_keeps_the_open_window_registry_identity() {
         let mut menu = Menu::new(Kind::Chest(3));
         assert_eq!(menu.registry_id(), None);

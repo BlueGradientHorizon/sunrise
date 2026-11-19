@@ -16,7 +16,10 @@ use crate::game::transactions::decision::{
     StaleReason,
 };
 use mod_api::item::menu::{StackResult, StackedOnOtherResult};
-use std::{cell::RefCell, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 use sunrise_client::menu::{
     Env, Menu, PlanningRules, RuleAnswers, StackedClick, StackedOutcome, StoredRules,
 };
@@ -38,6 +41,8 @@ struct Shared<'p> {
     current: Current<'p>,
     perform: RefCell<Option<Perform<'p>>>,
     answer: RefCell<Option<StackedOutcome>>,
+    /// The click found its slot's rules refusing the mods' replacement (`StackedOutcome::refused`).
+    refused: Cell<bool>,
 }
 
 /// The decision's target: an id that names the route's menu (a second click on it while this one
@@ -103,6 +108,9 @@ impl<'a, 'g> ActionTarget<GameHost<'a, 'g>> for PickupTarget<'_> {
         let perform = self.shared.perform.take().expect("a pickup runs once");
         let answer = self.shared.answer.take();
         perform(host.game, answer.as_ref());
+        self.shared
+            .refused
+            .set(answer.is_some_and(|a| a.refused.get()));
     }
 }
 
@@ -157,6 +165,7 @@ impl Game<'_> {
             current: Box::new(current),
             perform: RefCell::new(Some(Box::new(perform))),
             answer: RefCell::new(None),
+            refused: Cell::new(false),
         });
         let target = PickupTarget {
             id: route,
@@ -177,9 +186,17 @@ impl Game<'_> {
                 move |host| fire(host.game, &fired),
             )
         };
-        self.transaction_close(&seal, matches!(outcome, Ok(Outcome::Applied)));
+        // A replacement the slot's rules refused is undone with everything the listeners wrote.
+        let ran = matches!(outcome, Ok(Outcome::Applied)) && !shared.refused.get();
+        self.transaction_close(&seal, ran);
         match outcome {
-            Ok(Outcome::Applied) => Pickup::Ran,
+            Ok(Outcome::Applied) if ran => Pickup::Ran,
+            Ok(Outcome::Applied) => {
+                log::warn!(
+                    "item_stacked_on_other: the slot refused the replacement; nothing changed"
+                );
+                Pickup::Refused
+            }
             Ok(other) => {
                 log::warn!(
                     "item_stacked_on_other: the click was refused ({other:?}); nothing changed"
@@ -250,6 +267,7 @@ fn answer(
         handled: result.handled,
         carried: convert(&result.carried)?,
         clicked: convert(&result.clicked)?,
+        ..StackedOutcome::default()
     })
 }
 

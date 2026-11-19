@@ -36,6 +36,10 @@ pub struct StackedOutcome {
     pub carried: Option<Option<ItemStack>>,
     /// The clicked slot after a cancelled, handled click.
     pub clicked: Option<Option<ItemStack>>,
+    /// Set by the click when the clicked slot's own rules refuse `clicked` (it changes a slot
+    /// whose `onTake` would not run, takes what `mayPickup` keeps, or puts in what `mayPlace` or
+    /// the slot's size refuses): the click changed nothing and its decision is undone.
+    pub refused: std::cell::Cell<bool>,
 }
 /// Who and where a `menu_slot_rules` ask is about: the player whose menu it is, the menu's
 /// block, the container the asked slot indexes, and the menu's own containers' slots as they
