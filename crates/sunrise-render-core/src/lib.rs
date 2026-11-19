@@ -25,3 +25,6 @@ pub use entity::{
     TRANSLUCENT_GLINT_ITEM_OVERLAY, TRANSLUCENT_ITEM_OVERLAY, TRANSLUCENT_PARTICLE_OVERLAY,
     WATER_MASK_OVERLAY, WHITE_OVERLAY, is_native_terrain, skin_runs, stage_light, white_alpha,
 };
+
+pub mod frame_view;
+pub use frame_view::{FogView, MAX_DYNAMIC_LIGHTS, SkyView, UniformFrameView};

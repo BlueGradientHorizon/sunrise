@@ -26,7 +26,7 @@ use super::pack_entities::{PROGRAMS, PackEntities, PackEntitiesExt};
 use super::pack_images;
 use super::pack_sky::PackSky;
 use super::pack_textures;
-use super::pack_uniforms::{self, FrameUniforms, PackInputs};
+use super::pack_uniforms::{self, FrameUniforms, FrameUniformsExt, PackInputs};
 
 mod packed;
 
@@ -5308,7 +5308,7 @@ impl PackPost {
             .center_depth
             .get_or_insert_with(|| super::pack_center_depth::CenterDepth::new(device))
             .collect(device);
-        self.uniforms.update(frame, inputs, size);
+        self.uniforms.update_from_client_frame(frame, inputs, size);
         // `smooth` starts on the first frame that knows the camera's biome.
         self.custom.world_frame(inputs.biome_known);
         self.uniforms.eval_custom(&mut self.custom);
