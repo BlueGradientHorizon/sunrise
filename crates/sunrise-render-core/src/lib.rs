@@ -13,5 +13,5 @@ pub use frustum::{Cull, Frusta, Frustum, JoinedFrusta, MAX_WORLD_VIEWS};
 pub use terrain::{
     BRIGHT, CHUNK_VISIBILITY_THRESHOLD, EntitySpan, FLAT_NORMAL, INCANDESCENT, LOW, NO_SPECULAR,
     OPAQUE_LAYER, SectionKey, TerrainSource, TerrainVertex, UV_STEPS, VERY_BRIGHT, Vertex, WHOLE,
-    chunk_visibility, emitting, fade_millis, section_instance,
+    WeatherTime, WeatherVertex, chunk_visibility, emitting, fade_millis, section_instance,
 };

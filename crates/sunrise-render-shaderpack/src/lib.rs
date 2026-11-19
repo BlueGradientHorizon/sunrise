@@ -8,6 +8,7 @@ pub mod pack_images;
 pub mod pack_lines;
 pub mod pack_shadow;
 pub mod pack_timing;
+pub mod pack_weather;
 pub(crate) mod timing;
 
 #[cfg(test)]

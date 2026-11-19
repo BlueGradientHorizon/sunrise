@@ -114,7 +114,7 @@ impl Renderer {
                     .prepare(
                         &self.device,
                         &mut encoder,
-                        &mut self.uploads,
+                        |enc, buf, offset, data| self.uploads.buffer(enc, buf, offset, data),
                         atlas,
                         frame.weather,
                         frame.weather_time,

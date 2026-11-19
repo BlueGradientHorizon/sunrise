@@ -25,5 +25,3 @@ pub(super) struct FadeInputs<'a> {
     pub(super) uploaded: &'a FxHashMap<super::SectionKey, Instant>,
     pub(super) retiring: &'a crate::fast_hash::FxHashSet<super::SectionKey>,
 }
-/// `LevelRenderer.CHUNK_VISIBILITY_THRESHOLD`: a section's block entities wait for it.
-pub(super) const CHUNK_VISIBILITY_THRESHOLD: f32 = 0.3;

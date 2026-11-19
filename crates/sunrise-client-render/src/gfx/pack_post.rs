@@ -577,15 +577,7 @@ pub(super) struct Clouds {
     pub quads: u32,
 }
 
-/// This frame's rain and snow, when the pack draws them: their vertices, the quad indices, the
-/// quads of each kind (rain, snow), each kind's sprite, and a number that changes with them.
-pub(super) struct Weather {
-    pub vertices: wgpu::Buffer,
-    pub indices: wgpu::Buffer,
-    pub quads: [std::ops::Range<u32>; 2],
-    pub sprites: [Option<wgpu::TextureView>; 2],
-    pub generation: u64,
-}
+pub(super) use super::pack_weather::Weather;
 
 /// Shadow cache: the key of the shadow map the shadow targets hold. Only the
 /// shadow passes write those targets, so while the key matches they still hold
