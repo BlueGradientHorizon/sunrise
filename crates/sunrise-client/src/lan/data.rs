@@ -816,24 +816,6 @@ impl SyncData {
         Ok(sync)
     }
 
-    /// MinecraftServer.reloadResources: `/reload` keeps the synchronized
-    /// registries the server started with (`kept`'s, its
-    /// LayeredRegistryAccess) and reads the tags against them
-    /// (TagLoader.loadTagsForExistingRegistries), the world's packs' as well
-    /// (`overlay`); the rest stays reloaded.
-    pub fn keep_registries(
-        &mut self,
-        resources: &Path,
-        kept: &SyncData,
-        overlay: &sunrise_world::loot::PackOverlay,
-    ) {
-        self.dynamic = kept.dynamic.clone();
-        self.registries = kept.registries.clone();
-        let root = resources.join("data/minecraft");
-        self.tags = Self::load_tags(&root, &self.builtin, &self.dynamic, overlay.conditions);
-        Self::merge_pack_tags(&mut self.tags, &root, overlay, &self.builtin, &self.dynamic);
-    }
-
     /// The creative builder's server view: the same ordered entries and current tags a
     /// joining client receives. The network's name-only index omits the decoded payloads.
     pub fn creative_holders(&self) -> sunrise_items::creative_catalog::Holders {
@@ -2026,7 +2008,10 @@ mod tests {
             r#"{"pack":{"description":"Moon","pack_format":1}}"#,
         );
         write("data/demo/world_clock/moon.json", "{}");
-        write("data/minecraft/world_clock/the_end.json", "{}");
+        write(
+            "data/minecraft/world_clock/the_end.json",
+            r#"{"from":"pack"}"#,
+        );
         write(
             "data/demo/dimension_type/moon.json",
             r##"{
@@ -2038,10 +2023,17 @@ mod tests {
             }"##,
         );
         let packs = crate::datapack::discover(&world);
-        let files: Vec<_> = crate::datapack::DataStore::load(&packs.iter().collect::<Vec<_>>())
-            .files
-            .into_iter()
-            .collect();
+        let mut files = crate::datapack::DataStore::load(&packs.iter().collect::<Vec<_>>()).files;
+        // Native contributions sit below the world's enabled packs.
+        files
+            .get_mut("world_clock/minecraft:the_end")
+            .unwrap()
+            .insert(
+                0,
+                br#"{"neoforge:conditions":[{"type":"neoforge:never"}]}"#.to_vec(),
+            );
+        files.insert("world_clock/test:frozen".into(), vec![b"{}".to_vec()]);
+        let files: Vec<_> = files.into_iter().collect();
         let _ = std::fs::remove_dir_all(&world);
         let sync = SyncData::load(
             &root,
@@ -2067,17 +2059,25 @@ mod tests {
             clocks
                 .iter()
                 .find(|e| e.id == name)
-                .map(|e| e.data.is_some())
+                .map(|e| e.data.as_ref())
         };
-        assert_eq!(
-            sent(&clock),
-            Some(true),
+        assert!(
+            sent(&clock).is_some_and(|data| data.is_some()),
             "no client knows the clock {clock} the dimension names"
         );
-        assert_eq!(sent("minecraft:the_end"), Some(true), "the replaced clock");
+        assert_eq!(
+            sent("minecraft:the_end"),
+            Some(Some(&json_to_nbt(&serde_json::json!({"from":"pack"})))),
+            "the enabled pack's clock wins over the false-conditioned native clock"
+        );
+        assert_eq!(
+            sent("test:frozen"),
+            Some(Some(&json_to_nbt(&serde_json::json!({})))),
+            "a clock only the native mod gives"
+        );
         assert_eq!(
             sent("minecraft:overworld"),
-            Some(false),
+            Some(None),
             "the untouched clock"
         );
     }
@@ -2397,3 +2397,46 @@ mod component_tests {
 
 #[path = "data_condition_filter.rs"]
 mod condition_filter;
+
+#[cfg(test)]
+mod transient_dialog_tests {
+    use super::*;
+    #[test]
+    fn a_dialog_naming_a_transient_component_refuses_the_registry_load() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join("items.json"), b"{}").unwrap();
+        let defaults = sunrise_world::item_defaults::read(root.path()).unwrap();
+        let files = [
+            (
+                "dialog/test:bad_item".into(),
+                vec![br#"{"type":"minecraft:notice","title":"bad","body":[{"type":"minecraft:item","item":{"id":"minecraft:stone","components":{"!minecraft:map_post_processing":{}}}}]}"#.to_vec()],
+            ),
+            (
+                "dialog/test:bad_hover".into(),
+                vec![br#"{"type":"minecraft:notice","title":{"text":"bad","hover_event":{"action":"show_item","id":"minecraft:stone","components":{"minecraft:additional_trade_cost":3}}}}"#.to_vec()],
+            ),
+            (
+                "dialog/test:good".into(),
+                vec![br#"{"type":"minecraft:notice","title":"kept","body":[{"type":"minecraft:item","item":{"id":"minecraft:stone","components":{"minecraft:tooltip_display":{"hidden_components":["minecraft:creative_slot_lock"]}}}}]}"#.to_vec()],
+            ),
+        ];
+        let conditions = sunrise_world::conditions::LoadConditions::new([]);
+        let (_, admitted) = PackRegistryDefinitions::stage(
+            root.path(),
+            &defaults,
+            &sunrise_world::loot::PackOverlay {
+                files: &files,
+                conditions: &conditions,
+            },
+            &BTreeMap::new(),
+            &Default::default(),
+            |_| true,
+        );
+        let error = admitted.unwrap_err();
+        assert!(error.contains("minecraft:dialog:"), "{error}");
+        assert!(error.contains("test:bad_item: "), "{error}");
+        assert!(error.contains("test:bad_hover: "), "{error}");
+        assert!(error.contains("minecraft:map_post_processing"), "{error}");
+        assert!(!error.contains("test:good"), "{error}");
+    }
+}

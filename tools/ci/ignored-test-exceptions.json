@@ -1,13 +1,5 @@
 [
   {
-    "package": "cargo-sunrise-mod",
-    "target": "test:internals",
-    "test": "write_launcher_actor",
-    "path": "crates/cargo-sunrise-mod/tests/internals.rs",
-    "reason": "fixture writer subprocess only",
-    "rationale": "Existing explicit manual runner subprocess in tools/ci/ignored-tests/manual-cargo-sunrise-mod.txt: fixture writer subprocess only. Not selected by daily shards."
-  },
-  {
     "package": "sunrise-client",
     "target": "lib",
     "test": "game::attachment_instruction_bench::attachment_instruction_count",
@@ -126,6 +118,14 @@
     "path": "crates/sunrise-client/src/game/blocks/maps/save_tests.rs",
     "reason": "run through tools/test_map_saved_data_parity.py",
     "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_map_saved_data_parity.py supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
+  },
+  {
+    "package": "sunrise-client",
+    "target": "lib",
+    "test": "game::block_entity_reach_draw_tests::block_entity_draws_match_the_vanilla_cases",
+    "path": "crates/sunrise-client/src/game/blocks/block_entity_reach_draw_tests.rs",
+    "reason": "run through tools/test_block_entity_reach_parity.py",
+    "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_block_entity_reach_parity.py writes the cases and the vanilla oracle's answers and passes them in SUNRISE_REACH_DRAW_CASES and SUNRISE_REACH_DRAW_OUT. Run bare as a daily test it has no cases and panics."
   },
   {
     "package": "sunrise-client",

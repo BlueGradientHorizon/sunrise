@@ -14,8 +14,8 @@ use crate::connected::{Overlay, Pick, TileLayer};
 use crate::models::StateModels;
 use crate::sprites::Sprites;
 use std::{collections::HashMap, num::NonZeroU16};
+use sunrise_connected::{self as connect, Axes, Face};
 use sunrise_optifine::cem::json::Json;
-use sunrise_optifine::ctm::connect::{self, Axes, Face};
 use sunrise_optifine::fusion::{
     Connection, Layout, Tiles,
     model::{Connections, ModelType},
@@ -240,7 +240,7 @@ impl FusionTextures {
         // The layers models show the sheets as: only their models are read.
         let shown: std::collections::HashSet<u32> = textures
             .keys()
-            .filter_map(|name| sprites.layers.get(name).copied())
+            .filter_map(|name| sprites.model_layer(name))
             .collect();
         let mut models: HashMap<String, Vec<ModelFace>> = HashMap::new();
         let mut sheets: Vec<(Sheet, Connection)> = Vec::new();

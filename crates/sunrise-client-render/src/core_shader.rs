@@ -11,7 +11,11 @@
 //!   into a texture and a sampler object, combined again where the sampler is named;
 //! - the vertex inputs become globals the caller's [`Glue`] fills before the pack's `main`
 //!   (renamed `hz_main`) runs, and `gl_VertexID` and `gl_VertexIndex` read the glue's expression;
-//! - varyings get locations by name across the stages, the fragment output location 0.
+//! - varyings get locations by name across the stages, the fragment output location 0;
+//! - an integer texel buffer (26.3's clouds read `uniform isamplerBuffer CloudFaces;`) becomes a
+//!   read-only storage buffer of `int`s (`uint`s for `usamplerBuffer`), and `texelFetch` on it
+//!   reads one into the first channel of an `ivec4`: wgpu has no texel buffers. Like any block a
+//!   pipeline gives, it is bound at [`other_binding`], and refused when not given.
 
 use std::collections::HashSet;
 use std::fmt::Write;
@@ -62,9 +66,106 @@ pub struct CoreProgram {
     pub other: Vec<String>,
 }
 
+/// The integer texel buffers a stage declares (`uniform isamplerBuffer` or `usamplerBuffer`).
+fn texel_buffers(text: &str) -> HashSet<&str> {
+    text.lines()
+        .flat_map(declaration_lines)
+        .filter_map(declaration)
+        .filter(|d| d.storage == "uniform" && matches!(d.ty, "isamplerBuffer" | "usamplerBuffer"))
+        .map(|d| d.name)
+        .collect()
+}
+
+/// `texelFetch(Buffer, i)` on each integer texel buffer as `hz_fetch_Buffer(i)`, which the
+/// buffer's declaration defines (see `rewrite`); `texelFetch` on anything else is left alone.
+/// One pass over the text, however many buffers it declares: each `texelFetch` is looked at
+/// once, its first argument's name looked up among them.
+fn texel_fetches(text: &str) -> String {
+    let buffers = texel_buffers(text);
+    if buffers.is_empty() {
+        return text.to_owned();
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find("texelFetch") {
+        out.push_str(&rest[..at]);
+        let after = &rest[at + "texelFetch".len()..];
+        // A name only ending in `texelFetch` is not it; one only starting with it has no `(`
+        // next, so it isn't rewritten either.
+        let whole = !rest[..at].chars().next_back().is_some_and(is_ident);
+        let args = after.trim_start().strip_prefix('(').map(str::trim_start);
+        let name = args.map(|a| &a[..a.find(|c: char| !is_ident(c)).unwrap_or(a.len())]);
+        match (args, name) {
+            (Some(args), Some(name)) if whole && buffers.contains(name) => {
+                let tail = args[name.len()..].trim_start();
+                if let Some(tail) = tail.strip_prefix(',') {
+                    write!(out, "hz_fetch_{name}(").unwrap();
+                    rest = tail;
+                    continue;
+                }
+                out.push_str("texelFetch");
+                rest = after;
+            }
+            _ => {
+                out.push_str("texelFetch");
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
 impl CoreProgram {
     /// Whether either stage reads the resource at `binding` of set 0 (a sampler's texture,
     /// [`SAMPLERS`]), not only declares it.
+    /// The stages whose entry points read the resource at `binding` of set 0, through any
+    /// function they call: what a pipeline layout must make that binding visible to. Empty
+    /// for one a stage only declares (or the preprocessor kept but nothing reads).
+    pub fn stages_reading(&self, binding: u32) -> wgpu::ShaderStages {
+        let mut stages = wgpu::ShaderStages::NONE;
+        for (module, stage) in [
+            (&self.vertex, wgpu::ShaderStages::VERTEX),
+            (&self.fragment, wgpu::ShaderStages::FRAGMENT),
+        ] {
+            if entry_points_read(module, binding) {
+                stages |= stage;
+            }
+        }
+        stages
+    }
+
+    /// Whether every stage that reads the block at `binding` of set 0 declares it as one float
+    /// (`uniform Name { float value; };`), what an expression uniform holds. A stage that only
+    /// declares it, whatever its shape, binds nothing of it.
+    pub fn is_float_block(&self, binding: u32) -> bool {
+        [&self.vertex, &self.fragment]
+            .into_iter()
+            .filter(|module| entry_points_read(module, binding))
+            .all(|module| {
+                module
+                    .global_variables
+                    .iter()
+                    .filter(|(_, g)| {
+                        g.binding
+                            .as_ref()
+                            .is_some_and(|b| b.group == 0 && b.binding == binding)
+                    })
+                    .all(|(_, g)| match &module.types[g.ty].inner {
+                        naga::TypeInner::Struct { members, .. } => {
+                            matches!(
+                                members.as_slice(),
+                                [member] if matches!(
+                                    module.types[member.ty].inner,
+                                    naga::TypeInner::Scalar(naga::Scalar::F32)
+                                )
+                            )
+                        }
+                        _ => false,
+                    })
+            })
+    }
+
     pub fn reads_binding(&self, binding: u32) -> bool {
         [&self.vertex, &self.fragment].into_iter().any(|module| {
             let bound: HashSet<naga::Handle<naga::GlobalVariable>> = module
@@ -91,6 +192,24 @@ impl CoreProgram {
 /// The binding of the `index`th block or sampler of [`CoreProgram::other`].
 pub fn other_binding(index: usize) -> u32 {
     OTHER_BINDINGS + 2 * index as u32
+}
+
+/// Whether an entry point of `module` reads the resource at `binding` of set 0, through any
+/// function it calls (naga's per entry point use). A module that doesn't validate (it did when
+/// it was translated) counts as reading it.
+fn entry_points_read(module: &naga::Module, binding: u32) -> bool {
+    let Some((handle, _)) = module.global_variables.iter().find(|(_, g)| {
+        g.binding
+            .as_ref()
+            .is_some_and(|b| b.group == 0 && b.binding == binding)
+    }) else {
+        return false;
+    };
+    let Ok(info) = Validator::new(ValidationFlags::empty(), Capabilities::all()).validate(module)
+    else {
+        return true;
+    };
+    (0..module.entry_points.len()).any(|i| !info.get_entry_point(i)[handle].is_empty())
 }
 
 /// The shaders of one pipeline (`text.vsh`, `text.fsh`) with vanilla's `defines` for it.
@@ -145,8 +264,11 @@ pub fn translate_core_at(
         vertex,
         fragment,
     } = *sources;
-    let vertex_text = glsl_fixups::fixups(&strip_comments(&expand(vertex, dir, include)?));
-    let fragment_text = glsl_fixups::fixups(&strip_comments(&expand(fragment, dir, include)?));
+    let stage = |text: &str| -> Result<String, String> {
+        let text = glsl_fixups::fixups(&strip_comments(&expand(text, dir, include)?));
+        Ok(texel_fetches(&text))
+    };
+    let (vertex_text, fragment_text) = (stage(vertex)?, stage(fragment)?);
     let mut names = Names::default();
     let vertex_code = rewrite(&vertex_text, ShaderStage::Vertex, glue, &mut names)
         .map_err(|e| format!("vertex shader: {e}"))?;
@@ -477,6 +599,21 @@ fn rewrite(
             };
             let qualifiers = decl.qualifiers.join(" ");
             match decl.storage {
+                "uniform" if matches!(decl.ty, "isamplerBuffer" | "usamplerBuffer") => {
+                    let binding = names.other_binding(decl.name);
+                    let name = decl.name;
+                    let (scalar, vector) = if decl.ty == "isamplerBuffer" {
+                        ("int", "ivec4")
+                    } else {
+                        ("uint", "uvec4")
+                    };
+                    writeln!(
+                        out,
+                        "layout(std430, set = 0, binding = {binding}) readonly buffer hz_buffer_{name} {{ {scalar} hz_data_{name}[]; }};\n\
+                         {vector} hz_fetch_{name}(int i) {{ return {vector}(hz_data_{name}[i], 0, 0, 1); }}"
+                    )
+                    .unwrap();
+                }
                 "uniform" if decl.ty == "sampler2D" => {
                     let binding = SAMPLERS
                         .iter()
@@ -1060,3 +1197,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "core_shader_texel_tests.rs"]
+mod texel_buffer_tests;

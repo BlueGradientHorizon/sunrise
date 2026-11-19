@@ -2,7 +2,6 @@
 //!
 //! This is not a playable game. Differential checks cover only the operations
 //! listed in docs/rust-parity.md; the rest of vanilla remains unimplemented.
-// Only the runtime-gated CRC32 SIMD module opts out.
 #![deny(unsafe_code)]
 
 pub mod arm_pose;
@@ -22,7 +21,10 @@ pub mod geometry;
 pub mod identifier;
 pub mod java_character;
 pub mod java_float_parse;
+// The map's slab and table are the crate's only unsafe code; every block carries its SAFETY note.
+#[allow(unsafe_code)]
 pub mod java_hash_map;
+pub mod java_hash_set;
 pub mod java_number;
 pub mod jmath;
 pub mod json_nbt;
@@ -44,6 +46,7 @@ pub mod tick_phase;
 pub mod ticks;
 pub mod trading;
 pub mod use_animation;
+pub mod uuid;
 pub mod version;
 
 pub use level_key::LevelKey;

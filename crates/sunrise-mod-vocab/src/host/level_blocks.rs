@@ -7,6 +7,21 @@ use crate::*;
 #[sunrise_mod_api_macros::host_area]
 pub trait LevelBlocksBackend {
     /// Side: both.
+    /// The contextual friction of `state` at `pos` (`IBlockExtension.getFriction`).
+    /// The state need not occupy the position. `entity` is the optional id and type
+    /// passed to the block's part. Returns `Ok(None)` for a nested query that repeats
+    /// an active read or exceeds the nesting bound. A stale level, unknown state, or
+    /// unavailable host or phase returns a typed read error.
+    /// The query never loads chunks or changes the world.
+    #[access(WorldOnly)]
+    fn level_friction(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+        state: BlockState,
+        entity: Option<(u32, &str)>,
+    ) -> Result<Option<f32>, LevelReadError>;
+    /// Side: both.
     /// How fast `tool` (None is an empty hand) mines the block at `pos`: the tool's own mining
     /// speed on that block (`ItemStack.getDestroySpeed`, 1.0 for no tool; for a block it has no
     /// rule for, the tool's default mining speed), before the player's enchantments, attributes, water, ground and
@@ -88,6 +103,28 @@ pub trait LevelBlocksBackendMut {
         state: BlockState,
     ) -> Result<BlockState, LevelWriteError>;
     /// Side: server.
+    /// Ask `Block.getStateForPlacement(BlockPlaceContext)` without placing the block.
+    /// The placement-state parts see `block`'s default state, as in a real placement.
+    /// A registered answer belonging to another block is returned as given; an unknown
+    /// answer falls back to the block's own rule, as in a real placement.
+    /// The context is taken as written, with no target or click re-resolution. Nothing is
+    /// written, notified or loaded. No additional survival, obstruction or permission check
+    /// from `BlockItem.place` runs.
+    /// Only the level in play is queried. Returns `Err(LevelReadError::Stale)` for a
+    /// stale handle or closed level, and `Err(LevelReadError::Unavailable)` for a parked
+    /// level, an unavailable host or load phase, or a state that the API cannot represent.
+    ///
+    /// Returns `Ok(None)` for vanilla's `null`, a part's `Some(None)`, an unknown block
+    /// or item key, an unloaded or out-of-bounds destination, or a non-finite hit or
+    /// rotation. `None` in `context.item` means an empty hand.
+    #[access(WorldOnly)]
+    fn level_state_for_placement(
+        &mut self,
+        level: LevelRef,
+        block: BlockKey,
+        context: &PlacementContext,
+    ) -> Result<Option<BlockState>, LevelReadError>;
+    /// Side: server.
     /// Write `state` at `pos` as a placement does and run `Block.setPlacedBy` for it, with no
     /// player: a bed places its head, a door its upper half, a tall plant its top. The write
     /// is `level_set_block`'s with `NEIGHBORS | CLIENTS` (plus `KNOWN_SHAPE` when
@@ -109,8 +146,10 @@ pub trait LevelBlocksBackendMut {
     /// Side: server.
     /// Run `Block.setPlacedBy` on the block currently at `pos`, without a placer. `stack` is
     /// a detached item value (`None` is the empty stack); the block may inspect its components.
-    /// Write the initial state and load any block entity data before calling. The callback can
-    /// write companion cells and produce block-specific effects, but will not load stack NBT.
+    /// Write the initial state and load any block entity data before calling. Vanilla's part can
+    /// write companion cells and produce block-specific effects, but does not load stack NBT.
+    /// The block's subscribed `BlockPart::set_placed_by` runs after vanilla's work, with
+    /// the same read-only stack and no placer. This does not notify the item's part.
     /// `Ok(false)` at an unloaded or out-of-height origin or on carrier-transfer refusal.
     /// The fence check covers the origin and cells the callback writes directly, including
     /// companions; neighbour updates follow the level's normal rules.

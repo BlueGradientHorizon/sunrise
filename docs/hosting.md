@@ -159,7 +159,6 @@ whitelist = true
 enforce_whitelist = false
 view_distance = 10
 simulation_distance = 10
-max_view_distance = 0        # past view_distance, saved chunks only, up to this (0: off)
 max_viewed_loaded_chunks = 2048             # see "Other levels a mod shows a player" below
 max_viewed_ticking_chunks = 441
 max_viewed_loaded_chunks_per_level = 16384
@@ -209,6 +208,10 @@ start instead of being ignored. When the game changes a setting itself (`/whitel
 back into `server.toml` when it stops, and your comments are kept. Changes to the file apply at the next
 restart: there is no live reload yet.
 
+One retired key is the exception: `max_view_distance` under `[server]`, the old far ring, is ignored with a note
+at each start, and can be removed. For more reach, raise `view_distance` (up to 32); unlike the far ring, that
+loads and, where the world hasn't been generated yet, generates the chunks it sends.
+
 ### Operators' commands: `admin_feedback_to_ops`
 
 On by default, as vanilla: when an operator runs a command that reports to admins (`/gamemode`, `/give`, `/tp`...),
@@ -216,22 +219,6 @@ the other operators read `[name: ...]` in gray, and the console logs it. Players
 either way. `false` keeps it to the console's log (`logs/latest.log`): nobody in game sees an operator's commands,
 while each operator still reads their own command's answer.
 
-### Seeing further: `max_view_distance`
-
-Off by default (0), a Sunrise setting with no vanilla equivalent. Past `view_distance`, up to
-`max_view_distance` (at most 32), each player is also sent the chunks the world has already saved, as far
-as their own render distance goes. Those chunks are only read and sent: the server never generates them,
-keeps them loaded or ticks them, so what lies out there stands still (no mobs, no growing crops, no
-redstone) until a player comes within `view_distance`. A chunk the world hasn't saved yet stays empty on
-the player's screen. To fill the ring, generate the world ahead of the players with `/pregen`
-(`sunrise-pregen = true` under `[properties]`, then `sunrise-server cmd pregen start 2500`,
-[pregeneration](pregeneration.md)).
-
-The far ring goes after everything else: its chunks wait behind the ones inside `view_distance`, are paced
-by how fast each player's game takes them, and aren't read while the world's saves are behind. When the
-average tick goes over 50 ms, the ring pulls in by two chunks a second, never inside `view_distance`; after
-30 s of ticks under 45 ms, it grows back by one chunk every 5 s. What it sent is kept in memory for 5
-minutes (96 MB at most), so a player walking back isn't sent the save again.
 
 ### Other levels a mod shows a player: `max_viewed_*`
 

@@ -456,6 +456,14 @@ fn event_input(
         }
     }
 }
+/// What a listener that did not answer returns: `Flow::Continue` for a `Flow` hook, the type's
+/// no-answer value for any other. One rule for both sides: the wasm Wire host's proxies (a
+/// refused or trapped guest call) and the native dispatch (a listener the phase gate refused,
+/// #3123) each pass how they spell the two values.
+pub(crate) fn refusal_value(is_flow: bool, flow_continue: &str, no_answer: &str) -> String {
+    if is_flow { flow_continue } else { no_answer }.to_owned()
+}
+
 /// What a proxy answers when its guest call answers nothing. `reason`, where there was a call,
 /// is the expression naming why (`crate::wasm_call_refusal()`, the including crate's). An
 /// isolated hook (#2414 ruling) unwinds instead: the isolated dispatch catches the unwind the
@@ -502,10 +510,10 @@ fn fallback(
                     None => format!("panic!(\"{}: wasm call refused or trapped\")", m.name),
                 }
             } else {
-                "mod_api::Flow::Continue".into()
+                refusal_value(true, "mod_api::Flow::Continue", "")
             }
         }
-        _ => "NoAnswer::no_answer()".into(),
+        _ => refusal_value(false, "", "NoAnswer::no_answer()"),
     }
 }
 
@@ -817,12 +825,12 @@ impl Cx {
             if let Some(level) = &checked.access {
                 let operation = &checked.name;
                 let refusal = match &checked.ret {
-                    Ty::Result(_, error) if matches!(&**error, Ty::Named(d) if matches!(types.defs[*d].rust.rsplit("::").next().map(str::trim), Some("LevelReadError" | "LevelWriteError"))) =>
+                    Ty::Result(_, error) if matches!(&**error, Ty::Named(d) if types.defs[*d].rust.rsplit("::").next().map(str::trim).is_some_and(|name| surface.access_refusals.contains(name))) =>
                     {
                         let result = rust_ty(types, &checked.ret, true);
                         let error = rust_ty(types, error, true);
                         format!(
-                            "out.put_owned(<{result}>::Err({error}::Unavailable)); return Ok(());"
+                            "out.put_owned(<{result}>::Err(<{error} as mod_api::AccessRefusal>::unavailable())); return Ok(());"
                         )
                     }
                     _ => format!(

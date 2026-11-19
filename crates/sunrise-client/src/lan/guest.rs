@@ -319,16 +319,10 @@ pub struct Guest {
     // Chunks.
     pub center: Option<(i32, i32)>,
     pub sent_chunks: crate::fast_hash::FxHashSet<(i32, i32)>,
-    /// Sent as far-ring columns and needing a near snapshot on promotion.
-    pub far_sent_chunks: crate::fast_hash::FxHashSet<(i32, i32)>,
     /// The near chunks the mods were told this player watches
     /// (`lan::chunk_watch`); empty while no mod listens.
     pub watched: crate::fast_hash::FxHashSet<(i32, i32)>,
     pub chunk_queue: Vec<(i32, i32)>,
-    /// The far ring's chunks still to send, past the view distance (`lan::far`), closest first.
-    pub far_queue: Vec<(i32, i32)>,
-    /// Where the bounded far-ring scan resumes; reset when the view changes.
-    pub far_cursor: usize,
     /// PlayerChunkSender: batches sent but not yet acknowledged, how many
     /// may be (1 until the client's first acknowledgement, then 10), the
     /// rate the client asks for and the chunks the next batch may hold.
@@ -448,7 +442,6 @@ pub struct Guest {
     pub last_death: Option<(String, [i32; 3])>,
     /// The last action sequence to acknowledge at the next tick (-1: none).
     pub ack_up_to: std::cell::Cell<i32>,
-    pub sent_selected: usize,
     /// Packets waiting for the player's next turn, and their bytes on the wire.
     pub inbox: VecDeque<InboxItem>,
     pub joined_tick: u64,
@@ -669,7 +662,7 @@ impl Guest {
     }
     /// `ChunkMap.isChunkTracked`: whether the guest watches chunk `(x, z)` of
     /// level `dimension`, inside its view (`ChunkTrackingView.contains`) and
-    /// sent rather than pending. A far-ring column past the view is not tracked.
+    /// sent rather than pending.
     pub fn tracks_chunk(&self, dimension: &str, (x, z): (i32, i32)) -> bool {
         self.watches_level(dimension)
             && self.sent_chunks.contains(&(x, z))
@@ -764,11 +757,8 @@ impl Guest {
             load_timeout: CLIENT_LOADED_TIMEOUT,
             center: None,
             sent_chunks: Default::default(),
-            far_sent_chunks: Default::default(),
             watched: Default::default(),
             chunk_queue: Vec::new(),
-            far_queue: Vec::new(),
-            far_cursor: 0,
             unacknowledged: 0,
             max_unacknowledged: 1,
             chunks_per_tick: 9.0,
@@ -822,7 +812,6 @@ impl Guest {
             sent_stuck: (0, 0),
             last_death: None,
             ack_up_to: std::cell::Cell::new(-1),
-            sent_selected: 0,
             inbox: VecDeque::new(),
             joined_tick: 0,
             ticks: 0,

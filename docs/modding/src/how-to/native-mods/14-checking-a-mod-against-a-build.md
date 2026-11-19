@@ -6,7 +6,8 @@ In a mod folder, `cargo sunrise-mod` does this for you from the SDK it fetched i
   and prints what the mod uses: `Greeter uses 14 items of the API (6 hooks, 5 methods, 3 types). Made for
   nightly-2026-11-13 (afe471c).` With `--uses` it lists each item with the line that brought it in.
 - `cargo sunrise-mod build` packs the list into the package as `uses.json`, with each item's fingerprint at the
-  pinned build. A mod with a `[native.*]` table or internals is made for exactly one build and gets no list.
+  pinned build, and each mixin target, loop and internal the manifest declares with its fingerprint there. A mod
+  with a `[[native.module]]` or `[[native.bridge]]` row is made for exactly one build and gets no list.
 - `cargo sunrise-mod fits` says, one line per build, whether the mod fits the current Nightly, or each build
   `--build` names. `cargo sunrise-mod fits greeter.smod --build nightly-2026-11-20` asks the same of a package.
   It exits 0 when every build fits, 1 when one does not, and 2 when it cannot tell or the question does not
@@ -43,28 +44,36 @@ member, it records every host trait in the mod's list that leads to the member's
 It exits 2 when an input cannot be read or judged.
 
 The check reads the mod's source with a Rust parser; it is not a compiler and does not expand macros. A name
-it cannot resolve with certainty counts as used and as built field by field. A struct literal written with a
+it cannot resolve with certainty counts as used. A struct literal written with a
 path (`world::DimensionSettings { … }`) counts for the API's struct of that name, unless the segment before the
 name is a type (`Self`, a type the mod defines, or an API type: `Shape::Pos(…)` and `TextHover::Item { … }` are
 variants, not the structs `Pos` and `Item`), which the scan reads through the mod's `use` items first, so
 `use mod_api as Pos; Pos::Settings { … }` is still the API's `Settings`; an unqualified one counts as
 the mod's own only in the file that defines it outside any `#[cfg]`, when nothing in that file (a `use`, a glob,
 an inline module, a macro or attribute that is not standard or the API's) could change what the name means and
-the mod has no `include!`. What the parser cannot see counts as doubt, which refuses rather than guesses:
-- inside a macro body, an API struct name followed by `{` or `(` is a build, in full unless it ends in `..`,
-  wherever it stands (`a < Pos(1, 2)`, `for Pos(x, y) in v`). A tuple or unit struct's name with no bracket
-  after it is a build too, except where only a type stands or as a type written after `name:` in parameters,
-  a `let` or a struct's fields (`.map(Pos)`, `{ Marker }` and `make: Pos` count). A literal the scan cannot
-  place there counts every buildable API struct the mod names as built in full;
-- a `Self` inside a macro body used as a value or followed by `{` or `(`, a `Self { … }` the scan cannot tie
-  to an impl, and a literal of a `type` alias whose target is not a plain path, count the same way;
-- a file that uses a macro, derive or attribute from outside the mod and the API counts every buildable API
-  struct it names as built in full, because the expansion may build it.
+the mod has no `include!`. The parser reads a macro body's tokens as they
+stand: an API struct name followed by `{` or `(` is a build, in full unless it ends in `..`, wherever it stands
+(`a < Pos(1, 2)`, `for Pos(x, y) in v`). A tuple or unit struct's name with no bracket after it is a build too,
+except where only a type stands or as a type written after `name:` in parameters, a `let` or a struct's fields
+(`.map(Pos)`, `{ Marker }` and `make: Pos` count).
 
-So a mod that builds API structs only through a dependency's macro is refused when such a struct gains a field,
-even if the macro would cope. One case stays out of the scan's reach: names assembled inside a macro from
-outside the mod (`paste!`, `concat_idents!`), which never appear in the source as written. The real compile on
-the player's machine is always the final check, and it catches those. Some sources cannot be judged at all:
+What the scan cannot place is left to the compile, and records nothing:
+- a literal of a name that is no API struct's: a macro's `$t { … }`, another crate's type;
+- a `Self { … }` the scan cannot tie to an impl, and a literal of a `type` alias whose target is not a plain path;
+- whatever a macro, derive or attribute from outside the mod and the API expands to;
+- a literal or pattern under the name of a struct the pinned build keeps closed to literals: a mod that compiles
+  cannot be building it, so the name is another type's (your own enum's variant `Source::Block(b)`).
+
+The real compile on the player's machine is always the final check. A mod judged to fit whose compile fails is
+left out by name, with a note that it needs an update from its author, and the other mods still build.
+
+Two changes always refuse, because no compile can see them or repair them: an item in the list that is removed,
+renamed or changed, and a hook in the list whose version changed (the same signature with a new meaning). The
+promise covers the hooks the list names: a subscription that a macro from outside the mod and the API writes is
+not in it. A list that holds no version of a hook, as one an older tool wrote, gets "not known" for that hook
+([Lists an older tool wrote](../../reference/sdk/04-fit.md#lists-an-older-tool-wrote)).
+
+Some sources cannot be judged at all:
 - a file that does not parse as Rust (the message gives its line);
 - source nested deeper than 256 levels. The count is cautious, so one bracket holding more than about 250
   comparisons between plain names (`[a < b, c < d, …]`) is also refused, though it would compile;
@@ -79,5 +88,7 @@ source cannot be judged, and the program that asked carries on. On Linux the pro
 4 GiB, and on Linux and macOS its processor time too; Windows and macOS have no memory cap, so there only the
 15 seconds bound it.
 
-A mod with a `[native.*]` table or internals is made for exactly one build, and this check does not apply to
-it. A mod that fits is still compiled against the target build, and the binary built is exact to that build.
+This by-hand check covers the mod API's items. The game code a mod declares is compared by
+`cargo sunrise-mod fits`, from the target build's build data; `sunrise-stage` refuses such a mod and such a list
+by name. A mod with a `[[native.module]]` or `[[native.bridge]]` row is made for exactly one build, and no check
+applies to it. A mod that fits is still compiled against the target build, and the binary built is exact to that build.

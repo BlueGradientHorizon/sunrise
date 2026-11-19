@@ -889,14 +889,14 @@ mod tests {
         );
         let connected = crate::connected::ConnectedTextures::load(
             root.source(),
-            sunrise_optifine::ctm::load(root.source()),
+            sunrise_optifine::ctm::load_engine(root.source()),
             &registry,
             &mut sprites,
             |_, _| Some(base),
         );
         assert!(!connected.is_empty());
         crate::native_emissive::load(root.source(), &mut sprites);
-        assert!(sprites.layers.contains_key("demo:emissive/glow"));
+        assert!(sprites.files.contains_key("demo:emissive/glow"));
         let pairs = crate::native_emissive::load_optifine(root.source(), &mut sprites);
         assert!(pairs.contains(&("demo:block/stone".into(), "demo:block/stone_e".into())));
         assert!(pairs.contains(&(
