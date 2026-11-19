@@ -180,11 +180,12 @@ let options = TerrainModelOptions::default()
 draw.terrain_model(self.belt, options)?;
 ```
 
-- Faces sample the animated block sprites, cull back faces and write colour and depth like
+- Faces sample the animated block sprites (mipmapped, linear minification and nearest
+  magnification, as vanilla samples a moving block), cull back faces and write colour and depth like
   opaque terrain. Light is the draw's own, raised by each quad's emission.
 - `material`: `Model` keeps each quad's `render_type` (solid, `cutout`, `cutout_mipped`), and
-  a translucent quad refuses the draw. `Solid`, `Cutout` (alpha under 0.1 discarded, no
-  mipmaps) and `CutoutMipped` (under 0.5, mipmapped) choose one material for all quads.
+  a translucent quad refuses the draw. `Solid`, `Cutout` (alpha under 0.1 discarded)
+  and `CutoutMipped` (under 0.5) choose one material for all quads.
 - `shade`: `Model` follows each quad's `shade` flag, `Off` turns directional shading off, and
   `Entity` shades every quad by the level's entity light directions. Full-bright light never
   turns shading off.

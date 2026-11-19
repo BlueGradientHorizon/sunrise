@@ -411,10 +411,10 @@ pub trait BlockEntityDrawContext {
     }
     /// Draws the resolved standalone model under `draw`'s pose, as [`Self::model`] places it,
     /// with the terrain's own materials: the block sprites (animated, mipmapped as the options
-    /// set), back faces culled, colour and depth written as opaque terrain, lit by
+    /// set, sampled as vanilla's moving blocks are: linear minification, nearest magnification), back faces culled, colour and depth written as opaque terrain, lit by
     /// `draw.light` raised by each quad's own emission. `options` picks the material
     /// (each quad's `solid`, `cutout` or `cutout_mipped`, or one for all: cutout discards
-    /// under alpha 0.1 without mipmaps, cutout-mipped under 0.5 with them), the directional
+    /// under alpha 0.1, cutout-mipped under 0.5), the directional
     /// shading (independent of light), one sprite drawn as another with moved UVs, a UV
     /// shrink, and a `0xRRGGBB` tint on quads with a tint index. What a machine's belts,
     /// shafts and casings draw with. A refusal draws nothing.
