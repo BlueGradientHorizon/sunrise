@@ -164,13 +164,12 @@ anything a handler counts on (inventories, state changes): keep those `Reliable`
   play, and when it is over the byte budget. A packet that was handed to the connection is never
   taken back, and a `Droppable` payload is never put in a bundle. The send still returns `Queued`:
   that was never a delivery acknowledgement.
-- **Budgets** per connection: 256 KiB/s clientbound and 16 KiB/s serverbound, with one second of
-  burst. A server raises or lowers them with the environment variables
-  `SUNRISE_DROPPABLE_CLIENTBOUND_BYTES_PER_SECOND` and
-  `SUNRISE_DROPPABLE_SERVERBOUND_BYTES_PER_SECOND`; 0 turns `Droppable` delivery off in that
-  direction. A client sending over the serverbound budget loses those sends, and the server counts
-  them as budget drops; nobody is kicked and `Reliable` traffic is never dropped. Over budget, stale
-  sends go first, oldest first, then the new send.
+- **Budgets** per connection: 256 KiB/s clientbound and 16 KiB/s serverbound by default, with one
+  second of burst. The server's operator raises or lowers them with `droppable_clientbound` and
+  `droppable_serverbound` under `[engine]` in `server.toml` ([hosting](../../../../hosting.md)); 0 turns
+  `Droppable` delivery off in that direction. A client sending over the serverbound budget loses those
+  sends, and the server counts them as budget drops; nobody is kicked and `Reliable` traffic is never
+  dropped. Over budget, stale sends go first, oldest first, then the new send.
 - **Counts:** `payload_drop_counts(&id)` reads the drops of a channel by cause (`stale`,
   `watermark`, `budget`, `switch`) over this game's connections.
 - **Ordering:** per channel within one sending thread. A `Network`-thread `send_to` and a

@@ -29,7 +29,7 @@ pub struct Budgets {
 }
 impl Budgets {
     /// The defaults, raised or lowered by `SUNRISE_DROPPABLE_CLIENTBOUND_BYTES_PER_SECOND` and
-    /// `SUNRISE_DROPPABLE_SERVERBOUND_BYTES_PER_SECOND` (the server's setting).
+    /// `SUNRISE_DROPPABLE_SERVERBOUND_BYTES_PER_SECOND` (set by `server.toml`, `[engine] droppable_*`).
     pub fn from_env() -> Self {
         let read = |name: &str, default: u32| match std::env::var(name) {
             Ok(value) => value.trim().parse().unwrap_or_else(|_| {
