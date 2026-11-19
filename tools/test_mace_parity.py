@@ -219,7 +219,9 @@ def exact_cases(facts, seed):
         ('chest', 'diamond_chestplate', 0, {'feet': stack('diamond_boots')}),
         ('head', 'leather_helmet', 40, {}),
     ]
-    hits = [(stack('mace'), 3.0), (stack('mace', {'density': 2, 'breach': 3}), 6.5),
+    # No Breach: on a heavy smash its armor_effectiveness takes the armor fraction below zero, so the armor no
+    # longer decides the health (CombatRules.getDamageAfterAbsorb clamps it), which the sweep's cases cover.
+    hits = [(stack('mace'), 3.0), (stack('mace', {'density': 2}), 6.5),
             (stack('diamond_sword'), 0.0), ('-', 0.0)]
     setups = [(fit, {}, False, 'V 0 ') for fit in fits]
     setups += [({**rest, slot: stack(piece, {'thorns': 7}, damage)}, {**rest, slot: stack(piece, None, damage)}, True,
