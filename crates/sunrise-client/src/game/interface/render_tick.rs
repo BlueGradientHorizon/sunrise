@@ -1005,26 +1005,33 @@ impl Game<'_> {
     /// Whether an installed pack core shader reads expression uniforms this frame. Fullbright
     /// excludes the lightmap only. The frame's expression context is made only when needed.
     pub(in crate::game) fn reads_pack_expressions(&mut self) -> bool {
-        // The text's are 0 where no world runs (the renderer writes them so on a title frame).
-        let world = !self.shows_panorama();
+        let text = self.text_expressions_run();
         self.renderer
             .as_mut()
-            .is_some_and(|r| r.reads_pack_expressions() || (world && r.reads_text_expressions()))
+            .is_some_and(|r| r.reads_pack_expressions() || (text && r.reads_text_expressions()))
     }
 
     /// Evaluate the installed pack pipelines' expression uniforms from `frame`, skipping the
-    /// lightmap under fullbright. Values are uploaded when each pipeline prepares its draw.
+    /// lightmap under fullbright, and the text's where no world runs
+    /// ([`Self::text_expressions_run`]). Values are uploaded when each pipeline prepares its draw.
     pub(in crate::game) fn evaluate_pack_expressions(
         &mut self,
         frame: Option<&sunrise_client::environment::Frame>,
     ) {
-        let world = !self.shows_panorama();
+        let text = self.text_expressions_run();
         if let (Some(frame), Some(renderer)) = (frame, self.renderer.as_mut()) {
             renderer.evaluate_pack_expressions(frame);
-            if world {
+            if text {
                 renderer.evaluate_text_expressions(frame);
             }
         }
+    }
+
+    /// Whether the text's expression uniforms are evaluated this frame: only where a world runs.
+    /// On a title frame (the title screen and its menus) the renderer writes them as 0, as it
+    /// does on the loading, file fixer and saving screens' frames.
+    fn text_expressions_run(&self) -> bool {
+        !self.shows_panorama()
     }
 }
 

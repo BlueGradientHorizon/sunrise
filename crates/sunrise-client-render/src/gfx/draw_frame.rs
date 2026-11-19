@@ -1229,12 +1229,18 @@ impl Renderer {
             )
         };
         let pack = self.pack_blocks(frame, fog, globals.fog_ends);
+        // Vanilla's four blocks as the pack's world text and GPU particles read them (the block
+        // outline's layout), made once a frame and only when one of them asks.
+        let vanilla_blocks = std::cell::OnceCell::new();
+        let vanilla_blocks = || {
+            *vanilla_blocks.get_or_init(|| {
+                let view = views.primary();
+                core_lines::uniforms(pack.globals, view, pose, jitter, 1.0, fog_color, pack.fog)
+            })
+        };
         // The pack's world text: vanilla's blocks, then its expression uniforms.
         if let Some(core) = &self.core_text {
-            let view = views.primary();
-            let data =
-                core_lines::uniforms(pack.globals, view, pose, jitter, 1.0, fog_color, pack.fog);
-            core.prepare(&mut self.uploads, &mut encoder, &data);
+            core.prepare(&mut self.uploads, &mut encoder, &vanilla_blocks());
         }
         let outline_edges = frame.outline.len().min(MAX_OUTLINE_EDGES as usize);
         if outline_edges > 0 {
@@ -1310,10 +1316,7 @@ impl Renderer {
         // Polytone GPU particles with their own shader: the vanilla blocks as the block outline's
         // (a particle's ModelViewMat is the camera's rotation, its positions camera relative).
         self.core_particles
-            .prepare_frame(&self.device, &self.queue, frame.title, || {
-                let view = views.primary();
-                core_lines::uniforms(pack.globals, view, pose, jitter, 1.0, fog_color, pack.fog)
-            });
+            .prepare_frame(&self.device, &self.queue, frame.title, vanilla_blocks);
         let skin = frame.skin.filter(|skin| match &mut self.entity_skin {
             Some(skinner) => skinner.register(&self.device, &mut self.uploads, &mut encoder, skin),
             None => false,

@@ -14,7 +14,7 @@ const CASE: &str = "SUNRISE_TEXT_EXPRESSION_CASE";
 /// A pack whose text covers the whole frame with one triangle of each glyph's (a vertex's index
 /// picks its corner) in red: the GUI text's `Gui` (0.1 + 0.1: 51 in a byte), the world text's
 /// `World` (0.3 * 2: 153), the see-through text's `Fade` (0.25 * 4: 255), each read by that
-/// program only, by the shader's own defines.
+/// program only, by the shader's own defines, beside a full green that shows the text drew.
 fn pack() -> ResourceSource {
     let vsh = "#version 330\nlayout(location = 0) in vec3 Position;\nvoid main() {\n    \
                int corner = gl_VertexID % 3;\n    \
@@ -24,7 +24,7 @@ fn pack() -> ResourceSource {
                #else\n#ifdef IS_SEE_THROUGH\nlayout(std140) uniform Fade {\n    float value;\n};\n\
                #else\nlayout(std140) uniform World {\n    float value;\n};\n#endif\n#endif\n\
                layout(location = 0) out vec4 fragColor;\n\
-               void main() {\n    fragColor = vec4(value, 0.0, 0.0, 1.0);\n}\n";
+               void main() {\n    fragColor = vec4(value, 1.0, 0.0, 1.0);\n}\n";
     let files = [
         ("assets/minecraft/shaders/core/text.vsh", vsh),
         ("assets/minecraft/shaders/core/text.fsh", fsh),
@@ -112,14 +112,18 @@ fn a_packs_text_draws_its_expression_uniforms() {
         // The world text over the frame with the GUI hidden (F1), then the GUI's (F3's text)
         // over it.
         game.ui.hide_gui = true;
-        assert_eq!(corner(game, frame), [153, 0, 0], "fullbright {fullbright}");
+        assert_eq!(
+            corner(game, frame),
+            [153, 255, 0],
+            "fullbright {fullbright}"
+        );
         game.ui.hide_gui = false;
         game.debug = true;
-        assert_eq!(corner(game, frame), [51, 0, 0], "fullbright {fullbright}");
+        assert_eq!(corner(game, frame), [51, 255, 0], "fullbright {fullbright}");
         // The title screen: no world runs, the GUI text's value is 0.
         game.title = Some(game.new_title(std::path::PathBuf::from("saves")));
         assert!(!game.reads_pack_expressions(), "none to evaluate");
-        assert_eq!(corner(game, frame), [0, 0, 0]);
+        assert_eq!(corner(game, frame), [0, 255, 0]);
     });
 }
 
@@ -127,7 +131,7 @@ fn a_packs_text_draws_its_expression_uniforms() {
 /// after a world frame evaluated the GUI text's value: its text draws 0.
 fn the_loading_screen_draws_zeros(game: &mut super::Game<'_>) {
     game.debug = true;
-    assert_eq!(corner(game, frame), [51, 0, 0]);
+    assert_eq!(corner(game, frame), [51, 255, 0]);
     let renderer = game.renderer.as_ref().unwrap();
     let size = [renderer.config.width, renderer.config.height];
     let mut hud = sunrise_client::hud::HudBatch::new(size, game.settings.gui_scale_inputs());
@@ -136,5 +140,5 @@ fn the_loading_screen_draws_zeros(game: &mut super::Game<'_>) {
         let frame = super::loading_frame(&hud);
         game.renderer.as_mut().unwrap().render(&frame)
     };
-    assert_eq!(corner(game, loading), [0, 0, 0]);
+    assert_eq!(corner(game, loading), [0, 255, 0]);
 }

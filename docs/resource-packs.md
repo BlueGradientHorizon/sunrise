@@ -115,10 +115,10 @@ reads Polytone's `PolyGlobals` block is refused at load (no file gives it), and 
   nests at most 16 levels deep (a statement, its expression, each bracket and each unary operator), both checked as
   it is parsed. A file over any of these, or whose path names no shader, is refused whole, named by its path in the
   log.
-- The programs are resolved once when the pack's shaders load. Each frame evaluates them for the installed pack
-  pipelines; each pipeline uploads 16 bytes per expression uniform when it prepares a draw.
 - Where no world runs (the title screen and its menus, a loading screen, the file fixer, the saving screen), the
   text's expression uniforms are 0: the game evaluates none of them, and the frame writes zeros.
+- The programs are resolved once when the pack's shaders load. Each frame evaluates them for the installed pack
+  pipelines; each pipeline uploads 16 bytes per expression uniform when it prepares a draw.
 
 ## Gaps and their work
 

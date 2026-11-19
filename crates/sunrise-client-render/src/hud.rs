@@ -1048,12 +1048,6 @@ impl HudAtlas {
     /// and its atlas does not grow. `game` is the game's own resources, without the packs: a
     /// pack's core shader (text, block outline, sky, stars, lightmap) is one that differs from
     /// the game's, so a `root` given as its own `game` loads none.
-    /// The packs' core shaders at `root` over the game's own resources `game`, as
-    /// [`Self::build_over_with_dynamic_textures`] loads them, for tests of the pipelines.
-    #[cfg(test)]
-    pub(crate) fn load_pack_shaders(&mut self, root: &ResourceSource, game: &ResourceSource) {
-        pack_text::load_shaders(self, root, game);
-    }
     pub fn build_over_with_dynamic_textures(
         root: &ResourceSource,
         defaults: &ResourceSource,
@@ -1069,6 +1063,12 @@ impl HudAtlas {
             atlas.sprites.keys(),
         ));
         Ok(atlas)
+    }
+    /// The packs' core shaders at `root` over the game's own resources `game`, as
+    /// [`Self::build_over_with_dynamic_textures`] loads them, for tests of the pipelines.
+    #[cfg(test)]
+    pub(crate) fn load_pack_shaders(&mut self, root: &ResourceSource, game: &ResourceSource) {
+        pack_text::load_shaders(self, root, game);
     }
     /// Empty slots written at run time: map textures (game/blocks/maps/mod.rs),
     /// client mods' dynamic textures (only with `pool`), downloaded skins, world
@@ -3034,16 +3034,10 @@ impl HudRenderer {
         });
     }
     /// Draw the GUI's text with `shader` (`HudAtlas::text_shaders`' `gui`, with its expression
-    /// uniforms), or natively.
-    pub fn set_text_shader(
-        &mut self,
-        device: &wgpu::Device,
-        shader: Option<(
-            &crate::core_shader::CoreProgram,
-            &[crate::polytone_post::ExpressionUniform],
-        )>,
-    ) {
+    /// uniforms, [`TextShader`]), or natively.
+    pub fn set_text_shader(&mut self, device: &wgpu::Device, shader: Option<impl TextShader>) {
         self.pack_text = shader.and_then(|shader| {
+            let shader = shader.parts();
             pack_text::PackText::new(device, self.format, &self.atlas_view, shader, self.coverage)
         });
     }
@@ -3281,6 +3275,44 @@ impl HudRenderer {
             }
             at = end;
         }
+    }
+}
+
+/// A GUI text shader for [`HudRenderer::set_text_shader`]: its program, with the Polytone
+/// expression uniforms its stages read (`shader_modifiers`), none for a bare program.
+pub trait TextShader {
+    fn parts(
+        &self,
+    ) -> (
+        &crate::core_shader::CoreProgram,
+        &[crate::polytone_post::ExpressionUniform],
+    );
+}
+
+impl TextShader for &crate::core_shader::CoreProgram {
+    fn parts(
+        &self,
+    ) -> (
+        &crate::core_shader::CoreProgram,
+        &[crate::polytone_post::ExpressionUniform],
+    ) {
+        (self, &[])
+    }
+}
+
+impl TextShader
+    for (
+        &crate::core_shader::CoreProgram,
+        &[crate::polytone_post::ExpressionUniform],
+    )
+{
+    fn parts(
+        &self,
+    ) -> (
+        &crate::core_shader::CoreProgram,
+        &[crate::polytone_post::ExpressionUniform],
+    ) {
+        *self
     }
 }
 

@@ -2,8 +2,7 @@
 //! and its Polytone expression uniforms (`shader_modifiers`, wiki "Expression Uniforms on Any
 //! Shader"), resolved when the shader loaded (`polytone_post::ShaderModifiers::resolve`), each a
 //! block of one float after the pipeline's own, holding its program's value this frame. The
-//! lightmap, sky, stars, block outline and text (GUI, world, see-through) pipelines lay theirs out
-//! with this.
+//! lightmap, sky, stars and block outline pipelines lay theirs out with this.
 
 use crate::core_shader::CoreProgram;
 use crate::polytone_post::ExpressionUniform;

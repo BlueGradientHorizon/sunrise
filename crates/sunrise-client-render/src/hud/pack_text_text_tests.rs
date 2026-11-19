@@ -40,7 +40,7 @@ fn fsh(wave: &str) -> String {
     )
 }
 
-fn source(files: &[(&str, String)]) -> ResourceSource {
+pub(super) fn source(files: &[(&str, String)]) -> ResourceSource {
     ResourceSource::indexed(
         files
             .iter()
@@ -157,7 +157,7 @@ fn a_text_program_reading_no_expression_uniform_has_none() {
 
 /// Each text program is refused on its own, through the atlas's load: a pack whose see-through
 /// stage alone reads a block its file doesn't give loads the GUI's and the world's programs and
-/// refuses the see-through one (logged as the see-through text shader).
+/// refuses the see-through one.
 #[test]
 fn a_text_program_reading_an_unknown_block_is_refused_alone() {
     let fsh = "#version 330\nlayout(location = 0) out vec4 fragColor;\n\

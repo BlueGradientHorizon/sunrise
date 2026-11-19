@@ -60,56 +60,64 @@ pub struct CoreProgram {
     /// [`other_binding`]`(i)` (a sampler's object one after its texture; a block leaves that
     /// binding unused).
     pub other: Vec<String>,
+    /// The resources of set 0 the stages' entry points read, each with those stages
+    /// ([`bindings_read`], analysed once when the program is made).
+    pub read: Vec<(u32, wgpu::ShaderStages)>,
 }
 
 impl CoreProgram {
-    /// Whether either stage reads the resource at `binding` of set 0 (a sampler's texture,
-    /// [`SAMPLERS`]), not only declares it.
+    /// The program of two validated stages, with what they read ([`CoreProgram::read`]).
+    pub fn new(vertex: naga::Module, fragment: naga::Module, other: Vec<String>) -> Self {
+        let read = bindings_read([&vertex, &fragment]);
+        Self {
+            vertex,
+            fragment,
+            other,
+            read,
+        }
+    }
+
     /// The stages whose entry points read the resource at `binding` of set 0, through any
     /// function they call: what a pipeline layout must make that binding visible to. Empty
     /// for one a stage only declares (or the preprocessor kept but nothing reads).
     pub fn stages_reading(&self, binding: u32) -> wgpu::ShaderStages {
-        let mut stages = wgpu::ShaderStages::NONE;
-        for (module, stage) in [
-            (&self.vertex, wgpu::ShaderStages::VERTEX),
-            (&self.fragment, wgpu::ShaderStages::FRAGMENT),
-        ] {
-            if entry_points_read(module, binding) {
-                stages |= stage;
-            }
-        }
-        stages
+        stages_reading(&self.read, binding)
     }
 
     /// Whether every stage that reads the block at `binding` of set 0 declares it as one float
     /// (`uniform Name { float value; };`), what an expression uniform holds. A stage that only
     /// declares it, whatever its shape, binds nothing of it.
     pub fn is_float_block(&self, binding: u32) -> bool {
-        [&self.vertex, &self.fragment]
-            .into_iter()
-            .filter(|module| entry_points_read(module, binding))
-            .all(|module| {
-                module
-                    .global_variables
-                    .iter()
-                    .filter(|(_, g)| {
-                        g.binding
-                            .as_ref()
-                            .is_some_and(|b| b.group == 0 && b.binding == binding)
-                    })
-                    .all(|(_, g)| match &module.types[g.ty].inner {
-                        naga::TypeInner::Struct { members, .. } => {
-                            matches!(
-                                members.as_slice(),
-                                [member] if matches!(
-                                    module.types[member.ty].inner,
-                                    naga::TypeInner::Scalar(naga::Scalar::F32)
-                                )
+        let stages = self.stages_reading(binding);
+        [
+            (&self.vertex, wgpu::ShaderStages::VERTEX),
+            (&self.fragment, wgpu::ShaderStages::FRAGMENT),
+        ]
+        .into_iter()
+        .filter(|(_, stage)| stages.contains(*stage))
+        .map(|(module, _)| module)
+        .all(|module| {
+            module
+                .global_variables
+                .iter()
+                .filter(|(_, g)| {
+                    g.binding
+                        .as_ref()
+                        .is_some_and(|b| b.group == 0 && b.binding == binding)
+                })
+                .all(|(_, g)| match &module.types[g.ty].inner {
+                    naga::TypeInner::Struct { members, .. } => {
+                        matches!(
+                            members.as_slice(),
+                            [member] if matches!(
+                                module.types[member.ty].inner,
+                                naga::TypeInner::Scalar(naga::Scalar::F32)
                             )
-                        }
-                        _ => false,
-                    })
-            })
+                        )
+                    }
+                    _ => false,
+                })
+        })
     }
 
     pub fn reads_binding(&self, binding: u32) -> bool {
@@ -140,22 +148,46 @@ pub fn other_binding(index: usize) -> u32 {
     OTHER_BINDINGS + 2 * index as u32
 }
 
-/// Whether an entry point of `module` reads the resource at `binding` of set 0, through any
-/// function it calls (naga's per entry point use). A module that doesn't validate (it did when
-/// it was translated) counts as reading it.
-fn entry_points_read(module: &naga::Module, binding: u32) -> bool {
-    let Some((handle, _)) = module.global_variables.iter().find(|(_, g)| {
-        g.binding
-            .as_ref()
-            .is_some_and(|b| b.group == 0 && b.binding == binding)
-    }) else {
-        return false;
-    };
-    let Ok(info) = Validator::new(ValidationFlags::empty(), Capabilities::all()).validate(module)
-    else {
-        return true;
-    };
-    (0..module.entry_points.len()).any(|i| !info.get_entry_point(i)[handle].is_empty())
+/// The resources of set 0 that the entry points of `[vertex, fragment]` read, through any
+/// function they call (naga's per entry point use), each with the stages reading it: one
+/// validation per module, whatever the number of bindings. A module that doesn't validate (it
+/// did when it was translated) counts as reading every resource it declares.
+pub(crate) fn bindings_read(modules: [&naga::Module; 2]) -> Vec<(u32, wgpu::ShaderStages)> {
+    let mut read: Vec<(u32, wgpu::ShaderStages)> = Vec::new();
+    for (module, stage) in modules
+        .into_iter()
+        .zip([wgpu::ShaderStages::VERTEX, wgpu::ShaderStages::FRAGMENT])
+    {
+        let info = Validator::new(ValidationFlags::empty(), Capabilities::all())
+            .validate(module)
+            .ok();
+        for (handle, global) in module.global_variables.iter() {
+            let Some(binding) = global.binding.as_ref().filter(|b| b.group == 0) else {
+                continue;
+            };
+            let reads = info.as_ref().is_none_or(|info| {
+                (0..module.entry_points.len()).any(|i| !info.get_entry_point(i)[handle].is_empty())
+            });
+            if !reads {
+                continue;
+            }
+            match read.iter_mut().find(|(b, _)| *b == binding.binding) {
+                Some((_, stages)) => *stages |= stage,
+                None => read.push((binding.binding, stage)),
+            }
+        }
+    }
+    read
+}
+
+/// The stages in `read` ([`bindings_read`]) that read the resource at `binding`.
+pub(crate) fn stages_reading(
+    read: &[(u32, wgpu::ShaderStages)],
+    binding: u32,
+) -> wgpu::ShaderStages {
+    (read.iter())
+        .find(|(b, _)| *b == binding)
+        .map_or(wgpu::ShaderStages::NONE, |(_, stages)| *stages)
 }
 
 /// The shaders of one pipeline (`text.vsh`, `text.fsh`) with vanilla's `defines` for it.
@@ -236,11 +268,7 @@ pub fn translate_core_at(
             "the fragment shader reads location {missing}, which the vertex shader doesn't write"
         ));
     }
-    Ok(CoreProgram {
-        vertex,
-        fragment,
-        other: names.other,
-    })
+    Ok(CoreProgram::new(vertex, fragment, names.other))
 }
 
 /// A bound on a pack's includes, which are pasted every time.
