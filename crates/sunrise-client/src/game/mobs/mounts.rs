@@ -992,13 +992,19 @@ impl Game<'_> {
     /// `Hud.extractVehicleHealth` (a native mod's `minecraft:vehicle_health`
     /// layer, only while riding a mount). Returns the mount's heart count
     /// (`getVehicleMaxHearts`).
-    pub(super) fn draw_mount_hud(&mut self, batch: &mut HudBatch, w: i32, h: i32) -> i32 {
+    pub(super) fn draw_mount_hud(
+        &mut self,
+        batch: &mut HudBatch,
+        w: i32,
+        h: i32,
+        heights: &mut sunrise_client::hud_layout::StatusBarHeights,
+    ) -> i32 {
         let Some(i) = self.mount_index() else {
             return 0;
         };
         let m = &self.mobs[i];
         let hearts = sunrise_client::hud_layout::vehicle_max_hearts(m.attrs.max_health);
-        let draws = sunrise_client::hud_layout::vehicle_health(w, h, hearts, m.health);
+        let draws = sunrise_client::hud_layout::vehicle_health(w, h, hearts, m.health, heights);
         self.keep_status_rows(&draws, w, h);
         self.gui_layer("minecraft:vehicle_health", batch, |g, batch| {
             sunrise_client::hud_layout::paint(batch, &g.gui.atlas, &draws);

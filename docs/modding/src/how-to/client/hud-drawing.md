@@ -9,6 +9,17 @@ the same methods and the same ops.
 `render_gui_post`, use it to leave space for the overlay. Always-on debug entries can make it visible with
 F3 off. F1 hides the overlay unless a screen is open. The read is available only on the client host.
 
+## Status rows and fixed text positions
+
+`minecraft:player_health` is still a single GUI layer for hearts, armour, food and air. Cancelling it
+in `gui_layer_pre` hides all four. `health_hud` replaces their combined drawing, not the separate
+`minecraft:vehicle_health` layer.
+
+Adding a taller status bar does not move the selected item name or the action bar. The name starts
+59 GUI pixels from the bottom (45 outside survival and adventure); the action bar is centred 68
+pixels from the bottom. A mod that needs to move either can cancel and redraw its layer:
+`minecraft:selected_item_name` or `minecraft:overlay_message`.
+
 ## Gradient fills
 
 `DrawContext::fill_gradient(rect, top, bottom)` is vanilla's `GuiGraphics.fillGradient`, the call screen

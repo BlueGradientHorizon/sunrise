@@ -5062,11 +5062,12 @@ impl Game<'_> {
                 self.experience_recent(),
             );
             use sunrise_client::locator_bar::ContextualBar;
-            // The mount's hearts.
+            // The mount's hearts reserve right-column space before air is laid out.
+            let mut status_heights = hud_layout::StatusBarHeights::default();
             let vehicle_hearts = if spectator {
                 0
             } else {
-                self.draw_mount_hud(&mut batch, wi, hi)
+                self.draw_mount_hud(&mut batch, wi, hi, &mut status_heights)
             };
             let (visual_ticks, visual_millis) = (self.visual_ticks(), self.visual_millis());
             let kind = (!self.creative && !spectator)
@@ -5106,15 +5107,20 @@ impl Game<'_> {
                 // that answers draws every row instead.
                 let mut native_health_hud = None;
                 self.native_health_hud(&inputs, wi, hi, &mut native_health_hud);
-                let draws = match native_health_hud {
-                    Some(draws) => draws,
-                    None => self.health_hud.layout(&inputs, wi, hi),
+                let replacement = native_health_hud.as_deref();
+                let vanilla;
+                let layers;
+                let (draws, paint_steps) = if let Some(draws) = &replacement {
+                    (*draws, std::slice::from_ref(draws))
+                } else {
+                    vanilla = self.health_hud.layout(&inputs, wi, hi, &mut status_heights);
+                    layers = vanilla.layers();
+                    (vanilla.draws(), layers.as_slice())
                 };
-                self.keep_status_rows(&draws, wi, hi);
-                // The rows draw in one pass here, so a mod's `player_health`
-                // layer stands for the armor, food and air rows too.
+                self.keep_status_rows(draws, wi, hi);
+                // Keep the four paint steps under the same public layer for now.
                 self.gui_layer("minecraft:player_health", &mut batch, |g, batch| {
-                    hud_layout::paint(batch, &g.gui.atlas, &draws);
+                    hud_layout::paint_layers(batch, &g.gui.atlas, paint_steps);
                 });
                 // Hud.playAirBubblePoppedSound: Player.playSound (PLAYERS), heard
                 // by this client only.
