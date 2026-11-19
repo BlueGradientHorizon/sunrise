@@ -143,8 +143,9 @@ bundles (Copyright (c) 2018-2025 Microsoft Corporation, Daan Leijen), both under
 (`LICENSE.txt` and `c_src/mimalloc/v3/LICENSE` in that folder). It holds only the v3 sources. Two
 changes: `mi_popcount` in `include/mimalloc/bits.h` uses mimalloc's portable bit count on MSVC
 x86/x64 instead of the POPCNT instruction, which CPUs before Nehalem lack (#7264); and
-`mi_stat_free` in `src/free.c` lowers the `malloc_huge` statistic when a huge block is freed in a
-build without detailed statistics (`MI_STAT` 0), as it is raised in every build (#3299).
+`_mi_arenas_page_free` in `src/arena.c` lowers the `malloc_huge` statistic when a huge page is freed, at
+every `MI_STAT` level as `src/page.c` raises it, instead of `mi_stat_free` (`src/free.c`) and
+`_mi_theap_page_destroy` (`src/theap.c`) lowering it only with detailed statistics (#3299).
 
 ## Pixelify Sans
 

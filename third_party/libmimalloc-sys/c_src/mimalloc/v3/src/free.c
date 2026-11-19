@@ -620,26 +620,17 @@ static void mi_stat_free(const mi_page_t* page, const mi_block_t* block) {
   // const size_t usize = mi_page_usable_size_of(page, block);
   // mi_theap_stat_decrease(theap, malloc_requested, usize);
   // #endif
+  // Sunrise: a huge block leaves malloc_huge when its page is freed (_mi_arenas_page_free)
   if (bsize <= MI_LARGE_MAX_OBJ_SIZE) {
     mi_theap_stat_decrease(theap, malloc_normal, bsize);
     #if (MI_STAT > 1)
     mi_theap_stat_decrease(theap, malloc_bins[_mi_bin(bsize)], 1);
     #endif
   }
-  else {
-    const size_t bpsize = mi_page_block_size(page);  // match stat in page.c:mi_huge_page_alloc
-    mi_theap_stat_decrease(theap, malloc_huge, bpsize);
-  }
 }
 #else
-// Sunrise: page.c counts huge blocks at every MI_STAT level, so their free is counted at every level too
 void mi_stat_free(const mi_page_t* page, const mi_block_t* block) {
-  MI_UNUSED(block);
-  const size_t bsize = mi_page_block_size(page);
-  if mi_unlikely(bsize > MI_LARGE_MAX_OBJ_SIZE) {
-    mi_theap_t* const theap = _mi_theap_default();
-    if (mi_theap_is_initialized(theap)) { mi_theap_stat_decrease(theap, malloc_huge, bsize); }
-  }
+  MI_UNUSED(page); MI_UNUSED(block);
 }
 #endif
 
