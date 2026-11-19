@@ -524,6 +524,9 @@ struct Conn {
     left: bool,
     /// A disconnect is in `out`: nothing more is taken from the outbox.
     draining: bool,
+    /// A bundle (between two `BUNDLE_DELIMITER` packets) is open on the wire: no `Droppable` packet
+    /// goes between them.
+    bundling: bool,
     close_at: Option<Instant>,
 }
 impl Conn {
@@ -584,6 +587,7 @@ impl Conn {
             stalled: None,
             left: false,
             draining: false,
+            bundling: false,
             close_at: None,
         })
     }
@@ -636,6 +640,14 @@ impl Conn {
     /// if one could not be.
     fn frame(&mut self, now: Instant, bodies: Vec<Queued>, _queued: bool) -> bool {
         for body in &bodies {
+            // A bundle's delimiters travel as bodies of their own, possibly in different batches.
+            if self.outbox.droppable.get().is_some()
+                && !body.prepared
+                && body.body.first()
+                    == Some(&(sunrise_protocol::ids::play::clientbound::BUNDLE_DELIMITER as u8))
+            {
+                self.bundling = !self.bundling;
+            }
             let result = if body.prepared {
                 self.writer.frame_into(&body.body, &mut self.out);
                 Ok(())
@@ -699,6 +711,7 @@ impl Conn {
             // Droppable sends go first while there is room: they are small, and late is
             // worthless; vanilla's packets keep their own order.
             if room
+                && !self.bundling
                 && let Some(queue) = self.outbox.droppable.get().cloned()
                 && let Some(body) = queue.pop(now)
             {
@@ -975,6 +988,82 @@ mod tests {
         assert!(client.recv().unwrap_err().is_end_of_stream());
         assert_eq!(served.next(), Seen::Left("Disconnected".into()));
         assert_eq!(served.next(), Seen::Closed);
+    }
+
+    /// Every packet the client reads until a closing sentinel (id 0x7e), as (id, payload).
+    fn read_until_sentinel(client: &mut Connection) -> Vec<(i32, Vec<u8>)> {
+        let mut all = Vec::new();
+        loop {
+            let packet = client.recv().unwrap();
+            if packet.0 == 0x7e {
+                return all;
+            }
+            all.push(packet);
+        }
+    }
+
+    #[test]
+    fn a_droppable_packet_never_lands_inside_a_bundle() {
+        use crate::raw_payloads::droppable::Queue;
+        let delimiter = 0u8;
+        let (a, b) = Pipe::pair();
+        let mut client = Connection::local(a);
+        let served = serve(Connection::local(b), quiet, Duration::from_secs(30));
+        let queue = Queue::new(u32::MAX, None);
+        served.outbox.attach_droppable(queue.clone());
+        let counters = Arc::default();
+        // The opening delimiter is on the wire and the thread is idle between batches when the
+        // droppable frame arrives: it must wait for the closing delimiter.
+        served.send(vec![body(delimiter, 0)], None);
+        assert_eq!(client.recv().unwrap(), packet(&body(delimiter, 0)));
+        queue.push(Instant::now(), &counters, body(0x40, 4));
+        // The thread has woken for it by now if it were going to frame it.
+        std::thread::sleep(Duration::from_millis(200));
+        served.send(vec![body(0x30, 3), body(delimiter, 0)], None);
+        // The bundle is closed: the waiting frame follows it, before the sentinel.
+        std::thread::sleep(Duration::from_millis(200));
+        served.send(vec![body(0x7e, 0)], None);
+        let ids: Vec<i32> = read_until_sentinel(&mut client)
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
+        assert_eq!(ids, [0x30, 0, 0x40]);
+    }
+
+    #[test]
+    fn a_dropped_droppable_leaves_the_framed_stream_as_if_never_sent() {
+        use crate::raw_payloads::droppable::Queue;
+        let run = |push: bool| {
+            let (a, b) = Pipe::pair();
+            let mut client = Connection::local(a);
+            let served = serve(Connection::local(b), quiet, Duration::from_secs(30));
+            // A zero budget drops every droppable send at the queue.
+            let queue = Queue::new(0, None);
+            served.outbox.attach_droppable(queue.clone());
+            served.send(vec![body(3, 10)], None);
+            if push {
+                queue.push(Instant::now(), &Arc::default(), body(0x40, 20));
+            }
+            served.send(vec![body(4, 300), body(0x7e, 0)], None);
+            read_until_sentinel(&mut client)
+        };
+        assert_eq!(run(true), run(false));
+    }
+
+    #[test]
+    fn waiting_droppable_packets_are_framed_by_the_thread_with_room() {
+        use crate::raw_payloads::droppable::Queue;
+        let (a, b) = Pipe::pair();
+        let mut client = Connection::local(a);
+        let served = serve(Connection::local(b), quiet, Duration::from_secs(30));
+        let queue = Queue::new(u32::MAX, None);
+        served.outbox.attach_droppable(queue.clone());
+        for n in 0..3u8 {
+            queue.push(Instant::now(), &Arc::default(), body(0x40 + n, 10));
+        }
+        for n in 0..3u8 {
+            assert_eq!(client.recv().unwrap(), packet(&body(0x40 + n, 10)));
+        }
     }
 
     #[test]
