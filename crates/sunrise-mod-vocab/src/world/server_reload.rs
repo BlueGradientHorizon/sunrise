@@ -70,6 +70,7 @@ impl ServerReloadContext {
 /// phases deterministically; they do not remove the barrier. On any error all
 /// pending applies are dropped, keeping the previous data and function library.
 pub trait ServerReloadListener: Send + Sync + 'static {
+    // hidden: it marks the trait\'s methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
         __sunrise_handler_marks!(ServerReloadListener);

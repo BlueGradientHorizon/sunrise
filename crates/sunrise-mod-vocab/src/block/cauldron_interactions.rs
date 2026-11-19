@@ -82,6 +82,7 @@ pub enum CauldronRegistrationError {
 /// Vanilla handlers still predict locally. Matching custom builds and resource generations
 /// are not established by the current handshake.
 pub trait Interaction: Send + Sync + 'static {
+    // hidden: it marks the trait\'s methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
         __sunrise_handler_marks!(Interaction);

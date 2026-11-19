@@ -56,6 +56,7 @@ pub struct FoundStructure {
 /// data pack structure with `"type": "modid:tower"`. Implemented once, kept by
 /// the game; deterministic and stateless.
 pub trait StructureType: Send + Sync + 'static {
+    // hidden: it marks the trait\'s methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
         __sunrise_handler_marks!(StructureType);
@@ -134,6 +135,7 @@ impl PieceBeardifier {
 /// the engine's (`StructurePiece.createTag`: the type id, `BB`, `O`, `GD`)
 /// around [`add_additional_save_data`](StructurePiece::add_additional_save_data).
 pub trait StructurePiece: std::fmt::Debug + Send + Sync {
+    // hidden: it marks the trait\'s methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
         __sunrise_handler_marks!(StructurePiece);

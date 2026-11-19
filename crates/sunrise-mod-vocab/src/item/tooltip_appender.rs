@@ -47,6 +47,7 @@ pub struct TooltipAppendContext {
 /// asked only for a stack that carries the component and whose `tooltip_display` shows it, and
 /// only while its mod is enabled. Multiple registrations for the same component all run.
 pub trait TooltipAppender: Send + Sync + 'static {
+    // hidden: it marks the trait\'s methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
         __sunrise_handler_marks!(TooltipAppender);

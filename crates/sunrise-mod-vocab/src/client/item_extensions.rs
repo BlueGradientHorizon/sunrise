@@ -105,6 +105,7 @@ impl EquipmentLayer {
 /// A panicking native callback or refused/trapped wasm callback discards every layer of
 /// the piece, draws it with vanilla behaviour, and disables the provider until reload.
 pub trait ClientItemExtensions: Send + Sync + 'static {
+    // hidden: it marks the trait\'s methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
         __sunrise_handler_marks!(ClientItemExtensions);

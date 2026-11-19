@@ -11,6 +11,7 @@ crate::wire::wire_handlers::handler!(dyn CrashSection, "CrashSection");
 /// active check. The report asks it once, on a thread of its own, while the game may have stopped
 /// mid-tick: read the mod's own state, and don't wait on anything the game holds.
 pub trait CrashSection: Send + Sync + 'static {
+    // hidden: it marks the trait\'s methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
         __sunrise_handler_marks!(CrashSection);

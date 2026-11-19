@@ -3,6 +3,7 @@ use super::*;
 /// side asked about, its handler, or none to leave it to the next provider. A closure
 /// `|host, at| Some(Box::new(Tank(at)))` is one.
 pub trait BlockCapabilityProvider<T: ?Sized>: Send + Sync {
+    // hidden: it marks the trait\'s methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
         __sunrise_handler_marks!(BlockCapabilityProvider);

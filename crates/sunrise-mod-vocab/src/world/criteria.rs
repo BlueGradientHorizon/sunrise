@@ -31,6 +31,7 @@ pub trait CriterionContext {
 /// store, including in an already running group. They share the outer call's execution
 /// budget and memory limit; the context expires when the predicate returns.
 pub trait CriterionTest: Send + Sync + 'static {
+    // hidden: it marks the trait\'s methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
         __sunrise_handler_marks!(CriterionTest);

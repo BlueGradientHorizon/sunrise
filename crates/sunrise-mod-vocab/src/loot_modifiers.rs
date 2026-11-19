@@ -111,6 +111,7 @@ impl LootModifierSettings {
 /// Decode validates custom fields once and retains typed immutable state. A bad
 /// file is diagnosed and skipped; it does not suppress other valid instances.
 pub trait GlobalLootModifierSerializer: Send + Sync + 'static {
+    // hidden: it marks the trait\'s methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
         __sunrise_handler_marks!(GlobalLootModifierSerializer);
@@ -133,6 +134,7 @@ crate::wire::wire_handlers::handler!(
 /// listener. Priority and condition are captured once when decoding completes;
 /// a metadata failure, including a refused wasm call, refuses that preparation.
 pub trait GlobalLootModifier: Send + Sync + 'static {
+    // hidden: it marks the trait\'s methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
         __sunrise_handler_marks!(GlobalLootModifier);

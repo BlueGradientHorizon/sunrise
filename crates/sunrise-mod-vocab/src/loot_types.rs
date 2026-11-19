@@ -40,6 +40,7 @@ pub trait LootTypeContext {
 /// A map codec in `Registries.LOOT_FUNCTION_TYPE`, registered before data loads.
 /// Values are immutable and shared between rolls; do not retain random state.
 pub trait ModLootFunction: Send + Sync + 'static {
+    // hidden: it marks the trait\'s methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
         __sunrise_handler_marks!(ModLootFunction);
@@ -69,6 +70,7 @@ crate::wire::wire_handlers::handler!(dyn ModLootFunction, "ModLootFunction");
 /// A map codec in `Registries.LOOT_CONDITION_TYPE`, registered before data loads.
 /// Terms run in order and short-circuit; a skipped term draws no random.
 pub trait ModLootCondition: Send + Sync + 'static {
+    // hidden: it marks the trait\'s methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
         __sunrise_handler_marks!(ModLootCondition);

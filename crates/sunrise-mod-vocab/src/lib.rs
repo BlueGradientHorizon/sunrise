@@ -34,7 +34,8 @@ pub type AttachmentResult<T> = std::result::Result<T, AttachmentError>;
 /// function of its own would be one the module exports, whether or not anything calls it.
 ///
 /// This is the one place the vocabulary lets unsafe code through (the crate denies it): the
-/// allowance covers the one generated function and nothing else.
+/// allowance covers the generated import and its call, and nothing else.
+// hidden: generated code and the attribute macros expand it; a mod never writes it.
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __sunrise_import {

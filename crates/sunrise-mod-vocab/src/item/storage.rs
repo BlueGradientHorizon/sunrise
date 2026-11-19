@@ -133,6 +133,7 @@ impl StoragePage {
 /// kind and in transactions, as a [`ResourceHandler`] is written. Stateless and given the host,
 /// as every capability handler is. Amounts are 64-bit: a million items is one call.
 pub trait ItemStorage {
+    // hidden: it marks the trait\'s methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
         __sunrise_handler_marks!(ItemStorage);

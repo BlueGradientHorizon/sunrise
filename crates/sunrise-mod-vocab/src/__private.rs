@@ -4,8 +4,12 @@
 use crate::*;
 #[path = "__private/registry_installation.rs"]
 mod registry_installation;
-#[doc(hidden)]
-pub use crate::wire::wire_handlers::Sealed;
+
+/// The argument of a handler trait's hidden marks method. Its field is private, so no mod can
+/// make one: nothing outside this crate can call the method.
+// exhaustive: its field is private; nothing builds one
+// no wire: it never crosses; the method is not in the game's table and neither side calls it.
+pub struct Sealed(());
 
 /// Native libraries' launcher-to-game registration contract, not a mod-facing API.
 /// The launcher generates manifest rows independently of hook factories. The game checks

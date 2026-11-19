@@ -3,6 +3,7 @@ use super::*;
 /// context (its [`EntityCapabilityKey`]'s `C`), its handler, or none to leave it to the next
 /// provider. A closure is one.
 pub trait EntityCapabilityProvider<T: ?Sized, C>: Send + Sync {
+    // hidden: it marks the trait\'s methods as imports of a mod that implements it; nothing calls it.
     #[doc(hidden)]
     fn __sunrise_marks(&self, _: crate::__private::Sealed) {
         __sunrise_handler_marks!(EntityCapabilityProvider);
