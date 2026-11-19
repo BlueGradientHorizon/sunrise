@@ -100,6 +100,42 @@ Every call answers `Result<_, DynamicTextureError>`, and a refused call changes 
 
 Match `DynamicTextureError` non-exhaustively.
 
+## Inline images in chat and signs
+
+Native and wasm mods can implement `Hooks::substitute_inline_images` to display atlas sprites in chat history and on
+both sign faces. Each call sees one translated, styled `event.run` with legacy formatting already applied. The hook
+runs before wrapping, width measurement and bidi reordering, not for each glyph as it is painted.
+
+```rust
+use mod_api::prelude::*;
+use mod_api::{Identifier, InlineImageReplacement, SubstituteInlineImagesEvent};
+
+fn substitute_inline_images(&self, _: &dyn ClientHost, event: &mut SubstituteInlineImagesEvent<'_>) {
+    let sprite = Identifier::parse("mymod:dynamic/star").unwrap();
+    for (start, matched) in event.run.match_indices(":star:") {
+        let (Ok(start), Ok(end)) = (u32::try_from(start), u32::try_from(start + matched.len())) else {
+            continue;
+        };
+        event.images.push(InlineImageReplacement { start, end, sprite: sprite.clone() });
+    }
+}
+```
+
+Each half-open UTF-8 byte range must stay within the run and must not include a newline. The first valid proposal in
+hook dispatch order wins over overlapping proposals. A missing sprite or invalid range leaves the text alone unless
+another valid proposal covers it. Each replacement occupies one 8×8 `minecraft:gui` glyph. Chat clicks and hovers keep
+the span's style; signing, search and copy still use the original message. Sign data and the editor keep the original
+text. Name tags and the chat input field do not use this hook.
+
+Give the hook the id of a pack sprite or an existing dynamic texture. Keep the listener a cheap match: it may run
+again when text, resources, sprite geometry or the enabled mods change. Create or free the texture in a mutable client
+hook, not during substitution. For an animation, keep one image id and update its same-sized pixels as frames change;
+there is no need to rebuild the text layout.
+
+A trusted native mod downloading images can use a pinned Cargo HTTP dependency on a background worker. Keep the
+network and decoding off the game thread, and hand the decoded RGBA to a mutable client hook for upload. The image
+hook neither fetches data nor provides a network service.
+
 ## Resource reloads
 
 A resource pack change rebuilds the GUI atlas. Every image keeps its name, class and slot, and the game puts its last

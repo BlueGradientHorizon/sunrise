@@ -395,6 +395,7 @@ pub fn main() -> Result<()> {
             glyph: &|c| atlas.glyph_cell(c),
             glyphs: atlas.font.epoch(),
             font: Some(&atlas.font),
+            inline_images: None,
             dynamic_visible: None,
         };
         let mut verts = Vec::new();

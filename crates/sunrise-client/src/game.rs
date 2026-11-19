@@ -5756,6 +5756,8 @@ impl Game<'_> {
             };
             let lid = |p: [i32; 3]| self.chest_lid(p, alpha as f32);
             let anim = |p: [i32; 3]| self.block_anim(p, alpha as f32);
+            let substitute =
+                |text: &sunrise_client::text::Text| self.substitute_inline_images(text);
             let scene = BlockEntityScene {
                 camera,
                 orientation: self.camera_orientation(),
@@ -5775,6 +5777,12 @@ impl Game<'_> {
                     Some(BlockEntity::Sign(sign)) => Some(sign),
                     _ => None,
                 },
+                inline_images: self.inline_images_revision().map(|revision| {
+                    block_entity_render::SignInlineImages {
+                        revision,
+                        substitute: &substitute,
+                    }
+                }),
                 banner: &|p| self.banner_layers_at(p),
                 skull: &|p| self.skull_skin_at(p),
                 glyph: &|c| self.gui.atlas.glyph_cell(c),

@@ -20,6 +20,7 @@ mod clip_corner;
 pub mod dynamic_textures;
 mod gui_sprite;
 pub use gui_sprite::atlas_key_of_gui_sprite;
+pub(crate) use gui_sprite::find_inline_sprite;
 mod menu_pictures;
 mod model_reducing;
 mod pack_text;
@@ -31,7 +32,7 @@ pub(crate) mod sprite_modifiers;
 /// pack that replaced it (vanilla's GUI code draws in those units: `blit`
 /// divides by the texture size it is given, sprites by their `gui.scaling`
 /// size). Textures the default resources lack keep their own size.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Rect {
     pub u0: f32,
     pub v0: f32,
@@ -2408,8 +2409,8 @@ impl HudBatch {
                     left: 0.0,
                     top: 0.0,
                     right: 0.0,
-                    bottom: 8.0,
-                    advance: 8.0,
+                    bottom: crate::font::INLINE_OBJECT_SIZE,
+                    advance: crate::font::INLINE_OBJECT_SIZE,
                     offset: 1.0,
                 }
             } else {
@@ -2634,7 +2635,8 @@ impl HudBatch {
             }
             InlineObject::Atlas { .. } => {
                 if let Some(rect) = atlas.inline_object_sprite(object) {
-                    self.rect_uv(x, y, 8.0, 8.0, rect, tint);
+                    let size = crate::font::INLINE_OBJECT_SIZE;
+                    self.rect_uv(x, y, size, size, rect, tint);
                 }
             }
         }

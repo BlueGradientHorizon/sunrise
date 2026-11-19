@@ -2806,6 +2806,7 @@ impl Game<'_> {
             glyph: &|c| self.gui.atlas.glyph_cell(c),
             glyphs: self.gui.atlas.font.epoch(),
             font: Some(&self.gui.atlas.font),
+            inline_images: None,
             dynamic_visible: None,
         };
         self.res

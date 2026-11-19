@@ -11,23 +11,16 @@ pub fn atlas_key_of_gui_sprite(id: &str) -> String {
 }
 
 impl HudAtlas {
-    /// `AtlasGlyphProvider`: the sprite `sprite` of the atlas named `atlas`
-    /// (`minecraft:gui` keeps its sprites under `gui/sprites/`), or the missing
-    /// sprite when that atlas has none by that name.
+    /// `AtlasGlyphProvider`: the sprite `sprite` of the atlas named `atlas`,
+    /// or the missing sprite when that atlas has none by that name.
     pub fn inline_sprite(&self, atlas: &str, sprite: &str) -> Option<Rect> {
-        let plain = sprite.strip_prefix("minecraft:").unwrap_or(sprite);
-        let gui = atlas_key_of_gui_sprite(sprite);
-        let gui_atlas = atlas.strip_prefix("minecraft:").unwrap_or(atlas) == "gui";
-        let (first, second) = if gui_atlas {
-            (gui.as_str(), plain)
-        } else {
-            (plain, gui.as_str())
-        };
-        self.sprites
-            .get(first)
-            .or_else(|| self.sprites.get(second))
-            .or_else(|| self.sprites.get(MISSING_SPRITE))
-            .copied()
+        self.find_inline_sprite(atlas, sprite)
+            .or_else(|| self.sprites.get(MISSING_SPRITE).copied())
+    }
+
+    /// Resolve an inline sprite without substituting the missing sprite.
+    pub fn find_inline_sprite(&self, atlas: &str, sprite: &str) -> Option<Rect> {
+        find_inline_sprite(&self.sprites, atlas, sprite)
     }
     /// `inline_sprite` for an inline atlas object; `None` for any other object.
     pub(super) fn inline_object_sprite(&self, object: &crate::text::InlineObject) -> Option<Rect> {
@@ -38,6 +31,22 @@ impl HudAtlas {
             _ => None,
         }
     }
+}
+
+pub(crate) fn find_inline_sprite(
+    sprites: &std::collections::HashMap<String, Rect>,
+    atlas: &str,
+    sprite: &str,
+) -> Option<Rect> {
+    let plain = sprite.strip_prefix("minecraft:").unwrap_or(sprite);
+    let gui = atlas_key_of_gui_sprite(sprite);
+    let gui_atlas = atlas.strip_prefix("minecraft:").unwrap_or(atlas) == "gui";
+    let (first, second) = if gui_atlas {
+        (gui.as_str(), plain)
+    } else {
+        (plain, gui.as_str())
+    };
+    sprites.get(first).or_else(|| sprites.get(second)).copied()
 }
 
 #[cfg(test)]
