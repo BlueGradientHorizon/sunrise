@@ -31,7 +31,10 @@ velocity, the first target's worn pieces, the player's health, velocity,
 fall distance, impulse impact and grace time and its landing-particle flag,
 sounds, level and game events, the used and damage_taken statistics, the held
 stack and the level random afterwards. Thorns' damage comes from the player's
-own unseeded random, so only its range is compared (`own_random`).
+own unseeded random, so only its range is compared (`own_random`). The cases
+`exact_cases` adds after them (armored targets without Thorns, and Thorns
+targets a creative player hits) are compared token for token, with none of
+those allowances.
 """
 import json
 import math
@@ -188,6 +191,41 @@ def cases(facts, count, seed):
         yield case
 
 
+def exact_cases(facts, seed):
+    """Cases whose every line is decided by the seeded level random, compared token for token: an armored target the
+    fixture's equipment modifiers protect (no Thorns, so the player's own random is never drawn), and a Thorns target
+    a creative player hits, whose invulnerability refuses Thorns' hurt before its amount matters."""
+    rng = random.Random(seed ^ 0x3003)
+    floor = d.States(facts).get('stone')
+    fits = [
+        {'feet': stack('iron_boots'), 'legs': stack('iron_leggings'),
+         'chest': stack('iron_chestplate', {'unbreaking': 2}), 'head': stack('iron_helmet')},
+        {'chest': stack('diamond_chestplate'), 'head': stack('diamond_helmet', None, 360)},
+        {'feet': stack('leather_boots', None, 64), 'chest': stack('leather_chestplate')},
+        {'legs': stack('golden_leggings', {'unbreaking': 3}), 'chest': stack('golden_chestplate', None, 109)},
+    ]
+    thorny = [
+        {'chest': stack('iron_chestplate', {'thorns': 3})},
+        {'chest': stack('diamond_chestplate', {'thorns': 3, 'unbreaking': 1}), 'feet': stack('diamond_boots')},
+        {'head': stack('leather_helmet', {'thorns': 2}, 53)},
+    ]
+    hits = [(stack('mace'), 3.0), (stack('mace', {'density': 2, 'breach': 3}), 6.5),
+            (stack('diamond_sword'), 0.0), ('-', 0.0)]
+    for equip, creative in [(e, False) for e in fits] + [(e, True) for e in thorny]:
+        for item, fall in hits:
+            case = {**h.environment(rng), 'pos': [0, 0, 0]}
+            case.pop('raining', None)
+            case.pop('thundering', None)
+            case['cells'] = [[x, -1, z, floor] for x in range(-6, 7) for z in range(-6, 7)]
+            case['entities'] = [{'type': 'minecraft:' + rng.choice(['zombie', 'husk', 'skeleton']), 'pos': [0.0, 0.0, 0.0],
+                                 'yaw': rng.uniform(-180, 180), 'health': 1000.0, 'ground': True, 'equip': equip}]
+            case['attack'] = {'item': item, 'creative': creative, 'player': [1.5, 0.0, 0.0], 'motion': [0.0, -0.5, 0.0],
+                              'fall': fall, 'fall_flying': False, 'flying': False, 'base': round(rng.uniform(1.2, 7.0), 3)}
+            case['items'] = []
+            case['mode'] = 'dispense'
+            yield case
+
+
 def kind(case):
     item = case['attack']['item']
     name = item.split('"')[1].split(':')[1] if item != '-' else 'empty hand'
@@ -240,6 +278,9 @@ def main():
     work = lab.LOCAL / 'mace-parity'
     work.mkdir(parents=True, exist_ok=True)
     all_cases = list(cases(facts, args.count, args.seed))
+    # Past this index every case is exact (exact_cases): no range, filter or tolerance.
+    first_exact = len(all_cases)
+    all_cases += exact_cases(facts, args.seed)
     (work / 'cases.jsonl').write_text(''.join(json.dumps(case) + '\n' for case in all_cases))
     classes = work / 'classes'
     classes.mkdir(exist_ok=True)
@@ -259,9 +300,15 @@ def main():
     assert len(native) == len(rust) == len(all_cases), (len(native), len(rust), len(all_cases))
     groups, errors = {}, {}
     smashed = burst = thorned = 0
-    for case, a, b in zip(all_cases, native, rust):
+    for index, (case, a, b) in enumerate(zip(all_cases, native, rust)):
         if a and a[0].startswith('error'):
             errors.setdefault(a[0], []).append(case)
+            continue
+        if index >= first_exact:
+            if any('~' in line for line in a):
+                groups.setdefault('exact case with an unseeded draw: ' + kind(case), []).append((case, a, b))
+            elif sorted(a) != sorted(b):
+                groups.setdefault('exact ' + kind(case), []).append((case, a, b))
             continue
         smashed += any('source=minecraft:mace_smash hurt=true' in line for line in a)
         burst += any(line.endswith('minecraft:entity.wind_charge.wind_burst') for line in a)
