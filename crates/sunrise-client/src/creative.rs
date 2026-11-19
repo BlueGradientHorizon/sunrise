@@ -553,14 +553,14 @@ impl Creative {
             })
             .collect();
         self.forget_items();
-        self.publish();
+        self.publish_catalog_order();
     }
     /// This is the window's creative inventory: publish its order now and after every rebuild.
     pub fn publish_order(&mut self) {
         self.publishes = true;
-        self.publish();
+        self.publish_catalog_order();
     }
-    fn publish(&self) {
+    fn publish_catalog_order(&self) {
         if self.publishes {
             let stacks = self.search_items.iter();
             let order = stacks.map(|s| (s.item.as_ref(), s.merge_kind()));
@@ -2067,18 +2067,18 @@ mod tests {
         let mut c = with_operator_tab();
         let names = Names::default();
         c.publish_order();
-        assert!(refresh(&mut c, false, &names));
+        publish(&mut c, false, &names);
         assert_eq!(order("minecraft:stone"), Some(0));
         assert_eq!(
             order("minecraft:barrier"),
             None,
             "an operator item, no permissions"
         );
-        assert!(refresh(&mut c, true, &names));
+        publish(&mut c, true, &names);
         assert_eq!(order("minecraft:barrier"), Some(2));
         // The same as the screen's own order.
         let barrier = ItemStack::new("minecraft:barrier", 1);
-        assert_eq!(c.order_of(&barrier), Some(2));
+        assert_eq!(Creative::order_of(&c.search_items, &barrier), Some(2));
     }
 
     #[test]
