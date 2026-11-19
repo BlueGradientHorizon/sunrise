@@ -735,14 +735,6 @@ mod tests {
                 back(game, places),
                 Err(MenuSlotBackRefusal::PlaceUnresolved { index: 1 })
             );
-            // A native window with hidden slots has no live menu handle, even in its own turn.
-            edit_guest(game, |g| g.menu.as_mut().unwrap().hidden.push(0));
-            let refused = Err(MenuSlotBackRefusal::NoPlayerOrWindow);
-            assert_eq!(back(game, held_places(Hand::Main, 0..1)), refused);
-            assert_eq!(
-                game.as_guest(1, |game| back(game, held_places(Hand::Main, 0..1))),
-                Some(refused)
-            );
             // A block's menu shows its block's slots: no backing is stored for it.
             edit_guest(game, |g| {
                 g.menu.as_mut().unwrap().slots = Slots::Block((0, 64, 0));
@@ -752,6 +744,22 @@ mod tests {
                 Err(MenuSlotBackRefusal::UnsupportedMenu)
             );
             assert_eq!(game.menu_places_of(1), None);
+            edit_guest(game, |g| g.menu.as_mut().unwrap().slots = Slots::Native);
+            // A native window's hidden slots only keep the game's shift-clicks out: its handle
+            // stays live, in its own turn too.
+            edit_guest(game, |g| g.menu.as_mut().unwrap().hidden.push(0));
+            assert_eq!(back(game, held_places(Hand::Main, 0..1)), Ok(()));
+            assert_eq!(
+                game.as_guest(1, |game| back(game, held_places(Hand::Main, 0..1))),
+                Some(Ok(()))
+            );
+            // A window the player does not have open names no handle, in its own turn too.
+            let refused = Err(MenuSlotBackRefusal::NoPlayerOrWindow);
+            let stale = |game: &mut Game<'_>| {
+                game.player_back_mod_menu_slots(player, window + 1, held_places(Hand::Main, 0..1))
+            };
+            assert_eq!(stale(game), refused);
+            assert_eq!(game.as_guest(1, stale), Some(refused));
         });
     }
 

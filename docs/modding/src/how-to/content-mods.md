@@ -21,8 +21,8 @@ cargo sunrise-mod check target/sunrise-mod/my_mod.smod   # the registry's checks
   Nightly (players have it), or to `--sunrise`'s: `nightly-<YYYY-MM-DD>`, or a commit sha (7 hex digits are enough when
   they name one build). A native mod pins it in `[native] sunrise`, a wasm mod in `Cargo.toml`'s
   `[package.metadata.sunrise] sdk`. `Cargo.toml` names the API by path,
-  `sunrise-mod-api = { path = ".sunrise/sdk/api/crates/sunrise-mod-api" }`, the only form the tool and the launcher
-  take. Every other form is refused under `E_SDK_SOURCE`, naming why: the old git form, a version alone (Cargo
+  `sunrise-mod-api = { path = ".sunrise/sdk/api/crates/sunrise-mod-api" }`, the only form a build
+  takes. Every other form is refused under `E_SDK_SOURCE`, naming why: the old git form, a version alone (Cargo
   would take the crate from crates.io, where anyone can publish its name), another source, or another path. `new` fetches that build's SDK into `.sunrise/sdk/`,
   and every command that compiles the mod fetches it again when it is missing or another build's, so a fresh clone
   works after one command; your editor needs that first command too. `.sunrise/` is in the template's `.gitignore`
@@ -30,7 +30,7 @@ cargo sunrise-mod check target/sunrise-mod/my_mod.smod   # the registry's checks
   `SUNRISE_SDK_BASE` (a URL or a folder) reads the releases from a mirror instead. When that Nightly has no SDK,
   `new` says so and asks for `--sunrise`. `update` repins a native mod the same way
   ([the SDK in a mod project](../reference/sdk/03-in-a-project.md)). Its root `impl Hooks` uses
-  `#[mod_api::sunrise_mod]`. Compile it with `sunrise-launcher native-build <path> --trust-native-code`
+  `#[mod_api::sunrise_mod]`. Compile it with `cargo sunrise-mod build`
   ([writing hooks](../start/writing-hooks.md)). Any other `--template` is refused.
 - `build` packs the checked project into `target/sunrise-mod/<id>.smod`: `sunrise-mod.toml`, `assets/`,
   `data/`, optional `icon.png` and, for code, the root Cargo project. It reads content with the game's own package
@@ -147,8 +147,8 @@ tier = 3
 
 The optional fields fill the game's Mods screen, which lists every mod with its icon, name, version, id, license,
 authors, credits and description, as NeoForge's mod list does. A link must be `http` or `https` and at most 2048
-characters; the others are plain text. The screen has no switch: a mod runs or not by what the launcher and
-`sunrise-mods.txt` say.
+characters; the others are plain text. The screen has no switch: a mod runs or not by what
+`sunrise-mods.txt` says ([installing and using mods](../players/installing-mods.md)).
 
 Unknown keys are refused, so a typo is an error that names the nearest valid key. `side` is `"client"` (the default), `"both"` or `"server"`.
 `api` and `capabilities` are not written: `cargo sunrise-mod build` puts `api = "0.2"` and `capabilities = ["registries"]` into the package. A manifest that does write them must write exactly those values, and is refused with both values otherwise.
@@ -599,7 +599,7 @@ was made: `entity()` (the entity's id, `None` for the empty, position and cache 
 - **No re-entry.** The query holds the entity's state from before the move, and a collision query
   made inside the callback gets the empty-context answer, never a nested call.
 - **No `Host`.** A move holds the level's collision data and cannot lend a `Host`, as for
-  `entity_move` and `friction`. The part answers from the query and from state it keeps itself. A
+  `entity_move`. The part answers from the query and from state it keeps itself. A
   rule that needs more (a belt's set of carried entities; powder snow's fall distance) tracks that
   state in the mod, keyed by `query.entity()`. If a mod needs an entity read it cannot track, one
   captured field is added to `CollisionQuery`; the `Host` is not reopened.
@@ -1045,7 +1045,7 @@ mod's own screen (`screen`); without one it closes again. Clients join a server 
 types, as with its blocks, and a client that isn't Sunrise's is never sent one: the block opens nothing for it. Its
 clicks run on the server's vanilla menu engine (`menu::Kind::Mod`), shift-clicks routed as `ChestMenu`'s, and a native
 mod can decide what a slot takes in code with `menu_slot_rules` ([hook notes](https://github.com/sunrise-org/sunrise/blob/main/crates/sunrise-mod-vocab/src/hooks/menu_slot_rules.rs))
-and how far away the menu stays open with `menu_still_valid` ([hook notes](https://github.com/sunrise-org/sunrise/blob/main/crates/sunrise-mod-vocab/src/hooks/menu_still_valid.rs)).
+and whether the menu stays open, with or without a backing block, with [`menu_still_valid`](../concepts/capabilities/menu-slots.md#keeping-a-mod-menu-open).
 The declaration specifies per-slot rules through `results`; clicks are handled by the server.
 
 ##### Lending ingredients and linking containers
@@ -1124,7 +1124,10 @@ Paths use vanilla's resource characters, at most 65,536 files, 16 MiB each and 5
 content is refused is left out, with the reason in the log. The game reads this content into its block and item
 tables (`sunrise_client::mod_content`, [modpacks.md](https://github.com/sunrise-org/sunrise/blob/main/docs/modpacks.md)). A tag entry
 naming an id nobody registers (a block a port left out, another mod's item) is dropped, so the rest of the tag
-loads; vanilla would drop the whole tag.
+loads; vanilla would drop the whole tag. In a block or item tag, an entry naming a `#minecraft:…` tag that neither
+vanilla nor an installed mod defines is also dropped. The warning names the entry and its file; an optional
+entry (`"required": false`) is dropped silently. If the base has no tag folder for that registry, the reference is
+left in place.
 
 Tags merge as a data pack's do. Every mod's file for one tag (vanilla's `data/minecraft/tags/`, the convention
 `data/c/tags/`, or another mod's) adds its values after vanilla's and the mods' before it, in load order. A file with

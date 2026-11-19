@@ -26,7 +26,6 @@
           "bind": "",
           "enforce_whitelist": false,
           "max_players": 20,
-          "max_view_distance": 0,
           "max_viewed_loaded_chunks": 2048,
           "max_viewed_loaded_chunks_per_level": 16384,
           "max_viewed_ticking_chunks": 441,

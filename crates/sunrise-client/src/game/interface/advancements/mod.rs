@@ -1392,8 +1392,18 @@ impl Game<'_> {
                 )
         });
     }
-    /// `PlayerTrigger.LOCATION` every second, and the other per-tick checks.
+    /// Per-tick checks for the player already in place, without a guest connection turn.
     pub(super) fn tick_advancements(&mut self) {
+        self.tick_level_advancements();
+        if let Some(player) = &self.player
+            && player.health.tick_count % 20 == 0
+        {
+            self.trigger_location_advancement();
+        }
+    }
+
+    /// Criteria on the level path (`ServerPlayer.tick`).
+    pub(super) fn tick_level_advancements(&mut self) {
         if self.player.is_none() || self.remote.is_some() {
             return;
         }
@@ -1434,20 +1444,22 @@ impl Game<'_> {
             self.trigger_levitation(start, (self.ticks - since) as i64);
         }
         self.tick_marks();
-        if self.ticks.is_multiple_of(20) {
-            let me = self.player_entity_for("minecraft:location");
-            self.trigger("minecraft:location", |c, w| {
-                let ctx = adv::Entities {
-                    this: Some(&me),
-                    origin: me.position,
-                    tool: None,
-                    block_pos: None,
-                    target: None,
-                    interacting: None,
-                };
-                adv::conditions(&c["player"], &ctx, w)
-            });
-        }
+    }
+
+    /// `ServerPlayer.doTick` fires LOCATION after the player body, every 20 entity ticks.
+    pub(super) fn trigger_location_advancement(&mut self) {
+        let me = self.player_entity_for("minecraft:location");
+        self.trigger("minecraft:location", |c, w| {
+            let ctx = adv::Entities {
+                this: Some(&me),
+                origin: me.position,
+                tool: None,
+                block_pos: None,
+                target: None,
+                interacting: None,
+            };
+            adv::conditions(&c["player"], &ctx, w)
+        });
     }
     /// A player condition plus one entity (`player`, `entity` keys).
     pub(super) fn trigger_entity(&mut self, name: &str, key: &str, target: &EntityView) {
@@ -2524,7 +2536,7 @@ impl Game<'_> {
             // RecipeToast: black description under a purple title, the
             // station at 0.6 scale in the corner over the cycling result.
             let atlas = &self.gui.atlas;
-            batch.sprite(atlas, "gui/sprites/toast/recipe", x, y);
+            batch.sprite(atlas, "toast/recipe", x, y);
             batch.text_styled(atlas, title, x + 30.0, y + 7.0, 0xFF50_0050, false);
             batch.text_styled(atlas, description, x + 30.0, y + 18.0, 0xFF00_0000, false);
             let start = batch.vertices.len();
@@ -2534,7 +2546,7 @@ impl Game<'_> {
             return;
         }
         let atlas = &self.gui.atlas;
-        batch.sprite(atlas, "gui/sprites/toast/advancement", x, y);
+        batch.sprite(atlas, "toast/advancement", x, y);
         let (_, color) = toast_label(frame);
         // AdvancementToast.extractRenderState: a title of one line sits under
         // the frame's label; a longer one is wrapped at 125, the label fading

@@ -50,8 +50,8 @@ For mods that run where the world is simulated: a dedicated server, a LAN host, 
   coordinates without requiring loaded chunks. `mod_id` is a loaded package id as a string; `resource:<registry>`
   is `CommandArgumentValue::Id`, an id that registry holds. A custom argument is `CommandArgumentValue::Custom
   { kind, value }`: its registered type's id and what its parser returned. Missing optional arguments are absent.
-  Parsing, permission and resolution failures produce feedback without calling listeners. The console resolves from the Overworld spawn's
-  block corner with zero rotation and no source entity (`@s` fails). Return `Flow::Cancel` when handled.
+  Parsing, permission and resolution failures produce feedback without calling listeners. The console resolves from the world spawn's
+  block corner, in the level the spawn is in, with zero rotation and no source entity (`@s` fails). Return `Flow::Cancel` when handled.
 - **`armor_stand_manipulate(player, name, stand_id, slot, cancel)`**: a player takes an item from an armor stand or
   puts one on it, heard after the stand's disabled-slot checks and before anything moves. `slot` is `mainhand`,
   `offhand`, `feet`, `legs`, `chest` or `head`. Set `cancel` and nothing changes (the click is spent). The player's
@@ -348,7 +348,7 @@ For mods that run where the world is simulated: a dedicated server, a LAN host, 
   a time before `current` or past `i64::MAX`, or a marker that clock lacks (only the Overworld's has any), moves to the morning.
 - **`world_border_bounds_changed()`**: `/worldborder set` or `/worldborder add` changed the border size or started a timed size change.
 - **`world_border_center_changed()`**: `/worldborder center` moved the border center. It hears successful commands only.
-- **`spawn_change(pos, angle)`**: `/setworldspawn` moved the world's spawn point, after its position and rotation are applied.
+- **`spawn_change(dimension, pos, angle)`**: `/setworldspawn` moved the world's spawn point to `pos` in level `dimension`, after its level, position and rotation are applied.
 - **`portal_create(dimension, pos)`**: a Nether portal built for dimension travel or the End arrival platform was completed in `dimension`; `pos` is its lower corner or platform origin.
 - **`raid_spawn_wave(raid, pos, wave, raiders)`**: a raid wave is about to be spawned at `pos`; `raiders` is the count Sunrise will spawn.
 - **`raid_state_change(raid, pos, state)`**: a raid at `pos` was triggered or changed to `victory`, `loss`, or `stopped`. Its `RaidRef` identifies the owning level, not necessarily the level currently in place.
@@ -1363,8 +1363,8 @@ as the terrain samples them.
   grass. The model is the state's first random variant; faces that don't lie flat on a side (a flower's crossed
   planes) are left out, and the `particle` sprite stands for them. Fluids give their still texture on every side.
 - `native_texture_sprites(textures)`: a texture's sprite by name (`block/stone`), none for one no model uses.
-- `native_gui_sprite(sprite)`: a GUI atlas sprite's `AtlasRegion` by `Identifier` (`minecraft:gui/sprites/container/slot`,
-  `minecraft:particle/flame`, `mymod:gui/panel`), its UV rect and its size in its own pixels, none for one the atlas
+- `native_gui_sprite(sprite)`: a GUI atlas sprite's `AtlasRegion` by `Identifier` (`minecraft:container/slot`,
+  `minecraft:particle/flame`, `mymod:panel`), its UV rect and its size in its own pixels, none for one the atlas
   lacks. Plain data, right until the next `texture_atlas_stitched` for `TextureAtlas::Gui`.
 - `native_block_sprites_version()` changes each time the resources load (a resource pack turned on or off moves the
   layers, and the arrays are new): ask again then.
@@ -1640,7 +1640,7 @@ one, where vanilla gives the `by` one.
   teleport, a respawn) and when they disconnect, in the level it was watched in. Vanilla watches a chunk when it queues it; Sunrise
   picks a chunk only as it sends it, so the watch comes just before the send. The hub records them only while a mod listens and
   the game tells them after the hub's network step for that level, so a handler sees the state after that step; the order per
-  player and chunk is vanilla's. The far ring's columns past the view distance aren't told, and the server stopping doesn't unwatch.
+  player and chunk is vanilla's. The server stopping doesn't unwatch.
 - A chunk's ticket level changing, on the server: `chunk_ticket_level_updated(chunk, old, new)` (NeoForge's
   `ChunkTicketLevelUpdatedEvent`). The level is the chunk's loading level from its tickets (a player, a forced chunk, a portal
   ticket, the dragon fight's arena), on `ChunkLevel`'s scale: 31 and lower entity ticking, 32 block ticking, 33 loaded without
@@ -2161,7 +2161,7 @@ registration path.
 - A player respawning: `player_respawned(player, name)` is heard once at the end of `PlayerList.respawn`, with the player placed and their health, food and experience reset (NeoForge's `PlayerRespawnEvent`), on a server, with their state swapped in so the helpers reach them.
 - Where a player respawns (`PlayerRespawnPositionEvent`): `native_player_respawn_position(player, original_level, original_position, missing_respawn_block, level, position, yaw, pitch, copy_original_spawn_position)`, on a server, once the respawn point is found. `player` is the player's handle. The mods may change the level, the position, the facing and whether the fresh player keeps its respawn point (default: yes, unless the bed or anchor was missing). Vanilla finds the point inside `PlayerList.respawn`. Sunrise places the player first and finds a bed or anchor's spot, or the world spawn's free column, once its chunks have loaded, so for those the hook fires then, after `player_respawned`. There a new point in the same level is a teleport, and another level is a level change: one extra Respawn packet, heard as `player_teleported`. An Overworld forced point needs no block: the hook fires at once, before the Respawn packet, and a changed level, point or facing is simply where the player respawns. The point the mods choose is not block-checked and the hook doesn't fire again. Not for the End exit, which isn't a respawn here.
 
-- A client mod's view and items: `native_raycast(distance)` and `native_view_hit()` (the first block along the view, up to 1024 blocks, across the distant terrain past the loaded chunks), and `native_claim_items(mod_id, ids)`: a right-click with one of those items is the mod's alone, the server never hears of it, and `native_poll(mod_id)` gives `UseStart` and `UseStop` with the stack (its custom name and data as SNBT) and the ticks it was held.
+- A client mod's view and items: `native_raycast(distance)` and `native_view_hit()` (the first block along the view, up to 1024 blocks, in the loaded chunks), and `native_claim_items(mod_id, ids)`: a right-click with one of those items is the mod's alone, the server never hears of it, and `native_poll(mod_id)` gives `UseStart` and `UseStop` with the stack (its custom name and data as SNBT) and the ticks it was held.
 
 - `render_fog(partial, camera, fog_type, fog)` adjusts final FogData after normal environment/effect/render-distance calculation and Sunrise's fog option, before GPU upload. Title panoramas skip it. The whole request is accepted only when color components are finite in 0..=1, all distances are finite, environmental and render-distance ends exceed their starts, and sky/cloud ends are nonnegative. Negative near planes remain valid (water/lava). Invalid requests retain the original whole fog.
 
@@ -2487,7 +2487,7 @@ registration path.
 
 - A server player took a book from a lectern: `player_take_lectern_book(player, name, pos, book)` is heard after its block entity changed.
 
-- `spawn_change(pos, angle)` is told after `/setworldspawn` moves the world's spawn point, with its block position and rotation.
+- `spawn_change(dimension, pos, angle)` is told after `/setworldspawn` moves the world's spawn point, with its level, block position and rotation.
 
 - `world_border_bounds_changed()` is told after `/worldborder set` or `/worldborder add` changes the border size or starts its timed size change. It hears successful commands only.
 

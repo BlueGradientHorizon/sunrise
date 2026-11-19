@@ -137,13 +137,8 @@ impl World for LevelLocation<'_> {
             self.world,
             key,
             &name,
-            sunrise_client::save::block_entity_encode::encode_with(
-                key,
-                entity,
-                &name,
-                self.items,
-                |_, _| None,
-            ),
+            entity,
+            self.items,
             || super::machines::hopper_cooldown_in(self.hoppers, self.world, key),
         ))
     }

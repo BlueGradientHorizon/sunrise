@@ -5,7 +5,8 @@ use super::{
 };
 use mod_api::__private::game::*;
 use mod_api::{
-    DragKind, EntityRef, MenuClick, MenuRef, MenuSlotBacking, MouseButton, PlayerRef, SwapWith,
+    DragKind, EntityRef, LevelReadError, MenuClick, MenuRef, MenuSlotBacking, MouseButton,
+    PlayerRef, SwapWith,
 };
 use sunrise_client::{
     containers::BlockEntity,
@@ -123,6 +124,21 @@ impl Game<'_> {
                 })
                 .collect(),
         )
+    }
+
+    pub(super) fn menu_merchant_offers(
+        &self,
+        menu: MenuRef,
+    ) -> Result<Option<&[sunrise_client::merchant::MerchantOffer]>, LevelReadError> {
+        if self.native_client_menu_name(menu) != Some("minecraft:merchant") {
+            return Ok(None);
+        }
+        let merchant = self
+            .station
+            .as_ref()
+            .and_then(|station| station.merchant.as_ref())
+            .ok_or(LevelReadError::Unavailable)?;
+        Ok(Some(&merchant.session.offers))
     }
 
     pub(super) fn native_client_menu_name(&self, menu: MenuRef) -> Option<&str> {

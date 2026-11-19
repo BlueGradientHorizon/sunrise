@@ -112,7 +112,13 @@ fn uses_command(entry: mod_surface::child::ChildEntry, args: &[PathBuf]) {
         }
     }
     let surface = read_surface(surface);
-    let input = mod_uses::read(dir).unwrap_or_else(|e| fail(e));
+    let input = mod_uses::read(dir, &[]).unwrap_or_else(|e| fail(e));
+    if input.game_code {
+        fail(
+            "the mod declares game code (a [native] row or internals), which a surface alone cannot judge: use `cargo sunrise-mod fits`"
+                .to_owned(),
+        );
+    }
     // No manifest form names a hook version today (the schema refuses `hook_version`).
     let manifest = ManifestFacts {
         names: input.manifest_names,
@@ -163,9 +169,13 @@ fn fits_command(args: &[PathBuf]) -> ! {
     let table =
         UsesTable::read(&bytes).unwrap_or_else(|e| fail(format!("{}: {e}", table.display())));
     let target = read_surface(target);
-    if table.lacks_a_hook_version(&target) {
+    if table
+        .entries
+        .iter()
+        .any(|entry| entry.id.starts_with("game:"))
+    {
         fail(
-            "the list is of an older schema and holds no version of a hook the target has past version 1; scan the mod again"
+            "the list records game code the mod declares, which a surface alone cannot judge: use `cargo sunrise-mod fits`"
                 .to_owned(),
         );
     }
@@ -178,6 +188,10 @@ fn fits_command(args: &[PathBuf]) -> ! {
             );
             std::process::exit(0)
         }
+        Fit::Unversioned(hooks) => fail(format!(
+            "not known: nothing the list can judge changed, but it holds no version of {}; scan the mod again",
+            hooks.join(", ")
+        )),
         Fit::DoesNotFit(misfits) => {
             println!(
                 "does not fit: {} of the {} items it uses changed",

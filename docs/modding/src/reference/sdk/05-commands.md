@@ -55,7 +55,8 @@ The API-use report is for native mods. A wasm mod's `update` resolves the build,
 
 For a native mod, before it repins, `update` lists every item the mod uses that changed between the two builds, the source line that
 uses it, for a removed item the closest one in the new build (one with the same counterpart name first, then the
-nearest id and doc text), and the change note's `migrate` line when the change has one. A mod made for exactly one
+nearest id and doc text), and the change note's `migrate` line when the change has one. It then lists the game
+code the mod declares (mixin targets, loops, internals) that changed. A mod made for exactly one
 build is only named; its internals and `[[inject]]` declarations are checked as the pin moves, and a change to an
 injection's point refuses the update until `--accept <inject id>` takes it.
 
