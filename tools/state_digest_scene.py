@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fixed scene on a `state-digest` dedicated server: BINARY RESOURCES TEMPLATE OUT [--detail] [--ticks N] [--sprint] [--fast-step] [--random-ticks] [--no-digest] [--generate]; random ticks are off unless --random-ticks."""
+"""Fixed scene on a `state-digest` dedicated server: BINARY RESOURCES TEMPLATE OUT [--detail] [--ticks N] [--sprint] [--fast-step] [--random-ticks] [--no-digest] [--generate] [--coverage]; random ticks are off unless --random-ticks; --coverage adds a village, foxes, dolphins, allays, looting mobs, tridents, a furnace, a brewing stand and the custom spawners, and defaults --ticks to 2500."""
 import os
 import shutil
 import subprocess
@@ -24,7 +24,7 @@ AREA = (0, 0, 95, 95)  # forceloaded block area: 6 x 6 chunks
 SYNC = (424242, 100000, 987654321)  # uniquifier, entity id, level seed
 
 
-def scene_commands(random_ticks):
+def scene_commands(random_ticks, coverage=False):
     commands = [f'digest-sync {SYNC[0]} {SYNC[1]} {SYNC[2]}']
     if not random_ticks:
         commands.append('gamerule random_tick_speed 0')
@@ -42,7 +42,77 @@ def scene_commands(random_ticks):
     for i in range(10):
         commands.append(f'summon minecraft:item {8 + i * 8}.5 {Y + 3} 70.5 '
                         f'{{Item:{{id:"minecraft:{"diamond" if i % 2 else "oak_log"}",count:{i + 1}}}}}')
+    if coverage:
+        commands += coverage_commands()
     return commands
+
+
+def item(x, y, z, item_id, count=1):
+    return f'summon minecraft:item {x} {y} {z} {{Item:{{id:"minecraft:{item_id}",count:{count}}}}}'
+
+
+def held(item_id):
+    return f'equipment:{{mainhand:{{id:"minecraft:{item_id}",count:1}}}}'
+
+
+VILLAGE = (64, 38)  # bell position (x, z); the players of --coverage stand beside it
+DAY_TIME = 17000  # the run crosses 18000, the siege roll, and the sky stays dark
+
+
+def coverage_commands():
+    """What wave 2's moves run and the default scene does not; only with --coverage, tick-counted like the rest."""
+    y = Y
+    commands = []
+    for k in range(4):  # foxes with items they accept, one already holding an item
+        x = 10 + k * 4
+        commands.append(f'summon minecraft:fox {x}.5 {y} 22.5')
+        commands.append(item(f'{x + 1}.5', y, '22.5', ['sweet_berries', 'rabbit', 'sweet_berries', 'rabbit'][k], 3 if k == 0 else 1))
+    commands.append(f'summon minecraft:fox 26.5 {y} 22.5 {{{held("apple")}}}')
+    commands.append(f'fill 30 {y - 3} 20 35 {y - 1} 25 minecraft:water')  # a 6x6x3 pool flush with the ground
+    for k in range(3):
+        commands.append(f'summon minecraft:dolphin {31 + k * 2}.5 {y - 2} 21.5')
+        commands.append(item(f'{31 + k * 2}.5', y - 1.5, '22.5', ['cod', 'salmon', 'tropical_fish'][k]))
+    for k in range(3):  # allays with a held item and the same item on the ground within 8 blocks
+        x = 40 + k * 4
+        thing = ['diamond', 'emerald', 'gold_ingot'][k]
+        commands.append(f'summon minecraft:allay {x}.5 {y + 1} 22.5 {{{held(thing)}}}')
+        commands.append(item(f'{x + 2}.5', y, '24.5', thing, 2))
+    commands.append(f'setblock 44 {y} 27 minecraft:note_block')
+    commands.append(f'setblock 45 {y} 27 minecraft:redstone_block')
+    for k, (kind, thing) in enumerate([('zombie', 'iron_helmet'), ('zombie', 'diamond_sword'), ('skeleton', 'iron_helmet'),
+                                       ('skeleton', 'diamond_sword'), ('zombie', 'iron_helmet')]):
+        x = 8 + k * 5
+        worse = ',equipment:{head:{id:"minecraft:leather_helmet",count:1}}' if k == 4 else ''
+        commands.append(f'summon minecraft:{kind} {x}.5 {y} 32.5 {{CanPickUpLoot:1b,PersistenceRequired:1b{worse}}}')
+        commands.append(item(f'{x + 1}.5', y, '32.5', thing))
+    commands.append(f'fill 24 {y} 50 36 {y + 2} 50 minecraft:stone')  # a wall for the tridents
+    for k in range(3):
+        commands.append(f'summon minecraft:cow {12 + k * 2}.5 {y} 52.5')
+        commands.append(f'summon minecraft:trident {12 + k * 2}.5 {y + 0.8} 46.5 {{Motion:[0.0d,0.0d,1.5d]}}')
+        commands.append(f'summon minecraft:trident {26 + k * 3}.5 {y + 1.2} 44.5 {{Motion:[0.0d,0.05d,1.8d]}}')
+    commands.append(f'setblock 46 {y} 44 minecraft:furnace{{Items:[{{Slot:0b,id:"minecraft:raw_iron",count:8}},'
+                    '{Slot:1b,id:"minecraft:coal",count:8}]}')
+    bottle = 'id:"minecraft:potion",count:1,components:{"minecraft:potion_contents":{potion:"minecraft:water"}}'
+    commands.append(f'setblock 50 {y} 44 minecraft:brewing_stand{{Fuel:20b,Items:[{{Slot:0b,{bottle}}},{{Slot:1b,{bottle}}},'
+                    f'{{Slot:2b,{bottle}}},{{Slot:3b,id:"minecraft:nether_wart",count:4}},{{Slot:4b,id:"minecraft:blaze_powder",count:4}}]}}')
+    vx, vz = VILLAGE  # a bell, four beds and two workstations make a village the spawners see
+    commands.append(f'setblock {vx} {y} {vz} minecraft:bell[attachment=floor,facing=north]')
+    for x in (vx - 6, vx - 4, vx + 4, vx + 6):
+        commands.append(f'setblock {x} {y} {vz - 2} minecraft:red_bed[facing=north,part=foot]')
+        commands.append(f'setblock {x} {y} {vz - 3} minecraft:red_bed[facing=north,part=head]')
+    commands.append(f'setblock {vx} {y} {vz + 4} minecraft:lectern[facing=south]')
+    commands.append(f'setblock {vx + 2} {y} {vz + 4} minecraft:composter')
+    for dx in (-2, 0, 2):
+        commands.append(f'summon minecraft:villager {vx + dx}.5 {y} {vz + 1}.5')
+    commands += ['gamerule mob_griefing true', 'gamerule spawn_mobs true', 'gamerule spawn_monsters true',
+                 'gamerule spawn_wandering_traders true', 'gamerule spawn_patrols true', f'time set {DAY_TIME}']
+    return commands
+
+
+def default_ticks():
+    if '--ticks' in sys.argv:
+        return int(sys.argv[sys.argv.index('--ticks') + 1])
+    return 2500 if '--coverage' in sys.argv else 200
 
 
 class Server:
@@ -132,7 +202,7 @@ def main():
     args = [a for a in sys.argv[1:] if not a.startswith('--')]
     # Resolved here: the server runs in OUT/server, where relative paths would point elsewhere.
     binary, resources, template, out = (Path(a).resolve() for a in args[:4])
-    ticks = int(sys.argv[sys.argv.index('--ticks') + 1]) if '--ticks' in sys.argv else 200
+    ticks = default_ticks()
     out.mkdir(parents=True, exist_ok=True)
     home = Path(tempfile.mkdtemp(prefix='state-digest-home-'))
     hold_gate()
@@ -159,7 +229,7 @@ def main():
         server.wait_for('Done (')
         server.run(['forceload query'])
         time.sleep(3)
-        server.run(scene_commands('--random-ticks' in sys.argv))
+        server.run(scene_commands('--random-ticks' in sys.argv, '--coverage' in sys.argv))
         before = server.game_time()
         start = time.time()
         if '--sprint' in sys.argv:

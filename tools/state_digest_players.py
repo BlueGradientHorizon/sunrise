@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""State-digest scene with players: BINARY RESOURCES TEMPLATE OUT BOTS [--integrated] [--nether] [--detail] [--ticks N] [--no-digest], or --compare OUT_A OUT_B; template from `state_digest_scene.py --generate`, gate in SUNRISE_SCENE_GATE."""
+"""State-digest scene with players: BINARY RESOURCES TEMPLATE OUT BOTS [--integrated] [--nether] [--detail] [--ticks N] [--no-digest] [--coverage], or --compare OUT_A OUT_B; template from `state_digest_scene.py --generate`, gate in SUNRISE_SCENE_GATE. --coverage adds the base scene's coverage commands, stands both players in its village and defaults --ticks to 2500."""
 import json
 import os
 import re
@@ -26,13 +26,20 @@ def free_port():
         return s.getsockname()[1]
 
 
-def player_commands(names, nether):
+def spots(coverage):
+    """Where Alice and Bob stand: among the mobs, or (--coverage) beside the village bell."""
+    vx, vz = base.VILLAGE
+    return ((vx - 0.5, vz + 1.5), (vx + 1.5, vz + 1.5)) if coverage else ((16.5, 9.5), (66.5, 61.5))
+
+
+def player_commands(names, nether, coverage=False):
     """The scene after the bots joined: each one among the mobs, hurt, fed, given items and a pickup, one in the Nether."""
     a, b = names[0], names[-1]
     y = base.Y
+    (ax, az), (bx, bz) = spots(coverage)
     commands = [
         f'gamemode survival {a}', f'gamemode survival {b}',
-        f'tp {a} 16.5 {y} 9.5', f'tp {b} 66.5 {y} 61.5',
+        f'tp {a} {ax} {y} {az}', f'tp {b} {bx} {y} {bz}',
         f'give {a} minecraft:iron_sword', f'give {a} minecraft:bread 16', f'give {a} minecraft:cooked_beef 8',
         f'give {b} minecraft:diamond_pickaxe', f'give {b} minecraft:cobblestone 64', f'give {b} minecraft:oak_planks 32',
         f'item replace entity {a} armor.chest with minecraft:iron_chestplate',
@@ -43,7 +50,7 @@ def player_commands(names, nether):
         f'setblock 66 {y} 58 minecraft:chest{{Items:[{{Slot:0b,id:"minecraft:apple",count:5}}]}}',
         f'setblock 64 {y} 58 minecraft:furnace',
         f'setblock 70 {y} 65 minecraft:crafting_table',
-        f'time set 1000',
+        f'time set {base.DAY_TIME if coverage else 1000}',
     ]
     if nether:
         commands.append(f'execute in minecraft:the_nether run tp {b} 8.5 70 8.5')
@@ -176,16 +183,17 @@ def run_dedicated(args, home, out, timings):
     digest = None if '--no-digest' in sys.argv else out / 'digest.txt'
     server = base.Server(binary, resources, run_dir, lab.game_env(base.scratch_env(home, digest, '--detail' in sys.argv)), freeze=True)
     players = Bots(bots, port, out)
-    ticks = int(sys.argv[sys.argv.index('--ticks') + 1]) if '--ticks' in sys.argv else 200
+    ticks = base.default_ticks()
+    coverage = '--coverage' in sys.argv
     try:
         server.wait_for('Done (')
         server.run(['forceload query'])
         time.sleep(3)
-        server.run(base.scene_commands(False))
+        server.run(base.scene_commands(False, coverage))
         players.join(server, 'Alice')
         players.join(server, 'Bob')
-        server.run(player_commands(PLAYERS, '--nether' in sys.argv))
-        settle(server, PLAYERS, [(16.5, 9.5), (66.5, 61.5) if '--nether' not in sys.argv else (8.5, 8.5)])
+        server.run(player_commands(PLAYERS, '--nether' in sys.argv, coverage))
+        settle(server, PLAYERS, [spots(coverage)[0], spots(coverage)[1] if '--nether' not in sys.argv else (8.5, 8.5)])
         if '--nether' in sys.argv:
             wait_loaded(server, 'minecraft:the_nether', (8, 70, 8))
         server.run(near_player_commands())
@@ -234,7 +242,7 @@ def run_integrated(args, home, out, timings):
     run('launch', '--world', 'T', '--headless', '--wait', '--game', binary, '--game-dir', work / 'game', '--resources', resources)
     bot_log = open(out / 'bot-Alice.log', 'w')
     players = Bots(bots, None, out)
-    ticks = int(sys.argv[sys.argv.index('--ticks') + 1]) if '--ticks' in sys.argv else 200
+    ticks = base.default_ticks()
     try:
         run('wait-ready', 400)
         command('tick freeze')
@@ -248,7 +256,7 @@ def run_integrated(args, home, out, timings):
             timings['digest_sync'] = 'ok'
         except SystemExit as e:
             timings['digest_sync'] = f'unavailable on the integrated server, so its digest is not comparable run to run: {e}'
-        for line in base.scene_commands(False)[1:]:
+        for line in base.scene_commands(False, '--coverage' in sys.argv)[1:]:
             command(line)
         players.processes.append(subprocess.Popen(
             [bots, '--server', f'127.0.0.1:{port}', '--bots', '1', '--behaviour', 'stand', '--name', 'Alice', '--seconds', '3600',
@@ -258,7 +266,7 @@ def run_integrated(args, home, out, timings):
             if time.time() > deadline:
                 raise SystemExit('Alice0 did not join the LAN')
             time.sleep(0.5)
-        for line in player_commands(['Alice0'], False):
+        for line in player_commands(['Alice0'], False, '--coverage' in sys.argv):
             command(line)
         for line in near_player_commands()[1:]:
             command(line)
