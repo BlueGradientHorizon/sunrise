@@ -34,8 +34,9 @@ its resources, then the world's data as `/reload` does, LAN guests included. A m
 or changes world generation, or that carries Java jar layers, waits for a restart. On someone else's server, all
 content waits: the server owns its data.
 
-Two content mods never own the same namespace. When two claim one, the mod whose file name sorts first loads, and
-the log names the other and why it stayed out.
+When two packages list the same extra namespace, the first admitted package owns it. The game leaves the later
+package's content out and logs why. If a package lists another package's ID as an extra namespace, startup stops
+with an error instead. Turn one of the conflicting mods off.
 
 Benchmarks (`--benchmark`) never load mods.
 

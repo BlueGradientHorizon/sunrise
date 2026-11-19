@@ -28,11 +28,10 @@ changed to `mod-tool`, the newest tool from main. That page says when to take wh
 ```sh
 cargo sunrise-mod new greeter --template native
 cd greeter
-rustup target add wasm32-unknown-unknown
 cargo sunrise-mod check
 ```
 
-`new` writes a complete project and fetches its SDK into `.sunrise/sdk/`. `check` compiles it for this computer and for wasm32, which is why the target is added first. It must end with a
+`new` writes a complete project and fetches its SDK into `.sunrise/sdk/`. `check` compiles it for the project's own target (this computer for a native mod). It must end with a
 line like `greeter uses 34 items of the API (…). Made for 2d81263.` Run `check` after every edit, and fix what it
 reports before going on. Use another mod id by changing the folder name: `new` turns it into the id.
 
@@ -40,7 +39,9 @@ To compile it against the prebuilt game, run `cargo sunrise-mod build`: it fetch
 into a per-user cache and installs the Rust the SDK names with rustup, so it needs the network the first time. To
 play it, run `cargo sunrise-mod run --resources <folder> -- <game args>`; the user has to make those prepared
 resources from their own Minecraft ([Prepared resources](start/first-mod.md#prepared-resources)), so ask for the
-folder and never download Mojang's files. Run `cargo test` for the logic the hooks use. A build server uses the plan contract in
+folder and never download Mojang's files. For [`[[jar]]` originals](how-to/content-mods.md#java-jars-as-external-assets),
+add the developer's local jar with `cargo sunrise-mod use-jar <path>` before running. Run `cargo test` for the logic
+the hooks use. A build server uses the plan contract in
 [Your first native mod](start/first-mod.md#without-the-tools-commands).
 
 ## Rules that matter
@@ -58,8 +59,7 @@ folder and never download Mojang's files. Run `cargo test` for the logic the hoo
   are refused.
 - Hook names follow NeoForge 26.3. An event is `&mut`. A write to the world needs a `ServerHost`; a client hook
   gets a `ClientHost`, so the wrong side does not compile.
-- A mod that adds blocks, items, mob effects or entity types needs `capabilities = ["registries"]`, which the
-  template already has.
+- `api`, `capabilities` and the horizon-mixins commit are not in the manifest: `build` writes them. Do not add them.
 - Extra crates.io dependencies are allowed and are pinned by the mod's own `Cargo.lock`; a git or path dependency
   outside the mod is refused. The `sunrise-mod-api` path in `Cargo.toml` points at `.sunrise/sdk/` and stays as
   written.

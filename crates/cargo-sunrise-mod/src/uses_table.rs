@@ -48,10 +48,8 @@ pub(crate) fn scan(entry: ChildEntry, root: &Path, surface: &Surface) -> Result<
         Ok(input) => input,
         Err(scanned) => return Ok(scanned),
     };
-    // No manifest form names a hook version today (the schema refuses `hook_version`).
     let manifest = ManifestFacts {
         names: input.manifest_names,
-        hook_versions: Default::default(),
     };
     Ok(
         match uses_contained(
@@ -203,7 +201,6 @@ mod tests {
             build: "a".repeat(40),
             name: "nightly-2026-11-13 (afe471c)".into(),
             dir: "sdk".into(),
-            mixins: "b".repeat(40),
             surface: "sdk/surface.json".into(),
         };
         assert_eq!(

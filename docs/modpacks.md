@@ -191,7 +191,7 @@ A content mod (`.smod`) carries `assets/` and `data/` and no code:
 
 ```
 ruby.smod
-├── sunrise-mod.toml          id = "ruby", api = "0.2", side = "both", capabilities = ["registries"]
+├── sunrise-mod.toml          id = "ruby", side = "both" (the build adds api and capabilities)
 ├── data/ruby/sunrise/block/ruby_block.json
 ├── data/ruby/sunrise/item/ruby.json
 ├── data/ruby/recipe/ruby_block.json            (26.3 data-pack formats)
@@ -334,6 +334,16 @@ cargo run -p sunrise-port-pack -- port-work ~/.sunrise/ports/pack      # the por
 cargo run -p sunrise-port-pack -- status ~/.sunrise/ports/pack         # what the folder holds, as the launcher shows it
 cargo run -p sunrise-port-pack -- profile ~/.sunrise/ports/pack        # the staged resource packs into the profile's home
 ```
+
+### Versions of carried mods
+
+A manifest's `version` must be semver, and a Java jar's version often isn't. The carry drops a leading
+`<Minecraft version>-` when it equals the pack's own (`26.3-3.6.30+refabricated` becomes
+`3.6.30+refabricated`) and pads an omitted minor or patch. A version that is still not semver is written
+as `0.0.0+unresolved.<the jar's version, with characters outside [0-9A-Za-z-.] replaced by '-'>`. The jar's original
+string stays in the manifest's header comment. Dependency resolution never lets a
+`0.0.0+unresolved.…` version satisfy a requirement, `*` and `=0.0.0` included: the port report says that the mod's version couldn't be read, and it
+must be set by hand in the carried `sunrise-mod.toml` before anything can depend on the mod.
 
 ### Data packs in mod jars
 

@@ -1,4 +1,4 @@
-//! The native mod: the launcher compiles this crate against the pinned game and calls `hooks()`.
+//! The native mod: `cargo sunrise-mod build` compiles this crate against the pinned game, which calls `hooks()`.
 //! Each method of `Hooks` is one moment in the game; implement the ones the mod needs
 //! (docs/modding/src/start/writing-hooks.md). Need a moment no hook covers? See
 //! docs/modding/src/concepts/injections.md.

@@ -52,14 +52,15 @@ types to a world.
 cargo sunrise-mod build
 ```
 
-This validates the content with the same checks the game uses and writes `target/sunrise-mod/glowing_blocks.smod`,
+This reads the content with the game's own package rules, checks that the files of your mod agree with each other
+(see [`check`](../how-to/content-mods.md#create-and-package-your-mod)) and writes `target/sunrise-mod/glowing_blocks.smod`,
 the file you share.
 
 ## 4. Play it
 
 ```sh
 cargo sunrise-mod run --game <path to sunrise-client> -- --resources <resources folder> \
-  --game-dir target/sunrise-mod/game --home target/sunrise-mod/home
+  --game-dir target/sunrise-mod/game --home target/sunrise-mod/run/home
 ```
 
 `run` builds the mod and starts that game with it always on. Everything after `--` goes to the game.
@@ -70,6 +71,8 @@ cargo sunrise-mod run --game <path to sunrise-client> -- --resources <resources 
   folder's full path: only `--game-dir`, `--home` and the mod's own path are read from the folder you start in.
 - `--game-dir` and `--home` keep the game's saves, `options.txt` and logs under the project's `target/`. Without
   them the saves and settings land in the project folder itself and the logs in your own Sunrise data folder.
+- If your mod uses [`[[jar]]` originals](../how-to/content-mods.md#java-jars-as-external-assets), `run` sets the
+  development home itself; you can omit `--home`. Use `--jars <dir>` to choose a different source folder.
 - Quote a path that has spaces.
 
 Open a world and craft the block from an amethyst block and glowstone dust. The game reads content once, at

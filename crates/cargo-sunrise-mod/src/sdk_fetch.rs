@@ -49,8 +49,6 @@ pub(crate) struct PinnedSdk {
     /// The form people read: `nightly-2026-11-13 (afe471c)`, or the short sha.
     pub(crate) name: String,
     pub(crate) dir: PathBuf,
-    /// The horizon-mixins revision the build's `sdk.json` names: the tool a native mod pins.
-    pub(crate) mixins: String,
     /// The build's surface export, `surface.json` in `dir`.
     pub(crate) surface: PathBuf,
 }
@@ -454,7 +452,6 @@ fn pinned(index: &Index, dir: &Path) -> PinnedSdk {
         },
         build,
         dir: dir.to_owned(),
-        mixins: index.mixins.rev.clone(),
         surface: dir.join(SURFACE),
     }
 }
