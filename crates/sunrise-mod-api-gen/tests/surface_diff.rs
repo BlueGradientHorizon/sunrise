@@ -197,12 +197,12 @@ fn sdk_note_scope_ignores_engine_ids_but_checks_api_ids() {
     let notes = ["--notes", "changes", "--base-notes", "base"];
     let mut publish = notes.to_vec();
     publish.extend(["--api-notes-only", "--json", "diff.json"]);
-    let (code, out, err) = run(dir.path(), &publish);
+    let (code, _, err) = run(dir.path(), &publish);
     assert_eq!(code, 0, "{err}");
     assert!(err.is_empty(), "{err}");
-    assert!(out.contains("0 breaking without a note"), "{out}");
     let diff: mod_surface::Diff =
         serde_json::from_slice(&std::fs::read(dir.path().join("diff.json")).unwrap()).unwrap();
+    assert_eq!(diff.undeclared().count(), 0);
     let noted: Vec<_> = diff
         .changes
         .iter()
@@ -216,14 +216,16 @@ fn sdk_note_scope_ignores_engine_ids_but_checks_api_ids() {
 
     let (code, _, err) = run(dir.path(), &notes);
     assert_eq!(code, 1);
-    assert!(
-        err.contains("change note point.toml names point:game::old_tick, which did not change"),
-        "{err}"
-    );
-    assert!(
-        err.contains("change note mixed.toml names loop:old.tick, which did not change"),
-        "{err}"
-    );
+    for refused in [
+        ["point.toml", "point:game::old_tick", "which did not change"],
+        ["mixed.toml", "loop:old.tick", "which did not change"],
+    ] {
+        assert!(
+            err.lines()
+                .any(|line| refused.iter().all(|word| line.contains(word))),
+            "{err}"
+        );
+    }
 
     note(
         dir.path(),
@@ -233,10 +235,14 @@ fn sdk_note_scope_ignores_engine_ids_but_checks_api_ids() {
     );
     let (code, _, err) = run(dir.path(), &publish);
     assert_eq!(code, 1);
-    assert_eq!(
-        err.trim(),
-        "change note api-stale.toml names fn:keep, which did not change"
+    // The engine id in the same note is outside the SDK's scope, so only the API id is refused.
+    assert!(
+        err.contains("api-stale.toml")
+            && err.contains("fn:keep")
+            && err.contains("which did not change"),
+        "{err}"
     );
+    assert!(!err.contains("point:game::new_tick"), "{err}");
 }
 
 #[test]

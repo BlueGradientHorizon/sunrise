@@ -384,7 +384,7 @@ impl RenderAssets {
         // Connected-texture rules find their faces by sprite layer: what they match by name keeps a
         // layer of its own, decided before the models insert their textures.
         let ctm_rules = if draws {
-            sunrise_optifine::ctm::load(root.source())
+            crate::connected::read_rules(root.source())
         } else {
             Vec::new()
         };
@@ -428,6 +428,9 @@ impl RenderAssets {
             {
                 sprites.insert_in_blocks(name)?;
             }
+        }
+        if crate::fluid_models::any_flat_look() {
+            sprites.insert_flat(crate::fluid_models::FLAT_SPRITE)?;
         }
         for stage in 0..10 {
             sprites.insert(&format!("minecraft:block/destroy_stage_{stage}"))?;

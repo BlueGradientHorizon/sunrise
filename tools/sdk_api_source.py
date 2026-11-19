@@ -544,37 +544,35 @@ def starter_mod(folder: Path, wasmtime: bool = False) -> None:
     (folder / "src/lib.rs").write_text(fill((TEMPLATE / "lib.rs").read_text()))
 
 
-def check_root(game: dict, ours: dict, root: str, game_tree: str, consumer_tree: str, consumer: str,
-               exact: bool = True) -> int:
+def check_root(game: dict, ours: dict, root: str, game_tree: str, consumer_tree: str, consumer: str) -> int:
     """One API root's closure and features: the prebuilt game's against the API source's, and `consumer`'s own
     resolution (its `cargo tree`) against the game's. Each root is judged by a consumer that depends on it: a starter
-    that names only `sunrise-mod-api` says nothing of `sunrise-wasmtime`. Returns the closure's size. A root that is
-    not `exact` may resolve fewer packages and features than the game: the game's other crates turn on features of
-    wasmtime's dependencies (rustls and ring turn on `digest`'s `subtle` and `rand_core`), which the API source does
-    not have; it must still resolve nothing, and turn on no feature, that the game does not. The root and `wasmtime` themselves
-    are exact: a mod's local check sees the surface the launcher binds."""
+    that names only `sunrise-mod-api` says nothing of `sunrise-wasmtime`. Returns the closure's size. The API source
+    may resolve fewer packages and features than the game: Cargo unifies features over the game's whole workspace, and
+    its other crates turn on features of packages a root reaches (`sunrise-client` asks `digest` for `mac` and
+    `crypto-common` for `getrandom`; rustls and ring do the same under wasmtime), which the API source does not have
+    and a wasm mod could not build. It must still resolve nothing, and turn on no feature, that the game does not.
+    The root itself, and `wasmtime` where the root reaches it, are exact: a mod's local check sees the surface the
+    launcher binds."""
 
     def closure(metadata: dict) -> set[tuple[str, str]]:
         packages = {package["id"]: package for package in metadata["packages"]}
         return {(packages[package]["name"], packages[package]["version"])
                 for package in prebuilt_game.runtime_packages(metadata, root)}
 
-    if (closure(game) != closure(ours)) if exact else not closure(ours) <= closure(game):
-        raise Refusal("E_CLOSURE", f"the prebuilt game's {root} closure {sorted(closure(game) - closure(ours))} "
-                                   f"against the API source's {sorted(closure(ours) - closure(game))}")
+    if not closure(ours) <= closure(game):
+        raise Refusal("E_CLOSURE", f"the API source's {root} closure holds {sorted(closure(ours) - closure(game))}, "
+                                   "which the prebuilt game's does not")
     game_features, own_features = target_features(game_tree), target_features(consumer_tree)
-    if exact:
-        differing = feature_disagreements(game_features, own_features, {f"{n} {v}" for n, v in closure(ours)})
-    else:
-        # The consumer turns on no feature the game does not: the game's others may add features, never the reverse.
-        differing = [f"{key}: game {sorted(game_features.get(key, set()) - {'default'})}, "
-                     f"ours {sorted(features - {'default'})}"
-                     for key, features in sorted(own_features.items())
-                     if key in game_features and features - game_features[key]]
-        # The root itself and wasmtime are the surface a mod names: exactly the game's, as the launcher binds them.
-        named = {key for key in game_features.keys() | own_features.keys() if key.split(" ")[0] in (root, "wasmtime")}
-        differing += [line for line in feature_disagreements(game_features, own_features, named)
-                      if line not in differing]
+    # The consumer turns on no feature the game does not: the game's others may add features, never the reverse.
+    differing = [f"{key}: game {sorted(game_features.get(key, set()) - {'default'})}, "
+                 f"ours {sorted(features - {'default'})}"
+                 for key, features in sorted(own_features.items())
+                 if key in game_features and features - game_features[key]]
+    # The root itself and wasmtime are the surface a mod names: exactly the game's, as the launcher binds them.
+    named = {f"{name} {version}" for name, version in closure(game) if name in (root, "wasmtime")}
+    differing += [line for line in feature_disagreements(game_features, own_features, named)
+                  if line not in differing]
     if differing:
         raise Refusal("E_FEATURES", f"{consumer} compiles {root} with other features than the game: "
                       + "; ".join(differing))
@@ -622,9 +620,8 @@ def check(api: Path, scratch: Path) -> None:
                           cwd=mod / MOD_PATH, env=environment))
 
     game_tree = tree(ROOT, prebuilt_game.GAME)
-    sizes = {root: check_root(game, ours, root, game_tree, tree(folder, name, environment), name, exact)
-             for root, folder, name, exact in ((API, mod, "mod-starter", True),
-                                               (WASMTIME, native, "mod-starter-wasmtime", False))}
+    sizes = {root: check_root(game, ours, root, game_tree, tree(folder, name, environment), name)
+             for root, folder, name in ((API, mod, "mod-starter"), (WASMTIME, native, "mod-starter-wasmtime"))}
     for folder, name in ((mod, "mod-starter"), (native, "mod-starter-wasmtime")):
         disagreeing = lock_disagreements(tomllib.loads((folder / "Cargo.lock").read_text()),
                                          tomllib.loads((ROOT / "Cargo.lock").read_text()))

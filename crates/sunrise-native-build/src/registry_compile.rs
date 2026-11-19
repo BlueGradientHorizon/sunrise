@@ -531,7 +531,9 @@ pub fn compile(
         ])
         .arg("--target-dir")
         .arg(target_dir)
-        .arg("--message-format=json-render-diagnostics");
+        // Not `json-render-diagnostics`: Cargo would print every diagnostic again on its standard
+        // error, at the staged files. The failure shows them from the messages, at the author's.
+        .arg("--message-format=json");
     // Cargo's per-crate timings (`target/cargo-timings/`), for the check that measures where a
     // registry build's time goes; a player's kept build folder doesn't collect them.
     if std::env::var_os("SUNRISE_NATIVE_CARGO_TIMINGS").is_some() {
@@ -545,18 +547,49 @@ pub fn compile(
         tr("Compiling registry mod libraries"),
         |_| {},
         Some(fs::File::create(&messages).map_err(|e| e.to_string())?),
+        None,
     );
     let outputs = super::registry_runtime::Outputs::read(&messages)?;
     if let Some(patch) = &patch {
         patch.log()?;
     }
     super::append_log(&fs::read_to_string(&messages).map_err(|e| e.to_string())?)?;
+    // What the compiler printed, as a readable part of the log (the messages above, unmapped).
+    for diagnostic in &outputs.errors {
+        super::append_log(diagnostic.rendered().unwrap_or_default())?;
+    }
     if let Err(failure) = result {
-        let mut error = format!("{}\n{}", failure.error, outputs.errors.join("\n"));
-        if error.contains("E0277") || error.contains("E0308") {
-            error.push_str(&format!("\n\n{}", crate::host::tr("SDK values keep the SDK's Rust crate identities. A registry-built copy of a trait or type is not interchangeable, even at the same version. Type mismatches are refused; SDK libraries are never substituted.")));
+        // The compiler runs in the build's folder: its relative file names are relative to it.
+        let sources = super::present::Sources::new(
+            out.to_path_buf(),
+            projects
+                .iter()
+                .map(|project| super::present::Staged {
+                    root: out.join("native-api").join(&project.bundle.manifest.id),
+                    author: project.bundle.dir.clone(),
+                })
+                .collect(),
+        );
+        let (mut error, mut raw) = (failure.error, String::new());
+        let mut explained = false;
+        for diagnostic in &outputs.errors {
+            error.push('\n');
+            error.push_str(&sources.text(diagnostic));
+            raw.push_str(diagnostic.rendered().unwrap_or_default());
+            // Only this route builds registry crates beside the SDK's, and only a copy of one of
+            // those is a different crate from the SDK's; the direct route has none to explain.
+            if !explained && diagnostic.crate_present_twice() {
+                explained = true;
+                error.push_str(&format!("\n{}\n", crate::host::tr("SDK values keep the SDK's Rust crate identities. A registry-built copy of a trait or type is not interchangeable, even at the same version. Type mismatches are refused; SDK libraries are never substituted.")));
+            }
         }
-        return Err(error);
+        // The linker's and Application Control's words are in the compiler's messages, no
+        // longer on Cargo's standard error.
+        let (blocked, libraries) = (
+            crate::rust::blocked_by_app_control(&raw),
+            raw.lines().any(crate::rust::missing_system_libraries),
+        );
+        return Err(super::advised(error, blocked, libraries));
     }
     let binary = game.join("bin").join(if cfg!(windows) {
         "sunrise-client.exe"

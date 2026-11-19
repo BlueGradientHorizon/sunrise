@@ -150,6 +150,21 @@ jobs:
     with:
       commit: ${{ needs.resolve.outputs.commit }}
       self_hosted: ${{ needs.resolve.outputs.self_hosted }}
+  # The modding book's start pages run as a reader would, with the mod tool alone on a runner with no launcher: the
+  # install page against the published release, then the mod pages with the tool built from this commit against this
+  # run's own SDK (as fn-replace-check; never the previous Nightly's, whose red could block the Nightly that clears it).
+  # An ordinary leg. Like fn-replace-check it waits for the Linux legs alone and runs when that job failed too.
+  book-quickstart:
+    needs: [resolve, sdk]
+    if: ${{ !cancelled() && needs.resolve.result == 'success' && needs.resolve.outputs.skip == 'false' }}
+    permissions:
+      contents: read
+      actions: read  # its routing reads this attempt's creation or start time (tools/ci/dyna_ci_route.sh)
+    uses: ./.github/workflows/book-quickstart.yml
+    with:
+      commit: ${{ needs.resolve.outputs.commit }}
+      self_hosted: ${{ needs.resolve.outputs.self_hosted }}
+      own_sdk: true
   # The game's Windows tests that start child processes: the runtime leases and the `windows` daily rows.
   windows-runtime-leases:
     needs: resolve
@@ -222,7 +237,7 @@ jobs:
   summary:
     # The resolved commit names the job: what a scheduled run's lookup (daily_summary.py --seen) matches.
     name: summary ${{ needs.resolve.outputs.commit }}${{ needs.resolve.outputs.dry_run == 'true' && ' (dry run)' || '' }}
-    needs: [resolve, shards, wasm-mods, fn-replace-check, windows-runtime-leases, cargo-sunrise-mod, wasm-std-names,
+    needs: [resolve, shards, wasm-mods, fn-replace-check, book-quickstart, windows-runtime-leases, cargo-sunrise-mod, wasm-std-names,
             machine-sample, sdk, sdk-windows-macos, parity]
     # Not on a cancelled run: its legs did not fail, they were stopped, and a stopped leg says nothing about the commit.
     if: ${{ !cancelled() && needs.resolve.result == 'success' && needs.resolve.outputs.skip == 'false' }}

@@ -876,6 +876,22 @@ impl Sprites {
                 .any(|p| p[3] != 0 && p[3] != 255),
         })
     }
+    /// A 16 x 16 opaque white sprite under `name`: what a flat colour is drawn from, tinted.
+    pub fn insert_flat(&mut self, name: &str) -> Result<u32> {
+        self.register(
+            name,
+            crate::sprite_cache::Decoded {
+                side: 16,
+                frames: vec![[255u8; 16 * 16 * 4].to_vec()],
+                animation: None,
+                strategy: Default::default(),
+                alpha_cutoff_bias: 0.0,
+                has_transparent: false,
+                opaque: true,
+                translucent: false,
+            },
+        )
+    }
     /// Give a decoded texture its layer (or the one an identical still has).
     #[sunrise_mod_api_macros::replaceable]
     fn register(&mut self, name: &str, decoded: crate::sprite_cache::Decoded) -> Result<u32> {

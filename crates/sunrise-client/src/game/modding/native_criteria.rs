@@ -189,6 +189,8 @@ fn passes(
         origin: me.position,
         tool: None,
         block_pos: None,
+        target: None,
+        interacting: None,
     };
     Ok(test.test(&NativeCriterion { conditions, world })?
         && adv::conditions(&conditions["player"], &player, world))

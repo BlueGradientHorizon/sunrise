@@ -34,6 +34,11 @@ pub(super) struct StandaloneGeometry {
     slots: Vec<Option<Vec<super::minecarts::PreparedModelFace>>>,
     translucent: Vec<bool>,
     bounds: Vec<[[f32; 3]; 2]>,
+    /// What each fluid draws as in a `fluid_box`, by fluid slot, resolved on its first box of
+    /// this generation (the table is rebuilt with the resources, so a reload resolves anew).
+    fluid_looks: std::cell::RefCell<
+        Vec<Option<Result<super::native_fluid_render::FluidBoxLook, mod_api::FluidBoxError>>>,
+    >,
 }
 
 /// Whether a resolved slot can take instances, and the local box used to cull copies.
@@ -97,6 +102,7 @@ impl StandaloneGeometry {
             slots,
             translucent,
             bounds,
+            fluid_looks: Default::default(),
         }
     }
 
@@ -110,6 +116,21 @@ impl StandaloneGeometry {
 
     pub(super) fn faces(&self, slot: u32) -> Option<&[super::minecarts::PreparedModelFace]> {
         self.slots.get(slot as usize)?.as_deref()
+    }
+
+    /// The `fluid_box` look of fluid `slot`, from `resolve` the first time.
+    pub(super) fn fluid_look(
+        &self,
+        slot: u32,
+        resolve: impl FnOnce()
+            -> Result<super::native_fluid_render::FluidBoxLook, mod_api::FluidBoxError>,
+    ) -> Result<super::native_fluid_render::FluidBoxLook, mod_api::FluidBoxError> {
+        let mut looks = self.fluid_looks.borrow_mut();
+        let at = slot as usize;
+        if looks.len() <= at {
+            looks.resize(at + 1, None);
+        }
+        *looks[at].get_or_insert_with(resolve)
     }
 
     pub(super) fn generation(&self) -> u64 {

@@ -972,23 +972,31 @@ pub(super) fn emit<'a>(
         // payloads can still share their pointee. Write-back, the owner filter and chunk
         // I/O checks use the outer event and cannot use a listener-local one.
         let (build, local_event) = if hook.event_per_listener {
-            // A regular collect output is a mutable borrow of one slot, reborrowed
-            // for each listener above. Answered batches and cancellation have
-            // separate dispatch state and do not use this mode.
+            // A replace answer is returned outside the event. A regular collect
+            // output borrows one slot, reborrowed for each listener above. Answered
+            // collect batches and cancellation do not use this mode.
+            let reply_outside_event = matches!(contract, Contract::Listen | Contract::Replace);
             let shared_collect_output = collected.is_some() && !answered && !collect_cancel;
-            if (contract != Contract::Listen && !shared_collect_output)
-                || !write_back.is_empty()
+            if (!reply_outside_event && !shared_collect_output)
+                || (!write_back.is_empty() && name == "block_entity_tick")
                 || !stack_outputs.is_empty()
                 || hook.owner.is_some()
                 || hook.context == Some(PhaseContext::ChunkDisk)
             {
                 return Err(format!(
-                    "{name}: event_per_listener requires a listen hook or a collect hook with a shared borrowed output, without scalar or stack writeback or other shared event state"
+                    "{name}: event_per_listener requires a listen or replace hook, or a collect hook with a shared borrowed output, without scalar or stack writeback or other shared event state"
                 ));
             }
             (String::new(), build)
         } else {
             (build, String::new())
+        };
+        // A per-listener event is rebuilt from the current scalars for each listener and writes
+        // its own scalars back, so the listeners chain only those outputs.
+        let (write_back, local_write_back) = if hook.event_per_listener {
+            (String::new(), write_back)
+        } else {
+            (write_back, String::new())
         };
         let build = if name == "block_entity_tick" {
             format!("{build} let mut tick_changed = false;")
@@ -1107,7 +1115,9 @@ pub(super) fn emit<'a>(
                 }
                 _ => format!("{plain_call};"),
             };
-            format!("{local_event} {snapshot_statement}{invocation} {stack_after}")
+            format!(
+                "{local_event} {snapshot_statement}{invocation} {local_write_back} {stack_after}"
+            )
         };
         let binding = if answered || hook.collect_validator.is_some() {
             format!("(mod_id, {mod_item})")
