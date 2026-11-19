@@ -4560,7 +4560,12 @@ dependencies = [
 name = "sunrise-client-gameplay"
 version = "0.1.0"
 dependencies = [
+ "glam",
+ "log",
+ "serde_json",
  "sunrise-client-lib",
+ "sunrise-core",
+ "sunrise-world",
 ]
 
 [[package]]
@@ -4822,7 +4827,12 @@ dependencies = [
 name = "sunrise-gameplay"
 version = "0.1.0"
 dependencies = [
+ "serde_json",
+ "sunrise-client-core",
  "sunrise-client-lib",
+ "sunrise-core",
+ "sunrise-threads",
+ "sunrise-world",
 ]
 
 [[package]]
