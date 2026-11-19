@@ -15,7 +15,9 @@ use sunrise_client::{
     datapack::DataPack,
     gfx::PreparedTextures,
     hud::HudAtlas,
-    lang, pack_browser,
+    lang,
+    level_loading::OverlayFade,
+    pack_browser,
     pack_screen::{self, Compat, PackInfo, Source as PackSource},
     packs::{self, Pack, Position},
     streaming::WorkerContext,
@@ -413,7 +415,6 @@ impl Game<'_> {
         // the game, before the staging worker starts: each listener keeps its
         // registering mod for crash attribution.
         let client_listeners = self.register_client_reload_listeners();
-        let runtime_sprites = super::client_reload::collect_runtime_sprites();
         let texture_atlases = super::client_reload::collect_texture_atlases();
         super::mods::register_fluid_models(self.options.execution_role);
         let stage = move |progress: &crate::game::Progress| {
@@ -423,7 +424,6 @@ impl Game<'_> {
                 &server,
                 &mod_sources,
                 client_listeners,
-                &runtime_sprites,
                 &texture_atlases,
                 &assets,
                 &res,
@@ -437,7 +437,27 @@ impl Game<'_> {
         #[cfg(test)]
         let stage = mod_api::testing::inherit_mods(stage);
         self.pack_reload = Some(PackReload::spawn(kind, stage)?);
+        self.reload_overlay = Some(ReloadOverlay::default());
         Ok(())
+    }
+    /// One frame of the pack reload's `LoadingOverlay`: its bar eased toward
+    /// the reload's progress (all of it once applied) and how far it has
+    /// faded. `None`, and the overlay dropped, once it has faded out.
+    pub(super) fn reload_overlay_frame(&mut self) -> Option<(f32, OverlayFade)> {
+        let overlay = self.reload_overlay.as_mut()?;
+        let now = Instant::now();
+        let since = |at: Instant| now.duration_since(at).as_millis() as u64;
+        let fade_in = since(*overlay.fade_in.get_or_insert(now));
+        let Some(fade) = OverlayFade::at(fade_in, overlay.fade_out.map(since)) else {
+            self.reload_overlay = None;
+            return None;
+        };
+        let actual = self
+            .pack_reload
+            .as_ref()
+            .map_or(1.0, |reload| reload.progress.fraction());
+        overlay.bar = sunrise_client::level_loading::ease_overlay(overlay.bar, actual);
+        Some((overlay.bar, fade))
     }
     /// `LoadingOverlay.tick` once the reload is done: the staged pack is
     /// applied on the render thread, and its outcome goes to whoever asked
@@ -449,6 +469,9 @@ impl Game<'_> {
         self.pack_reload = None;
         let result =
             staged.and_then(|staged| self.apply_staged_pack(staged).map_err(|e| e.to_string()));
+        if let Some(overlay) = &mut self.reload_overlay {
+            overlay.fade_out = Some(Instant::now());
+        }
         match kind {
             ReloadKind::Selection => {
                 self.mods_reloaded(result.is_ok());
@@ -479,7 +502,6 @@ impl Game<'_> {
             armor_stand_assets,
             frame_models,
             sounds,
-            ui_metadata,
             language,
         } = staged;
         let loop_context = self.prepare_loop_context(&root)?;
@@ -564,9 +586,8 @@ impl Game<'_> {
         self.text_patches.get_mut().clear();
         // Mods' dynamic textures keep their names and slots in the new atlas's pool, and their
         // kept pixels upload into it again.
-        let atlas = &mut self.gui.atlas;
-        self.dynamic_textures
-            .rebind(atlas.dynamic_texture_pool.as_ref(), &mut atlas.sprites);
+        let (pool, mut names) = self.gui.atlas.dynamic_names();
+        self.dynamic_textures.rebind(pool, &mut names);
         // Kept mod block entities name the old atlas's sprites, and their view distances the old
         // registry's states.
         self.kept_block_entities.get_mut().clear();
@@ -620,7 +641,6 @@ impl Game<'_> {
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner) =
             std::mem::take(&mut self.gui.atlas.blinks);
-        sunrise_client::ui::set_metadata(ui_metadata);
         // Read with the language in use when the reload started: one picked since then wins.
         let code = lang::code();
         lang::set(if language.code == code {
@@ -655,8 +675,6 @@ impl Game<'_> {
             &mut self.native_shaders.picked,
         ));
         self.ui.chat.rescale(&self.gui.atlas);
-        // The screen survives reload, but names and mod-collected contents may change.
-        self.creative_screen.invalidate_build();
         super::client_reload::apply_client_reload(&self.mod_phase, client_applies);
         self.install_loop_context(loop_context);
         // A reload from the title can apply before the start's world-rest worker is done.
@@ -681,7 +699,6 @@ pub(super) fn stage_pack(
     server: &[Pack],
     mod_sources: &super::mods::ModsState,
     client_listeners: mod_api::ClientListenerRegistry,
-    runtime_sprites: &[mod_api::RuntimeSprite],
     texture_atlases: &[mod_api::TextureAtlasRegistration],
     assets: &Arc<Assets>,
     res: &Resources,
@@ -691,7 +708,6 @@ pub(super) fn stage_pack(
     progress: &super::Progress,
 ) -> sunrise_client::Result<StagedPack> {
     let resource_root = startup_root(vanilla_root, selected, server, mod_sources)?;
-    let resource_root = super::client_reload::stage_runtime_sprites(resource_root, runtime_sprites);
     let resource_root = super::client_reload::stage_texture_atlases(resource_root, texture_atlases);
     let root = resource_root.prepared().to_path_buf();
     let source = resource_root.source().clone();
@@ -708,11 +724,14 @@ pub(super) fn stage_pack(
     // The world's models and sprites and the GUI atlas read the same root and nothing of
     // each other: about a second each, side by side.
     let pool = super::resource_tables::dynamic_texture_pool();
-    // The sound events, the GUI sprites' metadata and the language are read here too, not in
+    // The sound events and the language are read here too, not in
     // the frame that applies the reload (about 20 ms of it).
-    let (render, atlas, panorama, (sounds, ui_metadata, language)) = std::thread::scope(|s| {
+    let (render, atlas, panorama, (sounds, language)) = std::thread::scope(|s| {
         let atlas = super::resource_load::named_scope(s, "pack-assets", || {
-            HudAtlas::build_over_with_dynamic_textures(&source, &source, pool)
+            let game = sunrise_assets::resource_source::ResourceSource::directory(
+                vanilla_root.to_path_buf(),
+            );
+            HudAtlas::build_over_with_dynamic_textures(&source, &source, &game, pool)
                 .map_err(|e| e.to_string())
         });
         let panorama = super::resource_load::named_scope(s, "pack-assets", || {
@@ -721,7 +740,6 @@ pub(super) fn stage_pack(
         let small = super::resource_load::named_scope(s, "pack-assets", || {
             (
                 sunrise_client::sound_events::SoundRegistry::load(&source),
-                sunrise_client::ui::read_metadata(&source),
                 lang::Language::load(&[&source], &lang::code()),
             )
         });
@@ -778,7 +796,6 @@ pub(super) fn stage_pack(
         armor_stand_assets,
         frame_models,
         sounds,
-        ui_metadata,
         language,
     })
 }
@@ -800,13 +817,13 @@ pub(super) struct StagedPack {
     pub cem: Arc<sunrise_client::mobs::cem::CemModels>,
     /// The block entities' models, the packs' custom entity models over vanilla's.
     pub block_entity_shapes: Arc<sunrise_client::block_entity_render::BlockEntityShapes>,
-    /// The root's sound events, GUI sprite metadata and current language.
+    /// The root's sound events and current language.
     pub sounds: sunrise_client::sound_events::SoundRegistry,
-    pub ui_metadata: sunrise_client::ui::UiMetadata,
     pub language: lang::Language,
 }
 
-/// `LoadingOverlay`'s stage lines for a pack reload, indexed by `progress`.
+/// A pack reload's stages, indexed by `progress`: the overlay draws how far
+/// through them it is (`ReloadInstance.getActualProgress`), not their names.
 const RELOAD_LINES: [&str; 4] = [
     "Preparing resources",
     "Loading assets",
@@ -839,6 +856,17 @@ pub(super) struct PackReload {
     started: Instant,
     /// How long the overlay stays up before the reload may be applied.
     hold: Duration,
+}
+/// `LoadingOverlay` over a pack reload, from its first frame until it has
+/// faded out (`Minecraft.setOverlay(null)`), two seconds after the reload.
+#[derive(Default)]
+pub(super) struct ReloadOverlay {
+    /// `fadeInStart`: the overlay's first frame.
+    fade_in: Option<Instant>,
+    /// `fadeOutStart`: when the reload was applied.
+    fade_out: Option<Instant>,
+    /// `currentProgress`: the bar as drawn.
+    bar: f32,
 }
 /// `LoadingOverlay.isReadyToFadeOut`: a reload started from inside the game
 /// (`fadeIn`) is not ready while `Util.getMillis() - fadeInStart < 1000L`, so
@@ -1185,3 +1213,7 @@ mod tests {
         assert!(reload_waits(true, true));
     }
 }
+
+#[cfg(test)]
+#[path = "clouds_reload_tests.rs"]
+mod clouds_reload_tests;

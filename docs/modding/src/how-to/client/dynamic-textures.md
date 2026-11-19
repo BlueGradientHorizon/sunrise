@@ -105,3 +105,15 @@ Match `DynamicTextureError` non-exhaustively.
 A resource pack change rebuilds the GUI atlas. Every image keeps its name, class and slot, and the game puts its last
 pixels into the new atlas by itself: there is nothing to upload again. Sampling is the atlas's: nearest, as GUI
 sprites.
+
+## Sprites made at load instead
+
+An image that does not change while the game runs belongs in a sprite source, not in a live texture: register a type
+with `register_sprite_sources`, list an entry of it in the GUI atlas's definition
+(`assets/minecraft/atlases/gui.json`) and answer it in `sprite_source` with `SpriteSourceOutput::Pixels` for the id you
+want (`mymod:panel`, or `minecraft:container/slot` to replace a vanilla sprite). The GUI atlas publishes it by that id:
+`gui_sprite`, `DrawContext::sprite` and the GUI's own draws find it there, with the animation and nine-slice metadata
+of the file it names when an entry is an alias (a generated sprite has none), and it is made again each time the
+resources load. A GUI id its list has a sprite for is the list's: `create_dynamic_texture` refuses it as taken, and a
+sprite the list removed draws the missing sprite, never a model's sprite of the same id. After each load, ask
+`gui_sprite` again (`texture_atlas_stitched` for the GUI atlas): a region from before a reload may have moved.

@@ -1927,6 +1927,12 @@ impl<'a> Plan<'a> {
         if b.shapes.is_some() || p.offset == Some(sunrise_mod_package::content::OffsetType::None) {
             row.set("outline_offset", J::Bool(offset.is_some()));
         }
+        if let Some(value) = p.ignited_by_lava {
+            row.set("ignited_by_lava", J::Bool(value));
+        }
+        if let Some(value) = p.replaceable {
+            row.set("replaceable", J::Bool(value));
+        }
         if let Some(ticks) = &p.random_ticks {
             row.set("random_ticks", J::Bool(ticks.applies(combo)));
         }
@@ -2126,6 +2132,23 @@ impl<'a> Plan<'a> {
             "creative-inventory.json" => self.creative_tabs(doc)?,
             "block-behaviours.json" => {
                 states(doc, "states", false)?;
+                if let Some(J::Arr(rows)) = doc.at("states") {
+                    for b in &self.blocks {
+                        if let Some(instrument) = b.decl.properties.instrument {
+                            for (id, _) in (b.rename.first..).zip(b.state_combinations()) {
+                                let J::Arr(row) = &mut rows[id as usize] else {
+                                    return Err(
+                                        "block-behaviours.json: expected a compact state row"
+                                            .into(),
+                                    );
+                                };
+                                row.resize(row.len().max(9), J::Null);
+                                // Instrument column, read by sunrise_world::level::data's state facts decoder.
+                                row[8] = J::Str(instrument.name().to_ascii_uppercase());
+                            }
+                        }
+                    }
+                }
                 self.declared_solid(doc);
                 let Some(J::Arr(blocks)) = doc.at("blocks") else {
                     return Err("no blocks".into());
@@ -2244,6 +2267,12 @@ impl<'a> Plan<'a> {
                     let Some(entry) = doc.get_mut(&b.decl.id) else {
                         continue;
                     };
+                    if !model && let Some(skip) = b.decl.properties.skip_same_block_faces {
+                        entry.set(
+                            "rule",
+                            J::Str(if skip { "same_block" } else { "never" }.into()),
+                        );
+                    }
                     // Faces beside a block that occludes nothing are drawn (`Block.shouldRenderFace`).
                     if !model && let Some(can_occlude) = b.decl.properties.occludes {
                         entry.set("can_occlude", J::Bool(can_occlude));
@@ -2630,14 +2659,22 @@ impl<'a> Plan<'a> {
             row.set("page", J::Num((1 + i / 10).into()));
             row.set("title", J::Str(tab.title.clone()));
             row.set("icon", stack(&tab.icon));
-            row.set("visible", J::Bool(true));
-            let items = tab
-                .items
-                .iter()
-                .filter(|id| known(id))
-                .map(|id| stack(id))
-                .collect();
-            row.set("items", J::Arr(items));
+            row.set(
+                "build",
+                J::Arr(
+                    tab.items
+                        .iter()
+                        .filter(|id| known(id))
+                        .map(|id| {
+                            J::Obj(vec![
+                                ("kind".into(), J::Str("stack".into())),
+                                ("visibility".into(), J::Str("PARENT_AND_SEARCH_TABS".into())),
+                                ("snbt".into(), stack(id)),
+                            ])
+                        })
+                        .collect(),
+                ),
+            );
             tabs.push(row);
         }
         if let Some(search) = search {
@@ -2649,21 +2686,14 @@ impl<'a> Plan<'a> {
                     .cloned()
                     .unwrap_or_else(|| path.to_owned())
             };
-            let tab = &mut tabs[search];
-            for (key, add) in [
-                ("items", new.iter().map(|id| stack(id)).collect::<Vec<_>>()),
-                (
-                    "lines",
-                    new.iter()
-                        .map(|id| J::Arr(vec![J::Str(name(id))]))
-                        .collect(),
-                ),
-                // shortcut: a mod item's tags aren't searched by (#tag) yet.
-                ("tags", new.iter().map(|_| J::Arr(Vec::new())).collect()),
-            ] {
-                if let Some(J::Arr(list)) = tab.get_mut(key) {
-                    list.extend(add);
-                }
+            if let Some(J::Arr(metadata)) = tabs[search].get_mut("search_metadata") {
+                metadata.extend(new.into_iter().map(|id| {
+                    J::Obj(vec![
+                        ("stack".into(), stack(id)),
+                        ("lines".into(), J::Arr(vec![J::Str(name(id))])),
+                        ("ungrouped".into(), J::Bool(true)),
+                    ])
+                }));
             }
         }
         Ok(())
@@ -2714,10 +2744,14 @@ impl<'a> Plan<'a> {
                         else {
                             continue;
                         };
-                        if let Some(can_occlude) = b.decl.properties.occludes
-                            && let Tag::Byte(flags) = &mut v
-                        {
-                            *flags = (*flags & !16) | if can_occlude { 16 } else { 0 };
+                        if let Tag::Byte(flags) = &mut v {
+                            if let Some(can_occlude) = b.decl.properties.occludes {
+                                *flags = (*flags & !16) | if can_occlude { 16 } else { 0 };
+                            }
+                            if let Some(replaceable) = b.decl.properties.replaceable {
+                                // `BlockPropertiesRegistry` reads replaceable from bit 2.
+                                *flags = (*flags & !4) | (i8::from(replaceable) << 2);
+                            }
                         }
                         if let (Some(f), Some(slot)) =
                             (b.decl.properties.friction, v.get_mut("friction"))
@@ -2814,8 +2848,8 @@ const COMMAND_REGISTRIES: [(&str, &str); 7] = [
 
 /// A mod file that adds to a worldgen bundle: (bundle, id).
 fn worldgen_entry(file: &str) -> Option<(&'static str, String)> {
-    let (ns, rest) = file.strip_prefix("data/")?.split_once("/worldgen/")?;
-    let (kind, path) = rest.split_once('/')?;
+    let (ns, rest) = file.strip_prefix("data/")?.split_once('/')?;
+    let (kind, path) = rest.strip_prefix("worldgen/")?.split_once('/')?;
     let (_, bundle) = WORLDGEN_BUNDLES.iter().find(|(k, _)| *k == kind)?;
     if *bundle == BIOMES && ns == "minecraft" {
         return None;
@@ -3325,6 +3359,8 @@ struct Known {
     biome_tags: std::collections::BTreeSet<String>,
     /// `data/<ns>/tags/<kind>/<path>.json` files the mods add.
     tag_files: std::collections::BTreeSet<String>,
+    /// Block and item tag paths, by kind. A missing kind means the base has no folder to consult.
+    vanilla_tags: BTreeMap<&'static str, BTreeSet<String>>,
 }
 impl Known {
     fn new(
@@ -3333,6 +3369,8 @@ impl Known {
         tags: &BTreeMap<String, TagMerge>,
         mod_biomes: impl Iterator<Item = String>,
     ) -> Result<Self> {
+        use std::io::ErrorKind::{NotADirectory, NotFound};
+
         let mut blocks: std::collections::BTreeSet<String> =
             plan.defaults.keys().cloned().collect();
         blocks.extend(plan.blocks.iter().map(|b| b.decl.id.clone()));
@@ -3352,19 +3390,39 @@ impl Known {
         };
         let mut biomes = keys(BIOMES)?;
         biomes.extend(mod_biomes);
+        let mut vanilla_tags = BTreeMap::new();
+        for kind in ["block", "item"] {
+            let dir = base.join(format!("data/minecraft/tags/{kind}"));
+            let names = if let Some(files) =
+                sunrise_core::prepared_files::files_under(&dir).filter(|files| !files.is_empty())
+            {
+                files
+                    .into_iter()
+                    .filter_map(|name| name.strip_suffix(".json").map(str::to_owned))
+                    .collect()
+            } else {
+                match sunrise_world::json_folder::list(&dir) {
+                    Ok(files) => files.into_iter().map(|(name, _)| name).collect(),
+                    Err(e) if matches!(e.kind(), NotFound | NotADirectory) => continue,
+                    Err(e) => return Err(format!("{}: {e}", dir.display()).into()),
+                }
+            };
+            vanilla_tags.insert(kind, names);
+        }
         Ok(Known {
             blocks,
             items,
             biomes,
             biome_tags: keys(BIOME_TAGS)?,
             tag_files: tags.keys().cloned().collect(),
+            vanilla_tags,
         })
     }
     /// Whether tag `file` keeps entry `v`: a known id or an existing tag,
     /// for block, item and biome tags (other registries are kept as they
     /// are). The worldgen loader refuses a biome tag naming what it lacks
     /// (another mod's biomes, a loader's tags), so those entries go.
-    fn keeps(&self, file: &str, v: &J) -> bool {
+    fn keeps(&self, file: &str, v: &J, warnings: &mut Vec<String>) -> bool {
         let id = match v {
             J::Str(s) => s.as_str(),
             J::Obj(_) => match v.get("id") {
@@ -3373,16 +3431,18 @@ impl Known {
             },
             _ => return true,
         };
-        let Some(rest) = file
+        let Some((ns, rest)) = file
             .strip_prefix("data/")
             .and_then(|r| r.split_once("/tags/"))
-            .map(|(_, rest)| rest)
         else {
             return true;
         };
-        let kind = match rest.strip_prefix("worldgen/biome/") {
-            Some(_) => "worldgen/biome",
-            None => rest.split_once('/').map_or("", |(k, _)| k),
+        let Some((kind, tag_path)) = rest.strip_suffix(".json").and_then(|rest| {
+            rest.strip_prefix("worldgen/biome/")
+                .map(|path| ("worldgen/biome", path))
+                .or_else(|| rest.split_once('/'))
+        }) else {
+            return true;
         };
         let ids = match kind {
             "block" => &self.blocks,
@@ -3394,11 +3454,28 @@ impl Known {
             Some(tag) => {
                 let (tns, path) = tag.split_once(':').unwrap_or(("minecraft", tag));
                 let rel = format!("data/{tns}/tags/{kind}/{path}.json");
-                self.tag_files.contains(&rel)
-                    || match kind {
-                        "worldgen/biome" => self.biome_tags.contains(&format!("{tns}:{path}")),
-                        _ => tns == "minecraft",
+                if self.tag_files.contains(&rel) {
+                    return true;
+                }
+                match kind {
+                    "worldgen/biome" => self.biome_tags.contains(&format!("{tns}:{path}")),
+                    _ if tns != "minecraft" => false,
+                    _ => {
+                        let known = self
+                            .vanilla_tags
+                            .get(kind)
+                            .is_none_or(|tags| tags.contains(path));
+                        if !known
+                            && v.get("required") != Some(&J::Bool(false))
+                            && v.get("remove") != Some(&J::Bool(true))
+                        {
+                            warnings.push(format!(
+                                "{file}: skipped {id} in tag {ns}:{tag_path}: no such tag in the base or installed mods"
+                            ));
+                        }
+                        known
                     }
+                }
             }
             None => ids.contains(id),
         }
@@ -3549,7 +3626,8 @@ fn load_layers<'a>(jar_store: &Path, mods: &'a [ContentMod]) -> Result<Vec<ModLa
 /// Asset layers remain in their sources and are resolved by `resolved_resources`.
 /// Each jar's file is `<sha512>.jar` in `jar_store`, where the launcher
 /// puts it. A missing file refuses the load before decoded output is written.
-/// Returns warnings for shared tag replacements and duplicate asset paths.
+/// Returns warnings for shared tag replacements, missing required vanilla tag
+/// references and duplicate asset paths.
 pub fn build(
     base: &Path,
     jar_store: &Path,
@@ -3634,6 +3712,11 @@ pub fn resolved_resources(
             assets_base = ResourceSource::indexed(files);
         }
     }
+    let mod_layers = loaded
+        .iter()
+        .flat_map(|group| &group.layers)
+        .map(|layer| layer.data.source().clone())
+        .collect();
     let layers = loaded
         .into_iter()
         .flat_map(|group| group.layers.into_iter().map(|layer| layer.assets))
@@ -3655,10 +3738,12 @@ pub fn resolved_resources(
     }
     let assets = crate::packs::resources(assets_base, &layers)?;
     data.extend(changes.clone());
-    Ok(ResourceRoot::new(prepared, cache, assets).with_data(
-        ResourceSource::indexed(data),
-        ResourceSource::indexed(changes),
-    ))
+    Ok(ResourceRoot::new(prepared, cache, assets)
+        .with_data(
+            ResourceSource::indexed(data),
+            ResourceSource::indexed(changes),
+        )
+        .with_mod_layers(mod_layers))
 }
 
 /// The root to load: `base` itself with no content, else the mods' overlay

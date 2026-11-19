@@ -100,9 +100,6 @@ impl StartupMenu {
         additional_data: Arc<[Arc<sunrise_client::datapack::DataPack>]>,
         splashes: &str,
     ) {
-        sunrise_client::ui::load_metadata(
-            &sunrise_assets::resource_source::ResourceSource::directory(root.to_path_buf()),
-        );
         sunrise_client::lang::set(sunrise_client::lang::Language::load(
             &[&sunrise_assets::resource_source::ResourceSource::directory(
                 root.clone(),
@@ -492,7 +489,7 @@ impl Loading {
     }
     pub(super) fn apply_menu_settings(&mut self) {
         if let Some(renderer) = &mut self.renderer {
-            renderer.gamma = self.settings.gamma;
+            renderer.gamma = self.settings.gamma as f32;
             renderer.set_present_mode(self.settings.vsync, self.settings.sunrise.present_mode);
         }
 
@@ -859,6 +856,15 @@ impl Loading {
         }
     }
 
+    /// The title's installed-package count: the buttons crates add to the title screen
+    /// (`sunrise_hooks::title`) show by it, with the same eligibility the game's own title
+    /// screen uses. Before the menu draws or takes input.
+    fn sync_title_mods(&mut self) {
+        if let Some(title) = &mut self.menu.title {
+            title.mods = self.settings.mods.installed.len();
+        }
+    }
+
     fn menu_action(&mut self, event_loop: &dyn EventLoopCtl, action: Action) {
         match action {
             Action::Quit => event_loop.exit(),
@@ -1112,6 +1118,9 @@ impl Loading {
         event_loop: &dyn EventLoopCtl,
         event: WindowEvent,
     ) -> Result<()> {
+        // The buttons crates add to the title screen show by what is installed now
+        // (`sunrise_hooks::title`), as on the game's own title screen.
+        self.sync_title_mods();
         if let WindowEvent::KeyboardInput { event, .. } = &event
             && let PhysicalKey::Code(key) = event.physical_key
         {
@@ -1310,7 +1319,7 @@ impl Loading {
                     sunrise_client::mouse::java_signum(f64::from(raw)) as f32
                 } else {
                     raw
-                } * self.settings.mouse_wheel_sensitivity;
+                } * self.settings.mouse_wheel_sensitivity as f32;
                 let size = self.menu_size();
                 let batch = HudBatch::new(size, self.settings.gui_scale_inputs());
                 if self.menu.options_open {
@@ -1370,6 +1379,9 @@ impl Loading {
     }
 
     pub(super) fn draw_menu(&mut self, batch: &mut HudBatch) {
+        // The buttons crates add to the title screen show by what is installed now
+        // (`sunrise_hooks::title`), as on the game's own title screen.
+        self.sync_title_mods();
         let logs = sunrise_client::logging::recent_lines();
         let Some(gui) = &self.gui else {
             // The pack's screens do not exist yet: the boot screen holds the
@@ -1395,11 +1407,13 @@ impl Loading {
             }
         }
         if self.menu.pending.is_some() {
+            self.bar =
+                sunrise_client::level_loading::ease_overlay(self.bar, self.progress.fraction());
             sunrise_client::level_loading::draw_loading_overlay(
                 batch,
                 &gui.atlas,
-                self.progress.line(),
-                self.progress.fraction(),
+                self.bar,
+                sunrise_client::level_loading::OverlayFade::OPAQUE,
                 self.settings.file.bool("darkMojangStudiosBackground"),
             );
             let (bars, lines) = super::startup_progress::shown();
@@ -1561,6 +1575,7 @@ mod tests {
             started: Instant::now(),
             panorama_rotation: Default::default(),
             progress: Progress::new(),
+            bar: 0.0,
             receiver,
             loaded: None,
             delivered: false,

@@ -634,10 +634,10 @@ impl Game<'_> {
                     let hover = in_area(cursor.1) && ui::hovered(cursor, x, y, cw, ch);
                     let on = open.values.get(input) == Some(&InputValue::Bool(true));
                     let sprite = match (on, hover) {
-                        (true, true) => "gui/sprites/widget/checkbox_selected_highlighted",
-                        (true, false) => "gui/sprites/widget/checkbox_selected",
-                        (false, true) => "gui/sprites/widget/checkbox_highlighted",
-                        (false, false) => "gui/sprites/widget/checkbox",
+                        (true, true) => "widget/checkbox_selected_highlighted",
+                        (true, false) => "widget/checkbox_selected",
+                        (false, true) => "widget/checkbox_highlighted",
+                        (false, false) => "widget/checkbox",
                     };
                     let Control::Boolean { label, .. } = &open.dialog.inputs[input].control else {
                         continue;
@@ -911,7 +911,7 @@ impl Game<'_> {
                     open.focus = Some(input);
                     open.dragging = Some(input);
                     if let Some(v) = open.values.get_mut(input) {
-                        *v = InputValue::Slider(ui::slider_value(x, w, cursor.0));
+                        *v = InputValue::Slider(ui::slider_value(x, w, cursor.0) as f32);
                     }
                 }
                 Part::Button {
@@ -1058,7 +1058,7 @@ impl Game<'_> {
             _ => None,
         });
         if let (Some([sx, _, sw, _]), Some(value)) = (slider, open.values.get_mut(input)) {
-            *value = InputValue::Slider(ui::slider_value(sx, sw, x));
+            *value = InputValue::Slider(ui::slider_value(sx, sw, x) as f32);
         }
     }
 

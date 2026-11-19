@@ -246,10 +246,10 @@ fn pause_icons(
     let (x0, y0) = pause_grid(w, h, u8::from(links || additions) + rows.len() as u8);
     let (x0, y) = (x0 + 60.0, y0 + 98.0);
     [
-        (x0, y, "gui/sprites/pause_menu/bug"),
-        (x0 + 24.0, y, "gui/sprites/pause_menu/social_interactions"),
-        (x0 + 48.0, y, "gui/sprites/friends/friends"),
-        (x0 + 72.0, y, "gui/sprites/pause_menu/player_reporting"),
+        (x0, y, "pause_menu/bug"),
+        (x0 + 24.0, y, "pause_menu/social_interactions"),
+        (x0 + 48.0, y, "friends/friends"),
+        (x0 + 72.0, y, "pause_menu/player_reporting"),
     ]
 }
 /// DeathScreen.init: a hardcore player can only spectate.

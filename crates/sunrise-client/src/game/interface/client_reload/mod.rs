@@ -4,10 +4,6 @@
 //! and the game applies once it exists (`start_game`).
 use mod_api::__private::game::*;
 
-mod runtime_sprites;
-#[cfg(test)]
-pub(in crate::game) use runtime_sprites::fixture_png;
-pub(in crate::game) use runtime_sprites::{collect_runtime_sprites, stage_runtime_sprites};
 mod texture_atlases;
 pub(in crate::game) use texture_atlases::{collect_texture_atlases, stage_texture_atlases};
 

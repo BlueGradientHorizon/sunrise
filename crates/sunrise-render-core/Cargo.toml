@@ -4,7 +4,7 @@ version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "Core rendering primitives, math layouts, and GPU POD types for Sunrise"
+description = "Frustum geometry and terrain instance and fade helpers for Sunrise"
 
 [dependencies]
 bytemuck = { version = "1.24", features = ["derive"] }

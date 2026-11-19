@@ -7,6 +7,7 @@ use super::{
     registration_capability_coverage as coverage,
 };
 mod menu_books;
+pub(in crate::game) mod runtime_files;
 mod standalone;
 use mod_api::__private::game::*;
 use mod_api::RegistrationContext;
@@ -227,19 +228,14 @@ fn builtin_registry_names(root: &Path) -> sunrise_client::Result<BTreeMap<String
 }
 
 /// Capture registration's stable registries, settings and stock capability type owners.
-pub(super) fn install_registration_data(root: &Path) -> sunrise_client::Result<()> {
+pub(super) fn install_registration_data(
+    root: &Path,
+    runtime_files: BTreeMap<String, Arc<dyn mod_api::RuntimeFileSource>>,
+) -> sunrise_client::Result<()> {
     let packages = mod_api::__private::loaded_mods();
     let directory = Game::game_dir();
-    #[cfg(unix)]
-    let directory = {
-        use std::os::unix::ffi::OsStrExt;
-        mod_api::InstanceDirectory::Unix(directory.as_os_str().as_bytes().to_vec())
-    };
-    #[cfg(windows)]
-    let directory = {
-        use std::os::windows::ffi::OsStrExt;
-        mod_api::InstanceDirectory::Windows(directory.as_os_str().encode_wide().collect())
-    };
+    let directory = mod_api::InstanceDirectory::from_path(&directory)
+        .expect("the host's paths have an encoding the mod API carries");
     (sunrise_engine_slots::platform()?.install_registration_data)(
         mod_api::__private::RegistrationData::new(
             builtin_registry_names(root)?,
@@ -250,7 +246,8 @@ pub(super) fn install_registration_data(root: &Path) -> sunrise_client::Result<(
             directory,
             crate::entry::runtime_environment::get().clone(),
         )
-        .with_capability_coverage(coverage::builtin, coverage::block_entity),
+        .with_capability_coverage(coverage::builtin, coverage::block_entity)
+        .with_runtime_files(runtime_files),
     );
     Ok(())
 }
@@ -711,7 +708,7 @@ fn refuse_primary_namespace_claims(
             .find(|ns| primary.contains(ns.as_str()))
         {
             return Err(format!(
-                "mod {} claims namespace {namespace}, which is the primary namespace of mod {namespace}",
+                "mod {} claims namespace {namespace}, which is the primary namespace of mod {namespace}; turn one of them off",
                 manifest.id,
             ).into());
         }
@@ -728,7 +725,6 @@ pub(super) fn content_overlay(
     jar_store: &std::path::Path,
 ) -> sunrise_client::Result<ContentOverlay> {
     use sunrise_client::mod_content::{self, ContentMod};
-    let here = std::env::current_dir().unwrap_or_default();
     let original_base = root.to_owned();
 
     let requirements = collect_jar_requirements(
@@ -760,7 +756,15 @@ pub(super) fn content_overlay(
             .native
             .built()
             .iter()
-            .map(|m| announced_entry(m.id, m.version, m.side))
+            .map(|m| {
+                let runtime = sources
+                    .native
+                    .packages()
+                    .iter()
+                    .find(|p| p.manifest.id == m.id)
+                    .and_then(|p| p.manifest.runtime.as_ref());
+                announced_entry(m.id, m.version, m.side, runtime)
+            })
             .collect()
     } else {
         Vec::new()
@@ -848,10 +852,15 @@ pub(super) fn content_overlay(
             Ok(_) if source.content_only => {
                 content_mods.push(sunrise_client::save::level_mods::ModRecord {
                     id: m.id.clone(),
-                    version: m.version.clone(),
+                    version: m.version.to_string(),
                 });
                 if announce {
-                    announced.push(announced_entry(&m.id, &m.version, m.side));
+                    announced.push(announced_entry(
+                        &m.id,
+                        &m.version.to_string(),
+                        m.side,
+                        m.runtime.as_ref(),
+                    ));
                 }
             }
             Ok(_) => {}
@@ -902,6 +911,7 @@ pub(super) fn content_overlay(
             log::warn!("Sunrise: {e}");
         }
     }
+    validate_entity_type_families(&mods, super::general::general_type_catalog())?;
     // Content validation may refuse a package. Revalidate against what really
     // loaded so dependents cannot start with a missing required content mod.
     let loaded: Vec<_> = manifests
@@ -921,7 +931,7 @@ pub(super) fn content_overlay(
         &overrides,
     )
     .map_err(|error| error.to_string())?;
-    let cache = here.join(".sunrise-cache");
+    let cache = sunrise_client::logging::cache_dir();
     // Content admission and the live code-dispatch boundary jointly determine
     // what loaded. Namespaces and raw startup metadata cannot answer this.
     let inventory = sources.enabled_inventory(|id| mods.iter().any(|loaded| loaded.id == id));
@@ -1258,6 +1268,7 @@ fn announced_entry(
     id: &str,
     version: &str,
     side: mod_api::Side,
+    runtime: Option<&sunrise_mod_package::manifest::RuntimeTable>,
 ) -> sunrise_protocol::mod_list::Entry {
     use mod_api::Side;
     use sunrise_protocol::mod_list;
@@ -1270,6 +1281,7 @@ fn announced_entry(
             // `Side` is open to new kinds; until the list carries one, such a mod stays local.
             _ => mod_list::Side::Client,
         },
+        runtime: runtime.map(sunrise_mod_package::manifest::RuntimeTable::digest),
     }
 }
 
@@ -1311,6 +1323,25 @@ fn register_mob_effects(mods: &[sunrise_client::mod_content::ContentMod]) {
     {
         log::warn!("Sunrise: the mods' mob effects changed; restart the game to use them");
     }
+}
+
+/// Content and general types share the entity-type key space even though their definitions
+/// enter through different paths. Refuse the collision before building the content root.
+fn validate_entity_type_families(
+    mods: &[sunrise_client::mod_content::ContentMod],
+    general: &super::general::GeneralTypeCatalog,
+) -> Result<(), String> {
+    for package in mods {
+        for entity in &package.content.entity_types {
+            if general.slot(&entity.id).is_some() {
+                return Err(format!(
+                    "mod {} declares entity type {} as both a content and a general entity type",
+                    package.id, entity.id,
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// the mods' entity types' templates, which the tracker reads their settings
@@ -2094,7 +2125,7 @@ mod tests {
                 refuse_primary_namespace_claims(&layers)
                     .unwrap_err()
                     .to_string(),
-                "mod claimant claims namespace owner, which is the primary namespace of mod owner"
+                "mod claimant claims namespace owner, which is the primary namespace of mod owner; turn one of them off"
             );
         }
     }
@@ -2152,8 +2183,8 @@ mod tests {
     }
 
     /// Runs `test` again in a child process whose working directory is its own
-    /// empty folder: the overlay's `.sunrise-cache` lives under the working
-    /// directory, so children sharing one (the temp dir) race on that cache.
+    /// empty folder: the overlay's `.sunrise-cache` lives under the home, set here to
+    /// the working directory, so children sharing one (the temp dir) race on that cache.
     fn run_in_child(test: &str, mode: &str) {
         let cwd = std::env::temp_dir().join(format!(
             "sunrise-game-mods-cwd-{}-{mode}",
@@ -2163,11 +2194,48 @@ mod tests {
         let status = std::process::Command::new(std::env::current_exe().unwrap())
             .current_dir(&cwd)
             .args(["--include-ignored", "--exact", test, "--nocapture"])
+            .env("SUNRISE_HOME", &cwd)
             .env(mode, "1")
             .status()
             .unwrap();
         std::fs::remove_dir_all(&cwd).unwrap();
         assert!(status.success());
+    }
+
+    #[test]
+    fn a_package_cannot_declare_one_type_in_both_entity_families() {
+        let general = crate::game::general::GeneralTypeCatalog::freeze(&[
+            mod_api::__private::GeneralEntityTypeDeclaration {
+                mod_id: "ruby".into(),
+                id: "ruby:robot".into(),
+                category: mod_api::GeneralEntityCategory::Misc,
+                width: 0.5,
+                height: 1.0,
+                save_policy: mod_api::GeneralSavePolicy::Save,
+                summonable: true,
+                tracking_chunks: 8,
+                update_interval: 3,
+                payload_version: 1,
+                required_features: Vec::new(),
+            },
+        ])
+        .unwrap();
+        let mut content = sunrise_mod_package::content::Content::declared("ruby");
+        let mut entity: sunrise_mod_package::content::EntityType =
+            serde_json::from_str(r#"{"template":"minecraft:zombie"}"#).unwrap();
+        entity.id = "ruby:robot".into();
+        content.entity_types.push(entity);
+        let mut package = sunrise_client::mod_content::ContentMod {
+            id: "ruby".into(),
+            content,
+            jars: Vec::new(),
+        };
+        assert_eq!(
+            validate_entity_type_families(std::slice::from_ref(&package), &general),
+            Err("mod ruby declares entity type ruby:robot as both a content and a general entity type".into()),
+        );
+        package.content.entity_types[0].id = "ruby:zombie".into();
+        assert_eq!(validate_entity_type_families(&[package], &general), Ok(()));
     }
 
     /// A content mod's living type is a mob of its template's species under

@@ -2,6 +2,7 @@
 use super::{Game, Hit, machines::dir_from_name};
 use sunrise_assets::item_model::DisplayContext;
 use sunrise_client::{block_entity_render::vertex_light, containers::BlockEntity, mesher::Vertex};
+use sunrise_client_render::block_entity_reach::Reach;
 use sunrise_core::{
     geometry::{Direction, Vec3},
     position::BlockPos,
@@ -214,7 +215,7 @@ impl Game<'_> {
                 continue;
             };
             let at = glam::DVec3::new(f64::from(key.0), f64::from(key.1), f64::from(key.2));
-            if at.distance_squared(camera) >= 64.0 * 64.0 {
+            if !Reach::Default.should_render([key.0, key.1, key.2], camera, 0) {
                 continue;
             }
             let block = self.world.block(key.0, key.1, key.2);

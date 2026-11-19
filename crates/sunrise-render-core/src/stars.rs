@@ -1,7 +1,5 @@
 //! The night sky's stars, built once from vanilla's fixed seed (`SkyRenderer.buildStars`) as star space triangles on a sphere of radius 100: up to 1500 quads, each turned to face the centre and spun about its own axis, two triangles per quad.
 
-extern crate alloc;
-
 use alloc::vec::Vec;
 use glam::Vec3;
 

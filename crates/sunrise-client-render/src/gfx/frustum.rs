@@ -194,15 +194,4 @@ pub(super) fn taa_frustum(view_proj: Mat4, rendered_size: [u32; 2]) -> Frustum {
     Frustum::from_planes(frustum(Mat4::from_scale(Vec3::new(x, y, 1.0)) * view_proj))
 }
 
-pub(super) fn frustum(m: Mat4) -> [Vec4; 6] {
-    let r = |i| m.row(i);
-    let planes = [
-        r(3) + r(0),
-        r(3) - r(0),
-        r(3) + r(1),
-        r(3) - r(1),
-        r(2),
-        r(3) - r(2),
-    ];
-    planes.map(|p| p / p.truncate().length())
-}
+pub(super) use sunrise_render_core::frustum::frustum_planes_from_view_proj as frustum;

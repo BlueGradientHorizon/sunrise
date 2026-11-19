@@ -14,6 +14,7 @@ use sunrise_client::{
     mesher::Vertex,
     vault::{Vault, VaultEvent, VaultLevel, VaultPlayer, VaultState},
 };
+use sunrise_client_render::block_entity_reach::Reach;
 use sunrise_core::random::{LegacyRandom, LevelRandom};
 
 type Pos = (i32, i32, i32);
@@ -66,6 +67,17 @@ impl Game<'_> {
             spectator: g.spectator,
         });
         host.into_iter().chain(guests).collect()
+    }
+    /// VaultBlock.useItemOn on a client level: something in the hand on an ACTIVE vault is
+    /// SUCCESS_SERVER, so the click ends there (no UseItem, no other hand, no swing); only the
+    /// server tries the key.
+    pub(super) fn vault_takes_click(&self, pos: [i32; 3], held: Option<&ItemStack>) -> bool {
+        let state = self.world.block(pos[0], pos[1], pos[2]);
+        held.is_some()
+            && self.pack.assets.registry.state(state).is_some_and(|block| {
+                sunrise_client::block_entity_types::factory_block(&block.name) == "minecraft:vault"
+                    && block.properties.get("vault_state").map(String::as_str) == Some("active")
+            })
     }
     /// The vault at `key` with its block's state and ominous flag.
     pub(super) fn take_vault(&mut self, key: Pos) -> Option<TakenVault> {
@@ -281,7 +293,7 @@ impl Game<'_> {
                 continue;
             };
             let at = glam::DVec3::new(f64::from(key.0), f64::from(key.1), f64::from(key.2));
-            if at.distance_squared(camera) >= 64.0 * 64.0 {
+            if !Reach::Default.should_render([key.0, key.1, key.2], camera, 0) {
                 continue;
             }
             let state = self.resolve_item(stack, DisplayContext::Ground, None, 0);

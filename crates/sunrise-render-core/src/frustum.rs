@@ -1,6 +1,9 @@
-//! The camera's view frustum, as camera-relative clip planes.
+//! Camera-relative frustum and view clipping structures.
 
 use glam::{Mat4, Vec3, Vec4};
+
+/// The maximum number of alternate world views supported simultaneously.
+pub const MAX_WORLD_VIEWS: usize = 8;
 
 /// Camera-relative clip planes (`Frustum`).
 #[derive(Clone, Copy, Debug)]
@@ -30,9 +33,7 @@ impl Frustum {
         })
     }
 
-    /// Whether a camera-relative sphere is at least partly inside. Frustum
-    /// planes are normalized, so each test needs only one dot product and a
-    /// radius comparison.
+    /// Whether a camera-relative sphere is at least partly inside.
     pub fn intersects_sphere(&self, center: Vec3, radius: f32) -> bool {
         if !center.is_finite() || !radius.is_finite() || radius < 0.0 {
             return true;
@@ -44,7 +45,6 @@ impl Frustum {
     }
 
     /// Depth clip planes alone: X/Y projection jitter cannot change this test.
-    /// Retaining side-of-screen geometry makes this safe before TAA selects a phase.
     pub fn intersects_depth(&self, min: Vec3, max: Vec3) -> bool {
         if !min.is_finite() || !max.is_finite() || !min.cmple(max).all() {
             return true;
@@ -65,9 +65,7 @@ impl Frustum {
         })
     }
 
-    /// Whether the camera-relative `point` is on or inside every plane (vanilla's
-    /// `Frustum.pointInFrustum`). A point that is not finite is kept: a test that cannot
-    /// tell must not hide the particle.
+    /// Whether the camera-relative `point` is on or inside every plane.
     pub fn contains_point(&self, point: Vec3) -> bool {
         if !point.is_finite() {
             return true;
@@ -77,14 +75,11 @@ impl Frustum {
             .all(|plane| plane.truncate().dot(point) + plane.w >= 0.0)
     }
 
-    /// The same frustum seen from a camera moved `blocks` back along the view direction
-    /// (vanilla's `Frustum.offset`): the sides open up near the camera and the near plane
-    /// moves behind it, so what sits just behind or beside the camera stays inside.
+    /// The same frustum seen from a camera moved `blocks` back along the view direction.
     pub fn pulled_back(&self, blocks: f32) -> Frustum {
         let sides: Vec3 = self.planes[..4].iter().map(|p| p.truncate()).sum();
         let depth = self.planes[4].truncate();
         let along = depth.dot(sides);
-        // A perspective frustum's four side normals each lean forward, so this is well above 1.
         if along.abs() < 1.0e-3 {
             return *self;
         }
@@ -115,6 +110,119 @@ pub fn frustum_planes_from_view_proj(m: Mat4) -> [Vec4; 6] {
         r(3) - r(2),
     ];
     planes.map(|p| p / p.truncate().length())
+}
+
+/// The union of two frusta (the camera's and its water mirror's), for visibility testing.
+#[derive(Clone, Copy, Debug)]
+pub struct Frusta(pub Frustum, pub Option<Frustum>);
+
+/// What visibility tests cull with: a frustum or a union of them.
+pub trait Cull {
+    fn intersects(&self, min: Vec3, max: Vec3) -> bool;
+    fn contains(&self, min: Vec3, max: Vec3) -> bool;
+    /// Whether a section is tested by the box around its geometry, not its whole 16 blocks.
+    fn tight(&self) -> bool {
+        true
+    }
+}
+
+impl Cull for Frustum {
+    fn intersects(&self, min: Vec3, max: Vec3) -> bool {
+        Frustum::intersects(self, min, max)
+    }
+    fn contains(&self, min: Vec3, max: Vec3) -> bool {
+        Frustum::contains(self, min, max)
+    }
+}
+
+impl Cull for Frusta {
+    fn intersects(&self, min: Vec3, max: Vec3) -> bool {
+        self.0.intersects(min, max) || self.1.is_some_and(|f| f.intersects(min, max))
+    }
+    fn contains(&self, min: Vec3, max: Vec3) -> bool {
+        self.0.contains(min, max) || self.1.is_some_and(|f| f.contains(min, max))
+    }
+}
+
+/// The camera's frustum joined to this frame's world views.
+#[derive(Clone, Copy, Debug)]
+pub struct JoinedFrusta {
+    camera: Frustum,
+    views: [Frustum; MAX_WORLD_VIEWS],
+    len: usize,
+}
+
+impl JoinedFrusta {
+    /// Join the camera's frustum to the first [`MAX_WORLD_VIEWS`] alternate views.
+    pub fn new(camera: Frustum, views: impl IntoIterator<Item = Frustum>) -> Self {
+        let mut joined = Self {
+            camera,
+            views: [camera; MAX_WORLD_VIEWS],
+            len: 0,
+        };
+        for (slot, view) in joined.views.iter_mut().zip(views) {
+            *slot = view;
+            joined.len += 1;
+        }
+        joined
+    }
+
+    /// The same views with the camera's frustum `camera` (TAA's wider one).
+    pub fn with_camera(self, camera: Frustum) -> Self {
+        Self { camera, ..self }
+    }
+
+    fn views(&self) -> &[Frustum] {
+        &self.views[..self.len]
+    }
+
+    pub fn intersects(&self, min: Vec3, max: Vec3) -> bool {
+        self.camera.intersects(min, max) || self.views().iter().any(|f| f.intersects(min, max))
+    }
+
+    pub fn intersects_sphere(&self, center: Vec3, radius: f32) -> bool {
+        self.camera.intersects_sphere(center, radius)
+            || self
+                .views()
+                .iter()
+                .any(|f| f.intersects_sphere(center, radius))
+    }
+
+    pub fn intersects_depth(&self, min: Vec3, max: Vec3) -> bool {
+        self.camera.intersects_depth(min, max)
+            || self.views().iter().any(|f| f.intersects(min, max))
+    }
+
+    pub fn contains(&self, min: Vec3, max: Vec3) -> bool {
+        self.camera.contains(min, max) || self.views().iter().any(|f| f.contains(min, max))
+    }
+
+    pub fn contains_point(&self, point: Vec3) -> bool {
+        self.camera.contains_point(point) || self.views().iter().any(|f| f.contains_point(point))
+    }
+
+    pub fn pulled_back(&self, blocks: f32) -> Self {
+        Self {
+            camera: self.camera.pulled_back(blocks),
+            views: self.views.map(|f| f.pulled_back(blocks)),
+            len: self.len,
+        }
+    }
+}
+
+impl From<Frustum> for JoinedFrusta {
+    fn from(camera: Frustum) -> Self {
+        Self::new(camera, [])
+    }
+}
+
+impl Cull for JoinedFrusta {
+    fn intersects(&self, min: Vec3, max: Vec3) -> bool {
+        JoinedFrusta::intersects(self, min, max)
+    }
+    fn contains(&self, min: Vec3, max: Vec3) -> bool {
+        JoinedFrusta::contains(self, min, max)
+    }
 }
 
 #[cfg(test)]
@@ -262,124 +370,5 @@ mod tests {
         ] {
             assert_eq!(flat.contains_point(p), moved.contains_point(p));
         }
-    }
-}
-
-/// The maximum number of alternate world views supported simultaneously.
-pub const MAX_WORLD_VIEWS: usize = 8;
-
-/// The union of two frusta (the camera's and its water mirror's), for visibility testing.
-#[derive(Clone, Copy, Debug)]
-pub struct Frusta(pub Frustum, pub Option<Frustum>);
-
-/// What visibility tests cull with: a frustum or a union of them.
-pub trait Cull {
-    fn intersects(&self, min: Vec3, max: Vec3) -> bool;
-    fn contains(&self, min: Vec3, max: Vec3) -> bool;
-    /// Whether a section is tested by the box around its geometry, not its whole 16 blocks.
-    fn tight(&self) -> bool {
-        true
-    }
-}
-
-impl Cull for Frustum {
-    fn intersects(&self, min: Vec3, max: Vec3) -> bool {
-        Frustum::intersects(self, min, max)
-    }
-    fn contains(&self, min: Vec3, max: Vec3) -> bool {
-        Frustum::contains(self, min, max)
-    }
-}
-
-impl Cull for Frusta {
-    fn intersects(&self, min: Vec3, max: Vec3) -> bool {
-        self.0.intersects(min, max) || self.1.is_some_and(|f| f.intersects(min, max))
-    }
-    fn contains(&self, min: Vec3, max: Vec3) -> bool {
-        self.0.contains(min, max) || self.1.is_some_and(|f| f.contains(min, max))
-    }
-}
-
-/// The camera's frustum joined to this frame's world views.
-#[derive(Clone, Copy, Debug)]
-pub struct JoinedFrusta {
-    camera: Frustum,
-    views: [Frustum; MAX_WORLD_VIEWS],
-    len: usize,
-}
-
-impl JoinedFrusta {
-    pub fn new(camera: Frustum, views: impl IntoIterator<Item = Frustum>) -> Self {
-        let mut joined = Self {
-            camera,
-            views: [camera; MAX_WORLD_VIEWS],
-            len: 0,
-        };
-        for (slot, view) in joined.views.iter_mut().zip(views) {
-            *slot = view;
-            joined.len += 1;
-        }
-        joined
-    }
-
-    /// The same views with the camera's frustum `camera` (e.g. TAA's wider one).
-    pub fn with_camera(self, camera: Frustum) -> Self {
-        Self { camera, ..self }
-    }
-
-    pub fn views(&self) -> &[Frustum] {
-        &self.views[..self.len]
-    }
-
-    pub fn camera(&self) -> Frustum {
-        self.camera
-    }
-
-    pub fn intersects(&self, min: Vec3, max: Vec3) -> bool {
-        self.camera.intersects(min, max) || self.views().iter().any(|f| f.intersects(min, max))
-    }
-
-    pub fn intersects_sphere(&self, center: Vec3, radius: f32) -> bool {
-        self.camera.intersects_sphere(center, radius)
-            || self
-                .views()
-                .iter()
-                .any(|f| f.intersects_sphere(center, radius))
-    }
-
-    pub fn intersects_depth(&self, min: Vec3, max: Vec3) -> bool {
-        self.camera.intersects_depth(min, max)
-            || self.views().iter().any(|f| f.intersects(min, max))
-    }
-
-    pub fn contains(&self, min: Vec3, max: Vec3) -> bool {
-        self.camera.contains(min, max) || self.views().iter().any(|f| f.contains(min, max))
-    }
-
-    pub fn contains_point(&self, point: Vec3) -> bool {
-        self.camera.contains_point(point) || self.views().iter().any(|f| f.contains_point(point))
-    }
-
-    pub fn pulled_back(&self, blocks: f32) -> Self {
-        Self {
-            camera: self.camera.pulled_back(blocks),
-            views: self.views.map(|f| f.pulled_back(blocks)),
-            len: self.len,
-        }
-    }
-}
-
-impl From<Frustum> for JoinedFrusta {
-    fn from(camera: Frustum) -> Self {
-        Self::new(camera, [])
-    }
-}
-
-impl Cull for JoinedFrusta {
-    fn intersects(&self, min: Vec3, max: Vec3) -> bool {
-        JoinedFrusta::intersects(self, min, max)
-    }
-    fn contains(&self, min: Vec3, max: Vec3) -> bool {
-        JoinedFrusta::contains(self, min, max)
     }
 }

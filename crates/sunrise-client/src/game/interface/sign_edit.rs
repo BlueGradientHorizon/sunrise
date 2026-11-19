@@ -581,18 +581,6 @@ impl Game<'_> {
         };
         let (uuid, name) = (g.uuid, g.name.clone());
         let key = (p.pos[0], p.pos[1], p.pos[2]);
-        let lines = p.lines.join(" ");
-        if !self.chat_filter_text(
-            conn,
-            &[&lines],
-            sunrise_client::lan::hub::chat_filter::Place::Sign,
-        ) {
-            // The sign stays as it was: the editor closes, as after a sign the server refused.
-            self.world.block_entities.set_sign_editor(key, None);
-            // The player's client shows the text it sent: the sign as it is, again.
-            self.mark_block_entity_updated(key);
-            return;
-        }
         let Some(BlockEntity::Sign(sign)) = self.world.block_entities.get(&key) else {
             return;
         };
@@ -1017,15 +1005,7 @@ impl Game<'_> {
         sunrise_client::widgets::narratable(|| {
             sunrise_client::widgets::Narratable::button(done_label(), [bx, by, 200.0, 20.0], true)
         });
-        batch.sprite_scaled(
-            atlas,
-            "gui/sprites/widget/button",
-            bx,
-            by,
-            200.0,
-            20.0,
-            u32::MAX,
-        );
+        batch.sprite_scaled(atlas, "widget/button", bx, by, 200.0, 20.0, u32::MAX);
         let done = done_label();
         let tw = HudBatch::text_width(atlas, &done);
         batch.text(

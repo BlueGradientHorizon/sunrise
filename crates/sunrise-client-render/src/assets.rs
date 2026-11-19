@@ -81,6 +81,7 @@ pub struct RenderAssets {
     /// The block sprites' RGBA, layer by layer: as built until a renderer has
     /// them, then kept compressed ([`SpritePixels`]).
     pub pixels: SpritePixels,
+    /// How many array layers the block sprites take, whatever maps name them.
     pub texture_layers: u32,
     pub model_catalog: crate::models::StateModels,
     /// Shared parsed resources; item-only validation errors surface at item preparation.
@@ -89,6 +90,8 @@ pub struct RenderAssets {
     pub model_gallery: Vec<Value>,
     pub animations: Vec<crate::sprites::SpriteAnimation>,
     pub sprite_layers: std::collections::BTreeMap<String, u32>,
+    /// The layers of the texture files read on their own (emissive overlays), by raw name.
+    pub file_layers: std::collections::BTreeMap<String, u32>,
     /// OptiFine's emissive block overlays: base sprite and overlay sprite names.
     pub emissive: Vec<(String, String)>,
     pub translucent_layers: Vec<bool>,
@@ -360,14 +363,13 @@ impl RenderAssets {
         parsed: Option<crate::model_library::ParsedModels>,
     ) -> Result<Self> {
         let registry = assets.registry;
-        let mut sprites = crate::sprites::Sprites::with_disk_cache(root);
+        let mut sprites = if draws {
+            crate::sprites::Sprites::with_disk_cache(root)
+        } else {
+            crate::sprites::Sprites::for_server(root.source().clone())
+        };
         for name in MATERIALS {
             sprites.insert(&format!("minecraft:block/{name}"))?;
-        }
-        if draws {
-            for id in root.runtime_block_sprites() {
-                sprites.insert(id)?;
-            }
         }
         // A server draws no block and no item: its block models (about 24 MB
         // baked) and item model library (7 MB) stay empty.
@@ -389,6 +391,11 @@ impl RenderAssets {
         sprites.keep_apart(crate::connected::ConnectedTextures::matched_sprites(
             &ctm_rules,
         ));
+        if draws {
+            // After the rules' names are kept apart, so a sprite a source made keeps its own layer
+            // where a rule matches it.
+            sprites.insert_mod_sprites()?;
+        }
         let mut models = if draws {
             let _step = crate::spans::startup::step("core.models_bake");
             crate::models::prepare_with_models(root, registry, &mut sprites, &parsed)?
@@ -408,7 +415,7 @@ impl RenderAssets {
             "lava_still",
             "lava_flow",
         ] {
-            sprites.insert(&format!("minecraft:block/{name}"))?;
+            sprites.insert_in_blocks(&format!("minecraft:block/{name}"))?;
         }
         for model in crate::fluid_models::resolved() {
             for name in [
@@ -419,7 +426,7 @@ impl RenderAssets {
             .into_iter()
             .flatten()
             {
-                sprites.insert(name)?;
+                sprites.insert_in_blocks(name)?;
             }
         }
         for stage in 0..10 {
@@ -492,6 +499,7 @@ impl RenderAssets {
             model_gallery: models.states,
             animations: sprites.animations,
             sprite_layers: sprites.layers,
+            file_layers: sprites.files,
             emissive,
             translucent_layers: sprites.translucent,
             sprite_mips: sprites.mips,

@@ -4,6 +4,7 @@
 the same code (`crates/sunrise-native-build`). Every SDK release carries the tool for each host it is built for, as
 `tool-<target>.tar.xz` holding `cargo-sunrise-mod` (`.exe` on Windows), so a caller that already checked the SDK's
 signed `sdk.json` gets a tool made from that build's own source.
+Use that SDK's tool for the JSON commands: its horizon-mixins revision and patch match the SDK by construction.
 
 The caller does what needs a player or their game: it checks that native code is allowed, fetches and verifies the
 SDK's slices, installs the pinned Rust, chooses the mods and which of them a build leaves out, and installs what the
@@ -48,7 +49,7 @@ Each line is an object whose `event` names it.
 |---|---|---|
 | `mod` | `id`, `done`, `total` | A mod's own library starts compiling, `done` of `total`. |
 | `consent` | `added_crates`, `build_scripts`, `proc_macros` | Registry crates need a yes and the plan gave no `registry`. The caller answers with one line on standard input: `true` agrees, anything else refuses. |
-| `built` | `route`, `binary`, `libraries`, `records`, `mods`, `internals`, `mixins`, `used` | The executable and the libraries to install beside it, in load order; `records` is each library's identity, the build record's `libraries`; `route` is `prebuilt-api` or `prebuilt`, as the record names it; `mods` is the compiled mods in dependency order. `internals` has each compiled mod's `[[internals]]` by mod id, every absent `hash` taken from the SDK's catalog, as the build record keeps them; `mixins` is the horizon-mixins revision the build ran; `used` lists the kept folders and files under `work` it used, for a caller's cache to count as used. |
+| `built` | `route`, `binary`, `libraries`, `records`, `mods`, `internals`, `mixins`, `used` | The executable and the libraries to install beside it, in load order; `records` is each library's identity, the build record's `libraries`: one row per library, the patch library included, whose `identity` is `<build id> <mod id> <version> <rustc release> unwind` (the panic strategy the library's entry reports; the loader refuses `abort`); `route` is `prebuilt-api` or `prebuilt`, as the record names it; `mods` is the compiled mods in dependency order. `internals` has each compiled mod's `[[internals]]` by mod id, every absent `hash` taken from the SDK's catalog, as the build record keeps them; `mixins` is the horizon-mixins revision the build ran; `used` lists the kept folders and files under `work` it used, for a caller's cache to count as used. |
 | `failed` | `error`, `blame`, `used` | Why it did not build, as the build log ends with it. `blame` is `null`, or the mod the error is that mod's own and how: `{"mod": id, "kind": "compile" \| "build-script" \| "features"}`, the one a caller leaves out next time. `used` as for `built`. |
 
 What it downloads (the horizon-mixins tool, a mod's GitHub source) goes through the proxy its environment names:
@@ -77,7 +78,7 @@ cargo sunrise-mod native-check < plan.json
 | `mods` | A mod's folder, or a folder of mod folders. |
 | `build` | The build id (the game's full commit) the mods are checked against. |
 | `surface` | Optional. The build's `surface.json`, read only for a mod made for another build. |
-| `build_data` | Optional. The build's unpacked build data (`points.json`, `internals.json`), read only for a mod with `[[inject]]` rows made for another build. |
+| `build_data` | Optional. The build's unpacked build data (`points.json`, `internals.json`), read only for a mod made for another build that has `[[inject]]` rows or declares game code (a `[[native.mixin]]` or `[[native.loop]]` row, an `internals` list); `functions.json` and `loops.json` are read from it too. |
 
 The reply is `{"contract": 2, "route": …, "mods": […]}`. `route` is `prebuilt-api` or `prebuilt` for the usable
 mods, `null` when none is. Each of `mods` has:
@@ -86,7 +87,7 @@ mods, `null` when none is. Each of `mods` has:
 |---|---|
 | `id` | The mod's id. |
 | `refusal` | Why no build takes it, as the build log says it; then `verdict` is `null`. |
-| `verdict` | `{"kind": …, "made_for": build}`: `made-for` (no `made_for`), `fits`, `exact` (`why`: the table that changes game code, or `internals`), `no-list` (its package doesn't say what it uses), `does-not-fit` (`misfits`: each `{id, change}`, the surface id and how it changed), `points` (`why`: an `[[inject]]` point that isn't the same). `made-for` and `fits` are usable. |
+| `verdict` | `{"kind": …, "made_for": build}`: `made-for` (no `made_for`), `fits`, `exact` (`why`: the `[native]` table whose rows no list can judge, or `internals` for a declared function whose body this build's data does not hold), `no-list` (its package's list of what it uses cannot show a fit; `why` is `missing`, `unreadable`, `newer-schema` (a tool from a newer build reads it), `other-build` (made for another build than its pin), `hook-versions` (nothing it can judge changed, but it holds no version of the hooks in `hooks`; packing the mod again writes them) or `game-code` (nothing it can judge changed, but it holds no record of game code the mod declares; packing the mod again writes it)), `does-not-fit` (`misfits`: each `{id, change}`: a surface id, or a `game:` id for game code the mod declares (`game:fn:<path>`, `game:internal:<kind>:<path>`, `game:loop:<name>`, `game:tool:horizon-mixins`), and how it changed), `points` (`why`: an `[[inject]]` point that isn't the same). `made-for` and `fits` are usable. |
 | `needs` | `surface` or `build-data` when the plan didn't give the file its verdict needs; then `verdict` is `null`. The caller fetches it and asks again. |
 
 A `change` is `"removed"`, `"changed"`, `{"lost-impl": trait}`, `{"fields": {gained, at}}`, `{"version": {named, now}}`,

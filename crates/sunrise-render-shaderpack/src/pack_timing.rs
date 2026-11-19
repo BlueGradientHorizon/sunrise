@@ -359,7 +359,14 @@ impl PassTiming {
 
     /// At the start of a frame's passes: moves the last timed frame along, and decides whether
     /// this one is timed.
-    pub fn begin(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+    /// Fails once the device is lost (`lost`): the first frame with counters waits on a
+    /// calibration draw, and that wait is loss-aware.
+    pub fn begin(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        lost: &AtomicBool,
+    ) -> Result<(), String> {
         match &self.stage {
             // A timed frame that was never submitted: time this one instead.
             Stage::Recording => self.stage = Stage::Idle,
@@ -396,7 +403,7 @@ impl PassTiming {
                 ty: wgpu::QueryType::PipelineStatistics(STAT_FLAGS),
                 count: STATS_CAPACITY,
             }));
-            self.fragment_unit = calibrate_fragment_unit(device, queue);
+            self.fragment_unit = calibrate_fragment_unit(device, queue, lost)?;
         }
         if matches!(self.stage, Stage::Idle)
             && self.timed_at.is_none_or(|at| at.elapsed() >= self.gap)
@@ -413,6 +420,7 @@ impl PassTiming {
             self.stage = Stage::Recording;
             self.timed_at = Some(Instant::now());
         }
+        Ok(())
     }
 
     /// Whether the frame being recorded is timed.
@@ -741,7 +749,12 @@ impl PassTiming {
 }
 
 /// Draws a full-screen triangle on a small target with a statistics query and reads the count, once at setup.
-fn calibrate_fragment_unit(device: &wgpu::Device, queue: &wgpu::Queue) -> Option<FragmentUnit> {
+fn calibrate_fragment_unit(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    lost: &AtomicBool,
+) -> Result<Option<FragmentUnit>, String> {
+    const LOST: &str = "the graphics device was lost";
     const SIDE: u32 = 64;
     let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("Fragment counter calibration"),
@@ -831,16 +844,21 @@ fn calibrate_fragment_unit(device: &wgpu::Device, queue: &wgpu::Queue) -> Option
     encoder.copy_buffer_to_buffer(&resolve, 0, &read, 0, 8);
     queue.submit([encoder.finish()]);
     read.slice(..).map_async(wgpu::MapMode::Read, |_| {});
-    device.poll(wgpu::PollType::wait_indefinitely()).ok()?;
-    let count = u64::from_le_bytes(
-        read.slice(..).get_mapped_range().ok()?[..8]
-            .try_into()
-            .ok()?,
-    );
+    if lost.load(Ordering::Relaxed) {
+        return Err(LOST.into());
+    }
+    device
+        .poll(wgpu::PollType::wait_indefinitely())
+        .map_err(|e| e.to_string())?;
+    let Ok(range) = read.slice(..).get_mapped_range() else {
+        return Ok(None);
+    };
+    let count = u64::from_le_bytes(range[..8].try_into().expect("eight bytes"));
+    drop(range);
     let pixels = u64::from(SIDE * SIDE);
     let unit = FragmentUnit::of_calibration(count, pixels);
     log::info!("fragment counter calibration: {count} for {pixels} pixels, unit {unit:?}");
-    unit
+    Ok(unit)
 }
 
 fn round_to(value: f64, decimals: i32) -> f64 {
@@ -1261,6 +1279,7 @@ mod tests {
     };
     use serde_json::json;
     use std::collections::VecDeque;
+    use std::sync::atomic::AtomicBool;
 
     fn interleave(pairs: &[(f32, f32)]) -> Vec<u64> {
         let ns = |ms: f32| (ms * 1e6) as u64;
@@ -1539,7 +1558,9 @@ mod tests {
         };
         // A timed frame takes two iterations: record it, then resolve and map its times.
         for _ in 0..60 {
-            timing.begin(device, queue);
+            timing
+                .begin(device, queue, &AtomicBool::new(false))
+                .unwrap();
             let mut encoder = device.create_command_encoder(&Default::default());
             compute_parts(
                 &mut encoder,
@@ -1726,7 +1747,9 @@ mod tests {
         counts: bool,
     ) {
         for _ in 0..6 {
-            timing.begin(device, queue);
+            timing
+                .begin(device, queue, &AtomicBool::new(false))
+                .unwrap();
             if timing.recording() && (timing.counters_frame() == counts) {
                 return;
             }
@@ -1787,7 +1810,9 @@ mod tests {
         drop(pass);
         finish(&mut timing, &device, &queue, encoder);
         for _ in 0..4 {
-            timing.begin(&device, &queue);
+            timing
+                .begin(&device, &queue, &AtomicBool::new(false))
+                .unwrap();
             device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
         }
 
@@ -1861,7 +1886,9 @@ mod tests {
         let mut timing = PassTiming::new(&device, &queue).unwrap();
         timing.keep_frames(true);
         for _ in 0..12 {
-            timing.begin(&device, &queue);
+            timing
+                .begin(&device, &queue, &AtomicBool::new(false))
+                .unwrap();
             let mut encoder = device.create_command_encoder(&Default::default());
             let pass = scene.pass(&mut encoder, timing.writes("World"));
             let mut pass = counted(Some(&mut timing), pass, 0, "all");

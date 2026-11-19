@@ -10,6 +10,18 @@ use std::{
     sync::atomic::{AtomicU32, Ordering},
 };
 use sunrise_core::position::ChunkPos;
+
+/// A record exceeded the region format's compressed size admission limit.
+#[derive(Debug)]
+pub struct CompressedChunkLimit;
+
+impl std::fmt::Display for CompressedChunkLimit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("compressed chunk limit exceeded")
+    }
+}
+
+impl std::error::Error for CompressedChunkLimit {}
 use {
     crate::compression::{Compression, invalid},
     sunrise_core::{
@@ -46,6 +58,15 @@ impl ChunkRecord {
             compressed: compression.encode(&bytes)?,
             timestamp,
         })
+    }
+    fn check_compressed_size(&self) -> io::Result<()> {
+        if self.compressed.len() > MAX_COMPRESSED {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                CompressedChunkLimit,
+            ));
+        }
+        Ok(())
     }
     /// `RegionFileStorage.read`: the root read straight off the decompressing
     /// stream, so bytes after it, and a damaged stream past it, are never read.
@@ -308,9 +329,7 @@ impl RegionFile {
     /// they are. A chunk's last sector is padded with zeros.
     pub fn write(&mut self, chunk: ChunkPos, record: &ChunkRecord) -> io::Result<()> {
         let i = slot(self.position, chunk)?;
-        if record.compressed.len() > MAX_COMPRESSED {
-            return Err(invalid("compressed chunk limit exceeded"));
-        }
+        record.check_compressed_size()?;
         let required = (record.compressed.len() + 5).div_ceil(SECTOR);
         let external = required >= 256;
         let sectors = if external { 1 } else { required };
@@ -585,9 +604,7 @@ impl RegionWriter {
         if self.offsets[i] != 0 {
             return Err(invalid("chunk already written"));
         }
-        if record.compressed.len() > MAX_COMPRESSED {
-            return Err(invalid("compressed chunk limit exceeded"));
-        }
+        record.check_compressed_size()?;
         let required = (record.compressed.len() + 5).div_ceil(SECTOR);
         let external = required >= 256;
         let sectors = if external { 1 } else { required as u32 };
@@ -621,6 +638,12 @@ impl RegionWriter {
         self.timestamps[i] = record.timestamp;
         self.next_sector += sectors;
         Ok(())
+    }
+
+    /// The `c.X.Z.mcc` files of the oversized chunks written so far, next to
+    /// the destination.
+    pub(crate) fn externals(&self) -> &[PathBuf] {
+        &self.externals
     }
 
     pub fn finish(mut self) -> io::Result<()> {

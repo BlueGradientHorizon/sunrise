@@ -29,6 +29,21 @@ impl Renderer {
         let mut laps = crate::spans::laps();
         let landing = Instant::now();
         self.land_frame();
+        // The frame's one poll takes in what earlier frames read back (GPU times, GPU
+        // culling's statistics, occlusion results, a shader pack's centre depth); their
+        // collectors don't poll. It, or the previous frame's submission, is often where a
+        // device loss shows: this frame then touches the device no more and holds no surface
+        // texture, and `render` leaves recovery to its caller.
+        let polled =
+            super::in_flight::poll_live(&self.device, &self.device_lost, wgpu::PollType::Poll);
+        if self.device_lost() {
+            return Err(super::in_flight::LOST.into());
+        }
+        if polled.is_ok()
+            && let Some(timer) = &mut self.gpu_timer
+        {
+            timer.collect(&mut self.gpu_times);
+        }
         // Waiting for the previous frame (offscreen: at most two on the GPU), not work.
         let landed = landing.elapsed();
         self.queue.take_waited();
@@ -94,7 +109,10 @@ impl Renderer {
             t.gap = self.pass_timing_gap;
             t.keep_frames(self.keep_timed_frames);
             t.set_detail(self.pass_detail);
-            t.begin(&self.device, &self.queue);
+            // The calibration draw's wait is the one that can find a loss here; the acquired
+            // surface texture goes back undrawn and unpresented (`render` leaves recovery to
+            // its caller).
+            t.begin(&self.device, &self.queue, &self.device_lost)?;
         }
         if self.animated_textures {
             self.hud.animate(
@@ -104,15 +122,7 @@ impl Renderer {
                 &self.animations,
             );
         }
-        self.update_lightmap(
-            &mut encoder,
-            &frame.sky,
-            frame.darkness.1,
-            (self.gamma - frame.darkness.0).max(0.0),
-            frame.night_vision,
-            frame.block_flicker,
-            frame.boss_darken,
-        );
+        self.update_lightmap(&mut encoder, frame);
         let views = self.views(frame);
         let pose = frame.bob * frame.spin;
         let view_proj = views.primary().view_proj(pose);
@@ -461,7 +471,7 @@ impl Renderer {
         let serial = self.frame_serial;
         // GPU frames' statistics come back a frame or a few later (`GpuCulling::collect`).
         if let Some(gpu) = &mut self.gpu_culling
-            && let Some((frame, stats)) = gpu.collect(&self.device)
+            && let Some((frame, stats)) = gpu.collect()
         {
             self.show_stats(frame, stats);
         }
@@ -537,6 +547,13 @@ impl Renderer {
         let now = std::time::Instant::now();
         let mut visible_lods = std::mem::take(&mut self.visible_lods);
         visible_lods.clear();
+        // The animated layers this frame draws, marked as each list is made.
+        let mut animated = self
+            .animated_textures
+            .then_some(&mut self.active_animated_layers);
+        if let Some(active) = &mut animated {
+            active.fill(0);
+        }
         if frame.title {
             visible.clear();
         } else {
@@ -548,11 +565,17 @@ impl Renderer {
                 let Some(tile) = lods.get(&key) else {
                     return;
                 };
-                visible_lods.extend(if inside {
+                let Some(listed) = (if inside {
                     tile.visible_inside(key, camera, now)
                 } else {
                     tile.visible(key, camera, &view, now)
-                });
+                }) else {
+                    return;
+                };
+                visible_lods.push(listed);
+                if let Some(active) = &mut animated {
+                    mark_layers(active, &tile.animated);
+                }
             });
             visible_lods.sort_unstable_by_key(|v| (v.distance, v.key));
         }
@@ -623,29 +646,11 @@ impl Renderer {
             }
         }
         if self.animated_textures {
-            self.active_animated_layers.fill(0);
+            // The far tiles' layers were marked as they were listed.
             let lists = self.world_views.sections.sections();
             for v in visible.iter().chain(&shadow_visible).chain(lists) {
                 let s = self.sections.get(v.slot);
-                for &layer in &*s.animated_layers {
-                    let layer = layer as usize;
-                    self.active_animated_layers[layer / u64::BITS as usize] |=
-                        1_u64 << (layer % u64::BITS as usize);
-                }
-            }
-            for v in &visible_lods {
-                if let Some(tile) = self.lods.get(&v.key) {
-                    for &layer in &*tile.drawn().animated_layers {
-                        let layer = layer as usize;
-                        self.active_animated_layers[layer / u64::BITS as usize] |=
-                            1_u64 << (layer % u64::BITS as usize);
-                    }
-                    for &layer in &*tile.mesh.animated_layers {
-                        let layer = layer as usize;
-                        self.active_animated_layers[layer / u64::BITS as usize] |=
-                            1_u64 << (layer % u64::BITS as usize);
-                    }
-                }
+                mark_layers(&mut self.active_animated_layers, &s.animated_layers);
             }
             // Visibility is collected before terrain draw commands are recorded,
             // so upload the current mask here and keep animation updates ahead
@@ -764,7 +769,7 @@ impl Renderer {
                     && !gpu_frame
                     && visible.len() >= c.min_sections
             })
-            .and_then(|cull| cull.begin(&self.device).then_some(cull));
+            .and_then(|cull| cull.begin().then_some(cull));
         self.phase2_draws.clear();
         self.phase2_pages.clear();
         self.solid_runs.clear();
@@ -1280,7 +1285,7 @@ impl Renderer {
                     fog_color,
                     pack.fog,
                 );
-                self.uploads.buffer(&mut encoder, core.uniform(), 0, &data);
+                core.upload(&mut self.uploads, &mut encoder, &data);
             }
         }
         // A pack's core/sky and core/stars: the disc with the sky colour, the stars with their
@@ -1309,6 +1314,13 @@ impl Renderer {
             });
             core.prepare(&mut self.uploads, &mut encoder, &sky, stars.as_deref());
         }
+        // Polytone GPU particles with their own shader: the vanilla blocks as the block outline's
+        // (a particle's ModelViewMat is the camera's rotation, its positions camera relative).
+        self.core_particles
+            .prepare_frame(&self.device, &self.queue, frame.title, || {
+                let view = views.primary();
+                core_lines::uniforms(pack.globals, view, pose, jitter, 1.0, fog_color, pack.fog)
+            });
         let skin = frame.skin.filter(|skin| match &mut self.entity_skin {
             Some(skinner) => skinner.register(&self.device, &mut self.uploads, &mut encoder, skin),
             None => false,
@@ -1410,7 +1422,55 @@ impl Renderer {
             - native_cutout_quads
             - native_cutout_mipped_quads;
         let native_clouds = self.native.as_ref().is_none_or(|n| n.vanilla_clouds);
-        let cloud_quads = if let Some(input) = frame.clouds.as_ref().filter(|_| native_clouds) {
+        // A pack's core/clouds, decided before either mesh is prepared: its faces, or none and
+        // the native mesh in this same frame.
+        let pack_clouds = core_clouds::CloudsFrame {
+            pack_shader: self.core_clouds.is_some(),
+            clouds: frame.clouds.is_some(),
+            native_clouds,
+            improved_transparency: oit_on,
+            shader_pack: self.pack_post.as_ref().is_some_and(|p| p.1.is_some()),
+            title: frame.title,
+            cloud_marks: light_marks(self.output.frame.format, self.hdr.is_some())
+                && self.hdr.as_ref().is_some_and(|h| h.lighting),
+        }
+        .pack_draws();
+        let pack_cloud_quads = match (self.core_clouds.as_mut(), frame.clouds.as_ref()) {
+            (Some(core), Some(input)) if pack_clouds => {
+                let view = views.primary();
+                let vanilla = core_lines::uniforms(
+                    pack.globals,
+                    view,
+                    pose,
+                    jitter,
+                    1.0,
+                    fog_color,
+                    pack.fog,
+                );
+                core.prepare(
+                    &self.device,
+                    &mut self.uploads,
+                    &mut encoder,
+                    &vanilla,
+                    input,
+                )
+                .map_err(|e| {
+                    log::warn!(
+                        "the resource pack's clouds are drawn natively this frame: their faces \
+                             take {} bytes, more than the {} this device binds",
+                        e.bytes,
+                        e.limit
+                    )
+                })
+                .ok()
+            }
+            _ => None,
+        };
+        let native_input = frame
+            .clouds
+            .as_ref()
+            .filter(|_| native_clouds && pack_cloud_quads.is_none());
+        let cloud_quads = if let Some(input) = native_input {
             let (rebuilt, uniform) =
                 crate::spans::time("clouds", || self.cloud_mesh.prepare(input));
             let vertices = self.cloud_mesh.vertices.len() as u64;
@@ -1472,7 +1532,8 @@ impl Renderer {
         let outlined = skin.map_or(0, |s| s.outline_vertices);
         let entity_vertices = u64::from(outline_base) + u64::from(outlined);
         if entity_vertices > self.entity_capacity {
-            self.entity_capacity = entity_vertices.next_power_of_two();
+            self.entity_capacity =
+                entity_buffer_vertices(entity_vertices, self.device.limits().max_buffer_size);
             self.entity_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("Entity vertices"),
                 size: self.entity_capacity * std::mem::size_of::<Vertex>() as u64,
@@ -1728,6 +1789,7 @@ impl Renderer {
         let max_quads =
             (world_quads + additive_quads + hand_quads + see_through_quads + shadow_only_quads)
                 .max(cloud_quads)
+                .max(pack_cloud_quads.unwrap_or(0))
                 .max(if frame.lightning.bolts.is_empty() {
                     0
                 } else {
@@ -2102,7 +2164,7 @@ impl Renderer {
                 self.light_revision,
             );
             if let Some(t) = &mut native.timing {
-                t.begin(&self.device, &self.queue);
+                t.begin(&self.device, &self.queue, &self.device_lost)?;
                 native_sky_pass =
                     native.sky.is_some() && t.recording() && sky_visible && frame.skybox;
             }
@@ -3275,6 +3337,14 @@ impl Renderer {
                     0..1,
                 );
             }
+            if let (Some(core), Some(input)) = (&self.core_clouds, frame.clouds.as_ref())
+                && pack_cloud_quads.is_some_and(|quads| quads > 0)
+                && !pack_draws_clouds
+            {
+                pass.stage(self.own_timing.as_mut(), "clouds");
+                core.draw(&mut pass, !input.fast, &self.indices);
+                pass.set_bind_group(0, &self.group, &[]);
+            }
             if cloud_quads > 0 && !pack_draws_clouds && !oit_on {
                 pass.stage(self.own_timing.as_mut(), "clouds");
                 pass.set_pipeline(&self.cloud_pipeline);
@@ -3330,6 +3400,15 @@ impl Renderer {
                     ((world_quads + additive_quads + hand_quads) * 4) as i32,
                     0..1,
                 );
+            }
+            // Polytone GPU particles with their own shader (wiki "GPU Particles"): after the
+            // world, the clouds and the weather, which would otherwise cover the ones that write
+            // no depth.
+            if self.core_particles_drawing() {
+                pass.stage(self.own_timing.as_mut(), "polytone particles");
+                self.draw_core_particles(&mut pass);
+                pass.set_bind_group(0, &self.group, &[]);
+                pack_frame(&mut pass);
             }
             // Native mods' primitives: after the entities and the rest of the world, into its
             // targets (its resolution, reversed depth and TAA), before the hand
@@ -3408,8 +3487,12 @@ impl Renderer {
                 cpu,
                 lifts_world,
             },
-        );
+        )?;
         laps.lap("r_passes");
+        // A loss the passes' waits found (a shader pack's timing, its image dump): no submit.
+        if self.device_lost() {
+            return Err(super::in_flight::LOST.into());
+        }
         self.submit_and_present_frame(
             encoder,
             SubmitFrameArgs {
@@ -3430,4 +3513,19 @@ impl Renderer {
             },
         )
     }
+}
+
+/// Marks `layers` in `active`, a bit per animated sprite layer (`Renderer::animate`).
+fn mark_layers(active: &mut [u64], layers: &[u16]) {
+    for &layer in layers {
+        let layer = usize::from(layer);
+        active[layer / u64::BITS as usize] |= 1 << (layer % u64::BITS as usize);
+    }
+}
+
+/// The vertices the entity buffer grows to for a frame of `vertices`: the next power of two,
+/// but no more than a buffer of `max_buffer_size` bytes holds unless the frame itself needs it.
+pub(super) fn entity_buffer_vertices(vertices: u64, max_buffer_size: u64) -> u64 {
+    let most = max_buffer_size / std::mem::size_of::<Vertex>() as u64;
+    vertices.next_power_of_two().min(most).max(vertices)
 }

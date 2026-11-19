@@ -163,6 +163,42 @@ fn with_finder_hidden(feature: bool, required: bool, hidden: bool, test: impl Fn
 }
 
 #[test]
+fn restricted_pack_discovery_refuses_game_text_reads() {
+    use std::sync::{Arc, Mutex};
+
+    struct Observe(Arc<Mutex<Vec<PackType>>>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Observe {
+        fn add_pack_finders(&self, host: HostSide<'_>, event: &mut AddPackFindersEvent<'_>) {
+            let component = mod_api::Text::literal("Startup");
+            let resolved = match host {
+                HostSide::Client(host) => host.text_string(&component),
+                HostSide::Server(host) => host.text_string(&component),
+            };
+            assert_eq!(resolved, Err(mod_api::text::TextFormError::Unavailable));
+            self.0.lock().unwrap().push(event.packs.pack_type());
+        }
+    }
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    with_mods(
+        vec![ModEntry::new(
+            "discovery_text",
+            Box::new(Observe(seen.clone())),
+        )]
+        .into(),
+        || {
+            let sources = ModsState::default();
+            assert!(discover(PackType::ClientResources, &sources).is_empty());
+            assert!(data_packs(&sources).is_empty());
+        },
+    );
+    assert_eq!(
+        *seen.lock().unwrap(),
+        [PackType::ClientResources, PackType::ServerData]
+    );
+}
+
+#[test]
 fn hidden_packs_reach_the_screens_marked_hidden_and_still_apply() {
     let fixture = Fixture::new(false);
     let sources = fixture.sources();
@@ -497,7 +533,6 @@ fn a_mods_pack_is_on_the_screen_and_applies_through_client_reload() {
                 &game.mods,
                 game.register_client_reload_listeners(),
                 &[],
-                &[],
                 &game.pack.assets,
                 &game.res,
                 &game.worker_context(),
@@ -532,7 +567,6 @@ fn a_mods_pack_is_on_the_screen_and_applies_through_client_reload() {
                     &[],
                     &game.mods,
                     listeners,
-                    &[],
                     &[],
                     &game.pack.assets,
                     &game.res,

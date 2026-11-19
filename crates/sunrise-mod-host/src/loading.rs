@@ -8,8 +8,22 @@ pub fn main_with(
     built: &'static [mod_api::__private::native::BuiltMod],
     startup: sunrise_client::entry::Startup,
 ) {
+    // The stack policy follows the engine mods run on, and must be settled before any worker starts.
+    if let Err(error) = sunrise_mod_wasm::install_stack_policy() {
+        eprintln!("{error}");
+        std::process::exit(1);
+    }
     sunrise_engine_slots::install_seal(mod_points::__private::seal)
         .expect("engine seal provider must be installed once before startup");
+    // The title screen's Mods button: every game that loads mods has it, before the game seals
+    // the title screen's buttons.
+    if let Err(error) = sunrise_hooks::title::register(&crate::mods_button::MODS) {
+        log::warn!("Sunrise: the title screen's Mods button did not register: {error}");
+    }
+    // Its label travels with it: the crate that supplies the row supplies its text.
+    if let Err(error) = sunrise_hooks::lang::register(crate::mods_button::LANG) {
+        log::warn!("Sunrise: the title screen's Mods label did not register: {error}");
+    }
     // Platform instrumentation must precede registration and the first mod guard.
     if let Err(error) = mod_api::__private::initialize() {
         eprintln!("Sunrise: refusing startup because mod instrumentation is unavailable: {error}");
@@ -134,7 +148,7 @@ pub fn main_with(
                     .filter(|&&i| code_ids.contains(manifests[i].id.as_str()))
                     .map(|&i| sunrise_client::save::level_mods::ModRecord {
                         id: manifests[i].id.clone(),
-                        version: manifests[i].version.clone(),
+                        version: manifests[i].version.to_string(),
                     })
                     .collect(),
             ));

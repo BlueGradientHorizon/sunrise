@@ -1,16 +1,12 @@
-//! Core rendering types, GPU layouts, and geometric primitives for Sunrise.
-
-#![no_std]
+//! Frustum geometry and terrain instance and fade helpers for Sunrise.
 
 extern crate alloc;
 
-pub mod cull;
 pub mod frustum;
 pub mod random;
 pub mod stars;
 pub mod terrain;
 
-pub use cull::{CODE_OFFSET, FADING, Record, UNBOUNDED, rounded_box};
 pub use frustum::{Cull, Frusta, Frustum, JoinedFrusta, MAX_WORLD_VIEWS};
 pub use terrain::{
     BRIGHT, CHUNK_VISIBILITY_THRESHOLD, EntitySpan, FLAT_NORMAL, INCANDESCENT, LOW, NO_SPECULAR,

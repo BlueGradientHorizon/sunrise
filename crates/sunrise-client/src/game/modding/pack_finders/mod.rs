@@ -106,7 +106,23 @@ impl PackFinders for Registry {
 /// listeners, registration has no world reads; only the supplied builder is live.
 struct DiscoveryHost;
 impl Host for DiscoveryHost {}
-mod_api::impl_host_areas!(DiscoveryHost);
+mod_api::impl_host_areas!(DiscoveryHost, except(text));
+impl mod_api::prelude::TextHost for DiscoveryHost {
+    fn text_string(&self, _: &mod_api::Text) -> Result<String, mod_api::text::TextFormError> {
+        Err(mod_api::text::TextFormError::Unavailable)
+    }
+
+    fn text_from_json(
+        &self,
+        _: &str,
+    ) -> Result<Option<mod_api::Text>, mod_api::text::TextFormError> {
+        Err(mod_api::text::TextFormError::Unavailable)
+    }
+
+    fn text_from_legacy(&self, _: &str) -> Result<mod_api::Text, mod_api::text::TextFormError> {
+        Err(mod_api::text::TextFormError::Unavailable)
+    }
+}
 impl ClientHost for DiscoveryHost {}
 mod_api::impl_client_host_areas!(DiscoveryHost);
 impl ServerHost for DiscoveryHost {}
@@ -147,6 +163,7 @@ pub(super) fn data_repository(
 ) -> Vec<DataPack> {
     let mut packs = sunrise_client::datapack::discover_with_features(world, resources);
     packs.extend(additional.iter().map(|pack| (**pack).clone()));
+    packs.sort_by(|a, b| sunrise_client::datapack::compare_ids(&a.id, &b.id));
     packs
 }
 

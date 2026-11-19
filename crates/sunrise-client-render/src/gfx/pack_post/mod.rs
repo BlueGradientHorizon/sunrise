@@ -52,7 +52,7 @@ pub trait PackPostExt: Sized {
         motion: (&[(u32, u64)], &[u32]),
     );
     /// Runs the pack over the world drawn into `world` (colour) and `world_depth`, then draws
-    /// the result onto `screen`.
+    /// the result onto `screen`. Fails once the device is lost (`lost`).
     #[allow(clippy::too_many_arguments)]
     fn run(
         &mut self,
@@ -68,7 +68,13 @@ pub trait PackPostExt: Sized {
         window: [u32; 2],
         pages: &[TerrainPage],
         terrain: &mut TerrainDraw<'_>,
-    );
+        lost: &std::sync::atomic::AtomicBool,
+    ) -> Result<(), String>;
+    /// The pack's GPU pass timer (`pack_timing::PassTiming` in this crate), in the slot the
+    /// renderer's timing API hands out and reads beside Sunrise's own timer.
+    fn pass_timer(&mut self) -> &mut Option<sunrise_render_shaderpack::pack_timing::PassTiming>;
+    /// The pack's GPU pass timer, read while the renderer collects its readings.
+    fn timing_pack(&self) -> &Option<sunrise_render_shaderpack::pack_timing::PassTiming>;
 }
 
 /// The shader pack crate's `UniformFrameView` for the client's `Frame`: the fields it reads.
@@ -181,7 +187,8 @@ impl PackPostExt for PackPost {
         window: [u32; 2],
         pages: &[TerrainPage],
         terrain: &mut TerrainDraw<'_>,
-    ) {
+        lost: &std::sync::atomic::AtomicBool,
+    ) -> Result<(), String> {
         let view = frame_view(frame);
         let sky = SkyInputs {
             sunset_color: frame.sky.sunrise_color,
@@ -217,7 +224,18 @@ impl PackPostExt for PackPost {
             frame.shadow_scene_revision,
             frame.ticks,
             frame.pack.day_time,
-        );
+            lost,
+        )
+    }
+
+    /// The pack's GPU pass timer, as the renderer's timing API reaches it.
+    fn pass_timer(&mut self) -> &mut Option<sunrise_render_shaderpack::pack_timing::PassTiming> {
+        &mut self.timing
+    }
+
+    /// The pack's GPU pass timer, read while the renderer collects its readings.
+    fn timing_pack(&self) -> &Option<sunrise_render_shaderpack::pack_timing::PassTiming> {
+        &self.timing
     }
 }
 
