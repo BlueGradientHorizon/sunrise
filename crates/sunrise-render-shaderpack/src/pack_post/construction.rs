@@ -3,22 +3,18 @@
 //! compute dispatches (`compile` makes them), its samplers and its blits. It ends where the
 //! frame's own work starts (`execution.rs`).
 
-#![allow(unused_imports)]
-
 use std::collections::HashMap;
 
-use glam::{DMat4, DVec3};
-use smallvec::SmallVec;
 use sunrise_shaders::{BUFFERS, Format, Group, Kind, Post, SHADOW_COLORS};
 
 use super::packed;
 use super::{image_format, storage_formats_of};
 use crate::pack_draw::DrawUniforms;
-use crate::pack_entities::{PROGRAMS, PackEntities};
+use crate::pack_entities::PackEntities;
 use crate::pack_images;
 use crate::pack_sky::PackSky;
 use crate::pack_textures;
-use crate::pack_uniforms::{self, FrameUniforms, PackInputs};
+use crate::pack_uniforms::{self, FrameUniforms};
 
 pub use crate::pack_post::types::*;
 
@@ -793,7 +789,6 @@ pub fn owned_buffers(
 
 /// A program's bind group layout (its uniform block, samplers and images) and how each sampler
 /// and image binds. `None` (with a note) for an image the game can't give it.
-#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub fn bindings(
     features: wgpu::Features,
     interface: &sunrise_shaders::Interface,
@@ -1139,7 +1134,6 @@ pub fn custom_index(custom: &[(String, String)], name: &str, ty: &str) -> Option
 /// wgpu refuses it or it writes nothing. `formats` are its buffers' (for a program of the shadow
 /// buffers, buffer n is shadowcolor n); `shadow` the shadowcolor formats when the shadow pass
 /// runs.
-#[allow(clippy::too_many_arguments)]
 pub fn build_pass(
     device: &wgpu::Device,
     p: sunrise_shaders::PostProgram,
@@ -1479,7 +1473,6 @@ pub fn image_copies(samplers: &[Binding], images: &[(u32, Image)]) -> u64 {
 
 /// The pass of compute program `c` of a `group` program: `None` (with a note) when wgpu refuses
 /// it or it needs what the game can't give.
-#[allow(clippy::too_many_arguments)]
 pub fn build_compute(
     device: &wgpu::Device,
     name: String,
@@ -1828,8 +1821,6 @@ impl PackPost {
     }
 
     /// `new`'s work: with `defer`, the pipelines are left to make (the jobs returned).
-    #[allow(clippy::too_many_arguments)]
-
     fn build(
         device: &wgpu::Device,
         queue: &wgpu::Queue,

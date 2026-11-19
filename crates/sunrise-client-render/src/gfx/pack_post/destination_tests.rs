@@ -1,4 +1,5 @@
 //! Original asset-free post-output regressions, using only the public shader format.
+use super::tests::*;
 use super::*;
 use crate::{gfx::Frame, hud::HudBatch};
 use std::io::{Cursor, Write};

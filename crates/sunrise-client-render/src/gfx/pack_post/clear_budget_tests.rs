@@ -1,8 +1,8 @@
 //! Original regression guard: each HDR post draw fits, so its frame clears must also fit.
 use super::depth_test::VERTEX;
 use super::destination_tests::Fixture;
-use super::*;
 use std::io::{Cursor, Write};
+use sunrise_shaders::Post;
 
 fn hdr_pack(sized: bool, format: &str) -> Post {
     let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));

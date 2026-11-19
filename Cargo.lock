@@ -5418,6 +5418,7 @@ dependencies = [
  "pollster",
  "serde_json",
  "smallvec",
+ "sunrise-core",
  "sunrise-render-core",
  "sunrise-shaders",
  "wgpu",

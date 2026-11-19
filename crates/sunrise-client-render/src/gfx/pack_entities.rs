@@ -5,7 +5,6 @@
 pub use sunrise_render_shaderpack::pack_entities::*;
 
 pub trait PackEntitiesExt {
-    #[allow(clippy::too_many_arguments)]
     fn prepare_client(
         &mut self,
         device: &wgpu::Device,

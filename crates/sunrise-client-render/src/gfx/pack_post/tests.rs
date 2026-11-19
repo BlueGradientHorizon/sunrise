@@ -1,7 +1,20 @@
 //! The unit tests that take the GPU and build a whole pack (`test_gpu` is the client's).
 
-#![allow(unused_imports)]
+// The pack entries the sibling test modules reach through `super::*`: what the shader pack crate
+// builds a pack with, and the client's own texture inputs.
+#[allow(unused_imports)]
+pub(super) use super::super::pack_draw::DrawUniforms;
+#[allow(unused_imports)]
+pub(super) use super::super::pack_uniforms;
+#[allow(unused_imports)]
+pub(super) use sunrise_render_shaderpack::pack_post::{
+    Gpu, attach, bindings, checked, compile, sampler,
+};
+#[allow(unused_imports)]
+pub(super) use sunrise_shaders::{BUFFERS, Format, Group, Post};
 
+/// The sibling test modules take the pack's entries from here (`use super::tests::*`).
+#[allow(unused_imports)]
 use sunrise_render_shaderpack::pack_images;
 use sunrise_render_shaderpack::pack_textures;
 use wgpu::TextureFormat as T;

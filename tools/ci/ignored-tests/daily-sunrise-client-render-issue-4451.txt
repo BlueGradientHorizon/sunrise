@@ -15,7 +15,6 @@ sunrise-client-render gfx::entity_pixel_test::scrgb::an_instanced_lit_texel_matc
 sunrise-client-render gfx::lightning::tests::bolt_through_the_atlas_white_sprite_is_fully_drawn lib daily resources
 sunrise-client-render gfx::lightning::tests::retained_gpu_draw_matches_transient_additive_draw lib daily resources
 sunrise-client-render gfx::pack_atlas::source_ownership_test::terrain_source_ownership_gpu lib daily resources
-sunrise-client-render gfx::pack_center_depth::tests::a_finished_frame_s_depth_is_taken_alone_never_an_older_one lib daily resources
 sunrise-client-render gfx::pack_post::depth_test::sky_covers_the_sunrise_without_writing_depth_or_overpainting_terrain lib daily resources
 sunrise-client-render gfx::pack_post::history_reset_tests::a_reset_pack_draws_its_buffers_images_storage_and_shadow_from_the_start lib daily resources
 sunrise-client-render gfx::pack_post::material_route_tests::authored_material_programs_render_and_legacy_draws_stay_unsplit lib daily resources

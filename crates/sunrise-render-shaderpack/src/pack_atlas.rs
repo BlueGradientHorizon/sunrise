@@ -193,7 +193,6 @@ impl PackAtlas {
     /// Every layer of `arrays` at its own size (`native`, its side before the arrays scaled it up
     /// to `sprite`), placed as vanilla's `Stitcher` places them with the padding of the Mipmap
     /// Levels option and the anisotropy bit; `None` when they don't fit the device.
-    #[allow(clippy::too_many_arguments)]
     pub fn stitched(
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
@@ -265,7 +264,6 @@ impl PackAtlas {
         ))
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn with_rects(
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
@@ -1269,8 +1267,6 @@ mod tests {
         );
     }
 }
-
-#[cfg(test)]
 
 /// `TerrainVertex` vertex attributes for `vs_terrain`: position, UV, layer, light, colour.
 pub const TERRAIN_ATTRIBUTES: [wgpu::VertexAttribute; 5] =

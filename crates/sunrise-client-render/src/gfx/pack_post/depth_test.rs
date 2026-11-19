@@ -1,4 +1,5 @@
 //! Original depth-buffer GPU regressions from public format documentation; no pack assets.
+use super::tests::*;
 use super::*;
 use crate::{gfx::Frame, hud::HudBatch};
 use wgpu::{TextureFormat as T, util::DeviceExt};

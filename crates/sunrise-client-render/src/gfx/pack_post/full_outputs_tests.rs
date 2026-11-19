@@ -2,6 +2,7 @@
 //! water patches (`GbuffersInputs::water_patches`, one output more): translucent terrain gets
 //! the program without them, not no shadow program. The programs here are original.
 use super::destination_tests::Fixture;
+use super::tests::*;
 use super::*;
 use std::io::{Cursor, Write};
 

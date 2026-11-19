@@ -7,27 +7,17 @@
 //! never crosses into this crate (its `run`, `shadow_view` and `prepare_entities` shims build
 //! them).
 
-#![allow(unused_imports)]
-
-use std::collections::HashMap;
-
 use glam::{DMat4, DVec3};
 use smallvec::SmallVec;
 use sunrise_render_core::UniformFrameView;
-use sunrise_shaders::{BUFFERS, Format, Group, Post, SHADOW_COLORS};
+use sunrise_shaders::{BUFFERS, Group, SHADOW_COLORS};
 
 use super::construction::*;
-use super::types::*;
-use crate::pack_center_depth;
-use crate::pack_draw::DrawUniforms;
-use crate::pack_entities::{PROGRAMS, PackEntities};
 use crate::pack_hand;
 use crate::pack_images;
-use crate::pack_shadow;
-use crate::pack_sky::{self, PackSky, SkyFrame};
+use crate::pack_sky::SkyFrame;
 use crate::pack_textures;
-use crate::pack_uniforms::{self, FrameUniforms, PackInputs};
-use crate::pack_weather;
+use crate::pack_uniforms::{self, PackInputs};
 
 /// The frame's sky inputs, decoupled from the client's `Frame`: what `draw_sky` needs to build a
 /// `SkyFrame` (`view` gives the sun, colours and fog).
@@ -1169,7 +1159,6 @@ impl PackPost {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn draw_terrain_part(
         &mut self,
         device: &wgpu::Device,

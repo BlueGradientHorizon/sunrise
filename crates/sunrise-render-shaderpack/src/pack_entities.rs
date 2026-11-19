@@ -431,7 +431,6 @@ impl PackEntities {
     /// (`drawn`: whether it has `gbuffers_entities`, `gbuffers_block` or their fallbacks), and
     /// Sunrise, which draws the rest (`rest`). Uploads the pack's part, and the runs its shadow
     /// programs draw (`shadow`). Runs hidden from the camera only ever cast shadows.
-    #[allow(clippy::too_many_arguments)]
     pub fn prepare(
         &mut self,
         device: &wgpu::Device,
@@ -664,7 +663,6 @@ impl PackEntities {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn push_draw(
         &mut self,
         span: EntitySpan,
@@ -1357,25 +1355,21 @@ mod gpu_span_tests {
                 dst: 0,
                 count: 4,
                 overlay: 1,
-                ..Default::default()
             },
             SkinRunJob {
                 dst: 4,
                 count: 4,
                 overlay: 1,
-                ..Default::default()
             },
             SkinRunJob {
                 dst: 8,
                 count: 12,
                 overlay: 5,
-                ..Default::default()
             },
             SkinRunJob {
                 dst: 20,
                 count: 4,
                 overlay: 5,
-                ..Default::default()
             },
         ];
         let runs = skin_runs(jobs.iter().map(|j| (j.dst, j.count, j.overlay)), &spans);
@@ -1566,7 +1560,6 @@ mod gpu_span_tests {
                 dst: i as u32 * 4,
                 count: 4,
                 overlay,
-                ..Default::default()
             })
             .collect();
         let skin = PosedModelRuns {

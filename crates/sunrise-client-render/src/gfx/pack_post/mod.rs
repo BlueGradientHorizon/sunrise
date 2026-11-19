@@ -38,7 +38,6 @@ pub trait PackPostExt: Sized {
     /// The shadow pass this frame wants, when the pack draws one.
     fn shadow_view(&self, frame: &Frame) -> Option<ShadowView>;
     /// The entities and block entities the pack draws this frame, into its own buffers.
-    #[allow(clippy::too_many_arguments)]
     fn prepare_entities(
         &mut self,
         device: &wgpu::Device,
@@ -53,7 +52,6 @@ pub trait PackPostExt: Sized {
     );
     /// Runs the pack over the world drawn into `world` (colour) and `world_depth`, then draws
     /// the result onto `screen`. Fails once the device is lost (`lost`).
-    #[allow(clippy::too_many_arguments)]
     fn run(
         &mut self,
         device: &wgpu::Device,
@@ -238,37 +236,6 @@ impl PackPostExt for PackPost {
         &self.timing
     }
 }
-
-// What `execution` and the tests reach through `super::*` (as they did when this was one file).
-#[allow(unused_imports)]
-use super::pack_draw::DrawUniforms;
-#[allow(unused_imports)]
-use super::pack_entities::{PROGRAMS, PackEntities};
-#[allow(unused_imports)]
-use super::pack_images;
-#[allow(unused_imports)]
-use super::pack_sky::PackSky;
-#[allow(unused_imports)]
-use super::pack_textures;
-#[allow(unused_imports)]
-use super::pack_uniforms::{self, FrameUniforms, FrameUniformsExt};
-#[allow(unused_imports)]
-use glam::{DMat4, DVec3};
-#[allow(unused_imports)]
-use smallvec::SmallVec;
-#[allow(unused_imports)]
-use std::collections::HashMap;
-#[cfg(test)]
-use sunrise_render_shaderpack::pack_post::{
-    ComputeJob, Job, Resources, Slot, Source, bindings, build_pass, checked, compile, sampler,
-};
-#[allow(unused_imports)]
-use sunrise_render_shaderpack::pack_post::{
-    FinalTarget, Gpu, Image, Mips, Pass, Pipeline, SINK, ShadowCache, ShadowCacheKey, Sky, Targets,
-    attach, befores, image_buffers, share_samplers,
-};
-#[allow(unused_imports)]
-use sunrise_shaders::{BUFFERS, Format, Group, Post, SHADOW_COLORS};
 
 #[cfg(test)]
 mod history_reset_tests;

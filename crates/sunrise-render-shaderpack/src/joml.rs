@@ -8,9 +8,11 @@ pub mod joml {
     const TAU: f32 = std::f32::consts::TAU;
     const HALF_PI: f32 = std::f32::consts::FRAC_PI_2;
 
-    /// `Math.sin(float)`: `java.lang.Math.sin` narrowed.
+    /// `Math.sin(float)`: `java.lang.Math.sin` narrowed, as HotSpot computes it on this
+    /// machine (`sunrise_core::jmath`), not Rust's own `sin`: JOML's view rotation must match
+    /// vanilla's to the last bit (#8464).
     pub fn sin(rad: f32) -> f32 {
-        f64::from(rad).sin() as f32
+        sunrise_core::jmath::sin(f64::from(rad)) as f32
     }
     /// `Math.cosFromSin(float, float)`.
     pub fn cos_from_sin(sin: f32, angle: f32) -> f32 {

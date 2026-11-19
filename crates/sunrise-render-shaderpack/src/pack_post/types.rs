@@ -4,20 +4,13 @@
 //! `compile` makes together, and why it may refuse to run (`Refused`). `PackPost` itself is in
 //! the parent module; these names are shared by its construction and its execution.
 
-#![allow(unused_imports)]
-
 use std::collections::HashMap;
 
-use glam::{DMat4, DVec3};
-use smallvec::SmallVec;
-use sunrise_shaders::{BUFFERS, Format, Group, Kind, Post, SHADOW_COLORS};
+use glam::DVec3;
+use sunrise_shaders::{BUFFERS, Group};
 
-use crate::pack_draw::DrawUniforms;
 use crate::pack_entities::{PROGRAMS, PackEntities};
-use crate::pack_images;
 use crate::pack_sky::PackSky;
-use crate::pack_textures;
-use crate::pack_uniforms::{self, FrameUniforms, PackInputs};
 
 pub use crate::pack_post::construction::{
     ComputeJob, Geometry, Job, Refused, RenderJob, Resources, Slot, TerrainDraw, TerrainList,
