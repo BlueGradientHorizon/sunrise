@@ -83,10 +83,7 @@ enum Route {
 
 fn route(face: &BakedFace, policy: NativeModelMaterial, faded: bool) -> Option<Route> {
     use NativeModelMaterial as M;
-    if faded {
-        return Some(Route::Translucent);
-    }
-    Some(match policy {
+    let route = match policy {
         M::Solid => Route::Terrain(gfx::TERRAIN_MODEL_SOLID_OVERLAY),
         M::Cutout => Route::Terrain(gfx::TERRAIN_MODEL_CUTOUT_OVERLAY),
         M::CutoutMipped => Route::Terrain(gfx::TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY),
@@ -100,6 +97,12 @@ fn route(face: &BakedFace, policy: NativeModelMaterial, faded: bool) -> Option<R
             RenderType::CutoutMipped => Route::Terrain(gfx::TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY),
             _ => return None,
         },
+    };
+    // A colour with alpha below opaque draws a terrain route's quad translucent too; a
+    // refused render type was refused above.
+    Some(match route {
+        Route::Terrain(_) if faded => Route::Translucent,
+        route => route,
     })
 }
 

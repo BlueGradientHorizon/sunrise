@@ -1,0 +1,2 @@
+# Model draw colour, hidden faces and the translucent copies (#3120, #3280) need prepared resources.
+sunrise-client game::native_custom_geometry::tests::translucent_and_hidden_copies_take_the_cpu_routes lib daily resources

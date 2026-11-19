@@ -1263,17 +1263,20 @@ impl Game<'_> {
         state: mod_api::BlockStateId,
     ) -> Result<ModelRef, ModelError> {
         let id = BlockStateId(state.0);
-        let models = self
-            .pack
-            .render
-            .model_catalog
-            .collect_seeded(id, Self::BLOCK_MODEL_SEED)
-            .map_err(|_| ModelError::UnknownModel)?;
-        let default_tint = self.default_block_tint(id);
         let slot = self
             .standalone_geometry
             .state_slot(state.0, || {
                 use sunrise_client::models::catalog::BakedFace;
+                // An unknown state resolves to no faces, which `state_slot` refuses.
+                let Ok(models) = self
+                    .pack
+                    .render
+                    .model_catalog
+                    .collect_seeded(id, Self::BLOCK_MODEL_SEED)
+                else {
+                    return Vec::new();
+                };
+                let default_tint = self.default_block_tint(id);
                 models
                     .iter()
                     .flat_map(|(_, model)| &model.faces)

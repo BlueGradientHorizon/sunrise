@@ -169,14 +169,21 @@ fn append_sorted(combined: &mut Vec<Vertex>, entities: &[Vertex], runs: &[(usize
     for &(first, count) in runs {
         combined.extend_from_slice(&entities[first * 4..(first + count) * 4]);
     }
-    combined[start..].as_chunks_mut::<4>().0.sort_by(|a, b| {
-        let distance = |q: &[Vertex; 4]| {
-            (0..3)
-                .map(|i| ((q[0].pos[i] + q[2].pos[i]) * 0.5).powi(2))
-                .sum::<f32>()
-        };
-        distance(b).total_cmp(&distance(a))
-    });
+    // In place, with no scratch buffer: quads at one distance keep a fixed order by their
+    // first vertex's position bits, so the picture does not shimmer between frames.
+    combined[start..]
+        .as_chunks_mut::<4>()
+        .0
+        .sort_unstable_by(|a, b| {
+            let distance = |q: &[Vertex; 4]| {
+                (0..3)
+                    .map(|i| ((q[0].pos[i] + q[2].pos[i]) * 0.5).powi(2))
+                    .sum::<f32>()
+            };
+            distance(b)
+                .total_cmp(&distance(a))
+                .then_with(|| a[0].pos.map(f32::to_bits).cmp(&b[0].pos.map(f32::to_bits)))
+        });
 }
 
 impl EntityBatch {

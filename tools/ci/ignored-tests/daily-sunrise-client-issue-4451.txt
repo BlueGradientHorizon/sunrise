@@ -1175,7 +1175,6 @@ sunrise-client game::native_custom_geometry::tests::each_stage_is_asked_in_frame
 sunrise-client game::native_custom_geometry::tests::fill_world_geometry_commits_an_accepted_batch lib daily resources
 sunrise-client game::native_custom_geometry::tests::persistent_groups_cpu_routes_and_lifetime lib daily resources
 sunrise-client game::native_custom_geometry::tests::persistent_groups_match_batch lib daily resources
-sunrise-client game::native_custom_geometry::tests::translucent_and_hidden_copies_take_the_cpu_routes lib daily resources
 sunrise-client game::native_damage_tests::a_cancelled_deaths_post_fires_once_before_the_death_hooks lib daily resources
 sunrise-client game::native_damage_tests::a_game_built_level_has_every_damage_hook lib daily resources
 sunrise-client game::native_damage_tests::a_hit_inside_the_cooldown_no_stronger_than_the_last_fires_no_post lib daily resources
