@@ -18,11 +18,11 @@ use super::super::pack_textures;
 use super::super::pack_uniforms::{self, FrameUniforms, FrameUniformsExt, PackInputs};
 use super::construction::*;
 use super::types::*;
-use crate::gfx::pack_post::PackPost;
+use crate::gfx::pack_post::{PackPost, PackPostExt, ShadowView};
 
-impl PackPost {
+impl PackPostExt for PackPost {
     /// `Renderer::finish_sequence_frame`: the centre depth the finished frame copied.
-    pub fn take_center_depth(&mut self, device: &wgpu::Device) -> Result<(), String> {
+    fn take_center_depth(&mut self, device: &wgpu::Device) -> Result<(), String> {
         self.center_depth
             .as_mut()
             .ok_or("the shader pack copied no centre depth")?
@@ -34,7 +34,7 @@ impl PackPost {
     /// loaded pack's first: buffers, images, storage buffers and shadow maps start over (made
     /// again at their sizes when next drawn), the frame uniforms' history, the custom uniforms
     /// and the centre depth too. Compiled programs and the pack's textures stay.
-    pub fn reset_history(&mut self, device: &wgpu::Device) {
+    fn reset_history(&mut self, device: &wgpu::Device) {
         self.uniforms.reset_history();
         // A parsed pack's custom uniforms start at tick 0's seed, before any frame of the world.
         self.custom.restart_at(0);
@@ -88,759 +88,9 @@ impl PackPost {
             pass.reset_history();
         }
     }
-
-    /// Writes `pass`'s uniforms for a target of `out` pixels; its bind group for the buffers'
-    /// current mapping. The buffers it both samples and stores to are copied first, and it
-    /// samples the copies.
-    pub(crate) fn bind(
-        &self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        encoder: &mut wgpu::CommandEncoder,
-        pass: &mut Pass,
-        out: [u32; 2],
-    ) -> wgpu::BindGroup {
-        pack_images::copy(encoder, &self.images, pass.image_copies);
-        for &(_, image) in &pass.images {
-            if let Image::StandIn(format, dimension) = image
-                && let Some(s) = pack_images::stand_in(&self.stand_ins, format, dimension)
-            {
-                s.clear(encoder);
-            }
-        }
-        if let Some(targets) = &self.targets {
-            for i in (0..BUFFERS).filter(|i| pass.copies & 1 << i != 0) {
-                if let (Some(t), Some(copy)) = (&targets.color[i], &targets.scratch[i]) {
-                    let side = usize::from(self.main & 1 << i != 0);
-                    encoder.copy_texture_to_texture(
-                        t[side].texture().as_image_copy(),
-                        copy.texture().as_image_copy(),
-                        t[side].texture().size(),
-                    );
-                }
-            }
-        }
-        let fog = self.uniforms.fog();
-        // Our block members first (`hz_target`, `hz_fog_color`, `hz_fog`, `hz_depth_linear`),
-        // then the pack's.
-        let ours = [
-            [
-                out[0] as f32,
-                out[1] as f32,
-                1.0 / out[0] as f32,
-                1.0 / out[1] as f32,
-            ],
-            fog[0].to_array(),
-            fog[1].to_array(),
-            pass.depth_linear,
-        ];
-        let head: &[u8] = bytemuck::cast_slice(&ours);
-        let n = head.len().min(pass.block.len());
-        pass.block[..n].copy_from_slice(&head[..n]);
-        for (index, ty, offset) in &pass.uniforms {
-            let Some((i, v)) = index.and_then(|i| Some((i, self.uniforms.values.get(i)?))) else {
-                continue;
-            };
-            // A built-in of another type keeps its initial value (0); custom uniforms were
-            // checked when the pass was built.
-            if pack_uniforms::NAMES
-                .get(i)
-                .is_none_or(|name| v.read_as(name, ty))
-            {
-                v.write(ty, &mut pass.block, *offset as usize);
-            }
-        }
-        if !pass.block.is_empty() {
-            queue.write_buffer(&pass.ubo, 0, &pass.block);
-        }
-        let targets = self.targets.as_ref().expect("resized");
-        let shadow = self.shadow_targets.as_ref();
-        let shadow_main = shadow.map_or(0, |s| s.main);
-        let shadow_space = pass.group.shadow();
-        // A chain is sampled only while it is current: a buffer written since its last chain
-        // reads its first level, never stale levels (6.1.7). The shadow buffers have none.
-        let (main, current) = if shadow_space {
-            (shadow_main, 0)
-        } else {
-            (self.main, self.mips_valid & self.mipped & pass.reads)
-        };
-        let key = u64::from(main & pass.reads)
-            | u64::from(current) << 16
-            | u64::from(shadow_main & pass.shadow_reads) << 32;
-        let group = pass.groups.entry(key).or_insert_with(|| {
-            let mut entries = vec![wgpu::BindGroupEntry {
-                binding: 0,
-                resource: pass.ubo.as_entire_binding(),
-            }];
-            for s in &pass.samplers {
-                let shadow_color = |i: usize, side: usize| {
-                    shadow.and_then(|t| t.color[i].as_ref()).map(|c| &c[side])
-                };
-                let texture = match s.source {
-                    Source::Color(i) if shadow_space => {
-                        shadow_color(i, usize::from(key & 1 << i != 0)).unwrap_or(&self.dummy)
-                    }
-                    Source::ShadowColor(i) => {
-                        shadow_color(i, usize::from(key & 1 << (32 + i) != 0))
-                            .unwrap_or(&self.dummy)
-                    }
-                    Source::ShadowDepth(i, _) => match shadow {
-                        Some(t) => match (i, &t.depth1) {
-                            (1, Some(d)) => &d.1,
-                            _ => &t.depth.1,
-                        },
-                        None => &self.shadow.0,
-                    },
-                    Source::Color(i) if pass.copies & 1 << i != 0 => {
-                        targets.scratch[i].as_ref().unwrap_or(&self.dummy)
-                    }
-                    Source::Color(i) => {
-                        let side = usize::from(key & 1 << i != 0);
-                        match (&targets.mips[i], &targets.color[i]) {
-                            (Some(m), _) if current & 1 << i != 0 => &m[side].all,
-                            (_, Some(t)) => &t[side],
-                            (_, None) => &self.dummy,
-                        }
-                    }
-                    Source::Depth => &targets.depth,
-                    Source::WaterMask => targets.water_mask.as_ref().map_or(&self.dummy, |m| &m.1),
-                    // Before translucent terrain the two are the same.
-                    Source::Depth1 => match &targets.depth1 {
-                        Some(d)
-                            if matches!(
-                                pass.group,
-                                Group::Deferred
-                                    | Group::Composite
-                                    | Group::Final
-                                    | Group::Translucent
-                            ) =>
-                        {
-                            &d.1
-                        }
-                        _ => &targets.depth,
-                    },
-                    Source::Depth2 => match &targets.depth2 {
-                        Some(d)
-                            if matches!(
-                                pass.group,
-                                Group::Deferred
-                                    | Group::Composite
-                                    | Group::Final
-                                    | Group::Translucent
-                            ) =>
-                        {
-                            &d.1
-                        }
-                        _ => match &targets.depth1 {
-                            Some(d)
-                                if matches!(
-                                    pass.group,
-                                    Group::Deferred
-                                        | Group::Composite
-                                        | Group::Final
-                                        | Group::Translucent
-                                ) =>
-                            {
-                                &d.1
-                            }
-                            _ => &targets.depth,
-                        },
-                    },
-                    Source::Noise => &self.noise,
-                    Source::Dummy if s.dimension == wgpu::TextureViewDimension::D3 => {
-                        &self.dummy_3d
-                    }
-                    Source::Dummy if s.dimension == wgpu::TextureViewDimension::D1 => {
-                        &self.dummy_1d
-                    }
-                    Source::Normals if pass.paged => {
-                        self.paged_maps[0].as_ref().unwrap_or(&self.dummy_normal)
-                    }
-                    Source::Specular if pass.paged => {
-                        self.paged_maps[1].as_ref().unwrap_or(&self.dummy_black)
-                    }
-                    Source::Normals => self
-                        .material_maps
-                        .as_ref()
-                        .filter(|_| pass.material_maps)
-                        .map_or(&self.dummy_normal, |maps| &maps[0]),
-                    Source::Specular => self
-                        .material_maps
-                        .as_ref()
-                        .filter(|_| pass.material_maps)
-                        .map_or(&self.dummy_black, |maps| &maps[1]),
-                    Source::Dummy => &self.dummy,
-                    Source::Image(k) if pass.image_copies & 1 << k != 0 => {
-                        self.images[k].copy.as_ref().unwrap_or(&self.dummy)
-                    }
-                    Source::Image(k) => self.images[k].view.as_ref().unwrap_or(&self.dummy),
-                    Source::Custom { index, .. } => match &self.textures[index].image {
-                        pack_textures::Image::View(v) => v,
-                        _ => &self.dummy,
-                    },
-                    Source::Shadow => &self.shadow.0,
-                    Source::Atlas => pass
-                        .atlas
-                        .as_ref()
-                        .or(self.atlas.as_ref())
-                        .unwrap_or(&self.dummy),
-                    Source::Lightmap => &self.lightmap,
-                };
-                let sampler = match SamplerKind::of(s.source, s.filtering) {
-                    SamplerKind::Linear => &self.linear,
-                    SamplerKind::Nearest => &self.nearest,
-                    SamplerKind::Repeat => &self.repeat,
-                    SamplerKind::NearestRepeat => &self.nearest_repeat,
-                    SamplerKind::Atlas => &self.atlas_sampler,
-                    SamplerKind::Buffer => &self.buffer_sampler,
-                    SamplerKind::Comparison => shadow.map_or(&self.shadow.1, |t| &t.comparison),
-                };
-                entries.push(wgpu::BindGroupEntry {
-                    binding: s.binding,
-                    resource: wgpu::BindingResource::TextureView(texture),
-                });
-                if s.sampler == s.binding + 1 {
-                    entries.push(wgpu::BindGroupEntry {
-                        binding: s.sampler,
-                        resource: wgpu::BindingResource::Sampler(sampler),
-                    });
-                }
-            }
-            // An image is the side its buffer's sampler reads.
-            for &(binding, image) in &pass.images {
-                let view = match image {
-                    Image::Color(i) => {
-                        let side = usize::from(key & 1 << i != 0);
-                        targets.color[i].as_ref().map_or(&self.dummy, |t| &t[side])
-                    }
-                    Image::Custom(k) => self.images[k].view.as_ref().unwrap_or(&self.dummy),
-                    Image::ColorBefore(i) => targets.scratch[i].as_ref().unwrap_or(&self.dummy),
-                    Image::CustomBefore(k) => self.images[k].before.as_ref().unwrap_or(&self.dummy),
-                    Image::StandIn(format, dimension) => {
-                        pack_images::stand_in(&self.stand_ins, format, dimension)
-                            .map_or(&self.dummy, |s| &s.view)
-                    }
-                };
-                entries.push(wgpu::BindGroupEntry {
-                    binding,
-                    resource: wgpu::BindingResource::TextureView(view),
-                });
-            }
-            device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some(&pass.name),
-                layout: &pass.layout,
-                entries: &entries,
-            })
-        });
-        group.clone()
-    }
-
-    /// Dispatches compute pass `pass` over a target of `size`.
-    fn dispatch(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        encoder: &mut wgpu::CommandEncoder,
-        pass: &mut Pass,
-        size: [u32; 2],
-    ) {
-        let Pipeline::Compute {
-            pipeline,
-            groups,
-            render,
-            local,
-        } = &pass.pipeline
-        else {
-            return;
-        };
-        let pipeline = pipeline.get().expect("compiled with its pack");
-        let groups = groups.unwrap_or_else(|| {
-            let n = |k: usize| (size[k] as f32 * render[k] / local[k] as f32).ceil() as u32;
-            [n(0), n(1), 1]
-        });
-        let (pipeline, groups) = (pipeline.clone(), groups);
-        // wgpu panics on a dispatch over its limit. The translator reshapes a large
-        // `workGroups`; a `workGroupsRender` that large is not run.
-        let most = device.limits().max_compute_workgroups_per_dimension;
-        if groups.iter().any(|&n| n > most) {
-            log::warn!(
-                "shader pack: {}: {groups:?} work groups is over {most} per dimension; not run",
-                pass.name
-            );
-            return;
-        }
-        for image in (0..self.images.len()).filter(|k| pass.snapshots & 1 << k != 0) {
-            pack_images::snapshot(encoder, &self.images[image]);
-        }
-        let group = self.bind(device, queue, encoder, pass, size);
-        let mut cp = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-            label: Some(&pass.name),
-            timestamp_writes: self
-                .timing
-                .as_mut()
-                .and_then(|t| t.compute_writes(&format!("{} (compute)", pass.name))),
-        });
-        cp.set_pipeline(&pipeline);
-        cp.set_bind_group(0, &group, &[]);
-        if pass.buffers
-            && let Some(g) = &self.buffers.group
-        {
-            cp.set_bind_group(4, g, &[]);
-        }
-        cp.dispatch_workgroups(groups[0], groups[1], groups[2]);
-        drop(cp);
-        self.mips_valid &= !pass.written;
-    }
-
-    /// A render pass into the buffers `pass` writes, in place, tested against the world's depth.
-    pub(crate) fn begin<'e>(
-        &mut self,
-        encoder: &'e mut wgpu::CommandEncoder,
-        pass: &Pass,
-    ) -> wgpu::RenderPass<'e> {
-        self.begin_with(encoder, pass, false)
-    }
-
-    /// `begin`, or with `water_mask` into the water patches' depth instead of the frame's.
-    fn begin_with<'e>(
-        &mut self,
-        encoder: &'e mut wgpu::CommandEncoder,
-        pass: &Pass,
-        water_mask: bool,
-    ) -> wgpu::RenderPass<'e> {
-        let targets = self.targets.as_ref().expect("resized");
-        let load = wgpu::Operations {
-            load: wgpu::LoadOp::Load,
-            store: wgpu::StoreOp::Store,
-        };
-        // The shadow pass draws into the shadow buffers and the shadow map, the frame's first
-        // one clearing them.
-        let (depth_ops, shadow_ops) = match &mut self.shadow_targets {
-            Some(s) if pass.group.shadow() => s.clear_ops(pass.writes.iter().map(|w| w.1)),
-            _ => (super::super::pack_shadow::load(), [load; SHADOW_COLORS]),
-        };
-        let shadow = self.shadow_targets.as_ref().filter(|_| pass.group.shadow());
-        let mut attachments: SmallVec<[Option<wgpu::RenderPassColorAttachment>; BUFFERS]> =
-            SmallVec::new();
-        for &(location, buffer) in &pass.writes {
-            let l = location as usize;
-            if attachments.len() <= l {
-                attachments.resize(l + 1, None);
-            }
-            attachments[l] = match shadow {
-                Some(s) => s
-                    .color(buffer, false)
-                    .and_then(|v| attach(v, shadow_ops.get(buffer).copied().unwrap_or(load))),
-                None => targets.color[buffer]
-                    .as_ref()
-                    .and_then(|t| attach(&t[usize::from(self.main & 1 << buffer != 0)], load)),
-            };
-        }
-        let timestamp_writes = self.timing.as_mut().and_then(|t| t.writes(&pass.name));
-        encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some(&pass.name),
-            color_attachments: &attachments,
-            timestamp_writes,
-            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                view: match &targets.water_mask {
-                    Some((_, view)) if water_mask => view,
-                    _ => shadow.map_or(&targets.depth, |s| &s.depth.1),
-                },
-                depth_ops: Some(depth_ops),
-                stencil_ops: None,
-            }),
-            ..Default::default()
-        })
-    }
-
-    /// Terrain (or, `translucent`, translucent terrain) with the pack's program; `draw` issues
-    /// the game's draws. Solid terrain in two parts (a pack's `gbuffers_terrain_solid` and
-    /// `_cutout`) has its cutout part drawn second, from the same draws.
-    fn draw_terrain(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        encoder: &mut wgpu::CommandEncoder,
-        size: [u32; 2],
-        list: TerrainList,
-        draw: &mut TerrainDraw<'_>,
-    ) {
-        self.draw_terrain_part(device, queue, encoder, size, list, false, draw);
-        if list == TerrainList::Solid {
-            self.draw_terrain_part(device, queue, encoder, size, list, true, draw);
-        }
-    }
-
-    /// The pass that draws `list`, or the cutout part of the solid list.
-    fn terrain_slot(&mut self, list: TerrainList, cutout: bool) -> &mut Option<Pass> {
-        match list {
-            TerrainList::Solid if cutout => &mut self.terrain_cutout,
-            TerrainList::Solid => &mut self.terrain,
-            TerrainList::Translucent => &mut self.water,
-            TerrainList::ShadowSolid => &mut self.shadow_terrain,
-            TerrainList::ShadowTranslucent => &mut self.shadow_water,
-        }
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn draw_terrain_part(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        encoder: &mut wgpu::CommandEncoder,
-        size: [u32; 2],
-        list: TerrainList,
-        cutout: bool,
-        draw: &mut TerrainDraw<'_>,
-    ) {
-        let Some(mut pass) = self.terrain_slot(list, cutout).take() else {
-            return;
-        };
-        let translucent = list.translucent();
-        let group = self.bind(device, queue, encoder, &mut pass, size);
-        {
-            let mut rp = self.begin(encoder, &pass);
-            rp.set_pipeline(pass.render());
-            rp.set_bind_group(0, &group, &[]);
-            if pass.buffers
-                && let Some(g) = &self.buffers.group
-            {
-                rp.set_bind_group(4, g, &[]);
-            }
-            if pass.draw {
-                let stage = if translucent {
-                    "TERRAIN_TRANSLUCENT"
-                } else {
-                    "TERRAIN_SOLID"
-                };
-                self.draws.bind(&mut rp, stage);
-            }
-            let (groups, ids) = (&self.page_groups, pass.ids);
-            let page = |rp: &mut wgpu::RenderPass<'_>, page: u32| {
-                if let Some((_, _, group)) = groups.get(&page).filter(|_| ids) {
-                    rp.set_bind_group(3, group, &[]);
-                }
-            };
-            let geometry = self
-                .indices
-                .as_ref()
-                .filter(|_| pass.geometry > 0)
-                .map(|indices| (pass.geometry, indices));
-            draw(&mut rp, list, &page, geometry);
-        }
-        if !pass.group.shadow() {
-            self.mips_valid &= !pass.written;
-        }
-        *self.terrain_slot(list, cutout) = Some(pass);
-    }
-
-    /// The sky's parts in vanilla's order, each with the program that draws it; one render pass
-    /// while consecutive programs write the same buffers.
-    fn draw_sky(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        encoder: &mut wgpu::CommandEncoder,
-        size: [u32; 2],
-        frame: &super::super::Frame,
-    ) {
-        let Some(mut sky) = self.sky.take() else {
-            return;
-        };
-        let sky_frame = super::super::pack_sky::SkyFrame {
-            sun_angle: frame.sky.sun_angle,
-            sky_color: frame.sky.sky_color,
-            fog_color: frame.sky.fog_color,
-            sunset_color: frame.sky.sunrise_color,
-            fog: frame
-                .fog
-                .as_ref()
-                .map(|f| [f.color[0], f.color[1], f.color[2]]),
-            stars: frame.stars,
-            dark_disc: frame.dark_disc,
-            detail_distance: frame.detail_distance,
-            celestial: bytemuck::cast_slice(frame.celestial),
-            end_fog_sky: super::super::end_fog_sky(frame),
-        };
-        let parts = sky
-            .geometry
-            .prepare(queue, &sky_frame, self.uniforms.shadow.sun_path_rotation);
-        let mut groups = [None, None];
-        for (i, pass) in [&mut sky.basic, &mut sky.textured].into_iter().enumerate() {
-            if let Some(pass) = pass {
-                groups[i] = Some(self.bind(device, queue, encoder, pass, size));
-                self.mips_valid &= !pass.written;
-            }
-        }
-        let passes = [&sky.basic, &sky.textured];
-        let mut open: Option<(wgpu::RenderPass<'_>, usize)> = None;
-        for part in parts {
-            let i = usize::from(part.textured);
-            let (Some(pass), Some(group)) = (passes[i], &groups[i]) else {
-                continue;
-            };
-            let current = open.as_ref().map(|o| o.1);
-            if current != Some(i) {
-                let same = current
-                    .and_then(|c| passes[c].as_ref())
-                    .is_some_and(|p| p.writes == pass.writes);
-                if !same {
-                    drop(open.take());
-                    open = Some((self.begin(encoder, pass).forget_lifetime(), i));
-                }
-                let rp = &mut open.as_mut().expect("open").0;
-                rp.set_pipeline(pass.render());
-                rp.set_bind_group(0, group, &[]);
-                // A sky program that reads the pack's SSBOs (Noble's `gbuffers_textured`, the
-                // sun's fallback) binds them, as the other passes do.
-                if pass.buffers
-                    && let Some(g) = &self.buffers.group
-                {
-                    rp.set_bind_group(4, g, &[]);
-                }
-                sky.geometry.bind(rp, part.textured);
-                open.as_mut().expect("open").1 = i;
-            }
-            let rp = &mut open.as_mut().expect("open").0;
-            // Each part with vanilla's blend for it: one program, three pipelines.
-            let part_pipeline =
-                pass.sky_parts
-                    .as_ref()
-                    .and_then(|[plain, stars]| match part.stage {
-                        "SKY" | "VOID" => plain.get(),
-                        "STARS" => stars.get(),
-                        _ => None,
-                    });
-            rp.set_pipeline(part_pipeline.unwrap_or(pass.render()));
-            if pass.draw {
-                self.draws.bind(rp, part.stage);
-            }
-            rp.draw(part.range, 0..1);
-        }
-        drop(open);
-        self.sky = Some(sky);
-    }
-
-    /// Entities, block entities, translucent entity parts and particles with the pack's
-    /// programs, those drawn before deferred or (`late`) after: each run `prepare_entities` kept
-    /// is one draw with its own `entityId` or `blockEntityId` and `entityColor`.
-    fn draw_entities(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        encoder: &mut wgpu::CommandEncoder,
-        size: [u32; 2],
-        late: bool,
-    ) {
-        let Some(mut entities) = self.entities.take() else {
-            return;
-        };
-        let geometry = &entities.geometry;
-        for (program, pass) in entities.passes.iter_mut().enumerate() {
-            let Some(pass) = pass.as_mut().filter(|_| entities.late[program] == late) else {
-                continue;
-            };
-            let mut draws = geometry
-                .draws
-                .iter()
-                .filter(|d| d.pack && d.program == program && !d.water_mask)
-                .peekable();
-            let masks: Vec<_> = (geometry.draws.iter())
-                .filter(|d| d.pack && d.program == program && d.water_mask)
-                .collect();
-            if draws.peek().is_none() {
-                continue;
-            }
-            let group = self.bind(device, queue, encoder, pass, size);
-            let portal_group = self.portal_group(
-                device,
-                queue,
-                encoder,
-                pass,
-                size,
-                geometry
-                    .draws
-                    .iter()
-                    .any(|d| d.pack && d.program == program && d.portal),
-            );
-            {
-                let mut rp = self.begin(encoder, pass);
-                rp.set_pipeline(pass.render());
-                rp.set_bind_group(0, &group, &[]);
-                if pass.buffers
-                    && let Some(g) = &self.buffers.group
-                {
-                    rp.set_bind_group(4, g, &[]);
-                }
-                rp.set_bind_group(1, &geometry.table_group, &[]);
-                rp.set_vertex_buffer(0, geometry.vertices());
-                rp.set_index_buffer(geometry.indices.slice(..), wgpu::IndexFormat::Uint32);
-                let mut on_portal = false;
-                for d in draws {
-                    if let Some(portal) = &portal_group
-                        && d.portal != on_portal
-                    {
-                        rp.set_bind_group(0, if d.portal { portal } else { &group }, &[]);
-                        on_portal = d.portal;
-                    }
-                    if pass.draw {
-                        rp.set_bind_group(2, &geometry.group, &[geometry.offset(d.slot)]);
-                    }
-                    rp.draw_indexed(0..d.quads * 6, d.base as i32, 0..1);
-                }
-            }
-            // The boats' water patches, depth only, into their own depth: translucent terrain
-            // discards what lies behind them, and the frame's depth stays the pack's.
-            if let Some(mask) = pass.water_mask.as_ref().and_then(|m| m.get())
-                && !masks.is_empty()
-                && self
-                    .targets
-                    .as_ref()
-                    .is_some_and(|t| t.water_mask.is_some())
-            {
-                let mut rp = self.begin_with(encoder, pass, true);
-                rp.set_pipeline(mask);
-                rp.set_bind_group(0, &group, &[]);
-                if pass.buffers
-                    && let Some(g) = &self.buffers.group
-                {
-                    rp.set_bind_group(4, g, &[]);
-                }
-                rp.set_bind_group(1, &geometry.table_group, &[]);
-                rp.set_vertex_buffer(0, geometry.vertices());
-                rp.set_index_buffer(geometry.indices.slice(..), wgpu::IndexFormat::Uint32);
-                for d in &masks {
-                    if pass.draw {
-                        rp.set_bind_group(2, &geometry.group, &[geometry.offset(d.slot)]);
-                    }
-                    rp.draw_indexed(0..d.quads * 6, d.base as i32, 0..1);
-                }
-                drop(rp);
-                self.water_mask_dirty = true;
-            }
-            self.mips_valid &= !pass.written;
-        }
-        self.entities = Some(entities);
-    }
-
-    /// End portal faces bind `end_portal.png` as the atlas, a texture of its own, so packs that
-    /// wrap it with their own coordinates sample the portal sprite only. `None` when no portal
-    /// face draws in this pass.
-    fn portal_group(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        encoder: &mut wgpu::CommandEncoder,
-        pass: &mut Pass,
-        size: [u32; 2],
-        wanted: bool,
-    ) -> Option<wgpu::BindGroup> {
-        let atlas = pass.atlas.clone().or_else(|| self.atlas.clone())?;
-        if !wanted || self.portal_rect[2] <= 0.0 {
-            return None;
-        }
-        if self
-            .portal_texture
-            .as_ref()
-            .is_none_or(|(rect, _)| *rect != self.portal_rect)
-        {
-            let view = super::super::pack_weather::copy_sprite(
-                device,
-                encoder,
-                atlas.texture(),
-                self.portal_rect,
-            );
-            self.portal_texture = Some((self.portal_rect, view));
-            pass.portal_groups.clear();
-        }
-        // `bind` caches groups by a key without the atlas: the portal groups are kept in a cache
-        // of their own, swapped in with the texture.
-        let view = self.portal_texture.as_ref().map(|p| p.1.clone());
-        let saved = std::mem::replace(&mut pass.atlas, view);
-        let groups = std::mem::replace(&mut pass.groups, std::mem::take(&mut pass.portal_groups));
-        let group = self.bind(device, queue, encoder, pass, size);
-        pass.portal_groups = std::mem::replace(&mut pass.groups, groups);
-        pass.atlas = saved;
-        Some(group)
-    }
-
-    /// Entities and block entities into the shadow map, each run with the per-draw uniforms
-    /// of its gbuffers draw (2.4): opaque, so before the `shadowtex1` copy.
-    fn draw_shadow_entities(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        encoder: &mut wgpu::CommandEncoder,
-        size: [u32; 2],
-    ) {
-        let Some(mut entities) = self.entities.take() else {
-            return;
-        };
-        let geometry = &entities.geometry;
-        for (program, pass) in entities.shadow.iter_mut().enumerate() {
-            let Some(pass) = pass else {
-                continue;
-            };
-            let mut draws = (geometry.draws.iter())
-                .filter(|d| {
-                    d.shadow && super::super::pack_entities::shadow_program(d.program) == program
-                })
-                .peekable();
-            if draws.peek().is_none() {
-                continue;
-            }
-            let group = self.bind(device, queue, encoder, pass, size);
-            let portal_group = self.portal_group(
-                device,
-                queue,
-                encoder,
-                pass,
-                size,
-                (geometry.draws.iter()).any(|d| {
-                    d.shadow
-                        && super::super::pack_entities::shadow_program(d.program) == program
-                        && d.portal
-                }),
-            );
-            let mut on_portal = false;
-            let mut rp = self.begin(encoder, pass);
-            rp.set_pipeline(pass.render());
-            rp.set_bind_group(0, &group, &[]);
-            if pass.buffers
-                && let Some(g) = &self.buffers.group
-            {
-                rp.set_bind_group(4, g, &[]);
-            }
-            rp.set_bind_group(1, &geometry.table_group, &[]);
-            rp.set_vertex_buffer(0, geometry.vertices());
-            rp.set_index_buffer(geometry.indices.slice(..), wgpu::IndexFormat::Uint32);
-            for d in draws {
-                if let Some(portal) = &portal_group
-                    && d.portal != on_portal
-                {
-                    rp.set_bind_group(0, if d.portal { portal } else { &group }, &[]);
-                    on_portal = d.portal;
-                }
-                if pass.draw {
-                    rp.set_bind_group(2, &geometry.group, &[geometry.offset(d.slot)]);
-                }
-                if pass.geometry > 0 {
-                    // A geometry stage reads its vertices itself: corner `c` of the run is
-                    // vertex `c` past the run's first quad's six (`geometry_inputs`), one
-                    // instance per triangle the stage can emit.
-                    let first = d.base / 4 * 6;
-                    rp.draw(first..first + d.quads * 6, 0..pass.geometry);
-                } else {
-                    rp.draw_indexed(0..d.quads * 6, d.base as i32, 0..1);
-                }
-            }
-        }
-        self.entities = Some(entities);
-    }
-
     /// Splits `entities` (`Frame::entities`) between the pack and Sunrise by its runs
     /// (`spans`): the pack's part is uploaded for this frame's draw, Sunrise's goes to `rest`.
-    pub fn prepare_entities(
+    fn prepare_entities(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -877,18 +127,18 @@ impl PackPost {
 
     /// Every stage a posable subject can use must have a compiled fallback.
     /// Special models, player and eye/tagged layers retain their CPU paths.
-    pub fn skins_entities(&self) -> bool {
+    fn skins_entities(&self) -> bool {
         self.entities
             .as_ref()
             .is_some_and(|e| e.passes[..3].iter().all(Option::is_some))
     }
 
-    pub fn skin_target(&self) -> Option<&wgpu::Buffer> {
+    fn skin_target(&self) -> Option<&wgpu::Buffer> {
         self.entities.as_ref().map(|e| e.geometry.skin_target())
     }
 
     /// Which entity runs the shadow pass draws: none without it.
-    pub fn shadow_casters(&self) -> super::super::pack_entities::Casters {
+    fn shadow_casters(&self) -> super::super::pack_entities::Casters {
         let Some(e) = self
             .entities
             .as_ref()
@@ -906,366 +156,47 @@ impl PackPost {
 
     /// The centre depth the frame copied: its readback, started by calling it right after the
     /// frame's submission.
-    pub fn submitted(&mut self) -> Option<impl FnOnce() + Send + 'static> {
+    fn submitted(&mut self) -> Option<impl FnOnce() + Send + 'static> {
         self.center_depth.as_mut()?.submitted()
     }
 
     /// Whether the pack draws entities or block entities itself.
-    pub fn has_entities(&self) -> bool {
+    fn has_entities(&self) -> bool {
         self.entities.is_some()
     }
 
-    /// The sky, when it shows, then terrain, entities and block entities.
-    fn draw_opaque(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        encoder: &mut wgpu::CommandEncoder,
-        size: [u32; 2],
-        frame: &super::super::Frame,
-        terrain: &mut TerrainDraw<'_>,
-    ) {
-        if super::super::sky_visible(frame) || super::super::end_fog_sky(frame) {
-            self.draw_sky(device, queue, encoder, size, frame);
-        }
-        self.draw_terrain(device, queue, encoder, size, TerrainList::Solid, terrain);
-        self.draw_entities(device, queue, encoder, size, false);
-        self.draw_lines(device, queue, encoder, size);
-        self.draw_clouds(device, queue, encoder, size);
-        // Only depth2 excludes the opaque first-person hand.
-        if let Some(t) = &self.targets
-            && let Some((copy, _)) = &t.depth2
-        {
-            encoder.copy_texture_to_texture(
-                t.depth_texture.as_image_copy(),
-                copy.as_image_copy(),
-                t.depth_texture.size(),
-            );
-        }
-        self.draw_hand(device, queue, encoder, size, frame);
-        // Depth1 includes that hand, but still precedes translucent terrain.
-        if let Some(t) = &self.targets
-            && let Some((copy, _)) = &t.depth1
-        {
-            encoder.copy_texture_to_texture(
-                t.depth_texture.as_image_copy(),
-                copy.as_image_copy(),
-                t.depth_texture.size(),
-            );
-        }
-    }
-
-    /// The first-person hand and held items, with `gbuffers_hand` at the hand's projection.
-    fn draw_hand(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        encoder: &mut wgpu::CommandEncoder,
-        size: [u32; 2],
-        frame: &super::super::Frame,
-    ) {
-        let Some((mut pass, mut geometry)) = self.hand.take() else {
-            return;
-        };
-        // The hand draws through `gbufferModelView`, which holds the nausea spin the world
-        // turns with; the hand doesn't (as vanilla's), so its projection takes the spin out.
-        let unspin = frame.bob * frame.spin.inverse() * frame.bob.inverse();
-        let projection = super::super::pack_hand::projection(
-            frame.hand_fov_degrees,
-            size[0] as f32 / size[1].max(1) as f32,
-            frame.depth_far,
-        ) * unspin;
-        geometry.prepare(device, queue, frame.hand, frame.hand_items, projection);
-        if geometry.quads > 0 {
-            let group = self.bind(device, queue, encoder, &mut pass, size);
-            {
-                let mut rp = self.begin(encoder, &pass);
-                rp.set_pipeline(pass.render());
-                rp.set_bind_group(0, &group, &[]);
-                if pass.buffers
-                    && let Some(g) = &self.buffers.group
-                {
-                    rp.set_bind_group(4, g, &[]);
-                }
-                rp.set_bind_group(1, &geometry.group, &[]);
-                rp.set_vertex_buffer(0, geometry.vertices());
-                rp.set_index_buffer(geometry.indices.slice(..), wgpu::IndexFormat::Uint32);
-                // The arm and each held item: their own `currentRenderedItemId`. Translucent
-                // quads wait for `gbuffers_hand_water` when the pack has one.
-                let late = self.hand_water.is_some();
-                let runs = geometry
-                    .runs
-                    .iter()
-                    .chain(geometry.translucent_runs.iter().filter(|_| !late));
-                for &(first, quads, offset) in runs {
-                    if pass.draw {
-                        rp.set_bind_group(2, &geometry.slot_group, &[offset]);
-                    }
-                    rp.draw_indexed(first * 6..(first + quads) * 6, 0, 0..1);
-                }
-            }
-            self.mips_valid &= !pass.written;
-        }
-        self.hand = Some((pass, geometry));
-    }
-
-    /// Whether the pack draws the first-person hand itself.
-    pub fn has_hand(&self) -> bool {
-        self.hand.is_some()
-    }
-
-    /// The clouds `set_clouds` gave for this frame, with `gbuffers_clouds`.
-    fn draw_clouds(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        encoder: &mut wgpu::CommandEncoder,
-        size: [u32; 2],
-    ) {
-        // The pass stays for later frames when this one has no clouds.
-        let Some(clouds) = self.cloud_draw.take() else {
-            return;
-        };
-        let Some(mut pass) = self.clouds.take() else {
-            return;
-        };
-        let group = self.bind(device, queue, encoder, &mut pass, size);
-        {
-            let mut rp = self.begin(encoder, &pass);
-            rp.set_pipeline(pass.render());
-            rp.set_bind_group(0, &group, &[]);
-            if pass.buffers
-                && let Some(g) = &self.buffers.group
-            {
-                rp.set_bind_group(4, g, &[]);
-            }
-            rp.set_bind_group(1, &clouds.group, &[]);
-            if pass.draw {
-                self.draws.bind(&mut rp, "CLOUDS");
-            }
-            rp.set_vertex_buffer(0, clouds.vertices.slice(..));
-            rp.set_index_buffer(clouds.indices.slice(..), wgpu::IndexFormat::Uint32);
-            rp.draw_indexed(0..clouds.quads * 6, 0, 0..1);
-        }
-        self.mips_valid &= !pass.written;
-        self.clouds = Some(pass);
-    }
-
-    /// The block outline `set_lines` gave for this frame, with the pack's lines program.
-    fn draw_lines(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        encoder: &mut wgpu::CommandEncoder,
-        size: [u32; 2],
-    ) {
-        // The pass stays for later frames when this one has no outline.
-        let Some(lines) = self.line_draw.take() else {
-            return;
-        };
-        let Some(mut pass) = self.lines.take() else {
-            return;
-        };
-        let group = self.bind(device, queue, encoder, &mut pass, size);
-        {
-            let mut rp = self.begin(encoder, &pass);
-            rp.set_pipeline(pass.render());
-            rp.set_bind_group(0, &group, &[]);
-            if pass.buffers
-                && let Some(g) = &self.buffers.group
-            {
-                rp.set_bind_group(4, g, &[]);
-            }
-            if pass.draw {
-                self.draws.bind(&mut rp, "OUTLINE");
-            }
-            rp.set_vertex_buffer(0, lines.edges.slice(..));
-            rp.draw(0..6, 0..lines.count);
-        }
-        self.mips_valid &= !pass.written;
-        self.lines = Some(pass);
-    }
-
     /// Whether the pack draws the block outline itself.
-    pub fn has_lines(&self) -> bool {
+    fn has_lines(&self) -> bool {
         self.lines.is_some()
     }
 
     /// The block outline to draw this frame (`None`: none).
-    pub fn set_lines(&mut self, lines: Option<Lines>) {
+    fn set_lines(&mut self, lines: Option<Lines>) {
         self.line_draw = lines.filter(|l| l.count > 0);
     }
 
     /// Whether the pack draws the clouds itself (or hides them).
-    pub fn has_clouds(&self) -> bool {
+    fn has_clouds(&self) -> bool {
         self.hides_clouds
     }
 
     /// The clouds to draw this frame (`None`: none).
-    pub fn set_clouds(&mut self, clouds: Option<Clouds>) {
+    fn set_clouds(&mut self, clouds: Option<Clouds>) {
         self.cloud_draw = clouds.filter(|c| c.quads > 0);
     }
 
-    /// Translucent terrain, then the entity parts drawn after deferred.
-    fn draw_translucent(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        encoder: &mut wgpu::CommandEncoder,
-        size: [u32; 2],
-        terrain: &mut TerrainDraw<'_>,
-    ) {
-        self.draw_terrain(
-            device,
-            queue,
-            encoder,
-            size,
-            TerrainList::Translucent,
-            terrain,
-        );
-        self.draw_entities(device, queue, encoder, size, true);
-        self.draw_hand_water(device, queue, encoder, size);
-        self.draw_weather(device, queue, encoder, size);
-    }
-
-    /// The hand's translucent quads (uploaded by `draw_hand` this frame), with
-    /// `gbuffers_hand_water`.
-    fn draw_hand_water(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        encoder: &mut wgpu::CommandEncoder,
-        size: [u32; 2],
-    ) {
-        let Some(mut pass) = self.hand_water.take() else {
-            return;
-        };
-        let hand = self.hand.take();
-        if let Some((_, geometry)) = hand
-            .as_ref()
-            .filter(|(_, g)| g.quads > 0 && !g.translucent_runs.is_empty())
-        {
-            let group = self.bind(device, queue, encoder, &mut pass, size);
-            {
-                let mut rp = self.begin(encoder, &pass);
-                rp.set_pipeline(pass.render());
-                rp.set_bind_group(0, &group, &[]);
-                if pass.buffers
-                    && let Some(g) = &self.buffers.group
-                {
-                    rp.set_bind_group(4, g, &[]);
-                }
-                rp.set_bind_group(1, &geometry.group, &[]);
-                rp.set_vertex_buffer(0, geometry.vertices());
-                rp.set_index_buffer(geometry.indices.slice(..), wgpu::IndexFormat::Uint32);
-                for &(first, quads, offset) in &geometry.translucent_runs {
-                    if pass.draw {
-                        rp.set_bind_group(2, &geometry.slot_group, &[offset]);
-                    }
-                    rp.draw_indexed(first * 6..(first + quads) * 6, 0, 0..1);
-                }
-            }
-            self.mips_valid &= !pass.written;
-        }
-        self.hand = hand;
-        self.hand_water = Some(pass);
-    }
-
-    /// The rain, then the snow, `set_weather` gave for this frame, with `gbuffers_weather`.
-    pub(crate) fn draw_weather(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        encoder: &mut wgpu::CommandEncoder,
-        size: [u32; 2],
-    ) {
-        // The passes stay for later frames when this one has no rain or snow.
-        let Some(weather) = self.weather_draw.take() else {
-            return;
-        };
-        let Some(mut passes) = self.weather.take() else {
-            return;
-        };
-        if weather.generation != self.weather_generation {
-            self.weather_generation = weather.generation;
-            for (pass, sprite) in passes.iter_mut().zip(&weather.sprites) {
-                pass.atlas = sprite.clone();
-                pass.groups.clear();
-            }
-        }
-        for (pass, quads) in passes.iter_mut().zip(weather.quads.clone()) {
-            if quads.is_empty() {
-                continue;
-            }
-            let group = self.bind(device, queue, encoder, pass, size);
-            {
-                let mut rp = self.begin(encoder, pass);
-                rp.set_pipeline(pass.render());
-                rp.set_bind_group(0, &group, &[]);
-                if pass.buffers
-                    && let Some(g) = &self.buffers.group
-                {
-                    rp.set_bind_group(4, g, &[]);
-                }
-                if pass.draw {
-                    self.draws.bind(&mut rp, "RAIN_SNOW");
-                }
-                rp.set_vertex_buffer(0, weather.vertices.slice(..));
-                rp.set_index_buffer(weather.indices.slice(..), wgpu::IndexFormat::Uint32);
-                rp.draw_indexed(quads.start * 6..quads.end * 6, 0, 0..1);
-            }
-            self.mips_valid &= !pass.written;
-        }
-        self.weather = Some(passes);
-    }
-
     /// Whether the pack draws rain and snow itself.
-    pub fn has_weather(&self) -> bool {
+    fn has_weather(&self) -> bool {
         self.weather.is_some()
     }
 
     /// The rain and snow to draw this frame (`None`: none).
-    pub fn set_weather(&mut self, weather: Option<Weather>) {
+    fn set_weather(&mut self, weather: Option<Weather>) {
         self.weather_draw = weather;
     }
 
-    /// Regenerates the mip chain of buffer `b`'s side that programs read.
-    fn mipmap(&mut self, encoder: &mut wgpu::CommandEncoder, b: usize) {
-        let (Some(targets), Some((pipeline, _))) = (&self.targets, self.down.get(&self.formats[b]))
-        else {
-            return;
-        };
-        let Some(mips) = &targets.mips[b] else { return };
-        let side = &mips[usize::from(self.main & 1 << b != 0)];
-        // Timed as one pass per buffer (its first level), so the pass timer shows the chains.
-        let label = format!("mipmaps colortex{b}");
-        let mut first = true;
-        for (attachment, group) in &side.levels {
-            let timestamp_writes = if std::mem::take(&mut first) {
-                self.timing.as_mut().and_then(|t| t.writes(&label))
-            } else {
-                None
-            };
-            let mut rp = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Shader pack mipmap"),
-                timestamp_writes,
-                color_attachments: &[attach(
-                    attachment,
-                    wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
-                        store: wgpu::StoreOp::Store,
-                    },
-                )],
-                ..Default::default()
-            });
-            rp.set_pipeline(pipeline);
-            rp.set_bind_group(0, group, &[]);
-            rp.draw(0..3, 0..1);
-        }
-    }
-
     /// What the shadow camera draws of the terrain this frame, when the pack draws it.
-    pub fn shadow_view(&self, frame: &super::super::Frame) -> Option<ShadowView> {
+    fn shadow_view(&self, frame: &super::super::Frame) -> Option<ShadowView> {
         if !self.has_shadow() {
             return None;
         }
@@ -1287,25 +218,13 @@ impl PackPost {
         )
     }
 
-    /// Whether the buffers `pass` writes have different sizes at the current render size: then
-    /// it is skipped, as one whose `size.buffer` sizes never meet is when the pack loads. Only
-    /// a pass writing buffers sized relative to the render size and in pixels can.
-    fn sizes_differ(&self, pass: &Pass) -> bool {
-        let Some(targets) = &self.targets else {
-            return false;
-        };
-        let mut sizes = pass.writes.iter().map(|&(_, b)| targets.sizes[b]);
-        let first = sizes.next();
-        !pass.group.shadow() && pass.group != Group::Final && sizes.any(|s| Some(s) != first)
-    }
-
     /// Whether the pack draws terrain itself, or has nothing draw it.
-    pub fn has_terrain(&self) -> bool {
+    fn has_terrain(&self) -> bool {
         self.terrain.is_some() || self.terrain_cutout.is_some() || self.terrain_undrawn
     }
 
     /// Whether the pack's shadow pass draws terrain (`shadow_view`).
-    pub fn has_shadow(&self) -> bool {
+    fn has_shadow(&self) -> bool {
         self.shadow_targets.is_some()
             && (self.shadow_terrain.is_some() || self.shadow_water.is_some())
     }
@@ -1313,482 +232,39 @@ impl PackPost {
     /// Whether the pack draws the sky (disc, sunset, stars, void) itself.
     /// What the world's background is when the pack draws the sky: colortex0's clear colour
     /// (`None`: the fog colour, its default).
-    pub fn sky_clear(&self) -> Option<[f32; 4]> {
+    fn sky_clear(&self) -> Option<[f32; 4]> {
         self.sky_clear.filter(|_| self.has_sky())
     }
 
     /// Whether the pack has a sky program, drawing or not: vanilla's sky is then not drawn.
-    pub fn has_sky(&self) -> bool {
+    fn has_sky(&self) -> bool {
         self.hides_sky
     }
 
     /// Whether the pack has the sun and moon's program, drawing or not.
-    pub fn has_celestial(&self) -> bool {
+    fn has_celestial(&self) -> bool {
         self.hides_celestial
     }
 
     /// Whether the pack draws translucent terrain itself.
-    pub fn has_water(&self) -> bool {
+    fn has_water(&self) -> bool {
         self.water.is_some() || self.water_undrawn
     }
 
     /// The names of the programs that run, in order.
-    pub fn programs(&self) -> Vec<&str> {
+    fn programs(&self) -> Vec<&str> {
         self.passes.iter().map(|p| p.name.as_str()).collect()
     }
 
-    /// Drops every pass's cached bind groups, compute stages included: they name views that
-    /// were made again.
-    fn forget_groups(&mut self) {
-        let sky = self
-            .sky
-            .iter_mut()
-            .flat_map(|s| s.basic.iter_mut().chain(&mut s.textured));
-        let entities = self
-            .entities
-            .iter_mut()
-            .flat_map(|e| e.passes.iter_mut().chain(&mut e.shadow).flatten());
-        let passes = self
-            .passes
-            .iter_mut()
-            .chain(&mut self.terrain)
-            .chain(&mut self.terrain_cutout)
-            .chain(&mut self.water)
-            .chain(sky)
-            .chain(entities)
-            .chain(&mut self.clouds)
-            .chain(&mut self.lines)
-            .chain(self.weather.iter_mut().flatten())
-            .chain(self.hand.iter_mut().map(|h| &mut h.0))
-            .chain(&mut self.hand_water)
-            .chain(&mut self.shadow_terrain)
-            .chain(&mut self.shadow_water)
-            .chain(&mut self.shadow_comp);
-        for pass in passes {
-            pass.groups.clear();
-            for c in &mut pass.compute {
-                c.groups.clear();
-            }
-        }
-    }
-
-    pub(crate) fn resize(&mut self, device: &wgpu::Device, size: [u32; 2]) {
-        if pack_images::resize_images(device, &mut self.images, size) {
-            self.forget_groups();
-        }
-        self.buffers.resize(device, size);
-        if self.targets.as_ref().is_some_and(|t| t.size == size) {
-            return;
-        }
-        self.setup_pending = true;
-        self.rgb_unset = true;
-        // Free the old targets before making the new ones: a pack with large buffers can't
-        // hold both sets at once on a card it otherwise fits (a window resize ran out of video
-        // memory). The bind groups hold the old views too, and the GPU may still be using
-        // them, so wait for it; a resize is rare.
-        if self.targets.take().is_some() {
-            self.forget_groups();
-            let _ = device.poll(wgpu::PollType::wait_indefinitely());
-        }
-        let sizes: [[u32; 2]; BUFFERS] =
-            std::array::from_fn(|i| self.sizes[i].map_or(size, |s| s.resolve(size)));
-        let full_chain = |size: [u32; 2]| 32 - size[0].max(size[1]).max(1).leading_zeros();
-        let texture_sized = |label: &str, format, usage, levels, size: [u32; 2]| {
-            device.create_texture(&wgpu::TextureDescriptor {
-                label: Some(label),
-                size: wgpu::Extent3d {
-                    width: size[0],
-                    height: size[1],
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: levels,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format,
-                usage: usage | wgpu::TextureUsages::TEXTURE_BINDING,
-                view_formats: &[],
-            })
-        };
-        let texture = |label: &str, format, usage| texture_sized(label, format, usage, 1, size);
-        let level = |t: &wgpu::Texture, level: u32| {
-            t.create_view(&wgpu::TextureViewDescriptor {
-                base_mip_level: level,
-                mip_level_count: Some(1),
-                ..Default::default()
-            })
-        };
-        let mut mips: [Option<[Mips; 2]>; BUFFERS] = Default::default();
-        let color = std::array::from_fn(|i| {
-            (self.used & 1 << i != 0).then(|| {
-                let label = format!("colortex{i}");
-                let mipped = self.mipped & 1 << i != 0;
-                let levels = if mipped { full_chain(sizes[i]) } else { 1 };
-                let mut attachment = wgpu::TextureUsages::RENDER_ATTACHMENT;
-                if self.storage & 1 << i != 0 {
-                    attachment |= wgpu::TextureUsages::STORAGE_BINDING;
-                    // Atomics on a texture need it made for them (Metal ignores them otherwise).
-                    if device.features().contains(wgpu::Features::TEXTURE_ATOMIC)
-                        && matches!(
-                            self.formats[i],
-                            wgpu::TextureFormat::R32Sint | wgpu::TextureFormat::R32Uint
-                        )
-                    {
-                        attachment |= wgpu::TextureUsages::STORAGE_ATOMIC;
-                    }
-                }
-                if self.copied & 1 << i != 0 {
-                    attachment |= wgpu::TextureUsages::COPY_SRC;
-                }
-                // A buffer that isn't cleared starts each frame with B copied back to A.
-                if i != 0 && self.clears[i].is_none() {
-                    attachment |= wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST;
-                }
-                let side = || texture_sized(&label, self.formats[i], attachment, levels, sizes[i]);
-                let a = side();
-                let sides = [
-                    a.clone(),
-                    if self.doubled & 1 << i != 0 {
-                        side()
-                    } else {
-                        a
-                    },
-                ];
-                if mipped && let Some((_, layout)) = self.down.get(&self.formats[i]) {
-                    mips[i] = Some(sides.each_ref().map(|t| {
-                        Mips {
-                            all: t.create_view(&Default::default()),
-                            levels: (1..levels)
-                                .map(|l| {
-                                    let group =
-                                        device.create_bind_group(&wgpu::BindGroupDescriptor {
-                                            label: Some(&label),
-                                            layout,
-                                            entries: &[
-                                                wgpu::BindGroupEntry {
-                                                    binding: 0,
-                                                    resource: wgpu::BindingResource::TextureView(
-                                                        &level(t, l - 1),
-                                                    ),
-                                                },
-                                                wgpu::BindGroupEntry {
-                                                    binding: 2,
-                                                    resource: wgpu::BindingResource::Sampler(
-                                                        &self.linear,
-                                                    ),
-                                                },
-                                            ],
-                                        });
-                                    (level(t, l), group)
-                                })
-                                .collect(),
-                        }
-                    }));
-                }
-                sides.map(|t| level(&t, 0))
-            })
-        });
-        let depth32 = wgpu::TextureFormat::Depth32Float;
-        let depth_texture = texture(
-            "depthtex0",
-            depth32,
-            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
-        );
-        let depth1 = self.depth1.then(|| {
-            let t = texture("depthtex1", depth32, wgpu::TextureUsages::COPY_DST);
-            let view = t.create_view(&Default::default());
-            (t, view)
-        });
-        let depth2 = self.depth2.then(|| {
-            let t = texture("depthtex2", depth32, wgpu::TextureUsages::COPY_DST);
-            let view = t.create_view(&Default::default());
-            (t, view)
-        });
-        let water_mask = self.water_mask.then(|| {
-            let t = texture(
-                "Shader pack water patches",
-                depth32,
-                wgpu::TextureUsages::RENDER_ATTACHMENT,
-            );
-            let view = t.create_view(&Default::default());
-            (t, view)
-        });
-        self.water_mask_dirty = true;
-        let scratch = std::array::from_fn(|i| {
-            (self.copied & 1 << i != 0).then(|| {
-                // A copy also read as an image before a dispatch.
-                let image = if self.storage & 1 << i != 0 {
-                    wgpu::TextureUsages::STORAGE_BINDING
-                } else {
-                    wgpu::TextureUsages::empty()
-                };
-                texture_sized(
-                    &format!("colortex{i} copy"),
-                    self.formats[i],
-                    wgpu::TextureUsages::COPY_DST | image,
-                    1,
-                    sizes[i],
-                )
-                .create_view(&Default::default())
-            })
-        });
-        let sink = texture(
-            "Shader pack sink",
-            SINK,
-            wgpu::TextureUsages::RENDER_ATTACHMENT,
-        )
-        .create_view(&Default::default());
-        self.targets = Some(Targets {
-            size,
-            sink,
-            sizes,
-            scratch,
-            color,
-            depth: depth_texture.create_view(&Default::default()),
-            depth_texture,
-            depth1,
-            depth2,
-            water_mask,
-            mips,
-        });
-        self.forget_groups();
-        for pass in self.passes.iter().filter(|p| self.sizes_differ(p)) {
-            log::info!(
-                "shader pack: {}: writes buffers of different sizes at {}x{} (size.buffer); skipped",
-                pass.name,
-                size[0],
-                size[1]
-            );
-        }
-    }
-
-    /// The shadow pass (2.1, passes 2 and 3): the shadow buffers cleared, then the `shadowcomp`
-    /// programs, each drawing into the "alt" side of what it writes and flipping it after.
-    fn run_shadow(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        encoder: &mut wgpu::CommandEncoder,
-        terrain: &mut TerrainDraw<'_>,
-        frame: &super::super::Frame,
-    ) {
-        // Opt-in only (`sunrise-graphics.txt` shadowCache). Off: always redraw, drop any cache.
-        if !frame.shadow_cache {
-            self.shadow_cache = ShadowCache::default();
-            self.draw_shadow_pass(device, queue, encoder, terrain);
-            return;
-        }
-
-        // Compute the current frame's cache key before borrowing shadow_targets mutably.
-        let cache_key = self.compute_shadow_cache_key(frame);
-
-        // Entity vertices are interpolated each frame, so their shadows cannot be reused.
-        let has_shadow_entities = self
-            .entities
-            .as_ref()
-            .is_some_and(|entities| entities.geometry.draws.iter().any(|draw| draw.shadow));
-        // Custom images are cleared each frame (`pack_images::clear`) before the
-        // shadow pass writes them, so a pack with any redraws it too.
-        let cache_hit = !has_shadow_entities
-            && self.images.is_empty()
-            && self.shadow_cache.key == Some(cache_key)
-            && self.shadow_targets.is_some();
-        if cache_hit {
-            // The targets still hold this map (and `main`, the A/B side
-            // `shadowcomp` left current).
-            return;
-        }
-        self.draw_shadow_pass(device, queue, encoder, terrain);
-        self.shadow_cache.key = self.shadow_targets.is_some().then_some(cache_key);
-    }
-
-    /// The shadow pass body: terrain, entities, clears, and `shadowcomp`.
-    fn draw_shadow_pass(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        encoder: &mut wgpu::CommandEncoder,
-        terrain: &mut TerrainDraw<'_>,
-    ) {
-        let Some(t) = &mut self.shadow_targets else {
-            return;
-        };
-        t.begin_frame();
-        let size = [t.size; 2];
-        self.draw_terrain(
-            device,
-            queue,
-            encoder,
-            size,
-            TerrainList::ShadowSolid,
-            terrain,
-        );
-        self.draw_shadow_entities(device, queue, encoder, size);
-        let t = self.shadow_targets.as_mut().expect("shadow pass");
-        t.clear_rest(encoder);
-        t.copy_depth1(encoder);
-        self.draw_terrain(
-            device,
-            queue,
-            encoder,
-            size,
-            TerrainList::ShadowTranslucent,
-            terrain,
-        );
-        let mut comp = std::mem::take(&mut self.shadow_comp);
-        for pass in &mut comp {
-            let mut compute = std::mem::take(&mut pass.compute);
-            for c in &mut compute {
-                self.dispatch(device, queue, encoder, c, size);
-            }
-            pass.compute = compute;
-            if matches!(pass.pipeline, Pipeline::Compute { .. }) {
-                self.dispatch(device, queue, encoder, pass, size);
-                continue;
-            }
-            let group = self.bind(device, queue, encoder, pass, size);
-            let t = self.shadow_targets.as_ref().expect("shadow pass");
-            let mut attachments: SmallVec<[Option<wgpu::RenderPassColorAttachment>; BUFFERS]> =
-                SmallVec::new();
-            for &(location, buffer) in &pass.writes {
-                let l = location as usize;
-                if attachments.len() <= l {
-                    attachments.resize(l + 1, None);
-                }
-                // A shadowcomp shader can leave part of its destination untouched.
-                let ops = wgpu::Operations {
-                    load: wgpu::LoadOp::Load,
-                    store: wgpu::StoreOp::Store,
-                };
-                attachments[l] = t.color(buffer, true).and_then(|v| attach(v, ops));
-            }
-            {
-                let mut rp = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some(&pass.name),
-                    color_attachments: &attachments,
-                    timestamp_writes: self.timing.as_mut().and_then(|t| t.writes(&pass.name)),
-                    ..Default::default()
-                });
-                rp.set_pipeline(pass.render());
-                rp.set_bind_group(0, &group, &[]);
-                if pass.buffers
-                    && let Some(g) = &self.buffers.group
-                {
-                    rp.set_bind_group(4, g, &[]);
-                }
-                rp.draw(0..6, 0..1);
-            }
-            drop(attachments);
-            if let Some(t) = &mut self.shadow_targets {
-                t.main ^= pass.flip;
-            }
-        }
-        self.shadow_comp = comp;
-    }
-
-    /// Computes the cache key for the current frame.
-    fn compute_shadow_cache_key(&self, frame: &super::super::Frame) -> ShadowCacheKey {
-        let shadow = &self.uniforms.shadow;
-        // Use the same logic as shadow_camera to compute the light direction and snapped camera.
-        // Use the public shadow_light function which returns the normalized light direction.
-        let light = super::super::pack_uniforms::shadow_light(frame, shadow);
-        let light = light.as_dvec3();
-        let up = if light.z.abs() > 0.99 {
-            DVec3::Y
-        } else {
-            DVec3::Z
-        };
-        let rotation = DMat4::look_to_rh(DVec3::ZERO, -light, up);
-        let at = rotation.transform_vector3(frame.camera);
-        let step = f64::from(shadow.interval);
-        let snapped_camera = if step > 0.0 {
-            Some((at / step).floor() * step)
-        } else {
-            Some(at)
-        };
-
-        // Hash the shadow settings that affect the shadow map.
-        use std::hash::{Hash, Hasher};
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        shadow.resolution.hash(&mut hasher);
-        shadow.distance.to_bits().hash(&mut hasher);
-        shadow.render_mul.to_bits().hash(&mut hasher);
-        shadow.interval.to_bits().hash(&mut hasher);
-        shadow.sun_path_rotation.to_bits().hash(&mut hasher);
-        shadow.fov.map(|f| f.to_bits()).hash(&mut hasher);
-        shadow.near.map(f32::to_bits).hash(&mut hasher);
-        shadow.far.map(f32::to_bits).hash(&mut hasher);
-        for hf in &shadow.hardware_filtering {
-            hf.hash(&mut hasher);
-        }
-        for color in &shadow.colors {
-            format!("{:?}", color.format).hash(&mut hasher);
-            color.clear.hash(&mut hasher);
-            if let Some(cc) = color.clear_color {
-                for c in cc {
-                    c.to_bits().hash(&mut hasher);
-                }
-            }
-            color.mipmap.hash(&mut hasher);
-        }
-        let shadow_settings_hash = hasher.finish();
-        let shadow_uniforms_hash = self.shadow_uniforms_hash();
-
-        ShadowCacheKey {
-            sun_angle: frame.sky.sun_angle,
-            moon_angle: frame.sky.moon_angle,
-            snapped_camera,
-            shadow_settings_hash,
-            shadow_scene_revision: frame.shadow_scene_revision,
-            ticks: frame.ticks,
-            day_time: frame.pack.day_time,
-            shadow_uniforms_hash,
-        }
-    }
-
-    fn shadow_uniforms_hash(&self) -> u64 {
-        use std::hash::{Hash, Hasher};
-
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        let passes = self
-            .shadow_terrain
-            .iter()
-            .chain(self.shadow_water.iter())
-            .chain(self.shadow_comp.iter())
-            .chain(
-                self.entities
-                    .iter()
-                    .flat_map(|entities| entities.shadow.iter().flatten()),
-            );
-        for pass in passes {
-            pass.name.hash(&mut hasher);
-            for (index, ty, offset) in &pass.uniforms {
-                index.hash(&mut hasher);
-                ty.hash(&mut hasher);
-                offset.hash(&mut hasher);
-                let Some(value) = index.and_then(|index| self.uniforms.values.get(index)) else {
-                    continue;
-                };
-                match value {
-                    pack_uniforms::Value::F(values) => {
-                        0u8.hash(&mut hasher);
-                        for value in values {
-                            value.to_bits().hash(&mut hasher);
-                        }
-                    }
-                    pack_uniforms::Value::I(values) => {
-                        1u8.hash(&mut hasher);
-                        values.hash(&mut hasher);
-                    }
-                }
-            }
-        }
-        hasher.finish()
+    /// Whether the pack draws the first-person hand itself.
+    fn has_hand(&self) -> bool {
+        self.hand.is_some()
     }
 
     /// Runs the pack over the world drawn into `world` (colour) and `world_depth`, then draws
     /// the result onto `screen`.
     #[allow(clippy::too_many_arguments)]
-    pub fn run(
+    fn run(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -2291,5 +767,1530 @@ impl PackPost {
             rp.set_bind_group(0, &group, &[]);
             rp.draw(0..3, 0..1);
         }
+    }
+}
+
+impl PackPost {
+    /// Writes `pass`'s uniforms for a target of `out` pixels; its bind group for the buffers'
+    /// current mapping. The buffers it both samples and stores to are copied first, and it
+    /// samples the copies.
+    pub fn bind(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        pass: &mut Pass,
+        out: [u32; 2],
+    ) -> wgpu::BindGroup {
+        pack_images::copy(encoder, &self.images, pass.image_copies);
+        for &(_, image) in &pass.images {
+            if let Image::StandIn(format, dimension) = image
+                && let Some(s) = pack_images::stand_in(&self.stand_ins, format, dimension)
+            {
+                s.clear(encoder);
+            }
+        }
+        if let Some(targets) = &self.targets {
+            for i in (0..BUFFERS).filter(|i| pass.copies & 1 << i != 0) {
+                if let (Some(t), Some(copy)) = (&targets.color[i], &targets.scratch[i]) {
+                    let side = usize::from(self.main & 1 << i != 0);
+                    encoder.copy_texture_to_texture(
+                        t[side].texture().as_image_copy(),
+                        copy.texture().as_image_copy(),
+                        t[side].texture().size(),
+                    );
+                }
+            }
+        }
+        let fog = self.uniforms.fog();
+        // Our block members first (`hz_target`, `hz_fog_color`, `hz_fog`, `hz_depth_linear`),
+        // then the pack's.
+        let ours = [
+            [
+                out[0] as f32,
+                out[1] as f32,
+                1.0 / out[0] as f32,
+                1.0 / out[1] as f32,
+            ],
+            fog[0].to_array(),
+            fog[1].to_array(),
+            pass.depth_linear,
+        ];
+        let head: &[u8] = bytemuck::cast_slice(&ours);
+        let n = head.len().min(pass.block.len());
+        pass.block[..n].copy_from_slice(&head[..n]);
+        for (index, ty, offset) in &pass.uniforms {
+            let Some((i, v)) = index.and_then(|i| Some((i, self.uniforms.values.get(i)?))) else {
+                continue;
+            };
+            // A built-in of another type keeps its initial value (0); custom uniforms were
+            // checked when the pass was built.
+            if pack_uniforms::NAMES
+                .get(i)
+                .is_none_or(|name| v.read_as(name, ty))
+            {
+                v.write(ty, &mut pass.block, *offset as usize);
+            }
+        }
+        if !pass.block.is_empty() {
+            queue.write_buffer(&pass.ubo, 0, &pass.block);
+        }
+        let targets = self.targets.as_ref().expect("resized");
+        let shadow = self.shadow_targets.as_ref();
+        let shadow_main = shadow.map_or(0, |s| s.main);
+        let shadow_space = pass.group.shadow();
+        // A chain is sampled only while it is current: a buffer written since its last chain
+        // reads its first level, never stale levels (6.1.7). The shadow buffers have none.
+        let (main, current) = if shadow_space {
+            (shadow_main, 0)
+        } else {
+            (self.main, self.mips_valid & self.mipped & pass.reads)
+        };
+        let key = u64::from(main & pass.reads)
+            | u64::from(current) << 16
+            | u64::from(shadow_main & pass.shadow_reads) << 32;
+        let group = pass.groups.entry(key).or_insert_with(|| {
+            let mut entries = vec![wgpu::BindGroupEntry {
+                binding: 0,
+                resource: pass.ubo.as_entire_binding(),
+            }];
+            for s in &pass.samplers {
+                let shadow_color = |i: usize, side: usize| {
+                    shadow.and_then(|t| t.color[i].as_ref()).map(|c| &c[side])
+                };
+                let texture = match s.source {
+                    Source::Color(i) if shadow_space => {
+                        shadow_color(i, usize::from(key & 1 << i != 0)).unwrap_or(&self.dummy)
+                    }
+                    Source::ShadowColor(i) => {
+                        shadow_color(i, usize::from(key & 1 << (32 + i) != 0))
+                            .unwrap_or(&self.dummy)
+                    }
+                    Source::ShadowDepth(i, _) => match shadow {
+                        Some(t) => match (i, &t.depth1) {
+                            (1, Some(d)) => &d.1,
+                            _ => &t.depth.1,
+                        },
+                        None => &self.shadow.0,
+                    },
+                    Source::Color(i) if pass.copies & 1 << i != 0 => {
+                        targets.scratch[i].as_ref().unwrap_or(&self.dummy)
+                    }
+                    Source::Color(i) => {
+                        let side = usize::from(key & 1 << i != 0);
+                        match (&targets.mips[i], &targets.color[i]) {
+                            (Some(m), _) if current & 1 << i != 0 => &m[side].all,
+                            (_, Some(t)) => &t[side],
+                            (_, None) => &self.dummy,
+                        }
+                    }
+                    Source::Depth => &targets.depth,
+                    Source::WaterMask => targets.water_mask.as_ref().map_or(&self.dummy, |m| &m.1),
+                    // Before translucent terrain the two are the same.
+                    Source::Depth1 => match &targets.depth1 {
+                        Some(d)
+                            if matches!(
+                                pass.group,
+                                Group::Deferred
+                                    | Group::Composite
+                                    | Group::Final
+                                    | Group::Translucent
+                            ) =>
+                        {
+                            &d.1
+                        }
+                        _ => &targets.depth,
+                    },
+                    Source::Depth2 => match &targets.depth2 {
+                        Some(d)
+                            if matches!(
+                                pass.group,
+                                Group::Deferred
+                                    | Group::Composite
+                                    | Group::Final
+                                    | Group::Translucent
+                            ) =>
+                        {
+                            &d.1
+                        }
+                        _ => match &targets.depth1 {
+                            Some(d)
+                                if matches!(
+                                    pass.group,
+                                    Group::Deferred
+                                        | Group::Composite
+                                        | Group::Final
+                                        | Group::Translucent
+                                ) =>
+                            {
+                                &d.1
+                            }
+                            _ => &targets.depth,
+                        },
+                    },
+                    Source::Noise => &self.noise,
+                    Source::Dummy if s.dimension == wgpu::TextureViewDimension::D3 => {
+                        &self.dummy_3d
+                    }
+                    Source::Dummy if s.dimension == wgpu::TextureViewDimension::D1 => {
+                        &self.dummy_1d
+                    }
+                    Source::Normals if pass.paged => {
+                        self.paged_maps[0].as_ref().unwrap_or(&self.dummy_normal)
+                    }
+                    Source::Specular if pass.paged => {
+                        self.paged_maps[1].as_ref().unwrap_or(&self.dummy_black)
+                    }
+                    Source::Normals => self
+                        .material_maps
+                        .as_ref()
+                        .filter(|_| pass.material_maps)
+                        .map_or(&self.dummy_normal, |maps| &maps[0]),
+                    Source::Specular => self
+                        .material_maps
+                        .as_ref()
+                        .filter(|_| pass.material_maps)
+                        .map_or(&self.dummy_black, |maps| &maps[1]),
+                    Source::Dummy => &self.dummy,
+                    Source::Image(k) if pass.image_copies & 1 << k != 0 => {
+                        self.images[k].copy.as_ref().unwrap_or(&self.dummy)
+                    }
+                    Source::Image(k) => self.images[k].view.as_ref().unwrap_or(&self.dummy),
+                    Source::Custom { index, .. } => match &self.textures[index].image {
+                        pack_textures::Image::View(v) => v,
+                        _ => &self.dummy,
+                    },
+                    Source::Shadow => &self.shadow.0,
+                    Source::Atlas => pass
+                        .atlas
+                        .as_ref()
+                        .or(self.atlas.as_ref())
+                        .unwrap_or(&self.dummy),
+                    Source::Lightmap => &self.lightmap,
+                };
+                let sampler = match SamplerKind::of(s.source, s.filtering) {
+                    SamplerKind::Linear => &self.linear,
+                    SamplerKind::Nearest => &self.nearest,
+                    SamplerKind::Repeat => &self.repeat,
+                    SamplerKind::NearestRepeat => &self.nearest_repeat,
+                    SamplerKind::Atlas => &self.atlas_sampler,
+                    SamplerKind::Buffer => &self.buffer_sampler,
+                    SamplerKind::Comparison => shadow.map_or(&self.shadow.1, |t| &t.comparison),
+                };
+                entries.push(wgpu::BindGroupEntry {
+                    binding: s.binding,
+                    resource: wgpu::BindingResource::TextureView(texture),
+                });
+                if s.sampler == s.binding + 1 {
+                    entries.push(wgpu::BindGroupEntry {
+                        binding: s.sampler,
+                        resource: wgpu::BindingResource::Sampler(sampler),
+                    });
+                }
+            }
+            // An image is the side its buffer's sampler reads.
+            for &(binding, image) in &pass.images {
+                let view = match image {
+                    Image::Color(i) => {
+                        let side = usize::from(key & 1 << i != 0);
+                        targets.color[i].as_ref().map_or(&self.dummy, |t| &t[side])
+                    }
+                    Image::Custom(k) => self.images[k].view.as_ref().unwrap_or(&self.dummy),
+                    Image::ColorBefore(i) => targets.scratch[i].as_ref().unwrap_or(&self.dummy),
+                    Image::CustomBefore(k) => self.images[k].before.as_ref().unwrap_or(&self.dummy),
+                    Image::StandIn(format, dimension) => {
+                        pack_images::stand_in(&self.stand_ins, format, dimension)
+                            .map_or(&self.dummy, |s| &s.view)
+                    }
+                };
+                entries.push(wgpu::BindGroupEntry {
+                    binding,
+                    resource: wgpu::BindingResource::TextureView(view),
+                });
+            }
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some(&pass.name),
+                layout: &pass.layout,
+                entries: &entries,
+            })
+        });
+        group.clone()
+    }
+
+    /// Dispatches compute pass `pass` over a target of `size`.
+    pub fn dispatch(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        pass: &mut Pass,
+        size: [u32; 2],
+    ) {
+        let Pipeline::Compute {
+            pipeline,
+            groups,
+            render,
+            local,
+        } = &pass.pipeline
+        else {
+            return;
+        };
+        let pipeline = pipeline.get().expect("compiled with its pack");
+        let groups = groups.unwrap_or_else(|| {
+            let n = |k: usize| (size[k] as f32 * render[k] / local[k] as f32).ceil() as u32;
+            [n(0), n(1), 1]
+        });
+        let (pipeline, groups) = (pipeline.clone(), groups);
+        // wgpu panics on a dispatch over its limit. The translator reshapes a large
+        // `workGroups`; a `workGroupsRender` that large is not run.
+        let most = device.limits().max_compute_workgroups_per_dimension;
+        if groups.iter().any(|&n| n > most) {
+            log::warn!(
+                "shader pack: {}: {groups:?} work groups is over {most} per dimension; not run",
+                pass.name
+            );
+            return;
+        }
+        for image in (0..self.images.len()).filter(|k| pass.snapshots & 1 << k != 0) {
+            pack_images::snapshot(encoder, &self.images[image]);
+        }
+        let group = self.bind(device, queue, encoder, pass, size);
+        let mut cp = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+            label: Some(&pass.name),
+            timestamp_writes: self
+                .timing
+                .as_mut()
+                .and_then(|t| t.compute_writes(&format!("{} (compute)", pass.name))),
+        });
+        cp.set_pipeline(&pipeline);
+        cp.set_bind_group(0, &group, &[]);
+        if pass.buffers
+            && let Some(g) = &self.buffers.group
+        {
+            cp.set_bind_group(4, g, &[]);
+        }
+        cp.dispatch_workgroups(groups[0], groups[1], groups[2]);
+        drop(cp);
+        self.mips_valid &= !pass.written;
+    }
+
+    /// A render pass into the buffers `pass` writes, in place, tested against the world's depth.
+    pub(crate) fn begin<'e>(
+        &mut self,
+        encoder: &'e mut wgpu::CommandEncoder,
+        pass: &Pass,
+    ) -> wgpu::RenderPass<'e> {
+        self.begin_with(encoder, pass, false)
+    }
+
+    /// `begin`, or with `water_mask` into the water patches' depth instead of the frame's.
+    pub(crate) fn begin_with<'e>(
+        &mut self,
+        encoder: &'e mut wgpu::CommandEncoder,
+        pass: &Pass,
+        water_mask: bool,
+    ) -> wgpu::RenderPass<'e> {
+        let targets = self.targets.as_ref().expect("resized");
+        let load = wgpu::Operations {
+            load: wgpu::LoadOp::Load,
+            store: wgpu::StoreOp::Store,
+        };
+        // The shadow pass draws into the shadow buffers and the shadow map, the frame's first
+        // one clearing them.
+        let (depth_ops, shadow_ops) = match &mut self.shadow_targets {
+            Some(s) if pass.group.shadow() => s.clear_ops(pass.writes.iter().map(|w| w.1)),
+            _ => (super::super::pack_shadow::load(), [load; SHADOW_COLORS]),
+        };
+        let shadow = self.shadow_targets.as_ref().filter(|_| pass.group.shadow());
+        let mut attachments: SmallVec<[Option<wgpu::RenderPassColorAttachment>; BUFFERS]> =
+            SmallVec::new();
+        for &(location, buffer) in &pass.writes {
+            let l = location as usize;
+            if attachments.len() <= l {
+                attachments.resize(l + 1, None);
+            }
+            attachments[l] = match shadow {
+                Some(s) => s
+                    .color(buffer, false)
+                    .and_then(|v| attach(v, shadow_ops.get(buffer).copied().unwrap_or(load))),
+                None => targets.color[buffer]
+                    .as_ref()
+                    .and_then(|t| attach(&t[usize::from(self.main & 1 << buffer != 0)], load)),
+            };
+        }
+        let timestamp_writes = self.timing.as_mut().and_then(|t| t.writes(&pass.name));
+        encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some(&pass.name),
+            color_attachments: &attachments,
+            timestamp_writes,
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                view: match &targets.water_mask {
+                    Some((_, view)) if water_mask => view,
+                    _ => shadow.map_or(&targets.depth, |s| &s.depth.1),
+                },
+                depth_ops: Some(depth_ops),
+                stencil_ops: None,
+            }),
+            ..Default::default()
+        })
+    }
+
+    /// Terrain (or, `translucent`, translucent terrain) with the pack's program; `draw` issues
+    /// the game's draws. Solid terrain in two parts (a pack's `gbuffers_terrain_solid` and
+    /// `_cutout`) has its cutout part drawn second, from the same draws.
+    pub fn draw_terrain(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        size: [u32; 2],
+        list: TerrainList,
+        draw: &mut TerrainDraw<'_>,
+    ) {
+        self.draw_terrain_part(device, queue, encoder, size, list, false, draw);
+        if list == TerrainList::Solid {
+            self.draw_terrain_part(device, queue, encoder, size, list, true, draw);
+        }
+    }
+
+    /// The pass that draws `list`, or the cutout part of the solid list.
+    pub fn terrain_slot(&mut self, list: TerrainList, cutout: bool) -> &mut Option<Pass> {
+        match list {
+            TerrainList::Solid if cutout => &mut self.terrain_cutout,
+            TerrainList::Solid => &mut self.terrain,
+            TerrainList::Translucent => &mut self.water,
+            TerrainList::ShadowSolid => &mut self.shadow_terrain,
+            TerrainList::ShadowTranslucent => &mut self.shadow_water,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_terrain_part(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        size: [u32; 2],
+        list: TerrainList,
+        cutout: bool,
+        draw: &mut TerrainDraw<'_>,
+    ) {
+        let Some(mut pass) = self.terrain_slot(list, cutout).take() else {
+            return;
+        };
+        let translucent = list.translucent();
+        let group = self.bind(device, queue, encoder, &mut pass, size);
+        {
+            let mut rp = self.begin(encoder, &pass);
+            rp.set_pipeline(pass.render());
+            rp.set_bind_group(0, &group, &[]);
+            if pass.buffers
+                && let Some(g) = &self.buffers.group
+            {
+                rp.set_bind_group(4, g, &[]);
+            }
+            if pass.draw {
+                let stage = if translucent {
+                    "TERRAIN_TRANSLUCENT"
+                } else {
+                    "TERRAIN_SOLID"
+                };
+                self.draws.bind(&mut rp, stage);
+            }
+            let (groups, ids) = (&self.page_groups, pass.ids);
+            let page = |rp: &mut wgpu::RenderPass<'_>, page: u32| {
+                if let Some((_, _, group)) = groups.get(&page).filter(|_| ids) {
+                    rp.set_bind_group(3, group, &[]);
+                }
+            };
+            let geometry = self
+                .indices
+                .as_ref()
+                .filter(|_| pass.geometry > 0)
+                .map(|indices| (pass.geometry, indices));
+            draw(&mut rp, list, &page, geometry);
+        }
+        if !pass.group.shadow() {
+            self.mips_valid &= !pass.written;
+        }
+        *self.terrain_slot(list, cutout) = Some(pass);
+    }
+
+    /// The sky's parts in vanilla's order, each with the program that draws it; one render pass
+    /// while consecutive programs write the same buffers.
+    pub fn draw_sky(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        size: [u32; 2],
+        frame: &super::super::Frame,
+    ) {
+        let Some(mut sky) = self.sky.take() else {
+            return;
+        };
+        let sky_frame = super::super::pack_sky::SkyFrame {
+            sun_angle: frame.sky.sun_angle,
+            sky_color: frame.sky.sky_color,
+            fog_color: frame.sky.fog_color,
+            sunset_color: frame.sky.sunrise_color,
+            fog: frame
+                .fog
+                .as_ref()
+                .map(|f| [f.color[0], f.color[1], f.color[2]]),
+            stars: frame.stars,
+            dark_disc: frame.dark_disc,
+            detail_distance: frame.detail_distance,
+            celestial: bytemuck::cast_slice(frame.celestial),
+            end_fog_sky: super::super::end_fog_sky(frame),
+        };
+        let parts = sky
+            .geometry
+            .prepare(queue, &sky_frame, self.uniforms.shadow.sun_path_rotation);
+        let mut groups = [None, None];
+        for (i, pass) in [&mut sky.basic, &mut sky.textured].into_iter().enumerate() {
+            if let Some(pass) = pass {
+                groups[i] = Some(self.bind(device, queue, encoder, pass, size));
+                self.mips_valid &= !pass.written;
+            }
+        }
+        let passes = [&sky.basic, &sky.textured];
+        let mut open: Option<(wgpu::RenderPass<'_>, usize)> = None;
+        for part in parts {
+            let i = usize::from(part.textured);
+            let (Some(pass), Some(group)) = (passes[i], &groups[i]) else {
+                continue;
+            };
+            let current = open.as_ref().map(|o| o.1);
+            if current != Some(i) {
+                let same = current
+                    .and_then(|c| passes[c].as_ref())
+                    .is_some_and(|p| p.writes == pass.writes);
+                if !same {
+                    drop(open.take());
+                    open = Some((self.begin(encoder, pass).forget_lifetime(), i));
+                }
+                let rp = &mut open.as_mut().expect("open").0;
+                rp.set_pipeline(pass.render());
+                rp.set_bind_group(0, group, &[]);
+                // A sky program that reads the pack's SSBOs (Noble's `gbuffers_textured`, the
+                // sun's fallback) binds them, as the other passes do.
+                if pass.buffers
+                    && let Some(g) = &self.buffers.group
+                {
+                    rp.set_bind_group(4, g, &[]);
+                }
+                sky.geometry.bind(rp, part.textured);
+                open.as_mut().expect("open").1 = i;
+            }
+            let rp = &mut open.as_mut().expect("open").0;
+            // Each part with vanilla's blend for it: one program, three pipelines.
+            let part_pipeline =
+                pass.sky_parts
+                    .as_ref()
+                    .and_then(|[plain, stars]| match part.stage {
+                        "SKY" | "VOID" => plain.get(),
+                        "STARS" => stars.get(),
+                        _ => None,
+                    });
+            rp.set_pipeline(part_pipeline.unwrap_or(pass.render()));
+            if pass.draw {
+                self.draws.bind(rp, part.stage);
+            }
+            rp.draw(part.range, 0..1);
+        }
+        drop(open);
+        self.sky = Some(sky);
+    }
+
+    /// Entities, block entities, translucent entity parts and particles with the pack's
+    /// programs, those drawn before deferred or (`late`) after: each run `prepare_entities` kept
+    /// is one draw with its own `entityId` or `blockEntityId` and `entityColor`.
+    pub fn draw_entities(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        size: [u32; 2],
+        late: bool,
+    ) {
+        let Some(mut entities) = self.entities.take() else {
+            return;
+        };
+        let geometry = &entities.geometry;
+        for (program, pass) in entities.passes.iter_mut().enumerate() {
+            let Some(pass) = pass.as_mut().filter(|_| entities.late[program] == late) else {
+                continue;
+            };
+            let mut draws = geometry
+                .draws
+                .iter()
+                .filter(|d| d.pack && d.program == program && !d.water_mask)
+                .peekable();
+            let masks: Vec<_> = (geometry.draws.iter())
+                .filter(|d| d.pack && d.program == program && d.water_mask)
+                .collect();
+            if draws.peek().is_none() {
+                continue;
+            }
+            let group = self.bind(device, queue, encoder, pass, size);
+            let portal_group = self.portal_group(
+                device,
+                queue,
+                encoder,
+                pass,
+                size,
+                geometry
+                    .draws
+                    .iter()
+                    .any(|d| d.pack && d.program == program && d.portal),
+            );
+            {
+                let mut rp = self.begin(encoder, pass);
+                rp.set_pipeline(pass.render());
+                rp.set_bind_group(0, &group, &[]);
+                if pass.buffers
+                    && let Some(g) = &self.buffers.group
+                {
+                    rp.set_bind_group(4, g, &[]);
+                }
+                rp.set_bind_group(1, &geometry.table_group, &[]);
+                rp.set_vertex_buffer(0, geometry.vertices());
+                rp.set_index_buffer(geometry.indices.slice(..), wgpu::IndexFormat::Uint32);
+                let mut on_portal = false;
+                for d in draws {
+                    if let Some(portal) = &portal_group
+                        && d.portal != on_portal
+                    {
+                        rp.set_bind_group(0, if d.portal { portal } else { &group }, &[]);
+                        on_portal = d.portal;
+                    }
+                    if pass.draw {
+                        rp.set_bind_group(2, &geometry.group, &[geometry.offset(d.slot)]);
+                    }
+                    rp.draw_indexed(0..d.quads * 6, d.base as i32, 0..1);
+                }
+            }
+            // The boats' water patches, depth only, into their own depth: translucent terrain
+            // discards what lies behind them, and the frame's depth stays the pack's.
+            if let Some(mask) = pass.water_mask.as_ref().and_then(|m| m.get())
+                && !masks.is_empty()
+                && self
+                    .targets
+                    .as_ref()
+                    .is_some_and(|t| t.water_mask.is_some())
+            {
+                let mut rp = self.begin_with(encoder, pass, true);
+                rp.set_pipeline(mask);
+                rp.set_bind_group(0, &group, &[]);
+                if pass.buffers
+                    && let Some(g) = &self.buffers.group
+                {
+                    rp.set_bind_group(4, g, &[]);
+                }
+                rp.set_bind_group(1, &geometry.table_group, &[]);
+                rp.set_vertex_buffer(0, geometry.vertices());
+                rp.set_index_buffer(geometry.indices.slice(..), wgpu::IndexFormat::Uint32);
+                for d in &masks {
+                    if pass.draw {
+                        rp.set_bind_group(2, &geometry.group, &[geometry.offset(d.slot)]);
+                    }
+                    rp.draw_indexed(0..d.quads * 6, d.base as i32, 0..1);
+                }
+                drop(rp);
+                self.water_mask_dirty = true;
+            }
+            self.mips_valid &= !pass.written;
+        }
+        self.entities = Some(entities);
+    }
+
+    /// End portal faces bind `end_portal.png` as the atlas, a texture of its own, so packs that
+    /// wrap it with their own coordinates sample the portal sprite only. `None` when no portal
+    /// face draws in this pass.
+    pub fn portal_group(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        pass: &mut Pass,
+        size: [u32; 2],
+        wanted: bool,
+    ) -> Option<wgpu::BindGroup> {
+        let atlas = pass.atlas.clone().or_else(|| self.atlas.clone())?;
+        if !wanted || self.portal_rect[2] <= 0.0 {
+            return None;
+        }
+        if self
+            .portal_texture
+            .as_ref()
+            .is_none_or(|(rect, _)| *rect != self.portal_rect)
+        {
+            let view = super::super::pack_weather::copy_sprite(
+                device,
+                encoder,
+                atlas.texture(),
+                self.portal_rect,
+            );
+            self.portal_texture = Some((self.portal_rect, view));
+            pass.portal_groups.clear();
+        }
+        // `bind` caches groups by a key without the atlas: the portal groups are kept in a cache
+        // of their own, swapped in with the texture.
+        let view = self.portal_texture.as_ref().map(|p| p.1.clone());
+        let saved = std::mem::replace(&mut pass.atlas, view);
+        let groups = std::mem::replace(&mut pass.groups, std::mem::take(&mut pass.portal_groups));
+        let group = self.bind(device, queue, encoder, pass, size);
+        pass.portal_groups = std::mem::replace(&mut pass.groups, groups);
+        pass.atlas = saved;
+        Some(group)
+    }
+
+    /// Entities and block entities into the shadow map, each run with the per-draw uniforms
+    /// of its gbuffers draw (2.4): opaque, so before the `shadowtex1` copy.
+    pub fn draw_shadow_entities(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        size: [u32; 2],
+    ) {
+        let Some(mut entities) = self.entities.take() else {
+            return;
+        };
+        let geometry = &entities.geometry;
+        for (program, pass) in entities.shadow.iter_mut().enumerate() {
+            let Some(pass) = pass else {
+                continue;
+            };
+            let mut draws = (geometry.draws.iter())
+                .filter(|d| {
+                    d.shadow && super::super::pack_entities::shadow_program(d.program) == program
+                })
+                .peekable();
+            if draws.peek().is_none() {
+                continue;
+            }
+            let group = self.bind(device, queue, encoder, pass, size);
+            let portal_group = self.portal_group(
+                device,
+                queue,
+                encoder,
+                pass,
+                size,
+                (geometry.draws.iter()).any(|d| {
+                    d.shadow
+                        && super::super::pack_entities::shadow_program(d.program) == program
+                        && d.portal
+                }),
+            );
+            let mut on_portal = false;
+            let mut rp = self.begin(encoder, pass);
+            rp.set_pipeline(pass.render());
+            rp.set_bind_group(0, &group, &[]);
+            if pass.buffers
+                && let Some(g) = &self.buffers.group
+            {
+                rp.set_bind_group(4, g, &[]);
+            }
+            rp.set_bind_group(1, &geometry.table_group, &[]);
+            rp.set_vertex_buffer(0, geometry.vertices());
+            rp.set_index_buffer(geometry.indices.slice(..), wgpu::IndexFormat::Uint32);
+            for d in draws {
+                if let Some(portal) = &portal_group
+                    && d.portal != on_portal
+                {
+                    rp.set_bind_group(0, if d.portal { portal } else { &group }, &[]);
+                    on_portal = d.portal;
+                }
+                if pass.draw {
+                    rp.set_bind_group(2, &geometry.group, &[geometry.offset(d.slot)]);
+                }
+                if pass.geometry > 0 {
+                    // A geometry stage reads its vertices itself: corner `c` of the run is
+                    // vertex `c` past the run's first quad's six (`geometry_inputs`), one
+                    // instance per triangle the stage can emit.
+                    let first = d.base / 4 * 6;
+                    rp.draw(first..first + d.quads * 6, 0..pass.geometry);
+                } else {
+                    rp.draw_indexed(0..d.quads * 6, d.base as i32, 0..1);
+                }
+            }
+        }
+        self.entities = Some(entities);
+    }
+
+    /// The sky, when it shows, then terrain, entities and block entities.
+    pub fn draw_opaque(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        size: [u32; 2],
+        frame: &super::super::Frame,
+        terrain: &mut TerrainDraw<'_>,
+    ) {
+        if super::super::sky_visible(frame) || super::super::end_fog_sky(frame) {
+            self.draw_sky(device, queue, encoder, size, frame);
+        }
+        self.draw_terrain(device, queue, encoder, size, TerrainList::Solid, terrain);
+        self.draw_entities(device, queue, encoder, size, false);
+        self.draw_lines(device, queue, encoder, size);
+        self.draw_clouds(device, queue, encoder, size);
+        // Only depth2 excludes the opaque first-person hand.
+        if let Some(t) = &self.targets
+            && let Some((copy, _)) = &t.depth2
+        {
+            encoder.copy_texture_to_texture(
+                t.depth_texture.as_image_copy(),
+                copy.as_image_copy(),
+                t.depth_texture.size(),
+            );
+        }
+        self.draw_hand(device, queue, encoder, size, frame);
+        // Depth1 includes that hand, but still precedes translucent terrain.
+        if let Some(t) = &self.targets
+            && let Some((copy, _)) = &t.depth1
+        {
+            encoder.copy_texture_to_texture(
+                t.depth_texture.as_image_copy(),
+                copy.as_image_copy(),
+                t.depth_texture.size(),
+            );
+        }
+    }
+
+    /// The first-person hand and held items, with `gbuffers_hand` at the hand's projection.
+    pub fn draw_hand(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        size: [u32; 2],
+        frame: &super::super::Frame,
+    ) {
+        let Some((mut pass, mut geometry)) = self.hand.take() else {
+            return;
+        };
+        // The hand draws through `gbufferModelView`, which holds the nausea spin the world
+        // turns with; the hand doesn't (as vanilla's), so its projection takes the spin out.
+        let unspin = frame.bob * frame.spin.inverse() * frame.bob.inverse();
+        let projection = super::super::pack_hand::projection(
+            frame.hand_fov_degrees,
+            size[0] as f32 / size[1].max(1) as f32,
+            frame.depth_far,
+        ) * unspin;
+        geometry.prepare(device, queue, frame.hand, frame.hand_items, projection);
+        if geometry.quads > 0 {
+            let group = self.bind(device, queue, encoder, &mut pass, size);
+            {
+                let mut rp = self.begin(encoder, &pass);
+                rp.set_pipeline(pass.render());
+                rp.set_bind_group(0, &group, &[]);
+                if pass.buffers
+                    && let Some(g) = &self.buffers.group
+                {
+                    rp.set_bind_group(4, g, &[]);
+                }
+                rp.set_bind_group(1, &geometry.group, &[]);
+                rp.set_vertex_buffer(0, geometry.vertices());
+                rp.set_index_buffer(geometry.indices.slice(..), wgpu::IndexFormat::Uint32);
+                // The arm and each held item: their own `currentRenderedItemId`. Translucent
+                // quads wait for `gbuffers_hand_water` when the pack has one.
+                let late = self.hand_water.is_some();
+                let runs = geometry
+                    .runs
+                    .iter()
+                    .chain(geometry.translucent_runs.iter().filter(|_| !late));
+                for &(first, quads, offset) in runs {
+                    if pass.draw {
+                        rp.set_bind_group(2, &geometry.slot_group, &[offset]);
+                    }
+                    rp.draw_indexed(first * 6..(first + quads) * 6, 0, 0..1);
+                }
+            }
+            self.mips_valid &= !pass.written;
+        }
+        self.hand = Some((pass, geometry));
+    }
+
+    /// The clouds `set_clouds` gave for this frame, with `gbuffers_clouds`.
+    pub fn draw_clouds(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        size: [u32; 2],
+    ) {
+        // The pass stays for later frames when this one has no clouds.
+        let Some(clouds) = self.cloud_draw.take() else {
+            return;
+        };
+        let Some(mut pass) = self.clouds.take() else {
+            return;
+        };
+        let group = self.bind(device, queue, encoder, &mut pass, size);
+        {
+            let mut rp = self.begin(encoder, &pass);
+            rp.set_pipeline(pass.render());
+            rp.set_bind_group(0, &group, &[]);
+            if pass.buffers
+                && let Some(g) = &self.buffers.group
+            {
+                rp.set_bind_group(4, g, &[]);
+            }
+            rp.set_bind_group(1, &clouds.group, &[]);
+            if pass.draw {
+                self.draws.bind(&mut rp, "CLOUDS");
+            }
+            rp.set_vertex_buffer(0, clouds.vertices.slice(..));
+            rp.set_index_buffer(clouds.indices.slice(..), wgpu::IndexFormat::Uint32);
+            rp.draw_indexed(0..clouds.quads * 6, 0, 0..1);
+        }
+        self.mips_valid &= !pass.written;
+        self.clouds = Some(pass);
+    }
+
+    /// The block outline `set_lines` gave for this frame, with the pack's lines program.
+    pub fn draw_lines(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        size: [u32; 2],
+    ) {
+        // The pass stays for later frames when this one has no outline.
+        let Some(lines) = self.line_draw.take() else {
+            return;
+        };
+        let Some(mut pass) = self.lines.take() else {
+            return;
+        };
+        let group = self.bind(device, queue, encoder, &mut pass, size);
+        {
+            let mut rp = self.begin(encoder, &pass);
+            rp.set_pipeline(pass.render());
+            rp.set_bind_group(0, &group, &[]);
+            if pass.buffers
+                && let Some(g) = &self.buffers.group
+            {
+                rp.set_bind_group(4, g, &[]);
+            }
+            if pass.draw {
+                self.draws.bind(&mut rp, "OUTLINE");
+            }
+            rp.set_vertex_buffer(0, lines.edges.slice(..));
+            rp.draw(0..6, 0..lines.count);
+        }
+        self.mips_valid &= !pass.written;
+        self.lines = Some(pass);
+    }
+
+    /// Translucent terrain, then the entity parts drawn after deferred.
+    pub fn draw_translucent(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        size: [u32; 2],
+        terrain: &mut TerrainDraw<'_>,
+    ) {
+        self.draw_terrain(
+            device,
+            queue,
+            encoder,
+            size,
+            TerrainList::Translucent,
+            terrain,
+        );
+        self.draw_entities(device, queue, encoder, size, true);
+        self.draw_hand_water(device, queue, encoder, size);
+        self.draw_weather(device, queue, encoder, size);
+    }
+
+    /// The hand's translucent quads (uploaded by `draw_hand` this frame), with
+    /// `gbuffers_hand_water`.
+    pub fn draw_hand_water(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        size: [u32; 2],
+    ) {
+        let Some(mut pass) = self.hand_water.take() else {
+            return;
+        };
+        let hand = self.hand.take();
+        if let Some((_, geometry)) = hand
+            .as_ref()
+            .filter(|(_, g)| g.quads > 0 && !g.translucent_runs.is_empty())
+        {
+            let group = self.bind(device, queue, encoder, &mut pass, size);
+            {
+                let mut rp = self.begin(encoder, &pass);
+                rp.set_pipeline(pass.render());
+                rp.set_bind_group(0, &group, &[]);
+                if pass.buffers
+                    && let Some(g) = &self.buffers.group
+                {
+                    rp.set_bind_group(4, g, &[]);
+                }
+                rp.set_bind_group(1, &geometry.group, &[]);
+                rp.set_vertex_buffer(0, geometry.vertices());
+                rp.set_index_buffer(geometry.indices.slice(..), wgpu::IndexFormat::Uint32);
+                for &(first, quads, offset) in &geometry.translucent_runs {
+                    if pass.draw {
+                        rp.set_bind_group(2, &geometry.slot_group, &[offset]);
+                    }
+                    rp.draw_indexed(first * 6..(first + quads) * 6, 0, 0..1);
+                }
+            }
+            self.mips_valid &= !pass.written;
+        }
+        self.hand = hand;
+        self.hand_water = Some(pass);
+    }
+
+    /// The rain, then the snow, `set_weather` gave for this frame, with `gbuffers_weather`.
+    pub fn draw_weather(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        size: [u32; 2],
+    ) {
+        // The passes stay for later frames when this one has no rain or snow.
+        let Some(weather) = self.weather_draw.take() else {
+            return;
+        };
+        let Some(mut passes) = self.weather.take() else {
+            return;
+        };
+        if weather.generation != self.weather_generation {
+            self.weather_generation = weather.generation;
+            for (pass, sprite) in passes.iter_mut().zip(&weather.sprites) {
+                pass.atlas = sprite.clone();
+                pass.groups.clear();
+            }
+        }
+        for (pass, quads) in passes.iter_mut().zip(weather.quads.clone()) {
+            if quads.is_empty() {
+                continue;
+            }
+            let group = self.bind(device, queue, encoder, pass, size);
+            {
+                let mut rp = self.begin(encoder, pass);
+                rp.set_pipeline(pass.render());
+                rp.set_bind_group(0, &group, &[]);
+                if pass.buffers
+                    && let Some(g) = &self.buffers.group
+                {
+                    rp.set_bind_group(4, g, &[]);
+                }
+                if pass.draw {
+                    self.draws.bind(&mut rp, "RAIN_SNOW");
+                }
+                rp.set_vertex_buffer(0, weather.vertices.slice(..));
+                rp.set_index_buffer(weather.indices.slice(..), wgpu::IndexFormat::Uint32);
+                rp.draw_indexed(quads.start * 6..quads.end * 6, 0, 0..1);
+            }
+            self.mips_valid &= !pass.written;
+        }
+        self.weather = Some(passes);
+    }
+
+    /// Regenerates the mip chain of buffer `b`'s side that programs read.
+    pub fn mipmap(&mut self, encoder: &mut wgpu::CommandEncoder, b: usize) {
+        let (Some(targets), Some((pipeline, _))) = (&self.targets, self.down.get(&self.formats[b]))
+        else {
+            return;
+        };
+        let Some(mips) = &targets.mips[b] else { return };
+        let side = &mips[usize::from(self.main & 1 << b != 0)];
+        // Timed as one pass per buffer (its first level), so the pass timer shows the chains.
+        let label = format!("mipmaps colortex{b}");
+        let mut first = true;
+        for (attachment, group) in &side.levels {
+            let timestamp_writes = if std::mem::take(&mut first) {
+                self.timing.as_mut().and_then(|t| t.writes(&label))
+            } else {
+                None
+            };
+            let mut rp = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Shader pack mipmap"),
+                timestamp_writes,
+                color_attachments: &[attach(
+                    attachment,
+                    wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                        store: wgpu::StoreOp::Store,
+                    },
+                )],
+                ..Default::default()
+            });
+            rp.set_pipeline(pipeline);
+            rp.set_bind_group(0, group, &[]);
+            rp.draw(0..3, 0..1);
+        }
+    }
+
+    /// Whether the buffers `pass` writes have different sizes at the current render size: then
+    /// it is skipped, as one whose `size.buffer` sizes never meet is when the pack loads. Only
+    /// a pass writing buffers sized relative to the render size and in pixels can.
+    pub fn sizes_differ(&self, pass: &Pass) -> bool {
+        let Some(targets) = &self.targets else {
+            return false;
+        };
+        let mut sizes = pass.writes.iter().map(|&(_, b)| targets.sizes[b]);
+        let first = sizes.next();
+        !pass.group.shadow() && pass.group != Group::Final && sizes.any(|s| Some(s) != first)
+    }
+
+    /// Drops every pass's cached bind groups, compute stages included: they name views that
+    /// were made again.
+    pub fn forget_groups(&mut self) {
+        let sky = self
+            .sky
+            .iter_mut()
+            .flat_map(|s| s.basic.iter_mut().chain(&mut s.textured));
+        let entities = self
+            .entities
+            .iter_mut()
+            .flat_map(|e| e.passes.iter_mut().chain(&mut e.shadow).flatten());
+        let passes = self
+            .passes
+            .iter_mut()
+            .chain(&mut self.terrain)
+            .chain(&mut self.terrain_cutout)
+            .chain(&mut self.water)
+            .chain(sky)
+            .chain(entities)
+            .chain(&mut self.clouds)
+            .chain(&mut self.lines)
+            .chain(self.weather.iter_mut().flatten())
+            .chain(self.hand.iter_mut().map(|h| &mut h.0))
+            .chain(&mut self.hand_water)
+            .chain(&mut self.shadow_terrain)
+            .chain(&mut self.shadow_water)
+            .chain(&mut self.shadow_comp);
+        for pass in passes {
+            pass.groups.clear();
+            for c in &mut pass.compute {
+                c.groups.clear();
+            }
+        }
+    }
+
+    pub fn resize(&mut self, device: &wgpu::Device, size: [u32; 2]) {
+        if pack_images::resize_images(device, &mut self.images, size) {
+            self.forget_groups();
+        }
+        self.buffers.resize(device, size);
+        if self.targets.as_ref().is_some_and(|t| t.size == size) {
+            return;
+        }
+        self.setup_pending = true;
+        self.rgb_unset = true;
+        // Free the old targets before making the new ones: a pack with large buffers can't
+        // hold both sets at once on a card it otherwise fits (a window resize ran out of video
+        // memory). The bind groups hold the old views too, and the GPU may still be using
+        // them, so wait for it; a resize is rare.
+        if self.targets.take().is_some() {
+            self.forget_groups();
+            let _ = device.poll(wgpu::PollType::wait_indefinitely());
+        }
+        let sizes: [[u32; 2]; BUFFERS] =
+            std::array::from_fn(|i| self.sizes[i].map_or(size, |s| s.resolve(size)));
+        let full_chain = |size: [u32; 2]| 32 - size[0].max(size[1]).max(1).leading_zeros();
+        let texture_sized = |label: &str, format, usage, levels, size: [u32; 2]| {
+            device.create_texture(&wgpu::TextureDescriptor {
+                label: Some(label),
+                size: wgpu::Extent3d {
+                    width: size[0],
+                    height: size[1],
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: levels,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format,
+                usage: usage | wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            })
+        };
+        let texture = |label: &str, format, usage| texture_sized(label, format, usage, 1, size);
+        let level = |t: &wgpu::Texture, level: u32| {
+            t.create_view(&wgpu::TextureViewDescriptor {
+                base_mip_level: level,
+                mip_level_count: Some(1),
+                ..Default::default()
+            })
+        };
+        let mut mips: [Option<[Mips; 2]>; BUFFERS] = Default::default();
+        let color = std::array::from_fn(|i| {
+            (self.used & 1 << i != 0).then(|| {
+                let label = format!("colortex{i}");
+                let mipped = self.mipped & 1 << i != 0;
+                let levels = if mipped { full_chain(sizes[i]) } else { 1 };
+                let mut attachment = wgpu::TextureUsages::RENDER_ATTACHMENT;
+                if self.storage & 1 << i != 0 {
+                    attachment |= wgpu::TextureUsages::STORAGE_BINDING;
+                    // Atomics on a texture need it made for them (Metal ignores them otherwise).
+                    if device.features().contains(wgpu::Features::TEXTURE_ATOMIC)
+                        && matches!(
+                            self.formats[i],
+                            wgpu::TextureFormat::R32Sint | wgpu::TextureFormat::R32Uint
+                        )
+                    {
+                        attachment |= wgpu::TextureUsages::STORAGE_ATOMIC;
+                    }
+                }
+                if self.copied & 1 << i != 0 {
+                    attachment |= wgpu::TextureUsages::COPY_SRC;
+                }
+                // A buffer that isn't cleared starts each frame with B copied back to A.
+                if i != 0 && self.clears[i].is_none() {
+                    attachment |= wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST;
+                }
+                let side = || texture_sized(&label, self.formats[i], attachment, levels, sizes[i]);
+                let a = side();
+                let sides = [
+                    a.clone(),
+                    if self.doubled & 1 << i != 0 {
+                        side()
+                    } else {
+                        a
+                    },
+                ];
+                if mipped && let Some((_, layout)) = self.down.get(&self.formats[i]) {
+                    mips[i] = Some(sides.each_ref().map(|t| {
+                        Mips {
+                            all: t.create_view(&Default::default()),
+                            levels: (1..levels)
+                                .map(|l| {
+                                    let group =
+                                        device.create_bind_group(&wgpu::BindGroupDescriptor {
+                                            label: Some(&label),
+                                            layout,
+                                            entries: &[
+                                                wgpu::BindGroupEntry {
+                                                    binding: 0,
+                                                    resource: wgpu::BindingResource::TextureView(
+                                                        &level(t, l - 1),
+                                                    ),
+                                                },
+                                                wgpu::BindGroupEntry {
+                                                    binding: 2,
+                                                    resource: wgpu::BindingResource::Sampler(
+                                                        &self.linear,
+                                                    ),
+                                                },
+                                            ],
+                                        });
+                                    (level(t, l), group)
+                                })
+                                .collect(),
+                        }
+                    }));
+                }
+                sides.map(|t| level(&t, 0))
+            })
+        });
+        let depth32 = wgpu::TextureFormat::Depth32Float;
+        let depth_texture = texture(
+            "depthtex0",
+            depth32,
+            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+        );
+        let depth1 = self.depth1.then(|| {
+            let t = texture("depthtex1", depth32, wgpu::TextureUsages::COPY_DST);
+            let view = t.create_view(&Default::default());
+            (t, view)
+        });
+        let depth2 = self.depth2.then(|| {
+            let t = texture("depthtex2", depth32, wgpu::TextureUsages::COPY_DST);
+            let view = t.create_view(&Default::default());
+            (t, view)
+        });
+        let water_mask = self.water_mask.then(|| {
+            let t = texture(
+                "Shader pack water patches",
+                depth32,
+                wgpu::TextureUsages::RENDER_ATTACHMENT,
+            );
+            let view = t.create_view(&Default::default());
+            (t, view)
+        });
+        self.water_mask_dirty = true;
+        let scratch = std::array::from_fn(|i| {
+            (self.copied & 1 << i != 0).then(|| {
+                // A copy also read as an image before a dispatch.
+                let image = if self.storage & 1 << i != 0 {
+                    wgpu::TextureUsages::STORAGE_BINDING
+                } else {
+                    wgpu::TextureUsages::empty()
+                };
+                texture_sized(
+                    &format!("colortex{i} copy"),
+                    self.formats[i],
+                    wgpu::TextureUsages::COPY_DST | image,
+                    1,
+                    sizes[i],
+                )
+                .create_view(&Default::default())
+            })
+        });
+        let sink = texture(
+            "Shader pack sink",
+            SINK,
+            wgpu::TextureUsages::RENDER_ATTACHMENT,
+        )
+        .create_view(&Default::default());
+        self.targets = Some(Targets {
+            size,
+            sink,
+            sizes,
+            scratch,
+            color,
+            depth: depth_texture.create_view(&Default::default()),
+            depth_texture,
+            depth1,
+            depth2,
+            water_mask,
+            mips,
+        });
+        self.forget_groups();
+        for pass in self.passes.iter().filter(|p| self.sizes_differ(p)) {
+            log::info!(
+                "shader pack: {}: writes buffers of different sizes at {}x{} (size.buffer); skipped",
+                pass.name,
+                size[0],
+                size[1]
+            );
+        }
+    }
+
+    /// The shadow pass (2.1, passes 2 and 3): the shadow buffers cleared, then the `shadowcomp`
+    /// programs, each drawing into the "alt" side of what it writes and flipping it after.
+    pub fn run_shadow(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        terrain: &mut TerrainDraw<'_>,
+        frame: &super::super::Frame,
+    ) {
+        // Opt-in only (`sunrise-graphics.txt` shadowCache). Off: always redraw, drop any cache.
+        if !frame.shadow_cache {
+            self.shadow_cache = ShadowCache::default();
+            self.draw_shadow_pass(device, queue, encoder, terrain);
+            return;
+        }
+
+        // Compute the current frame's cache key before borrowing shadow_targets mutably.
+        let cache_key = self.compute_shadow_cache_key(frame);
+
+        // Entity vertices are interpolated each frame, so their shadows cannot be reused.
+        let has_shadow_entities = self
+            .entities
+            .as_ref()
+            .is_some_and(|entities| entities.geometry.draws.iter().any(|draw| draw.shadow));
+        // Custom images are cleared each frame (`pack_images::clear`) before the
+        // shadow pass writes them, so a pack with any redraws it too.
+        let cache_hit = !has_shadow_entities
+            && self.images.is_empty()
+            && self.shadow_cache.key == Some(cache_key)
+            && self.shadow_targets.is_some();
+        if cache_hit {
+            // The targets still hold this map (and `main`, the A/B side
+            // `shadowcomp` left current).
+            return;
+        }
+        self.draw_shadow_pass(device, queue, encoder, terrain);
+        self.shadow_cache.key = self.shadow_targets.is_some().then_some(cache_key);
+    }
+
+    /// The shadow pass body: terrain, entities, clears, and `shadowcomp`.
+    pub fn draw_shadow_pass(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        terrain: &mut TerrainDraw<'_>,
+    ) {
+        let Some(t) = &mut self.shadow_targets else {
+            return;
+        };
+        t.begin_frame();
+        let size = [t.size; 2];
+        self.draw_terrain(
+            device,
+            queue,
+            encoder,
+            size,
+            TerrainList::ShadowSolid,
+            terrain,
+        );
+        self.draw_shadow_entities(device, queue, encoder, size);
+        let t = self.shadow_targets.as_mut().expect("shadow pass");
+        t.clear_rest(encoder);
+        t.copy_depth1(encoder);
+        self.draw_terrain(
+            device,
+            queue,
+            encoder,
+            size,
+            TerrainList::ShadowTranslucent,
+            terrain,
+        );
+        let mut comp = std::mem::take(&mut self.shadow_comp);
+        for pass in &mut comp {
+            let mut compute = std::mem::take(&mut pass.compute);
+            for c in &mut compute {
+                self.dispatch(device, queue, encoder, c, size);
+            }
+            pass.compute = compute;
+            if matches!(pass.pipeline, Pipeline::Compute { .. }) {
+                self.dispatch(device, queue, encoder, pass, size);
+                continue;
+            }
+            let group = self.bind(device, queue, encoder, pass, size);
+            let t = self.shadow_targets.as_ref().expect("shadow pass");
+            let mut attachments: SmallVec<[Option<wgpu::RenderPassColorAttachment>; BUFFERS]> =
+                SmallVec::new();
+            for &(location, buffer) in &pass.writes {
+                let l = location as usize;
+                if attachments.len() <= l {
+                    attachments.resize(l + 1, None);
+                }
+                // A shadowcomp shader can leave part of its destination untouched.
+                let ops = wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                };
+                attachments[l] = t.color(buffer, true).and_then(|v| attach(v, ops));
+            }
+            {
+                let mut rp = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some(&pass.name),
+                    color_attachments: &attachments,
+                    timestamp_writes: self.timing.as_mut().and_then(|t| t.writes(&pass.name)),
+                    ..Default::default()
+                });
+                rp.set_pipeline(pass.render());
+                rp.set_bind_group(0, &group, &[]);
+                if pass.buffers
+                    && let Some(g) = &self.buffers.group
+                {
+                    rp.set_bind_group(4, g, &[]);
+                }
+                rp.draw(0..6, 0..1);
+            }
+            drop(attachments);
+            if let Some(t) = &mut self.shadow_targets {
+                t.main ^= pass.flip;
+            }
+        }
+        self.shadow_comp = comp;
+    }
+
+    /// Computes the cache key for the current frame.
+    pub fn compute_shadow_cache_key(&self, frame: &super::super::Frame) -> ShadowCacheKey {
+        let shadow = &self.uniforms.shadow;
+        // Use the same logic as shadow_camera to compute the light direction and snapped camera.
+        // Use the public shadow_light function which returns the normalized light direction.
+        let light = super::super::pack_uniforms::shadow_light(frame, shadow);
+        let light = light.as_dvec3();
+        let up = if light.z.abs() > 0.99 {
+            DVec3::Y
+        } else {
+            DVec3::Z
+        };
+        let rotation = DMat4::look_to_rh(DVec3::ZERO, -light, up);
+        let at = rotation.transform_vector3(frame.camera);
+        let step = f64::from(shadow.interval);
+        let snapped_camera = if step > 0.0 {
+            Some((at / step).floor() * step)
+        } else {
+            Some(at)
+        };
+
+        // Hash the shadow settings that affect the shadow map.
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        shadow.resolution.hash(&mut hasher);
+        shadow.distance.to_bits().hash(&mut hasher);
+        shadow.render_mul.to_bits().hash(&mut hasher);
+        shadow.interval.to_bits().hash(&mut hasher);
+        shadow.sun_path_rotation.to_bits().hash(&mut hasher);
+        shadow.fov.map(|f| f.to_bits()).hash(&mut hasher);
+        shadow.near.map(f32::to_bits).hash(&mut hasher);
+        shadow.far.map(f32::to_bits).hash(&mut hasher);
+        for hf in &shadow.hardware_filtering {
+            hf.hash(&mut hasher);
+        }
+        for color in &shadow.colors {
+            format!("{:?}", color.format).hash(&mut hasher);
+            color.clear.hash(&mut hasher);
+            if let Some(cc) = color.clear_color {
+                for c in cc {
+                    c.to_bits().hash(&mut hasher);
+                }
+            }
+            color.mipmap.hash(&mut hasher);
+        }
+        let shadow_settings_hash = hasher.finish();
+        let shadow_uniforms_hash = self.shadow_uniforms_hash();
+
+        ShadowCacheKey {
+            sun_angle: frame.sky.sun_angle,
+            moon_angle: frame.sky.moon_angle,
+            snapped_camera,
+            shadow_settings_hash,
+            shadow_scene_revision: frame.shadow_scene_revision,
+            ticks: frame.ticks,
+            day_time: frame.pack.day_time,
+            shadow_uniforms_hash,
+        }
+    }
+
+    pub fn shadow_uniforms_hash(&self) -> u64 {
+        use std::hash::{Hash, Hasher};
+
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        let passes = self
+            .shadow_terrain
+            .iter()
+            .chain(self.shadow_water.iter())
+            .chain(self.shadow_comp.iter())
+            .chain(
+                self.entities
+                    .iter()
+                    .flat_map(|entities| entities.shadow.iter().flatten()),
+            );
+        for pass in passes {
+            pass.name.hash(&mut hasher);
+            for (index, ty, offset) in &pass.uniforms {
+                index.hash(&mut hasher);
+                ty.hash(&mut hasher);
+                offset.hash(&mut hasher);
+                let Some(value) = index.and_then(|index| self.uniforms.values.get(index)) else {
+                    continue;
+                };
+                match value {
+                    pack_uniforms::Value::F(values) => {
+                        0u8.hash(&mut hasher);
+                        for value in values {
+                            value.to_bits().hash(&mut hasher);
+                        }
+                    }
+                    pack_uniforms::Value::I(values) => {
+                        1u8.hash(&mut hasher);
+                        values.hash(&mut hasher);
+                    }
+                }
+            }
+        }
+        hasher.finish()
     }
 }

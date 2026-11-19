@@ -10,6 +10,7 @@ pub mod pack_entities;
 pub mod pack_hand;
 pub mod pack_images;
 pub mod pack_lines;
+pub mod pack_post;
 pub mod pack_shadow;
 pub mod pack_sky;
 pub mod pack_textures;
