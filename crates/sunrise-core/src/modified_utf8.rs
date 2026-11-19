@@ -131,9 +131,49 @@ pub fn decode(bytes: &[u8]) -> Option<Vec<u16>> {
     if bytes.is_ascii() {
         return Some(bytes.iter().map(|&b| u16::from(b)).collect());
     }
-    let mut units = vec![0u16; bytes.len()];
-    let count = decode_into(bytes, &mut units)?;
-    units.truncate(count);
+    // Every unit takes at least one byte, so `bytes` never holds more units than bytes: the vector's room is
+    // never exceeded, and no zero-fill has to be written over.
+    let mut units = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    // One sequence at a time, specialised by its lead byte's class: each branch predicts the string's own mix
+    // (a uniform stretch runs one branch to the end), which is where HotSpot's per-byte loop beats a block
+    // machinery that handles every width at once. The unit's bytes load as one word, so the loads and their
+    // bounds checks are one per unit, and the unit is gathered from the word's bytes with masks and shifts,
+    // as in the encoder. Four bytes of lookahead while they are left.
+    while let Some(w) = bytes[i..].first_chunk::<4>() {
+        let v = u32::from_le_bytes(*w);
+        let lead = v as u8;
+        if lead < 0x80 {
+            units.push(u16::from(v as u8));
+            i += 1;
+        } else if lead < 0xe0 {
+            // A lead `110xxxxx`, or a stray continuation `10xxxxxx` where a sequence starts: `v & 0xc0e0`
+            // is the lead's class and its continuation's top bits in one word.
+            if v & 0xc0e0 != 0x80c0 {
+                return None;
+            }
+            units.push((((v & 0x1f) << 6) | ((v >> 8) & 0x3f)) as u16);
+            i += 2;
+        } else if lead < 0xf0 {
+            // The lead is `1110xxxx` here; both following bytes must be `10xxxxxx`, which is one test of
+            // the words' two top-bit pairs.
+            if (v >> 8) & 0xc0c0 != 0x8080 {
+                return None;
+            }
+            units.push((((v & 0xf) << 12) | (((v >> 8) & 0x3f) << 6) | ((v >> 16) & 0x3f)) as u16);
+            i += 3;
+        } else {
+            // A lead `1111xxxx`, which no sequence here has.
+            return None;
+        }
+    }
+    // Up to three bytes left: at most one whole sequence, or one cut off, or none.
+    while i < bytes.len() {
+        let at = |k: usize| bytes.get(i + k).copied().unwrap_or(0);
+        let (unit, size) = sequence(bytes[i], at(1), at(2))?;
+        units.push(unit);
+        i += size;
+    }
     Some(units)
 }
 
@@ -152,9 +192,6 @@ fn sequence(b0: u8, b1: u8, b2: u8) -> Option<(u16, usize)> {
     ok.then(|| (unit(b0, b1, b2), size))
 }
 
-/// The top bit of each byte of a `u64`.
-const HIGH: u64 = 0x8080_8080_8080_8080;
-
 /// The unit of the sequence that `b0` leads, `b1` and `b2` following it, for a sequence already checked.
 #[inline(always)]
 fn unit(b0: u8, b1: u8, b2: u8) -> u16 {
@@ -162,82 +199,6 @@ fn unit(b0: u8, b1: u8, b2: u8) -> u16 {
     let three = (u16::from(b0 & 0x0f) << 12) | (u16::from(b1 & 0x3f) << 6) | u16::from(b2 & 0x3f);
     let wide = std::hint::select_unpredictable(b0 < 0xe0, two, three);
     std::hint::select_unpredictable(b0 < 0x80, u16::from(b0), wide)
-}
-
-/// Decodes `bytes` into `units` (at least as long as `bytes`), returning the unit count.
-///
-/// Eight bytes at a time while ten are left, with each byte's kind as a bit of a mask: the bytes are modified UTF-8
-/// exactly when none is `1111xxxx` and the continuation bytes (`10xxxxxx`) are exactly the one after each lead
-/// byte (`110xxxxx`, `1110xxxx`) and the second after each `1110xxxx`, those of the block before included
-/// (`carry`). Then one unit per byte that isn't a continuation, each independent of the others: the first four
-/// unconditionally, packed in one store (past the block's last, they land where the next block's go), the rest one
-/// at a time. The last bytes go one sequence at a time.
-fn decode_into(bytes: &[u8], units: &mut [u16]) -> Option<usize> {
-    let (mut i, mut k, mut carry) = (0, 0, 0u64);
-    while i + 10 <= bytes.len() {
-        let window: &[u8; 10] = bytes[i..i + 10].try_into().unwrap();
-        let w = u64::from_le_bytes(window[..8].try_into().unwrap());
-        let out: &mut [u16; 8] = (&mut units[k..k + 8]).try_into().unwrap();
-        let high = w & HIGH;
-        if high | carry == 0 {
-            for (u, &b) in out.iter_mut().zip(window) {
-                *u = u16::from(b);
-            }
-            i += 8;
-            k += 8;
-            continue;
-        }
-        // Each byte's bits 6, 5 and 4, moved to its bit 7.
-        let (b6, b5, b4) = ((w << 1) & HIGH, (w << 2) & HIGH, (w << 3) & HIGH);
-        let continuation = high & !b6;
-        let four = high & b6 & b5 & b4;
-        let lead = high & b6 & !four;
-        let lead3 = lead & b5;
-        if four != 0 || continuation != (lead << 8) | (lead3 << 16) | carry {
-            return None;
-        }
-        carry = (lead >> 56) | (lead3 >> 48);
-        let mut starts = !continuation & HIGH;
-        // One bit per start, in bytes: their sum, in the top byte of the product (without `popcnt`, which x86-64's
-        // baseline lacks).
-        let count = ((starts >> 7).wrapping_mul(0x0101_0101_0101_0101) >> 56) as usize;
-        // Four units in one word and one store (as separate stores, the compiler gathers them into vectors, which is
-        // slower), then the rest one at a time.
-        let mut packed = 0u64;
-        for lane in 0..4 {
-            let p = (starts.trailing_zeros() / 8) as usize & 7;
-            packed |= u64::from(unit(window[p], window[p + 1], window[p + 2])) << (16 * lane);
-            starts &= starts.wrapping_sub(1);
-        }
-        let [a, b, c, d] = [
-            packed as u16,
-            (packed >> 16) as u16,
-            (packed >> 32) as u16,
-            (packed >> 48) as u16,
-        ];
-        out[..4].copy_from_slice(&[a, b, c, d]);
-        for u in out.iter_mut().take(count).skip(4) {
-            let p = (starts.trailing_zeros() / 8) as usize & 7;
-            *u = unit(window[p], window[p + 1], window[p + 2]);
-            starts &= starts.wrapping_sub(1);
-        }
-        i += 8;
-        k += count;
-    }
-    // The continuation bytes the last block's sequences run into: the first, or the first two.
-    let carried = (carry != 0) as usize + (carry >> 15 != 0) as usize;
-    if bytes[i..i + carried].iter().any(|&b| b & 0xc0 != 0x80) {
-        return None;
-    }
-    i += carried;
-    while i < bytes.len() {
-        let at = |n: usize| bytes.get(i + n).copied().unwrap_or(0);
-        let (unit, size) = sequence(bytes[i], at(1), at(2))?;
-        units[k] = unit;
-        k += 1;
-        i += size;
-    }
-    Some(k)
 }
 
 #[cfg(test)]
