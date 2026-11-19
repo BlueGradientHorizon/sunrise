@@ -61,9 +61,9 @@ const BAR: f32 = 33.0;
 pub const BOX: f32 = 17.0;
 /// `DialogScreen.WARNING_BUTTON_SPRITES`: normal, disabled, highlighted.
 pub const WARNING_SPRITES: [&str; 3] = [
-    "gui/sprites/dialog/warning_button",
-    "gui/sprites/dialog/warning_button_disabled",
-    "gui/sprites/dialog/warning_button_highlighted",
+    "dialog/warning_button",
+    "dialog/warning_button_disabled",
+    "dialog/warning_button_highlighted",
 ];
 
 /// One drawn piece; `y` is from the top of the body (before it scrolls) for

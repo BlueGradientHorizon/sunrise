@@ -211,10 +211,10 @@ pub(super) fn uniforms(
     layering: f32,
     fog_color: [f32; 4],
     fog: [f32; 6],
-) -> Vec<u8> {
+) -> [u8; 1024] {
     let projection = jitter * view.projection * pose;
     let model_view = view.view * Mat4::from_scale(glam::Vec3::splat(layering));
-    let mut data = vec![0f32; 256];
+    let mut data = [0f32; 256];
     data[64..80].copy_from_slice(&projection.to_cols_array());
     let transforms = 128;
     data[transforms..transforms + 16].copy_from_slice(&model_view.to_cols_array());
@@ -222,7 +222,8 @@ pub(super) fn uniforms(
     data[transforms + 32..transforms + 36].fill(1.0);
     data[192..196].copy_from_slice(&fog_color);
     data[196..202].copy_from_slice(&fog);
-    let mut bytes: Vec<u8> = bytemuck::cast_slice(&data).to_vec();
+    let mut bytes = [0u8; 1024];
+    bytes.copy_from_slice(bytemuck::cast_slice(&data));
     bytes[..48].copy_from_slice(&globals);
     bytes
 }
