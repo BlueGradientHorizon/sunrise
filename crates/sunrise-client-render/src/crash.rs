@@ -911,6 +911,43 @@ mod tests {
     /// The panic hook is process-wide: tests that swap it hold this so they never overlap.
     static PANIC_HOOK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+    type Hook = Box<dyn Fn(&std::panic::PanicHookInfo) + Send + Sync>;
+
+    /// Runs `body` under a panic hook that offers each panic to `claim` first. The other tests of this binary run
+    /// beside it, so a panic `claim` does not take goes on to the hook it replaced: their failure messages still
+    /// print. The replaced hook is back before a panic out of `body` goes on, since a panicking thread can't swap it.
+    fn with_claimed_panics<R>(
+        claim: impl Fn(&std::panic::PanicHookInfo) -> bool + Send + Sync + 'static,
+        body: impl FnOnce() -> R,
+    ) -> R {
+        let _lock = PANIC_HOOK.lock().unwrap_or_else(|e| e.into_inner());
+        let previous: std::sync::Arc<Hook> = std::sync::Arc::new(std::panic::take_hook());
+        let others = previous.clone();
+        std::panic::set_hook(Box::new(move |info| {
+            if !claim(info) {
+                others(info);
+            }
+        }));
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(body));
+        // Dropping this test's hook drops its handle on the one it replaced.
+        drop(std::panic::take_hook());
+        let previous = std::sync::Arc::into_inner(previous);
+        std::panic::set_hook(previous.expect("the replaced hook has no other owner"));
+        result.unwrap_or_else(|payload| std::panic::resume_unwind(payload))
+    }
+
+    #[test]
+    fn a_failing_body_gets_its_panic_back_with_the_hook_restored() {
+        // A test failing under its own hook: the panic reaches the test, not an abort of the whole binary.
+        let failed = std::panic::catch_unwind(|| {
+            with_claimed_panics(|_| true, || panic!("an assertion failed"))
+        });
+        let payload = failed.expect_err("the body's panic goes on to the caller");
+        assert_eq!(payload.downcast_ref::<&str>(), Some(&"an assertion failed"));
+        // The hook can be swapped again, so the replaced one is back.
+        assert_eq!(with_claimed_panics(|_| false, || 7), 7);
+    }
+
     #[test]
     fn reporting_threads_write_once_and_contained_server_panics_write_nothing() {
         let _lock = PANIC_HOOK.lock().unwrap_or_else(|e| e.into_inner());
@@ -1214,13 +1251,6 @@ mod tests {
     fn a_panic_in_a_converted_package_becomes_a_report() {
         let caught = std::sync::Arc::new(std::sync::Mutex::new(None));
         let sink = caught.clone();
-        let _hook = PANIC_HOOK.lock().unwrap_or_else(|e| e.into_inner());
-        let previous = std::panic::take_hook();
-        std::panic::set_hook(Box::new(move |info| {
-            if panic_message(info).contains("the guest crash") {
-                *sink.lock().unwrap() = Some(panic_report(info, "client"));
-            }
-        }));
         let _runtime = enter_native_mod(ModCall {
             id: "runtime",
             hook: "dispatch",
@@ -1228,11 +1258,21 @@ mod tests {
         });
         let packages = ConvertedPackages::new("runtime", ["example:mod"]);
         let package = packages.package("example:mod").unwrap();
-        let _ = std::panic::catch_unwind(|| {
-            let _scope = package.enter("tick", "Foo.tick(Foo.java:42)").unwrap();
-            panic!("the guest crash");
-        });
-        std::panic::set_hook(previous);
+        with_claimed_panics(
+            move |info| {
+                let ours = panic_message(info).contains("the guest crash");
+                if ours {
+                    *sink.lock().unwrap() = Some(panic_report(info, "client"));
+                }
+                ours
+            },
+            || {
+                let _ = std::panic::catch_unwind(|| {
+                    let _scope = package.enter("tick", "Foo.tick(Foo.java:42)").unwrap();
+                    panic!("the guest crash");
+                });
+            },
+        );
         let report = caught.lock().unwrap().take().expect("the hook saw it");
         assert!(
             report.error.ends_with(
@@ -1363,24 +1403,27 @@ mod tests {
         // A real panic through a hook, as the game's would be.
         let caught = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let sink = caught.clone();
-        let _hook = PANIC_HOOK.lock().unwrap_or_else(|e| e.into_inner());
-        let previous = std::panic::take_hook();
-        std::panic::set_hook(Box::new(move |info| {
-            if panic_message(info).contains("the test crash") {
-                sink.lock().unwrap().push(panic_report(info, "client"));
-            }
-        }));
-        let _ = std::panic::catch_unwind(|| panic!("the test crash"));
-        // The same panic inside a native mod's hook, which the hook sees before the unwind.
-        let _ = std::panic::catch_unwind(|| {
-            let _guard = enter_native_mod(ModCall {
-                id: "a",
-                hook: "tick",
-                part: None,
-            });
-            panic!("the test crash")
-        });
-        std::panic::set_hook(previous);
+        with_claimed_panics(
+            move |info| {
+                let ours = panic_message(info).contains("the test crash");
+                if ours {
+                    sink.lock().unwrap().push(panic_report(info, "client"));
+                }
+                ours
+            },
+            || {
+                let _ = std::panic::catch_unwind(|| panic!("the test crash"));
+                // The same panic inside a native mod's hook, which the hook sees before the unwind.
+                let _ = std::panic::catch_unwind(|| {
+                    let _guard = enter_native_mod(ModCall {
+                        id: "a",
+                        hook: "tick",
+                        part: None,
+                    });
+                    panic!("the test crash")
+                });
+            },
+        );
         // A caught panic leaves the thread as it found it.
         assert_eq!(attributed("boom".into()), "boom");
         let mut reports = std::mem::take(&mut *caught.lock().unwrap());
@@ -1507,25 +1550,29 @@ mod tests {
         ];
         let caught = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let sink = caught.clone();
-        let _hook = PANIC_HOOK.lock().unwrap_or_else(|e| e.into_inner());
-        let previous = std::panic::take_hook();
-        std::panic::set_hook(Box::new(move |info| {
-            let error = panic_report(info, "client").error;
-            if error.contains("a broken mod") {
-                sink.lock().unwrap().push(error);
-            }
-        }));
-        let unwound = mod_platform::testing::with_mods(mods.into(), || {
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                mod_api::dispatch_component_types(
-                    &mod_api::RegistrationContext::new(),
-                    &mut Vec::new(),
-                )
-            }))
-        });
-        // Once the dispatch has unwound, the thread is in no mod.
-        let _ = std::panic::catch_unwind(|| panic!("a broken mod's caller"));
-        std::panic::set_hook(previous);
+        let unwound = with_claimed_panics(
+            move |info| {
+                let error = panic_report(info, "client").error;
+                let ours = error.contains("a broken mod");
+                if ours {
+                    sink.lock().unwrap().push(error);
+                }
+                ours
+            },
+            || {
+                let unwound = mod_platform::testing::with_mods(mods.into(), || {
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        mod_api::dispatch_component_types(
+                            &mod_api::RegistrationContext::new(),
+                            &mut Vec::new(),
+                        )
+                    }))
+                });
+                // Once the dispatch has unwound, the thread is in no mod.
+                let _ = std::panic::catch_unwind(|| panic!("a broken mod's caller"));
+                unwound
+            },
+        );
         // The game stops as before: the panic goes on to the dispatch's caller.
         assert!(unwound.is_err());
         let errors = caught.lock().unwrap();

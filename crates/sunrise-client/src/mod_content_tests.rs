@@ -10,6 +10,8 @@ mod block_entity_tests;
 mod farmland_tests;
 #[path = "mod_content_jar_tests.rs"]
 mod jar_tests;
+#[path = "mod_content_waterlogged_tests.rs"]
+mod waterlogged_tests;
 /// A Java jar's assets are a pack layer under the mod's own files, in mod
 /// order under the later mods. Passive assets stay in the jar, and the files
 /// every pack stacks (atlases here) merge across vanilla, the jars and the
@@ -39,10 +41,14 @@ fn a_mods_jars_layer_under_its_files_in_mod_order() {
     fs::create_dir_all(base.join("assets/minecraft/atlases")).unwrap();
     fs::write(
         base.join("assets/minecraft/atlases/blocks.json"),
-        r#"{"sources": [{"type": "directory", "source": "block"}]}"#,
+        r#"{"sources": [{"type": "directory", "source": "block", "prefix": "block/"}]}"#,
     )
     .unwrap();
-    let atlas = |source: &str| format!("{{\"sources\": [{{\"source\": \"{source}\"}}]}}");
+    let atlas = |source: &str| {
+        format!(
+            "{{\"sources\": [{{\"type\": \"directory\", \"source\": \"{source}\", \"prefix\": \"\"}}]}}"
+        )
+    };
     // A jar in the store as the launcher names it: `<sha512>.jar`, with
     // entries in any namespace (a jar is not fenced as a mod's files are).
     let jar = |name: &str, entries: &[(&str, String)]| {
@@ -716,6 +722,7 @@ fn block_aliases_keep_the_original_item_in_placement_context() {
         fn before_state_for_placement(
             &self,
             _: &sunrise_world::level::Ticks,
+            _: Option<&sunrise_world::level::PreviewBlocks>,
             _: BlockStateId,
             c: &PlacementContext,
             _: sunrise_world::fluid::FluidState,
@@ -921,19 +928,36 @@ fn creative_tabs_keep_vanilla_items_missing_from_search() {
         names: BTreeMap::new(),
     };
     let mut doc: J = serde_json::from_str(
-        r#"{"tabs":[{"type":"SEARCH","items":["{count:1,id:\"minecraft:stone\"}"]}]}"#,
+        r#"{"schema":4,"item_features":{},"potion_features":{},"tabs":[{"id":"minecraft:search","type":"SEARCH","build":[],"search_metadata":[]}]}"#,
     )
     .unwrap();
     plan.creative_tabs(&mut doc).unwrap();
-    let doc: serde_json::Value = serde_json::to_value(doc).unwrap();
+    let catalog =
+        sunrise_items::creative_catalog::Catalog::parse(&serde_json::to_value(doc).unwrap())
+            .unwrap();
+    let built = catalog.build(
+        sunrise_items::creative_catalog::Parameters {
+            features: &[],
+            operator: false,
+            holders: &Default::default(),
+            items: &crate::items::Items::empty(),
+        },
+        None,
+        |_, _, _| {},
+    );
+    assert_eq!(catalog.tabs()[1].id, "test:restricted");
     assert_eq!(
-        doc["tabs"][1]["items"],
-        serde_json::json!([
-            "{count:1,id:\"minecraft:barrier\"}",
-            "{count:1,id:\"minecraft:command_block\"}",
-            "{count:1,id:\"minecraft:written_book\"}",
-            "{count:1,id:\"minecraft:knowledge_book\"}",
-        ])
+        built[1]
+            .display
+            .iter()
+            .map(|stack| stack.item.as_ref())
+            .collect::<Vec<_>>(),
+        [
+            "minecraft:barrier",
+            "minecraft:command_block",
+            "minecraft:written_book",
+            "minecraft:knowledge_book"
+        ],
     );
 }
 
@@ -4024,6 +4048,21 @@ fn creative_tabs_come_on_their_own_page() {
     )
     .unwrap();
     let mut creative = crate::creative::Creative::load(&root).unwrap();
+    let lists = creative.catalog().build(
+        sunrise_items::creative_catalog::Parameters {
+            operator: false,
+            features: &["minecraft:vanilla".into()],
+            holders: &Default::default(),
+            items: &crate::items::Items::empty(),
+        },
+        None,
+        |_, _, _| {},
+    );
+    creative.publish(
+        lists,
+        Default::default(),
+        &crate::creative::Names::default(),
+    );
     assert_eq!(creative.pages(), 2);
     let i = creative
         .tabs
@@ -4053,11 +4092,11 @@ fn creative_tabs_come_on_their_own_page() {
     let search = creative.tabs.iter().position(|t| t.search).unwrap();
     creative.select(search);
     creative.set_page(1);
-    assert_eq!((creative.selected, creative.page), (search, 1));
+    assert_eq!((creative.selected_index(), creative.page), (search, 1));
     creative.select(0);
     // Page 1 shows the mod's tab and the right-hand ones, not vanilla's.
     creative.set_page(1);
-    assert_eq!(creative.selected, i);
+    assert_eq!(creative.selected_index(), i);
     let shown: Vec<&str> = creative
         .tabs
         .iter()
@@ -5597,6 +5636,82 @@ fn configured_features_load_from_the_26_3_path() {
     fs::remove_dir_all(scratch).unwrap();
 }
 
+/// A content mod's own biomes join the biome set after vanilla's, by namespace
+/// then path; a `minecraft` biome file never joins it (the content fence refuses the file). Its tag keeps them, a
+/// modifier on that tag reaches them, and the biome suggestions list them.
+#[test]
+fn a_mods_own_biomes_join_the_biome_set() {
+    let base = biome_base("mod-biomes");
+    let scratch = base.parent().unwrap().to_owned();
+    fs::write(
+        base.join("command-registries.json"),
+        r#"{"blocks":{},"items":[],"by_registry":{"minecraft:worldgen/biome":{"ids":["minecraft:desert","minecraft:plains"]}}}"#,
+    )
+    .unwrap();
+    let foo = r#"{"temperature":1.5,"downfall":0.0,"features":[[]]}"#;
+    let m = folder_mod(
+        &scratch.join("zinc"),
+        &[
+            ("sunrise-mod.toml", &manifest("zinc", "")),
+            ("data/zinc/worldgen/biome/foo.json", foo),
+            ("data/zinc/worldgen/biome/bar/a.json", foo),
+            (
+                "data/zinc/worldgen/feature/ore_zinc.json",
+                r#"{"type":"minecraft:ore","config":{}}"#,
+            ),
+            (
+                "data/zinc/worldgen/placed_feature/ore_zinc.json",
+                r#"{"feature":"zinc:ore_zinc","placement":[]}"#,
+            ),
+            (
+                "data/zinc/tags/worldgen/biome/hot.json",
+                r#"{"values":["zinc:foo","zinc:missing"]}"#,
+            ),
+            (
+                "data/zinc/neoforge/biome_modifier/hot_ore.json",
+                r##"{"type":"neoforge:add_features","biomes":"#zinc:hot",
+                    "features":"zinc:ore_zinc","step":"underground_ores"}"##,
+            ),
+        ],
+    );
+    let out = scratch.join("out");
+    build_fixture(&base, Path::new(""), &[m], &out).unwrap();
+    let text = |root: &Path| fs::read_to_string(root.join("worldgen/biomes.json")).unwrap();
+    let bundle: BTreeMap<String, String> = serde_json::from_str(&text(&out)).unwrap();
+    let vanilla: BTreeMap<String, String> = serde_json::from_str(&text(&base)).unwrap();
+    for (id, biome) in &vanilla {
+        assert_eq!(&bundle[id], biome, "{id}");
+    }
+    assert_eq!(bundle.len(), vanilla.len() + 2);
+    let features = biome_features(&out);
+    assert_eq!(
+        features["zinc:foo"],
+        serde_json::json!([[], [], [], [], [], [], ["zinc:ore_zinc"]])
+    );
+    assert_eq!(features["zinc:bar/a"], serde_json::json!([[]]));
+    // After vanilla's, then by path.
+    let at = |id: &str| text(&out).find(&format!("\"{id}\":")).unwrap();
+    assert!(at("minecraft:plains") < at("zinc:bar/a") && at("zinc:bar/a") < at("zinc:foo"));
+    let tag: BTreeMap<String, String> =
+        serde_json::from_slice(&fs::read(out.join("worldgen/biome_tags.json")).unwrap()).unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&tag["zinc:hot"]).unwrap()["values"],
+        serde_json::json!(["zinc:foo"])
+    );
+    let commands: serde_json::Value =
+        serde_json::from_slice(&fs::read(out.join("command-registries.json")).unwrap()).unwrap();
+    assert_eq!(
+        commands["by_registry"]["minecraft:worldgen/biome"]["ids"],
+        serde_json::json!([
+            "minecraft:desert",
+            "minecraft:plains",
+            "zinc:bar/a",
+            "zinc:foo"
+        ])
+    );
+    let _ = fs::remove_dir_all(&scratch);
+}
+
 /// A world's data pack that replaces a vanilla biome (Terralith's plains)
 /// keeps the mods' modifier features, and a pack's own biome its tag puts
 /// under the modifier's selector gets them: modifiers apply after
@@ -6304,8 +6419,8 @@ fn signs_take_their_form_wood_and_wall_block_from_their_declaration() {
 
 /// A fence gate of a mod is a vanilla `FenceGateBlock` through its template, with
 /// its wood's sounds unless the file names its own: `open_sound` and
-/// `close_sound` replace `WoodType.fenceGateOpen` and `fenceGateClose`, the one
-/// value a use, a redstone change and an explosion all read.
+/// `close_sound` override every site or just the named sites, retaining the
+/// template wood for each missing site.
 #[test]
 #[ignore = "daily"]
 fn a_content_fence_gate_plays_its_own_sounds_or_its_woods() {
@@ -6332,6 +6447,10 @@ fn a_content_fence_gate_plays_its_own_sounds_or_its_woods() {
                 "data/gates/sunrise/block/half.json",
                 r#"{"template": "minecraft:birch_fence_gate", "open_sound": "gates:half.open"}"#,
             ),
+            (
+                "data/gates/sunrise/block/sites.json",
+                r#"{"template":"minecraft:oak_fence_gate","open_sound":{"use":"gates:use.open","redstone":"gates:wire.open"},"close_sound":{"explosion":"gates:blast.close"}}"#,
+            ),
         ],
     );
     let root = resource_root_fixture(
@@ -6347,12 +6466,15 @@ fn a_content_fence_gate_plays_its_own_sounds_or_its_woods() {
         let state = registry.default_state(name).unwrap();
         let data = behaviours.data(state);
         (
-            data.gate_open.as_deref().map(str::to_owned),
-            data.gate_close.as_deref().map(str::to_owned),
+            std::array::from_fn::<_, 3, _>(|i| data.gate_open[i].as_deref().map(str::to_owned)),
+            std::array::from_fn::<_, 3, _>(|i| data.gate_close[i].as_deref().map(str::to_owned)),
         )
     };
     let gate = |open: Option<&str>, close: Option<&str>| {
-        (open.map(str::to_owned), close.map(str::to_owned))
+        (
+            std::array::from_fn::<_, 3, _>(|_| open.map(str::to_owned)),
+            std::array::from_fn::<_, 3, _>(|_| close.map(str::to_owned)),
+        )
     };
     assert_eq!(
         sounds("gates:oak"),
@@ -6370,6 +6492,23 @@ fn a_content_fence_gate_plays_its_own_sounds_or_its_woods() {
         gate(
             Some("gates:half.open"),
             Some("minecraft:block.fence_gate.close")
+        )
+    );
+    assert_eq!(
+        sounds("gates:sites"),
+        (
+            [
+                "gates:use.open",
+                "minecraft:block.fence_gate.open",
+                "gates:wire.open"
+            ]
+            .map(|s| Some(s.to_owned())),
+            [
+                "minecraft:block.fence_gate.close",
+                "gates:blast.close",
+                "minecraft:block.fence_gate.close"
+            ]
+            .map(|s| Some(s.to_owned())),
         )
     );
     assert_eq!(
@@ -7841,6 +7980,67 @@ fn declared_offsets_resolve_modes_and_publish_only_declared_shape_channels() {
             assert_eq!(offsets[0].get("channels"), Some(&Tag::Byte(9)));
         } else {
             assert!(tag.get("shape_offsets").is_none());
+        }
+        fs::remove_dir_all(base.parent().unwrap()).unwrap();
+    }
+}
+
+#[test]
+fn plain_block_properties_replace_template_facts_and_face_rule() {
+    for value in [true, false] {
+        let declaration = format!(
+            r#"{{"template":"minecraft:test","item":false,"properties":{{"instrument":"CUSTOM_HEAD","ignited_by_lava":{value},"replaceable":{value},"skip_same_block_faces":{value}}}}}"#
+        );
+        let (base, mods) = block_base(&format!("plain-properties-{value}"), &[&declaration]);
+        let plan = Plan::new(&base, &mods).unwrap();
+        let row = format!(
+            r#"{{"ignited_by_lava":{},"replaceable":{}}}"#,
+            !value, !value
+        );
+        let mut gameplay: J =
+            serde_json::from_str(&format!(r#"{{"states":[{row},{row}]}}"#)).unwrap();
+        plan.json("gameplay-facts.json", &mut gameplay).unwrap();
+        let Some(J::Arr(rows)) = gameplay.get("states") else {
+            panic!("states")
+        };
+        for row in &rows[2..] {
+            assert_eq!(row.get("ignited_by_lava"), Some(&J::Bool(value)));
+            assert_eq!(row.get("replaceable"), Some(&J::Bool(value)));
+        }
+        let template_flags = if value { 16 } else { 16 | 4 };
+        let mut properties = Tag::Compound(Compound::from([(
+            "blocks".into(),
+            Tag::Compound(Compound::from([(
+                "minecraft:test".into(),
+                Tag::Byte(template_flags),
+            )])),
+        )]));
+        plan.nbt(&mut properties);
+        assert_eq!(
+            properties.get("blocks").unwrap().get("testmod:test"),
+            Some(&Tag::Byte(if value { 16 | 4 } else { 16 }))
+        );
+        let mut definitions: J =
+            serde_json::from_str(r#"{"minecraft:test":{"rule":"bars"}}"#).unwrap();
+        plan.json("render-definitions.json", &mut definitions)
+            .unwrap();
+        assert_eq!(
+            definitions.at("testmod:test/rule"),
+            Some(&mut J::Str(
+                if value { "same_block" } else { "never" }.into()
+            ))
+        );
+        let mut behaviour: J = serde_json::from_str(
+            r#"{"states":[[0,0,0,0,0,0,0,0,"HARP"],[0,0,0,0,0,0,0,0,"HARP"]],"blocks":[],"items":{}}"#,
+        )
+        .unwrap();
+        plan.json("block-behaviours.json", &mut behaviour).unwrap();
+        let Some(J::Arr(rows)) = behaviour.get("states") else {
+            panic!("states")
+        };
+        for row in &rows[2..] {
+            let J::Arr(row) = row else { panic!("row") };
+            assert_eq!(row[8], J::Str("CUSTOM_HEAD".into()));
         }
         fs::remove_dir_all(base.parent().unwrap()).unwrap();
     }

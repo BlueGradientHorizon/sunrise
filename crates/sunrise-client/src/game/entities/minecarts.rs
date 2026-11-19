@@ -568,7 +568,7 @@ impl Minecart {
         )
     }
     fn horizontal(&self) -> f64 {
-        self.velocity.x.hypot(self.velocity.z)
+        sunrise_core::geometry::length(self.velocity.x, self.velocity.z)
     }
     /// `AbstractContainerMenu.getRedstoneSignalFromContainer` of `slots`.
     pub(super) fn container_signal(slots: &[Option<ItemStack>], items: &Items) -> i32 {
@@ -682,7 +682,7 @@ impl Game<'_> {
         let mut y = f64::from(yt) + if rail.shape.is_slope() { 1.0 } else { 0.0 };
         let (e0, e1) = rail.shape.exits();
         let (mut xd, mut zd) = (f64::from(e1[0] - e0[0]), f64::from(e1[2] - e0[2]));
-        let dd = xd.hypot(zd);
+        let dd = sunrise_core::geometry::length(xd, zd);
         xd /= dd;
         zd /= dd;
         x += xd * offs;
@@ -783,7 +783,7 @@ impl Game<'_> {
         }
         let (e0, e1) = rail.shape.exits();
         let (mut xd, mut zd) = (f64::from(e1[0] - e0[0]), f64::from(e1[2] - e0[2]));
-        let length = xd.hypot(zd);
+        let length = sunrise_core::geometry::length(xd, zd);
         if c.velocity.x * xd + c.velocity.z * zd < 0.0 {
             xd = -xd;
             zd = -zd;
@@ -1144,13 +1144,13 @@ impl Game<'_> {
             }
             // calculateHaltTrackSpeed (until the input halted).
             if !halted && &*rail.name == "minecraft:powered_rail" && !rail.powered {
-                let before = v.x.hypot(v.z);
+                let before = sunrise_core::geometry::length(v.x, v.z);
                 if before < 0.03 {
                     v = Vec3::ZERO;
                 } else {
                     v = Vec3::new(v.x * 0.5, v.y, v.z * 0.5);
                 }
-                halted = v.x.hypot(v.z) != before;
+                halted = sunrise_core::geometry::length(v.x, v.z) != before;
             }
             // applyNaturalSlowdown and the speed cap (first iteration).
             if first {
@@ -1221,7 +1221,7 @@ impl Game<'_> {
         if movement.dot(out_dir) < movement.dot(in_dir) {
             out_dir = in_dir;
         }
-        let out_len = out_dir.x.hypot(out_dir.z);
+        let out_len = sunrise_core::geometry::length(out_dir.x, out_dir.z);
         let mut out_pos = Vec3::new(
             f64::from(pos[0]) + 0.5 + out_dir.x + out_dir.x / out_len * f64::from(1.0e-5_f32),
             f64::from(pos[1]) + 0.1,
@@ -1233,8 +1233,8 @@ impl Game<'_> {
         let towards_out = c.position.vector_to(out_pos).normalize();
         // The movement turns onto the exit's direction, at the same speed
         // (`this.setDeltaMovement(movement)` at stepAlongTrack's end).
-        let h_speed = movement.x.hypot(movement.z);
-        let th = towards_out.x.hypot(towards_out.z);
+        let h_speed = sunrise_core::geometry::length(movement.x, movement.z);
+        let th = sunrise_core::geometry::length(towards_out.x, towards_out.z);
         let movement = towards_out.scale(h_speed / th);
         let mut new_pos = if in_hill {
             old.add_vector(
@@ -1270,7 +1270,8 @@ impl Game<'_> {
                     return 0.0;
                 }
             }
-            let h_dist = (out_pos.x - c.position.x).hypot(out_pos.z - c.position.z);
+            let h_dist =
+                sunrise_core::geometry::length(out_pos.x - c.position.x, out_pos.z - c.position.z);
             let project = out_pos.y
                 + if Self::is_descending(movement, rail.shape) {
                     h_dist
@@ -1415,14 +1416,19 @@ impl Game<'_> {
         let pos = self.rail_block(c.position);
         if self.minecart_improvements() {
             self.move_along_track_new(c, intent);
-        } else if let Some(rail) = self.rail(Some(c.id), pos[0], pos[1], pos[2]) {
-            self.move_along_track(c, pos, &rail, intent, slot);
-            self.note_cart_pass(c, pos);
-            if &*rail.name == "minecraft:activator_rail" {
-                self.activate_cart(c, rail.powered);
-            }
         } else {
-            self.come_off_track(c);
+            // OldMinecartBehavior.tick writes `onRails` every tick, before the move.
+            let rail = self.rail(Some(c.id), pos[0], pos[1], pos[2]);
+            c.on_rails = rail.is_some();
+            if let Some(rail) = rail {
+                self.move_along_track(c, pos, &rail, intent, slot);
+                self.note_cart_pass(c, pos);
+                if &*rail.name == "minecraft:activator_rail" {
+                    self.activate_cart(c, rail.powered);
+                }
+            } else {
+                self.come_off_track(c);
+            }
         }
         c.first_tick = false;
         // The old behavior derives yaw once per tick; the experiment has
@@ -2094,15 +2100,9 @@ impl Game<'_> {
         // ServerPlayer.getLastClientMoveIntent: getInputVector((left, 0, forward), 1, yRot).
         let left = f64::from(i8::from(keys.left) - i8::from(keys.right));
         let forward = f64::from(i8::from(keys.forward) - i8::from(keys.backward));
-        let len = left.hypot(forward);
-        let (left, forward) = if len > 1.0 {
-            (left / len, forward / len)
-        } else {
-            (left, forward)
-        };
-        let r = self.yaw.to_radians();
-        let (s, co) = (f64::from(r.sin()), f64::from(r.cos()));
-        let intent = [left * co - forward * s, forward * co + left * s];
+        let input = sunrise_core::geometry::Vec3::new(left, 0.0, forward);
+        let v = sunrise_world::living_air::input_vector(input, 1.0, self.yaw);
+        let intent = [v.x, v.z];
         let id = self.carts[i].id;
         let result =
             self.with_entity_held_out(id, |game| section_steps::tick_riding(game, id, i, intent));
@@ -2220,6 +2220,13 @@ impl Game<'_> {
         true
     }
     pub(super) fn cart_hit(&self) -> Option<(usize, f64)> {
+        let mut pick = crate::game::pick_accumulator::PickAccumulator::new(self.entity_reach);
+        self.cart_hit_with_pick(&mut pick)
+    }
+    pub(super) fn cart_hit_with_pick(
+        &self,
+        pick: &mut crate::game::pick_accumulator::PickAccumulator,
+    ) -> Option<(usize, f64)> {
         if let Some(hit) = self.cached_entity_pick() {
             let (entity, distance, _) = hit?;
             let index = self.carts.iter().position(|f| f.id == entity.id())?;
@@ -2229,9 +2236,6 @@ impl Game<'_> {
         let reach: f64 = self.entity_reach;
         let mut best: Option<(usize, f64)> = None;
         for (i, c) in self.carts.iter().enumerate() {
-            if Some(c.id) == self.riding {
-                continue;
-            }
             let bb = c.bounds();
             let (lo, hi) = (bb.min_position(), bb.max_position());
             let (lo, hi) = ([lo.x, lo.y, lo.z], [hi.x, hi.y, hi.z]);
@@ -2249,7 +2253,7 @@ impl Game<'_> {
                 t0 = t0.max(ta);
                 t1 = t1.min(tb);
             }
-            if hit && t0 <= t1 && best.is_none_or(|b| t0 < b.1) {
+            if hit && t0 <= t1 && pick.consider(self, c.id, t0) {
                 best = Some((i, t0));
             }
         }

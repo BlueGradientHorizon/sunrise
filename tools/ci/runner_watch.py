@@ -31,14 +31,12 @@ EFFECTS = [
     ("sunrise-light", "Small jobs (triage and claim commands, pull request labels, overlap notes, the Mojang "
                       "republish check) wait instead of running.",
      "An organisation owner sets the repository variable `SELF_HOSTED_CI` to `off`: they run on GitHub's runners."),
-    ("sunrise-checks", "`verify` and `launcher` of the pull requests whose number ends in 0 or 1 wait, so those pull "
+    ("sunrise-checks", "`verify` of the pull requests whose number ends in 0 or 1 wait, so those pull "
                        "requests can't merge.",
      "An organisation owner sets `SELF_HOSTED_CI` to `off` (or `light`), then the authors push again or a Team "
      "member re-runs the checks."),
     ("sunrise-nightly", "The Nightly's macOS builds wait, so no Nightly is published.",
      "Players keep the last Nightly. Nothing to do on GitHub until a Mac runner is back."),
-    ("sunrise-release", "The launcher's macOS builds wait, so no launcher release is published.",
-     "Players keep their launcher. Nothing to do on GitHub until a Mac runner is back."),
     ("sunrise-game", "By-hand game tools on the maintainers' runners wait; the daily uses Dyna instead.",
      "Use the local tools, or wait for the maintainer's runner."),
 ]

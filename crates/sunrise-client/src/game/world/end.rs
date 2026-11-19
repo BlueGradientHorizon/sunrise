@@ -81,10 +81,16 @@ impl GatewayJob {
         match configured {
             Some((exit, exact)) => Self::Known { exit, exact },
             // Worldgen return gateways (end_gateway_return) lead exactly to the End spawn.
-            None if f64::from(gateway[0]).hypot(f64::from(gateway[2])) > 512.0 => Self::Known {
-                exit: END_SPAWN,
-                exact: true,
-            },
+            None if sunrise_core::geometry::length(
+                f64::from(gateway[0]),
+                f64::from(gateway[2]),
+            ) > 512.0 =>
+            {
+                Self::Known {
+                    exit: END_SPAWN,
+                    exact: true,
+                }
+            }
             None => Self::Find {
                 gateway,
                 exact: exact_teleport(entity),
@@ -349,7 +355,7 @@ impl EyeOfEnder {
     fn update_delta(old: glam::DVec3, position: glam::DVec3, target: glam::DVec3) -> glam::DVec3 {
         let horizontal = glam::DVec3::new(target.x - position.x, 0.0, target.z - position.z);
         let length = horizontal.length();
-        let old_horizontal = old.x.hypot(old.z);
+        let old_horizontal = sunrise_core::geometry::length(old.x, old.z);
         let mut wanted_speed = old_horizontal + 0.0025 * (length - old_horizontal);
         let mut y = old.y;
         if length < 1.0 {
@@ -1305,7 +1311,7 @@ impl Game<'_> {
         );
         // EyeOfEnder.signalTo.
         let delta = target - start;
-        let horizontal = delta.x.hypot(delta.z);
+        let horizontal = sunrise_core::geometry::length(delta.x, delta.z);
         let target = if horizontal > 12.0 {
             start
                 + glam::DVec3::new(

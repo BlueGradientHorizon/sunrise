@@ -36,7 +36,7 @@ pub(crate) mod boundary {
 }
 pub use imports::{Mismatch, Why, set_game_build};
 pub(crate) use runtime::WeakWasmMod;
-pub use runtime::{CallClass, WasmHandler, WasmMod};
+pub use runtime::{CallClass, WasmHandler, WasmMod, guest_engine, install_stack_policy};
 
 #[cfg(any(test, feature = "test-copy-probe"))]
 pub mod test_log;
@@ -477,7 +477,8 @@ pub fn load_installed(
     let game_dir = &launch.context.game_dir;
     let dev = &launch.context.dev_mods;
     let budget = compile_budget::CompileBudget::read(launch, player_dir);
-    let mut cache = module_cache::ModuleCache::new(game_dir.join(module_cache::CACHE_DIR));
+    let mut cache =
+        module_cache::ModuleCache::new(launch.cache_home().join(module_cache::CACHE_DIR));
     if let Ok(budget) = budget.as_ref() {
         cache.budget = *budget;
     }
@@ -553,7 +554,18 @@ pub fn load_installed(
                 refused.push((selected.package.manifest.id, Refusal::Package(reason)));
                 return None;
             }
-            match selected.package.wasm(&selected.path) {
+            // The package opens once, here: its runtime files are checked with its module, a
+            // mismatch refuses this mod alone, by name, and the verified bytes are kept for the
+            // game to serve.
+            match selected.package.wasm(&selected.path).and_then(|module| {
+                if let Some(runtime) = selected.package.read_runtime(&selected.path)? {
+                    sunrise_mod_package::manifest::RuntimeData::keep_opened(
+                        &selected.package.manifest.id,
+                        runtime,
+                    );
+                }
+                Ok(module)
+            }) {
                 Ok(module) => Some(WasmPackage {
                     manifest: selected.package.manifest,
                     module,
@@ -575,9 +587,10 @@ pub fn load_installed(
             ..Loaded::default()
         },
         Ok(_) => {
-            let std = std::env::current_exe()
-                .ok()
-                .and_then(|exe| std::fs::read(exe.with_file_name("sunrise-wasm-std.wasm")).ok());
+            let std = read_std(
+                std::env::current_exe().ok().as_deref(),
+                launch.private_home(),
+            );
             load_available_std(
                 std.as_deref(),
                 packages,
@@ -600,6 +613,18 @@ pub fn load_installed(
             .collect(),
     );
     loaded
+}
+
+const STD_FILE: &str = "sunrise-wasm-std.wasm";
+
+/// The wasm std library: beside the executable, else in the private home, for a host whose
+/// executable sits where nothing of the game's can be installed.
+fn read_std(executable: Option<&Path>, private_home: Option<&Path>) -> Option<Vec<u8>> {
+    executable
+        .map(|exe| exe.with_file_name(STD_FILE))
+        .into_iter()
+        .chain(private_home.map(|home| home.join(STD_FILE)))
+        .find_map(|path| std::fs::read(path).ok())
 }
 
 /// Loaded wasm entries are installed in the same dispatch list as native entries.
@@ -879,6 +904,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn std_is_read_beside_the_executable_then_from_the_private_home() {
+        let exe_dir = tempfile::tempdir().unwrap();
+        let private = tempfile::tempdir().unwrap();
+        let exe = exe_dir.path().join("game");
+        assert_eq!(read_std(Some(&exe), Some(private.path())), None);
+        std::fs::write(private.path().join(STD_FILE), b"private").unwrap();
+        assert_eq!(
+            read_std(Some(&exe), Some(private.path())).as_deref(),
+            Some(&b"private"[..])
+        );
+        std::fs::write(exe_dir.path().join(STD_FILE), b"beside").unwrap();
+        assert_eq!(
+            read_std(Some(&exe), Some(private.path())).as_deref(),
+            Some(&b"beside"[..])
+        );
+        assert_eq!(read_std(None, None), None);
+    }
+
+    #[test]
     fn a_boundary_refusal_names_each_item_with_its_versions_and_counts_the_rest() {
         let mismatch = |item: &str, why| Mismatch {
             item: item.into(),
@@ -1018,6 +1062,91 @@ mod tests {
         assert!(loaded.refused.iter().all(|(id, refusal)| {
             id == "duplicate_dev" && matches!(refusal, Refusal::DependencyOrder { .. })
         }));
+    }
+
+    /// A wasm package whose runtime file does not match its manifest hash is refused by name at
+    /// load, naming the file; the other package is not refused for it.
+    #[test]
+    #[ignore = "daily"]
+    fn a_wasm_package_with_an_edited_runtime_file_is_refused_alone() {
+        const CHILD_ROOT: &str = "SUNRISE_RUNTIME_FILE_TEST_ROOT";
+        let Some(root) = std::env::var_os(CHILD_ROOT) else {
+            // The loader installs process-wide state and finds the standard library and
+            // packages beside the executable, so this runs in a relocated copy, alone.
+            let executable = std::env::current_exe().unwrap();
+            let root = tempfile::tempdir_in(executable.parent().unwrap()).unwrap();
+            let harness = root.path().join("runtime-file-test");
+            std::fs::hard_link(executable, &harness).unwrap();
+            std::fs::write(
+                root.path().join("sunrise-wasm-std.wasm"),
+                b"\0asm\x01\0\0\0",
+            )
+            .unwrap();
+            let status = std::process::Command::new(harness)
+                .args([
+                    "--exact",
+                    "tests::a_wasm_package_with_an_edited_runtime_file_is_refused_alone",
+                    "--ignored",
+                    "--nocapture",
+                ])
+                .env(CHILD_ROOT, root.path())
+                .status()
+                .unwrap();
+            assert!(status.success());
+            return;
+        };
+        let root = std::path::PathBuf::from(root).join("packages");
+        crate::test_stack::on_guest_stack(|| {
+            let module = wat::parse_str(
+                r#"(module (@custom "dylink.0" "\01\04\00\00\00\00")
+                    (func (export "sunrise_layout"))
+                    (func (export "sunrise_in"))
+                    (func (export "sunrise_hook")))"#,
+            )
+            .unwrap();
+            let make = |id: &str, on_disk: &[u8]| {
+                let path = root.join(id);
+                std::fs::create_dir_all(path.join("runtime")).unwrap();
+                std::fs::write(path.join("mod.wasm"), &module).unwrap();
+                std::fs::write(path.join("runtime/nav.bin"), on_disk).unwrap();
+                std::fs::write(
+                    path.join("sunrise-mod.toml"),
+                    format!(
+                        "id='{id}'\nname='{id}'\nversion='1.0.0'\napi='0.2'\ncapabilities=['registries']\n[wasm]\nsha512='{}'\ntoolchain='test'\nbuilt_with='test'\n[runtime]\n\"nav.bin\"='{}'\n",
+                        sunrise_mod_package::manifest::sha512_of(&module),
+                        sunrise_mod_package::manifest::sha512_of(b"tables"),
+                    ),
+                )
+                .unwrap();
+                path.to_str().unwrap().to_owned()
+            };
+            let good = make("good_runtime", b"tables");
+            let bad = make("bad_runtime", b"tablez");
+            let launch = sunrise_mod_package::selection::LaunchArguments::parse(
+                ["--dev-mod".to_owned(), good, "--dev-mod".to_owned(), bad].into_iter(),
+                &root,
+                &root,
+                None,
+            )
+            .unwrap();
+            let loaded = load_installed(&launch, &root);
+            let refused: Vec<_> = loaded
+                .refused
+                .iter()
+                .map(|(id, why)| (id.as_str(), why.to_string()))
+                .collect();
+            let reason = |id: &str| refused.iter().find(|(r, _)| *r == id).map(|(_, why)| why);
+            assert!(
+                reason("bad_runtime").is_some_and(|why| why.contains("runtime/nav.bin")),
+                "{refused:?}"
+            );
+            // The other package passed the package checks; this test has no wasm standard
+            // library to link it against, which is the only thing that stops it.
+            assert!(
+                reason("good_runtime").is_none_or(|why| !why.contains("nav.bin")),
+                "{refused:?}"
+            );
+        });
     }
 
     #[test]

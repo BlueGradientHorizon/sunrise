@@ -40,9 +40,18 @@ the sign's block position and whether its front side is being edited. It returns
 editor open, or outside a world. A close of the sign editor always sends the sign update, however it
 closes; there is no close that skips it, because the vanilla client never omits that packet.
 
+## Frame coordinates
+
+`screen_draw` and `screen_tooltip` version 3 carry `pointer: [i32; 2]`
+and `gui_size: [i32; 2]`, the current frame's absolute pointer and window size
+in scaled GUI pixels. Pointer components truncate toward zero, including outside
+the panel. Both carry `origin: [f32; 2]`, the panel's top-left; tooltip `at`
+remains relative to that origin. Use these values for hover regions and layout:
+they reflect this frame's resize and panel positioning, not a cached window size.
+
 ## Replacing a mod container slot's tooltip
 
-`BlockEntityPart::screen_tooltip` version 2 runs for a hovered filled slot as well
+`MenuPart::screen_tooltip` runs for a hovered filled slot as well
 as an empty slot or screen space. `event.slot` is the **menu index**, including
 the player inventory, or `None` outside a mapped slot. It is not the engine's
 internal slot encoding. `event.at` remains GUI pixels from the screen's origin.
@@ -68,21 +77,25 @@ being built) moves or hides a slot afterwards with `ClientHost::set_screen_slot`
 `Slot.x`/`Slot.y` or deactivates a slot:
 
 ```rust,ignore
-const BLOCK: &str = "mymod:station";
+const MENU: &str = "mymod:station";
 // A scrolling grid: slot 3 now sits one row up, 18 pixels from the screen's top-left corner.
-host.set_screen_slot(BLOCK, 3, Some([62.0, 18.0]))?;
+host.set_screen_slot(MENU, 3, Some([62.0, 18.0]))?;
 // This layout doesn't use slot 4.
-host.set_screen_slot(BLOCK, 4, None)?;
+host.set_screen_slot(MENU, 4, None)?;
 // Where slot 3 is from the next frame.
-assert_eq!(host.screen_slot(BLOCK, 3), Some([62.0, 18.0]));
+assert_eq!(host.screen_slot(MENU, 3), Some([62.0, 18.0]));
 ```
 
-`block` is the block whose screen is open, so a call made for another screen refuses. `slot` is the index into
+`menu` is the menu type whose screen is open, so a call made for another screen refuses, as does one from a mod
+that does not own the open screen. A screen with a registered recipe-book layout belongs to the mod that
+registered it, which moves its slots with or without a screen part; any other screen belongs to the mod whose
+screen part lays it out (several mods' blocks can open one vanilla menu type, each with its own mod's screen).
+`slot` is the index into
 `Screen::slots`. A position is GUI pixels from the screen's top-left corner and names the item's top-left
 corner, as in `Screen::slots`; `None` hides the slot. The call takes `&self`, so a screen hook such as
 `screen_render_post` can move slots every frame; a call that repeats a slot's current place changes nothing and
 costs no layout work. The change lasts until the screen closes, and the next screen opens with its declared
-layout. `ClientHost::screen_slot(block, slot)` reads where a slot will be from the next frame, `None` when it is
+layout. `ClientHost::screen_slot(menu, slot)` reads where a slot will be from the next frame, `None` when it is
 hidden.
 
 From the next frame a moved slot is a vanilla slot at that position, which is what the screen reads live:
@@ -108,7 +121,7 @@ Each refusal changes nothing and is named by `ScreenSlotRefusal`:
 
 | Refusal | When |
 |---|---|
-| `NoScreen` | No mod screen is open, or the open one is another block's |
+| `NoScreen` | No mod screen is open, or the open one is another menu type's |
 | `NoSuchSlot` | `slot` is past the end of `Screen::slots` |
 | `HiddenAtOpen` | A position for a slot `Screen::slots` hid when the screen opened |
 | `BadPosition` | An `x` or `y` that is NaN or infinite |

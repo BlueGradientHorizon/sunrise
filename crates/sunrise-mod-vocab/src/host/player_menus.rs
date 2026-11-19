@@ -11,8 +11,9 @@ pub trait PlayerMenusBackend {
     /// On a client, only the local player's menu is available: its slots and carried stack
     /// are the client's view (server updates plus local prediction), not server authority.
     /// On a server, refuses crafting tables, merchants, workstations, lecterns, mounts,
-    /// menus with hidden slots, stale players and players held out by another active turn;
-    /// reads for the acting player use their current inventory, equipment, cursor and ender
+    /// block-backed menus with slots hidden at open, stale players and players held out by
+    /// another active turn. Slots hidden at open do not refuse code-opened native windows.
+    /// Reads for the acting player use their current inventory, equipment, cursor and ender
     /// contents. On a client, refuses stale players and unsupported menu layouts.
     #[access(WorldOnly)]
     fn player_container_menu(&self, player: PlayerRef) -> Option<MenuRef>;
@@ -63,6 +64,8 @@ pub trait PlayerMenusBackendMut {
     /// on a click or shift-click on those slots, and an `ItemPlace::MenuSlot` write, go through
     /// that storage's own handler, journalled; the client sees ordinary synced slots, mirrored
     /// after each click and each write through an `ItemPlace` of that storage, never each tick.
+    /// Right after the open is the place to call it, the player's own item use included: backed
+    /// inside a hook of that player's own action, the slots are mirrored once the action is over.
     /// A slot past `places` stays the mods' own (`native_menu_clicked`). The menu closes once a
     /// place stops resolving (the backpack left the hand, the entity is gone) or a held stack is
     /// no longer the one bound when the slots were backed, checked before each click and at

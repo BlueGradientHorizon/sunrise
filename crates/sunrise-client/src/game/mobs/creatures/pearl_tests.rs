@@ -93,6 +93,7 @@ fn a_pearl_feels_the_water_its_box_touches() {
         thundering: false,
         level: sunrise_core::LevelKey::OVERWORLD,
         block_tags: &items.block_tags,
+        block_tag_flags: items.block_tag_flags.bits(),
         landing: &motion.landing,
         biomes: &biomes,
         mob_griefing: true,

@@ -23,11 +23,7 @@ use sunrise_core::{
     position::BlockPos,
     random::RandomSource,
 };
-use sunrise_world::{
-    fluid::FluidKind,
-    level::{PlaceContext, PlaceOutcome},
-    registry::BlockStateId,
-};
+use sunrise_world::{fluid::FluidKind, level::PlaceContext, registry::BlockStateId};
 
 pub(super) type Pos = (i32, i32, i32);
 
@@ -556,7 +552,15 @@ impl Game<'_> {
                 .get(&rest.item)
                 .map_or(64, |i| i.max_stack)
                 .max(1);
-            for cell in entity.slots_mut() {
+            for slot in 0..entity.slots().len() {
+                let existing = &entity.slots()[slot];
+                if existing
+                    .as_ref()
+                    .is_some_and(|item| !item.same_item_same_components(&rest))
+                {
+                    continue;
+                }
+                let cell = entity.slot_mut(slot).unwrap();
                 match cell {
                     None => {
                         let n = rest.count.min(max);
@@ -566,12 +570,11 @@ impl Game<'_> {
                         });
                         rest.count -= n;
                     }
-                    Some(e) if e.same_item_same_components(&rest) => {
+                    Some(e) => {
                         let n = rest.count.min(max.saturating_sub(e.count));
                         e.count += n;
                         rest.count -= n;
                     }
-                    Some(_) => {}
                 }
                 if rest.count == 0 {
                     break;
@@ -1772,6 +1775,7 @@ impl Game<'_> {
         self.find_wither_pattern(
             sunrise_client::block_pattern::WITHER_BASE,
             [head.0, head.1, head.2],
+            self.world.block(head.0, head.1, head.2),
         )
         .is_some()
     }
@@ -1836,41 +1840,10 @@ impl Game<'_> {
         if !self.with_level(|b, level, ticks| b.directional_can_place(level, ticks, &ctx)) {
             return Ok((Some(stack), FAIL));
         }
-        if mod_api::__private::listened(mod_api::HookId::EntityPlace)
-            && let Some(preview) =
-                self.with_level(|b, level, ticks| b.placement_preview(level, ticks, &ctx))
-        {
-            let against = ctx.placed_against_pos(preview.pos);
-            let against = self.world.block(against.x, against.y, against.z);
-            let mut canceled = false;
-            self.native_entity_place(
-                None,
-                preview.pos,
-                preview.state,
-                against,
-                mod_api::Placement::Single,
-                &mut canceled,
-            );
-            if canceled {
-                return Ok((Some(stack), FAIL));
-            }
-        }
-        let outcome = self.with_level(|b, level, ticks| b.place_block(level, ticks, &ctx));
-        let PlaceOutcome::Placed { pos: placed, state } = outcome else {
+        if self.place_item_block(&ctx, false, &stack)?.is_none() {
             self.process_level_events()?;
             return Ok((Some(stack), FAIL));
-        };
-        let target = (placed.x, placed.y, placed.z);
-        let state = self.apply_item_block_state([target.0, target.1, target.2], state, &stack)?;
-        if !self.world.block_entities.stateful_entity(state.0)
-            && let Some(entity) = self.new_block_entity_for_state(state)
-        {
-            self.world.block_entities.insert(target, entity);
         }
-        if self.world.block_entities.get(&target).is_some() {
-            self.apply_placed_item([target.0, target.1, target.2], &stack, false);
-        }
-        self.block_item_placed(&stack, None, placed, &ctx);
         self.process_level_events()?;
         Ok((shrink(stack), CLICK))
     }

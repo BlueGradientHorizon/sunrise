@@ -1,6 +1,6 @@
 //! Native mods compile and link against the pinned prebuilt game.
 //! Unsupported inputs and unavailable SDKs are refused, never rebuilt locally.
-use super::{Target, api, dependencies, internals};
+use super::{MixinsIdentity, Target, api, dependencies, internals};
 use crate::host::{tr, trf};
 use crate::rust::Toolchain;
 use sha2::{Digest, Sha256};
@@ -137,6 +137,8 @@ pub struct Identity {
     rustc: String,
     target: String,
     side: String,
+    /// The game executable's link policy (the guest stack size). Only the executable's link takes
+    /// it: no mod compile reads it.
     pub link_args: Vec<String>,
     #[serde(default)]
     pub registry_lock: Option<String>,
@@ -407,7 +409,7 @@ pub fn library(deps: &Path, krate: &str) -> Result<PathBuf, String> {
     match candidates.as_slice() {
         [path] => Ok(path.clone()),
         [] => Err(trf(
-            "The prebuilt game has no {crate}.",
+            "The prebuilt game has no {crate}, a library this tool needs: the SDK it comes from is older than the tool. Pin a current build (`cargo sunrise-mod update --sunrise nightly`), or build with the tool in that SDK's own release (`sdk-<build>/tool-<target>.tar.xz`).",
             &[("crate", krate)],
         )),
         _ => Err(facade_refused(krate)),
@@ -478,22 +480,14 @@ fn standard_library(rust: &dyn Toolchain) -> Result<PathBuf, String> {
 
 /// rustc with the prebuilt game's settings, its libraries and `out`'s on the search path, and the
 /// native libraries the game's build scripts link (`native/`: the `windows` crates' import
-/// libraries).
-fn rustc(
-    rust: &dyn Toolchain,
-    game: &Path,
-    out: &Path,
-    edition: &str,
-    link_args: &[String],
-) -> Command {
+/// libraries). The identity's `link_args` are the game executable's link policy and never reach a
+/// library.
+fn rustc(rust: &dyn Toolchain, game: &Path, out: &Path, edition: &str) -> Command {
     let mut cmd = rustc_with(
         rust,
         &[&game.join("deps"), &game.join("host"), out],
         edition,
     );
-    for arg in link_args {
-        cmd.arg("-C").arg(format!("link-arg={arg}"));
-    }
     cmd.arg("-L")
         .arg(format!("native={}", game.join("native").display()));
     cmd
@@ -645,8 +639,8 @@ pub fn compile(
     // Each mod is its own library: told which one starts, and how far through them.
     on_mod: &dyn Fn(&str, usize, usize),
 ) -> Result<(PathBuf, Vec<PathBuf>), String> {
-    let mut names = std::collections::HashSet::new();
-    names.insert(dylib_name("sunrise_patch").to_ascii_lowercase());
+    let mixins = MixinsIdentity::resolve(projects.iter().map(|project| project.bundle), None)?;
+    let mut names = reserved_library_names();
     for item in fs::read_dir(package.runtime.join("deps")).map_err(|e| e.to_string())? {
         names.insert(
             item.map_err(|e| e.to_string())?
@@ -693,6 +687,7 @@ pub fn compile(
             super::registry_compile::Options {
                 consent,
                 adapter: &std::env::current_exe().map_err(|e| e.to_string())?,
+                mixins: &mixins,
             },
         )?;
         // The Storage page's Build files row ages this unit by its last use.
@@ -737,7 +732,7 @@ pub fn compile(
             let facade = &generated[id];
             fs::write(&source, &facade.source).map_err(|e| e.to_string())?;
             let rlib = out.join(format!("libinternals_{id}.rlib"));
-            let mut cmd = rustc(rust, game, out, "2024", &sdk.link_args);
+            let mut cmd = rustc(rust, game, out, "2024");
             cmd.args(["--crate-type", "rlib", "--crate-name", "internals"])
                 .arg("-C")
                 .arg(format!("metadata={id}"))
@@ -765,7 +760,7 @@ pub fn compile(
             project,
             &declared[index],
             out,
-            |edition| rustc(rust, game, out, edition, &sdk.link_args),
+            |edition| rustc(rust, game, out, edition),
             |package| match package {
                 "internals" => &facades[id],
                 _ => &libraries[package],
@@ -794,7 +789,8 @@ pub fn compile(
         &rlibs,
         &crate_names,
         &sdk,
-        |edition| rustc(rust, game, out, edition, &sdk.link_args),
+        &mixins,
+        |edition| rustc(rust, game, out, edition),
     )?;
     let mut installed = runtime_libraries(rust, &sdk, game)?;
     for &index in &resolution.order {
@@ -824,7 +820,7 @@ pub fn compile(
         let saved = library.with_extension("fingerprint");
         let unchanged =
             library.is_file() && fs::read_to_string(&saved).ok().as_deref() == Some(&fingerprint);
-        let mut cmd = rustc(rust, game, out, "2024", &sdk.link_args);
+        let mut cmd = rustc(rust, game, out, "2024");
         cmd.args(["--crate-type", "dylib", "--crate-name", "sunrise_patch"]);
         for (name, path) in wrapper_externs(&deps)? {
             cmd.arg("--extern")
@@ -998,6 +994,18 @@ pub fn compile_mod<'a>(
 
 /// Refuses mod `id`'s library file `name` when another library already takes it. Names compare
 /// without case, as Windows' and macOS's default file systems do.
+/// The library files the build makes beside the mods': the patch library, and the one the registry
+/// route links the mods' registry crates from when it writes one. Lowercase, as compared.
+fn reserved_library_names() -> std::collections::HashSet<String> {
+    [
+        dylib_name("sunrise_patch"),
+        dylib_name(super::registry_shared::CRATE),
+    ]
+    .into_iter()
+    .map(|name| name.to_ascii_lowercase())
+    .collect()
+}
+
 fn check_library_name(
     names: &mut std::collections::HashSet<String>,
     name: &str,
@@ -1190,6 +1198,11 @@ mod tests {
     fn library_names_are_case_insensitive_and_entry_lints_are_checked() {
         let mut names = std::collections::HashSet::new();
         super::check_library_name(&mut names, "Example.dll", "one").unwrap();
+        // A mod library taking the shared registry library's file is refused, naming both.
+        let mut reserved = super::reserved_library_names();
+        let file = super::dylib_name("Sunrise_Registry_Shared");
+        let error = super::check_library_name(&mut reserved, &file, "taker").unwrap_err();
+        assert!(error.contains("taker") && error.contains(&file), "{error}");
         assert!(
             super::check_library_name(&mut names, "example.dll", "two")
                 .unwrap_err()
@@ -1406,6 +1419,42 @@ mod tests {
         sdk.facade_crates.insert("fixture_meta".into());
         assert!(facade_library(&deps, "fixture_meta", &sdk).is_err());
         fs::remove_dir_all(deps).unwrap();
+    }
+
+    #[test]
+    fn a_mod_library_compile_holds_none_of_the_executables_link_policy() {
+        let sdk: Identity = serde_json::from_value(serde_json::json!({
+            "commit": "test", "rustc": "test", "target": "test", "side": "client",
+            "link_args": ["-Wl,-stack_size,0x1000000", "/STACK:16777216"],
+        }))
+        .unwrap();
+        let toolchain = crate::rust::Unpacked {
+            dir: "toolchain".into(),
+            target: "test".into(),
+            cargo_home: "cargo-home".into(),
+            cargo_config: Vec::new(),
+            c_bin: None,
+        };
+        let cmd = rustc(&toolchain, Path::new("game"), Path::new("out"), "2024");
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect();
+        for policy in &sdk.link_args {
+            assert!(
+                !args.iter().any(|arg| arg.contains(policy.as_str())),
+                "{policy} in {args:?}"
+            );
+        }
+        assert!(args.iter().any(|arg| arg == "prefer-dynamic"), "{args:?}");
+        let rpath = match std::env::consts::OS {
+            "linux" => Some("link-arg=-Wl,-rpath,$ORIGIN"),
+            "macos" => Some("link-arg=-Wl,-rpath,@loader_path"),
+            _ => None,
+        };
+        if let Some(rpath) = rpath {
+            assert!(args.iter().any(|arg| arg == rpath), "{args:?}");
+        }
     }
 
     #[test]

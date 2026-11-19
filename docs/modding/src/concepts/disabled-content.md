@@ -14,7 +14,8 @@ behaviour, the disabled block is inert rather than inheriting its vanilla templa
   its usual rules.
 - `update_shape` keeps the input state. `can_survive` keeps the existing block, including a block
   settling after a piston move or a fall. `may_place_on` and `can_sustain_plant` likewise keep
-  a plant that already occupies the cell or is settling there. These survival rules do not let a player bypass support checks to place a new block or plant.
+  a plant that already occupies the cell or is settling there. These survival rules do not let a
+  player bypass support checks to place a new block or plant.
 - `use_item_on` and `use_without_item` pass without invoking the block template's interaction.
 - `is_valid_bonemeal_target` refuses bone meal. For `on_tree_grow`, the soil under the trunk stays
   unchanged and the rest of the tree grows normally.

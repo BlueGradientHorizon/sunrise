@@ -71,6 +71,12 @@ pub trait DrawContext {
     fn text(&mut self, text: &str, at: [f32; 2], argb: u32, shadow: bool) {
         unimplemented!("DrawContext::text")
     }
+    /// `text` scaled by `scale` about `at`, its top-left corner: what a GUI pose of translate,
+    /// scale and translate back around `text` draws (`PoseStack.scale` in vanilla's HUD), without
+    /// a `gui_paint` buffer. `0.5` is the half-size line under a widget's label.
+    fn text_scaled(&mut self, text: &str, at: [f32; 2], scale: f32, argb: u32, shadow: bool) {
+        unimplemented!("DrawContext::text_scaled")
+    }
     /// Stack drawing does not enforce resident count or damage maxima. Unknown
     /// item identities or unrepresentable component payloads still refuse drawing.
     /// Draw a stack and its slot decorations, except the count, at `at`,

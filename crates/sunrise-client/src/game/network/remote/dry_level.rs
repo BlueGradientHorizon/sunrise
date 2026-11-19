@@ -1,11 +1,10 @@
 use super::*;
 use sunrise_core::{geometry::Direction, position::BlockPos};
 use sunrise_world::level::LevelAccess;
-#[cfg(test)]
 use sunrise_world::level::Ticks;
 
 use crate::game::mod_api_host::{FireOddsLevel, PredictedLevel};
-use std::collections::HashSet;
+use std::{cell::RefCell, collections::HashSet};
 
 /// The live level behind a prediction, providing mod dispatch when it has a game host.
 pub(super) trait PredictionBase: LevelAccess {
@@ -33,11 +32,21 @@ impl PredictionBase for crate::game::GameLevel<'_> {
 /// world, writes stay here and are dropped.
 pub(super) struct DryLevel<'w> {
     base: &'w dyn PredictionBase,
-    pub(super) changed: HashMap<BlockPos, BlockStateId>,
+    pub(super) changed: sunrise_world::level::PreviewBlocks,
     removed_entities: HashSet<BlockPos>,
+    /// For a predicted break, the order in which the simulation reaches the after-shape notices.
+    pub(super) notice_order: Option<RefCell<Vec<BlockPos>>>,
     random: sunrise_core::random::LegacyRandom,
     /// The sounds the use plays (a door's creak).
     pub(super) sounds: Vec<DrySound>,
+    /// The server owns liquid-container writes, including a part's replacement.
+    pub(super) filled_container: bool,
+    /// The live level's ticks a mod's placement and survival hooks read, where the guess
+    /// schedules into scratch ones; `None` where it runs on the live ticks.
+    pub(super) reads: Option<&'w sunrise_world::level::Ticks>,
+    /// Whether the guess asks mods' placement and survival hooks: a click does, a look at what
+    /// a click would do (the controller guide) leaves them to the templates' rules.
+    pub(super) asks_mods: bool,
 }
 
 impl<'w> DryLevel<'w> {
@@ -46,9 +55,42 @@ impl<'w> DryLevel<'w> {
             base,
             changed: HashMap::new(),
             removed_entities: HashSet::new(),
+            notice_order: None,
             random: sunrise_core::random::LegacyRandom::new(0),
             sounds: Vec::new(),
+            filled_container: false,
+            reads: None,
+            asks_mods: true,
         }
+    }
+}
+
+impl crate::game::Game<'_> {
+    /// Trace the optional initial write and state-level callback off the live world.
+    /// Both steps use the same scratch level so the callback sees the write's shape updates.
+    pub(in crate::game) fn preview_set_placed_by(
+        &mut self,
+        pos: BlockPos,
+        state: BlockStateId,
+        write_flags: Option<i32>,
+    ) -> sunrise_world::level::PreviewBlocks {
+        self.with_level(|behaviours, level, _| {
+            let random = level.random().clone();
+            let mut dry = DryLevel::new(level);
+            dry.random = random;
+            dry.asks_mods = false;
+            let mut ticks = Ticks::default();
+            if let Some(flags) = write_flags
+                && !behaviours.set_block(&mut dry, &mut ticks, pos, state, flags)
+            {
+                return dry.changed;
+            }
+            let placed = dry.block_state(pos);
+            if behaviours.block(placed) == behaviours.block(state) {
+                behaviours.set_placed_by_state(&mut dry, &mut ticks, pos, placed);
+            }
+            dry.changed
+        })
     }
 }
 
@@ -80,6 +122,25 @@ impl PredictedLevel for DryLevel<'_> {
 }
 
 impl sunrise_world::level::LevelAccess for DryLevel<'_> {
+    fn can_place_liquid(
+        &self,
+        pos: sunrise_core::position::BlockPos,
+        state: BlockStateId,
+        fluid: sunrise_world::fluid::FluidKind,
+        user: sunrise_world::level::LiquidUser,
+    ) -> Option<bool> {
+        self.base.can_place_liquid(pos, state, fluid, user)
+    }
+    fn place_liquid(
+        &mut self,
+        _: &mut sunrise_world::level::Ticks,
+        _: sunrise_core::position::BlockPos,
+        _: BlockStateId,
+        _: sunrise_world::fluid::FluidState,
+    ) -> Option<bool> {
+        self.filled_container = true;
+        None
+    }
     fn before_smoke_source(&self, state: BlockStateId, smoke: &mut Option<bool>) {
         self.base.before_smoke_source(state, smoke);
     }
@@ -101,11 +162,18 @@ impl sunrise_world::level::LevelAccess for DryLevel<'_> {
         if let sunrise_world::level::LevelEvent::Sound {
             pos,
             sound,
+            source,
             volume,
             pitch,
         } = event
         {
-            self.sounds.push((pos, sound, volume, pitch));
+            let source = match source {
+                // Block-use prediction already plays uncategorized sounds on Blocks.
+                None | Some(sunrise_world::level::LevelSoundSource::Blocks) => {
+                    mod_api::SoundSource::Blocks
+                }
+            };
+            self.sounds.push((pos, sound, source, volume, pitch));
         }
     }
     fn block_state(&self, pos: sunrise_core::position::BlockPos) -> BlockStateId {
@@ -122,6 +190,14 @@ impl sunrise_world::level::LevelAccess for DryLevel<'_> {
         let previous = self.block_state(pos);
         self.changed.insert(pos, state);
         Some(previous)
+    }
+    fn observes_block_state_change(&self, _: BlockStateId, _: BlockStateId) -> bool {
+        self.notice_order.is_some()
+    }
+    fn observe_block_state_change(&self, pos: BlockPos, _: BlockStateId, _: BlockStateId) {
+        if let Some(order) = &self.notice_order {
+            order.borrow_mut().push(pos);
+        }
     }
     fn is_loaded(&self, pos: sunrise_core::position::BlockPos) -> bool {
         self.base.is_loaded(pos)
@@ -193,6 +269,9 @@ impl sunrise_world::level::LevelAccess for DryLevel<'_> {
     fn is_unobstructed(&self, pos: sunrise_core::position::BlockPos, state: BlockStateId) -> bool {
         self.base.is_unobstructed(pos, state)
     }
+    fn within_world_border(&self, pos: BlockPos) -> bool {
+        self.base.within_world_border(pos)
+    }
     fn random(&mut self) -> &mut sunrise_core::random::LegacyRandom {
         &mut self.random
     }
@@ -205,6 +284,104 @@ impl sunrise_world::level::LevelAccess for DryLevel<'_> {
         state: BlockStateId,
     ) -> Option<bool> {
         self.base.is_valid_bonemeal_target(pos, state)
+    }
+    /// A mod's placement and survival answers are the level's, asked as
+    /// vanilla's client prediction asks them, over this guess's writes: a
+    /// neighbour's shape update after the first one reads the blocks the guess
+    /// set.
+    #[allow(clippy::option_option)]
+    fn before_state_for_placement(
+        &self,
+        ticks: &sunrise_world::level::Ticks,
+        _: Option<&sunrise_world::level::PreviewBlocks>,
+        state: BlockStateId,
+        context: &sunrise_world::level::PlacementContext,
+        fluid: sunrise_world::fluid::FluidState,
+        answer: &mut Option<Option<BlockStateId>>,
+    ) {
+        if self.asks_mods {
+            self.base.before_state_for_placement(
+                self.reads.unwrap_or(ticks),
+                Some(&self.changed),
+                state,
+                context,
+                fluid,
+                answer,
+            );
+        }
+    }
+    fn before_can_survive(
+        &self,
+        ticks: &sunrise_world::level::Ticks,
+        _: Option<&sunrise_world::level::PreviewBlocks>,
+        pos: sunrise_core::position::BlockPos,
+        state: BlockStateId,
+        survives: &mut Option<bool>,
+    ) -> bool {
+        self.asks_mods
+            && self.base.before_can_survive(
+                self.reads.unwrap_or(ticks),
+                Some(&self.changed),
+                pos,
+                state,
+                survives,
+            )
+    }
+    fn before_can_sustain_plant(
+        &self,
+        ticks: &sunrise_world::level::Ticks,
+        _: Option<&sunrise_world::level::PreviewBlocks>,
+        state: BlockStateId,
+        ground: BlockStateId,
+        ground_pos: sunrise_core::position::BlockPos,
+        sustains: &mut Option<bool>,
+    ) -> bool {
+        self.asks_mods
+            && self.base.before_can_sustain_plant(
+                self.reads.unwrap_or(ticks),
+                Some(&self.changed),
+                state,
+                ground,
+                ground_pos,
+                sustains,
+            )
+    }
+    fn before_may_place_on(
+        &self,
+        ticks: &sunrise_world::level::Ticks,
+        _: Option<&sunrise_world::level::PreviewBlocks>,
+        state: BlockStateId,
+        ground: BlockStateId,
+        ground_pos: sunrise_core::position::BlockPos,
+        may: &mut Option<bool>,
+    ) -> bool {
+        self.asks_mods
+            && self.base.before_may_place_on(
+                self.reads.unwrap_or(ticks),
+                Some(&self.changed),
+                state,
+                ground,
+                ground_pos,
+                may,
+            )
+    }
+    fn placement_context(
+        &self,
+        item: &str,
+        context: &sunrise_world::level::PlacementContext,
+    ) -> Option<Option<sunrise_world::level::PlacementContext>> {
+        if self.asks_mods {
+            self.base.placement_context(item, context)
+        } else {
+            None
+        }
+    }
+    fn must_survive(&self, item: &str) -> Option<bool> {
+        if self.asks_mods {
+            self.base.must_survive(item)
+        } else {
+            None
+        }
     }
     fn game_time(&self) -> i64 {
         self.base.game_time()

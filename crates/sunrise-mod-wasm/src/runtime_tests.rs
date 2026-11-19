@@ -2432,3 +2432,99 @@ fn a_frame_lending_two_sources_for_one_trait_is_refused_in_debug() {
         assert!(overlap.is_err());
     }
 }
+
+// The policy follows the engine the settings build, and Pulley's guest stack is its own heap
+// allocation: a runaway recursion on an ordinary 2 MiB thread ends in a stack-overflow trap.
+#[test]
+fn the_stack_policy_follows_the_engine_and_pulley_traps_on_an_ordinary_stack() {
+    use sunrise_guest_stack::GuestEngine;
+    let engine = wasmtime::Engine::new(&crate::runtime::engine_config()).unwrap();
+    assert_eq!(
+        crate::runtime::guest_engine() == GuestEngine::Interpreter,
+        engine.is_pulley()
+    );
+    let mut config = crate::runtime::engine_config();
+    config.target("pulley64").unwrap();
+    config.max_wasm_stack(GuestEngine::Interpreter.wasm_stack().min(1024 * 1024));
+    config.async_stack_size(GuestEngine::Interpreter.wasm_stack().min(1024 * 1024));
+    let pulley = wasmtime::Engine::new(&config).unwrap();
+    assert!(pulley.is_pulley());
+    let wasm = wat::parse_str(
+        r#"(module (func $down (export "down") (param i32) (result i32)
+            local.get 0 i32.const 1 i32.add call $down))"#,
+    )
+    .unwrap();
+    let module = wasmtime::Module::new(&pulley, wasm).unwrap();
+    std::thread::Builder::new()
+        .stack_size(2 * 1024 * 1024)
+        .spawn(move || {
+            let mut store = wasmtime::Store::new(&pulley, ());
+            store.set_epoch_deadline(u64::MAX);
+            let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+            let down = instance
+                .get_typed_func::<i32, i32>(&mut store, "down")
+                .unwrap();
+            let error = down.call(&mut store, 0).unwrap_err();
+            assert_eq!(
+                error.downcast_ref::<wasmtime::Trap>(),
+                Some(&wasmtime::Trap::StackOverflow)
+            );
+        })
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+/// Context switches the named thread has made: each tick of an epoch thread is one.
+#[cfg(target_os = "linux")]
+fn switches_of(name: &str) -> u64 {
+    std::fs::read_dir("/proc/self/task")
+        .unwrap()
+        .flatten()
+        .filter(|task| {
+            std::fs::read_to_string(task.path().join("comm")).is_ok_and(|n| n.trim() == name)
+        })
+        .filter_map(|task| std::fs::read_to_string(task.path().join("status")).ok())
+        .flat_map(|status| {
+            status
+                .lines()
+                .filter_map(|line| line.strip_prefix("voluntary_ctxt_switches:"))
+                .filter_map(|count| count.trim().parse::<u64>().ok())
+                .collect::<Vec<_>>()
+        })
+        .sum()
+}
+
+// A ticker with no running guest costs no wakeups, and one with a guest ticks its engines: a
+// deadline set on a store of the engine fires. Its own ticker keeps other tests' guests out of
+// the count.
+#[test]
+#[cfg(target_os = "linux")]
+fn the_epoch_thread_ticks_only_while_a_guest_runs() {
+    let ticker = Ticker::start("wasm epoch test").unwrap();
+    let engine = Engine::new(&crate::runtime::engine_config()).unwrap();
+    ticker.register(&engine);
+    std::thread::sleep(Duration::from_millis(20));
+    let before = switches_of("wasm epoch test");
+    std::thread::sleep(Duration::from_millis(100));
+    // 1 ms ticks would make about 100 in that time.
+    assert!(switches_of("wasm epoch test") - before < 5);
+    let wasm = wat::parse_str(r#"(module (func (export "spin") (loop br 0)))"#).unwrap();
+    let module = wasmtime::Module::new(&engine, wasm).unwrap();
+    let mut store = wasmtime::Store::new(&engine, ());
+    store.set_epoch_deadline(5);
+    let instance = wasmtime::Instance::new(&mut store, &module, &[]).unwrap();
+    let spin = instance
+        .get_typed_func::<(), ()>(&mut store, "spin")
+        .unwrap();
+    let ticking = ticker.ticking();
+    let error = spin.call(&mut store, ()).unwrap_err();
+    drop(ticking);
+    assert_eq!(
+        error.downcast_ref::<wasmtime::Trap>(),
+        Some(&wasmtime::Trap::Interrupt)
+    );
+    let after = switches_of("wasm epoch test");
+    std::thread::sleep(Duration::from_millis(50));
+    assert!(switches_of("wasm epoch test") - after < 5);
+}

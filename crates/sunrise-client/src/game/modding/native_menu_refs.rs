@@ -167,7 +167,10 @@ impl Game<'_> {
         (host.hub.holder_guest(guest.uuid, self.dim.id())?.conn == guest.conn).then_some(())?;
         (guest.menu_generation == menu.fields().generation).then_some(())?;
         if let Some(open) = &guest.menu {
-            (open.window == menu.fields().window && open.hidden.is_empty()).then_some(guest)
+            // A native menu's slots are the mods' own: its hidden ones only
+            // keep the game's shift-clicks out (`place_menu_click`).
+            let hidden_ok = open.hidden.is_empty() || open.slots == Slots::Native;
+            (open.window == menu.fields().window && hidden_ok).then_some(guest)
         } else {
             let play = host.play.get(&guest.conn);
             let menus = host.menus.get(&guest.conn);
@@ -184,8 +187,9 @@ impl Game<'_> {
     }
 
     /// A player's current supported menu. Refuses crafting tables, merchants,
-    /// workstations, lecterns, mounts and menus with hidden slots; also refuses
-    /// stale players and players whose state is swapped out by another active turn.
+    /// workstations, lecterns, mounts and block-backed menus with slots hidden at open.
+    /// Hidden slots do not refuse code-opened native windows. Also refuses stale
+    /// players and players whose state is swapped out by another active turn.
     /// The acting player's inventory, equipment, cursor and ender reads use Game's state.
     /// On a client, only the local player's supported menu is available.
     pub(super) fn player_container_menu(&self, player: PlayerRef) -> Option<MenuRef> {
@@ -466,6 +470,78 @@ impl Game<'_> {
             MenuSlotBacking::CraftGrid(n) => guests.craft_grid_mut(index)?.get_mut(n),
             MenuSlotBacking::Native(n) => guests.native_menu_mut(index)?.get_mut(n),
             _ => None,
+        }
+    }
+
+    /// Write back an already-held engine stack after in-place item processing, without
+    /// routing it through insertion rules or changing its count. Refuses virtual previews
+    /// and handler-owned slots: their display mirrors do not own the item.
+    pub(super) fn replace_crafted_menu_slot(
+        &mut self,
+        menu: MenuRef,
+        slot: usize,
+        stack: ItemStack,
+    ) -> bool {
+        let player = menu.fields().player;
+        match self.menu_slot_backing(menu, slot) {
+            Some(MenuSlotBacking::Player(index)) => self.native_as_player_handle(player, |game| {
+                game.journal_player(player.uuid());
+                let held = match index {
+                    0..36 => &mut game.inventory[index],
+                    36..40 => &mut game.armor[39 - index],
+                    _ => &mut game.offhand,
+                };
+                *held = Some(stack);
+            }),
+            Some(MenuSlotBacking::BlockEntity { .. } | MenuSlotBacking::Entity { .. }) => {
+                let Some((pos, index)) = self.native_menu_guest(menu).and_then(|guest| {
+                    guest
+                        .menu
+                        .as_ref()?
+                        .slots
+                        .held_block_slot(&self.world, guest, slot)
+                }) else {
+                    return false;
+                };
+                if pos.1 == VEHICLE_KEY_Y {
+                    let entity = pos.2 as u32;
+                    self.journal_entity(entity);
+                    return self
+                        .edit_entity_slots(entity, |slots, _| {
+                            let Some(held) = slots.get_mut(index) else {
+                                return false;
+                            };
+                            *held = Some(stack);
+                            true
+                        })
+                        .unwrap_or(false);
+                }
+                self.journal_block_entity_slot(pos, index);
+                let Some(held) = self
+                    .world
+                    .block_entities
+                    .get_mut(&pos)
+                    .and_then(|block| block.slot_mut(index))
+                else {
+                    return false;
+                };
+                *held = Some(stack);
+                self.after_commit(super::transactions::After::Changed(pos));
+                true
+            }
+            Some(
+                MenuSlotBacking::Ender(_)
+                | MenuSlotBacking::CraftGrid(_)
+                | MenuSlotBacking::Native(_),
+            ) => {
+                self.journal_menus(player);
+                let Some(held) = self.native_menu_storage(menu, slot) else {
+                    return false;
+                };
+                *held = Some(stack);
+                true
+            }
+            _ => false,
         }
     }
 

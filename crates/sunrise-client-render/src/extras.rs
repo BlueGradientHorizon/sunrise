@@ -1,4 +1,4 @@
-//! Sunrise's optional extras (minimap, lighting, inventory tools): their
+//! Sunrise's optional extras (lighting, inventory tools): their
 //! settings, kept in `sunrise-extras.txt` next to `options.txt` so that file
 //! stays exactly vanilla's, and the logic behind them. Every extra is off by
 //! default; see `docs/extras.md`. Sunrise's own switches outside the Extras page
@@ -8,10 +8,6 @@ use std::{collections::VecDeque, path::Path};
 pub const FILE: &str = "sunrise-extras.txt";
 /// The name the options screen uses while the sort key waits for a key.
 pub const SORT_KEY: &str = "sunrise.sort";
-
-/// The minimap's sizes in GUI pixels, and its zooms in blocks per pixel.
-pub const MINIMAP_SIZES: [(u8, &str); 3] = [(64, "Small"), (96, "Medium"), (128, "Large")];
-pub const MINIMAP_ZOOMS: [f32; 4] = [0.5, 1.0, 2.0, 4.0];
 
 /// A screen corner for an overlay.
 pub use mod_api::client::extras::Corner;
@@ -27,15 +23,6 @@ pub struct Extras {
     pub fullbright: bool,
     /// Held, dropped and burning light sources light their surroundings (`dynamic_light`).
     pub dynamic_lights: bool,
-    pub zoom: bool,
-    /// A vanilla key name (`key.keyboard.z`).
-    pub zoom_key: String,
-    /// The zoom the key starts at.
-    pub zoom_level: u8,
-    /// Ease through vanilla's FOV easing (as the spyglass does).
-    pub zoom_smooth: bool,
-    /// Divide mouse turning by the zoom.
-    pub zoom_sensitivity: bool,
     /// Far terrain a zoom magnifies is planned finer, so a spyglass does not
     /// show the coarse cells it was given for an unzoomed screen
     /// (`lod::Aim`). Costs far tiles while the zoom is held and gives them
@@ -43,30 +30,6 @@ pub struct Extras {
     /// (`lodDistance`) and the view is actually zoomed. Off by default until
     /// a measurement shows the extra tiles land while the zoom is still held.
     pub lod_zoom_detail: bool,
-    /// The FPS counter and keystrokes extras are official mods now: their
-    /// old settings stay here, kept as they were.
-    pub fps: bool,
-    pub fps_corner: Corner,
-    /// Also show the minimum and 1% low.
-    pub fps_lows: bool,
-    pub keystrokes: bool,
-    pub keystrokes_corner: Corner,
-    /// Clicks per second under the mouse buttons.
-    pub keystrokes_cps: bool,
-    /// The official mods once installed for the extras they replace, by mod
-    /// id (`movedToMods`).
-    pub moved: Vec<String>,
-    pub minimap: bool,
-    pub minimap_corner: Corner,
-    /// Side in GUI pixels (`MINIMAP_SIZES`).
-    pub minimap_size: u8,
-    pub minimap_round: bool,
-    /// Blocks per pixel (`MINIMAP_ZOOMS`).
-    pub minimap_zoom: f32,
-    /// Turn with the player (forward up) instead of north up.
-    pub minimap_rotate: bool,
-    /// Retry lost multiplayer connections (`reconnect`).
-    pub auto_reconnect: bool,
     /// Positional sounds leave a few static sound channels free for UI sounds
     /// and others played to the listener (`sound_engine::HEARD_RESERVE`).
     pub ui_sound_reserve: bool,
@@ -124,26 +87,7 @@ impl Default for Extras {
             pregen: false,
             fullbright: false,
             dynamic_lights: false,
-            zoom: false,
-            zoom_key: "key.keyboard.z".into(),
-            zoom_level: 4,
-            zoom_smooth: true,
-            zoom_sensitivity: true,
             lod_zoom_detail: false,
-            fps: false,
-            fps_corner: Corner::TopLeft,
-            fps_lows: false,
-            keystrokes: false,
-            keystrokes_corner: Corner::TopLeft,
-            keystrokes_cps: true,
-            moved: Vec::new(),
-            minimap: false,
-            minimap_corner: Corner::TopRight,
-            minimap_size: 96,
-            minimap_round: false,
-            minimap_zoom: 1.0,
-            minimap_rotate: false,
-            auto_reconnect: false,
             ui_sound_reserve: false,
             own_name_tag: false,
             skip_modded_splashes_if_vanilla_modified: true,
@@ -194,51 +138,7 @@ impl Extras {
                 "pregen" => e.pregen = flag(e.pregen),
                 "fullbright" => e.fullbright = flag(e.fullbright),
                 "dynamicLights" => e.dynamic_lights = flag(e.dynamic_lights),
-                "zoom" => e.zoom = flag(e.zoom),
-                "zoomKey" => {
-                    if value.starts_with("key.") {
-                        e.zoom_key = value.to_owned();
-                    }
-                }
-                "zoomLevel" => {
-                    if let Ok(v) = value.parse::<u8>() {
-                        e.zoom_level = v.clamp(2, 10);
-                    }
-                }
-                "zoomSmooth" => e.zoom_smooth = flag(e.zoom_smooth),
-                "zoomSensitivity" => e.zoom_sensitivity = flag(e.zoom_sensitivity),
                 "lodZoomDetail" => e.lod_zoom_detail = flag(e.lod_zoom_detail),
-                "fps" => e.fps = flag(e.fps),
-                "fpsCorner" => e.fps_corner = Corner::parse(value, e.fps_corner),
-                "fpsLows" => e.fps_lows = flag(e.fps_lows),
-                "keystrokes" => e.keystrokes = flag(e.keystrokes),
-                "keystrokesCorner" => {
-                    e.keystrokes_corner = Corner::parse(value, e.keystrokes_corner)
-                }
-                "keystrokesCps" => e.keystrokes_cps = flag(e.keystrokes_cps),
-                "movedToMods" => {
-                    e.moved = value
-                        .split(',')
-                        .map(str::trim)
-                        .filter(|id| !id.is_empty())
-                        .map(str::to_owned)
-                        .collect()
-                }
-                "minimap" => e.minimap = flag(e.minimap),
-                "minimapCorner" => e.minimap_corner = Corner::parse(value, e.minimap_corner),
-                "minimapSize" => {
-                    if let Some(&(v, _)) = MINIMAP_SIZES.iter().find(|s| s.0.to_string() == value) {
-                        e.minimap_size = v;
-                    }
-                }
-                "minimapShape" => e.minimap_round = value == "round",
-                "minimapZoom" => {
-                    if let Some(&z) = MINIMAP_ZOOMS.iter().find(|z| z.to_string() == value) {
-                        e.minimap_zoom = z;
-                    }
-                }
-                "minimapRotate" => e.minimap_rotate = flag(e.minimap_rotate),
-                "autoReconnect" => e.auto_reconnect = flag(e.auto_reconnect),
                 "uiSoundReserve" => e.ui_sound_reserve = flag(e.ui_sound_reserve),
                 "ownNameTag" => e.own_name_tag = flag(e.own_name_tag),
                 "skipModdedSplashesIfVanillaModified" => {
@@ -296,33 +196,7 @@ impl Extras {
         push("pregen", &bool_text(self.pregen));
         push("fullbright", &bool_text(self.fullbright));
         push("dynamicLights", &bool_text(self.dynamic_lights));
-        push("zoom", &bool_text(self.zoom));
-        push("zoomKey", &self.zoom_key);
-        push("zoomLevel", &self.zoom_level);
-        push("zoomSmooth", &bool_text(self.zoom_smooth));
-        push("zoomSensitivity", &bool_text(self.zoom_sensitivity));
         push("lodZoomDetail", &bool_text(self.lod_zoom_detail));
-        push("fps", &bool_text(self.fps));
-        push("fpsCorner", &self.fps_corner.name());
-        push("fpsLows", &bool_text(self.fps_lows));
-        push("keystrokes", &bool_text(self.keystrokes));
-        push("keystrokesCorner", &self.keystrokes_corner.name());
-        push("keystrokesCps", &bool_text(self.keystrokes_cps));
-        push("movedToMods", &self.moved.join(","));
-        push("minimap", &bool_text(self.minimap));
-        push("minimapCorner", &self.minimap_corner.name());
-        push("minimapSize", &self.minimap_size);
-        push(
-            "minimapShape",
-            &if self.minimap_round {
-                "round"
-            } else {
-                "square"
-            },
-        );
-        push("minimapZoom", &self.minimap_zoom);
-        push("minimapRotate", &bool_text(self.minimap_rotate));
-        push("autoReconnect", &bool_text(self.auto_reconnect));
         push("uiSoundReserve", &bool_text(self.ui_sound_reserve));
         push("ownNameTag", &bool_text(self.own_name_tag));
         push(
@@ -517,7 +391,6 @@ pub enum Item {
     DynamicLights,
     OwnNameTag,
     HideBlockParticles,
-    AutoReconnect,
     UiSoundReserve,
     /// The Music... page on Music & Sounds (`Music page`).
     MusicPage,
@@ -545,7 +418,8 @@ pub enum Item {
 pub fn rows() -> Vec<Result<Item, &'static str>> {
     use Item::*;
     // Fullbright, Dynamic lights and Hide block-break particles change the picture: they
-    // are on the graphics screen's Quality page (`graphics_ui::rows`), not here.
+    // are on the graphics screen's Quality page (`graphics_ui::rows`), not here. A section a crate
+    // adds joins the group its title names (`sunrise_hooks::pages::Place::Extras`).
     vec![
         Err("sunrise.extras.header.third_person"),
         Ok(OwnNameTag),
@@ -560,7 +434,6 @@ pub fn rows() -> Vec<Result<Item, &'static str>> {
         Err("sunrise.extras.header.world"),
         Ok(Pregen),
         Err("sunrise.extras.header.multiplayer"),
-        Ok(AutoReconnect),
         Err("sunrise.extras.header.sound"),
         Ok(UiSoundReserve),
         Ok(MusicPage),
@@ -577,7 +450,6 @@ impl Item {
             Item::DynamicLights => "sunrise.extras.dynamic_lights",
             Item::OwnNameTag => "sunrise.extras.own_name_tag",
             Item::HideBlockParticles => "sunrise.extras.hide_block_particles",
-            Item::AutoReconnect => "sunrise.extras.auto_reconnect",
             Item::UiSoundReserve => "sunrise.extras.ui_sound_reserve",
             Item::MusicPage => "sunrise.extras.music_page",
             Item::MouseTweaks => "sunrise.extras.mouse_tweaks",
@@ -602,7 +474,6 @@ impl Item {
             Item::DynamicLights => "sunrise.extras.dynamic_lights.tooltip",
             Item::OwnNameTag => "sunrise.extras.own_name_tag.tooltip",
             Item::HideBlockParticles => "sunrise.extras.hide_block_particles.tooltip",
-            Item::AutoReconnect => "sunrise.extras.auto_reconnect.tooltip",
             Item::UiSoundReserve => "sunrise.extras.ui_sound_reserve.tooltip",
             Item::MusicPage => "sunrise.extras.music_page.tooltip",
             Item::MouseTweaks => "sunrise.extras.mouse_tweaks.tooltip",
@@ -636,7 +507,6 @@ impl Item {
             Item::DynamicLights => "Dynamic lights",
             Item::OwnNameTag => "Own name tag",
             Item::HideBlockParticles => "Hide block-break particles",
-            Item::AutoReconnect => "Auto-reconnect",
             Item::UiSoundReserve => "Keep channels for UI sounds",
             Item::MusicPage => "Music page",
             Item::MouseTweaks => "Mouse Tweaks controls",
@@ -664,8 +534,8 @@ impl Item {
             ChatIndicator => ChatAnimation,
             Pvp(o) => return o.parent().map(Pvp),
             Fullbright | DynamicLights | OwnNameTag | HideBlockParticles | MouseTweaks | Sort
-            | AutoReconnect | NoAi | AgentControl | ReproKeys | ChatAnimation
-            | WheelCyclesSettings | MusicPage | PackBrowser | Pregen => {
+            | NoAi | AgentControl | ReproKeys | ChatAnimation | WheelCyclesSettings | MusicPage
+            | PackBrowser | Pregen => {
                 return None;
             }
         })
@@ -685,9 +555,6 @@ impl Item {
             }
             Item::HideBlockParticles => {
                 "Hides the debris particles that burst from a broken block and crumble off the one you mine. Other particles stay."
-            }
-            Item::AutoReconnect => {
-                "Rejoins a server after a lost connection or a restart, never after a kick or ban."
             }
             Item::UiSoundReserve => {
                 "Sounds in the world leave 16 of the 247 sound channels free, so a flood of them (a big explosion) can't silence menu clicks."
@@ -740,7 +607,6 @@ impl Item {
             Item::ChatAnimation => Some(Cost::None),
             Item::OwnNameTag
             | Item::HideBlockParticles
-            | Item::AutoReconnect
             | Item::MouseTweaks
             | Item::Sort
             | Item::WheelCyclesSettings
@@ -755,7 +621,6 @@ impl Item {
             Item::DynamicLights => e.dynamic_lights,
             Item::OwnNameTag => e.own_name_tag,
             Item::HideBlockParticles => e.hide_block_particles,
-            Item::AutoReconnect => e.auto_reconnect,
             Item::UiSoundReserve => e.ui_sound_reserve,
             Item::MusicPage => e.music_page,
             Item::MouseTweaks => e.mouse_tweaks,
@@ -792,7 +657,6 @@ impl Item {
             Item::DynamicLights => e.dynamic_lights = !e.dynamic_lights,
             Item::OwnNameTag => e.own_name_tag = !e.own_name_tag,
             Item::HideBlockParticles => e.hide_block_particles = !e.hide_block_particles,
-            Item::AutoReconnect => e.auto_reconnect = !e.auto_reconnect,
             Item::UiSoundReserve => e.ui_sound_reserve = !e.ui_sound_reserve,
             Item::MusicPage => e.music_page = !e.music_page,
             Item::MouseTweaks => e.mouse_tweaks = !e.mouse_tweaks,
@@ -830,13 +694,6 @@ mod tests {
             pack_browser: true,
             pregen: true,
             fullbright: true,
-            zoom: true,
-            zoom_key: "key.keyboard.c".into(),
-            fps_corner: Corner::BottomRight,
-            moved: vec!["fps_overlay".into(), "keystrokes".into()],
-            minimap_round: true,
-            minimap_size: 128,
-            minimap_zoom: 0.5,
             music_off: vec!["a".into(), "b".into()],
             own_name_tag: true,
             ..Extras::default()
@@ -881,13 +738,11 @@ mod tests {
 
     #[test]
     fn a_bad_value_for_a_known_key_is_dropped_not_kept() {
-        for key in ["zoomKey", "sortKey"] {
-            let e = Extras::parse(&format!("{key}:foo\n"));
-            assert!(e.unknown.is_empty());
-            let out = e.serialize();
-            assert_eq!(out.matches(&format!("\n{key}:")).count(), 1, "{out}");
-            assert!(!out.contains("foo"));
-        }
+        let e = Extras::parse("sortKey:foo\n");
+        assert!(e.unknown.is_empty());
+        let out = e.serialize();
+        assert_eq!(out.matches("\nsortKey:").count(), 1, "{out}");
+        assert!(!out.contains("foo"));
         let e = Extras::parse("hudEditorKey:foo\n");
         assert!(e.unknown.is_empty());
     }
@@ -973,7 +828,6 @@ mod tests {
     fn everything_is_off_by_default_and_round_trips() {
         let d = Extras::default();
         assert!(!d.fullbright && !d.dynamic_lights);
-        assert!(!d.zoom && !d.fps && !d.keystrokes && !d.minimap && !d.auto_reconnect);
         assert!(!d.mouse_tweaks && !d.sort && !d.own_name_tag && !d.ui_sound_reserve);
         assert!(!d.hide_block_particles && !d.pregen);
         assert!(!d.music_page && d.music_off.is_empty());
@@ -986,20 +840,6 @@ mod tests {
         Item::DynamicLights.cycle(&mut e, false);
         assert_eq!(Item::DynamicLights.switch(&e), Some(true));
         assert_eq!(Extras::parse(&e.serialize()), e);
-        e.zoom = true;
-        e.zoom_key = "key.keyboard.c".into();
-        e.zoom_level = 6;
-        e.fps_corner = Corner::BottomRight;
-        e.keystrokes = true;
-        e.keystrokes_cps = false;
-        e.moved = vec!["fps_overlay".into(), "keystrokes".into()];
-        e.minimap = true;
-        e.minimap_size = 128;
-        e.minimap_round = true;
-        e.minimap_zoom = 0.5;
-        e.minimap_rotate = true;
-        e.minimap_corner = Corner::BottomLeft;
-        e.auto_reconnect = true;
         Item::Pregen.cycle(&mut e, false);
         assert_eq!(Item::Pregen.switch(&e), Some(true));
         Item::OwnNameTag.cycle(&mut e, false);
@@ -1030,11 +870,9 @@ mod tests {
 
     #[test]
     fn bad_lines_keep_defaults() {
-        let e = Extras::parse("zoom:maybe\nzoomLevel:99\nfpsCorner:middle\nzoomKey:z\nnoise");
-        assert!(!e.zoom);
-        assert_eq!(e.zoom_level, 10);
-        assert_eq!(e.fps_corner, Corner::TopLeft);
-        assert_eq!(e.zoom_key, "key.keyboard.z");
+        let e = Extras::parse("sort:maybe\nsortKey:r\nnoise");
+        assert!(!e.sort);
+        assert_eq!(e.sort_key, "key.keyboard.unknown");
     }
 
     #[test]
@@ -1117,11 +955,6 @@ mod tests {
         let mut e = Extras::default();
         Item::Sort.cycle(&mut e, true);
         assert_eq!(Item::Sort.value(&e), "On");
-        // The minimap's old keys still parse, for the move to its mod.
-        assert_eq!(
-            Extras::parse("minimapSize:7\nminimapZoom:3").minimap_zoom,
-            1.0
-        );
         for item in rows().into_iter().flatten() {
             assert!(!item.caption().is_empty() && !item.description().is_empty());
         }

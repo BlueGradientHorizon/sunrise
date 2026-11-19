@@ -426,7 +426,7 @@ impl BlocksAttacks {
         })
     }
 }
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Hash)]
 pub struct ItemStack {
     pub item: Arc<str>,
     pub count: u32,
@@ -483,6 +483,100 @@ impl Drop for NestedRoll {
     }
 }
 
+/// The block tags the mob code asks about by name, as a bit per block state:
+/// built once from [`Items::block_tags`], so a mob tick or a pathfinder step
+/// tests a bit instead of hashing the tag and the block name.
+#[derive(Clone, Debug, Default)]
+pub struct BlockTagFlags {
+    /// Every block state's flags, indexed by `BlockStateId.0`.
+    bits: Vec<u16>,
+    /// The states' names by id, in the registry the table was built for:
+    /// what a rebuild tests `block_tags` against. The map is replaced by a
+    /// load, a `/reload`, a pack's classes and a server's tags.
+    names: Arc<[Arc<str>]>,
+}
+impl BlockTagFlags {
+    /// `minecraft:climbable` (`BlockTags.CLIMBABLE`).
+    pub const CLIMBABLE: u16 = 1 << 0;
+    /// `minecraft:fire` (`BlockTags.FIRE`).
+    pub const FIRE: u16 = 1 << 1;
+    /// `minecraft:cauldrons` (`BlockTags.CAULDRONS`).
+    pub const CAULDRONS: u16 = 1 << 2;
+    /// `minecraft:can_glide_through` (`BlockTags.CAN_GLIDE_THROUGH`).
+    pub const CAN_GLIDE_THROUGH: u16 = 1 << 3;
+    /// `minecraft:cats_can_lie_on`.
+    pub const CATS_CAN_LIE_ON: u16 = 1 << 4;
+    /// `minecraft:cats_can_sit_on`.
+    pub const CATS_CAN_SIT_ON: u16 = 1 << 5;
+    /// `minecraft:entities_can_teleport_to`.
+    pub const ENTITIES_CAN_TELEPORT_TO: u16 = 1 << 6;
+    /// `minecraft:dangerous_for_teleportation`.
+    pub const DANGEROUS_FOR_TELEPORTATION: u16 = 1 << 7;
+    /// Every flag with the tag it stands for: the table's whole contract.
+    pub const ALL: [(u16, &'static str); 8] = [
+        (Self::CLIMBABLE, "minecraft:climbable"),
+        (Self::FIRE, "minecraft:fire"),
+        (Self::CAULDRONS, "minecraft:cauldrons"),
+        (Self::CAN_GLIDE_THROUGH, "minecraft:can_glide_through"),
+        (Self::CATS_CAN_LIE_ON, "minecraft:cats_can_lie_on"),
+        (Self::CATS_CAN_SIT_ON, "minecraft:cats_can_sit_on"),
+        (
+            Self::ENTITIES_CAN_TELEPORT_TO,
+            "minecraft:entities_can_teleport_to",
+        ),
+        (
+            Self::DANGEROUS_FOR_TELEPORTATION,
+            "minecraft:dangerous_for_teleportation",
+        ),
+    ];
+
+    /// `tags` as one flag set per state of `names` (in `BlockStateId` order).
+    /// A member of several flags is marked with all of them, as testing each
+    /// tag's set does.
+    pub fn build(tags: &HashMap<String, HashSet<String>>, names: Arc<[Arc<str>]>) -> Self {
+        let mut by_name: HashMap<&str, u16> = HashMap::new();
+        for (flag, tag) in Self::ALL {
+            if let Some(members) = tags.get(tag) {
+                for member in members {
+                    *by_name.entry(member.as_str()).or_default() |= flag;
+                }
+            }
+        }
+        let bits = names
+            .iter()
+            .map(|name| by_name.get(&**name).copied().unwrap_or(0))
+            .collect();
+        Self { bits, names }
+    }
+    /// The state's flags: 0 for an id the table has no name for.
+    #[inline]
+    pub fn flags(&self, id: BlockStateId) -> u16 {
+        self.bits.get(id.0 as usize).copied().unwrap_or(0)
+    }
+    /// Whether the state carries `flag`.
+    #[inline]
+    pub fn has(&self, id: BlockStateId, flag: u16) -> bool {
+        self.flags(id) & flag != 0
+    }
+    /// The flags by state id, for a view that keeps them directly.
+    pub fn bits(&self) -> &[u16] {
+        &self.bits
+    }
+    /// The states' names by id.
+    pub fn state_names(&self) -> &[Arc<str>] {
+        &self.names
+    }
+}
+/// The states' names of `facts`, by `BlockStateId`: what a [`BlockTagFlags`]
+/// is built against.
+pub fn block_tag_state_names(facts: &BlockFacts) -> Arc<[Arc<str>]> {
+    facts
+        .states
+        .iter()
+        .map(|state| Arc::clone(&state.name))
+        .collect()
+}
+
 /// An empty catalog is useful for synthetic worlds without registered items;
 /// normal worlds load their catalog from the resource snapshot.
 #[derive(Clone, Default)]
@@ -503,6 +597,10 @@ pub struct Items {
     pub registry_order: Vec<Arc<str>>,
     /// Block tag name (without '#') -> member block names.
     pub block_tags: HashMap<String, HashSet<String>>,
+    /// The tags of `block_tags` the mob code asks about, as a bit per block
+    /// state ([`BlockTagFlags`]): a tick or a pathfinder step tests one bit
+    /// instead of hashing the tag and the block name.
+    pub block_tag_flags: Arc<BlockTagFlags>,
     pub item_tags: HashMap<String, HashSet<String>>,
     /// Fluid tag name -> member fluid names (`minecraft:water` holds `minecraft:water` and
     /// `minecraft:flowing_water`).
@@ -546,6 +644,8 @@ impl Items {
                 .into_iter()
                 .map(|(name, members)| (name, members.into_iter().collect()))
                 .collect();
+            let names = items.block_state_names();
+            items.rebuild_block_tag_flags(names);
         }
         if let Some(tags) = item_tags {
             items.item_tags = tags
@@ -555,6 +655,16 @@ impl Items {
             items.item_tag_order = tags;
         }
         items
+    }
+    /// The states' names [`Self::block_tag_flags`] was built against.
+    pub fn block_state_names(&self) -> Arc<[Arc<str>]> {
+        Arc::clone(&self.block_tag_flags.names)
+    }
+    /// Rebuild [`Self::block_tag_flags`] from `block_tags` against the states'
+    /// `names`: every path that replaces the map (a load, a `/reload`, a
+    /// pack's class tags, a server's tags) rebuilds the table with it.
+    pub fn rebuild_block_tag_flags(&mut self, names: Arc<[Arc<str>]>) {
+        self.block_tag_flags = Arc::new(BlockTagFlags::build(&self.block_tags, names));
     }
 }
 /// A `JukeboxSong`.
@@ -575,10 +685,13 @@ impl Song {
 #[derive(Clone, Debug)]
 pub struct Instrument {
     pub sound: String,
+    /// `None` names a registry holder; `Some` keeps an inline sound's optional fixed range.
+    pub inline_sound_range: Option<Option<f32>>,
     /// Seconds the horn stays up, and its cooldown.
     pub use_duration: f32,
     /// How far it carries, in blocks (`range / 16` is its volume).
     pub range: f32,
+    pub durability_damage: i32,
 }
 impl Instrument {
     /// `InstrumentItem.getUseDuration`: `Mth.floor(useDuration * 20)`.
@@ -614,17 +727,50 @@ pub fn inline_instrument(stack: &ItemStack) -> Option<&sunrise_core::nbt::Tag> {
         _ => None,
     }
 }
-/// `Instrument.DIRECT_CODEC`: a `sound_event` that is an id or `{sound_id}`,
-/// `use_duration` and `range`.
-fn parse_instrument(v: &Value) -> Instrument {
-    let sound = match &v["sound_event"] {
-        Value::String(s) => s.clone(),
-        other => other["sound_id"].as_str().unwrap_or("").to_owned(),
-    };
-    Instrument {
-        sound,
-        use_duration: v["use_duration"].as_f64().unwrap_or(0.0) as f32,
-        range: v["range"].as_f64().unwrap_or(0.0) as f32,
+impl Instrument {
+    /// `Instrument.DIRECT_CODEC`: a sound holder or inline sound, duration,
+    /// audible range, and optional durability cost used by instrument gameplay.
+    pub fn decode(v: &Value) -> std::result::Result<Self, String> {
+        let event = &v["sound_event"];
+        let (sound, inline_sound_range) = if let Some(id) = event.as_str() {
+            (id, None)
+        } else {
+            let id = event["sound_id"]
+                .as_str()
+                .ok_or("sound_event must be a sound id or definition")?;
+            let fixed = match &event["range"] {
+                Value::Null => None,
+                range => Some(range.as_f64().ok_or("sound_event.range must be a number")? as f32),
+            };
+            (id, Some(fixed))
+        };
+        let sound = sunrise_core::identifier::Identifier::parse(sound)
+            .map_err(|error| format!("sound_event: {error}"))?
+            .to_string();
+        let use_duration = v["use_duration"]
+            .as_f64()
+            .map(|n| n as f32)
+            .filter(|n| (0.0..=f32::MAX).contains(n))
+            .ok_or("use_duration must be non-negative and finite")?;
+        let range = v["range"]
+            .as_f64()
+            .map(|n| n as f32)
+            .filter(|n| *n > 0.0 && *n <= f32::MAX)
+            .ok_or("range must be positive and finite")?;
+        let durability_damage = match &v["durability_damage"] {
+            Value::Null => 0,
+            n => n
+                .as_u64()
+                .and_then(|n| i32::try_from(n).ok())
+                .ok_or("durability_damage must be a non-negative integer")?,
+        };
+        Ok(Self {
+            sound,
+            inline_sound_range,
+            use_duration,
+            range,
+            durability_damage,
+        })
     }
 }
 #[path = "condition_files.rs"]
@@ -633,7 +779,11 @@ pub(crate) use condition_files::data_files;
 fn load_instruments(root: &Path, overlay: &PackOverlay) -> HashMap<String, Instrument> {
     data_files(root, "instrument", overlay)
         .into_iter()
-        .map(|(id, v)| (id, parse_instrument(&v)))
+        .filter_map(|(id, v)| {
+            Instrument::decode(&v)
+                .ok()
+                .map(|definition| (id, definition))
+        })
         .collect()
 }
 fn load_songs(root: &Path, overlay: &PackOverlay) -> HashMap<String, Song> {
@@ -799,6 +949,21 @@ impl Items {
         overlay: &PackOverlay,
         defaults: &ItemDefaults,
     ) -> Result<Self> {
+        let mut items = Self::load_registry(root, registry, facts, overlay, defaults)?;
+        items.load_resource_registries(root, overlay, defaults)?;
+        items.load_table_loot(root, overlay, defaults)?;
+        Ok(items)
+    }
+
+    /// Load the item registry and tags before admitting dependent registries.
+    /// The owning load must then install instruments, enchantments and loot.
+    pub fn load_registry(
+        root: &Path,
+        registry: &BlockRegistry,
+        facts: &BlockFacts,
+        overlay: &PackOverlay,
+        defaults: &ItemDefaults,
+    ) -> Result<Self> {
         let mut block_for_item: HashMap<&str, BlockStateId> = HashMap::new();
         for (i, s) in facts.states.iter().enumerate() {
             let default = registry.default_state(&s.name);
@@ -869,13 +1034,16 @@ impl Items {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => return Err(format!("{}: {e}", path.display()).into()),
         }
+        // The mob code's tags as a bit per state, against this registry.
+        items.rebuild_block_tag_flags(block_tag_state_names(facts));
         Ok(items)
     }
     /// Every item's defaults, tags and block-to-item identities, without
     /// placement state ids (for headless tools that never place blocks).
     pub fn catalog(root: &Path, overlay: &PackOverlay, defaults: &ItemDefaults) -> Result<Self> {
-        let mut items = Self::load_with(root, &HashMap::new(), overlay, defaults)?;
-        items.block_items = Arc::new(ingredient_defaults::block_items(root)?);
+        let mut items = Self::catalog_items(root, overlay, defaults, |items| {
+            items.load_resource_registries(root, overlay, defaults)
+        })?;
         ingredient_defaults::load_component_damage_registry(root, overlay, &mut items)?;
         Ok(items)
     }
@@ -886,14 +1054,27 @@ impl Items {
         overlay: &PackOverlay,
         defaults: &ItemDefaults,
         damage: sunrise_client_core::registries::RegistryIds,
+        load_registries: impl FnOnce(&mut Self) -> Result<()>,
     ) -> Result<Self> {
-        let mut items = Self::load_with(root, &HashMap::new(), overlay, defaults)?;
-        items.block_items = Arc::new(ingredient_defaults::block_items(root)?);
+        let mut items = Self::catalog_items(root, overlay, defaults, load_registries)?;
         Arc::make_mut(&mut items.component_registry)
             .by_registry
             .insert("minecraft:damage_type".into(), damage);
         Ok(items)
     }
+    fn catalog_items(
+        root: &Path,
+        overlay: &PackOverlay,
+        defaults: &ItemDefaults,
+        load_registries: impl FnOnce(&mut Self) -> Result<()>,
+    ) -> Result<Self> {
+        let mut items = Self::load_with(root, &HashMap::new(), overlay, defaults)?;
+        load_registries(&mut items)?;
+        items.block_items = Arc::new(ingredient_defaults::block_items(root)?);
+        items.load_table_loot(root, overlay, defaults)?;
+        Ok(items)
+    }
+
     fn load_with(
         root: &Path,
         block_for_item: &HashMap<&str, BlockStateId>,
@@ -973,6 +1154,7 @@ impl Items {
                 damage,
                 extra,
             };
+            let villager_food = component_prototype.villager_food(None);
             items.insert(
                 id.clone(),
                 ItemInfo {
@@ -1069,9 +1251,7 @@ impl Items {
                         .map(|(_, rest)| (*rest).to_owned())
                         .or_else(|| mod_remainders.get(name).cloned()),
                     template: mod_templates.get(name).map(|t| Arc::from(t.as_str())),
-                    villager_food: c["minecraft:villager_food"]["nutrition"]
-                        .as_i64()
-                        .map(|n| n as i32),
+                    villager_food,
                     use_speed: c["minecraft:use_effects"]["speed_multiplier"]
                         .as_f64()
                         .unwrap_or(0.2) as f32,
@@ -1135,47 +1315,67 @@ impl Items {
             }
             order.push(id);
         }
-        // Every loot table, keyed by its id (blocks/stone, entities/sheep/white,
-        // gameplay/chicken_lay, shearing/sheep/red...), of every namespace
-        // (content mods' tables, docs/modpacks.md), with the packs' over the
-        // game's own: one map with the loot data of the same root and packs.
-        let loot_data = sunrise_world::loot::LootData::load_table_data(root, overlay, defaults)?;
-        let loot = loot_data.tables().clone();
-        let predicates = loot_data.predicates().clone();
-        let loot_modifiers = loot_data.modifiers().clone();
-        let loot_types = loot_data.types().clone();
         let registry_order = registry_order(root, &order);
-        let enchantments = Arc::new(crate::enchant::Enchantments::load_with(
-            root, overlay, defaults,
-        )?);
         Ok(Self {
             items,
             block_items: Default::default(),
-            component_registry: ingredient_defaults::component_registry(
-                root,
-                &enchantments,
-                &entity_tags,
-            )?,
-            component_defaults: loot_data.component_defaults().clone(),
+            component_registry: ingredient_defaults::component_registry(root, &entity_tags)?,
             mob_visibility,
             order,
             registry_order,
             block_tags: load_tags(root, "block", overlay)?,
+            block_tag_flags: Default::default(),
             item_tags: load_tags(root, "item", overlay)?,
             fluid_tags: load_tags(root, "fluid", overlay)?,
             item_tag_order: load_tag_lists(root, "item", overlay)?,
             block_tag_order: load_tag_lists(root, "block", overlay)?,
             fluid_tag_order: load_tag_lists(root, "fluid", overlay)?,
-            loot,
-            loot_types,
-            loot_modifiers,
-            global_modifiers: Arc::default(),
-            predicates,
             songs: load_songs(root, overlay),
-            instruments: load_instruments(root, overlay),
-            enchantments,
+            ..Self::default()
         })
     }
+
+    /// Load from resource files when there is no staged world registry snapshot.
+    pub fn load_resource_registries(
+        &mut self,
+        root: &Path,
+        overlay: &PackOverlay,
+        defaults: &ItemDefaults,
+    ) -> Result<()> {
+        self.install_registries(
+            crate::enchant::Enchantments::load_with(root, overlay, defaults)?,
+            load_instruments(root, overlay),
+        );
+        Ok(())
+    }
+
+    /// Install the dependent registries and the component decoder's matching ids.
+    pub fn install_registries(
+        &mut self,
+        enchantments: crate::enchant::Enchantments,
+        instruments: HashMap<String, Instrument>,
+    ) {
+        Arc::make_mut(&mut self.component_registry).enchantments = enchantments
+            .list
+            .iter()
+            .map(|entry| entry.id.to_string())
+            .collect();
+        self.enchantments = Arc::new(enchantments);
+        self.instruments = instruments;
+    }
+
+    fn load_table_loot(
+        &mut self,
+        root: &Path,
+        overlay: &PackOverlay,
+        defaults: &ItemDefaults,
+    ) -> Result<()> {
+        let data = sunrise_world::loot::LootData::load_table_data(root, overlay, defaults)?;
+        self.component_defaults = data.component_defaults().clone();
+        self.set_loot_data(&data);
+        Ok(())
+    }
+
     /// Bind tables, predicates and prepared instances from the same candidate.
     pub fn set_loot_data(&mut self, data: &sunrise_world::loot::LootData) {
         self.loot = data.tables().clone();
@@ -1221,9 +1421,7 @@ impl Items {
     /// registry entry or inline instrument.
     pub fn instrument(&self, stack: &ItemStack) -> Option<Instrument> {
         if let Some(tag) = inline_instrument(stack) {
-            return Some(parse_instrument(
-                &sunrise_client_core::scoreboard::tag_to_json(tag),
-            ));
+            return Instrument::decode(&sunrise_client_core::scoreboard::tag_to_json(tag)).ok();
         }
         self.instruments.get(&instrument_id(stack)?).cloned()
     }
@@ -1255,6 +1453,10 @@ impl Items {
             .map(|(tag, members)| (tag.clone(), members.iter().cloned().collect()))
             .collect();
         *order = tags;
+        if registry == TagRegistry::Block {
+            let names = self.block_state_names();
+            self.rebuild_block_tag_flags(names);
+        }
     }
     /// Whether `block` is in the block tag `tag` (`minecraft:fire`, no `#`).
     pub fn block_in_tag(&self, tag: &str, block: &str) -> bool {
@@ -3264,6 +3466,102 @@ mod consume_effect_tests {
 }
 
 #[cfg(test)]
+mod block_tag_flag_tests {
+    use super::*;
+
+    /// The table's own rule: a state carries each flag whose tag lists its
+    /// name, a block in two tags carries both, and an id the table has no
+    /// name for carries none.
+    #[test]
+    fn build_marks_the_states_of_every_tags_members() {
+        let tags = HashMap::from([
+            (
+                "minecraft:climbable".to_owned(),
+                HashSet::from(["minecraft:ladder".to_owned(), "minecraft:vine".to_owned()]),
+            ),
+            (
+                // A fire block cats may also lie on.
+                "minecraft:fire".to_owned(),
+                HashSet::from(["minecraft:fire".to_owned()]),
+            ),
+            (
+                "minecraft:cats_can_lie_on".to_owned(),
+                HashSet::from(["minecraft:fire".to_owned()]),
+            ),
+            ("minecraft:cauldrons".to_owned(), HashSet::new()),
+        ]);
+        let names: Arc<[Arc<str>]> = [
+            "minecraft:ladder",
+            "minecraft:fire",
+            "minecraft:vine",
+            "minecraft:stone",
+        ]
+        .iter()
+        .map(|name| Arc::<str>::from(*name))
+        .collect();
+        let flags = BlockTagFlags::build(&tags, names);
+        assert_eq!(flags.flags(BlockStateId(0)), BlockTagFlags::CLIMBABLE);
+        assert_eq!(
+            flags.flags(BlockStateId(1)),
+            BlockTagFlags::FIRE | BlockTagFlags::CATS_CAN_LIE_ON
+        );
+        assert_eq!(flags.flags(BlockStateId(2)), BlockTagFlags::CLIMBABLE);
+        assert_eq!(flags.flags(BlockStateId(3)), 0);
+        assert!(flags.has(BlockStateId(0), BlockTagFlags::CLIMBABLE));
+        assert!(!flags.has(BlockStateId(3), BlockTagFlags::CLIMBABLE));
+        // No name for this id: no flags, and no panic.
+        assert_eq!(flags.flags(BlockStateId(4)), 0);
+        assert!(!flags.has(BlockStateId(u32::MAX), BlockTagFlags::FIRE));
+        assert_eq!(flags.bits(), &[1u16, 18, 1, 0][..]);
+        assert_eq!(&*flags.state_names()[2], "minecraft:vine");
+    }
+
+    /// Every state's flags are exactly what the tag map answers for its name:
+    /// `has(id, flag)` equals `block_tags[tag].contains(name)` for every state
+    /// and every flag. This is the equivalence the mob code relies on when it
+    /// tests a bit where it used to hash the tag and the block name.
+    ///
+    /// Needs the prepared resources; skipped without them like the crate's
+    /// other resource tests (`prepared_items`).
+    #[test]
+    fn every_states_flags_match_the_tag_map() {
+        let Some(items) = prepared_items() else {
+            return;
+        };
+        let names = items.block_state_names();
+        assert!(!names.is_empty(), "a loaded catalog names its states");
+        let mut seen = 0u16;
+        for (id, name) in names.iter().enumerate() {
+            let state = BlockStateId(id as u32);
+            for (flag, tag) in BlockTagFlags::ALL {
+                let expected = items
+                    .block_tags
+                    .get(tag)
+                    .is_some_and(|members| members.contains(&**name));
+                assert_eq!(
+                    items.block_tag_flags.has(state, flag),
+                    expected,
+                    "{name} / {tag}"
+                );
+                if expected {
+                    seen |= flag;
+                }
+            }
+        }
+        // A tag with members must reach at least one state: an empty table
+        // fails here instead of answering false everywhere in silence.
+        for (flag, tag) in BlockTagFlags::ALL {
+            if items.block_tags.get(tag).is_some_and(|m| !m.is_empty()) {
+                assert!(
+                    seen & flag != 0,
+                    "{tag} has members but no state carries it"
+                );
+            }
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     mod enchant_select_tests {
         include!("enchant_select_tests.rs");
@@ -3423,7 +3721,7 @@ mod tests {
             fs::write(dir.join("entry.json"), "{}").unwrap();
             files.push((format!("{kind}/demo:entry"), vec![
                 b"{}".to_vec(),
-                json!({"neoforge:conditions":[{"type":"neoforge:mod_loaded","modid":"provider"}],"description":"winning","max_level":7}).to_string().into_bytes(),
+                json!({"neoforge:conditions":[{"type":"neoforge:mod_loaded","modid":"provider"}],"description":"winning","max_level":7,"sound_event":"demo:note","use_duration":4.0,"range":16.0}).to_string().into_bytes(),
             ]));
             files.push((
                 format!("{kind}/demo:unknown"),
@@ -3482,9 +3780,7 @@ mod tests {
         let file = json!({"description": "horn", "sounds": [
             {"id": "demo:a", "neoforge:conditions": [{"type": "absent:condition"}]}]});
         fs::write(dir.join("horn.json"), file.to_string()).unwrap();
-        let conditions = sunrise_world::conditions::LoadConditions::new([])
-            .with_diagnostics()
-            .with_lookup(std::collections::BTreeMap::new(), |_, _| None);
+        let conditions = sunrise_world::conditions::LoadConditions::new([]);
         let overlay = PackOverlay {
             files: &[],
             conditions: &conditions,
@@ -3492,7 +3788,7 @@ mod tests {
         let loaded = data_files(&root, "instrument", &overlay);
         fs::remove_dir_all(&root).unwrap();
         assert_eq!(loaded.get("demo:horn"), Some(&file));
-        assert_eq!(conditions.check_resource_errors("instrument"), Ok(()));
+        assert_eq!(conditions.check_errors(), Ok(()));
     }
 
     #[test]
@@ -3549,7 +3845,7 @@ mod tests {
             (
                 "tags/visuals:block/absent".to_owned(),
                 vec![bytes(json!({
-                    "neoforge:conditions":[{"type":"neoforge:not","value":{"type":"neoforge:true"}}],
+                    "neoforge:conditions":[{"type":"neoforge:not","value":{"type":"neoforge:always"}}],
                     "replace":true,"values":["minecraft:iron_block"]
                 }))],
             ),
@@ -3592,7 +3888,7 @@ mod tests {
                     bytes(json!({"values": ["minecraft:stone", "minecraft:dirt", "#test:other"]})),
                     bytes(json!({"values": [], "remove": ["minecraft:dirt", "#test:other"]})),
                     bytes(json!({"neoforge:conditions": [{"type": "neoforge:not",
-                    "value": {"type": "neoforge:true"}}], "values": [], "remove": ["minecraft:stone"]})),
+                    "value": {"type": "neoforge:always"}}], "values": [], "remove": ["minecraft:stone"]})),
                 ],
             ),
             (

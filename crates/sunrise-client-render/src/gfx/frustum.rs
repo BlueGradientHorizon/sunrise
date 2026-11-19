@@ -211,7 +211,7 @@ impl Cull for ShadowCull {
     }
 }
 /// The block entities of `sections` whose box, a block wider on every side, comes within the
-/// 64 blocks block entities are drawn to (`Renderer::visible_block_entities_in_frustum`).
+/// 64 blocks block entities are drawn to (`Renderer::block_entities_in_range`).
 pub(super) fn block_entities_within_reach<'a>(
     sections: impl Iterator<Item = SectionKey> + 'a,
     block_entities: &'a FxHashMap<SectionKey, Vec<([i32; 3], u32)>>,

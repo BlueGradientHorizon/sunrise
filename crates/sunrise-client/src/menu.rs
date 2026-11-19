@@ -1570,9 +1570,15 @@ impl Menu {
     }
 
     /// `Inventory.add`: the leftover stays in `stack`.
-    pub fn give(&mut self, env: &Env, stack: &mut ItemStack) -> bool {
+    pub fn give(&mut self, items: &Items, stack: &mut ItemStack) -> bool {
         self.touch();
-        self.inventory_add(env, stack)
+        inventory_add(
+            &mut self.state.containers[PLAYER],
+            self.state.selected,
+            self.state.creative,
+            items,
+            stack,
+        )
     }
 
     /// `Inventory.contains(stack)`.
@@ -2149,14 +2155,7 @@ impl Menu {
 
     /// `Inventory.add(stack)`: the leftover stays in `stack`.
     fn inventory_add(&mut self, env: &Env, stack: &mut ItemStack) -> bool {
-        self.touch();
-        inventory_add(
-            &mut self.state.containers[PLAYER],
-            self.state.selected,
-            self.state.creative,
-            env.items,
-            stack,
-        )
+        self.give(env.items, stack)
     }
 }
 
@@ -2662,7 +2661,10 @@ impl Menu {
                         .merchant_remove_count
                         .wrapping_add((clicked.count - stack.count) as i32);
                     self.merchant_check_take_achievements(&clicked);
-                    if let Some(m) = self.state.merchant.as_mut() {
+                    // MerchantMenu.playTradeSound: not for a ClientSideMerchant.
+                    if let Some(m) = self.state.merchant.as_mut()
+                        && !m.client_side
+                    {
                         m.events.push(crate::merchant::Event::TradeSound);
                     }
                 } else if index != 0 && index != 1 {
@@ -3118,7 +3120,7 @@ pub(crate) mod tests {
                 menu.set_player_item(i, stack("minecraft:dirt", 64));
             }
             item.count = 8;
-            menu.give(env, &mut item);
+            menu.give(env.items, &mut item);
             assert_eq!(menu.player_item(0).unwrap().count, 16);
             assert_eq!(item.count, 7);
         });

@@ -311,24 +311,21 @@ impl Game<'_> {
     }
     pub(in crate::game) fn syntax_failure(&mut self, e: &CommandError, command: &str) {
         self.command_failure(e.message.clone());
-        let Some(input) = &e.input else { return };
-        let cursor = e.cursor.min(input.len());
+        let Some(window) = e.context_window() else {
+            return;
+        };
         let suggest = Style {
             click: Some(text::ClickEvent::SuggestCommand(format!("/{command}"))),
             ..Style::default()
         };
         let mut context = Text::empty();
-        if cursor > 10 {
+        if window.ellipsis {
             context.push("...");
         }
-        let start = (0..=cursor.saturating_sub(10))
-            .rev()
-            .find(|&i| input.is_char_boundary(i))
-            .unwrap_or(0);
-        context.push(&input[start..cursor]);
-        if cursor < input.len() {
+        context.push(window.before.as_str());
+        if !window.after.is_empty() {
             context.push(
-                Text::literal(&input[cursor..])
+                Text::literal(window.after)
                     .with_color(text::RED)
                     .underlined(),
             );
@@ -1288,11 +1285,17 @@ impl Game<'_> {
                 None => Some(self.level.ensure_player_uuid()),
             };
             self.for_player(t, |g| {
+                // An acting player in another level than the command's (`execute in`) gets
+                // what does not fit dropped, and the trigger's rewards, in their own.
+                let theirs = conn
+                    .and_then(|conn| g.command_guest(conn))
+                    .map(|guest| Dim::from_id(&guest.dimension));
+                let back = theirs.and_then(|dim| g.enter_command_level(dim));
                 let mut remaining = count;
                 while remaining > 0 {
                     let size = remaining.min(max_stack);
                     remaining -= size;
-                    g.give_acting_stack(
+                    let rest = g.give_acting_stack(
                         ItemStack {
                             item: id.as_str().into(),
                             count: size as u32,
@@ -1301,11 +1304,15 @@ impl Game<'_> {
                         },
                         uuid,
                     );
+                    debug_assert!(rest.is_none(), "the player's own level is in place");
                 }
                 // containerMenu.broadcastChanges: InventoryChangeTrigger
                 // (and its announcement) comes before the command's message.
                 if g.player.is_some() {
                     g.check_inventory_trigger();
+                }
+                if let Some(back) = back {
+                    g.enter_command_level(back);
                 }
             });
         }
@@ -2284,11 +2291,8 @@ impl Game<'_> {
                     self.remove_dropped(i);
                 }
             }
-            Target::Orb(id) => {
-                if let Some(o) = self.orbs.iter_mut().find(|o| o.id == id) {
-                    o.age = u32::MAX / 2;
-                }
-            }
+            // Entity.kill removes the orb.
+            Target::Orb(id) => self.orbs.retain(|o| o.id != id),
             Target::Projectile(id) => self.remove_projectile(id),
             Target::Stand(id) => self.armor_stands.retain(|a| a.id != id),
             Target::Frame(id) => {
@@ -2323,8 +2327,6 @@ impl Game<'_> {
             // No command names a part, and `kill` on one would not stop its dragon.
             Target::DragonPart(_) => {}
         }
-        // The orbs marked for removal are gone (Entity.kill removes them).
-        self.orbs.retain(|o| o.age < u32::MAX / 2);
         if let Some(at) = died {
             self.post_game_event("minecraft:entity_die", at, context);
         }
@@ -2445,7 +2447,8 @@ impl Game<'_> {
                     // counter, and the crystal is shown with its base.
                     self.next_entity += 1;
                     let at = Vec3::new(pos[0], pos[1], pos[2]);
-                    let drawn = self.world.random.next_int_bound(100_000).unwrap_or(0);
+                    let (drawn, uuid) = super::dragon::Crystal::own_draws();
+                    self.persist.uuids.insert(self.next_entity, uuid);
                     let time = super::dragon::Crystal::start_time(at, drawn, self.clock.still());
                     let crystal = super::dragon::Crystal::new(self.next_entity, at, true, time);
                     self.crystals.push(crystal);

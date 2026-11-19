@@ -1050,7 +1050,8 @@ impl Game<'_> {
         uuid: Option<[i32; 4]>,
         transferred: Option<super::entity_initialization::TransferredEntityState>,
     ) {
-        let drawn = self.world.random.next_int_bound(100_000).unwrap_or(0);
+        // The constructor's draws; the saved UUID replaces the one it drew.
+        let (drawn, _) = super::dragon::Crystal::own_draws();
         if let Some(mut c) = super::dragon::Crystal::from_nbt(&tag, drawn) {
             c.time = super::dragon::Crystal::start_time(c.position, drawn, self.clock.still());
             // EndCrystal's constructor takes an id from the

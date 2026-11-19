@@ -12,9 +12,8 @@ again restores vanilla's behaviour completely.
 | Settings, parsing and saving | `crates/sunrise-client-render/src/extras.rs` |
 | FPS and click counters (for native mods) | `extras.rs` (pure logic, unit tested) |
 | Dynamic lights: item glow, nearest sources | `crates/sunrise-client-render/src/dynamic_light.rs` (unit tested), `game/interface/dynamic_lights.rs`, `terrain.wgsl` and `entity.wgsl` (`dynamic_block_light`) |
-| HUD drawing (a native mod's minimap, corner stacking) | `crates/sunrise-client/src/extras_hud.rs` |
-| Minimap colours, tiles and image (for the Minimap native mod) | `crates/sunrise-client-render/src/minimap.rs` |
-| Reconnect policy and backoff | `crates/sunrise-client/src/reconnect.rs`; its game glue (connect, join, leave, the countdown) in `game/interface/extras/reconnect.rs` |
+| HUD drawing (mods' panels, corner stacking) | `crates/sunrise-client/src/extras_hud.rs` |
+| Auto-reconnect: its setting, its row, the policy and the backoff | crate `sunrise-reconnect`, which the official executable registers ([forking.md](forking.md#modding-and-rendering)); the engine shows its countdown and connects again when it asks (`Hooks::retry`, `game/network/remote/connection.rs`) |
 | Game glue (input hooks, per-frame update) | `crates/sunrise-client/src/game/interface/extras.rs`; each extra's own glue in a child module, `game/interface/extras/` |
 | Mouse Tweaks-style controls, sort buttons | `crates/sunrise-client/src/game/interface/extras/mouse_tweaks.rs`, `game/interface/extras/sorting.rs` |
 | Sort order and its clicks | `crates/sunrise-client/src/inv_sort.rs` (pure, unit tested) |
@@ -75,22 +74,12 @@ in Controls, and adding one would put a non-vanilla mapping into `options.txt`.
 
 ### Moved to native mods
 
-The **FPS counter**, **Keystrokes**, **Zoom** and the **Minimap** are official native mods now (in
-horizon-rust/horizon-mods under `native/<name>/`, [mods.md](modding/src/start/installing.md#sunrises-official-mods)), with the same look and
+The **FPS counter**, **Keystrokes** and **Zoom** are official native mods now (in
+horizon-rust/horizon-mods under `native/<name>/`, [mods.md](modding/src/players/installing-mods.md#sunrises-own-mods)), with the same look and
 options. Players install them from the launcher's Mods page, and the launcher builds them into the game
 ([modding/src/how-to/native-mods.md](modding/src/how-to/native-mods.md)). The game keeps
-the hook points they use (`crates/sunrise-client/src/game/native_hooks/`), and `sunrise-extras.txt` keeps the old
-keys and `movedToMods`. The Extras page keeps a **Zoom** row: the mod's switch and Settings button when
+the hook points they use (`crates/sunrise-client/src/game/native_hooks/`). The Extras page keeps a **Zoom** row: the mod's switch and Settings button when
 it is built in, else a note saying to install it from the Mods page.
-
-The game still draws the minimap, for the native mod (`native_minimap` in `native_hooks/`, [mods.md](modding/src/how-to/content-mods.md)):
-- a corner map (top right by default), square or round, small/medium/large, zoom 0.5 to 4 blocks per pixel, rotating
-  with the player or north up, with the player arrow (vanilla's map decoration sprite);
-- vanilla's `MapColor` per block, as map items use, with the map item's height shading and water-depth dithering;
-- underground, in the Nether and under any roof, the floor around the player's height instead of the top block;
-- one cached 16x16 tile per loaded chunk (packed map colour and height), filled nearest first and refreshed when
-  blocks change within 0.3 ms a frame; the 128x128 image is recomposed only when the view moved or a tile changed, and
-  uploaded into a dedicated atlas slot. With no mod showing a map, nothing runs.
 
 ### Own name tag (`ownNameTag`, default off)
 - In third person (F5, either view), the player's own name shows above its head,
@@ -124,6 +113,8 @@ The game still draws the minimap, for the native mod (`native_minimap` in `nativ
 - Online-mode servers: the retry joins with the account the game signed in
   with, held in memory for the whole run (`auth::current()`); nothing is
   written to disk.
+- Only in the official executable (`sunrise-official`), which registers it: sunrise-client's own executable has
+  no such row or setting, and never connects again by itself.
 
 ### Keep channels for UI sounds (`uiSoundReserve`, default off)
 - Positional sounds (a block breaking, a mob, an explosion) start only while at
@@ -238,11 +229,9 @@ Splitscreen is temporarily unavailable; it returns as an official mod.
   the world, like vanilla's HUD. Extras in the top left corner give way to the
   debug screen (F3), which shows the FPS anyway.
 - Corners stack: extras placed in the same corner stack downward (top corners)
-  or upward (bottom corners) in the order a mod's minimap, then mods' panels. The top
+  or upward (bottom corners) in the order the PvP HUD widgets, then mods' panels. The top
   right corner starts below the status effect icons.
 
 ## Perf budget
 
 Off: a flag check per frame per extra (no allocations, no world access).
-A mod's minimap stays under 0.3 ms of CPU
-per frame (tile budget) plus a 64 KiB texture upload when its image changes.

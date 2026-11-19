@@ -1,5 +1,17 @@
 use super::*;
 
+/// A block entity of a section in range of the camera (`Renderer::block_entities_in_range`).
+pub struct BlockEntityInRange<'a> {
+    /// Its block and block state.
+    pub block: &'a ([i32; 3], u32),
+    /// The whole section is inside the camera frustum, so the game's finer per-block check
+    /// cannot change the answer for it.
+    pub section_inside: bool,
+    /// The section is within the 64 blocks every block entity is drawn to, before
+    /// `keep_long_range`.
+    pub near: bool,
+}
+
 impl Renderer {
     pub fn upload(&mut self, key: SectionKey, mesh: &SectionMesh) {
         if let Some(copies) = &mut self.capture_copies {
@@ -489,19 +501,19 @@ impl Renderer {
                 .newest_lod_fade
                 .is_some_and(|t| now.saturating_duration_since(t) < lod::FADE)
     }
-    /// Block entities in sections which can intersect the camera frustum.
-    /// The section bounds include the same one-block margin as the per-block
-    /// check in the game. Sections wholly inside the frustum skip that finer
-    /// check; sections outside it are kept only when a renderer needs to draw
-    /// geometry extending beyond its block (beacon beams, gateways, outlines).
-    pub fn visible_block_entities_in_frustum<'a>(
+    /// Block entities of every section in range of `camera`, with whether each block's whole
+    /// section is inside `frustum` and whether that section is `near`. The frustum prunes
+    /// nothing here: the camera's list and a cache warming every nearby section both take
+    /// what they need from one walk, and the camera skips its finer per-block check for
+    /// sections wholly inside. The section bounds include the same one-block margin as that
+    /// check.
+    pub fn block_entities_in_range<'a>(
         &'a self,
         fade_seconds: f32,
         camera: DVec3,
         frustum: Option<JoinedFrusta>,
-        keep_section: impl Fn(u32) -> bool + 'a,
         keep_long_range: impl Fn(u32) -> bool + 'a,
-    ) -> impl Iterator<Item = (&'a ([i32; 3], u32), bool)> + 'a {
+    ) -> impl Iterator<Item = BlockEntityInRange<'a>> + 'a {
         let fade = fade_millis(fade_seconds);
         let now = Instant::now();
         // No section uploaded within the fade: all are whole, none is looked up.
@@ -523,25 +535,25 @@ impl Renderer {
                 // The last block's expanded bound ends at section_origin + 17.
                 let max = min + Vec3::splat(18.0);
                 let distance_squared = Vec3::ZERO.max(min).min(max).length_squared();
-                let in_range = distance_squared <= 64.0 * 64.0
+                let near = distance_squared <= 64.0 * 64.0;
+                let in_range = near
                     || (distance_squared <= 256.0 * 256.0
                         && blocks.iter().any(|(_, state)| keep_long_range(*state)));
-                if !in_range {
-                    return None;
-                }
-                let (intersects, fully_inside) = frustum.map_or((true, true), |view| {
-                    let fully_inside = view.contains(min, max);
-                    (fully_inside || view.intersects(min, max), fully_inside)
-                });
-                (intersects || blocks.iter().any(|(_, state)| keep_section(*state)))
-                    .then_some((blocks, fully_inside))
+                in_range.then(|| {
+                    let section_inside = frustum.is_some_and(|view| view.contains(min, max));
+                    (blocks, section_inside, near)
+                })
             })
-            .flat_map(|(blocks, fully_inside)| {
-                blocks.iter().map(move |block| (block, fully_inside))
+            .flat_map(|(blocks, section_inside, near)| {
+                blocks.iter().map(move |block| BlockEntityInRange {
+                    block,
+                    section_inside,
+                    near,
+                })
             })
     }
     /// The block entities of the sections a shader pack's shadow pass drew in the last frame
-    /// (`shadow_visible`), within the 64 blocks `visible_block_entities_in_frustum` keeps.
+    /// (`shadow_visible`), within the 64 blocks `block_entities_in_range` keeps.
     /// Our probe packs' Iris 1.11.7 shadow maps hold a block entity wherever the shadow pass
     /// draws its section's terrain, whether or not the camera's view takes it in (#8464).
     pub fn shadow_pass_block_entities(
@@ -564,6 +576,26 @@ impl Renderer {
             pos[2] >> 4,
         );
         self.shadow_visible.iter().any(|v| v.key == key)
+    }
+    /// `LevelRenderer.isSectionCompiledAndVisible` for the section holding block `pos`: it
+    /// has had a mesh since its column came (an empty one too), and it is 30% through its
+    /// fade-in of `fade_ms` since its first upload. A mesh still waiting to upload is not
+    /// compiled yet.
+    pub fn section_compiled_and_visible(&self, pos: [i32; 3], fade_ms: u64) -> bool {
+        let Some(sy) = self.layout.section_index(pos[1]) else {
+            return false;
+        };
+        let key = (pos[0] >> 4, sy as i32, pos[2] >> 4);
+        let compiled = self
+            .detail_columns
+            .get(&(key.0, key.2))
+            .is_some_and(|mask| mask.contains(sy));
+        compiled_and_visible(
+            compiled,
+            self.section_uploaded.get(&key),
+            fade_ms,
+            std::time::Instant::now(),
+        )
     }
     /// Milliseconds since `key` was uploaded; a section not in `section_uploaded` is old.
     fn section_elapsed_ms(&self, key: SectionKey, now: std::time::Instant) -> u64 {
@@ -606,6 +638,7 @@ impl Renderer {
         self.sections.clear();
         self.ray_clear();
         self.lods.clear();
+        self.lod_cells.clear();
         self.lod_cutout.clear();
         self.lod_retiring.clear();
         self.lod_leaving.clear();

@@ -7,7 +7,7 @@ use mod_api::client::hud_layout::{Blend, GuiDraw};
 use mod_api::{ComponentHoverEvent, GuiPaintError, Hooks, ModEntry};
 use mod_platform::testing::with_mods;
 use std::sync::Mutex;
-use sunrise_client::hud::{Blend as Run, HudBatch, MINIMAP_SPRITE};
+use sunrise_client::hud::{Blend as Run, HudBatch, map_slot_sprite};
 use sunrise_client::items::ItemStack;
 use sunrise_client::text::{Style, Text};
 
@@ -27,7 +27,7 @@ fn item(slot: u32, scale: [f32; 2]) -> GuiDraw {
 
 fn vignette() -> GuiDraw {
     GuiDraw::Blit {
-        texture: MINIMAP_SPRITE.into(),
+        texture: map_slot_sprite(0).unwrap().into(),
         blend: Blend::Vignette,
         x: 100,
         y: 0,

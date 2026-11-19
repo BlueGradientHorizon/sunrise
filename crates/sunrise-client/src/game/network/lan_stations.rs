@@ -693,13 +693,7 @@ impl Game<'_> {
             .and_then(|host| host.menus.get(&conn))
             .and_then(|p| p.station.as_ref())
             .is_some_and(|s| s.kind == StationKind::Anvil);
-        if anvil
-            && self.chat_filter_text(
-                conn,
-                &[name],
-                sunrise_client::lan::hub::chat_filter::Place::Anvil,
-            )
-        {
+        if anvil {
             self.lan_station_op(conn, None, |menu, env| {
                 menu.rename(env, name);
             });
@@ -731,26 +725,32 @@ impl Game<'_> {
     /// `ServerGamePacketListenerImpl.handleContainerButtonClick`:
     /// `clickMenuButton`, then `broadcastChanges` when the menu took it.
     pub(super) fn lan_station_button(&mut self, conn: u32, window: i32, id: i32) {
-        // A menu part's button (`native_menu_button`), as
-        // handleContainerButtonClick checks it: the open menu, not a
-        // spectator, still valid. The menu type is the route key, so this
-        // covers menus opened without a block as well as block-backed ones.
+        // A mod container's menu: its mod's buttons (`native_menu_button`),
+        // as handleContainerButtonClick checks them: the open menu, not a
+        // spectator, still valid. A menu a mod opened from code
+        // (`Slots::Native`) at a block's position is that block's only when
+        // the block's container opens the same menu type, as the client
+        // tells its screen hooks (`menu_opener_block`).
         let mod_menu = self.lan.as_ref().and_then(|host| {
             let g = host.hub.guest(conn)?;
             let menu = g.menu.as_ref().filter(|m| m.window == window)?;
-            if !mod_api::__private::menu_listens(mod_api::HookId::MenuButton, &menu.registry_id) {
-                return None;
-            }
+            let pos = menu.pos?;
+            let opened_as = (menu.slots == sunrise_client::lan::menu::Slots::Native)
+                .then(|| menu.registry_id.clone());
             Some((
-                menu.registry_id.clone(),
-                menu.pos.map(|(x, y, z)| [x, y, z]),
+                pos,
+                opened_as,
                 !g.spectator() && menu.still_valid(&host.hub.loop_context, &self.world, g),
                 g.carried.clone(),
                 g.uuid,
                 g.entity_id,
             ))
         });
-        if let Some((menu, pos, valid, mut carried, uuid, entity_id)) = mod_menu {
+        if let Some((pos, opened_as, valid, mut carried, uuid, entity_id)) = mod_menu
+            && self
+                .mod_menu_at(pos)
+                .is_some_and(|m| opened_as.as_deref().is_none_or(|t| t == m))
+        {
             if valid {
                 // The clicking player's cursor stack (`clickMenuButton`'s
                 // other half). Single player's own player is a guest of
@@ -759,14 +759,12 @@ impl Game<'_> {
                 let context = mod_api::item::menu::MenuButtonContext {
                     player: uuid,
                     player_entity_id: entity_id,
-                    pos,
+                    pos: [pos.0, pos.1, pos.2],
                     id,
                 };
                 // As that player: `native_acting_player` and `native_acting_id`
                 // answer for the one who pressed.
-                self.as_guest(conn, |game| {
-                    game.mod_menu_button(&menu, context, &mut carried)
-                });
+                self.as_guest(conn, |game| game.mod_menu_button(context, &mut carried));
                 if let Some(host) = self.lan.as_mut()
                     && host.hub.guest(conn).is_some_and(|g| g.carried != carried)
                 {
@@ -1094,6 +1092,7 @@ impl Game<'_> {
                 .guests
                 .iter()
                 .find(|g| g.conn == conn && host.hub.here(g))
+                .filter(|_| !self.player_tick_canceled(conn))
             else {
                 continue;
             };
@@ -1175,7 +1174,7 @@ impl Game<'_> {
             let Some(g) = host.hub.guests.iter().find(|g| g.conn == conn) else {
                 continue;
             };
-            if !host.hub.here(g) {
+            if !host.hub.here(g) || self.player_tick_canceled(conn) {
                 continue;
             }
             if self.lan_lectern_valid(g, key) {

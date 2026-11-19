@@ -312,6 +312,27 @@ impl MobWorld<'_> {
     pub fn has_tag(&self, tag: &str, block: &str) -> bool {
         self.block_tags.get(tag).is_some_and(|s| s.contains(block))
     }
+    /// The state's [`crate::items::BlockTagFlags`]: 0 when this view carries
+    /// no table.
+    #[inline]
+    pub fn state_flags(&self, state: BlockStateId) -> u16 {
+        self.block_tag_flags
+            .get(state.0 as usize)
+            .copied()
+            .unwrap_or(0)
+    }
+    /// Whether the state carries `flag` ([`crate::items::BlockTagFlags`]).
+    #[inline]
+    pub fn state_flag(&self, state: BlockStateId, flag: u16) -> bool {
+        self.state_flags(state) & flag != 0
+    }
+    /// Whether the block at `(x, y, z)` carries `flag`
+    /// ([`crate::items::BlockTagFlags`]): [`Self::has_tag`] without the tag
+    /// hash.
+    #[inline]
+    pub fn block_flag(&self, x: i32, y: i32, z: i32, flag: u16) -> bool {
+        self.state_flag(self.world.block(x, y, z), flag)
+    }
     /// `findBlocksInBoxByManhattanDistance(at, range_xz, range_y).filterState(..).findFirst()`:
     /// the first block `matches` accepts (given its position and name), going
     /// out from `at` by Manhattan distance as `BlockPos.withinBoxByManhattanDistance` does.
@@ -996,6 +1017,7 @@ fn run_test_world(
         thundering: false,
         level: sunrise_core::LevelKey::OVERWORLD,
         block_tags: &items.block_tags,
+        block_tag_flags: items.block_tag_flags.bits(),
         landing: &motion.landing,
         biomes,
         mob_griefing,

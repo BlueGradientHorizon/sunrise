@@ -828,7 +828,7 @@ fn shapes_follow_the_wire_layout() {
     assert_eq!(shape(&base, "type:Point"), shape(&renamed, "type:Point"));
 }
 
-/// The real tree exports with unique ids and every catalog hook.
+/// The real tree exports with unique ids, every catalog hook, and no CI-only engine records.
 #[test]
 #[ignore = "daily"]
 fn the_real_tree_exports() {
@@ -839,6 +839,8 @@ fn the_real_tree_exports() {
     let export = export(&root).unwrap();
     let text = export.surface.to_json();
     let read = Surface::read(text.as_bytes()).unwrap();
+    assert!(read.engine_items.is_empty());
+    assert!(!text.contains("\"engine_items\":"));
     let catalog = Catalog::load(&root).unwrap();
     let ids: BTreeSet<&str> = read.hooks.iter().map(|h| h.id.as_str()).collect();
     for hook in &catalog.hooks {
@@ -1054,7 +1056,7 @@ fn every_crossing_method_lists_one_distinct_call_name() {
 #[test]
 #[ignore = "daily"]
 fn the_recipe_placement_protocol_is_pinned_to_the_shapes_it_carries() {
-    const PINNED: &str = "7ac8342cd861d9a76ab542d43ded039f";
+    const PINNED: &str = "25629ca0c672c9560cbfcb15491f60ff";
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let generated = crate::sources(&root, crate::FillMode::Require).unwrap();
     let providers = crate::capability_providers::generate(&root, &[]).unwrap().0;

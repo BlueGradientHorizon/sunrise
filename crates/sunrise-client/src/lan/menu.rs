@@ -376,6 +376,41 @@ impl Slots {
         }
         None
     }
+    /// The actual block storage of a held slot, excluding a crafting preview.
+    /// A linked slot lives in the connected container, not the menu's block.
+    pub fn held_block_slot(
+        self,
+        world: &World,
+        guest: &Guest,
+        n: usize,
+    ) -> Option<((i32, i32, i32), usize)> {
+        if guest
+            .menu
+            .as_ref()
+            .and_then(|menu| menu.mod_type?.crafting)
+            .is_some_and(|craft| craft.result == n)
+        {
+            return None;
+        }
+        if let Some((range, links)) = self.links_of(guest)
+            && range.contains(&n)
+        {
+            let mut slot = n - range.start;
+            for &pos in links {
+                let len = shown(world, pos).map_or(0, <[_]>::len);
+                if slot < len {
+                    return Some((pos, slot));
+                }
+                slot -= len;
+            }
+            return None;
+        }
+        match self.backing(world, n)? {
+            SlotBacking::Block(pos, slot) => Some((pos, slot)),
+            _ => None,
+        }
+    }
+
     /// Every container slot, in menu order.
     pub fn read(self, world: &World, guest: &Guest) -> Option<Vec<Option<ItemStack>>> {
         if self == Slots::Ender {
@@ -431,8 +466,11 @@ impl Slots {
         for k in self.halves() {
             let n = shown(world, k).map_or(0, <[_]>::len);
             if let Some(e) = world.block_entities.get_mut(&k) {
-                for slot in e.slots_mut().iter_mut().take(n) {
-                    *slot = rest.next().flatten();
+                for i in 0..n {
+                    let stack = rest.next().flatten();
+                    if e.slots()[i] != stack {
+                        *e.slot_mut(i).unwrap() = stack;
+                    }
                 }
             }
         }
@@ -493,12 +531,12 @@ pub fn write_links(
             continue;
         };
         let mut moved = false;
-        for slot in e.slots_mut().iter_mut().take(n) {
+        for i in 0..n {
             let Some(stack) = rest.next() else {
                 break;
             };
-            if *slot != stack {
-                *slot = stack;
+            if e.slots()[i] != stack {
+                *e.slot_mut(i).unwrap() = stack;
                 moved = true;
             }
         }

@@ -47,6 +47,7 @@ impl Game<'_> {
             thundering: weather && thunder > 0.9,
             level: self.level_key(),
             block_tags: &self.items().block_tags,
+            block_tag_flags: self.items().block_tag_flags.bits(),
             landing: &self.motion.landing,
             biomes: world_biomes!(self),
             mob_griefing: self

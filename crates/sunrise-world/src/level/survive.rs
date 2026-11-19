@@ -36,11 +36,18 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         let mut survives = None;
         if self
             .level
-            .before_can_survive(&*self.ticks, pos, state, &mut survives)
+            .before_can_survive(&*self.ticks, None, pos, state, &mut survives)
         {
             return self.retains_block(state, pos);
         }
-        survives.unwrap_or_else(|| self.can_survive_at(0, state, pos))
+        survives.unwrap_or_else(|| {
+            if self.b.data(state).declared_vegetation {
+                let ground = below(pos);
+                self.may_place_on(state, self.state(ground), ground)
+            } else {
+                self.can_survive_at(0, state, pos)
+            }
+        })
     }
     fn can_survive_at(&self, depth: usize, state: BlockStateId, pos: BlockPos) -> bool {
         let chain = &self.b.data(state).chain;
@@ -389,10 +396,14 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
     ) -> bool {
         // NeoForge's `BushBlock.canSurvive`: the soil's answer first, the plant's second.
         let mut sustains = None;
-        if self
-            .level
-            .before_can_sustain_plant(state, ground, ground_pos, &mut sustains)
-        {
+        if self.level.before_can_sustain_plant(
+            &*self.ticks,
+            None,
+            state,
+            ground,
+            ground_pos,
+            &mut sustains,
+        ) {
             return self.retains_block(state, above(ground_pos));
         }
         if let Some(sustains) = sustains {
@@ -401,7 +412,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         let mut may = None;
         if self
             .level
-            .before_may_place_on(state, ground, ground_pos, &mut may)
+            .before_may_place_on(&*self.ticks, None, state, ground, ground_pos, &mut may)
         {
             return self.retains_block(state, above(ground_pos));
         }
@@ -411,6 +422,9 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         let b = self.b;
         let t = &b.tags;
         let data = b.data(state);
+        if data.declared_vegetation {
+            return b.in_set(ground, &t.supports_vegetation);
+        }
         for class in &data.chain {
             let result = match class {
                 Class::AttachedStem | Class::NetherFungus | Class::NetherRoots | Class::Stem => {

@@ -2,7 +2,7 @@
 //! queries and the stand's root-vehicle grid, offered to the one rule in
 //! `sunrise_client::entity_solids` (which a mob's own move reads too).
 use super::{Game, boats::Boat, minecarts::Minecart};
-use sunrise_client::entity_solids::{Candidate, Mover as Rule, SolidKind, Solids};
+use sunrise_client::entity_solids::{Candidate, Mover as Rule, Side, SolidKind, Solids};
 use sunrise_core::geometry::{Aabb, Vec3};
 
 /// The mover asking, as the game's callers name it.
@@ -10,6 +10,8 @@ use sunrise_core::geometry::{Aabb, Vec3};
 pub(in crate::game) enum Mover<'a> {
     /// The window's player.
     Player,
+    /// Any player that is not riding, by the height of its feet: a guest the server holds.
+    PlayerAt { feet_y: f64 },
     /// A mover that is neither a player nor a vehicle: an item, a stand, an orb, TNT, a
     /// falling block, a body a piston pushes.
     Passive,
@@ -45,6 +47,32 @@ impl Game<'_> {
         boxes
     }
 
+    /// Fills `out` with the entities that can be solid to a player as `Entity.canBeCollidedWith`
+    /// allows (a boat, a living shulker, a happy ghast), as candidates the hub asks its rule of
+    /// for each reported move. Built once per tick into the hub's own buffer, and left empty when
+    /// no player is connected (`guests`): one test per mob and boat, no allocation once the buffer has grown.
+    pub(in crate::game) fn fill_move_solids(&self, out: &mut Vec<Candidate>, guests: bool) {
+        out.clear();
+        if !guests {
+            return;
+        }
+        let rule = Solids::new(
+            Rule::Player {
+                feet_y: 0.0,
+                riding: None,
+                side: Side::Server,
+            },
+            None,
+        );
+        out.extend(
+            self.mobs
+                .iter()
+                .filter(|m| rule.takes(m.solid_kind()))
+                .map(|m| m.solid_candidate()),
+        );
+        out.extend(self.boats.iter().map(boat));
+    }
+
     /// [`Self::entity_collisions`] for an armor stand, which mobs can ride (`/ride`): each mob's
     /// box comes with the vehicle at the bottom of what it rides, so the stand leaves its own
     /// riders out (`isPassengerOfSameVehicle`, through the grid's `near_except`).
@@ -72,17 +100,30 @@ impl Game<'_> {
                     Rule::Player {
                         feet_y: p.position.y,
                         riding: self.riding,
+                        side: if self.remote.is_some() {
+                            Side::Client
+                        } else {
+                            Side::Server
+                        },
                     },
                     None,
                 )
             }
+            Mover::PlayerAt { feet_y } => (
+                Rule::Player {
+                    feet_y,
+                    riding: None,
+                    side: Side::Server,
+                },
+                None,
+            ),
             Mover::Passive => (Rule::Passive, None),
             Mover::Cart(c) => (Rule::Cart { id: c.id }, Some(cart_reach(c))),
             Mover::Boat { id, area } => (Rule::Boat { id }, Some(area)),
         };
         let solids = Solids::new(rule, area);
         match mover {
-            Mover::Player | Mover::Passive => {
+            Mover::Player | Mover::PlayerAt { .. } | Mover::Passive => {
                 for (j, m) in self.mobs.iter().enumerate() {
                     if solids.takes(m.solid_kind()) {
                         let c = m.solid_candidate();

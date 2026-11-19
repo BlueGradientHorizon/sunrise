@@ -284,7 +284,7 @@ impl Game<'_> {
     pub(in crate::game) fn pvp_effects_shown(&self) -> bool {
         self.settings.extras.pvp.hud.effects
     }
-    /// The HUD widgets that are on, after the minimap and before mods' boxes. Each rebuilds its
+    /// The HUD widgets that are on, before mods' boxes. Each rebuilds its
     /// lines only when what it shows changed.
     pub(in crate::game) fn draw_pvp_hud(&mut self, batch: &mut HudBatch, corners: &mut Corners) {
         let hud = self.settings.extras.pvp.hud;

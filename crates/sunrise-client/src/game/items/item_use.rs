@@ -1390,7 +1390,8 @@ pub(super) mod interact_vibration_tests {
                     inside: false,
                 };
                 let held = game.held().cloned();
-                let (result, (changes, _)) = game.remote_block_template(&hit, held.as_ref(), true);
+                let (result, (changes, _)) =
+                    game.remote_block_template(&hit, held.as_ref(), true, true);
                 assert_eq!(result, sunrise_world::level::InteractionResult::Success);
                 assert_eq!(changes.len(), 1, "the client predicts a bitten cake");
                 let bitten = game.with_level(|b, _, _| {
@@ -1469,7 +1470,10 @@ pub(super) mod interact_vibration_tests {
             game.world_root = dir.clone();
             let stack = game.reload_datapacks(false, &[]).unwrap();
             let root = game.options.resources.clone();
-            game.world_tables = game.stage_world_tables(&stack, false, &root).unwrap().0;
+            game.world_tables = game
+                .stage_world_tables(&stack, false, &root)
+                .unwrap()
+                .tables;
             let items =
                 &mut std::sync::Arc::make_mut(&mut game.world_tables.as_mut().unwrap().items).items;
             let mut info = items["minecraft:fishing_rod"].clone();

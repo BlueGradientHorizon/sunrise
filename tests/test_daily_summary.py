@@ -4,6 +4,7 @@ import io
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import tempfile
@@ -11,10 +12,15 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from tests.test_ci_concurrency import ROOT, yaml
+from tools import sunrise_mod_binstall
 from tools.ci import daily_summary as summary, parity_verdict
 
 COMMIT = "c" * 40
-LEGS = {leg: {"result": "success"} for leg in summary.LEGS}
+DAILY = yaml.load((ROOT / ".github/workflows/daily.yml").read_text(), Loader=yaml.BaseLoader)
+# toJSON(needs) of a green run, as the summary job gets it: every call it needs but `resolve`, whose outputs only
+# a parity skip reads.
+LEGS = {name: {"result": "success"} for name in DAILY["jobs"]["summary"]["needs"] if name != "resolve"}
 PARITY_JOB = "parity / vanilla-parity"
 PARITY_PASS = {"passed": ["loot_a"], "failed": [], "complete": True}
 
@@ -27,11 +33,16 @@ def job(name, conclusion="success", failed=()):
 GREEN_JOBS = [job("shards / plan"), job("shards / ignored-tests-shards (sunrise-world)"),
               job("wasm-mods / fixture"), job("wasm-mods / Guest stack / ubuntu-latest"),
               job("fn-replace-check / route"), job("fn-replace-check / fn-replace-check"),
-              job("linkage / route"), job("linkage / linkage x86_64-unknown-linux-gnu"),
               job("windows-runtime-leases / test"),
               job("windows-runtime-leases / runtime-leases"), job("windows-runtime-leases / launcher-processes"),
+              job("cargo-sunrise-mod / plan"),
+              job("wasm-std-names / build (linux)"), job("wasm-std-names / build (windows)"),
+              job("wasm-std-names / compare"),
               job("machine-sample / route"), job("machine-sample / build"),
-              job("sdk / fresh"), job("sdk / build linux"), job("sdk / publish", "skipped"), job(PARITY_JOB)]
+              job("sdk / fresh"), job("sdk / build linux"), job("sdk / build linux-server"),
+              job("sdk / fresh"), job("sdk / build windows"), job("sdk / build macos"), job(PARITY_JOB)]
+# Every binstall archive the daily builds (cargo-sunrise-mod-build.yml), with no publish job: it never publishes.
+GREEN_JOBS += [job(f"cargo-sunrise-mod / build {platform['target']}") for platform in sunrise_mod_binstall.PLATFORMS]
 # Every other shard of the daily matrix, green (the summary expects each by name: summary.expected_shards).
 GREEN_JOBS += [job(name) for name in summary.expected_shards() if name != "shards / ignored-tests-shards (sunrise-world)"]
 
@@ -170,7 +181,7 @@ class DailySummaryTests(unittest.TestCase):
         return self.run_summary(api, results=dict(LEGS, parity={"result": result}), parity=verdict, run=run, merged=merged)
 
     def test_a_failing_harness_files_one_issue_with_the_suspects_and_its_pass_closes_it(self):
-        api = Api([job(PARITY_JOB, "failure", ["Every harness"])])
+        api = Api([job(PARITY_JOB, "failure", ["Run every automatic harness"])])
         log = ("PASS loot_a 3s\nFAIL boat_rider 884s  (log)\nPASS sculk#1 2s\nFAIL sculk#2 4s\n"
                "RETRIED sculk#2: failed, then failed again on its one retry\n2 passed, 2 failed in 300.2 min.\n")
         _, out = self.run_parity(api, "failure", log, ["loot_a", "boat_rider", "sculk#1", "sculk#2"])
@@ -253,6 +264,87 @@ class DailySummaryTests(unittest.TestCase):
         report, _ = parity_verdict.verdict(log, {"loot_a#1", "loot_a#2"}, "0")
         self.assertEqual(report, {"passed": ["loot_a"], "failed": [], "complete": True})
 
+    def test_merged_share_verdicts_report_one_run(self):
+        scope = {"run_id": "77", "run_attempt": "2", "commit": COMMIT}
+
+        def share(index, selected, passed=(), failed=(), complete=True, run=None):
+            return {"bucket": index, "of": 2, "selected": list(selected), "passed": list(passed),
+                    "failed": list(failed), "complete": complete, "scope": run or scope}
+        plan = ["loot_a", "loot_b"]
+        first, second = share(0, ["loot_a"], passed=["loot_a"]), share(1, ["loot_b"], failed=["loot_b"])
+        merged = parity_verdict.merge([first, second], 2, plan, scope)
+        self.assertEqual((merged["passed"], merged["failed"], merged["complete"], merged["problems"]),
+                         (["loot_a"], ["loot_b"], True, []))
+        self.assertEqual(merged["scope"], scope)
+        # A share that never reported leaves the run unfinished, and an unfinished run proves no pass.
+        missing = parity_verdict.merge([first], 2, plan, scope)
+        self.assertEqual((missing["passed"], missing["complete"]), ([], False))
+        self.assertIn("shares [0] reported, not 0..1", missing["problems"])
+        # The same share twice is not a run.
+        duplicate = parity_verdict.merge([first, dict(second, bucket=0)], 2, plan, scope)
+        self.assertIn("share 0 reported twice", duplicate["problems"])
+        # Two attempts' verdicts never merge into one run, even for the same commit and run ID.
+        older = share(0, ["loot_a"], failed=["loot_a"], run=scope | {"run_attempt": "1"})
+        foreign = parity_verdict.merge([older, second], 2, plan, scope)
+        self.assertEqual((foreign["passed"], foreign["failed"], foreign["complete"], foreign["scope"]),
+                         ([], ["loot_b"], False, scope))
+        # Two shares that ran the same entries and left others to nobody are not a run either.
+        overlapping = parity_verdict.merge([first, dict(first, bucket=1)], 2, plan, scope)
+        self.assertFalse(overlapping["complete"])
+        self.assertIn("two shares ran the same harness", overlapping["problems"])
+        self.assertIn("1 planned harnesses ran in no share, 0 ran outside the plan", overlapping["problems"])
+        # A share that did not finish keeps the failures it saw, and proves no pass.
+        partial = parity_verdict.merge([first, dict(second, complete=False)], 2, plan, scope)
+        self.assertEqual((partial["passed"], partial["failed"], partial["complete"]), ([], ["loot_b"], False))
+
+    def test_malformed_share_evidence_does_not_erase_a_current_failure(self):
+        scope = {"run_id": "77", "run_attempt": "1", "commit": COMMIT}
+        current = {"bucket": 0, "of": 2, "selected": ["loot_a#2"], "passed": [], "failed": ["loot_a"],
+                   "complete": True, "scope": scope}
+        other = dict(current, bucket=1, selected=["loot_b"], failed=["loot_b"])
+        malformed = [None, [], dict(other, scope=None), dict(other, bucket=True), dict(other, of=3),
+                     dict(other, complete="true"), dict(other, selected="loot_b"), dict(other, selected=[["loot_b"]]),
+                     dict(other, selected=["loot_b", "loot_b"]), dict(other, failed="loot_b"),
+                     dict(other, failed=["loot_a"]), dict(other, failed=[])]
+        for report in malformed:
+            with self.subTest(report=report):
+                merged = parity_verdict.merge([current, report], 2, ["loot_a#2", "loot_b"], scope)
+                self.assertEqual((merged["passed"], merged["failed"], merged["complete"], merged["scope"]),
+                                 ([], ["loot_a"], False, scope))
+
+    def test_malformed_plan_cannot_prove_complete_coverage(self):
+        scope = {"run_id": "77", "run_attempt": "1", "commit": COMMIT}
+        report = {"bucket": 0, "of": 1, "selected": ["loot_a#1"], "passed": [], "failed": ["loot_a"],
+                  "complete": True, "scope": scope}
+        for plan in (None, [], "loot_a#1", {"loot_a#1": True}, [["loot_a#1"]], ["loot_a#1", "loot_a#1"]):
+            with self.subTest(plan=plan):
+                merged = parity_verdict.merge([report], 1, plan, scope)
+                self.assertEqual((merged["passed"], merged["failed"], merged["complete"], merged["scope"]),
+                                 ([], ["loot_a"], False, scope))
+
+    def test_a_red_share_files_its_harness_and_no_infrastructure_issue(self):
+        api = Api([job("parity / vanilla-parity (0/2)", "success", ["Run every automatic harness"]),
+                   job("parity / vanilla-parity (1/2)", "failure", ["Run every automatic harness"]),
+                   job("parity / verdict", "failure", ["Fail unless every share reported and no harness failed"])])
+        _, out = self.run_parity(api, "failure", "PASS loot_a 3s\nFAIL boat_rider 9s\n1 passed, 1 failed in 1.0 min.\n",
+                                 ["loot_a", "boat_rider"])
+        self.assertIn("green=false", out)
+        self.assertEqual([body["title"] for method, path, body in api.writes if path == "issues"],
+                         ["Daily: parity boat_rider"])
+
+    def test_a_share_that_dies_after_its_verdict_stays_visible_beside_a_red_harness(self):
+        api = Api([job("parity / vanilla-parity (0/2)", "failure", ["Upload the harnesses' verdict"]),
+                   job("parity / vanilla-parity (1/2)", "failure", ["Run every automatic harness"]),
+                   job("parity / verdict", "failure", ["Fail unless every share reported and no harness failed"])],
+                  issues=[{"number": 7, "title": "Daily: parity did not complete"}])
+        _, out = self.run_parity(api, "failure", "PASS loot_a 3s\nFAIL boat_rider 9s\n1 passed, 1 failed in 1.0 min.\n",
+                                 ["loot_a", "boat_rider"])
+        self.assertIn("green=false", out)
+        self.assertEqual([body["title"] for method, path, body in api.writes if path == "issues"],
+                         ["Daily: parity boat_rider"])
+        self.assertIn(("POST", "issues/7/comments"),
+                      [(method, path) for method, path, _ in api.writes])
+
     def test_an_incomplete_parity_run_files_failures_but_closes_nothing(self):
         api = Api([job(PARITY_JOB, "failure")],
                   issues=[{"number": 7, "title": "Daily: parity sculk"}])
@@ -312,21 +404,89 @@ class DailySummaryTests(unittest.TestCase):
         self.assertEqual([body["title"] for _, path, body in api.writes if path == "issues"],
                          ["Daily: sdk / build windows did not complete"])
 
-    def test_the_sdk_legs_other_call_is_part_of_the_sdk_leg(self):
-        # daily.yml names both calls `sdk`: a Windows leg that failed in the second call is the sdk leg's, by name.
-        jobs = [job for job in GREEN_JOBS if not job["name"].startswith("sdk")] + [
-            job("sdk / fresh"), job("sdk / build linux"), job("sdk / fresh"),
-            job("sdk / build windows", "failure", ["Build and collect"])]
+    def test_a_failed_probe_in_the_second_sdk_call_blocks_publication_and_names_the_step(self):
+        # Both daily.yml calls are named `sdk`, including the Windows job in the second call.
+        step = "Two mod libraries share the game's exact Rust state"
+        jobs = [j for j in GREEN_JOBS if j["name"] != "sdk / build windows"] + [
+            job("sdk / build windows", "failure", [step])]
         api = Api(jobs)
         _, out = self.run_summary(api, [shard_report()], results=dict(LEGS, **{"sdk-windows-macos": {"result": "failure"}}))
-        self.assertIn("green=false", out)
-        self.assertIn("sdk_green=false", out)
-        self.assertEqual([body["title"] for _, path, body in api.writes if path == "issues"],
-                         ["Daily: sdk / build windows did not complete"])
+        self.assertEqual(out.splitlines(), ["green=false", "sdk_green=false"])
+        created = [body for _, path, body in api.writes if path == "issues"]
+        self.assertEqual([body["title"] for body in created], ["Daily: sdk native linkage probe (windows)"])
+        self.assertIn(f"fails at the step `{step}`", created[0]["body"])
+        self.assertNotIn("fn-replace-check", created[0]["body"], "fn-replace-check reads only the Linux legs")
         # A second call that was cancelled before any of its jobs ran leaves the sdk leg not green either.
         jobs = [job for job in GREEN_JOBS if not job["name"].startswith("sdk")] + [job("sdk / fresh"), job("sdk / build linux")]
         _, out = self.run_summary(Api(jobs), [shard_report()], results=dict(LEGS, **{"sdk-windows-macos": {"result": "cancelled"}}))
         self.assertIn("sdk_green=false", out)
+
+    def test_a_linux_sdk_check_red_is_one_issue_and_fn_replace_check_missing_its_input_files_none(self):
+        probe = "Two mod libraries share the game's exact Rust state"
+        jobs = [j for j in GREEN_JOBS if j["name"] not in ("sdk / build linux", summary.FN_REPLACE_JOB)] + [
+            job("sdk / build linux", "failure", [probe]),
+            job(summary.FN_REPLACE_JOB, "failure", ["The Linux legs are here"])]
+        api = Api(jobs, issues=[{"number": 6, "title": "Daily: fn-replace-check / fn-replace-check did not complete"}])
+        _, out = self.run_summary(api, [shard_report()], results=dict(
+            LEGS, sdk={"result": "failure"}, **{"fn-replace-check": {"result": "failure"}}))
+        self.assertEqual(out.splitlines(), ["green=false", "sdk_green=false"])
+        created = [body for _, path, body in api.writes if path == "issues"]
+        self.assertEqual([body["title"] for body in created], ["Daily: sdk native linkage probe (linux)"])
+        self.assertIn("`fn-replace-check` could not run: it needs this leg's SDK", created[0]["body"])
+        self.assertFalse(any(path.startswith("issues/6") for _, path, _ in api.writes),
+                         "a blocked fn-replace-check neither comments on nor closes its own issue")
+
+    def test_a_failed_linux_fresh_check_with_no_published_sdk_files_one_issue(self):
+        # The Linux call's `fresh` failed, so no Linux build job ran and fn-replace-check found no input.
+        linux = GREEN_JOBS.index(job("sdk / fresh"))
+        jobs = [j for at, j in enumerate(GREEN_JOBS) if at != linux and j["name"] not in (
+            "sdk / build linux", "sdk / build linux-server", summary.FN_REPLACE_JOB)] + [
+            job("sdk / fresh", "failure", ["Is sdk-<sha> published?"]), job("sdk / build linux", "skipped"),
+            job("sdk / build linux-server", "skipped"), job(summary.FN_REPLACE_JOB, "failure", ["The Linux legs are here"])]
+        api = Api(jobs)
+        _, out = self.run_summary(api, [shard_report()], results=dict(
+            LEGS, sdk={"result": "failure"}, **{"fn-replace-check": {"result": "failure"}}))
+        self.assertEqual(out.splitlines(), ["green=false", "sdk_green=false"])
+        created = [body for _, path, body in api.writes if path == "issues"]
+        self.assertEqual([body["title"] for body in created], ["Daily: sdk did not complete"])
+        self.assertIn("`fn-replace-check` could not run: it needs this leg's SDK", created[0]["body"])
+
+    def test_fn_replace_check_missing_its_input_from_a_green_linux_sdk_is_its_own_red(self):
+        jobs = [j for j in GREEN_JOBS if j["name"] != summary.FN_REPLACE_JOB] + [
+            job(summary.FN_REPLACE_JOB, "failure", ["The Linux legs are here"])]
+        api = Api(jobs)
+        _, out = self.run_summary(api, [shard_report()], results=dict(LEGS, **{"fn-replace-check": {"result": "failure"}}))
+        self.assertEqual(out.splitlines(), ["green=false", "sdk_green=false"])
+        self.assertEqual([body["title"] for _, path, body in api.writes if path == "issues"],
+                         ["Daily: fn-replace-check / fn-replace-check did not complete"])
+
+    def test_a_genuine_fn_replace_red_beside_a_linux_sdk_red_is_filed_too(self):
+        jobs = [j for j in GREEN_JOBS if j["name"] not in ("sdk / build linux-server", summary.FN_REPLACE_JOB)] + [
+            job("sdk / build linux-server", "failure", ["Build and collect"]),
+            job(summary.FN_REPLACE_JOB, "failure", ["Refusals by name"])]
+        api = Api(jobs)
+        self.run_summary(api, [shard_report()], results=dict(
+            LEGS, sdk={"result": "failure"}, **{"fn-replace-check": {"result": "failure"}}))
+        self.assertCountEqual([body["title"] for _, path, body in api.writes if path == "issues"],
+                              ["Daily: fn-replace-check / fn-replace-check did not complete",
+                               "Daily: sdk / build linux-server did not complete"])
+
+    def test_an_sdk_check_issue_closes_only_when_its_step_passed(self):
+        title = "Daily: sdk API-source check (linux)"
+        step = "The starter mod checks against the API source alone, host and wasm32"
+        # sdk-<sha> already existed: the build skipped, so the check never ran and its issue stays open.
+        jobs = [j for j in GREEN_JOBS if not j["name"].startswith("sdk / build ")] + [
+            job(name, "skipped") for name in ("sdk / build linux", "sdk / build linux-server",
+                                              "sdk / build windows", "sdk / build macos")]
+        api = Api(jobs, issues=[{"number": 9, "title": title}])
+        _, out = self.run_summary(api, [shard_report()])
+        self.assertIn("green=true", out)
+        self.assertFalse(any(path.startswith("issues/9") for _, path, _ in api.writes))
+        ran = dict(job("sdk / build linux"))
+        ran["steps"] = ran["steps"] + [{"name": step, "conclusion": "success"}]
+        api = Api([j for j in GREEN_JOBS if j["name"] != "sdk / build linux"] + [ran], issues=[{"number": 9, "title": title}])
+        self.run_summary(api, [shard_report()])
+        self.assertIn("issues/9", [path for method, path, _ in api.writes if method == "PATCH"])
 
     def test_the_sdk_legs_alone_decide_sdk_green(self):
         jobs = [job("shards / ignored-tests-shards (sunrise-world)", "failure", ["Run"])] + GREEN_JOBS[2:]
@@ -443,6 +603,42 @@ class DailySummaryTests(unittest.TestCase):
         self.assertIn("`Refusals by name`", bodies)
         self.assertIn("no daily run has been green yet", bodies)
 
+    def test_every_mod_tool_archive_green_is_green_and_one_that_fails_holds_the_nightly(self):
+        _, out = self.run_summary(Api(GREEN_JOBS))
+        self.assertEqual(out.splitlines(), ["green=true", "sdk_green=true"])
+        failed = "cargo-sunrise-mod / build aarch64-apple-darwin"
+        api = Api([job(failed, "failure", ["Build"]) if entry["name"] == failed else entry for entry in GREEN_JOBS])
+        _, out = self.run_summary(api, results=dict(LEGS, **{"cargo-sunrise-mod": {"result": "failure"}}))
+        self.assertEqual(out.splitlines(), ["green=false", "sdk_green=true"])
+        self.assertEqual([body["title"] for _, path, body in api.writes if path == "issues"],
+                         [f"Daily: {failed} did not complete"])
+
+    def test_a_comparison_skipped_by_a_failed_build_is_not_its_own_issue_but_one_that_failed_or_skipped_alone_is(self):
+        def run(**replace):
+            jobs = [job(entry["name"], *replace[entry["name"]]) if entry["name"] in replace else entry
+                    for entry in GREEN_JOBS]
+            api = Api(jobs)
+            _, out = self.run_summary(api, results=dict(LEGS, **{"wasm-std-names": {"result": "failure"}}))
+            return sorted(body["title"] for _, path, body in api.writes if path == "issues"), out.splitlines()
+        build, compare = "wasm-std-names / build (windows)", "wasm-std-names / compare"
+        self.assertEqual(run(**{build: ("failure", ["Build the std member"]), compare: ("skipped", [])}),
+                         ([f"Daily: {build} did not complete"], ["green=false", "sdk_green=true"]))
+        self.assertEqual(run(**{compare: ("failure", ["Linux's and Windows' std members have the same import and "
+                                                       "export names"])}),
+                         ([f"Daily: {compare} did not complete"], ["green=false", "sdk_green=true"]))
+        self.assertEqual(run(**{compare: ("skipped", [])}),
+                         ([f"Daily: {compare} did not complete"], ["green=false", "sdk_green=true"]))
+
+    def test_a_job_skipped_beside_another_leg_jobs_failure_is_still_its_own_issue(self):
+        fixture, stack = "wasm-mods / fixture", "wasm-mods / Guest stack / ubuntu-latest"
+        jobs = [job(fixture, "failure", ["Build tool and shared member"]) if entry["name"] == fixture
+                else job(stack, "skipped") if entry["name"] == stack else entry for entry in GREEN_JOBS]
+        api = Api(jobs)
+        _, out = self.run_summary(api, results=dict(LEGS, **{"wasm-mods": {"result": "failure"}}))
+        self.assertEqual(sorted(body["title"] for _, path, body in api.writes if path == "issues"),
+                         [f"Daily: {stack} did not complete", f"Daily: {fixture} did not complete"])
+        self.assertEqual(out.splitlines(), ["green=false", "sdk_green=true"])
+
     def test_a_shard_killed_for_memory_says_by_what_with_its_memory_time_and_running_tests(self):
         stuck = [f"game::slow::case_{n}" for n in range(7)]
         incomplete = {"shard": "sunrise-world", "reason": "a test process crashed", "ended_by": "signal 9 (SIGKILL)",
@@ -474,11 +670,11 @@ class DailySummaryTests(unittest.TestCase):
         self.assertEqual(summary.stopped_text({"shard": "x"}), "`x` did not complete")
 
     def test_every_shard_of_the_matrix_must_report_by_name(self):
-        launcher = "shards / ignored-tests-shards (daily-rows-launcher)"
+        launcher = "shards / ignored-tests-shards (daily-rows)"
         self.assertIn(launcher, summary.expected_shards())
         _, out = self.run_summary(Api(GREEN_JOBS), [shard_report()])
         self.assertIn("green=true", out)
-        # Every other job green, the launcher's shard absent: red, with one leg issue naming it.
+        # Every other job green, one shard absent: red, with one leg issue naming it.
         api = Api([entry for entry in GREEN_JOBS if entry["name"] != launcher])
         _, out = self.run_summary(api, [shard_report()])
         self.assertIn("green=false", out)
@@ -668,13 +864,10 @@ class DailySummaryTests(unittest.TestCase):
         # Run 43900023409: every leg job still waited for a runner when the cancel came, with no step run.
         def waiting(name):
             return {"name": name, "conclusion": "cancelled", "steps": []}
-        jobs = [j for j in GREEN_JOBS if not j["name"].startswith(("machine-sample / ", "linkage / "))]
-        jobs += [waiting("machine-sample / route"), waiting("machine-sample / build"), waiting("linkage / route"),
-                 waiting("linkage / linkage x86_64-unknown-linux-gnu")]
+        jobs = [waiting(j["name"]) if j["name"].startswith("machine-sample / ") else j for j in GREEN_JOBS]
         issue = [{"number": 77, "title": "Daily: update the machine sample for the mod API change", "body": "> filed"}]
         api = Api(jobs, issues=issue)
-        _, out = self.run_summary(api, [shard_report()], results=dict(
-            LEGS, **{"machine-sample": {"result": "cancelled"}, "linkage": {"result": "cancelled"}}))
+        _, out = self.run_summary(api, [shard_report()], results=dict(LEGS, **{"machine-sample": {"result": "cancelled"}}))
         self.assertIn("green=false", out, "a leg that never ran is not green either")
         self.assertEqual(api.writes, [])
         # A leg cancelled after it started (a time limit, a lost runner) did run: it is still red.
@@ -732,7 +925,8 @@ class DailySummaryTests(unittest.TestCase):
     def test_an_unknown_job_or_a_leg_with_no_job_is_red(self):
         for jobs, title in (
                 (GREEN_JOBS + [job("surprise / something")], "Daily: surprise / something did not complete"),
-                ([j for j in GREEN_JOBS if not j["name"].startswith("linkage")], "Daily: linkage did not complete")):
+                ([j for j in GREEN_JOBS if not j["name"].startswith("fn-replace-check / ")],
+                 "Daily: fn-replace-check did not complete")):
             with self.subTest(title=title):
                 api = Api(jobs)
                 _, out = self.run_summary(api, [shard_report()])
@@ -833,6 +1027,43 @@ class DailyWorkflowTests(unittest.TestCase):
         self.assertEqual(writer["run"], "python3 tools/ci/daily_summary.py")
         self.assertEqual(writer["env"]["DRY_RUN"], "${{ needs.resolve.outputs.dry_run }}")
         self.assertTrue(jobs["summary"]["name"].startswith("summary ${{ needs.resolve.outputs.commit }}"))
+
+    def test_daily_checks_linkage_on_the_linux_and_windows_client_sdks_before_pack(self):
+        from tests.test_ci_concurrency import ROOT, expression_value, yaml
+        jobs = self.workflow["jobs"]
+        self.assertNotIn("linkage", jobs)
+        self.assertNotIn("linkage", jobs["summary"]["needs"])
+        sdk = "./.github/workflows/prebuilt-game-build.yml"
+        self.assertEqual(jobs["sdk"]["uses"], sdk)
+        self.assertEqual(jobs["sdk-windows-macos"]["uses"], sdk)
+        workflow = yaml.load((ROOT / sdk).read_text(), Loader=yaml.BaseLoader)
+        self.assertEqual(set(workflow["on"]), {"workflow_call"})
+        legs = next(step for step in workflow["jobs"]["fresh"]["steps"] if step.get("id") == "legs")
+        steps = workflow["jobs"]["build"]["steps"]
+        toolchain = next(step for step in steps if step.get("uses", "").startswith("dtolnay/rust-toolchain@"))
+        probe = next(step for step in steps if step.get("name") == "Two mod libraries share the game's exact Rust state")
+        api = next(step for step in steps if step.get("name") ==
+                   "The starter mod checks against the API source alone, host and wasm32")
+        for leg in json.loads(legs["env"]["ALL"]):
+            with self.subTest(leg=leg["name"]):
+                wants_probe = leg["name"] in ("linux", "windows")
+                self.assertEqual(bool(expression_value(probe["if"], {}, matrix=leg)), wants_probe)
+                self.assertEqual(expression_value(toolchain["with"]["components"][3:-2], {}, matrix=leg),
+                                 "clippy" if wants_probe else "")
+                self.assertEqual(bool(expression_value(api["if"], {}, matrix=leg)), leg["name"] == "linux")
+        self.assertEqual(shlex.split(probe["run"]), ["python", "tools/native_dylib_probe.py", "--sdk", "prebuilt",
+                                                     "--output", "$RUNNER_TEMP/native-dylib-probe"])
+        commands = {step["run"].split()[2]: i for i, step in enumerate(steps)
+                    if step.get("run", "").startswith("python tools/prebuilt_game.py ")}
+        self.assertLess(max(commands[command] for command in ("build", "smoke", "start", "exports")), steps.index(probe))
+        self.assertLess(steps.index(probe), steps.index(api))
+        self.assertLess(steps.index(api), commands["pack"])
+        api_commands = api["run"].splitlines()
+        build = 'python tools/sdk_api_source.py build "$RUNNER_TEMP/api-source"'
+        check = ('python tools/sdk_api_source.py check "$RUNNER_TEMP/api-source" '
+                 '--scratch "$RUNNER_TEMP/sdk-api-source-check"')
+        self.assertLess(api_commands.index("rustup target add wasm32-unknown-unknown"), api_commands.index(build))
+        self.assertLess(api_commands.index(build), api_commands.index(check))
 
     def test_the_sdk_build_packs_exactly_the_archives_a_release_needs(self):
         from tests.test_ci_concurrency import ROOT, yaml
@@ -958,12 +1189,20 @@ class DailyWorkflowTests(unittest.TestCase):
                     self.assertIn(f"parity_required={required}", out.read_text().splitlines())
 
     def test_every_leg_is_a_called_workflow_with_the_commit(self):
+        # The summary's needs are the legs (daily_summary.daily_legs): each a called workflow given the resolved
+        # commit, and every called workflow is one of them.
         jobs = self.workflow["jobs"]
-        for leg in summary.LEGS:
+        needs = jobs["summary"]["needs"]
+        self.assertEqual(set(needs), {"resolve"} | {name for name, job in jobs.items() if "uses" in job
+                                                     and name not in ("sdk-publish", "nightly")})
+        for leg in needs:
+            if leg == "resolve":
+                continue
             with self.subTest(leg=leg):
                 self.assertTrue(jobs[leg]["uses"].startswith("./.github/workflows/"))
                 self.assertEqual(jobs[leg]["with"]["commit"], "${{ needs.resolve.outputs.commit }}")
-                self.assertIn(leg, jobs["summary"]["needs"])
+        self.assertEqual(summary.daily_legs({name: {} for name in needs}),
+                         tuple(name for name in needs if name not in ("resolve", *summary.PART_OF)))
 
 
 if __name__ == "__main__":
