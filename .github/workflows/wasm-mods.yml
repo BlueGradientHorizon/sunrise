@@ -198,7 +198,10 @@ jobs:
           SUNRISE_WASM_LIBRARY: ${{ github.workspace }}/crates/sunrise-mod-wasm/tests/library-fixture/library/target/sunrise-mod/wasm_test_library.smod
           SUNRISE_WASM_OBSERVER: ${{ github.workspace }}/crates/sunrise-mod-wasm/tests/library-fixture/observer/target/sunrise-mod/wasm_test_observer.smod
           SUNRISE_WASM_DEPENDENT: ${{ github.workspace }}/crates/sunrise-mod-wasm/tests/library-fixture/dependent/target/sunrise-mod/wasm_test_dependent.smod
-        run: python3 tools/ci/ignored_tests.py --prebuilt "$WORKSPACE_TESTS" -p sunrise-mod-wasm --test real_library -- --nocapture
+        run: |
+          # The feature comparison first: when it fails it names the crate that makes the library's bytes differ.
+          python3 tools/ci/ignored_tests.py --prebuilt "$WORKSPACE_TESTS" -p sunrise-mod-wasm --test library_features -- --ignored --nocapture
+          python3 tools/ci/ignored_tests.py --prebuilt "$WORKSPACE_TESTS" -p sunrise-mod-wasm --test real_library -- --nocapture
       - name: Build the same-group capability members
         if: ${{ !cancelled() && steps.fixture.outcome == 'success' }}
         run: |

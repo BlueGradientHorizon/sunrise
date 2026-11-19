@@ -1,6 +1,5 @@
 # The daily tests of sunrise-mod-wasm: each is #[ignore = "daily"] in its source and runs once a day in the daily run,
 # where it must pass (README.md). Rows: PACKAGE TEST TARGET daily REASON, sorted; tools/ci/move_to_daily.py writes them.
-sunrise-mod-wasm a_library_is_built_with_the_same_features_in_its_dependents_workspace test:library_features daily child-process
 sunrise-mod-wasm compile_budget_tests::actual_child_timeout_then_same_module_succeeds_and_is_cached lib daily child-process
 sunrise-mod-wasm compile_budget_tests::invalid_startup_settings_publish_and_report_refusals_on_both_sides lib daily child-process
 sunrise-mod-wasm compile_budget_tests::unavailable_or_untrusted_cache_refuses_applied_unix_budget lib daily child-process

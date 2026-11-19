@@ -2,7 +2,8 @@
 //! dependent's group builds it, and that holds only while every crate in the library's closure is built with the same
 //! features in both. Cargo unifies features across a workspace, so a crate a dependent brings (the points' own
 //! dependencies, say) can switch on a feature of a crate the library also uses; this test names such a crate.
-//! It reads Cargo's resolution only and compiles nothing.
+//! It reads Cargo's resolution only and compiles nothing: the resolution is each fixture's own lockfile, written when
+//! the fixture is built, so the wasm-mods workflow runs this after that build.
 use std::collections::BTreeSet;
 use std::path::Path;
 use std::process::Command;
@@ -46,7 +47,7 @@ fn closure(workspace: &Path, package: &str) -> BTreeSet<String> {
 }
 
 #[test]
-#[ignore = "daily"]
+#[ignore = "reads the library fixtures' lockfiles, which the wasm-mods workflow writes when it builds them"]
 fn a_library_is_built_with_the_same_features_in_its_dependents_workspace() {
     let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/library-fixture");
     let alone = closure(&fixtures.join("library"), "wasm-test-library");
