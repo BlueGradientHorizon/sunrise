@@ -1,27 +1,34 @@
 //! Real LAN merchant result takes, with native listeners and the production coordinator.
 use super::{Game, native_guest_turn_tests::with_guests};
+use mod_api::{
+    Flow, Hooks, HostSide, ItemPlace, ItemResource, ItemStackedOnOtherEvent, ModEntry, Mods,
+    ServerHost, TradeWithVillagerEvent,
+};
+use std::cell::{Cell, RefCell};
 use sunrise_client::{
     items::ItemStack,
     merchant::{Session, Trader},
 };
 use sunrise_protocol::packets::play::ContainerClick;
-use mod_api::{Hooks, ItemPlace, ItemResource, ModEntry, Mods, ServerHost, TradeWithVillagerEvent};
-use std::cell::{Cell, RefCell};
 
 #[derive(Clone, Default)]
 struct Script {
     panic_on: Option<usize>,
     answer: bool,
     invalid: bool,
+    /// An answer whose result stack is not a valid one for the game.
+    invalid_stack: bool,
 }
 thread_local! {
     static SCRIPT: RefCell<Script> = RefCell::new(Script::default());
     static CALLS: Cell<usize> = const { Cell::new(0) };
+    static STACKED: Cell<usize> = const { Cell::new(0) };
     static IN_ACTION: RefCell<Vec<bool>> = const { RefCell::new(Vec::new()) };
 }
 fn script(value: Script) {
     SCRIPT.with(|s| *s.borrow_mut() = value);
     CALLS.set(0);
+    STACKED.set(0);
     IN_ACTION.with(|a| a.borrow_mut().clear());
     super::decided_action::DECIDED.set(0);
 }
@@ -33,6 +40,27 @@ impl Hooks for Mod {
         host: &mut dyn ServerHost,
         event: &mut TradeWithVillagerEvent<'_>,
     ) {
+        trade(host, event);
+    }
+}
+/// The same trade listener, also hearing `item_stacked_on_other`: the result pickup is both.
+struct Both;
+#[mod_api::__subscriptions]
+impl Hooks for Both {
+    fn trade_with_villager(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut TradeWithVillagerEvent<'_>,
+    ) {
+        trade(host, event);
+    }
+    fn item_stacked_on_other(&self, _: HostSide, _: &mut ItemStackedOnOtherEvent<'_>) -> Flow {
+        STACKED.set(STACKED.get() + 1);
+        Flow::Continue
+    }
+}
+fn trade(host: &mut dyn ServerHost, event: &mut TradeWithVillagerEvent<'_>) {
+    {
         let call = CALLS.get() + 1;
         CALLS.set(call);
         IN_ACTION.with(|a| a.borrow_mut().push(host.transaction_current().is_some()));
@@ -59,6 +87,9 @@ impl Hooks for Mod {
         if s.invalid {
             event.offer.price_multiplier = f32::NAN;
         }
+        if s.invalid_stack {
+            event.offer.result.set_damage(u32::MAX);
+        }
         if s.panic_on == Some(call) {
             panic!("trade listener failed");
         }
@@ -66,6 +97,10 @@ impl Hooks for Mod {
 }
 fn with_mod(test: impl FnOnce()) {
     let mods: Mods = vec![ModEntry::new("trade-observer", Box::new(Mod))].into();
+    mod_platform::testing::with_mods(mods, test);
+}
+fn with_both(test: impl FnOnce()) {
+    let mods: Mods = vec![ModEntry::new("trade-and-stack", Box::new(Both))].into();
     mod_platform::testing::with_mods(mods, test);
 }
 
@@ -167,7 +202,7 @@ fn unchanged(game: &mut Game<'_>, payment: u32) {
 }
 
 #[test]
-#[ignore = "needs prepared resources in SUNRISE_TEST_RESOURCES"]
+#[ignore = "daily"]
 fn accepted_trade_keeps_the_collect_answer_and_listener_writes() {
     with_mod(|| {
         with_guests(|game| {
@@ -204,7 +239,7 @@ fn accepted_trade_keeps_the_collect_answer_and_listener_writes() {
 }
 
 #[test]
-#[ignore = "needs prepared resources in SUNRISE_TEST_RESOURCES"]
+#[ignore = "daily"]
 fn a_panicking_trade_listener_undoes_the_take_and_the_next_trade_works() {
     with_mod(|| {
         with_guests(|game| {
@@ -225,7 +260,7 @@ fn a_panicking_trade_listener_undoes_the_take_and_the_next_trade_works() {
 }
 
 #[test]
-#[ignore = "needs prepared resources in SUNRISE_TEST_RESOURCES"]
+#[ignore = "daily"]
 fn a_second_trade_panic_undoes_the_entire_shift_click() {
     with_mod(|| {
         with_guests(|game| {
@@ -248,7 +283,7 @@ fn a_second_trade_panic_undoes_the_entire_shift_click() {
 }
 
 #[test]
-#[ignore = "needs prepared resources in SUNRISE_TEST_RESOURCES"]
+#[ignore = "daily"]
 fn an_outer_abort_undoes_an_accepted_trade() {
     with_mod(|| {
         with_guests(|game| {
@@ -265,7 +300,7 @@ fn an_outer_abort_undoes_an_accepted_trade() {
 }
 
 #[test]
-#[ignore = "needs prepared resources in SUNRISE_TEST_RESOURCES"]
+#[ignore = "daily"]
 fn a_non_finite_collect_answer_refuses_the_whole_take() {
     with_mod(|| {
         with_guests(|game| {
@@ -282,7 +317,7 @@ fn a_non_finite_collect_answer_refuses_the_whole_take() {
 }
 
 #[test]
-#[ignore = "needs prepared resources in SUNRISE_TEST_RESOURCES"]
+#[ignore = "daily"]
 fn no_subscriber_uses_the_ordinary_trade_without_a_decision() {
     mod_platform::testing::with_mods(Mods::default(), || {
         with_guests(|game| {
@@ -295,6 +330,60 @@ fn no_subscriber_uses_the_ordinary_trade_without_a_decision() {
             assert_eq!((result(game), stat(game)), (3, 3));
             assert_eq!(game.lan_trade_session(12).unwrap().offers[0].uses, 3);
             assert_eq!(game.lan_trade_session(12).unwrap().xp, 21);
+            assert!(game.transactions.is_empty());
+        })
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_result_pickup_heard_as_trade_and_stacked_event_is_one_accepted_action() {
+    with_both(|| {
+        with_guests(|game| {
+            let click = open(game, 2);
+            script(Script {
+                answer: true,
+                ..Script::default()
+            });
+            assert!(game.lan_merchant_click(12, &click));
+            assert_eq!((CALLS.get(), STACKED.get()), (1, 1));
+            assert_eq!((result(game), dirt(game), stat(game)), (1, 2, 1));
+            assert!(game.transactions.is_empty());
+        })
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_trade_refused_inside_the_stacked_pickup_undoes_the_whole_take() {
+    with_both(|| {
+        with_guests(|game| {
+            let click = open(game, 2);
+            script(Script {
+                panic_on: Some(1),
+                ..Script::default()
+            });
+            assert!(game.lan_merchant_click(12, &click));
+            assert_eq!((CALLS.get(), STACKED.get()), (1, 1));
+            unchanged(game, 2);
+            assert!(game.transactions.is_empty());
+        })
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn an_invalid_result_stack_refuses_the_whole_take() {
+    with_mod(|| {
+        with_guests(|game| {
+            let click = open(game, 2);
+            script(Script {
+                invalid_stack: true,
+                ..Script::default()
+            });
+            assert!(game.lan_merchant_click(12, &click));
+            assert_eq!(CALLS.get(), 1);
+            unchanged(game, 2);
             assert!(game.transactions.is_empty());
         })
     });

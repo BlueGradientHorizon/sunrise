@@ -778,7 +778,6 @@ impl TryIntoEngine for mod_api::MerchantOffer {
     type Error = StackWriteError;
     fn try_into_engine(&self, items: &Items) -> Result<Self::Engine, Self::Error> {
         if !self.price_multiplier.is_finite() {
-            crate::game::lan_trade_decisions::invalid_offer();
             return Err(StackWriteError::InvalidMaximum);
         }
         Ok(Self::Engine {

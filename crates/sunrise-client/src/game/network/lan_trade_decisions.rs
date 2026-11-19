@@ -1,6 +1,14 @@
 //! A guest's result take is one action, including every trade of a quick move. This collect
 //! hook has no veto or stale answer: its validated offer replaces the live offer and stands.
-use super::{Game, decided_action::Epoch, transactions::After};
+use super::{
+    Game,
+    decided_action::Epoch,
+    transactions::{
+        After,
+        decision::{InvalidReason, MenuId, Reply},
+    },
+};
+use std::{cell::Cell, collections::HashMap, sync::OnceLock};
 use sunrise_client::{
     advancements::Advancement,
     lan::conn::transaction_packets::{Packets, Scope},
@@ -8,14 +16,13 @@ use sunrise_client::{
     scoreboard::Scoreboard,
 };
 use sunrise_protocol::packets::play;
-use std::{cell::Cell, collections::HashMap};
 
-thread_local! {
-    static INVALID_OFFER: Cell<bool> = const { Cell::new(false) };
-}
-
-pub(in crate::game) fn invalid_offer() {
-    INVALID_OFFER.set(true);
+/// The take's own menu identity. The guest's hub menu id stays free for the pickup decision
+/// (`item_stacked_on_other`) the same click may make inside the take; a second take opened from
+/// inside this one finds this id busy.
+fn take_route() -> MenuId {
+    static ID: OnceLock<MenuId> = OnceLock::new();
+    *ID.get_or_init(MenuId::fresh)
 }
 
 // Keep typed snapshots in closures so no storage's private representation escapes its owner.
@@ -25,6 +32,8 @@ pub(in crate::game) struct Journal {
     guests: HashMap<u32, Restore>,
     board: Option<Scoreboard>,
     map_last_id: Option<Option<i32>>,
+    /// Why the listener's answer was refused; the take then ends as an invalid action.
+    refused: Option<InvalidReason>,
 }
 impl Journal {
     pub(in crate::game) fn merge(&mut self, child: Self) {
@@ -36,6 +45,9 @@ impl Journal {
         }
         if self.map_last_id.is_none() {
             self.map_last_id = child.map_last_id;
+        }
+        if self.refused.is_none() {
+            self.refused = child.refused;
         }
     }
     pub(in crate::game) fn rollback(self, game: &mut Game<'_>) {
@@ -73,23 +85,27 @@ impl Game<'_> {
             .and_then(|h| h.play.get(&conn))
             .and_then(|p| p.merchant.as_ref())
             .is_some_and(|m| m.window == p.container && m.merchant.mob.is_some());
-        let Some((actor, route)) = open
-            .then(|| Some((self.guest_actor(conn)?, self.guest_route(conn)?)))
-            .flatten()
-        else {
+        let Some(actor) = open.then(|| self.guest_actor(conn)).flatten() else {
             return self.lan_merchant_click_plain(conn, p);
         };
         let handled = Cell::new(true);
         let applied = self.decided_action(
             "trade_with_villager",
-            route,
+            take_route(),
             actor,
             Epoch::Off,
             |_| true,
             |game| {
                 game.journal_merchant_take(conn);
                 handled.set(game.lan_merchant_click_plain(conn, p));
-                crate::game::transactions::decision::Reply::Allow
+                match game
+                    .transactions
+                    .last_mut()
+                    .and_then(|level| level.trades.refused.take())
+                {
+                    Some(reason) => Reply::Invalid(reason),
+                    None => Reply::Allow,
+                }
             },
             |_| {},
         );
@@ -196,21 +212,49 @@ impl Game<'_> {
             .any(|l| !l.trades.guests.is_empty())
     }
 
-    /// Keep the existing offer clamps; a non-finite answer cannot become a live price.
+    /// Ask the listeners about the trade just made and keep their answer as the live offer, with
+    /// the existing offer clamps. Inside a take, an answer that cannot become a live offer (a stack
+    /// that is not valid, a non-finite price multiplier) leaves the offer as it was and refuses the
+    /// take; outside one the hook's ordinary output rules apply.
     pub(super) fn merchant_trade_answer(&mut self, id: u32, kind: &str, offer: &mut MerchantOffer) {
+        use super::api_values::{ItemBoundary, TryIntoApi, TryIntoEngine};
         if !mod_api::__private::listened(mod_api::HookId::TradeWithVillager) {
-            return self.native_trade_with_villager(id, kind, offer);
+            return;
         }
-        INVALID_OFFER.set(false);
-        self.native_trade_with_villager(id, kind, offer);
-        assert!(
-            !INVALID_OFFER.replace(false),
-            "invalid merchant offer answer"
-        );
-        assert!(
-            offer.price_multiplier.is_finite(),
-            "non-finite merchant price multiplier"
-        );
+        if !self.merchant_take_active() {
+            self.native_trade_with_villager(id, kind, offer);
+        } else if self
+            .transactions
+            .last()
+            .is_some_and(|level| level.trades.refused.is_some())
+        {
+            return;
+        } else {
+            let refused = match offer.try_into_api() {
+                Ok(mut answer) => {
+                    mod_api::dispatch_trade_with_villager(self, id, kind, &mut answer);
+                    match self
+                        .boundary_items()
+                        .ok_or(mod_api::StackWriteError::Unavailable)
+                        .and_then(|items| answer.try_into_engine(items))
+                    {
+                        Ok(live) => {
+                            *offer = live;
+                            None
+                        }
+                        Err(_) => Some(InvalidReason::Numeric),
+                    }
+                }
+                Err(_) => Some(InvalidReason::Plan),
+            };
+            if let Some(refused) = refused {
+                log::warn!("trade_with_villager: the offer answer was refused ({refused:?})");
+                if let Some(level) = self.transactions.last_mut() {
+                    level.trades.refused = Some(refused);
+                }
+                return;
+            }
+        }
         offer.uses = offer.uses.max(0);
         offer.max_uses = offer.max_uses.max(1);
         offer.xp = offer.xp.max(0);
