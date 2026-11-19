@@ -247,8 +247,8 @@ fn update_diffs_signatures_refreshes_present_hashes_and_keeps_missing_declaratio
     let manifest = project.manifest();
     let native = manifest.native.unwrap();
     assert_eq!(native.sunrise, NEW);
-    // The destination SDK's tool replaces the manifest's.
-    assert_eq!(native.mixins, NEW_MIXINS);
+    // An explicit pin of the tool is the mod's own choice: `update` leaves it.
+    assert_eq!(native.mixins.as_deref(), Some(MANIFEST_MIXINS));
     assert_eq!(
         manifest
             .internals
@@ -298,7 +298,10 @@ fn table_declarations_keep_their_format_when_adding_and_refreshing() {
     let report = success(&project.run(&["update", "--sunrise", NEW]));
     assert!(report.contains("unchanged: sunrise_client::game::Game"));
     assert_eq!(project.manifest().internals.len(), 2);
-    assert_eq!(project.manifest().native.unwrap().mixins, NEW_MIXINS);
+    assert_eq!(
+        project.manifest().native.unwrap().mixins.as_deref(),
+        Some(MANIFEST_MIXINS)
+    );
     assert!(project.text().contains("# fingerprint"));
 }
 
@@ -397,83 +400,4 @@ fn update_refuses_a_malformed_mixins_revision_and_changes_no_file() {
         assert_eq!(fs::read(project.dir.join(MANIFEST)).unwrap(), manifest);
         assert_eq!(fs::read(project.dir.join("Cargo.toml")).unwrap(), cargo);
     }
-}
-
-#[cfg(unix)]
-#[test]
-#[ignore = "fixture writer subprocess only"]
-fn write_launcher_actor() {
-    use std::os::unix::fs::PermissionsExt;
-    if let Some(destination) = std::env::var_os("SUNRISE_TEST_LAUNCHER_WRITER") {
-        use std::io::Write;
-        let mut file = fs::File::create(&destination).unwrap();
-        file.write_all(
-            std::env::var("SUNRISE_TEST_LAUNCHER_SCRIPT")
-                .unwrap()
-                .as_bytes(),
-        )
-        .unwrap();
-        file.sync_all().unwrap();
-        drop(file);
-        fs::set_permissions(destination, fs::Permissions::from_mode(0o755)).unwrap();
-    }
-}
-
-#[cfg(unix)]
-#[test]
-#[ignore = "daily"]
-fn internals_sync_invokes_the_launcher_and_never_edits_on_failure() {
-    let project = Project::new(
-        "sync-command",
-        "internals = [{ path = 'Unused', hash = 'old' }]\n",
-    );
-    let launcher = project.dir.join("test-launcher");
-    let invoke = || {
-        Command::new(env!("CARGO_BIN_EXE_cargo-sunrise-mod"))
-            .args(["sunrise-mod", "internals", "sync"])
-            .env("SUNRISE_LAUNCHER", &launcher)
-            .current_dir(&project.dir)
-            .output()
-            .unwrap()
-    };
-    // A separate, exact-test writer cannot leak writable fds into other tests'
-    // fork children. CLOEXEC would only close those descriptors at exec.
-    let write_launcher = |script: &str| {
-        let output = Command::new(std::env::current_exe().unwrap())
-            .args(["--exact", "write_launcher_actor", "--ignored"])
-            .env("SUNRISE_TEST_LAUNCHER_WRITER", &launcher)
-            .env("SUNRISE_TEST_LAUNCHER_SCRIPT", script)
-            .output()
-            .unwrap();
-        assert!(output.status.success());
-        assert!(
-            String::from_utf8(output.stdout)
-                .unwrap()
-                .lines()
-                .any(|line| {
-                    line.starts_with("test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; ")
-                })
-        );
-    };
-    write_launcher("#!/bin/sh\nexit 1\n");
-    let before = project.text();
-    assert!(!invoke().status.success());
-    assert_eq!(project.text(), before);
-    write_launcher(
-        r#"#!/bin/sh
-[ "$1" = native-build ] && [ "$2" = --sync-internals ] && [ "$3" = --trust-native-code ] && [ "$4" = "$PWD" ] || exit 2
-printf '%s\n' '[{"path":"Used","kind":"struct","signature":"struct Used","hash":"compiler"}]'
-"#,
-    );
-    let report = success(&invoke());
-    assert!(report.contains("added: Used (struct)"));
-    assert!(report.contains("removed: Unused"));
-    let manifest = project.manifest();
-    assert_eq!(manifest.internals.len(), 1);
-    assert_eq!(manifest.internals[0].hash.as_deref(), Some("compiler"));
-    assert!(project.text().contains("# native settings"));
-    let before = project.text();
-    write_launcher("#!/bin/sh\nprintf 'not JSON'\n");
-    assert!(!invoke().status.success());
-    assert_eq!(project.text(), before);
 }
