@@ -176,7 +176,7 @@ fn camel_signed_state_and_mutations_override_contradictory_raw() {
 }
 
 #[test]
-fn camel_saved_carry_leaves_the_seven_equine_paths_unchanged() {
+fn camel_saved_carry_loads_and_saves_the_seven_equines_fields() {
     for (species, id) in [
         (Species::Horse, "minecraft:horse"),
         (Species::Donkey, "minecraft:donkey"),

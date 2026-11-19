@@ -621,6 +621,57 @@ mod tests {
         assert_eq!(kick.y, 0.5);
         assert_eq!(kick.z.to_bits(), (-0.20000000298023224f64).to_bits());
     }
+
+    /// The flop a seeded guardian lands (`Guardian.aiStep`): the mob's own
+    /// random is reseeded right before the step, so its draws are vanilla's
+    /// order — the client spikes draw, then the two kick draws and the yaw's.
+    /// A standing guardian's velocity starts at 0, so the flop is its whole
+    /// motion: the kicks `(f * 2 - 1) * 0.4F` in float and only then widened
+    /// to double, `0.5` up, and the yaw draw widened times `360.0F`.
+    #[test]
+    #[ignore = "daily"]
+    fn a_seeded_flop_pins_the_motion() {
+        let mut motion = None;
+        let ran = with_test_world(&[], |w, types| {
+            let mut mob = Mob::new(
+                1,
+                Arc::new(types.types["minecraft:guardian"].clone()),
+                Vec3::new(0.5, 64.0, 0.5),
+                0.0,
+            );
+            register(&mut mob);
+            mob.random.set_seed(42);
+            mob.on_ground = true;
+            mob.fluids.in_water = false;
+            mob.silent = true;
+            let mut events = Vec::new();
+            ai_step(&mut mob, w, &mut events);
+            motion = Some(mob);
+        });
+        if !ran {
+            return;
+        }
+        let mob = motion.unwrap();
+        let kick = |f: f32| f64::from((f * 2.0 - 1.0) * 0.4_f32);
+        let x = f32::from_bits(0x3d5f_e8a0);
+        let z = f32::from_bits(0x3f2e_e7bb);
+        assert_eq!(
+            mob.velocity.x.to_bits(),
+            kick(x).to_bits(),
+            "the x kick, in float and widened"
+        );
+        assert_eq!(mob.velocity.y, 0.5, "the flop's height");
+        assert_eq!(
+            mob.velocity.z.to_bits(),
+            kick(z).to_bits(),
+            "the z kick, in float and widened"
+        );
+        assert_eq!(
+            mob.yaw.to_bits(),
+            0x418a_10b0,
+            "the yaw draw widened times 360.0F"
+        );
+    }
     use std::sync::Arc;
 
     fn flop(kind: &str, silent: bool) -> Option<(Mob, Vec<MobEvent>)> {
