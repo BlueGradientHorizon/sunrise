@@ -748,6 +748,29 @@ impl PacketNames<'_> {
             SlotDisplay::Composite(list) => list.iter().for_each(|d| self.stacks(d, out)),
         }
     }
+    /// The stonecutter list a server sent (`SelectableRecipe.SingleInputSet`s), as recipes in its
+    /// order: the menu lists and numbers its buttons by it. An item this client's registry
+    /// lacks keeps its entry's place, so the numbers stay the server's.
+    pub fn stonecutting(
+        &self,
+        sent: &[(HolderSet, SlotDisplay)],
+    ) -> Vec<crate::stations::Stonecutting> {
+        sent.iter()
+            .enumerate()
+            .map(|(index, (input, result))| {
+                let mut shown = Vec::new();
+                self.stacks(result, &mut shown);
+                crate::stations::Stonecutting {
+                    id: format!("server:{index}"),
+                    input: Ingredient::of(self.holder_set(input)),
+                    result: shown
+                        .into_iter()
+                        .next()
+                        .unwrap_or_else(|| ItemStack::new("minecraft:air", 1)),
+                }
+            })
+            .collect()
+    }
     /// A slot display as an ingredient: the items it shows, without repeats.
     fn ingredient(&self, display: &SlotDisplay) -> Ingredient {
         let mut stacks = Vec::new();

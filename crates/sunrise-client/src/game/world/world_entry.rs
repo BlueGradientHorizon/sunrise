@@ -200,6 +200,14 @@ impl Game<'_> {
             None => self.synced_recipes().unwrap_or_else(|| self.res.recipes()),
         }
     }
+    /// The station recipes menus and screens use: a client of a server numbers and draws its
+    /// stonecutter buttons by the list the server sent, else the world's own.
+    pub(super) fn station_recipes(&self) -> &sunrise_client::stations::StationRecipes {
+        self.recipe_ui
+            .server_stations
+            .as_ref()
+            .unwrap_or(&self.stations().recipes)
+    }
     pub(super) fn stations(&self) -> &sunrise_client::stations::StationData {
         match &self.world_tables {
             Some(t) => &t.stations,
