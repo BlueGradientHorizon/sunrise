@@ -1737,7 +1737,8 @@ pub trait LevelWriteHost: LevelTicksHost + LevelRandomHost {
         unimplemented!("LevelWriteHost::play_sound")
     }
     /// `ServerLevel.sendParticles` through `native_send_particles`.
-    /// Item particles require `options.item_stack`; invalid stacks return false.
+    /// Item particles require `options.item_stack`; invalid stacks return false, and so does an
+    /// item crumb whose colour has a component outside 0 to 1.
     fn send_particles(
         &mut self,
         _options: &ParticleOptions,
