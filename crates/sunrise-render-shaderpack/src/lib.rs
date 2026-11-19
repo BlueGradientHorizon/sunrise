@@ -6,6 +6,7 @@ pub mod pack_atlas;
 pub mod pack_draw;
 pub mod pack_images;
 pub mod pack_lines;
+pub mod pack_shadow;
 pub mod pack_timing;
 pub(crate) mod timing;
 
