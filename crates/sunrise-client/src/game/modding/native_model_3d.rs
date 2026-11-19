@@ -157,4 +157,28 @@ mod tests {
         let right = pose.transform_point3(Vec3::X);
         assert_eq!(right, Vec3::new(100.0, 90.0, 0.0));
     }
+
+    /// An item whose turn overflows is refused, and the batch is as it was.
+    #[test]
+    #[ignore = "daily"]
+    fn an_overflowing_item_is_refused_and_leaves_the_batch_as_it_was() {
+        super::super::native_entity_refs::tests::with_client_game(|game| {
+            let stack = mod_api::ItemStack::new(
+                mod_api::__private::item_key("minecraft:diamond_sword").unwrap(),
+                1,
+            )
+            .unwrap();
+            let mut batch = HudBatch::scratch([320, 240]);
+            let (vertices, blends) = (batch.vertices.len(), batch.blends.len());
+            let view = Gui3dView::new([40.0, 30.0], 1.0e38, mod_api::IDENTITY_TRANSFORM);
+            assert_eq!(
+                game.native_model_3d(&mut batch, Gui3dSubject::Item(stack), view),
+                Err(Gui3dError::NotFinite)
+            );
+            assert_eq!(
+                (batch.vertices.len(), batch.blends.len()),
+                (vertices, blends)
+            );
+        });
+    }
 }
