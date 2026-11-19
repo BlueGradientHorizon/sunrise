@@ -19,4 +19,9 @@ pub use terrain::{
 };
 
 pub mod entity;
-pub use entity::{EntityVertex, TRANSLUCENT_GLINT_ITEM_OVERLAY, TRANSLUCENT_ITEM_OVERLAY};
+pub use entity::{
+    EntityVertex, TRANSLUCENT_GLINT_ITEM_OVERLAY, TRANSLUCENT_ITEM_OVERLAY, WATER_MASK_OVERLAY,
+};
+
+pub mod frame_view;
+pub use frame_view::{FogView, MAX_DYNAMIC_LIGHTS, SkyView, UniformFrameView};

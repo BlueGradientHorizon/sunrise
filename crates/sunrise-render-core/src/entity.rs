@@ -23,3 +23,5 @@ pub struct EntityVertex {
     /// The `GLINT_TEXTURING` atlas UV for a foil item quad; zero elsewhere.
     pub glint_uv: [f32; 2],
 }
+
+pub const WATER_MASK_OVERLAY: u32 = 13;
