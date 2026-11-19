@@ -1252,6 +1252,10 @@ fn ai_and_finish_tick(
         if horse {
             super::equine::tail_tick(m);
         }
+        // Guardian.aiStep keeps the air and flops on land before its super.aiStep.
+        if matches!(m.species(), Species::Guardian | Species::ElderGuardian) {
+            super::guardian::ai_step(m, w, events);
+        }
         // LivingEntity.aiStep: without AI there is no serverAiStep and no
         // travel, but the motion below 0.003 is still dropped, the block
         // walk and freezing still run, and pushEntities still runs, so a
@@ -1269,8 +1273,16 @@ fn ai_and_finish_tick(
             super::allay::passive_heal(m, w.loop_context);
             super::allay::update_duplication_cooldown(m);
         }
-        if horse {
+        // AbstractHorse.aiStep and Camel.tick (a camel's, through the equine step), Bee.aiStep's
+        // countdowns and WanderingTrader.aiStep's maybeDespawn: none of them asks for AI.
+        if horse || super::camel::is_camel(m.species()) {
             super::equine::ai_step(m, w, events);
+        }
+        if m.species() == Species::Bee {
+            super::bee::ai_step(m, w);
+        }
+        if m.species() == Species::WanderingTrader {
+            super::trader::ai_step(m, w);
         }
         // LivingEntity.aiStep ends in the water's hurt with or without AI;
         // a NoAI enderman's or shulker's hurts still teleport it (hurtServer).
@@ -6708,6 +6720,71 @@ mod allay_healing_tests {
         if !ran {
             eprintln!("Prepared mob data unavailable; Allay tick coverage did not run");
         }
+    }
+}
+
+#[cfg(test)]
+mod noai_species_step_tests {
+    use super::*;
+    use std::sync::Arc;
+
+    /// `Bee.aiStep`, `WanderingTrader.aiStep`, `Guardian.aiStep` and `Camel.tick` run without
+    /// AI: one tick counts a NoAI bee's `CannotEnterHiveTicks` and a trader's `DespawnDelay`
+    /// down, flops a guardian on land, and stands a camel sitting in water up (vanilla 26.3,
+    /// #2658).
+    #[test]
+    #[ignore = "daily"]
+    fn noai_mobs_still_run_their_own_ai_step() {
+        let ran = crate::mobs::world::with_built_test_world(
+            &[],
+            |world, registry| {
+                for cx in 0..2 {
+                    world
+                        .chunks
+                        .insert((cx, 0), Arc::new(crate::chunk::Chunk::empty(cx, 0)));
+                }
+                let stone = registry.default_state("minecraft:stone").unwrap();
+                let water = registry.default_state("minecraft:water").unwrap();
+                for x in 0..32 {
+                    for z in 0..16 {
+                        world.set(x, 63, z, stone).unwrap();
+                    }
+                }
+                world.set(24, 64, 8, water).unwrap();
+            },
+            |w, types| {
+                let mob = |id: &str, x: f64| {
+                    let kind = Arc::new(types.types[id].clone());
+                    let mut m = Mob::new(1, kind, Vec3::new(x, 64.0, 8.5), 0.0);
+                    m.no_ai = true;
+                    m.persistent = true;
+                    m.on_ground = true;
+                    m
+                };
+                let (mut level, mut events) = (crate::health::TestLevel::new(0), Vec::new());
+                let mut bee = mob("minecraft:bee", 2.5);
+                super::super::bee::st(&mut bee).stay_out_of_hive = 20;
+                assert!(tick(&mut bee, w, &mut level.level(), &mut events));
+                assert_eq!(super::super::bee::get(&bee).unwrap().stay_out_of_hive, 19);
+
+                let mut trader = mob("minecraft:wandering_trader", 8.5);
+                trader.extra.ints[5] = 20;
+                assert!(tick(&mut trader, w, &mut level.level(), &mut events));
+                assert_eq!(trader.extra.ints[5], 19);
+
+                let mut guardian = mob("minecraft:guardian", 14.5);
+                assert!(tick(&mut guardian, w, &mut level.level(), &mut events));
+                assert_eq!(guardian.velocity.y, 0.5);
+                assert!(!guardian.on_ground);
+
+                let mut camel = mob("minecraft:camel", 24.5);
+                camel.extra.camel_sitting = true;
+                assert!(tick(&mut camel, w, &mut level.level(), &mut events));
+                assert!(camel.fluids.in_water);
+                assert!(!super::super::camel::sitting(&camel));
+            },
+        );
+        assert!(ran, "vanilla data is missing");
     }
 }
 

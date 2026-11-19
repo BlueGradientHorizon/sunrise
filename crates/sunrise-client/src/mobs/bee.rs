@@ -94,7 +94,7 @@ impl Default for Bee {
     }
 }
 
-fn st(m: &mut Mob) -> &mut Bee {
+pub(crate) fn st(m: &mut Mob) -> &mut Bee {
     m.extra.bee.get_or_insert_with(Default::default)
 }
 pub fn get(m: &Mob) -> Option<&Bee> {
