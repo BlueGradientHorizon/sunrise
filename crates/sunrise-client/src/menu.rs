@@ -4292,14 +4292,16 @@ pub(crate) mod tests {
         let health = |context: &LoopContext| {
             let (mut amount, mut cancel) = (2.0, false);
             crate::hunger::native_living_heal(context, 1, &mut amount, &mut cancel);
-            let (mut can_breathe, mut consume, mut refill) = (true, 1, 4);
-            crate::breathing::native_living_breathe(
+            let breath = crate::breathing::breathe(
                 context,
                 1,
                 "minecraft:zombie",
-                &mut can_breathe,
-                &mut consume,
-                &mut refill,
+                [-19, 300],
+                crate::breathing::Breath {
+                    can_breathe: true,
+                    consume: 1,
+                    refill: 4,
+                },
             );
             let (mut drowning, mut damage, mut cancel_drown) = (false, 2.0, false);
             crate::breathing::native_living_drown(
@@ -4311,7 +4313,14 @@ pub(crate) mod tests {
                 &mut 8,
                 &mut cancel_drown,
             );
-            (amount, cancel, can_breathe, consume, drowning, damage)
+            (
+                amount,
+                cancel,
+                breath.can_breathe,
+                breath.consume,
+                drowning,
+                damage,
+            )
         };
         assert_eq!(health(&before), (2.0, false, true, 1, false, 2.0));
         assert_eq!(health(&after), (3.0, true, false, 5, true, 3.0));
@@ -4323,6 +4332,10 @@ pub(crate) mod tests {
             assert_eq!(hurt, None);
         }
         assert_eq!(air, 300);
+        // The listener gives a landbound axolotl a refill at -19 air.
+        air = -19;
+        let hurt = crate::breathing::own_air(&after, 1, "minecraft:axolotl", &mut air, false, 6000);
+        assert_eq!((hurt, air), (None, 6000));
         // A listener that sets `bubble_count` to 0: a drowning player takes the
         // damage and shows no bubbles (`drown_bubbles` sends nothing for 0).
         let gasp = crate::breathing::Breath {

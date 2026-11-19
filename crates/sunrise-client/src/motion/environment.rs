@@ -109,19 +109,21 @@ impl MotionWorld<'_, '_, '_> {
                 }
             };
             // LivingBreatheEvent, on the server's copy of the player only.
+            const MAX_AIR: i32 = 300; // Entity.getMaxAirSupply for a player.
             let breath = breathe(
                 self.loop_context,
                 self.player.entity_id as u32,
                 "minecraft:player",
+                [self.player.air, MAX_AIR],
                 vanilla,
             );
-            // LivingDrownEvent, likewise. A player's getMaxAirSupply is Entity's 300.
+            // LivingDrownEvent, likewise.
             if let Some(drowning) = drown(
                 self.loop_context,
                 self.player.entity_id as u32,
                 "minecraft:player",
                 &mut self.player.air,
-                300,
+                MAX_AIR,
                 breath,
                 true,
             ) {

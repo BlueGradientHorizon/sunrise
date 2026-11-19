@@ -482,6 +482,8 @@ pub(super) fn emit<'a>(
         let mut fields = String::new();
         let mut inits = Vec::new();
         let mut write_back = String::new();
+        let mut shared_scalars = String::new();
+        let mut save_scalars = String::new();
         // The fields an isolated dispatch rolls back to the requested values on a listener's
         // unwind (#2414 ruling), each with whether the event holds it behind a `&mut`.
         let mut rollback: Vec<(String, bool)> = Vec::new();
@@ -600,7 +602,13 @@ pub(super) fn emit<'a>(
                 "{visibility} {name}: {},\n",
                 field.to_token_stream()
             ));
-            if scalar {
+            if scalar && hook.event_per_listener {
+                let answer = fresh_name(&format!("answer_{name}"), &mut used);
+                shared_scalars.push_str(&format!("let mut {answer} = *{name};"));
+                inits.push(format!("{name}: {answer}"));
+                save_scalars.push_str(&format!("{answer} = {event}.{name};"));
+                write_back.push_str(&format!("*{name} = {answer};"));
+            } else if scalar {
                 inits.push(format!("{name}: *{name}"));
                 write_back.push_str(&format!("*{name} = {event}.{name};"));
             } else if mutable_entity {
@@ -968,25 +976,24 @@ pub(super) fn emit<'a>(
         } else {
             write_back
         };
-        // Each listener gets a fresh event with the original inputs. Writable borrowed
-        // payloads can still share their pointee. Write-back, the owner filter and chunk
-        // I/O checks use the outer event and cannot use a listener-local one.
+        // Each listener gets a fresh event with the original inputs. Writable borrows
+        // still share their pointee; scalar answers carry forward in dispatch locals.
         let (build, local_event) = if hook.event_per_listener {
             // A regular collect output is a mutable borrow of one slot, reborrowed
             // for each listener above. Answered batches and cancellation have
             // separate dispatch state and do not use this mode.
             let shared_collect_output = collected.is_some() && !answered && !collect_cancel;
             if (contract != Contract::Listen && !shared_collect_output)
-                || !write_back.is_empty()
+                || name == "block_entity_tick"
                 || !stack_outputs.is_empty()
                 || hook.owner.is_some()
                 || hook.context == Some(PhaseContext::ChunkDisk)
             {
                 return Err(format!(
-                    "{name}: event_per_listener requires a listen hook or a collect hook with a shared borrowed output, without scalar or stack writeback or other shared event state"
+                    "{name}: event_per_listener requires a listen hook or a collect hook with a shared borrowed output, without stack writeback or other shared event state"
                 ));
             }
-            (String::new(), build)
+            (shared_scalars, build)
         } else {
             (build, String::new())
         };
@@ -1107,7 +1114,7 @@ pub(super) fn emit<'a>(
                 }
                 _ => format!("{plain_call};"),
             };
-            format!("{local_event} {snapshot_statement}{invocation} {stack_after}")
+            format!("{local_event} {snapshot_statement}{invocation} {stack_after} {save_scalars}")
         };
         let binding = if answered || hook.collect_validator.is_some() {
             format!("(mod_id, {mod_item})")

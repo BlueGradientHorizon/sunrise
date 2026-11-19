@@ -24,12 +24,12 @@ pub struct Breath {
 /// An entity's breathing this tick (`LivingBreatheEvent`, posted from
 /// `LivingEntity.baseTick` every tick for a living entity with the generic
 /// air logic): `entity` is its ID and `kind` its type (`minecraft:player`,
-/// `minecraft:zombie`). `can_breathe`, `consume` and `refill` come in as
-/// Sunrise does it today (a mod-free game changes nothing); set them to
-/// change this tick. With `can_breathe` the air rises by `refill`, up to its
-/// maximum (300; 4800 for a dolphin); without, it falls by `consume`, and at -20
-/// it is set to 0 and the entity takes 2 drowning damage. Negative amounts count
-/// as 0.
+/// `minecraft:zombie`). `air` is `[current, maximum]` before this update;
+/// current air can be negative. `can_breathe`, `consume` and `refill` come in
+/// with the game's defaults; set them to change this tick. With `can_breathe`,
+/// the air rises by `refill` up to its maximum. Otherwise it falls by `consume`,
+/// and at -20 it is set to 0 and the entity takes 2 drowning damage. Negative
+/// amounts count as 0.
 /// Asked on servers for players and mobs. Water animals, axolotls and
 /// nautiluses come in with their own air logic's answer ([`own_air`]).
 #[inline(never)]
@@ -37,20 +37,36 @@ pub fn native_living_breathe(
     context: &LoopContext,
     entity: u32,
     kind: &str,
+    air: [i32; 2],
     can_breathe: &mut bool,
     consume: &mut i32,
     refill: &mut i32,
 ) {
-    crate::native_client_hooks::living_breathe(context, entity, kind, can_breathe, consume, refill);
+    crate::native_client_hooks::living_breathe(
+        context,
+        entity,
+        kind,
+        air,
+        can_breathe,
+        consume,
+        refill,
+    );
 }
 
 /// `vanilla`'s breathing after the mods have had their say.
-pub fn breathe(context: &LoopContext, entity: u32, kind: &str, vanilla: Breath) -> Breath {
+pub fn breathe(
+    context: &LoopContext,
+    entity: u32,
+    kind: &str,
+    air: [i32; 2],
+    vanilla: Breath,
+) -> Breath {
     let mut now = vanilla;
     native_living_breathe(
         context,
         entity,
         kind,
+        air,
         &mut now.can_breathe,
         &mut now.consume,
         &mut now.refill,
@@ -166,7 +182,7 @@ pub fn own_air(
         consume: 1,
         refill: max,
     };
-    let breath = breathe(context, entity, kind, vanilla);
+    let breath = breathe(context, entity, kind, [*air, max], vanilla);
     if breath.can_breathe && breath.refill == max {
         // `setAirSupply(getMaxAirSupply())`: full whatever the air was.
         *air = max;
@@ -237,15 +253,18 @@ mod tests {
     #[test]
     fn nothing_changes_without_a_mod() {
         let context = crate::test_resources::server_loop_context();
-        assert_eq!(breathe(context, 1, "minecraft:zombie", VANILLA), VANILLA);
+        assert_eq!(
+            breathe(context, 1, "minecraft:zombie", [300, 300], VANILLA),
+            VANILLA
+        );
         let negative = Breath {
             can_breathe: false,
             consume: -3,
             refill: -2,
         };
         // Mods only ever answer with their own values, so what comes back is clamped.
-        assert_eq!(breathe(context, 1, "minecraft:player", negative).consume, 0);
-        assert_eq!(breathe(context, 1, "minecraft:player", negative).refill, 0);
+        let breath = breathe(context, 1, "minecraft:player", [300, 300], negative);
+        assert_eq!((breath.consume, breath.refill), (0, 0));
     }
 
     #[test]

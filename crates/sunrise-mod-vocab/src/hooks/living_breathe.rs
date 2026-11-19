@@ -5,11 +5,13 @@ pub trait Hooks {
     /// An entity's breathing this tick (`LivingBreatheEvent`, posted from
     /// `LivingEntity.baseTick` every tick for a living entity with the generic
     /// air logic): `entity` is its ID and `kind` its type (`minecraft:player`,
-    /// `minecraft:zombie`). `can_breathe`, `consume` and `refill` come in as
-    /// Sunrise does it (a mod-free game changes nothing); set them to
-    /// change this tick. With `can_breathe` the air rises by `refill`, up to its
-    /// maximum (300 for every entity except dolphins, which have 4800); a dolphin's
-    /// vanilla `refill` is its maximum minus its current air. Without breath,
+    /// `minecraft:zombie`). `air` is `[current, maximum]` before the update.
+    /// Current air can be negative; the maximum is 300 for players and most
+    /// mobs, 4800 for dolphins and 6000 for axolotls. Every listener gets the
+    /// same pair; writing to it has no effect. Only `can_breathe`, `consume`
+    /// and `refill` carry forward between listeners and change this tick.
+    /// With `can_breathe` the air rises by `refill`, up to its maximum; a
+    /// dolphin's vanilla refill is its maximum minus its current air. Without breath,
     /// air falls by `consume`, and at -20 it is set to 0
     /// and the entity takes 2 drowning damage. Negative amounts count as 0.
     /// Asked on servers for players and mobs. A water animal, axolotl or
@@ -23,7 +25,8 @@ pub trait Hooks {
         context = "loop",
         neoforge = "LivingBreatheEvent",
         cancellable = false,
-        version = 2,
+        version = 3,
+        event_per_listener = true,
         target = "sunrise_client_lib::breathing::native_living_breathe"
     )]
     fn living_breathe();
