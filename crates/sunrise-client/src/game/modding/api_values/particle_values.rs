@@ -7,6 +7,8 @@ use sunrise_client::particles::{ParticleOptions as EngineOptions, ParticleType};
 pub(crate) enum ParticleValueError {
     UnknownProvider,
     NonFinite,
+    /// An item crumb's colour has a component outside `0.0..=1.0`.
+    ColorRange,
     InvalidStack,
 }
 
@@ -69,6 +71,9 @@ impl<C: ParticleItems + ?Sized> TryIntoEngine<C> for ApiOptions {
                 )),
             ),
         };
+        if ty.is_item_crumb() && !self.color.into_iter().all(|c| (0.0..=1.0).contains(&c)) {
+            return Err(ParticleValueError::ColorRange);
+        }
         Ok(EngineOptions {
             polytone_seed: None,
             source: None,

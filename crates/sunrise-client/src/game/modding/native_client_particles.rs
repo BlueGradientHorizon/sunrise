@@ -9,6 +9,8 @@ const MAX_FIREWORK_EXPLOSIONS: usize = 256;
 
 fn finite_options(options: &ParticleOptions) -> bool {
     options.color.into_iter().all(f32::is_finite)
+        && (!options.ty.is_item_crumb()
+            || options.color.into_iter().all(|c| (0.0..=1.0).contains(&c)))
         && options.to_color.into_iter().all(f32::is_finite)
         && options.scale.is_finite()
         && options
@@ -100,6 +102,20 @@ mod tests {
         let mut bad = good.clone();
         bad.to_color[0] = f32::NAN;
         assert!(!finite_options(&bad));
+        // An item crumb's colour is also kept inside 0..=1; other particles' is not.
+        let crumb = ParticleOptions {
+            color: [0.8, 0.8, 0.8, 1.0],
+            ..ParticleOptions::simple(ParticleType::Item)
+        };
+        assert!(finite_options(&crumb));
+        assert!(!finite_options(&ParticleOptions {
+            color: [1.5, 0.0, 0.0, 1.0],
+            ..crumb.clone()
+        }));
+        assert!(finite_options(&ParticleOptions {
+            color: [1.5, 0.0, 0.0, 1.0],
+            ..ParticleOptions::simple(ParticleType::Smoke)
+        }));
         bad = good.clone();
         bad.trail = Some(([f64::INFINITY, 0.0, 0.0], 3));
         assert!(!finite_options(&bad));
