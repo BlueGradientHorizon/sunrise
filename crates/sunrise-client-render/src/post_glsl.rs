@@ -5,7 +5,8 @@
 //! dialect; the post shaders need only the block and sampler binding rewrite below).
 //!
 //! `ShaderManager`/`GlslPreprocessor` read `assets/<ns>/shaders/<path>.{vsh,fsh}` and
-//! resolve `#include <ns:path>` to `assets/<ns>/shaders/include/<path>`.
+//! resolve `#include <ns:path>` to `assets/<ns>/shaders/include/<path>` and a quoted one from
+//! the stage's own folder, through the core shaders' resolver (`core_shader::expand_imports`).
 //!
 //! The rewrite gives every uniform block a binding of bind group 0, shared by both
 //! stages, and splits each `uniform sampler2D NameSampler;` into a texture and a sampler
@@ -69,43 +70,39 @@ fn read_source(root: &ResourceSource, id: &str, ext: &str) -> Result<String, Str
         .map_err(|e| format!("{file}: {e}"))
 }
 
-fn include(root: &ResourceSource, src: &str, depth: u32) -> Result<String, String> {
-    if depth > 8 {
-        return Err("#include nested too deep".into());
+/// A shader file the packs at `root` have at `path`, read up to the translator's budget: none
+/// when they haven't it, else the text or why it can't be read, named by its path.
+fn read_file(root: &ResourceSource, path: &str) -> Result<Option<String>, String> {
+    if !root.contains(path) {
+        return Ok(None);
     }
-    let mut out = String::new();
-    for line in src.lines() {
-        let t = line.trim_start();
-        // `#moj_import`, as vanilla's own core shaders and Polytone's wiki write it, too.
-        if let Some(rest) = t
-            .strip_prefix("#include")
-            .or_else(|| t.strip_prefix("#moj_import"))
-        {
-            let name = rest
-                .trim()
-                .trim_start_matches(['<', '"'])
-                .trim_end_matches(['>', '"'])
-                .trim();
-            let (ns, path) = name.split_once(':').unwrap_or(("minecraft", name));
-            let file = format!("assets/{ns}/shaders/include/{path}");
-            // Polytone's `polytone_globals.glsl`, where the pack doesn't ship it.
-            let builtin =
-                sunrise_polytone::globals::is_include(&format!("{ns}:shaders/include/{path}"));
-            let text = match root.read_to_string(&file) {
-                Err(_) if builtin => sunrise_polytone::globals::GLSL.to_owned(),
-                read => read.map_err(|e| format!("#include <{name}>: {file}: {e}"))?,
-            };
-            out.push_str(&include(root, &text, depth + 1)?);
-        } else if t.starts_with("#version") || t.starts_with("#extension") {
-            // Re-added below, for the translator.
-            out.push('\n');
-            continue;
-        } else {
-            out.push_str(line);
+    let max = crate::core_shader::MAX_EXPANDED as u64;
+    let bytes = (root.read_limited(path, max)).map_err(|e| match e.kind() {
+        std::io::ErrorKind::InvalidData => {
+            format!("{path} is over the {max} bytes a shader may have")
         }
-        out.push('\n');
-    }
-    Ok(out)
+        _ => format!("{path}: {e}"),
+    })?;
+    String::from_utf8(bytes)
+        .map(Some)
+        .map_err(|_| format!("{path} is not UTF-8 text"))
+}
+
+/// The stage `id` (`ns:post/name`) with its includes, through the core shaders' resolver
+/// (`core_shader::expand_imports`): quoted ones from the stage's own folder, each
+/// `#moj_import` once, the expansion bounded, and a missing `polytone_globals.glsl` Polytone's.
+fn stage(root: &ResourceSource, id: &str, ext: &str) -> Result<String, String> {
+    let text = read_source(root, id, ext)?;
+    let (ns, path) = id.split_once(':').unwrap_or(("minecraft", id));
+    let dir = format!(
+        "{ns}:shaders/{}",
+        &path[..path.rfind('/').map_or(0, |i| i + 1)]
+    );
+    let read = |file: &str| {
+        let (ns, path) = file.split_once(':').ok_or(format!("bad include {file}"))?;
+        read_file(root, &format!("assets/{ns}/{path}"))
+    };
+    crate::core_shader::expand_imports(&text, &dir, &read).map_err(|e| format!("{id}: {e}"))
 }
 
 /// Every `uniform` declaration of a source: (start of the declaration including a
@@ -231,8 +228,8 @@ fn parse(stage: ShaderStage, text: &str) -> Result<naga::Module, String> {
 
 /// Translates the vertex and fragment shader a pass names (`minecraft:post/invert`).
 pub fn translate(root: &ResourceSource, vertex: &str, fragment: &str) -> Result<Program, String> {
-    let vs = include(root, &read_source(root, vertex, "vsh")?, 0)?;
-    let fs = include(root, &read_source(root, fragment, "fsh")?, 0)?;
+    let vs = stage(root, vertex, "vsh")?;
+    let fs = stage(root, fragment, "fsh")?;
     // Blocks and samplers are shared by name across the stages, so both agree on a binding.
     let mut blocks: Vec<(String, u32)> = Vec::new();
     let mut names: Vec<String> = Vec::new();
@@ -337,6 +334,75 @@ mod tests {
         let shipped = blocks(&pack("polytone_globals.glsl", Some(own))).unwrap();
         assert_eq!(shipped, ["Own"]);
         assert!(blocks(&pack("other.glsl", None)).is_err());
+    }
+
+    /// The post shaders' imports go through the core shaders' resolver: a quoted one from the
+    /// stage's own folder, a `#moj_import` pasted once and an `#include` every time, a cycle
+    /// refused, and the packs' `polytone_globals.glsl` that can't be read refused by its path
+    /// instead of replaced by the built-in.
+    #[test]
+    fn post_imports_resolve_like_the_core_shaders() {
+        use sunrise_assets::resource_source::Resource;
+        let vsh = b"#version 330\nvoid main() { gl_Position = vec4(0.0, 0.0, 0.0, 1.0); }";
+        let source = |fsh: &str, files: &[(&str, &[u8])]| {
+            let mut all = std::collections::BTreeMap::from([
+                (
+                    "assets/p/shaders/post/a.vsh".into(),
+                    Resource::bytes(vsh.to_vec()),
+                ),
+                (
+                    "assets/p/shaders/post/a.fsh".into(),
+                    Resource::bytes(fsh.as_bytes().to_vec()),
+                ),
+            ]);
+            for (path, bytes) in files {
+                all.insert((*path).to_owned(), Resource::bytes(bytes.to_vec()));
+            }
+            ResourceSource::indexed(all)
+        };
+        let translated = |fsh: &str, files: &[(&str, &[u8])]| {
+            translate(&source(fsh, files), "p:post/a", "p:post/a").map(|_| ())
+        };
+        let main = "layout(location=0) out vec4 fragColor;\nvoid main() { fragColor = color; }\n";
+        let color = b"const vec4 color = vec4(0.2, 0.4, 0.6, 1.0);\n".as_slice();
+        // Quoted: beside the stage, not under shaders/include.
+        let quoted = format!("#version 330\n#moj_import \"lib/c.glsl\"\n{main}");
+        assert_eq!(
+            translated(&quoted, &[("assets/p/shaders/post/lib/c.glsl", color)]),
+            Ok(())
+        );
+        let elsewhere = translated(&quoted, &[("assets/p/shaders/include/lib/c.glsl", color)]);
+        assert_eq!(
+            elsewhere,
+            Err("p:post/a: p:shaders/post/lib/c.glsl not found".into())
+        );
+        // Twice: imported once, included every time.
+        let include = "assets/minecraft/shaders/include/c.glsl";
+        let pasted = |directive: &str| {
+            let fsh = format!("#version 330\n{directive} <c.glsl>\n{directive} <c.glsl>\n{main}");
+            let text = stage(&source(&fsh, &[(include, color)]), "p:post/a", "fsh").unwrap();
+            text.matches("const vec4 color").count()
+        };
+        assert_eq!((pasted("#moj_import"), pasted("#include")), (1, 2));
+        // A file including itself is refused when it nests too deep.
+        let looping = b"#include <loop.glsl>\n".as_slice();
+        let cycle = translated(
+            &format!("#version 330\n#include <loop.glsl>\n{main}"),
+            &[("assets/minecraft/shaders/include/loop.glsl", looping)],
+        );
+        assert_eq!(
+            cycle,
+            Err("p:post/a: includes nest more than 16 deep".into())
+        );
+        // The packs' own globals that aren't text: refused by path, not the built-in.
+        let globals = "assets/minecraft/shaders/include/polytone_globals.glsl";
+        let reads = "#version 330\n#moj_import <polytone_globals.glsl>\n\
+            layout(location=0) out vec4 fragColor;\nvoid main() { fragColor = vec4(PolySunAngle); }\n";
+        assert_eq!(translated(reads, &[]), Ok(()));
+        assert_eq!(
+            translated(reads, &[(globals, &[0xff, 0xfe])]),
+            Err(format!("p:post/a: {globals} is not UTF-8 text"))
+        );
     }
 
     #[test]

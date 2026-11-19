@@ -79,7 +79,7 @@ harness named checks that loader against vanilla).
 | Maps: background, decorations | `textures/map/`, `atlases/map_decorations.json` | works | loaded from the overlay |
 | Paintings, mob effect icons | `atlases/paintings.json`, `textures/mob_effect/` | works | loaded from the overlay |
 | Locator bar styles | `waypoint_style/` | works | `locator_bar.rs` loads `waypoint_style/*.json` (`WaypointStyleManager`); `game/locator_bar.rs` draws the bar |
-| Post effects (spectating a creeper, spider or enderman; glowing outlines) | `post_effect/`, `shaders/post/` | works | `post_chain.rs` reads `post_effect/*.json` and `post_glsl.rs` translates the `shaders/post/*.vsh`/`.fsh` with naga, with depth inputs, persistent targets and `TextureInput` |
+| Post effects (spectating a creeper, spider or enderman; glowing outlines) | `post_effect/`, `shaders/post/` | works | `post_chain.rs` reads `post_effect/*.json` and `post_glsl.rs` translates the `shaders/post/*.vsh`/`.fsh` with naga (their imports resolved as the core shaders' are), with depth inputs, persistent targets and `TextureInput`; a pass binds only what its stages read, and one past the device's limits per stage, or that the translator or device refuses, refuses its effect, named in the log |
 | Core shaders | `shaders/core/`, `shaders/include/` | partly | `core/text` draws the GUI's text (HUDs moved by its vertex shader, text effects), `core/rendertype_lines` the block outline (both strokes of a high contrast one; hitboxes, chunk borders and other debug lines still draw natively), `core/sky` and `core/stars` the overworld's sky disc and stars, and `core/lightmap` (with `core/screenquad`) the 16x16 light texture from `LightmapInfo`; each of these but the text takes the packs' Polytone expression uniforms on its own shaders (`polytone/shader_modifiers`, `polytone_post.rs`, `gfx/expression_blocks.rs`), translated by naga (`sunrise-client-render` `core_shader.rs`, `hud/pack_text.rs`, `gfx/core_lines.rs`, `gfx/core_sky.rs`, `gfx/core_lightmap.rs`); the other core shaders aren't run (#13218) |
 | OptiFine / CIT Resewn custom item textures (`type=item`: `texture`, `model`, `texture.<name>`, `model.<name>`; `type=armor`: `texture`, `texture.<layer>` with the pre-1.21.2 layer names such as `diamond_layer_1`, `leather_layer_2_overlay`; `type=elytra`: `texture`; `type=enchantment` layers on GUI items; `useGlint=false` in `cit.properties`, which removes vanilla's glint from items) | `optifine/cit/`, `mcpatcher/cit/`, `citresewn/cit/` | partly | `item_render/cit.rs`, `cit_armor.rs`, `cit_glint.rs` and `hud/cit_glint.rs` tests; enchantment layers on held, dropped, framed and worn items, and `anim/` glints, come later; special renderers (heads, shields, banners) keep their vanilla look; only players and armour stands wear CIT armour and elytra, other mobs keep vanilla's; worn trims are unchanged; armour textures above 1024x512 (16 times vanilla's 64x32) draw vanilla |
 | GPU warn list, regional compliance | `gpu_warnlist.json`, `regional_compliancies.json` | n/a | OpenGL driver warnings and play-time notices for some regions; not used |
@@ -119,10 +119,15 @@ doesn't yet:
   angle, the day time, the frame's ticks, and the player's block and position) is given to each of these shaders
   that reads it, with the values the packs' post chains get, in the same std140 layout (`sunrise-polytone`
   `globals.rs`). `#moj_import <polytone_globals.glsl>` declares it, with its `polyPlayerPos` and
-  `polyPositionFromDepth` helpers, where the pack doesn't ship that file (in core shaders and post chains alike);
-  a pack's own file is read instead. It is bound before the expression uniforms, only to the stages that read it,
-  counts against the same limit, and is made and uploaded (176 bytes) only while an installed pack shader reads it (the
-  lightmap's not under fullbright, which keeps the light texture white).
+  `polyPositionFromDepth` helpers, where the packs don't have that file; a pack's own file is read instead, and
+  one that can't be read refuses the shader by its path. It is bound before the expression uniforms, only to the
+  stages that read it, and counts against the same limit.
+- The game builds the block once a frame, only while a pack's post chain runs or an installed pack shader reads it
+  (the lightmap's not under fullbright, which keeps the light texture white). Each reading pipeline writes its 176
+  bytes to the GPU when it uploads its blocks for its draw; a post chain's pass writes them when it draws.
+- The block is the game's, on the core and post shaders alike: a shader declaring it other than that layout (each
+  member of its type at its offset; a leading part of the block is fine), a `shader_modifiers` file giving it, a
+  post chain's expression uniform of that name, or a pass's `uniforms` giving it, is refused, named in the log.
 
 ## Gaps and their work
 

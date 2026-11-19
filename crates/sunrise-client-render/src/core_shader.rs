@@ -69,16 +69,7 @@ impl CoreProgram {
     /// function they call: what a pipeline layout must make that binding visible to. Empty
     /// for one a stage only declares (or the preprocessor kept but nothing reads).
     pub fn stages_reading(&self, binding: u32) -> wgpu::ShaderStages {
-        let mut stages = wgpu::ShaderStages::NONE;
-        for (module, stage) in [
-            (&self.vertex, wgpu::ShaderStages::VERTEX),
-            (&self.fragment, wgpu::ShaderStages::FRAGMENT),
-        ] {
-            if entry_points_read(module, binding) {
-                stages |= stage;
-            }
-        }
-        stages
+        stages_reading([&self.vertex, &self.fragment], binding)
     }
 
     /// Whether every stage that reads the block at `binding` of set 0 declares it as one float
@@ -156,6 +147,21 @@ fn entry_points_read(module: &naga::Module, binding: u32) -> bool {
         return true;
     };
     (0..module.entry_points.len()).any(|i| !info.get_entry_point(i)[handle].is_empty())
+}
+
+/// The stages of `[vertex, fragment]` whose entry points read the resource at `binding` of set
+/// 0 ([`CoreProgram::stages_reading`]; the post shaders' too).
+pub(crate) fn stages_reading(modules: [&naga::Module; 2], binding: u32) -> wgpu::ShaderStages {
+    let mut stages = wgpu::ShaderStages::NONE;
+    for (module, stage) in modules
+        .into_iter()
+        .zip([wgpu::ShaderStages::VERTEX, wgpu::ShaderStages::FRAGMENT])
+    {
+        if entry_points_read(module, binding) {
+            stages |= stage;
+        }
+    }
+    stages
 }
 
 /// The shaders of one pipeline (`text.vsh`, `text.fsh`) with vanilla's `defines` for it.
@@ -247,19 +253,32 @@ pub fn translate_core_at(
 const MAX_PASTES: u32 = 1024;
 pub(crate) const MAX_EXPANDED: usize = 1 << 20;
 
-/// The file with its includes inlined (`#include <ns:path>`, `#include "relative"` and the same
-/// with `#moj_import`), `#version` and `#extension` lines dropped. An `#include` is pasted every
-/// time, as vanilla's shaderc does (the files' `#ifndef` guards keep one copy); a `#moj_import`
-/// once.
+/// [`expand_imports`] over `include`, which has a file or not.
 fn expand(
     text: &str,
     dir: &str,
     include: &dyn Fn(&str) -> Option<String>,
 ) -> Result<String, String> {
+    expand_imports(text, dir, &|id| Ok(include(id)))
+}
+
+/// The file with its includes inlined (`#include <ns:path>`, `#include "relative"` to the
+/// including file's folder, and the same with `#moj_import`), `#version` and `#extension` lines
+/// dropped: the one resolver of the packs' core and post shaders. An `#include` is pasted every
+/// time, as vanilla's shaderc does (the files' `#ifndef` guards keep one copy); a `#moj_import`
+/// once per stage. The expansion is bounded (16 levels, [`MAX_PASTES`] pastes, [`MAX_EXPANDED`]
+/// bytes). `read` gives a file id's text, none when the packs haven't it, or why it can't be
+/// read, which refuses the shader. Only a missing `polytone_globals.glsl` is Polytone's built-in
+/// one (`sunrise_polytone::globals::GLSL`).
+pub(crate) fn expand_imports(
+    text: &str,
+    dir: &str,
+    read: &dyn Fn(&str) -> Result<Option<String>, String>,
+) -> Result<String, String> {
     fn walk(
         text: &str,
         dir: &str,
-        include: &dyn Fn(&str) -> Option<String>,
+        include: &dyn Fn(&str) -> Result<Option<String>, String>,
         seen: &mut HashSet<String>,
         pastes: &mut u32,
         depth: u32,
@@ -282,7 +301,13 @@ fn expand(
                     if *pastes > MAX_PASTES {
                         return Err(format!("includes paste more than {MAX_PASTES} files"));
                     }
-                    let file = include(&id).ok_or_else(|| format!("{id} not found"))?;
+                    let file = match include(&id)? {
+                        Some(file) => file,
+                        None if sunrise_polytone::globals::is_include(&id) => {
+                            sunrise_polytone::globals::GLSL.to_owned()
+                        }
+                        None => return Err(format!("{id} not found")),
+                    };
                     let parent = &id[..id.rfind('/').map_or(id.len(), |i| i + 1)];
                     walk(&file, parent, include, seen, pastes, depth + 1, out)?;
                 }
@@ -304,7 +329,7 @@ fn expand(
         Ok(())
     }
     let mut out = String::new();
-    walk(text, dir, include, &mut HashSet::new(), &mut 0, 0, &mut out)?;
+    walk(text, dir, read, &mut HashSet::new(), &mut 0, 0, &mut out)?;
     Ok(out)
 }
 
@@ -951,6 +976,33 @@ mod tests {
         )
         .unwrap();
         assert_eq!(imported.matches("const float g").count(), 1);
+    }
+
+    /// Only a missing `polytone_globals.glsl` is Polytone's built-in one: the packs' own file is
+    /// read instead, one that can't be read refuses the shader with the reader's reason, and any
+    /// other missing file is named.
+    #[test]
+    fn only_a_missing_poly_globals_is_built_in() {
+        let import = "#moj_import <polytone_globals.glsl>\n";
+        let dir = "minecraft:shaders/core/";
+        let globals = "minecraft:shaders/include/polytone_globals.glsl";
+        let built_in = expand_imports(import, dir, &|_| Ok(None)).unwrap();
+        assert!(built_in.contains("vec3 polyPlayerPos()"), "{built_in}");
+        let shipped = |id: &str| Ok((id == globals).then(|| "float shipped;\n".to_owned()));
+        assert_eq!(
+            expand_imports(import, dir, &shipped).unwrap().trim(),
+            "float shipped;"
+        );
+        let unreadable = |id: &str| Err(format!("{id}: not text"));
+        assert_eq!(
+            expand_imports(import, dir, &unreadable).unwrap_err(),
+            format!("{globals}: not text")
+        );
+        let other = expand_imports("#moj_import <fog.glsl>\n", dir, &|_| Ok(None));
+        assert_eq!(
+            other.unwrap_err(),
+            "minecraft:shaders/include/fog.glsl not found"
+        );
     }
 
     #[test]

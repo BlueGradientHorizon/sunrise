@@ -154,17 +154,14 @@ fn translate_pair(
         };
         return Some(Err(Refusal::StageHidden { path }));
     };
-    // The first include the stack doesn't have, which the translator then fails on.
+    // The first include the stack doesn't have, which the translator then fails on. A missing
+    // `polytone_globals.glsl` is Polytone's built-in one (`core_shader::expand_imports`); one the
+    // pack ships and can't be read refuses the shader by its path (`rejected`).
     let missing = std::cell::RefCell::new(None);
-    // Polytone's `polytone_globals.glsl`, where a pack imports it without shipping it.
-    let builtin = |id: &str| {
-        sunrise_polytone::globals::is_include(id)
-            .then(|| sunrise_polytone::globals::GLSL.to_owned())
-    };
     let include = |id: &str| {
         let (namespace, path) = id.split_once(':')?;
-        let text = read(root, &format!("assets/{namespace}/{path}")).or_else(|| builtin(id));
-        if text.is_none() {
+        let text = read(root, &format!("assets/{namespace}/{path}"));
+        if text.is_none() && !sunrise_polytone::globals::is_include(id) {
             missing.borrow_mut().get_or_insert_with(|| id.to_owned());
         }
         text
@@ -707,14 +704,81 @@ mod tests {
             lightmap_with_expressions(&[(fsh, reading)]).expect("the built-in include");
         assert_eq!(program.other, ["PolyGlobals", "LightmapInfo"]);
         assert!(expressions.is_empty());
+        // The pack's own copy is read instead: only it has `shipped()`, which the shader calls,
+        // so the built-in standing in for it would refuse the shader.
         let include = "assets/minecraft/shaders/include/polytone_globals.glsl";
-        let own = "layout(std140) uniform PolyGlobals {\n    mat4 a;\n    mat4 b;\n    float PolySunAngle;\n};\n";
+        let own = format!(
+            "{}float shipped() {{ return 0.5; }}\n",
+            sunrise_polytone::globals::GLSL
+        );
+        let calling = reading.replace("vec4(PolySunAngle,", "vec4(PolySunAngle * shipped(),");
         let (program, _) =
-            lightmap_with_expressions(&[(fsh, reading), (include, own)]).expect("the pack's own");
+            lightmap_with_expressions(&[(fsh, &calling), (include, &own)]).expect("the pack's own");
         assert_eq!(program.other, ["PolyGlobals", "LightmapInfo"]);
+        assert!(
+            lightmap(&[(fsh, &calling)]).is_none(),
+            "the built-in has no shipped()"
+        );
+        // Its copy declaring the block otherwise refuses the shader.
+        let short = "layout(std140) uniform PolyGlobals {\n    float PolySunAngle;\n};\n";
+        assert!(lightmap(&[(fsh, reading), (include, short)]).is_none());
         assert!(
             lightmap(&[(fsh, &reading.replace("polytone_globals", "other"))]).is_none(),
             "another missing import"
+        );
+    }
+
+    /// A pack's `polytone_globals.glsl` that can't be read refuses the shader by its path; the
+    /// built-in stands in only for a missing one.
+    #[test]
+    fn an_unreadable_poly_globals_refuses_the_shader() {
+        use sunrise_assets::resource_source::Resource;
+        let (_, defaults) = lightmap_packs(&[]);
+        let fsh = "#version 330\n#moj_import <polytone_globals.glsl>\n\
+                   layout(location = 0) in vec2 texCoord;\nlayout(location = 0) out vec4 fragColor;\n\
+                   void main() {\n    fragColor = vec4(PolySunAngle);\n}\n";
+        let include = "assets/minecraft/shaders/include/polytone_globals.glsl";
+        let mut files: std::collections::BTreeMap<String, Resource> = (defaults.list("assets/"))
+            .into_iter()
+            .map(|path| {
+                let bytes = defaults.read(&path).unwrap();
+                (path, Resource::bytes(bytes))
+            })
+            .collect();
+        files.insert(
+            "assets/minecraft/shaders/core/lightmap.fsh".to_owned(),
+            Resource::bytes(fsh.as_bytes().to_vec()),
+        );
+        let translation = |files: std::collections::BTreeMap<String, Resource>| {
+            translate_pair(
+                &ResourceSource::indexed(files),
+                &defaults,
+                ("screenquad", "lightmap"),
+                &[],
+                &crate::gfx::core_lightmap::GLUE,
+                &|block| block == sunrise_polytone::globals::BLOCK,
+            )
+            .unwrap()
+            .map(|_| ())
+        };
+        assert_eq!(translation(files.clone()), Ok(()));
+        // The built-in standing in isn't a missing include: a shader failing for another reason
+        // is refused for that reason.
+        let mut broken = files.clone();
+        broken.insert(
+            "assets/minecraft/shaders/core/lightmap.fsh".to_owned(),
+            Resource::bytes(
+                fsh.replace("vec4(PolySunAngle)", "vec4(Undeclared)")
+                    .into_bytes(),
+            ),
+        );
+        assert!(matches!(translation(broken), Err(Refusal::Translation(_))));
+        files.insert(include.to_owned(), Resource::bytes(vec![0xff, 0xfe]));
+        assert_eq!(
+            translation(files),
+            Err(Refusal::NotText {
+                path: include.to_owned()
+            })
         );
     }
 

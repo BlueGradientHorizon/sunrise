@@ -56,6 +56,59 @@ pub(crate) fn block_entry(
     }
 }
 
+/// The one rule for `PolyGlobals` on the core and post paths alike (the game owns its bytes):
+/// each declaration of the block at `binding` in either stage is a struct whose members are
+/// `sunrise_polytone::globals::LAYOUT` or a leading part of it, each of its type: the block is
+/// std140 and the translator takes no member offsets, so the types in order give each member
+/// its offset. The refusal names the first member that isn't.
+pub(crate) fn check_poly_globals(modules: [&naga::Module; 2], binding: u32) -> Result<(), String> {
+    use naga::{Scalar, TypeInner, VectorSize};
+    use sunrise_polytone::globals::{BLOCK, LAYOUT, Member};
+    let kind = |inner: &TypeInner| match *inner {
+        TypeInner::Matrix {
+            columns: VectorSize::Quad,
+            rows: VectorSize::Quad,
+            scalar: Scalar::F32,
+        } => Some(Member::Mat4),
+        TypeInner::Scalar(Scalar::F32) => Some(Member::Float),
+        TypeInner::Vector {
+            size: VectorSize::Tri,
+            scalar: Scalar::I32,
+        } => Some(Member::IVec3),
+        TypeInner::Vector {
+            size: VectorSize::Tri,
+            scalar: Scalar::F32,
+        } => Some(Member::Vec3),
+        _ => None,
+    };
+    for module in modules {
+        let declared = (module.global_variables.iter()).filter(|(_, g)| {
+            (g.binding.as_ref()).is_some_and(|b| b.group == 0 && b.binding == binding)
+        });
+        for (_, global) in declared {
+            let TypeInner::Struct { members, .. } = &module.types[global.ty].inner else {
+                return Err(format!("{BLOCK} is not a uniform block"));
+            };
+            if members.len() > LAYOUT.len() {
+                return Err(format!(
+                    "{BLOCK}: it declares {} members, past its {}",
+                    members.len(),
+                    LAYOUT.len()
+                ));
+            }
+            for (member, (name, want, at)) in members.iter().zip(LAYOUT) {
+                if kind(&module.types[member.ty].inner) != Some(want) {
+                    let declared = member.name.as_deref().unwrap_or("?");
+                    return Err(format!(
+                        "{BLOCK}: its member {declared} is not {name} ({want:?} at byte {at})"
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 /// `PolyGlobals`' std140 size.
 const GLOBALS: u64 = sunrise_polytone::globals::BLOCK_SIZE as u64;
 
@@ -324,5 +377,111 @@ mod tests {
         let none = ExpressionBlocks::new(&program(false), &[], 1024);
         assert!(!none.has_uniforms() && !none.reads_globals());
         assert_eq!(none.size(), 1024);
+    }
+
+    /// A program whose fragment stage declares `PolyGlobals` with `members` (GLSL lines) and
+    /// reads `read`, with `include` answering its imports.
+    fn declaring(members: &str, read: &str) -> CoreProgram {
+        let fsh = format!(
+            "#version 330\nlayout(std140) uniform PolyGlobals {{\n{members}}};\n\
+             layout(location = 0) out vec4 fragColor;\n\
+             void main() {{\n    fragColor = vec4({read});\n}}\n"
+        );
+        crate::core_shader::translate_core_with(
+            "#version 330\nlayout(location = 0) in vec3 Position;\n\
+             void main() {\n    gl_Position = vec4(Position, 1.0);\n}\n",
+            &fsh,
+            &[],
+            &|_| None,
+            &super::super::core_sky::GLUE,
+            &|_| true,
+        )
+        .expect("the shaders translate")
+    }
+
+    /// `PolyGlobals`' one rule ([`check_poly_globals`]): the built-in declaration and a leading
+    /// part of it pass; a member of another type or at another offset, or one past the block's,
+    /// is refused by name.
+    #[test]
+    fn poly_globals_must_be_declared_as_the_game_lays_it_out() {
+        let check = |program: &CoreProgram| {
+            let i = program
+                .other
+                .iter()
+                .position(|n| n == "PolyGlobals")
+                .unwrap();
+            check_poly_globals(
+                [&program.vertex, &program.fragment],
+                crate::core_shader::other_binding(i),
+            )
+        };
+        assert_eq!(check(&program(true)), Ok(()));
+        let matrices = "    mat4 PolyProjMat;\n    mat4 PolyModelViewMat;\n";
+        let leading = format!("{matrices}    float PolySunAngle;\n");
+        assert_eq!(check(&declaring(&leading, "PolySunAngle")), Ok(()));
+        assert_eq!(
+            check(&declaring(
+                &format!("{matrices}    vec4 PolySunAngle;\n"),
+                "PolySunAngle.x"
+            )),
+            Err(
+                "PolyGlobals: its member PolySunAngle is not PolySunAngle (Float at byte 128)"
+                    .into()
+            )
+        );
+        assert_eq!(
+            check(&declaring("    float PolySunAngle;\n", "PolySunAngle")),
+            Err("PolyGlobals: its member PolySunAngle is not PolyProjMat (Mat4 at byte 0)".into())
+        );
+        let full = "    mat4 PolyProjMat;\n    mat4 PolyModelViewMat;\n    float PolySunAngle;\n\
+            float PolyDayTime;\n    float PolyDeltaTime;\n    ivec3 PolyPlayerBlockPos;\n\
+            vec3 PolyPlayerOffset;\n";
+        assert_eq!(check(&declaring(full, "PolySunAngle")), Ok(()));
+        assert_eq!(
+            check(&declaring(&format!("{full}    float Extra;\n"), "Extra")),
+            Err("PolyGlobals: it declares 8 members, past its 7".into())
+        );
+        let ivec = full.replace("ivec3 PolyPlayerBlockPos", "vec3 PolyPlayerBlockPos");
+        assert_eq!(
+            check(&declaring(&ivec, "PolySunAngle")),
+            Err(
+                "PolyGlobals: its member PolyPlayerBlockPos is not PolyPlayerBlockPos (IVec3 at byte 144)"
+                    .into()
+            )
+        );
+    }
+
+    /// The core shaders' loader refuses, named, a `shader_modifiers` file giving `PolyGlobals`
+    /// (the game's bytes) and a declaration the rule refuses.
+    #[test]
+    fn a_core_shader_cannot_take_over_poly_globals() {
+        use crate::polytone_post::{ExpressionRefusal, ShaderModifiers};
+        let modifiers = |file: &str| {
+            let pack = sunrise_assets::resource_source::ResourceSource::indexed(
+                [(
+                    "assets/minecraft/polytone/shader_modifiers/core/sky.json".to_owned(),
+                    sunrise_assets::resource_source::Resource::bytes(file.as_bytes().to_vec()),
+                )]
+                .into_iter()
+                .collect(),
+            );
+            ShaderModifiers::read(&pack, Default::default())
+        };
+        let own = [sunrise_polytone::globals::BLOCK];
+        let resolve = |file: &str, program: &CoreProgram| {
+            modifiers(file)
+                .resolve((SKY[0], SKY[0]), program, &own)
+                .map(|u| u.len())
+        };
+        assert_eq!(resolve(r#"{"Tint": "1"}"#, &program(true)), Ok(1));
+        assert!(matches!(
+            resolve(r#"{"Tint": "1", "PolyGlobals": "1"}"#, &program(true)),
+            Err(ExpressionRefusal::Reserved(name)) if name == "PolyGlobals"
+        ));
+        let wrong = declaring("    float PolySunAngle;\n", "PolySunAngle");
+        assert!(matches!(
+            resolve("{}", &wrong),
+            Err(ExpressionRefusal::Globals(e)) if e.contains("PolyProjMat")
+        ));
     }
 }

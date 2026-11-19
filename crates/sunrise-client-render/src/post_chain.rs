@@ -402,10 +402,16 @@ struct Translated {
 }
 
 impl Translated {
-    fn ensure_pipeline(&mut self, device: &wgpu::Device, format: wgpu::TextureFormat) {
+    /// The pipeline for `format`, made once; a pipeline the device refuses is the refusal.
+    fn ensure_pipeline(
+        &mut self,
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+    ) -> Result<(), String> {
         if self.pipelines.contains_key(&format) {
-            return;
+            return Ok(());
         }
+        let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("Post effect"),
             bind_group_layouts: &[Some(&self.layout)],
@@ -433,7 +439,11 @@ impl Translated {
             multiview_mask: None,
             cache: None,
         });
+        if let Some(e) = pollster::block_on(scope.pop()) {
+            return Err(e.to_string());
+        }
         self.pipelines.insert(format, pipeline);
+        Ok(())
     }
 }
 
@@ -449,6 +459,24 @@ struct Pass {
     info: wgpu::Buffer,
     vs_block: wgpu::Buffer,
     fs_block: wgpu::Buffer,
+}
+
+impl Chain {
+    /// Each translated pass's pipeline for `format`; the first the device refuses, named.
+    fn ensure_pipelines(
+        &mut self,
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+    ) -> Result<(), String> {
+        for (n, pass) in self.passes.iter_mut().enumerate() {
+            if let Some(translated) = &mut pass.translated {
+                translated
+                    .ensure_pipeline(device, format)
+                    .map_err(|e| format!("pass {n}: {e}"))?;
+            }
+        }
+        Ok(())
+    }
 }
 
 /// A loaded chain (`PostChain`): its targets are 0 = the frame, then the internal
@@ -764,12 +792,10 @@ impl PostEffects {
                 move || {
                     for id in ids {
                         let mut chain = Self::load(&root, &device, &queue, &id, &Extras::default());
-                        if let Ok(Some(chain)) = &mut chain {
-                            for pass in &mut chain.passes {
-                                if let Some(translated) = &mut pass.translated {
-                                    translated.ensure_pipeline(&device, format);
-                                }
-                            }
+                        if let Ok(Some(loaded)) = &mut chain
+                            && let Err(e) = loaded.ensure_pipelines(&device, format)
+                        {
+                            chain = Err(e);
                         }
                         if tx.send((id, chain)).is_err() {
                             return;
@@ -947,7 +973,17 @@ impl PostEffects {
         images: &mut Vec<(wgpu::Texture, wgpu::TextureView, [u32; 2])>,
         extras: &Extras,
     ) -> Result<Pass, String> {
-        let program = crate::post_glsl::translate(root, &p.vertex, &p.fragment)?;
+        let globals = sunrise_polytone::globals::BLOCK;
+        if p.uniforms.contains_key(globals) {
+            return Err(format!(
+                "pass {n}: its uniforms give {globals}, which the game fills"
+            ));
+        }
+        // A pack's GLSL is untrusted: a fault the translator meets refuses the pass.
+        let program =
+            crate::crash::contain(|| crate::post_glsl::translate(root, &p.vertex, &p.fragment))
+                .map_err(|e| format!("pass {n}: the shader translator failed: {e}"))??;
+        let modules = [&program.vertex, &program.fragment];
         let mut refs = Vec::new();
         for input in &p.inputs {
             let src = match &input.source {
@@ -975,9 +1011,29 @@ impl PostEffects {
         let mut entries = Vec::new();
         let mut blocks = Vec::new();
         for (name, binding) in &program.blocks {
+            if name == globals {
+                crate::gfx::expression_blocks::check_poly_globals(modules, *binding)
+                    .map_err(|e| format!("pass {n}: {e}"))?;
+            }
+            // Bound only to the stages that read it: one only declared (an imported block the
+            // shader doesn't use) binds nothing.
+            let stages = crate::core_shader::stages_reading(modules, *binding);
+            if stages.is_empty() {
+                continue;
+            }
             let block = match name.as_str() {
                 "SamplerInfo" => Block::Info,
                 "Globals" => Block::Globals,
+                // The game's, set every frame ([`Extras::blocks`]): never a pass's own values.
+                other if other == globals => {
+                    let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                        label: Some("Post effect PolyGlobals"),
+                        size: UNIFORM_BYTES,
+                        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                        mapped_at_creation: false,
+                    });
+                    Block::Dynamic(other.to_owned(), buffer)
+                }
                 other if !p.uniforms.contains_key(other) && extras.blocks.contains_key(other) => {
                     let buffer = device.create_buffer(&wgpu::BufferDescriptor {
                         label: Some("Post effect pack uniforms"),
@@ -1004,7 +1060,7 @@ impl PostEffects {
             };
             entries.push(wgpu::BindGroupLayoutEntry {
                 binding: *binding,
-                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                visibility: stages,
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Uniform,
                     has_dynamic_offset: false,
@@ -1022,11 +1078,15 @@ impl PostEffects {
                 .iter()
                 .position(|i| i.sampler == input)
                 .ok_or(format!("pass {n}: no input for the sampler {name}"))?;
+            let stages = crate::core_shader::stages_reading(modules, *texture);
+            if stages.is_empty() {
+                continue;
+            }
             // A depth buffer is read unfiltered.
             let depth = matches!(refs[slot].src, Src::Target { depth: true, .. });
             entries.push(wgpu::BindGroupLayoutEntry {
                 binding: *texture,
-                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                visibility: stages,
                 ty: wgpu::BindingType::Texture {
                     sample_type: wgpu::TextureSampleType::Float { filterable: !depth },
                     view_dimension: wgpu::TextureViewDimension::D2,
@@ -1036,7 +1096,7 @@ impl PostEffects {
             });
             entries.push(wgpu::BindGroupLayoutEntry {
                 binding: texture + 1,
-                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                visibility: stages,
                 ty: wgpu::BindingType::Sampler(if depth {
                     wgpu::SamplerBindingType::NonFiltering
                 } else {
@@ -1052,8 +1112,10 @@ impl PostEffects {
                 source: wgpu::ShaderSource::Naga(std::borrow::Cow::Owned(module)),
             })
         };
-        pass.refs = refs;
-        pass.translated = Some(Translated {
+        // The device refuses a layout past its limits for a stage (uniform blocks, textures,
+        // samplers): the pass is refused, named.
+        let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let translated = Translated {
             layout: device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("Post effect bindings"),
                 entries: &entries,
@@ -1063,7 +1125,12 @@ impl PostEffects {
             pipelines: HashMap::new(),
             blocks,
             samplers,
-        });
+        };
+        if let Some(e) = pollster::block_on(scope.pop()) {
+            return Err(format!("pass {n}: {e}"));
+        }
+        pass.refs = refs;
+        pass.translated = Some(translated);
         Ok(pass)
     }
 
@@ -1258,10 +1325,23 @@ impl PostEffects {
                 applied.push(id);
             }
         }
+        let format = frame.format().remove_srgb_suffix();
+        // A pass whose pipeline the device refuses refuses its effect, named, which is skipped.
+        applied.retain(|id| {
+            let Some(Some(chain)) = self.chains.get_mut(id) else {
+                return false;
+            };
+            let Err(e) = chain.ensure_pipelines(device, format) else {
+                return true;
+            };
+            log::warn!("Failed to load post effect {id}: {e}");
+            self.failed.insert(id.clone());
+            self.chains.insert(id.clone(), None);
+            false
+        });
         if applied.is_empty() {
             return false;
         }
-        let format = frame.format().remove_srgb_suffix();
         if self.work.as_ref().is_none_or(|(t, _)| {
             t.size().width != size[0] || t.size().height != size[1] || t.format() != format
         }) {
@@ -1473,11 +1553,6 @@ impl PostEffects {
         format: wgpu::TextureFormat,
         mut timing: Option<&mut crate::gfx::pack_timing::PassTiming>,
     ) {
-        for pass in &mut chain.passes {
-            if let Some(translated) = &mut pass.translated {
-                translated.ensure_pipeline(device, format);
-            }
-        }
         let sizes: Vec<[u32; 2]> = chain
             .targets
             .iter()
@@ -2033,6 +2108,18 @@ mod tests {
         root: &ResourceSource,
         names: &[String],
     ) -> (bool, [u8; 4]) {
+        run_with(device, queue, effects, root, names, None)
+    }
+
+    /// [`run`] with what the packs' Polytone post chains add (`extras`).
+    fn run_with(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        effects: &mut PostEffects,
+        root: &ResourceSource,
+        names: &[String],
+        extras: Option<&Extras>,
+    ) -> (bool, [u8; 4]) {
         let frame = device.create_texture(&wgpu::TextureDescriptor {
             label: None,
             size: wgpu::Extent3d {
@@ -2082,7 +2169,7 @@ mod tests {
                 root,
                 menu_blur_radius: 5.0,
                 globals: Globals::default(),
-                extras: None,
+                extras,
             },
             None,
         );
@@ -2132,6 +2219,207 @@ mod tests {
         assert!(
             near(px[0], 51) && near(px[1], 102) && near(px[2], 153),
             "{px:?}"
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    /// A scratch root with one single-pass chain per `(name, fragment shader)`, each drawing its
+    /// fragment shader over the frame (`pass uniforms` given as JSON), and a full-screen vertex
+    /// shader.
+    fn one_pass_chains(name: &str, chains: &[(&str, String, &str)]) -> PathBuf {
+        let root = scratch(name, "{}");
+        let shaders = root.join("assets/minecraft/shaders");
+        std::fs::create_dir_all(shaders.join("post")).unwrap();
+        std::fs::write(
+            shaders.join("post/full.vsh"),
+            "#version 330\nvoid main() {\n  vec2 uv = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2);\n\
+               gl_Position = vec4(uv * 2.0 - 1.0, 0.0, 1.0);\n}\n",
+        )
+        .unwrap();
+        for (chain, fsh, uniforms) in chains {
+            std::fs::write(shaders.join(format!("post/{chain}.fsh")), fsh).unwrap();
+            std::fs::write(
+                root.join(format!("assets/minecraft/post_effect/{chain}.json")),
+                format!(
+                    r#"{{"passes":[{{"vertex_shader":"minecraft:post/full",
+                        "fragment_shader":"minecraft:post/{chain}","inputs":[],
+                        "output":"minecraft:main","uniforms":{{{uniforms}}}}}]}}"#
+                ),
+            )
+            .unwrap();
+        }
+        root
+    }
+
+    /// A pack post shader reads the `PolyGlobals` the frame gives (`Extras::blocks`): the block's
+    /// bytes as given, and Polytone's two helpers. Expected values worked out by hand from the
+    /// helpers' math: the player at (3.5, 64.25, -7.75) is block (3, 64, -8) less the offset
+    /// (-0.5, -0.25, -0.25); a projection scaling x and y by 2 and a model-view moving by
+    /// (1, 2, 3) take screen point (0.75, 0.25) at depth 0.5 to NDC (0.5, -0.5, 0.5), view
+    /// (0.25, -0.25, 0.5) and world (-0.75, -2.25, -2.5).
+    #[test]
+    #[ignore = "daily"]
+    fn a_post_pass_reads_the_games_poly_globals() {
+        let _gpu = crate::gfx::test_gpu::lock();
+        let Some((device, queue)) = device() else {
+            return;
+        };
+        let fsh = |color: &str| {
+            format!(
+                "#version 330\n#moj_import <polytone_globals.glsl>\n\
+                 layout(location = 0) out vec4 fragColor;\n\
+                 void main() {{\n  {color}\n}}\n"
+            )
+        };
+        let root = one_pass_chains(
+            "poly_globals",
+            &[
+                (
+                    "raw",
+                    fsh(
+                        "fragColor = vec4(float(PolyPlayerBlockPos.y) / 255.0, PolySunAngle, \
+                         PolyDayTime / 255.0, 1.0);",
+                    ),
+                    "",
+                ),
+                (
+                    "player",
+                    fsh(
+                        "vec3 p = polyPlayerPos();\n  fragColor = vec4(p.x * 2.0 / 255.0, \
+                         (p.y - 60.0) * 4.0 / 255.0, -p.z * 4.0 / 255.0, 1.0);",
+                    ),
+                    "",
+                ),
+                (
+                    "depth",
+                    fsh("vec3 w = polyPositionFromDepth(vec2(0.75, 0.25), 0.5);\n  \
+                         fragColor = vec4((w + vec3(1.0, 3.0, 3.0)) * 100.0 / 255.0, 1.0);"),
+                    "",
+                ),
+            ],
+        );
+        let mut projection = [0.0; 16];
+        (projection[0], projection[5], projection[10], projection[15]) = (2.0, 2.0, 1.0, 1.0);
+        let mut model_view = [0.0; 16];
+        (model_view[0], model_view[5], model_view[10], model_view[15]) = (1.0, 1.0, 1.0, 1.0);
+        model_view[12..15].copy_from_slice(&[1.0, 2.0, 3.0]);
+        let globals = sunrise_polytone::globals::Globals {
+            projection,
+            model_view,
+            sun_angle: 0.2,
+            day_time: 153.0,
+            delta_time: 0.0,
+            player: [3.5, 64.25, -7.75],
+        };
+        let extras = Extras {
+            targets: Default::default(),
+            blocks: [("PolyGlobals".to_owned(), globals.std140().to_vec())].into(),
+        };
+        let source = ResourceSource::directory(root.clone());
+        let mut effects = PostEffects::new(&device);
+        // Without Polytone's chains (no extras), the block is still the game's: zeros.
+        let names = ["minecraft:raw".to_owned()];
+        let unset = run_with(&device, &queue, &mut effects, &source, &names, None);
+        assert_eq!(unset, (true, [0, 0, 0, 255]));
+        let mut drawn = |chain: &str| {
+            let names = [format!("minecraft:{chain}")];
+            let (ran, px) = run_with(
+                &device,
+                &queue,
+                &mut effects,
+                &source,
+                &names,
+                Some(&extras),
+            );
+            assert!(ran, "{chain}");
+            px
+        };
+        // Block height 64, sun angle 0.2 (51), day time 153.
+        assert_eq!(drawn("raw"), [64, 51, 153, 255]);
+        // polyPlayerPos() (3.5, 64.25, -7.75): 3.5 * 2 = 7, 4.25 * 4 = 17, 7.75 * 4 = 31.
+        assert_eq!(drawn("player"), [7, 17, 31, 255]);
+        // (-0.75, -2.25, -2.5) + (1, 3, 3) = (0.25, 0.75, 0.5), times 100.
+        assert_eq!(drawn("depth"), [25, 75, 50, 255]);
+        assert!(effects.failed.is_empty());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    /// A post pass binds only the blocks its stages read: twelve read beside an imported, unused
+    /// `PolyGlobals` fit the device's twelve per stage and run. Thirteen read, a pass whose
+    /// uniforms give `PolyGlobals` (the game's), one declaring it other than its layout, and one
+    /// whose pipeline the device refuses (its fragment stage reads an input the vertex stage
+    /// doesn't write) refuse their effect by name, which is skipped.
+    #[test]
+    #[ignore = "daily"]
+    fn a_post_pass_binds_what_it_reads_and_is_refused_past_the_limits() {
+        let _gpu = crate::gfx::test_gpu::lock();
+        let Some((device, queue)) = device() else {
+            return;
+        };
+        assert_eq!(device.limits().max_uniform_buffers_per_shader_stage, 12);
+        let blocks = |n: usize, import: bool| {
+            let declared: String = (0..n)
+                .map(|i| format!("layout(std140) uniform B{i} {{ float b{i}; }};\n"))
+                .collect();
+            let read: String = (0..n).map(|i| format!(" + b{i}")).collect();
+            let import = if import {
+                "#moj_import <polytone_globals.glsl>\n"
+            } else {
+                ""
+            };
+            let fsh = format!(
+                "#version 330\n{import}{declared}layout(location = 0) out vec4 fragColor;\n\
+                 void main() {{\n  fragColor = vec4(0.0{read}, 0.0, 0.0, 1.0);\n}}\n"
+            );
+            let uniforms: Vec<String> = (0..n)
+                .map(|i| format!(r#""B{i}":[{{"name":"b{i}","type":"float","value":0.0}}]"#))
+                .collect();
+            (fsh, uniforms.join(","))
+        };
+        let (twelve, twelve_uniforms) = blocks(12, true);
+        let (thirteen, thirteen_uniforms) = blocks(13, false);
+        let (one, _) = blocks(1, true);
+        let taken = r#""B0":[{"name":"b0","type":"float","value":0.0}],
+            "PolyGlobals":[{"name":"PolySunAngle","type":"float","value":1.0}]"#;
+        let short = "#version 330\nlayout(std140) uniform PolyGlobals { float PolySunAngle; };\n\
+            layout(location = 0) out vec4 fragColor;\n\
+            void main() {\n  fragColor = vec4(PolySunAngle);\n}\n"
+            .to_owned();
+        let unmatched = "#version 330\nlayout(location = 0) in vec2 texCoord;\n\
+            layout(location = 0) out vec4 fragColor;\n\
+            void main() {\n  fragColor = vec4(texCoord, 0.0, 1.0);\n}\n"
+            .to_owned();
+        let root = one_pass_chains(
+            "limits",
+            &[
+                ("twelve", twelve, &twelve_uniforms),
+                ("thirteen", thirteen, &thirteen_uniforms),
+                ("taken", one, taken),
+                ("short", short, ""),
+                ("unmatched", unmatched, ""),
+            ],
+        );
+        let source = ResourceSource::directory(root.clone());
+        let mut effects = PostEffects::new(&device);
+        let mut ran = |chain: &str| {
+            let names = [format!("minecraft:{chain}")];
+            run(&device, &queue, &mut effects, &source, &names).0
+        };
+        assert!(ran("twelve"));
+        assert!(!ran("thirteen"));
+        assert!(!ran("taken"));
+        assert!(!ran("short"));
+        assert!(!ran("unmatched"));
+        let mut failed: Vec<&String> = effects.failed.iter().collect();
+        failed.sort();
+        assert_eq!(
+            failed,
+            [
+                "minecraft:short",
+                "minecraft:taken",
+                "minecraft:thirteen",
+                "minecraft:unmatched"
+            ]
         );
         std::fs::remove_dir_all(root).unwrap();
     }

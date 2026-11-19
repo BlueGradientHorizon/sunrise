@@ -33,6 +33,27 @@ vec3 polyPositionFromDepth(vec2 uv, float depth) {
 #endif
 ";
 
+/// A `PolyGlobals` member's GLSL type.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Member {
+    Mat4,
+    Float,
+    IVec3,
+    Vec3,
+}
+
+/// The block's members in order, each with its std140 offset: what [`Globals::std140`] writes,
+/// and what a shader's declaration of the block must match (a leading part of it, at least).
+pub const LAYOUT: [(&str, Member, usize); 7] = [
+    ("PolyProjMat", Member::Mat4, 0),
+    ("PolyModelViewMat", Member::Mat4, 64),
+    ("PolySunAngle", Member::Float, 128),
+    ("PolyDayTime", Member::Float, 132),
+    ("PolyDeltaTime", Member::Float, 136),
+    ("PolyPlayerBlockPos", Member::IVec3, 144),
+    ("PolyPlayerOffset", Member::Vec3, 160),
+];
+
 /// Whether an include id (`ns:shaders/include/<path>`) names the built-in file.
 pub fn is_include(id: &str) -> bool {
     id.strip_suffix(INCLUDE_FILE)
@@ -60,27 +81,25 @@ impl Globals {
     /// The std140 block.
     pub fn std140(&self) -> [u8; BLOCK_SIZE] {
         let mut out = [0u8; BLOCK_SIZE];
-        let mut put = |at: usize, bytes: [u8; 4]| out[at..at + 4].copy_from_slice(&bytes);
-        for (m, matrix) in [self.projection, self.model_view].iter().enumerate() {
-            for (i, v) in matrix.iter().enumerate() {
-                put(64 * m + 4 * i, v.to_le_bytes());
-            }
-        }
-        for (i, v) in [self.sun_angle, self.day_time, self.delta_time]
-            .iter()
-            .enumerate()
-        {
-            put(128 + 4 * i, v.to_le_bytes());
-        }
-        // ivec3 and vec3 each start on 16 bytes: 144 and 160.
         let block = self.player.map(f64::floor);
-        for i in 0..3 {
-            // A float saturates into the int, NaN at 0.
-            put(144 + 4 * i, (block[i] as i32).to_le_bytes());
-            put(
-                160 + 4 * i,
-                ((block[i] - self.player[i]) as f32).to_le_bytes(),
-            );
+        // A float saturates into the int, NaN at 0.
+        let ints = block.map(|b| (b as i32).to_le_bytes());
+        let offset =
+            std::array::from_fn::<_, 3, _>(|i| ((block[i] - self.player[i]) as f32).to_le_bytes());
+        let words = |values: &[f32]| values.iter().map(|v| v.to_le_bytes()).collect::<Vec<_>>();
+        for (name, _, at) in LAYOUT {
+            let member = match name {
+                "PolyProjMat" => words(&self.projection),
+                "PolyModelViewMat" => words(&self.model_view),
+                "PolySunAngle" => words(&[self.sun_angle]),
+                "PolyDayTime" => words(&[self.day_time]),
+                "PolyDeltaTime" => words(&[self.delta_time]),
+                "PolyPlayerBlockPos" => ints.to_vec(),
+                _ => offset.to_vec(),
+            };
+            for (i, word) in member.iter().enumerate() {
+                out[at + 4 * i..at + 4 * i + 4].copy_from_slice(word);
+            }
         }
         out
     }
@@ -129,6 +148,5 @@ mod tests {
         assert!(is_include("polytone:shaders/include/polytone_globals.glsl"));
         assert!(!is_include("minecraft:shaders/include/fog.glsl"));
         assert!(!is_include("minecraft:shaders/core/polytone_globals.glsl"));
-        assert!(GLSL.contains("uniform PolyGlobals"));
     }
 }

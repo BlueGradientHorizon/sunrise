@@ -8580,8 +8580,10 @@ impl Game<'_> {
         let delta_ticks = (game_ticks - self.polytone_post_ticks).clamp(0.0, 20.0) as f32;
         self.polytone_post_ticks = game_ticks;
         self.evaluate_pack_expressions(polytone_frame.as_ref());
-        // Polytone's globals (wiki "Extra Shader Uniforms"), which the packs' post chains and the
-        // pack core shaders that read them take: made only for those.
+        // Polytone's globals (wiki "Extra Shader Uniforms"): built here once a frame, only while a
+        // pack's post chain runs or an installed pack core shader reads them. The renderer keeps
+        // the bytes in each reading pipeline's blocks, which write them to the GPU when that
+        // pipeline uploads its blocks for its draw; a post chain's pass writes them when it draws.
         let shaders_read_globals = self.reads_poly_globals();
         let chains = self.pack.polytone_post.is_some() && polytone_frame.is_some();
         let poly_globals = (chains || shaders_read_globals).then(|| {
