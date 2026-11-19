@@ -1022,11 +1022,10 @@ fn anger_at_a_mob_not_saved_yet_names_it() {
 /// (`Invulnerable`) still comes from the loaded compound.
 #[test]
 fn an_orb_saves_its_live_fire_and_air_over_the_loaded_ones() {
-    let raw = sunrise_core::nbt::parse_snbt(
-        "{Pos:[4.5d,100d,4.5d],Fire:40s,Air:300s,Invulnerable:1b}",
-    )
-    .unwrap()
-    .0;
+    let raw =
+        sunrise_core::nbt::parse_snbt("{Pos:[4.5d,100d,4.5d],Fire:40s,Air:300s,Invulnerable:1b}")
+            .unwrap()
+            .0;
     let mut orb = entity_nbt::orbs_from_nbt(&raw).remove(0);
     (orb.fire_ticks, orb.air) = (39, 299);
     let saved = with_raw_over(entity_nbt::orb_to_nbt(&orb, [0; 4]), Some(&raw), ORB_LIVE);
