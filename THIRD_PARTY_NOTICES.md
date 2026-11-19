@@ -148,10 +148,11 @@ x86/x64 instead of the POPCNT instruction, which CPUs before Nehalem lack (#7264
 
 `third_party/winit` is [winit](https://github.com/rust-windowing/winit) 0.30.13 by the winit
 contributors, licensed under Apache-2.0 (`LICENSE` in that folder), without its examples and tests.
-One change: its X11 backend takes raw input events from the slave devices attached to a master
-instead of the masters' copies. While winit holds its own pointer grab (`CursorGrabMode::Confined`,
-X11's only grab), an X server speaking XInput 2.1 or later sends a client each master raw event
-twice, so mouse look turned twice as far (#3022); each slave raw event arrives once.
+One change: its X11 backend takes raw motion from the enabled slave pointers instead of the master
+pointer's copy, tracking them from each device-hierarchy event in stream order; raw buttons and keys
+still come from the masters. While winit holds its own pointer grab (`CursorGrabMode::Confined`, the
+grab mode winit's X11 backend supports), an X server speaking XInput 2.1 or later sends a client
+each master raw event twice, so mouse look turned twice as far (#3022); each slave's arrives once.
 
 ## Pixelify Sans
 

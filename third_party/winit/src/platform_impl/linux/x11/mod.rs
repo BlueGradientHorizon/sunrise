@@ -315,6 +315,7 @@ impl<T: 'static> EventLoop<T> {
             target: root_window_target,
             dnd,
             devices: Default::default(),
+            raw_motion_sources: Default::default(),
             randr_event_offset,
             ime_receiver,
             ime_event_receiver,
@@ -331,7 +332,7 @@ impl<T: 'static> EventLoop<T> {
             is_composing: false,
         };
 
-        // Device hotplug events are selected with the raw events, in `update_listen_device_events`.
+        // Device hotplug events are selected with raw motion, in `update_listen_device_events`.
         // (The request buffer is flushed during `init_device`)
         let xconn = &EventProcessor::window_target(&event_processor.target).xconn;
 
@@ -650,20 +651,22 @@ impl ActiveEventLoop {
         let device_events = self.device_events.get() == DeviceEvents::Always
             || (focus && self.device_events.get() == DeviceEvents::WhenFocused);
 
-        // One selection for all devices: it also holds the hotplug events.
-        let mut mask = xinput::XIEventMask::HIERARCHY;
+        let mut mask = xinput::XIEventMask::from(0u32);
+        // Raw motion comes from the slave pointers, once each even under this client's own grab, with the hotplug events that track them.
+        let mut all_devices = xinput::XIEventMask::HIERARCHY;
         if device_events {
-            // Slaves' raw events: under our own Confined grab, XI 2.1+ servers send master copies twice.
-            mask = mask
-                | xinput::XIEventMask::RAW_MOTION
-                | xinput::XIEventMask::RAW_BUTTON_PRESS
+            mask = xinput::XIEventMask::RAW_BUTTON_PRESS
                 | xinput::XIEventMask::RAW_BUTTON_RELEASE
                 | xinput::XIEventMask::RAW_KEY_PRESS
                 | xinput::XIEventMask::RAW_KEY_RELEASE;
+            all_devices = all_devices | xinput::XIEventMask::RAW_MOTION;
         }
 
         self.xconn
-            .select_xinput_events(self.root, ALL_DEVICES, mask)
+            .select_xinput_events(self.root, ALL_MASTER_DEVICES, mask)
+            .expect_then_ignore_error("Failed to update device event filter");
+        self.xconn
+            .select_xinput_events(self.root, ALL_DEVICES, all_devices)
             .expect_then_ignore_error("Failed to update device event filter");
     }
 
@@ -973,8 +976,6 @@ pub struct Device {
     // For master devices, this is the paired device (pointer <-> keyboard).
     // For slave devices, this is the master.
     attachment: c_int,
-    // A slave attached to a master: raw events are taken from these only.
-    attached_slave: bool,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -1014,14 +1015,8 @@ impl Device {
             }
         }
 
-        let attached_slave =
-            info._use == ffi::XISlaveKeyboard || info._use == ffi::XISlavePointer;
-        let mut device = Device {
-            _name: name.into_owned(),
-            scroll_axes,
-            attachment: info.attachment,
-            attached_slave,
-        };
+        let mut device =
+            Device { _name: name.into_owned(), scroll_axes, attachment: info.attachment };
         device.reset_scroll_position(info);
         device
     }

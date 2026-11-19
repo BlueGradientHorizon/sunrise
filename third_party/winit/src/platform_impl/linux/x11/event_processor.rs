@@ -1,5 +1,5 @@
 use std::cell::{Cell, RefCell};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::os::raw::{c_char, c_int, c_long, c_ulong};
 use std::slice;
 use std::sync::{Arc, Mutex};
@@ -41,6 +41,34 @@ use crate::platform_impl::x11::{
 /// The maximum amount of X modifiers to replay.
 pub const MAX_MOD_REPLAY_LEN: usize = 32;
 
+/// The enabled slave pointers raw motion is taken from: under this client's own grab, XI 2.1+ sends a master's copy twice.
+#[derive(Debug, Default)]
+pub struct RawMotionSources(HashSet<c_int>);
+
+impl RawMotionSources {
+    /// A device's use and enabled state, as a device query or a hierarchy event gives them.
+    pub fn set(&mut self, device: c_int, device_use: c_int, enabled: c_int) {
+        if device_use == xinput2::XISlavePointer && enabled != 0 {
+            self.0.insert(device);
+        } else {
+            self.0.remove(&device);
+        }
+    }
+
+    /// A hierarchy event's entry for a device: its state at that point in the event stream, never a later query.
+    pub fn update(&mut self, info: &xinput2::XIHierarchyInfo) {
+        if 0 != info.flags & (xinput2::XISlaveRemoved | xinput2::XIMasterRemoved) {
+            self.0.remove(&info.deviceid);
+        } else {
+            self.set(info.deviceid, info._use, info.enabled);
+        }
+    }
+
+    pub fn contains(&self, device: c_int) -> bool {
+        self.0.contains(&device)
+    }
+}
+
 /// The X11 documentation states: "Keycodes lie in the inclusive range `[8, 255]`".
 const KEYCODE_OFFSET: u8 = 8;
 
@@ -50,6 +78,7 @@ pub struct EventProcessor {
     pub ime_event_receiver: ImeEventReceiver,
     pub randr_event_offset: u8,
     pub devices: RefCell<HashMap<DeviceId, Device>>,
+    pub raw_motion_sources: RefCell<RawMotionSources>,
     pub xi2ext: ExtensionInformation,
     pub xkbext: ExtensionInformation,
     pub target: RootAEL,
@@ -360,6 +389,7 @@ impl EventProcessor {
         if let Some(info) = DeviceInfo::get(&window_target.xconn, device as _) {
             for info in info.iter() {
                 devices.insert(DeviceId(info.deviceid as _), Device::new(info));
+                self.raw_motion_sources.borrow_mut().set(info.deviceid, info._use, info.enabled);
             }
         }
     }
@@ -1404,14 +1434,6 @@ impl EventProcessor {
         }
     }
 
-    /// Whether a raw event is an attached slave's own copy, the one `update_listen_device_events` takes.
-    fn from_attached_slave(&self, xev: &XIRawEvent) -> bool {
-        self.devices
-            .borrow()
-            .get(&DeviceId(xev.deviceid as xinput::DeviceId))
-            .is_some_and(|device| device.attached_slave)
-    }
-
     fn xinput2_raw_button_input<T: 'static, F>(
         &self,
         xev: &XIRawEvent,
@@ -1420,10 +1442,6 @@ impl EventProcessor {
     ) where
         F: FnMut(&RootAEL, Event<T>),
     {
-        if !self.from_attached_slave(xev) {
-            return;
-        }
-
         let wt = Self::window_target(&self.target);
 
         // Set the timestamp.
@@ -1442,7 +1460,8 @@ impl EventProcessor {
     where
         F: FnMut(&RootAEL, Event<T>),
     {
-        if !self.from_attached_slave(xev) {
+        // A master's copy, which comes twice while this client holds an owner-events pointer grab.
+        if !self.raw_motion_sources.borrow().contains(xev.deviceid) {
             return;
         }
 
@@ -1510,10 +1529,6 @@ impl EventProcessor {
     ) where
         F: FnMut(&RootAEL, Event<T>),
     {
-        if !self.from_attached_slave(xev) {
-            return;
-        }
-
         let wt = Self::window_target(&self.target);
 
         // Set the timestamp.
@@ -1542,9 +1557,7 @@ impl EventProcessor {
         wt.xconn.set_timestamp(xev.time as xproto::Timestamp);
         let infos = unsafe { slice::from_raw_parts(xev.info, xev.num_info as usize) };
         for info in infos {
-            if 0 != info.flags & (xinput2::XISlaveAttached | xinput2::XISlaveDetached) {
-                self.init_device(info.deviceid as xinput::DeviceId);
-            }
+            self.raw_motion_sources.borrow_mut().update(info);
             if 0 != info.flags & (xinput2::XISlaveAdded | xinput2::XIMasterAdded) {
                 self.init_device(info.deviceid as xinput::DeviceId);
                 callback(&self.target, Event::DeviceEvent {
@@ -1903,4 +1916,51 @@ fn is_first_touch(first: &mut Option<u64>, num: &mut u32, id: u64, phase: TouchP
     }
 
     *first == Some(id)
+}
+
+#[cfg(test)]
+mod raw_motion_source_tests {
+    use super::{xinput2, RawMotionSources};
+
+    fn info(use_: i32, enabled: i32, flags: i32) -> xinput2::XIHierarchyInfo {
+        xinput2::XIHierarchyInfo { deviceid: 9, attachment: 2, _use: use_, enabled, flags }
+    }
+
+    /// Each hierarchy event sets eligibility from its own entry, in stream order, whatever is queued after it.
+    #[test]
+    fn queued_attach_and_detach_apply_in_stream_order() {
+        let attached = info(xinput2::XISlavePointer, 1, xinput2::XISlaveAttached);
+        let floating = info(xinput2::XIFloatingSlave, 1, xinput2::XISlaveDetached);
+        let mut sources = RawMotionSources::default();
+        sources.update(&attached);
+        assert!(sources.contains(9));
+        sources.update(&floating);
+        assert!(!sources.contains(9));
+        sources.update(&attached);
+        assert!(sources.contains(9));
+    }
+
+    /// Xorg can attach a mouse that was floating as it first enables it, reporting only `XIDeviceEnabled`.
+    #[test]
+    fn a_first_enable_that_attaches_takes_the_device() {
+        let mut sources = RawMotionSources::default();
+        sources.set(9, xinput2::XIFloatingSlave, 0);
+        sources.update(&info(xinput2::XISlavePointer, 1, xinput2::XIDeviceEnabled));
+        assert!(sources.contains(9));
+        sources.update(&info(xinput2::XISlavePointer, 0, xinput2::XIDeviceDisabled));
+        assert!(!sources.contains(9));
+        sources.update(&info(xinput2::XISlavePointer, 1, xinput2::XIDeviceEnabled));
+        sources.update(&info(xinput2::XISlavePointer, 1, xinput2::XISlaveRemoved));
+        assert!(!sources.contains(9));
+    }
+
+    /// Masters and slave keyboards are never sources.
+    #[test]
+    fn only_slave_pointers_are_sources() {
+        let mut sources = RawMotionSources::default();
+        for use_ in [xinput2::XIMasterPointer, xinput2::XIMasterKeyboard, xinput2::XISlaveKeyboard] {
+            sources.set(9, use_, 1);
+            assert!(!sources.contains(9));
+        }
+    }
 }
