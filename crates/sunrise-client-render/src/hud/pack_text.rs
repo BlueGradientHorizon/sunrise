@@ -30,26 +30,10 @@ const GLUE: Glue = Glue {
     vertex_id: "hz_vertex_id()",
 };
 
-/// The packs' text shader, when a pack replaces either stage.
-pub(super) fn load(root: &ResourceSource, defaults: &ResourceSource) -> Option<Arc<CoreProgram>> {
-    load_core(root, defaults, "text", &["IS_GUI"], &GLUE)
-}
-
-/// The packs' core shader `name` (`shaders/core/<name>.vsh` and `.fsh`) over `defaults` (the
-/// game's own resources, which have vanilla's and its includes), when a pack replaces either
-/// stage.
-pub(super) fn load_core(
-    root: &ResourceSource,
-    defaults: &ResourceSource,
-    name: &str,
-    defines: &[&str],
-    glue: &Glue,
-) -> Option<Arc<CoreProgram>> {
-    load_pair(root, defaults, (name, name), defines, glue, &|_| false)
-}
-
-/// [`load_core`] for a pipeline whose stages have names of their own (`core/screenquad` and
-/// `core/lightmap`) and that gives the blocks `provided` says yes to.
+/// The packs' core shader stages `names` (`shaders/core/<name>.vsh` and `.fsh`, which may differ,
+/// as `core/screenquad` and `core/lightmap` do) with `defines`, over `defaults` (the game's own
+/// resources, which have vanilla's and its includes), when a pack replaces either stage, giving
+/// the blocks `provided` says yes to.
 pub(super) fn load_pair(
     root: &ResourceSource,
     defaults: &ResourceSource,
@@ -271,14 +255,14 @@ impl UnzipOrDefault
 }
 
 /// The packs' core shader `id` (`minecraft:core/<name>`, one shader for both stages: the sky,
-/// the stars and the block outline) with the blocks its file of `modifiers` names, and its
-/// expression uniforms resolved for the blocks its stages read; none when no pack replaces it,
-/// it doesn't translate, or a block refuses it (named in the log).
+/// the stars, the block outline and the text) with `defines` and the blocks its file of
+/// `modifiers` names, and its expression uniforms resolved for the blocks its stages read; none
+/// when no pack replaces it, it doesn't translate, or a block refuses it (named in the log).
 fn load_with_expressions(
     root: &ResourceSource,
     defaults: &ResourceSource,
     modifiers: &crate::polytone_post::ShaderModifiers,
-    id: &str,
+    (id, defines): (&str, &[&str]),
     glue: &Glue,
 ) -> Option<(
     Arc<CoreProgram>,
@@ -287,7 +271,7 @@ fn load_with_expressions(
     let name = id.strip_prefix("minecraft:core/")?;
     let names = modifiers.names(&[id]);
     let provided = |block: &str| names.iter().any(|n| n == block);
-    let program = load_pair(root, defaults, (name, name), &[], glue, &provided)?;
+    let program = load_pair(root, defaults, (name, name), defines, glue, &provided)?;
     match modifiers.resolve((id, id), &program, &[]) {
         Ok(expressions) => Some((program, expressions)),
         Err(e) => {
@@ -303,7 +287,6 @@ pub(super) fn load_shaders(
     root: &ResourceSource,
     defaults: &ResourceSource,
 ) {
-    atlas.text_shaders.gui = load(root, defaults);
     // The packs' expression uniforms (`shader_modifiers`), read once, with their config entries.
     let configs = crate::packs::polytone_configs(&crate::packs::Source::Opened(root.clone()));
     let modifiers = crate::polytone_post::ShaderModifiers::read(root, configs);
@@ -312,12 +295,14 @@ pub(super) fn load_shaders(
         root,
         defaults,
         &modifiers,
-        blocks[0],
+        (blocks[0], &[]),
         &crate::gfx::core_lines::GLUE,
     );
     (atlas.lines_shader, atlas.lines_expressions) = lines.unzip_or_default();
-    let sky =
-        |id| load_with_expressions(root, defaults, &modifiers, id, &crate::gfx::core_sky::GLUE);
+    let sky = |id| {
+        let glue = &crate::gfx::core_sky::GLUE;
+        load_with_expressions(root, defaults, &modifiers, (id, &[]), glue)
+    };
     (atlas.sky_shader, atlas.sky_expressions) =
         sky(crate::gfx::expression_blocks::SKY[0]).unzip_or_default();
     (atlas.stars_shader, atlas.stars_expressions) =
@@ -325,12 +310,22 @@ pub(super) fn load_shaders(
     let lightmap = load_lightmap(root, defaults, &modifiers);
     atlas.lightmap_shader = lightmap.as_ref().map(|(program, _)| program.clone());
     atlas.lightmap_expressions = lightmap.map(|(_, e)| e).unwrap_or_default();
-    let world = |defines: &[&str], glue| load_core(root, defaults, "text", defines, glue);
-    atlas.text_shaders.world = world(&[], &crate::gfx::core_text::WORLD_GLUE);
-    atlas.text_shaders.see_through = world(
+    // The GUI's, the world's and the see-through text: one shader, three programs.
+    let shader = crate::gfx::core_text::SHADER;
+    let text = |defines: &[&str], glue| {
+        load_with_expressions(root, defaults, &modifiers, (shader, defines), glue)
+    };
+    let gui = text(&["IS_GUI"], &GLUE);
+    let world = text(&[], &crate::gfx::core_text::WORLD_GLUE);
+    let see_through = text(
         &["IS_SEE_THROUGH"],
         &crate::gfx::core_text::SEE_THROUGH_GLUE,
     );
+    let shaders = &mut atlas.text_shaders;
+    let expressions = &mut shaders.expressions;
+    (shaders.gui, expressions.gui) = gui.unzip_or_default();
+    (shaders.world, expressions.world) = world.unzip_or_default();
+    (shaders.see_through, expressions.see_through) = see_through.unzip_or_default();
 }
 
 /// Each uniform block's offset in the one buffer (`core_shader::BLOCKS` order).
@@ -906,3 +901,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "pack_text_text_tests.rs"]
+mod text_tests;

@@ -31,11 +31,29 @@ pub(crate) const SEE_THROUGH_GLUE: Glue = Glue {
     vertex_id: "int(gl_VertexIndex)",
 };
 
+/// The text shader's id, which a pack's `shader_modifiers` file names it by
+/// (`polytone/shader_modifiers/core/text.json`): one shader, `text.vsh` and `text.fsh`, for
+/// the GUI's, the world's and the see-through text.
+pub const SHADER: &str = "minecraft:core/text";
+
 #[derive(Default)]
 pub struct TextShaders {
     pub gui: Option<Arc<CoreProgram>>,
     pub world: Option<Arc<CoreProgram>>,
     pub see_through: Option<Arc<CoreProgram>>,
+    /// Each program's Polytone expression uniforms (`shader_modifiers`), resolved when it
+    /// loaded: the blocks its stages read, with their programs. No text pipeline binds them
+    /// yet (#564's shared expression blocks will): a text shader reading one fails its
+    /// pipeline's validation and the text draws natively.
+    pub expressions: TextExpressions,
+}
+
+/// [`TextShaders`]' expression uniforms, program by program.
+#[derive(Debug, Default)]
+pub struct TextExpressions {
+    pub gui: Vec<crate::polytone_post::ExpressionUniform>,
+    pub world: Vec<crate::polytone_post::ExpressionUniform>,
+    pub see_through: Vec<crate::polytone_post::ExpressionUniform>,
 }
 
 #[derive(Clone, Copy)]

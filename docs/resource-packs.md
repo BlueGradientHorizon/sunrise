@@ -115,6 +115,10 @@ doesn't yet:
 - The programs are resolved once, when the pack's shaders load; a frame only evaluates them, and uploads 16 bytes
   for each.
 
+A pack's `core/text` (`core/text.json`, one shader for the GUI's, the world's and the see-through text) has its
+expression uniforms resolved the same way when it loads, by the same rules, but no text pipeline binds them yet: a
+text shader that reads one is not drawn, and the text draws natively.
+
 ## Gaps and their work
 
 | Gap | Size | Where |
