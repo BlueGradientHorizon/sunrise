@@ -3,6 +3,7 @@ import datetime as dt
 import io
 import json
 import os
+import subprocess
 import tempfile
 import unittest
 from dataclasses import asdict
@@ -150,13 +151,23 @@ class DailyWorkflowTests(unittest.TestCase):
             self.assertNotIn('fuzz', dependencies(job))
         self.assertEqual(daily['fuzz']['uses'], './.github/workflows/parity-fuzz.yml')
 
-    def test_private_directory_prunes_old_runs_before_creating_this_attempt(self):
+    def test_private_directory_step_prunes_only_old_runs_and_needs_no_keep_variable(self):
         workflow = yaml.load((ROOT / '.github/workflows/parity-fuzz.yml').read_text(), Loader=yaml.BaseLoader)
         step = next(s for job in workflow['jobs'].values() for s in job['steps'] if s.get('id') == 'private')
-        script = step['run']
-        prune = script.index('-mtime +14')
-        self.assertIn('rm -rf', script[prune:])
-        self.assertLess(prune, script.index('mkdir "$dir"'))
+        with tempfile.TemporaryDirectory() as temporary:
+            build = Path(temporary) / 'build'
+            old = build / 'keep/fuzz/1-1'
+            fresh = build / 'keep/fuzz/2-1'
+            old.mkdir(parents=True)
+            fresh.mkdir()
+            os.utime(old, (0, 0))
+            env = {key: value for key, value in os.environ.items() if key != 'DYNA_CI_KEEP'}
+            env.update(DYNA_CI_BUILD=str(build), GITHUB_RUN_ID='3', GITHUB_RUN_ATTEMPT='1',
+                       GITHUB_ENV=str(Path(temporary) / 'env'))
+            subprocess.run(['bash', '-ec', step['run']], env=env, check=True)
+            self.assertFalse(old.exists())
+            self.assertTrue(fresh.exists())
+            self.assertTrue((build / 'keep/fuzz/3-1').is_dir())
 
 
 if __name__ == '__main__':

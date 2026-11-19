@@ -25,7 +25,7 @@ jobs:
         id: private
         run: |
           umask 077
-          root="${DYNA_CI_KEEP:?}/fuzz"
+          root="${DYNA_CI_KEEP:-${DYNA_CI_BUILD:?}/keep}/fuzz"
           dir="$root/$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           mkdir -p "$root"
           # Earlier attempts' private reports are kept for two weeks.
@@ -93,7 +93,8 @@ jobs:
           export GITHUB_STEP_SUMMARY="$FUZZ_DIR/private-summary.md"
           left=$((FUZZ_DEADLINE - $(date +%s)))
           if ((left > 0)); then
-            timeout --kill-after=10s "${left}s" python3 tools/ci/daily_fuzz.py run --work-dir "$FUZZ_DIR" \
+            # Its own process group, which timeout signals as a whole, so the game and JVM children stop with the driver.
+            setsid --wait timeout --kill-after=10s "${left}s" python3 tools/ci/daily_fuzz.py run --work-dir "$FUZZ_DIR" \
               --binary "$PWD/.local/parity-target/fast/sunrise-client" --scenarios "$RUNNER_TEMP/fuzz-scenarios.json" \
               > "$FUZZ_DIR/run.log" 2>&1 || echo 'The fuzz batch did not complete; see the issue report.'
           fi
