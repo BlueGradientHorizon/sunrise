@@ -36,7 +36,7 @@ impl Game<'_> {
         if !pose.is_finite() {
             return Err(Gui3dError::NotFinite);
         }
-        let start = batch.vertices.len();
+        let (start, blends) = (batch.vertices.len(), batch.blends.len());
         match subject {
             Gui3dSubject::Item(stack) => {
                 let stack = crate::game::api_values::stack_value(&stack)
@@ -48,7 +48,9 @@ impl Game<'_> {
                 {
                     return Err(Gui3dError::UnknownItem);
                 }
-                self.draw_item_model_posed(batch, &stack, pose);
+                if !self.draw_item_model_posed(batch, &stack, pose) {
+                    return Err(Gui3dError::NotFinite);
+                }
             }
             Gui3dSubject::Model(model) => self.draw_model_posed(batch, model, pose)?,
         }
@@ -58,6 +60,7 @@ impl Game<'_> {
             .all(|v| v.pos.iter().all(|c| c.is_finite()) && v.depth.is_finite())
         {
             batch.vertices.truncate(start);
+            batch.blends.truncate(blends);
             return Err(Gui3dError::NotFinite);
         }
         Ok(())
@@ -136,8 +139,12 @@ mod tests {
     #[test]
     fn the_identity_at_size_16_is_the_slots_pose() {
         let pose = view_pose(Gui3dView::new([40.0, 30.0], 16.0, IDENTITY_TRANSFORM));
-        let slot = Mat4::from_translation(Vec3::new(40.0, 30.0, 0.0))
-            * Mat4::from_scale(Vec3::new(16.0, -16.0, 16.0));
+        let slot = Mat4::from_cols_array(&[
+            16.0, 0.0, 0.0, 0.0, // x
+            0.0, -16.0, 0.0, 0.0, // y
+            0.0, 0.0, 16.0, 0.0, // z
+            40.0, 30.0, 0.0, 1.0, // translation
+        ]);
         assert_eq!(pose, slot);
     }
 
@@ -148,9 +155,6 @@ mod tests {
         let pose = view_pose(Gui3dView::new([100.0, 100.0], 10.0, turn));
         // The model's +x point lands above the centre on the screen (y down).
         let right = pose.transform_point3(Vec3::X);
-        assert!(
-            (right - Vec3::new(100.0, 90.0, 0.0)).length() < 1e-4,
-            "{right}"
-        );
+        assert_eq!(right, Vec3::new(100.0, 90.0, 0.0));
     }
 }

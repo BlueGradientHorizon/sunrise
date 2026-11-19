@@ -5,7 +5,7 @@ use crate::{ItemStack, ModelError, ModelRef};
 
 /// What [`DrawContext::model_3d`](crate::DrawContext::model_3d) draws.
 #[derive(Clone, Debug, PartialEq)]
-// exhaustive: the two things the game draws in 3D, matched without a wildcard
+// exhaustive: an item or a model are the only things a screen can ask to have drawn in 3D; a new kind of subject is a new method, so a mod may match without a wildcard
 #[derive(sunrise_mod_api_macros::Wire)]
 pub enum Gui3dSubject {
     /// An item as `item_stack` draws it in a slot, without its count or decorations: its model's

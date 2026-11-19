@@ -377,9 +377,9 @@ pub fn draw_posed(
     time: f32,
     glint_speed: f32,
     glint_alpha: f32,
-) {
+) -> bool {
     if state.is_empty() {
-        return;
+        return true;
     }
     let everywhere = [
         f32::NEG_INFINITY,
@@ -398,10 +398,11 @@ pub fn draw_posed(
         time,
         glint_speed,
         glint_alpha,
-    );
+    )
 }
 
-/// Submits `state` under `pose`, lights it as a slot does and draws it clipped to `rect`.
+/// Submits `state` under `pose`, lights it as a slot does and draws it clipped to `rect`. False,
+/// with nothing drawn, when a corner is not finite.
 #[allow(clippy::too_many_arguments)]
 fn draw_under(
     state: &ItemRenderState,
@@ -414,9 +415,13 @@ fn draw_under(
     time: f32,
     glint_speed: f32,
     glint_alpha: f32,
-) {
+) -> bool {
     let mut quads: Vec<ItemQuad> = Vec::new();
     state.submit(renderer, sprites, host, pose, &mut quads);
+    // A turn that overflows a corner draws nothing.
+    if !quads.iter().all(|q| q.pos.iter().all(|p| p.is_finite())) {
+        return false;
+    }
     let lights = if state.uses_block_light() {
         items_3d_lights()
     } else {
@@ -439,6 +444,7 @@ fn draw_under(
         millis: time * 1000.0,
     });
     draw_quads_with(&quads, lights, batch, rect, glint.as_ref(), cit);
+    true
 }
 
 /// Lights, culls, sorts far to near and clips `quads` (GUI positions) to

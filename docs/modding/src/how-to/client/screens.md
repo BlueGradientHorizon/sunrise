@@ -219,9 +219,11 @@ draw.model_3d(Gui3dSubject::Model(self.mirror), Gui3dView::new([120.0, 60.0], 40
   row-major 3x4 affine matrix applied about the centre in the frame `x` right, `y` up, `z`
   towards the viewer, so a rotation about any axis, roll included, needs no agreed Euler order.
   Animate by passing a new matrix each frame.
-- The view is orthographic, and the draw has a depth of its own: it never intersects what the
-  screen drew before or after it, and later drawing covers it in call order. There is no z
-  input. `push_clip` cuts it as it cuts `fill`.
+- The view is orthographic. A model has a depth of its own: it never intersects what the screen
+  drew before or after it, and later drawing covers it in call order. An item is painted as a
+  slot paints one, its faces sorted far to near with no depth of their own, so an item turned
+  out of its slot's frame may cover or be covered by faces it crosses. There is no z input.
+  `push_clip` cuts both as it cuts `fill`.
 - Refusals draw nothing: `Gui3dError::Unavailable` (no game, or a server), `NotFinite` (a value,
   or a corner the turn sends, that is not finite, or a size that is not positive), `UnknownItem`
   (an empty stack or unknown item) and `Model(ModelError)` (a stale or unknown handle).

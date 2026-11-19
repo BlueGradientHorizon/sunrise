@@ -609,7 +609,7 @@ impl Game<'_> {
         batch: &mut HudBatch,
         stack: &ItemStack,
         pose: glam::Mat4,
-    ) {
+    ) -> bool {
         let owner = self.player_owner(Some(stack));
         let state = self.resolve_item(stack, DisplayContext::Gui, Some(&owner), 0);
         item_render::gui::draw_posed(
@@ -622,7 +622,7 @@ impl Game<'_> {
             self.glint_frame.millis / 1000.0,
             self.glint_frame.speed,
             self.glint_frame.alpha,
-        );
+        )
     }
     /// The glint clock, options and sprite for this frame: read once per
     /// frame, not per item (`GameRenderer.extractOptions`).

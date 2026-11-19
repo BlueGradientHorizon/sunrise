@@ -290,6 +290,47 @@ mod tests {
         assert!(turned.transform_vector3(Vec3::X).z > 0.99);
     }
 
+    fn quad(z: f32, color: u32, normal: Vec3, cull: bool) -> SceneQuad {
+        SceneQuad {
+            corners: [Vec3::new(0.0, 0.0, z); 4],
+            uv: [[0.0; 2]; 4],
+            color,
+            normal,
+            cull,
+        }
+    }
+
+    /// Faces turned away are dropped when they cull, the rest come far to near, and quads at one
+    /// depth keep the order they came in.
+    #[test]
+    fn project_quads_drops_back_faces_and_sorts_far_to_near_stably() {
+        let towards = Vec3::Z; // faces the viewer under the identity
+        let away = Vec3::NEG_Z;
+        let quads = vec![
+            quad(5.0, 1, towards, true),
+            quad(9.0, 2, towards, true),
+            quad(5.0, 3, towards, true),
+            quad(1.0, 4, away, true),
+            quad(2.0, 5, away, false),
+        ];
+        let seen = project_quads(quads, Mat4::IDENTITY).unwrap();
+        // Depth is z: the smaller z is farther. Culled quad 4 is gone; 5 does not cull.
+        let colors: Vec<_> = seen.iter().map(|q| q.color).collect();
+        assert_eq!(colors, [5, 1, 3, 2]);
+    }
+
+    #[test]
+    fn project_quads_refuses_a_quad_that_does_not_stay_finite() {
+        let mut turned = Mat4::IDENTITY;
+        turned.x_axis.x = f32::MAX;
+        let quads = vec![quad(0.0, 1, Vec3::Z, false), {
+            let mut far = quad(0.0, 2, Vec3::Z, false);
+            far.corners[0].x = f32::MAX;
+            far
+        }];
+        assert!(project_quads(quads, turned).is_none());
+    }
+
     #[test]
     fn faces_are_shaded_as_blocks_are() {
         assert_eq!(face_shade(Vec3::Y), 1.0);
