@@ -69,6 +69,8 @@ const LIMIT: f64 = 3.0e7;
 #[derive(Clone)]
 pub(super) struct Provided {
     provider: Arc<dyn ParticleProvider>,
+    /// The provider's dense slot among the registered ones, which its batch is filled by.
+    slot: u32,
     /// `ModParticle::state`, kept from one tick to the next.
     state: [f64; 4],
     /// The frame of the sprite set drawn, as the provider last saw it.
@@ -85,9 +87,10 @@ impl Debug for Provided {
     }
 }
 impl Provided {
-    pub(super) fn new(provider: Arc<dyn ParticleProvider>, frame: u32) -> Self {
+    pub(super) fn new(provider: Arc<dyn ParticleProvider>, slot: u32, frame: u32) -> Self {
         Self {
             provider,
+            slot,
             state: [0.0; 4],
             frame,
             pending: false,
@@ -100,12 +103,14 @@ impl Provided {
     }
 }
 
-/// The batches of one tick, kept between ticks so a tick allocates nothing once warm.
+/// The batches of one tick, kept between ticks so a tick allocates nothing once warm. One pass
+/// over the particles sorts them into a bucket per provider (by the dense slot the provider was
+/// given when it registered); each provider then runs once on its bucket.
 #[derive(Default)]
 pub(super) struct Batch {
-    providers: Vec<Arc<dyn ParticleProvider>>,
+    /// The particle indices of each provider slot's batch.
+    buckets: Vec<Vec<usize>>,
     views: Vec<ModParticle>,
-    index: Vec<usize>,
 }
 impl Batch {
     /// Calls each provider once with every particle of `particles` it owns that the engine aged
@@ -117,46 +122,53 @@ impl Batch {
         level: &dyn ParticleLevelView,
         mut set_frame: impl FnMut(&mut Particle, usize),
     ) {
-        self.providers.clear();
-        for p in particles.iter() {
-            if let Some(provided) = p.provided.as_ref().filter(|q| q.pending)
-                && !self
-                    .providers
-                    .iter()
-                    .any(|known| Arc::ptr_eq(known, &provided.provider))
-            {
-                self.providers.push(provided.provider.clone());
+        for bucket in &mut self.buckets {
+            bucket.clear();
+        }
+        for (i, p) in particles.iter().enumerate() {
+            if let Some(provided) = p.provided.as_ref().filter(|q| q.pending) {
+                let slot = provided.slot as usize;
+                if self.buckets.len() <= slot {
+                    self.buckets.resize_with(slot + 1, Vec::new);
+                }
+                self.buckets[slot].push(i);
             }
         }
-        for provider in &self.providers {
+        for bucket in &self.buckets {
+            let Some(&first) = bucket.first() else {
+                continue;
+            };
+            let provider = particles[first]
+                .provided
+                .as_ref()
+                .map(|provided| provided.provider.clone())
+                .expect("a bucket holds provider particles");
             self.views.clear();
-            self.index.clear();
-            for (i, p) in particles.iter().enumerate() {
-                let Some(provided) = p.provided.as_ref().filter(|q| q.pending) else {
-                    continue;
-                };
-                if Arc::ptr_eq(provider, &provided.provider) {
-                    self.views.push(ModParticle {
-                        position: p.position,
-                        previous: p.previous,
-                        velocity: p.velocity,
-                        age: p.age,
-                        lifetime: p.lifetime,
-                        size: p.size,
-                        rgba: p.rgba,
-                        frame: provided.frame,
-                        removed: false,
-                        state: provided.state,
-                        facing: p.facing(),
-                        roll: p.roll,
-                    });
-                    self.index.push(i);
-                }
+            for &i in bucket {
+                let p = &particles[i];
+                let provided = p
+                    .provided
+                    .as_ref()
+                    .expect("a bucket holds provider particles");
+                self.views.push(ModParticle {
+                    position: p.position,
+                    previous: p.previous,
+                    velocity: p.velocity,
+                    age: p.age,
+                    lifetime: p.lifetime,
+                    size: p.size,
+                    rgba: p.rgba,
+                    frame: provided.frame,
+                    removed: false,
+                    state: provided.state,
+                    facing: p.facing(),
+                    roll: p.roll,
+                });
             }
             let mut batch = ParticleBatch::from_vec(std::mem::take(&mut self.views));
             provider.tick(&mut batch, level);
             self.views = batch.into_vec();
-            for (view, &i) in self.views.iter().zip(&self.index) {
+            for (view, &i) in self.views.iter().zip(bucket) {
                 if let Some(frame) = particles[i].take(view) {
                     set_frame(&mut particles[i], frame);
                 }
@@ -459,8 +471,34 @@ pub(super) mod tests {
         e.tick_particle(p, level);
         e.tick_providers(std::slice::from_mut(p), level);
     }
+    /// Counts its calls and the particles each held.
+    #[derive(Default)]
+    struct Calls(std::sync::Mutex<Vec<usize>>);
+    impl ParticleProvider for Calls {
+        fn tick(&self, particles: &mut ParticleBatch, _: &dyn ParticleLevelView) {
+            self.0.lock().unwrap().push(particles.len());
+        }
+    }
+    #[test]
+    fn a_provider_runs_once_per_tick_on_all_its_particles() {
+        let scene = Scene::new();
+        let level = scene.level();
+        let mut e = engine();
+        let calls = Arc::new(Calls::default());
+        let mut all: Vec<Particle> = (0..3).map(|_| provided(&mut e, calls.clone())).collect();
+        for p in &mut all {
+            p.lifetime = 20;
+            e.tick_particle(p, &level);
+        }
+        e.tick_providers(&mut all, &level);
+        assert_eq!(*calls.0.lock().unwrap(), [3]);
+        // Nothing aged since: no particle is pending, so no call.
+        e.tick_providers(&mut all, &level);
+        assert_eq!(calls.0.lock().unwrap().len(), 1);
+    }
     fn provided(e: &mut ParticleEngine, provider: Arc<dyn ParticleProvider>) -> Particle {
-        e.mod_sets.get_mut("example:orbit").unwrap().provider = Some(provider);
+        e.providers.insert("example:orbit".into(), provider.clone());
+        e.mod_sets.get_mut("example:orbit").unwrap().provider = Some((0, provider));
         e.make(
             &ParticleOptions::named("example:orbit"),
             [1.0; 3],

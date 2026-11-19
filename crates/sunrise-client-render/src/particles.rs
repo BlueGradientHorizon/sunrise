@@ -243,7 +243,7 @@ pub type BlockStates = Arc<dyn AsRef<[mod_api::BlockState]> + Send + Sync>;
 struct ModSet {
     set: u32,
     behaviour: Option<ModBehaviour>,
-    provider: Option<Arc<dyn ParticleProvider>>,
+    provider: Option<(u32, Arc<dyn ParticleProvider>)>,
     /// The handle of the registered group (`groups::registered`), none for the built-in one.
     group: Option<u32>,
 }
@@ -1422,7 +1422,11 @@ impl ParticleEngine {
                 })
                 .unwrap_or_default();
             if !sprites.is_empty() {
-                let provider = self.providers.get(&key).cloned();
+                let provider = self
+                    .providers
+                    .iter()
+                    .position(|(name, _)| *name == key)
+                    .map(|slot| (slot as u32, self.providers[&key].clone()));
                 self.mod_sets.insert(
                     key,
                     ModSet {
@@ -1927,7 +1931,7 @@ impl ParticleEngine {
                     q.sprite = Sprite::Index(sprites[0]);
                 }
             }
-            if let Some(provider) = provider {
+            if let Some((slot, provider)) = provider {
                 // The declared values seed the particle; the provider owns its tick from here.
                 // Its sprite is chosen by frame, so the set stays attached.
                 let frame = sprites
@@ -1936,7 +1940,7 @@ impl ParticleEngine {
                     .unwrap_or(0);
                 q.set = Some(set);
                 q.behaviour = Behaviour::Controlled { translucent: true };
-                q.provided = Some(native::Provided::new(provider, frame as u32));
+                q.provided = Some(native::Provided::new(provider, slot, frame as u32));
             }
             return Some(q);
         }
