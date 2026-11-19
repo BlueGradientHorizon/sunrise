@@ -843,6 +843,26 @@ pub fn registry_files(
     Ok(files)
 }
 
+/// A `recipe_priorities` layer as the store keeps it: `<pack>: <file>`, a NUL byte, the file's
+/// bytes, so that a refusal names the pack the layer came from.
+fn labelled_layer(pack: &str, file: &str, bytes: &[u8]) -> Vec<u8> {
+    let mut layer = format!("{pack}: {file}\0").into_bytes();
+    layer.extend_from_slice(bytes);
+    layer
+}
+
+/// The label and the bytes of a layer `DataStore::load` kept under `recipe_priorities`. A layer
+/// without a label is named as such.
+pub fn split_labelled_layer(layer: &[u8]) -> (&str, &[u8]) {
+    match layer.iter().position(|&byte| byte == 0) {
+        Some(at) => (
+            std::str::from_utf8(&layer[..at]).unwrap_or("a pack"),
+            &layer[at + 1..],
+        ),
+        None => ("an unlabelled layer", layer),
+    }
+}
+
 impl DataStore {
     pub fn load(packs: &[&DataPack]) -> Self {
         let mut s = Self::default();
@@ -854,12 +874,16 @@ impl DataStore {
                     .source()
                     .singleton_resources("data", "recipe_priorities.json")
                 {
-                    if let Ok(bytes) = resource.read() {
-                        s.files
-                            .entry("recipe_priorities".into())
-                            .or_default()
-                            .push(bytes);
-                    }
+                    let file = resource.name().unwrap_or_default();
+                    // An unreadable file stays a layer, empty, so that its refusal names it.
+                    let layer = match resource.read() {
+                        Ok(bytes) => labelled_layer(&pack.id, file, &bytes),
+                        Err(error) => labelled_layer(&format!("{} ({error})", pack.id), file, &[]),
+                    };
+                    s.files
+                        .entry("recipe_priorities".into())
+                        .or_default()
+                        .push(layer);
                 }
             }
             // `tags` walks the whole tags tree, so a `tags/function` file is
@@ -1312,7 +1336,7 @@ mod tests {
     #[test]
     fn recipe_priority_singletons_keep_pack_order_across_namespaces() {
         let root =
-            std::env::temp_dir().join(format!("horizon-priority-packs-{}", std::process::id()));
+            std::env::temp_dir().join(format!("sunrise-priority-packs-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         for (pack, namespace, bytes) in [
             ("a", "zzz", r#"{"entries":{"test:b":5}}"#),
@@ -1333,13 +1357,15 @@ mod tests {
         }
         let packs = discover(&root);
         let store = DataStore::load(&packs.iter().collect::<Vec<_>>());
-        assert_eq!(
-            store.files["recipe_priorities"],
-            [
-                br#"{"entries":{"test:b":5}}"#.to_vec(),
-                br#"{"replace":true}"#.to_vec(),
-            ]
-        );
+        let layers: Vec<_> = store.files["recipe_priorities"]
+            .iter()
+            .map(|layer| split_labelled_layer(layer))
+            .collect();
+        assert_eq!(layers.len(), 2);
+        assert!(layers[0].0.ends_with("data/zzz/recipe_priorities.json"));
+        assert!(layers[1].0.ends_with("data/aaa/recipe_priorities.json"));
+        assert_eq!(layers[0].1, br#"{"entries":{"test:b":5}}"#);
+        assert_eq!(layers[1].1, br#"{"replace":true}"#);
         let _ = fs::remove_dir_all(&root);
     }
 

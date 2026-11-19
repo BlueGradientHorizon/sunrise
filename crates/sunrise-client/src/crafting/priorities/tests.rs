@@ -83,8 +83,6 @@ fn layers_conditions_unknown_ids_and_integer_boundaries() {
         br#"{"entries":{"test:a":5,"test:b":-2}}"#.to_vec(),
         br#"{"replace":true,"neoforge:conditions":[{"type":"neoforge:not","value":{"type":"neoforge:true"}}]}"#.to_vec(),
         br#"{"entries":{"test:b":2147483647}}"#.to_vec(),
-        // A malformed layer cannot clear previously accepted entries.
-        br#"{"replace":true,"entries":{"test:a":2147483648}}"#.to_vec(),
     ])];
     let priorities = Priorities::load(&root.0, &PackOverlay::new(&files)).unwrap();
     assert_eq!(priorities.get("test:a"), 5);
@@ -95,7 +93,72 @@ fn layers_conditions_unknown_ids_and_integer_boundaries() {
 }
 
 #[test]
+fn an_invalid_layer_is_refused_whole_naming_its_pack() {
+    let root = Fixture::new("refused");
+    let layer = |pack: &str, json: &str| {
+        format!("{pack}: data/x/recipe_priorities.json\0{json}").into_bytes()
+    };
+    for (json, reason) in [
+        // The root must be an object, whatever else it holds.
+        ("[]", "the root must be an object"),
+        ("5", "the root must be an object"),
+        (r#"[false,{}]"#, "the root must be an object"),
+        (r#"{"replace":"yes"}"#, "invalid type"),
+        (r#"{"entries":[]}"#, "invalid type"),
+        // Out of range, and with `replace`: nothing of the layer applies.
+        (
+            r#"{"replace":true,"entries":{"test:a":2147483648}}"#,
+            "invalid value",
+        ),
+        ("{", "EOF"),
+    ] {
+        let files = vec![(
+            "recipe_priorities".into(),
+            vec![
+                layer("good", r#"{"entries":{"test:a":5}}"#),
+                layer("bad_pack", json),
+            ],
+        )];
+        let error = Priorities::load(&root.0, &PackOverlay::new(&files))
+            .err()
+            .unwrap()
+            .to_string();
+        assert!(
+            error.contains("bad_pack: data/x/recipe_priorities.json"),
+            "{error}"
+        );
+        assert!(error.contains(reason), "{json}: {error}");
+    }
+    // A layer whose conditions fail is omitted before it is read as a value.
+    let files = vec![(
+        "recipe_priorities".into(),
+        vec![layer(
+            "off",
+            r#"{"replace":"yes","neoforge:conditions":[{"type":"neoforge:not","value":{"type":"neoforge:true"}}]}"#,
+        )],
+    )];
+    assert!(Priorities::load(&root.0, &PackOverlay::new(&files)).is_ok());
+}
+
+struct Crusher;
+#[mod_api::__subscriptions]
+impl mod_api::Hooks for Crusher {
+    fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+        r.register_recipe_type("test:crusher");
+        r.register_raw_recipe_serializer("test:crusher", "test:crusher");
+    }
+}
+
+#[test]
 fn every_projection_uses_the_same_priority_order() {
+    let mods = || [mod_api::ModEntry::new("crusher", Box::new(Crusher))];
+    mod_platform::testing::with_mods(mods().into(), || {
+        mod_platform::__private::part_tests::install_parts_fixture(&mods()).unwrap();
+        projections_follow_one_order();
+    });
+}
+
+fn projections_follow_one_order() {
     let root = Fixture::new("projections");
     let items = Items::for_tests(HashMap::new());
     let mut sources = Vec::new();

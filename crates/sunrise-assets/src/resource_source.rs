@@ -92,6 +92,13 @@ impl Resource {
     pub fn bytes(bytes: Vec<u8>) -> Self {
         Self(ResourceStorage::Bytes(bytes.into()))
     }
+    /// The file's name in its source; none for bytes made by the game.
+    pub fn name(&self) -> Option<&str> {
+        match &self.0 {
+            ResourceStorage::File { name, .. } => Some(name),
+            ResourceStorage::Bytes(_) => None,
+        }
+    }
     pub fn read(&self) -> io::Result<Vec<u8>> {
         match &self.0 {
             ResourceStorage::File { source, name } => source.read(name),
@@ -396,7 +403,10 @@ impl ResourceSource {
             Storage::Index(.., sources) => sources.clone(),
             _ => Arc::from([]),
         };
-        Self(Arc::new(Storage::Index(index, layers, sources)), self.1.clone())
+        Self(
+            Arc::new(Storage::Index(index, layers, sources)),
+            self.1.clone(),
+        )
     }
     /// A value computed once for this generation and shared by every clone of the source and
     /// every source `extended` from it: the first caller makes it, the rest wait for it and take

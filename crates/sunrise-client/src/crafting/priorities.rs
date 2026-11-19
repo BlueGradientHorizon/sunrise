@@ -2,53 +2,50 @@
 //! recipe-priorities format). Order the shared sources before any table is built.
 use super::{ResolvedSources, registration_key};
 use crate::Result;
+use serde::Deserialize as _;
+use serde_json::Value;
+use std::{cmp::Reverse, collections::HashMap, fs, path::Path};
 use sunrise_world::{
     conditions::LoadConditions, loot::PackOverlay,
 };
-use serde_json::Value;
-use std::{cmp::Reverse, collections::HashMap, fs, path::Path};
+
+/// One `recipe_priorities.json`, validated whole before any of it applies.
+#[derive(serde::Deserialize)]
+struct Layer {
+    #[serde(default)]
+    replace: bool,
+    #[serde(default)]
+    entries: HashMap<String, i32>,
+}
 
 #[derive(Default)]
 struct Priorities(HashMap<String, i32>);
 
 impl Priorities {
-    fn layer(&mut self, bytes: &[u8], conditions: &LoadConditions) {
-        let parsed = || -> std::result::Result<_, String> {
-            let file: Value = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
-            if !conditions.allows_file(&file, "recipe_priorities.json") {
-                return Ok(None);
-            }
-            let replace = match file.get("replace") {
-                None => false,
-                Some(Value::Bool(value)) => *value,
-                _ => return Err("replace must be a boolean".into()),
-            };
-            let mut entries = HashMap::new();
-            if let Some(values) = file.get("entries") {
-                let values = values.as_object().ok_or("entries must be an object")?;
-                for (id, value) in values {
-                    let priority = value
-                        .as_i64()
-                        .and_then(|v| i32::try_from(v).ok())
-                        .ok_or_else(|| {
-                            format!("priority for {id} must be a signed 32-bit integer")
-                        })?;
-                    entries.insert(sunrise_items::recipe_sources::qualified(id), priority);
-                }
-            }
-            Ok(Some((replace, entries)))
-        };
-        match parsed() {
-            Ok(Some((replace, entries))) => {
-                if replace {
-                    self.0.clear();
-                }
-                // Unknown ids are intentionally retained, including conditioned-out recipes.
-                self.0.extend(entries);
-            }
-            Ok(None) => {}
-            Err(e) => log::warn!("recipe_priorities.json not loaded: {e}"),
+    /// Apply one layer, or refuse it as a whole naming `source`: a root that is not an object,
+    /// a `replace` that is not a boolean, an `entries` that is not an object of signed 32-bit
+    /// integers. A layer whose load conditions fail changes nothing, however it is written.
+    fn layer(&mut self, source: &str, bytes: &[u8], conditions: &LoadConditions) -> Result<()> {
+        let refused = |reason: String| format!("recipe priorities of {source} refused: {reason}");
+        let file: Value = serde_json::from_slice(bytes).map_err(|e| refused(e.to_string()))?;
+        if !file.is_object() {
+            return Err(refused("the root must be an object".into()).into());
         }
+        if !conditions.allows_file(&file, "recipe_priorities.json") {
+            return Ok(());
+        }
+        let layer = Layer::deserialize(&file).map_err(|e| refused(e.to_string()))?;
+        if layer.replace {
+            self.0.clear();
+        }
+        // Unknown ids are intentionally retained, including conditioned-out recipes.
+        self.0.extend(
+            layer
+                .entries
+                .into_iter()
+                .map(|(id, priority)| (sunrise_items::recipe_sources::qualified(&id), priority)),
+        );
+        Ok(())
     }
 
     fn load(root: &Path, overlay: &PackOverlay) -> Result<Self> {
@@ -70,9 +67,11 @@ impl Priorities {
         for namespace in namespaces {
             let path = namespace.join("recipe_priorities.json");
             match fs::read(&path) {
-                Ok(bytes) => priorities.layer(&bytes, &conditions),
+                Ok(bytes) => priorities.layer(&path.display().to_string(), &bytes, &conditions)?,
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                Err(e) => log::warn!("{} not loaded: {e}", path.display()),
+                Err(e) => {
+                    return Err(format!("{} not readable: {e}", path.display()).into());
+                }
             }
         }
         for (_, layers) in overlay
@@ -80,8 +79,9 @@ impl Priorities {
             .iter()
             .filter(|(key, _)| key == "recipe_priorities")
         {
-            for bytes in layers {
-                priorities.layer(bytes, &conditions);
+            for labelled in layers {
+                let (source, bytes) = crate::datapack::split_labelled_layer(labelled);
+                priorities.layer(source, bytes, &conditions)?;
             }
         }
         Ok(priorities)
