@@ -25,14 +25,10 @@ pub(crate) const INFO_BLOCK: &str = "LightmapInfo";
 /// The pipeline's shaders, whose packs' expression uniforms (`shader_modifiers`) it is given.
 pub const SHADERS: [&str; 2] = ["minecraft:core/screenquad", "minecraft:core/lightmap"];
 
-/// Each vanilla uniform block's offset in the one buffer (`core_shader::BLOCKS` order), then
-/// `LightmapInfo`'s.
-const BLOCK_OFFSETS: [u64; 4] = [0, 256, 512, 768];
-const BLOCK_SIZES: [u64; 4] = [48, 64, 160, 48];
+/// `LightmapInfo`'s offset in the uniform buffer, after vanilla's blocks
+/// (`expression_blocks::VANILLA_OFFSETS`), and its size.
 const INFO_OFFSET: u64 = 1024;
 const INFO_SIZE: u64 = 96;
-/// An expression uniform's block: one float, as std140 rounds it.
-const EXPRESSION_SIZE: u64 = 16;
 /// The bytes of vanilla's blocks and `LightmapInfo` in the uniform buffer.
 const UNIFORM_BYTES: usize = (INFO_OFFSET + INFO_SIZE) as usize;
 
@@ -83,6 +79,13 @@ impl LightmapInfo {
 
 /// The light texture `lightmap.fsh` draws for `info`, computed here: RGBA rows of sky level by
 /// block level, what the native path uploads.
+/// `lightmap.fsh`'s `notGamma` scale, its four multiplies in the shader's order: `powi(4)`
+/// squares twice and rounds differently.
+fn max_scaled(max: f32) -> f32 {
+    let inverted = 1.0 - max;
+    1.0 - inverted * inverted * inverted * inverted
+}
+
 pub(crate) fn native_lightmap(info: &LightmapInfo) -> [u8; 16 * 16 * 4] {
     use glam::Vec3;
     let brightness = |level: f32| level / (4.0 - 3.0 * level);
@@ -96,7 +99,7 @@ pub(crate) fn native_lightmap(info: &LightmapInfo) -> [u8; 16 * 16 * 4] {
             let mut color = Vec3::from(info.ambient_color)
                 .max(Vec3::from(info.night_vision_color) * info.night_vision);
             color += Vec3::from(info.sky_light_color) * sky_brightness;
-            let parabolic = (2.0 * block_level - 1.0).powi(2);
+            let parabolic = (2.0 * block_level - 1.0) * (2.0 * block_level - 1.0);
             let block_color = Vec3::from(info.block_light_tint).lerp(Vec3::ONE, 0.9 * parabolic);
             color += block_color * block_brightness;
             // A boss bar mixes the light toward 70/60/60%.
@@ -104,9 +107,7 @@ pub(crate) fn native_lightmap(info: &LightmapInfo) -> [u8; 16 * 16 * 4] {
             color -= Vec3::splat(info.darkness);
             color = color.clamp(Vec3::ZERO, Vec3::ONE);
             let max = color.max_element().max(1e-6);
-            let inverted = 1.0 - max;
-            let scaled = 1.0 - inverted.powi(4);
-            let not_gamma = color * (scaled / max);
+            let not_gamma = color * (max_scaled(max) / max);
             color = color.lerp(not_gamma, info.brightness);
             let i = (s * 16 + b) * 4;
             pixels[i] = (color.x * 255.0) as u8;
@@ -175,16 +176,11 @@ pub(super) struct CoreLightmap {
     group: wgpu::BindGroup,
     uniform: wgpu::Buffer,
     /// The packs' expression uniforms its stages read (`shader_modifiers`), resolved when it
-    /// loaded, each with this frame's value and its block's offset after `LightmapInfo`.
-    expressions: Vec<(ExpressionUniform, f32)>,
+    /// loaded, after `LightmapInfo`.
+    pub(super) extra: super::expression_blocks::ExpressionBlocks,
     /// The bytes of vanilla's blocks and `LightmapInfo` a frame writes, kept between frames.
     bytes: [u8; UNIFORM_BYTES],
     readback: Option<Readback>,
-}
-
-/// The offset of the `i`th expression uniform's block, after `LightmapInfo`'s.
-fn expression_offset(i: usize) -> u64 {
-    INFO_OFFSET + 256 * (i as u64 + 1)
 }
 
 impl CoreLightmap {
@@ -214,48 +210,29 @@ impl CoreLightmap {
         };
         let vertex = module("Resource pack lightmap (vertex)", &program.vertex);
         let fragment = module("Resource pack lightmap (fragment)", &program.fragment);
+        let extra = super::expression_blocks::ExpressionBlocks::new(expressions, INFO_OFFSET + 256);
         let uniform = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Resource pack lightmap"),
-            size: expression_offset(expressions.len()),
+            size: extra.size(),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
         // Every block a stage reads, at its offset and size, visible to the stages reading it:
-        // vanilla's four, `LightmapInfo`, then the expression uniforms.
-        let vanilla = (0..4u32).map(|b| (b, BLOCK_OFFSETS[b as usize], BLOCK_SIZES[b as usize]));
-        let info = info_binding.map(|b| (b, INFO_OFFSET, INFO_SIZE));
-        let blocks: Vec<(u32, u64, u64, wgpu::ShaderStages)> = vanilla
-            .chain(info)
-            .map(|(b, offset, size)| (b, offset, size, program.stages_reading(b)))
-            .chain(
-                expressions
-                    .iter()
-                    .enumerate()
-                    .map(|(i, e)| (e.binding, expression_offset(i), EXPRESSION_SIZE, e.stages)),
-            )
-            .filter(|(.., stages)| !stages.is_empty())
-            .collect();
-        let entries: Vec<wgpu::BindGroupLayoutEntry> = blocks
-            .iter()
-            .map(
-                |&(binding, _, size, visibility)| wgpu::BindGroupLayoutEntry {
-                    binding,
-                    visibility,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: wgpu::BufferSize::new(size),
-                    },
-                    count: None,
-                },
-            )
+        // vanilla's four and `LightmapInfo`, then the expression uniforms.
+        let info = info_binding.map(|b| (b, INFO_OFFSET, INFO_SIZE, program.stages_reading(b)));
+        let mut blocks = super::expression_blocks::vanilla_blocks(program);
+        blocks.extend(info.filter(|(.., stages)| !stages.is_empty()));
+        let entries: Vec<wgpu::BindGroupLayoutEntry> = (blocks.iter())
+            .map(|&(binding, _, size, stages)| {
+                super::expression_blocks::block_entry(binding, size, stages)
+            })
+            .chain(extra.layout())
             .collect();
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Resource pack lightmap"),
             entries: &entries,
         });
-        let resources: Vec<wgpu::BindGroupEntry> = blocks
-            .iter()
+        let resources: Vec<wgpu::BindGroupEntry> = (blocks.iter())
             .map(|&(binding, offset, size, _)| wgpu::BindGroupEntry {
                 binding,
                 resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
@@ -264,6 +241,7 @@ impl CoreLightmap {
                     size: wgpu::BufferSize::new(size),
                 }),
             })
+            .chain(extra.entries(&uniform))
             .collect();
         let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Resource pack lightmap"),
@@ -310,7 +288,7 @@ impl CoreLightmap {
             group,
             uniform,
             bytes: [0; UNIFORM_BYTES],
-            expressions: expressions.iter().map(|e| (e.clone(), 0.0)).collect(),
+            extra,
             readback: None,
         })
     }
@@ -344,11 +322,7 @@ impl CoreLightmap {
     ) {
         let (buffer, data) = self.uniforms(globals, info);
         uploads.buffer(encoder, buffer, 0, data);
-        for (i, (_, value)) in self.expressions.iter().enumerate() {
-            let mut block = [0u8; EXPRESSION_SIZE as usize];
-            block[..4].copy_from_slice(&value.to_le_bytes());
-            uploads.buffer(encoder, &self.uniform, expression_offset(i), &block);
-        }
+        self.extra.upload(uploads, encoder, &self.uniform);
     }
 
     /// `Lightmap.render`'s pass: the screen quad over the whole of `texture` (through `view`,
@@ -542,27 +516,6 @@ impl super::Renderer {
     ) {
         self.core_lightmap = program.and_then(|p| CoreLightmap::new(&self.device, p, expressions));
         self.lightmap_uploaded = false;
-    }
-
-    /// Whether this frame has expression uniforms to evaluate: the pack's lightmap shader reads
-    /// some and draws (not under fullbright, which keeps the texture white).
-    pub fn reads_pack_expressions(&self) -> bool {
-        self.core_lightmap
-            .as_ref()
-            .is_some_and(|core| !self.fullbright && !core.expressions.is_empty())
-    }
-
-    /// Evaluates the expression uniforms the drawn pack lightmap shader reads, from `frame` (the
-    /// packs' expression context): their programs, resolved when it loaded, and nothing else.
-    pub fn evaluate_pack_expressions(&mut self, frame: &crate::environment::Frame) {
-        if !self.reads_pack_expressions() {
-            return;
-        }
-        if let Some(core) = self.core_lightmap.as_mut() {
-            for (expression, value) in &mut core.expressions {
-                *value = expression.evaluate(frame);
-            }
-        }
     }
 
     /// Whether F3's lightmap chart is shown (the game's `debug_shows_lightmap`): only then is a

@@ -10,6 +10,7 @@ use crate::{
     Result,
     bidi::visual,
     block_entity_anim::{self, EnchantingBook},
+    block_entity_reach::Reach,
     breaking::entity_geometry,
     fast_hash::FxHashMap,
     font::{Font, Glyph},
@@ -1479,8 +1480,6 @@ const MODELS: [(&str, &str); 27] = [
     ),
     ("copper_golem_star", "minecraft:copper_golem_star#main"),
 ];
-/// `BlockEntityRenderer.getViewDistance` default.
-const VIEW_DISTANCE: f64 = 64.0;
 
 impl BlockEntityRenderer {
     pub fn load(
@@ -2057,18 +2056,13 @@ impl BlockEntityRenderer {
                 if cache_only && !static_candidate(kind, options) {
                     break 'draw;
                 }
-                let center = DVec3::new(
-                    f64::from(pos[0]) + 0.5,
-                    f64::from(pos[1]) + 0.5,
-                    f64::from(pos[2]) + 0.5,
-                );
-                // BlockEntityRenderer.getViewDistance: 256 for End gateways.
-                let distance = if matches!(kind, Kind::EndGateway { .. }) {
-                    256.0
+                // Neither reach drawn here depends on the render distance.
+                let reach = if matches!(kind, Kind::EndGateway { .. }) {
+                    Reach::EndGateway
                 } else {
-                    VIEW_DISTANCE
+                    Reach::Default
                 };
-                if center.distance_squared(scene.camera) > distance * distance {
+                if !reach.should_render(pos, scene.camera, 0) {
                     break 'draw;
                 }
                 let local = static_local_index(pos, section_min_y);

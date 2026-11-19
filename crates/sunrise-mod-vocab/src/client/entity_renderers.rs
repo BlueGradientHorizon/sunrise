@@ -11,10 +11,9 @@ use std::{collections::BTreeMap, sync::Arc};
 /// One entity's frame, as `EntityRenderer.extractRenderState` fills an `EntityRenderState`:
 /// what a renderer reads to place and turn its model. Angles are in degrees, interpolated to the
 /// frame's partial tick, except for primed TNT and experience orbs, which supply their current
-/// rotation. Plain numbers, so a frame allocates nothing, and one value for native and
-/// wasm mods alike.
+/// rotation. Native and Wasm renderers receive the same values.
 #[non_exhaustive]
-#[derive(Clone, Copy, Debug, PartialEq, sunrise_mod_api_macros::Wire)]
+#[derive(Clone, Debug, PartialEq, sunrise_mod_api_macros::Wire)]
 pub struct EntityRenderState {
     /// The entity's network id, as mod messages name it.
     pub id: u32,
@@ -39,6 +38,8 @@ pub struct EntityRenderState {
     /// An item frame or glow item frame's own frame ([`ItemFrameRenderState`]); none for any
     /// other entity.
     pub item_frame: Option<ItemFrameRenderState>,
+    /// A general entity's immutable synced fields; none for other families.
+    pub attachments: Option<crate::EntityRenderAttachments>,
 }
 
 /// What a living entity's frame adds to [`EntityRenderState`], as
@@ -124,8 +125,10 @@ pub struct ItemFrameRenderState {
 /// type it is registered for. Entities of a type share one renderer, so what differs between them
 /// comes from [`EntityRenderState`].
 ///
-/// A frame has no `Host`: drawing reads nothing of the world but what the state and `draw` give.
-/// A renderer that needs more reads it in a hook and keeps what it read.
+/// [`submit`](Self::submit) has no `Host`: it draws from what the state and `draw` give. A
+/// renderer that needs more reads it in a hook and keeps what it read. A general entity type's
+/// renderer (`declare_general_entity`) reads its synced fields from the snapshot in
+/// [`EntityRenderState::attachments`].
 pub trait EntityRenderer: Send + Sync + 'static {
     /// `EntityRenderer.submit`: draw `entity` with `draw`'s helpers (`quad`, `cube`, `block`,
     /// `item`, `model_part`) under its pose stack, which starts at the entity's position, not
@@ -221,6 +224,7 @@ mod tests {
             orb_value: None,
             painting: None,
             item_frame: None,
+            attachments: None,
         };
         let (mut bolt, mut dart) = (Light::default(), Light::default());
         renderers["mymod:bolt"].submit(&state, &mut bolt).unwrap();

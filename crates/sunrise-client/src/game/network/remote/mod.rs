@@ -14,7 +14,7 @@ mod break_prediction;
 use break_prediction::Prediction;
 mod connection;
 mod fall_sound;
-mod general;
+pub(in crate::game) mod general;
 mod interaction_actions;
 mod interaction_prediction;
 mod level_format;
@@ -27,6 +27,7 @@ mod block_entity_data;
 mod block_entity_data_tests;
 use super::raw_backlog::Received;
 use super::remote_chunks::{ChunkDecoder, ChunkFormat, Next};
+use super::remote_vehicles::PassengerSeat;
 use super::render_tick::{mob_tracking_body, player_tracking_body};
 use super::{Dim, Game, Mining, Screen, item_use::ticks_left, level_sounds::LevelSound};
 use crate::game::api_values::TryIntoApi;
@@ -671,6 +672,7 @@ pub(super) struct Remote {
     /// (`handleRespawn`: `newPlayer.setDeltaMovement(oldPlayer.getDeltaMovement())`),
     /// for the player made at the next teleport: a portal's teleport adds to it.
     respawn_velocity: Option<Vec3>,
+    /// ServerboundPlayerLoadedPacket went out: the tick's keybinds act from then on.
     pub(in crate::game) loaded_sent: bool,
     /// The dimension of the client level the mods heard made
     /// (`native_client_level_load`), to be told dropped once.
@@ -711,7 +713,7 @@ pub(super) struct Remote {
     tick_standings: Vec<Option<String>>,
     tick_water_fx: Vec<sunrise_client::mobs::MobEvent>,
     /// Complete network riding graph, including invisible plugin seat entities.
-    pub(super) passenger_vehicles: HashMap<u32, u32>,
+    pub(super) passenger_vehicles: HashMap<u32, PassengerSeat>,
     pub(super) lerps: HashMap<i32, Lerp>,
     /// A native mod's general rows the server shows the window (`general.rs`).
     pub(super) general: general::RemoteGenerals,
@@ -1057,6 +1059,7 @@ impl Game<'_> {
         realm: bool,
     ) -> Result<()> {
         self.realm_session = realm;
+        self.lan_session = lan;
         self.reset_tutorial();
         self.perf.world_opening();
         // A server's own biomes come over the connection; the last local
@@ -1155,6 +1158,7 @@ impl Game<'_> {
         self.craft_size = 2;
         self.remove_local_player_body();
         self.spawn = None;
+        self.level.world_spawn_dimension = None;
         self.mobs.clear();
         self.clear_remote_objects();
         self.clear_remote_projectiles();
@@ -1382,6 +1386,7 @@ impl Game<'_> {
     /// Prepare a client session and remote state to receive packets from a studio replay.
     pub(super) fn init_remote_for_replay(&mut self) -> Result<()> {
         self.realm_session = false;
+        self.lan_session = false;
         self.reset_tutorial();
         self.perf.world_opening();
         self.world_biomes = None;
@@ -1427,6 +1432,7 @@ impl Game<'_> {
         self.craft_size = 2;
         self.remove_local_player_body();
         self.spawn = None;
+        self.level.world_spawn_dimension = None;
         self.mobs.clear();
         self.clear_remote_objects();
         self.clear_remote_projectiles();
@@ -1660,7 +1666,7 @@ impl Game<'_> {
         // otherwise play on over the title screen until the next world.
         self.ambience.clear(&mut self.audio);
         self.music.stop_playing(None, &mut self.audio);
-        self.audio.stop_all();
+        self.audio.leave_level();
         self.mod_sounds.clear();
         // A world is leaving either way: its icon attempt goes with it.
         self.world_icon = None;
@@ -1680,6 +1686,8 @@ impl Game<'_> {
             self.reset_creative_contents();
             self.refresh_creative_search_tags();
         }
+        // Minecraft.disconnect's updateLevelInEngines: the title changes with the screen, not a frame later.
+        self.update_window_title();
         super::lan::sync::forget_sync_data();
         self.gui.atlas.clear_object_skins();
         self.server_packs_disconnect();
@@ -2246,6 +2254,14 @@ impl Game<'_> {
     /// are handled, the terrain the server sent is not all there.
     pub(super) fn remote_backlog(&self) -> usize {
         self.remote.as_ref().map_or(0, |r| r.backlog.len())
+    }
+
+    /// The attack clicks queued for the next tick (`KeyMapping.click`, not yet handled).
+    pub(in crate::game) fn remote_attack_clicks_queued(&self) -> u32 {
+        self.remote.as_ref().map_or(0, |r| {
+            r.input
+                .queued(sunrise_client::interaction_input::Button::Attack)
+        })
     }
 
     /// A headless command oracle has a real connection but no movement tick.
@@ -3479,7 +3495,7 @@ impl Game<'_> {
                     r.respawn_velocity = kept_velocity;
                 }
                 if p.keep & 2 == 0 {
-                    self.riding = None;
+                    self.reset_remote_player_riding();
                     // KEEP_ENTITY_DATA copies the old player's synched data
                     // (its shared flags) to the new one; without it they reset.
                     if let Some(r) = self.remote.as_mut() {
@@ -3854,7 +3870,7 @@ impl Game<'_> {
                 );
                 self.entity_section_moved_id(p.id as u32);
             }
-            C::SetPassengers(p) => self.remote_set_passengers(p.vehicle, &p.passengers),
+            C::SetPassengers(p) => self.remote_set_passengers(p.vehicle, p.passengers),
             // ClientPacketListener.handleEntityLinkPacket: who holds a mob's
             // lead (this player, another player, a mob or a fence knot), for
             // the rope.
@@ -5313,11 +5329,17 @@ impl Game<'_> {
             C::BlockEntityData(p) => self.remote_block_entity_packet(p),
             C::OpenSignEditor(p) => self.remote_open_sign_editor(p),
             C::OpenBook(p) => self.remote_open_book(p.hand),
-            // handleSetSpawn: ClientLevel.setRespawnData, which spawn compasses point at.
+            // handleSetSpawn: ClientLevel.setRespawnData, which spawn compasses point at: the
+            // position with the level it is in, which the compass compares with its own.
             C::SetDefaultSpawnPosition(p) => {
                 let [x, y, z] = p.pos.pos;
-                self.spawn = (p.pos.dimension == "minecraft:overworld")
-                    .then(|| Vec3::new(f64::from(x) + 0.5, f64::from(y), f64::from(z) + 0.5));
+                self.spawn = Some(Vec3::new(
+                    f64::from(x) + 0.5,
+                    f64::from(y),
+                    f64::from(z) + 0.5,
+                ));
+                self.level.world_spawn_dimension =
+                    (p.pos.dimension != "minecraft:overworld").then_some(p.pos.dimension);
             }
             C::ServerData(p) => self.remote_server_data(p.icon.as_deref()),
             C::MapItemData(p) => self.remote_map_item_data(&p),
@@ -6397,7 +6419,6 @@ impl Game<'_> {
             || mod_api::__private::listened(mod_api::HookId::PlayerTickPost))
         .then(|| self.local_player())
         .flatten();
-        let player_from = entity_section_steps::player_before(self);
         // The entities that tick before the player pushed it before its tick began, so
         // before Pre.
         self.apply_remote_push(pushed);
@@ -6406,7 +6427,6 @@ impl Game<'_> {
         }
         self.native_local_player_fit_sizes();
         let result = self.tick_local_player(entity_collisions, sprint_window);
-        entity_section_steps::player_after(self, player_from);
         // `EntityEvent.Size` for the pose the tick set.
         self.native_local_player_size();
         if let Some(player) = player {
@@ -6539,7 +6559,18 @@ impl Game<'_> {
             self.ui.death_time = self.ui.death_time.saturating_add(1);
         }
         let sleeping = self.sleeping;
-        let sleep_position = sleeping.and_then(|head| self.sleeping_position(head));
+        if let Some(at) = sleeping.and_then(|head| self.sleeping_position(head))
+            && let Some(player) = self.player.as_mut()
+        {
+            let from = std::mem::replace(&mut player.position, at);
+            if from != at
+                && let Ok(id) = u32::try_from(self.own_entity_id())
+            {
+                self.remote_entity_section_step(id, from, at);
+            }
+        }
+        let walks = self.can_move_local_player();
+        let section_scope = self.player_section_scope();
         let Some(player) = self.player.as_mut() else {
             return Ok(None);
         };
@@ -6548,12 +6579,11 @@ impl Game<'_> {
         // LivingEntity.isImmobile: a sleeper lies still, even if its bed's
         // shape is unavailable here; only the server decides when to wake.
         if sleeping.is_some() {
-            if let Some(at) = sleep_position {
-                player.position = at;
-            }
             player.velocity = Vec3::ZERO;
             player.pitch = 0.0;
-        } else if !dead && !riding {
+        } else if walks {
+            let side = game_side!(self);
+            let _sections = section_scope.map(|scope| scope.begin(&mut self.native_lifecycle));
             player.client_side = true;
             // LivingEntity.checkAutoSpinAttack: a Riptide spin that touches a
             // mob ends and bounces back; the server deals the hit.
@@ -6567,6 +6597,7 @@ impl Game<'_> {
                 );
             }
             MotionWorld {
+                side: &side,
                 entities: &entity_collisions,
                 player,
                 scene: &mut self.world,
@@ -6586,8 +6617,11 @@ impl Game<'_> {
             // at 10, the hurt tilt restarted every frame and shook the camera.
             player.health.advance_clock();
             if riding && !dead {
+                let side = game_side!(self);
+                let _sections = section_scope.map(|scope| scope.begin(&mut self.native_lifecycle));
                 player.client_side = true;
                 let mut passenger = MotionWorld {
+                    side: &side,
                     entities: &entity_collisions,
                     player: &mut *player,
                     scene: &mut self.world,
@@ -6606,7 +6640,7 @@ impl Game<'_> {
                     passenger.player.position = from;
                 }
                 passenger.rider_tick(keys.direction())?;
-                passenger.player.position = seat;
+                sunrise_world::entity_move::EntityMoveWorld::set_position(&mut passenger, seat)?;
                 // LivingEntity.aiStep: a passenger freezes in powder snow too, and the
                 // frostbite overlay shows it (#8156).
                 passenger.passenger_block_effects_tick()?;
@@ -6716,10 +6750,11 @@ impl Game<'_> {
         self.seat_own_stands();
         // Other players on this player (possibly through a plugin seat) follow this tick too;
         // the full pass only when something rides this player.
-        if self.remote.as_ref().is_some_and(|r| {
-            let me = r.entity_id as u32;
-            r.passenger_vehicles.values().any(|&v| v == me)
-        }) {
+        if self
+            .remote
+            .as_ref()
+            .is_some_and(|r| r.has_passengers(r.entity_id as u32))
+        {
             self.position_riders();
         }
         // The server owns health and hunger.
@@ -7508,6 +7543,7 @@ impl Game<'_> {
                     l.steps -= 1;
                 }
                 let before = o.position;
+                let side = game_side!(self);
                 let kept = o.tick(
                     world,
                     facts,
@@ -7518,6 +7554,7 @@ impl Game<'_> {
                     border,
                     &self.res.motion().fluids,
                     &self.loop_context,
+                    &side,
                     &mut |_, _| {},
                 );
                 // `tick` set `previous` to the stepped position: keep the
@@ -9082,7 +9119,7 @@ impl Game<'_> {
         }
     }
 
-    fn remote_handle_input(&mut self) {
+    pub(in crate::game) fn remote_handle_input(&mut self) {
         let Some(r) = self.remote.as_mut() else {
             return;
         };
@@ -9106,10 +9143,15 @@ impl Game<'_> {
             self.hotbar_presses
                 .iter_mut()
                 .for_each(sunrise_client::input_queue::ClickQueue::clear);
+            self.agent_attack_clicks_left(0);
             return;
         }
         let (attack, use_item) = (self.left, self.right);
         input.tick(&mut RemoteInputWorld(self), attack, use_item);
+        // An item in use drains the queues without acting on them.
+        self.agent_attack_clicks_left(
+            input.queued(sunrise_client::interaction_input::Button::Attack),
+        );
         self.remote_count_miss_time();
         if let Some(r) = self.remote.as_mut() {
             input.merge_queued(std::mem::take(&mut r.input));
@@ -11443,6 +11485,8 @@ fn client_fluid_step(
     }
 }
 
+#[cfg(test)]
+mod frozen_screen_effects_tests;
 #[cfg(test)]
 mod placement_prediction_tests;
 #[cfg(test)]

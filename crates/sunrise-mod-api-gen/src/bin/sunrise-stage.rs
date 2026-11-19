@@ -112,11 +112,16 @@ fn uses_command(entry: mod_surface::child::ChildEntry, args: &[PathBuf]) {
         }
     }
     let surface = read_surface(surface);
-    let input = mod_uses::read(dir).unwrap_or_else(|e| fail(e));
+    let input = mod_uses::read(dir, &[]).unwrap_or_else(|e| fail(e));
+    if input.game_code {
+        fail(
+            "the mod declares game code (a [native] row or internals), which a surface alone cannot judge: use `cargo sunrise-mod fits`"
+                .to_owned(),
+        );
+    }
     // No manifest form names a hook version today (the schema refuses `hook_version`).
     let manifest = ManifestFacts {
         names: input.manifest_names,
-        hook_versions: Default::default(),
     };
     let uses = uses_contained(
         entry,
@@ -163,7 +168,18 @@ fn fits_command(args: &[PathBuf]) -> ! {
         .unwrap_or_else(|e| fail(format!("{}: {e}", table.display())));
     let table =
         UsesTable::read(&bytes).unwrap_or_else(|e| fail(format!("{}: {e}", table.display())));
-    match fits(&table.entries, &read_surface(target)) {
+    let target = read_surface(target);
+    if table
+        .entries
+        .iter()
+        .any(|entry| entry.id.starts_with("game:"))
+    {
+        fail(
+            "the list records game code the mod declares, which a surface alone cannot judge: use `cargo sunrise-mod fits`"
+                .to_owned(),
+        );
+    }
+    match fits(&table.entries, &target) {
         Fit::Fits => {
             println!(
                 "fits ({} items, made for {})",
@@ -172,6 +188,10 @@ fn fits_command(args: &[PathBuf]) -> ! {
             );
             std::process::exit(0)
         }
+        Fit::Unversioned(hooks) => fail(format!(
+            "not known: nothing the list can judge changed, but it holds no version of {}; scan the mod again",
+            hooks.join(", ")
+        )),
         Fit::DoesNotFit(misfits) => {
             println!(
                 "does not fit: {} of the {} items it uses changed",

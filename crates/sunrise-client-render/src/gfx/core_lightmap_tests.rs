@@ -400,15 +400,17 @@ fn a_lightmap_shader_reads_its_expression_uniforms_values() {
     let (program, expressions) = expression_lightmap(0, 2);
     let mut core = CoreLightmap::new(&device, &program, &expressions).expect("the pipeline");
     core.set_readback(&device, true);
-    let names: Vec<&str> = core.expressions.iter().map(|(e, _)| &*e.name).collect();
+    let names: Vec<String> = (core.extra.values().iter())
+        .map(|(e, _)| e.name.clone())
+        .collect();
     assert_eq!(names, ["F0", "F1"]);
     // 0.2 is 51 of 255 and 0.6 is 153; `SkyFactor` 0.6 in green.
     for (first, second, texel) in [
         (0.2, 0.6, [51, 153, 153, 255]),
         (0.6, 0.2, [153, 153, 51, 255]),
     ] {
-        core.expressions[0].1 = first;
-        core.expressions[1].1 = second;
+        core.extra.values()[0].1 = first;
+        core.extra.values()[1].1 = second;
         let pixels = draw(&device, &queue, &mut core, &PROBE);
         for drawn in pixels.chunks(4) {
             assert_eq!(drawn, texel);
@@ -519,4 +521,11 @@ fn copies_from_before_fullbright_are_never_read() {
     frame(&mut core, &STATES[0], true);
     assert!(core.collect(&mut pixels));
     assert_eq!(pixels[2], 0);
+}
+
+/// The `notGamma` scale multiplies left to right as `lightmap.fsh` writes it. At 0.0015 Java's
+/// float `1.0f - x * x * x * x` (jshell) gives bits 1002711808; squaring twice gives 1002711680.
+#[test]
+fn the_not_gamma_scale_multiplies_in_the_shaders_order() {
+    assert_eq!(max_scaled(0.0015).to_bits(), 1_002_711_808);
 }

@@ -249,6 +249,10 @@ pub(super) struct Creatures {
     /// Per-tick scratch retained between creature ticks.
     event_buf: Vec<MobEvent>,
     pickable_projectile_targets: Vec<(Who, Aabb)>,
+    /// For each arrow an entity hit in this projectile tick, the projectiles
+    /// that ticked after it and stayed, in order: a bounced one goes back
+    /// before the first still listed (`finish_arrow_hit`).
+    bounced_followers: Vec<(u32, Vec<u32>)>,
     pending: std::collections::HashMap<&'static str, PendingMobBatch>,
     /// The mobs whose own tick ran in the last `tick_creature_entities`:
     /// `ServerLevel.tick` ticks only the entities in entity-ticking range, so
@@ -361,6 +365,18 @@ impl ProjectileHandBack {
         );
         self.places = Some(places);
     }
+}
+
+/// Where an arrow an entity turned back goes back among `projectiles`: before
+/// the first of `followers` (the projectiles that ticked after it and stayed,
+/// in order) still listed, else last. Spawns restored ahead of the survivors
+/// and settled impacts can leave the list out of join order, so its place is
+/// taken from the tick, not from the join numbers.
+fn bounced_place(projectiles: &[Projectile], followers: &[u32]) -> usize {
+    followers
+        .iter()
+        .find_map(|id| projectiles.iter().position(|q| q.id == *id))
+        .unwrap_or(projectiles.len())
 }
 
 #[cfg(test)]
@@ -1096,7 +1112,9 @@ impl Game<'_> {
                     "size": m.extra.size,
                     "leash": m.extra.leash.map(|h| format!("{h:?}")),
                     "tame": m.extra.tame,
-                    "sitting": m.extra.sitting,
+                    // TamableAnimal.isInSittingPose, what this side draws: a server's client
+                    // has only that bit of DATA_FLAGS_ID, never the saved order to sit.
+                    "sitting": m.extra.sitting_pose,
                     "temper": if sunrise_client::mobs::equine::is_equine(m.species()) {
                         sunrise_client::mobs::equine::temper(m)
                     } else { i32::from(m.extra.variant3) },
@@ -4606,6 +4624,7 @@ impl Game<'_> {
         let mut deflections: Vec<(u32, [f64; 3])> = Vec::new();
         let mut arrow_events = Vec::new();
         let mut shoot_events = Vec::new();
+        let mut lava_hurt_bullets = Vec::new();
         let mut trails = Vec::new();
         let mut bubble_tops = Vec::new();
         let mut snow_contacts = Vec::new();
@@ -4785,6 +4804,9 @@ impl Game<'_> {
                     if let Some(at) = p.take_shoot_event() {
                         shoot_events.push((p.owner, p.guest, [at.x, at.y, at.z]));
                     }
+                    if p.take_lava_hurt() {
+                        lava_hurt_bullets.push(p.position.components());
+                    }
                     // AbstractHurtingProjectile.tick ends with createParticleTrail.
                     if super::remote_projectiles::has_smoke_trail(&p.kind) {
                         trails.push(p.position);
@@ -4918,6 +4940,22 @@ impl Game<'_> {
         for (block, position, movement) in snow_contacts {
             self.powder_snow_particle(block, position, movement);
         }
+        // An arrow an entity hit leaves the batch for its hit's handling;
+        // the level never takes it out (AbstractArrow.onHitEntity), so one
+        // that flies on goes back where this tick had it.
+        self.creatures.bounced_followers.clear();
+        for (p, hit) in &hits {
+            if p.arrow.is_some()
+                && matches!(hit, Hit::Entity { .. })
+                && let Some(i) = projectiles.iter().position(|q| q.id == p.id)
+            {
+                let followers = (i + 1..projectiles.len())
+                    .filter(|&j| keep_flags[j])
+                    .map(|j| projectiles[j].id)
+                    .collect();
+                self.creatures.bounced_followers.push((p.id, followers));
+            }
+        }
         let listed = keep_flags.clone();
         let mut idx = 0;
         if impacts.is_empty() {
@@ -4949,6 +4987,11 @@ impl Game<'_> {
                 game.projectile_shoot_event(owner, guest, at);
             });
         }
+        // ShulkerBullet.hurtServer's sound and crits, then Entity.lavaHurt's burn.
+        for at in lava_hurt_bullets {
+            self.shulker_bullet_hurt(at);
+            self.lava_hurt_sound(at);
+        }
         self.smoke_trails(trails);
         self.dragon_breath_trails();
         for pos in bubble_tops {
@@ -4977,6 +5020,7 @@ impl Game<'_> {
             });
             let _ = swept;
             projectiles.update(i, |p| self.sweep_projectile_inside(p));
+            projectiles.update(i, |p| self.lava_mark_hurt(p));
         }
         self.creatures.projectiles.restore(
             projectiles,
@@ -5010,6 +5054,7 @@ impl Game<'_> {
                 _ => self.projectile_hit(&p, hit)?,
             }
         }
+        self.creatures.bounced_followers.clear();
         self.flush_lan_explosions();
         let flushed = self.flush_wind_bursts();
         self.native_tick_post_batch(round);
@@ -5435,7 +5480,20 @@ impl Game<'_> {
             }
         }
         if keep {
-            self.add_projectile(arrow);
+            // The arrow never left the level (AbstractArrow.onHitEntity's
+            // deflect(REVERSE), or a dodge it flies on past): it goes back
+            // where it ticked, keeping its place in EntityTickList's order,
+            // and nothing hears it launch again.
+            let followers = self
+                .creatures
+                .bounced_followers
+                .iter()
+                .position(|(id, _)| *id == arrow.id)
+                .map(|k| self.creatures.bounced_followers.swap_remove(k).1)
+                .unwrap_or_default();
+            let projectiles = &mut self.creatures.projectiles;
+            let index = bounced_place(projectiles, &followers);
+            projectiles.insert(index, arrow);
         }
     }
     /// `ThrownEnderpearl.onHit` for a living non-player owner: the same hook,
@@ -8177,8 +8235,9 @@ impl Game<'_> {
         for mob in &self.mobs {
             self.living_geometry::<PRECHECK>(mob, &frame, out);
         }
-        // What follows isn't a tracked mob: close the last one's span.
+        // Close the last tracked mob's span before the remaining world entities.
         self.mark_motion(out.len(), 0);
+        self.general_entity_geometry(camera, alpha, out);
         self.elder_apparition_geometry(alpha, out);
         self.spawner_geometry(camera, alpha, out);
         let live = self.creatures.projectiles.iter().map(|a| {
@@ -8658,6 +8717,9 @@ impl Game<'_> {
 #[cfg(test)]
 #[path = "mob_griefing_tests.rs"]
 mod mob_griefing_tests;
+
+#[cfg(test)]
+mod control_mobs_sitting_tests;
 
 #[cfg(test)]
 mod living_visibility_tests;

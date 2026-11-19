@@ -30,7 +30,7 @@ impl Game<'_> {
         uv: [[f32; 2]; 4],
         argb: u32,
     ) -> bool {
-        let Some(r) = self.gui.atlas.sprites.get(name) else {
+        let Some(r) = self.gui.atlas.texture_rect(name) else {
             return false;
         };
         let flags = self.gui.atlas.flags.get(name).copied();

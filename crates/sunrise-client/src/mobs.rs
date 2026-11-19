@@ -3285,6 +3285,8 @@ pub struct MobWorld<'a> {
     /// What the motion value hooks are given: the loop context of the side that
     /// ticks these mobs.
     pub loop_context: &'a sunrise_world::native_load_context::LoopContext,
+    /// The side's level data beyond blocks: weather, features, tags and block entities.
+    pub side: &'a dyn crate::motion::SideLevel,
     pub world: &'a World,
     pub registry: &'a sunrise_world::registry::BlockRegistry,
     pub facts: &'a BlockFacts,
@@ -3451,22 +3453,6 @@ impl MobWorld<'_> {
             && let Some(selection) = self.player_selection
             && selection.has_switched()
             && let Some(player) = selection.selected()
-        {
-            return MobEvent::ForPlayer {
-                conn: player.connection,
-                event: Box::new(event),
-            };
-        }
-        event
-    }
-
-    /// An action directed at the player already bound at tick start, such as
-    /// retaliation against the attacker, must not follow a later target change.
-    pub fn route_initial_player_event(&self, event: MobEvent) -> MobEvent {
-        if event.targets_player()
-            && let Some(selection) = self.player_selection
-            && selection.has_switched()
-            && let Some(player) = selection.initial()
         {
             return MobEvent::ForPlayer {
                 conn: player.connection,
