@@ -330,13 +330,6 @@ fn draw_now(
 ) {
     let pose = Mat4::from_translation(Vec3::new(x + 8.0, y + 8.0, 0.0))
         * Mat4::from_scale(Vec3::new(16.0, -16.0, 16.0));
-    let mut quads: Vec<ItemQuad> = Vec::new();
-    state.submit(renderer, sprites, host, pose, &mut quads);
-    let lights = if state.uses_block_light() {
-        items_3d_lights()
-    } else {
-        items_flat_lights()
-    };
     let rect = if state.oversized_in_gui {
         [
             f32::NEG_INFINITY,
@@ -355,6 +348,79 @@ fn draw_now(
             rect[3].min(y1),
         ],
         None => rect,
+    };
+    draw_under(
+        state,
+        renderer,
+        sprites,
+        host,
+        batch,
+        pose,
+        rect,
+        time,
+        glint_speed,
+        glint_alpha,
+    );
+}
+
+/// An item drawn under the caller's `pose` (GUI pixels, the slot's `translate(x + 8, y + 8)`
+/// and `scale(16, -16, 16)` with a turn of the caller's in between), lit, culled and sorted far
+/// to near as in a slot but cut by no slot: the item may turn out of its 16x16 box.
+#[allow(clippy::too_many_arguments)]
+pub fn draw_posed(
+    state: &ItemRenderState,
+    renderer: &ItemRenderer,
+    sprites: &HashMap<String, Rect>,
+    host: &dyn SpecialHost,
+    batch: &mut HudBatch,
+    pose: Mat4,
+    time: f32,
+    glint_speed: f32,
+    glint_alpha: f32,
+) {
+    if state.is_empty() {
+        return;
+    }
+    let everywhere = [
+        f32::NEG_INFINITY,
+        f32::NEG_INFINITY,
+        f32::INFINITY,
+        f32::INFINITY,
+    ];
+    draw_under(
+        state,
+        renderer,
+        sprites,
+        host,
+        batch,
+        pose,
+        everywhere,
+        time,
+        glint_speed,
+        glint_alpha,
+    );
+}
+
+/// Submits `state` under `pose`, lights it as a slot does and draws it clipped to `rect`.
+#[allow(clippy::too_many_arguments)]
+fn draw_under(
+    state: &ItemRenderState,
+    renderer: &ItemRenderer,
+    sprites: &HashMap<String, Rect>,
+    host: &dyn SpecialHost,
+    batch: &mut HudBatch,
+    pose: Mat4,
+    rect: [f32; 4],
+    time: f32,
+    glint_speed: f32,
+    glint_alpha: f32,
+) {
+    let mut quads: Vec<ItemQuad> = Vec::new();
+    state.submit(renderer, sprites, host, pose, &mut quads);
+    let lights = if state.uses_block_light() {
+        items_3d_lights()
+    } else {
+        items_flat_lights()
     };
     let glint = sprites
         .contains_key("misc/enchanted_glint_item")

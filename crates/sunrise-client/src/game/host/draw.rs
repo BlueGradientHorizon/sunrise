@@ -116,6 +116,13 @@ impl DrawContext for GameDrawContext<'_, '_> {
         self.game
             .native_draw_scene(&mut *self.surface, rect, &blocks, scene, view)
     }
+    fn model_3d(
+        &mut self,
+        subject: mod_api::Gui3dSubject,
+        view: mod_api::Gui3dView,
+    ) -> Result<(), mod_api::Gui3dError> {
+        self.game.native_model_3d(&mut *self.surface, subject, view)
+    }
     fn push_clip(&mut self, rect: [f32; 4]) -> Result<(), GuiClipRefusal> {
         self.clips.push(self.surface, rect)
     }
