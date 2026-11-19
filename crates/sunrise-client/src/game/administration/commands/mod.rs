@@ -734,17 +734,10 @@ impl Game<'_> {
     /// `EntityLookup.getEntities`: insertion order for the joined families in
     /// unbounded arbitrary queries. Spatial queries keep their existing path;
     /// their section membership order is a separate traversal.
-    pub(in crate::game) fn global_selector_candidates(&self) -> Vec<Target> {
-        self.global_selector_candidates_where(false)
-    }
-    /// [`Self::global_selector_candidates`], with only the `Entity::isAlive`
-    /// ones when `alive_only` (`@e` and `@n`).
-    pub(in crate::game) fn global_selector_candidates_where(
-        &self,
-        alive_only: bool,
-    ) -> Vec<Target> {
+    /// With only the `Entity::isAlive` ones when `alive_only` (`@e` and `@n`).
+    pub(in crate::game) fn global_selector_candidates(&self, alive_only: bool) -> Vec<Target> {
         use super::entity::{Entity as _, entity_lists_of, with_entity};
-        let original = self.level_candidates_where(alive_only);
+        let original = self.level_candidates(alive_only);
         // Counts preserve every occurrence, including nonwalk fallback targets.
         // The map is never iterated to choose order and is not an order store.
         let mut remaining = std::collections::HashMap::<Target, usize>::new();
@@ -779,14 +772,11 @@ impl Game<'_> {
     /// the entity lists (a kind added there joins `@e` once it names its
     /// `Target`), then the kinds that are not on the walk. An
     /// unsorted selector lists them in that order.
-    pub(in crate::game) fn level_candidates(&self) -> Vec<Target> {
-        self.level_candidates_where(false)
-    }
-    /// [`Self::level_candidates`], with only the `Entity::isAlive` ones when
-    /// `alive_only`: `EntitySelectorParser` gives `@e` and `@n` that
-    /// predicate, so a killed mob through its death animation, a stand or
-    /// a dragon at no health is not among them.
-    pub(in crate::game) fn level_candidates_where(&self, alive_only: bool) -> Vec<Target> {
+    /// With only the `Entity::isAlive` ones when `alive_only`:
+    /// `EntitySelectorParser` gives `@e` and `@n` that predicate, so a killed
+    /// mob through its death animation, a stand or a dragon at no health is
+    /// not among them.
+    pub(in crate::game) fn level_candidates(&self, alive_only: bool) -> Vec<Target> {
         use super::entity::{Entity as _, entity_lists_of, for_each_entity};
         let mut candidates = Vec::new();
         for_each_entity!(entity_lists_of!(self), entity => {

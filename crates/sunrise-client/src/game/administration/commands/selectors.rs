@@ -29,15 +29,15 @@ impl Game<'_> {
             ('s', Some(source)) => source_candidates.extend(source.entity),
             ('s', None) => source_candidates.extend(self.source_entity()),
             // A guest in place is among the players, in join order.
-            _ if self.player.is_some() && self.lan_acting.is_none() => {
-                if !alive_only
+            _ if self.player.is_some()
+                && self.lan_acting.is_none()
+                && (!alive_only
                     || self
                         .player
                         .as_ref()
-                        .is_some_and(|p| p.health.health() > 0.0)
-                {
-                    source_candidates.push(Target::Player);
-                }
+                        .is_some_and(|p| p.health.health() > 0.0)) =>
+            {
+                source_candidates.push(Target::Player);
             }
             _ => {}
         }
@@ -62,9 +62,9 @@ impl Game<'_> {
             }
             if s.kind != 's' {
                 if s.kind == 'e' && matches!(s.sort, Sort::Arbitrary) && !s.world_limited() {
-                    candidates.extend(self.global_selector_candidates_where(alive_only));
+                    candidates.extend(self.global_selector_candidates(alive_only));
                 } else {
-                    candidates.extend(self.level_candidates_where(alive_only));
+                    candidates.extend(self.level_candidates(alive_only));
                 }
             }
             out.extend(self.native_selector_kept(s, candidates, origin));
