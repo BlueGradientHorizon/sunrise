@@ -155,13 +155,15 @@ impl BlockEntityTypeBuilder<'_> {
 }
 
 impl crate::BlockEntityTypeAddBlocksEvent<'_> {
-    /// Add blocks to one registered type, leaving its factory unchanged.
+    /// Stage valid blocks for one registered type, leaving its factory unchanged.
+    /// The game checks the type and blocks when it freezes the validity table.
     pub fn modify(&mut self, kind: BlockEntityTypeKey, blocks: &[crate::BlockKey]) {
         self.additions
             .extend(blocks.iter().map(|&block| (kind, block)));
     }
 
-    /// Add blocks to every registered type accepted by `predicate`.
+    /// Stage valid blocks for every registered type accepted by `predicate`, in `types` order.
+    /// The game checks the additions when it freezes the validity table.
     pub fn modify_matching(
         &mut self,
         mut predicate: impl FnMut(BlockEntityTypeKey) -> bool,

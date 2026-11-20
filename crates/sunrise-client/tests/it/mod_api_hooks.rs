@@ -194,6 +194,83 @@ mod skull_models {
     }
 }
 
+#[test]
+fn block_entity_additions_collect_in_order_and_quiet_dispatch_preserves_input() {
+    use mod_api::__private::game::RegistrationContextNew;
+    use mod_api::__private::parts_installation::{block_entity_type_key, block_key};
+    use mod_api::{
+        BlockEntityTypeAddBlocksEvent, BlockEntityTypeKey, BlockKey, RegistrationContext,
+        dispatch_block_entity_type_add_blocks,
+    };
+
+    struct Listener {
+        block: BlockKey,
+        direct: BlockEntityTypeKey,
+    }
+
+    #[mod_api::__subscriptions]
+    impl Hooks for Listener {
+        fn block_entity_type_add_blocks(
+            &self,
+            _: &RegistrationContext,
+            event: &mut BlockEntityTypeAddBlocksEvent<'_>,
+        ) {
+            event.modify_matching(|kind| kind != self.direct, &[self.block]);
+            event.modify(self.direct, &[self.block]);
+        }
+    }
+
+    let [a, b, c] = [0, 1, 2].map(block_entity_type_key);
+    let [first_block, second_block] = [0, 1].map(block_key);
+    let types = [b, a, c];
+    let seed = (c, second_block);
+    let mut additions = vec![seed];
+
+    mod_platform::testing::with_mods(Vec::<ModEntry>::new().into(), || {
+        dispatch_block_entity_type_add_blocks(&RegistrationContext::new(), &types, &mut additions);
+    });
+    assert_eq!(additions, [seed]);
+
+    mod_platform::testing::with_mods(
+        vec![
+            ModEntry::new(
+                "first",
+                Box::new(Listener {
+                    block: first_block,
+                    direct: c,
+                }),
+            ),
+            ModEntry::new(
+                "second",
+                Box::new(Listener {
+                    block: second_block,
+                    direct: b,
+                }),
+            ),
+        ]
+        .into(),
+        || {
+            dispatch_block_entity_type_add_blocks(
+                &RegistrationContext::new(),
+                &types,
+                &mut additions,
+            );
+        },
+    );
+    assert_eq!(
+        additions,
+        [
+            seed,
+            (b, first_block),
+            (a, first_block),
+            (c, first_block),
+            (a, second_block),
+            (c, second_block),
+            (b, second_block),
+        ]
+    );
+}
+
 /// Each mod changes the prior answer, vanilla's stays readable, and cancel
 /// stops later mods. The fork's existing typed event owns this moment.
 #[test]

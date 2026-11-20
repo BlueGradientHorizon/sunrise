@@ -2,10 +2,11 @@
 
 Use `Hooks::block_entity_type_add_blocks` after retaining block and type keys from
 `register`. `event.modify(kind, &[block])` extends one existing type;
-`event.modify_matching(predicate, &[block])` extends all matching registered types.
-The event uses a `RegistrationContext` and runs before worlds load. Duplicate additions
-are harmless. Unknown keys and blocks that do not share the target's common vanilla
-superclass fail startup.
+`event.modify_matching(predicate, &[block])` extends all matching types in `event.types`
+order. Read `event.types` to inspect the registered keys. The methods only add memberships;
+no listener can remove an earlier addition. The event uses a `RegistrationContext` and
+runs before worlds load. Duplicate additions are harmless. Unknown keys and blocks that
+do not share the target's common vanilla superclass fail startup.
 
 A block may be valid for several entity types. Its native declaration or original
 vanilla template selects creation and ticking. For example, a block declared
