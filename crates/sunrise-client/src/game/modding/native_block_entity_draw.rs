@@ -1359,8 +1359,8 @@ impl Game<'_> {
     pub(super) fn native_draw_game_time(&self, draw: &BlockEntityDraw) -> i64 {
         draw.game_time
     }
-    /// The frame on this client's animation clock, in ticks with the partial tick
-    /// (`Game::animation_time`): what turns `spin` parts.
+    /// The frame on this client's animation clock: whole level ticks plus the animation phase,
+    /// held through a tick freeze and carried on without a jump. This is what turns `spin` parts.
     pub(super) fn native_draw_animation_time(&self, draw: &BlockEntityDraw) -> f64 {
         draw.animation
     }
@@ -3039,11 +3039,13 @@ mod tests {
             game.clock.set_frozen(true);
             frame(game, 25, 50.0, false);
             assert_eq!(game.animation_time(), 1.5);
+            game.world.game_time = 40;
             game.handle_packet(play::Clientbound::SetTime(play::SetTime {
                 game_time: 0,
                 clocks: vec![],
             }))
             .unwrap();
+            assert_eq!(game.world.game_time, 0);
             assert_eq!(game.animation_time(), 1.5);
 
             assert!(game.clock.start_step(1));

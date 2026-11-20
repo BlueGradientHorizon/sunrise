@@ -17,6 +17,7 @@ pub trait Hooks {
     /// tick, the game time and the block's light.
     #[hook(
         side = "client",
+        version = 2,
         contract = "listen",
         scope = "block_entity",
         key = "block",
