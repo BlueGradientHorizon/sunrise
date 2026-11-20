@@ -31,6 +31,7 @@
     "sunrise-client-render": "engine",
     "sunrise-render-core": "engine",
     "sunrise-command": "engine",
+    "sunrise-connected": "engine",
     "sunrise-core": "engine",
     "sunrise-gameplay": "engine",
     "sunrise-items": "engine",
@@ -101,6 +102,7 @@
     "sunrise-telemetry": "sunrise",
     "sunrise-telemetry-server": "sunrise",
     "sunrise-mod-vocab": "engine",
+    "sunrise-mod-marks": "engine",
     "sunrise-engine-slots": "engine"
   },
   "portable": {
@@ -109,6 +111,7 @@
       "sunrise-assets",
       "sunrise-client-core",
       "sunrise-command",
+      "sunrise-connected",
       "sunrise-core",
       "sunrise-items",
       "sunrise-protocol",
@@ -120,6 +123,7 @@
       "sunrise-mod-source",
       "sunrise-mod-runtime",
       "sunrise-mod-vocab",
+      "sunrise-mod-marks",
       "sunrise-mod-api-gen",
       "sunrise-mod-api-macros",
       "sunrise-game-discovery",

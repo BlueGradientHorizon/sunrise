@@ -321,6 +321,25 @@ mod tests {
         assert_ne!(s.extras.mouse_tweaks_wheel, before);
     }
 
+    /// #3202: smooth chat moves a line in, but the indicator bar colours its left edge whether
+    /// it slides or not, so the row is live and toggles with smooth chat off.
+    #[test]
+    fn the_message_indicator_toggles_while_smooth_chat_is_off() {
+        let mut s = Settings::default();
+        assert!(!s.extras.chat_animation, "smooth chat starts off");
+        assert!(s.extras.chat_indicator, "the indicator starts on");
+        let row = ExtraRow::Item(Item::ChatIndicator);
+        assert!(rows_of(&s).iter().find(|r| r.id == row).unwrap().live);
+        let mut shell = Shell::<ExtrasScreen>::default();
+        let at = shell.point_at(&s, SIZE, row);
+        assert!(
+            !shell
+                .click(&mut s, at, SIZE, false, false, false)
+                .is_empty()
+        );
+        assert!(!s.extras.chat_indicator);
+    }
+
     /// The sort key binds instead of cycling; the wheel leaves it be.
     #[test]
     fn the_key_row_waits_for_a_key() {
@@ -340,6 +359,26 @@ mod tests {
         );
         ExtrasScreen.wheel_step(&mut s, row, true);
         assert_eq!(s.extras.sort_key, key);
+    }
+
+    /// The shader pack key binds the same way, without cycling: a click waits for its key.
+    #[test]
+    fn the_shader_pack_key_row_waits_for_a_key() {
+        use crate::settings_shell::Capture;
+        let mut s = Settings::default();
+        let mut shell = Shell::<ExtrasScreen>::default();
+        let row = ExtraRow::Item(Item::ShaderPackKey);
+        let key = s.extras.shader_pack_key.clone();
+        let at = shell.point_at(&s, SIZE, row);
+        assert_eq!(
+            shell.click(&mut s, at, SIZE, false, false, false),
+            vec![
+                Output::Event(Event::ButtonClick),
+                Output::Bind(Capture::Key(extras::SHADER_PACK_KEY))
+            ]
+        );
+        ExtrasScreen.wheel_step(&mut s, row, true);
+        assert_eq!(s.extras.shader_pack_key, key);
     }
 
     #[test]

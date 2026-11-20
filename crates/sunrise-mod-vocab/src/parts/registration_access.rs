@@ -113,7 +113,12 @@ pub fn install_input(input: super::installation::InstalledInput) {
         }
     }
     #[cfg(any(test, feature = "testing"))]
-    TEST_PARTS.set(Some(Box::leak(Box::new(installed))));
+    {
+        installed.registry_keys = crate::content::registry_keys::share_requests(std::mem::take(
+            &mut installed.registry_keys,
+        ));
+        TEST_PARTS.set(Some(Box::leak(Box::new(installed))));
+    }
     #[cfg(not(any(test, feature = "testing")))]
     if INSTALLED.set(installed).is_err() {
         log::warn!("Mod parts already installed; keeping the first table");

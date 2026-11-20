@@ -5,7 +5,8 @@ sandbox, with limits on time and memory, so a player needs no compiler and no tr
 this page you build the greeter from [Your first native mod](first-mod.md) as a WebAssembly mod.
 
 You need `cargo sunrise-mod` ([Install the mod tool](install-tool.md))
-and [rustup](https://rustup.rs): the first build installs the pinned Rust toolchain with `rust-src`.
+and [rustup](https://rustup.rs): the first build installs the pinned Rust toolchain with `rust-src`, and
+completes an already-installed pin that is missing `rust-src` or the `wasm32-unknown-unknown` target.
 
 ## 1. Start from the native project
 

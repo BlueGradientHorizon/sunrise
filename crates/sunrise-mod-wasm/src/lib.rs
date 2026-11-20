@@ -830,7 +830,7 @@ fn load_with_cache(
                 }
                 let _timer = load_times::timer(load_times::Phase::Subscribe);
                 let mut checked = Vec::new();
-                for mut module in mods {
+                for (mut module, &i) in mods.into_iter().zip(&indices) {
                     let subscriptions: Vec<(String, i32, bool)> = module
                         .call(
                             CallClass::Load,
@@ -840,7 +840,17 @@ fn load_with_cache(
                             |_| {},
                             |r| r.take(),
                         )
-                        .ok_or_else(|| Refusal::Runtime("subscriptions failed".into()))?;
+                        .ok_or_else(|| {
+                            // Every failure of the call arrives here alike: a trap, a reply that
+                            // does not decode, or a mod built before the subscription calls were
+                            // named for their reply, which passes the import check and then does
+                            // not know the id it is asked. Only the last is cured by a rebuild.
+                            Refusal::Runtime(format!(
+                                "{}: its subscriptions cannot be read: the call failed or its reply did not decode. If it was built for an older Sunrise, {}",
+                                packages[i].manifest.id,
+                                imports::rebuild_advice()
+                            ))
+                        })?;
                     registration_capabilities::check(&subscriptions)?;
                     module
                         .check_prepared_hooks(
@@ -1285,6 +1295,30 @@ mod tests {
             .map(|(id, _)| id.as_str())
             .collect();
         assert_eq!(boundary, ["bad"], "{:?}", loaded.refused);
+    }
+
+    #[test]
+    fn a_mod_that_cannot_answer_the_subscription_call_is_refused_by_name_with_the_rebuild() {
+        crate::test_stack::on_guest_stack(|| {
+            let std =
+                wat::parse_str(r#"(module (@custom "dylink.0" "\01\04\00\00\00\00"))"#).unwrap();
+            let mut stale = package("stale", "1.0.0", "", 'a', "t", "");
+            stale.module = guest("");
+            let loaded = load(&std, vec![stale]);
+            let why = loaded
+                .refused
+                .iter()
+                .find(|(id, _)| id == "stale")
+                .map(|(_, why)| why.to_string())
+                .unwrap_or_default();
+            assert!(
+                why.contains("stale")
+                    && why.contains("rebuild it")
+                    && why.contains("subscriptions cannot be read"),
+                "{:?}",
+                loaded.refused
+            );
+        });
     }
 
     #[test]

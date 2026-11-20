@@ -4607,6 +4607,7 @@ dependencies = [
  "sunrise-bench",
  "sunrise-client-core",
  "sunrise-client-input",
+ "sunrise-client-lib",
  "sunrise-client-render",
  "sunrise-command",
  "sunrise-core",
@@ -4674,6 +4675,7 @@ dependencies = [
  "sunrise-client-core",
  "sunrise-client-input",
  "sunrise-command",
+ "sunrise-connected",
  "sunrise-core",
  "sunrise-engine-slots",
  "sunrise-guest-stack",
@@ -4720,6 +4722,10 @@ dependencies = [
  "sunrise-protocol",
  "sunrise-world",
 ]
+
+[[package]]
+name = "sunrise-connected"
+version = "0.1.0"
 
 [[package]]
 name = "sunrise-core"
@@ -5006,6 +5012,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "sunrise-mod-marks"
+version = "0.1.0"
+dependencies = [
+ "sunrise-mod-api-gen",
+]
+
+[[package]]
 name = "sunrise-mod-package"
 version = "0.1.0"
 dependencies = [
@@ -5131,6 +5144,7 @@ dependencies = [
  "sunrise-mod-api",
  "sunrise-mod-api-gen",
  "sunrise-mod-api-macros",
+ "sunrise-mod-marks",
  "sunrise-mod-runtime",
  "sunrise-protocol",
 ]
@@ -5249,6 +5263,7 @@ dependencies = [
  "log",
  "regex",
  "sunrise-assets",
+ "sunrise-connected",
  "sunrise-system",
  "zip",
 ]
@@ -5568,6 +5583,8 @@ dependencies = [
  "sunrise-assets",
  "sunrise-core",
  "sunrise-deflate",
+ "sunrise-engine-slots",
+ "sunrise-mod-api-macros",
  "sunrise-threads",
  "xxhash-rust",
 ]

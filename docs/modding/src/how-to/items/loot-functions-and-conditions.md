@@ -121,8 +121,9 @@ standard operation; `copy_components`, `copy_custom_data`, `copy_state` and
 
 `minecraft:copy_components` reads `source` as `block_entity`, `tool`, or an
 available entity target. The world evaluator accepts `this`, `attacker`,
-`direct_attacker`, and `attacking_player`; the item evaluator currently accepts
-only `this`. Each entity source is available only when the caller supplied it.
+`direct_attacker`, and `attacking_player`; the item evaluator accepts `this`,
+`target_entity`, and `interacting_entity`. Each entity source is available only
+when the caller supplied it.
 The block source is its collected component map, including a mod block entity's
 stored components, retained before removal; it is not restricted to particular
 vanilla block classes. A tool includes its loaded prototype and live component

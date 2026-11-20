@@ -67,7 +67,7 @@ impl Part {
         // Vanilla's SKY and STARS pipelines have no samplers: a pack that reads one is not used.
         // Each block a stage reads is bound to the stages reading it: vanilla's four, then the
         // expression uniforms.
-        let extra = super::expression_blocks::ExpressionBlocks::new(expressions, 1024);
+        let extra = super::expression_blocks::ExpressionBlocks::new(program, expressions, 1024);
         let blocks = super::expression_blocks::vanilla_blocks(program);
         let entries: Vec<wgpu::BindGroupLayoutEntry> = (blocks.iter())
             .map(|&(binding, _, size, stages)| {
@@ -234,7 +234,7 @@ impl CoreSky {
     }
 
     /// Uploads the disc's and the stars' blocks: `sky` and `stars` from [`uniforms`], then each
-    /// one's expression uniforms.
+    /// one's Polytone blocks (the frame's `PolyGlobals` and its expression uniforms).
     pub(super) fn prepare(
         &self,
         uploads: &mut super::upload::Uploads,

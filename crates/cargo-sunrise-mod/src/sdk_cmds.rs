@@ -2,6 +2,7 @@
 //! folder, `hooks <text>`, `sdk diff <a> <b>`, `fits` and the report `update` prints before it
 //! repins. Each reads the pinned build's `surface.json` from `.sunrise/sdk/`, or another build's
 //! small files through [`crate::sdk_fetch::fetch_build`]; none links the generator's catalog.
+use crate::options::Options;
 use crate::sdk_fetch::{PinnedSdk, ensure_sdk, fetch_build};
 use crate::uses_table::{self, Scanned, surface_of};
 use mod_surface::child::ChildEntry;
@@ -143,19 +144,22 @@ fn first_line(doc: &str) -> &str {
         .unwrap_or("")
 }
 
-/// `hooks <text> [--all]`: the pinned build's hooks (with `--all`, every record) whose id, doc
-/// or counterparts hold every word, offline.
-pub(crate) fn hooks(args: &[String]) -> Result<(), String> {
-    let all = args.iter().any(|a| a == "--all");
-    let text = args
-        .iter()
-        .filter(|a| !a.starts_with("--"))
-        .cloned()
-        .collect::<Vec<_>>()
-        .join(" ");
+/// `hooks <text> [--all]`: the search words and whether `--all` was given.
+fn hooks_args(args: &[String]) -> Result<(String, bool), String> {
+    let mut options = Options::new("hooks", args, &[]);
+    let all = options.switch("--all");
+    let text = options.positional().join(" ");
+    options.finish()?;
     if text.trim().is_empty() {
         return Err("cargo sunrise-mod hooks <text> [--all]".into());
     }
+    Ok((text, all))
+}
+
+/// `hooks <text> [--all]`: the pinned build's hooks (with `--all`, every record) whose id, doc
+/// or counterparts hold every word, offline.
+pub(crate) fn hooks(args: &[String]) -> Result<(), String> {
+    let (text, all) = hooks_args(args)?;
     let sdk = ensure_sdk(Path::new("."))?;
     let surface = surface_of(&sdk)?;
     let found = search(&surface, &text, !all);
@@ -357,13 +361,17 @@ enum Answer {
     NotApplicable(String),
 }
 
+/// `fits`'s package and builds, as given.
+fn fits_args(args: &[String]) -> Result<(Option<&Path>, Vec<&str>), String> {
+    let mut options = Options::new("fits", args, &["--build"]);
+    let builds = options.values("--build")?;
+    let package = options.at_most_one()?.map(Path::new);
+    options.finish()?;
+    Ok((package, builds))
+}
+
 fn fits_lines(entry: ChildEntry, args: &[String]) -> Result<Answer, String> {
-    let package = args.first().filter(|a| !a.starts_with("--")).map(Path::new);
-    let mut builds: Vec<&str> = args
-        .windows(2)
-        .filter(|pair| pair[0] == "--build")
-        .map(|pair| pair[1].as_str())
-        .collect();
+    let (package, mut builds) = fits_args(args)?;
     if builds.is_empty() {
         builds.push("nightly");
     }
@@ -724,11 +732,19 @@ fn check_targets(native_project: bool, wasm: bool, native: bool) -> Vec<Option<&
     targets
 }
 
+/// What `check` in a mod folder was asked for.
+#[derive(Debug, PartialEq)]
+pub(crate) struct CheckFlags {
+    pub(crate) uses: bool,
+    pub(crate) wasm: bool,
+    pub(crate) native: bool,
+}
+
 /// `check [--uses] [--wasm] [--native]` in a mod folder: the package rules, `cargo check` for the
 /// project's own target (this computer for a native mod, wasm32 for a wasm mod; `--wasm` or
 /// `--native` asks for that target instead, both flags for both), then what the mod uses of its
 /// pinned build (with `--uses`, each item and the line that brought it in).
-pub(crate) fn check_mod(entry: ChildEntry, args: &[String]) -> Result<(), String> {
+pub(crate) fn check_mod(entry: ChildEntry, flags: CheckFlags) -> Result<(), String> {
     let root = Path::new(".");
     let package = Package::read(root)?;
     let files = package.directory_files(root)?;
@@ -755,11 +771,7 @@ pub(crate) fn check_mod(entry: ChildEntry, args: &[String]) -> Result<(), String
     let sdk = ensure_sdk(root)?;
     let surface = surface_of(&sdk)?;
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
-    let targets = check_targets(
-        package.manifest.native.is_some(),
-        args.iter().any(|a| a == "--wasm"),
-        args.iter().any(|a| a == "--native"),
-    );
+    let targets = check_targets(package.manifest.native.is_some(), flags.wasm, flags.native);
     for target in targets {
         let mut command = Command::new(&cargo);
         command.arg("check").current_dir(root);
@@ -778,7 +790,7 @@ pub(crate) fn check_mod(entry: ChildEntry, args: &[String]) -> Result<(), String
                 "{}",
                 uses_table::summary(&package.manifest.name, &uses, &sdk)
             );
-            if args.iter().any(|a| a == "--uses") {
+            if flags.uses {
                 print!("{}", uses_table::list(&uses));
             }
         }
@@ -1072,5 +1084,42 @@ mod tests {
             closest(&old, &new, "hook:block_broken").map(|r| r.id),
             Some("hook:block_break")
         );
+    }
+
+    fn argv(line: &str) -> Vec<String> {
+        line.split(' ')
+            .filter(|w| !w.is_empty())
+            .map(str::to_owned)
+            .collect()
+    }
+
+    #[test]
+    fn hooks_fits_and_check_read_their_options_and_refuse_others() {
+        assert_eq!(
+            hooks_args(&argv("block break --all")),
+            Ok(("block break".into(), true))
+        );
+        let build = argv("pack.smod --build a --build b");
+        assert_eq!(
+            fits_args(&build),
+            Ok((Some(Path::new("pack.smod")), vec!["a", "b"]))
+        );
+        for (error, option) in [
+            (hooks_args(&argv("spawn --al")).unwrap_err(), "--al"),
+            (
+                fits_args(&argv("--bild a")).map(drop).unwrap_err(),
+                "--bild",
+            ),
+            (
+                fits_args(&argv("a.smod b.smod")).map(drop).unwrap_err(),
+                "b.smod",
+            ),
+        ] {
+            assert!(error.contains(option), "{error}");
+        }
+        // The usage below the diagnostic has dashes of its own: the diagnostic names the separator.
+        let error = hooks_args(&argv("block -- break")).unwrap_err();
+        let refused = error.lines().next().unwrap().split(' ').next_back();
+        assert_eq!(refused, Some("--"), "{error}");
     }
 }

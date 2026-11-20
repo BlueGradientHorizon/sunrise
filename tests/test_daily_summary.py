@@ -33,6 +33,7 @@ def job(name, conclusion="success", failed=()):
 GREEN_JOBS = [job("shards / plan"), job("shards / ignored-tests-shards (sunrise-world)"),
               job("wasm-mods / fixture"), job("wasm-mods / Guest stack / ubuntu-latest"),
               job("fn-replace-check / route"), job("fn-replace-check / fn-replace-check"),
+              job("book-quickstart / route"), job("book-quickstart / quickstart"),
               job("windows-runtime-leases / test"),
               job("windows-runtime-leases / runtime-leases"), job("windows-runtime-leases / launcher-processes"),
               job("cargo-sunrise-mod / plan"),
@@ -421,20 +422,25 @@ class DailySummaryTests(unittest.TestCase):
         _, out = self.run_summary(Api(jobs), [shard_report()], results=dict(LEGS, **{"sdk-windows-macos": {"result": "cancelled"}}))
         self.assertIn("sdk_green=false", out)
 
-    def test_a_linux_sdk_check_red_is_one_issue_and_fn_replace_check_missing_its_input_files_none(self):
+    def test_a_linux_sdk_check_red_is_one_issue_and_its_readers_missing_their_input_file_none(self):
         probe = "Two mod libraries share the game's exact Rust state"
-        jobs = [j for j in GREEN_JOBS if j["name"] not in ("sdk / build linux", summary.FN_REPLACE_JOB)] + [
+        readers = (summary.FN_REPLACE_JOB, summary.BOOK_QUICKSTART_JOB)
+        jobs = [j for j in GREEN_JOBS if j["name"] not in ("sdk / build linux", *readers)] + [
             job("sdk / build linux", "failure", [probe]),
-            job(summary.FN_REPLACE_JOB, "failure", ["The Linux legs are here"])]
-        api = Api(jobs, issues=[{"number": 6, "title": "Daily: fn-replace-check / fn-replace-check did not complete"}])
+            job(summary.FN_REPLACE_JOB, "failure", ["The Linux legs are here"]),
+            job(summary.BOOK_QUICKSTART_JOB, "failure", ["Run actions/download-artifact@v4", "The Linux legs are here"])]
+        api = Api(jobs, issues=[{"number": 6, "title": "Daily: fn-replace-check / fn-replace-check did not complete"},
+                                {"number": 7, "title": "Daily: book-quickstart / quickstart did not complete"}])
         _, out = self.run_summary(api, [shard_report()], results=dict(
-            LEGS, sdk={"result": "failure"}, **{"fn-replace-check": {"result": "failure"}}))
+            LEGS, sdk={"result": "failure"}, **{"fn-replace-check": {"result": "failure"},
+                                                "book-quickstart": {"result": "failure"}}))
         self.assertEqual(out.splitlines(), ["green=false", "sdk_green=false"])
         created = [body for _, path, body in api.writes if path == "issues"]
         self.assertEqual([body["title"] for body in created], ["Daily: sdk native linkage probe (linux)"])
-        self.assertIn("`fn-replace-check` could not run: it needs this leg's SDK", created[0]["body"])
-        self.assertFalse(any(path.startswith("issues/6") for _, path, _ in api.writes),
-                         "a blocked fn-replace-check neither comments on nor closes its own issue")
+        self.assertIn("`fn-replace-check` and `book-quickstart` could not run: they need this leg's SDK",
+                      created[0]["body"])
+        self.assertFalse(any(path.startswith(("issues/6", "issues/7")) for _, path, _ in api.writes),
+                         "a blocked reader neither comments on nor closes its own issue")
 
     def test_a_failed_linux_fresh_check_with_no_published_sdk_files_one_issue(self):
         # The Linux call's `fresh` failed, so no Linux build job ran and fn-replace-check found no input.
@@ -470,6 +476,21 @@ class DailySummaryTests(unittest.TestCase):
         self.assertCountEqual([body["title"] for _, path, body in api.writes if path == "issues"],
                               ["Daily: fn-replace-check / fn-replace-check did not complete",
                                "Daily: sdk / build linux-server did not complete"])
+
+    def test_a_source_stage_failure_is_its_own_issue_and_holds_the_sdk(self):
+        step = "The source stages with this commit's build data"
+        jobs = [j for j in GREEN_JOBS if j["name"] != "sdk / build linux"] + [job("sdk / build linux", "failure", [step])]
+        api = Api(jobs)
+        _, out = self.run_summary(api, [shard_report()], results=dict(LEGS, sdk={"result": "failure"}))
+        self.assertEqual(out.splitlines(), ["green=false", "sdk_green=false"])
+        created = [body for _, path, body in api.writes if path == "issues"]
+        self.assertEqual([body["title"] for body in created], ["Daily: sdk source stage (linux)"])
+        self.assertIn(step, created[0]["body"])
+
+    def test_every_sdk_check_is_a_step_of_the_sdk_build(self):
+        workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/prebuilt-game-build.yml").read_text()
+        for step in summary.SDK_CHECKS:
+            self.assertEqual(workflow.count(f"- name: {step}\n"), 1, step)
 
     def test_an_sdk_check_issue_closes_only_when_its_step_passed(self):
         title = "Daily: sdk API-source check (linux)"
@@ -1001,6 +1022,9 @@ class DailyWorkflowTests(unittest.TestCase):
         self.assertEqual(jobs["sdk-windows-macos"]["name"], "sdk")
         self.assertEqual(summary.PART_OF, {"sdk-windows-macos": "sdk"})
         self.assertEqual(jobs["fn-replace-check"]["needs"], ["resolve", "sdk"])
+        # The book's quickstart is an ordinary leg that tests this run's own SDK, never the previous Nightly's.
+        self.assertEqual(jobs["book-quickstart"]["needs"], ["resolve", "sdk"])
+        self.assertEqual(jobs["book-quickstart"]["with"]["own_sdk"], "true")
         self.assertIn("sdk-windows-macos", jobs["summary"]["needs"])
         publish = jobs["sdk-publish"]
         self.assertEqual(publish["needs"], ["resolve", "summary", "sdk", "sdk-windows-macos"])

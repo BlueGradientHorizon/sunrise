@@ -5,6 +5,12 @@ use crate::*;
 #[path = "__private/registry_installation.rs"]
 mod registry_installation;
 
+/// The argument of a handler trait's hidden marks method. Its field is private, so no mod can
+/// make one: nothing outside this crate can call the method.
+// exhaustive: its field is private; nothing builds one
+// no wire: it never crosses; the method is not in the game's table and neither side calls it.
+pub struct Sealed(());
+
 /// Native libraries' launcher-to-game registration contract, not a mod-facing API.
 /// The launcher generates manifest rows independently of hook factories. The game checks
 /// them against the packages beside its executable (`sunrise_mod_package::runtime`).
@@ -103,6 +109,11 @@ pub fn enter(id: &'static str, call: &'static str) -> crate::content::crash::Mod
 /// Install the process-wide ordered list of mods.
 pub fn install(mods: Mods) {
     crate::install(mods);
+}
+
+/// Revision of the enabled mod set, for engine caches of hook answers.
+pub fn mods_switched() -> u64 {
+    crate::runtime::mods_switched()
 }
 
 /// Whether an installed mod subscribes to `hook`.

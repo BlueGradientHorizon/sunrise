@@ -40,6 +40,11 @@ impl From<(crate::Identifier, String)> for StartupProgressError {
 /// [`RegistrationContext::message`](crate::RegistrationContext::message), not directly. A wasm
 /// mod holds the game's screen by id and each call crosses to the game.
 pub trait StartupScreen: Send + Sync + 'static {
+    // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
+    #[doc(hidden)]
+    fn __sunrise_marks(&self, _: crate::__private::Sealed) {
+        sunrise_mod_marks::startup_screen::<Self>();
+    }
     /// Open a bar of `steps` steps under the stage bar; the answer names it.
     /// Returns `StartupProgressError::TooManyBars` if 64 bars are already open.
     fn open(&self, label: String, steps: u32) -> Result<u32, StartupProgressError>;

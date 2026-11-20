@@ -17,7 +17,7 @@ use sunrise_render_core::{
 #[cfg(test)]
 use sunrise_render_core::{
     FLUID_OVERLAY, TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY, TERRAIN_MODEL_CUTOUT_OVERLAY,
-    TERRAIN_MODEL_SOLID_OVERLAY,
+    TERRAIN_MODEL_SOLID_OVERLAY, TERRAIN_MODEL_TRANSLUCENT_OVERLAY,
 };
 
 /// `HzDraw`'s size (pack_draw.rs).
@@ -1270,6 +1270,7 @@ mod gpu_span_tests {
             super::TERRAIN_MODEL_SOLID_OVERLAY,
             super::TERRAIN_MODEL_CUTOUT_OVERLAY,
             super::TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY,
+            super::TERRAIN_MODEL_TRANSLUCENT_OVERLAY,
         ] {
             let mut mixed = vec![
                 Vertex {

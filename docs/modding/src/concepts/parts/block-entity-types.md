@@ -19,7 +19,7 @@ refused at load. Refused native block, item or block entity declarations stop st
 known-components input; the game does not fall back to vanilla content. An explicitly declared mod
 template block uses its declared type; undeclared template blocks retain their vanilla behavior. Adding mod blocks to vanilla types is not supported by this builder.
 The hooks about the entity (`block_entity_tick`, `block_entity_update_tag`, `pre_remove_side_effects`,
-`on_chunk_unloaded`, `menu_button`, `menu_quick_move`) find it by that declared type; the others (`block_entity`, the
+`on_chunk_unloaded`, `menu_quick_move`) find it by that declared type; the others (`block_entity`, `screen`, the
 block hooks) by block. The factory is a `BlockEntityPart` method, not a global `Hooks` method.
 
 `r.block_entity_type_key("other:press")` looks up another mod's type, and
@@ -156,7 +156,9 @@ that output. If the region writer cannot encode or admit the complete chunk
 record, it retries with the stored block-entity payloads from the same snapshot. Other changes in
 the snapshot are kept. The read-only level host cannot write to the world or request another save.
 During unload or a removed block's loot roll, the entity
-may no longer be readable through the host; the event still carries its payload and identity.
+may no longer be readable through the host; the event still carries its payload, identity and its
+position and level (`event.pos`, `event.level`), so a mod that keeps live state per dimension and
+position can look it up and write it into `event.tag`.
 `block_drops` and `player_destroyed_block` read the stored data, not the loot copy.
 Changing output does not mark a chunk dirty: mark the entity changed when the live state changes.
 
@@ -173,7 +175,7 @@ load or an unchanged result.
 
 Implement `BlockEntityPart::block_entity_load_additional` to refresh mod-owned state after the server
 applies a saved payload, including `/data merge` and `/data modify`, cloning, structure and item
-placement, falling-block landing, and chunk load. `event.tag` is the applied mod payload and the
+placement, falling-block landing, and chunk load. `event.tag` is the applied mod payload, `event.pos` and `event.level` name the instance, and the
 read-only level host already sees the updated instance. `block_entity_on_load` follows when that
 instance is new; it also fires for a fresh placement that had no saved data.
 

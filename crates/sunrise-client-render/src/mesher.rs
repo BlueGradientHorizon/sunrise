@@ -38,8 +38,8 @@ pub(crate) use sides::sort_tinted;
 pub use sides::{Part, Sides, group_parts};
 use std::sync::Arc;
 use sunrise_assets::model::Direction as ModelDirection;
+use sunrise_connected::{Axes as CtmAxes, Face as CtmFace};
 use sunrise_core::{biome::BiomeZoom, geometry::Direction, position::BlockPos};
-use sunrise_optifine::ctm::connect::{Axes as CtmAxes, Face as CtmFace};
 pub use sunrise_render_core::UV_STEPS;
 use sunrise_world::{
     block_render::FaceVisibility,
@@ -746,8 +746,8 @@ struct Info {
     overlay: bool,
     /// `LeavesBlock`: with opaque leaves the faces between two leaf blocks are skipped.
     leaves: bool,
-    /// A glass pane: connected-texture tiles take the cube's UVs on it (OptiFine's pane models
-    /// drop vanilla's mirrored faces).
+    /// A pane-shaped block (`StateFacts::is_pane`): connected-texture tiles take the cube's
+    /// UVs on it (OptiFine's pane models drop vanilla's mirrored faces).
     pane: bool,
     /// A full opaque cube: `RenderShape::Model`, `can_occlude`, `solid_render`
     /// and a full collision shape. The only block leaf culling treats as solid.
@@ -1068,7 +1068,7 @@ impl MeshTables {
                 legacy_solid: s.legacy_solid,
                 overlay: s.has_class("HalfTransparentBlock") || s.has_class("LeavesBlock"),
                 leaves: s.has_class("LeavesBlock"),
-                pane: s.has_class("IronBarsBlock") && name.ends_with("glass_pane"),
+                pane: s.is_pane(),
                 opaque_cube: leaf_culling::opaque_cube(
                     s.render_shape,
                     s.can_occlude,
@@ -2491,6 +2491,7 @@ impl Mesher<'_> {
                 CtmFace::ALL[q.facing as usize],
                 [world.x, world.y, world.z],
                 neighbour,
+                |s| self.tables.full_faces[s as usize],
                 || Some(tints.biome(pos[0], pos[1], pos[2])),
                 // A pane's tiles are drawn with the cube's UVs (below), so that is its texture.
                 || {

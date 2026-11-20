@@ -189,23 +189,20 @@ fn expand(mut implementation: ItemImpl, export: bool) -> TokenStream {
     // the API keeps off wasm has no marker.
     let owner = proc_macro2::Literal::string(&name.to_string());
     // A block part's plain `explosion_resistance_is_pure` is asked, across the boundary, of every
-    // part subscribed to `explosion_resistance` (its default included), so that listener marks it.
-    let purity = (name == "BlockPart")
-        .then(|| {
-            methods
-                .iter()
-                .zip(&cfgs)
-                .find(|(method, _)| *method == "explosion_resistance")
-                .map(|(_, cfgs)| {
-                    quote! { #(#cfgs)* mod_api::__sunrise_mark!(#owner explosion_resistance_is_pure); }
-                })
-        })
-        .flatten();
+    // part subscribed to `explosion_resistance` (its default included), so that listener marks it:
+    // once per declaration, each under its own cfgs, since cfg alternatives leave at most one.
+    let purity = methods
+        .iter()
+        .zip(&cfgs)
+        .filter(|(method, _)| name == "BlockPart" && *method == "explosion_resistance")
+        .map(|(_, cfgs)| {
+            quote! { #(#cfgs)* mod_api::__sunrise_mark!(#owner explosion_resistance_is_pure); }
+        });
     let marks = {
         let marked = methods.iter().zip(&cfgs).map(|(method, cfgs)| {
             quote! { #(#cfgs)* mod_api::__sunrise_mark!(#owner #method); }
         });
-        quote! { #(#marked)* #purity mod_api::__sunrise_mark!(#owner #subscribed_name); }
+        quote! { #(#marked)* #(#purity)* mod_api::__sunrise_mark!(#owner #subscribed_name); }
     };
     // Entity parts (#1077) carry plain methods beside their scoped hooks
     // (#792): the goal, behavior and spawn-size registrars are not hooks, so
@@ -320,10 +317,15 @@ fn expand(mut implementation: ItemImpl, export: bool) -> TokenStream {
 }
 
 /// Generate the panicking defaults of a host area from each method's access declaration.
-/// The same declarations drive game forwarders in the build-time API generator.
+/// The same declarations drive game forwarders in the build-time API generator. A backend trait
+/// may carry `#[table_backend("path")]`: the game answers its reads from the borrowed view at
+/// `path`, which implements the trait, and `Game` forwards to it.
 #[proc_macro_attribute]
 pub fn host_area(_attribute: TokenStream, input: TokenStream) -> TokenStream {
     let mut area = parse_macro_input!(input as syn::ItemTrait);
+    // `#[table_backend("path")]` is read by the build-time generator alone.
+    area.attrs
+        .retain(|attr| !attr.path().is_ident("table_backend"));
     let name = area.ident.to_string();
     let union = [
         "ClientBackendMut",

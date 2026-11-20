@@ -5,10 +5,12 @@
 use super::*;
 use sunrise_render_core::{FogView, SkyView, UniformFrameView};
 // The client's `Frame` carries the game's values by this name.
-pub use sunrise_render_shaderpack::pack_uniforms::PackInputs;
-// The shadow matrices and timings its own tests build here, beside the `Frame`s they read.
+pub use sunrise_render_shaderpack::pack_uniforms::{PackInputs, PlayerStatus, cloud_height};
+// The shadow matrices and timings its own tests build here, beside the `Frame`s they read; the
+// frame timing is the game's too (a screenshot sequence replays a fixed clock through it).
+pub use sunrise_render_shaderpack::pack_uniforms::FrameTiming;
 #[cfg(test)]
-pub use sunrise_render_shaderpack::pack_uniforms::{FrameTiming, shadow_camera, shadow_culling_at};
+pub use sunrise_render_shaderpack::pack_uniforms::{shadow_camera, shadow_culling_at};
 
 /// The frame as the shadow light reads it: the camera, the sky and the eye, and no fog, lights or
 /// entities (a shadow pass's uniforms read none of those).

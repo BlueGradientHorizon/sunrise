@@ -1847,9 +1847,6 @@ fn check_block(file: &Block) -> Result<(), String> {
     if p.explosion_resistance.is_some_and(|r| r < 0.0) {
         return Err("explosion_resistance is 0 or more".into());
     }
-    if p.friction.is_some_and(|f| !(0.0..=2.0).contains(&f)) {
-        return Err("friction is 0 to 2".into());
-    }
     if p.light.is_some_and(|l| l > 15) {
         return Err("light is 0 to 15".into());
     }
@@ -2234,6 +2231,27 @@ capabilities = ["registries"]
         let content = package.and_then(|p| Content::read(&path, &p.manifest));
         std::fs::remove_dir_all(&dir).unwrap();
         content
+    }
+
+    #[test]
+    fn a_declared_friction_is_any_finite_number() {
+        let load = |value: &str| {
+            let file =
+                format!(r#"{{"template":"minecraft:stone","properties":{{"friction":{value}}}}}"#);
+            smod(
+                "friction-range",
+                MANIFEST_TEXT,
+                &[("data/ruby/sunrise/block/a.json", file.as_bytes())],
+            )
+        };
+        for (value, expected) in [("3.0", 3.0), ("-0.5", -0.5)] {
+            let content = load(value).unwrap();
+            assert_eq!(content.blocks[0].properties.friction, Some(expected));
+        }
+        // JSON has no NaN or infinity: a literal is a parse error, and a number past f32's range
+        // becomes infinity and is refused by the check.
+        assert!(load("NaN").is_err());
+        assert!(load("1e39").is_err());
     }
 
     #[test]

@@ -147,16 +147,28 @@ fn frame(surface: &mut super::Surface<'_>) -> Result<String, String> {
                 {
                     continue;
                 }
-                let source = snake(method.owner);
-                let source_mut = method.receiver == Some(true);
-                let filter = if source_mut { ".filter(|(_,m)|*m)" } else { "" };
-                let s = if source_mut { "mut " } else { "" };
-                let m = if mutable { "mut " } else { "" };
-                tried.push((source.clone(), mutable || source_mut));
-                if fallible {
-                    choices.push(format!("self.{source}{filter}.and_then(|(p,_)| unsafe {{ (&{s}*p).{}().ok().map(|host| host as &{m}dyn {path}) }})", method.name));
-                } else {
-                    choices.push(format!("self.{source}{filter}.map(|(p,_)| unsafe {{ (&{s}*p).{}() as &{m}dyn {path} }})", method.name));
+                // The accessor is the owner's, so a slot of the owner or of any trait that extends
+                // it can lend it: a `LevelHost` accessor answers in a `LevelRandomHost` frame too.
+                for holder in super::imports() {
+                    if !serves(
+                        &supers,
+                        holder.rsplit("::").next().unwrap(),
+                        method.owner.rsplit("::").next().unwrap(),
+                    ) || super::REACHED.iter().any(|(o, ..)| o == holder)
+                    {
+                        continue;
+                    }
+                    let source = snake(holder);
+                    let source_mut = method.receiver == Some(true);
+                    let filter = if source_mut { ".filter(|(_,m)|*m)" } else { "" };
+                    let s = if source_mut { "mut " } else { "" };
+                    let m = if mutable { "mut " } else { "" };
+                    tried.push((source.clone(), mutable || source_mut));
+                    if fallible {
+                        choices.push(format!("self.{source}{filter}.and_then(|(p,_)| unsafe {{ (&{s}*p).{}().ok().map(|host| host as &{m}dyn {path}) }})", method.name));
+                    } else {
+                        choices.push(format!("self.{source}{filter}.map(|(p,_)| unsafe {{ (&{s}*p).{}() as &{m}dyn {path} }})", method.name));
+                    }
                 }
             }
             // The sources are tried in an order that comes from file names, so it must never
@@ -183,6 +195,17 @@ fn frame(surface: &mut super::Surface<'_>) -> Result<String, String> {
         }
     }
     check_one_source_per_chain(surface, &chains)?;
+    // A table-backed area's reads (`#[table_backend]`) come from the host's backend, or in a level
+    // frame from the tables the level view's method named for the area (`block_states()` for
+    // `block_states`) hands out through its service's `backend()`: the value a native listener gets.
+    for (stem, backend) in &surface.table_areas {
+        writeln!(
+            methods,
+            "pub unsafe fn {}(&self) -> Result<&'static dyn mod_api::prelude::{backend}, ServeError> {{ match self.backend() {{ Ok(backend) => Ok(backend), Err(_) => Ok(self.level_host()?.{stem}().backend()) }} }}",
+            snake(backend)
+        )
+        .unwrap();
+    }
     Ok(format!(
         "#[derive(Default)] pub struct Frame {{ {fields} }}\n// SAFETY: pointers are used only by unsafe serve during the synchronous call that lent them.\nunsafe impl Send for Frame {{}}\nimpl Frame {{ {methods} }}"
     ))
@@ -801,6 +824,12 @@ impl Cx {
                 "unsafe {{ (&*cx).held.get(held_id).map_err(|_| ServeError::Stale)?.downcast_ref::<OwnerThread<std::sync::Arc<dyn {}>>>().ok_or(ServeError::Stale)?.get()?.clone() }}",
                 trait_path(m.owner)
             )
+        } else if let Some((_, backend)) = surface.table_areas.iter().find(|(_, backend)| {
+            m.via
+                .as_deref()
+                .is_some_and(|via| via.ends_with(backend.as_str()))
+        }) {
+            format!("unsafe {{ (&*cx).frame()?.{}()? }}", snake(backend))
         } else if m.owner == "ConfigFiles" {
             "unsafe { (&*cx).frame()?.config_files(file_root)? }".to_string()
         } else {
@@ -825,12 +854,12 @@ impl Cx {
             if let Some(level) = &checked.access {
                 let operation = &checked.name;
                 let refusal = match &checked.ret {
-                    Ty::Result(_, error) if matches!(&**error, Ty::Named(d) if matches!(types.defs[*d].rust.rsplit("::").next().map(str::trim), Some("LevelReadError" | "LevelWriteError"))) =>
+                    Ty::Result(_, error) if matches!(&**error, Ty::Named(d) if types.defs[*d].rust.rsplit("::").next().map(str::trim).is_some_and(|name| surface.access_refusals.contains(name))) =>
                     {
                         let result = rust_ty(types, &checked.ret, true);
                         let error = rust_ty(types, error, true);
                         format!(
-                            "out.put_owned(<{result}>::Err({error}::Unavailable)); return Ok(());"
+                            "out.put_owned(<{result}>::Err(<{error} as mod_api::AccessRefusal>::unavailable())); return Ok(());"
                         )
                     }
                     _ => format!(
@@ -1052,6 +1081,9 @@ impl Cx {
                                     write!(take, "let {local} = {owner}.__wire_checked({local})?;")
                                         .unwrap();
                                     write!(apply, "{owner}.__wire_apply({local});").unwrap();
+                                } else if leaf.view && leaf.optional {
+                                    write!(take,"if {path}.is_some() != {local}.is_some() {{ return Err(WireError::Tag(u32::MAX)); }}").unwrap();
+                                    write!(apply,"if let (Some(view),Some(snapshot)) = ({path}.as_mut(),{local}) {{ view.__wire_apply(snapshot); }}").unwrap();
                                 } else if leaf.view {
                                     if tick_reply.is_some() {
                                         write!(apply, "if let Some(snapshot) = {local} {{ {path}.__wire_apply(snapshot); }}").unwrap();

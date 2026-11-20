@@ -1,7 +1,8 @@
 # `native-build`
 
-`cargo sunrise-mod native-build` compiles native mods against one build's SDK exactly as the launcher does: both run
-the same code (`crates/sunrise-native-build`). Every SDK release carries the tool for each host it is built for, as
+`cargo sunrise-mod native-build` compiles native mods against one build's SDK. It is the JSON form of what
+`cargo sunrise-mod build` does for one mod, for a caller that builds for someone else: a build server, or a player's
+launcher. All of them run the same code (`crates/sunrise-native-build`). Every SDK release carries the tool for each host it is built for, as
 `tool-<target>.tar.xz` holding `cargo-sunrise-mod` (`.exe` on Windows), so a caller that already checked the SDK's
 signed `sdk.json` gets a tool made from that build's own source.
 Use that SDK's tool for the JSON commands: its horizon-mixins revision and patch match the SDK by construction.
@@ -11,8 +12,8 @@ SDK's slices, installs the pinned Rust, chooses the mods and which of them a bui
 tool built. The tool compiles, and nothing else.
 
 It reads a plan from the first line of standard input, writes one JSON event per line to standard output, and appends
-its log to `build.log` in the plan's `work` folder: emptying it before a build is the caller's, as the launcher's own
-lines about the build go there first.
+its log to `build.log` in the plan's `work` folder: emptying it before a build is the caller's, since a caller's own
+lines about the build may go there first.
 
 ```sh
 cargo sunrise-mod native-build < plan.json
@@ -53,8 +54,7 @@ Each line is an object whose `event` names it.
 | `failed` | `error`, `blame`, `used` | Why it did not build, as the build log ends with it. `blame` is `null`, or the mod the error is that mod's own and how: `{"mod": id, "kind": "compile" \| "build-script" \| "features"}`, the one a caller leaves out next time. `used` as for `built`. |
 
 What it downloads (the horizon-mixins tool, a mod's GitHub source) goes through the proxy its environment names:
-`HTTPS_PROXY`, `HTTP_PROXY` or `ALL_PROXY`, with the hosts `NO_PROXY` lists reached directly, as the launcher reads
-them. A caller with a proxy setting of its own passes it in those variables.
+`HTTPS_PROXY`, `HTTP_PROXY` or `ALL_PROXY`, with the hosts `NO_PROXY` lists reached directly. A caller with a proxy setting of its own passes it in those variables.
 
 The tool never edits an instance, never selects a version and never installs anything outside `work`.
 

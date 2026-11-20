@@ -29,6 +29,9 @@ pub const FLUID_OVERLAY: u32 = 41;
 pub const TERRAIN_MODEL_SOLID_OVERLAY: u32 = 42;
 pub const TERRAIN_MODEL_CUTOUT_OVERLAY: u32 = 43;
 pub const TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY: u32 = 44;
+/// `RenderTypes.translucentMovingBlock`: a translucent block drawn outside the terrain, from the
+/// terrain sprite arrays; alpha blended, depth written, quads sorted far to near.
+pub const TERRAIN_MODEL_TRANSLUCENT_OVERLAY: u32 = 46;
 pub const WATER_MASK_OVERLAY: u32 = 13;
 pub const TRANSLUCENT_PARTICLE_OVERLAY: u32 = 15;
 pub const OIT_ENTITY: u32 = 1 << 24;
@@ -41,6 +44,7 @@ pub fn is_native_terrain(layer: u32) -> bool {
             | TERRAIN_MODEL_SOLID_OVERLAY
             | TERRAIN_MODEL_CUTOUT_OVERLAY
             | TERRAIN_MODEL_CUTOUT_MIPPED_OVERLAY
+            | TERRAIN_MODEL_TRANSLUCENT_OVERLAY
     )
 }
 
