@@ -18,6 +18,10 @@ pub(in crate::game) mod general;
 pub(in crate::game) use general::RemoteGeneral;
 mod interaction_actions;
 mod interaction_prediction;
+use inventory::{
+    CREATIVE_SYNCED, Predicted, changed_slots, creative_sync_slot, creative_sync_stacks,
+    mark_synced, menu_items, predict_clicks,
+};
 mod level_format;
 mod raw_ingress;
 mod recipe_properties;
@@ -90,12 +94,16 @@ use {
 mod abilities;
 mod chat;
 mod chat_received;
+mod commands;
 pub(in crate::game) use chat::{ChatTrust, Decoration, chat_type_decorate};
 use chat_received::QueuedChat;
 pub(in crate::game) mod client_level_tick;
 mod entity_section_steps;
+mod inventory;
 mod item_use;
 mod menu_interactions;
+mod minecarts;
+use minecarts::CartLerp;
 mod movement;
 mod queued_keys;
 mod remote_attributes;
@@ -213,121 +221,6 @@ pub(super) struct Lerp {
     target: [f64; 3],
     rotation: Option<(f32, f32)>,
     steps: u32,
-}
-
-/// `NewMinecartBehavior.MinecartStep`, including the server's rail pitch.
-#[derive(Clone, Copy)]
-struct CartStep {
-    position: Vec3,
-    movement: Vec3,
-    yaw: f32,
-    pitch: f32,
-    weight: f32,
-}
-
-/// The client's state of a minecart on `NewMinecartBehavior`: the steps the
-/// server sent (`lerpSteps`), the ones being played over 3 ticks
-/// (`currentLerpSteps`) and where the cart was when they began (`oldLerp`).
-pub(super) struct CartLerp {
-    pending: Vec<CartStep>,
-    current: Vec<CartStep>,
-    total_weight: f64,
-    delay: i32,
-    old: CartStep,
-}
-
-impl CartLerp {
-    fn new() -> Self {
-        Self {
-            pending: Vec::new(),
-            current: Vec::new(),
-            total_weight: 0.0,
-            delay: 0,
-            old: CartStep {
-                position: Vec3::ZERO,
-                movement: Vec3::ZERO,
-                yaw: 0.0,
-                pitch: 0.0,
-                weight: 0.0,
-            },
-        }
-    }
-
-    /// `NewMinecartBehavior.getCartLerpPosition`, `getCartLerpMovements` and
-    /// `getCartLerpYRot` / `getCartLerpXRot` at `partial`: the step the weights
-    /// put this moment in, and how far along it from the one before.
-    fn at(&self, partial: f32) -> (Vec3, Vec3, f32, f32) {
-        let alpha = ((3 - self.delay) as f32 + partial) / 3.0;
-        let mut count_up = 0.0f32;
-        let mut in_step = 1.0f32;
-        let mut found = None;
-        for (i, s) in self.current.iter().enumerate() {
-            if s.weight <= 0.0 {
-                continue;
-            }
-            count_up += s.weight;
-            if f64::from(count_up) >= self.total_weight * f64::from(alpha) {
-                let before = count_up - s.weight;
-                in_step = ((f64::from(alpha) * self.total_weight - f64::from(before))
-                    / f64::from(s.weight)) as f32;
-                found = Some(i);
-                break;
-            }
-        }
-        let index = found.unwrap_or(self.current.len() - 1);
-        let current = self.current[index];
-        let previous = if index > 0 {
-            self.current[index - 1]
-        } else {
-            self.old
-        };
-        let t = f64::from(in_step);
-        let lerp = |a: Vec3, b: Vec3| {
-            Vec3::new(
-                a.x + t * (b.x - a.x),
-                a.y + t * (b.y - a.y),
-                a.z + t * (b.z - a.z),
-            )
-        };
-        (
-            lerp(previous.position, current.position),
-            lerp(previous.movement, current.movement),
-            previous.yaw + in_step * wrap_degrees(current.yaw - previous.yaw),
-            previous.pitch + in_step * wrap_degrees(current.pitch - previous.pitch),
-        )
-    }
-
-    /// `NewMinecartBehavior.lerpClientPositionAndRotation`: once the steps
-    /// being played are used up, the queued ones become the current ones;
-    /// the cart then sits where the steps put it at the end of this tick.
-    /// False when it has no steps to play.
-    fn tick(&mut self, c: &mut super::minecarts::Minecart) -> bool {
-        self.delay -= 1;
-        if self.delay <= 0 {
-            self.old = CartStep {
-                position: c.position,
-                movement: c.velocity,
-                yaw: c.yaw,
-                pitch: c.pitch,
-                weight: 0.0,
-            };
-            self.current.clear();
-            if !self.pending.is_empty() {
-                self.current.append(&mut self.pending);
-                self.total_weight = self.current.iter().map(|s| f64::from(s.weight)).sum();
-                self.delay = if self.total_weight == 0.0 { 0 } else { 3 };
-            }
-        }
-        if self.current.is_empty() {
-            return false;
-        }
-        let (position, movement, yaw, pitch) = self.at(1.0);
-        c.position = position;
-        c.velocity = movement;
-        c.yaw = yaw;
-        c.pitch = pitch;
-        true
-    }
 }
 
 /// `SteppedInterpolationHandler.doInterpolate`'s `setPos` and `setRot` on a
@@ -2246,38 +2139,7 @@ impl Game<'_> {
         ));
     }
 
-    /// ClientboundCommandSuggestionsPacket: id, range start and length, then
-    /// each suggestion's text and optional tooltip.
-    fn handle_command_suggestions(&mut self, data: &[u8]) {
-        let lang = self
-            .remote
-            .as_ref()
-            .map(|r| r.lang.clone())
-            .unwrap_or_default();
-        let mut r = sunrise_protocol::buf::Reader::new(data);
-        let decoded = (|| {
-            let id = r.varint()?;
-            let start = r.varint()?;
-            let length = r.varint()?;
-            let n = r.count(usize::MAX)?;
-            let mut list = Vec::with_capacity(n.min(1000));
-            for _ in 0..n {
-                let text = r.string(32767)?;
-                let tooltip = if r.bool()? {
-                    Some(plain(&r.nbt()?, &lang))
-                } else {
-                    None
-                };
-                list.push((text, tooltip));
-            }
-            sunrise_protocol::Result::Ok((id, start, length, list))
-        })();
-        if let Ok((id, start, length, list)) = decoded {
-            let range = (start.max(0) as usize, length.max(0) as usize);
-            self.chat_server_suggestions(id, range, list.clone());
-            self.command_block_server_suggestions(id, range, list);
-        }
-    }
+    // handle_command_suggestions: remote/commands.rs
     pub(in crate::game) fn set_registries(&mut self, registries: Arc<Dynamic>) {
         let entries: Vec<(&str, serde_json::Value)> = registries
             .registries
@@ -7606,29 +7468,6 @@ impl Game<'_> {
         Some(([p.x, p.y, p.z], yaw, pitch))
     }
 
-    /// `ClientPacketListener.handleMinecartAlongTrack`: the steps join the ones
-    /// the minecart has queued, if it runs `NewMinecartBehavior`.
-    fn remote_move_minecart(&mut self, p: play::MoveMinecartAlongTrack) {
-        if !self.minecart_improvements() || !self.carts.iter().any(|c| c.id == p.id as u32) {
-            return;
-        }
-        let Some(r) = self.remote.as_mut() else {
-            return;
-        };
-        let at = |v: [f64; 3]| Vec3::new(v[0], v[1], v[2]);
-        r.cart_lerps
-            .entry(p.id)
-            .or_insert_with(CartLerp::new)
-            .pending
-            .extend(p.steps.iter().map(|s| CartStep {
-                position: at(s.position),
-                movement: at(s.movement),
-                yaw: sunrise_protocol::buf::unpack_degrees(s.yaw),
-                pitch: sunrise_protocol::buf::unpack_degrees(s.pitch),
-                weight: s.weight,
-            }));
-    }
-
     /// `Consumable.onConsumeTick` for another player using a consumable: the
     /// crumbs at their mouth every 4 ticks once 21.875% of its use has passed
     /// (`shouldEmitParticlesAndSounds`; the sounds come from the server).
@@ -9791,148 +9630,6 @@ fn remote_player_head_turn(m: &mut Mob) {
     if head.abs() > 50.0 {
         m.body_yaw += head - head.signum() * 50.0;
     }
-}
-
-/// A click sent to a server: its slot, button and input, the slots it
-/// changed and the carried stack after it.
-type Predicted = (
-    i16,
-    i32,
-    Input,
-    Vec<(i16, Option<ItemStack>)>,
-    Option<ItemStack>,
-);
-
-/// How many stacks the creative screen keeps in step with the server (`Remote::synced`).
-const CREATIVE_SYNCED: usize = 41;
-
-/// The player's stacks in `Remote::synced` order: the 36 inventory slots, the off hand, then
-/// the armour from the head down. `CreativeInventoryListener.slotChanged` sends every
-/// InventoryMenu slot the creative screen changes, the armour slots too.
-fn creative_sync_stacks(
-    inventory: &[Option<ItemStack>],
-    offhand: &Option<ItemStack>,
-    armor: &[Option<ItemStack>; 4],
-) -> Vec<Option<ItemStack>> {
-    let mut stacks: Vec<Option<ItemStack>> = inventory.iter().take(36).cloned().collect();
-    stacks.resize(36, None);
-    stacks.push(offhand.clone());
-    stacks.extend(armor.iter().cloned());
-    stacks
-}
-
-/// Entries of `creative_sync_stacks` that went from `before` to `now` are synced as `now`.
-fn mark_synced(
-    synced: &mut [Option<ItemStack>],
-    before: &[Option<ItemStack>],
-    now: Vec<Option<ItemStack>>,
-) {
-    for (i, stack) in now.into_iter().enumerate() {
-        if before.get(i) != Some(&stack)
-            && let Some(s) = synced.get_mut(i)
-        {
-            *s = stack;
-        }
-    }
-}
-
-/// InventoryMenu's slot for entry `i` of `creative_sync_stacks`: the hotbar is 36..=44, the
-/// main inventory 9..=35, the off hand 45 and the armour 5..=8 (head first).
-fn creative_sync_slot(i: usize) -> i16 {
-    (match i {
-        0..9 => 36 + i,
-        36 => 45,
-        37.. => 5 + (i - 37),
-        _ => i,
-    }) as i16
-}
-
-/// `MultiPlayerGameMode.handleContainerInput` for each click on the engine's
-/// copy of the menu: the click with the slots it changed and the carried
-/// stack after it, and whether a click dropped a stack. Every drop of
-/// `AbstractContainerMenu.doClick` (a THROW, a click outside the window, a
-/// swap or a result move with no room left) is `Prediction.PREDICTED`.
-/// None when the engine refuses a click.
-fn predict_clicks(
-    m: &mut sunrise_client::menu::Menu,
-    env: &sunrise_client::menu::Env,
-    clicks: &[(i16, i32, Input)],
-) -> Option<(Vec<Predicted>, bool)> {
-    let mut predicted = Vec::with_capacity(clicks.len());
-    let mut dropped = false;
-    for &(slot, button, input) in clicks {
-        let before = menu_items(m);
-        let thrown = m.dropped.len();
-        m.click(env, i32::from(slot), button, input).ok()?;
-        dropped |= m.dropped.len() > thrown;
-        let changed = changed_slots(&before, m);
-        predicted.push((slot, button, input, changed, m.carried.clone()));
-    }
-    Some((predicted, dropped))
-}
-
-fn menu_items(m: &sunrise_client::menu::Menu) -> Vec<Option<ItemStack>> {
-    (0..m.slot_count()).map(|i| m.slot(i).cloned()).collect()
-}
-
-/// The slots whose stack is no longer `before`'s (`ItemStack.matches`).
-/// `MultiPlayerGameMode.handleContainerInput`'s changed slots, in the order the packet writes them.
-fn changed_slots(
-    before: &[Option<ItemStack>],
-    m: &sunrise_client::menu::Menu,
-) -> Vec<(i16, Option<ItemStack>)> {
-    let changed: Vec<i16> = (0..m.slot_count())
-        .filter(|&i| m.slot(i) != before.get(i).and_then(Option::as_ref))
-        .map(|i| i as i16)
-        .collect();
-    open_hash_order(&changed)
-        .into_iter()
-        .map(|i| (i, m.slot(i as usize).cloned()))
-        .collect()
-}
-
-/// The order a new fastutil `Int2ObjectOpenHashMap` iterates `keys` put in this order: vanilla
-/// collects a click's changed slots in one and writes them as it iterates. The key 0 comes first,
-/// then the table from its last position down; a key sits at `HashCommon.mix(key) & mask` or the
-/// next free position. The table starts at 32 (16 expected, load factor 0.75) and doubles when an
-/// insert finds it holding 24 (`size++ >= maxFill`), re-inserting from its last position down.
-fn open_hash_order(keys: &[i16]) -> Vec<i16> {
-    fn mix(key: i16) -> usize {
-        let h = i32::from(key).wrapping_mul(0x9E37_79B9_u32 as i32);
-        (h ^ ((h as u32) >> 16) as i32) as u32 as usize
-    }
-    fn put(table: &mut [Option<i16>], key: i16) {
-        let mask = table.len() - 1;
-        let mut pos = mix(key) & mask;
-        while table[pos].is_some() {
-            pos = (pos + 1) & mask;
-        }
-        table[pos] = Some(key);
-    }
-    // HashCommon.maxFill(n, 0.75): min(ceil(n * 0.75), n - 1).
-    let max_fill = |n: usize| (n * 3).div_ceil(4).min(n - 1);
-    let mut table = vec![None; 32];
-    let (mut zero, mut size) = (false, 0);
-    for &key in keys {
-        if key == 0 {
-            zero = true;
-        } else {
-            put(&mut table, key);
-        }
-        size += 1;
-        // `size++ >= maxFill`: the size before this key.
-        if size > max_fill(table.len()) {
-            // HashCommon.arraySize(size + 1, 0.75): the power of two holding size + 1 at that load.
-            let n = ((size + 1) * 4).div_ceil(3).next_power_of_two();
-            let mut grown = vec![None; n];
-            for &key in table.iter().rev().flatten() {
-                put(&mut grown, key);
-            }
-            table = grown;
-        }
-    }
-    let rest = table.iter().rev().flatten().copied();
-    zero.then_some(0).into_iter().chain(rest).collect()
 }
 
 /// ServerboundContainerClickPacket's `ContainerInput` ordinal.
