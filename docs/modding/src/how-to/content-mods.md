@@ -782,6 +782,13 @@ rebuild just because tags changed. A same-parameter read from a build listener
 sees completed tabs and the previous contents of the remaining tabs;
 a different-parameter read returns `CreativeTabReadError::Reentrant`.
 
+With a shared `&dyn Host`, use `host.built_creative_tabs()` to read the last
+completed snapshot without firing any build callbacks. It returns `Ok(None)`
+before that side's first completed build and `CreativeTabReadError::Unavailable`
+outside a live world. It does not change the snapshot's build permissions.
+Each tab's `display_name` is a translatable component for its `itemGroup.*` key,
+with the catalog's `title` as its text fallback.
+
 Unknown component types fail content loading unless a code mod registers them.
 Item-id-specific behaviour does not follow a template: a copy of the trident does not throw.
 

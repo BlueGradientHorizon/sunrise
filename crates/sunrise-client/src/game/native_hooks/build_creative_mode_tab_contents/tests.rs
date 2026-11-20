@@ -299,14 +299,14 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
     let catalog = serde_json::json!({
         "schema":4, "item_features":{"minecraft:barrier":["test:disabled"]}, "potion_features":{},
         "tabs":[
-            {"id":"test:a","type":"CATEGORY","build":[
+            {"id":"test:a","title":"test:a","type":"CATEGORY","build":[
                 row("minecraft:stone", "PARENT_TAB_ONLY"), row("minecraft:stick", "SEARCH_TAB_ONLY"), row("minecraft:barrier", both)
             ]},
-            {"id":"minecraft:hotbar","type":"HOTBAR","build":[]},
-            {"id":"test:b","type":"CATEGORY","build":[row("minecraft:sand", both)],"operator_build":[row("minecraft:glass", both)]},
-            {"id":"test:holders","type":"CATEGORY","build":[{"kind":"enchantments","all_levels":false,"visibility":both}]},
-            {"id":"minecraft:search","type":"SEARCH","build":[]},
-            {"id":"minecraft:inventory","type":"INVENTORY","build":[]},
+            {"id":"minecraft:hotbar","title":"minecraft:hotbar","type":"HOTBAR","build":[]},
+            {"id":"test:b","title":"test:b","type":"CATEGORY","build":[row("minecraft:sand", both)],"operator_build":[row("minecraft:glass", both)]},
+            {"id":"test:holders","title":"test:holders","type":"CATEGORY","build":[{"kind":"enchantments","all_levels":false,"visibility":both}]},
+            {"id":"minecraft:search","title":"minecraft:search","type":"SEARCH","build":[]},
+            {"id":"minecraft:inventory","title":"minecraft:inventory","type":"INVENTORY","build":[]},
         ]
     });
     let seen = Arc::new(Mutex::new(Seen::default()));
@@ -330,6 +330,10 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
                 host.creative_tabs(CreativeTabPermissions::Normal),
                 Err(CreativeTabReadError::Unavailable)
             );
+            assert_eq!(
+                host.built_creative_tabs(),
+                Err(CreativeTabReadError::Unavailable)
+            );
         }
         let flags = |game: &mut Game<'_>, ids: [&str; 2]| {
             let flags = ids.map(str::to_owned).into();
@@ -342,7 +346,21 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
         flags(game, ["test:alpha", "test:beta"]);
         assert_eq!(game.stock_sort_order()[0].item.as_ref(), "minecraft:stick");
         assert!(seen.lock().unwrap().events.is_empty());
+        {
+            // A plain read before any build answers nothing and builds nothing.
+            let reader: &dyn mod_api::Host = game;
+            assert_eq!(reader.built_creative_tabs(), Ok(None));
+            assert!(seen.lock().unwrap().events.is_empty());
+        }
         let normal = ItemsHost::creative_tabs(game, CreativeTabPermissions::Normal).unwrap();
+        let built_events = seen.lock().unwrap().events.len();
+        {
+            // After the build, a plain read gives that same snapshot without building again.
+            let reader: &dyn mod_api::Host = game;
+            let built = reader.built_creative_tabs().unwrap().unwrap();
+            assert!(Arc::ptr_eq(&normal, &built));
+            assert_eq!(seen.lock().unwrap().events.len(), built_events);
+        }
         assert_eq!(game.stock_sort_order()[0].item.as_ref(), "minecraft:torch");
         let a = normal.tab("test:a").unwrap();
         assert_eq!(
@@ -470,4 +488,42 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
             check_replacement(game, &old);
         });
     });
+}
+
+#[test]
+fn a_tab_reads_back_its_title_as_a_translatable_with_the_title_as_fallback() {
+    let catalog = Catalog::parse(&serde_json::json!({
+        "schema":4, "item_features":{}, "potion_features":{},
+        "tabs":[
+            {"id":"minecraft:building_blocks","title":"Building Blocks","type":"CATEGORY","build":[]},
+            {"id":"ruby:gems","title":"Ruby Gems","type":"CATEGORY","build":[]},
+        ]
+    }))
+    .unwrap();
+    let lists = [Arc::default(), Arc::default()];
+    let tabs = snapshot(&catalog, CreativeTabPermissions::Normal, &lists);
+    let name = |tab: &str| match &tabs.tab(tab).unwrap().display_name.content {
+        mod_api::text::TextContent::Translatable {
+            key,
+            fallback,
+            arguments,
+        } => (key.clone(), fallback.clone(), arguments.is_empty()),
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(
+        name("minecraft:building_blocks"),
+        (
+            "itemGroup.buildingBlocks".to_owned(),
+            Some("Building Blocks".to_owned()),
+            true
+        )
+    );
+    assert_eq!(
+        name("ruby:gems"),
+        (
+            "itemGroup.ruby.gems".to_owned(),
+            Some("Ruby Gems".to_owned()),
+            true
+        )
+    );
 }
