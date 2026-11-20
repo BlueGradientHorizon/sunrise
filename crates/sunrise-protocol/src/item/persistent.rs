@@ -18,7 +18,13 @@ impl<F: Fn(&str, &str) -> Option<i32>> Ids for F {
     }
 }
 /// Adapter for a name-only lookup callback.
+#[non_exhaustive]
 pub struct NameLookup<'a>(pub &'a dyn Fn(&str, i32) -> Option<String>);
+impl<'a> NameLookup<'a> {
+    pub fn new(lookup: &'a dyn Fn(&str, i32) -> Option<String>) -> Self {
+        Self(lookup)
+    }
+}
 impl Names for NameLookup<'_> {
     fn name(&self, registry: &str, id: i32) -> Option<String> {
         (self.0)(registry, id)
@@ -200,11 +206,7 @@ pub fn template_value(stack: &Stack, names: &dyn Names) -> Result<ValueTemplate>
         set_patch(&mut patch, name, None);
     }
     patch.sort_by(|a, b| a.0.cmp(&b.0));
-    Ok(ValueTemplate {
-        item,
-        count: stack.count,
-        patch,
-    })
+    Ok(ValueTemplate::new(item, stack.count, patch))
 }
 fn set_patch(patch: &mut Patch, name: &str, value: Option<Value>) {
     if let Some((_, old)) = patch.iter_mut().find(|(key, _)| key == name) {
@@ -361,7 +363,7 @@ mod tests {
         let reference = component_value(
             66,
             &Component::Raw(vec![1]),
-            &NameLookup(&|registry, id| {
+            &NameLookup::new(&|registry, id| {
                 (registry == "minecraft:jukebox_song" && id == 0)
                     .then(|| "minecraft:test_song".into())
             }),
@@ -371,10 +373,10 @@ mod tests {
     }
     #[test]
     fn transient_components_are_wire_values_not_persistent_entries() {
-        let template = ValueTemplate {
-            item: "minecraft:stone".into(),
-            count: 1,
-            patch: vec![
+        let template = ValueTemplate::new(
+            "minecraft:stone".into(),
+            1,
+            vec![
                 (
                     "minecraft:creative_slot_lock".into(),
                     Some(Value::Map(Vec::new())),
@@ -385,7 +387,7 @@ mod tests {
                 ),
                 ("minecraft:map_post_processing".into(), Some(Value::Int(1))),
             ],
-        };
+        );
         assert!(template.to_tag().unwrap().get("components").is_none());
         let wire = template_from_parts(
             &template.item,
@@ -497,6 +499,24 @@ mod tests {
                 wire.varint(id);
                 assert!(component_value(kind, &Component::Raw(wire.data), &Registry).is_err());
             }
+        }
+    }
+    #[test]
+    fn a_registry_id_at_the_top_of_the_range_is_refused_not_wrapped() {
+        let top = |_: &str, _: &str| Some(i32::MAX);
+        for (kind, registry) in [
+            (83, "minecraft:sound_event"),
+            (64, "minecraft:trim_material"),
+            (66, "minecraft:jukebox_song"),
+            (109, "minecraft:painting_variant"),
+        ] {
+            let error = component_from_value(kind, &Value::string("minecraft:test"), &top)
+                .unwrap_err()
+                .to_string();
+            assert!(
+                error.contains(registry) && error.contains("overflows"),
+                "{error}"
+            );
         }
     }
 }

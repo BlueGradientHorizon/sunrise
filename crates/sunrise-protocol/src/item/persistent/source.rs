@@ -98,6 +98,12 @@ fn id(ids: &dyn Ids, registry: &str, v: &Value) -> Result<i32> {
         .filter(|id| *id >= 0)
         .ok_or_else(|| err(format!("unknown {registry} entry {name}")))
 }
+/// A registry id as the stream's holder reference: one above the id, with 0 for an inline value.
+fn holder_id(ids: &dyn Ids, registry: &str, v: &Value) -> Result<i32> {
+    id(ids, registry, v)?
+        .checked_add(1)
+        .ok_or_else(|| err(format!("{registry} id overflows the holder reference")))
+}
 fn named(v: &Value, names: &[&str]) -> Result<i32> {
     let name = string(v)?;
     names
@@ -134,7 +140,7 @@ fn nbt(w: &mut Writer, v: &Value) -> Result<()> {
 }
 fn sound(w: &mut Writer, v: &Value, ids: &dyn Ids) -> Result<()> {
     if matches!(v, Value::String(_)) {
-        w.varint(id(ids, "minecraft:sound_event", v)? + 1);
+        w.varint(holder_id(ids, "minecraft:sound_event", v)?);
     } else {
         w.varint(0);
         w.string(&string(need(v, "sound_id")?)?);
@@ -179,7 +185,7 @@ fn holder(
     direct: impl FnOnce(&mut Writer, &Value) -> Result<()>,
 ) -> Result<()> {
     if matches!(v, Value::String(_)) {
-        w.varint(id(ids, registry, v)? + 1);
+        w.varint(holder_id(ids, registry, v)?);
     } else {
         w.varint(0);
         direct(w, v)?;
@@ -833,7 +839,7 @@ fn encode(kind: i32, v: &Value, w: &mut Writer, ids: &dyn Ids, depth: u32) -> Re
                 w.f32(float(need(v, "length_in_seconds")?)?);
                 w.varint(int(need(v, "comparator_output")?)?);
             } else {
-                w.varint(id(ids, "minecraft:jukebox_song", v)? + 1);
+                w.varint(holder_id(ids, "minecraft:jukebox_song", v)?);
             }
         }
         67 => holders(w, v, "minecraft:banner_pattern", ids)?,
@@ -993,7 +999,7 @@ fn encode(kind: i32, v: &Value, w: &mut Writer, ids: &dyn Ids, depth: u32) -> Re
                     optional(w, field(v, k), nbt)?;
                 }
             } else {
-                w.varint(id(ids, "minecraft:painting_variant", v)? + 1);
+                w.varint(holder_id(ids, "minecraft:painting_variant", v)?);
             }
         }
         118 | 119 => {

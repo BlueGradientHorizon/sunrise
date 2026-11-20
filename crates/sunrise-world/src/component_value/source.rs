@@ -1113,7 +1113,13 @@ fn validate_source(name: &str, t: &Tag) -> Result<()> {
             unreachable!()
         };
         let n = f32::from_bits(n);
-        if !(n >= min && n <= max) || exclusive && n == min {
+        // `Float.compareTo` order, as `ExtraCodecs.floatRange` uses: -0.0 is below 0.0 and NaN above every number.
+        let below = n.total_cmp(&min);
+        if !n.is_finite()
+            || below.is_lt()
+            || exclusive && below.is_eq()
+            || n.total_cmp(&max).is_gt()
+        {
             return Err("float outside component codec range".into());
         }
         Ok(())
@@ -1549,6 +1555,39 @@ mod tests {
             assert!(
                 matches!(&native,Value::List(values) if matches!(&values[0],Value::Template(item) if item.count==count))
             );
+        }
+    }
+    #[test]
+    fn float_ranges_follow_java_ordering_and_refuse_negative_zero_at_a_zero_minimum() {
+        let float = |bits: u32| Tag::Float(bits);
+        assert!(from_component_tag("minecraft:potion_duration_scale", &float(0)).is_ok());
+        assert!(
+            from_component_tag("minecraft:potion_duration_scale", &float(0x8000_0000)).is_err()
+        );
+        assert!(
+            from_component_tag(
+                "minecraft:potion_duration_scale",
+                &float(f32::NAN.to_bits())
+            )
+            .is_err()
+        );
+        assert!(
+            from_component_tag(
+                "minecraft:potion_duration_scale",
+                &float(f32::INFINITY.to_bits())
+            )
+            .is_err()
+        );
+        let cooldown = |bits: u32| Tag::compound([("seconds", float(bits))]);
+        assert!(from_component_tag("minecraft:use_cooldown", &cooldown(1.0f32.to_bits())).is_ok());
+        assert!(from_component_tag("minecraft:use_cooldown", &cooldown(0)).is_err());
+        assert!(from_component_tag("minecraft:use_cooldown", &cooldown(0x8000_0000)).is_err());
+        for (id, field) in [
+            ("minecraft:use_effects", "speed_multiplier"),
+            ("minecraft:attack_range", "min_reach"),
+        ] {
+            assert!(from_component_tag(id, &Tag::compound([(field, float(0))])).is_ok());
+            assert!(from_component_tag(id, &Tag::compound([(field, float(0x8000_0000))])).is_err());
         }
     }
 }

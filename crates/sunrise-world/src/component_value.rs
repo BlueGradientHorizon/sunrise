@@ -17,10 +17,16 @@ pub fn compact_text_tag(value: &Tag) -> &Tag {
 }
 
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct Template {
     pub item: String,
     pub count: i32,
     pub patch: Patch,
+}
+impl Template {
+    pub fn new(item: String, count: i32, patch: Patch) -> Self {
+        Self { item, count, patch }
+    }
 }
 impl PartialEq for Template {
     fn eq(&self, other: &Self) -> bool {
@@ -47,6 +53,7 @@ impl PartialEq for Template {
 pub type Patch = Vec<(String, Option<Value>)>;
 
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub enum Value {
     Empty,
     Byte(i8),
