@@ -46,11 +46,8 @@ pub fn parse_snbt_argument(text: &str) -> Result<(Tag, usize), SnbtError> {
 }
 
 /// One persistent value in a Java string; its cursor counts UTF-16 code units.
-/// Unlike the UTF-8 command parser, this does not impose a nesting limit.
 pub fn parse_snbt_utf16(text: &[u16]) -> Result<(Tag, usize), SnbtError> {
-    let mut parser = Parser::new(Input::Utf16(text));
-    parser.max_depth = usize::MAX;
-    parser.parse()
+    Parser::new(Input::Utf16(text)).parse()
 }
 
 /// One value and its byte count, with a printable error for non-command callers.
@@ -86,11 +83,14 @@ pub fn snbt_whitespace(value: u32) -> bool {
         | 0x2008..=0x200a | 0x2028..=0x2029 | 0x205f | 0x3000)
 }
 
+// Resource bound shared by the UTF-8 and UTF-16 parsers. Not a limit on
+// materialized tags or the binary reader's separate quota.
+const MAX_PARSE_DEPTH: usize = 512;
+
 struct Parser<'a> {
     input: Input<'a>,
     cursor: usize,
     depth: usize,
-    max_depth: usize,
     collect_suggestions: bool,
     suggestion_cursor: usize,
     suggestions: Vec<String>,
@@ -104,7 +104,6 @@ impl<'a> Parser<'a> {
             input,
             cursor: 0,
             depth: 0,
-            max_depth: 512,
             collect_suggestions: false,
             suggestion_cursor: 0,
             suggestions: Vec::new(),
@@ -248,7 +247,7 @@ impl<'a> Parser<'a> {
         &mut self,
         parse: impl FnOnce(&mut Self) -> Result<Tag, SnbtError>,
     ) -> Result<Tag, SnbtError> {
-        if self.depth >= self.max_depth {
+        if self.depth >= MAX_PARSE_DEPTH {
             return Err(self.error("arguments.nbtpath.too_deep"));
         }
         self.depth += 1;

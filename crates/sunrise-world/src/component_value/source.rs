@@ -1868,21 +1868,17 @@ mod tests {
                 for _ in 0..levels {
                     tag = Tag::compound([("a", tag)]);
                 }
-                let string = Tag::String(
-                    format!("{}1{}", "{a:".repeat(levels), "}".repeat(levels))
-                        .as_str()
-                        .into(),
-                );
-                let too_much_suffix = format!("{{a:{}1{}?}}", "[".repeat(4096), "]".repeat(4096));
-                assert!(
-                    from_component_tag(
-                        "custom_data",
-                        &Tag::String(too_much_suffix.as_str().into())
+                let flattened = |n: usize| {
+                    Tag::String(
+                        format!("{}1{}", "{a:".repeat(n), "}".repeat(n))
+                            .as_str()
+                            .into(),
                     )
-                    .is_err()
-                );
+                };
+                assert!(from_component_tag("custom_data", &flattened(512)).is_ok());
+                assert!(from_component_tag("custom_data", &flattened(513)).is_err());
                 for value in [
-                    from_component_tag("custom_data", &string).unwrap(),
+                    from_component_tag("custom_data", &tag).unwrap(),
                     from_upgraded_component_tag("custom_data", &tag).unwrap(),
                 ] {
                     let output = value.to_component_tag("custom_data").unwrap();
@@ -1891,7 +1887,9 @@ mod tests {
                         leaf = leaf.get("a").unwrap();
                     }
                     assert_eq!(leaf, &Tag::Int(1));
+                    sunrise_core::nbt::discard_tag(output);
                 }
+                sunrise_core::nbt::discard_tag(tag);
             })
             .unwrap()
             .join()
