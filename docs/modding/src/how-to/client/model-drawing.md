@@ -174,11 +174,13 @@ This API bakes quads only, not a mod-defined baked result type.
 - `hidden_faces` (bits 0 to 5: down, up, north, south, west, east) leaves out the faces whose
   `cull` side is set, so a structure of many copies can drop the sides its neighbours cover.
 
-A copy whose colour alpha is below `0xFF`, or of a model with a translucent face, is drawn in
-the translucent material described below; nothing is drawn when a view has no such copy. Copies with a colour other than
-white, hidden faces or a block state model are baked on the CPU instead of drawn as GPU
-instances; the 16,384-copy budget bounds that cost, and native and wasm are identical. `overlay`
-(the hurt tint) has no effect on a block state model.
+A copy whose colour alpha is below `0xFF` draws every quad in the translucent material described below.
+A model with translucent faces otherwise keeps its per-quad routing: only those faces take the translucent
+material. Copies with a colour other than white, hidden faces, a model with translucent faces or a block state model are baked on the CPU
+instead of drawn as GPU instances; the 16,384-copy budget bounds that cost, and native and wasm are identical.
+`overlay` (the hurt tint) has no effect on a copy on the translucent or block state model route, including any
+opaque faces it holds. `color` (the whole baked block model, multiplied at draw time) and `hidden_faces` (a
+cull mask the caller supplies) are Sunrise's options for mod copies.
 
 `block_state_model(state)` (on `RenderAssets`) resolves a block state as one model: the parts
 its blockstate file selects for its properties, weighted alternatives at the fixed seed
@@ -368,6 +370,19 @@ level's partial tick, not the camera's partial tick or the server's day time. Pa
 holds that clock; `/tick freeze` holds the level partial at 1 and stops texture ticks.
 Camera motion during a freeze does not spin a part backwards. Server time updates do
 not reset animation. Held-arm, hand, mob and scene draws use this same level partial.
+
+Directional shading on `quad` and `cube` follows `spin`, but light stays fixed by default.
+To use the level's sky and block light, call `BlockEntityDrawContext::level_light` in a world
+block-entity or entity renderer. Each element uses one level-light sample. The centre is the
+unit-cell centre for `block`, `model` and `terrain_model`, the box midpoint for `cube`, or the
+mean of the corners for `quad`, transformed by the pose and any applied `spin`. Baked emission
+and other per-channel light floors still apply. Items and text keep the fixed light.
+
+After `keep`, spun elements sample the cell they turn into each frame without a new submit.
+Stationary elements keep their original sample until the draw is invalidated. If the centre
+falls outside representable cell coordinates, the element uses its fixed light instead.
+Level-less scenes, previews and mob model frames also stay fixed. `light()` always reports the
+fixed setting; `set_light` returns subsequent draws to fixed light.
 
 ## Copycat faces
 

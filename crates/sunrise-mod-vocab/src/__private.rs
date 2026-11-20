@@ -111,6 +111,11 @@ pub fn install(mods: Mods) {
     crate::install(mods);
 }
 
+/// Revision of the enabled mod set, for engine caches of hook answers.
+pub fn mods_switched() -> u64 {
+    crate::runtime::mods_switched()
+}
+
 /// Whether an installed mod subscribes to `hook`.
 pub fn listened(hook: HookId) -> bool {
     crate::listened(hook)

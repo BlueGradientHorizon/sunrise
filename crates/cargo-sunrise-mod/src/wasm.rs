@@ -269,9 +269,9 @@ fn std_member(target_dir: &Path, toolchain: &Toolchain) -> Result<Vec<u8>, Strin
 
 /// `wasm-std <out.wasm>` and the CI-only `--catalog <points.json>`, copied beside it.
 fn wasm_std_args(args: &[String]) -> Result<(&str, Option<&str>), String> {
-    let mut options = Options::new("wasm-std", args);
+    let mut options = Options::new("wasm-std", args, &["--catalog"]);
     let catalog = options.value("--catalog")?;
-    let out = options.positional().first().copied();
+    let out = options.at_most_one()?;
     options.finish()?;
     let out = out.ok_or("cargo sunrise-mod wasm-std <out.wasm>")?;
     Ok((out, catalog))
@@ -712,5 +712,7 @@ mod wasm_std_args_tests {
         );
         let error = wasm_std_args(&argv("out.wasm --catlog points.json")).unwrap_err();
         assert!(error.contains("--catlog"), "{error}");
+        let error = wasm_std_args(&argv("first.wasm second.wasm")).unwrap_err();
+        assert!(error.contains("second.wasm"), "{error}");
     }
 }

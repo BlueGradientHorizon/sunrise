@@ -7,7 +7,10 @@ base of that pull request's head and its base branch. Only that one commit is fe
 checkout; a full clone is never fetched shallow), and only its `Cargo.toml`, `crates/` and `tools/layering` are
 unpacked. The engine catalogs are read from source; the workspace
 manifest resolves inherited dependencies for crates with injection points. CI compares points and loops, not
-listed internals. To audit internals too, use --with-internals; --trees BASE HEAD accepts local source trees.
+listed internals. To audit internals too, use --with-internals; --trees BASE HEAD accepts local source trees, which it
+only reads. With --build-base-tool, a BASE the head's tool cannot read is exported by BASE's own `sunrise-stage`,
+built from that tree: it compiles and runs BASE's code, build scripts included, so pass it only for a whole checkout
+you trust.
 
 It passes when the base cannot be found or fetched, saying so in one line. When the head's tool cannot read the
 base tree (the base predates a rule or format this tool holds trees to), the base's own `sunrise-stage` is built
@@ -17,10 +20,12 @@ not change or cannot be read, and, with `gate = true` in tools/ci/surface.toml (
 names.
 
 A new note that carries `landed = "<merge sha>"` is retroactive: it is left out of the comparison above and checked
-against that merge instead. The merge and its first parent are fetched and exported (the parent by its own tool when
-the head's cannot read it), and `surface-diff --landed` attaches the note and fails when an id did not change there.
-That costs two exports, only on a pull request that adds such a note. A merge that does not have two parents, or a
-tree that cannot be exported, fails naming the note and the sha.
+against that merge instead. The merge and its first parent are fetched and exported (each by its own commit's tool
+when the head's cannot read it), and `surface-diff --landed` attaches the note and fails when an id did not change there.
+The notes that merge brought itself (new against its first parent) count as coverage there, read apart from the late
+ones (`--covered-by`), so the comparison lists as unnoted only what no note covers, then or now. That costs two exports,
+only on a pull request that adds such a note. A merge that does not have two parents, or a tree that cannot be
+exported, fails naming the note and the sha.
 """
 
 from argparse import ArgumentParser
@@ -29,6 +34,7 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -100,7 +106,10 @@ def fetch_commit(sha: str, depth: int, git_text=git) -> None:
 def unpack(sha: str, into: Path, paths=("Cargo.toml", "crates", "tools/layering")) -> None:
     fetch_commit(sha, 1)
     archive = subprocess.Popen(["git", "archive", sha, *paths], cwd=ROOT, stdout=subprocess.PIPE)
-    subprocess.run(["tar", "-x", "-C", str(into)], stdin=archive.stdout, check=True)
+    # `-m`: files take the time of this extraction, not the commit's. Cargo decides a unit is fresh by source
+    # mtime, and the surface-base target is shared by trees of different commits, so an older commit's tree must
+    # not look unchanged beside a newer one's build of the same paths.
+    subprocess.run(["tar", "-x", "-m", "-C", str(into)], stdin=archive.stdout, check=True)
     if archive.wait() != 0:
         raise subprocess.CalledProcessError(archive.returncode, "git archive")
 
@@ -110,13 +119,30 @@ def base_tool(sha: str, work: Path) -> str:
     tree = work / f"base-tool-{sha[:12]}"
     tree.mkdir()
     unpack(sha, tree, ())
+    return tree_tool(tree, work)
+
+
+def tree_tool(tree: Path, work: Path) -> str:
+    """The sunrise-stage of the whole source tree `tree`, built in the test profile in target/surface-base and
+    copied into this run's `work`. The build directory is shared (and cached), so a lock held from the build to the
+    copy keeps another audit's build from replacing the binary before this one has its copy."""
+    try:
+        import fcntl  # Only this build needs it: a source-only audit runs anywhere.
+    except ImportError:
+        raise RuntimeError("building sunrise-stage from another tree requires POSIX file locking") from None
+
     target = ROOT / "target" / "surface-base"
-    built = subprocess.run(["cargo", "build", "--locked", "--profile", "test", "-p", "sunrise-mod-api-gen",
-                            "--bin", "sunrise-stage", "--target-dir", str(target)],
-                           cwd=tree, capture_output=True, text=True)
-    if built.returncode != 0:
-        raise RuntimeError(f"building the base's sunrise-stage failed: {last_line(built.stderr)}")
-    return str(target / "debug" / "sunrise-stage")
+    target.mkdir(parents=True, exist_ok=True)
+    tool = work / f"base-stage-{len(list(work.glob('base-stage-*')))}"
+    with open(target / "surface-report.lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        built = subprocess.run(["cargo", "build", "--locked", "--profile", "test", "-p", "sunrise-mod-api-gen",
+                                "--bin", "sunrise-stage", "--target-dir", str(target)],
+                               cwd=tree, capture_output=True, text=True)
+        if built.returncode != 0:
+            raise RuntimeError(f"building that tree's sunrise-stage failed: {last_line(built.stderr)}")
+        shutil.copy2(target / "debug" / "sunrise-stage", tool)
+    return str(tool)
 
 
 def last_line(text: str) -> str:
@@ -126,10 +152,14 @@ def last_line(text: str) -> str:
 
 def report(tool: str, base: Path, head: Path, work: Path, gate_on: bool, *,
            with_internals: bool = False, own_base_tool: Callable[[], str] | None = None,
-           notes: tuple[Path, Path] | None = None, landed: str | None = None) -> tuple[int, str]:
+           own_head_tool: Callable[[], str] | None = None,
+           notes: tuple[Path, Path] | None = None, landed: str | None = None,
+           covered: tuple[Path, Path] | None = None) -> tuple[int, str]:
     """Exports both trees at once, diffs them; (exit code, report text). `own_base_tool` gives the base's own
-    sunrise-stage, for a base the head's cannot read. `notes` is the (new, base) pair of change-note folders when
-    they are not the trees' own; `landed` selects the notes of one merge."""
+    sunrise-stage, for a base the head's cannot read, and `own_head_tool` the head tree's, for a head tree that is
+    not this checkout (a landed merge). `notes` is the (new, base) pair of change-note folders when they are not the
+    trees' own; `landed` selects the notes of one merge, and `covered` a (new, base) pair whose new notes count as
+    coverage only (that merge's own)."""
     # The base's records may predate the call names: its export names none (`--without-calls`),
     # which no comparison reads.
     catalogs = "--with-internals" if with_internals else "--with-points-and-loops"
@@ -142,36 +172,44 @@ def report(tool: str, base: Path, head: Path, work: Path, gate_on: bool, *,
         # Drain both subprocesses' diagnostics while they run so a full pipe cannot stall an export.
         exports = {name: pool.submit(export, name, tool, tree, flags)
                    for name, tree, flags in (("base", base, ["--without-calls"]), ("head", head, []))}
-    # This tree failing is a broken generator, which no other step would catch.
-    head_export, base_export = exports["head"].result(), exports["base"].result()
-    if head_export.returncode != 0:
+    head_export = exports["head"].result()
+    # This checkout's own tree failing is a broken generator, which no other step would catch.
+    if head_export.returncode != 0 and own_head_tool is None:
         return 1, f"The surface export of this tree failed: {last_line(head_export.stderr)}.\n"
     note = ""
-    if base_export.returncode != 0:
-        # An older tree this tool holds to a newer rule or format: the base's own tool reads it.
-        why = f"the head's sunrise-stage cannot read the base tree ({last_line(base_export.stderr)})"
-        if own_base_tool is None:
+    for name, tree, flags, done, own_tool in (("head", head, [], head_export, own_head_tool),
+                                              ("base", base, ["--without-calls"], exports["base"].result(),
+                                               own_base_tool)):
+        if done.returncode == 0:
+            continue
+        # An older tree this tool holds to a newer rule or format: that tree's own tool reads it.
+        why = f"the head's sunrise-stage cannot read the {name} tree ({last_line(done.stderr)})"
+        if own_tool is None:
             return 1, f"No surface report: {why}.\n"
         try:
-            own = export("base", own_base_tool(), base, ["--without-calls"])
+            own = export(name, own_tool(), tree, flags)
         except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
-            return 1, f"No surface report: {why}, and the base's own could not be used: {error}.\n"
+            return 1, f"No surface report: {why}, and the {name}'s own could not be used: {error}.\n"
         if own.returncode != 0:
-            return 1, f"No surface report: {why}, nor can the base's own ({last_line(own.stderr)}).\n"
-        note = f"The base was exported by its own sunrise-stage: {why}.\n"
-    code, text = compare(tool, base, head, work, gate_on, with_internals=with_internals, notes=notes, landed=landed)
+            return 1, f"No surface report: {why}, nor can the {name}'s own ({last_line(own.stderr)}).\n"
+        note += f"The {name} was exported by its own sunrise-stage: {why}.\n"
+    code, text = compare(tool, base, head, work, gate_on, with_internals=with_internals, notes=notes, landed=landed,
+                         covered=covered)
     return code, note + text
 
 
 def compare(tool: str, base: Path, head: Path, work: Path, gate_on: bool, *,
             with_internals: bool, notes: tuple[Path, Path] | None = None,
-            landed: str | None = None) -> tuple[int, str]:
-    """Run the gate on the exported documents and the change notes (the trees' own unless `notes` is given)."""
+            landed: str | None = None, covered: tuple[Path, Path] | None = None) -> tuple[int, str]:
+    """Run the gate on the exported documents and the change notes (the trees' own unless `notes` is given);
+    `covered` is a (new, base) pair of note folders whose new notes count as coverage only."""
     new_notes, base_notes = notes or (head / NOTES, base / NOTES)
     command = [tool, "surface-diff", str(work / "base.json"), str(work / "head.json"),
                "--notes", str(new_notes), "--base-notes", str(base_notes), "--json", str(work / "diff.json")]
     if landed:
         command += ["--landed", landed]
+    if covered:
+        command += ["--covered-by", str(covered[0]), "--covered-base", str(covered[1])]
     if gate_on:
         command.append("--gate")
     diff = subprocess.run(command, capture_output=True, text=True)
@@ -205,8 +243,9 @@ def landed_notes(head: Path, base: Path) -> dict[str, list[str]]:
 
 
 def landed_check(tool: str, head: Path, base: Path, work: Path, shas: dict[str, list[str]], *,
-                 git_text=git, fetch=unpack, own_tool: Callable[[str], str] | None = None) -> tuple[int, str]:
+                 git_text=None, fetch=None, own_tool: Callable[[str], str] | None = None) -> tuple[int, str]:
     """Check each merge's notes against that merge's first parent and the merge; (exit code, text)."""
+    git_text, fetch = git_text or git, fetch or unpack
     code, text = 0, ""
     for sha, files in sorted(shas.items()):
         who = f"{', '.join(files)} (landed {sha})"
@@ -226,9 +265,16 @@ def landed_check(tool: str, head: Path, base: Path, work: Path, shas: dict[str, 
                 fetch(commit, folder / name)
         except (OSError, subprocess.CalledProcessError) as error:
             return 1, text + f"Landed check failed for {who}: a tree could not be fetched: {error}.\n"
+        # The late notes are this pull request's, checked against the merge; the merge's own notes (new against its
+        # first parent) are read apart from them, as coverage.
+        for tree in ("base", "head"):
+            (folder / tree / NOTES).mkdir(parents=True, exist_ok=True)
+        # Both are older trees: each falls back to its own commit's tool when this one refuses it.
         sub_code, sub_text = report(tool, folder / "base", folder / "head", folder, False,
                                     own_base_tool=(lambda: own_tool(parent)) if own_tool else None,
-                                    notes=(head / NOTES, base / NOTES), landed=sha)
+                                    own_head_tool=(lambda: own_tool(sha)) if own_tool else None,
+                                    notes=(head / NOTES, base / NOTES), landed=sha,
+                                    covered=(folder / "head" / NOTES, folder / "base" / NOTES))
         if sub_code != 0:
             code = 1
         text += f"Landed {who}, first parent {parent}:\n{sub_text}"
@@ -258,7 +304,12 @@ def main(argv=None) -> int:
     parser.add_argument("--with-internals", action="store_true", help="include advisory listed-internal changes")
     parser.add_argument("--trees", nargs=2, metavar=("BASE", "HEAD"), type=Path,
                         help="compare two local source trees instead of fetching the CI base")
+    parser.add_argument("--build-base-tool", action="store_true",
+                        help="with --trees: when the head's tool cannot read BASE, build and run BASE's own "
+                             "sunrise-stage (runs BASE's code; a whole, trusted checkout only)")
     args = parser.parse_args(argv)
+    if args.build_base_tool and not args.trees:
+        parser.error("--build-base-tool goes with --trees; CI builds the base commit's own tool by itself")
     started = time.monotonic()
     tool = os.environ["SUNRISE_STAGE_TOOL"]
     gate_on = gate(ROOT / "tools/ci/surface.toml")
@@ -266,7 +317,9 @@ def main(argv=None) -> int:
         work = Path(directory)
         if args.trees:
             base, head = args.trees
-            code, text = report(tool, base, head, work, gate_on, with_internals=args.with_internals)
+            own = (lambda: tree_tool(base, work)) if args.build_base_tool else None
+            code, text = report(tool, base, head, work, gate_on, with_internals=args.with_internals,
+                                own_base_tool=own)
         else:
             base = work / "base"
             try:
@@ -278,11 +331,18 @@ def main(argv=None) -> int:
                 sha, why = None, f"the base could not be fetched: {error}"
             if sha:
                 fetched = time.monotonic() - started
+                built: dict[str, str] = {}
+
+                def own(commit: str) -> str:
+                    """A commit's own sunrise-stage, built once per run: a landed note may name the base itself."""
+                    if commit not in built:
+                        built[commit] = base_tool(commit, work)
+                    return built[commit]
+
                 code, text = report(tool, base, ROOT, work, gate_on, with_internals=args.with_internals,
-                                    own_base_tool=lambda: base_tool(sha, work))
+                                    own_base_tool=lambda: own(sha))
                 if shas := landed_notes(ROOT, base):
-                    landed_code, landed_text = landed_check(tool, ROOT, base, work, shas,
-                                                            own_tool=lambda parent: base_tool(parent, work))
+                    landed_code, landed_text = landed_check(tool, ROOT, base, work, shas, own_tool=own)
                     code, text = code or landed_code, text + landed_text
                 text += f"Base {sha}; fetch {fetched:.1f}s, total {time.monotonic() - started:.1f}s\n"
             else:

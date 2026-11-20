@@ -2616,6 +2616,7 @@ impl Game<'_> {
         camera: glam::DVec3,
         alpha: f64,
         out: &mut Vec<Vertex>,
+        run: std::ops::Range<usize>,
     ) {
         let a = alpha as f32;
         let Some(uv) = self
@@ -2630,7 +2631,7 @@ impl Game<'_> {
         // Entity.shouldRenderAtSqrDistance: 64 times the bounding box's mean
         // edge, scaled by the view scale.
         let range = (WIDTH + HEIGHT + WIDTH) / 3.0 * 64.0 * self.view_scale();
-        for c in &self.carts {
+        for c in &self.carts[run] {
             let Some(model) = self.cart_models.models.get(&c.kind) else {
                 continue;
             };
@@ -2814,6 +2815,7 @@ impl Game<'_> {
             glyph: &|c| self.gui.atlas.glyph_cell(c),
             glyphs: self.gui.atlas.font.epoch(),
             font: Some(&self.gui.atlas.font),
+            inline_images: None,
             dynamic_visible: None,
         };
         self.res
