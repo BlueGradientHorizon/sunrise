@@ -300,12 +300,16 @@ mod tests {
                         Vec3::new(1.5, 64.125, 1.5),
                         0.0,
                     );
-                    mob.no_ai = true;
+                    // The subject falls vertically; no goal steers it off the field.
+                    mob.ai.goals = Default::default();
+                    mob.ai.targets = Default::default();
                     if let Body::Cat { crouching } = body {
-                        // A normal cat cannot trample; a scaled one can. Cats
-                        // still take no fall damage, regardless of the pose.
+                        // A normal cat cannot trample; a scaled one can. The
+                        // cat's AI selects its stalking pose at move speed 0.6.
                         mob.extra.model_scale = 2.0;
-                        mob.extra.pose = if crouching { 5 } else { 0 };
+                        if crouching {
+                            mob.ai.mov.set_wanted(1.5, 64.125, 1.5, 0.6);
+                        }
                     }
                     mob.fall_distance = 6.0;
                     mob.velocity.y = -0.5;
