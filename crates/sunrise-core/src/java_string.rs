@@ -6,7 +6,7 @@
 //! `unsafe`. Each unit is weighted by its power of 31 straight from a table (a power of 31 modulo
 //! 2^32, since wrapping multiplication and addition are a ring), so the units of a block are
 //! independent sums and no multiplication waits for another: the same value as `h = 31 * h + c`,
-//! summed in another order. Elsewhere, and below sixteen units, it is the plain loop. This module
+//! summed in another order. Small x86-64 inputs use scalar powers; other targets use the plain loop. This module
 //! depends on nothing else in the crate, so that `tools/string_hash_kit` can time byte-identical
 //! copies of it.
 
@@ -260,10 +260,25 @@ mod simd {
     #[inline(always)]
     pub(super) fn fold<T: Unit>(hash: u32, units: &[T]) -> u32 {
         if units.len() < WIDE_FROM {
-            // Under a vector step the plain loop is the fastest there is.
-            return units
-                .iter()
-                .fold(hash, |h, &u| h.wrapping_mul(31).wrapping_add(u.into()));
+            // Independent multiplies avoid a dependency chain for each short key. The
+            // terms in a group fit in u32 even at the largest UTF-16 code unit.
+            let (groups, tail) = units.as_chunks::<4>();
+            let mut hash = hash;
+            for &[a, b, c, d] in groups {
+                hash = hash.wrapping_mul(POWERS[4]).wrapping_add(
+                    a.into() * POWERS[3] + b.into() * POWERS[2] + c.into() * 31 + d.into(),
+                );
+            }
+            return match tail {
+                [a, b, c] => hash
+                    .wrapping_mul(POWERS[3])
+                    .wrapping_add((*a).into() * POWERS[2] + (*b).into() * 31 + (*c).into()),
+                [a, b] => hash
+                    .wrapping_mul(POWERS[2])
+                    .wrapping_add((*a).into() * 31 + (*b).into()),
+                [a] => hash.wrapping_mul(31).wrapping_add((*a).into()),
+                _ => hash,
+            };
         }
         fold_wide(hash, units)
     }
