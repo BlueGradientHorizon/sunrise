@@ -4784,8 +4784,8 @@ impl Game<'_> {
                 // START_RAINING, STOP_RAINING, RAIN_LEVEL_CHANGE and THUNDER_LEVEL_CHANGE.
                 event @ (1 | 2 | 7 | 8) => self.world.weather.game_event(event, p.param),
                 3 => {
-                    let mode = p.rounded_param();
-                    self.set_mode_id(mode);
+                    self.set_mode_id(p.rounded_param());
+                    let mode = self.mode_id();
                     if let Some(r) = self.remote.as_mut() {
                         r.game_mode = mode;
                     }

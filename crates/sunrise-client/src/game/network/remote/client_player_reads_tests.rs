@@ -70,6 +70,16 @@ fn client_player_reads_answer_from_the_local_players_copy() {
         assert!(!abilities.may_build);
         assert_eq!((abilities.fly_speed, abilities.walk_speed), (0.1, 0.2));
 
+        // An invalid game mode falls back to Survival in the game and its remote snapshot.
+        game.handle_packet(C::GameEvent(play::GameEvent {
+            event: 3,
+            param: 4.0,
+        }))
+        .unwrap();
+        assert_eq!(game.mode_id(), 0);
+        assert_eq!(game.remote.as_ref().unwrap().game_mode, 0);
+        assert_eq!(player.game_mode(game), Some(GameMode::Survival));
+
         // Food from SetHealth; the client keeps no exhaustion.
         game.handle_packet(C::SetHealth(play::SetHealth {
             health: 20.0,
