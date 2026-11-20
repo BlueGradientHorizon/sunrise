@@ -98,9 +98,9 @@ pub fn write_with(path: &Path, write: impl FnOnce(&mut File) -> io::Result<()>) 
     Err(io::ErrorKind::AlreadyExists.into())
 }
 
-/// Removes `path`, then makes the directory entry's removal durable the
-/// same way [`write`] makes a replacement durable. A missing file is
-/// already gone.
+/// Removes `path`, syncing its parent directory on Unix. A missing file is already gone.
+/// Windows does not flush the unlink here: a journal removed this way can reappear after
+/// power loss, so the caller must be able to replay it safely.
 pub fn remove(path: &Path) -> io::Result<()> {
     match fs::remove_file(path) {
         Ok(()) => sync_parent(path),
