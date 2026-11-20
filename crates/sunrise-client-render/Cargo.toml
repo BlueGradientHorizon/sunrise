@@ -101,6 +101,10 @@ path = "tests/world_view_slots.rs"
 name = "standard_pack_gpu_entities"
 path = "tests/standard_pack_gpu_entities.rs"
 
+[[test]]
+name = "standard_pack_sky_switches"
+path = "tests/standard_pack_sky_switches.rs"
+
 [[example]]
 name = "standard_pack_gpu_entities"
 path = "examples/standard_pack_gpu_entities.rs"

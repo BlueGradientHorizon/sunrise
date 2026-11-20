@@ -70,8 +70,9 @@ fn quad() -> [crate::mesher::Vertex; 4] {
 }
 
 /// Each two-pixel band of the pack's picture with `properties`, every pixel of a band the same:
-/// a part's red, or the world's picture (`CLEAR`) where no part drew; `end` sets the End under the dragon fight's fog (the End's fan only) or its
-/// flash in the sun's place (one celestial quad).
+/// a part's red, or the world's picture (`CLEAR`) where no part drew; `end` sets the End under
+/// the dragon fight's fog (the End's fan only) or its flash in the sun's place (one celestial
+/// quad).
 fn bands(gpu: &Gpu, properties: &str, end: Option<bool>) -> [[u8; 4]; 8] {
     let color = gpu.texture(T::Rgba8Unorm);
     let depth = gpu.texture(T::Depth32Float);

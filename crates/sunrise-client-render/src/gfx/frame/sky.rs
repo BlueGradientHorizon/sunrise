@@ -123,7 +123,7 @@ fn vanilla_bodies(
     }
     let first = if own_sun || !switches.sun { 6 } else { 0 };
     let last = if switches.moon { all } else { all.min(6) };
-    first..last.max(first)
+    first..last
 }
 
 #[cfg(test)]

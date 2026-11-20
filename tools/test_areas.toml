@@ -336,6 +336,7 @@ cargo = [
   { package = "sunrise-assets", target = "lib", filter = "" },
   { package = "sunrise-client-render", target = "lib", filter = "hud" },
   { package = "sunrise-client-render", target = "test:standard_pack_gpu_entities", filter = "" },
+  { package = "sunrise-client-render", target = "test:standard_pack_sky_switches", filter = "" },
   { package = "sunrise-client", target = "lib", filter = "game::advancements::" },
 ]
 harnesses = [
