@@ -2135,7 +2135,7 @@ mod tests {
             .level
             .capability(host, &ITEMS, at.pos, at.side)
             .expect("item capability");
-        let inserted = handler.insert(
+        let inserted = handler.insert_at(
             host,
             tx,
             slot,
@@ -2160,7 +2160,7 @@ mod tests {
             .capability(host, &ITEMS, at.pos, at.side)
             .expect("item capability");
         let resource = handler.resource(host, slot)?;
-        let taken = handler.extract(host, tx, slot, &resource, amount);
+        let taken = handler.extract_at(host, tx, slot, &resource, amount);
         resource.to_stack(taken)
     }
 
@@ -2176,7 +2176,7 @@ mod tests {
             .capability(host, &FLUIDS, at.pos, at.side)
             .expect("fluid capability");
         let resource = handler.resource(host, tank)?;
-        let taken = handler.extract(host, tx, tank, &resource, amount);
+        let taken = handler.extract_at(host, tx, tank, &resource, amount);
         (taken > 0).then(|| resource.to_stack(taken))
     }
 
@@ -2213,7 +2213,7 @@ mod tests {
             );
             let large = ItemResource::of(&large.try_into_api().unwrap());
             let handler = level.capability(game, &ITEMS, [0, 64, 0], None).unwrap();
-            assert_eq!(handler.capacity(game, 0, &large), 99);
+            assert_eq!(handler.capacity(game, 0, Some(&large)), 99);
             assert_eq!(game.world.container_stack_limit((0, 64, 0)), None);
             let stick =
                 ItemResource::of(&ItemStack::new("minecraft:stick", 1).try_into_api().unwrap());
@@ -2223,17 +2223,17 @@ mod tests {
                 .unwrap();
             let aborted = host.transaction(|host, tx| {
                 assert!(handler.set_max_stack_size(host, tx, 10));
-                assert_eq!(handler.insert(host, tx, 0, &stick, 64), 10);
+                assert_eq!(handler.insert_at(host, tx, 0, &stick, 64), 10);
                 host.transaction(|host, tx| {
                     assert!(handler.set_max_stack_size(host, tx, 4));
                     Ok::<_, ()>(())
                 })?;
-                assert_eq!(handler.capacity(host, 0, &stick), 4);
+                assert_eq!(handler.capacity(host, 0, Some(&stick)), 4);
                 Err::<(), ()>(())
             });
             assert_eq!(aborted, Err(()));
-            assert_eq!(handler.capacity(host, 0, &stick), 64);
-            assert_eq!(handler.capacity(host, 0, &large), 99);
+            assert_eq!(handler.capacity(host, 0, Some(&stick)), 64);
+            assert_eq!(handler.capacity(host, 0, Some(&large)), 99);
             assert_eq!(handler.amount(host, 0), 0);
             host.transaction(|host, tx| {
                 assert!(handler.set_max_stack_size(host, tx, 10));
@@ -2241,19 +2241,19 @@ mod tests {
                     assert!(handler.set_max_stack_size(host, tx, 4));
                     Err::<(), ()>(())
                 });
-                assert_eq!(handler.capacity(host, 0, &stick), 10);
+                assert_eq!(handler.capacity(host, 0, Some(&stick)), 10);
                 for invalid in [0, 100, u32::MAX] {
                     assert!(!handler.set_max_stack_size(host, tx, invalid));
-                    assert_eq!(handler.capacity(host, 0, &stick), 10);
+                    assert_eq!(handler.capacity(host, 0, Some(&stick)), 10);
                 }
                 assert!(handler.set_max_stack_size(host, tx, 64));
-                assert_eq!(handler.insert(host, tx, 0, &stick, 20), 20);
+                assert_eq!(handler.insert_at(host, tx, 0, &stick, 20), 20);
                 assert!(handler.set_max_stack_size(host, tx, 10));
                 assert_eq!(handler.amount(host, 0), 20);
-                assert_eq!(handler.insert(host, tx, 0, &stick, 1), 0);
-                assert_eq!(handler.extract(host, tx, 0, &stick, 15), 15);
+                assert_eq!(handler.insert_at(host, tx, 0, &stick, 1), 0);
+                assert_eq!(handler.extract_at(host, tx, 0, &stick, 15), 15);
                 assert_eq!(handler.amount(host, 0), 5);
-                assert_eq!(handler.insert(host, tx, 0, &stick, 64), 5);
+                assert_eq!(handler.insert_at(host, tx, 0, &stick, 64), 5);
                 Err::<(), ()>(())
             })
             .unwrap_err();
@@ -2261,13 +2261,13 @@ mod tests {
             let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let _: Result<(), ()> = host.transaction(|host, tx| {
                     assert!(handler.set_max_stack_size(host, tx, 10));
-                    assert_eq!(handler.insert(host, tx, 0, &stick, 64), 10);
+                    assert_eq!(handler.insert_at(host, tx, 0, &stick, 64), 10);
                     panic!("abort container writes");
                 });
             }));
             assert!(panic.is_err());
-            assert_eq!(handler.capacity(host, 0, &stick), 64);
-            assert_eq!(handler.capacity(host, 0, &large), 99);
+            assert_eq!(handler.capacity(host, 0, Some(&stick)), 64);
+            assert_eq!(handler.capacity(host, 0, Some(&large)), 99);
             assert_eq!(handler.amount(host, 0), 0);
             host.transaction(|host, tx| {
                 let pearl = ItemResource::of(
@@ -2276,7 +2276,7 @@ mod tests {
                         .unwrap(),
                 );
                 assert!(handler.set_max_stack_size(host, tx, 32));
-                assert_eq!(handler.insert(host, tx, 0, &pearl, 64), 16);
+                assert_eq!(handler.insert_at(host, tx, 0, &pearl, 64), 16);
                 let disc = level.capability(host, &ITEMS, [4, 64, 0], None).unwrap();
                 assert!(disc.set_max_stack_size(host, tx, 10));
                 let record = ItemResource::of(
@@ -2284,7 +2284,7 @@ mod tests {
                         .try_into_api()
                         .unwrap(),
                 );
-                assert_eq!(disc.insert(host, tx, 0, &record, 64), 1);
+                assert_eq!(disc.insert_at(host, tx, 0, &record, 64), 1);
                 Err::<(), ()>(())
             })
             .unwrap_err();
@@ -2898,7 +2898,7 @@ mod tests {
 mod mod_capability_tests {
     use super::super::native_entity_refs::tests::with_game;
     use mod_api::ServerHost;
-    use mod_api::{BlockSide, HostTransaction, ResourceHandler, move_resources};
+    use mod_api::{BlockSide, HostTransaction, ResourceHandler, resource_util::move_resources};
     use mod_platform::__private::part_tests::{CHEMICALS, ChemTank, Chemical};
     use std::sync::Arc;
     use sunrise_client::chunk::Chunk;
@@ -2964,14 +2964,14 @@ mod mod_capability_tests {
             };
 
             let moved = host.transaction(|host, tx| {
-                move_resources(host, &tank, &vat, |c| *c == hydrogen, 250, tx).map_err(drop)
+                move_resources(host, &tank, &vat, |c| *c == hydrogen, 250, Some(tx)).map_err(drop)
             });
             assert_eq!(moved, Ok(250));
             assert_eq!(amounts(host), (350, 250));
             assert_eq!(vat.resource(host, 0), Some(hydrogen.clone()));
 
             let aborted = host.transaction(|host, tx| {
-                let moved = move_resources(host, &tank, &vat, |_| true, 100, tx);
+                let moved = move_resources(host, &tank, &vat, |_| true, 100, Some(tx));
                 assert_eq!(moved.ok(), Some(100));
                 assert_eq!(amounts(host), (250, 350));
                 Err::<(), ()>(())
