@@ -8,12 +8,36 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def method(source, name):
+    # The method lives in its own module now; cut it by counting braces in code only, so a brace
+    # inside a string literal or a comment cannot end it early.
+    start = source.index(f"fn {name}(")
+    start = source.rfind("\n", 0, start) + 1
+    depth, quoted, i = 0, False, source.index("{", start)
+    while True:
+        ch = source[i]
+        if quoted:
+            quoted = ch != '"' or source[i - 1] == "\\"
+        elif ch == '"':
+            quoted = True
+        elif ch == "/" and source.startswith("//", i):
+            i = source.index("\n", i)
+            continue
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                break
+        i += 1
+    return source[start:i + 1].replace("pub(super) fn", "fn", 1).replace("pub(in crate::game) fn", "fn", 1)
+
+
 @unittest.skipUnless(shutil.which("rustc"), "requires Rust")
 class RemoteMotionTests(unittest.TestCase):
     def test_mob_velocity_reaches_squid_animation(self):
-        source = (next(ROOT.glob('crates/sunrise-client/src/game/*/remote/mod.rs'))).read_text()
-        start = source.index("    fn remote_motion(")
-        end = source.index("    fn apply_remote_health(", start)
+        source = (next(ROOT.glob('crates/sunrise-client/src/game/*/remote/motion.rs'))).read_text()
+        method_source = method(source, "remote_motion")
         fixture = r'''
 #![allow(dead_code)]
 use std::collections::HashMap;
@@ -106,7 +130,7 @@ fn main() {
     game.remote_motion(45, [0.1, 0.0, 0.0]);
     assert!(!game.tridents[0].in_ground);
 }
-'''.replace("METHOD", source[start:end])
+'''.replace("METHOD", method_source)
         with tempfile.TemporaryDirectory(prefix="remote-motion-") as directory:
             path = Path(directory)
             (path / "main.rs").write_text(fixture)

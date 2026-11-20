@@ -1179,4 +1179,83 @@ impl Game<'_> {
         }
         self.world.day_time = r.clock_time(r.default_clock);
     }
+
+    /// `ClientPacketListener.tick`'s `LevelLoadTracker.tickClientLoad`: the
+    /// player's section is shown once the renderer has its mesh and it is 30%
+    /// faded in (without a renderer: once its column and the 8 around it are
+    /// lit, then the same fade); when the level is
+    /// ready the loading screen closes and the server hears `PlayerLoaded`
+    /// (`notifyPlayerLoaded`).
+    fn tick_client_load(&mut self) {
+        let Some(player) = self.player.as_ref() else {
+            return;
+        };
+        if !self
+            .remote
+            .as_ref()
+            .is_some_and(|r| r.level_load.is_active())
+        {
+            return;
+        }
+        let camera_y = (player.position.y + f64::from(self.eye)).floor() as i32;
+        let camera = [
+            player.position.x.floor() as i32,
+            camera_y,
+            player.position.z.floor() as i32,
+        ];
+        // `Util.toMillis(chunkSectionFadeInTime)`.
+        let fade_ms = sunrise_client::gfx::fade_millis(self.settings.chunk_fade as f32);
+        // `LevelRenderer`'s playerCompiledSectionCallback, run once
+        // `isSectionCompiledAndVisible(camera)`: the renderer's own mesh and fade
+        // for the camera's section. Without a renderer, the section counts as
+        // compiled once `LevelExtractor` would compile it
+        // (`SectionUpdateTracker.hasAllNeighbors`: its column and the 8 around
+        // it lit, as meshing waits for here).
+        let shown = self
+            .renderer
+            .as_ref()
+            .map(|renderer| renderer.section_compiled_and_visible(camera, fade_ms));
+        let (cx, cz) = (camera[0] >> 4, camera[2] >> 4);
+        let neighbours_lit = shown.is_none()
+            && (-1..=1).all(|dx| (-1..=1).all(|dz| self.streaming.is_lit(cx + dx, cz + dz)));
+        let shape = self.world.shape;
+        let check = sunrise_client::level_loading::PlayerCheck {
+            outside_build_height: camera_y < shape.min_y || camera_y >= shape.min_y + shape.height,
+            spectator: player.spectator,
+            alive: player.health.health() > 0.0,
+        };
+        let now = client_millis();
+        // LevelLoadingScreen.tick.
+        self.tick_load_progress();
+        let Some(r) = self.remote.as_mut() else {
+            return;
+        };
+        if r.level_load.wants_player_section() {
+            match shown {
+                Some(true) => r.level_load.player_section_ready(),
+                Some(false) => {}
+                None => r.level_load.player_section_compiled(
+                    [cx, camera_y >> 4, cz],
+                    neighbours_lit,
+                    now,
+                    fade_ms,
+                ),
+            }
+        }
+        r.level_load.tick_client_load(now, check);
+        if !r.level_load.is_level_ready(now) {
+            return;
+        }
+        r.level_load.finish();
+        if !r.loaded_sent {
+            r.loaded_sent = true;
+            self.send(S::PlayerLoaded(Empty));
+        }
+        // LevelLoadingScreen.onClose.
+        self.say_system_now(&sunrise_client::text::Text::translate(
+            "narrator.ready_to_play",
+            &[],
+        ));
+        self.capture_loaded_world();
+    }
 }
