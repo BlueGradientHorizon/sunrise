@@ -247,7 +247,7 @@ pub fn draw_model(
                 // No normal lighting: the directional shade is in the colour, as a block quad's is.
                 let color = if shaded {
                     let shade = (crate::models::cube::shade(face) * 255.0) as u32;
-                    crate::hud_layout::multiply(color, 0xFF00_0000 | shade * 0x01_0101)
+                    crate::hud_layout::multiply(color, 0xFF00_0000 | (shade * 0x01_0101))
                 } else {
                     color
                 };
