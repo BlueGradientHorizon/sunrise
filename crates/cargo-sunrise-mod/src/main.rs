@@ -732,6 +732,11 @@ fn run(args: &[String]) -> Result<(), RunError> {
 }
 
 #[cfg(test)]
+#[allow(dead_code)]
+#[path = "../build.rs"]
+mod build_script;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
