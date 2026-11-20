@@ -5,12 +5,12 @@
 //! buttons send back.
 use super::Game;
 use super::remote_chat::Behind;
-use std::time::Instant;
+use std::{sync::Arc, time::Instant};
 use sunrise_client::{
     Result,
     clipboard::EditShortcut,
     confirm_screen::Confirm,
-    dialog::{AfterAction, Body, Click, Control, Dialog, InputValue, Kind, Reference},
+    dialog::{AfterAction, Body, Click, Control, Dialog, InputValue, Kind},
     dialog_screen::{BOX, Layout, Part, WARNING_SPRITES, text_height, waiting_button},
     font::Font,
     hud::{HudBatch, rgba},
@@ -20,11 +20,14 @@ use sunrise_client::{
     widgets::{self, ScreenInfo},
 };
 use sunrise_core::nbt::Tag;
+use sunrise_protocol::registry::Dynamic;
 use winit::keyboard::KeyCode;
 
 /// An open `DialogScreen`.
 struct Open {
     dialog: Dialog,
+    /// A configuration screen and the dialogs opened from it use the same snapshot.
+    configuration: Option<Arc<Dynamic>>,
     values: Vec<InputValue>,
     /// The box of each text input.
     fields: Vec<Option<Field>>,
@@ -174,10 +177,12 @@ impl Game<'_> {
             })
     }
 
-    pub(super) fn decode_dialog(&self, tag: &Tag) -> Option<Dialog> {
-        let remote = self.remote.as_ref();
-        let items = remote.and_then(|remote| remote.builtin.get("minecraft:item"));
-        Dialog::parse(
+    pub(super) fn decode_dialog(&self, tag: &Tag, dynamic: Option<&Dynamic>) -> Option<Dialog> {
+        let items = self
+            .remote
+            .as_ref()
+            .and_then(|r| r.builtin.get("minecraft:item"));
+        Dialog::parse_in_registry(
             tag,
             &self.ui.registries,
             &|id| {
@@ -186,56 +191,50 @@ impl Game<'_> {
                     |items| items.id(id).is_some(),
                 )
             },
-            &|reference| {
-                let Some(dynamic) = remote.map(|remote| &remote.registries) else {
-                    return false;
-                };
-                match reference {
-                    Reference::Id(id) => {
-                        dynamic
-                            .registries
-                            .get("minecraft:dialog")
-                            .is_some_and(|entries| {
-                                entries
-                                    .iter()
-                                    .any(|(name, value)| name == id && value.is_some())
-                            })
-                    }
-                    Reference::Tag(id) => dynamic.tag("minecraft:dialog", id).is_some(),
-                }
-            },
+            dynamic,
         )
+    }
+
+    pub(super) fn show_dialog(&mut self, tag: &Tag) {
+        self.show_dialog_in_phase(tag, None);
     }
 
     /// `showDialog`: the dialog replaces an open one (and a waiting screen);
     /// under the warning screen, it is what Back returns to.
-    pub(super) fn show_dialog(&mut self, tag: &Tag) {
-        let Some(mut dialog) = self.decode_dialog(tag) else {
+    pub(super) fn show_dialog_in_phase(&mut self, tag: &Tag, configuration: Option<Arc<Dynamic>>) {
+        let dynamic = configuration
+            .as_deref()
+            .or_else(|| self.remote.as_ref().map(|r| r.registries.as_ref()));
+        let Some(mut dialog) = self.decode_dialog(tag, dynamic) else {
             log::warn!("Sunrise: failed to show dialog for data {tag:?}");
             return;
         };
         if let Kind::DialogList { dialogs, .. } = &dialog.kind {
-            let entries = self.remote.as_ref().map(|r| {
-                let list = r.registries.registries.get("minecraft:dialog");
-                let by_id = |id: &str| list?.iter().find(|(n, _)| n == id)?.1.clone();
+            let entries = dynamic.map(|registry| {
+                let by_id = |name: &str| {
+                    registry
+                        .data("minecraft:dialog", registry.id("minecraft:dialog", name)?)
+                        .cloned()
+                };
                 let by_tag = |name: &str| {
-                    let ids = r
-                        .registries
+                    registry
                         .tag("minecraft:dialog", name)
                         .into_iter()
-                        .flatten();
-                    ids.filter_map(|&i| list?.get(usize::try_from(i).ok()?)?.1.clone())
+                        .flatten()
+                        .filter_map(|&id| registry.data("minecraft:dialog", id).cloned())
                         .collect()
                 };
                 Dialog::list_entries(dialogs, &by_tag, &by_id)
             });
-            dialog.set_list(&entries.unwrap_or_default(), |tag| self.decode_dialog(tag));
+            dialog.set_list(&entries.unwrap_or_default(), |tag| {
+                self.decode_dialog(tag, dynamic)
+            });
         }
-        self.open_dialog(dialog);
+        self.open_dialog(dialog, configuration);
     }
 
     /// The parsed dialog's screen, its inputs at their initial values.
-    fn open_dialog(&mut self, dialog: Dialog) {
+    fn open_dialog(&mut self, dialog: Dialog, configuration: Option<Arc<Dynamic>>) {
         let values = dialog.inputs.iter().map(|i| i.control.initial()).collect();
         let font = &self.gui.atlas.font;
         let fields = dialog
@@ -277,6 +276,7 @@ impl Game<'_> {
         self.open_screen_overlay("dialog", |game| {
             game.dialogs.open = Some(Open {
                 dialog,
+                configuration,
                 values,
                 fields,
                 focus: None,
@@ -351,6 +351,14 @@ impl Game<'_> {
             }
             _ => None,
         };
+        let configuration = match click {
+            Some(Click::ShowDialog(_)) => self
+                .dialogs
+                .open
+                .as_ref()
+                .and_then(|o| o.configuration.clone()),
+            _ => None,
+        };
         match after {
             AfterAction::None => {}
             AfterAction::Close => self.dialogs.open = None,
@@ -380,7 +388,9 @@ impl Game<'_> {
                     );
                 }
             }
-            Some(Click::ShowDialog(dialog)) => self.show_dialog_ref(&dialog),
+            Some(Click::ShowDialog(dialog)) => {
+                self.show_dialog_ref_in_phase(&dialog, configuration)
+            }
             Some(Click::CopyToClipboard(value)) => {
                 use sunrise_client::clipboard::Clipboard;
                 self.clipboard.set(&value);
@@ -412,23 +422,28 @@ impl Game<'_> {
 
     /// A `show_dialog` click event's dialog: a registry id or the dialog itself.
     pub(super) fn show_dialog_ref(&mut self, dialog: &Tag) {
-        match dialog {
-            Tag::String(id) => {
-                let id = id.to_string_lossy();
-                let Ok(name) = sunrise_core::identifier::Identifier::parse(&id) else {
-                    return;
-                };
-                let name = name.to_string();
-                let found = self.remote.as_ref().and_then(|r| {
-                    let entries = r.registries.registries.get("minecraft:dialog")?;
-                    entries.iter().find(|(n, _)| *n == name)?.1.clone()
-                });
-                match found {
-                    Some(tag) => self.show_dialog(&tag),
-                    None => log::warn!("Sunrise: unknown dialog {id}"),
-                }
+        self.show_dialog_ref_in_phase(dialog, None);
+    }
+
+    fn show_dialog_ref_in_phase(&mut self, dialog: &Tag, configuration: Option<Arc<Dynamic>>) {
+        if let Tag::String(id) = dialog {
+            let id = id.to_string_lossy();
+            let Ok(name) = sunrise_core::identifier::Identifier::parse(&id) else {
+                return;
+            };
+            let dynamic = configuration
+                .as_deref()
+                .or_else(|| self.remote.as_ref().map(|r| r.registries.as_ref()));
+            let found = dynamic.and_then(|registry| {
+                let id = registry.id("minecraft:dialog", &name.to_string())?;
+                registry.data("minecraft:dialog", id).cloned()
+            });
+            match found {
+                Some(tag) => self.show_dialog_in_phase(&tag, configuration),
+                None => log::warn!("Sunrise: unknown dialog {id}"),
             }
-            tag => self.show_dialog(tag),
+        } else {
+            self.show_dialog_in_phase(dialog, configuration);
         }
     }
 
@@ -1334,6 +1349,7 @@ mod pause_tests {
         DialogState {
             open: Some(Open {
                 dialog: dialog(pause),
+                configuration: None,
                 values: Vec::new(),
                 fields: Vec::new(),
                 focus: None,

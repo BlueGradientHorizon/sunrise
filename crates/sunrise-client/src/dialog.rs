@@ -1079,6 +1079,27 @@ impl<T> OkOrDefault<T> for Option<T> {
 }
 
 impl Dialog {
+    /// Decode a packet dialog against the dynamic registry of the phase that sent it.
+    pub fn parse_in_registry(
+        t: &Tag,
+        registries: &Registries,
+        item: &dyn Fn(&str) -> bool,
+        dynamic: Option<&sunrise_protocol::registry::Dynamic>,
+    ) -> Option<Self> {
+        Self::parse(t, registries, item, &|reference| {
+            let Some(dynamic) = dynamic else {
+                return false;
+            };
+            match reference {
+                Reference::Id(id) => dynamic
+                    .id("minecraft:dialog", id)
+                    .and_then(|id| dynamic.data("minecraft:dialog", id))
+                    .is_some(),
+                Reference::Tag(id) => dynamic.tag("minecraft:dialog", id).is_some(),
+            }
+        })
+    }
+
     /// `Dialog.DIRECT_CODEC` over the connection's item and dialog registries.
     pub fn parse(
         t: &Tag,
