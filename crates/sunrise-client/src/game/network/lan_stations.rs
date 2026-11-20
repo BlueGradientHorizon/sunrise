@@ -725,53 +725,74 @@ impl Game<'_> {
     /// `ServerGamePacketListenerImpl.handleContainerButtonClick`:
     /// `clickMenuButton`, then `broadcastChanges` when the menu took it.
     pub(super) fn lan_station_button(&mut self, conn: u32, window: i32, id: i32) {
-        // A mod container's menu: its mod's buttons (`native_menu_button`),
-        // as handleContainerButtonClick checks them: the open menu, not a
-        // spectator, still valid. A menu a mod opened from code
-        // (`Slots::Native`) at a block's position is that block's only when
-        // the block's container opens the same menu type, as the client
-        // tells its screen hooks (`menu_opener_block`).
+        // Route to the active menu type's listeners. Only a validated `Slots::Block`
+        // supplies the optional position and entity backing.
         let mod_menu = self.lan.as_ref().and_then(|host| {
             let g = host.hub.guest(conn)?;
             let menu = g.menu.as_ref().filter(|m| m.window == window)?;
-            let pos = menu.pos?;
-            let opened_as = (menu.slots == sunrise_client::lan::menu::Slots::Native)
-                .then(|| menu.registry_id.clone());
+            if !mod_api::__private::menu_listens(mod_api::HookId::MenuButton, &menu.registry_id) {
+                return None;
+            }
             Some((
-                pos,
-                opened_as,
+                menu.registry_id.clone(),
+                g.menu_generation,
+                match menu.slots {
+                    sunrise_client::lan::menu::Slots::Block(pos) => Some(pos),
+                    _ => None,
+                },
                 !g.spectator() && menu.still_valid(&host.hub.loop_context, &self.world, g),
                 g.carried.clone(),
                 g.uuid,
                 g.entity_id,
             ))
         });
-        if let Some((pos, opened_as, valid, mut carried, uuid, entity_id)) = mod_menu
-            && self
-                .mod_menu_at(pos)
-                .is_some_and(|m| opened_as.as_deref().is_none_or(|t| t == m))
+        if let Some((menu, menu_generation, backing, valid, mut carried, uuid, entity_id)) =
+            mod_menu
         {
             if valid {
                 // The clicking player's cursor stack (`clickMenuButton`'s
                 // other half). Single player's own player is a guest of
                 // its own host too (`lan.rs:165`), so this one path covers
                 // both single player and a LAN guest.
+                let original_carried = carried.clone();
+                let backing = backing.filter(|&pos| self.mod_menu_at(pos) == Some(menu.as_ref()));
+                let block = backing.map(|(x, y, z)| self.data_block_name([x, y, z]));
+                let mut accepted = false;
+                self.native_menu_button_valid(&menu, block.as_deref(), id, &mut accepted);
+                if !accepted {
+                    return;
+                }
                 let context = mod_api::item::menu::MenuButtonContext {
                     player: uuid,
                     player_entity_id: entity_id,
-                    pos: [pos.0, pos.1, pos.2],
+                    pos: backing.map(|(x, y, z)| [x, y, z]),
                     id,
                 };
                 // As that player: `native_acting_player` and `native_acting_id`
                 // answer for the one who pressed.
-                self.as_guest(conn, |game| game.mod_menu_button(context, &mut carried));
-                if let Some(host) = self.lan.as_mut()
-                    && host.hub.guest(conn).is_some_and(|g| g.carried != carried)
+                self.as_guest(conn, |game| {
+                    game.mod_menu_button(&menu, context, block.as_deref(), backing, &mut carried)
+                });
+                if carried != original_carried
+                    && let Some(host) = self.lan.as_mut()
                 {
                     let net = host.hub.stack(&carried);
-                    let _ = host.hub.update_guest(conn, |g| {
+                    let _ = host.hub.update_guest(conn, move |g| {
+                        if g.menu_generation != menu_generation
+                            || !g
+                                .menu
+                                .as_ref()
+                                .is_some_and(|current| current.window == window)
+                            || g.carried != original_carried
+                        {
+                            return false;
+                        }
+                        if g.carried == carried {
+                            return false;
+                        }
                         g.carried = carried;
                         g.send(&C::SetCursorItem(play::SetCursorItem { item: net }));
+                        true
                     });
                 }
             }

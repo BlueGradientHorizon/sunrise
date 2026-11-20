@@ -1043,7 +1043,6 @@ pub const MAX_MENU_SLOTS: u16 = 256;
 #[derive(Debug, Clone)]
 enum Source {
     Dir(PathBuf),
-    #[cfg(not(target_arch = "wasm32"))]
     Zip(PathBuf),
     /// No files: content a native mod declares in code.
     Code,
@@ -1075,7 +1074,6 @@ pub struct Content {
 /// Reads a mod's content files ([`Content::reader`]).
 pub enum FileReader<'a> {
     Dir(&'a Path),
-    #[cfg(not(target_arch = "wasm32"))]
     Zip(Box<zip::ZipArchive<std::fs::File>>),
 }
 impl FileReader<'_> {
@@ -1086,7 +1084,6 @@ impl FileReader<'_> {
             Self::Dir(root) => {
                 Box::new(std::fs::File::open(root.join(name)).map_err(|e| format!("{name}: {e}"))?)
             }
-            #[cfg(not(target_arch = "wasm32"))]
             Self::Zip(zip) => Box::new(zip.by_name(name).map_err(|e| format!("{name}: {e}"))?),
         };
         let mut out = Vec::new();
@@ -1105,7 +1102,6 @@ impl FileReader<'_> {
         check_path(name)?;
         let root = match self {
             Self::Dir(root) => root,
-            #[cfg(not(target_arch = "wasm32"))]
             Self::Zip(_) => return Ok(None),
         };
         let path = root.join(name);
@@ -1146,22 +1142,16 @@ impl Content {
         let (source, sized) = if path.is_dir() {
             (Source::Dir(path.to_owned()), folder_files(path)?)
         } else {
-            #[cfg(target_arch = "wasm32")]
-            return Err("archive I/O is unavailable on wasm32".into());
-            #[cfg(not(target_arch = "wasm32"))]
-            {
-                let mut zip = open_zip(path)?;
-                let mut out = Vec::new();
-                for i in 0..zip.len() {
-                    let entry = zip.by_index_raw(i).map_err(|e| e.to_string())?;
-                    let name = entry.name().map_err(|e| e.to_string())?.into_owned();
-                    if (name.starts_with("assets/") || name.starts_with("data/")) && !entry.is_dir()
-                    {
-                        out.push((name.to_owned(), entry.size()));
-                    }
+            let mut zip = open_zip(path)?;
+            let mut out = Vec::new();
+            for i in 0..zip.len() {
+                let entry = zip.by_index_raw(i).map_err(|e| e.to_string())?;
+                let name = entry.name().map_err(|e| e.to_string())?.into_owned();
+                if (name.starts_with("assets/") || name.starts_with("data/")) && !entry.is_dir() {
+                    out.push((name.to_owned(), entry.size()));
                 }
-                (Source::Zip(path.to_owned()), out)
             }
+            (Source::Zip(path.to_owned()), out)
         };
         let mut files = Vec::with_capacity(sized.len());
         let mut total = 0u64;
@@ -1297,7 +1287,6 @@ impl Content {
     pub fn source(&self) -> &Path {
         match &self.source {
             Source::Dir(path) => path,
-            #[cfg(not(target_arch = "wasm32"))]
             Source::Zip(path) => path,
             Source::Code => Path::new(""),
         }
@@ -1847,9 +1836,6 @@ fn check_block(file: &Block) -> Result<(), String> {
     if p.explosion_resistance.is_some_and(|r| r < 0.0) {
         return Err("explosion_resistance is 0 or more".into());
     }
-    if p.friction.is_some_and(|f| !(0.0..=2.0).contains(&f)) {
-        return Err("friction is 0 to 2".into());
-    }
     if p.light.is_some_and(|l| l > 15) {
         return Err("light is 0 to 15".into());
     }
@@ -2062,13 +2048,11 @@ fn check_sign_walls(blocks: &[&Block]) -> Result<(), String> {
 fn reader_of(source: &Source) -> Result<FileReader<'_>, String> {
     Ok(match source {
         Source::Dir(root) => FileReader::Dir(root),
-        #[cfg(not(target_arch = "wasm32"))]
         Source::Zip(path) => FileReader::Zip(Box::new(open_zip(path)?)),
         Source::Code => FileReader::Dir(Path::new("")),
     })
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 fn open_zip(path: &Path) -> Result<zip::ZipArchive<std::fs::File>, String> {
     let file = std::fs::File::open(path).map_err(|e| e.to_string())?;
     zip::ZipArchive::new(file).map_err(|e| e.to_string())
@@ -2234,6 +2218,27 @@ capabilities = ["registries"]
         let content = package.and_then(|p| Content::read(&path, &p.manifest));
         std::fs::remove_dir_all(&dir).unwrap();
         content
+    }
+
+    #[test]
+    fn a_declared_friction_is_any_finite_number() {
+        let load = |value: &str| {
+            let file =
+                format!(r#"{{"template":"minecraft:stone","properties":{{"friction":{value}}}}}"#);
+            smod(
+                "friction-range",
+                MANIFEST_TEXT,
+                &[("data/ruby/sunrise/block/a.json", file.as_bytes())],
+            )
+        };
+        for (value, expected) in [("3.0", 3.0), ("-0.5", -0.5)] {
+            let content = load(value).unwrap();
+            assert_eq!(content.blocks[0].properties.friction, Some(expected));
+        }
+        // JSON has no NaN or infinity: a literal is a parse error, and a number past f32's range
+        // becomes infinity and is refused by the check.
+        assert!(load("NaN").is_err());
+        assert!(load("1e39").is_err());
     }
 
     #[test]

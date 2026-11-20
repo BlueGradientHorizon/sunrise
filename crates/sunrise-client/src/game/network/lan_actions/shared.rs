@@ -442,7 +442,7 @@ fn refresh_building_player(host: &LanHost, _conn: u32) {
     });
 }
 
-/// Kept at LAN action scope to preserve its derived internals point identity.
+/// Kept at LAN action scope to preserve its published internals target path.
 impl Game<'_> {
     pub(super) fn vehicle_has_other_viewers(
         container: Option<(i32, i32, i32)>,
@@ -542,6 +542,8 @@ mod tests {
             source: 4,
             entity: None,
             except_entity: None,
+            seed: 0,
+            particles_before: 0,
         };
         let broken = [[1.0, 64.0, -3.0]];
         assert!(super::captured_block_break(&sound, &broken));

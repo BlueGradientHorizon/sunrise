@@ -543,7 +543,9 @@ pub struct PlayerMotion {
     /// it travels on the server: `isLocalInstanceAuthoritative` is false, so
     /// its moves check no fall damage.
     pub server_copy: bool,
-    /// A tick played again (`replayed_tick`), whose native callbacks must not escape.
+    /// A tick played again (`replayed_tick`): the notifications of what it did (`living_jump`,
+    /// `living_fall`, `player_flyable_fall`) don't fire. What its movement asks (block parts'
+    /// answers, the movement value hooks) still answers, as on any tick.
     pub(crate) replaying: bool,
     /// The span of `events` a wall hit on the server's copy pushed (sound and
     /// damage): `server_travel` keeps them while it drops the simulated moves.
@@ -1281,7 +1283,9 @@ impl MotionWorld<'_, '_, '_> {
         })
     }
     /// A client's tick played again: the client's own keys, and the sprinting it said it had
-    /// (its ServerboundPlayerCommandPacket comes before the tick's move). Mods' callbacks don't fire.
+    /// (its ServerboundPlayerCommandPacket comes before the tick's move). It tells the mods nothing
+    /// of what it did (`living_jump`, `living_fall`, `player_flyable_fall`: `replaying`), but
+    /// their answers to what the movement asks (a bounce's restitution, a block's friction) count.
     pub fn replayed_tick(&mut self, keys: crate::sprint::Keys, sprinting: bool) -> Result<()> {
         self.player.replaying = true;
         let result = self.local_tick(keys, |player, _| {
@@ -5172,8 +5176,8 @@ mod tests {
         assert!(!w.player.swimming);
         assert_eq!(w.player.pose, crate::pose::Pose::Standing);
     }
-    /// The movement prediction plays a tick again on a copy: what the copy
-    /// does (sprinting edits the speed attribute) stays in the copy.
+    /// A mod's simulation of a player's tick (`native_simulate_player_move`) plays it on a
+    /// copy: what the copy does (sprinting edits the speed attribute) stays in the copy.
     #[test]
     #[ignore = "daily"]
     fn a_copied_player_moves_on_its_own() {

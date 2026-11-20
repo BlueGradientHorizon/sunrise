@@ -49,6 +49,10 @@ material to `view.friction(pos, material, event.entity)` at the **same position*
 original coefficient if the query returns `None`. Use the same rule on both sides, including
 client prediction and replay.
 
+A part's answer is used as given, as vanilla uses what `getFriction` returns: any finite value,
+above 1 or below 0 included. A non-finite answer is refused and the state's own coefficient is
+used.
+
 ## Block classes
 
 `block_class(state, class)` answers what a mod would ask with `instanceof StairBlock`, `EntityBlock`,
