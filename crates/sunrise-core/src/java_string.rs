@@ -63,7 +63,7 @@ pub(crate) fn ascii_with_hash(bytes: &[u8]) -> (Units, i32) {
         return (Units::inline(units, bytes.len()), hash);
     }
     let units = bytes.iter().copied().map(u16::from).collect();
-    (Units::Heap(units), java_string_hash_ascii(bytes))
+    (Units::heap(units), java_string_hash_ascii(bytes))
 }
 
 /// The UTF-16 units of `text` and their `String.hashCode`, made together. Short strings
@@ -93,7 +93,7 @@ pub(crate) fn utf16_with_hash(text: &str) -> (Units, i32) {
         heap.push(next);
         heap.extend(encoded);
         let hash = java_string_hash(&heap);
-        return (Units::Heap(heap), hash);
+        return (Units::heap(heap), hash);
     }
     let units = latin1::decode(text).unwrap_or_else(|| {
         // One reservation: an upper bound is faster here than first walking the bytes to
@@ -103,7 +103,7 @@ pub(crate) fn utf16_with_hash(text: &str) -> (Units, i32) {
         units
     });
     let hash = java_string_hash(&units);
-    (Units::Heap(units), hash)
+    (Units::heap(units), hash)
 }
 
 /// `String.hashCode` of the Java string holding `text`'s UTF-16 units (`text.encode_utf16()`),
@@ -498,9 +498,7 @@ mod tests {
             let (units, hash) = utf16_with_hash(&text);
             let expected: Vec<u16> = text.encode_utf16().collect();
             assert_eq!(units.as_slice(), expected, "{text:?}");
-            if let Units::Heap(units) = &units {
-                assert!(units.capacity() <= text.len(), "{text:?}");
-            }
+            assert!(units.heap_capacity() <= text.len(), "{text:?}");
             assert_eq!(hash, java_string_hash(&expected));
         }
     }

@@ -98,7 +98,7 @@ fn with_key<R>(key: &str, f: impl FnOnce(&JavaString) -> R) -> R {
 
 impl JavaString {
     pub(crate) const fn from_static(units: &'static [u16]) -> Self {
-        Self(Units::Static(units))
+        Self(Units::from_static(units))
     }
 
     pub(crate) fn with_hash(text: &str) -> (Self, i32) {
@@ -113,21 +113,12 @@ impl JavaString {
 
     /// Edit the UTF-16 code units. Copies static or inline storage into a vector on first use.
     pub fn units_mut(&mut self) -> &mut Vec<u16> {
-        if !matches!(self.0, Units::Heap(_)) {
-            self.0 = Units::Heap(self.units().to_vec());
-        }
-        let Units::Heap(units) = &mut self.0 else {
-            unreachable!()
-        };
-        units
+        self.0.as_vec_mut()
     }
 
     /// Take the units as a vector, copying only when there is no vector to move out.
     pub fn into_units(self) -> Vec<u16> {
-        match self.0 {
-            Units::Heap(units) => units,
-            units => units.as_slice().to_vec(),
-        }
+        self.0.into_vec()
     }
 
     pub fn to_string(&self) -> Result<String, std::string::FromUtf16Error> {
@@ -156,10 +147,7 @@ fn modified_utf8_len(units: &[u16]) -> usize {
 /// Bytes reserved on the heap by this NBT string, excluding allocator overhead.
 /// Inline values and string literals do not own any heap storage.
 pub fn java_string_heap_bytes(value: &JavaString) -> usize {
-    match &value.0 {
-        Units::Heap(units) => units.capacity() * size_of::<u16>(),
-        Units::Static(_) | Units::Inline { .. } | Units::Full(_) => 0,
-    }
+    value.0.heap_capacity() * size_of::<u16>()
 }
 
 impl JavaKey for JavaString {
@@ -1210,7 +1198,7 @@ fn modified_utf8_non_ascii(mut bytes: &[u8]) -> Option<JavaString> {
     while !bytes.is_empty() {
         units.push(modified_utf8_unit(&mut bytes)?);
     }
-    Some(JavaString(Units::Heap(units)))
+    Some(JavaString(Units::heap(units)))
 }
 
 /// Read a file root (type, modified-UTF name, payload), returning bytes consumed.
@@ -2571,25 +2559,27 @@ mod tests {
     fn java_string_storage_does_not_affect_its_value() {
         #[cfg(target_pointer_width = "64")]
         assert_eq!(size_of::<JavaString>(), 24);
-        let static_string = JavaString::from_static(&[0xd800, 65]);
-        let inline = JavaString::from(vec![0xd800, 65]);
-        let mut heap = static_string.clone();
-        let _ = heap.units_mut();
         let hash = |s: &JavaString| {
             let mut state = std::hash::DefaultHasher::new();
             s.hash(&mut state);
             state.finish()
         };
-        for value in [&static_string, &heap] {
-            assert_eq!(value, &inline);
-            assert_eq!(value.cmp(&inline), Ordering::Equal);
-            assert_eq!(hash(value), hash(&inline));
-            assert_eq!(format!("{value:?}"), "JavaString([55296, 65])");
+        for units in [&[0xd800, 65][..], &[0xd800, 65, 0, 1, 2, 3, 4, 5]] {
+            let static_string = JavaString::from_static(units);
+            let inline = JavaString::from(units.to_vec());
+            let mut heap = static_string.clone();
+            let _ = heap.units_mut();
+            for value in [&static_string, &heap] {
+                assert_eq!(value, &inline);
+                assert_eq!(value.cmp(&inline), Ordering::Equal);
+                assert_eq!(hash(value), hash(&inline));
+                assert_eq!(format!("{value:?}"), format!("JavaString({units:?})"));
+            }
+            heap.units_mut().push(66);
+            assert!(heap > inline);
+            assert_eq!(heap.into_units(), [units, &[66]].concat());
+            assert_eq!(static_string.into_units(), units);
         }
-        heap.units_mut().push(66);
-        assert!(heap > inline);
-        assert_eq!(heap.into_units(), [0xd800, 65, 66]);
-        assert_eq!(static_string.into_units(), [0xd800, 65]);
     }
 
     /// Keys copied between compounds keep the hash the map stored, in an order that matches the source.
