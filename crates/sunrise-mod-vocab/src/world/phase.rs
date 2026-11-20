@@ -1,5 +1,9 @@
 //! Restricted views for registration and data loading.
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 /// The owning boundary that starts a data load, as reported by [`DataLoadContext::origin`].
 // no wire: identifies the owner of a local data load.
@@ -435,13 +439,13 @@ impl PackageInfo {
 }
 
 // no wire: shared immutable loader inventory; contexts query it through LoadReader rather than transferring its Arc storage.
-/// The registries and settings registration reads: captured by the engine once, before the
-/// first registration hook runs, and the same for every registration step. Lookups are binary
-/// searches over sorted lists, so a clone of the context copies nothing.
+/// The instance directory, registries and settings that registration reads: captured by the
+/// engine once, before the first registration hook, and the same for every registration step.
+/// Registry and settings lookups are binary searches over sorted lists.
 #[derive(Clone)]
 // exhaustive: its fields are private, so mods cannot build or destructure it
 pub struct RegistrationData {
-    instance_dir: crate::InstanceDirectory,
+    instance_dir: Arc<Path>,
     runtime: crate::RuntimeEnvironment,
     /// Built-in registry names in ID order, by registry name.
     pub(crate) registries: Arc<[(String, Arc<[String]>)]>,
@@ -456,15 +460,15 @@ pub struct RegistrationData {
 
 impl RegistrationData {
     /// The engine's snapshot: `registries` maps a registry name to its names in ID order,
-    /// `settings` a mod ID to its settings.
+    /// `settings` a mod ID to its settings, and `instance_dir` is the startup game directory.
     pub fn new(
         registries: BTreeMap<String, Vec<String>>,
         settings: BTreeMap<String, BTreeMap<String, String>>,
-        instance_dir: crate::InstanceDirectory,
+        instance_dir: PathBuf,
         runtime: crate::RuntimeEnvironment,
     ) -> Self {
         Self {
-            instance_dir,
+            instance_dir: instance_dir.into(),
             runtime,
             capability_coverage: None,
             block_entity_coverage: None,
@@ -587,7 +591,7 @@ impl LoadedMods {
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum RegistrationReadError {
-    /// The engine supplied no registry or settings data to this context.
+    /// The engine supplied no startup snapshot to this context.
     Unavailable,
     /// The registry name is not a namespaced identifier (`minecraft:item`).
     InvalidRegistryName(String),
@@ -648,7 +652,6 @@ pub struct RegistrationContext {
     pub(crate) declaration_refusals: std::sync::Mutex<Vec<crate::__private::DeclarationRefusal>>,
     pub(crate) diagnostics:
         Option<Arc<std::sync::Mutex<crate::__private::RegistrationDiagnostics>>>,
-    pub(crate) instance_dir: Option<crate::InstanceDirectory>,
     /// The game's startup screen, for [`progress`](Self::progress) and
     /// [`message`](Self::message); none without a game.
     pub(crate) startup: Option<Arc<dyn crate::StartupScreen>>,
@@ -658,14 +661,12 @@ pub struct RegistrationContext {
 impl RegistrationContext {
     pub(crate) fn new() -> Self {
         let data = registration_data();
-        let instance_dir = data.as_ref().map(|data| data.instance_dir.clone());
         let runtime = data.as_ref().map(|data| data.runtime.clone());
         Self {
             mods: LoadedMods::new(),
             data,
             declaration_refusals: Default::default(),
             diagnostics: None,
-            instance_dir,
             startup: crate::world::startup_progress::installed(),
             runtime,
         }
@@ -693,13 +694,11 @@ impl RegistrationContext {
             .expect("registration runtime environment is installed")
     }
 
-    /// The instance directory captured before registration. This is data only, not permission
-    /// to access a filesystem.
-    /// The value preserves the host OS's raw path encoding, including non-UTF-8 names.
-    pub fn instance_dir(&self) -> Result<&crate::InstanceDirectory, RegistrationReadError> {
-        self.instance_dir
-            .as_ref()
-            .ok_or(RegistrationReadError::Unavailable)
+    /// Borrow the instance directory captured before registration, preserving non-Unicode names.
+    /// Use [`Path::to_path_buf`] to keep it beyond this context. The path gives no filesystem
+    /// authority. Returns [`RegistrationReadError::Unavailable`] if there is no startup snapshot.
+    pub fn instance_dir(&self) -> Result<&Path, RegistrationReadError> {
+        Ok(self.data()?.instance_dir.as_ref())
     }
 
     /// The loaded-mod view, independent of this phase's event or registrar.
