@@ -623,9 +623,6 @@ fn each_slot_journalled_container_aborts_to_its_exact_stacks() {
     });
 }
 
-/// `LevelRef::set_block` writes the world at once, outside the transaction (on `main` too), so
-/// an abort after it doesn't bring the old block back. What the slot journal must not do is
-/// write a kept slot into the block entity that replaced the one it was taken from.
 #[test]
 #[ignore = "daily"]
 fn a_kept_slot_goes_back_only_into_the_block_entity_it_came_from() {
@@ -634,37 +631,64 @@ fn a_kept_slot_goes_back_only_into_the_block_entity_it_came_from() {
         super::native_entity_refs::tests::with_game_at(root, |game| {
             let entity = mod_holder(game);
             let level = entity.level(game).unwrap();
-            let pos = (3, 64, 1);
-            let replace = |game: &mut super::Game<'_>, block: &str, commit: bool| {
-                container_at(game, pos, "minecraft:chest");
-                let items = level.capability(game, &ITEMS, [3, 64, 1], None).unwrap();
-                let stone =
-                    ItemResource::of(&ItemStack::new("minecraft:stone", 1).try_into_api().unwrap());
+            let at @ [x, y, z] = [3, 64, 1];
+            let pos = (x, y, z);
+            let [chest, barrel, air] = ["minecraft:chest", "minecraft:barrel", "minecraft:air"]
+                .map(|name| mod_api::prelude::BlockStatesHost::block_state_id(game, name).unwrap());
+            let stone =
+                ItemResource::of(&ItemStack::new("minecraft:stone", 1).try_into_api().unwrap());
+            let replace = |game: &mut super::Game<'_>, state, commit: bool| {
+                let items = level.capability(game, &ITEMS, at, None).unwrap();
                 let result: Result<(), ()> =
                     (game as &mut dyn ServerHost).transaction(|host, tx| {
-                        // Takes from the chest's full slot 0: the slot kept is its 64 stone, which
-                        // an abort must not write into whatever replaced the chest.
                         assert_eq!(items.extract_at(host, tx, 0, &stone, 10), 10);
-                        let state = host.block_state_id(block).unwrap();
                         assert!(
                             level
-                                .set_block(host, [3, 64, 1], state, mod_api::BlockUpdateFlags::NONE)
+                                .set_block(host, at, state, mod_api::BlockUpdateFlags::NONE)
                                 .unwrap()
                         );
+                        assert_eq!(level.block_state(host, at), Some(state));
                         if commit { Ok(()) } else { Err(()) }
                     });
                 assert_eq!(result.is_ok(), commit);
             };
-            replace(game, "minecraft:air", false);
-            assert_eq!(slots_at(game, pos), None, "removed, as on main");
-            replace(game, "minecraft:barrel", false);
-            let barrel = slots_at(game, pos).expect("the barrel's block entity");
+
+            let before = container_at(game, pos, "minecraft:chest");
+            for state in [air, barrel] {
+                replace(game, state, false);
+                assert_eq!(level.block_state(game, at), Some(chest));
+                assert_eq!(slots_at(game, pos).as_ref(), Some(&before));
+            }
+
+            replace(game, barrel, true);
+            assert_eq!(level.block_state(game, at), Some(barrel));
+            let slots = slots_at(game, pos).expect("the barrel's block entity");
             assert!(
-                barrel.iter().all(Option::is_none),
-                "the chest's kept slot was not written into the barrel: {barrel:?}"
+                slots.iter().all(Option::is_none),
+                "the chest's kept slot must not be written into the barrel: {slots:?}"
             );
-            replace(game, "minecraft:air", true);
+
+            container_at(game, pos, "minecraft:chest");
+            replace(game, air, true);
+            assert_eq!(level.block_state(game, at), Some(air));
             assert_eq!(slots_at(game, pos), None);
+
+            // An engine-side swap outside the journal survives abort. Even an entity of the
+            // same kind at the same position must not receive the old chest's 64 stone.
+            container_at(game, pos, "minecraft:chest");
+            let items = level.capability(game, &ITEMS, at, None).unwrap();
+            let seal = game.transaction_open();
+            let tx = game.transaction_current().unwrap();
+            assert_eq!(items.extract_at(game, &tx, 0, &stone, 10), 10);
+            game.world
+                .block_entities
+                .replace(pos, BlockEntity::for_block("minecraft:chest").unwrap());
+            game.transaction_close(&seal, false);
+            let slots = slots_at(game, pos).expect("the replacement chest's block entity");
+            assert!(
+                slots.iter().all(Option::is_none),
+                "the kept slot must not be restored into the replacement chest: {slots:?}"
+            );
             assert!(game.transactions.is_empty());
         });
     });
