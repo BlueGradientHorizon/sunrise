@@ -280,6 +280,8 @@ pub struct PlayerSender {
     pub undrained: Arc<Undrained>,
     /// The bytes of the bodies sent and not framed yet.
     pub pending: Arc<AtomicUsize>,
+    /// Bytes a network client may leave queued before it is closed ([`io_pool::MAX_PENDING`]).
+    cap: usize,
     held: Arc<Mutex<Vec<Body>>>,
     framing: sunrise_protocol::connection::Framing,
     to: To,
@@ -358,6 +360,7 @@ impl PlayerSender {
         Self {
             undrained: Arc::default(),
             pending,
+            cap: io_pool::MAX_PENDING,
             held: Arc::default(),
             framing: sunrise_protocol::connection::Framing::Network(None),
             to: To::Channel(tx),
@@ -392,6 +395,7 @@ impl PlayerSender {
             payload_transport: transport,
             undrained: Arc::default(),
             pending,
+            cap: io_pool::MAX_PENDING,
             held: Arc::default(),
             framing: sunrise_protocol::connection::Framing::Memory,
             to: To::Pool(
@@ -414,6 +418,7 @@ impl PlayerSender {
         Self {
             undrained: Arc::default(),
             pending: Arc::default(),
+            cap: io_pool::MAX_PENDING,
             held: Arc::default(),
             framing: sunrise_protocol::connection::Framing::Network(None),
             to: To::Disabled,
@@ -451,11 +456,11 @@ impl PlayerSender {
     fn reserve(&self, cost: usize) -> bool {
         self.pending
             .try_update(Ordering::AcqRel, Ordering::Relaxed, |n| {
-                n.checked_add(cost).filter(|n| *n <= io_pool::MAX_PENDING)
+                n.checked_add(cost).filter(|n| *n <= self.cap)
             })
             .is_ok()
     }
-    /// Count a packet's bytes as queued; false past [`io_pool::MAX_PENDING`], where the caller
+    /// Count a packet's bytes as queued; false past the cap, where the caller
     /// closes the connection. A memory connection's reader is this process and takes a join's
     /// whole first view in one burst, so only a network client is capped
     /// (as [`io_pool::Outbox`] does).
@@ -1940,6 +1945,7 @@ fn play(
     let sender = PlayerSender {
         undrained: undrained.clone(),
         pending,
+        cap: io_pool::MAX_PENDING,
         held: Arc::default(),
         framing: c.writer.framing(),
         to: To::Pool(outbox.clone(), watch.clone()),
@@ -3681,6 +3687,7 @@ mod outgoing_budget_tests {
             payload_transport: Transport::empty(),
             undrained: Arc::default(),
             pending,
+            cap: io_pool::MAX_PENDING,
             held: Arc::default(),
             framing,
             to: To::Pool(
@@ -3768,11 +3775,11 @@ mod outgoing_budget_tests {
     /// connection (single player) outlasts it, a network client past it is closed.
     #[test]
     fn a_memory_connection_outlasts_a_burst_past_the_limit() {
-        let burst = io_pool::MAX_PENDING / 4;
         let queue = |framing| {
-            let s = sender(framing);
+            let mut s = sender(framing);
+            s.cap = 4096;
             for _ in 0..6 {
-                s.send(vec![0; burst]);
+                s.send(vec![0; 1024]);
             }
             s
         };
