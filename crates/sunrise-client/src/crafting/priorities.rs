@@ -4,7 +4,13 @@ use super::{ResolvedSources, registration_key};
 use crate::Result;
 use serde::Deserialize as _;
 use serde_json::Value;
-use std::{cmp::Reverse, collections::HashMap, fs, path::Path};
+use std::{
+    cmp::Reverse,
+    collections::{BTreeMap, HashMap, hash_map::Entry},
+    fs,
+    path::Path,
+};
+use sunrise_core::identifier::Identifier;
 use sunrise_world::{conditions::LoadConditions, loot::PackOverlay};
 
 /// One `recipe_priorities.json`, validated whole before any of it applies.
@@ -13,7 +19,7 @@ struct Layer {
     #[serde(default)]
     replace: bool,
     #[serde(default)]
-    entries: HashMap<String, i32>,
+    entries: BTreeMap<String, i32>,
 }
 
 #[derive(Default)]
@@ -42,16 +48,24 @@ impl Priorities {
             return Ok(());
         }
         let layer = Layer::deserialize(&file).map_err(|e| refused(e.to_string()))?;
+        let mut entries = HashMap::with_capacity(layer.entries.len());
+        for (name, priority) in layer.entries {
+            let id = Identifier::parse(&name)
+                .map_err(|error| refused(format!("invalid recipe ID {name:?}: {error}")))?;
+            match entries.entry(id.to_string()) {
+                Entry::Vacant(slot) => {
+                    slot.insert(priority);
+                }
+                Entry::Occupied(slot) => {
+                    return Err(refused(format!("duplicate recipe ID {}", slot.key())).into());
+                }
+            }
+        }
         if layer.replace {
             self.0.clear();
         }
         // Unknown ids are intentionally retained, including conditioned-out recipes.
-        self.0.extend(
-            layer
-                .entries
-                .into_iter()
-                .map(|(id, priority)| (sunrise_items::recipe_sources::qualified(&id), priority)),
-        );
+        self.0.extend(entries);
         Ok(())
     }
 

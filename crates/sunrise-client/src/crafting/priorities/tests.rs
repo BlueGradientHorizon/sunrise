@@ -174,6 +174,36 @@ fn invalid_load_conditions_refuse_a_replacing_layer_without_clearing_priorities(
     }
 }
 
+#[test]
+fn recipe_identifiers_are_canonical_and_a_colliding_layer_applies_nothing() {
+    let conditions = LoadConditions::vanilla();
+    let mut priorities = Priorities::default();
+    let apply = |priorities: &mut Priorities, bytes: &[u8]| {
+        priorities.layer(
+            "test: data/neoforge/recipe_priorities.json",
+            bytes,
+            &conditions,
+        )
+    };
+    apply(
+        &mut priorities,
+        br#"{"entries":{"a":5,"example:missing":9}}"#,
+    )
+    .unwrap();
+    for json in [
+        br#"{"replace":true,"entries":{"a":1,"minecraft:a":2}}"#.as_slice(),
+        br#"{"replace":true,"entries":{":a":1,"a":2}}"#,
+        br#"{"replace":true,"entries":{"a":1,"A":2}}"#,
+    ] {
+        assert!(apply(&mut priorities, json).is_err());
+        assert_eq!(priorities.get("minecraft:a"), 5);
+        assert_eq!(priorities.get("example:missing"), 9);
+    }
+    apply(&mut priorities, br#"{"entries":{":a":12}}"#).unwrap();
+    assert_eq!(priorities.get("a"), 12);
+    assert_eq!(priorities.get("example:missing"), 9);
+}
+
 struct Crusher;
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for Crusher {
