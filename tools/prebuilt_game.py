@@ -81,8 +81,6 @@ API_ROOTS = ("sunrise-mod-api", "sunrise-mod-points")
 GAME_LIBRARIES = ("sunrise_mod_host", "sunrise_official")
 # The lowest of the libraries the prebuilt game is split into: every other one links it.
 SDK_BASE = "sunrise-core"
-# `links` keys carry no library: rayon-core and wasm-bindgen-shared keep one copy, sunrise-mod-vocab hands on a folder.
-LINKS_WITHOUT_LIBRARY = {"rayon-core", "sunrise-mod-vocab", "wasm-bindgen-shared"}
 # Source files the folder carries besides compiler outputs.
 CARRIED = {"Cargo.toml": None, IDENTITY: None, LOCK: ROOT / LOCK, TEMPLATE: ROOT / "crates/sunrise-client/src" / TEMPLATE,
            NATIVE_MODS_TEMPLATE: ROOT / "crates/sunrise-client/src" / NATIVE_MODS_TEMPLATE}

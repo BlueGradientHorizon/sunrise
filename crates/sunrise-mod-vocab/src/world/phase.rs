@@ -622,7 +622,7 @@ impl std::error::Error for RegistrationReadError {}
 /// }
 /// ```
 // exhaustive: its fields are private, so mods cannot build or destructure it
-// no wire: phase context has a custom Wire layout for its derived directory value and the game's startup screen (a held resource); other host tables rebind locally.
+// no wire: the phase context owns local registration state and the startup screen.
 pub struct RegistrationContext {
     pub(crate) mods: LoadedMods,
     pub(crate) data: Option<RegistrationData>,
@@ -634,9 +634,6 @@ pub struct RegistrationContext {
     /// [`message`](Self::message); none without a game.
     pub(crate) startup: Option<Arc<dyn crate::StartupScreen>>,
     pub(crate) runtime: Option<crate::RuntimeEnvironment>,
-    /// The runtime files of the wasm mod this context was handed to (it crosses as a resource); a
-    /// native mod's come from `data`, by the mod being dispatched.
-    pub(crate) runtime_files: Option<Arc<dyn crate::RuntimeFileSource>>,
 }
 
 impl RegistrationContext {
@@ -652,7 +649,6 @@ impl RegistrationContext {
             warnings: Default::default(),
             instance_dir,
             startup: crate::world::startup_progress::installed(),
-            runtime_files: None,
             runtime,
         }
     }

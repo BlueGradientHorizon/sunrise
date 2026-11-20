@@ -16,9 +16,6 @@ impl ModEntry {
         Self { id, hooks }
     }
 
-    /// Bind a loaded wasm module's hook proxy to its bundle id.
-    // hidden: the wasm runtime's side, not part of the mod surface
-
     /// Marks the thread as inside this mod's `hook` until the guard drops, so a panic in it
     /// names both. A trait injection's generated dispatch calls it.
     // hidden: a game-side helper, not part of the mod surface

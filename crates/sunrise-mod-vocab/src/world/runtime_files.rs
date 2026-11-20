@@ -42,9 +42,6 @@ impl std::error::Error for RuntimeFilesError {}
 #[derive(Clone, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
 #[non_exhaustive]
 pub enum RuntimePathError {
-    /// A wasm mod has no host path to map: it reads the bytes with
-    /// [`RuntimeFiles::file`].
-    WasmMod,
     /// The package does not list this name.
     NotListed,
     /// The package is a `.smod` archive, which has no file to point at; read the bytes.
@@ -53,9 +50,6 @@ pub enum RuntimePathError {
 impl std::fmt::Display for RuntimePathError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
-            Self::WasmMod => {
-                "runtime_files.file_path is native-only: a wasm mod reads the bytes with file()"
-            }
             Self::NotListed => "the package's [runtime] does not list this file",
             Self::NotAFolder => {
                 "the package is a .smod archive, so its runtime files have no path: read the bytes"
@@ -94,9 +88,6 @@ impl RuntimeFiles {
     /// The file was checked when the package opened; a later edit of the folder is the mod's to
     /// guard against.
     pub fn file_path(&self, name: &str) -> Result<std::path::PathBuf, RuntimePathError> {
-        if cfg!(target_arch = "wasm32") {
-            return Err(RuntimePathError::WasmMod);
-        }
         if !self.source.names().iter().any(|listed| listed == name) {
             return Err(RuntimePathError::NotListed);
         }
@@ -119,10 +110,8 @@ impl crate::RegistrationContext {
 
     /// The source for the mod being dispatched.
     pub(crate) fn bound_runtime_files(&self) -> Option<Arc<dyn RuntimeFileSource>> {
-        self.runtime_files.clone().or_else(|| {
-            let owner = crate::content::crash::current_native_mod()?;
-            self.data.as_ref()?.runtime_source(owner)
-        })
+        let owner = crate::content::crash::current_native_mod()?;
+        self.data.as_ref()?.runtime_source(owner)
     }
 }
 
@@ -176,17 +165,15 @@ mod tests {
         )
     }
 
-    fn context(source: Option<Fake>) -> crate::RegistrationContext {
-        let mut context = crate::RegistrationContext::new();
-        context.runtime_files = source.map(|source| Arc::new(source) as Arc<dyn RuntimeFileSource>);
-        context
+    fn files(folder: bool) -> RuntimeFiles {
+        RuntimeFiles {
+            source: Arc::new(Fake { folder }),
+        }
     }
 
     #[test]
     fn a_mod_reads_only_the_names_its_manifest_lists() {
-        let files = context(Some(Fake { folder: true }))
-            .runtime_files()
-            .unwrap();
+        let files = files(true);
         assert_eq!(files.names(), ["nav.bin"]);
         assert_eq!(files.file("nav.bin").as_deref(), Some(b"tables".as_slice()));
         assert_eq!(files.file("other.bin"), None);
@@ -196,7 +183,7 @@ mod tests {
     #[test]
     fn a_mod_without_a_runtime_table_is_told_so() {
         assert_eq!(
-            context(None).runtime_files().err(),
+            crate::RegistrationContext::new().runtime_files().err(),
             Some(RuntimeFilesError::NoRuntimeFiles)
         );
     }
@@ -204,12 +191,8 @@ mod tests {
     #[cfg(any(unix, windows))]
     #[test]
     fn a_path_is_listed_only_and_a_folder_only_and_comes_back_exactly() {
-        let folder = context(Some(Fake { folder: true }))
-            .runtime_files()
-            .unwrap();
-        let archive = context(Some(Fake { folder: false }))
-            .runtime_files()
-            .unwrap();
+        let folder = files(true);
+        let archive = files(false);
         assert_eq!(folder.file_path("nav.bin"), Ok(host_path().1));
         assert_eq!(
             folder.file_path("other.bin"),
@@ -219,14 +202,5 @@ mod tests {
             archive.file_path("nav.bin"),
             Err(RuntimePathError::NotAFolder)
         );
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    #[test]
-    fn a_wasm_mod_is_refused_a_path_by_name() {
-        let folder = context(Some(Fake { folder: true }))
-            .runtime_files()
-            .unwrap();
-        assert_eq!(folder.file_path("nav.bin"), Err(RuntimePathError::WasmMod));
     }
 }

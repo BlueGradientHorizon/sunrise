@@ -470,23 +470,15 @@ pub(crate) fn read(text: &str) -> Result<Syntax<'_>, Unread> {
     // The parser reads nesting by recursion. [`too_deep`] bounds it, and a stack of its own
     // leaves room for any file within that bound, wherever the scan is called from. Without one
     // the file is not parsed at all.
-    #[cfg(not(target_family = "wasm"))]
-    {
-        std::thread::scope(|scope| {
-            match std::thread::Builder::new()
-                .stack_size(PARSER_STACK)
-                .spawn_scoped(scope, || parse(text))
-            {
-                Ok(thread) => thread.join().unwrap_or(Err(Unread::NoStack)),
-                Err(_) => Err(Unread::NoStack),
-            }
-        })
-    }
-    #[cfg(target_family = "wasm")]
-    {
-        let _ = text;
-        Err(Unread::NoStack)
-    }
+    std::thread::scope(|scope| {
+        match std::thread::Builder::new()
+            .stack_size(PARSER_STACK)
+            .spawn_scoped(scope, || parse(text))
+        {
+            Ok(thread) => thread.join().unwrap_or(Err(Unread::NoStack)),
+            Err(_) => Err(Unread::NoStack),
+        }
+    })
 }
 
 pub(crate) fn parse(text: &str) -> Result<Syntax<'_>, Unread> {

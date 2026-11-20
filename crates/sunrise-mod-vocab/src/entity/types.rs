@@ -63,12 +63,7 @@ impl From<&EntityTypeKey> for u32 {
 impl TryFrom<u32> for EntityTypeKey {
     type Error = &'static str;
     fn try_from(slot: u32) -> Result<Self, Self::Error> {
-        // A guest transports the host-issued identity; only the host can validate it.
-        #[cfg(target_arch = "wasm32")]
-        {
-            Ok(Self(slot))
-        }
-        { Self::from_slot(slot) }
+        Self::from_slot(slot)
     }
 }
 

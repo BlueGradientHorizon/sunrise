@@ -36,7 +36,6 @@ PLATFORM_SOCKET_FILES = frozenset(
         'dispatch_scope.rs',
         'parts/registration_access.rs',
         'content/crash.rs',
-        'wire/wire_resources.rs',
         'world/phase.rs',
         'block/unresolved_fluid.rs',
     )

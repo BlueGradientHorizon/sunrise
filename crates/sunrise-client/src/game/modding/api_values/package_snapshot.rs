@@ -261,7 +261,6 @@ mod tests {
         let content = sunrise_mod_package::manifest::Package {
             manifest: manifest(""),
             icon: None,
-            layouts: Default::default(),
         };
         let info = content.try_into_api().unwrap();
         assert_eq!(info.kind(), mod_api::PackageKind::Content);

@@ -2,8 +2,7 @@
 //!
 //! The generator (`sunrise-stage surface`) writes it from the declarations the build parses;
 //! nothing in it is kept by hand. This crate holds its record types, their contract hashes, the
-//! strict reader and the one shape function. It has no engine or parser dependency and builds
-//! for `wasm32-unknown-unknown`.
+//! strict reader and shape hashing. It has no engine dependency.
 //!
 //! # Ids
 //!
@@ -81,8 +80,6 @@ mod legacy_hash;
 pub mod records;
 pub mod scan;
 pub mod shape;
-// On wasm the scan answers "cannot judge" before parsing, which leaves the reader unused.
-#[cfg_attr(target_family = "wasm", allow(dead_code))]
 mod syntax;
 pub mod uses;
 

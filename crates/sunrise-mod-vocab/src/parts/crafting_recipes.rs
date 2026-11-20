@@ -56,6 +56,7 @@ pub struct CraftingRecipeCodec<T> {
     decode: fn(&CraftingRecipeValue) -> Result<T, String>,
 }
 impl<T: Wire> CraftingRecipeCodec<T> {
+    /// Encodes the recipe value using its `Wire` form.
     pub fn wire() -> Self {
         Self {
             encode: |value| {

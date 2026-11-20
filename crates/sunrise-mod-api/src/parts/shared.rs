@@ -57,7 +57,6 @@ pub struct PartRegistrar {
     pub(crate) entity_tick_each: Vec<Option<String>>,
     pub(crate) mod_id: &'static str,
     pub(crate) mod_index: usize,
-    /// Whether the registering mod was loaded as a wasm module.
     /// Parts registered so far, by every mod: the next part's `order`.
     pub(crate) registered: usize,
     pub(crate) parts: Parts,
