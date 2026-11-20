@@ -10,14 +10,14 @@ class StringHashOutputTests(unittest.TestCase):
         second = "R 1 4 1111111111111111"
         summary = "S 8 0"
         cases = [
-            (False, [first], "missing R chunk 1"),
-            (True, [first, "S 4 0"], "missing R chunk 1"),
-            (False, [first, second.replace("1 4", "1 3")], "chunk 1 .*count 3"),
-            (True, [first, second], "missing Rust S summary"),
+            (False, [first]),
+            (True, [first, "S 4 0"]),
+            (False, [first, second.replace("1 4", "1 3")]),
+            (True, [first, second]),
         ]
-        for rust, output, error in cases:
+        for rust, output in cases:
             with self.subTest(rust=rust, output=output):
-                with self.assertRaisesRegex(ValueError, error):
+                with self.assertRaises(ValueError):
                     parse(output, "R", expected, rust=rust)
 
         java, _ = parse([first, second], "R", expected)

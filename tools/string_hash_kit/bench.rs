@@ -116,7 +116,7 @@ fn main() {
                 r#"{{"entry":"create","copy":{copy},"median_ns":{ns:.4},"allocations":{allocations}}}"#
             );
         }
-        // The same without the allocation: the units go into a buffer that is reused.
+        // The same with no key allocation per string: one scratch buffer per batch, reused.
         for (copy, f) in copies::DECODE {
             let (ns, allocations) = median_ns(|| f(&texts), texts.len());
             println!(
