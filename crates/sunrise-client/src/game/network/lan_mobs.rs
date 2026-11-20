@@ -268,6 +268,45 @@ impl Game<'_> {
     }
 }
 
+impl Game<'_> {
+    /// Every guest in the world (`ServerLevel.getPlayers` past the host).
+    pub fn lan_present(&self) -> Vec<Present> {
+        let guests = self
+            .lan
+            .iter()
+            .flat_map(|h| h.hub.guests.simulation_iter().filter(|g| h.hub.here(g)));
+        guests
+            .filter(|g| g.loaded)
+            .map(|g| {
+                let [x, y, z] = g.position;
+                // The acting guest's effects are on the game while their turn runs.
+                let effects = if self.lan_acting == Some(g.conn) {
+                    &self.potions.effects
+                } else {
+                    &g.effects
+                };
+                Present {
+                    uuid: sunrise_client::lan::playerdata::uuid_ints(g.uuid),
+                    position: g.position,
+                    eye: [x, y + g.eye_height(), z],
+                    height: g.dimensions().height,
+                    creative: g.creative(),
+                    spectator: g.spectator(),
+                    alive: !g.dead,
+                    omen: omen_of(effects),
+                }
+            })
+            .collect()
+    }
+    /// The UUID of the player acting: the guest `as_guest` runs, else the host.
+    pub fn acting_uuid(&self) -> [i32; 4] {
+        self.lan_acting_uuid
+            .map(sunrise_client::lan::playerdata::uuid_ints)
+            .or(self.level.player_uuid)
+            .unwrap_or_default()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
