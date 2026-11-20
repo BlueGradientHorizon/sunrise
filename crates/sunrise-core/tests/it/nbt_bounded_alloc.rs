@@ -91,3 +91,22 @@ fn short_java_strings_need_no_allocation_for_their_units() {
     assert_eq!(allocations, 0);
     assert_eq!(literal.text(), &JavaString::from("long-literal-key"));
 }
+
+#[test]
+fn a_hashed_heap_string_reserves_once() {
+    for text in [
+        "abcdefgh",
+        "éééééééé",
+        "ééééééééééé",
+        "本語日本語日本語",
+        "🦀🦀🦀🦀🦀🦀",
+    ] {
+        let expected: Vec<_> = text.encode_utf16().collect();
+        assert!(expected.len() > 7);
+        ALLOCS.with(|count| count.set(Some(0)));
+        let hashed = HashedKey::<JavaString>::from_text(black_box(text));
+        let allocations = ALLOCS.with(|count| count.replace(None).unwrap());
+        assert_eq!(allocations, 1, "{text:?}");
+        assert_eq!(hashed.text().units(), expected);
+    }
+}

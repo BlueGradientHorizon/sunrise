@@ -41,21 +41,27 @@ pub(crate) fn utf16_with_hash(text: &str) -> (Units, i32) {
         let units = bytes.iter().map(|&b| u16::from(b)).collect();
         return (units, java_string_hash_ascii(bytes));
     }
-    // One allocation of exactly the units the text encodes to: one per byte that starts a character,
-    // and a second for each four-byte character (a surrogate pair). A larger guess would keep the
-    // spare capacity in every key and can move the block up an allocator size class.
-    let len = bytes
-        .iter()
-        .map(|&b| usize::from(b & 0xC0 != 0x80) + usize::from(b >= 0xF0))
-        .sum();
-    if len <= INLINE_CAPACITY {
+    // At most three UTF-8 bytes per UTF-16 unit, so only these inputs can fit inline.
+    if bytes.len() <= 3 * INLINE_CAPACITY {
+        let mut encoded = text.encode_utf16();
         let mut units = [0; INLINE_CAPACITY];
         let mut hash = 0i32;
-        for (out, unit) in units.iter_mut().zip(text.encode_utf16()) {
+        for (i, out) in units.iter_mut().enumerate() {
+            let Some(unit) = encoded.next() else {
+                return (Units::inline(units, i), hash);
+            };
             *out = unit;
             hash = hash.wrapping_mul(31).wrapping_add(i32::from(unit));
         }
-        return (Units::inline(units, len), hash);
+        let Some(next) = encoded.next() else {
+            return (Units::inline(units, INLINE_CAPACITY), hash);
+        };
+        let mut heap = Vec::with_capacity(bytes.len());
+        heap.extend(units);
+        heap.push(next);
+        heap.extend(encoded);
+        let hash = java_string_hash(&heap);
+        return (Units::Heap(heap), hash);
     }
     let mut units;
     if bytes.iter().all(|&b| b < 0xC4) {
@@ -64,7 +70,7 @@ pub(crate) fn utf16_with_hash(text: &str) -> (Units, i32) {
         // step waits for the one before. The unit is written even for a continuation byte, and the
         // next unit overwrites it, so a text that ends in a continuation byte writes one past the
         // last unit, which the truncate drops.
-        units = vec![0u16; len + 1];
+        units = vec![0u16; text.chars().count() + 1];
         let mut out = 0;
         for (i, &b) in bytes.iter().enumerate() {
             let next = bytes.get(i + 1).copied().unwrap_or(0);
@@ -77,7 +83,9 @@ pub(crate) fn utf16_with_hash(text: &str) -> (Units, i32) {
         }
         units.truncate(out);
     } else {
-        units = Vec::with_capacity(len);
+        // One reservation: an upper bound is faster here than first walking the bytes to
+        // count units, and the UTF-16 iterator cannot outgrow it.
+        units = Vec::with_capacity(bytes.len());
         units.extend(text.encode_utf16());
     }
     let hash = java_string_hash(&units);
@@ -450,8 +458,7 @@ mod tests {
             let expected: Vec<u16> = text.encode_utf16().collect();
             assert_eq!(units.as_slice(), expected, "{text:?}");
             if let Units::Heap(units) = &units {
-                // At most one spare unit (the Latin-1 path's overwrite slot).
-                assert!(units.capacity() <= expected.len() + 1, "{text:?}");
+                assert!(units.capacity() <= text.len(), "{text:?}");
             }
             assert_eq!(hash, java_string_hash(&expected));
         }
