@@ -880,14 +880,11 @@ impl Game<'_> {
                     // LivingEntity.tickDeath broadcasts event 60 before remove;
                     // cube splitting and the killed effects also precede setRemoved.
                     let was_marked = self.mob_object(id).is_some_and(|mob| mob.removed);
-                    if gone.last().is_some_and(|death| death.0 == id) {
-                        let (_, at, width, height, split) = gone.pop().unwrap();
+                    if let Some((_, at, width, height, split)) = gone.pop_if(|death| death.0 == id)
+                    {
                         self.finish_mob_death_animation(id, at, width, height, split);
                     }
-                    let killed_effects = corpses.last().is_some_and(|mob| mob.id == id);
-                    if killed_effects {
-                        corpses.pop();
-                    }
+                    let killed_effects = corpses.pop_if(|mob| mob.id == id).is_some();
                     if was_marked {
                         self.finish_mob_removal(id);
                     } else {
