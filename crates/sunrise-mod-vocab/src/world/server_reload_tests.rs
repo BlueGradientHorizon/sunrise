@@ -90,8 +90,8 @@ fn retained_listeners_read_back_typed_from_the_resources() {
         fn prepare(
             &self,
             _: &ServerReloadContext,
-        ) -> Result<Box<dyn ReloadApply>, ReloadResourceError> {
-            Ok(<dyn ReloadApply>::new(|| {}))
+        ) -> Result<Box<dyn FnOnce() + Send + 'static>, ReloadResourceError> {
+            Ok(Box::new(|| {}))
         }
     }
     let mut listeners = ServerListenerRegistry::new();

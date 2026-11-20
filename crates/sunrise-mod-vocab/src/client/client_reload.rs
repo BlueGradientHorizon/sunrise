@@ -6,7 +6,7 @@
 mod tests;
 
 use crate::{
-    FileToIdConverter, Identifier, ReloadApply, ReloadResourceError,
+    FileToIdConverter, Identifier, ReloadResourceError,
     world::reload::{Boundary, ReloadFiles},
     world::reload_order::ReloadOrderError,
 };
@@ -67,13 +67,15 @@ impl ClientReloadContext {
 
 /// A client-side `SimplePreparableReloadListener`, as `ServerReloadListener`
 /// reads data: prepare reads the new pack view without changing live state;
-/// its returned apply publishes the result. All prepares finish before any
-/// apply, including vanilla's, runs. Prepare cannot see another listener's new
-/// published state. Dependencies order both phases deterministically; they do
-/// not remove the barrier. On any error all pending applies are dropped,
-/// keeping every listener's previous assets.
+/// the game consumes its returned action to publish the result. All prepares
+/// finish before any apply, including vanilla's, runs on the game-owning thread.
+/// Prepare cannot see another listener's new published state. Dependencies order
+/// both phases deterministically; they do not remove the barrier. On a prepare
+/// error, pending actions are dropped without running, keeping the previous assets.
 pub trait ClientReloadListener: Send + Sync + 'static {
     /// Parse and validate new assets without changing the listener's live state.
+    /// Return `Ok(Box::new(move || { /* publish prepared assets */ }))` with owned
+    /// data. The action is consumed once and cannot report an error.
     ///
     /// As vanilla's `SimpleJsonResourceReloadListener.scanDirectory`, a
     /// listener that parses its files logs and skips one that won't parse,
@@ -84,14 +86,14 @@ pub trait ClientReloadListener: Send + Sync + 'static {
     fn prepare(
         &self,
         context: &ClientReloadContext,
-    ) -> Result<Box<dyn ReloadApply>, ReloadResourceError>;
+    ) -> Result<Box<dyn FnOnce() + Send + 'static>, ReloadResourceError>;
 }
 impl ClientReloadListener for Boundary {
     fn prepare(
         &self,
         _: &ClientReloadContext,
-    ) -> Result<Box<dyn ReloadApply>, ReloadResourceError> {
-        Ok(<dyn ReloadApply>::new(|| {}))
+    ) -> Result<Box<dyn FnOnce() + Send + 'static>, ReloadResourceError> {
+        Ok(Box::new(|| {}))
     }
 }
 
