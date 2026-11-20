@@ -20,6 +20,9 @@ pub fn derive_payload_codec(input: TokenStream) -> TokenStream {
 ///
 /// `#[wire(crate = ::mod_vocab::wire)]` selects the contract module for
 /// lower-layer crates. The default is `::mod_api::wire`.
+///
+/// `#[wire(max = N)]` on a `Vec` field refuses a list longer than `N` while decoding, before any
+/// element is decoded or storage allocated for it.
 #[proc_macro_derive(Wire, attributes(wire))]
 pub fn derive_wire(input: TokenStream) -> TokenStream {
     wire::expand(syn::parse_macro_input!(input as syn::DeriveInput))

@@ -138,7 +138,7 @@ impl CellVisibility {
 pub enum SectionVisibility {
     /// The section draws, with these cells changed, each named at most once and at most
     /// [`MAX_CELL_RECORDS`] of them. `Keep(vec![])` changes nothing.
-    Keep(Vec<CellVisibility>),
+    Keep(#[wire(max = MAX_CELL_RECORDS)] Vec<CellVisibility>),
     /// None of the section's terrain draws: no block model, fluid or section geometry quads,
     /// and it hides nothing behind it. Block entities that draw themselves, entities and
     /// collision are untouched.
@@ -252,3 +252,35 @@ impl std::fmt::Display for SectionVisibilityRefusal {
 }
 
 impl std::error::Error for SectionVisibilityRefusal {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::wire::{Reader, Writer};
+
+    /// A guest's answer past the record cap is refused while decoding, before any record is read
+    /// or storage made for it; one at the cap round-trips.
+    #[test]
+    fn a_list_past_the_record_cap_is_refused_while_decoding() {
+        let cells = |count: usize| {
+            SectionVisibility::Keep(
+                (0..count)
+                    .map(|i| CellVisibility::hidden([(i & 15) as u8, (i >> 4 & 15) as u8, (i >> 8) as u8]))
+                    .collect(),
+            )
+        };
+        let mut out = Writer::new();
+        out.put(&cells(MAX_CELL_RECORDS));
+        assert_eq!(
+            Reader::new(out.bytes()).take::<SectionVisibility>().unwrap(),
+            cells(MAX_CELL_RECORDS)
+        );
+        let mut out = Writer::new();
+        out.put(&cells(MAX_CELL_RECORDS + 1));
+        assert!(
+            Reader::new(out.bytes())
+                .take::<SectionVisibility>()
+                .is_err()
+        );
+    }
+}

@@ -68,7 +68,7 @@ pub(crate) fn expand(mut input: DeriveInput) -> syn::Result<TokenStream> {
     match &input.data {
         Data::Struct(data) => {
             nested = !matches!(data.fields, Fields::Unit);
-            let (pattern, build, fields) = fields(&data.fields);
+            let (pattern, build, fields) = fields(&data.fields, &w);
             for (field, bind) in data.fields.iter().zip(&fields) {
                 check_owned(&field.ty)?;
                 let ft = &field.ty;
@@ -90,10 +90,10 @@ pub(crate) fn expand(mut input: DeriveInput) -> syn::Result<TokenStream> {
             for (index, variant) in data.variants.iter().enumerate() {
                 let index = index as u32;
                 let case = &variant.ident;
-                let (pat, _, binds) = fields(&variant.fields);
+                let (pat, _, binds) = fields(&variant.fields, &w);
                 let pat = quote!(Self::#case #pat);
                 // `fields` returns a constructor beginning with Self; enum cases supply that prefix.
-                let build = construct(&variant.fields, quote!(Self::#case));
+                let build = construct(&variant.fields, quote!(Self::#case), &w);
                 let mut ps = Vec::new();
                 let mut os = Vec::new();
                 for (field, bind) in variant.fields.iter().zip(binds) {
@@ -150,7 +150,7 @@ pub(crate) fn expand(mut input: DeriveInput) -> syn::Result<TokenStream> {
     })
 }
 
-fn fields(fields: &Fields) -> (TokenStream, TokenStream, Vec<syn::Ident>) {
+fn fields(fields: &Fields, w: &syn::Path) -> (TokenStream, TokenStream, Vec<syn::Ident>) {
     let binds: Vec<_> = fields
         .iter()
         .enumerate()
@@ -164,17 +164,38 @@ fn fields(fields: &Fields) -> (TokenStream, TokenStream, Vec<syn::Ident>) {
         Fields::Unnamed(_) => quote!((#(#binds),*)),
         Fields::Unit => quote!(),
     };
-    (pattern, construct(fields, quote!(Self)), binds)
+    (pattern, construct(fields, quote!(Self), w), binds)
 }
 
-fn construct(fields: &Fields, prefix: TokenStream) -> TokenStream {
+/// How one field decodes: `input.take()`, or, for a `Vec` field marked `#[wire(max = N)]`, a list
+/// whose length is checked against `N` before any element is decoded or any storage allocated.
+fn take_field(field: &syn::Field, w: &syn::Path) -> TokenStream {
+    let mut max: Option<syn::Expr> = None;
+    for attr in field.attrs.iter().filter(|attr| attr.path().is_ident("wire")) {
+        attr.parse_nested_meta(|meta| {
+            if !meta.path.is_ident("max") {
+                return Err(meta.error("a field takes `#[wire(max = N)]`"));
+            }
+            max = Some(meta.value()?.parse()?);
+            Ok(())
+        })
+        .expect("a field takes `#[wire(max = N)]`");
+    }
+    match max {
+        Some(max) => quote!(input.list_with(#max, #w::Wire::take)?),
+        None => quote!(input.take()?),
+    }
+}
+
+fn construct(fields: &Fields, prefix: TokenStream, w: &syn::Path) -> TokenStream {
     match fields {
         Fields::Named(fields) => {
             let names = fields.named.iter().map(|f| &f.ident);
-            quote!(#prefix { #(#names: input.take()?),* })
+            let takes = fields.named.iter().map(|f| take_field(f, w));
+            quote!(#prefix { #(#names: #takes),* })
         }
         Fields::Unnamed(fields) => {
-            let takes = fields.unnamed.iter().map(|_| quote!(input.take()?));
+            let takes = fields.unnamed.iter().map(|f| take_field(f, w));
             quote!(#prefix (#(#takes),*))
         }
         Fields::Unit => prefix,
