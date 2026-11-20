@@ -575,6 +575,17 @@ pub mod tests {
             let held = [SOURCE, OTHER, TANK].map(|pos| world.held(pos));
             assert_eq!(held, [water(1000), water(1000), None], "{liar}");
         }
+
+        // The full probe is capped by what the source holds. Only the extraction
+        // after the destination takes half can return more than was requested.
+        let mut world = TankWorld::default();
+        world.tank(SOURCE, water(1000), true);
+        world.types.insert(SOURCE, "test:gives_more");
+        world.tank(TANK, None, true);
+        world.tanks.get_mut(&TANK).unwrap().halving = true;
+        let error = world.moved((SOURCE, None), (TANK, None), 1000).unwrap_err();
+        assert_eq!(error.owner.as_deref(), Some("doubler"));
+        assert_eq!([world.held(SOURCE), world.held(TANK)], [water(1000), None]);
     }
 }
 
