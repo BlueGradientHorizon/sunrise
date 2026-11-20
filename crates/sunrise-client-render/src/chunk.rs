@@ -1125,8 +1125,8 @@ impl PendingContainerLoot {
 pub struct ChunkExtras {
     /// Server-owned mod data attached to this chunk.
     pub attachments: sunrise_mod_runtime::attachments::Attachments,
-    /// Live serializer edits on a save snapshot only. The snapshot's block entities
-    /// hold their stored compounds, so a refused record can omit just these edits.
+    /// Edited mod payloads, including their final `Items` fields, on a save snapshot
+    /// only. The block entities retain their stored data for a save without edits.
     pub block_entity_save_edits: Option<Arc<std::collections::BTreeMap<(i32, i32, i32), Compound>>>,
     /// Attachment maps of the chunk's block entities, on a save snapshot.
     pub block_entity_attachments: Vec<(

@@ -1434,7 +1434,7 @@ fn encode_full(
                     hopper_cooldown,
                 },
                 items,
-                |_, _| {
+                |_| {
                     if apply_block_entity_edits {
                         extras?.block_entity_save_edits.as_ref()?.get(p).cloned()
                     } else {
@@ -1471,7 +1471,7 @@ fn encode_full(
                                     hopper_cooldown,
                                 },
                                 items,
-                                |_, _| None,
+                                |_| None,
                             )
                         },
                     );

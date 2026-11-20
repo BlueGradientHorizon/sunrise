@@ -860,10 +860,7 @@ fn equipment_modifier_applies(group: &str, slot: &str) -> bool {
 /// A chunk whose ticking future can complete (`ChunkMap.prepareTickingChunk`):
 /// lit, with its neighbours loaded, as `postprocess_chunks` waits for.
 fn ticking_chunk(world: &World, x: i32, z: i32) -> bool {
-    let Some(center) = world.chunks.get(&(x, z)) else {
-        return false;
-    };
-    center.lit && world.chunks.surrounded((x, z))
+    world.chunks.is_ticking_ready((x, z))
 }
 /// `TicketStorage.canTicketExpire` for a `PORTAL` ticket: its chunk's holder is
 /// ready for saving once the futures of its level are done, the chunk lit and
@@ -6523,7 +6520,11 @@ impl Game<'_> {
                         ) {
                             return None;
                         }
-                        self.capture_block_entity_payload(*pos, entity.id(), &entity.nbt)
+                        let registry = self.pack.assets.registry;
+                        let block = registry
+                            .state(c.block(pos.0 & 15, pos.1, pos.2 & 15))
+                            .map_or("", |state| state.name.as_str());
+                        self.capture_block_entity_payload(*pos, block, entity, self.res.items())
                             .map(|edited| (*pos, edited))
                     })
                     .collect();

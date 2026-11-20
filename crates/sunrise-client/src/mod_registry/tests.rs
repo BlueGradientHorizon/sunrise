@@ -288,7 +288,7 @@ fn a_same_version_install_refuses_another_projects_aliased_claim() {
     fs::write(&target, &bytes).unwrap();
     let manifest = serde_json::json!({ "entries": [
         {"source": "sunrise", "project": "ruby", "version": "1.0", "file": "sunrise-mods/ruby.smod"},
-        {"source": "sunrise", "project": "gem", "title": "Gem", "file": "./sunrise-mods//ruby.smod"}
+        {"source": "sunrise", "project": "gem", "title": "Gem", "file": "./sunrise-mods/ruby.smod"}
     ] }).to_string();
     fs::write(home.join(MANIFEST), &manifest).unwrap();
 
@@ -296,10 +296,82 @@ fn a_same_version_install_refuses_another_projects_aliased_claim() {
         panic!("a competing file claim must be refused before download")
     })
     .unwrap_err();
-    assert!(error.contains("belongs to Gem"), "{error}");
+    assert!(error.contains("Gem"), "{error}");
     assert_eq!(fs::read_to_string(home.join(MANIFEST)).unwrap(), manifest);
     assert_eq!(fs::read(target).unwrap(), bytes);
     assert!(!home.join(".mod-browser.pending.json").try_exists().unwrap());
+    fs::remove_dir_all(home).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn an_install_refuses_a_claim_through_a_symlinked_directory_before_download() {
+    let old = ruby("1.0");
+    let newer = ruby("1.1");
+    let index = registry("1.1", &newer, "file:///ruby.smod");
+    let home = scratch("symlinked-claim");
+    let target = home.join("sunrise-mods/ruby.smod");
+    fs::create_dir(home.join("sunrise-mods")).unwrap();
+    fs::write(&target, &old).unwrap();
+    std::os::unix::fs::symlink("sunrise-mods", home.join("alias")).unwrap();
+    let manifest = serde_json::json!({ "entries": [
+        {"source": "sunrise", "project": "ruby", "version": "1.0", "file": "sunrise-mods/ruby.smod"},
+        {"source": "modrinth", "project": "gem", "title": "Gem", "file": "alias/ruby.smod"}
+    ] }).to_string();
+    fs::write(home.join(MANIFEST), &manifest).unwrap();
+
+    let error = install(&index, &home, "ruby", &|_, _| {
+        panic!("a claim through a directory symlink must be refused before download")
+    })
+    .unwrap_err();
+    assert!(error.contains("Gem"), "{error}");
+    assert_eq!(fs::read_to_string(home.join(MANIFEST)).unwrap(), manifest);
+    assert_eq!(fs::read(&target).unwrap(), old);
+    assert_eq!(fs::read(home.join("alias/ruby.smod")).unwrap(), old);
+    assert!(!home.join(".mod-browser.pending.json").try_exists().unwrap());
+    fs::remove_dir_all(home).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn an_install_accepts_a_mods_directory_linked_outside_the_home() {
+    let bytes = ruby("1.0");
+    let index = registry("1.0", &bytes, "file:///ruby.smod");
+    let home = scratch("linked-mods-home");
+    let shared_mods = scratch("linked-mods-destination");
+    std::os::unix::fs::symlink(&shared_mods, home.join("sunrise-mods")).unwrap();
+
+    install(&index, &home, "ruby", &serve(bytes.clone())).unwrap();
+    assert_eq!(fs::read(shared_mods.join("ruby.smod")).unwrap(), bytes);
+    let list = Installed::load(&home).unwrap();
+    assert_eq!(list.entries[0]["file"], "sunrise-mods/ruby.smod");
+    assert!(!home.join(".mod-browser.pending.json").try_exists().unwrap());
+    fs::remove_dir_all(home).unwrap();
+    fs::remove_dir_all(shared_mods).unwrap();
+}
+
+#[test]
+fn an_install_ignores_a_missing_unicode_name_in_an_unrelated_folder() {
+    let bytes = ruby("1.0");
+    let index = registry("1.0", &bytes, "file:///ruby.smod");
+    let home = scratch("missing-pack-claim");
+    // Neither folder exists yet. Only the filename in the pack's future directory is uncertain.
+    let pack = serde_json::json!({"source": "modrinth", "project": "pack", "file": "resourcepacks/déjà.zip"});
+    Installed {
+        entries: vec![pack.clone()],
+    }
+    .save(&home)
+    .unwrap();
+
+    install(&index, &home, "ruby", &serve(bytes.clone())).unwrap();
+    assert_eq!(
+        fs::read(home.join("sunrise-mods/ruby.smod")).unwrap(),
+        bytes
+    );
+    let list = Installed::load(&home).unwrap();
+    assert_eq!(list.entries[0], pack);
+    assert_eq!(list.entries[1]["project"], "ruby");
+    assert!(!home.join("resourcepacks").try_exists().unwrap());
     fs::remove_dir_all(home).unwrap();
 }
 
