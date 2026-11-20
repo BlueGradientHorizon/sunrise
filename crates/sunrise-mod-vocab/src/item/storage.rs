@@ -402,11 +402,10 @@ impl ItemStorage for Slots {
 }
 
 /// Moves up to `max` of `resource` out of `from` into `to`, in transaction `tx`: how much moved.
-/// As one step of [`move_resources`](crate::resource_util::move_resources): all or nothing in a transaction of
-/// its own, a move `to` takes only part of tried again with that part, and a handler answering
-/// more than it was asked ending it with [`StorageError::Overanswered`]. Four handler calls
-/// whether one item moves or a million, and only the two questions when `from` has none or `to`
-/// has no room.
+/// Extract from `from` first, then offer the extracted amount to `to` in the same journal. If
+/// `to` takes only part, roll back and retry once with that amount. A handler that answers more
+/// than it was asked rolls back the move with [`StorageError::Overanswered`]. If `from` has none
+/// or `to` has no room, neither is asked to transfer anything.
 pub fn transfer(
     host: &mut dyn ServerHost,
     from: &Capability<dyn ItemStorage>,
