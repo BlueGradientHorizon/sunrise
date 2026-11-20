@@ -56,9 +56,8 @@ impl Game<'_> {
         // A server ticks only the chunks someone holds: no player is here, so they are forced.
         // The level before this one may have left its own forced (the command fails with none).
         self.run_command_quietly("forceload remove all");
-        // The ticket alone, as `forceload add` sets it. The command then waits, pumping streaming,
-        // until each column can tick with its 3x3 resident; streaming never runs here, and the
-        // columns are already in place, inserted above, so there is nothing to wait for.
+        // Set the tickets without the live command's load barrier. This fixture supplies its
+        // own columns and leaves streaming paused; the outer ring has no complete 3x3.
         for cx in -radius..=radius {
             for cz in -radius..=radius {
                 self.streaming.set_forced(cx, cz, true);
