@@ -2380,8 +2380,7 @@ impl Game<'_> {
                         0.0,
                         f64::from(-trig::cos(r)),
                     ));
-                    let aim =
-                        vanilla_normalize(glam::DVec3::new(pp.x - pos.x, 0.0, pp.z - pos.z));
+                    let aim = vanilla_normalize(glam::DVec3::new(pp.x - pos.x, 0.0, pp.z - pos.z));
                     let angle = strafe_angle(dir.dot(aim) as f32);
                     if *charge >= 5 && (0.0..10.0).contains(&angle) {
                         // From the head, one block back along the view vector.
