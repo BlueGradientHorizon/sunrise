@@ -7,10 +7,7 @@ use sunrise_world::damage_source::Catalog;
 
 #[test]
 fn formerly_aliased_types_keep_their_id_and_registry_tags() {
-    let built_in = [
-        ("minecraft:indirect_magic", DamageKind::IndirectMagic),
-        ("minecraft:fly_into_wall", DamageKind::FlyIntoWall),
-    ];
+    let registry_backed = ["minecraft:indirect_magic", "minecraft:fly_into_wall"];
     let named = [
         (
             "minecraft:dragon_breath",
@@ -46,7 +43,7 @@ fn formerly_aliased_types_keep_their_id_and_registry_tags() {
     let types: Vec<_> = named
         .iter()
         .map(|(id, _)| *id)
-        .chain(built_in.iter().map(|(id, _)| *id))
+        .chain(registry_backed)
         .map(|id| {
             serde_json::json!({
                 "id": id, "message_id": "test", "exhaustion": "00000000",
@@ -54,28 +51,22 @@ fn formerly_aliased_types_keep_their_id_and_registry_tags() {
             })
         })
         .collect();
-    let tags = serde_json::json!({
-        "minecraft:bypasses_armor": r#"{"values":["dragon_breath","ender_pearl"]}"#,
-        "minecraft:no_knockback": r#"{"values":["dragon_breath","explosion","player_explosion","bad_respawn_point","ender_pearl"]}"#,
+    let mut tags = serde_json::json!({
+        "minecraft:bypasses_armor": r#"{"values":["dragon_breath","ender_pearl","fly_into_wall","indirect_magic"]}"#,
+        "minecraft:no_knockback": r#"{"values":["dragon_breath","explosion","player_explosion","bad_respawn_point","ender_pearl","fly_into_wall"]}"#,
+        "minecraft:witch_resistant_to": r#"{"values":["indirect_magic"]}"#,
         "minecraft:is_projectile": r#"{"values":["mob_projectile","unattributed_fireball"]}"#,
         "minecraft:is_fire": r#"{"values":["unattributed_fireball"]}"#,
         "minecraft:is_explosion": r#"{"values":["explosion","player_explosion","bad_respawn_point"]}"#,
         "minecraft:is_fall": r#"{"values":["ender_pearl"]}"#,
         "minecraft:sulfur_cube_with_block_immune_to": r#"{"values":["mob_projectile"]}"#,
     });
-    let catalog = Catalog::from_json(
-        &serde_json::json!({"data_version": sunrise_world::DATA_VERSION, "types": types}),
-        &tags,
-    )
-    .unwrap();
+    let types = serde_json::json!({"data_version": sunrise_world::DATA_VERSION, "types": types});
+    let catalog = Catalog::from_json(&types, &tags).unwrap();
 
-    for (id, expected_kind) in built_in.into_iter().chain(
-        named
-            .into_iter()
-            .map(|(id, tags)| (id, DamageKind::Named(Tags::new(id, tags)))),
-    ) {
+    for (id, expected_tags) in named {
         let kind = Game::damage_kind(&catalog, id);
-        assert_eq!(kind, expected_kind);
+        assert_eq!(kind, DamageKind::Named(Tags::new(id, expected_tags)));
         assert_eq!(damage_type(kind, false), id);
         assert_eq!(damage_type(kind, true), id);
     }
@@ -85,6 +76,19 @@ fn formerly_aliased_types_keep_their_id_and_registry_tags() {
     let magic = Damage::of(Game::damage_kind(&catalog, "minecraft:indirect_magic"));
     assert!(magic.bypasses_armor() && magic.kind.witch_resistant_to());
     assert!(!magic.no_knockback());
+
+    // A world's data pack can replace the defaults for both explicitly selected IDs.
+    tags["minecraft:bypasses_armor"] = r#"{"values":["dragon_breath","ender_pearl"]}"#.into();
+    tags["minecraft:bypasses_invulnerability"] =
+        r#"{"values":["fly_into_wall","indirect_magic"]}"#.into();
+    let overridden = Catalog::from_json(&types, &tags).unwrap();
+    for id in registry_backed {
+        let kind = Game::damage_kind(&overridden, id);
+        assert_eq!(damage_type(kind, false), id);
+        assert_eq!(damage_type(kind, true), id);
+        assert!(kind.bypasses_invulnerability(), "{id}");
+        assert!(!Damage::of(kind).bypasses_armor(), "{id}");
+    }
 }
 
 #[test]
