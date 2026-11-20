@@ -45,6 +45,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 NOTES = "crates/sunrise-mod-vocab/changes"
+# Remove this audit and its gate branch after the first complete schema-3 SDK publishes.
 SCHEMA_RESET = "tools/ci/surface-schema-3-reset.json"
 # GitHub refuses a step summary over 1 MiB; the full report stays in the step log.
 # Counted in bytes of UTF-8, frame included.

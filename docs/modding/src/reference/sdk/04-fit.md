@@ -102,7 +102,8 @@ naming the hooks, never "fits". `native-check` reports it as `no-list` with `why
 
 Schemas 1 and 2 were written by the older scan, which could attribute a mod's own name to the API. The fit check
 accepts the older hashes for unchanged signatures. For those lists only, absent API records and lost impls that
-refer to a removed API type are left to the compiler. Changed signatures and hook versions are still reported.
+refer to a removed API type do not refuse fit. `fits` lists the deferred IDs in one `not checked` line;
+the native compile decides whether the mod actually needs them. Changed signatures and hook versions still refuse.
 
 A schema 1 list also differs in two ways:
 

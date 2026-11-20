@@ -1,10 +1,15 @@
 //! Compatibility for native packages whose `uses.json` predates the schema 3 hash recipe.
 //! The former method/function hashes included a WebAssembly eligibility bit that did not
-//! affect native callers. Accept either old value, and defer vanished names, which the old
-//! source scan could falsely attribute to the API, to the compile. Delete this
-//! module and its callers once no published registry package carries a schema 2 or older list.
+//! affect native callers. Accept either old value, and defer vanished records and impls with
+//! a missing API operand: the old scan could falsely attribute a mod's own names to the API.
+//! Deferred entries do not refuse fit. The fit tools list them; the native compile decides
+//! whether the mod actually used them. A changed contract still refuses fit.
+//! Delete this module and its callers once no published registry package carries a schema 2 or older list.
 
-use crate::{FunctionContract, MethodContract, Surface, contract_hash, uses::Entry};
+use crate::{
+    FunctionContract, MethodContract, Surface, contract_hash,
+    uses::{Entry, UsesTable},
+};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -15,6 +20,8 @@ struct Old<'a> {
     known_types: BTreeSet<&'a str>,
     current_types: BTreeSet<&'a str>,
     namespaces: BTreeSet<&'a str>,
+    made_for: &'a str,
+    deferred: BTreeSet<String>,
 }
 
 enum Contract<'a> {
@@ -23,8 +30,12 @@ enum Contract<'a> {
 }
 
 impl<'a> LegacyFit<'a> {
-    pub(crate) fn new(schema: u32, target: &'a Surface, entries: &[&'a Entry]) -> Self {
-        Self((schema <= 2).then(|| {
+    pub(crate) fn new(
+        table: Option<&'a UsesTable>,
+        target: &'a Surface,
+        entries: &[&'a Entry],
+    ) -> Self {
+        Self(table.filter(|table| table.schema <= 2).map(|table| {
             let methods = target.traits.iter().flat_map(|trait_| &trait_.methods);
             let functions = target.functions.iter().chain(&target.handles);
             let current_types: BTreeSet<&str> = target
@@ -55,23 +66,27 @@ impl<'a> LegacyFit<'a> {
                 known_types,
                 current_types,
                 namespaces,
+                made_for: &table.made_for,
+                deferred: BTreeSet::new(),
             }
         }))
     }
 
-    pub(crate) fn check_missing_record(&self) -> bool {
-        self.0.is_none()
+    pub(crate) fn check_missing_record(&mut self, id: &str) -> bool {
+        let Some(old) = &mut self.0 else { return true };
+        old.deferred.insert(id.to_owned());
+        false
     }
 
-    pub(crate) fn check_missing_impl(&self, name: &str) -> bool {
-        let Some(old) = &self.0 else { return true };
+    pub(crate) fn check_missing_impl(&mut self, id: &str, name: &str) -> bool {
+        let Some(old) = &mut self.0 else { return true };
         let Some((_, operands)) = name.split_once('<') else {
             return true;
         };
         // Impl text is the surface exporter's canonical Rust spelling. Only treat a missing
         // operand as an API type when the old table names it as one or it uses an API namespace.
         // Bare foreign traits and standard types are not evidence of an API deletion.
-        !operands
+        let defer = operands
             .split(|c: char| !(c.is_alphanumeric() || matches!(c, ':' | '_' | '#')))
             .any(|ty| {
                 !old.current_types.contains(ty)
@@ -79,7 +94,28 @@ impl<'a> LegacyFit<'a> {
                         || ty.rsplit_once("::").is_some_and(|(module, name)| {
                             !name.is_empty() && old.namespaces.contains(module)
                         }))
-            })
+            });
+        if defer {
+            old.deferred.insert(id.to_owned());
+        }
+        !defer
+    }
+
+    pub(crate) fn deferred_note(self) -> Option<String> {
+        let old = self.0?;
+        if old.deferred.is_empty() {
+            return None;
+        }
+        let ids = old
+            .deferred
+            .iter()
+            .map(|id| format!("`{}`", id.escape_debug()))
+            .collect::<Vec<_>>()
+            .join(", ");
+        Some(format!(
+            "not checked: {ids}; list written for {} before schema 3; the compile decides",
+            old.made_for.escape_debug()
+        ))
     }
 
     pub(crate) fn matches(&self, id: &str, new_hash: &str, old_hash: &str) -> bool {

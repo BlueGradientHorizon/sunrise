@@ -183,7 +183,7 @@ impl Uses {
 
     /// Checks the scanned records against the API of another build.
     pub fn fits(&self, target: &Surface) -> Fit {
-        fits_with_schema(USES_SCHEMA, self.entries(), target)
+        fit_report(None, self.entries(), target).verdict
     }
 
     /// The table a package carries for a mod made for `made_for` (a build id).
@@ -2396,20 +2396,27 @@ pub enum Fit {
     Unversioned(Vec<String>),
 }
 
+/// A fit verdict and the note about entries the compile must judge, if any.
+pub struct FitReport {
+    pub verdict: Fit,
+    /// A single human-readable line, absent when nothing was deferred to the compile.
+    pub deferred: Option<String>,
+}
+
 /// Whether every entry exists in `target` with an equal hash and under every path the mod writes,
 /// every type keeps its impls, every struct the mod builds can still be built (and keeps its
 /// field set when built in full), and every hook keeps the version the entry names. A hook entry
 /// that names none is [`Fit::Unversioned`] when nothing else changed.
 #[cfg(test)]
 pub(crate) fn fits<'a>(entries: impl IntoIterator<Item = &'a Entry>, target: &Surface) -> Fit {
-    fits_with_schema(USES_SCHEMA, entries, target)
+    fit_report(None, entries, target).verdict
 }
 
-fn fits_with_schema<'a>(
-    schema: u32,
+fn fit_report<'a>(
+    table: Option<&UsesTable>,
     entries: impl IntoIterator<Item = &'a Entry>,
     target: &Surface,
-) -> Fit {
+) -> FitReport {
     let hashes: BTreeMap<&str, &str> = target.entries().collect();
     let types: BTreeMap<&str, &Type> = target.types.iter().map(|t| (t.id.as_str(), t)).collect();
     let versions: BTreeMap<&str, u64> = target
@@ -2431,7 +2438,7 @@ fn fits_with_schema<'a>(
         public_paths.insert(&m.id, &m.paths);
     }
     let entries: Vec<&Entry> = entries.into_iter().collect();
-    let legacy = crate::legacy_hash::LegacyFit::new(schema, target, &entries);
+    let mut legacy = crate::legacy_hash::LegacyFit::new(table, target, &entries);
     // What each trait a member is reached from leads to in the target, along references built
     // once: a table's `reached_from` strings are many and its own, the surface's size is not.
     let refs = target.refs(true);
@@ -2447,7 +2454,7 @@ fn fits_with_schema<'a>(
             })
         };
         let Some(hash) = hashes.get(id) else {
-            if legacy.check_missing_record() {
+            if legacy.check_missing_record(id) {
                 misfit(Change::Removed);
             }
             continue;
@@ -2465,7 +2472,7 @@ fn fits_with_schema<'a>(
         }
         if let Some(record) = types.get(id) {
             for name in &entry.impls {
-                if !record.impls.contains(name) && legacy.check_missing_impl(name) {
+                if !record.impls.contains(name) && legacy.check_missing_impl(id, name) {
                     misfit(Change::LostImpl(name.clone()));
                 }
             }
@@ -2519,12 +2526,16 @@ fn fits_with_schema<'a>(
     misfits.sort();
     misfits.dedup();
     unversioned.sort();
-    if !misfits.is_empty() {
+    let verdict = if !misfits.is_empty() {
         Fit::DoesNotFit(misfits)
     } else if !unversioned.is_empty() {
         Fit::Unversioned(unversioned)
     } else {
         Fit::Fits
+    };
+    FitReport {
+        verdict,
+        deferred: legacy.deferred_note(),
     }
 }
 
@@ -2590,8 +2601,12 @@ impl std::error::Error for UsesError {}
 impl UsesTable {
     /// Checks the entries covered by the typed API. The caller judges any native engine-code
     /// entries separately against the target build's executable catalog.
-    pub fn fits<'a>(&'a self, api: impl IntoIterator<Item = &'a Entry>, target: &Surface) -> Fit {
-        fits_with_schema(self.schema, api, target)
+    pub fn fits<'a>(
+        &'a self,
+        api: impl IntoIterator<Item = &'a Entry>,
+        target: &Surface,
+    ) -> FitReport {
+        fit_report(Some(self), api, target)
     }
 
     /// Reads a table: refuses an oversized document, an unknown schema, malformed JSON and

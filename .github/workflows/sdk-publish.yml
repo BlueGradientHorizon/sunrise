@@ -90,6 +90,7 @@ jobs:
           fi
           # Start the schema-3 SDK baseline once. There is no comparable previous SDK until
           # one has been published with this schema; don't publish an empty or invented diff.
+          # Remove this branch and the reset audit after the first complete schema-3 SDK publishes.
           if [ -f tools/ci/surface-schema-3-reset.json ] &&
              jq -e '.schema == 2' previous-surface.json >/dev/null &&
              jq -e '.schema == 3' dist/surface.json >/dev/null; then

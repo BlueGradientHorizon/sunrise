@@ -178,19 +178,23 @@ fn fits_command(args: &[PathBuf]) -> ! {
                 .to_owned(),
         );
     }
-    match table.fits(&table.entries, &target) {
+    let report = table.fits(&table.entries, &target);
+    let code = match report.verdict {
         Fit::Fits => {
             println!(
                 "fits ({} items, made for {})",
                 table.entries.len(),
                 table.made_for
             );
-            std::process::exit(0)
+            0
         }
-        Fit::Unversioned(hooks) => fail(format!(
-            "not known: nothing the list can judge changed, but it holds no version of {}; scan the mod again",
-            hooks.join(", ")
-        )),
+        Fit::Unversioned(hooks) => {
+            eprintln!(
+                "sunrise-stage: not known: nothing the list can judge changed, but it holds no version of {}; scan the mod again",
+                hooks.join(", ")
+            );
+            2
+        }
         Fit::DoesNotFit(misfits) => {
             println!(
                 "does not fit: {} of the {} items it uses changed",
@@ -200,9 +204,13 @@ fn fits_command(args: &[PathBuf]) -> ! {
             for misfit in &misfits {
                 println!("  {misfit}  [{}]", misfit.id);
             }
-            std::process::exit(1)
+            1
         }
+    };
+    if let Some(note) = report.deferred {
+        println!("  {note}");
     }
+    std::process::exit(code)
 }
 
 fn surface_diff(args: &[PathBuf]) -> ! {

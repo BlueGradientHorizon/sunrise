@@ -2472,14 +2472,30 @@ fn legacy_tables_match_either_hash_of_an_unchanged_method_and_function() {
                 ],
             };
             let table = UsesTable::read(&serde_json::to_vec(&table).unwrap()).unwrap();
-            assert_eq!(table.fits(&table.entries, &intact), Fit::Fits);
+            let report = table.fits(&table.entries, &intact);
+            assert_eq!(report.verdict, Fit::Fits);
+            assert_eq!(report.deferred, None);
+            let missing = assemble(act.clone(), vec![]);
+            let report = table.fits(&table.entries, &missing);
+            if *schema == 3 {
+                assert_eq!(report.verdict, Fit::DoesNotFit(vec![removed.clone()]));
+                assert_eq!(report.deferred, None);
+            } else {
+                assert_eq!(report.verdict, Fit::Fits);
+                assert_eq!(
+                    report.deferred.as_deref(),
+                    Some(
+                        "not checked: `fn:get`; list written for test before schema 3; the compile decides"
+                    )
+                );
+            }
             let expected = if *schema == 3 {
                 vec![removed.clone(), signature.clone()]
             } else {
                 vec![signature.clone()]
             };
             assert_eq!(
-                table.fits(&table.entries, &changed),
+                table.fits(&table.entries, &changed).verdict,
                 Fit::DoesNotFit(expected)
             );
             assert_ne!(
@@ -2487,7 +2503,8 @@ fn legacy_tables_match_either_hash_of_an_unchanged_method_and_function() {
                     schema: if *schema == 3 { 2 } else { 3 },
                     ..table.clone()
                 }
-                .fits(&table.entries, &intact),
+                .fits(&table.entries, &intact)
+                .verdict,
                 Fit::Fits
             );
         }
@@ -2522,16 +2539,25 @@ fn only_legacy_tables_defer_lost_impls_with_vanished_api_types_to_the_compile() 
                 .collect(),
         )
     };
+    let report = uses.fits(&uses.entries, &target);
     assert_eq!(
-        uses.fits(&uses.entries, &target),
+        report.verdict,
         expected(&["Clone", "From<widgets::Visible>"])
+    );
+    assert_eq!(
+        report.deferred.as_deref(),
+        Some(
+            "not checked: `type:Handle`; list written for baseline before schema 3; the compile decides"
+        )
     );
     let uses = UsesTable {
         schema: USES_SCHEMA,
         ..uses
     };
+    let report = uses.fits(&uses.entries, &target);
     assert_eq!(
-        uses.fits(&uses.entries, &target),
+        report.verdict,
         expected(&["Clone", "From<widgets::Old>", "From<widgets::Visible>"])
     );
+    assert_eq!(report.deferred, None);
 }

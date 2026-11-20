@@ -391,9 +391,9 @@ fn fits_lines(entry: ChildEntry, args: &[String]) -> Result<Answer, String> {
             )
         };
         let (mut compared, uncompared) = game_fit(project, &manifest, &table, &target)?;
-        let mut answer = api(&table);
+        let mut report = api(&table);
         let mut unfetched = None;
-        if matches!(answer, Fit::Unversioned(_)) && table.schema != USES_SCHEMA {
+        if matches!(report.verdict, Fit::Unversioned(_)) && table.schema != USES_SCHEMA {
             let fetched = baseline.get_or_insert_with(|| {
                 let made_for = fetch_build(project, &table.made_for)?;
                 let versions = std::fs::read(&made_for.surface)
@@ -403,10 +403,11 @@ fn fits_lines(entry: ChildEntry, args: &[String]) -> Result<Answer, String> {
                     .map_err(|e| e.to_string())
             });
             match fetched {
-                Ok(()) => answer = api(&table),
+                Ok(()) => report = api(&table),
                 Err(why) => unfetched = Some(why.clone()),
             }
         }
+        let mut answer = report.verdict;
         if !compared.misfits.is_empty() {
             let mut misfits = match answer {
                 Fit::DoesNotFit(misfits) => misfits,
@@ -476,6 +477,9 @@ fn fits_lines(entry: ChildEntry, args: &[String]) -> Result<Answer, String> {
                     println!("    the game code it declares could not be compared: {why}");
                 }
             }
+        }
+        if let Some(note) = report.deferred {
+            println!("    {note}");
         }
     }
     Ok(match (all, known) {
