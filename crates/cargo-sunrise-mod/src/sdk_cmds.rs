@@ -6,7 +6,7 @@ use crate::options::Options;
 use crate::sdk_fetch::{PinnedSdk, ensure_sdk, fetch_build};
 use crate::uses_table::{self, Scanned, surface_of};
 use mod_surface::child::ChildEntry;
-use mod_surface::uses::{Change, Fit, USES_FILE, USES_SCHEMA, UsesTable};
+use mod_surface::uses::{Change, Fit, FitReport, USES_FILE, USES_SCHEMA, UsesTable};
 use mod_surface::{Surface, leaf};
 use std::path::Path;
 use std::process::{Command, ExitCode};
@@ -228,7 +228,7 @@ fn display_name(manifest: &str) -> Result<String, String> {
 }
 
 /// What `fits` judges: the package's or the folder's table, or why the question does not apply.
-enum Subject {
+pub(crate) enum Subject {
     Table {
         name: String,
         table: UsesTable,
@@ -240,7 +240,7 @@ enum Subject {
 }
 
 /// The table of the `.smod` at `path`.
-fn package_subject(path: &Path) -> Result<Subject, String> {
+pub(crate) fn package_subject(path: &Path) -> Result<Subject, String> {
     let package = Package::read(path)?;
     let manifest = Package::entry(path, MANIFEST, MAX_MANIFEST)?
         .ok_or_else(|| format!("{}: no {MANIFEST}", path.display()))?;
@@ -379,52 +379,18 @@ fn fits_lines(entry: ChildEntry, args: &[String]) -> Result<Answer, String> {
             continue;
         }
         let target_surface = surface_of(&target)?;
-        // The mod API's items are judged by the surface, the game code the mod declares by the
-        // target's build data: one list holds both.
-        let api = |table: &UsesTable| {
-            table.fits(
-                table
-                    .entries
-                    .iter()
-                    .filter(|entry| !entry.id.starts_with(game_uses::PREFIX)),
-                &target_surface,
-            )
-        };
-        let (mut compared, uncompared) = game_fit(project, &manifest, &table, &target)?;
-        let mut report = api(&table);
-        let mut unfetched = None;
-        if matches!(report.verdict, Fit::Unversioned(_)) && table.schema != USES_SCHEMA {
-            let fetched = baseline.get_or_insert_with(|| {
-                let made_for = fetch_build(project, &table.made_for)?;
-                let versions = std::fs::read(&made_for.surface)
-                    .map_err(|e| format!("{}: {e}", made_for.surface.display()))?;
-                table
-                    .pin_hook_versions(&versions)
-                    .map_err(|e| e.to_string())
-            });
-            match fetched {
-                Ok(()) => report = api(&table),
-                Err(why) => unfetched = Some(why.clone()),
-            }
-        }
-        let mut answer = report.verdict;
-        if !compared.misfits.is_empty() {
-            let mut misfits = match answer {
-                Fit::DoesNotFit(misfits) => misfits,
-                Fit::Fits | Fit::Unversioned(_) => Vec::new(),
-            };
-            misfits.append(&mut compared.misfits);
-            misfits.sort();
-            answer = Fit::DoesNotFit(misfits);
-        }
-        // What is already known to have changed is said, whatever the build data would add; with
-        // nothing known, a comparison that could not be made is the answer.
-        if let Some(why) = &uncompared
-            && !matches!(answer, Fit::DoesNotFit(_))
-        {
-            return Err(why.clone());
-        }
-        match answer {
+        let game = game_fit(project, &manifest, &table, &target)?;
+        let Comparison {
+            report,
+            compared,
+            uncompared,
+            unfetched,
+        } = compare_fit(&mut table, &target_surface, game, &mut baseline, |pin| {
+            let made_for = fetch_build(project, pin)?;
+            std::fs::read(&made_for.surface)
+                .map_err(|e| format!("{}: {e}", made_for.surface.display()))
+        })?;
+        match report.verdict {
             Fit::Fits if !compared.unjudged.is_empty() => {
                 known = false;
                 println!(
@@ -489,6 +455,69 @@ fn fits_lines(entry: ChildEntry, args: &[String]) -> Result<Answer, String> {
     })
 }
 
+pub(crate) struct Comparison {
+    pub report: FitReport,
+    pub compared: game_uses::Compared,
+    uncompared: Option<String>,
+    unfetched: Option<String>,
+}
+
+/// The mod API's items are judged by the surface, and declared game code by the build data.
+/// Both the CLI and the registry compare them here; their callers supply the files.
+pub(crate) fn compare_fit<B: AsRef<[u8]>>(
+    table: &mut UsesTable,
+    target_surface: &Surface,
+    (mut compared, uncompared): (game_uses::Compared, Option<String>),
+    baseline: &mut Option<Result<(), String>>,
+    baseline_surface: impl FnOnce(&str) -> Result<B, String>,
+) -> Result<Comparison, String> {
+    let api = |table: &UsesTable| {
+        table.fits(
+            table
+                .entries
+                .iter()
+                .filter(|entry| !entry.id.starts_with(game_uses::PREFIX)),
+            target_surface,
+        )
+    };
+    let mut report = api(table);
+    let mut unfetched = None;
+    if matches!(report.verdict, Fit::Unversioned(_)) && table.schema != USES_SCHEMA {
+        let fetched = baseline.get_or_insert_with(|| {
+            let versions = baseline_surface(&table.made_for)?;
+            table
+                .pin_hook_versions(versions.as_ref())
+                .map_err(|e| e.to_string())
+        });
+        match fetched {
+            Ok(()) => report = api(table),
+            Err(why) => unfetched = Some(why.clone()),
+        }
+    }
+    if !compared.misfits.is_empty() {
+        let mut misfits = match report.verdict {
+            Fit::DoesNotFit(misfits) => misfits,
+            Fit::Fits | Fit::Unversioned(_) => Vec::new(),
+        };
+        misfits.append(&mut compared.misfits);
+        misfits.sort();
+        report.verdict = Fit::DoesNotFit(misfits);
+    }
+    // What is already known to have changed is said, whatever the build data would add; with
+    // nothing known, a comparison that could not be made is the answer.
+    if let Some(why) = &uncompared
+        && !matches!(report.verdict, Fit::DoesNotFit(_))
+    {
+        return Err(why.clone());
+    }
+    Ok(Comparison {
+        report,
+        compared,
+        uncompared,
+        unfetched,
+    })
+}
+
 /// The game code `manifest` declares, as `target` has it, against `table`'s record of it, and
 /// the horizon-mixins revision the mod pins against the one `target`'s tool builds with. A
 /// misfit already known stays when the build data cannot be read: why it cannot comes second.
@@ -502,6 +531,18 @@ fn game_fit(
     let bytes = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
     let index =
         Index::read(&bytes, &target.build).map_err(|e| format!("{}: {e}", path.display()))?;
+    Ok(compare_game(manifest, table, &index.mixins.rev, || {
+        crate::sdk_fetch::build_data(project, &target.build)
+            .and_then(|data| game_uses::entries(manifest, &data, &target.build))
+    }))
+}
+
+pub(crate) fn compare_game(
+    manifest: &Manifest,
+    table: &UsesTable,
+    mixins_rev: &str,
+    target_entries: impl FnOnce() -> Result<Vec<(String, game_uses::Now)>, String>,
+) -> (game_uses::Compared, Option<String>) {
     let mut compared = game_uses::Compared::default();
     let mut uncompared = None;
     if game_uses::declared(manifest) {
@@ -510,17 +551,15 @@ fn game_fit(
             .iter()
             .filter(|entry| entry.id.starts_with(game_uses::PREFIX))
             .collect();
-        match crate::sdk_fetch::build_data(project, &target.build)
-            .and_then(|data| game_uses::entries(manifest, &data, &target.build))
-        {
+        match target_entries() {
             Ok(now) => compared = game_uses::compare(&recorded, now),
             Err(why) => uncompared = Some(why),
         }
     }
     compared
         .misfits
-        .extend(game_uses::tool(manifest, &index.mixins.rev));
-    Ok((compared, uncompared))
+        .extend(game_uses::tool(manifest, mixins_rev));
+    (compared, uncompared)
 }
 
 /// What the mod nearest to a removed item may use now, in `new`: the hook with one of the same

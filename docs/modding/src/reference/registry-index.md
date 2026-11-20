@@ -42,6 +42,7 @@ entry leaves out.
 | `schema` | 1. A reader refuses a higher number with "update Sunrise" rather than misread it. |
 | `projects[].id` | `[a-z0-9_]{1,64}`, unique among projects and collections; a mod's is its manifest's `id`. Not a page of the mod site (`RESERVED_IDS` in `crates/sunrise-mod-package/src/manifest.rs`, `submit` and `mine` among them): a project's page is `/mods/<id>`. |
 | `releases` | Optional top-level list of stable Sunrise releases: `{ tag, commit, line }`. `line` is `<game>-<major>`, e.g. `26.3-0`. |
+| `nightly_build` | Optional current game Nightly: `{ commit, date }`, separate from each project's `nightly` source. `date` is `YYYY-MM-DD` (UTC). |
 | `collections` | Optional top-level list of [collections](#collections). Each is a page and a list of already listed mod ids, with no file or version of its own. |
 | `kind` | `mod` (content), `native-mod`, `modpack`, `resourcepack`, `shader` (Sunrise `.sshader`), `shaderpack` (a `shaders/`-folder zip), `datapack` (a data-pack zip). Other kinds (worlds, themes) may come without a new schema: a reader keeps a kind it doesn't know and doesn't offer it. |
 | `summary`, `description` | Required summary of at most 160 characters for lists. Markdown for the project's page: required for a project with versions (50–10,000 characters after trimming), optional for a Nightly-only project. |
@@ -61,6 +62,7 @@ entry leaves out.
 | `side`, `capabilities` | A mod's, read from its manifest during validation. |
 | `game` | The Minecraft version it is for. |
 | `sunrise` | Optional version-level stable release tag the package was made for, e.g. `26.3-0.1.0`. |
+| `verdicts` | Optional version-level [fit decisions](#fit-on-stable-and-nightly), keyed by stable release tag or `nightly`. Only versions with `sunrise` get these decisions. |
 | `dependencies` | A mod or native mod's [manifest dependencies](../concepts/dependencies.md): `{ id, version, optional, side }`, sorted by `id`. `version` is a SemVer range rendered as text. `optional` is omitted unless true; `side` is omitted unless limited to `client` or `server`. The publisher omits this field when a mod has no dependencies. An explicit `[]` asserts that the manifest has none. Never add this field to `mods/<id>.toml`. |
 | `requires` | A modpack's exact pins: `{ id, version, sha256 }`, each a version in this index with that hash. These are not mod dependencies. |
 | `file` | A plain name with the kind's extension (`.smod`, `.spack`, `.zip`, `.sshader`), an `https://` URL (the registry's release `https://github.com/sunrise-org/sunrise-mods/releases/download/<id>-<version>/<name>`, or an asset of the project's own repository, `https://github.com/<owner>/<repo>/releases/download/<tag>/<name>`: the launcher accepts exactly these shapes), the size (at most 64 MiB), the lowercase hex SHA-256, and the `.minisig` text when the project has a key. |
@@ -86,6 +88,25 @@ handle it without selecting another build or architecture. These signatures are
 registry-produced metadata, independent of project package keys. The launcher
 builds native mods locally with its pinned Rust toolchain against the prebuilt
 game; registry-built native binaries are not used.
+
+## Fit on Stable and Nightly
+
+`registry build` judges a version that declares `sunrise` against every listed release on that release's line,
+including earlier ones, and against the current Nightly if supplied. Each decision is an object with `verdict` and
+`targets`, the sorted Rust target triples with `native_binaries` for that exact build's commit:
+
+- `made-for`: the target commit is the one the version was made for.
+- `fits`: the target uses the same Minecraft version and the version can run on it. For native mods, the same
+  comparison as [`cargo sunrise-mod fits`](sdk/04-fit.md) checks the items the package uses; for content mods,
+  the target's content API must also match.
+- `rebuild`: the tool cannot show fit. `changed` lists up to five changed item IDs, or `reason` says why there
+  is no proof (for example, `made for one build only`).
+
+The workflow passes `--sdk-data <dir>` alongside `--releases <file>`. Each supplied release's commit needs a
+subdirectory `<dir>/<commit>/` holding its verified `sdk.json`, `surface.json`, and the unpacked
+`build-data/{functions,internals,loops}.json`. `--nightly-build <file>` takes JSON `{ "commit": "<40 hex>", "date": "YYYY-MM-DD" }`
+and needs the same files for that commit. A missing file names the release and fails the build; the tool does not
+fetch SDK data. These options do not replace `--nightly`, which supplies per-project source metadata.
 
 ## A native mod's list of what it uses
 
