@@ -135,6 +135,11 @@ why = "Commit e0e8269d76a moved the world and mob tick methods into game::level_
 migrate = "Replacement ids: point:sunrise_client::game::level_tick::Game<'_>::tick_world and point:sunrise_client::game::level_tick::Game<'_>::tick_mobs. In [[inject]], set at to the corresponding path without point: and update hash if pinned."
 ```
 
+A note can also say that a merge already changed its ids, without a note, with `landed = "<full merge sha>"`. Its ids are
+then checked against that merge's first parent and the merge itself, not against the pull request that adds the note,
+and must have changed there: a wrong `landed` fails the report, naming the note and the id. The merge must have two
+parents. The pull request's own comparison leaves such notes out, and a note without `landed` is checked as before.
+
 The reader checks new top-level notes; a note with an unknown key, a missing `ids` or `why`, an empty `ids`, or an id
 that did not change is refused. `changes/history/` holds backfilled notes in the same format. The reader does not
 scan that directory, so they neither waive the gate nor appear in the SDK diff. CI checks engine notes against the

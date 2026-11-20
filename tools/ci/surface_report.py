@@ -14,6 +14,12 @@ base tree (the base predates a rule or format this tool holds trees to), the bas
 errors, when that cannot give a surface this tool compares. It fails for a new change note that names an id that did
 not change or cannot be read, and, with `gate = true` in tools/ci/surface.toml (on), for a breaking change no new note
 names.
+
+A new note that carries `landed = "<merge sha>"` is retroactive: it is left out of the comparison above and checked
+against that merge instead. The merge and its first parent are fetched and exported (the parent by its own tool when
+the head's cannot read it), and `surface-diff --landed` attaches the note and fails when an id did not change there.
+That costs two exports, only on a pull request that adds such a note. A merge that does not have two parents, or a
+tree that cannot be exported, fails naming the note and the sha.
 """
 
 from argparse import ArgumentParser
@@ -86,7 +92,7 @@ def unpack(sha: str, into: Path, paths=("Cargo.toml", "crates", "tools/layering"
 
 def base_tool(sha: str, work: Path) -> str:
     """The base commit's own sunrise-stage: its whole tree, built as verify builds the head's (test profile)."""
-    tree = work / "base-tool"
+    tree = work / f"base-tool-{sha[:12]}"
     tree.mkdir()
     unpack(sha, tree, ())
     target = ROOT / "target" / "surface-base"
@@ -104,9 +110,11 @@ def last_line(text: str) -> str:
 
 
 def report(tool: str, base: Path, head: Path, work: Path, gate_on: bool, *,
-           with_internals: bool = False, own_base_tool: Callable[[], str] | None = None) -> tuple[int, str]:
+           with_internals: bool = False, own_base_tool: Callable[[], str] | None = None,
+           notes: tuple[Path, Path] | None = None, landed: str | None = None) -> tuple[int, str]:
     """Exports both trees at once, diffs them; (exit code, report text). `own_base_tool` gives the base's own
-    sunrise-stage, for a base the head's cannot read."""
+    sunrise-stage, for a base the head's cannot read. `notes` is the (new, base) pair of change-note folders when
+    they are not the trees' own; `landed` selects the notes of one merge."""
     # The base's records may predate the call names: its export names none (`--without-calls`),
     # which no comparison reads.
     catalogs = "--with-internals" if with_internals else "--with-points-and-loops"
@@ -136,15 +144,19 @@ def report(tool: str, base: Path, head: Path, work: Path, gate_on: bool, *,
         if own.returncode != 0:
             return 1, f"No surface report: {why}, nor can the base's own ({last_line(own.stderr)}).\n"
         note = f"The base was exported by its own sunrise-stage: {why}.\n"
-    code, text = compare(tool, base, head, work, gate_on, with_internals=with_internals)
+    code, text = compare(tool, base, head, work, gate_on, with_internals=with_internals, notes=notes, landed=landed)
     return code, note + text
 
 
 def compare(tool: str, base: Path, head: Path, work: Path, gate_on: bool, *,
-            with_internals: bool) -> tuple[int, str]:
-    """Run the gate on the exported documents and the trees' change notes."""
+            with_internals: bool, notes: tuple[Path, Path] | None = None,
+            landed: str | None = None) -> tuple[int, str]:
+    """Run the gate on the exported documents and the change notes (the trees' own unless `notes` is given)."""
+    new_notes, base_notes = notes or (head / NOTES, base / NOTES)
     command = [tool, "surface-diff", str(work / "base.json"), str(work / "head.json"),
-               "--notes", str(head / NOTES), "--base-notes", str(base / NOTES), "--json", str(work / "diff.json")]
+               "--notes", str(new_notes), "--base-notes", str(base_notes), "--json", str(work / "diff.json")]
+    if landed:
+        command += ["--landed", landed]
     if gate_on:
         command.append("--gate")
     diff = subprocess.run(command, capture_output=True, text=True)
@@ -155,6 +167,55 @@ def compare(tool: str, base: Path, head: Path, work: Path, gate_on: bool, *,
     scope = "" if with_internals else (
         "CI does not compare listed internals; use surface_report.py --with-internals for a local audit.\n")
     return (0 if diff.returncode == 0 else 1), scope + diff.stdout + diff.stderr
+
+
+def landed_notes(head: Path, base: Path) -> dict[str, list[str]]:
+    """The new notes of `head` that carry `landed`, by merge sha. New is the reader's rule: a file name or content
+    the base does not have. An unreadable note is the PR's own comparison's to report, so it is skipped here."""
+    old = list((base / NOTES).glob("*.toml"))
+    names, contents = {path.name for path in old}, {path.read_bytes() for path in old}
+    found: dict[str, list[str]] = {}
+    for path in sorted((head / NOTES).glob("*.toml")):
+        if path.name in names or path.read_bytes() in contents:
+            continue
+        try:
+            sha = tomllib.loads(path.read_text()).get("landed")
+        except (tomllib.TOMLDecodeError, UnicodeDecodeError):
+            continue
+        if isinstance(sha, str):
+            found.setdefault(sha.lower(), []).append(path.name)
+    return found
+
+
+def landed_check(tool: str, head: Path, base: Path, work: Path, shas: dict[str, list[str]], *,
+                 git_text=git, fetch=unpack, own_tool: Callable[[str], str] | None = None) -> tuple[int, str]:
+    """Check each merge's notes against that merge's first parent and the merge; (exit code, text)."""
+    code, text = 0, ""
+    for sha, files in sorted(shas.items()):
+        who = f"{', '.join(files)} (landed {sha})"
+        folder = work / f"landed-{sha}"
+        try:
+            # Two commits deep, so the merge's parents are known.
+            git_text("fetch", "-q", "--no-tags", "--depth", "2", "origin", sha)
+            parent = merge_parent(git_text("cat-file", "-p", sha))
+        except (OSError, subprocess.CalledProcessError) as error:
+            return 1, text + f"Landed check failed for {who}: the merge could not be fetched: {error}.\n"
+        if parent is None:
+            return 1, text + f"Landed check failed for {who}: it is not a merge commit with two parents.\n"
+        trees = {"base": parent, "head": sha}
+        try:
+            for name, commit in trees.items():
+                (folder / name).mkdir(parents=True)
+                fetch(commit, folder / name)
+        except (OSError, subprocess.CalledProcessError) as error:
+            return 1, text + f"Landed check failed for {who}: a tree could not be fetched: {error}.\n"
+        sub_code, sub_text = report(tool, folder / "base", folder / "head", folder, False,
+                                    own_base_tool=(lambda: own_tool(parent)) if own_tool else None,
+                                    notes=(head / NOTES, base / NOTES), landed=sha)
+        if sub_code != 0:
+            code = 1
+        text += f"Landed {who}, first parent {parent}:\n{sub_text}"
+    return code, text
 
 
 def summary(text: str) -> str:
@@ -202,6 +263,10 @@ def main(argv=None) -> int:
                 fetched = time.monotonic() - started
                 code, text = report(tool, base, ROOT, work, gate_on, with_internals=args.with_internals,
                                     own_base_tool=lambda: base_tool(sha, work))
+                if shas := landed_notes(ROOT, base):
+                    landed_code, landed_text = landed_check(tool, ROOT, base, work, shas,
+                                                            own_tool=lambda parent: base_tool(parent, work))
+                    code, text = code or landed_code, text + landed_text
                 text += f"Base {sha}; fetch {fetched:.1f}s, total {time.monotonic() - started:.1f}s\n"
             else:
                 code, text = 0, f"No surface report: {why}.\n"

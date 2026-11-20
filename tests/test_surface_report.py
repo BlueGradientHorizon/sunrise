@@ -314,3 +314,58 @@ class MainTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(shutil.which("bash"), "needs bash for the stub tool")
+class LandedTests(unittest.TestCase):
+    SHA = "6" * 40
+
+    def check(self, diff_exit, trees=None, git_text=None):
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            for side in ("head", "base"):
+                notes = work / side / surface_report.NOTES
+                notes.mkdir(parents=True)
+            (work / "head" / surface_report.NOTES / "r61.toml").write_text(
+                f'ids = ["point:a"]\nwhy = "w"\nlanded = "{self.SHA}"\n')
+            (work / "head" / surface_report.NOTES / "own.toml").write_text('ids = ["hook:b"]\nwhy = "w"\n')
+            tool = work / "sunrise-stage"
+            tool.write_text(f"""#!/bin/bash
+echo "$@" >> {work}/calls
+if [ "$1" = surface ]; then echo '{{}}' > "$3"; exit 0; fi
+if [ {diff_exit} != 0 ]; then echo "change note r61.toml names point:a, which did not change" >&2; fi
+exit {diff_exit}
+""")
+            tool.chmod(0o755)
+            shas = surface_report.landed_notes(work / "head", work / "base")
+            fetched = []
+            git_text = git_text or (lambda *a: MERGE if a[0] == "cat-file" else "")
+            code, text = surface_report.landed_check(
+                str(tool), work / "head", work / "base", work, shas,
+                git_text=git_text, fetch=lambda sha, into: fetched.append(sha))
+            calls = (work / "calls").read_text() if (work / "calls").exists() else ""
+            return shas, code, text, calls, fetched
+
+    def test_only_new_notes_that_carry_landed_are_found(self):
+        shas, *_ = self.check(0)
+        self.assertEqual(shas, {self.SHA: ["r61.toml"]})
+
+    def test_a_note_whose_ids_changed_in_that_merge_passes(self):
+        _, code, text, calls, fetched = self.check(0)
+        self.assertEqual(code, 0, text)
+        self.assertEqual(fetched, ["aaaa", self.SHA])
+        self.assertIn(f"--landed {self.SHA}", calls)
+        self.assertNotIn("--gate", calls)
+
+    def test_a_note_whose_ids_did_not_change_there_fails_naming_it(self):
+        _, code, text, _, _ = self.check(1)
+        self.assertEqual(code, 1)
+        self.assertIn(f"r61.toml (landed {self.SHA})", text)
+        self.assertIn("names point:a, which did not change", text)
+
+    def test_a_commit_that_is_not_a_two_parent_merge_fails(self):
+        _, code, text, calls, _ = self.check(
+            0, git_text=lambda *a: SINGLE if a[0] == "cat-file" else "")
+        self.assertEqual(code, 1)
+        self.assertIn("not a merge commit with two parents", text)
+        self.assertNotIn("surface-diff", calls)
