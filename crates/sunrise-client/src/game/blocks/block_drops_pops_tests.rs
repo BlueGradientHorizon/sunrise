@@ -6,12 +6,15 @@
 //! `SweetBerryBushBlock.java:122`) all pop through it, so they drop nothing with
 //! the rule off and their usual item with it on.
 use super::*;
-use crate::game::game_tests::tests::server_game;
+use crate::game::game_tests::tests::{isolated_server_game, server_game};
 use sunrise_client::items::ItemStack;
 use sunrise_core::position::ChunkPos;
 
 fn game(resources: &mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'_> {
-    let mut game = server_game(resources);
+    set_up(server_game(resources))
+}
+
+fn set_up(mut game: Game<'_>) -> Game<'_> {
     game.build_registries();
     game.set_allow_commands(true);
     game.block_ticks
@@ -163,4 +166,80 @@ fn block_drops_on_keeps_the_pop() {
             assert_eq!([p.x, p.y, p.z], at, "{block} pops where vanilla pops it");
         }
     }
+}
+
+/// `SweetBerryBushBlock.useWithoutItem` drops through `BLOCK_INTERACT`: the
+/// clicking player is `interacting_entity` with the fire it is in, nothing is
+/// `this`, and `location_check` reads around the block (`ORIGIN`). A table of
+/// those conditions, run through the real click, drops what each one holds for.
+#[test]
+#[ignore = "daily"]
+fn a_harvest_rolls_with_its_interacting_player_and_block_origin() {
+    use serde_json::json;
+    let mut resources = None;
+    let (_published, game) = isolated_server_game(&mut resources);
+    let mut game = set_up(game);
+    // The clicking player, standing beside the bush, and the loot data the
+    // entity matcher reads (`server_loot`).
+    game.player = Some(
+        sunrise_client::motion::PlayerMotion::new(
+            game.motion,
+            sunrise_core::geometry::Vec3::new(12.5, 100.0, 2.5),
+        )
+        .unwrap(),
+    );
+    game.server_loot.set(Some(std::sync::Arc::new(
+        sunrise_world::loot::LootData::load(
+            &game.options.resources,
+            &Default::default(),
+            game.res.item_defaults(),
+        )
+        .unwrap(),
+    )));
+    let item = |name: &str| json!({"type": "minecraft:item", "name": name});
+    let pool = |condition: serde_json::Value, name: &str| json!({"rolls": 1, "condition": condition, "entries": [item(name)]});
+    let who = |who: &str, predicate: serde_json::Value| json!({"type": "minecraft:entity_properties", "entity": who, "predicate": predicate});
+    let below = |block: &str| {
+        json!({"type": "minecraft:location_check", "offsetY": -1,
+            "predicate": {"block": {"blocks": block}}})
+    };
+    let table = json!({"type": "minecraft:block_interact", "pools": [
+        pool(who("interacting_entity", json!({"minecraft:flags": {"is_on_fire": true}})),
+            "minecraft:apple"),
+        pool(who("interacting_entity", json!({"minecraft:entity_type": "minecraft:player"})),
+            "minecraft:stick"),
+        pool(who("this", json!({"minecraft:entity_type": "minecraft:player"})), "minecraft:bone"),
+        pool(below("minecraft:stone"), "minecraft:diamond"),
+        pool(below("minecraft:dirt"), "minecraft:coal"),
+    ]});
+    let mut items = game.items().clone();
+    items.set_loot_tables(std::sync::Arc::new(
+        [("minecraft:harvest/sweet_berry_bush".to_owned(), table)]
+            .into_iter()
+            .collect(),
+    ));
+    game.server_items = Some(std::sync::Arc::new(items));
+    let at = [14, 100, 2];
+    let harvest = |game: &mut Game<'_>| {
+        place(game, at, "minecraft:sweet_berry_bush[age=3]");
+        assert!(use_block(game, at, None));
+        let mut dropped: Vec<String> = game
+            .dropped
+            .iter()
+            .map(|d| d.stack.item.to_string())
+            .collect();
+        dropped.sort();
+        dropped
+    };
+    assert_eq!(
+        harvest(&mut game),
+        ["minecraft:diamond", "minecraft:stick"],
+        "the player is the interacting entity and nothing is `this`; the stone below holds"
+    );
+    game.player.as_mut().unwrap().ignite_for_ticks(100).unwrap();
+    assert_eq!(
+        harvest(&mut game),
+        ["minecraft:apple", "minecraft:diamond", "minecraft:stick"],
+        "the burning player matches `is_on_fire`"
+    );
 }

@@ -156,7 +156,8 @@ pub trait ScreensClientHost {
     fn debug_overlay_visible(&self) -> bool;
     /// Side: client.
     /// Whether a specific key is currently held down.
-    /// `key` is the vanilla physical key name (`key.keyboard.left.shift`, for example).
+    /// `key` is the vanilla physical key or mouse button name (`key.keyboard.left.shift`,
+    /// `key.mouse.left`, `key.mouse.4`, for example).
     /// Unknown names are not down. Modifier combinations use `ClientHost::modifiers`.
     #[access(ClientSetup)]
     fn is_key_down(&self, key: &str) -> bool;

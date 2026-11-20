@@ -105,18 +105,29 @@ console.log(JSON.stringify(eval(expression)));
         started = {"macos-x64": ("macos-x64-intel", "macos-15-intel"),
                    "windows-arm64": ("windows-arm64-native", "windows-11-vs2026-arm")}
         self.assertEqual({row["name"] for row in rows if row.get("started_elsewhere")}, set(started))
+        self.assertEqual(set(game["legs"]["needs"]), {"build", *(job for job, _ in started.values())})
+        folders = {"macos-x64": "intel", "windows-arm64": "arm64"}
         for row in rows:
             if row["name"] in started:
                 job, runner = started[row["name"]]
                 with self.subTest(started_elsewhere=row["name"]):
                     self.assertEqual(game[job]["runs-on"], runner)
-                    self.assertIn(job, game["legs"]["needs"])
                     steps = game[job]["steps"]
-                    downloads = {s["with"]["name"] for s in steps if s.get("uses", "").startswith("actions/download-artifact@")}
-                    uploads = {s["with"]["name"] for s in steps if s.get("uses", "").startswith("actions/upload-artifact@")}
-                    self.assertEqual(downloads, {f"untested-{row['asset']}"})
-                    self.assertEqual(uploads, {row["asset"], f"leg-{row['name']}"})
-        self.assertEqual({row["name"] for row in rows if row.get("started_elsewhere")}, {"macos-x64", "windows-arm64"})
+                    artifacts = [(s["uses"].split("@")[0], s["with"]["name"], s["with"]["path"]) for s in steps
+                                 if s.get("uses", "").startswith(("actions/download-artifact@", "actions/upload-artifact@"))]
+                    temp = "${{ runner.temp }}"
+                    self.assertEqual(artifacts, [
+                        ("actions/download-artifact", f"untested-{row['asset']}", f"{temp}/{folders[row['name']]}"),
+                        ("actions/upload-artifact", row["asset"], f"{temp}/ship/{row['asset']}"),
+                        ("actions/upload-artifact", f"leg-{row['name']}", f"{temp}/leg-{row['name']}"),
+                    ])
+                    # The programs start between the download and the first upload: nothing ships unstarted.
+                    names = [s.get("name", "") for s in steps]
+                    start = next(i for i, name in enumerate(names) if name.startswith("Every program starts"))
+                    download = next(i for i, s in enumerate(steps) if s.get("uses", "").startswith("actions/download-artifact@"))
+                    upload = next(i for i, s in enumerate(steps) if s.get("uses", "").startswith("actions/upload-artifact@"))
+                    self.assertLess(download, start)
+                    self.assertLess(start, upload)
 
         timeout = re.search(r"^\s*timeout-minutes:\s*\$\{\{(.*?)\}\}", workflow_jobs["build"], re.M).group(1)
         for repository, trusted, row in itertools.product(["sunrise-org/sunrise", "horizon-rust/horizon"], [False, True], rows):

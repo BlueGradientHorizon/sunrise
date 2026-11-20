@@ -109,6 +109,7 @@ When a build stops on a package the lock doesn't pin, its error ends with that c
 
 ## 6. Run it
 
+<!-- quickstart-test: skip, needs the reader's game and prepared resources -->
 ```sh
 cargo sunrise-mod run --resources <folder> -- --world Greeter --creative
 ```

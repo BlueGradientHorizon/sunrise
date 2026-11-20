@@ -42,15 +42,17 @@ Benchmarks (`--benchmark`) never load mods.
 
 ## The Mods screen
 
-The **Mods** button on the title screen (also **Options > Mods**) lists Minecraft first (and Sunrise, in the official game with its Sunrise layer on), then each
-installed mod with its icon, name and version. Search the list and sort it A–Z or Z–A. Select a mod to read its
+**Options > Mods** lists Minecraft first (and Sunrise, in the official game with its Sunrise layer on), then each
+installed mod with its icon, name and version. Once a package is installed, the title screen also carries a
+full-width **Mods** button below Minecraft Realms, and it goes away again when the last package leaves. Search
+the list and sort it A–Z or Z–A. Select a mod to read its
 id, version, license, authors, credits and description:
 
 - **Homepage** and **Issues** open the mod's links, after asking you to confirm.
 - **Config** opens the settings page of a mod that registers settings.
 - A mod that is installed but off says so. A mod that could not load shows the reason in red.
 
-The screen has no on/off switch; the launcher and `sunrise-mods.txt` decide which mods run.
+The screen has no on/off switch; `sunrise-mods.txt` decides which mods run.
 
 ## Making a mod
 

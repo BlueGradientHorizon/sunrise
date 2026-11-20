@@ -94,7 +94,7 @@ pub(super) struct GuestPlay {
     /// What last killed the guest outright (`/kill`): the death message's key.
     death_cause: Option<String>,
     /// The equipment modifiers on the guest's attributes (`apply_equipment`)
-    /// and the armour and main hand they were put on for: the hub's player
+    /// and the armour and hands they were put on for: the hub's player
     /// is a `ServerPlayer` too, whose worn armour counts
     /// (`LivingEntity.collectEquipmentChanges`).
     modifiers: Vec<(String, String)>,
@@ -106,6 +106,31 @@ pub(super) struct GuestPlay {
     /// What `ServerPlayer` last recorded for the guest's scoreboard criteria
     /// (`lastRecordedHealthAndAbsorption` and the others).
     score_recorded: super::scoreboard::Recorded,
+}
+
+/// `LivingEntity.collectEquipmentChanges` for a guest: whether its armor, main hand or off
+/// hand differs from what its modifiers were put on for (`equipped`), which then records them.
+/// The body tick asks (`detectEquipmentUpdates`), so the packets of a tick act with the
+/// modifiers from before it: a slot change and an attack sent in one tick hit with the old
+/// item's attack damage and charge speed (the attribute swap).
+fn equipment_changed(
+    equipped: &mut Option<Vec<Option<ItemStack>>>,
+    armor: &[Option<ItemStack>],
+    held: Option<&ItemStack>,
+    offhand: Option<&ItemStack>,
+) -> bool {
+    let unchanged = equipped.as_deref().is_some_and(|eq| {
+        eq.len() == armor.len() + 2
+            && eq[..armor.len()] == armor[..]
+            && eq[armor.len()].as_ref() == held
+            && eq[armor.len() + 1].as_ref() == offhand
+    });
+    if !unchanged {
+        let mut now = armor.to_vec();
+        now.extend([held.cloned(), offhand.cloned()]);
+        *equipped = Some(now);
+    }
+    !unchanged
 }
 
 /// A guest's command waiting for the hub (`LanHost::commands`).
@@ -236,6 +261,26 @@ pub(super) struct GuestSwap {
 }
 
 impl GuestPlay {
+    #[cfg(test)]
+    pub(in crate::game) fn arm_mining_for_test(
+        &mut self,
+        pos: [i32; 3],
+        start: u64,
+        delayed: Option<([i32; 3], u64)>,
+    ) {
+        self.digging = Some((pos, [0, 1, 0]));
+        self.dig_start = start;
+        self.mining = Some(Mining {
+            pos,
+            progress: 0.0,
+            per_tick: 0.0,
+            ticks: 1,
+            crack: None,
+        });
+        self.delayed = delayed;
+        self.last_progress = -1;
+    }
+
     /// The guest's `Player.attackStrengthTicker` outside its turn.
     pub(in crate::game) fn attack_ticks(&self) -> u32 {
         self.attack_ticks
@@ -357,20 +402,19 @@ thread_local! {
 /// The hub's current bodies, across dimensions. A borrowed ancestor's
 /// live body takes precedence over this saved state until its turn returns.
 fn building_players(host: &LanHost) -> HubBodies {
-    let guests: Vec<_> = host.hub.guests.simulation_iter().collect();
     let kept = BUILDING_CACHE.with(|c| {
         c.borrow()
             .as_ref()
             .filter(|list| {
-                list.len() == guests.len()
-                    && list
-                        .iter()
-                        .zip(&guests)
-                        .all(|(p, g)| p.get().conn == Some(g.conn))
+                list.iter().map(|p| p.get().conn).eq(host
+                    .hub
+                    .guests
+                    .simulation_iter()
+                    .map(|g| Some(g.conn)))
             })
             .cloned()
     });
-    kept.unwrap_or_else(|| shared(guests.into_iter().map(building_player)))
+    kept.unwrap_or_else(|| shared(host.hub.guests.simulation_iter().map(building_player)))
 }
 
 /// Builds the hub's bodies once for the turns to come (`Some`), or drops them.
