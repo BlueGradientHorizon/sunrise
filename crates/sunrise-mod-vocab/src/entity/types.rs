@@ -1628,6 +1628,23 @@ impl NoBackend for WantedPositionError {
 #[cfg(test)]
 mod travel_tests {
     use super::*;
+    use crate::wire::{Reader, Writer};
+
+    #[test]
+    fn travel_modes_keep_their_wire_tags() {
+        for (mode, bytes) in [
+            (TravelMode::Air, &b"\x00\x00\x00\x00"[..]),
+            (TravelMode::Water, &b"\x01\x00\x00\x00"[..]),
+            (TravelMode::Lava, &b"\x02\x00\x00\x00"[..]),
+            (TravelMode::Glide, &b"\x03\x00\x00\x00"[..]),
+            (TravelMode::Flying, &b"\x04\x00\x00\x00"[..]),
+        ] {
+            let mut out = Writer::new();
+            out.put(&mode);
+            assert_eq!(out.bytes(), bytes);
+            assert_eq!(Reader::decode::<TravelMode>(bytes).unwrap(), mode);
+        }
+    }
 
     #[test]
     fn a_travel_output_is_refused_by_the_first_field_outside_its_budget() {
