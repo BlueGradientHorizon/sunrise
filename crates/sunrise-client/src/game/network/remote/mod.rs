@@ -1915,8 +1915,11 @@ impl Game<'_> {
     /// A stack from the server, decoded as the saved and command item NBT
     /// are, so tooltips and models see every field.
     pub(super) fn to_stack(&self, s: &Option<Stack>) -> Option<ItemStack> {
+        self.decode_remote_stack(s.as_ref()?)
+    }
+
+    fn decode_remote_stack(&self, stack: &Stack) -> Option<ItemStack> {
         let r = self.remote.as_ref()?;
-        let stack = s.as_ref()?;
         if !sunrise_protocol::item::custom::permitted(stack, r.registries.custom_components)
             .unwrap_or(false)
         {

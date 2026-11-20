@@ -3179,7 +3179,7 @@ mod hopper_cart_transfer_tests {
                 &game.options.resources.join("data"),
                 &PackOverlay {
                     files: &files,
-                    ..PackOverlay::NONE
+                    ..PackOverlay::default()
                 },
             ));
             game.adv.loaded = true;
