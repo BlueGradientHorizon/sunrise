@@ -406,7 +406,7 @@ impl Game<'_> {
         }))
         .unwrap_or_else(|_| Err("it panicked".into()));
         let Err(error) = result else {
-            let light_at = |[x, y, z]| self.world.light(x, y, z);
+            let light_at = |[x, y, z]: [i32; 3]| self.world.light(x, y, z);
             let level = level_origin.map(|origin| LevelLight {
                 origin,
                 light_at: &light_at,
