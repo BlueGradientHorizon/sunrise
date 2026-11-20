@@ -480,6 +480,18 @@ fn a_servers_creative_tabs_hold_vanillas_items() {
     mod_platform::testing::with_mods(Vec::new().into(), || {
         let _world = PhaseOwner::scope(ModPhase::World);
         with_game_role(fixture_root(), ExecutionRole::DedicatedServer, |game| {
+            use sunrise_client::save::{Level, write_dat};
+
+            let save = tempfile::tempdir().unwrap();
+            write_dat(
+                &save.path().join("level.dat"),
+                Tag::compound([(
+                    "Data",
+                    Tag::compound([("DataVersion", Tag::Int(sunrise_core::version::DATA_VERSION))]),
+                )]),
+            )
+            .unwrap();
+            game.level = Level::read(save.path()).unwrap();
             install_dedicated_holders(game, 2);
             for permissions in [
                 CreativeTabPermissions::Normal,

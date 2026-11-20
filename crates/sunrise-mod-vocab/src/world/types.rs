@@ -526,7 +526,7 @@ impl FeatureFlags {
     }
 }
 
-/// The flags as their ids, the form they cross into a wasm mod as.
+/// Copy the world's effective flag ids into an owned list.
 impl From<&FeatureFlags> for Vec<String> {
     fn from(flags: &FeatureFlags) -> Self {
         flags.flags.to_vec()

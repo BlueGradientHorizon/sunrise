@@ -3914,14 +3914,15 @@ impl Level {
             level.difficulty_locked = n(d.get("locked")) != 0;
         }
         level.allow_commands = Some(n(data.get("allowCommands")) != 0);
-        // WorldDataConfiguration.MAP_CODEC's `enabled_features`, flat in the
-        // Data compound and omitted when the flags are vanilla's default.
-        if let Some(Tag::List(flags)) = data.get("enabled_features") {
-            level.enabled_features = flags
+        // WorldDataConfiguration.MAP_CODEC's lenient optional field uses the default
+        // for both absent and malformed input. A valid empty list is not the default.
+        if let Some(Tag::List(flags)) = data.get("enabled_features")
+            && let Some(flags) = flags
                 .iter()
-                .filter_map(|f| text(Some(f)))
-                .collect::<Arc<[_]>>()
-                .into();
+                .map(|flag| text(Some(flag)))
+                .collect::<Option<Arc<[_]>>>()
+        {
+            level.enabled_features = flags.into();
         }
         level.saved_mods = level_mods::saved(&root);
         if let Some(packs) = data.get("DataPacks") {
@@ -9509,6 +9510,45 @@ mod tests {
         assert!(raw.get("Data").unwrap().get("enabled_features").is_none());
         let _ = fs::remove_dir_all(dir);
         let _ = fs::remove_dir_all(output);
+    }
+
+    /// `WorldDataConfiguration.MAP_CODEC` preserves a valid empty set, but defaults an
+    /// invalid tag instead of interpreting a failed list decode as an empty set.
+    #[test]
+    fn explicit_empty_and_malformed_feature_flags_have_distinct_save_outcomes() {
+        for (case, input, expected_flags, expected_tag) in [
+            ("empty", Tag::List(vec![]), &[][..], Some(Tag::List(vec![]))),
+            (
+                "non-string",
+                Tag::List(vec![Tag::Int(7)]),
+                &["minecraft:vanilla"][..],
+                None,
+            ),
+            ("non-list", Tag::Int(7), &["minecraft:vanilla"][..], None),
+        ] {
+            let dir = gen_world(&format!("feature-flags-{case}"));
+            write_dat(
+                &dir.join("level.dat"),
+                Tag::compound([(
+                    "Data",
+                    Tag::compound([
+                        ("DataVersion", Tag::Int(DATA_VERSION)),
+                        ("enabled_features", input),
+                    ]),
+                )]),
+            )
+            .unwrap();
+            let mut level = Level::read(&dir).unwrap();
+            assert_eq!(&*level.enabled_features, expected_flags, "{case}");
+            level.write_without_player(&dir).unwrap();
+            let raw = read_level_dat(&dir).unwrap();
+            assert_eq!(
+                raw.get("Data").unwrap().get("enabled_features"),
+                expected_tag.as_ref(),
+                "{case}"
+            );
+            let _ = fs::remove_dir_all(dir);
+        }
     }
 
     fn gen_world(name: &str) -> PathBuf {
