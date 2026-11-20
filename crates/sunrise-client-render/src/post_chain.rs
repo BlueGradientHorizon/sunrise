@@ -502,22 +502,30 @@ pub struct Globals {
 }
 
 impl Globals {
-    /// The std140 block: `ivec3, float, vec3, float, vec2, int, int`.
+    /// The std140 block: `ivec3, float, vec3, float, vec2, int, int`, written in place (no
+    /// allocation: the pack pipelines ask for it every frame).
     pub(crate) fn bytes(&self, size: [u32; 2], menu_blur_radius: i32) -> [u8; 48] {
-        let mut out = Vec::with_capacity(48);
-        for v in self.camera_block_pos {
-            out.extend_from_slice(&v.to_le_bytes());
+        let [x, y, z] = self.camera_block_pos.map(i32::to_le_bytes);
+        let [ox, oy, oz] = self.camera_offset.map(f32::to_le_bytes);
+        let words = [
+            x,
+            y,
+            z,
+            self.glint_alpha.to_le_bytes(),
+            ox,
+            oy,
+            oz,
+            self.game_time.to_le_bytes(),
+            (size[0] as f32).to_le_bytes(),
+            (size[1] as f32).to_le_bytes(),
+            menu_blur_radius.to_le_bytes(),
+            i32::from(self.use_rgss).to_le_bytes(),
+        ];
+        let mut out = [0; 48];
+        for (slot, word) in out.chunks_exact_mut(4).zip(words) {
+            slot.copy_from_slice(&word);
         }
-        out.extend_from_slice(&self.glint_alpha.to_le_bytes());
-        for v in self.camera_offset {
-            out.extend_from_slice(&v.to_le_bytes());
-        }
-        out.extend_from_slice(&self.game_time.to_le_bytes());
-        out.extend_from_slice(&(size[0] as f32).to_le_bytes());
-        out.extend_from_slice(&(size[1] as f32).to_le_bytes());
-        out.extend_from_slice(&menu_blur_radius.to_le_bytes());
-        out.extend_from_slice(&i32::from(self.use_rgss).to_le_bytes());
-        out.try_into().expect("48 bytes")
+        out
     }
 }
 
@@ -1868,6 +1876,29 @@ mod tests {
               "uniforms": { "BlitConfig": [ { "name": "ColorModulate", "type": "vec4", "value": [1.0, 0.0, 0.5, 1.0] } ] } }
         ]
     }"#;
+
+    /// `Globals::bytes` lays the block out in std140 order, each value little-endian in its own
+    /// four bytes.
+    #[test]
+    fn globals_lay_out_their_block() {
+        let globals = Globals {
+            camera_block_pos: [1, -2, 3],
+            glint_alpha: 0.5,
+            camera_offset: [0.25, 0.5, 0.75],
+            game_time: 0.125,
+            use_rgss: true,
+        };
+        let expected: [u8; 48] = [
+            0x01, 0x00, 0x00, 0x00, 0xfe, 0xff, 0xff, 0xff, 0x03, 0x00, 0x00, 0x00, // ivec3
+            0x00, 0x00, 0x00, 0x3f, // glint alpha 0.5
+            0x00, 0x00, 0x80, 0x3e, 0x00, 0x00, 0x00, 0x3f, 0x00, 0x00, 0x40, 0x3f, // vec3
+            0x00, 0x00, 0x00, 0x3e, // game time 0.125
+            0x00, 0x00, 0x20, 0x44, 0x00, 0x00, 0xf0, 0x43, // vec2 640, 480
+            0x07, 0x00, 0x00, 0x00, // menu blur radius 7
+            0x01, 0x00, 0x00, 0x00, // rgss on
+        ];
+        assert_eq!(globals.bytes([640, 480], 7), expected);
+    }
 
     #[test]
     fn shaders_validate() {
