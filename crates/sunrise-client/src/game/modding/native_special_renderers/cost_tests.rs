@@ -5,8 +5,12 @@
 use crate::game::Game;
 use mod_api::{ClientHost, SpecialModelPart, SpecialModelRenderer};
 use std::sync::Arc;
-use sunrise_assets::item_model::{ClientItem, DisplayContext, register_special_model_types};
-use sunrise_client::{item_render::ItemRenderState, items::ItemStack, mesher::Vertex};
+use sunrise_assets::item_model::{DisplayContext, register_special_model_types};
+use sunrise_client::{
+    item_render::{ItemRenderState, decode_definition},
+    items::ItemStack,
+    mesher::Vertex,
+};
 
 /// Full sky and block light, as the frame packs it.
 const LIGHT: u32 = 0x00F0_00F0;
@@ -160,7 +164,7 @@ fn special_item_draw_cost() {
     )]));
     crate::game::native_entity_refs::tests::with_game(|game| {
         // Dirt becomes a special model drawing stone's cube under stone's display transforms.
-        let special = ClientItem::from_json(
+        let special = decode_definition(
             r#"{"model":{"type":"minecraft:special","base":"minecraft:block/stone","model":{"type":"test:stone"}}}"#,
         )
         .unwrap();

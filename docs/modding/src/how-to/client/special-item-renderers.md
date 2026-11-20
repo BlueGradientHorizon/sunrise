@@ -12,7 +12,8 @@ draw, each with a transform and tints, and the game draws them as it draws any i
 
 A renderer implements `SpecialModelRenderer`. Its `extract` gets a `ClientHost`, the stack, the
 special model's `model` object (`config`, its JSON converted to NBT once at load) and a
-`SpecialModelContext`, and answers the parts:
+`SpecialModelContext`, and answers the parts. If this model comes from a bundle's selected item,
+`stack` is that selected item, not the bundle:
 
 ```rust,ignore
 use mod_api::*;
@@ -119,7 +120,9 @@ names the item.
   included, as in NeoForge; the log names both mods. An id that is not `<namespace>:<path>` is logged
   and left out.
 - A special model of a type no mod registered and vanilla doesn't have is an error naming the type and
-  the item: that item draws the missing model, and the rest of the resources load.
+  the item. If a registered model's JSON cannot be converted to NBT, the game rejects the entire item
+  definition, even for a builtin type or a special model inside a composite. It does not try a lower
+  pack's definition. The affected item draws the missing model; other resources still load.
 - A renderer that returns an `Err`, panics, answers more than `MAX_SPECIAL_MODEL_PARTS` (256) parts
   or a transform that isn't finite, is logged once
   with its type and asked no more until resources reload. Its special models draw the missing model

@@ -4,10 +4,8 @@
 use super::*;
 use std::fs;
 use sunrise_assets::{
-    item_model::{
-        PreparedParts, SpecialContent, SpecialModelSlot, SpecialPart, register_special_model_types,
-    },
-    resource_source::ResourceRoot,
+    item_model::{PreparedParts, SpecialContent, SpecialPart, register_special_model_types},
+    resource_source::{Resource, ResourceRoot},
 };
 
 /// A for a stack of one, B for more, tinted; a stack of three names a model no pack has, and one
@@ -17,14 +15,14 @@ struct Pan<'r>(&'r ItemRenderer);
 impl ItemEnv for Pan<'_> {
     fn special_model_parts(
         &self,
-        slot: SpecialModelSlot,
         base: &str,
-        config: &Arc<sunrise_core::nbt::Tag>,
+        model: &RegisteredSpecialModel,
         input_stack: &StackView,
-        _: &sunrise_assets::item_model::Context,
+        _: &Context,
     ) -> Option<PreparedParts> {
-        assert_eq!((slot, base), (SpecialModelSlot(0), "spt:item/base"));
-        assert_eq!(config.get("handle"), Some(&sunrise_core::nbt::Tag::Byte(2)));
+        let model = model.0.downcast_ref::<RegisteredSpecialConfig>().unwrap();
+        assert_eq!((model.slot, base), (SpecialModelSlot(0), "spt:item/base"));
+        assert_eq!(model.config.get("handle"), Some(&Tag::Byte(2)));
         let stack_part = |item: &str, count| SpecialPart {
             content: SpecialContent::Stack {
                 stack: stack(item, count),
@@ -210,10 +208,41 @@ fn quads(renderer: &ItemRenderer, state: &ItemRenderState) -> Vec<ItemQuad> {
 }
 
 #[test]
+fn an_invalid_winning_registered_model_does_not_load_a_lower_pack() {
+    register_special_model_types(vec!["spt:pan".into()]);
+    let item_path = "assets/spt/items/pan.json".to_owned();
+    let lower = Resource::bytes(
+        br#"{"model":{"type":"special","base":"spt:item/base","model":{"type":"spt:pan","handle":2}}}"#.to_vec(),
+    );
+    let winner = Resource::bytes(
+        br#"{"model":{"type":"special","base":"spt:item/base","model":{"type":"spt:pan","handle":null}}}"#.to_vec(),
+    );
+    let files = BTreeMap::from([
+        (item_path.clone(), winner.clone()),
+        ("assets/spt/items/other.json".to_owned(), lower.clone()),
+    ]);
+    let pack = ResourceSource::indexed_with_layers(
+        files,
+        BTreeMap::from([(item_path, vec![lower, winner])]),
+    );
+    let definitions = load_definitions(&pack);
+    assert!(!definitions.contains_key("spt:pan"));
+    assert!(matches!(
+        &definitions["spt:other"].model,
+        sunrise_assets::item_model::ItemModelNode::RegisteredSpecial { .. },
+    ));
+}
+
+#[test]
 #[ignore = "daily"]
 fn a_registered_special_model_draws_its_renderers_resource_models() {
     let root = std::env::temp_dir().join(format!("sunrise-special-parts-{}", std::process::id()));
     register_special_model_types(vec!["spt:pan".into()]);
+    write(
+        &root,
+        "assets/spt/items/bundle.json",
+        r#"{"model":{"type":"bundle/selected_item"}}"#,
+    );
     let renderer = renderer(&root, 2);
     let resolve = |item: &str, count, display| {
         renderer.resolve(&stack(item, count), display, None, None, 0, &Pan(&renderer))
@@ -300,6 +329,23 @@ fn a_registered_special_model_draws_its_renderers_resource_models() {
         quads(&renderer, &resolve("spt:cube", 1, DisplayContext::Gui)).len(),
         6
     );
+
+    // A selected stack of two pans draws B with its own foil; the single bundle would draw A.
+    let mut bundle = stack("spt:bundle", 1);
+    bundle.bundle_selected = 0;
+    bundle.patch.insert(
+        "minecraft:bundle_contents".into(),
+        Some(serde_json::json!([{
+            "id": "spt:pan", "count": 2, "components": {
+                "minecraft:item_model": "spt:pan",
+                "minecraft:enchantment_glint_override": true
+            }
+        }])),
+    );
+    let picked = renderer.resolve(&bundle, DisplayContext::Gui, None, None, 0, &Pan(&renderer));
+    let quads_picked = quads(&renderer, &picked);
+    assert_eq!(quads_picked.len(), 12);
+    assert!(quads_picked.iter().all(|quad| quad.foil == Foil::Standard));
 
     // A special type no mod registered isn't loaded: its item draws the missing model.
     assert!(is_missing(&resolve("spt:stranger", 1, DisplayContext::Gui)));

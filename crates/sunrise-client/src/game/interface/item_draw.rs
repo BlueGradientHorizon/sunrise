@@ -9,7 +9,7 @@ use serde_json::Value;
 use std::{cell::RefCell, collections::HashMap};
 use sunrise_assets::item_model::{
     Components, ComponentsView, DisplayContext, FluidAppearance, GlobalPos, ItemEnv,
-    LayerTransform, LevelState, ModelChoice, OwnerState, StackView,
+    LayerTransform, LevelState, ModelChoice, OwnerState, RegisteredSpecialModel, StackView,
 };
 use sunrise_client::{
     block_entity_render::{diffuse_lights, vertex_light},
@@ -170,21 +170,28 @@ impl ItemEnv for Env<'_, '_> {
     }
     fn special_model_parts(
         &self,
-        slot: sunrise_assets::item_model::SpecialModelSlot,
         base: &str,
-        config: &std::sync::Arc<sunrise_core::nbt::Tag>,
+        model: &RegisteredSpecialModel,
         stack: &StackView,
         ctx: &sunrise_assets::item_model::Context,
     ) -> Option<sunrise_assets::item_model::PreparedParts> {
+        let model = model
+            .0
+            .downcast_ref::<item_render::RegisteredSpecialConfig>()?;
         let Ok(display) = ctx.display.try_into_api();
         let context = mod_api::SpecialModelContext::new(
             display,
             ctx.level.map(|level| level.game_time),
             self.game.frame_world_partial_tick() as f32,
         );
-        super::native_special_renderers::parts(self.game, slot, config, stack, &context, |parts| {
-            self.game.pack.item_renderer.prepare_parts(base, parts)
-        })
+        super::native_special_renderers::parts(
+            self.game,
+            model.slot,
+            &model.config,
+            stack,
+            &context,
+            |parts| self.game.pack.item_renderer.prepare_parts(base, parts),
+        )
     }
     fn stack_fluid(&self, stack: &StackView) -> Option<&str> {
         // Vanilla's items keep vanilla's closed set; only a mod's own item asks its parts.

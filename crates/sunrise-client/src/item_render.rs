@@ -36,8 +36,9 @@ use std::{
 use sunrise_assets::{
     item_bake::{BakedItemModel, SpriteLookup, SpriteMask, bake_item_model, bake_sprite_layer},
     item_model::{
-        ClientItem, Context, DisplayContext, FoilType, ItemEnv, ItemModels, LayerContent,
-        LevelState, OwnerState, SpecialModel, StackView,
+        ClientItem, Context, DisplayContext, FoilType, ItemEnv, ItemModels, Layer, LayerContent,
+        LayerTransform, LevelState, OwnerState, RegisteredSpecialModel, SpecialModel,
+        SpecialModelSlot, StackView, special_model_slot,
     },
     model::Direction,
     resolve::{MISSING_MODEL, ModelLibrary},
@@ -711,8 +712,32 @@ pub struct ItemRenderer {
     glint_atlas: Mutex<HashMap<String, Rect>>,
 }
 
-/// Every `items/**/*.json` client item definition, by identifier. Through
-/// Resolved resource names preserve nested item identifiers.
+/// The resolved renderer slot and configuration carried by a registered model payload.
+pub struct RegisteredSpecialConfig {
+    pub slot: SpecialModelSlot,
+    pub config: Arc<Tag>,
+}
+
+/// Decode a client item definition with the special renderer registrations. A registered type
+/// receives its entire model object as NBT, converted once for that node.
+pub fn decode_definition(text: &str) -> Result<ClientItem, sunrise_assets::DecodeError> {
+    ClientItem::from_json_with_specials(text, &|kind, _, model| {
+        let Some(slot) = special_model_slot(kind) else {
+            return Ok(None);
+        };
+        let config = sunrise_core::json_nbt::json_to_tag(model)
+            .map_err(|error| format!("invalid special model data for {kind}: {error}"))?;
+        Ok(Some(RegisteredSpecialModel(Arc::new(
+            RegisteredSpecialConfig {
+                slot,
+                config: Arc::new(config),
+            },
+        ))))
+    })
+}
+
+/// Every winning `items/**/*.json` client item definition, by identifier. A decode error omits
+/// the definition rather than looking in a lower pack.
 fn load_definitions(root: &ResourceSource) -> BTreeMap<String, ClientItem> {
     let mut out = BTreeMap::new();
     for namespace in root.namespaces("assets") {
@@ -727,7 +752,7 @@ fn load_definitions(root: &ResourceSource) -> BTreeMap<String, ClientItem> {
             let Ok(text) = root.read_to_string(&name) else {
                 continue;
             };
-            match ClientItem::from_json(&text) {
+            match decode_definition(&text) {
                 Ok(item) => {
                     out.insert(format!("{namespace}:{id}"), item);
                 }
@@ -972,10 +997,18 @@ impl ItemRenderer {
             seed,
         };
         let _depth = ResolveDepth::enter();
-        let resolved = self.models.resolve(stack, &ctx, env);
         let mut animated = false;
-        let mut layers = Vec::with_capacity(resolved.layers.len());
-        for layer in resolved.layers {
+        let mut layers = Vec::new();
+        let mut refused = false;
+        let missing = || {
+            let baked = self.bake(MISSING_MODEL);
+            let extents = self.quad_extents(MISSING_MODEL, &baked);
+            (LayerGeometry::Quads(baked.clone()), baked, extents)
+        };
+        let mut visit = |layer: Layer, layer_stack: &StackView| {
+            if refused {
+                return;
+            }
             let (geometry, baked, extents) = match layer.content {
                 LayerContent::Model { model } => {
                     let (baked, extents) = rule
@@ -995,11 +1028,7 @@ impl ItemRenderer {
                     let extents = self.quad_extents(&key, &baked);
                     (LayerGeometry::Quads(baked.clone()), baked, extents)
                 }
-                LayerContent::Missing => {
-                    let baked = self.bake(MISSING_MODEL);
-                    let extents = self.quad_extents(MISSING_MODEL, &baked);
-                    (LayerGeometry::Quads(baked.clone()), baked, extents)
-                }
+                LayerContent::Missing => missing(),
                 LayerContent::Special {
                     base,
                     model,
@@ -1009,47 +1038,35 @@ impl ItemRenderer {
                     let extents = self.special_extents(&model);
                     (LayerGeometry::Special { model, argument }, baked, extents)
                 }
-                LayerContent::Parts(prepared) => {
-                    // What a mod drew may change with every draw, so no GUI item is kept.
-                    animated = true;
-                    let drawn = self.push_parts(
-                        &mut layers,
-                        display,
-                        (layer.foil, layer.transform, layer.display_transform),
-                        &prepared,
-                        (stack, owner, level, seed, env),
-                    );
-                    if drawn.is_none() {
-                        // A refused stack part refuses the answer whole, and every answer that
-                        // nests it: only the outermost draws the missing model, in place of the
-                        // answer's parts.
-                        let nested = NESTING.with_borrow_mut(|n| {
-                            let nested = n.depth > 1;
-                            n.refused = nested;
-                            nested
-                        });
-                        if nested {
-                            break;
-                        }
-                        let baked = self.bake(MISSING_MODEL);
-                        layers.push(LayerRender {
-                            extents: self.quad_extents(MISSING_MODEL, &baked),
-                            geometry: LayerGeometry::Quads(baked.clone()),
-                            tints: Vec::new(),
-                            foil: layer.foil,
-                            matrix: glam_matrix(&baked.layer_matrix(
-                                layer.display_transform,
-                                display,
-                                &layer.transform,
-                            )),
-                            uses_block_light: baked.uses_block_light,
-                            particle: sprite_name(&baked.particle.sprite).to_owned(),
-                            display,
-                        });
-                    } else if drawn == Some(true) {
+                LayerContent::RegisteredSpecial { base, model } => {
+                    if let Some(prepared) =
+                        env.special_model_parts(&base, &model, layer_stack, &ctx)
+                    {
+                        // What a mod drew may change with every draw, so no GUI item is kept.
                         animated = true;
+                        if self
+                            .push_parts(
+                                &mut layers,
+                                display,
+                                (layer.foil, layer.transform, layer.display_transform),
+                                &prepared,
+                                (layer_stack, owner, level, seed, env),
+                            )
+                            .is_some()
+                        {
+                            return;
+                        }
+                        // A refused stack part refuses the answer whole, and every answer that
+                        // nests it: only the outermost draws the missing model in its place.
+                        refused = NESTING.with_borrow_mut(|n| {
+                            n.refused = n.depth > 1;
+                            n.refused
+                        });
+                        if refused {
+                            return;
+                        }
                     }
-                    continue;
+                    missing()
                 }
             };
             if layer.foil != FoilType::None {
@@ -1069,11 +1086,17 @@ impl ItemRenderer {
                 extents,
                 display,
             });
-        }
+        };
+        let oversized_in_gui = stack.count > 0
+            && stack.item != "minecraft:air"
+            && self
+                .models
+                .visit_layers(stack, &ctx, env, LayerTransform::Model, &mut visit)
+                .unwrap_or_default();
         ItemRenderState {
             display,
             layers,
-            oversized_in_gui: resolved.oversized_in_gui,
+            oversized_in_gui,
             animated,
             cit_glint: None,
             hdr_tier: 0,

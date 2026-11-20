@@ -64,7 +64,7 @@ impl ItemRenderer {
             parts,
         }))
     }
-    /// The layers of a prepared answer (`LayerContent::Parts`), one for each model part and the
+    /// The layers of a prepared answer, one for each model part and the
     /// layers of each stack part's own resolve: the part's own model's quads, posed under the
     /// layer's transform, with the base model's display transform, particle and GUI light. A
     /// stack part's layers keep their own foil, tints and display transform, and sit under the

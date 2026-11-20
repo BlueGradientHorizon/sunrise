@@ -361,6 +361,27 @@ fn channel(v: f32) -> i32 {
 // The model tree
 // ---------------------------------------------------------------------------
 
+/// Engine callback for a special renderer's model object, called while loading the item
+/// definition. The ids are canonical. `Ok(None)` lets the builtin decoder handle the type;
+/// `Err` rejects the enclosing definition, even if the type is also builtin.
+pub type SpecialModelLoader<'a> =
+    dyn Fn(&str, &str, &Value) -> std::result::Result<Option<RegisteredSpecialModel>, String> + 'a;
+
+/// A registered special renderer's decoded model. The payload is opaque to assets; the
+/// decoder and draw host agree on its type. Clones retain the same model identity.
+#[derive(Clone)]
+pub struct RegisteredSpecialModel(pub Arc<dyn std::any::Any + Send + Sync>);
+impl std::fmt::Debug for RegisteredSpecialModel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("RegisteredSpecialModel")
+    }
+}
+impl PartialEq for RegisteredSpecialModel {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
 /// One `items/<name>.json` file: a model tree plus the client properties.
 #[derive(Clone, Debug)]
 pub struct ClientItem {
@@ -372,13 +393,23 @@ pub struct ClientItem {
 impl ClientItem {
     pub const DEFAULT_PROPERTIES: (bool, bool, f32) = (true, false, 1.0);
     pub fn from_json(text: &str) -> Result<Self> {
+        Self::parse(text, None)
+    }
+    /// Decode an item with the engine's registrations, including special nodes in child models.
+    pub fn from_json_with_specials(text: &str, loader: &SpecialModelLoader<'_>) -> Result<Self> {
+        Self::parse(text, Some(loader))
+    }
+    fn parse(text: &str, loader: Option<&SpecialModelLoader<'_>>) -> Result<Self> {
         let value: Value = serde_json::from_str(text.strip_prefix('\u{feff}').unwrap_or(text))?;
-        Self::decode(&value)
+        Self::decode_with(&value, loader)
     }
     pub fn decode(value: &Value) -> Result<Self> {
+        Self::decode_with(value, None)
+    }
+    fn decode_with(value: &Value, loader: Option<&SpecialModelLoader<'_>>) -> Result<Self> {
         let m = object(value)?;
         Ok(Self {
-            model: ItemModelNode::decode_with(required(m, "model")?, registered_special_type)?,
+            model: ItemModelNode::decode_with(required(m, "model")?, loader)?,
             hand_animation_on_swap: get(m, "hand_animation_on_swap").map_or(Ok(true), boolean)?,
             oversized_in_gui: get(m, "oversized_in_gui").map_or(Ok(false), boolean)?,
             swap_animation_scale: get(m, "swap_animation_scale").map_or(Ok(1.0), float)?,
@@ -425,16 +456,12 @@ pub enum ItemModelNode {
         transformation: Option<Mat4>,
         model: SpecialModel,
     },
-    /// A `minecraft:special` model of a type a native mod registered
-    /// (`register_special_model_renderer`): per stack, its renderer answers which resource models
-    /// draw, each posed and tinted, with `base`'s display transforms, particle and GUI light.
+    /// A `minecraft:special` model decoded by a registered renderer, with `base`'s display
+    /// transforms, particle and GUI light.
     RegisteredSpecial {
-        base: String,
+        base: Arc<str>,
         transformation: Option<Mat4>,
-        /// The `model` object's `type`, resolved to its renderer's slot.
-        slot: SpecialModelSlot,
-        /// The `model` object, converted once at load.
-        config: Arc<sunrise_core::nbt::Tag>,
+        model: RegisteredSpecialModel,
     },
     FluidContainer(FluidContainer),
     BundleSelectedItem,
@@ -456,15 +483,13 @@ pub struct SwitchCase {
     pub model: ItemModelNode,
 }
 
-type SpecialTypeLookup = fn(&Value) -> Result<Option<SpecialModelSlot>>;
-
 impl ItemModelNode {
     pub fn decode(v: &Value) -> Result<Self> {
-        Self::decode_with(v, registered_special_type)
+        Self::decode_with(v, None)
     }
 
-    fn decode_with(v: &Value, lookup: SpecialTypeLookup) -> Result<Self> {
-        let decode = |node| Self::decode_with(node, lookup);
+    fn decode_with(v: &Value, loader: Option<&SpecialModelLoader<'_>>) -> Result<Self> {
+        let decode = |node: &Value| Self::decode_with(node, loader);
         let m = object(v)?;
         let kind = ident(required(m, "type")?)?;
         if kind == "minecraft:condition" {
@@ -522,7 +547,7 @@ impl ItemModelNode {
                 let property = SelectProperty::decode(m)?;
                 let cases = list(required(m, "cases")?)?
                     .iter()
-                    .map(|c| SwitchCase::decode(&property, c, lookup))
+                    .map(|c| SwitchCase::decode(&property, c, loader))
                     .collect::<Result<Vec<_>>>()?;
                 if cases.is_empty() {
                     return Err(err("empty case list"));
@@ -584,23 +609,23 @@ impl ItemModelNode {
                 let model = required(m, "model")?;
                 let base = ident(required(m, "base")?)?;
                 let transformation = optional_transformation(m)?;
-                // A type a mod registered, vanilla's included, is drawn by its renderer; any other
-                // type that isn't vanilla's is an error naming it (`SpecialModel::decode`), so the
-                // item draws the missing model.
-                match lookup(model)? {
-                    Some(slot) => Self::RegisteredSpecial {
-                        base,
+                let fields = object(model)?;
+                let kind = ident(required(fields, "type")?)?;
+                // A registration may replace a vanilla decoder. A refusal is an error, not a miss.
+                let registered = match loader {
+                    Some(load) => load(&kind, &base, model).map_err(DecodeError)?,
+                    None => None,
+                };
+                match registered {
+                    Some(model) => Self::RegisteredSpecial {
+                        base: base.into(),
                         transformation,
-                        slot,
-                        config: Arc::new(
-                            sunrise_core::json_nbt::json_to_tag(model)
-                                .map_err(|_| err("invalid special model data"))?,
-                        ),
+                        model,
                     },
                     None => Self::Special {
                         base,
                         transformation,
-                        model: SpecialModel::decode(model)?,
+                        model: SpecialModel::decode_builtin(&kind, fields)?,
                     },
                 }
             }
@@ -650,25 +675,20 @@ impl ItemModelNode {
                 entries.iter().for_each(|(_, m)| m.dependencies(out));
                 fallback.iter().for_each(|f| f.dependencies(out));
             }
-            Self::Special { base, .. } | Self::RegisteredSpecial { base, .. } => {
-                out.push(base.clone())
-            }
+            Self::Special { base, .. } => out.push(base.clone()),
+            Self::RegisteredSpecial { base, .. } => out.push(base.to_string()),
             Self::Registered { models, .. } => {
                 models.iter().for_each(|(_, m)| m.dependencies(out));
             }
         }
     }
 }
-/// The slot of a `minecraft:special` model's `model` object's `type` when a native mod
-/// registered it.
-fn registered_special_type(model: &Value) -> Result<Option<SpecialModelSlot>> {
-    Ok(special_model_slot(&ident(required(
-        object(model)?,
-        "type",
-    )?)?))
-}
 impl SwitchCase {
-    fn decode(property: &SelectProperty, v: &Value, lookup: SpecialTypeLookup) -> Result<Self> {
+    fn decode(
+        property: &SelectProperty,
+        v: &Value,
+        loader: Option<&SpecialModelLoader<'_>>,
+    ) -> Result<Self> {
         let m = object(v)?;
         let when = required(m, "when")?;
         // `compactListCodec`: a list, or one value; the list must not be empty.
@@ -682,7 +702,7 @@ impl SwitchCase {
                 .into_iter()
                 .map(|v| property.decode_value(v))
                 .collect::<Result<_>>()?,
-            model: ItemModelNode::decode_with(required(m, "model")?, lookup)?,
+            model: ItemModelNode::decode_with(required(m, "model")?, loader)?,
         })
     }
 }
@@ -1195,16 +1215,13 @@ pub trait ItemEnv {
         _layers: &mut Vec<ModelChoice>,
     ) {
     }
-    /// What a mod's registered special model type (`slot`) draws for `stack` in the model node
-    /// of `base` and the model object `config` (the same allocation for the node until resources
-    /// reload), drawn in `ctx`: the resource models its renderer answered, each posed in the model's space and
-    /// tinted, prepared for drawing when the answer was accepted. `None` when its renderer refused
-    /// or failed, and the layer draws the missing model; nothing draws for an empty answer.
+    /// Prepare a registered model's answer for the stack that selected the node, in `ctx`.
+    /// `model` is the payload decoded for this node at load. `None` when the renderer refused
+    /// or failed: the layer draws the missing model. Nothing draws for an empty answer.
     fn special_model_parts(
         &self,
-        _slot: SpecialModelSlot,
         _base: &str,
-        _config: &Arc<sunrise_core::nbt::Tag>,
+        _model: &RegisteredSpecialModel,
         _stack: &StackView,
         _ctx: &Context,
     ) -> Option<PreparedParts> {
@@ -1272,11 +1289,11 @@ pub enum LayerContent {
     },
     /// `MissingItemModel`.
     Missing,
-    /// What a mod's registered special model type drew for the stack, prepared for drawing
-    /// (`ItemEnv::special_model_parts`): each part's geometry is its own model's quads, posed
-    /// under the layer's transform; the display transforms, particle and GUI light are `base`'s,
-    /// as vanilla's `SpecialModelWrapper` takes them from its base model.
-    Parts(PreparedParts),
+    /// A registered special model; the renderer reads it with the stack that selected this layer.
+    RegisteredSpecial {
+        base: Arc<str>,
+        model: RegisteredSpecialModel,
+    },
     Special {
         base: String,
         model: SpecialModel,
@@ -1651,18 +1668,13 @@ impl<F: FnMut(Layer, &StackView)> Resolve<'_, '_, F> {
             ItemModelNode::RegisteredSpecial {
                 base,
                 transformation,
-                slot,
-                config,
+                model,
             } => {
-                let content = match self
-                    .env
-                    .special_model_parts(*slot, base, config, self.stack, self.ctx)
-                {
-                    Some(prepared) => LayerContent::Parts(prepared),
-                    None => LayerContent::Missing,
-                };
                 self.emit(Layer {
-                    content,
+                    content: LayerContent::RegisteredSpecial {
+                        base: Arc::clone(base),
+                        model: model.clone(),
+                    },
                     tints: Vec::new(),
                     foil: if self.has_foil() {
                         FoilType::Standard

@@ -5,8 +5,8 @@
 use crate::game::Game;
 use mod_api::{ClientHost, ItemStack, SpecialModelPart, SpecialModelRenderer};
 use std::sync::{Arc, Mutex, Once};
-use sunrise_assets::item_model::{ClientItem, DisplayContext, register_special_model_types};
-use sunrise_client::item_render::ItemRenderState;
+use sunrise_assets::item_model::{DisplayContext, register_special_model_types};
+use sunrise_client::item_render::{ItemRenderState, decode_definition};
 
 /// The stack counts the renderer was asked about, in order.
 static ASKED: Mutex<Vec<u32>> = Mutex::new(Vec::new());
@@ -48,7 +48,7 @@ pub(in crate::game) fn install_special_stick(game: &mut Game<'_>) {
             Arc::new(Stick)
         )]));
     });
-    let definition = ClientItem::from_json(
+    let definition = decode_definition(
         r#"{"model":{"type":"minecraft:special","base":"minecraft:item/stick","model":{"type":"test:stick"}}}"#,
     )
     .unwrap();
