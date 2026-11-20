@@ -63,6 +63,12 @@ pub mod pages {
     pub use sunrise_hooks::pages::{Act, Label, Page, Place, Row, connect, register};
 }
 
+/// The volume of the audio mods make themselves (`sunrise_hooks::sound`): a crate's setting can turn
+/// it down or off.
+pub mod sound {
+    pub use sunrise_hooks::sound::set_mod_stream_gain;
+}
+
 /// The lang files with a crate's text, loaded with the game's own (docs/layers.md, "Platform
 /// registries").
 pub mod lang {
@@ -106,6 +112,11 @@ pub mod containers {
     }
 }
 
+/// The buttons a crate adds to the title screen (docs/layers.md, "Platform registries").
+pub mod title {
+    pub use sunrise_hooks::title::{Button, Opens, Refused, Title, register};
+}
+
 /// Drawing on the HUD (docs/layers.md, "Platform registries").
 pub mod hud {
     pub use sunrise_hooks::hud::{Canvas, Corner, Layer, Stage, register};
@@ -116,11 +127,9 @@ pub mod look {
     pub use sunrise_hooks::look::{Chat, Look, update};
 }
 
-/// Build-time mod source generation and point signature inspection.
+/// Build-time mod source generation.
 #[cfg(feature = "mod-build")]
 pub mod mod_build {
-    /// Parsing and validation of injection point signatures.
-    pub use point_shape;
     /// The shared mod API and source generator.
     pub use sunrise_mod_api_gen as api_gen;
 }

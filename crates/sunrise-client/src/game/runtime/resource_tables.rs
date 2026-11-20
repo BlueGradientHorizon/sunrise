@@ -177,7 +177,7 @@ impl Game<'_> {
 }
 
 /// Whether the HUD atlas packs the pool of dynamic texture slots: whenever a client mod is
-/// loaded, native or wasm, since any of them can call `ClientHost::create_dynamic_texture`, with
+/// loaded, since any of them can call `ClientHost::create_dynamic_texture`, with
 /// no mixin and no opt-in (#4437). A game with no mod packs no slot and its atlas does not grow.
 /// Read where the atlas is built: at the first load and on a resource reload.
 pub(in crate::game) fn dynamic_texture_pool() -> bool {
@@ -336,6 +336,8 @@ impl PackResources {
             )),
         )
         .map(Arc::new);
+        // Each item's own default name, which the hover name reads as `getDescriptionId` does.
+        let names = names.with_item_names(&item_renderer.models.prototypes, assets.registry);
         Ok(Self {
             layer_names: Arc::new(sunrise_client::block_sprites::texture_names(
                 &render.sprite_layers,

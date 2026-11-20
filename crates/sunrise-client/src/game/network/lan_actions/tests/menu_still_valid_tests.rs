@@ -12,7 +12,7 @@ use sunrise_client::{
     containers::{BlockEntity, ModMenuType},
     lan::menu::{Menu, NativeMenuEvent, Slots, VEHICLE_KEY_Y, asks_still_valid},
 };
-use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
+use sunrise_protocol::packets::play::{ContainerButtonClick, ContainerClick, Serverbound};
 
 /// What the part answers, and how often it was asked.
 static KEEP: AtomicBool = AtomicBool::new(true);
@@ -65,6 +65,7 @@ fn a_mod_menu_part_decides_whether_its_menu_stays_open() {
         slots: 27,
         data_slots: 0,
         results: Vec::new(),
+        inputs: Vec::new(),
         crafting: None,
         links: None,
     }));
@@ -163,6 +164,25 @@ fn a_mod_menu_part_decides_whether_its_menu_stays_open() {
             assert!(!is_open(game));
             open(game, Slots::Block(far), true);
             click(game);
+            assert!(!is_open(game));
+
+            // Only a button click for the open window asks: a stale window's click leaves the
+            // menu be, and the open window's closes it.
+            open(game, Slots::Block(far), true);
+            let window = game.lan.as_ref().unwrap().hub.guests[0]
+                .menu
+                .as_ref()
+                .unwrap()
+                .window;
+            let button = |container| {
+                Serverbound::ContainerButtonClick(ContainerButtonClick {
+                    container,
+                    button: 0,
+                })
+            };
+            game.lan_guest_packet(12, button(window + 1));
+            assert!(is_open(game));
+            game.lan_guest_packet(12, button(window));
             assert!(!is_open(game));
 
             // A double chest's menu asks too.
@@ -265,7 +285,7 @@ fn a_blockless_mod_menu_closes_when_its_part_answers_false() {
         crate::game::api_values::install_parts(&mods).unwrap();
         let _callbacks = scoped_dispatch();
         sunrise_client::containers::with_mod_menu_types(
-            [(MENU.into(), 9, 0, Vec::new(), None, None)],
+            [(MENU.into(), 9, 0, Vec::new(), Vec::new(), None, None)],
             || {
                 super::super::native_guest_turn_tests::with_guests(|game| {
                     // A screen position is not a vehicle key, even at this reserved Y.

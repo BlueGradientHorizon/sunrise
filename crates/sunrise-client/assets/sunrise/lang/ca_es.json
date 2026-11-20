@@ -139,7 +139,6 @@
   "How fast the right stick turns the view.": "Com de ràpid el pal dret gira la vista.",
   "How fast the stick moves the crosshair in inventories.": "Com de ràpid el pal mou la retícula als inventaris.",
   "How frames reach the screen while VSync is off.": "Com arriben els fotogrames a la pantalla mentre VSync està desactivat.",
-  "How frames reach the screen, and the performance overlay.": "Com arriben els fotogrames a la pantalla i la superposició de rendiment.",
   "How long a held direction takes between repeats.": "Quant triga una direcció mantinguda entre repeticions.",
   "How long a held direction waits before it repeats.": "Quant espera una direcció mantinguda abans de repetir-se.",
   "How many particles effects spawn.": "Quants efectes de partícules generen.",
