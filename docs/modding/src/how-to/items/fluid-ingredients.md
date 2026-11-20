@@ -13,7 +13,7 @@ Use `FluidIngredient::from_json(json, context)` to parse fluid inputs for your r
 
 Call `test(&FluidStack)` to match a tank's contents. Components are not checked. Use `fluids()` to list accepted fluid keys in source order, including tag order, for a recipe book.
 
-Parsing returns `Result<FluidIngredient, FluidIngredientError>`. Invalid shapes, custom kinds and a list holding an entry that isn't a fluid name or `#tag` return `FluidIngredientError::Invalid`; unknown fluid names return `FluidIngredientError::UnknownFluid`. Fluid ingredients do not dispatch a custom ingredient hook.
+Parsing returns `Result<FluidIngredient, FluidIngredientError>`. Invalid shapes, custom kinds and a list holding an entry that isn't a fluid name or `#tag` return `FluidIngredientError::Invalid`; unknown fluid names return `FluidIngredientError::UnknownFluid`. `Hooks::ingredient` binds predicates only for custom **item** ingredients. A custom kind in fluid JSON is refused, not passed to that hook.
 
 ## Required amounts
 

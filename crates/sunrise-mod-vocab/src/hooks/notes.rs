@@ -41,8 +41,8 @@ For mods that run where the world is simulated: a dedicated server, a LAN host, 
   even if `foo bar` is public. Players can traverse the shared `foo` prefix to reach `bar`, but cannot execute
   `foo` itself. Optional arguments make their preceding prefixes executable at that usage's level; if several
   usages execute at the same prefix, the lowest executable level wins, with the first registration at that level
-  supplying the executor. A rejected usage does not change
-  the permissions of accepted usages. When argument alternatives consume the same input without errors, an
+  supplying the executor. A rejected usage does not change the permissions of accepted usages.
+  Clients receive the accepted command tree, never its executor bindings. When argument alternatives consume the same input without errors, an
   executable alternative takes precedence over a denied one; equally valid alternatives keep registration order.
   A name vanilla has, or a usage that doesn't parse, is left out with a warning in the log.
 
@@ -1413,7 +1413,7 @@ displayname)` and `player_tab_list_name_format(context, player, name, display_na
 commands (both sides) and for the Tab list (server). The name hooks are contract version `2`: a mod written for `1` takes the
 context as a new first argument of the `Hooks` method, and reads the side from it instead of `event.side`.
 
-A custom ingredient's bound `IngredientDefinition` predicate takes the read-only loop context of the matching side and an `IngredientStack` borrowed for that call. `Ingredient::test(host, stack)` uses the host's loop context. There is no hook dispatch during matching; each predicate runs as the mod that defined its ingredient.
+The predicate supplied by `IngredientDefinition` takes the matching side's read-only loop context and an `IngredientStack` borrowed for that call. `Ingredient::test(host, stack)` uses the host's loop context. There is no hook dispatch during matching: the predicate runs as the mod that defined it, or rejects the stack without running if that mod is disabled.
 
 ### Sound hooks
 
@@ -3075,7 +3075,8 @@ registration path.
 `ingredient` receives its recipe metadata as an API `Compound`. Recipe JSON is
 converted at load by the shared JsonOps-to-NbtOps boundary; mod code matches
 `Tag` variants rather than JSON fields. Nested null refuses the recipe as an
-unclaimed kind does; numeric and heterogeneous arrays remain lists. Matching
-borrows the retained compound and never converts metadata on the tick."#]
+unclaimed kind does; numeric and heterogeneous arrays remain lists. Read `event.data`
+while claiming the kind and capture the parsed configuration in the predicate. Matching
+borrows the live stack, not the recipe's JSON or its converted compound."#]
     fn general();
 }

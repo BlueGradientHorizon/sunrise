@@ -155,8 +155,9 @@ impl Default for CommandSender {
 ///
 /// Register it once, from `Hooks::register`, with `Registrar::register_command_argument`. Its
 /// namespaced id (`mymod:machine`) is the kind a `Command` usage names after the argument
-/// name: `Command::new("machine use <machine:mymod:machine>")`. The game then parses the
-/// argument with [`parse`](Self::parse) before calling the server executor, and asks
+/// name: `Command::new("machine use <machine:mymod:machine>")`. Register that server usage
+/// with [`crate::Command::executes`]. The game validates the argument with [`parse`](Self::parse)
+/// before calling its executor, and asks
 /// [`suggest`](Self::suggest) for the chat box's completions. Players' clients that do not know
 /// the type complete it from the server's answer.
 ///

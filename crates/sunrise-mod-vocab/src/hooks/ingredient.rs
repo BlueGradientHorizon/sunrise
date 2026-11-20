@@ -5,8 +5,8 @@ pub trait Hooks {
     /// Define one occurrence of a custom ingredient named by a non-`minecraft:` recipe entry.
     /// Return `None` for a kind you do not handle, or an [`IngredientDefinition`] with the
     /// ordered candidate IDs and a predicate that can capture the parsed metadata. The first
-    /// mod to answer, in dependency order, owns the predicate. No answer refuses the recipe,
-    /// naming its file and kind, even when other mods listen.
+    /// enabled mod to answer, in dispatch order, owns the predicate. Returning `None` lets the
+    /// next listener answer. If nobody answers, the recipe is refused with its file and kind.
     ///
     /// `data` is the entry's JSON converted to an NBT compound. Booleans become `Byte` 1/0;
     /// exact signed 64-bit integers (including `1.0`, `1e3` and `-0.0`) take the smallest of
@@ -23,7 +23,9 @@ pub trait Hooks {
     /// Duplicates are removed in first-seen order. A nonempty list filters out other items before
     /// the predicate runs. An empty answer keeps manual matching without an item filter but has
     /// no placement candidates for recipe-book placement, property sets or stonecutter selection.
-    /// The predicate runs on the matching side with its read-only loop context and borrowed stack.
+    /// The predicate runs as its defining mod on the matching side, with the side's read-only
+    /// loop context and a stack borrowed for the call. If that mod is disabled after load,
+    /// the predicate rejects without invoking it.
     #[hook(
         side = "both",
         contract = "replace",

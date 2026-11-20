@@ -3,16 +3,19 @@
 
 pub trait Hooks {
     /// The commands native mods add to the server's command tree: push each usage with
-    /// its executor attached by `Command::executes`. Asked whenever the server builds
+    /// its executor attached by [`Command::executes`]. Asked whenever the server builds
     /// its command tree, as the reference loader's
     /// `Commands` does: when a world opens (a dedicated server, a LAN host, single player's
     /// server thread), before its functions load, so a function line may name your command;
     /// on each `/reload` and data pack change, so a command you stop pushing is refused by the
     /// next functions loaded; and after a mod calls `host.commands().refresh_commands()`.
     /// Every player's chat box completes them as vanilla's, within their level. A
-    /// name vanilla has is left out. Each executable usage keeps its own
-    /// permission level; a lower-level child only opens traversal through a
-    /// shared prefix, not execution of that prefix. An argument's kind is one
+    /// root vanilla owns is left out. A lower-level child opens traversal through a
+    /// prefix without changing that prefix's own execution permission. When usages execute at the same node (including optional
+    /// prefixes), the lowest declared permission wins, with the first registration
+    /// winning on ties. Only that node's executor runs, attributed to its mod; if the
+    /// owner is disabled, execution is refused rather than handed to another mod.
+    /// Clients get the command tree, not executors. An argument's kind is one
     /// of `word`, `text`, `integer`, `number`, `boolean`, `player`, `item`,
     /// `block_pos` and `vec3`, or a command argument type a mod registered
     /// (`Registrar::register_command_argument`), named by its namespaced id.

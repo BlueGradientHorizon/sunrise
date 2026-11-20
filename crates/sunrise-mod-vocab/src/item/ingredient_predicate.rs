@@ -15,7 +15,9 @@ impl IngredientDefinition {
     /// Pair the candidate item IDs, in recipe-book order, with a stack test.
     /// The owning load validates the IDs. The test can capture parsed configuration and may
     /// run many times during crafting and placement; answer consistently for the same input.
-    /// Its context and stack are read-only and borrowed for the call.
+    /// Its context and stack are read-only and borrowed for the call. A nonempty candidate
+    /// list filters by item before the test; an empty list has no filter for manual matching
+    /// but prevents recipe-book placement.
     pub fn new(
         items: Vec<String>,
         test: impl for<'a> Fn(&dyn LoopContext, IngredientStack<'a>) -> bool + Send + Sync + 'static,

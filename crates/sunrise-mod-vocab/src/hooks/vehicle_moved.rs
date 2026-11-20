@@ -5,9 +5,8 @@ pub trait Hooks {
     /// A boat or minecart (`kind`, `minecraft:oak_boat`) moved since the last
     /// tick (`VehicleMoveEvent`): `from` and `to` are its positions, heard
     /// after the tick moved it. Once a tick for each vehicle that carries a
-    /// server player, whose state is then swapped in (as for
-    /// a command executor: `host.players().acting_player()`, `PlayerRef::tell` and
-    /// the item helpers reach them; `player` is their UUID), and for one a
+    /// server player, whose state is then swapped in (`host.players().acting_player()`,
+    /// `PlayerRef::tell` and the item helpers reach them; `player` is their UUID), and for one a
     /// server player rode and left, until it has stood still for ten
     /// seconds (`player` is none, nobody is swapped in). It only hears.
     /// Cheap when nothing moves: one position compare a tick for each watched

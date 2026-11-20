@@ -44,10 +44,11 @@ pub fn split_command_registration(
 /// `<kind:resource:minecraft:entity_type>`), or a command argument type a mod registered with
 /// `Registrar::register_command_argument`, named by its namespaced id:
 /// `machine use <machine:mymod:machine>`. Usages of one command share their
-/// words; the server merges them into one tree. Each executable usage keeps its own level:
-/// a public `foo bar` lets everyone traverse `foo`, but does not make an
-/// operator-only `foo` executable. Optional arguments also allow execution at
-/// their preceding prefixes, at that usage's level.
+/// words; the server merges them into one tree. A public `foo bar` lets everyone traverse
+/// `foo`, but does not by itself make an operator-only `foo` executable. Optional arguments
+/// allow a usage to execute at their preceding prefixes too. If accepted usages execute at
+/// the same node, the one requiring the lowest level supplies both permission and executor;
+/// the first such registration wins on ties.
 ///
 /// Side: server. Selector arguments use vanilla's source position, permissions,
 /// cardinality and selection order; `player`/`entity` require one result and
@@ -85,7 +86,9 @@ impl Command {
     /// resolution. The source identifies the origin and permission, independent of
     /// `execute as`; feedback respects silence, track-output and the acting player.
     /// Return `Some(n)` for success with result `n` (including zero), or `None` for
-    /// failure. Failure does not try another registration.
+    /// failure. A failed executor or disabled owner never gives another mod a turn.
+    /// Only a parse from the current server dispatcher can reach this executor.
+    /// Capture owned or shared state rather than borrowing the registration event.
     pub fn executes(
         self,
         executor: impl Fn(&mut dyn ServerHost, &CommandSource, &CommandInvocation) -> Option<i32>

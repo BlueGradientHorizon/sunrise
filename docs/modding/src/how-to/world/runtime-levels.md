@@ -4,7 +4,8 @@ A mod opens a level of its own while the server runs and closes it again: an ins
 minigame arena, a pocket dimension per player. `host.runtime_levels()` has `open`, `unload`, `delete`
 and `is_open`.
 
-In `Hooks::register_commands`, bind the command that opens the level:
+In `Hooks::register_commands`, bind an operator-only [server command](../entities/server-commands.md).
+Return `Some(1)` after `open` accepts the request or `None` if it refuses:
 
 ```rust,ignore
 event.commands.push(Command::op("openarena", 2).executes(|host, _, _| {

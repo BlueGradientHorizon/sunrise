@@ -40,7 +40,8 @@ pub struct Ingredient {
     pub items: HashSet<String>,
     /// Default-stack display/simple-match order; non-simple kinds may have none.
     pub order: Vec<String>,
-    /// The predicate bound to this occurrence by the mod that defined it.
+    /// The predicate bound to this occurrence by the mod that defined it, not recipe metadata.
+    /// Use [`Self::test`] for the complete match, including the candidate filter.
     pub custom: Option<IngredientPredicate>,
     /// NeoForge's shapes, with their children parsed: matching a concrete
     /// stack asks each child its own `test` (a mod's kind among them),
@@ -118,7 +119,8 @@ impl Ingredient {
     /// `Ingredient.test`: whether `stack` fits the candidate list and custom
     /// predicate (`ICustomIngredient.test`). An empty custom list retains the
     /// predicate without item filtering, but cannot be placed by the recipe book.
-    /// An empty tag never matches; a host without a game refuses every stack.
+    /// A bound predicate rejects when its defining mod is disabled; it never dispatches
+    /// to other mods. An empty tag never matches; a host without a game refuses every stack.
     pub fn test(&self, host: &dyn Host, stack: &ItemStack) -> bool {
         backend_of(host).is_some_and(|backend| backend.recipe_ingredient_test(self, stack))
     }
@@ -127,7 +129,8 @@ impl Ingredient {
 /// A recipe in force (`RecipeManager.getAllRecipesFor`), whatever its type
 /// (vanilla's or a mod's own): its typed parts, and its file for whatever a
 /// mod's own type keeps there. `json` is the data-pack file's JSON, read by a
-/// mod at reload; host parsing helpers accept JSON text.
+/// mod at reload; host parsing helpers accept JSON text. Bound predicates live in the
+/// parsed ingredients alone. This snapshot is in-process; send data-only values instead.
 ///
 /// A recipe the game could not parse (an ingredient it cannot read, no
 /// result) is not in force and is not listed.

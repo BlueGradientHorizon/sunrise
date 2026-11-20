@@ -22,7 +22,8 @@ use crate::*;
 pub use display::{RecipeBookDisplay, RecipeBookDisplayEntry, RecipeSlotDisplay};
 pub use settings::{RecipeBookIdentity, RecipeBookSettings};
 // no wire: the category contains native placement declarations, not the remote book projection.
-/// A mod's book category and displays for one custom recipe type.
+/// A mod's book category and displays for one custom recipe type. The local
+/// declarations can include placement predicates and are not a network payload.
 #[derive(Clone, Debug, PartialEq)]
 // exhaustive: the game builds it with a literal; mods only read it
 pub struct RecipeBookCategory {

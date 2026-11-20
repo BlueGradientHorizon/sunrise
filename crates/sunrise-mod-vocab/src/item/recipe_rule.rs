@@ -93,7 +93,7 @@ impl RecipeTemplate {
 pub struct FireworkShapeIngredient {
     /// Shape selected by this ingredient.
     pub shape: FireworkShape,
-    /// Items which select the shape.
+    /// The resolved ingredient tested against the actual stack to select the shape.
     pub ingredient: Ingredient,
 }
 impl FireworkShapeIngredient {
@@ -129,7 +129,8 @@ pub enum RecipeTrimPattern {
 /// counts, dyes, trim material, damage or map state). Special crafting
 /// results are assembled by [`crate::LevelRef::recipe_for`], not by treating the
 /// template as a fixed stack. A mod-defined recipe type keeps its raw JSON
-/// instead of inventing a vanilla rule.
+/// instead of inventing a vanilla rule. Rules stay local with the resolved ingredients;
+/// send separate data for a recipe display.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum RecipeRule {

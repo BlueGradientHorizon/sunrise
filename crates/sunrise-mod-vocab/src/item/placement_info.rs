@@ -4,7 +4,8 @@ use crate::Ingredient;
 // no wire: placement cells can retain in-process ingredient predicates.
 /// Vanilla's `Recipe#placementInfo`: ingredient cells, distinct from display
 /// pictures. Supplied by the same recipe-type-owned provider as its displays.
-/// NeoForge public documentation names no separate registration event.
+/// These are local requirements: the server rechecks real stacks against them;
+/// a client's display or list of candidates is not proof of a match.
 #[derive(Clone, Debug, PartialEq)]
 // exhaustive: recipe providers construct the complete placement declaration
 pub struct PlacementInfo {

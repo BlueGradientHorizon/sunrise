@@ -109,7 +109,8 @@ as `Entity.teleport` with a portal's transition. It works for a player, a mob, a
 trident, a firework and the thrown items and fireballs a chunk saves. The entity keeps its motion;
 set it first with `entity.set_velocity` to stop or turn it.
 
-In `Hooks::register_commands`, for example:
+Bind a [server command](../entities/server-commands.md) in `Hooks::register_commands`.
+This executor accepts a player source and returns `Some(1)` when the move is queued:
 
 ```rust,ignore
 event.commands.push(Command::new("pocket").executes(|host, source, _| {

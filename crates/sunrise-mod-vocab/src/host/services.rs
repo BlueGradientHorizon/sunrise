@@ -104,8 +104,9 @@ pub trait Commands {
     /// Side: server.
     /// A mod changed the commands it registers (`register_commands`):
     /// at the start of the next server tick every mod is asked again, the
-    /// commands players may run are rebuilt, and every player on the server is
-    /// sent their tree again, after `player_commands_sent`. Nothing
+    /// server dispatcher and its executors are replaced, and every player on the server
+    /// is sent their command tree again, after `player_commands_sent`. The tree contains
+    /// no executors, and parses from the previous dispatcher are no longer executable. Nothing
     /// happens where no world is open to players, and nothing for a server
     /// whose mods never call it. API @API:refresh_commands@.
     fn refresh_commands(&mut self) {
@@ -116,8 +117,9 @@ pub trait Commands {
         )
     }
     /// Side: server.
-    /// A command's success feedback, routed to its originating source using
+    /// An executor can send success feedback to the command's originating source, using
     /// vanilla's silence, send-command-feedback and block/cart track-output rules.
+    /// This sends a message; the executor's return value determines the command result.
     /// Refuses text deeper than 512 component nodes before applying any changes.
     fn feedback(&mut self, line: Text) -> Result<(), TextFormError> {
         crate::world::phase::unprovided(
