@@ -2438,36 +2438,40 @@ mod tests {
         let mut chunk = Chunk::empty(0, 0);
         // A saved zero array is data, not an empty layer. No other layers in NBT.
         let mut saved = vec![(None, None); SECTIONS + 2];
-        saved[2].1 = Some([0; 2048]);
+        saved[1].1 = Some([0; 2048]);
         crate::light::light_from_saved_layers(&mut chunk, &saved, true);
         let mut world = crate::world::World::new(BlockStateId(0), 0);
         let mut neighbour = Chunk::empty(1, 0);
-        neighbour.add_light_support(1);
+        neighbour.add_light_support(0);
         world.install_light_column(neighbour);
         world.install_light_column(chunk);
         let chunk = &world.chunks[&(0, 0)];
         let mut encoder = encoder();
         let bytes = encoder.body_with(chunk, &world, &|_, _| Some(SectionMask::ALL));
-        let mut reader = Reader::new(&bytes);
-        let id = reader.varint().unwrap();
-        let Ok(play::Clientbound::LevelChunkWithLight(packet)) =
-            play::Clientbound::decode(id, reader.rest())
-        else {
-            panic!("not a chunk packet");
+        let read_light = |bytes: &[u8]| {
+            let mut reader = Reader::new(bytes);
+            let id = reader.varint().unwrap();
+            let Ok(play::Clientbound::LevelChunkWithLight(packet)) =
+                play::Clientbound::decode(id, reader.rest())
+            else {
+                panic!("not a chunk packet");
+            };
+            packet.light
         };
+        let initial = read_light(&bytes);
         assert_eq!(encoder.body_in(chunk, &world), bytes);
         let mask = |mask: &[u8]| {
             (0..SECTIONS + 2)
                 .filter(|&b| bit(mask, b))
                 .collect::<Vec<_>>()
         };
-        assert!(mask(&packet.light.sky_mask).is_empty());
-        assert_eq!(mask(&packet.light.empty_sky_mask), [1, 2, 3]);
-        assert_eq!(mask(&packet.light.block_mask), [2]);
-        assert_eq!(mask(&packet.light.empty_block_mask), [1, 3]);
-        assert_eq!(packet.light.block, [vec![0; 2048]]);
+        assert!(mask(&initial.sky_mask).is_empty());
+        assert_eq!(mask(&initial.empty_sky_mask), [0, 1, 2]);
+        assert_eq!(mask(&initial.block_mask), [1]);
+        assert_eq!(mask(&initial.empty_block_mask), [0, 2]);
+        assert_eq!(initial.block, [vec![0; 2048]]);
         let mut client = Chunk::empty(0, 0);
-        crate::light::light_from_layers(&mut client, &packet.light.layers(SECTIONS + 2), true);
+        crate::light::light_from_layers(&mut client, &initial.layers(SECTIONS + 2), true);
         for y in MIN_Y - 16..=MIN_Y + (SECTIONS as i32 + 1) * 16 {
             assert_eq!(client.light(0, y, 0), world.light(0, y, 0), "y={y}");
         }
@@ -2481,9 +2485,25 @@ mod tests {
         assert!(
             light.sky_mask.is_empty() && light.empty_sky_mask.is_empty() && light.sky.is_empty()
         );
-        assert_eq!(light.block_mask, packet.light.block_mask);
-        assert_eq!(light.empty_block_mask, packet.light.empty_block_mask);
-        assert_eq!(light.block, packet.light.block);
+        assert_eq!(light.block_mask, initial.block_mask);
+        assert_eq!(light.empty_block_mask, initial.empty_block_mask);
+        assert_eq!(light.block, initial.block);
+
+        encoder.set_dimension(LevelShape::OVERWORLD);
+        let neighbour = world.unload_chunk((1, 0)).unwrap();
+        let unsupported = read_light(&encoder.body_in(&world.chunks[&(0, 0)], &world));
+        assert!(unsupported.sky_mask.is_empty() && unsupported.empty_sky_mask.is_empty());
+        assert!(unsupported.block_mask.is_empty() && unsupported.empty_block_mask.is_empty());
+        world.install_light_column((*neighbour).clone());
+        let restored = read_light(&encoder.body_in(&world.chunks[&(0, 0)], &world));
+        assert_eq!(mask(&restored.sky_mask), [0, 1, 2]);
+        assert_eq!(
+            restored.sky,
+            [vec![0xFF; 2048], vec![0xFF; 2048], vec![0xFF; 2048]]
+        );
+        assert!(restored.empty_sky_mask.is_empty() && restored.block_mask.is_empty());
+        assert_eq!(mask(&restored.empty_block_mask), [0, 1, 2]);
+        assert_eq!(world.light(0, MIN_Y - 1, 0), 0xF0);
     }
 
     #[test]

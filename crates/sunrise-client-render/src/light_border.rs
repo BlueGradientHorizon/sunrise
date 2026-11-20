@@ -497,37 +497,49 @@ mod tests {
     }
 
     #[test]
-    fn saved_void_pad_depends_on_when_support_was_published() {
+    fn saved_void_pad_is_recreated_after_full_or_proto_support_returns() {
         use crate::{
             chunk::MIN_Y,
             light::{light_from_saved_layers, tests::tables},
         };
-        for enabled_before_support in [false, true] {
+        for proto in [false, true] {
             let mut world = World::new(BlockStateId(0), 0);
             let mut chunk = Chunk::empty(0, 0);
             light_from_saved_layers::<&[u8]>(&mut chunk, &[], true);
             let status = tables().publish_section_status(&mut chunk, world.shape);
-            let mut neighbour = Chunk::empty(1, 0);
-            neighbour.add_light_support(0);
-            if enabled_before_support {
-                world.install_light_column_initialized(chunk, status);
-                world.install_light_column(neighbour);
-            } else {
-                world.install_light_column(neighbour);
-                world.install_light_column_initialized(chunk, status);
-            }
+            let support = |world: &mut World| {
+                if proto {
+                    world.set_proto_light_support((1, 0), SectionMask::below(3));
+                } else {
+                    let mut neighbour = Chunk::empty(1, 0);
+                    neighbour.add_light_support(0);
+                    world.install_light_column(neighbour);
+                }
+            };
+            support(&mut world);
+            world.install_light_column_initialized(chunk, status);
             assert_eq!(
                 world.chunks[&(0, 0)].stored_light_layers(0),
                 Some([true; 2])
             );
-            assert_eq!(
-                world.light(0, MIN_Y - 1, 0),
-                if enabled_before_support { 0xF0 } else { 0 }
-            );
-            world.unload_chunk((1, 0)).unwrap();
+            assert_eq!(world.light(0, MIN_Y - 1, 0), 0);
+
+            if proto {
+                world.set_proto_light_support((1, 0), SectionMask::EMPTY);
+            } else {
+                world.unload_chunk((1, 0)).unwrap();
+            }
             assert_eq!(
                 world.chunks[&(0, 0)].stored_light_layers(0),
                 Some([false; 2])
+            );
+            assert_eq!(world.light(0, MIN_Y - 1, 0), 0xF0);
+
+            // The void column remained enabled while the support was away.
+            support(&mut world);
+            assert_eq!(
+                world.chunks[&(0, 0)].stored_light_layers(0),
+                Some([true; 2])
             );
             assert_eq!(world.light(0, MIN_Y - 1, 0), 0xF0);
         }

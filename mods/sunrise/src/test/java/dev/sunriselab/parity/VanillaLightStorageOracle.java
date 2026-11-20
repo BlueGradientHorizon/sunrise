@@ -166,6 +166,14 @@ public final class VanillaLightStorageOracle {
             if (engine.getLayerListener(LightLayer.SKY).getLightValue(pad) != 15) {
                 throw new AssertionError("removed void pad must again read as open sky");
             }
+            engine.updateSectionStatus(neighbour, false);
+            engine.runLightUpdates();
+            var restored = new ClientboundLightUpdatePacketData(center, engine, null, null);
+            checkMask(restored.skyYMask(), 0, 1, 2);
+            checkMask(restored.emptySkyYMask());
+            if (!Arrays.equals(restored.skyUpdates().getFirst(), new DataLayer(15).getData())) {
+                throw new AssertionError("returning support must create a new full-sky layer");
+            }
         }
     }
 
