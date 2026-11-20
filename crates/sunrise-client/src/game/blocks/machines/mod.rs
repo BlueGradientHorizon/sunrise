@@ -1083,10 +1083,8 @@ impl Game<'_> {
             self.mark_block_entity_updated(pos);
         }
         // A double chest's other half changes with it.
-        let halves: Vec<Pos> = std::iter::once(pos)
-            .chain(self.chest_other_half(pos))
-            .collect();
-        for pos in halves {
+        let other = self.chest_other_half(pos);
+        for pos in std::iter::once(pos).chain(other) {
             self.world.modified.insert((pos.0 >> 4, pos.2 >> 4));
             self.with_level(|b, level, ticks| {
                 b.container_changed(level, ticks, BlockPos::new(pos.0, pos.1, pos.2))
