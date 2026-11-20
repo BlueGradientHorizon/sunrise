@@ -227,24 +227,21 @@ mod tests {
     #[test]
     fn item_ingredients_still_parse_the_same() {
         let items = ();
-        // Supply the resolved ids fixture, not a second JSON/NBT converter.
+        // Supply the resolved ids directly; this fixture only checks enumeration.
         let parse = |v: &serde_json::Value, _items: &()| {
             crate::__private::ingredient_parser::WalkedIngredient::walk(
                 v,
                 &HashMap::new(),
                 &|_| None,
-                &crate::__private::ingredient_parser::resolved_items,
-                &|data| {
-                    let ids = data.get("sunrise:resolved_items")?.as_array()?;
+                &|v, _| {
+                    let ids = v.get("sunrise:resolved_items")?.as_array()?;
                     let ids = ids
                         .iter()
-                        .map(|v| sunrise_core::nbt::Tag::String(v.as_str().unwrap().into()))
-                        .collect();
-                    Some(sunrise_core::nbt::Compound::from([(
-                        "sunrise:resolved_items".into(),
-                        sunrise_core::nbt::Tag::List(ids),
-                    )]))
+                        .map(|v| Some(v.as_str()?.to_owned()))
+                        .collect::<Option<_>>()?;
+                    Some((ids, ()))
                 },
+                &|_| None,
             )
         };
         let json = |s: &str| serde_json::from_str::<serde_json::Value>(s).unwrap();

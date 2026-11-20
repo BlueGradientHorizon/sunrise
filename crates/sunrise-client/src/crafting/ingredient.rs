@@ -9,7 +9,7 @@ use super::native_hooks::native_ingredient;
 use super::{ItemStack, Items};
 use crate::native_stack_hooks::ingredient_test as native_ingredient_test;
 use display::display_stacks;
-use mod_api::__private::{WalkedIngredient, dedup_keep_order, resolved_items};
+use mod_api::__private::{WalkedIngredient, dedup_keep_order};
 pub use mod_api::item::crafting::{IngredientRule, Shape};
 use serde_json::Value;
 use std::collections::HashSet;
@@ -281,7 +281,22 @@ impl Ingredient {
                         .collect(),
                 )
             },
-            &resolved_items,
+            &|v, kind| {
+                use sunrise_core::nbt::Tag;
+
+                let mut data = components::json_patch(v.as_object()?)?;
+                let Tag::List(answer) = data.remove(&RESOLVED_ITEMS.into())? else {
+                    return None;
+                };
+                let list = answer
+                    .iter()
+                    .map(|i| match i {
+                        Tag::String(s) => s.to_string().ok(),
+                        _ => None,
+                    })
+                    .collect::<Option<_>>()?;
+                Some((list, (kind.to_owned(), data)))
+            },
             &components::json_patch,
         );
         let walked = walked?;
@@ -297,7 +312,10 @@ impl Ingredient {
     /// keep their children, and a mod's own kind keeps its kind and NBT metadata,
     /// since the load-time list only names items and matching a concrete
     /// stack (its components) is the match-time hook's.
-    fn of_walked(walked: WalkedIngredient, items: &Items) -> Option<Self> {
+    fn of_walked(
+        walked: WalkedIngredient<(String, sunrise_core::nbt::Compound)>,
+        items: &Items,
+    ) -> Option<Self> {
         // The shapes' children walk the same way; a child no wrapper
         // answers fails the file.
         let children = match walked.children {

@@ -143,8 +143,13 @@ impl FluidIngredient {
         // the file, as a kind outside these does.
         let keys = std::cell::RefCell::new(std::collections::HashMap::new());
         let unknown = std::cell::RefCell::new(None);
-        let source =
-            WalkedIngredient::walk_resolved(v, &tags, &|_| None, &|_| None, &|_| None, &|id| {
+        let source = WalkedIngredient::<()>::walk_resolved(
+            v,
+            &tags,
+            &|_| None,
+            &|_, _| None,
+            &|_| None,
+            &|id| {
                 let Some(key) = context.fluid_key(id) else {
                     *unknown.borrow_mut() = Some(id.to_owned());
                     return None;
@@ -156,8 +161,9 @@ impl FluidIngredient {
                 };
                 keys.borrow_mut().insert(canonical.clone(), key);
                 Some(canonical)
-            });
-        fn nonempty_tree(source: &WalkedIngredient) -> bool {
+            },
+        );
+        fn nonempty_tree(source: &WalkedIngredient<()>) -> bool {
             !source.order.is_empty()
                 && source
                     .children
