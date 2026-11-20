@@ -59,10 +59,6 @@ impl std::error::Error for ReloadResourceError {
 /// `<dyn ReloadApply>::new(move || ...)` makes one from a closure.
 pub trait ReloadApply: Send + Sync {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
-    #[doc(hidden)]
-    fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        sunrise_mod_marks::reload_apply::<Self>();
-    }
     /// Publish the prepared state.
     fn apply(&self);
 }

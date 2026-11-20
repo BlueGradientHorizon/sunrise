@@ -7,7 +7,6 @@ fn function(id: &str, refs: &[&str]) -> Function {
         FunctionContract {
             signature: format!("fn {}()", leaf(id)),
             impl_generics: String::new(),
-            wasm: true,
             refs: refs.iter().map(|r| r.to_string()).collect(),
         },
     )
@@ -190,7 +189,6 @@ fn the_contract_hash_leaves_out_doc_and_info_fields() {
     let contract = FunctionContract {
         signature: "fn f(x: u8)".into(),
         impl_generics: String::new(),
-        wasm: false,
         refs: vec![],
     };
     let documented = Function::new("fn:f", "Does f.", contract.clone());
@@ -198,7 +196,7 @@ fn the_contract_hash_leaves_out_doc_and_info_fields() {
     assert_eq!(documented.hash, bare.hash);
     // Independent of the code: SHA-256 of the compact JSON, first 16 bytes.
     use sha2::{Digest, Sha256};
-    let expected: String = Sha256::digest(br#"{"signature":"fn f(x: u8)","wasm":false}"#)[..16]
+    let expected: String = Sha256::digest(br#"{"signature":"fn f(x: u8)"}"#)[..16]
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect();
@@ -244,7 +242,6 @@ fn api_trait(id: &str, role: Role, bounds: &[&str], methods: &[&str]) -> Trait {
                     MethodContract {
                         signature: format!("fn {name}(&self)"),
                         required: false,
-                        wasm: true,
                         refs: vec![id.to_owned()],
                     },
                 )

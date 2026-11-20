@@ -131,10 +131,6 @@ pub struct ItemFrameRenderState {
 /// [`EntityRenderState::attachments`].
 pub trait EntityRenderer: Send + Sync + 'static {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
-    #[doc(hidden)]
-    fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        sunrise_mod_marks::entity_renderer::<Self>();
-    }
     /// `EntityRenderer.submit`: draw `entity` with `draw`'s helpers (`quad`, `cube`, `block`,
     /// `item`, `model_part`) under its pose stack, which starts at the entity's position, not
     /// turned: turn it by `entity.yaw` and `entity.pitch` as the model needs. `draw` also has
@@ -152,8 +148,6 @@ pub trait EntityRenderer: Send + Sync + 'static {
         draw: &mut dyn BlockEntityDrawContext,
     ) -> Result<(), String>;
 }
-
-crate::wire::wire_handlers::handler!(dyn EntityRenderer, "EntityRenderer");
 
 /// The entity renderer registry `register_entity_renderers` hands out: NeoForge's
 /// `EntityRenderersEvent.RegisterRenderers`.

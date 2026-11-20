@@ -19,7 +19,7 @@ use syn::{ImplItem, Item, Type};
 /// One point, as `points.json` lists it.
 #[derive(Debug, serde::Serialize)]
 pub struct GamePoint {
-    /// Why its API listeners are refused at registration, native and wasm alike: the first
+    /// Why its API listeners are refused at registration, : the first
     /// parameter with no API type, naming it. Absent when the point has an API record.
     pub api_refusal: Option<String>,
     pub name: String,
@@ -396,21 +396,6 @@ fn scan(root: &Path) -> Result<(Vec<Scanned>, Vec<(String, String)>), String> {
     let mut files = Vec::new();
     for file in game_files(&root.join("crates/sunrise-client/src"), true)? {
         files.push((file, None));
-    }
-    // The wasm host's listener tests listen at points of their own fixture file.
-    #[cfg(feature = "listener-fixture")]
-    {
-        let path = root.join("crates/sunrise-mod-wasm/tests/fixture/src/points.rs");
-        if path.is_file() {
-            files.push((
-                mod_source::modules::ModuleFile {
-                    module: "listener_fixture".into(),
-                    path,
-                    cfg: Vec::new(),
-                },
-                None,
-            ));
-        }
     }
     let list = marked(root)?;
     let below = below_points(root)?;
@@ -883,107 +868,33 @@ pub(crate) fn locked_with(lock: &str, name: &str, added: &[&str]) -> Option<Stri
     ))
 }
 
-/// What a place is to the boundary: its name, the import a mod that listens at it carries
-/// (`point:Points::<place>#<hash>`), and the id the game fires it by, all from the place's name
-/// and its point's signature, so none moves when another point is added. A listener's
-/// registration marks its place through `__point_mark!`.
-fn place_items(places: &[(String, String, mod_call::Name)]) -> proc_macro2::TokenStream {
-    let mut ids = std::collections::BTreeMap::new();
-    for (variant, _, name) in places {
-        assert!(
-            ids.insert(name.point_id(), variant.clone()).is_none(),
-            "two point places have one id: {variant}"
-        );
-    }
-    assert!(
-        !ids.contains_key(&SUBSCRIPTIONS),
-        "a point place has the subscriptions id"
-    );
-    let variants: Vec<_> = places
+/// Registration metadata shared by the listener constructors and catalog validation.
+fn place_items(places: &[(String, String)]) -> proc_macro2::TokenStream {
+    let variants = places
         .iter()
-        .map(|(variant, ..)| quote::format_ident!("{variant}"))
-        .collect();
-    let names: Vec<&str> = places.iter().map(|(_, name, _)| name.as_str()).collect();
-    let calls: Vec<String> = places.iter().map(|(.., name)| name.text()).collect();
-    let place_ids: Vec<u64> = places.iter().map(|(.., name)| name.point_id()).collect();
-    let mut sorted = calls.clone();
-    sorted.sort();
-    let by_id = ids.iter().map(|(id, variant)| {
-        let variant = quote::format_ident!("{variant}");
-        quote!((#id, PointId::#variant))
-    });
-    let marks = places.iter().map(|(_, name, call)| {
-        let mark: proc_macro2::TokenStream =
-            crate::wire::calls::mark_block("::mod_api", &call.text())
-                .parse()
-                .expect("a generated mark");
-        quote!((#name) => { #mark };)
-    });
-    let subscriptions = SUBSCRIPTIONS;
+        .map(|(variant, _)| quote::format_ident!("{variant}"));
+    let names = places.iter().map(|(_, name)| name);
+    let by_index = variants.clone();
     quote! {
-        /// The id a guest is asked by for the list of places it listens at.
-        #[doc(hidden)]
-        pub const SUBSCRIPTIONS: u64 = #subscriptions;
-        /// Every place's import name, sorted: what a module's table may name of points.
-        #[doc(hidden)]
-        pub const POINT_CALLS: &[&str] = &[#(#sorted),*];
-        /// Places by wire id, sorted by it.
-        #[doc(hidden)]
-        pub const PLACES_BY_ID: &[(u64, PointId)] = &[#(#by_id),*];
         impl PointId {
-            /// The place's name, as a guest reports where it listens.
+            /// The place's name.
             #[doc(hidden)]
             pub const fn name(self) -> &'static str {
                 match self { #(PointId::#variants => #names,)* PointId::__Count => "" }
             }
-            /// The id the game fires this place by.
-            #[doc(hidden)]
-            pub const fn id(self) -> u64 {
-                match self { #(PointId::#variants => #place_ids,)* PointId::__Count => 0 }
-            }
             /// The place at `index` in the catalog, which is `Place::index`.
             #[doc(hidden)]
             pub fn from_index(index: usize) -> Option<PointId> {
-                const ALL: &[PointId] = &[#(PointId::#variants),*];
+                const ALL: &[PointId] = &[#(PointId::#by_index),*];
                 ALL.get(index).copied()
             }
-            /// The place fired by `id`.
-            #[doc(hidden)]
-            pub fn by_id(id: u64) -> Option<PointId> {
-                PLACES_BY_ID.binary_search_by_key(&id, |(id, _)| *id).ok().map(|i| PLACES_BY_ID[i].1)
-            }
-        }
-        /// Marks that the module listens at a place: a no-op import named for the place, so the
-        /// module's import table lists exactly the places its listeners are linked at.
-        #[doc(hidden)]
-        #[macro_export]
-        macro_rules! __point_mark {
-            #(#marks)*
-            ($other:literal) => {};
         }
     }
 }
 
-/// The id a guest is asked by for the places it listens at: the points' tag and the low 32 bits
-/// set, which no place's digest id is (the generator refuses one that is).
-const SUBSCRIPTIONS: u64 = mod_call::POINT_TAG | 0xFFFF_FFFF;
-
 /// Platform `mod_points`: canonical engine-record re-exports, listener constructors
 /// and registration place ids. Typed dispatch is owned by `sunrise_engine_slots`.
-#[cfg(test)]
 pub(crate) fn records(points: &[GamePoint]) -> String {
-    records_selected(points, None)
-}
-
-pub(crate) fn records_selected(
-    points: &[GamePoint],
-    selected: Option<&std::collections::BTreeSet<String>>,
-) -> String {
-    let enabled = |point: &GamePoint| {
-        selected.is_none_or(|names| {
-            names.contains(&point.name) || names.contains(&format!("{}_return", point.name))
-        })
-    };
     let parse = |code: &str| {
         code.parse::<proc_macro2::TokenStream>()
             .expect("generated points")
@@ -997,8 +908,6 @@ pub(crate) fn records_selected(
         });
     let listeners = points.iter().map(|point| parse(&point.api[0]));
     let variants: Vec<_> = points.iter().map(|point| parse(&point.api[1])).collect();
-    let mut guest_functions = proc_macro2::TokenStream::new();
-    let mut guest_entries = proc_macro2::TokenStream::new();
     let targets: Vec<_> = points
         .iter()
         .flat_map(|p| {
@@ -1010,45 +919,12 @@ pub(crate) fn records_selected(
         .collect();
     let mut api_places = proc_macro2::TokenStream::new();
     let mut api_refusals = proc_macro2::TokenStream::new();
-    // Each place's name as a mod's import table spells it, and its wire id.
-    let mut places: Vec<(String, String, mod_call::Name)> = Vec::new();
+    let mut places = Vec::new();
     for point in points {
         if let Some(reason) = &point.api_refusal {
             let target = &point.target;
             api_refusals.extend(quote! { (#target, #reason), });
             continue;
-        }
-        let record = quote::format_ident!("{}", point.record);
-        let passed = match point.host {
-            "host" => quote!(&host,),
-            "server" | "client" => quote!(&mut host,),
-            "both" => quote!(if server {
-                ::mod_api::HostSide::Server(&mut host)
-            } else {
-                ::mod_api::HostSide::Client(&mut host)
-            },),
-            _ => quote!(),
-        };
-        let function = quote::format_ident!("point_{}", point.name);
-        let listener = quote::format_ident!("{}Listener", point_shape::camel(&point.name));
-        let side = (point.host == "both").then(|| quote!(let server: bool = input.take()?;));
-        if enabled(point) {
-            guest_functions.extend(quote! {
-            fn #function(place: PointId, input: &mut ::mod_api::wire::Reader<'_>, out: &mut ::mod_api::wire::Writer) -> Result<(), ::mod_api::wire::WireError> {
-                let listener: u32 = input.take()?;
-                #side
-                let mut args: #record = input.take()?;
-                let mut host = ::mod_api::wire::guest::Guest;
-                crate::guest::fire(place, listener, |function| {
-                    // SAFETY: head and return have the same checked host and record type.
-                    let function = unsafe { ::std::mem::transmute::<*const (), listeners::#listener>(function) };
-                    function(#passed &mut args);
-                })?;
-                out.put(&());
-                out.put(&args);
-                Ok(())
-            }
-        });
         }
         for name in std::iter::once(point.name.clone())
             .chain(point.at_return.then(|| format!("{}_return", point.name)))
@@ -1062,25 +938,7 @@ pub(crate) fn records_selected(
             };
             api_places
                 .extend(quote! { (PointId::#variant, #target, #at_return, #replace_refusal), });
-            places.push((
-                variant.to_string(),
-                name.clone(),
-                mod_call::Name {
-                    kind: mod_call::Kind::Point,
-                    path: format!("Points::{name}"),
-                    version: None,
-                    hash: mod_call::digest(&format!(
-                        "point{{{};{at_return}}}",
-                        point.signature_hash
-                    )),
-                },
-            ));
-            if selected.is_some_and(|names| !names.contains(&name)) {
-                continue;
-            }
-            guest_entries.extend(quote! {
-                table[PointId::#variant as usize] = Some((PointId::#variant, #function as Dispatch));
-            });
+            places.push((variant.to_string(), name));
         }
     }
     let ids: syn::ItemEnum = syn::parse2(quote! {
@@ -1104,26 +962,6 @@ pub(crate) fn records_selected(
         pub const API_REFUSALS: &[(&str, &str)] = &[#api_refusals];
         #[doc(hidden)]
         pub const API_PLACES: &[(PointId, &str, bool, Option<&str>)] = &[#api_places];
-        #[cfg(any(target_arch = "wasm32", feature = "wasm-guest"))]
-        #[doc(hidden)]
-        pub fn guest_dispatch(id: u64, input: &mut ::mod_api::wire::Reader<'_>, out: &mut ::mod_api::wire::Writer) -> Result<(), ::mod_api::wire::WireError> {
-            if id == SUBSCRIPTIONS { out.put(&crate::guest::subscriptions()); return Ok(()); }
-            let place = PointId::by_id(id).ok_or(::mod_api::wire::WireError::Tag(id as u32))?;
-            let (place, function) = guest_exports::TABLE.get(place as usize).copied().flatten().ok_or(::mod_api::wire::WireError::Tag(id as u32))?;
-            function(place, input, out)
-        }
-        #[cfg(any(target_arch = "wasm32", feature = "wasm-guest"))]
-        #[allow(unused_mut, unused_variables)]
-        mod guest_exports {
-            use super::*;
-            type Dispatch = fn(PointId, &mut ::mod_api::wire::Reader<'_>, &mut ::mod_api::wire::Writer) -> Result<(), ::mod_api::wire::WireError>;
-            pub(super) static TABLE: [Option<(PointId, Dispatch)>; POINT_COUNT] = {
-                let mut table = [None; POINT_COUNT];
-                #guest_entries
-                table
-            };
-            #guest_functions
-        }
         /// A point's place: its head and return in catalog order.
         #[doc(hidden)]
         #[repr(usize)]
@@ -1148,33 +986,12 @@ pub(crate) fn records_selected(
 }
 
 /// Engine-owned records and typed dispatch; registration stays in the platform.
-pub(crate) fn engine_records(
-    points: &[GamePoint],
-    selected: Option<&std::collections::BTreeSet<String>>,
-) -> String {
+pub(crate) fn engine_records(points: &[GamePoint]) -> String {
     let parse = |code: &str| {
         code.parse::<proc_macro2::TokenStream>()
             .expect("generated points")
     };
-    let records = points.iter().map(|point| {
-        let mut file: syn::File = syn::parse_str(&point.record_item).expect("point record");
-        if selected.is_some_and(|names| {
-            !names.contains(&point.name) && !names.contains(&format!("{}_return", point.name))
-        }) {
-            for item in &mut file.items {
-                if let syn::Item::Struct(record) = item {
-                    record.attrs.retain(|attr| {
-                        !(attr.path().is_ident("cfg_attr")
-                            && attr
-                                .to_token_stream()
-                                .to_string()
-                                .contains("derive (:: mod_api :: Wire)"))
-                    });
-                }
-            }
-        }
-        quote!(#file)
-    });
+    let records = points.iter().map(|point| parse(&point.record_item));
     let variants: Vec<_> = points.iter().map(|point| parse(&point.api[1])).collect();
     let dispatch = points.iter().map(|point| parse(&point.api[2]));
     let listeners = points.iter().map(|point| {
@@ -1235,60 +1052,6 @@ mod tests {
         assert_eq!(base.len(), 32);
         assert_eq!(point("renamed", "u32"), base);
         assert_ne!(point("tick", "u64"), base);
-    }
-
-    #[test]
-    fn selected_guest_exports_keep_the_full_place_table() {
-        let make = |name: &str| {
-            let sig: syn::Signature = syn::parse_str(&format!("fn {name}()")).unwrap();
-            let shape = point_shape::shape(quote!(), &sig).unwrap();
-            let api = shape.api_items(name);
-            GamePoint {
-                api_refusal: None,
-                name: name.into(),
-                target: name.into(),
-                side: "none",
-                host: "none",
-                record: shape.record().to_string(),
-                args: vec![],
-                returns: "cancel",
-                return_ty: "()".into(),
-                at_return: true,
-                signature_hash: String::new(),
-                record_item: shape.record_item(name).to_string(),
-                api: [
-                    api.listeners.to_string(),
-                    api.variants.to_string(),
-                    api.dispatch.to_string(),
-                ],
-            }
-        };
-        let points = [make("first"), make("second")];
-        let selected = std::collections::BTreeSet::from(["first_return".to_string()]);
-        let engine = engine_records(&points, Some(&selected));
-        let all = records(&points);
-        let selected = records_selected(&points, Some(&selected));
-        let layout = |source: &str| {
-            syn::parse_file(source)
-                .unwrap()
-                .items
-                .into_iter()
-                .find_map(|item| match item {
-                    syn::Item::Const(c) if c.ident == "POINT_CALLS" => {
-                        Some(c.expr.to_token_stream().to_string())
-                    }
-                    _ => None,
-                })
-                .unwrap()
-        };
-        assert_eq!(layout(&all), layout(&selected));
-        let file = syn::parse_file(&engine).unwrap();
-        let wires = file.items.iter().filter(|item| matches!(item, syn::Item::Struct(record) if record.attrs.iter().any(|attr| attr.path().is_ident("cfg_attr") && attr.to_token_stream().to_string().contains("derive (:: mod_api :: Wire)")))).count();
-        assert_eq!(wires, 1);
-        assert!(selected.contains("fn point_first"));
-        assert!(!selected.contains("fn point_second"));
-        assert!(selected.contains("table [PointId :: FirstReturn as usize]"));
-        assert!(!selected.contains("table [PointId :: First as usize]"));
     }
 
     /// The census: how many points have an API record, and why the others refuse.
@@ -1357,11 +1120,9 @@ mod tests {
             "mod_api::ConnectionKind",
             "mod_api::item::containers::ModRevision",
             "mod_api::client::camera::UseItem",
-            "mod_api::wire::Id",
         ] {
             assert!(wire.contains(name), "supported public path {name} was lost");
         }
-        assert!(!wire.contains("mod_api::wire::wire_slots::Id"));
     }
 
     fn point(attribute: &str, method: &str) -> Result<point_shape::Shape, String> {

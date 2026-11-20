@@ -135,10 +135,6 @@ pub trait CraftingRecipeKind: Send + Sync + 'static {
 #[doc(hidden)]
 pub trait CraftingRecipeHandler: Send + Sync {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
-    #[doc(hidden)]
-    fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        sunrise_mod_marks::crafting_recipe_handler::<Self>();
-    }
     /// Decode one recipe object.
     fn decode(&self, json: &str) -> Result<CraftingRecipeValue, String>;
     /// Write one decoded value for sync.
@@ -165,7 +161,6 @@ pub trait CraftingRecipeHandler: Send + Sync {
         grid: CraftingGrid,
     ) -> Option<Vec<Option<crate::ItemStack>>>;
 }
-crate::wire::wire_handlers::handler!(dyn CraftingRecipeHandler, "CraftingRecipeHandler");
 struct TypedKind<K: CraftingRecipeKind> {
     kind: K,
     codec: CraftingRecipeCodec<K::Value>,

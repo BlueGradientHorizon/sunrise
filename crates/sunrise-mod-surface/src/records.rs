@@ -112,9 +112,6 @@ pub struct Hook {
     pub engine: HookEngine,
     #[serde(default, skip_serializing_if = "Counterparts::is_empty")]
     pub counterparts: Counterparts,
-    /// The name a built wasm mod exports a listener as ([`crate::call`]); outside the hash.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub call: Option<String>,
     #[serde(flatten)]
     pub contract: HookContract,
     /// Its arguments and output as member records, `hook:<name>.<argument>`, in declaration
@@ -219,8 +216,6 @@ pub struct MethodContract {
     pub signature: String,
     /// It has no default body.
     pub required: bool,
-    /// A WebAssembly mod can call or implement it.
-    pub wasm: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub refs: Vec<String>,
 }
@@ -232,13 +227,6 @@ pub struct Method {
     pub hash: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub doc: String,
-    /// Why it is not on wasm, when it is not; documentation, outside the hash.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub wasm_reason: Option<String>,
-    /// The name a built wasm mod imports or exports this method as ([`crate::call`]), when it
-    /// crosses; outside the hash. Two builds' exports say offline whether a built mod loads.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub call: Option<String>,
     #[serde(flatten)]
     pub contract: MethodContract,
 }
@@ -251,8 +239,6 @@ pub struct FunctionContract {
     /// An inherent item's `impl` generics and where clause (`<T: Clone> where T: Send`).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub impl_generics: String,
-    /// A WebAssembly mod can call it.
-    pub wasm: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub refs: Vec<String>,
 }
@@ -265,8 +251,6 @@ pub struct Function {
     pub hash: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub doc: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub wasm_reason: Option<String>,
     /// A free function's public paths; outside the hash.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub paths: Vec<String>,

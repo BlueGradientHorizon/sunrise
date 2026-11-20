@@ -4,10 +4,6 @@ use super::*;
 /// `|host, at| Some(Box::new(Tank(at)))` is one.
 pub trait BlockCapabilityProvider<T: ?Sized>: Send + Sync {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
-    #[doc(hidden)]
-    fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        sunrise_mod_marks::block_capability_provider::<Self>();
-    }
     /// The handler for the block entity at `at`, or none.
     fn provide(&self, host: &mut dyn ServerHost, at: BlockSide) -> Option<Box<T>>;
 }

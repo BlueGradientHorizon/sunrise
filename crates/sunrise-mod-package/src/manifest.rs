@@ -1625,20 +1625,6 @@ capabilities = ["registries"]
     }
 
     #[test]
-    fn removed_manifest_keys_use_the_ordinary_unknown_field_error() {
-        for (key, field) in [
-            ("wasm", "[wasm]\n"),
-            ("wasm_memory_mib", "wasm_memory_mib=256\n"),
-        ] {
-            let error = Manifest::parse(&format!("{EXAMPLE}{field}")).unwrap_err();
-            assert!(
-                error.starts_with(&format!("{MANIFEST}: unknown field `{key}`")),
-                "{error}"
-            );
-        }
-    }
-
-    #[test]
     fn internal_kinds_distinguish_members_and_round_trip() {
         let base = format!(
             "{EXAMPLE}[native]\ngame='26.3'\nsunrise='{}'\nmixins='{}'\n",

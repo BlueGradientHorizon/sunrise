@@ -12,10 +12,6 @@ use std::sync::Arc;
 /// directly. A wasm mod holds the game's source by id and each call crosses to the game.
 pub trait RuntimeFileSource: Send + Sync + 'static {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
-    #[doc(hidden)]
-    fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        sunrise_mod_marks::runtime_file_source::<Self>();
-    }
     /// The names of the files the manifest lists, in order.
     fn names(&self) -> Vec<String>;
     /// The checked bytes of `name`; `None` for a name the manifest does not list.
@@ -24,7 +20,6 @@ pub trait RuntimeFileSource: Send + Sync + 'static {
     /// path (never through UTF-8 text).
     fn path(&self, name: &str) -> Option<crate::InstanceDirectory>;
 }
-crate::wire::wire_handlers::handler!(dyn RuntimeFileSource, "RuntimeFileSource");
 
 /// A package's runtime files were asked for and are not there.
 #[derive(Clone, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]

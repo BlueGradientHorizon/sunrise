@@ -819,8 +819,6 @@ fn describe(id: &str, old: &Value, new: &Value) -> Vec<(String, Class)> {
                     lines.push((format!("{word}s reordered"), Breaking));
                 }
             }
-            ("wasm", _, Value::Bool(true)) => lines.push(("now on wasm".into(), Additive)),
-            ("wasm", _, Value::Bool(false)) => lines.push(("no longer on wasm".into(), Breaking)),
             ("required", _, Value::Bool(false)) => {
                 lines.push(("now has a default".into(), Additive))
             }

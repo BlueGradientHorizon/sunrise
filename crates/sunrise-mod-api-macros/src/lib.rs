@@ -16,7 +16,7 @@ pub fn derive_payload_codec(input: TokenStream) -> TokenStream {
         .into()
 }
 
-/// Derive the shared native/wasm owned-value encoding.
+/// Derive the canonical owned-value encoding.
 ///
 /// `#[wire(crate = ::mod_vocab::wire)]` selects the contract module for
 /// lower-layer crates. The default is `::mod_api::wire`.
@@ -184,26 +184,6 @@ fn expand(mut implementation: ItemImpl, export: bool) -> TokenStream {
     let id = format_ident!("HookId");
     let ids = format_ident!("hook_ids");
     let subscribed_name = format_ident!("{}", part.unwrap_or("subscribed"));
-    // The impl is a use of every export it overrides, and of the one that lists them: each is
-    // marked by a no-op import named for it, kept exactly while this impl is linked. A method
-    // the API keeps off wasm has no marker.
-    let owner = proc_macro2::Literal::string(&name.to_string());
-    // A block part's plain `explosion_resistance_is_pure` is asked, across the boundary, of every
-    // part subscribed to `explosion_resistance` (its default included), so that listener marks it:
-    // once per declaration, each under its own cfgs, since cfg alternatives leave at most one.
-    let purity = methods
-        .iter()
-        .zip(&cfgs)
-        .filter(|(method, _)| name == "BlockPart" && *method == "explosion_resistance")
-        .map(|(_, cfgs)| {
-            quote! { #(#cfgs)* mod_api::__sunrise_mark!(#owner explosion_resistance_is_pure); }
-        });
-    let marks = {
-        let marked = methods.iter().zip(&cfgs).map(|(method, cfgs)| {
-            quote! { #(#cfgs)* mod_api::__sunrise_mark!(#owner #method); }
-        });
-        quote! { #(#marked)* #(#purity)* mod_api::__sunrise_mark!(#owner #subscribed_name); }
-    };
     // Entity parts (#1077) carry plain methods beside their scoped hooks
     // (#792): the goal, behavior and spawn-size registrars are not hooks, so
     // their names subscribe nothing.
@@ -233,32 +213,14 @@ fn expand(mut implementation: ItemImpl, export: bool) -> TokenStream {
             .collect();
         implementation.items.push(syn::parse_quote! {
             fn #subscribed_name(&self) -> &'static [Option<mod_api::#id>] {
-                #marks
                 &[#(#(#hooked_cfgs)* mod_api::#ids::#hooked),*]
             }
         });
-        // The plain methods subscribe nothing, but their override is capability
-        // metadata (#792 stage 4b): the wasm side reads it where the real part
-        // lives, and a mod overriding one is refused by name at load.
-        let native: Vec<_> = methods
-            .iter()
-            .zip(&plain)
-            .filter(|(_, plain)| **plain)
-            .map(|(method, _)| proc_macro2::Literal::string(&method.to_string()))
-            .collect();
-        implementation.items.push(syn::parse_quote! {
-            fn entity_native_only(&self) -> &'static [&'static str] {
-                &[#(#native),*]
-            }
-        });
-        // A part impl carries no `#[listener]` (refused above) and no guest
-        // export (Hooks only), so the shared tail has nothing left to add.
         return quote!(#implementation).into();
     }
     let subscribed = {
         syn::parse_quote! {
             fn #subscribed_name(&self) -> &'static [Option<mod_api::#id>] {
-                #marks
                 &[#(#(#cfgs)* mod_api::#ids::#methods),*]
             }
         }
@@ -285,31 +247,7 @@ fn expand(mut implementation: ItemImpl, export: bool) -> TokenStream {
     }
     let export = if export && part.is_none() {
         let ty = &implementation.self_ty;
-        let registrations: proc_macro2::TokenStream =
-            match std::env::var("SUNRISE_GUEST_REGISTRATIONS") {
-                Ok(source) => match source.parse::<proc_macro2::TokenStream>() {
-                    Ok(tokens) => tokens,
-                    Err(error) => {
-                        return syn::Error::new_spanned(
-                            &implementation,
-                            format!("guest registrations: {error}"),
-                        )
-                        .to_compile_error()
-                        .into();
-                    }
-                },
-                Err(_) => quote!(),
-            };
-        quote! {
-            pub fn hooks() -> Box<dyn mod_api::Hooks> { Box::new(<#ty as Default>::default()) }
-            /// The mod's hooks for the guest runtime in `mod_api::wire::guest`, when built to wasm.
-            #[cfg(target_arch = "wasm32")]
-            #[unsafe(no_mangle)]
-            fn __sunrise_mod_hooks() -> Box<dyn mod_api::Hooks> {
-                #registrations
-                hooks()
-            }
-        }
+        quote! { pub fn hooks() -> Box<dyn mod_api::Hooks> { Box::new(<#ty as Default>::default()) } }
     } else {
         quote!()
     };

@@ -118,7 +118,6 @@ impl Game<'_> {
             previous: hook_cell.replace(Some(hook)),
             cell: hook_cell.clone(),
         };
-        let failures = self.wasm_dispatch_failures.clone();
         let run = catch_unwind(AssertUnwindSafe(|| {
             PendingChildren::run_scoped(
                 &arena,
@@ -129,13 +128,8 @@ impl Game<'_> {
                     let editor = Children::new(&*self, action, breeding);
                     // The baseline: listeners entered from here on end the previous lease.
                     super::native_pending_children::sync_listener(&arena, &hook_cell);
-                    let failed_before = failures.get();
                     let mut cancel = false;
                     fire(self, &editor, &mut cancel);
-                    // A trapped wasm listener leaves its edits behind: none of them may commit.
-                    if failures.get() != failed_before {
-                        return Decision::Failed;
-                    }
                     // A listener's Host writes ran against the live world: the frozen list is
                     // only valid if what it was made from still stands.
                     if self.lend_epoch() != epoch

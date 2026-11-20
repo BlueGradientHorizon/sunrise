@@ -106,10 +106,6 @@ impl EquipmentLayer {
 /// the piece, draws it with vanilla behaviour, and disables the provider until reload.
 pub trait ClientItemExtensions: Send + Sync + 'static {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
-    #[doc(hidden)]
-    fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        sunrise_mod_marks::client_item_extensions::<Self>();
-    }
     /// Choose the tree for one material layer, after its nonzero tint and texture resolve.
     /// Humanoid pose and slot visibility are copied onto the registered tree.
     /// This per-layer selection deliberately differs from NeoForge's one model per piece:
@@ -181,7 +177,6 @@ pub trait ClientItemExtensions: Send + Sync + 'static {
         default
     }
 }
-crate::wire::wire_handlers::handler!(dyn ClientItemExtensions, "ClientItemExtensions");
 
 /// Client resource-load registration. Models, textures and item providers refresh together.
 /// No registration carries over to the next resource load.

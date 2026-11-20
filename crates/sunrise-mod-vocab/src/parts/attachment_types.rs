@@ -38,7 +38,6 @@ pub fn validate_attachment_use(
             crate::dispatch_scope::backend().ok_or(crate::AttachmentError::MissingHolder)?;
         (backend.validate_attachment_use)(namespace, name, sync)
     }
-    #[cfg(not(target_arch = "wasm32"))]
     {
         // Engine-owned storage work has no package identity. Every mod dispatch
         // enters its owning package scope before reaching this boundary.

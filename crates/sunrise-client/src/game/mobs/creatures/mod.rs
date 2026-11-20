@@ -8904,8 +8904,6 @@ pub(in crate::game) fn local_difficulty_in(
 mod leash_without_item_criterion_tests;
 #[cfg(test)]
 mod pending_birth_tests;
-#[cfg(test)]
-mod pending_birth_wasm_tests;
 
 #[cfg(test)]
 #[path = "../../entities/tests/leash_without_item_postbaseline_controls.rs"]

@@ -12,7 +12,6 @@ fn method(id: &str, signature: &str, refs: &[&str]) -> Method {
         MethodContract {
             signature: signature.into(),
             required: false,
-            wasm: true,
             refs: strings(refs),
         },
     )
@@ -25,7 +24,6 @@ fn handle(id: &str, signature: &str, refs: &[&str]) -> Function {
         FunctionContract {
             signature: signature.into(),
             impl_generics: String::new(),
-            wasm: true,
             refs: strings(refs),
         },
     )

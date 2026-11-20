@@ -694,62 +694,6 @@ fn block_use_registry_guard_final_hand_matches_original() {
     });
 }
 
-fn block_use_wasm_replace(
-    host: mod_api::HostSide,
-    event: &mut mod_api::RightClickBlockEvent<'_>,
-    same: usize,
-    continue_use: bool,
-) -> mod_api::Flow {
-    use mod_api::{Hooks as _, wire::Writer};
-    let mod_api::HostSide::Server(host) = host else {
-        return mod_api::Flow::Continue;
-    };
-    let living = host
-        .living(host.player(event.click.player).unwrap().entity())
-        .unwrap();
-    let mut input = Writer::new();
-    input.put(&living);
-    input.put(&Hand::Main);
-    let item = if same == 0 {
-        "minecraft:diamond"
-    } else {
-        "minecraft:glowstone"
-    };
-    input.put(&Some(ItemStack::new(item, 19).try_into_api().unwrap()));
-    let mut output = Writer::new();
-    output.put(&if continue_use {
-        mod_api::Flow::Continue
-    } else {
-        mod_api::Flow::Cancel
-    });
-    output.put(&!continue_use);
-    output.put(&mod_api::TriState::Default);
-    output.put(&mod_api::TriState::Default);
-    output.put(&mod_api::InteractionResult::Consume);
-    let escape = |bytes: &[u8]| {
-        bytes
-            .iter()
-            .map(|b| format!("\\{b:02x}"))
-            .collect::<String>()
-    };
-    let setter =
-        sunrise_mod_wasm::fixture::import_id("BackendMut", "living_set_hand_item").unwrap();
-    let bytes = wat::parse_str(format!(r#"(module
-      (@custom "dylink.0" "\01\04\00\00\00\00")
-      (import "env" "memory" (memory 1))
-      (import "env" "__indirect_function_table" (table 1 funcref))
-      {imports}
-      (data (i32.const 4096) "{input}")
-      (data (i32.const 8192) "{output}")
-      (func (export "sunrise_in") (param i32) (result i32) i32.const 512)
-      (func (export "sunrise_hook") (param i64) (result i64)
-        i32.const {setter} i32.const 4096 i32.const {input_len} i32.const 16384 i32.const 4096 call $host drop
-        i64.const 8192 i64.const 32 i64.shl i64.const {output_len} i64.or)
-    )"#, imports=sunrise_mod_wasm::fixture::wat_imports(), input=escape(input.bytes()), output=escape(output.bytes()), input_len=input.bytes().len(), output_len=output.bytes().len())).unwrap();
-    let module = sunrise_mod_wasm::fixture::module(&bytes).unwrap();
-    module.right_click_block(mod_api::HostSide::Server(host), event)
-}
-
 fn run_block_use_regression(g: &mut Game<'_>, packet: bool, stack: ItemStack) {
     let hit = Hit {
         pos: [3, 64, 4],

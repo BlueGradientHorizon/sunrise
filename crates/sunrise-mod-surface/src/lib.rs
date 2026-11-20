@@ -154,11 +154,23 @@ impl std::fmt::Display for ReadError {
 
 impl std::error::Error for ReadError {}
 
+/// First 128 bits of SHA-256, formatted as 32 lowercase hex digits.
+pub fn digest(text: &str) -> String {
+    use sha2::{Digest, Sha256};
+    use std::fmt::Write as _;
+    let hash = Sha256::digest(text.as_bytes());
+    let mut out = String::with_capacity(32);
+    for byte in &hash[..16] {
+        let _ = write!(out, "{byte:02x}");
+    }
+    out
+}
+
 /// The contract hash of a record: the first 128 bits, as 32 lowercase hex digits, of the SHA-256
 /// of the contract's compact JSON (fields in declaration order, absent optional fields left out).
 pub fn contract_hash<T: Serialize>(contract: &T) -> String {
     let text = serde_json::to_string(contract).expect("contracts serialize");
-    mod_call::digest(&text)
+    digest(&text)
 }
 
 /// The identifier a mod writes for an id: the last path segment, or the field or variant name.
@@ -196,8 +208,8 @@ macro_rules! sealed {
 }
 
 sealed!(
-    Method(MethodContract) { wasm_reason, call },
-    Function(FunctionContract) { wasm_reason, paths },
+    Method(MethodContract) {},
+    Function(FunctionContract) { paths },
     Macro(MacroContract) { paths },
     Field(FieldContract) {},
     Variant(VariantContract) {},
@@ -273,7 +285,6 @@ impl Hook {
             doc: doc.into(),
             engine,
             counterparts,
-            call: None,
             contract,
             fields,
         }
@@ -307,7 +318,7 @@ pub fn fields_hash_of<'a>(fields: impl IntoIterator<Item = (&'a str, &'a str)>) 
         .map(|(name, ty)| format!("{name}: {ty}\n"))
         .collect();
     lines.sort();
-    mod_call::digest(&lines.concat())
+    digest(&lines.concat())
 }
 
 impl Trait {
@@ -586,7 +597,7 @@ impl Surface {
             text.push_str(hash);
             text.push('\n');
         }
-        mod_call::digest(&text)
+        digest(&text)
     }
 
     /// The identifiers a mod's source may contain for each id: its [`leaf`], and a capability

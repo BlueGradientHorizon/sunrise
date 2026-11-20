@@ -112,10 +112,6 @@ impl LootModifierSettings {
 /// file is diagnosed and skipped; it does not suppress other valid instances.
 pub trait GlobalLootModifierSerializer: Send + Sync + 'static {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
-    #[doc(hidden)]
-    fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        sunrise_mod_marks::global_loot_modifier_serializer::<Self>();
-    }
     /// Prepare one instance for this owning data load. The instance retains its
     /// implementation and code store while an active roll uses its generation.
     fn decode(
@@ -125,20 +121,11 @@ pub trait GlobalLootModifierSerializer: Send + Sync + 'static {
     ) -> Result<Arc<dyn GlobalLootModifier>, LootModifierError>;
 }
 
-crate::wire::wire_handlers::handler!(
-    dyn GlobalLootModifierSerializer,
-    "GlobalLootModifierSerializer"
-);
-
 /// A prepared instance (`IGlobalLootModifier`), enabled by a data file, not a hook
 /// listener. Priority and condition are captured once when decoding completes;
 /// a metadata failure, including a refused wasm call, refuses that preparation.
 pub trait GlobalLootModifier: Send + Sync + 'static {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
-    #[doc(hidden)]
-    fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        sunrise_mod_marks::global_loot_modifier::<Self>();
-    }
     /// Higher priorities run first; the default is `IGlobalLootModifier.DEFAULT_PRIORITY`.
     fn priority(&self) -> Result<i32, LootModifierError> {
         Ok(DEFAULT_PRIORITY)
@@ -161,8 +148,6 @@ pub trait GlobalLootModifier: Send + Sync + 'static {
         generated: Vec<LootStack>,
     ) -> Result<Vec<LootStack>, LootModifierError>;
 }
-
-crate::wire::wire_handlers::handler!(dyn GlobalLootModifier, "GlobalLootModifier");
 
 /// A roll-scoped resource, identical for native and wasm instances. It lends the
 /// selected roll random, not a level random or an independently seeded stream.

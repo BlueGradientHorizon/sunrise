@@ -355,12 +355,3 @@ mod tests;
 #[cfg(test)]
 #[path = "payload_transport/typed_tests.rs"]
 mod typed_tests;
-#[cfg(test)]
-#[path = "payload_transport/typed_wasm_tests.rs"]
-mod typed_wasm_tests;
-#[cfg(test)]
-#[path = "payload_transport/wasm_config_tests.rs"]
-mod wasm_config_tests;
-#[cfg(test)]
-#[path = "payload_transport/wasm_tests.rs"]
-mod wasm_tests;

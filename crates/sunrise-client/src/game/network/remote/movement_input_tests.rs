@@ -202,36 +202,6 @@ fn native_movement_input_keys_axes_and_sprint() {
 }
 
 #[test]
-#[ignore = "needs SUNRISE_TEST_RESOURCES, SUNRISE_WASM_FIXTURE and SUNRISE_WASM_STD"]
-fn wasm_movement_input_keys_axes_and_sprint() {
-    sunrise_guest_stack::run_on_guest_stack(|| {
-        use sunrise_mod_package::manifest::Package;
-        use sunrise_mod_wasm::{WasmPackage, load};
-        let path = std::path::PathBuf::from(std::env::var_os("SUNRISE_WASM_FIXTURE").unwrap());
-        let manifest = Package::read(&path).unwrap().manifest;
-        let info = mod_api::PackageInfo::new(
-            manifest.id.clone(),
-            manifest.version.to_string(),
-            mod_api::PackageKind::Code,
-            mod_api::Side::Both,
-            vec![manifest.id.clone()],
-            vec![],
-        );
-        let loaded = load(
-            &std::fs::read(std::env::var_os("SUNRISE_WASM_STD").unwrap()).unwrap(),
-            vec![WasmPackage {
-                manifest,
-                module: Package::read_wasm(&path).unwrap(),
-            }],
-        );
-        assert!(loaded.refused.is_empty(), "{:?}", loaded.refused);
-        assert_eq!(loaded.mods.len(), 1);
-        loaded.initialize(&[info]).unwrap();
-        matrix(loaded.mods.into());
-    });
-}
-
-#[test]
 #[ignore = "daily"]
 fn movement_input_without_listeners_keeps_vanilla_latch_double_tap_and_controller() {
     mod_platform::testing::with_mods(Vec::new().into(), || {

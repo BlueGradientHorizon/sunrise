@@ -56,24 +56,15 @@ mod tests {
         }
     }
 
-    /// The codec rule follows how the game loaded the mod, not what the mod says of itself:
-    /// the same registration is accepted from a native entry and refused from a wasm one.
+    /// Unsaved Part state does not require a codec.
     #[test]
-    fn a_wasm_mods_codec_less_state_is_refused_by_how_the_game_loaded_it() {
+    fn codec_less_part_state_is_accepted() {
         with_porter(|| {
             let native = [ModEntry::new("porter", Box::new(DeclaresSession))];
             assert!(
                 super::super::register_all(&native, |_| false)
                     .refused
                     .is_empty()
-            );
-            let wasm = [ModEntry::wasm("porter", Box::new(DeclaresSession))];
-            let refused = super::super::register_all(&wasm, |_| false).refused;
-            assert_eq!(refused.len(), 1, "{refused:?}");
-            assert!(
-                refused[0].contains("porter:session") && refused[0].contains("needs a codec"),
-                "{}",
-                refused[0]
             );
         });
     }

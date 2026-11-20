@@ -175,24 +175,11 @@ pub use job::ChunkDiskJob;
 #[path = "chunk_disk/tests.rs"]
 mod tests;
 
-/// Fence native unwinds and synchronous guest failures before publication.
+/// Fence listener unwinds before publication.
 pub(crate) fn invoke(mod_id: &str, call: impl FnOnce()) -> Result<(), ChunkDiskFailure> {
-    let failures = sunrise_mod_runtime::dispatch_failures::dispatch_failure_counter();
-    let before = failures.get();
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(call));
-    let reason = if result.is_err() {
-        Some("native listener unwound")
-    } else if before != failures.get() {
-        Some("wasm listener trapped or its Wire response was refused")
-    } else {
-        None
-    };
-    match reason {
-        None => Ok(()),
-        Some(reason) => Err(ChunkDiskFailure {
-            mod_id: mod_id.into(),
-            key: String::new(),
-            reason: reason.into(),
-        }),
-    }
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(call)).map_err(|_| ChunkDiskFailure {
+        mod_id: mod_id.into(),
+        key: String::new(),
+        reason: "native listener unwound".into(),
+    })
 }

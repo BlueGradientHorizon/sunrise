@@ -134,10 +134,6 @@ impl StoragePage {
 /// as every capability handler is. Amounts are 64-bit: a million items is one call.
 pub trait ItemStorage {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
-    #[doc(hidden)]
-    fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        sunrise_mod_marks::item_storage::<Self>();
-    }
     /// How much of `resource` it holds.
     fn amount(
         &self,

@@ -202,10 +202,6 @@ impl std::fmt::Display for SpecFault {
 /// method works from any thread; `push` and the controls never wait on the mixer.
 pub trait AudioStreamSource: Send + Sync + 'static {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
-    #[doc(hidden)]
-    fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        sunrise_mod_marks::audio_stream_source::<Self>();
-    }
     /// Queues interleaved `samples`: whole frames only (a trailing odd sample of a stereo stream
     /// is not taken). Returns the frames accepted, which falls short of the frames offered when
     /// the ring is full, or when another thread is pushing to the same stream at that moment
@@ -227,7 +223,6 @@ pub trait AudioStreamSource: Send + Sync + 'static {
     /// dropped. Dropping the last handle does the same.
     fn stop(&self);
 }
-crate::wire::wire_handlers::handler!(dyn AudioStreamSource, "AudioStreamSource");
 
 /// A stream a mod opened with `open_audio_stream`: push PCM and the game plays it.
 ///
@@ -239,7 +234,6 @@ crate::wire::wire_handlers::handler!(dyn AudioStreamSource, "AudioStreamSource")
 ///
 /// [`stop`]: AudioStreamRef::stop
 // exhaustive: its field is private, so mods cannot build or destructure it
-#[derive(sunrise_mod_api_macros::Wire)]
 pub struct AudioStreamRef {
     source: Arc<dyn AudioStreamSource>,
 }

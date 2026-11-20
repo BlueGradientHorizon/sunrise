@@ -1267,7 +1267,6 @@ sunrise-client game::native_entity_refs::tests::a_client_lists_another_player_in
 sunrise-client game::native_entity_refs::tests::a_client_refuses_a_box_with_a_bound_that_is_not_finite_and_swaps_an_inverted_one lib daily resources
 sunrise-client game::native_entity_refs::tests::a_fresh_case_whose_name_matches_no_test_fails lib daily child-process
 sunrise-client game::native_entity_refs::tests::a_level_bone_meals_a_block_and_sets_a_biome_cell lib daily resources
-sunrise-client game::native_entity_refs::tests::a_level_can_survive_asks_the_blocks_own_rule lib daily resources
 sunrise-client game::native_entity_refs::tests::a_level_handle_reads_redstone_as_signal_getter_does lib daily resources
 sunrise-client game::native_entity_refs::tests::a_level_handle_reads_redstone_through_should_check_weak_power lib daily resources
 sunrise-client game::native_entity_refs::tests::a_level_handle_updates_neighbours_as_vanillas_writes_do lib daily resources

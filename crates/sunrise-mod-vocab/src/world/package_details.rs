@@ -8,8 +8,6 @@ pub enum PackageRuntime {
     /// Native code, built against the game build it was made for and loaded beside it, not
     /// compiled into the game.
     Native,
-    /// A `mod.wasm` run by the wasm runtime.
-    Wasm,
 }
 
 /// Dispatch ordering requested by a manifest dependency.

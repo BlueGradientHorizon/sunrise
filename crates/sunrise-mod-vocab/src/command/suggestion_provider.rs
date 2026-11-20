@@ -102,15 +102,9 @@ impl SuggestionReply {
 /// request: implement it to be shared, without mutable state.
 pub trait SuggestionProvider: Send + Sync + 'static {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
-    #[doc(hidden)]
-    fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        sunrise_mod_marks::suggestion_provider::<Self>();
-    }
     /// The candidates for `request`: the text typed, the arguments before it and the sender.
     fn suggest(&self, request: &SuggestionRequest) -> SuggestionReply;
 }
-
-crate::wire::wire_handlers::handler!(dyn SuggestionProvider, "SuggestionProvider");
 
 #[cfg(test)]
 mod tests {

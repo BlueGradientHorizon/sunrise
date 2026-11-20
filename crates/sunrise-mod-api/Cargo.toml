@@ -29,10 +29,7 @@ sunrise-mod-vocab = { path = "../sunrise-mod-vocab", features = ["testing"] }
 [features]
 # Scoped mod installation for other crates' tests (`mod_api::testing`).
 testing = ["sunrise-mod-vocab/testing"]
-# The mod side of the wasm boundary on a native build, for the boundary's tests.
-wasm-guest = []
 # Test-only mixed hook, absent from normal API and wire layouts.
-mixed-output-fixture = ["sunrise-mod-api-gen/mixed-output-fixture", "sunrise-mod-vocab/mixed-output-fixture"]
 
 [lints]
 workspace = true

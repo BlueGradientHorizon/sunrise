@@ -10,10 +10,6 @@ use std::sync::Arc;
 /// for that call only: a read after it returns finds nothing. The same on native and wasm.
 pub trait ResourceReader: Send + Sync + 'static {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
-    #[doc(hidden)]
-    fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        sunrise_mod_marks::resource_reader::<Self>();
-    }
     /// The winning copy of `path`, the topmost pack's (`ResourceManager.getResource`); `None`
     /// where no pack provides it.
     fn read(&self, path: &str) -> Option<Vec<u8>>;
@@ -24,7 +20,6 @@ pub trait ResourceReader: Send + Sync + 'static {
     /// (`ResourceManager.listResources`).
     fn list(&self, prefix: &str) -> Vec<String>;
 }
-crate::wire::wire_handlers::handler!(dyn ResourceReader, "ResourceReader");
 
 /// One step a mod's sprite source takes on the atlas it is listed in, as vanilla's
 /// `SpriteSource.Output` takes them. `Hooks::sprite_source` pushes them in order, and they apply

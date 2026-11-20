@@ -40,10 +40,6 @@ pub enum LayerTarget {
 /// `draw` give. A layer that needs more reads it in a hook and keeps what it read.
 pub trait EntityRenderLayer: Send + Sync + 'static {
     // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
-    #[doc(hidden)]
-    fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        sunrise_mod_marks::entity_render_layer::<Self>();
-    }
     /// `RenderLayer.submit`: draw over `entity` with `draw`'s helpers (`quad`, `cube`, `block`,
     /// `item`, `model_part`), after its model and the layers before this one. The pose stack starts
     /// in the entity's frame: at its feet, turned with its body, +z the way it faces, +x its left,
@@ -64,8 +60,6 @@ pub trait EntityRenderLayer: Send + Sync + 'static {
         draw: &mut dyn BlockEntityDrawContext,
     ) -> Result<(), String>;
 }
-
-crate::wire::wire_handlers::handler!(dyn EntityRenderLayer, "EntityRenderLayer");
 
 /// The layer registry `register_entity_layers` hands out: NeoForge's
 /// `EntityRenderersEvent.AddLayers`, with what it tells of the renderers this load built.

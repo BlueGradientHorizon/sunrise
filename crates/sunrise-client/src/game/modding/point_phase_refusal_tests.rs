@@ -1,10 +1,8 @@
 //! An injection point's table fired outside the world (`Table::fire_api`), with the Game as its host.
 //!
 //! A plain build compiles no point sites (`mod_points::STAGED`), so the game's own points refuse every
-//! listener; this fires a table of its own, sited, with the call a generated dispatcher makes for a forwarded listener.
-use mod_api::__private::points::{
-    ApiKind, Forward, Place, PointHost, SlotListener, Table, register, seal,
-};
+//! listener; this fires a table of its own, sited, with the call a generated dispatcher makes for a native listener.
+use mod_api::__private::points::{Place, SlotListener, Table, register, seal};
 use mod_api::{Hooks, ModEntry};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
@@ -14,30 +12,21 @@ static CALLS: AtomicU32 = AtomicU32::new(0);
 static READS_DONE: AtomicU32 = AtomicU32::new(0);
 
 /// A listener that reads the world through the Host, as a mod's listener may.
-struct Reads;
-impl Forward for Reads {
-    fn forward(&self, _: u64, host: PointHost<'_>, _: &mut dyn mod_api::wire::Record) {
-        CALLS.fetch_add(1, Ordering::Relaxed);
-        let PointHost::Server(host) = host else {
-            unreachable!("the site passes the server host")
-        };
-        let _ = host.level("minecraft:overworld");
-        READS_DONE.fetch_add(1, Ordering::Relaxed);
-    }
+fn reads(host: &mut dyn mod_api::ServerHost) {
+    CALLS.fetch_add(1, Ordering::Relaxed);
+    let _ = host.level("minecraft:overworld");
+    READS_DONE.fetch_add(1, Ordering::Relaxed);
 }
-static READS: Reads = Reads;
 
 /// What a generated dispatcher does at the point's site.
+#[allow(unsafe_code)]
 fn fire(game: &mut crate::game::Game<'_>) {
-    TABLE.fire_api(0, &mut |kind| {
-        let ApiKind::Forwarded(endpoint, id) = kind else {
-            unreachable!("only a forwarded listener is registered")
+    TABLE.fire_api(0, &mut |function| {
+        // SAFETY: the site's only registered listener has this exact signature.
+        let function = unsafe {
+            std::mem::transmute::<*const (), fn(&mut dyn mod_api::ServerHost)>(function.as_ptr())
         };
-        endpoint.forward(
-            id,
-            PointHost::Server(&mut *game),
-            &mut mod_api::wire::Fields(()),
-        );
+        function(game);
     });
 }
 
@@ -49,6 +38,7 @@ impl Hooks for Probe {}
 /// listener's world read skips that listener for the call and is no panic; in World it runs through.
 #[test]
 #[ignore = "daily"]
+#[allow(unsafe_code)]
 fn a_point_outside_the_world_skips_the_listener_not_a_panic() {
     use mod_api::__private::{ModPhase, PhaseOwner};
     if super::native_entity_refs::tests::run_fresh_cases(
@@ -60,7 +50,9 @@ fn a_point_outside_the_world_skips_the_listener_not_a_panic() {
     }
     let mods = vec![ModEntry::new("pointprobe", Box::new(Probe))].into();
     mod_platform::testing::with_mods(mods, || {
-        let listener = SlotListener::forwarded("pointprobe", Place::new(&TABLE, 0), &READS, 0);
+        // SAFETY: `fire` uses the exact type of `reads`.
+        let listener =
+            unsafe { SlotListener::api("pointprobe", Place::new(&TABLE, 0), reads as *const ()) };
         register(&listener).unwrap();
         seal();
         super::native_entity_refs::tests::with_game(|game| {

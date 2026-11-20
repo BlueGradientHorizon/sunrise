@@ -64,7 +64,6 @@ members = [
     "crates/sunrise-mod-api-macros",
     "crates/sunrise-mod-point-shape",
     "crates/sunrise-mod-source",
-    "crates/sunrise-mod-call",
     "crates/sunrise-mod-surface",
     "crates/sunrise-mod-point-emit",
     "crates/sunrise-native-build",

@@ -60,8 +60,6 @@ pub trait FeatureType: Send + Sync + 'static {
     ) -> Result<bool, FeatureError>;
 }
 
-crate::wire::wire_handlers::handler!(dyn FeatureType, "FeatureType");
-
 /// What a feature's [`place`](FeatureType::place) sees: vanilla's `WorldGenLevel` around the
 /// origin (a decoration region on a worker, or the live level for growth and commands) and the
 /// caller's random. Writes are staged: the context reads them back, and the level sees them, in

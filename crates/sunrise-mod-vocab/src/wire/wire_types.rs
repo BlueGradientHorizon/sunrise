@@ -5,26 +5,6 @@ use crate::{
     EntityTypeKey, FluidKey, IntGameRuleKey, ItemKey, MenuKey, TagKey, UnresolvedFluid,
 };
 
-impl Wire for crate::OwnProvider {
-    layout_fields!("handler" => String, "resource" => u64);
-    const MIN: usize = 12;
-    fn put(&self, out: &mut Writer) {
-        out.put(&self.handler);
-        if let Ok(id) = out.resource(Box::new(self.provider.clone())) {
-            if id == crate::wire::Unsupported::ID {
-                out.refused(&self.handler)
-            }
-            out.put(&id);
-        }
-    }
-    fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
-        Ok(Self {
-            handler: input.take()?,
-            provider: input.take()?,
-        })
-    }
-}
-
 impl Wire for crate::ItemResource {
     layout_fields!("stack" => crate::ItemStack);
     const MIN: usize = crate::ItemStack::MIN;
@@ -69,162 +49,6 @@ impl Wire for crate::FeatureFlags {
     }
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
         Ok(Self::new(input.take::<Vec<String>>()?.into()))
-    }
-}
-
-impl Wire for crate::LoadedMods {
-    const MIN: usize = 0;
-    crate::wire::layout_fields!();
-    fn put(&self, _: &mut Writer) {}
-    fn take(_: &mut Reader<'_>) -> Result<Self, WireError> {
-        Ok(Self::new())
-    }
-}
-impl Wire for crate::RegistrationContext {
-    const MIN: usize = <Option<crate::InstanceDirectory> as Wire>::MIN
-        + <Option<crate::RuntimeEnvironment> as Wire>::MIN
-        + <Option<std::sync::Arc<dyn crate::StartupScreen>> as Wire>::MIN
-        + <Option<std::sync::Arc<dyn crate::RuntimeFileSource>> as Wire>::MIN;
-    crate::wire::layout_fields!(
-        "instance_dir" => Option<crate::InstanceDirectory>,
-        "runtime" => Option<crate::RuntimeEnvironment>,
-        "startup" => Option<std::sync::Arc<dyn crate::StartupScreen>>,
-        "runtime_files" => Option<std::sync::Arc<dyn crate::RuntimeFileSource>>,
-    );
-    fn put(&self, out: &mut Writer) {
-        out.put(&self.instance_dir);
-        out.put(&self.runtime);
-        out.put(&self.startup);
-        // The wasm mod being called gets its own package's files, never another's.
-        out.put(&self.bound_runtime_files());
-    }
-    fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
-        let mut context = Self::new();
-        context.instance_dir = input.take()?;
-        context.runtime = input.take()?;
-        context.startup = input.take()?;
-        context.runtime_files = input.take()?;
-        Ok(context)
-    }
-}
-
-#[cfg(test)]
-mod resource_wire_tests {
-    use super::*;
-    #[test]
-    fn registration_runtime_crosses_wire_without_guest_backend() {
-        for dist in [crate::Dist::Client, crate::Dist::DedicatedServer] {
-            for enabled in [false, true] {
-                let mut native = crate::RegistrationContext::new();
-                native.runtime = Some(crate::RuntimeEnvironment::new(
-                    dist,
-                    "26.3".into(),
-                    "nightly-test".into(),
-                    enabled,
-                ));
-                let mut out = Writer::new();
-                out.put(&native);
-                let guest: crate::RegistrationContext = Reader::new(out.bytes()).take().unwrap();
-                assert_eq!(guest.dist(), dist);
-                assert_eq!(guest.game_version(), "26.3");
-                assert_eq!(guest.sunrise_version(), "nightly-test");
-                assert_eq!(guest.game_tests_enabled(), enabled);
-            }
-        }
-    }
-
-    #[test]
-    fn wire_tokens_and_package_inventory() {
-        let mut out = Writer::new();
-        out.put(&crate::Transaction(7));
-        assert_eq!(
-            out.bytes().len(),
-            8,
-            "a transaction crosses as its frame token"
-        );
-        let mut context = crate::RegistrationContext::new();
-        context.instance_dir = Some(crate::InstanceDirectory::Unix(vec![b'/', 0xff, b'x']));
-        out.put(&context);
-        let mut input = Reader::new(out.bytes());
-        let tx: crate::Transaction = input.take().unwrap();
-        assert_eq!(tx, crate::Transaction(7));
-        crate::world::phase::with_test_packages(&["test_mod"], || {
-            let mods: crate::LoadedMods = input.take().unwrap();
-            let context: crate::RegistrationContext = input.take().unwrap();
-            assert_eq!(mods.ids().collect::<Vec<_>>(), ["test_mod"]);
-            assert_eq!(context.mods().ids().collect::<Vec<_>>(), ["test_mod"]);
-            assert_eq!(
-                context.instance_dir().unwrap(),
-                &crate::InstanceDirectory::Unix(vec![b'/', 0xff, b'x'])
-            );
-        });
-        let package = crate::PackageInfo::new(
-            "test".into(),
-            "2".into(),
-            crate::PackageKind::Content,
-            crate::Side::Both,
-            vec!["test".into()],
-            vec![crate::PackageDependency::new(
-                "other".into(),
-                "^1".into(),
-                crate::DependencyKind::Optional,
-                crate::DependencyOrder::Before,
-                crate::Side::Server,
-                Some("Shared library".into()),
-                Some("https://example.org/library".into()),
-            )],
-        )
-        .with_details(crate::PackageDetails {
-            name: "Test".into(),
-            homepage: Some("https://example.org".into()),
-            runtime: Some(crate::PackageRuntime::Wasm),
-            properties: [("tier".into(), crate::PropertyValue::Integer(3))].into(),
-            ..Default::default()
-        });
-        let mut out = Writer::new();
-        out.put(&package);
-        let decoded: crate::PackageInfo = Reader::new(out.bytes()).take().unwrap();
-        assert_eq!(decoded.id(), "test");
-        assert_eq!(decoded.version(), "2");
-        assert_eq!(decoded.kind(), crate::PackageKind::Content);
-        assert_eq!(decoded.side(), crate::Side::Both);
-        assert!(decoded.depends_on("other"));
-        assert_eq!(decoded.dependencies()[0].version(), "^1");
-        assert_eq!(
-            decoded.dependencies()[0].kind(),
-            crate::DependencyKind::Optional
-        );
-        assert_eq!(
-            decoded.dependencies()[0].order(),
-            crate::DependencyOrder::Before
-        );
-        assert_eq!(decoded.dependencies()[0].side(), crate::Side::Server);
-        assert_eq!(decoded.dependencies()[0].reason(), Some("Shared library"));
-        assert_eq!(
-            decoded.dependencies()[0].url(),
-            Some("https://example.org/library")
-        );
-        assert_eq!(decoded.name(), "Test");
-        assert_eq!(decoded.homepage(), Some("https://example.org"));
-        assert_eq!(decoded.runtime(), Some(crate::PackageRuntime::Wasm));
-        assert_eq!(
-            decoded.property("tier"),
-            Some(&crate::PropertyValue::Integer(3))
-        );
-        assert_eq!(decoded.property("missing"), None);
-        for end in 0..out.bytes().len() {
-            assert!(
-                Reader::new(&out.bytes()[..end])
-                    .take::<crate::PackageInfo>()
-                    .is_err()
-            );
-        }
-        assert!(Reader::new(&[3, 0, 0, 0]).take::<crate::Side>().is_err());
-        assert!(
-            Reader::new(&[2, 0, 0, 0])
-                .take::<crate::PackageKind>()
-                .is_err()
-        );
     }
 }
 
@@ -794,7 +618,6 @@ mod tests {
 
     #[test]
     fn wire_checked_values_and_garbage() {
-        super::layout_tests::install_layout_resources();
         round(crate::ConfigPath::new("example/options.toml").unwrap());
         round(crate::ConfigPath::root());
         round(crate::SpawnerKey::new("example:spawner").unwrap());

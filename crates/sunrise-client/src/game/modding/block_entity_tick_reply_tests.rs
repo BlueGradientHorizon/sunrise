@@ -54,63 +54,6 @@ impl Hooks for Effects {
     }
 }
 
-/// The compiled wasm fixture as one initialized mod entry. `pub(in crate::game)`:
-/// the general entity tick's wasm tests (`game::entities::general::tick_tests`) load it too.
-///
-/// The fixture's points listeners register against the process's points table,
-/// which seals once, so a second load-and-initialize in one process refuses its
-/// replace listener as already owned. The modules therefore load and initialize
-/// once per process and every caller rebuilds its entry from the same module:
-/// the four daily game tests share one process with this.
-pub(in crate::game) fn wasm_mods() -> Vec<mod_api::ModEntry> {
-    use std::sync::OnceLock;
-    static MODULES: OnceLock<Vec<(&'static str, sunrise_mod_wasm::WasmMod)>> = OnceLock::new();
-    let modules = MODULES.get_or_init(|| {
-        use sunrise_mod_package::manifest::Package;
-        use sunrise_mod_wasm::{WasmPackage, load};
-        let path = std::path::PathBuf::from(std::env::var_os("SUNRISE_WASM_FIXTURE").unwrap());
-        let manifest = Package::read(&path).unwrap().manifest;
-        let info = mod_api::PackageInfo::new(
-            manifest.id.clone(),
-            manifest.version.to_string(),
-            mod_api::PackageKind::Code,
-            mod_api::Side::Both,
-            vec![manifest.id.clone()],
-            vec![],
-        );
-        let loaded = load(
-            &std::fs::read(std::env::var_os("SUNRISE_WASM_STD").unwrap()).unwrap(),
-            vec![WasmPackage {
-                manifest,
-                module: Package::read_wasm(&path).unwrap(),
-            }],
-        );
-        assert!(loaded.refused.is_empty(), "{:?}", loaded.refused);
-        assert_eq!(loaded.mods.len(), 1);
-        loaded.initialize(&[info]).unwrap();
-        loaded
-            .manifests
-            .iter()
-            .map(|manifest| {
-                (
-                    &*Box::leak(manifest.id.clone().into_boxed_str()),
-                    loaded.modules()[0].clone(),
-                )
-            })
-            .collect()
-    });
-    modules
-        .iter()
-        .map(|(id, module)| {
-            // A trapping earlier test stopped the shared module's group; the
-            // game keeps it stopped, but the next test re-arms it, as a fresh
-            // process would.
-            module.rearm_after_a_test();
-            mod_api::ModEntry::wasm(id, Box::new(module.clone()))
-        })
-        .collect()
-}
-
 #[test]
 #[ignore = "needs prepared resources and compiled SUNRISE_WASM_FIXTURE/SUNRISE_WASM_STD"]
 fn native_and_compiled_wasm_tick_reply_matrix() {

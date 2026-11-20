@@ -309,7 +309,7 @@ def normal_dependencies(metadata: dict) -> dict[str, list[str]]:
 def sdk_dylibs(metadata: dict) -> set[str]:
     """The names of the API closure's crates split out of the game as libraries of their own: those that stand on
     `SDK_BASE`. A library holds every crate below it that no library it links
-    holds, so a crate beside the base (sunrise-mod-call, with sha2) would hold a second copy of whatever both
+    holds, so another crate beside the base would hold a second copy of whatever both
     use, and rustc refuses to link two. Such a crate stays inside the first library above it."""
     dependencies = normal_dependencies(metadata)
     closure = api_closure(metadata)

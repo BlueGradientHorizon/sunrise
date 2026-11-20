@@ -1787,32 +1787,6 @@ pub(super) mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn a_level_can_survive_asks_the_blocks_own_rule() {
-        use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
-
-        with_game(|game| {
-            game.world
-                .chunks
-                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            let registry = game.pack.assets.registry;
-            let grass = registry.default_state("minecraft:grass_block").unwrap();
-            let stone = registry.default_state("minecraft:stone").unwrap();
-            let sapling = registry.default_state("minecraft:oak_sapling").unwrap();
-            game.world.set(0, 64, 0, grass).unwrap();
-            assert!(game.level_can_survive([0, 65, 0], sapling));
-            game.world.set(0, 64, 0, stone).unwrap();
-            assert!(!game.level_can_survive([0, 65, 0], sapling));
-            assert!(
-                !game
-                    .level_can_survive([0, 65, 0], sunrise_world::registry::BlockStateId(u32::MAX))
-            );
-            assert!(!game.level_can_survive([100, 65, 100], sapling));
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
     fn a_level_handle_updates_neighbours_as_vanillas_writes_do() {
         use mod_api::NeighbourUpdate::{Neighbours, NeighboursExcept, OutputSignal};
         use sunrise_core::geometry::Direction::East;

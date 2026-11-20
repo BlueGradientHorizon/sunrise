@@ -68,10 +68,7 @@ impl TryFrom<u32> for EntityTypeKey {
         {
             Ok(Self(slot))
         }
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            Self::from_slot(slot)
-        }
+        { Self::from_slot(slot) }
     }
 }
 
