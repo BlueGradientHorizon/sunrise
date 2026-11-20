@@ -7,6 +7,29 @@ use crate::*;
 #[sunrise_mod_api_macros::host_area]
 pub trait PlayerWorldBackend {
     /// Side: both.
+    /// The support block stored by the player's last move (`Entity.mainSupportingBlockPos`).
+    /// `Ok(None)` for an airborne player, a stale handle or a player whose motion this
+    /// side does not keep. On the client, reads the local player's prediction.
+    /// `Err(LevelReadError::Unavailable)` if the host cannot read player motion.
+    #[access(WorldOnly)]
+    fn player_supporting_block(
+        &self,
+        player: PlayerRef,
+    ) -> Result<Option<BlockPos>, LevelReadError> {
+        let _ = player;
+        Err(AccessRefusal::unavailable())
+    }
+    /// Side: both.
+    /// `Entity.getOnPos()` for this player: its recorded support block, otherwise the block
+    /// at its feet with vanilla's `1.0E-5F` offset subtracted from Y. `Ok(None)` for a stale
+    /// handle or a player whose motion this side does not keep.
+    /// `Err(LevelReadError::Unavailable)` if the host cannot read player motion.
+    #[access(WorldOnly)]
+    fn player_on_block(&self, player: PlayerRef) -> Result<Option<BlockPos>, LevelReadError> {
+        let _ = player;
+        Err(AccessRefusal::unavailable())
+    }
+    /// Side: both.
     /// The level the online player is in (`ServerPlayer.level`): on an integrated
     /// server or dedicated server, the player's current dimension; on a client,
     /// the client's level. None for a stale or unavailable player.

@@ -964,6 +964,29 @@ impl Game<'_> {
             last_death: self.level.last_death.as_ref(),
         })
     }
+    pub(super) fn player_supporting_block(
+        &self,
+        player: PlayerRef,
+    ) -> Result<Option<mod_api::BlockPos>, mod_api::LevelReadError> {
+        Ok(self
+            .player_read_both(player)
+            .and_then(|read| read.body()?.ground.supporting_block))
+    }
+
+    pub(super) fn player_on_block(
+        &self,
+        player: PlayerRef,
+    ) -> Result<Option<mod_api::BlockPos>, mod_api::LevelReadError> {
+        Ok(self.player_read_both(player).and_then(|read| {
+            let body = read.body()?;
+            let [x, y, z] = super::native_entity_motion::on_block_position(
+                body.ground.supporting_block,
+                body.position,
+            );
+            Some(mod_api::BlockPos::new(x, y, z))
+        }))
+    }
+
     /// The local player's `Abilities` on a client: what its game mode gives
     /// (`GameType.updatePlayerAbilities`, `mayBuild` among them), then the
     /// flags and speeds `ClientPacketListener.handlePlayerAbilities` took, except

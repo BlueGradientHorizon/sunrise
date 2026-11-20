@@ -336,6 +336,58 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
+    fn player_support_uses_the_footprint_and_clears_in_the_air_on_both_sides() {
+        use crate::game::native_entity_refs::tests::{bind_local_player, with_client_game};
+        use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
+        use sunrise_core::geometry::Vec3;
+        use sunrise_world::entity_move::MoverType;
+
+        let check = |game: &mut Game<'_>| {
+            let player = game.player(456).unwrap();
+            // The feet are over the air in column x=1; the left edge overlaps the slab.
+            game.player.as_mut().unwrap().position = Vec3::new(1.125, 65.0, 0.5);
+            let slab = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:stone_slab")
+                .unwrap();
+            game.world.set(0, 64, 0, slab).unwrap();
+            game.move_local_player(MoverType::SelfMovement, Vec3::new(0.0, -1.0, 0.0))
+                .unwrap();
+            assert_eq!(
+                player.supporting_block(game),
+                Ok(Some(mod_api::BlockPos::new(0, 64, 0)))
+            );
+            assert_eq!(
+                player.on_block(game),
+                Ok(Some(mod_api::BlockPos::new(0, 64, 0)))
+            );
+
+            game.move_local_player(MoverType::SelfMovement, Vec3::new(0.0, 1.0, 0.0))
+                .unwrap();
+            assert_eq!(player.supporting_block(game), Ok(None));
+            assert_eq!(
+                player.on_block(game),
+                Ok(Some(mod_api::BlockPos::new(1, 65, 0)))
+            );
+        };
+
+        with_client_game(|game| {
+            loaded_client(game);
+            check(game);
+        });
+        with_game(|game| {
+            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+            bind_local_player(game, 42, 456);
+            game.streaming
+                .insert_remote(&mut game.world, Chunk::empty(0, 0));
+            check(game);
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn local_displacements_out_and_back_notify_both_section_crossings() {
         type Crossing = ([i32; 3], [i32; 3], [f64; 3], Option<bool>);
         #[derive(Default)]

@@ -1,0 +1,1 @@
+sunrise-client game::native_local_player_writes::tests::player_support_uses_the_footprint_and_clears_in_the_air_on_both_sides lib daily resources
