@@ -75,8 +75,7 @@ READERS = {
     "sunrise-mod-marks": MOD_API_GEN,
     "sunrise-mod-api-gen-tests": MOD_API_GEN,
     "sunrise-mod-package": [
-        "Cargo.lock", "docs/modding/src/how-to/native-mods/07-local-developer-builds.md",
-        "tools/mixins/narrow-reference-rule.patch",
+        "Cargo.lock", "docs/developer-install.md", "tools/mixins/narrow-reference-rule.patch",
     ],
     "sunrise-mod-points": MOD_API_GEN,
     "sunrise-mod-render": MOD_API_GEN,

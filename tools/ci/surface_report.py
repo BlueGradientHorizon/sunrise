@@ -22,8 +22,10 @@ names.
 A new note that carries `landed = "<merge sha>"` is retroactive: it is left out of the comparison above and checked
 against that merge instead. The merge and its first parent are fetched and exported (each by its own commit's tool
 when the head's cannot read it), and `surface-diff --landed` attaches the note and fails when an id did not change there.
-That costs two exports, only on a pull request that adds such a note. A merge that does not have two parents, or a
-tree that cannot be exported, fails naming the note and the sha.
+The notes that merge brought itself (new against its first parent) count as coverage there, read apart from the late
+ones (`--covered-by`), so the comparison lists as unnoted only what no note covers, then or now. That costs two exports,
+only on a pull request that adds such a note. A merge that does not have two parents, or a tree that cannot be
+exported, fails naming the note and the sha.
 """
 
 from argparse import ArgumentParser
@@ -151,11 +153,13 @@ def last_line(text: str) -> str:
 def report(tool: str, base: Path, head: Path, work: Path, gate_on: bool, *,
            with_internals: bool = False, own_base_tool: Callable[[], str] | None = None,
            own_head_tool: Callable[[], str] | None = None,
-           notes: tuple[Path, Path] | None = None, landed: str | None = None) -> tuple[int, str]:
+           notes: tuple[Path, Path] | None = None, landed: str | None = None,
+           covered: tuple[Path, Path] | None = None) -> tuple[int, str]:
     """Exports both trees at once, diffs them; (exit code, report text). `own_base_tool` gives the base's own
     sunrise-stage, for a base the head's cannot read, and `own_head_tool` the head tree's, for a head tree that is
     not this checkout (a landed merge). `notes` is the (new, base) pair of change-note folders when they are not the
-    trees' own; `landed` selects the notes of one merge."""
+    trees' own; `landed` selects the notes of one merge, and `covered` a (new, base) pair whose new notes count as
+    coverage only (that merge's own)."""
     # The base's records may predate the call names: its export names none (`--without-calls`),
     # which no comparison reads.
     catalogs = "--with-internals" if with_internals else "--with-points-and-loops"
@@ -189,19 +193,23 @@ def report(tool: str, base: Path, head: Path, work: Path, gate_on: bool, *,
         if own.returncode != 0:
             return 1, f"No surface report: {why}, nor can the {name}'s own ({last_line(own.stderr)}).\n"
         note += f"The {name} was exported by its own sunrise-stage: {why}.\n"
-    code, text = compare(tool, base, head, work, gate_on, with_internals=with_internals, notes=notes, landed=landed)
+    code, text = compare(tool, base, head, work, gate_on, with_internals=with_internals, notes=notes, landed=landed,
+                         covered=covered)
     return code, note + text
 
 
 def compare(tool: str, base: Path, head: Path, work: Path, gate_on: bool, *,
             with_internals: bool, notes: tuple[Path, Path] | None = None,
-            landed: str | None = None) -> tuple[int, str]:
-    """Run the gate on the exported documents and the change notes (the trees' own unless `notes` is given)."""
+            landed: str | None = None, covered: tuple[Path, Path] | None = None) -> tuple[int, str]:
+    """Run the gate on the exported documents and the change notes (the trees' own unless `notes` is given);
+    `covered` is a (new, base) pair of note folders whose new notes count as coverage only."""
     new_notes, base_notes = notes or (head / NOTES, base / NOTES)
     command = [tool, "surface-diff", str(work / "base.json"), str(work / "head.json"),
                "--notes", str(new_notes), "--base-notes", str(base_notes), "--json", str(work / "diff.json")]
     if landed:
         command += ["--landed", landed]
+    if covered:
+        command += ["--covered-by", str(covered[0]), "--covered-base", str(covered[1])]
     if gate_on:
         command.append("--gate")
     diff = subprocess.run(command, capture_output=True, text=True)
@@ -257,11 +265,16 @@ def landed_check(tool: str, head: Path, base: Path, work: Path, shas: dict[str, 
                 fetch(commit, folder / name)
         except (OSError, subprocess.CalledProcessError) as error:
             return 1, text + f"Landed check failed for {who}: a tree could not be fetched: {error}.\n"
+        # The late notes are this pull request's, checked against the merge; the merge's own notes (new against its
+        # first parent) are read apart from them, as coverage.
+        for tree in ("base", "head"):
+            (folder / tree / NOTES).mkdir(parents=True, exist_ok=True)
         # Both are older trees: each falls back to its own commit's tool when this one refuses it.
         sub_code, sub_text = report(tool, folder / "base", folder / "head", folder, False,
                                     own_base_tool=(lambda: own_tool(parent)) if own_tool else None,
                                     own_head_tool=(lambda: own_tool(sha)) if own_tool else None,
-                                    notes=(head / NOTES, base / NOTES), landed=sha)
+                                    notes=(head / NOTES, base / NOTES), landed=sha,
+                                    covered=(folder / "head" / NOTES, folder / "base" / NOTES))
         if sub_code != 0:
             code = 1
         text += f"Landed {who}, first parent {parent}:\n{sub_text}"
