@@ -508,11 +508,7 @@ impl Game<'_> {
                     .player_uuid
                     .map(sunrise_client::lan::playerdata::ints_uuid)
             })?;
-            let entity = self.player_lookup_entity(uuid)?;
-            Some(mod_api::__private::game::player_ref(
-                mod_api::EntityRef::new(self.native_lifecycle.epoch()?, entity),
-                uuid,
-            ))
+            self.player(uuid)
         });
         let Some(player) = player else { return vanilla };
         let mut answer = None;
