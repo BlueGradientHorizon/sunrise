@@ -2,3 +2,11 @@
 #![forbid(unsafe_code)]
 // Listed in portable.pending (tools/layers.json) until the types it needs move to portable crates.
 extern crate sunrise_client_lib as sunrise_client;
+pub mod cat_spawner;
+pub mod dedicated;
+pub mod interaction_shapes;
+pub mod item_areas;
+pub mod lan;
+pub mod mob_index;
+pub mod tick_profile;
+pub mod wandering_trader;
