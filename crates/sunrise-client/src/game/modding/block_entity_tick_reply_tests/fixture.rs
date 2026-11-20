@@ -19,7 +19,13 @@ impl BlockEntityPart for Ticker {
         }
         if mode == 10 {
             let entity = host.entity(event.entity.data[3] as u32).unwrap();
-            event.entity.items[0] = Some(host.item_entity(entity).unwrap().stack(host).unwrap());
+            event.entity.items[0] = Some(
+                host.item_entity(entity)
+                    .unwrap()
+                    .with_stack(host, |stack| stack.project())
+                    .flatten()
+                    .unwrap(),
+            );
             return;
         }
         *event.reply = BlockEntityTickReply::Unchanged;
@@ -51,20 +57,23 @@ impl BlockEntityPart for Ticker {
         } else if mode == 6 || mode == 7 {
             let entity = host.entity(event.entity.data[3] as u32).unwrap();
             let item = host.item_entity(entity).unwrap();
-            let mut stack = item.stack(host).unwrap();
+            let mut stack = item
+                .with_stack(host, |stack| stack.project())
+                .flatten()
+                .unwrap();
             assert_eq!(stack.count(), 5);
             stack.set_count(2).unwrap();
             if mode == 6 {
                 let aborted: Result<(), ()> = host.transaction(|host, _| {
                     assert_eq!(item.set_stack(host, stack), Ok(true));
-                    assert_eq!(item.stack(host).unwrap().count(), 2);
+                    assert_eq!(item.with_stack(host, |stack| stack.count()).unwrap(), 2);
                     Err(())
                 });
                 assert_eq!(aborted, Err(()));
-                assert_eq!(item.stack(host).unwrap().count(), 5);
+                assert_eq!(item.with_stack(host, |stack| stack.count()).unwrap(), 5);
             } else {
                 assert_eq!(item.set_stack(host, stack), Ok(true));
-                assert_eq!(item.stack(host).unwrap().count(), 2);
+                assert_eq!(item.with_stack(host, |stack| stack.count()).unwrap(), 2);
             }
         }
     }

@@ -40,7 +40,7 @@ impl BlockEntityPart for Consume {
                 .try_into_api()
                 .unwrap();
             assert!(item.set_stack(host, invalid).is_err());
-            assert_eq!(item.stack(host).unwrap().count(), 5);
+            assert_eq!(item.with_stack(host, |stack| stack.count()).unwrap(), 5);
             return;
         }
         event.entity.data.push(6);
@@ -48,7 +48,7 @@ impl BlockEntityPart for Consume {
             ItemStack::new("minecraft:stone", 6).try_into_api().unwrap(),
         )];
         assert_eq!(item.set_stack(host, stack), Ok(true));
-        assert_eq!(item.stack(host).unwrap().count(), 2);
+        assert_eq!(item.with_stack(host, |stack| stack.count()).unwrap(), 2);
         assert_eq!(
             ItemPlace::ItemEntity { id: first.id() }
                 .stack(host)
@@ -65,11 +65,11 @@ impl BlockEntityPart for Consume {
                     ),
                     Ok(true)
                 );
-                assert_eq!(item.stack(host).unwrap().count(), 1);
+                assert_eq!(item.with_stack(host, |stack| stack.count()).unwrap(), 1);
                 Err(())
             });
             assert_eq!(aborted, Err(()));
-            assert_eq!(item.stack(host).unwrap().count(), 2);
+            assert_eq!(item.with_stack(host, |stack| stack.count()).unwrap(), 2);
         }
         assert!(second.discard(host));
         assert!(host.entity(second.id()).is_none());
@@ -111,9 +111,8 @@ impl BlockEntityPart for Observe {
         assert_eq!(
             host.item_entity(first)
                 .unwrap()
-                .stack(host)
-                .unwrap()
-                .count(),
+                .with_stack(host, |stack| stack.count())
+                .unwrap(),
             2
         );
         assert!(host.entity(SECOND.load(Ordering::Relaxed)).is_none());
@@ -151,7 +150,7 @@ impl Hooks for Fixture {
             if std::env::var("ROW4_NATIVE_CASE").as_deref() == Ok("reentrant") {
                 let first = host.entity(FIRST.load(Ordering::Relaxed)).unwrap();
                 let item = host.item_entity(first).unwrap();
-                assert_eq!(item.stack(host).unwrap().count(), 2);
+                assert_eq!(item.with_stack(host, |stack| stack.count()).unwrap(), 2);
                 assert_eq!(
                     item.set_stack(
                         host,

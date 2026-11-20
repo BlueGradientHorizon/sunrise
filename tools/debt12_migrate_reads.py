@@ -4,8 +4,8 @@
 Run `python3 tools/debt12_migrate_reads.py BATCH --check` to validate a batch
 without writing. Omit `--check` to apply it before the corresponding API and
 hand edits, and rustfmt the changed Rust files before committing the batch.
-Scalar reads, borrow-sensitive writes, backend adapters and documentation
-are deliberately left to hand edits.
+Borrow-sensitive writes, backend adapters and documentation are left to
+hand edits.
 """
 
 import argparse
@@ -140,15 +140,38 @@ BATCHES = {
         ),
     },
     "item-entity": {
+        MODDING + "block_entity_tick_items_tests.rs": (
+            Edit(
+                "item.stack(host).unwrap().count()",
+                "item.with_stack(host, |stack| stack.count()).unwrap()",
+                count=5,
+            ),
+            Edit(
+                "host.item_entity(first)\n                .unwrap()\n                .stack(host)\n                .unwrap()\n                .count()",
+                "host.item_entity(first)\n                .unwrap()\n                .with_stack(host, |stack| stack.count())\n                .unwrap()",
+            ),
+        ),
         MODDING + "block_entity_tick_reply_tests/fixture.rs": (
             stack_snapshot(
                 "host.item_entity(entity).unwrap().stack(host)",
                 prefix="event.entity.items[0] = Some(",
                 suffix=".unwrap());",
             ),
+            stack_snapshot("item.stack(host)", prefix="let mut stack = ", suffix=".unwrap();"),
+            Edit(
+                "item.stack(host).unwrap().count()",
+                "item.with_stack(host, |stack| stack.count()).unwrap()",
+                count=3,
+            ),
         ),
         MODDING + "native_item_entity_refs.rs": (
             stack_snapshot("item.stack(game)", prefix="assert_eq!(", suffix=", Some(changed));"),
+            stack_snapshot("item.stack(game)", prefix="let mut empty = ", suffix=".unwrap();"),
+            Edit(
+                "item.stack(game).unwrap().damage(), 21",
+                "item.with_stack(game, |stack| stack.damage()), Some(21)",
+            ),
+            Edit("item.stack(game).is_none()", "item.with_stack(game, |_| ()).is_none()"),
         ),
         GAME + "network/lan_actions/tests/pickup_post_tests.rs": (
             stack_snapshot("event.item.stack(host)", prefix="let read = ", suffix=";"),
