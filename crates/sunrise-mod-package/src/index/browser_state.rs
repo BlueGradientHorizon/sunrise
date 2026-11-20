@@ -310,19 +310,26 @@ mod tests {
         let state = br#"{"entries": []}"#;
         fs::write(&manifest, state).unwrap();
         let path = home.join(PENDING);
-        fs::write(&path, b"not json").unwrap();
-        assert!(reconcile(home).is_err());
-        fs::OpenOptions::new()
-            .write(true)
-            .open(&path)
-            .unwrap()
-            .set_len(MAX_PENDING + 1)
-            .unwrap();
-        assert!(
-            reconcile(home)
-                .unwrap_err()
-                .ends_with("pending entry too large")
-        );
-        assert_eq!(fs::read(&manifest).unwrap(), state);
+        let file = content_file("ruby");
+        fs::create_dir(home.join(crate::mod_list::DIR)).unwrap();
+        fs::write(home.join(&file), b"new").unwrap();
+        let pending = Pending {
+            id: "ruby".into(),
+            file: file.clone(),
+            old: None,
+            new: serde_json::json!({
+                "source": "sunrise", "project": "ruby", "file": file,
+                "version": "1", "checksum": format!("SHA-256:{}", super::super::sha256(b"new")),
+            }),
+        };
+        let mut oversized = serde_json::to_vec(&pending).unwrap();
+        // Trailing JSON whitespace changes the size without making the intent invalid.
+        oversized.resize(MAX_PENDING as usize + 1, b' ');
+        for bytes in [b"not json".to_vec(), oversized] {
+            fs::write(&path, bytes).unwrap();
+            assert!(reconcile(home).is_err());
+            assert!(path.is_file());
+            assert_eq!(fs::read(&manifest).unwrap(), state);
+        }
     }
 }
