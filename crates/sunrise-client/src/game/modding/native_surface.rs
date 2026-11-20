@@ -748,6 +748,7 @@ mod tests {
         use super::super::native_entity_refs::tests::{
             fixture_root, run_fresh_cases, with_game_at,
         };
+        use super::FrictionLevel;
         use mod_api::{
             Block, BlockEntityEvent, BlockEntityPart, BlockPart, BlockUpdateFlags, BlocksEvent,
             Compound, FrictionEvent, Hooks, LevelSide, ModEntry, Mods, Registrar,
@@ -822,22 +823,37 @@ mod tests {
         mod_platform::__private::install(mods.clone());
         crate::game::api_values::install_parts(&mods).unwrap();
         let root = crate::game::mods::content_root(&fixture_root(), &Default::default()).unwrap();
-        crate::entry::install_client_hooks();
         with_game_at(root.prepared().to_path_buf(), |game| {
             game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
             let level = game.level(game.dim.id()).unwrap();
-            let state = game.pack.assets.registry.default_state(PANEL).unwrap();
-            let pos = [3, 64, 3];
+            let registry = game.pack.assets.registry;
+            let state = registry.default_state(PANEL).unwrap();
             let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
-            let state_api = state.try_into_api().unwrap();
             assert_eq!(
-                game.level_set_block(level, pos, state, BlockUpdateFlags::NONE),
+                game.level_set_block(level, [3, 64, 3], state, BlockUpdateFlags::NONE),
                 Ok(true)
             );
-            assert_eq!(level.friction(game, pos, state_api, None), Ok(Some(0.989)));
+            let facts = game.res.facts();
+            let side = game_side!(game);
+            let view = FrictionLevel {
+                world: &game.world,
+                registry,
+                context: &game.loop_context,
+                side: &side,
+                coefficient: &|id| facts.states.get(id.0 as usize).map(|facts| facts.friction),
+            };
+            let mut value = facts.get(state).friction;
+            assert!(super::friction(
+                view,
+                None,
+                BlockPos::new(3, 64, 3),
+                state,
+                &mut value
+            ));
+            assert_eq!(value, 0.989);
         });
     }
 
