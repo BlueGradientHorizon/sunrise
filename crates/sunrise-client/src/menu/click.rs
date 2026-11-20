@@ -7,6 +7,14 @@ pub type SlotTake = (usize, ItemStack, Option<ItemStack>);
 /// The remainder of one click, suspended only when the server has a take to deliver.
 pub struct ClickContinuation(ClickStep);
 
+impl ClickContinuation {
+    /// Only an already displaced swap stack is owed after the backing menu is gone.
+    /// This continuation uses player inventory and drops, not container slots.
+    pub fn after_menu_closed(self) -> Option<Self> {
+        matches!(self.0, ClickStep::SwapOverflow(_)).then_some(self)
+    }
+}
+
 enum ClickStep {
     QuickMove {
         slot: usize,
@@ -21,7 +29,6 @@ enum ClickStep {
         next: i32,
         step: i32,
         pass: u8,
-        max: u32,
     },
     SwapOverflow(ItemStack),
 }
@@ -308,9 +315,7 @@ impl Menu {
                 return Err(OUT_OF_BOUNDS);
             }
             let s = slot_index as usize;
-            if let Some(carried) = self.carried.as_ref()
-                && !(self.has_item(s) && self.may_pickup(env, s))
-            {
+            if self.carried.is_some() && !(self.has_item(s) && self.may_pickup(env, s)) {
                 let (next, step) = if button == 0 { (0, 1) } else { (size - 1, -1) };
                 return Ok(self.run_click_step(
                     env,
@@ -318,7 +323,6 @@ impl Menu {
                         next,
                         step,
                         pass: 0,
-                        max: Self::max_stack(env, carried),
                     },
                 ));
             }
@@ -804,8 +808,8 @@ impl Menu {
                 mut next,
                 step,
                 mut pass,
-                max,
             } => {
+                let max = Self::max_stack(env, self.carried.as_ref()?);
                 let total = self.state.slots.len() as i32;
                 let start = if step > 0 { 0 } else { total - 1 };
                 while pass < 2 {
@@ -830,7 +834,6 @@ impl Menu {
                                         next,
                                         step,
                                         pass,
-                                        max,
                                     }));
                                 }
                             }

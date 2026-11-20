@@ -1911,53 +1911,6 @@ impl super::Game<'_> {
             *carried = cursor;
         }
     }
-    pub(in crate::game) fn api_menu_quick_move(
-        &mut self,
-        pos: [i32; 3],
-        entity: &mut crate::containers::ModBlockEntity,
-        container_slots: usize,
-        slot: usize,
-        stack: &mut Option<EngineStack>,
-        handled: &mut bool,
-    ) {
-        if !mod_api::__private::has_part_hook(mod_api::HookId::MenuQuickMove) {
-            return;
-        }
-        let (Ok(mut api), Ok(mut held)) = (entity.try_into_api(), stack.try_into_api()) else {
-            return;
-        };
-        let revision = api.revision();
-        let original = held.clone();
-        let mut candidate_handled = *handled;
-        self.native_menu_quick_move(
-            pos,
-            &mut api,
-            container_slots,
-            slot,
-            &mut held,
-            &mut candidate_handled,
-        );
-        let held = if held == original {
-            Ok(None)
-        } else {
-            held.try_into_engine(self.items())
-                .map(Some)
-                .map_err(|_| BlockEntitySnapshotError::InvalidStack)
-        };
-        if let Ok(held) = finish_block_entity_writeback(
-            entity,
-            &api,
-            revision,
-            self.items(),
-            "menu_quick_move",
-            held,
-        ) {
-            if let Some(held) = held {
-                *stack = held;
-            }
-            *handled = candidate_handled;
-        }
-    }
 }
 impl super::GameLevel<'_> {
     pub(in crate::game) fn api_pre_remove_side_effects(

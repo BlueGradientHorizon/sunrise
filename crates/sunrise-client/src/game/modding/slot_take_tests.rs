@@ -51,7 +51,9 @@ enum TakeScript {
     RefillGrid,
     RefillThenPanic,
     RemoveBacking,
+    RemoveBackingDuringSwap,
     SwapRoom,
+    ReplacePickAllCursor,
     LinkedWriteThenPanic,
 }
 
@@ -142,7 +144,7 @@ impl BlockEntityPart for Pot {
                 assert!(event.entity.items[0].is_none());
                 event.entity.items[0] = Some(api_item("minecraft:stone", 2));
             }
-            TakeScript::RemoveBacking => {
+            TakeScript::RemoveBacking | TakeScript::RemoveBackingDuringSwap => {
                 let level = host.level("minecraft:overworld").unwrap();
                 let air = mod_api::BlockState::of(
                     &host.block_states(),
@@ -165,6 +167,16 @@ impl BlockEntityPart for Pot {
                 let dirt = place.resource(host).expect("hotbar 8 still holds dirt");
                 assert_eq!(place.extract(host, &tx, &dirt, 64), 64);
             }
+            TakeScript::ReplacePickAllCursor if heard_count == 1 => {
+                let player = host.player(event.player).unwrap();
+                let cursor = player.container_menu(host).unwrap().cursor();
+                assert_eq!(
+                    cursor.extract(host, &tx, &ItemResource::of(event.taken), 4),
+                    4
+                );
+                let pearls = ItemResource::of(&api_item("minecraft:ender_pearl", 1));
+                assert_eq!(cursor.insert(host, &tx, &pearls, 14), 14);
+            }
             TakeScript::LinkedWriteThenPanic => {
                 let level = host.level("minecraft:overworld").unwrap();
                 let items = level
@@ -173,7 +185,7 @@ impl BlockEntityPart for Pot {
                 LINK_INSERTED.set(items.insert(host, &tx, 0, &ItemResource::of(event.taken), 1));
                 panic!("a linked write failed");
             }
-            TakeScript::RefillGrid => {}
+            TakeScript::RefillGrid | TakeScript::ReplacePickAllCursor => {}
         }
     }
 }
@@ -183,7 +195,10 @@ struct Rules;
 impl MenuPart for Rules {
     fn menu_slot_rules(&self, _: &dyn mod_api::Host, event: &mut MenuSlotRulesEvent<'_>) {
         event.may_pickup &= event.slot != KEPT;
-        if matches!(SCRIPT.get(), TakeScript::SwapRoom) {
+        if matches!(
+            SCRIPT.get(),
+            TakeScript::SwapRoom | TakeScript::RemoveBackingDuringSwap
+        ) {
             event.max_stack = 1;
         }
     }
@@ -413,6 +428,28 @@ fn a_throw_and_pick_all_hear_each_take() {
 
 #[test]
 #[ignore = "daily"]
+fn pick_all_respects_the_cursor_items_new_capacity_after_a_take() {
+    with_pot(pot_type(SLOTS, None), |game| {
+        let pearls = "minecraft:ender_pearl";
+        set(game, &[(0, stone(3)), (3, item(pearls, 10))], &[], stone(1));
+        SCRIPT.set(TakeScript::ReplacePickAllCursor);
+        click(game, 5, 0, 6);
+        let took_pearls = (
+            12,
+            MENU.into(),
+            3,
+            (pearls.into(), 2),
+            Some((pearls.into(), 8)),
+        );
+        assert_eq!(heard(), [took(0, 3, 0), took_pearls]);
+        assert_eq!(in_pot(game, 3), 8);
+        let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+        assert_eq!(guest.carried, item(pearls, 16));
+    });
+}
+
+#[test]
+#[ignore = "daily"]
 fn a_shift_click_hears_the_amount_moved_once_per_craft() {
     with_pot(pot_type(SLOTS, None), |game| {
         // A plain slot: the stack moved to the inventory, once.
@@ -623,6 +660,45 @@ fn a_throw_repeat_sees_the_previous_notice_and_oversized_swap_delivers_after_it(
             stone(5)
         );
         assert!(game.dropped.is_empty());
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn an_oversized_swap_delivers_the_displaced_stack_even_when_the_holder_is_removed() {
+    with_pot(pot_type(SLOTS, None), |game| {
+        let dirt = "minecraft:dirt";
+        let mut inventory: Vec<_> = (0..36).map(|i| (i, item(dirt, 64))).collect();
+        inventory[8].1 = stone(62);
+        set(game, &[(0, stone(5))], &inventory, None);
+        SCRIPT.set(TakeScript::RemoveBackingDuringSwap);
+        click(game, 0, 0, 2);
+        assert_eq!(
+            heard(),
+            [(
+                12,
+                MENU.into(),
+                0,
+                ("minecraft:stone".into(), 5),
+                Some((dirt.into(), 1))
+            )]
+        );
+        assert!(game.world.block_entities.get(&POS).is_none());
+        let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+        assert!(guest.menu.is_none());
+        assert_eq!(guest.inventory[0], item(dirt, 63));
+        assert_eq!(guest.inventory[8], stone(64));
+        let spawned = game.dropped.iter().map(|e| &e.stack);
+        let queued = game.spill.spawns.iter().map(|e| &e.stack);
+        assert_eq!(
+            spawned
+                .chain(queued)
+                .filter(|s| &*s.item == "minecraft:stone")
+                .map(|s| s.count)
+                .sum::<u32>(),
+            3,
+            "only the part of the displaced stack that did not fit is dropped"
+        );
     });
 }
 

@@ -755,27 +755,37 @@ impl Game<'_> {
                         loop {
                             let after = menu.container_items();
                             write_back(game, menu, after != previous);
-                            if let Some(take) = menu.take_notice() {
+                            let menu_live = if let Some(take) = menu.take_notice() {
                                 if game.as_guest(conn, |game| {
                                     game.mod_menu_slot_take(pos, uuid, &menu_id, &take)
                                 }) != Some(true)
                                 {
                                     return None;
                                 }
-                                if !refresh(game, menu) {
-                                    break;
-                                }
-                            }
+                                refresh(game, menu)
+                            } else {
+                                true
+                            };
                             let Some(step) = rest.ok().flatten() else {
                                 break;
                             };
-                            // Listener edits are now the step's inputs (including the guest's
-                            // inventory); don't write any obsolete stack back over them.
-                            previous = menu.container_items();
+                            let step = if menu_live {
+                                // Listener edits are now the step's inputs. Don't overwrite them.
+                                previous = menu.container_items();
+                                step
+                            } else if let Some(overflow) = step.after_menu_closed() {
+                                overflow
+                            } else {
+                                break;
+                            };
                             let (next, kept) =
                                 game.guest_menu_edit(gi, menu, None, None, |menu, env| {
                                     menu.resume_click(env, step, answers)
                                 })?;
+                            if !menu_live {
+                                // Only the player's overflow was owed. Don't write back the menu.
+                                break;
+                            }
                             rest = Ok(next);
                             answers = kept;
                         }
