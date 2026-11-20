@@ -340,10 +340,11 @@ mod tests {
         }
 
         fn blocks(&self, _: &mod_api::RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
-            event.blocks.extend(
-                ["save_items:slotless", "save_items:container"]
-                    .map(|id| mod_api::Block::new(id, "minecraft:stone").with_item(false)),
-            );
+            for id in ["save_items:slotless", "save_items:container"] {
+                event
+                    .register(mod_api::Block::new(id, "minecraft:stone").with_item(false))
+                    .unwrap();
+            }
         }
     }
 

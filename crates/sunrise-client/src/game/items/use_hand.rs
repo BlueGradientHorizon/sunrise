@@ -889,13 +889,7 @@ impl Game<'_> {
             && !infinity
             && let Some(i) = arrow_slot
         {
-            let cell = self.stack_in_mut(i);
-            if let Some(s) = cell.as_mut() {
-                s.count -= 1;
-                if s.count == 0 {
-                    *cell = None;
-                }
-            }
+            self.consume_player_slot(i, 1);
         }
     }
     /// `EnchantmentHelper.processProjectileCount` and `processProjectileSpread`

@@ -4362,9 +4362,11 @@ impl Game<'_> {
         if !creative {
             // The stack as the removal left it: a listener may have swapped it.
             let held = self.held().cloned();
-            if removed {
-                self.mine_block_with_held(&facts.name, facts.hardness);
-            }
+            let broken_tool = if removed {
+                self.mine_block_with_held(&facts.name, facts.hardness)
+            } else {
+                None
+            };
             if removed && harvest {
                 // Block.playerDestroy: the mined statistic, the exhaustion and the drops.
                 self.award_stat("mined", &facts.name, 1);
@@ -4464,6 +4466,9 @@ impl Game<'_> {
                         prevents_melting,
                     );
                 });
+            }
+            if let Some(original) = broken_tool {
+                self.player_item_destroyed(&original, Some(Hand::Main));
             }
         }
         self.pending.clear(pos);
@@ -11648,7 +11653,7 @@ pub(crate) fn run_with(
     mods::register_client_presentations(options.execution_role);
     mods::register_meshing(options.execution_role);
     mods::register_particles(options.execution_role);
-    mods::freeze_declarations()?;
+    mods::freeze_declarations();
     mod_phase.advance(mod_api::__private::ModPhase::Setup)?;
     // Minecraft.<init>: read the last start's flag, then mark this one as not
     // finished until onGameLoadFinished. A dedicated server has no options.txt.
@@ -11697,6 +11702,9 @@ pub(crate) fn run_with(
             &options.mods,
         )
         .or_else(|e| {
+            if e.is::<mods::DeclarationFailures>() {
+                return Err(e);
+            }
             log::warn!("Sunrise: resource packs not applied: {e}");
             pack_error = Some(e.to_string());
             mods::content_root(&vanilla_root, &options.mods)

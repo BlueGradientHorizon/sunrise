@@ -986,7 +986,7 @@ mod add_blocks_tests {
                     (SIGN, "minecraft:oak_sign"),
                     (DECLARED, "minecraft:vault"),
                 ] {
-                    event.blocks.push(mod_api::Block::new(id, template));
+                    event.register(mod_api::Block::new(id, template)).unwrap();
                 }
             }
             fn block_entity_type_add_blocks(
@@ -1624,8 +1624,8 @@ mod own_block_entity_tests {
         }
         fn blocks(&self, _: &RegistrationContext, event: &mut BlocksEvent<'_>) {
             event
-                .blocks
-                .push(mod_api::Block::new(self.block, "minecraft:stone"));
+                .register(mod_api::Block::new(self.block, "minecraft:stone"))
+                .unwrap();
         }
         fn block_entity_type_add_blocks(
             &self,

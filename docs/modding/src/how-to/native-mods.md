@@ -52,7 +52,7 @@ fn register(&self, registrar: &mut dyn Registrar, _: &RegistrationContext) {
 For a mod named `rewrite`, this declares `rewrite:steps` in
 `minecraft:custom_stat`. An explicit `rewrite:steps` or another manifest-owned
 namespace is also accepted; `minecraft`, foreign namespaces, malformed IDs and
-duplicates are refused. Ignoring the returned `Result<(), String>` does not
+duplicates are refused. Ignoring the returned `Result<(), DeclarationError>` does not
 bypass installation failure. A mod's explicit registration refusal rolls back
 its declarations, and the installed inventory freezes before worlds open.
 
