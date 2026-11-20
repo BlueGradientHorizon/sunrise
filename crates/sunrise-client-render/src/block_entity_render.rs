@@ -4526,34 +4526,49 @@ mod tests {
     /// A glowing sign's own colour still wins over its dye, and the outline
     /// stays the dye's dark colour. `§` codes in a line colour it too, and
     /// `§r` goes back to the sign's colour.
+    /// A glowing sign's outline belongs to its text: an image span is one quad, as on a plain
+    /// sign, while a glyph run still gets the outline's eight passes under its own.
     #[test]
     fn a_glowing_sign_draws_an_inline_image_once() {
-        let call = |outline| TextCall {
+        let cell = Rect {
+            u0: 0.0,
+            v0: 0.0,
+            u1: 1.0,
+            v1: 1.0,
+            w: 8,
+            h: 8,
+        };
+        let call = |text: &str, inline_sprite, outline| TextCall {
             matrix: Mat4::IDENTITY,
             x: 0.0,
             y: 0.0,
-            text: "\u{fffc}".into(),
-            inline_sprite: Some(Rect {
-                u0: 0.0,
-                v0: 0.0,
-                u1: 1.0,
-                v1: 1.0,
-                w: 8,
-                h: 8,
-            }),
+            text: text.into(),
+            inline_sprite,
             style: Style::default(),
             color: 0xFFFF_FFFF,
             outline,
             light: 0,
             tier: 0,
         };
-        let draw = |call: &TextCall| {
-            let mut out = Vec::new();
-            push_text(&|_| Glyph::default(), None, &call.run(), &mut out);
-            out.len()
+        let glyph = |_| Glyph {
+            rect: Some(cell),
+            right: 8.0,
+            bottom: 8.0,
+            advance: 6.0,
+            ..Glyph::default()
         };
-        assert_eq!(draw(&call(0xFF00_0000)), 4);
-        assert_eq!(draw(&call(0)), 4);
+        let quads = |call: &TextCall| {
+            let mut out = Vec::new();
+            push_text(&glyph, None, &call.run(), &mut out);
+            out.len() / 4
+        };
+        let outline = 0xFF00_0000;
+        let image = |outline| call("\u{fffc}", Some(cell), outline);
+        assert_eq!(quads(&image(0)), 1);
+        assert_eq!(quads(&image(outline)), quads(&image(0)));
+        let letter = |outline| call("a", None, outline);
+        assert_eq!(quads(&letter(0)), 1);
+        assert_eq!(quads(&letter(outline)), 9);
     }
 
     #[test]
