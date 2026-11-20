@@ -567,7 +567,10 @@ fn player_and_dispenser_apply_only_the_context_seen_by_the_veto() {
                     point: [4.5, 64.0, f64::from(z) + 0.5],
                     inside: false,
                 };
+                // Mark the swapped-in body as a server guest's active turn for the click.
+                game.lan_acting = Some(1);
                 assert!(game.use_hand(Some(&hit)).unwrap());
+                game.lan_acting = None;
                 let left = game
                     .dispense_item(
                         (9, 64, z),
