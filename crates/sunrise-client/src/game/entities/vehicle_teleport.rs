@@ -834,7 +834,11 @@ impl Game<'_> {
             position: Vec3::new(at[0], at[1], at[2]),
             rotation: self.target_rotation(t),
         };
-        self.teleport_passengers(id, from, Transition::of_command(from, to, relative, rotation))
+        self.teleport_passengers(
+            id,
+            from,
+            Transition::of_command(from, to, relative, rotation),
+        )
     }
 
     /// `Entity.teleportSameDimension`'s walk of `vehicle`'s riders, deepest first; returns the players' connections.

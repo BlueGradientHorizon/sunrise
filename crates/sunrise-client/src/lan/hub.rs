@@ -2038,7 +2038,13 @@ impl Hub {
     }
 
     /// A rider's own teleport when its vehicle is teleported (`Entity.teleportSameDimension`'s passenger transition): a `delta` axis keeps its motion, `keep_look` the look.
-    pub fn teleport_rider(&mut self, i: usize, position: [f64; 3], delta: [bool; 3], keep_look: bool) {
+    pub fn teleport_rider(
+        &mut self,
+        i: usize,
+        position: [f64; 3],
+        delta: [bool; 3],
+        keep_look: bool,
+    ) {
         {
             let value = 0;
             self.guests

@@ -1403,12 +1403,7 @@ impl Game<'_> {
         // adds their offset to the transition's, each rider's own setXRot clamps).
         let requested = rotation;
         // Entity.teleportSameDimension teleports the riders before their vehicle.
-        let riding = self.teleport_riders_first(
-            t,
-            v,
-            relative,
-            requested.filter(|_| turn_riders),
-        );
+        let riding = self.teleport_riders_first(t, v, relative, requested.filter(|_| turn_riders));
         // PositionMoveRotation.calculateAbsolute clamps pitch before setXRot.
         let rotation = rotation.map(|[yaw, pitch]| [yaw, pitch.clamp(-90.0, 90.0)]);
         match t {

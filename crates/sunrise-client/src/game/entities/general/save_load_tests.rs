@@ -637,7 +637,10 @@ fn a_general_riders_motion_follows_the_commands_delta_flags() {
     with_types(|game| {
         let ids = general_chain(
             game,
-            &[([0.0, 64.0, 0.0], [0.0, 0.0]), ([0.0, 65.0, 0.0], [0.0, 0.0])],
+            &[
+                ([0.0, 64.0, 0.0], [0.0, 0.0]),
+                ([0.0, 65.0, 0.0], [0.0, 0.0]),
+            ],
             3,
         );
         let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
@@ -647,11 +650,23 @@ fn a_general_riders_motion_follows_the_commands_delta_flags() {
         }
         rider(game, ids[1]).velocity = velocity;
         // An absolute /tp is a transition with no motion and no delta flags.
-        game.teleport_to_in_level(Target::General(ids[0]), [5.0, 64.0, 5.0], None, [false; 3], true);
+        game.teleport_to_in_level(
+            Target::General(ids[0]),
+            [5.0, 64.0, 5.0],
+            None,
+            [false; 3],
+            true,
+        );
         assert_eq!(rider(game, ids[1]).velocity, Vec3::ZERO);
         // `tp ~ 70 ~`: only the axes the command made relative keep their motion.
         rider(game, ids[1]).velocity = velocity;
-        game.teleport_to_in_level(Target::General(ids[0]), [5.0, 70.0, 5.0], None, [true, false, true], true);
+        game.teleport_to_in_level(
+            Target::General(ids[0]),
+            [5.0, 70.0, 5.0],
+            None,
+            [true, false, true],
+            true,
+        );
         assert_eq!(rider(game, ids[1]).velocity, Vec3::new(0.25, 0.0, 0.75));
     });
 }
@@ -677,20 +692,35 @@ fn a_nested_general_tree_takes_each_riders_transition_from_its_vehicle() {
             [false; 3],
             true,
         );
-        let row = |game: &Game<'_>, n: usize| game.resident_entities.general.row(ids[n]).unwrap().clone();
+        let row =
+            |game: &Game<'_>, n: usize| game.resident_entities.general.row(ids[n]).unwrap().clone();
         // Entity.calculatePassengerTransition: each edge adds the child's offset
         // from its immediate vehicle's old pose to that vehicle's transition.
-        let mid_at = [25.442 + (75.6 - 26.007), 20.88 + (69.43 - 8.53), 4.214 + (30.548 - 61.898)];
-        let leaf_at = [mid_at[0] + (29.73 - 75.6), mid_at[1] + (5.392 - 69.43), mid_at[2] + (17.554 - 30.548)];
+        let mid_at = [
+            25.442 + (75.6 - 26.007),
+            20.88 + (69.43 - 8.53),
+            4.214 + (30.548 - 61.898),
+        ];
+        let leaf_at = [
+            mid_at[0] + (29.73 - 75.6),
+            mid_at[1] + (5.392 - 69.43),
+            mid_at[2] + (17.554 - 30.548),
+        ];
         let mid = row(game, 1);
         assert_eq!([mid.position.x, mid.position.y, mid.position.z], mid_at);
         let leaf = row(game, 2);
         assert_eq!([leaf.position.x, leaf.position.y, leaf.position.z], leaf_at);
-        let mid_turn = [82.4f32 + (146.4f32 - -103.5f32), -71.8f32 + (1.8f32 - -10.6f32)];
+        let mid_turn = [
+            82.4f32 + (146.4f32 - -103.5f32),
+            -71.8f32 + (1.8f32 - -10.6f32),
+        ];
         assert_eq!(mid.rotation, mid_turn);
         assert_eq!(
             leaf.rotation,
-            [mid_turn[0] + (166.7f32 - 146.4f32), mid_turn[1] + (13.0f32 - 1.8f32)]
+            [
+                mid_turn[0] + (166.7f32 - 146.4f32),
+                mid_turn[1] + (13.0f32 - 1.8f32)
+            ]
         );
     });
 }
@@ -734,7 +764,9 @@ fn with_types_and_guests(test: impl FnOnce(&mut Game<'_>)) {
 }
 
 /// A guest 13 seated on a general root turned to 30 degrees, its packets read through the receiver.
-fn seat_guest_on_general_root(game: &mut Game<'_>) -> (u32, std::sync::mpsc::Receiver<sunrise_client::lan::Out>) {
+fn seat_guest_on_general_root(
+    game: &mut Game<'_>,
+) -> (u32, std::sync::mpsc::Receiver<sunrise_client::lan::Out>) {
     let ids = general_chain(game, &[([0.0, 64.0, 0.0], [0.0, 0.0])], 7);
     let (tx, rx) = std::sync::mpsc::channel();
     let hub = &mut game.lan.as_mut().unwrap().hub;
@@ -751,7 +783,10 @@ fn seat_guest_on_general_root(game: &mut Game<'_>) -> (u32, std::sync::mpsc::Rec
 /// The packets of one guest's teleport: its own position packets and the vehicle's teleport packets.
 fn guest_teleport_packets(
     rx: &std::sync::mpsc::Receiver<sunrise_client::lan::Out>,
-) -> (Vec<sunrise_protocol::packets::play::PlayerPosition>, Vec<sunrise_protocol::packets::play::TeleportEntity>) {
+) -> (
+    Vec<sunrise_protocol::packets::play::PlayerPosition>,
+    Vec<sunrise_protocol::packets::play::TeleportEntity>,
+) {
     use sunrise_protocol::packets::play::Clientbound as C;
     let (mut own, mut vehicle) = (Vec::new(), Vec::new());
     for packet in crate::game::native_sound_refs::tests::packets(rx) {
@@ -772,14 +807,27 @@ fn a_seated_guest_hears_the_general_vehicles_real_pose_and_its_own_teleport_once
         let _ = guest_teleport_packets(&rx);
         let before = game.lan.as_ref().unwrap().hub.guest(13).unwrap().position;
         let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
-        game.teleport_to_in_level(Target::General(root), [10.0, 70.0, -4.0], Some([90.0, 0.0]), [false; 3], true);
+        game.teleport_to_in_level(
+            Target::General(root),
+            [10.0, 70.0, -4.0],
+            Some([90.0, 0.0]),
+            [false; 3],
+            true,
+        );
         let (own, vehicle) = guest_teleport_packets(&rx);
         assert_eq!(vehicle.len(), 1);
         assert_eq!(vehicle[0].id, root as i32);
         assert_eq!(vehicle[0].position, [10.0, 70.0, -4.0]);
         assert_eq!([vehicle[0].yaw, vehicle[0].pitch], [90.0, 0.0]);
         assert_eq!(own.len(), 1);
-        assert_eq!(own[0].position, [10.0 + before[0], 70.0 + (before[1] - 64.0), -4.0 + before[2]]);
+        assert_eq!(
+            own[0].position,
+            [
+                10.0 + before[0],
+                70.0 + (before[1] - 64.0),
+                -4.0 + before[2]
+            ]
+        );
         assert_eq!([own[0].yaw, own[0].pitch], [120.0, 0.0]);
     });
 }
@@ -792,7 +840,13 @@ fn a_seated_guest_that_runs_the_teleport_is_published_once() {
         let _ = guest_teleport_packets(&rx);
         let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
         game.as_guest(13, |game| {
-            game.teleport_to_in_level(Target::General(root), [10.0, 70.0, -4.0], Some([90.0, 0.0]), [false; 3], true);
+            game.teleport_to_in_level(
+                Target::General(root),
+                [10.0, 70.0, -4.0],
+                Some([90.0, 0.0]),
+                [false; 3],
+                true,
+            );
         })
         .unwrap();
         let (own, vehicle) = guest_teleport_packets(&rx);
@@ -812,7 +866,13 @@ fn a_deep_general_chain_teleports_without_a_stack_frame_per_rider() {
             .collect();
         let ids = general_chain(game, &poses, 5);
         let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
-        game.teleport_to_in_level(Target::General(ids[0]), [8.0, 64.0, 8.0], None, [false; 3], true);
+        game.teleport_to_in_level(
+            Target::General(ids[0]),
+            [8.0, 64.0, 8.0],
+            None,
+            [false; 3],
+            true,
+        );
         let last = game.resident_entities.general.row(ids[2999]).unwrap();
         assert_eq!(last.position, Vec3::new(8.0, 64.0 + 2999.0 * 0.5, 8.0));
     });
@@ -1001,10 +1061,17 @@ fn a_cross_level_general_tree_applies_each_riders_transition_on_arrival() {
     with_types(|game| {
         let ids = general_chain(
             game,
-            &[([0.0, 64.0, 0.0], [0.0, 0.0]), ([1.5, 65.25, -0.5], [30.0, 10.0])],
+            &[
+                ([0.0, 64.0, 0.0], [0.0, 0.0]),
+                ([1.5, 65.25, -0.5], [30.0, 10.0]),
+            ],
             8,
         );
-        game.resident_entities.general.row_mut(ids[1]).unwrap().velocity = Vec3::new(0.5, 0.5, 0.5);
+        game.resident_entities
+            .general
+            .row_mut(ids[1])
+            .unwrap()
+            .velocity = Vec3::new(0.5, 0.5, 0.5);
         assert!(
             game.teleport_general_tree_across(
                 ids[0],
@@ -1034,7 +1101,10 @@ fn a_general_rider_targeted_across_levels_leaves_its_vehicle_first() {
     with_types(|game| {
         let ids = general_chain(
             game,
-            &[([0.0, 64.0, 0.0], [0.0, 0.0]), ([0.0, 65.0, 0.0], [0.0, 0.0])],
+            &[
+                ([0.0, 64.0, 0.0], [0.0, 0.0]),
+                ([0.0, 65.0, 0.0], [0.0, 0.0]),
+            ],
             9,
         );
         let moved = game
@@ -1098,7 +1168,7 @@ fn refused_dimension_transfer_returns_the_whole_tree() {
                 true,
                 crate::game::vehicle_teleport::TeleportMotion::Stop,
             )
-                .is_err()
+            .is_err()
         );
         let after: Vec<_> = game
             .resident_entities
