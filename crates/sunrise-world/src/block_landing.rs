@@ -92,10 +92,15 @@ pub trait BlockLandingWorld: BlockPushWorld {
     fn under_spawn_protection(&mut self, position: BlockPos) -> Result<bool, Self::Error>;
     fn mob_griefing(&mut self) -> Result<bool, Self::Error>;
     fn entity_dimensions(&self) -> (f32, f32);
-    fn cancel_farmland_trample(
+    /// A trample the rule has decided on, to `base` (`FarmlandBlock.fallOn`'s
+    /// `turnToBase`). Returns true when the world keeps the decision for its owner to ask
+    /// the mods about and apply, so the rule leaves the farmland to it; the default keeps
+    /// nothing and lets the rule write the block.
+    fn defer_farmland_trample(
         &mut self,
         _position: BlockPos,
         _state: BlockStateId,
+        _base: BlockStateId,
         _distance: f64,
     ) -> bool {
         false
@@ -428,7 +433,7 @@ impl BlockLandingRegistry {
                     if allowed {
                         let (width, height) = world.entity_dimensions();
                         if width * width * height > 0.512f32
-                            && !world.cancel_farmland_trample(position, state, distance)
+                            && !world.defer_farmland_trample(position, state, base, distance)
                         {
                             let next = push_entities_up(world, state, base, position)
                                 .map_err(LandingError::Push)?;

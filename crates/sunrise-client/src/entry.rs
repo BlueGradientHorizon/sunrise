@@ -258,14 +258,7 @@ pub(crate) fn install_client_hooks() {
             let context = reader.context();
             mod_api::dispatch_living_breathe(&context, entity, kind, can_breathe, consume, refill);
         },
-        farmland_trample: |context, entity, pos, state, distance, cancel| {
-            if !mod_api::__private::listened(mod_api::HookId::FarmlandTrample) {
-                return;
-            }
-            let reader = sunrise_client_render::api_context::LoopReader(context);
-            let context = reader.context();
-            mod_api::dispatch_farmland_trample(&context, entity, pos, state, distance, cancel);
-        },
+        farmland_trample_heard: || mod_api::__private::listened(mod_api::HookId::FarmlandTrample),
         has_mods: || !mod_api::__private::mods().is_empty(),
         player_name_format: |context, username, displayname| {
             use game::api_values::{TryIntoApi, TryIntoEngine};

@@ -26,19 +26,6 @@ use sunrise_world::{
     registry::BlockStateId,
 };
 
-/// Called on the server before a landing converts farmland to its base block.
-#[inline(never)]
-pub fn native_farmland_trample(
-    context: &LoopContext,
-    entity: u32,
-    pos: [i32; 3],
-    state: u32,
-    distance: f64,
-    cancel: &mut bool,
-) {
-    crate::native_client_hooks::farmland_trample(context, entity, pos, state, distance, cancel);
-}
-
 /// A living entity is about to handle a fall (`LivingFallEvent`). Mods may
 /// change the distance and damage multiplier, or cancel fall handling.
 #[inline(never)]
@@ -185,6 +172,15 @@ pub enum FallEvent {
         state: BlockStateId,
     },
     Broadcast(u8),
+    /// A landing on farmland that vanilla's chance and checks decided to trample, while a mod
+    /// listens to `farmland_trample`: the game asks it and applies the answer, the rule having
+    /// left the farmland alone. `base` is the block it would become.
+    Trample {
+        position: BlockPos,
+        state: BlockStateId,
+        base: BlockStateId,
+        distance: f64,
+    },
     Write {
         position: BlockPos,
         /// The block it replaced, so a mod that cancels the change
@@ -271,6 +267,7 @@ impl FallEvent {
             ),
             Self::BlockFallSound { .. } => "block-fall-sound".into(),
             Self::Broadcast(event) => format!("broadcast {event}"),
+            Self::Trample { position, .. } => format!("trample {}", p(position)),
             Self::Write {
                 position,
                 state,
@@ -552,22 +549,23 @@ impl BlockLandingWorld for MotionWorld<'_, '_, '_> {
     fn entity_dimensions(&self) -> (f32, f32) {
         (self.player.dimensions.width, self.player.dimensions.height)
     }
-    fn cancel_farmland_trample(
+    fn defer_farmland_trample(
         &mut self,
         position: BlockPos,
         state: BlockStateId,
+        base: BlockStateId,
         distance: f64,
     ) -> bool {
-        let mut cancel = false;
-        native_farmland_trample(
-            self.loop_context,
-            self.player.entity_id as u32,
-            [position.x, position.y, position.z],
-            state.0,
+        if !crate::native_client_hooks::farmland_trample_heard() {
+            return false;
+        }
+        self.fall_event(FallEvent::Trample {
+            position,
+            state,
+            base,
             distance,
-            &mut cancel,
-        );
-        cancel
+        });
+        true
     }
     fn suppressing_bounce(&mut self) -> Result<bool> {
         Ok(self.player.shift_key_down)

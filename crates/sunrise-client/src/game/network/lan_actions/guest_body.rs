@@ -481,6 +481,18 @@ impl Game<'_> {
                         Some(conn),
                     );
                 }
+                // Farmland a mod listens to: asked and applied as the landing guest.
+                MotionEvent::Fall(sunrise_client::landing::FallEvent::Trample {
+                    position,
+                    state,
+                    base,
+                    distance,
+                }) => {
+                    self.as_guest(conn, |game| {
+                        let id = game.native_acting_entity();
+                        game.trample_farmland(id, true, position, state, base, distance);
+                    });
+                }
                 MotionEvent::Fall(event) => {
                     let player = self
                         .lan

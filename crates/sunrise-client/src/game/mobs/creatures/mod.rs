@@ -2554,6 +2554,22 @@ impl Game<'_> {
                 // the landing's own block change posts its game event, from the
                 // mob that landed (`Context.of(entity, state)`) unless the block
                 // destroyed itself under it (`Context.of(state)`).
+                // The farmland a mob landed on that a mod listens to: asked and applied in
+                // the order the events came, against the block as it stands now.
+                MobEvent::FarmlandTrample {
+                    mob,
+                    pos,
+                    state,
+                    base,
+                    distance,
+                } => self.trample_farmland(
+                    mob,
+                    false,
+                    BlockPos::new(pos[0], pos[1], pos[2]),
+                    state,
+                    base,
+                    distance,
+                ),
                 MobEvent::LandingGameEvent {
                     event,
                     at,
