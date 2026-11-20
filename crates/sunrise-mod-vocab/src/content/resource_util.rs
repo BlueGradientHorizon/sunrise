@@ -6,8 +6,8 @@ use crate::{
     Capability, ComponentId, FluidKey, FluidResource, HostTransaction, ItemKey, ItemResource,
     Overanswered, ResourceHandler, ServerHost, Tag, Transaction,
 };
-use sunrise_core::nbt::JavaString;
 use std::ops::Range;
+use sunrise_core::nbt::JavaString;
 
 /// Several handlers as one (`CombinedResourceHandler`): their indices one after another, the
 /// first handler's from 0. An insert or extract without an index asks each handler in turn, so
@@ -15,23 +15,33 @@ use std::ops::Range;
 // no wire: a mod-side handler, invoked where it was built; never crosses the boundary.
 // exhaustive: its fields are private, so mods cannot build or destructure it
 pub struct CombinedResourceHandler<R> {
-    handlers: Vec<Box<dyn ResourceHandler<R>>>,
+    handlers: Vec<(Box<dyn ResourceHandler<R>>, usize)>,
+    size: usize,
 }
 
 impl<R> CombinedResourceHandler<R> {
-    /// `handlers`, numbered in this order.
-    pub fn new(handlers: Vec<Box<dyn ResourceHandler<R>>>) -> Self {
-        Self { handlers }
+    /// `handlers`, numbered in this order. Each handler's size is sampled once, so indices
+    /// stay assigned to the same handler for the lifetime of the wrapper.
+    pub fn new(host: &mut dyn ServerHost, handlers: Vec<Box<dyn ResourceHandler<R>>>) -> Self {
+        let mut size = 0usize;
+        let handlers = handlers
+            .into_iter()
+            .map(|handler| {
+                let slots = handler.size(host);
+                size = size.saturating_add(slots);
+                (handler, slots)
+            })
+            .collect();
+        Self { handlers, size }
     }
-    /// The handler index `index` falls in, and the index within it.
-    fn locate(
-        &self,
-        host: &mut dyn ServerHost,
-        mut index: usize,
-    ) -> Option<(&dyn ResourceHandler<R>, usize)> {
-        for handler in &self.handlers {
-            let size = handler.size(host);
-            if index < size {
+
+    /// The handler `index` falls in, and the index within it.
+    fn locate(&self, mut index: usize) -> Option<(&dyn ResourceHandler<R>, usize)> {
+        if index >= self.size {
+            return None;
+        }
+        for (handler, size) in &self.handlers {
+            if index < *size {
                 return Some((handler.as_ref(), index));
             }
             index -= size;
@@ -41,26 +51,24 @@ impl<R> CombinedResourceHandler<R> {
 }
 
 impl<R> ResourceHandler<R> for CombinedResourceHandler<R> {
-    /// The handlers' sizes added up; `usize::MAX` at most, past which no index is numbered.
-    fn size(&self, host: &mut dyn ServerHost) -> usize {
-        self.handlers.iter().fold(0usize, |size, handler| {
-            size.saturating_add(handler.size(host))
-        })
+    /// The handlers' original sizes added up; `usize::MAX` at most.
+    fn size(&self, _: &mut dyn ServerHost) -> usize {
+        self.size
     }
     fn resource(&self, host: &mut dyn ServerHost, index: usize) -> Option<R> {
-        let (handler, at) = self.locate(host, index)?;
+        let (handler, at) = self.locate(index)?;
         handler.resource(host, at)
     }
     fn amount(&self, host: &mut dyn ServerHost, index: usize) -> u32 {
-        self.locate(host, index)
+        self.locate(index)
             .map_or(0, |(handler, at)| handler.amount(host, at))
     }
     fn capacity(&self, host: &mut dyn ServerHost, index: usize, resource: &R) -> u32 {
-        self.locate(host, index)
+        self.locate(index)
             .map_or(0, |(handler, at)| handler.capacity(host, at, resource))
     }
     fn is_valid(&self, host: &mut dyn ServerHost, index: usize, resource: &R) -> bool {
-        self.locate(host, index)
+        self.locate(index)
             .is_some_and(|(handler, at)| handler.is_valid(host, at, resource))
     }
     fn insert_at(
@@ -71,7 +79,7 @@ impl<R> ResourceHandler<R> for CombinedResourceHandler<R> {
         resource: &R,
         amount: u32,
     ) -> u32 {
-        self.locate(host, index).map_or(0, |(handler, at)| {
+        self.locate(index).map_or(0, |(handler, at)| {
             handler.insert_at(host, tx, at, resource, amount)
         })
     }
@@ -83,7 +91,7 @@ impl<R> ResourceHandler<R> for CombinedResourceHandler<R> {
         resource: &R,
         amount: u32,
     ) -> u32 {
-        self.locate(host, index).map_or(0, |(handler, at)| {
+        self.locate(index).map_or(0, |(handler, at)| {
             handler.extract_at(host, tx, at, resource, amount)
         })
     }
@@ -94,7 +102,7 @@ impl<R> ResourceHandler<R> for CombinedResourceHandler<R> {
         resource: &R,
         amount: u32,
     ) -> u32 {
-        in_turn(amount, &self.handlers, |handler, left| {
+        in_turn(amount, &self.handlers, |(handler, _), left| {
             handler.insert(host, tx, resource, left)
         })
     }
@@ -105,24 +113,22 @@ impl<R> ResourceHandler<R> for CombinedResourceHandler<R> {
         resource: &R,
         amount: u32,
     ) -> u32 {
-        in_turn(amount, &self.handlers, |handler, left| {
+        in_turn(amount, &self.handlers, |(handler, _), left| {
             handler.extract(host, tx, resource, left)
         })
     }
 }
 
-/// Indices `start..end` of another handler, numbered from 0 (`RangedResourceHandler`): a
-/// machine's input slots as one side reaches them. Indices past the handler's size are left
-/// out. To pass another call through unchanged (`DelegatingResourceHandler`), implement
-/// [`ResourceHandler`] on a struct holding the handler and forward to it, as this output side
-/// that only drains:
+/// A checked range of another handler's indices, numbered from 0. A machine can expose only
+/// its input slots on one side this way. To delegate without changing the visible range, implement
+/// [`ResourceHandler`] on a struct holding the handler and forward to it:
 ///
 /// ```
 /// use mod_api::{ResourceHandler, ServerHost, Transaction};
 ///
-/// struct OutputOnly<R>(Box<dyn ResourceHandler<R>>);
+/// struct Delegating<R>(Box<dyn ResourceHandler<R>>);
 ///
-/// impl<R> ResourceHandler<R> for OutputOnly<R> {
+/// impl<R> ResourceHandler<R> for Delegating<R> {
 ///     fn size(&self, host: &mut dyn ServerHost) -> usize {
 ///         self.0.size(host)
 ///     }
@@ -135,12 +141,18 @@ impl<R> ResourceHandler<R> for CombinedResourceHandler<R> {
 ///     fn capacity(&self, host: &mut dyn ServerHost, index: usize, resource: &R) -> u32 {
 ///         self.0.capacity(host, index, resource)
 ///     }
-///     // Nothing goes in through this side.
-///     fn is_valid(&self, _: &mut dyn ServerHost, _: usize, _: &R) -> bool {
-///         false
+///     fn is_valid(&self, host: &mut dyn ServerHost, index: usize, resource: &R) -> bool {
+///         self.0.is_valid(host, index, resource)
 ///     }
-///     fn insert_at(&self, _: &mut dyn ServerHost, _: &Transaction, _: usize, _: &R, _: u32) -> u32 {
-///         0
+///     fn insert_at(
+///         &self,
+///         host: &mut dyn ServerHost,
+///         tx: &Transaction,
+///         index: usize,
+///         resource: &R,
+///         amount: u32,
+///     ) -> u32 {
+///         self.0.insert_at(host, tx, index, resource, amount)
 ///     }
 ///     fn extract_at(
 ///         &self,
@@ -152,6 +164,12 @@ impl<R> ResourceHandler<R> for CombinedResourceHandler<R> {
 ///     ) -> u32 {
 ///         self.0.extract_at(host, tx, index, resource, amount)
 ///     }
+///     fn insert(&self, host: &mut dyn ServerHost, tx: &Transaction, r: &R, n: u32) -> u32 {
+///         self.0.insert(host, tx, r, n)
+///     }
+///     fn extract(&self, host: &mut dyn ServerHost, tx: &Transaction, r: &R, n: u32) -> u32 {
+///         self.0.extract(host, tx, r, n)
+///     }
 /// }
 /// ```
 // no wire: a mod-side handler, invoked where it was built; never crosses the boundary.
@@ -162,37 +180,49 @@ pub struct RangedResourceHandler<R> {
 }
 
 impl<R> RangedResourceHandler<R> {
-    /// Indices `range` of `handler`.
-    pub fn new(handler: Box<dyn ResourceHandler<R>>, range: Range<usize>) -> Self {
-        Self { handler, range }
+    /// Wraps a non-empty range, or returns `None` if it is reversed, empty or outside `handler`.
+    pub fn of(
+        host: &mut dyn ServerHost,
+        handler: Box<dyn ResourceHandler<R>>,
+        range: Range<usize>,
+    ) -> Option<Self> {
+        (range.start < range.end && range.end <= handler.size(host))
+            .then_some(Self { handler, range })
     }
+
+    /// Wraps one index, or returns `None` if it is outside `handler`.
+    pub fn of_single_index(
+        host: &mut dyn ServerHost,
+        handler: Box<dyn ResourceHandler<R>>,
+        index: usize,
+    ) -> Option<Self> {
+        Self::of(host, handler, index..index.checked_add(1)?)
+    }
+
     /// `index`'s index in the wrapped handler, or none past this range.
-    fn inner(&self, host: &mut dyn ServerHost, index: usize) -> Option<usize> {
-        (index < self.size(host)).then(|| self.range.start + index)
+    fn inner(&self, index: usize) -> Option<usize> {
+        (index < self.range.len()).then(|| self.range.start + index)
     }
 }
 
 impl<R> ResourceHandler<R> for RangedResourceHandler<R> {
-    fn size(&self, host: &mut dyn ServerHost) -> usize {
-        self.range
-            .end
-            .min(self.handler.size(host))
-            .saturating_sub(self.range.start)
+    fn size(&self, _: &mut dyn ServerHost) -> usize {
+        self.range.len()
     }
     fn resource(&self, host: &mut dyn ServerHost, index: usize) -> Option<R> {
-        let at = self.inner(host, index)?;
+        let at = self.inner(index)?;
         self.handler.resource(host, at)
     }
     fn amount(&self, host: &mut dyn ServerHost, index: usize) -> u32 {
-        self.inner(host, index)
+        self.inner(index)
             .map_or(0, |at| self.handler.amount(host, at))
     }
     fn capacity(&self, host: &mut dyn ServerHost, index: usize, resource: &R) -> u32 {
-        self.inner(host, index)
+        self.inner(index)
             .map_or(0, |at| self.handler.capacity(host, at, resource))
     }
     fn is_valid(&self, host: &mut dyn ServerHost, index: usize, resource: &R) -> bool {
-        self.inner(host, index)
+        self.inner(index)
             .is_some_and(|at| self.handler.is_valid(host, at, resource))
     }
     fn insert_at(
@@ -203,8 +233,9 @@ impl<R> ResourceHandler<R> for RangedResourceHandler<R> {
         resource: &R,
         amount: u32,
     ) -> u32 {
-        self.inner(host, index)
-            .map_or(0, |at| self.handler.insert_at(host, tx, at, resource, amount))
+        self.inner(index).map_or(0, |at| {
+            self.handler.insert_at(host, tx, at, resource, amount)
+        })
     }
     fn extract_at(
         &self,
@@ -214,8 +245,9 @@ impl<R> ResourceHandler<R> for RangedResourceHandler<R> {
         resource: &R,
         amount: u32,
     ) -> u32 {
-        self.inner(host, index)
-            .map_or(0, |at| self.handler.extract_at(host, tx, at, resource, amount))
+        self.inner(index).map_or(0, |at| {
+            self.handler.extract_at(host, tx, at, resource, amount)
+        })
     }
 }
 

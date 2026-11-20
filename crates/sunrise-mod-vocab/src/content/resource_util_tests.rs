@@ -88,20 +88,49 @@ fn a_combined_handler_numbers_both_and_fills_the_second_when_the_first_is_full()
     let full = Some((HYDROGEN, 100));
     let first = Tanks::new(vec![full.clone(), full.clone()]);
     let second = Tanks::new(vec![None, None]);
-    let combined = CombinedResourceHandler::new(vec![
-        Box::new(first.clone()) as Box<dyn ResourceHandler<Chemical>>,
-        Box::new(second.clone()),
-    ]);
     let mut fake = FakeHost::new();
     let host: &mut dyn ServerHost = &mut fake;
+    let combined = CombinedResourceHandler::new(
+        host,
+        vec![
+            Box::new(first.clone()) as Box<dyn ResourceHandler<Chemical>>,
+            Box::new(second.clone()),
+        ],
+    );
     assert_eq!(combined.size(host), 4);
     assert_eq!(combined.amount(host, 1), 100);
     assert_eq!(combined.resource(host, 2), None);
-    let went =
-        host.transaction(|host, tx| Ok::<_, ()>(combined.insert(host, tx, &HYDROGEN, 150)));
+    let went = host.transaction(|host, tx| Ok::<_, ()>(combined.insert(host, tx, &HYDROGEN, 150)));
     assert_eq!(went, Ok(150));
     assert_eq!(first.held(), vec![full.clone(), full.clone()]);
     assert_eq!(second.held(), vec![full, Some((HYDROGEN, 50))]);
+}
+
+#[test]
+fn combined_indices_do_not_shift_when_a_child_changes_size() {
+    let host = &mut FakeHost::new();
+    let first = Tanks::new(vec![None]);
+    let second = Tanks::new(vec![Some((HYDROGEN, 23))]);
+    let combined =
+        CombinedResourceHandler::new(host, vec![Box::new(first.clone()), Box::new(second)]);
+    first.0.borrow_mut().push(Some((HYDROGEN, 9)));
+    assert_eq!(combined.size(host), 2);
+    assert_eq!(combined.amount(host, 1), 23);
+}
+
+#[test]
+fn ranged_checks_constructor_bounds_and_maps_the_single_index() {
+    let host = &mut FakeHost::new();
+    let tanks = Tanks::new(vec![Some((HYDROGEN, 10)), Some((HYDROGEN, 21))]);
+    assert!(RangedResourceHandler::of(host, Box::new(tanks.clone()), 1..3).is_none());
+    assert!(RangedResourceHandler::of(host, Box::new(tanks.clone()), 1..1).is_none());
+    assert!(
+        RangedResourceHandler::of_single_index(host, Box::new(tanks.clone()), usize::MAX).is_none()
+    );
+    let ranged = RangedResourceHandler::of_single_index(host, Box::new(tanks), 1).unwrap();
+    assert_eq!(ranged.size(host), 1);
+    assert_eq!(ranged.amount(host, 0), 21);
+    assert_eq!(ranged.amount(host, 1), 0);
 }
 
 #[test]
@@ -186,10 +215,13 @@ fn oversized_amounts_and_sizes_cap_instead_of_overflowing() {
     let host: &mut dyn ServerHost = &mut fake;
     let full = &Oversized(1) as &dyn ResourceHandler<Chemical>;
     assert_eq!(full.comparator_signal(host), 15);
-    let combined = CombinedResourceHandler::new(vec![
-        Box::new(Oversized(usize::MAX)) as Box<dyn ResourceHandler<Chemical>>,
-        Box::new(Oversized(2)),
-    ]);
+    let combined = CombinedResourceHandler::new(
+        host,
+        vec![
+            Box::new(Oversized(usize::MAX)) as Box<dyn ResourceHandler<Chemical>>,
+            Box::new(Oversized(2)),
+        ],
+    );
     assert_eq!(combined.size(host), usize::MAX);
 }
 
@@ -209,7 +241,14 @@ impl<R> ResourceHandler<R> for Liar {
     fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: &R) -> u32 {
         u32::MAX
     }
-    fn insert_at(&self, _: &mut dyn ServerHost, _: &Transaction, _: usize, _: &R, amount: u32) -> u32 {
+    fn insert_at(
+        &self,
+        _: &mut dyn ServerHost,
+        _: &Transaction,
+        _: usize,
+        _: &R,
+        amount: u32,
+    ) -> u32 {
         amount.saturating_add(1)
     }
     fn extract_at(&self, _: &mut dyn ServerHost, _: &Transaction, _: usize, _: &R, _: u32) -> u32 {
@@ -232,24 +271,32 @@ fn capability<R: 'static>(
 fn a_part_answering_more_than_asked_shows_through_every_total() {
     let mut fake = FakeHost::new();
     let host: &mut dyn ServerHost = &mut fake;
-    let tank_then_liar = || {
-        CombinedResourceHandler::new(vec![
-            Box::new(Tanks::new(vec![None])) as Box<dyn ResourceHandler<Chemical>>,
-            Box::new(Liar),
-        ])
+    let tank_then_liar = |host: &mut dyn ServerHost| {
+        CombinedResourceHandler::new(
+            host,
+            vec![
+                Box::new(Tanks::new(vec![None])) as Box<dyn ResourceHandler<Chemical>>,
+                Box::new(Liar),
+            ],
+        )
     };
     let insert = |host: &mut dyn ServerHost, handler: &dyn ResourceHandler<Chemical>, amount| {
         host.transaction(|host, tx| Ok::<_, ()>(handler.insert(host, tx, &HYDROGEN, amount)))
     };
     // The tank takes 100; the liar, asked for 50, answers 51: the total is over 150.
-    assert_eq!(insert(&mut *host, &tank_then_liar(), 150), Ok(151));
+    let inner = tank_then_liar(host);
+    assert_eq!(insert(host, &inner, 150), Ok(151));
     // Asked `u32::MAX`, no total can be over it: it answers 0, never `u32::MAX`.
-    assert_eq!(insert(&mut *host, &tank_then_liar(), u32::MAX), Ok(0));
+    let inner = tank_then_liar(host);
+    assert_eq!(insert(host, &inner, u32::MAX), Ok(0));
     // The default `insert` and `insert_stacking` add up their indices the same way.
-    let indices = CombinedResourceHandler::new(vec![
-        Box::new(Tanks::new(vec![Some((HYDROGEN, 90))])) as Box<dyn ResourceHandler<Chemical>>,
-        Box::new(Liar),
-    ]);
+    let indices = CombinedResourceHandler::new(
+        host,
+        vec![
+            Box::new(Tanks::new(vec![Some((HYDROGEN, 90))])) as Box<dyn ResourceHandler<Chemical>>,
+            Box::new(Liar),
+        ],
+    );
     let indices = &indices as &dyn ResourceHandler<Chemical>;
     let stacking =
         host.transaction(|host, tx| Ok::<_, ()>(indices.insert_stacking(host, tx, &HYDROGEN, 20)));
@@ -258,7 +305,7 @@ fn a_part_answering_more_than_asked_shows_through_every_total() {
     // A move out of an endless source asks `u32::MAX`: the saturated total used to read as all
     // of it going in, and the lying move committed.
     let from = capability(InfiniteResourceHandler::new(HYDROGEN), "test:creative");
-    let to = capability(tank_then_liar(), "test:liar");
+    let to = capability(tank_then_liar(host), "test:liar");
     let moved = host.transaction(|host, tx| {
         crate::move_resources(host, &from, &to, |_: &Chemical| true, u32::MAX, tx)
     });
@@ -367,11 +414,11 @@ fn an_overanswer_after_an_honest_part_undoes_the_whole_move() {
     chest(&mut fake, B, &[Some((stone, 62))]);
     let from = items_at(&mut fake, A);
     let honest = items_at(&mut fake, B).handler;
+    let host: &mut dyn ServerHost = &mut fake;
     let to = capability(
-        CombinedResourceHandler::new(vec![honest, Box::new(Liar)]),
+        CombinedResourceHandler::new(host, vec![honest, Box::new(Liar)]),
         "test:liar",
     );
-    let host: &mut dyn ServerHost = &mut fake;
     // B takes 2; the liar, asked for 3, answers 4.
     let moved =
         host.transaction(|host, tx| crate::move_resources(host, &from, &to, |_| true, 5, tx));
