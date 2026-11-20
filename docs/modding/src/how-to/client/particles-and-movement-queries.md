@@ -24,6 +24,24 @@ layer particle sprites and resource-pack and stack-component overrides. It retur
 Setup, Reloading and World, on native and wasm. Resolve again after resource reloads.
 It allocates a sprite list only when called; it adds no per-tick work.
 
+### Tinting an item crumb
+
+The item crumbs (`item` and its `item_*` variants) multiply their red, green and blue by
+`ParticleOptions::color` when they spawn and ignore its alpha; the default white changes
+nothing, and `item_particle_options` results and server `item_stack` sends stay untinted.
+A mod sets it with `with_color`, and a block-atlas sprite such as a fluid's still sprite is a
+valid layer, so a fluid crumb is the sprite tinted by the fluid:
+
+```rust,ignore
+let crumb = ParticleOptions::item(item_key, vec!["minecraft:block/water_still".into()])
+    .with_color([0.8 * r, 0.8 * g, 0.8 * b, 1.0]);
+host.add_particle(&crumb, at, velocity);
+```
+
+An item crumb's colour must be finite with every component in `0.0..=1.0`; `add_particle`
+returns `false` otherwise and nothing is clamped. The crumb keeps its small random spread of
+velocity and the level's light.
+
 ## Client fireworks
 
 `ClientHost::create_fireworks` draws a firework's explosions from a `FireworksRequest`: the

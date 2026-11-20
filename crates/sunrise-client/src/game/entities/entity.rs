@@ -860,6 +860,18 @@ impl Game<'_> {
         }
     }
 
+    /// `Projectile.hurtServer` from lava's `lavaHurt` this tick: `markHurt`,
+    /// unless the projectile is invulnerable to lava (`isInvulnerableToBase`).
+    pub(in crate::game) fn lava_mark_hurt(&mut self, shot: &mut Projectile) {
+        if !shot.take_lava_marked() {
+            return;
+        }
+        let vanilla = self.saved_refuses_damage(shot.id, "minecraft:lava", false);
+        if !self.refuses_lava_hurt(shot.id, shot.entity_type(), vanilla) {
+            shot.sync_velocity = true;
+        }
+    }
+
     /// A typed entity write for a projectile, applied in its own tick. A
     /// projectile takes no effects, no damage table and keeps no stuck
     /// multiplier: `Hurt` and `AddEffect` are skipped, `StuckIn` scales the
@@ -1022,10 +1034,12 @@ impl Game<'_> {
         );
         let alive = item.tick_settle(
             &self.world,
+            self.pack.assets.registry,
             self.res.facts(),
             no_physics,
             step,
             &self.loop_context,
+            self,
         );
         // ItemEntity.tick refreshes immersion and splashes on water entry.
         let before = item.velocity;
@@ -1430,19 +1444,17 @@ macro_rules! with_entity_mut {
 pub(super) use with_entity_mut;
 
 macro_rules! save_lists {
-    (($game:expr, $keys:expr, $out:expr)
+    (($game:expr, $keys:expr, $out:expr, $include_transient:expr)
      $($kind:ident($ty:ty) $field:ident: $($list:ident).+,)*) => {
         $(for i in 0..$game$(.$list)+.len() {
-            if let Some((key, mut tag)) = <$ty as $crate::game::entity::Entity>::save_nbt($game, i, $keys) {
+            let id = $game$(.$list)+[i].id();
+            if ($include_transient || !$game.persist.transient.contains(&id))
+                && let Some((key, mut tag)) = <$ty as $crate::game::entity::Entity>::save_nbt($game, i, $keys)
+            {
                 if !<$ty as $crate::game::entity::Entity>::SERIALIZES_ATTACHMENTS {
-                    $crate::game::persist::write_attachments(
-                        &mut tag, $game$(.$list)+[i].id(), &$game.entity_attachments);
+                    $crate::game::persist::write_attachments(&mut tag, id, &$game.entity_attachments);
                 }
-                $out.entry(key).or_default().push((
-                    $game$(.$list)+[i].id(),
-                    $game$(.$list)+[i].join_seq(),
-                    tag,
-                ));
+                $out.entry(key).or_default().push((id, $game$(.$list)+[i].join_seq(), tag));
             }
         })*
     };
@@ -1455,8 +1467,8 @@ pub(crate) use save_lists;
 /// nothing allocated beyond the tags. A kind added to the lists cannot be left
 /// out, since `save_nbt` has no default.
 macro_rules! save_entities_of_every_kind {
-    ($game:expr, $keys:expr, $out:expr) => {
-        $crate::game::entity::entity_lists!(save_lists, $game, $keys, $out)
+    ($game:expr, $keys:expr, $out:expr, $include_transient:expr) => {
+        $crate::game::entity::entity_lists!(save_lists, $game, $keys, $out, $include_transient)
     };
 }
 
@@ -1615,8 +1627,9 @@ impl Game<'_> {
         &mut self,
         keys: &HashSet<ChunkKey>,
         out: &mut HashMap<ChunkKey, Vec<(u32, JoinSeq, Tag)>>,
+        include_transient: bool,
     ) {
-        save_entities_of_every_kind!(self, keys, out);
+        save_entities_of_every_kind!(self, keys, out, include_transient);
     }
 }
 

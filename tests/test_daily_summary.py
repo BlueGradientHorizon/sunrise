@@ -33,6 +33,7 @@ def job(name, conclusion="success", failed=()):
 GREEN_JOBS = [job("shards / plan"), job("shards / ignored-tests-shards (sunrise-world)"),
               job("wasm-mods / fixture"), job("wasm-mods / Guest stack / ubuntu-latest"),
               job("fn-replace-check / route"), job("fn-replace-check / fn-replace-check"),
+              job("book-quickstart / route"), job("book-quickstart / quickstart"),
               job("windows-runtime-leases / test"),
               job("windows-runtime-leases / runtime-leases"), job("windows-runtime-leases / launcher-processes"),
               job("cargo-sunrise-mod / plan"),
@@ -1001,6 +1002,9 @@ class DailyWorkflowTests(unittest.TestCase):
         self.assertEqual(jobs["sdk-windows-macos"]["name"], "sdk")
         self.assertEqual(summary.PART_OF, {"sdk-windows-macos": "sdk"})
         self.assertEqual(jobs["fn-replace-check"]["needs"], ["resolve", "sdk"])
+        # The book's quickstart is an ordinary leg that tests this run's own SDK, never the previous Nightly's.
+        self.assertEqual(jobs["book-quickstart"]["needs"], ["resolve", "sdk"])
+        self.assertEqual(jobs["book-quickstart"]["with"]["own_sdk"], "true")
         self.assertIn("sdk-windows-macos", jobs["summary"]["needs"])
         publish = jobs["sdk-publish"]
         self.assertEqual(publish["needs"], ["resolve", "summary", "sdk", "sdk-windows-macos"])

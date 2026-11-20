@@ -80,16 +80,14 @@ impl Game<'_> {
         self.clear_mod_book_placement_screen();
         self.mod_screen = None;
         if let Some((block, mut screen)) = self.opened_screen(menu, target) {
-            // Resolve sprite identifiers once at the client declaration boundary.
+            // Check sprite identifiers once at the client declaration boundary.
             for slot in screen.slots.iter_mut().flatten() {
-                if let Some(icon) = &mut slot.no_item_icon {
-                    let key = sunrise_client::hud::atlas_key_of_gui_sprite(icon);
-                    if !self.gui.atlas.sprites.contains_key(&key) {
-                        let of = block.as_deref().unwrap_or(menu);
-                        log::error!("screen for {of}: unknown empty-slot GUI sprite {icon:?}");
-                        return;
-                    }
-                    *icon = key;
+                if let Some(icon) = &slot.no_item_icon
+                    && self.gui.atlas.gui_rect(icon).is_none()
+                {
+                    let of = block.as_deref().unwrap_or(menu);
+                    log::error!("screen for {of}: unknown empty-slot GUI sprite {icon:?}");
+                    return;
                 }
             }
             self.mod_screen = Some(OpenNativeScreen {

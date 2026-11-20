@@ -210,6 +210,50 @@ fn a_see_through_label_is_lit_at_least_2_in_the_world_and_unlit_over_it() {
             pixels(game, &[], &through),
             pixels(game, &[], &through_full)
         );
+        // `with_exact_light`: the copy in the world is lit by light 0 itself, darker than
+        // light 2's, and nothing else changes.
+        let exact = {
+            let options = NameTagOptions::new(true, true, 0x00).with_exact_light();
+            let (ok, copies) = labels(game, [0.5, 70.0, 0.5], &text, options);
+            assert_eq!(ok, Ok(()));
+            copies
+        };
+        assert!(exact[0].iter().all(|v| v.light == vertex_light(0x00)));
+        assert_eq!(
+            bytes(&exact[1]),
+            bytes(&through),
+            "the faded copy is unchanged"
+        );
+        assert_eq!(without_light(&exact[0]), without_light(&world));
+        let (dim, lit) = (
+            brightness(&pixels(game, &exact[0], &[])),
+            brightness(&pixels(game, &world, &[])),
+        );
+        assert!(dim < lit, "{dim} < {lit}");
+        // `with_faded_alpha`: the faded text at alpha 0x20 whichever copy it is, on the same
+        // backdrop, and fainter on screen than at the default 0x7F.
+        let faint = {
+            let options = NameTagOptions::new(true, true, 0x00).with_faded_alpha(0x20);
+            let (ok, copies) = labels(game, [0.5, 70.0, 0.5], &text, options);
+            assert_eq!(ok, Ok(()));
+            copies
+        };
+        assert_eq!(alphas(&faint[1]), (vec![0x20], vec![0x3F]));
+        assert_eq!(
+            bytes(&faint[0]),
+            bytes(&world),
+            "the copy in the world is unchanged"
+        );
+        let single = {
+            let options = NameTagOptions::new(false, true, 0x00).with_faded_alpha(0x20);
+            labels(game, [0.5, 70.0, 0.5], &text, options).1[0].clone()
+        };
+        assert_eq!(alphas(&single), (vec![0x20], vec![0x3F]));
+        let (faint_light, normal) = (
+            brightness(&pixels(game, &[], &faint[1])),
+            brightness(&pixels(game, &[], &through)),
+        );
+        assert!(faint_light < normal, "{faint_light} < {normal}");
         let wall = wall(game);
         let only_wall = pixels(game, &wall, &[]);
         let behind = pixels(game, &[wall.clone(), world].concat(), &through);

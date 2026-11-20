@@ -136,6 +136,13 @@ impl RenderAssets for Game<'_> {
             .map_err(|_| ModelError::UnknownModel)?;
         Ok(self.pack.render.block_state_models(state))
     }
+    fn block_state_model(&self, state: mod_api::BlockStateId) -> Result<ModelRef, ModelError> {
+        mod_api::__private::check_access(
+            "block_state_model",
+            mod_api::__private::LoadAccess::PublishedResources,
+        );
+        self.native_block_state_model(state)
+    }
     fn baked_model(
         &self,
         key: mod_api::BakedModelKey,

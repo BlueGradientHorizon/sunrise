@@ -30,7 +30,8 @@ SUNRISE_CLIENT = [
     "crates/sunrise-client-render/src", "crates/sunrise-world/src", "crates/sunrise-items/src",
     "crates/sunrise-guest-stack/src/guest_stack_constants.rs", "crates/sunrise-mod-wasm/tests/fixture/src",
     "docs/api/launch-reference.md", "docs/sunrise-ctl-commands.md", "docs/modding/examples/src/worldgen.rs",
-    "docs/parity/random-chance-seeded.jsonl", "packaging/executable_link.rs", "packaging/windows/exe.rs",
+    "docs/parity/block-entity-client-ticks.jsonl", "docs/parity/random-chance-seeded.jsonl",
+    "packaging/executable_link.rs", "packaging/windows/exe.rs",
     "research-lock.json", "tests/fixture_support/item_resource_properties.rs", "tests/fixtures",
 ]
 # The generator scans these to write the mod API, the points and the host boundary: its own sources, the vocabulary, the

@@ -10,6 +10,21 @@ sunrise-client game::advancements::tests::helmet_wear_reports_the_old_stack_and_
 sunrise-client game::advancements::tests::mob_name_components_read_live_text_without_saved_nbt lib daily resources
 sunrise-client game::advancements::tests::mob_predicate_view_reads_active_effect_instances lib daily resources
 sunrise-client game::advancements::tests::toast_admission_cancels_edits_and_preserves_queue_behavior lib daily resources
+sunrise-client game::agent::face_pick_tests::a_turn_with_motion_replies_after_the_frame_that_turns_it lib daily resources
+sunrise-client game::agent::face_pick_tests::an_ordinary_click_attacks_what_the_pick_holds lib daily resources
+sunrise-client game::agent::face_pick_tests::attack_by_id_checks_its_own_click_behind_a_tick_of_player_clicks lib daily resources
+sunrise-client game::agent::face_pick_tests::attack_by_id_click_drained_by_an_item_in_use_is_not_a_later_click lib daily resources
+sunrise-client game::agent::face_pick_tests::attack_by_id_drops_its_own_click_not_a_players_in_the_same_tick lib daily resources
+sunrise-client game::agent::face_pick_tests::attack_by_id_ends_without_a_click_on_death_or_without_ticks lib daily resources
+sunrise-client game::agent::face_pick_tests::attack_by_id_follows_the_listener_decision lib daily resources
+sunrise-client game::agent::face_pick_tests::attack_by_id_hits_the_entity_it_turned_to lib daily resources
+sunrise-client game::agent::face_pick_tests::attack_by_id_reports_a_click_no_tick_took lib daily resources
+sunrise-client game::agent::face_pick_tests::attack_by_id_reports_a_full_click_queue lib daily resources
+sunrise-client game::agent::face_pick_tests::attack_by_id_reports_the_pick_the_click_was_taken_with lib daily resources
+sunrise-client game::agent::face_pick_tests::look_at_entity_replies_after_a_tick_pick_with_no_frame lib daily resources
+sunrise-client game::agent::face_pick_tests::look_at_entity_replies_with_the_entity_it_turned_to lib daily resources
+sunrise-client game::agent::face_pick_tests::look_at_entity_waits_for_a_running_turn lib daily resources
+sunrise-client game::agent::face_pick_tests::look_at_over_previews_the_angle_without_picking lib daily resources
 sunrise-client game::agent::tests::region_adoption_agent_state_reports_the_actual_title_mode lib daily resources
 sunrise-client game::ahead::tests::moves_worked_out_ahead_match_those_made_at_each_turn lib daily resources
 sunrise-client game::allay_jukebox_source_tests::control_a_no_ai_allay_never_dances lib daily resources
@@ -113,7 +128,6 @@ sunrise-client game::boats::below_world::tests::a_tick_discards_the_vehicles_und
 sunrise-client game::boats::below_world::tests::saved_deep_end_boat_loads_then_is_discarded_and_extreme_scans_terminate lib daily resources
 sunrise-client game::boats::cobweb_tests::a_boat_leaving_a_cobweb_for_powder_snow_takes_the_powder_snow lib daily resources
 sunrise-client game::boats::cobweb_tests::a_cobweb_slows_a_boat_and_resets_its_fall lib daily resources
-sunrise-client game::boats::friction_tests::ground_friction_averages_intersecting_blocks_and_only_builds_a_kind_for_listeners lib daily resources
 sunrise-client game::boats::lifetime_tests::a_bound_boat_commits_the_driven_client_tick lib daily resources
 sunrise-client game::boats::lifetime_tests::a_bound_boat_keeps_its_registration_through_ticks_until_discard lib daily resources
 sunrise-client game::boats::lifetime_tests::a_bound_ridden_boat_commits_the_server_leash_tick lib daily resources
@@ -390,6 +404,7 @@ sunrise-client game::creatures::chorus_projectile_drop_tests::a_registered_snowb
 sunrise-client game::creatures::chorus_projectile_drop_tests::breaker_context_is_target_only_and_does_not_escape_its_level_call lib daily resources
 sunrise-client game::creatures::chorus_projectile_drop_tests::default_drop_rng_continues_identically_with_table_sequence_or_level_fallback lib daily resources
 sunrise-client game::creatures::chorus_projectile_drop_tests::denied_hits_other_blocks_and_direct_destroy_keep_their_drop_contracts lib daily resources
+sunrise-client game::creatures::control_mobs_sitting_tests::the_mobs_command_reports_the_sitting_pose lib daily resources
 sunrise-client game::creatures::conversion_identity::tests::a_converted_mob_keeps_its_serializable_attachments lib daily resources
 sunrise-client game::creatures::conversion_subscriber_tests::post_only_listener_is_subscribed_without_a_pre_listener lib daily resources
 sunrise-client game::creatures::conversion_tag_tests::converted_mobs_keep_command_tags_at_the_new_id_and_on_save lib daily resources
@@ -614,6 +629,9 @@ sunrise-client game::explosion::explosion_part_tests::block_parts_xp_and_explosi
 sunrise-client game::explosion::shulker_lock_drop_tests::destruction_captures_the_external_shulker_lock_before_removal lib daily resources
 sunrise-client game::explosion::tests::explosion_and_mob_breaks_apply_block_drops lib daily resources
 sunrise-client game::explosion::tests::rays_reusing_their_last_block_explode_what_each_step_did lib daily resources
+sunrise-client game::extras::mouse_tweaks::result_tests::a_chests_first_slot_keeps_its_own_item lib daily resources
+sunrise-client game::extras::mouse_tweaks::result_tests::a_predicted_take_carries_the_servers_result_and_empties_its_slot lib daily resources
+sunrise-client game::extras::mouse_tweaks::result_tests::the_wheel_finds_room_for_a_servers_crafting_result lib daily resources
 sunrise-client game::falling_air_tick_tests::loaded_air_is_discarded_on_first_actual_game_tick lib daily resources
 sunrise-client game::falling_blocks::geometry_tests::falling_model_cache_matches_direct_vertices lib daily resources
 sunrise-client game::falling_damage::helmet_tests::falling_impacts_wear_the_helmet_before_normal_armor_and_reduction lib daily resources
@@ -831,7 +849,7 @@ sunrise-client game::lan::tests::guest_climbable_glide lib daily resources
 sunrise-client game::lan::tests::server_chat_replies_reach_the_sender_alone lib daily resources
 sunrise-client game::lan::world_spawn_sync_tests::guest_respawn_without_a_known_world_spawn_never_advertises_the_hosts_personal_point lib daily resources
 sunrise-client game::lan::world_spawn_sync_tests::join_and_respawn_contexts_use_world_spawn_not_a_personal_spawn lib daily resources
-sunrise-client game::lan::world_spawn_sync_tests::setworldspawn_reaches_guests_in_other_dimensions_and_keeps_compass_overrides lib daily resources
+sunrise-client game::lan::world_spawn_sync_tests::setworldspawn_reaches_guests_with_the_dimension_it_ran_in lib daily resources
 sunrise-client game::lan_actions::attack_checks::tests::attacking_an_item_an_orb_oneself_or_an_arrow_kicks_the_player lib daily resources
 sunrise-client game::lan_actions::boat_holder_movement_tests::boat_tick_uses_stopped_players_known_movement lib daily resources
 sunrise-client game::lan_actions::boat_holder_movement_tests::empty_markers_preserve_actual_walk_and_still_movement_bookkeeping lib daily resources
@@ -2285,6 +2303,7 @@ sunrise-client game::remote::player_tick_tests::client_player_ticks_on_the_death
 sunrise-client game::remote::player_tick_tests::guest_tick_brackets_sleep_cooldowns_pickups_and_death lib daily resources
 sunrise-client game::remote::player_tick_tests::the_name_tag_over_a_player_shows_the_name_a_mod_formats lib daily resources
 sunrise-client game::remote::respawn_motion_tests::a_portals_respawn_keeps_the_players_motion_and_a_deaths_does_not lib daily resources
+sunrise-client game::remote::rider_tick_tests::a_boat_clamps_the_riders_yaw_without_changing_the_previous_yaw lib daily resources
 sunrise-client game::remote::rider_tick_tests::a_riders_move_takes_the_look_of_the_tick_and_leaves_it_off_the_ground lib daily resources
 sunrise-client game::remote::tables::tests::a_servers_block_and_item_tags_replace_the_games lib daily resources
 sunrise-client game::remote::tests::a_servers_client_takes_its_speed_from_the_attributes_not_the_effect lib daily resources

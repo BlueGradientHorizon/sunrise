@@ -29,6 +29,21 @@ impl Renderer {
         let mut laps = crate::spans::laps();
         let landing = Instant::now();
         self.land_frame();
+        // The frame's one poll takes in what earlier frames read back (GPU times, GPU
+        // culling's statistics, occlusion results, a shader pack's centre depth); their
+        // collectors don't poll. It, or the previous frame's submission, is often where a
+        // device loss shows: this frame then touches the device no more and holds no surface
+        // texture, and `render` leaves recovery to its caller.
+        let polled =
+            super::in_flight::poll_live(&self.device, &self.device_lost, wgpu::PollType::Poll);
+        if self.device_lost() {
+            return Err(super::in_flight::LOST.into());
+        }
+        if polled.is_ok()
+            && let Some(timer) = &mut self.gpu_timer
+        {
+            timer.collect(&mut self.gpu_times);
+        }
         // Waiting for the previous frame (offscreen: at most two on the GPU), not work.
         let landed = landing.elapsed();
         self.queue.take_waited();
@@ -94,7 +109,10 @@ impl Renderer {
             t.gap = self.pass_timing_gap;
             t.keep_frames(self.keep_timed_frames);
             t.set_detail(self.pass_detail);
-            t.begin(&self.device, &self.queue);
+            // The calibration draw's wait is the one that can find a loss here; the acquired
+            // surface texture goes back undrawn and unpresented (`render` leaves recovery to
+            // its caller).
+            t.begin(&self.device, &self.queue, &self.device_lost)?;
         }
         if self.animated_textures {
             self.hud.animate(
@@ -453,7 +471,7 @@ impl Renderer {
         let serial = self.frame_serial;
         // GPU frames' statistics come back a frame or a few later (`GpuCulling::collect`).
         if let Some(gpu) = &mut self.gpu_culling
-            && let Some((frame, stats)) = gpu.collect(&self.device)
+            && let Some((frame, stats)) = gpu.collect()
         {
             self.show_stats(frame, stats);
         }
@@ -751,7 +769,7 @@ impl Renderer {
                     && !gpu_frame
                     && visible.len() >= c.min_sections
             })
-            .and_then(|cull| cull.begin(&self.device).then_some(cull));
+            .and_then(|cull| cull.begin().then_some(cull));
         self.phase2_draws.clear();
         self.phase2_pages.clear();
         self.solid_runs.clear();
@@ -1360,6 +1378,7 @@ impl Renderer {
             native_solid_quads,
             native_cutout_quads,
             native_cutout_mipped_quads,
+            native_translucent_quads,
         ] = self.entity_batch.update(
             entities,
             frame.additive,
@@ -1391,7 +1410,8 @@ impl Renderer {
             + world_text_offset_quads
             + native_solid_quads
             + native_cutout_quads
-            + native_cutout_mipped_quads;
+            + native_cutout_mipped_quads
+            + native_translucent_quads;
         laps.lap("r_draw_lists");
         // Where the tail of materials the classic and the improved passes
         // both draw ends: the shadows, particles and items count back from it.
@@ -1402,9 +1422,58 @@ impl Renderer {
             - world_text_offset_quads
             - native_solid_quads
             - native_cutout_quads
-            - native_cutout_mipped_quads;
+            - native_cutout_mipped_quads
+            - native_translucent_quads;
         let native_clouds = self.native.as_ref().is_none_or(|n| n.vanilla_clouds);
-        let cloud_quads = if let Some(input) = frame.clouds.as_ref().filter(|_| native_clouds) {
+        // A pack's core/clouds, decided before either mesh is prepared: its faces, or none and
+        // the native mesh in this same frame.
+        let pack_clouds = core_clouds::CloudsFrame {
+            pack_shader: self.core_clouds.is_some(),
+            clouds: frame.clouds.is_some(),
+            native_clouds,
+            improved_transparency: oit_on,
+            shader_pack: self.pack_post.as_ref().is_some_and(|p| p.1.is_some()),
+            title: frame.title,
+            cloud_marks: light_marks(self.output.frame.format, self.hdr.is_some())
+                && self.hdr.as_ref().is_some_and(|h| h.lighting),
+        }
+        .pack_draws();
+        let pack_cloud_quads = match (self.core_clouds.as_mut(), frame.clouds.as_ref()) {
+            (Some(core), Some(input)) if pack_clouds => {
+                let view = views.primary();
+                let vanilla = core_lines::uniforms(
+                    pack.globals,
+                    view,
+                    pose,
+                    jitter,
+                    1.0,
+                    fog_color,
+                    pack.fog,
+                );
+                core.prepare(
+                    &self.device,
+                    &mut self.uploads,
+                    &mut encoder,
+                    &vanilla,
+                    input,
+                )
+                .map_err(|e| {
+                    log::warn!(
+                        "the resource pack's clouds are drawn natively this frame: their faces \
+                             take {} bytes, more than the {} this device binds",
+                        e.bytes,
+                        e.limit
+                    )
+                })
+                .ok()
+            }
+            _ => None,
+        };
+        let native_input = frame
+            .clouds
+            .as_ref()
+            .filter(|_| native_clouds && pack_cloud_quads.is_none());
+        let cloud_quads = if let Some(input) = native_input {
             let (rebuilt, uniform) =
                 crate::spans::time("clouds", || self.cloud_mesh.prepare(input));
             let vertices = self.cloud_mesh.vertices.len() as u64;
@@ -1723,6 +1792,7 @@ impl Renderer {
         let max_quads =
             (world_quads + additive_quads + hand_quads + see_through_quads + shadow_only_quads)
                 .max(cloud_quads)
+                .max(pack_cloud_quads.unwrap_or(0))
                 .max(if frame.lightning.bolts.is_empty() {
                     0
                 } else {
@@ -2097,7 +2167,7 @@ impl Renderer {
                 self.light_revision,
             );
             if let Some(t) = &mut native.timing {
-                t.begin(&self.device, &self.queue);
+                t.begin(&self.device, &self.queue, &self.device_lost)?;
                 native_sky_pass =
                     native.sky.is_some() && t.recording() && sky_visible && frame.skybox;
             }
@@ -2765,8 +2835,11 @@ impl Renderer {
             // Native terrain models use the block sprite arrays with their own
             // alpha/mipmap policies and ordinary opaque depth. Storage follows
             // the existing materials without moving their indices or frame tails.
-            let mut first =
-                world_quads - native_solid_quads - native_cutout_quads - native_cutout_mipped_quads;
+            let mut first = world_quads
+                - native_solid_quads
+                - native_cutout_quads
+                - native_cutout_mipped_quads
+                - native_translucent_quads;
             for (i, count) in [
                 native_solid_quads,
                 native_cutout_quads,
@@ -2793,6 +2866,20 @@ impl Renderer {
                 first += count;
             }
             pass.set_bind_group(0, &self.group, &[]);
+            // Translucent moving blocks (`RenderTypes.translucentMovingBlock`): alpha blended,
+            // depth written, quads far to near, before terrain transparency like fluids.
+            if native_translucent_quads > 0 {
+                pass.stage(self.own_timing.as_mut(), "translucent terrain models");
+                pass.set_pipeline(&self.terrain_model_pipelines[3]);
+                pass.set_bind_group(0, &self.translucent_model_group, &[]);
+                pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
+                pass.draw_indexed(
+                    0..native_translucent_quads * 6,
+                    ((world_quads - native_translucent_quads) * 4) as i32,
+                    0..1,
+                );
+                pass.set_bind_group(0, &self.group, &[]);
+            }
             // Still-fluid block entities draw as their own ordinary sorted
             // translucent material, before terrain transparency. This material
             // always writes depth and never joins the improved-transparency queues.
@@ -3270,6 +3357,14 @@ impl Renderer {
                     0..1,
                 );
             }
+            if let (Some(core), Some(input)) = (&self.core_clouds, frame.clouds.as_ref())
+                && pack_cloud_quads.is_some_and(|quads| quads > 0)
+                && !pack_draws_clouds
+            {
+                pass.stage(self.own_timing.as_mut(), "clouds");
+                core.draw(&mut pass, !input.fast, &self.indices);
+                pass.set_bind_group(0, &self.group, &[]);
+            }
             if cloud_quads > 0 && !pack_draws_clouds && !oit_on {
                 pass.stage(self.own_timing.as_mut(), "clouds");
                 pass.set_pipeline(&self.cloud_pipeline);
@@ -3412,8 +3507,12 @@ impl Renderer {
                 cpu,
                 lifts_world,
             },
-        );
+        )?;
         laps.lap("r_passes");
+        // A loss the passes' waits found (a shader pack's timing, its image dump): no submit.
+        if self.device_lost() {
+            return Err(super::in_flight::LOST.into());
+        }
         self.submit_and_present_frame(
             encoder,
             SubmitFrameArgs {

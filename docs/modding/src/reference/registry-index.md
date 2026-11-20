@@ -82,6 +82,18 @@ registry-produced metadata, independent of project package keys. The launcher
 builds native mods locally with its pinned Rust toolchain against the prebuilt
 game; registry-built native binaries are not used.
 
+## A native mod's list of what it uses
+
+A native mod file carries `uses.json`, the list of what the mod uses, made for the build the mod pins; with it a
+newer build can tell whether the mod still fits ([SDK fit](sdk/04-fit.md)). `cargo sunrise-mod build` writes the list
+when it can read the mod's source against the pinned SDK, and says what stops it when it cannot.
+
+`cargo sunrise-mod check <file>` refuses a native mod file with no list, or with one made for another build than the
+mod pins; `publish` and `registry release` run the same check on the file they are given. `registry check` applies
+it to files whose hash is new in the pull request. `registry build` and installs do not apply it, so files already
+listed stay as they are. A mod with a `[[native.module]]` or `[[native.bridge]]` row is outside
+this rule: no list can describe those rows, so its file needs none.
+
 ## Dependency checks
 
 `cargo sunrise-mod check <file>` prints the manifest's required and optional dependencies. `registry check` reports

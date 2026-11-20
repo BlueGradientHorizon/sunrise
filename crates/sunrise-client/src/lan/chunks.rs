@@ -858,13 +858,6 @@ impl ChunkEncoder {
             }
         }
     }
-    /// Whether the state holds a fluid (water, lava, or a waterlogged block).
-    pub fn has_fluid(&self, state: u32) -> bool {
-        self.coder
-            .flags
-            .get(state as usize)
-            .is_some_and(|f| f & FLUID != 0)
-    }
     pub fn is_air(&self, state: u32) -> bool {
         self.coder
             .flags
@@ -943,14 +936,7 @@ impl ChunkEncoder {
         )
     }
 
-    /// A lit resident far column, with its live block entities and every light layer:
-    /// neighbours outside the loading buffer need not be loaded just to send it.
-    pub(super) fn body_far(&self, chunk: &Chunk, world: &crate::world::World) -> Vec<u8> {
-        self.body(chunk, &world.block_entities, SectionMask::ALL)
-    }
-
-    /// An encoder of the same level with caches of its own, for threads that encode saved chunks no
-    /// level holds (`lan::far`).
+    /// An encoder of the same level with caches of its own.
     pub fn detached(&self) -> Self {
         Self {
             items: self.items.clone(),
@@ -968,21 +954,6 @@ impl ChunkEncoder {
             sky: self.sky,
         }
     }
-    /// The body of a column read from the save that no level holds: its own block entities, and every
-    /// light section (as `light_update`; no neighbour is at hand to tell which exist). Nothing of it
-    /// stays cached: the column is dropped once sent.
-    pub fn body_alone(&self, chunk: &Chunk) -> Vec<u8> {
-        let entities: HashMap<_, _> = chunk.block_entities.iter().cloned().collect();
-        let body = self.body(chunk, &entities, SectionMask::ALL);
-        let mut cache = self.cache.lock().unwrap();
-        for s in &chunk.sections {
-            cache.remove(&(Arc::as_ptr(s) as usize));
-        }
-        drop(cache);
-        self.heights.lock().unwrap().remove(&(chunk.x, chunk.z));
-        body
-    }
-
     /// Make what these columns need and is not cached yet (their heightmaps
     /// and sections) before their bodies are made, shared out to the warm-up
     /// threads: a batch of new terrain costs mostly its sections' first
@@ -1825,7 +1796,7 @@ mod tests {
             expected.insert("x".into(), Tag::Int(i32::from(info.packed_xz as u8 >> 4)));
             assert_eq!(info.tag, Tag::Compound(expected));
         }
-        // As does an encoder for saved chunks past the view distance (`lan::far`).
+        // As does a detached encoder.
         let far = encoder.detached().encode(&chunk, &block_entities);
         assert_eq!(far.chunk.block_entities.len(), 2);
         for info in far.chunk.block_entities {
@@ -2588,19 +2559,6 @@ mod tests {
         warmed.warm(&chunks);
         assert_eq!(bodies(&warmed), expected);
         warmed.warm(&[]);
-    }
-
-    /// A far chunk's body (`lan::far`) leaves nothing of it cached, and is the same each time.
-    #[test]
-    fn a_body_alone_leaves_nothing_cached() {
-        let encoder = encoder();
-        let mut chunk = Chunk::empty(3, -1);
-        chunk.set(1, 64, 1, 1);
-        let body = encoder.body_alone(&chunk);
-        assert!(encoder.cache.lock().unwrap().is_empty());
-        assert!(encoder.heights.lock().unwrap().is_empty());
-        assert_eq!(encoder.detached().body_alone(&chunk), body);
-        assert_eq!(encoder.body_alone(&chunk), body);
     }
 
     #[test]

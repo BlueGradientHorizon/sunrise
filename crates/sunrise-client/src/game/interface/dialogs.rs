@@ -634,10 +634,10 @@ impl Game<'_> {
                     let hover = in_area(cursor.1) && ui::hovered(cursor, x, y, cw, ch);
                     let on = open.values.get(input) == Some(&InputValue::Bool(true));
                     let sprite = match (on, hover) {
-                        (true, true) => "gui/sprites/widget/checkbox_selected_highlighted",
-                        (true, false) => "gui/sprites/widget/checkbox_selected",
-                        (false, true) => "gui/sprites/widget/checkbox_highlighted",
-                        (false, false) => "gui/sprites/widget/checkbox",
+                        (true, true) => "widget/checkbox_selected_highlighted",
+                        (true, false) => "widget/checkbox_selected",
+                        (false, true) => "widget/checkbox_highlighted",
+                        (false, false) => "widget/checkbox",
                     };
                     let Control::Boolean { label, .. } = &open.dialog.inputs[input].control else {
                         continue;

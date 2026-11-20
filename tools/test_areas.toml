@@ -83,7 +83,7 @@ harnesses = [
   "server_player_sculk", "shrieker_local_capture", "vibration_source", "kill_die_vibration", "server_wool_vibration",
   "pot_hopper", "random_tick*", "simple_block", "fluid*", "liquid_collision", "cauldron", "lava_cauldron_item",
   "composter", "furnace*", "brewing*", "vault", "jukebox_saved_clock", "cushion_placement", "face_support",
-  "ground_support", "dynamic_support", "falling_*", "clone_block_ticks", "wet_fire", "fire_starter_sound",
+  "ground_support", "dynamic_support", "falling_*", "clone_block_ticks", "wet_fire", "lava_fire", "fire_starter_sound",
   "dripleaf_projectiles", "geyser_*", "sulfur_bucket", "nether_portal", "portal_*", "gateway_*", "level_place",
   "level_shape", "flat_place", "geometry", "chest_*", "anvil_turtle_egg", "hive_default_patch", "lodestone_default",
   "structure_blocks", "sign_literal", "cuboid_model", "tick_order", "tick", "tick_step_network", "frozen_first_tick_water",
@@ -187,6 +187,7 @@ paths = [
   "crates/sunrise-client/src/game/world/saving.rs", "crates/sunrise-client/src/game/world/persist*",
   "crates/sunrise-client/src/game/world/storage.rs", "crates/sunrise-client/src/game/world/autosave.rs",
   "crates/sunrise-world/src/region.rs", "crates/sunrise-world/src/datafix/*", "crates/sunrise-core/src/nbt.rs",
+  "crates/sunrise-world/src/crash_fixture.rs", "tools/save_fault_harness.py",
   "crates/sunrise-client-core/src/block_entity_nbt.rs",
 ]
 cargo = [
@@ -198,7 +199,7 @@ cargo = [
 harnesses = [
   "save_roundtrip", "world_reopen", "world", "datafix", "*_save_reload", "*_save", "*_load", "*_saved_*",
   "saved_empty_tags", "player_save_fields", "display_save", "trident_save", "stand_fall_save", "dedicated_crash_save",
-  "structure_start_nbt", "entity_nbt_boolean", "nbt_path_reader", "snbt_unicode", "java_*",
+  "save_kill", "save_corruption", "structure_start_nbt", "entity_nbt_boolean", "nbt_path_reader", "snbt_unicode", "java_*",
 ]
 lan = ["sleep-reload", "leash_reload", "reopen_player"]
 
@@ -326,7 +327,7 @@ lan = [
 name = "render"
 about = "rendering, models, particles, HUD and screens, audio, resource packs, options"
 paths = [
-  "crates/sunrise-client-render/*", "crates/sunrise-assets/*", "crates/sunrise-optifine/*", "crates/sunrise-polytone/*",
+  "crates/sunrise-client-render/*", "crates/sunrise-assets/*", "crates/sunrise-optifine/*", "crates/sunrise-connected/*", "crates/sunrise-polytone/*",
   "crates/sunrise-shader*", "crates/sunrise-hdr/*",
 ]
 cargo = [

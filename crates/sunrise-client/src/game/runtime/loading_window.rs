@@ -113,6 +113,7 @@ pub(super) fn build_renderer(
         atlas.lightmap_shader.as_deref(),
         &atlas.lightmap_expressions,
     );
+    renderer.set_clouds_shader(atlas.clouds_shader.as_deref());
     renderer.set_custom_sky(&*pack.custom_sky);
     renderer.set_shared_material_maps(&atlas.material_maps);
     let cit_glints = pack.item_renderer.cit.as_ref().map(|c| &c.glint_textures);
