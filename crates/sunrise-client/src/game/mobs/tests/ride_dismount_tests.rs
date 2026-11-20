@@ -138,6 +138,7 @@ fn ghast(game: &mut Game<'_>) -> u32 {
 /// `ServerPlayer.startRiding`: the teleport is `Relative.ROTATION` with no
 /// delta, so the player's view is the one it had.
 #[test]
+#[ignore = "daily"]
 fn a_ride_mount_keeps_the_players_view() {
     // No prepared resources (CI): nothing to run in.
     let mut resources = None;
@@ -156,6 +157,7 @@ fn a_ride_mount_keeps_the_players_view() {
 /// so right-clicking a harnessed one keeps the view too (unlike a horse's
 /// `AbstractHorse.doPlayerRide`, which turns the rider first).
 #[test]
+#[ignore = "daily"]
 fn a_click_on_a_harnessed_ghast_keeps_the_players_view() {
     let mut resources = None;
     let Some(mut game) = super::tests::server_game(&mut resources) else {
