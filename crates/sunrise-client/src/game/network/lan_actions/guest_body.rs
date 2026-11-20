@@ -265,6 +265,8 @@ impl Game<'_> {
             // LivingEntity.baseTick's air supply: decided here, then `living_breathe` is
             // asked with the game itself, which `w` borrows, and its answer applied.
             if let Ok(step) = w.decide_air() {
+                // This tick's events so far, kept if the hook leaves no acting player.
+                let mut collected = std::mem::take(&mut w.player.events);
                 let answer = match step {
                     Some(step) if sunrise_client::breathing::heard() => {
                         game.ask_player_breath(step).map(|breath| (step, breath))
@@ -272,8 +274,10 @@ impl Game<'_> {
                     step => step.map(|step| (step, step.vanilla)),
                 };
                 let Some(player) = game.player.as_mut() else {
-                    return (Vec::new(), None);
+                    return (collected, None);
                 };
+                collected.append(&mut player.events);
+                player.events = collected;
                 side = game_side!(game);
                 w = motion_world!(game, side, player);
                 if let Some((step, breath)) = answer {
