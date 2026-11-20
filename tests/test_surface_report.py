@@ -410,7 +410,7 @@ echo '{"by": "own"}' > "$3"
 class LandedTests(unittest.TestCase):
     SHA = "6" * 40
 
-    def check(self, diff_exit, trees=None, git_text=None):
+    def check(self, diff_exit, trees=None, git_text=None, refuse_landed=False, own_tool=None):
         with tempfile.TemporaryDirectory() as directory:
             work = Path(directory)
             for side in ("head", "base"):
@@ -422,7 +422,11 @@ class LandedTests(unittest.TestCase):
             tool = work / "sunrise-stage"
             tool.write_text(f"""#!/bin/bash
 echo "$@" >> {work}/calls
-if [ "$1" = surface ]; then echo '{{}}' > "$3"; exit 0; fi
+if [ "$1" = surface ]; then
+  case "$2" in */landed-*) [ {int(refuse_landed)} = 0 ] || {{ echo 'sunrise-stage surface: trait T has no marks' >&2; exit 1; }};; esac
+  echo '{{"by": "head"}}' > "$3"; exit 0
+fi
+cat "$2" "$3" > {work}/compared
 if [ {diff_exit} != 0 ]; then echo "change note r61.toml names point:a, which did not change" >&2; fi
 exit {diff_exit}
 """)
@@ -432,8 +436,11 @@ exit {diff_exit}
             git_text = git_text or (lambda *a: MERGE if a[0] == "cat-file" else "")
             code, text = surface_report.landed_check(
                 str(tool), work / "head", work / "base", work, shas,
-                git_text=git_text, fetch=lambda sha, into: fetched.append(sha))
+                git_text=git_text, fetch=lambda sha, into: fetched.append(sha),
+                own_tool=own_tool and (lambda sha: own_tool(sha, work)))
             calls = (work / "calls").read_text() if (work / "calls").exists() else ""
+            if (work / "compared").exists():
+                calls += "compared " + (work / "compared").read_text().replace("\n", " ")
             return shas, code, text, calls, fetched
 
     def test_only_new_notes_that_carry_landed_are_found(self):
@@ -451,6 +458,32 @@ exit {diff_exit}
         _, code, text, _, _ = self.check(1)
         self.assertEqual(code, 1)
         self.assertIn(f"r61.toml (landed {self.SHA})", text)
+
+    def test_old_trees_this_tool_refuses_are_exported_by_their_own_commits_tools(self):
+        built = []
+
+        def own_tool(sha, work):
+            built.append(sha)
+            tool = work / f"own-{sha}"
+            tool.write_text(f"""#!/bin/bash
+echo '{{"by": "{sha}"}}' > "$3"
+""")
+            tool.chmod(0o755)
+            return str(tool)
+
+        _, code, text, calls, _ = self.check(0, refuse_landed=True, own_tool=own_tool)
+        self.assertEqual(code, 0, text)
+        # The merge by the merge's own tool, its first parent by the parent's; the diff compares those exports.
+        self.assertEqual(built, [self.SHA, "aaaa"])
+        self.assertIn('compared {"by": "aaaa"} {"by": "%s"}' % self.SHA, calls)
+        self.assertIn(f"--landed {self.SHA}", calls)
+        self.assertIn("The head was exported by its own sunrise-stage", text)
+        self.assertIn("The base was exported by its own sunrise-stage", text)
+        # With no tool to build, a refused tree fails the check, naming why.
+        _, code, text, calls, _ = self.check(0, refuse_landed=True)
+        self.assertEqual(code, 1)
+        self.assertIn("sunrise-stage surface: trait T has no marks", text)
+        self.assertNotIn("surface-diff", calls)
 
     def test_a_landed_that_is_not_a_full_sha_is_not_returned(self):
         with tempfile.TemporaryDirectory() as directory:
