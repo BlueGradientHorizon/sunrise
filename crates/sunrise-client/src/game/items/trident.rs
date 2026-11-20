@@ -15,6 +15,7 @@ use sunrise_client::{
     items::ItemStack,
     mesher::Vertex,
     mobs::{Damage, DamageKind, Species, Who, anim::Poses},
+    projectiles::ProjectileWorld,
 };
 use sunrise_core::{
     geometry::{Aabb, Vec3, traverse_blocks},
@@ -23,6 +24,63 @@ use sunrise_core::{
 };
 
 pub(super) use sunrise_gameplay::trident::{HALF, ThrownTrident, breeze_deflect, segment_box};
+/// `ThrownTrident.tick` on a server's client: it flies on by itself
+/// between the server's updates (`AbstractArrow.tick`: gravity and drag,
+/// a block holds it), and Loyalty pulls it back to its owner; only the
+/// server decides what it hits.
+pub(super) fn remote_tick(
+    t: &mut ThrownTrident,
+    w: &impl ProjectileWorld,
+    owner_eye: Option<Vec3>,
+) {
+    t.previous = t.position;
+    t.shake -= i32::from(t.shake > 0);
+    if t.in_ground_time > 4 {
+        t.dealt_damage = true;
+    }
+    if t.loyalty > 0
+        && (t.dealt_damage || t.no_physics)
+        && let Some(eye) = owner_eye
+    {
+        t.no_physics = true;
+        t.in_ground = false;
+        t.loyalty_pull(eye);
+    }
+    // AbstractArrow.tick releases a changed block only on the server;
+    // clients release from the non-SELF move after a piston push.
+    if t.in_ground && !t.no_physics {
+        t.in_ground_time += 1;
+        return;
+    }
+    t.in_ground_time = 0;
+    let m = t.velocity;
+    let (x, z) = if t.no_physics {
+        (-m.x, -m.z)
+    } else {
+        (m.x, m.z)
+    };
+    // Projectile.updateRotation's targets: Mth.atan2 times the folded 180F / (float)PI, the pitch over
+    // Vec3.horizontalDistance.
+    t.yaw = sunrise_core::geometry::trig::atan2_degrees(x, z);
+    t.pitch = sunrise_core::geometry::trig::atan2_degrees(m.y, m.horizontal_distance());
+    let to = t.position.add_vector(m);
+    if !t.no_physics
+        && let Some((at, _, _)) = w.clip(t.position, to)
+    {
+        // AbstractArrow.onHitBlock's back-off, as the server's tick does it.
+        t.position = back_off(at, m);
+        t.velocity = Vec3::ZERO;
+        t.in_ground = true;
+        t.shake = 7;
+        return;
+    }
+    t.position = to;
+    // A trident's water inertia (0.99) equals the air drag.
+    t.velocity = t.velocity.scale(0.99);
+    if !t.no_physics && !t.no_gravity {
+        t.velocity.y -= 0.05;
+    }
+}
 /// A player a trident can return to (its owner) or that can pick it up: this
 /// game's own, or a server's guest in this level, which is all a server has.
 struct Catcher {
@@ -1148,7 +1206,32 @@ impl Game<'_> {
 }
 #[cfg(test)]
 mod tests {
-    use sunrise_core::geometry::Vec3;
+    use super::{ThrownTrident, remote_tick};
+    use sunrise_client::{mobs::Who, projectiles::ProjectileWorld};
+    use sunrise_core::geometry::{Aabb, Vec3};
+
+    struct Air;
+    impl ProjectileWorld for Air {
+        fn clip(&self, _: Vec3, _: Vec3) -> Option<(Vec3, [i32; 3], [i32; 3])> {
+            None
+        }
+        fn in_water(&self, _: Aabb) -> bool {
+            false
+        }
+        fn targets(&self) -> &[(Who, Aabb)] {
+            &[]
+        }
+    }
+
+    #[test]
+    fn remote_trident_waits_for_a_non_self_move_to_leave_its_block() {
+        let mut trident = ThrownTrident::remote(1, Vec3::new(0.5, 100.0, 0.5), 0.0, 0.0);
+        trident.in_ground = true;
+        trident.velocity = Vec3::new(1.0, -2.0, 3.0);
+        remote_tick(&mut trident, &Air, None);
+        assert!(trident.in_ground);
+        assert_eq!(trident.velocity, Vec3::new(1.0, -2.0, 3.0));
+    }
 
     /// A stack can reach its final durability point after use began. The release
     /// guard is independent of admission, and short charges still do nothing.
