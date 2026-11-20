@@ -68,7 +68,7 @@ impl Game<'_> {
         let Some(conn) = self.native_menu_guest(menu).map(|guest| guest.conn) else {
             return false;
         };
-        if self.lan_acting == Some(conn) || self.merchant_click_in_progress(conn) {
+        if self.lan_acting == Some(conn) {
             return false;
         }
         self.guest_close_menus_and_tell(conn);

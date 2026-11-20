@@ -27,7 +27,7 @@ use sunrise_protocol::packets::play;
 struct TakeReads {
     conn: u32,
     window: i32,
-    mob: u32,
+    identity: Identity,
     stamp: OwnerStamp,
     hub_generation: u64,
     carried: Option<ItemStack>,
@@ -46,18 +46,21 @@ impl TakeReads {
         let Some(guest) = host.hub.guest(self.conn) else {
             return false;
         };
-        host.menus
-            .get(&self.conn)
-            .is_some_and(|m| m.merchant.stamp() == self.stamp)
+        let mob = self.identity.target.id();
+        game.guest_actor(self.conn) == Some(self.identity.actor)
+            && host
+                .menus
+                .get(&self.conn)
+                .is_some_and(|m| m.merchant.stamp() == self.stamp)
             && host
                 .play
                 .get(&self.conn)
                 .and_then(|p| p.merchant.as_ref())
-                .is_some_and(|gm| gm.window == self.window && gm.merchant.mob == Some(self.mob))
+                .is_some_and(|gm| gm.window == self.window && gm.merchant.mob == Some(mob))
             && game
                 .mobs
                 .iter()
-                .any(|m| m.id == self.mob && m.alive() && !m.removed)
+                .any(|m| m.id == mob && m.alive() && !m.removed)
             && guest.menu_generation == self.hub_generation
             && guest.carried == self.carried
             && guest.creative() == self.creative
@@ -243,7 +246,8 @@ impl Game<'_> {
                         let host = game.lan.as_ref()?;
                         let guest = host.hub.guest(conn)?;
                         let gm = host.play.get(&conn)?.merchant.as_ref()?;
-                        (host.menus.get(&conn)?.merchant.stamp() == stamp
+                        (game.guest_actor(conn) == Some(identity.actor)
+                            && host.menus.get(&conn)?.merchant.stamp() == stamp
                             && gm.window == p.container
                             && gm.merchant.mob == Some(mob)
                             && guest.menu_generation == hub_generation
@@ -281,7 +285,7 @@ impl Game<'_> {
             let mut reads = TakeReads {
                 conn,
                 window: p.container,
-                mob,
+                identity,
                 stamp: owner.merchant.stamp(),
                 hub_generation: guest.menu_generation,
                 carried: guest.carried.clone(),
@@ -347,6 +351,7 @@ impl Game<'_> {
                 "trade_with_villager",
                 route,
                 identity,
+                // A listener may write outside this take's exact read set.
                 Epoch::Off,
                 |game| reads.fresh(game),
                 |game| {
@@ -419,7 +424,7 @@ impl Game<'_> {
     /// Install only the writes calculated by the plan; listener writes outside its read set stand.
     fn apply_merchant_take(&mut self, reads: &TakeReads, mut plan: TakePlan) {
         let conn = reads.conn;
-        let mob = reads.mob;
+        let mob = reads.identity.target.id();
         self.journal_guest_merchant(conn);
         // The crafted stats run in fire for a take and are already consumed in that case.
         let crafted = std::mem::take(&mut plan.menu.crafted_counts);
