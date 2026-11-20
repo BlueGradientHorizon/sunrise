@@ -501,6 +501,43 @@ mod tests {
             }
         }
     }
+    fn bundle_of(template: ValueTemplate) -> Value {
+        Value::List(vec![Value::Template(Box::new(template))])
+    }
+    fn stone(patch: Patch) -> ValueTemplate {
+        ValueTemplate::new("minecraft:stone".into(), 1, patch)
+    }
+    #[test]
+    fn a_component_named_twice_keeps_its_last_entry_in_every_projection() {
+        let damage = || "minecraft:damage".to_owned();
+        let set_last = vec![(damage(), None), (damage(), Some(Value::Int(9)))];
+        let removed_last = vec![(damage(), Some(Value::Int(9))), (damage(), None)];
+        for (patch, kept, key, absent) in [
+            (
+                set_last,
+                Some(Value::Int(9)),
+                "minecraft:damage",
+                "!minecraft:damage",
+            ),
+            (removed_last, None, "!minecraft:damage", "minecraft:damage"),
+        ] {
+            let stack = template_from_parts("minecraft:stone", 1, &patch, &registry_id).unwrap();
+            assert_eq!(
+                template_value(&stack, &Registry).unwrap().patch,
+                vec![(damage(), kept)]
+            );
+            // The same patch nested in a bundle takes the nested-writer path.
+            let nested = component_from_value(51, &bundle_of(stone(patch.clone())), &registry_id);
+            let Component::Stacks(inner) = nested.unwrap() else {
+                panic!("bundle contents are stacks");
+            };
+            assert_eq!(inner[0].added, stack.added);
+            assert_eq!(inner[0].removed, stack.removed);
+            let tag = stone(patch).to_tag().unwrap();
+            let components = tag.get("components").unwrap();
+            assert!(components.get(key).is_some() && components.get(absent).is_none());
+        }
+    }
     #[test]
     fn a_registry_id_at_the_top_of_the_range_is_refused_not_wrapped() {
         let top = |_: &str, _: &str| Some(i32::MAX);

@@ -28,20 +28,28 @@ impl Template {
         Self { item, count, patch }
     }
 }
+/// The entries that decide a patch: when a component is named twice the last entry wins,
+/// without allocating or changing the retained patch.
+pub fn effective_patch(
+    patch: &[(String, Option<Value>)],
+) -> impl Iterator<Item = &(String, Option<Value>)> {
+    patch
+        .iter()
+        .enumerate()
+        .filter(|(index, (name, _))| !patch[index + 1..].iter().any(|(later, _)| later == name))
+        .map(|(_, entry)| entry)
+}
 impl PartialEq for Template {
     fn eq(&self, other: &Self) -> bool {
         self.item == other.item
             && self.count == other.count
-            && self.patch.iter().enumerate().all(|(index, (key, value))| {
-                self.patch[index + 1..]
+            && effective_patch(&self.patch).all(|(key, value)| {
+                other
+                    .patch
                     .iter()
-                    .any(|(later, _)| later == key)
-                    || other
-                        .patch
-                        .iter()
-                        .rev()
-                        .find(|(candidate, _)| candidate == key)
-                        .is_some_and(|(_, candidate)| candidate == value)
+                    .rev()
+                    .find(|(candidate, _)| candidate == key)
+                    .is_some_and(|(_, candidate)| candidate == value)
             })
             && other
                 .patch
@@ -212,7 +220,7 @@ impl Template {
             fields.push(("count".into(), Tag::Int(self.count)));
         }
         let mut patch = Vec::with_capacity(self.patch.len());
-        for (name, value) in &self.patch {
+        for (name, value) in effective_patch(&self.patch) {
             if !presentation && !is_persistent(name) {
                 continue;
             }

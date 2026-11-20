@@ -6,7 +6,7 @@ use crate::{
     buf::{Reader, Writer},
 };
 use sunrise_core::nbt::Tag;
-use sunrise_world::component_value::{Template, Value};
+use sunrise_world::component_value::{Template, Value, effective_patch};
 
 fn err(s: impl Into<String>) -> Error {
     Error::new(s.into())
@@ -241,6 +241,7 @@ fn patch_kind(name: &str, ids: &dyn Ids) -> Result<i32> {
 }
 
 /// Native templates preserve their signed count and their own patch, including transients.
+/// A component named twice keeps its last entry, as in the JSON form.
 pub fn template_from_parts(
     item: &str,
     count: i32,
@@ -267,7 +268,7 @@ fn template_stack(
         .filter(|id| *id > 0)
         .ok_or_else(|| err(format!("unknown or empty item {item}")))?;
     let mut stack = Stack::new(item, count);
-    for (name, value) in patch {
+    for (name, value) in effective_patch(patch) {
         let kind = patch_kind(name, ids)?;
         if let Some(value) = value {
             stack
@@ -298,16 +299,23 @@ fn template_body(w: &mut Writer, t: &Template, ids: &dyn Ids, depth: u32) -> Res
         .ok_or_else(|| err(format!("unknown or empty item {}", t.item)))?;
     w.varint(item);
     w.varint(t.count);
-    w.varint(t.patch.iter().filter(|(_, v)| v.is_some()).count() as i32);
-    w.varint(t.patch.iter().filter(|(_, v)| v.is_none()).count() as i32);
-    for (name, value) in &t.patch {
+    let (added, removed) = effective_patch(&t.patch).fold((0, 0), |(added, removed), (_, v)| {
+        if v.is_some() {
+            (added + 1, removed)
+        } else {
+            (added, removed + 1)
+        }
+    });
+    w.varint(added);
+    w.varint(removed);
+    for (name, value) in effective_patch(&t.patch) {
         if let Some(value) = value {
             let kind = patch_kind(name, ids)?;
             w.varint(kind);
             encode(kind, value, w, ids, depth + 1)?;
         }
     }
-    for (name, value) in &t.patch {
+    for (name, value) in effective_patch(&t.patch) {
         if value.is_none() {
             w.varint(patch_kind(name, ids)?);
         }
