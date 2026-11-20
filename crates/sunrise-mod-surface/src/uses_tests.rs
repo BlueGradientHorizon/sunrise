@@ -2512,6 +2512,30 @@ fn legacy_tables_match_either_hash_of_an_unchanged_method_and_function() {
 }
 
 #[test]
+fn only_legacy_tables_defer_a_tuple_field_that_became_private() {
+    let mut uses = scan_on(wider(), "fn read(p: Pos) -> i32 { p.0 }").table("baseline");
+    let mut target = wider();
+    let mut private = api_tuple("type:Pos", &[]);
+    private.contract.constructible = false;
+    target.replace_type(private);
+    let target = target.build();
+
+    let current = uses.fits(&uses.entries, &target);
+    assert_eq!(words(current.verdict), ["the field `Pos.0` (removed)"]);
+    assert_eq!(current.deferred, None);
+
+    uses.schema = 2;
+    let legacy = uses.fits(&uses.entries, &target);
+    assert_eq!(legacy.verdict, Fit::Fits);
+    assert_eq!(
+        legacy.deferred.as_deref(),
+        Some(
+            "not checked: `type:Pos.0`; list written for baseline before schema 3; the compile decides"
+        )
+    );
+}
+
+#[test]
 fn only_legacy_tables_defer_lost_impls_with_vanished_api_types_to_the_compile() {
     let owner = api_type("type:Handle", "", false, vec![]);
     let still_here = api_type("type:widgets::Visible", "", false, vec![]);
