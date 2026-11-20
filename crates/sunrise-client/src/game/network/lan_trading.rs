@@ -3,8 +3,8 @@
 //! with vanilla's packets: OpenScreen (`minecraft:merchant`), MerchantOffers,
 //! the select trade packet, container clicks and the content sync after each.
 use super::{
-    Game, lan_actions::guest_within_entity_range, stations::Kind as StationKind,
-    trading::MerchantState,
+    Game, lan_actions::guest_within_entity_range, stacked_on_other::Pickup,
+    stations::Kind as StationKind, trading::MerchantState,
 };
 use sunrise_client::{
     items::ItemStack,
@@ -405,7 +405,12 @@ impl Game<'_> {
         let trade_env = merchant::TradeEnv {
             trades: &self.stations().trades,
             enchantments: &self.stations().enchantments,
-            maps: Some(&maps),
+            // A level-up offer can locate and record a structure even on a detached menu.
+            maps: if matches!(run, MerchantRun::Probe) {
+                None
+            } else {
+                Some(&maps)
+            },
         };
         let host = self.lan.as_ref()?;
         let g = host.hub.guest(conn)?;
@@ -529,7 +534,7 @@ impl Game<'_> {
             .and_then(|host| host.hub.guests.iter().position(|g| g.conn == conn));
         let (carried, same) = (frozen.carried.clone(), frozen.clone());
         let mut handled = true;
-        self.stacked_pickup(
+        let pickup = self.stacked_pickup(
             route,
             frozen,
             move |game| {
@@ -563,6 +568,10 @@ impl Game<'_> {
                 );
             },
         );
+        if pickup == Pickup::Refused {
+            self.resend_merchant_take(conn, p.container);
+            return true;
+        }
         handled
     }
     /// ServerboundSelectTradePacket: the selection hint, then tryMoveItems.

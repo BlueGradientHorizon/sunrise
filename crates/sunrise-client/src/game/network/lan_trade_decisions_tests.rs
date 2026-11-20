@@ -94,11 +94,27 @@ impl Hooks for Both {
     ) {
         trade(host, event);
     }
+
+    fn item_stacked_on_other(
+        &self,
+        host: HostSide,
+        event: &mut ItemStackedOnOtherEvent<'_>,
+    ) -> Flow {
+        Stacked.item_stacked_on_other(host, event)
+    }
+}
+
+struct Stacked;
+#[mod_api::__subscriptions]
+impl Hooks for Stacked {
     fn item_stacked_on_other(&self, _: HostSide, event: &mut ItemStackedOnOtherEvent<'_>) -> Flow {
         STACKED.set(STACKED.get() + 1);
-        let script = SCRIPT.with(|s| s.borrow().clone());
-        assert!(!script.refuse_stacked, "stacked listener failed");
-        if script.replace_stacked_result {
+        let (refuse, replace) = SCRIPT.with(|s| {
+            let s = s.borrow();
+            (s.refuse_stacked, s.replace_stacked_result)
+        });
+        assert!(!refuse, "stacked listener failed");
+        if replace {
             event.result.handled = true;
             event.result.clicked = mod_api::StackResult::Set(None);
             event.cancelled = true;
@@ -585,6 +601,7 @@ fn corrected(rx: &mpsc::Receiver<Out>, window: i32, payment: u32) {
     assert_eq!((offers.container, content.container), (window, window));
     assert_eq!(offers.offers[0].uses, 0);
     assert_eq!(content.items[0].as_ref().unwrap().count as u32, payment);
+    assert_eq!(content.items[2].as_ref(), Some(&offers.offers[0].result));
     assert!(content.carried.is_none());
 }
 
@@ -630,6 +647,7 @@ fn unchanged(game: &mut Game<'_>, payment: u32) {
     let host = game.lan.as_ref().unwrap();
     let slots = &host.play[&12].merchant.as_ref().unwrap().slots;
     assert_eq!(count(slots[0].as_ref()), payment);
+    assert_eq!(slots[2], Some(ItemStack::new("minecraft:emerald", 1)));
 }
 
 #[test]
@@ -848,39 +866,46 @@ fn a_result_pickup_heard_as_trade_and_stacked_event_is_one_accepted_action() {
 #[test]
 #[ignore = "daily"]
 fn a_trade_refused_inside_the_stacked_pickup_undoes_the_whole_take() {
-    with_both(|| {
-        with_guests(|game| {
-            let click = open(game, 2);
-            let rx = record_packets(game);
-            script(Script {
-                panic_on: Some(1),
-                ..Script::default()
-            });
-            assert!(game.lan_merchant_click(12, &click));
-            assert_eq!((CALLS.get(), STACKED.get()), (1, 1));
-            unchanged(game, 2);
-            corrected(&rx, click.container, 2);
-            script(Script {
-                refuse_stacked: true,
-                ..Script::default()
-            });
-            assert!(game.lan_merchant_click(12, &click));
-            assert_eq!((CALLS.get(), STACKED.get()), (0, 1));
-            unchanged(game, 2);
-            corrected(&rx, click.container, 2);
-            // The merged slot-rule probe must reject an answer that removes the result without
-            // running its take effects. No trade hook fires and the client gets a correction.
-            script(Script {
-                replace_stacked_result: true,
-                ..Script::default()
-            });
-            assert!(game.lan_merchant_click(12, &click));
-            assert_eq!((CALLS.get(), STACKED.get()), (0, 1));
-            unchanged(game, 2);
-            corrected(&rx, click.container, 2);
-            assert!(game.transactions.is_empty());
-        })
-    });
+    for (trade_subscribed, entry) in [
+        (true, ModEntry::new("trade-and-stack", Box::new(Both))),
+        (false, ModEntry::new("stacked-only", Box::new(Stacked))),
+    ] {
+        mod_platform::testing::with_mods(vec![entry].into(), || {
+            with_guests(|game| {
+                let click = open(game, 2);
+                let rx = record_packets(game);
+                if trade_subscribed {
+                    script(Script {
+                        panic_on: Some(1),
+                        ..Script::default()
+                    });
+                    assert!(game.lan_merchant_click(12, &click));
+                    assert_eq!((CALLS.get(), STACKED.get()), (1, 1));
+                    unchanged(game, 2);
+                    corrected(&rx, click.container, 2);
+                }
+                // Even without a trade listener, a failed pickup or an attempted result
+                // replacement leaves the take untouched and corrects the client's result slot.
+                for script_value in [
+                    Script {
+                        refuse_stacked: true,
+                        ..Script::default()
+                    },
+                    Script {
+                        replace_stacked_result: true,
+                        ..Script::default()
+                    },
+                ] {
+                    script(script_value);
+                    assert!(game.lan_merchant_click(12, &click));
+                    assert_eq!((CALLS.get(), STACKED.get()), (0, 1));
+                    unchanged(game, 2);
+                    corrected(&rx, click.container, 2);
+                }
+                assert!(game.transactions.is_empty());
+            })
+        });
+    }
 }
 
 #[test]
