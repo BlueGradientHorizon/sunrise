@@ -155,7 +155,10 @@ in text ("from Modrinth") until Rinth, Inc. agrees. CurseForge support, and so i
 
 `mod-browser.json` beside `options.txt` lists every file the browser installed: its source, project, version, file
 and the checksum it was checked against. The browser replaces or removes only the files it lists; a file of the
-same name the player put there is never overwritten.
+same name the player put there is never overwritten. When installing a registry mod in the game, the browser follows
+directory links but refuses a link at the destination file. The download and destination must be on the same
+filesystem for atomic replacement. If ownership is ambiguous, the browser leaves the archive, manifest and any
+pending install journal unchanged, even if the new archive has not appeared yet.
 
 - **Install** picks the newest version that runs, then its required dependencies, checked before any download: a
   dependency that isn't a pack Sunrise loads (a Java mod) stops the install. Dependencies go in first. A resource
