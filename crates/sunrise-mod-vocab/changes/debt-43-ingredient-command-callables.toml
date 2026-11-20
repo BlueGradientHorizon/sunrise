@@ -1,3 +1,16 @@
-ids = ["hook:ingredient", "hook:ingredient_test"]
-why = "Recipe JSON stays as authored. The loader holds candidate lists separately for each ingredient occurrence, and its recipe tables, stations and network projection reuse those answers. The match-time hook gets the metadata retained from the load-time call, not a compound with the answer embedded in it."
-migrate = "Keep filling IngredientEvent.items from Hooks::ingredient and testing the borrowed metadata in Hooks::ingredient_test. Do not put a candidate list in sunrise:resolved_items in recipe JSON; only the list returned by the hook is used as the answer."
+ids = [
+    "hook:ingredient",
+    "hook:ingredient_test",
+    "type:IngredientDefinition",
+    "handle:IngredientDefinition::new",
+    "type:IngredientStack",
+    "handle:IngredientStack::item_id",
+    "handle:IngredientStack::item_key",
+    "handle:IngredientStack::count",
+    "handle:IngredientStack::damage",
+    "handle:IngredientStack::has_component",
+    "handle:IngredientStack::component_removed",
+    "handle:IngredientStack::stored_component",
+]
+why = "Recipe JSON stays as authored. The loader holds candidate lists separately for each ingredient occurrence, and its recipe tables, stations and network projection reuse those answers. The match-time hook gets the metadata retained from the load-time call, not a compound with the answer embedded in it. The new predicate definition pairs candidates with native code, and its read-only stack view lends live components without encoding a patch."
+migrate = "Keep filling IngredientEvent.items from Hooks::ingredient and testing the borrowed metadata in Hooks::ingredient_test. Do not put a candidate list in sunrise:resolved_items in recipe JSON; only the list returned by the hook is used as the answer. The existing hooks are still in use. To express the two answers as one definition, pass the candidate IDs to IngredientDefinition::new(items, move |context, stack| ...) and return true to accept and false to reject. On the borrowed input, use stack.item_key() in place of the owned stack's item(), stack.damage() for the optional damage value (including Some(0)), and stack.stored_component(id) for borrowed stored NBT instead of looking it up in an owned component patch. Use stack.has_component(id) for effective presence and stack.component_removed(id) to check explicitly removed components."

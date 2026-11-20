@@ -5,6 +5,8 @@ mod components;
 mod display;
 #[path = "ingredient/matching.rs"]
 mod matching;
+#[path = "ingredient/stack.rs"]
+mod stack;
 use super::{ItemStack, Items};
 use crate::native_stack_hooks::ingredient_test as native_ingredient_test;
 use display::display_stacks;
