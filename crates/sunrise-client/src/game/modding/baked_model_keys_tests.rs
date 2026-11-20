@@ -16,6 +16,8 @@ struct Read {
     keys: Vec<Result<Vec<BakedModelKey>, ModelError>>,
     views: Vec<Vec<Result<BakedModelView, ModelError>>>,
     invalid_keys: Vec<[Result<Vec<BakedModelKey>, ModelError>; 2]>,
+    /// An oak log lying along x and standing along y: two states of one block, two bindings.
+    log_keys: Vec<[Result<Vec<BakedModelKey>, ModelError>; 2]>,
 }
 struct Reader(Arc<Mutex<Read>>);
 #[mod_api::__subscriptions]
@@ -35,6 +37,15 @@ impl Hooks for Reader {
             assets.block_state_models(BlockStateRecord::new(stone.block(), u16::MAX).into()),
             assets.block_state_models(BlockStateRecord::new(unknown, 0).into()),
         ]);
+        let log = host
+            .block_state_id("minecraft:oak_log")
+            .expect("oak log")
+            .block();
+        read.log_keys.push(
+            [0, 1].map(|ordinal| {
+                assets.block_state_models(BlockStateRecord::new(log, ordinal).into())
+            }),
+        );
         read.keys.push(keys);
         read.views.push(views);
     }
@@ -71,6 +82,11 @@ fn a_client_mod_reads_a_block_states_baked_models_once_per_load() {
                     [[Err(ModelError::UnknownModel), Err(ModelError::UnknownModel)]],
                     "unknown ordinals and block keys are refused",
                 );
+                let [Ok(along_x), Ok(along_y)] = &read.log_keys[0] else {
+                    panic!("oak log's keys: {:?}", read.log_keys);
+                };
+                assert!(!along_x.is_empty() && !along_y.is_empty());
+                assert_ne!(along_x, along_y, "each axis state selects its own binding");
                 (keys[0], view.clone())
             };
             reload(game);
