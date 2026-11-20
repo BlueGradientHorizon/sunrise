@@ -299,7 +299,7 @@ impl Slots {
             }
             if pick(host, index) {
                 let ask = (*left).min(u32::MAX as u64) as u32;
-                *left -= self.0.insert(host, tx, index, resource, ask).min(ask) as u64;
+                *left -= self.0.insert_at(host, tx, index, resource, ask).min(ask) as u64;
             }
         }
     }
@@ -375,7 +375,7 @@ impl ItemStorage for Slots {
             }
             if self.holds(host, index, resource) {
                 let ask = left.min(u32::MAX as u64) as u32;
-                left -= self.0.extract(host, tx, index, resource, ask).min(ask) as u64;
+                left -= self.0.extract_at(host, tx, index, resource, ask).min(ask) as u64;
             }
         }
         amount - left

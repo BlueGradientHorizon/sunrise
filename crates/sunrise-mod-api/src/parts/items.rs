@@ -164,7 +164,7 @@ pub mod tests {
         fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: &ItemResource) -> u32 {
             0
         }
-        fn insert(
+        fn insert_at(
             &self,
             host: &mut dyn ServerHost,
             tx: &Transaction,
@@ -181,9 +181,9 @@ pub mod tests {
             else {
                 return 0;
             };
-            next.insert(host, tx, 0, resource, amount)
+            next.insert_at(host, tx, 0, resource, amount)
         }
-        fn extract(
+        fn extract_at(
             &self,
             _: &mut dyn ServerHost,
             _: &Transaction,
@@ -210,7 +210,7 @@ pub mod tests {
         fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: &ItemResource) -> u32 {
             0
         }
-        fn insert(
+        fn insert_at(
             &self,
             host: &mut dyn ServerHost,
             tx: &Transaction,
@@ -218,9 +218,9 @@ pub mod tests {
             resource: &ItemResource,
             amount: u32,
         ) -> u32 {
-            Pipe(self.0).insert(host, tx, index, resource, amount) + 1
+            Pipe(self.0).insert_at(host, tx, index, resource, amount) + 1
         }
-        fn extract(
+        fn extract_at(
             &self,
             _: &mut dyn ServerHost,
             _: &Transaction,
@@ -301,7 +301,7 @@ pub mod tests {
         fn capacity(&self, _: &mut dyn ServerHost, _: usize, resource: &ItemResource) -> u32 {
             if resource.matches(&stick()) { 64 } else { 0 }
         }
-        fn insert(
+        fn insert_at(
             &self,
             host: &mut dyn ServerHost,
             tx: &Transaction,
@@ -318,7 +318,7 @@ pub mod tests {
                 _ => 0,
             }
         }
-        fn extract(
+        fn extract_at(
             &self,
             _: &mut dyn ServerHost,
             _: &Transaction,
@@ -347,7 +347,7 @@ pub mod tests {
         fn capacity(&self, _: &mut dyn ServerHost, _: usize, resource: &ItemResource) -> u32 {
             u32::from(resource.item() == fixture_item_key("test:pouch"))
         }
-        fn insert(
+        fn insert_at(
             &self,
             host: &mut dyn ServerHost,
             tx: &Transaction,
@@ -368,7 +368,7 @@ pub mod tests {
                 _ => 0,
             }
         }
-        fn extract(
+        fn extract_at(
             &self,
             host: &mut dyn ServerHost,
             tx: &Transaction,
@@ -417,7 +417,7 @@ pub mod tests {
                 0
             }
         }
-        fn insert(
+        fn insert_at(
             &self,
             host: &mut dyn ServerHost,
             tx: &Transaction,
@@ -434,7 +434,7 @@ pub mod tests {
                 false => 0,
             }
         }
-        fn extract(
+        fn extract_at(
             &self,
             host: &mut dyn ServerHost,
             tx: &Transaction,
@@ -523,7 +523,7 @@ pub mod tests {
         fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: &ItemResource) -> u32 {
             0
         }
-        fn insert(
+        fn insert_at(
             &self,
             _: &mut dyn ServerHost,
             _: &Transaction,
@@ -533,7 +533,7 @@ pub mod tests {
         ) -> u32 {
             0
         }
-        fn extract(
+        fn extract_at(
             &self,
             _: &mut dyn ServerHost,
             _: &Transaction,
@@ -572,7 +572,7 @@ pub mod tests {
         // Into one index, no further: 54 of 60 fill slot 3, and nothing goes elsewhere.
         let insert = |host: &mut dyn ServerHost, index, resource: &ItemResource, amount| {
             let went = host.transaction(|host, tx| {
-                Ok::<_, ()>(items.insert(host, tx, index, resource, amount))
+                Ok::<_, ()>(items.insert_at(host, tx, index, resource, amount))
             });
             went.unwrap()
         };
@@ -586,7 +586,7 @@ pub mod tests {
         // empty slot.
         let host: &mut dyn ServerHost = &mut player;
         let aborted = host.transaction(|host, tx| {
-            assert_eq!(items.insert_any(host, tx, &sticks, 10), 10);
+            assert_eq!(items.insert(host, tx, &sticks, 10), 10);
             Err::<(), ()>(())
         });
         assert!(aborted.is_err());
@@ -596,7 +596,7 @@ pub mod tests {
         );
         let host: &mut dyn ServerHost = &mut player;
         let went =
-            host.transaction(|host, tx| Ok::<_, ()>(items.insert_any(host, tx, &sticks, 10)));
+            host.transaction(|host, tx| Ok::<_, ()>(items.insert(host, tx, &sticks, 10)));
         assert_eq!(went, Ok(10));
         assert_eq!(
             player_of(&player).slots[&5],
@@ -852,7 +852,7 @@ pub mod tests {
                 backend.container_capacity(on(SHELF, None), index, &resource.to_stack(1).unwrap())
             })
         }
-        fn insert(
+        fn insert_at(
             &self,
             _: &mut dyn ServerHost,
             _: &Transaction,
@@ -862,7 +862,7 @@ pub mod tests {
         ) -> u32 {
             amount + 5
         }
-        fn extract(
+        fn extract_at(
             &self,
             host: &mut dyn ServerHost,
             tx: &Transaction,
@@ -889,7 +889,7 @@ pub mod tests {
         let pouch = HAND.capability(host, &ITEM_ITEMS).unwrap();
         let sticks = ItemResource::of(&stick());
         let aborted: Result<(), u32> =
-            host.transaction(|host, tx| Err(pouch.insert(host, tx, 0, &sticks, 3)));
+            host.transaction(|host, tx| Err(pouch.insert_at(host, tx, 0, &sticks, 3)));
         assert_eq!(aborted, Err(3));
         assert_eq!(main_hand(&player), Some(stack("test:pouch", 2, 0)));
         assert!(player_of(&player).given.is_empty());
@@ -1015,13 +1015,13 @@ pub mod tests {
         let mut player = player_world(Some(stack("test:case", 3, 0)));
         let host: &mut dyn ServerHost = &mut player;
         let aborted =
-            host.transaction(|host, tx| Err::<(), _>(canteen.insert(host, tx, 0, &water, 1000)));
+            host.transaction(|host, tx| Err::<(), _>(canteen.insert_at(host, tx, 0, &water, 1000)));
         assert_eq!(aborted, Err(1000));
         assert_eq!(main_hand(&player), Some(stack("test:case", 3, 0)));
         assert!(player_of(&player).given.is_empty());
         let host: &mut dyn ServerHost = &mut player;
         let went =
-            host.transaction(|host, tx| Ok::<_, ()>(canteen.insert(host, tx, 0, &water, 5000)));
+            host.transaction(|host, tx| Ok::<_, ()>(canteen.insert_at(host, tx, 0, &water, 5000)));
         assert_eq!(went, Ok(4000));
         assert_eq!(main_hand(&player), Some(stack("test:case", 2, 0)));
         let given = &player_of(&player).given;
@@ -1051,7 +1051,7 @@ pub mod tests {
             .item_component("test:case", "test:fluid", Tag::Compound(unknown));
         let host: &mut dyn ServerHost = &mut player;
         let went =
-            host.transaction(|host, tx| Ok::<_, ()>(canteen.insert(host, tx, 0, &water, 1000)));
+            host.transaction(|host, tx| Ok::<_, ()>(canteen.insert_at(host, tx, 0, &water, 1000)));
         assert_eq!(went, Ok(0));
         assert_eq!(main_hand(&player), Some(stack("test:case", 1, 0)));
         assert!(player_of(&player).given.is_empty());
@@ -1075,7 +1075,7 @@ pub mod tests {
             .item_component("test:case", "test:fluid", Tag::Compound(full));
         let host: &mut dyn ServerHost = &mut player;
         let came =
-            host.transaction(|host, tx| Ok::<_, ()>(canteen.extract(host, tx, 0, &water, 0)));
+            host.transaction(|host, tx| Ok::<_, ()>(canteen.extract_at(host, tx, 0, &water, 0)));
         assert_eq!(came, Ok(0));
         assert_eq!(main_hand(&player), Some(stack("test:case", 2, 0)));
         assert!(player_of(&player).given.is_empty());
@@ -1155,7 +1155,7 @@ pub mod tests {
         fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: &ItemResource) -> u32 {
             64
         }
-        fn insert(
+        fn insert_at(
             &self,
             _: &mut dyn ServerHost,
             _: &Transaction,
@@ -1165,7 +1165,7 @@ pub mod tests {
         ) -> u32 {
             n + 1
         }
-        fn extract(
+        fn extract_at(
             &self,
             _: &mut dyn ServerHost,
             _: &Transaction,
@@ -1502,7 +1502,7 @@ pub mod tests {
         let handler = here().capability(&mut shelf_, &ITEMS, SHELF, None).unwrap();
         assert_eq!(handler.capacity(&mut shelf_, 1, &resource), 64);
         let moved =
-            shelf_.transaction(|host, tx| Ok::<_, ()>(handler.insert(host, tx, 1, &resource, 128)));
+            shelf_.transaction(|host, tx| Ok::<_, ()>(handler.insert_at(host, tx, 1, &resource, 128)));
         assert_eq!(moved, Ok(1));
         assert_eq!(shelf_.slots[1], Some(stack("minecraft:bread", 1, 0)));
     }
@@ -1561,7 +1561,7 @@ pub mod tests {
         let pouch = in_bag.capability(host, &ITEM_ITEMS).unwrap();
         let sticks = ItemResource::of(&stick());
         let aborted: Result<(), u32> =
-            host.transaction(|host, tx| Err(pouch.insert(host, tx, 0, &sticks, 3)));
+            host.transaction(|host, tx| Err(pouch.insert_at(host, tx, 0, &sticks, 3)));
         assert_eq!(aborted, Err(3));
         assert_eq!(main_hand(&player), Some(stack("test:bag", 2, 1)));
         assert!(player_of(&player).given.is_empty());
@@ -1611,7 +1611,7 @@ pub mod tests {
             fn capacity(&self, _: &mut dyn ServerHost, _: usize, r: &ItemResource) -> u32 {
                 u32::from(r.item() == fixture_item_key("test:bag"))
             }
-            fn insert(
+            fn insert_at(
                 &self,
                 host: &mut dyn ServerHost,
                 tx: &Transaction,
@@ -1629,7 +1629,7 @@ pub mod tests {
                     ItemResource::of(&stack("test:outer", 1, r.to_stack(1).unwrap().damage() + 1));
                 self.0.exchange(host, tx, &new, 1)
             }
-            fn extract(
+            fn extract_at(
                 &self,
                 host: &mut dyn ServerHost,
                 tx: &Transaction,
@@ -1694,7 +1694,7 @@ pub mod tests {
                         let inner = host.transaction(|host, tx| {
                             let handler = in_bag.capability(host, &ITEM_ITEMS).unwrap();
                             assert_eq!(
-                                handler.insert(host, tx, 0, &r, 3),
+                                handler.insert_at(host, tx, 0, &r, 3),
                                 3,
                                 "depth {abort_depth}"
                             );
@@ -1753,8 +1753,8 @@ pub mod tests {
             let h = here().capability(host, &ITEMS, SHELF, None).unwrap();
             let r = ItemResource::of(&stick());
             host.transaction(|host, tx| {
-                assert_eq!(h.insert_any(host, tx, &r, 3), 3);
-                assert_eq!(h.extract_any(host, tx, &r, 129), 129);
+                assert_eq!(h.insert(host, tx, &r, 3), 3);
+                assert_eq!(h.extract(host, tx, &r, 129), 129);
                 Ok::<_, ()>(())
             })
             .unwrap();

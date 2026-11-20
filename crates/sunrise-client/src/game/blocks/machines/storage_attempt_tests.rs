@@ -75,7 +75,7 @@ impl ResourceHandler<ItemResource> for Storage {
     fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: &ItemResource) -> u32 {
         64
     }
-    fn insert(
+    fn insert_at(
         &self,
         _: &mut dyn ServerHost,
         _: &Transaction,
@@ -85,7 +85,7 @@ impl ResourceHandler<ItemResource> for Storage {
     ) -> u32 {
         panic!("automation must use the storage's indexless insertion")
     }
-    fn insert_any(
+    fn insert(
         &self,
         host: &mut dyn ServerHost,
         tx: &Transaction,
@@ -118,7 +118,7 @@ impl ResourceHandler<ItemResource> for Storage {
         };
         if accept && forward {
             let sink = self.at.level.capability(host, &ITEMS, SINK, None).unwrap();
-            return sink.insert_any(host, tx, resource, amount);
+            return sink.insert(host, tx, resource, amount);
         }
         let entity = self.entity(host);
         if accept {
@@ -133,7 +133,7 @@ impl ResourceHandler<ItemResource> for Storage {
         }
         u32::from(accept)
     }
-    fn extract(
+    fn extract_at(
         &self,
         host: &mut dyn ServerHost,
         tx: &Transaction,
@@ -180,7 +180,7 @@ impl ResourceHandler<ItemResource> for Storage {
                 .capability(host, &ITEMS, [8, 64, 8], None)
                 .unwrap();
             let held = hopper.resource(host, 0).unwrap();
-            assert_eq!(hopper.extract(host, tx, 0, &held, 63), 63);
+            assert_eq!(hopper.extract_at(host, tx, 0, &held, 63), 63);
         }
         if notify {
             entity.set_changed(host).unwrap();
@@ -223,8 +223,8 @@ impl BlockPart for Probe {
                 let sink = event.level.capability(host, &ITEMS, OTHER, None).unwrap();
                 host.transaction(|host, tx| {
                     if let Some(resource) = source.resource(host, 0) {
-                        let taken = source.extract(host, tx, 0, &resource, 1);
-                        assert_eq!(sink.insert_any(host, tx, &resource, taken), taken);
+                        let taken = source.extract_at(host, tx, 0, &resource, 1);
+                        assert_eq!(sink.insert(host, tx, &resource, taken), taken);
                     }
                     if self.rules.lock().unwrap().replace_source_on_notice {
                         let stick = ItemResource::of(
@@ -234,8 +234,8 @@ impl BlockPart for Probe {
                             )
                             .unwrap(),
                         );
-                        assert_eq!(sink.extract(host, tx, 0, &stick, 1), 1);
-                        assert_eq!(source.insert(host, tx, 0, &stick, 1), 1);
+                        assert_eq!(sink.extract_at(host, tx, 0, &stick, 1), 1);
+                        assert_eq!(source.insert_at(host, tx, 0, &stick, 1), 1);
                     }
                     Ok::<_, ()>(())
                 })
@@ -278,8 +278,8 @@ impl BlockPart for CommitMover {
         if let Some(resource) = source.resource(host, 0) {
             let other = event.level.capability(host, &ITEMS, OTHER, None).unwrap();
             host.transaction(|host, tx| {
-                assert_eq!(source.extract(host, tx, 0, &resource, 1), 1);
-                assert_eq!(other.insert_any(host, tx, &resource, 1), 1);
+                assert_eq!(source.extract_at(host, tx, 0, &resource, 1), 1);
+                assert_eq!(other.insert(host, tx, &resource, 1), 1);
                 Ok::<_, ()>(())
             })
             .unwrap();

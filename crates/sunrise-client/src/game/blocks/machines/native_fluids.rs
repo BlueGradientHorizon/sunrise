@@ -755,13 +755,13 @@ mod tests {
                 let handler = handler.unwrap();
                 let extract = |game: &mut Game<'_>, resource: &FluidResource, amount| {
                     game.transaction(|host, tx| {
-                        Ok::<_, ()>(handler.extract(host, tx, 0, resource, amount))
+                        Ok::<_, ()>(handler.extract_at(host, tx, 0, resource, amount))
                     })
                     .unwrap()
                 };
                 let insert = |game: &mut Game<'_>, resource: &FluidResource, amount| {
                     game.transaction(|host, tx| {
-                        Ok::<_, ()>(handler.insert(host, tx, 0, resource, amount))
+                        Ok::<_, ()>(handler.insert_at(host, tx, 0, resource, amount))
                     })
                     .unwrap()
                 };
@@ -937,7 +937,7 @@ mod tests {
                         1,
                     ))
         }
-        fn insert(
+        fn insert_at(
             &self,
             host: &mut dyn ServerHost,
             _: &Transaction,
@@ -961,7 +961,7 @@ mod tests {
             entry.1 += took as i32;
             if self.write(host, &state) { took } else { 0 }
         }
-        fn extract(
+        fn extract_at(
             &self,
             host: &mut dyn ServerHost,
             _: &Transaction,
@@ -1106,7 +1106,7 @@ mod tests {
                 assert_eq!(source.capacity(game, 0, &empty), 0);
                 assert_eq!(
                     game.transaction(|host, tx| Ok::<_, ()>(
-                        source.insert(host, tx, 0, &empty, 1000)
+                        source.insert_at(host, tx, 0, &empty, 1000)
                     )),
                     Ok(0)
                 );
@@ -1185,7 +1185,7 @@ mod tests {
                 );
                 assert_eq!(source.amount(game, 0), 700);
                 assert_eq!(
-                    game.transaction(|host, tx| Ok::<_, ()>(source.extract(
+                    game.transaction(|host, tx| Ok::<_, ()>(source.extract_at(
                         host,
                         tx,
                         0,
@@ -1203,7 +1203,7 @@ mod tests {
                 assert_eq!(source.amount(game, 0), 1000);
                 assert_eq!(
                     game.transaction(|host, tx| Ok::<_, ()>(
-                        source.extract(host, tx, 0, &water, 1000)
+                        source.extract_at(host, tx, 0, &water, 1000)
                     )),
                     Ok(1000)
                 );
@@ -1211,7 +1211,7 @@ mod tests {
                 assert!(source.is_valid(game, 0, &chocolate));
                 assert_eq!(
                     game.transaction(|host, tx| Ok::<_, ()>(
-                        source.insert(host, tx, 0, &chocolate, 1000)
+                        source.insert_at(host, tx, 0, &chocolate, 1000)
                     )),
                     Ok(1000)
                 );
@@ -1230,7 +1230,7 @@ mod tests {
                     assert!(!target.is_valid(game, index, &chocolate));
                     assert_eq!(
                         game.transaction(|host, tx| Ok::<_, ()>(
-                            target.insert(host, tx, index, &chocolate, 500)
+                            target.insert_at(host, tx, index, &chocolate, 500)
                         )),
                         Ok(0)
                     );
@@ -1258,14 +1258,14 @@ mod tests {
                 assert!(target.is_valid(game, 0, &water));
                 assert_eq!(
                     game.transaction(|host, tx| Ok::<_, ()>(
-                        target.insert(host, tx, 0, &water, 500)
+                        target.insert_at(host, tx, 0, &water, 500)
                     )),
                     Ok(0)
                 );
                 assert!(target.is_valid(game, 1, &water));
                 assert_eq!(
                     game.transaction(|host, tx| Ok::<_, ()>(
-                        target.insert(host, tx, 1, &water, 500)
+                        target.insert_at(host, tx, 1, &water, 500)
                     )),
                     Ok(500)
                 );
@@ -1279,14 +1279,14 @@ mod tests {
                 // A drain does not consult acceptance, so an old refused fluid is recoverable.
                 assert_eq!(
                     game.transaction(|host, tx| Ok::<_, ()>(
-                        target.extract(host, tx, 0, &chocolate, 100)
+                        target.extract_at(host, tx, 0, &chocolate, 100)
                     )),
                     Ok(100)
                 );
                 assert_eq!(target.amount(game, 0), 900);
                 assert_eq!(
                     game.transaction(|host, tx| Ok::<_, ()>(
-                        source.insert(host, tx, 1, &water, 1000)
+                        source.insert_at(host, tx, 1, &water, 1000)
                     )),
                     Ok(1000)
                 );
@@ -1304,7 +1304,7 @@ mod tests {
                 assert_eq!(source.amount(game, 1), 800);
                 assert_eq!(target.amount(game, 1), 700);
                 let abort: Result<(), ()> = game.transaction(|host, tx| {
-                    assert_eq!(target.insert(host, tx, 1, &water, 200), 200);
+                    assert_eq!(target.insert_at(host, tx, 1, &water, 200), 200);
                     Err(())
                 });
                 assert!(abort.is_err());

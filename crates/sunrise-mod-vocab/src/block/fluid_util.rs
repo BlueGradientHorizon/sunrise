@@ -194,7 +194,7 @@ pub fn try_pickup_world_fluid(
     host.transaction(|host, tx| {
         let picked = level.pickup_fluid(host, pos, player, tx).ok_or(())?;
         let fluid = FluidResource::of(&picked);
-        match destination.insert_any(host, tx, &fluid, picked.amount) == picked.amount {
+        match destination.insert(host, tx, &fluid, picked.amount) == picked.amount {
             true => Ok(picked),
             false => Err(()),
         }
@@ -227,7 +227,7 @@ pub fn try_place_fluid(
             continue;
         };
         let placed = host.transaction(|host, tx| {
-            if source.extract(host, tx, index, &fluid, BUCKET) != BUCKET {
+            if source.extract_at(host, tx, index, &fluid, BUCKET) != BUCKET {
                 return Err(());
             }
             match level.place_fluid(host, pos, key, player, validate, tx) {
@@ -330,8 +330,8 @@ fn move_first(
             host,
             ends,
             want,
-            |host, tx, want| from.extract(host, tx, index, &fluid, want),
-            |host, tx, out| to.insert_any(host, tx, &fluid, out),
+            |host, tx, want| from.extract_at(host, tx, index, &fluid, want),
+            |host, tx, out| to.insert(host, tx, &fluid, out),
         );
         if let Ok(moved) = moved
             && moved > 0

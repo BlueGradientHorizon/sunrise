@@ -959,7 +959,7 @@ pub(super) mod tests {
                     .unwrap(),
             );
             let wrote =
-                host.transaction(|host, tx| Ok::<_, ()>(items.insert(host, tx, 39, &pumpkin, 64)));
+                host.transaction(|host, tx| Ok::<_, ()>(items.insert_at(host, tx, 39, &pumpkin, 64)));
             assert_eq!(wrote, Ok(1));
         });
     }
@@ -988,7 +988,7 @@ pub(super) mod tests {
             );
             super::super::dispense_fixture::start_recording();
             let result = game.transaction(|host, tx| {
-                assert_eq!(items.insert(host, tx, 4, &chest, 1), 1);
+                assert_eq!(items.insert_at(host, tx, 4, &chest, 1), 1);
                 Err::<(), ()>(())
             });
             assert_eq!(result, Err(()));
@@ -1002,7 +1002,7 @@ pub(super) mod tests {
             super::super::dispense_fixture::start_recording();
             let result = game.transaction(|host, _| {
                 host.transaction(|host, tx| {
-                    assert_eq!(items.insert(host, tx, 4, &chest, 1), 1);
+                    assert_eq!(items.insert_at(host, tx, 4, &chest, 1), 1);
                     Ok::<(), ()>(())
                 })?;
                 Err::<(), ()>(())
@@ -1016,12 +1016,12 @@ pub(super) mod tests {
             let result = game.transaction(|host, _| {
                 // An inner abort must not contribute effects to the root.
                 let aborted = host.transaction(|host, tx| {
-                    assert_eq!(items.insert(host, tx, 4, &chest, 1), 1);
+                    assert_eq!(items.insert_at(host, tx, 4, &chest, 1), 1);
                     Err::<(), ()>(())
                 });
                 assert_eq!(aborted, Err(()));
                 host.transaction(|host, tx| {
-                    assert_eq!(items.insert(host, tx, 4, &chest, 1), 1);
+                    assert_eq!(items.insert_at(host, tx, 4, &chest, 1), 1);
                     Ok::<(), ()>(())
                 })?;
                 assert!(super::super::dispense_fixture::stop_recording().is_empty());
@@ -1698,7 +1698,7 @@ pub(super) mod tests {
 
             // An aborted transaction puts the equipment back.
             let _ = host.transaction(|host, tx| {
-                assert_eq!(items.insert(host, tx, 4, &chestplate, 1), 1);
+                assert_eq!(items.insert_at(host, tx, 4, &chestplate, 1), 1);
                 assert_eq!(
                     items.amount(host, 4),
                     1,
@@ -1709,13 +1709,13 @@ pub(super) mod tests {
             assert_eq!(items.amount(host, 4), 0, "the abort put it back");
 
             // A committed one wears it and hands it back out.
-            let _ = host.transaction(|host, tx| Ok::<_, ()>(items.insert(host, tx, 0, &sword, 1)));
+            let _ = host.transaction(|host, tx| Ok::<_, ()>(items.insert_at(host, tx, 0, &sword, 1)));
             let _ =
-                host.transaction(|host, tx| Ok::<_, ()>(items.insert(host, tx, 4, &chestplate, 1)));
+                host.transaction(|host, tx| Ok::<_, ()>(items.insert_at(host, tx, 4, &chestplate, 1)));
             assert_eq!(items.amount(host, 0), 1);
             assert_eq!(items.amount(host, 4), 1);
             let _ = host
-                .transaction(|host, tx| Ok::<_, ()>(items.extract(host, tx, 4, &chestplate, 1)));
+                .transaction(|host, tx| Ok::<_, ()>(items.extract_at(host, tx, 4, &chestplate, 1)));
             assert_eq!(items.amount(host, 4), 0);
             assert_eq!(items.amount(host, 0), 1);
 
@@ -1724,7 +1724,7 @@ pub(super) mod tests {
             let host: &mut dyn ServerHost = game;
             assert_eq!(items.amount(host, 4), 0);
             assert_eq!(
-                host.transaction(|host, tx| Ok::<_, ()>(items.insert(host, tx, 0, &sword, 1))),
+                host.transaction(|host, tx| Ok::<_, ()>(items.insert_at(host, tx, 0, &sword, 1))),
                 Ok(0)
             );
         });
@@ -1757,7 +1757,7 @@ pub(super) mod tests {
                 .capability(host, &ENTITY_ITEMS, ())
                 .unwrap();
             let _ = host.transaction(|host, tx| {
-                Ok::<_, ()>(handler.insert(
+                Ok::<_, ()>(handler.insert_at(
                     host,
                     tx,
                     4,
@@ -1810,7 +1810,7 @@ pub(super) mod tests {
             let sticks =
                 ItemResource::of(&ItemStack::new("minecraft:stick", 1).try_into_api().unwrap());
             assert_eq!(
-                host.transaction(|host, tx| Ok::<_, ()>(items.insert_any(host, tx, &sticks, 4))),
+                host.transaction(|host, tx| Ok::<_, ()>(items.insert(host, tx, &sticks, 4))),
                 Ok(4)
             );
             assert_eq!(
@@ -1846,7 +1846,7 @@ pub(super) mod tests {
                 ItemResource::of(&ItemStack::new("minecraft:stick", 1).try_into_api().unwrap());
             let host: &mut dyn ServerHost = game;
             let wrote =
-                host.transaction(|host, tx| Ok::<_, ()>(items.insert(host, tx, 0, &sticks, 1)));
+                host.transaction(|host, tx| Ok::<_, ()>(items.insert_at(host, tx, 0, &sticks, 1)));
             assert_eq!(wrote, Ok(0));
         });
     }
@@ -1873,7 +1873,7 @@ pub(super) mod tests {
             let helmet = ItemResource::of(&helmet.try_into_api().unwrap());
             assert_eq!(items.amount(host, 39), 1);
             let take = |host: &mut dyn ServerHost| {
-                host.transaction(|host, tx| Ok::<_, ()>(items.extract(host, tx, 39, &helmet, 1)))
+                host.transaction(|host, tx| Ok::<_, ()>(items.extract_at(host, tx, 39, &helmet, 1)))
             };
             assert_eq!(take(host), Ok(0));
             // A creative player takes it off (`ArmorSlot.mayPickup`'s `isCreative`).
@@ -1950,7 +1950,7 @@ pub(super) mod tests {
             let sticks =
                 ItemResource::of(&ItemStack::new("minecraft:stick", 1).try_into_api().unwrap());
             let wrote =
-                host.transaction(|host, tx| Ok::<_, ()>(items.insert(host, tx, 0, &sticks, 1)));
+                host.transaction(|host, tx| Ok::<_, ()>(items.insert_at(host, tx, 0, &sticks, 1)));
             assert_eq!(wrote, Ok(0));
         });
     }
@@ -2748,7 +2748,7 @@ pub(super) mod tests {
             let sticks =
                 ItemResource::of(&ItemStack::new("minecraft:stick", 1).try_into_api().unwrap());
             let aborted = host.transaction(|host, tx| {
-                assert_eq!(items.insert_any(host, tx, &sticks, 70), 70);
+                assert_eq!(items.insert(host, tx, &sticks, 70), 70);
                 Err::<(), ()>(())
             });
             assert!(aborted.is_err());
@@ -2758,7 +2758,7 @@ pub(super) mod tests {
             // (54 more), then the first empty slot (the other 12); not onto the stone.
             let host: &mut dyn ServerHost = game;
             let went =
-                host.transaction(|host, tx| Ok::<_, ()>(items.insert_any(host, tx, &sticks, 70)));
+                host.transaction(|host, tx| Ok::<_, ()>(items.insert(host, tx, &sticks, 70)));
             assert_eq!(went, Ok(70));
             let after = &inventories(game)[0];
             assert_eq!(after[4], Some(ItemStack::new("minecraft:stick", 64)));
@@ -2768,7 +2768,7 @@ pub(super) mod tests {
             // Index 39 is the head: a stick doesn't go there.
             let host: &mut dyn ServerHost = game;
             let head =
-                host.transaction(|host, tx| Ok::<_, ()>(items.insert(host, tx, 39, &sticks, 1)));
+                host.transaction(|host, tx| Ok::<_, ()>(items.insert_at(host, tx, 39, &sticks, 1)));
             assert_eq!(head, Ok(0));
         });
     }
@@ -2792,8 +2792,8 @@ pub(super) mod tests {
                     let still = from.resource(host, *index).as_ref() == Some(&offered)
                         && from.amount(host, *index) == stack.count;
                     if !still
-                        || from.extract(host, tx, *index, &offered, stack.count) != stack.count
-                        || to.insert_any(host, tx, &offered, stack.count) != stack.count
+                        || from.extract_at(host, tx, *index, &offered, stack.count) != stack.count
+                        || to.insert(host, tx, &offered, stack.count) != stack.count
                     {
                         return Err(());
                     }
@@ -2948,14 +2948,14 @@ pub(super) mod tests {
             let sticks =
                 ItemResource::of(&ItemStack::new("minecraft:stick", 1).try_into_api().unwrap());
             let aborted = host.transaction(|host, tx| {
-                assert_eq!(items.insert_any(host, tx, &sticks, 70), 70);
+                assert_eq!(items.insert(host, tx, &sticks, 70), 70);
                 Err::<(), ()>(())
             });
             assert!(aborted.is_err());
             assert!(game.carts[0].items.iter().all(Option::is_none));
             let host: &mut dyn ServerHost = game;
             let went =
-                host.transaction(|host, tx| Ok::<_, ()>(items.insert_any(host, tx, &sticks, 70)));
+                host.transaction(|host, tx| Ok::<_, ()>(items.insert(host, tx, &sticks, 70)));
             assert_eq!(went, Ok(70));
             assert_eq!(
                 game.carts[0].items[0],
@@ -3524,7 +3524,7 @@ pub(super) mod tests {
 
                 // An aborted insert leaves the stand as it was.
                 let _ = host.transaction(|host, tx| {
-                    assert_eq!(items.insert(host, tx, 4, &chestplate, 1), 1);
+                    assert_eq!(items.insert_at(host, tx, 4, &chestplate, 1), 1);
                     assert_eq!(items.amount(host, 4), 1);
                     Err::<(), ()>(())
                 });
@@ -3545,7 +3545,7 @@ pub(super) mod tests {
                     .capability(host, &ENTITY_ITEMS, ())
                     .unwrap();
                 let _ = host
-                    .transaction(|host, tx| Ok::<_, ()>(items.insert(host, tx, 4, &chestplate, 1)));
+                    .transaction(|host, tx| Ok::<_, ()>(items.insert_at(host, tx, 4, &chestplate, 1)));
             }
             let through_setter = game.living(game.entity(41).unwrap()).unwrap();
             assert!(game.living_set_equipment(
@@ -3568,7 +3568,7 @@ pub(super) mod tests {
                     .capability(host, &ENTITY_ITEMS, ())
                     .unwrap();
                 let came = host.transaction(|host, tx| {
-                    Ok::<_, ()>(items.extract(host, tx, 4, &chestplate, 1))
+                    Ok::<_, ()>(items.extract_at(host, tx, 4, &chestplate, 1))
                 });
                 assert_eq!(came, Ok(1));
                 assert_eq!(items.amount(host, 4), 0);

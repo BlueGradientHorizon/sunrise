@@ -63,7 +63,7 @@ impl<R> ResourceHandler<R> for CombinedResourceHandler<R> {
         self.locate(host, index)
             .is_some_and(|(handler, at)| handler.is_valid(host, at, resource))
     }
-    fn insert(
+    fn insert_at(
         &self,
         host: &mut dyn ServerHost,
         tx: &Transaction,
@@ -72,10 +72,10 @@ impl<R> ResourceHandler<R> for CombinedResourceHandler<R> {
         amount: u32,
     ) -> u32 {
         self.locate(host, index).map_or(0, |(handler, at)| {
-            handler.insert(host, tx, at, resource, amount)
+            handler.insert_at(host, tx, at, resource, amount)
         })
     }
-    fn extract(
+    fn extract_at(
         &self,
         host: &mut dyn ServerHost,
         tx: &Transaction,
@@ -84,7 +84,7 @@ impl<R> ResourceHandler<R> for CombinedResourceHandler<R> {
         amount: u32,
     ) -> u32 {
         self.locate(host, index).map_or(0, |(handler, at)| {
-            handler.extract(host, tx, at, resource, amount)
+            handler.extract_at(host, tx, at, resource, amount)
         })
     }
     fn set(
@@ -98,7 +98,7 @@ impl<R> ResourceHandler<R> for CombinedResourceHandler<R> {
         self.locate(host, index)
             .is_some_and(|(handler, at)| handler.set(host, tx, at, resource, amount))
     }
-    fn insert_any(
+    fn insert(
         &self,
         host: &mut dyn ServerHost,
         tx: &Transaction,
@@ -106,10 +106,10 @@ impl<R> ResourceHandler<R> for CombinedResourceHandler<R> {
         amount: u32,
     ) -> u32 {
         in_turn(amount, &self.handlers, |handler, left| {
-            handler.insert_any(host, tx, resource, left)
+            handler.insert(host, tx, resource, left)
         })
     }
-    fn extract_any(
+    fn extract(
         &self,
         host: &mut dyn ServerHost,
         tx: &Transaction,
@@ -117,7 +117,7 @@ impl<R> ResourceHandler<R> for CombinedResourceHandler<R> {
         amount: u32,
     ) -> u32 {
         in_turn(amount, &self.handlers, |handler, left| {
-            handler.extract_any(host, tx, resource, left)
+            handler.extract(host, tx, resource, left)
         })
     }
 }
@@ -150,10 +150,10 @@ impl<R> ResourceHandler<R> for CombinedResourceHandler<R> {
 ///     fn is_valid(&self, _: &mut dyn ServerHost, _: usize, _: &R) -> bool {
 ///         false
 ///     }
-///     fn insert(&self, _: &mut dyn ServerHost, _: &Transaction, _: usize, _: &R, _: u32) -> u32 {
+///     fn insert_at(&self, _: &mut dyn ServerHost, _: &Transaction, _: usize, _: &R, _: u32) -> u32 {
 ///         0
 ///     }
-///     fn extract(
+///     fn extract_at(
 ///         &self,
 ///         host: &mut dyn ServerHost,
 ///         tx: &Transaction,
@@ -161,7 +161,7 @@ impl<R> ResourceHandler<R> for CombinedResourceHandler<R> {
 ///         resource: &R,
 ///         amount: u32,
 ///     ) -> u32 {
-///         self.0.extract(host, tx, index, resource, amount)
+///         self.0.extract_at(host, tx, index, resource, amount)
 ///     }
 /// }
 /// ```
@@ -206,7 +206,7 @@ impl<R> ResourceHandler<R> for RangedResourceHandler<R> {
         self.inner(host, index)
             .is_some_and(|at| self.handler.is_valid(host, at, resource))
     }
-    fn insert(
+    fn insert_at(
         &self,
         host: &mut dyn ServerHost,
         tx: &Transaction,
@@ -215,9 +215,9 @@ impl<R> ResourceHandler<R> for RangedResourceHandler<R> {
         amount: u32,
     ) -> u32 {
         self.inner(host, index)
-            .map_or(0, |at| self.handler.insert(host, tx, at, resource, amount))
+            .map_or(0, |at| self.handler.insert_at(host, tx, at, resource, amount))
     }
-    fn extract(
+    fn extract_at(
         &self,
         host: &mut dyn ServerHost,
         tx: &Transaction,
@@ -226,7 +226,7 @@ impl<R> ResourceHandler<R> for RangedResourceHandler<R> {
         amount: u32,
     ) -> u32 {
         self.inner(host, index)
-            .map_or(0, |at| self.handler.extract(host, tx, at, resource, amount))
+            .map_or(0, |at| self.handler.extract_at(host, tx, at, resource, amount))
     }
     fn set(
         &self,
@@ -261,10 +261,10 @@ impl<R> ResourceHandler<R> for EmptyResourceHandler {
     fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: &R) -> u32 {
         0
     }
-    fn insert(&self, _: &mut dyn ServerHost, _: &Transaction, _: usize, _: &R, _: u32) -> u32 {
+    fn insert_at(&self, _: &mut dyn ServerHost, _: &Transaction, _: usize, _: &R, _: u32) -> u32 {
         0
     }
-    fn extract(&self, _: &mut dyn ServerHost, _: &Transaction, _: usize, _: &R, _: u32) -> u32 {
+    fn extract_at(&self, _: &mut dyn ServerHost, _: &Transaction, _: usize, _: &R, _: u32) -> u32 {
         0
     }
 }
@@ -300,7 +300,7 @@ impl<R: Clone + PartialEq> ResourceHandler<R> for InfiniteResourceHandler<R> {
             0
         }
     }
-    fn insert(
+    fn insert_at(
         &self,
         host: &mut dyn ServerHost,
         _: &Transaction,
@@ -314,7 +314,7 @@ impl<R: Clone + PartialEq> ResourceHandler<R> for InfiniteResourceHandler<R> {
             0
         }
     }
-    fn extract(
+    fn extract_at(
         &self,
         host: &mut dyn ServerHost,
         _: &Transaction,
@@ -350,7 +350,7 @@ impl<R> ResourceHandler<R> for VoidingResourceHandler {
     fn capacity(&self, _: &mut dyn ServerHost, index: usize, _: &R) -> u32 {
         if index == 0 { u32::MAX } else { 0 }
     }
-    fn insert(
+    fn insert_at(
         &self,
         _: &mut dyn ServerHost,
         _: &Transaction,
@@ -360,7 +360,7 @@ impl<R> ResourceHandler<R> for VoidingResourceHandler {
     ) -> u32 {
         if index == 0 { amount } else { 0 }
     }
-    fn extract(&self, _: &mut dyn ServerHost, _: &Transaction, _: usize, _: &R, _: u32) -> u32 {
+    fn extract_at(&self, _: &mut dyn ServerHost, _: &Transaction, _: usize, _: &R, _: u32) -> u32 {
         0
     }
 }
@@ -490,7 +490,7 @@ impl<R> dyn ResourceHandler<R> {
             let held = self.amount(host, index) > 0
                 && self.resource(host, index).as_ref() == Some(resource);
             if held == holding {
-                self.insert(host, tx, index, resource, left)
+                self.insert_at(host, tx, index, resource, left)
             } else {
                 0
             }
@@ -514,7 +514,7 @@ impl<R> dyn ResourceHandler<R> {
             let Some(resource) = self.resource(host, index).filter(|r| filter(r)) else {
                 continue;
             };
-            let came = self.extract_any(host, tx, &resource, amount);
+            let came = self.extract(host, tx, &resource, amount);
             if came > 0 {
                 return Some((resource, came));
             }
@@ -540,7 +540,7 @@ impl<R> dyn ResourceHandler<R> {
                 continue;
             };
             let probe: Result<(), u32> =
-                host.transaction(|host, tx| Err(self.extract(host, tx, index, &resource, 1)));
+                host.transaction(|host, tx| Err(self.extract_at(host, tx, index, &resource, 1)));
             if probe.is_err_and(|came| came > 0) {
                 return Some(resource);
             }
@@ -567,7 +567,7 @@ pub fn move_first<R>(
         filter,
         max,
         tx,
-        |host, tx, resource, out| to.insert_any(host, tx, resource, out),
+        |host, tx, resource, out| to.insert(host, tx, resource, out),
     )
 }
 
@@ -620,7 +620,7 @@ fn move_first_by<R>(
                 at: &index,
             },
             want,
-            |host, tx, want| from.extract(host, tx, index, &resource, want),
+            |host, tx, want| from.extract_at(host, tx, index, &resource, want),
             |host, tx, out| insert(host, tx, &resource, out),
         )?;
         if went > 0 {
