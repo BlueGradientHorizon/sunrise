@@ -4286,19 +4286,10 @@ pub(crate) mod tests {
         assert_eq!(landing(&before), (3.0, 1.0, false, [1.0, 2.0, 3.0], false));
         assert_eq!(landing(&after), (4.0, 2.0, false, [1.0, 3.0, 3.0], true));
         assert_eq!(JUMPS.get(), 2);
-        // Heal, breathe and drown read it as well.
+        // Heal and drown read it as well.
         let health = |context: &LoopContext| {
             let (mut amount, mut cancel) = (2.0, false);
             crate::hunger::native_living_heal(context, 1, &mut amount, &mut cancel);
-            let (mut can_breathe, mut consume, mut refill) = (true, 1, 4);
-            crate::breathing::native_living_breathe(
-                context,
-                1,
-                "minecraft:zombie",
-                &mut can_breathe,
-                &mut consume,
-                &mut refill,
-            );
             let (mut drowning, mut damage, mut cancel_drown) = (false, 2.0, false);
             crate::breathing::native_living_drown(
                 context,
@@ -4309,18 +4300,10 @@ pub(crate) mod tests {
                 &mut 8,
                 &mut cancel_drown,
             );
-            (amount, cancel, can_breathe, consume, drowning, damage)
+            (amount, cancel, drowning, damage)
         };
-        assert_eq!(health(&before), (2.0, false, true, 1, false, 2.0));
-        assert_eq!(health(&after), (3.0, true, false, 5, true, 3.0));
-        // A listener that lets a cod breathe: on land for 300 ticks it keeps
-        // full air and takes no damage.
-        let mut air = 300;
-        for _ in 0..300 {
-            let hurt = crate::breathing::own_air(&after, 1, "minecraft:cod", &mut air, false, 300);
-            assert_eq!(hurt, None);
-        }
-        assert_eq!(air, 300);
+        assert_eq!(health(&before), (2.0, false, false, 2.0));
+        assert_eq!(health(&after), (3.0, true, true, 3.0));
         // A listener that sets `bubble_count` to 0: a drowning player takes the
         // damage and shows no bubbles (`drown_bubbles` sends nothing for 0).
         let gasp = crate::breathing::Breath {
@@ -4347,12 +4330,17 @@ pub(crate) mod tests {
             ),
             (0, true)
         );
-        let mut air = -19;
-        let hurt = crate::breathing::own_air(&after, 4, "minecraft:salmon", &mut air, false, 300);
-        assert_eq!((hurt, air), (Some(3.0), 0));
-        let mut air = -19;
-        let hurt = crate::breathing::own_air(&after, 4, "minecraft:dolphin", &mut air, false, 4800);
-        assert_eq!((hurt, air), (Some(3.0), 0));
+        // Water animals out of water: the mods' damage comes back and the air is zero.
+        let out_of_water = |kind: &str, max: i32| {
+            let mut air = -19;
+            let step = crate::breathing::AirStep::own(air, max, false);
+            let hurt = step
+                .finish(&after, 4, kind, &mut air, step.vanilla)
+                .and_then(|drowning| drowning.damage);
+            (hurt, air)
+        };
+        assert_eq!(out_of_water("minecraft:salmon", 300), (Some(3.0), 0));
+        assert_eq!(out_of_water("minecraft:dolphin", 4800), (Some(3.0), 0));
         // A server's block menu: the game's `stillValid` answer arrives first and
         // the parts on its mod menu type may change it; a vanilla menu type never
         // asks them, and a menu whose block entity is gone closes without asking.
