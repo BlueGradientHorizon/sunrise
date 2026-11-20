@@ -42,7 +42,7 @@ impl FileClaim {
         let path = home.join(claim);
         // Another row may use an absolute path. Use the filesystem's root in that case,
         // not this home; a real alias can be reached from either starting point.
-        let (base, relative, spelling) = match path.strip_prefix(home) {
+        let (base, relative, mut spelling) = match path.strip_prefix(home) {
             Ok(relative) => (home, relative, home_spelling(relative)),
             Err(_) if path.is_absolute() => {
                 let root = path.ancestors().last().unwrap_or(&path);
@@ -57,6 +57,8 @@ impl FileClaim {
         let mut parent = base.to_path_buf();
         let mut parent_info = None;
         let mut parts = relative.components().peekable();
+        let tracks_parents = parts.clone().any(|part| part == Component::ParentDir);
+        let mut resolved_links = Vec::new();
         let mut tail = Vec::new();
         let mut file = None;
         while let Some(part) = parts.next() {
@@ -93,6 +95,20 @@ impl FileClaim {
                     );
                 }
                 Ok(info) if info.is_dir() => {
+                    if spelling.is_some() && tracks_parents {
+                        match part {
+                            Component::Normal(_) => {
+                                let no_follow = fs::symlink_metadata(&current)
+                                    .map_err(|e| format!("{}: {e}", current.display()))?;
+                                resolved_links.push(is_link(&no_follow));
+                            }
+                            Component::ParentDir if resolved_links.pop() == Some(true) => {
+                                // The lexical pop does not name the native parent of a link.
+                                spelling = None;
+                            }
+                            _ => {}
+                        }
+                    }
                     parent = current;
                     parent_info = Some(info);
                 }
@@ -162,8 +178,8 @@ fn fold_unresolved(name: &OsStr) -> Option<String> {
         .then(|| name.to_ascii_lowercase())
 }
 
-/// Check portable spellings even when one path resolves farther than the other. This key is
-/// independent of native lookup, which still interprets real `..` components through links.
+/// Check portable spellings even when one path resolves farther than the other. Discard
+/// this lexical key if native lookup finds that `..` crosses a link.
 fn home_spelling(relative: &Path) -> Option<Vec<String>> {
     let mut names = Vec::new();
     for part in relative.components() {

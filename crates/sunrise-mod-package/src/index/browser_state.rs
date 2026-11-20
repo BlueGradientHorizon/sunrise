@@ -516,6 +516,32 @@ mod tests {
         assert!(!home.join(PENDING).exists());
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn publication_keeps_a_distinct_archive_reached_through_a_link_and_parents() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path();
+        let _guard = lock_home(home).unwrap();
+        fs::create_dir(home.join("sunrise-mods")).unwrap();
+        fs::create_dir_all(home.join("elsewhere/target/nested")).unwrap();
+        std::os::unix::fs::symlink("../elsewhere/target", home.join("sunrise-mods/alias")).unwrap();
+        let target = content_file("ruby");
+        let other = "sunrise-mods/alias/nested/../../ruby.smod";
+        let download = home.join("download.part");
+        fs::write(home.join(&target), b"old").unwrap();
+        fs::write(home.join("elsewhere/ruby.smod"), b"distinct").unwrap();
+        fs::write(&download, b"new").unwrap();
+        let other_row = serde_json::json!({ "file": other });
+        let mut list = Installed {
+            entries: vec![other_row.clone()],
+        };
+        let row = serde_json::json!({ "source": "sunrise", "project": "ruby", "file": target });
+        list.publish(home, "ruby", &download, row.clone()).unwrap();
+        assert_eq!(Installed::read(home).unwrap().entries, [other_row, row]);
+        assert_eq!(fs::read(home.join(target)).unwrap(), b"new");
+        assert_eq!(fs::read(home.join(other)).unwrap(), b"distinct");
+    }
+
     #[test]
     fn recovery_can_clear_unpublished_intent_with_a_distinct_uncertain_prefix() {
         let dir = tempfile::tempdir().unwrap();
