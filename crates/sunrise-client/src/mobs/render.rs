@@ -12,6 +12,9 @@ use std::borrow::Cow;
 use std::f32::consts::PI;
 use sunrise_core::geometry::trig::Mth;
 
+mod frame_model;
+pub use frame_model::{BakedFrameModel, BakedFrameModels, BakedFrameNode};
+
 // The invisible body a viewer still sees (`Entity.isInvisibleTo`), beside this file.
 #[path = "invisible_body.rs"]
 mod invisible_body;
