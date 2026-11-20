@@ -19,26 +19,3 @@ pub fn record_dispatch_failure() {
         generation.set(generation.get().wrapping_add(1));
     });
 }
-
-thread_local! {
-    static ACTION_FIRE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-}
-
-/// Runs a decided action's listeners with the same unwind policy for native and wasm.
-#[doc(hidden)]
-pub fn with_action_fire<R>(fire: impl FnOnce() -> R) -> R {
-    struct Restore(bool);
-    impl Drop for Restore {
-        fn drop(&mut self) {
-            ACTION_FIRE.set(self.0);
-        }
-    }
-    let _restore = Restore(ACTION_FIRE.replace(true));
-    fire()
-}
-
-/// A guest listener with no answer must unwind to the decision coordinator in this scope.
-#[doc(hidden)]
-pub fn action_fire_active() -> bool {
-    ACTION_FIRE.get()
-}

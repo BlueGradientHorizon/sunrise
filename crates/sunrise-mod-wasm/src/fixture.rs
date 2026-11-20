@@ -80,15 +80,6 @@ pub fn log_import() -> String {
     crate::imports::fixtures::log_import()
 }
 
-/// Declares one generated Host call as `$host_call` in a hand-written WAT module.
-pub fn wat_host_call(owner: &str, name: &str) -> Option<String> {
-    let index = import_id(owner, name)?;
-    let call = crate::boundary::CALLS[index as usize].name;
-    Some(format!(
-        r#"(import "sunrise" "{call}" (func $host_call (param i32 i32 i32 i32) (result i32)))"#
-    ))
-}
-
 /// The WAT items a hand-written test module declares before its functions: every call the game
 /// serves as an import, the protocol words, and `$host`, which calls one by its place in the
 /// table (an id [`import_id`] gives) and `$reply` for `protocol:host_reply`.
