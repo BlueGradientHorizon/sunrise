@@ -5,7 +5,7 @@
 above the last one: the fall distance goes back to 0, and `fall_from_height` is awarded for the distance fallen
 until then.
 
-A real protocol client joins a vanilla 26.3 dedicated server and Horizon's as a survival player in the air. The
+A real protocol client joins a vanilla 26.3 dedicated server and Sunrise's as a survival player in the air. The
 world is frozen and stepped by hand. The client sends one position a block lower, then one half a block higher,
 each followed by one world step. After each, the console reads the player's fall distance and position, and which
 of three `fall_from_height` advancements it has: any fall, a fall of at most 1 block, a fall of about 5. The two
@@ -106,7 +106,7 @@ def run(side, command, client_command, out, world):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--binary', type=Path, help='prebuilt Horizon game (otherwise build fast)')
+    parser.add_argument('--binary', type=Path, help='prebuilt Sunrise game (otherwise build fast)')
     parser.add_argument('--out', type=Path, default=lab.LOCAL / 'guest-upward-fall-reset-parity')
     args = parser.parse_args()
     lock, jars, libraries = net.base.verify_artifacts()
@@ -115,29 +115,29 @@ def main():
     out.mkdir(parents=True)
     classes = out / 'classes'
     classes.mkdir()
-    source = lab.ROOT / 'mods/horizon/src/test/java'
+    source = lab.ROOT / 'mods/sunrise/src/test/java'
     cp = os.pathsep.join(map(str, [jars['server'], *libraries]))
     subprocess.run(['javac', '--release', str(lock['minecraft']['java_major']), '-proc:none', '-nowarn',
                     '-sourcepath', source, '-cp', cp, '-d', classes,
-                    source / 'dev/horizonlab/parity/LocatorBarClient.java'], check=True)
-    client = ['java', '-Xmx512m', '-cp', str(classes) + os.pathsep + cp, 'dev.horizonlab.parity.LocatorBarClient']
+                    source / 'dev/sunriselab/parity/LocatorBarClient.java'], check=True)
+    client = ['java', '-Xmx512m', '-cp', str(classes) + os.pathsep + cp, 'dev.sunriselab.parity.LocatorBarClient']
     vanilla = ['java', '-Xmx1g', '-Duser.timezone=UTC', '-cp', cp, 'net.minecraft.server.Main', 'nogui']
     if args.binary:
         binary = args.binary.resolve(strict=True)
     else:
-        subprocess.run(['cargo', 'build', '--profile', 'fast', '-p', 'horizon-client', '--bin', 'horizon-client'],
+        subprocess.run(['cargo', 'build', '--profile', 'fast', '-p', 'sunrise-game', '--bin', 'sunrise-client'],
                        cwd=lab.ROOT, check=True)
         metadata = json.loads(subprocess.check_output(
             ['cargo', 'metadata', '--no-deps', '--format-version', '1'], cwd=lab.ROOT, text=True))
         binary = Path(metadata['target_directory']) / 'fast' / (
-            'horizon-client.exe' if os.name == 'nt' else 'horizon-client')
-    horizon = [binary, '--resources', lab.RESOURCES.resolve(), '--dedicated', '--nogui']
+            'sunrise-client.exe' if os.name == 'nt' else 'sunrise-client')
+    sunrise = [binary, '--resources', lab.RESOURCES.resolve(), '--dedicated', '--nogui']
     net.PLAYERS = [PLAYER]
     net.PROPERTIES.update({'force-gamemode': 'false'})
     world = generate(vanilla, out)
     pack(world)
     seen = {side: run(side, command, client, out, world)
-            for side, command in [('vanilla', vanilla), ('horizon', horizon)]}
+            for side, command in [('vanilla', vanilla), ('sunrise', sunrise)]}
     lab.write_json(out / 'report.json', seen)
     # Admission: on vanilla the player was falling before it moved up, and the move up ended that fall.
     falling = seen['vanilla']['down']
@@ -145,9 +145,9 @@ def main():
     risen = seen['vanilla']['up']
     assert risen['fall_distance'] == '0.0d', risen
     assert risen['advancements'] == {'any': True, 'short': True, 'five': False}, risen
-    differences = [label for label in seen['vanilla'] if seen['vanilla'][label] != seen['horizon'][label]]
+    differences = [label for label in seen['vanilla'] if seen['vanilla'][label] != seen['sunrise'][label]]
     for label in differences:
-        print(f"difference after {label}: vanilla {seen['vanilla'][label]}, horizon {seen['horizon'][label]}",
+        print(f"difference after {label}: vanilla {seen['vanilla'][label]}, sunrise {seen['sunrise'][label]}",
               flush=True)
     print(f"{len(seen['vanilla']) - len(differences)}/{len(seen['vanilla'])} observations match", flush=True)
     if differences:

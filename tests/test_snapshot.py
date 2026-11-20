@@ -92,22 +92,36 @@ class NightlyBuildSnapshotTests(unittest.TestCase):
         self.assertIn('--tag "${KIND}-${DATE}-${SHORT}"', verify)
         self.assertEqual(self.workflow["on"]["workflow_dispatch"]["inputs"]["kind"]["default"], "nightly")
 
-    def test_snapshot_optional_platforms_keep_nightly_and_release_requirements(self):
+    def test_optional_platforms_follow_repository_and_channel(self):
         game = load("game-build.yml")
         build = game["jobs"]["build"]
         expression = build["continue-on-error"].removeprefix("${{").removesuffix("}}").strip()
         self.assertEqual(game["on"]["workflow_call"]["inputs"]["kind"]["default"], "release")
         self.assertEqual(self.workflow["jobs"]["build"]["with"]["kind"], "${{ inputs.kind }}")
-        for kind in ("snapshot", "nightly", "release"):
-            optional = set()
-            for row in build["strategy"]["matrix"]["include"]:
-                condition = expression.replace("matrix.name", repr(row["name"])).replace("inputs.kind", repr(kind))
-                if eval(condition.replace("||", "or").replace("&&", "and"), {"__builtins__": {}}):
-                    optional.add(row["name"])
-            self.assertEqual(optional, {"windows-arm64", "linux-musl"} | ({"macos-x64"} if kind == "snapshot" else set()))
-        self.assertEqual(game["jobs"]["linux-smoke"]["needs"], ["runner-configuration", "build"])
-        self.assertEqual(self.workflow["jobs"]["sign"]["needs"], ["pick", "build"])
-        self.assertEqual(self.workflow["jobs"]["publish"]["needs"], ["pick", "build", "sign"])
+        for repo in ("sunrise-org/sunrise", "example/test"):
+            for kind in ("snapshot", "nightly", "release"):
+                optional = set()
+                for row in build["strategy"]["matrix"]["include"]:
+                    condition = (expression.replace("matrix.name", repr(row["name"]))
+                                 .replace("inputs.kind", repr(kind)).replace("github.repository", repr(repo))
+                                 .replace("matrix.mac", str(row.get("mac") == "true")).replace("true", "True"))
+                    if eval(condition.replace("||", "or").replace("&&", "and"), {"__builtins__": {}}):
+                        optional.add(row["name"])
+                macs = {"macos", "macos-x64"} if repo == "sunrise-org/sunrise" else ({"macos-x64"} if kind == "snapshot" else set())
+                self.assertEqual(optional, {"windows-arm64", "linux-musl"} | macs)
+        self.assertEqual(game["jobs"]["linux-smoke"]["needs"], "legs")
+        # A reusable workflow that ends failed or cancelled (an optional leg) passes back no outputs: signing and
+        # publishing follow the legs job's build-complete marker, read by an ordinary job.
+        self.assertNotIn("outputs", game["on"]["workflow_call"])
+        marker = [step for step in game["jobs"]["legs"]["steps"] if step.get("with", {}).get("name") == "build-complete"]
+        self.assertEqual([step["if"] for step in marker], ["steps.decide.outputs.complete == 'true'"])
+        complete = self.workflow["jobs"]["complete"]
+        self.assertEqual(complete["steps"][0]["with"]["name"], "build-complete")
+        self.assertEqual(complete["outputs"]["complete"], "${{ steps.marker.outcome == 'success' }}")
+        self.assertEqual(self.workflow["jobs"]["sign"]["needs"], ["pick", "build", "complete"])
+        self.assertEqual(self.workflow["jobs"]["publish"]["needs"], ["pick", "build", "complete", "sign"])
+        for job in ("sign", "publish"):
+            self.assertIn("needs.complete.outputs.complete == 'true'", self.workflow["jobs"][job]["if"])
 
     @unittest.skipIf(os.name == "nt", "executes the POSIX signing step")
     def test_missing_intel_mac_is_signed_only_for_snapshot_and_notes_name_missing_assets(self):
@@ -118,10 +132,10 @@ class NightlyBuildSnapshotTests(unittest.TestCase):
             (root / "tools/ci").mkdir(parents=True)
             (root / "tools/ci/sign_release.sh").write_text(
                 'for file in "${@:2}"; do test -f "$file" || exit 9; done\nprintf "%s\\n" "$@" > signed\n')
-            for name in ("horizon-linux-x86_64.tar.gz", "horizon-windows-x64.zip", "horizon-macos-arm64.zip",
-                         "horizon-server-linux-x86_64.tar.gz", "horizon-source.tar.gz"):
+            for name in ("sunrise-linux-x86_64.tar.gz", "sunrise-windows-x64.zip", "sunrise-macos-arm64.zip",
+                         "sunrise-server-linux-x86_64.tar.gz", "sunrise-source.tar.gz", "sunrise-release.json"):
                 (root / "dist" / name).touch()
-            for kind, code in (("snapshot", 0), ("nightly", 9)):
+            for kind, code in (("snapshot", 0), ("nightly", 1)):
                 result = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", sign], cwd=root,
                                         env=dict(os.environ, KIND=kind, GITHUB_REPOSITORY="example/test"),
                                         capture_output=True, text=True)
@@ -130,8 +144,8 @@ class NightlyBuildSnapshotTests(unittest.TestCase):
             notes = published[published.index("# Archive presence"):].split("# Exactly the files", 1)[0]
             subprocess.run(["bash", "-e", "-o", "pipefail", "-c", notes], cwd=root, check=True)
             body = (root / "dist/nightly-notes.md").read_text()
-            self.assertIn("Built: `horizon-macos-arm64.zip`", body)
-            for missing in ("horizon-macos-x64.zip", "horizon-windows-arm64.zip", "horizon-linux-musl-x86_64.tar.gz"):
+            self.assertIn("Built: `sunrise-macos-arm64.zip`", body)
+            for missing in ("sunrise-macos-x64.zip", "sunrise-windows-arm64.zip", "sunrise-linux-musl-x86_64.tar.gz"):
                 self.assertIn(f"Failed or unavailable; not published: `{missing}`", body)
 
     def test_snapshots_never_replace_a_waiting_nightly(self):
@@ -163,7 +177,7 @@ class SnapshotToolsTests(unittest.TestCase):
             back = os.getcwd()
             os.chdir(folder)
             try:
-                env = {"GITHUB_REPOSITORY": "arismoko/horizon", "GITHUB_OUTPUT": str(out), "NIGHTLY_BASE": sha}
+                env = {"GITHUB_REPOSITORY": "sunrise-org/sunrise", "GITHUB_OUTPUT": str(out), "NIGHTLY_BASE": sha}
                 with mock.patch.dict(os.environ, env), mock.patch.object(nightly, "git"), \
                         mock.patch.object(nightly.train, "channel_head", return_value=sha) as gate, \
                         mock.patch.object(nightly, "sdk_ready", return_value=True), \
@@ -175,7 +189,7 @@ class SnapshotToolsTests(unittest.TestCase):
                 self.assertEqual(values["tag"], f"snapshot-{today}-0c02067")
                 self.assertEqual(values["version"], f"snapshot-{today}")
                 self.assertEqual(values["build"], "true")
-                self.assertIn(f"horizon-launcher install snapshot-{today}-0c02067", Path("nightly-notes.md").read_text())
+                self.assertIn(f"sunrise-launcher install snapshot-{today}-0c02067", Path("nightly-notes.md").read_text())
                 # Published already (the same commit the same day): skipped, never replaced.
                 with mock.patch.dict(os.environ, env), mock.patch.object(nightly, "git"), \
                         mock.patch.object(nightly.train, "channel_head", return_value=sha), \

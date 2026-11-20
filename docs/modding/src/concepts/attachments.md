@@ -1,5 +1,25 @@
 # Attachments
 
+Declare every attachment during `Hooks::register`, for native and wasm packages:
+
+```rust,ignore
+let _ = registrar.register_attachment_type("example:counter", false);
+```
+
+The registrar records any refusal even if the returned result is ignored.
+The boolean states whether the attachment syncs to clients. A persistence codec
+alone does not make it synced. Only the owning package may declare an id.
+The owner's declaration allows other packages to use that id.
+An undeclared use returns `AttachmentError::Undeclared` with the calling package
+id and attachment id. Synced declarations refuse a `side = "server"` package
+before registration is installed. Here “carries a synced attachment” means
+**declares** one: a server package may use A's synced attachment if A is a
+client-compared package. If A is itself a server package, A is refused.
+Load checks declaration conflicts (including foreign namespaces) first, then
+undeclared uses naming the caller, then server-package declarations.
+Declarations must match the key's sync policy.
+
+
 Use `AttachmentType<T>` to store mod data on a player, entity, block entity,
 chunk or level. Declare a type once, then pass the hook's host and a `Holder`
 to read or update its value.
@@ -93,10 +113,10 @@ orbs, and only the first keeps the attachments. Player UUIDs cover online guests
 the acting player. Mutable level
 hosts can access their level, loaded chunks and block entities; read-only level hosts
 cannot access attachments. Unserialized values disappear on unload or restart. A saved
-value is stored under `horizon:attachments`, then the mod namespace and attachment name,
+value is stored under `sunrise:attachments`, then the mod namespace and attachment name,
 as `{value: <compound>, copy_on_death: 1b, sync: 1b}` (a flag is omitted when false).
 Unknown mods' saved entries survive load and save without being decoded. Level
-attachments use the dimension's `data/horizon/attachments.dat` SavedData
+attachments use the dimension's `data/sunrise/attachments.dat` SavedData
 file, not `level.dat`.
 
 ## Synchronization
@@ -106,7 +126,7 @@ recipient predicate or partial synchronization updates. The default is `fn() -> 
 copying uses the declared policy, and synchronization uses the disk codec rather
 than a separate wire codec.
 
-A type with `sync: true` sends its value to Horizon clients when `get` creates the
+A type with `sync: true` sends its value to Sunrise clients when `get` creates the
 default, on `set` and `remove`, and on demand with `AttachmentType::sync_data(host,
 holder)`; changes made in one tick are sent once, at its end. The recipients are the
 players who track the holder: guests who were sent a chunk for a chunk or block entity,
@@ -116,7 +136,7 @@ when it starts seeing it: a chunk sent (with its block entities), a level joined
 re-entered, an entity tracked, and its own player. The wire form is the codec's compound, so `sync` requires
 a codec.
 
-Values travel on `horizon:attachment_sync`, an engine declaration in the negotiated
+Values travel on `sunrise:attachment_sync`, an engine declaration in the negotiated
 payload table (play, to the client, version 1, optional): only a client whose connection
 offered it is sent values, so a vanilla client is sent none. A message is prepared against
 the player's current connection epoch and published at the root commit, in order with the
@@ -131,6 +151,10 @@ On a client, `Host::attachments` returns a copy of what the server synced, which
 decodes; `set` and `remove` change only that copy, which is dropped when the chunk,
 entity or player goes. A client keeps no copy for the level hosts (`LevelRandomHost`):
 they stay server-only there, though their changes on a server are synced.
+
+A general entity row (`declare_general_entity`) has no data of its own on a client: its
+synced attachments are what a Sunrise client knows of it beyond its type, position and
+rotation. They arrive with the row, when the client starts tracking it, and go with it.
 
 ## Copying on respawn and conversion
 

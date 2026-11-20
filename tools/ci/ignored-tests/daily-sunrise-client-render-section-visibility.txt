@@ -1,0 +1,4 @@
+sunrise-client-render mesher::visibility_plan::mesh_tests::a_face_mask_removes_faces_and_hidden_cells_open_their_neighbours lib daily resources
+sunrise-client-render mesher::visibility_plan::mesh_tests::hide_terrain_keeps_only_block_entities lib daily resources
+sunrise-client-render mesher::visibility_plan::mesh_tests::masked_translucent_faces_stay_in_the_translucent_pass lib daily resources
+sunrise-client-render mesher::visibility_plan::mesh_tests::without_a_plan_meshes_are_byte_identical lib daily resources
