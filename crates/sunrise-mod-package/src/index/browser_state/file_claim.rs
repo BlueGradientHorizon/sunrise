@@ -6,9 +6,15 @@ use std::path::{Component, Path};
 /// A claim anchored to the real directory that contains its file or missing suffix.
 pub(super) struct FileClaim {
     parent: Identity,
-    // An uncheckable spelling is ambiguous only inside its resolved parent.
-    tail: Option<Vec<String>>,
+    // Preserve the known prefix even when a later component cannot be compared.
+    tail: Vec<Option<String>>,
+    spelling: Option<Vec<String>>,
     file: Option<Identity>,
+}
+
+pub(super) enum Conflict {
+    Confirmed,
+    Possible,
 }
 
 impl FileClaim {
@@ -36,31 +42,31 @@ impl FileClaim {
         let path = home.join(claim);
         // Another row may use an absolute path. Use the filesystem's root in that case,
         // not this home; a real alias can be reached from either starting point.
-        let base = if path.starts_with(home) {
-            home
-        } else if path.is_absolute() {
-            path.ancestors().last().unwrap_or(&path)
-        } else {
-            return Err("cannot locate the file claim's starting directory".into());
+        let (base, relative, spelling) = match path.strip_prefix(home) {
+            Ok(relative) => (home, relative, home_spelling(relative)),
+            Err(_) if path.is_absolute() => {
+                let root = path.ancestors().last().unwrap_or(&path);
+                (
+                    root,
+                    path.strip_prefix(root).map_err(|e| e.to_string())?,
+                    None,
+                )
+            }
+            Err(_) => return Err("cannot locate the file claim's starting directory".into()),
         };
         let mut parent = base.to_path_buf();
         let mut parent_info = None;
-        let mut parts = path
-            .strip_prefix(base)
-            .map_err(|e| e.to_string())?
-            .components()
-            .peekable();
-        let mut missing = Vec::<(&OsStr, bool)>::new();
-        let mut tail = None;
+        let mut parts = relative.components().peekable();
+        let mut tail = Vec::new();
         let mut file = None;
         while let Some(part) = parts.next() {
             let leaf = parts.peek().is_none();
-            if part == Component::ParentDir && !leaf && missing.pop().is_some() {
+            if part == Component::ParentDir && !leaf && tail.pop().is_some() {
                 continue;
             }
             let name = part.as_os_str();
-            if !missing.is_empty() {
-                missing.push((name, true));
+            if !tail.is_empty() {
+                tail.push(fold_unresolved(name));
                 continue;
             }
             let current = parent.join(name);
@@ -80,57 +86,100 @@ impl FileClaim {
                                 .map_err(|e| format!("{}: {e}", current.display()))?,
                         );
                     }
-                    tail = name
-                        .to_str()
-                        .filter(|name| portable_name(name))
-                        .map(|name| vec![name.to_ascii_lowercase()]);
+                    tail.push(
+                        name.to_str()
+                            .filter(|name| portable_name(name))
+                            .map(str::to_ascii_lowercase),
+                    );
                 }
                 Ok(info) if info.is_dir() => {
                     parent = current;
                     parent_info = Some(info);
                 }
-                Ok(_) if !target => missing.push((name, false)),
+                Ok(_) if !target => tail.push(None),
                 Ok(_) => return Err(format!("{} is not a directory", current.display())),
                 Err(e) if e.kind() == ErrorKind::NotFound => {
                     // Do not mistake a dangling link for a new filename in this directory.
                     // We cannot associate a dangling link with a checked destination.
                     match fs::symlink_metadata(&current) {
-                        Err(e) if e.kind() == ErrorKind::NotFound => missing.push((name, true)),
-                        Err(e) if !target && invalid_lookup(&e) => missing.push((name, false)),
+                        Err(e) if e.kind() == ErrorKind::NotFound => {
+                            tail.push(fold_unresolved(name))
+                        }
+                        Err(e) if !target && invalid_lookup(&e) => tail.push(None),
                         Err(e) => return Err(format!("{}: {e}", current.display())),
                         Ok(_) => return Err(format!("cannot resolve {}", current.display())),
                     }
                 }
                 // No file can be reached through a rejected name or a non-directory.
                 // This does not make rows under other directories ambiguous.
-                Err(e) if !target && invalid_lookup(&e) => missing.push((name, false)),
+                Err(e) if !target && invalid_lookup(&e) => tail.push(None),
                 // For example, permission denied may hide a link; no identity to bound it.
                 Err(e) => return Err(format!("{}: {e}", current.display())),
             }
         }
-        if !missing.is_empty() {
-            tail = missing
-                .into_iter()
-                .map(|(name, foldable)| {
-                    let name = name.to_str()?;
-                    (foldable && portable_name(name) && name.is_ascii() && !name.contains('~'))
-                        .then(|| name.to_ascii_lowercase())
-                })
-                .collect();
+        if tail.is_empty() {
+            // The other row names a directory root rather than a file.
+            tail.push(None);
         }
         let parent = identity(&parent, parent_info.as_ref())
             .map_err(|e| format!("{}: {e}", parent.display()))?;
-        Ok(Self { parent, tail, file })
+        Ok(Self {
+            parent,
+            tail,
+            spelling,
+            file,
+        })
     }
 
-    pub(super) fn conflicts_with(&self, other: &Self) -> bool {
-        (self.file.is_some() && self.file == other.file)
-            || (self.parent == other.parent
-                && match (&self.tail, &other.tail) {
-                    (Some(a), Some(b)) => a.starts_with(b) || b.starts_with(a),
-                    _ => true,
-                })
+    pub(super) fn conflict_with(&self, other: &Self) -> Option<Conflict> {
+        if (self.file.is_some() && self.file == other.file)
+            || self
+                .spelling
+                .as_ref()
+                .zip(other.spelling.as_ref())
+                .is_some_and(|(a, b)| a.starts_with(b) || b.starts_with(a))
+        {
+            return Some(Conflict::Confirmed);
+        }
+        if self.parent != other.parent {
+            return None;
+        }
+        for (a, b) in self.tail.iter().zip(&other.tail) {
+            match (a, b) {
+                (Some(a), Some(b)) if a == b => {}
+                (Some(_), Some(_)) => return None,
+                _ => return Some(Conflict::Possible),
+            }
+        }
+        // Equal suffixes, or one file claims another's directory.
+        Some(Conflict::Confirmed)
     }
+}
+
+fn fold_unresolved(name: &OsStr) -> Option<String> {
+    let name = name.to_str()?;
+    (name.is_ascii() && !name.contains('~') && portable_name(name))
+        .then(|| name.to_ascii_lowercase())
+}
+
+/// Check portable spellings even when one path resolves farther than the other. This key is
+/// independent of native lookup, which still interprets real `..` components through links.
+fn home_spelling(relative: &Path) -> Option<Vec<String>> {
+    let mut names = Vec::new();
+    for part in relative.components() {
+        match part {
+            Component::Normal(name) => names.push(name),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                names.pop()?;
+            }
+            _ => return None,
+        }
+    }
+    if names.is_empty() {
+        return None;
+    }
+    names.into_iter().map(fold_unresolved).collect()
 }
 
 #[cfg(unix)]
@@ -171,7 +220,7 @@ fn is_link(info: &fs::Metadata) -> bool {
     }
 }
 
-fn invalid_lookup(error: &std::io::Error) -> bool {
+fn invalid_lookup(error: &io::Error) -> bool {
     // ERROR_INVALID_NAME is not consistently mapped to InvalidInput in std.
     #[cfg(windows)]
     if error.raw_os_error() == Some(windows_sys::Win32::Foundation::ERROR_INVALID_NAME as i32) {

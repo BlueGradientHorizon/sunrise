@@ -3,7 +3,7 @@ mod file_claim;
 
 use crate::durable;
 use crate::install_lock::lock_home;
-use file_claim::FileClaim;
+use file_claim::{Conflict, FileClaim};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fs;
@@ -205,6 +205,8 @@ impl Installed {
     }
 
     /// Checks that `file` can be used under this home and no other entry can claim it.
+    /// Directory links are followed; a link at the destination file is refused. An ambiguous
+    /// claim stops installation or recovery without changing the archive, manifest or journal.
     /// Hold the home lock while checking and using the result.
     pub fn check_file_claim(&self, home: &Path, file: &str, id: &str) -> Result<(), String> {
         let target = FileClaim::target(home, file).map_err(|e| format!("{file}: {e}"))?;
@@ -219,10 +221,12 @@ impl Installed {
             let claim = FileClaim::other(home, other).map_err(|e| {
                 format!("cannot compare {file} with {title}'s file claim {other:?}: {e}")
             })?;
-            if target.conflicts_with(&claim) {
-                return Err(format!(
-                    "{file} conflicts with the file that belongs to {title}: remove it first"
-                ));
+            if let Some(conflict) = target.conflict_with(&claim) {
+                let reason = match conflict {
+                    Conflict::Confirmed => "conflicts with",
+                    Conflict::Possible => "may conflict with",
+                };
+                return Err(format!("{file} {reason} {title}'s file claim {other:?}"));
             }
         }
         Ok(())
@@ -465,6 +469,14 @@ mod tests {
     }
 
     #[test]
+    fn case_folded_missing_targets_conflict_at_different_lookup_depths() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path();
+        fs::create_dir(home.join("sunrise-mods")).unwrap();
+        assert_alias_refused(home, "SUNRISE-MODS/RUBY.smod", false);
+    }
+
+    #[test]
     fn a_hard_link_at_a_different_path_cannot_claim_the_same_archive() {
         let dir = tempfile::tempdir().unwrap();
         let home = dir.path();
@@ -502,6 +514,38 @@ mod tests {
         );
         assert_eq!(fs::read(home.join(content_file("ruby"))).unwrap(), b"new");
         assert!(!home.join(PENDING).exists());
+    }
+
+    #[test]
+    fn recovery_can_clear_unpublished_intent_with_a_distinct_uncertain_prefix() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path();
+        let file = content_file("ruby");
+        let list = Installed {
+            entries: vec![serde_json::json!({ "file": "resourcepacks/déjà.zip" })],
+        };
+        list.save(home).unwrap();
+        let before = fs::read(home.join(MANIFEST)).unwrap();
+        fs::write(
+            home.join(PENDING),
+            serde_json::to_vec(&Pending {
+                id: "ruby".into(),
+                file: file.clone(),
+                old: None,
+                new: serde_json::json!({
+                    "source": "sunrise", "project": "ruby", "file": file, "version": "1",
+                    "checksum": format!("SHA-256:{}", super::super::sha256(b"new")),
+                }),
+            })
+            .unwrap(),
+        )
+        .unwrap();
+
+        reconcile(home).unwrap();
+        assert_eq!(fs::read(home.join(MANIFEST)).unwrap(), before);
+        assert!(!home.join(PENDING).try_exists().unwrap());
+        assert!(!home.join("sunrise-mods").try_exists().unwrap());
+        assert!(!home.join("resourcepacks").try_exists().unwrap());
     }
 
     #[test]
