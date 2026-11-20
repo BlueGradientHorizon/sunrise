@@ -6,9 +6,7 @@
 
 use crate::{
     identifier::Identifier,
-    java_string::{
-        java_string_hash, java_string_hash_str, java_string_hash_units_const, utf16_with_hash,
-    },
+    java_string::{java_string_hash, java_string_hash_str, java_string_hash_units_const},
     nbt::JavaString,
 };
 
@@ -64,7 +62,7 @@ impl LookupKey for UnitsKey<'_> {
 }
 impl LookupKey for HashedKey<JavaString> {
     fn units_key(&self) -> UnitsKey<'_> {
-        HashedKey::from_parts(self.hash, self.text.0.as_slice())
+        HashedKey::from_parts(self.hash, self.text.units())
     }
 }
 
@@ -82,6 +80,11 @@ impl InsertKey for HashedKey<JavaString> {
         self
     }
 }
+impl InsertKey for &HashedKey<JavaString> {
+    fn into_key(self) -> HashedKey<JavaString> {
+        self.clone()
+    }
+}
 impl InsertKey for &UnitsKey<'_> {
     fn into_key(self) -> HashedKey<JavaString> {
         self.into()
@@ -96,20 +99,29 @@ impl InsertKey for HashedKey<&JavaString> {
 impl HashedKey<JavaString> {
     /// The key of `text`, encoded to UTF-16 once. Not an `Into`: hashing is always asked for by name.
     pub fn from_text(text: &str) -> Self {
-        let (units, hash) = utf16_with_hash(text);
-        Self::from_parts(hash, JavaString(units))
+        let (text, hash) = JavaString::with_hash(text);
+        Self::from_parts(hash, text)
     }
     pub fn new(units: Vec<u16>) -> Self {
         Self {
             hash: java_string_hash(&units),
-            text: JavaString(units),
+            text: JavaString::from(units),
         }
+    }
+
+    /// An owned key backed by static units; both copying it and computing its hash in a constant are free.
+    #[doc(hidden)]
+    pub const fn from_static(units: &'static [u16]) -> Self {
+        Self::from_parts(
+            java_string_hash_units_const(units),
+            JavaString::from_static(units),
+        )
     }
 }
 /// Copies the units and keeps the hash: nothing is rehashed.
 impl From<&UnitsKey<'_>> for HashedKey<JavaString> {
     fn from(key: &UnitsKey<'_>) -> Self {
-        Self::from_parts(key.hash(), JavaString(key.text().to_vec()))
+        Self::from_parts(key.hash(), key.text().iter().copied().collect())
     }
 }
 /// A key read from another compound, copied with its hash.
@@ -183,15 +195,15 @@ impl<'a> HashedKey<&'a Identifier> {
     }
 }
 
-/// `nbt_key!("Count")`: the key of that literal, a `&'static UnitsKey<'static>` whose units and hash are made at
-/// compile time, so that looking it up neither encodes nor hashes anything.
+/// `nbt_key!("Count")`: a `&'static HashedKey<JavaString>` whose units and hash are made at compile
+/// time. Looking it up neither encodes nor hashes anything, and inserting it never copies its units.
 #[macro_export]
 macro_rules! nbt_key {
     ($text:literal) => {{
         const LEN: usize = $crate::java_string::utf16_len_const($text);
         const UNITS: [u16; LEN] = $crate::java_string::utf16_units_const::<LEN>($text);
-        const KEY: $crate::hashed_key::UnitsKey<'static> =
-            $crate::hashed_key::HashedKey::<&'static [u16]>::new_const(&UNITS);
+        static KEY: $crate::hashed_key::HashedKey<$crate::nbt::JavaString> =
+            $crate::hashed_key::HashedKey::<$crate::nbt::JavaString>::from_static(&UNITS);
         &KEY
     }};
 }

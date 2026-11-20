@@ -12,6 +12,9 @@
 
 use simd::{WIDE_FROM, fold};
 
+mod units;
+pub(crate) use units::{INLINE_CAPACITY, Units};
+
 /// `String.hashCode` of a string's UTF-16 units.
 #[inline]
 pub fn java_string_hash(units: &[u16]) -> i32 {
@@ -24,12 +27,21 @@ pub fn java_string_hash(units: &[u16]) -> i32 {
     fold(0, units) as i32
 }
 
-/// The UTF-16 units of `text` and their `String.hashCode`, made together: one allocation, and for ASCII
-/// text (each byte a unit) a vector widen and a vector hash.
-pub fn utf16_with_hash(text: &str) -> (Vec<u16>, i32) {
+/// The UTF-16 units of `text` and their `String.hashCode`, made together. Short strings
+/// stay inline; longer ASCII text (each byte a unit) uses a vector widen and a vector hash.
+pub(crate) fn utf16_with_hash(text: &str) -> (Units, i32) {
     let bytes = text.as_bytes();
+    if bytes.len() <= INLINE_CAPACITY && bytes.is_ascii() {
+        let mut units = [0; INLINE_CAPACITY];
+        let mut hash = 0i32;
+        for (out, &byte) in units.iter_mut().zip(bytes) {
+            *out = u16::from(byte);
+            hash = hash.wrapping_mul(31).wrapping_add(i32::from(byte));
+        }
+        return (Units::inline(units, bytes.len()), hash);
+    }
     if bytes.is_ascii() {
-        let units: Vec<u16> = bytes.iter().map(|&b| u16::from(b)).collect();
+        let units = bytes.iter().map(|&b| u16::from(b)).collect();
         return (units, java_string_hash_ascii(bytes));
     }
     // One allocation of exactly the units the text encodes to: one per byte that starts a character,
@@ -39,6 +51,15 @@ pub fn utf16_with_hash(text: &str) -> (Vec<u16>, i32) {
         .iter()
         .map(|&b| usize::from(b & 0xC0 != 0x80) + usize::from(b >= 0xF0))
         .sum();
+    if len <= INLINE_CAPACITY {
+        let mut units = [0; INLINE_CAPACITY];
+        let mut hash = 0i32;
+        for (out, unit) in units.iter_mut().zip(text.encode_utf16()) {
+            *out = unit;
+            hash = hash.wrapping_mul(31).wrapping_add(i32::from(unit));
+        }
+        return (Units::inline(units, len), hash);
+    }
     let mut units;
     if bytes.iter().all(|&b| b < 0xC4) {
         // Only ASCII and the two-byte forms of U+0080..U+00FF (C2 or C3, then a continuation): each
@@ -63,7 +84,7 @@ pub fn utf16_with_hash(text: &str) -> (Vec<u16>, i32) {
         units.extend(text.encode_utf16());
     }
     let hash = java_string_hash(&units);
-    (units, hash)
+    (Units::Heap(units), hash)
 }
 
 /// `String.hashCode` of the Java string holding `text`'s UTF-16 units (`text.encode_utf16()`),
@@ -430,9 +451,11 @@ mod tests {
             }
             let (units, hash) = utf16_with_hash(&text);
             let expected: Vec<u16> = text.encode_utf16().collect();
-            assert_eq!(units, expected, "{text:?}");
-            // The key keeps its buffer: at most one spare unit (the Latin-1 path's overwrite slot).
-            assert!(units.capacity() <= expected.len() + 1, "{text:?}");
+            assert_eq!(units.as_slice(), expected, "{text:?}");
+            if let Units::Heap(units) = &units {
+                // At most one spare unit (the Latin-1 path's overwrite slot).
+                assert!(units.capacity() <= expected.len() + 1, "{text:?}");
+            }
             assert_eq!(hash, java_string_hash(&expected));
         }
     }

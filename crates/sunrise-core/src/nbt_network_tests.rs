@@ -119,7 +119,7 @@ fn network_all_variants_and_java_strings_reuse_engine_codec() {
         Tag::ByteArray(vec![1, 2]),
         Tag::IntArray(vec![-1, 2]),
         Tag::LongArray(vec![-1, 2]),
-        Tag::String(JavaString(vec![0, 0xd800, 0xdc00, 0xdfff])),
+        Tag::String(JavaString::from(vec![0, 0xd800, 0xdc00, 0xdfff])),
         Tag::List(vec![Tag::Int(1), Tag::Byte(2)]),
         Tag::compound([("x", Tag::Int(7))]),
     ];
@@ -138,14 +138,14 @@ fn network_all_variants_and_java_strings_reuse_engine_codec() {
         Tag::compound([("x", Tag::Byte(2))])
     );
     assert!(Tag::from_network_bytes(&bytes, Some(161)).is_err());
-    let bytes = Tag::String(JavaString(vec![0, 0xd800]))
+    let bytes = Tag::String(JavaString::from(vec![0, 0xd800]))
         .to_network_bytes()
         .unwrap();
     // UTF-16 units, not the 5 modified UTF-8 bytes: 36 + 2 * 2.
     assert!(Tag::from_network_bytes(&bytes, Some(40)).is_ok());
     assert!(Tag::from_network_bytes(&bytes, Some(39)).is_err());
     assert!(
-        Tag::String(JavaString(vec![0; 32768]))
+        Tag::String(JavaString::from(vec![0; 32768]))
             .to_network_bytes()
             .is_err()
     );
