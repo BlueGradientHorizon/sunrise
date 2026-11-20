@@ -9,6 +9,7 @@ fn kind() -> Kind {
     Kind::Mod(Box::leak(Box::new(crate::containers::ModMenuType {
         id: "test:custom",
         slots: 10,
+        player_inventory: true,
         data_slots: 0,
         results: vec![8, 9],
         crafting: None,

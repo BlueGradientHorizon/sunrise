@@ -45,6 +45,8 @@ pub(in crate::game) use entities::{Announcement, ArrivalRollback};
 mod scratch;
 
 type Pos = (i32, i32, i32);
+/// The first value at this depth for a connection, menu generation and data index.
+type MenuDataJournal = BTreeMap<(u32, u64, u16), i32>;
 type ComposterRandoms =
     HashMap<(mod_api::DimensionKey, (i32, i32)), HashMap<Pos, sunrise_core::random::LegacyRandom>>;
 
@@ -196,6 +198,7 @@ pub(super) struct Level {
     item_entities: HashMap<u32, ItemStack>,
     /// Each guest's menu storage before this transaction first wrote it, by connection.
     menus: HashMap<u32, KeptMenus>,
+    menu_data: MenuDataJournal,
     /// The scoreboard before this transaction first wrote it (`journal_scoreboard`), whole.
     board: Option<sunrise_client::scoreboard::Scoreboard>,
     /// Each entity's, player's, chunk's and the level's attachment map before this transaction
@@ -633,6 +636,9 @@ impl Game<'_> {
                 }
                 for (conn, kept) in level.menus {
                     outer.menus.entry(conn).or_insert(kept);
+                }
+                for (slot, before) in level.menu_data {
+                    outer.menu_data.entry(slot).or_insert(before);
                 }
                 for (holder, kept) in level.attachments {
                     outer.attachments.entry(holder).or_insert(kept);
@@ -1238,7 +1244,46 @@ impl Game<'_> {
             }
         }
     }
+    pub(in crate::game) fn journal_menu_data(
+        &mut self,
+        conn: u32,
+        generation: u64,
+        index: u16,
+        before: i32,
+    ) -> bool {
+        let Some(level) = self.transactions.last_mut() else {
+            return false;
+        };
+        level
+            .menu_data
+            .entry((conn, generation, index))
+            .or_insert(before);
+        true
+    }
+
+    fn finish_menu_data(&mut self, journal: MenuDataJournal, commit: bool) {
+        let Some(host) = &mut self.lan else { return };
+        for ((conn, generation, index), before) in journal {
+            host.hub.update_guest(conn, |guest| {
+                if guest.menu_generation != generation {
+                    return;
+                }
+                let Some(menu) = &mut guest.menu else { return };
+                let value = &mut menu.blockless_data[usize::from(index)];
+                if commit {
+                    let (window, value) = (menu.window, *value);
+                    if before != value {
+                        guest.send_menu_data(window, index, value);
+                    }
+                } else {
+                    *value = before;
+                }
+            });
+        }
+    }
+
     fn root_commit(&mut self, level: Level) {
+        self.finish_menu_data(level.menu_data, true);
         // A deferred listener may read a new map or create one of its own.
         for (id, data) in level.new_maps {
             self.publish_map(id, data);
@@ -1318,6 +1363,7 @@ impl Game<'_> {
         }
     }
     fn roll_back(&mut self, mut level: Level) {
+        self.finish_menu_data(std::mem::take(&mut level.menu_data), false);
         self.roll_back_in_flight(&mut level);
         self.scratch_roll_back(std::mem::take(&mut level.scratch_kept));
         // Discard deferred effects before undoing tentative action storage.

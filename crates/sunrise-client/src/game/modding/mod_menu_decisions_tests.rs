@@ -179,6 +179,7 @@ impl Hooks for Mod {
         let kind = r.block_entity_type("depot").blocks(&[]).build();
         r.block_entity_part(&kind, Part).unwrap();
         r.menu_part(DEPOT_MENU, Part);
+        r.menu_part(STATUS_MENU, Part);
     }
     fn menu_clicked(&self, host: &mut dyn ServerHost, event: &mut MenuClickedEvent) {
         DISPATCHES.set(DISPATCHES.get() + 1);
@@ -310,6 +311,7 @@ fn open_native_menu(game: &mut crate::game::Game<'_>) -> i32 {
         sent: Vec::new(),
         drag: None,
         sent_data: Vec::new(),
+        blockless_data: Vec::new(),
         hidden: Vec::new(),
         mod_type: None,
         registry_id: "test:native".into(),
@@ -618,6 +620,7 @@ fn a_replaced_block_entity_makes_an_admitted_quick_move_stale() {
 
 /// A content mod's menu type, the one the depot's container opens (`depot_container`).
 const DEPOT_MENU: &str = "movemod:depot_menu";
+const STATUS_MENU: &str = "movemod:status_menu";
 
 /// Makes the depot at `POS` a mod container whose menu is `DEPOT_MENU`, so `mod_menu_at(POS)`
 /// names it.
@@ -646,8 +649,11 @@ fn depot_container(game: &mut crate::game::Game<'_>) {
 #[test]
 #[ignore = "daily"]
 fn a_code_opened_menus_button_reaches_a_blocks_menu_button_only_for_its_menu_type() {
-    let depot_menu = [(DEPOT_MENU.into(), 9, 0, Vec::new(), None, None)];
-    sunrise_client::containers::with_mod_menu_types(depot_menu, || {
+    let menus = [
+        (DEPOT_MENU.into(), 9, 0, Vec::new(), None, None, true),
+        (STATUS_MENU.into(), 0, 0, Vec::new(), None, None, false),
+    ];
+    sunrise_client::containers::with_mod_menu_types(menus, || {
         with_mod(|| {
             with_guests(|game| {
                 let button = |game: &mut crate::game::Game<'_>, window, id| {
@@ -706,14 +712,19 @@ fn a_code_opened_menus_button_reaches_a_blocks_menu_button_only_for_its_menu_typ
                 );
                 assert_eq!(BUTTONS.get(), 2);
                 assert_eq!(BUTTON_ENTITIES.get(), 2);
-                // A code-opened native menu of this type routes by its live menu owner. The
-                // coincidental position is not entity backing; only Slots::Block lends an entity.
+                // A slotless, code-opened menu routes by its live menu owner. A position hint
+                // does not lend an entity; only Slots::Block does.
                 let window = open_native_menu(game);
                 game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
                     let menu = guest.menu.as_mut().unwrap();
                     menu.pos = Some(POS);
-                    menu.registry_id = DEPOT_MENU.into();
+                    menu.registry_id = STATUS_MENU.into();
+                    menu.mod_type = sunrise_client::containers::mod_menu_type(STATUS_MENU);
+                    menu.size = 0;
+                    guest.native_menu.clear();
                 });
+                let guest = game.lan.as_ref().unwrap().hub.guest(12).unwrap();
+                assert_eq!(guest.menu.as_ref().unwrap().slot_count(), 0);
                 button(game, window, 3);
                 assert_eq!(
                     BUTTONS.get(),
@@ -748,7 +759,7 @@ fn a_code_opened_menus_button_reaches_a_blocks_menu_button_only_for_its_menu_typ
                     "another menu type reaches no block's menu_button"
                 );
                 game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    guest.menu.as_mut().unwrap().registry_id = DEPOT_MENU.into();
+                    guest.menu.as_mut().unwrap().registry_id = STATUS_MENU.into();
                     guest.carried = Some(ItemStack::new("minecraft:diamond", 2));
                 });
                 SCRIPT.with(|script| {

@@ -75,6 +75,47 @@ impl Game<'_> {
         true
     }
 
+    /// `DataSlot.set` of an owning mod's blockless menu, journaled by window generation.
+    pub(super) fn menu_set_data_slot(
+        &mut self,
+        menu: MenuRef,
+        index: usize,
+        value: i32,
+    ) -> Result<bool, mod_api::MenuDataRefusal> {
+        use mod_api::MenuDataRefusal::*;
+        if !self.is_logical_server() {
+            return Err(Unsupported);
+        }
+        let guest = self.native_menu_guest(menu).ok_or(Stale)?;
+        let open = guest
+            .menu
+            .as_ref()
+            .filter(|m| m.slots == sunrise_client::lan::menu::Slots::Native && m.mod_type.is_some())
+            .ok_or(Unsupported)?;
+        let (namespace, _) = open.registry_id.split_once(':').ok_or(Unsupported)?;
+        let caller = mod_api::content::crash::current_native_mod().ok_or(WrongOwner)?;
+        if caller != namespace
+            && !mod_api::LoadedMods::new()
+                .get(caller)
+                .is_some_and(|package| package.namespaces().any(|owned| owned == namespace))
+        {
+            return Err(WrongOwner);
+        }
+        let &before = open.blockless_data.get(index).ok_or(InvalidIndex)?;
+        if before == value {
+            return Ok(false);
+        }
+        let (conn, generation, window) = (guest.conn, guest.menu_generation, open.window);
+        let deferred = self.journal_menu_data(conn, generation, index as u16, before);
+        self.lan.as_mut().unwrap().hub.update_guest(conn, |guest| {
+            guest.menu.as_mut().unwrap().blockless_data[index] = value;
+            if !deferred {
+                guest.send_menu_data(window, index as u16, value);
+            }
+        });
+        Ok(true)
+    }
+
     /// Press button `button` of the local player's open menu as a click on
     /// one of its buttons does (`MultiPlayerGameMode.handleInventoryButtonClick`,
     /// `ContainerButtonClick`): the server's menu decides what it does
@@ -216,7 +257,9 @@ impl Game<'_> {
                 .menu
                 .as_ref()
                 .map_or("inventory", |entry| entry.1.as_str());
-            Self::inventory_screen_slot(name, 0)?;
+            if sunrise_client::containers::mod_menu_type(name).is_none() {
+                Self::inventory_screen_slot(name, 0)?;
+            }
             return Some(mod_api::__private::game::menu_ref(
                 player,
                 remote.menu.as_ref().map_or(0, |entry| entry.0),
@@ -259,15 +302,21 @@ impl Game<'_> {
     pub(super) fn menu_slot_count(&self, menu: MenuRef) -> Option<usize> {
         if self.remote.is_some() {
             let name = self.native_client_menu_name(menu)?;
-            Self::inventory_screen_slot(name, 0)?;
-            return Some(
-                (0..)
-                    .map_while(|slot| Self::inventory_screen_slot(name, slot))
-                    .count(),
-            );
+            if let Some(kind) = sunrise_client::containers::mod_menu_type(name) {
+                return Some(kind.slot_count());
+            }
+            let count = (0..)
+                .map_while(|slot| Self::inventory_screen_slot(name, slot))
+                .count();
+            return (count != 0).then_some(count);
         }
         let guest = self.native_menu_guest(menu)?;
-        Some(guest.menu.as_ref().map_or(46, |m| m.size + 36))
+        Some(
+            guest
+                .menu
+                .as_ref()
+                .map_or(46, sunrise_client::lan::menu::Menu::slot_count),
+        )
     }
 
     /// The storage menu slot `slot` shows (`Slot.container` and `getContainerSlot`): the
@@ -287,7 +336,7 @@ impl Game<'_> {
                 _ => None,
             };
         };
-        if slot < open.size && open.hidden.contains(&slot) {
+        if slot >= open.slot_count() || open.hidden.contains(&slot) {
             return None;
         }
         // A block menu whose block entities no longer show its slots (a chest's, over a

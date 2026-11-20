@@ -6093,6 +6093,7 @@ mod tests {
             Box::leak(Box::new(crate::containers::ModMenuType {
                 id: "test:kept",
                 slots: 27,
+                player_inventory: true,
                 data_slots: 0,
                 results: vec![],
                 links: None,
@@ -6136,6 +6137,7 @@ mod tests {
                     sent: Vec::new(),
                     drag: None,
                     sent_data: Vec::new(),
+                    blockless_data: Vec::new(),
                     hidden: Vec::new(),
                     mod_type: Some(mod_type),
                     registry_id: "test:kept".into(),

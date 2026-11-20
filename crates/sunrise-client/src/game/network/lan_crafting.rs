@@ -2099,6 +2099,7 @@ mod recipe_check_tests {
             let station: &'static ModMenuType = Box::leak(Box::new(ModMenuType {
                 id: "test:station",
                 slots: 10,
+                player_inventory: true,
                 data_slots: 0,
                 results: vec![],
                 links: None,
@@ -2152,6 +2153,7 @@ mod recipe_check_tests {
                 sent: vec![None; 46],
                 drag: None,
                 sent_data: Vec::new(),
+                blockless_data: Vec::new(),
                 hidden: Vec::new(),
                 mod_type: Some(station),
                 craft: None,

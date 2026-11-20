@@ -15,6 +15,7 @@ struct ScreenEvents {
     draw: Vec<(Option<String>, Option<[i32; 3]>)>,
     frames: Vec<Frame>,
     tooltip_at: Vec<[f32; 2]>,
+    data: Vec<Vec<i32>>,
 }
 type Seen = Arc<Mutex<ScreenEvents>>;
 /// A mod menu type no block opens here.
@@ -46,6 +47,7 @@ impl mod_api::MenuPart for Position {
     fn screen_draw(&self, _: &dyn mod_api::ClientHost, event: &mut mod_api::ScreenDrawEvent<'_>) {
         let mut seen = self.0.lock().unwrap();
         seen.draw.push((event.block.map(str::to_owned), event.pos));
+        seen.data.push(event.data.to_vec());
         seen.frames.push(Frame {
             pointer: event.pointer,
             size: event.gui_size,
@@ -86,6 +88,85 @@ fn with_listener(test: impl FnOnce(&mut Game<'_>, &Seen)) {
         crate::game::native_entity_refs::tests::with_client_game(|game| test(game, &seen));
     });
 }
+#[test]
+#[ignore = "daily"]
+fn slotless_screen_draw_sees_full_width_updates_only_for_its_window() {
+    use sunrise_protocol::{
+        connection::Pipe,
+        menu_extra::{DATA_CHANNEL, DataSlot, LIVE_DATA_REVISION},
+        packets::{
+            configuration::CustomPayload,
+            play::{Clientbound as C, ContainerClose},
+        },
+    };
+    sunrise_client::containers::with_mod_menu_types(
+        [(PACK.into(), 0, 2, Vec::new(), None, None, false)],
+        || {
+            with_listener(|game, seen| {
+                let (pipe, _server) = Pipe::pair();
+                game.connect_local(pipe, "Slotless").unwrap();
+                game.remote.as_mut().unwrap().registries.menu_extra_revision = LIVE_DATA_REVISION;
+                let key = (i32::MIN, 0, 0);
+                let open = |game: &mut Game<'_>, window| {
+                    game.remote
+                        .as_mut()
+                        .unwrap()
+                        .menu
+                        .set(Some((window, PACK.into())));
+                    game.open_native_screen(key, None, window, PACK, None);
+                    game.screen = Screen::Inventory;
+                    game.container = Some(key);
+                };
+                let receive = |game: &mut Game<'_>, window, index, value| {
+                    game.handle_packet(C::CustomPayload(CustomPayload {
+                        channel: DATA_CHANNEL.into(),
+                        data: DataSlot {
+                            window,
+                            index,
+                            value,
+                        }
+                        .encode(),
+                    }))
+                    .unwrap();
+                };
+                let draw = |game: &Game<'_>| {
+                    let mut batch = HudBatch::scratch([200, 200]);
+                    assert!(game.draw_native_screen(&mut batch, 0.0, 0.0));
+                };
+                open(game, 1);
+                assert!(game.slots().is_empty());
+                assert_eq!(game.slot_count(), 0);
+                assert_eq!(Game::inventory_screen_slot(PACK, 0), None);
+                receive(game, 1, 0, -80_000);
+                receive(game, 1, 1, 3);
+                draw(game);
+                receive(game, 1, 2, 9);
+                receive(game, 1, 0, i32::MAX);
+                draw(game);
+                open(game, 2);
+                receive(game, 1, 0, 8);
+                draw(game);
+                receive(game, 2, 0, -17);
+                receive(game, 2, 1, i32::MIN);
+                draw(game);
+                game.handle_packet(C::ContainerClose(ContainerClose { container: 2 }))
+                    .unwrap();
+                receive(game, 2, 1, 18);
+                assert!(game.shown_native_screen().is_none());
+                assert_eq!(
+                    seen.lock().unwrap().data,
+                    [
+                        vec![-80_000, 3],
+                        vec![i32::MAX, 3],
+                        vec![],
+                        vec![-17, i32::MIN],
+                    ]
+                );
+            })
+        },
+    );
+}
+
 /// A mod that adds `test:crate`, a block whose container opens vanilla's
 /// `minecraft:generic_9x3`, with the `Position` screen on that type.
 struct CrateMod(Seen);
@@ -225,7 +306,7 @@ fn a_mod_blocks_menu_of_a_vanilla_type_gets_the_types_screen_on_both_sides() {
 #[ignore = "daily"]
 fn a_mod_menu_opened_without_a_block_gets_its_types_screen() {
     sunrise_client::containers::with_mod_menu_types(
-        [(PACK.into(), 9, 0, Vec::new(), None, None)],
+        [(PACK.into(), 9, 0, Vec::new(), None, None, true)],
         || {
             with_listener(|game, seen| {
                 let key = (i32::MIN, 0, 0);

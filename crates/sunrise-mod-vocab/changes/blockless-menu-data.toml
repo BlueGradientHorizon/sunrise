@@ -1,0 +1,3 @@
+ids = ["handle:PlayerRef::open_mod_menu", "hook:screen_draw"]
+why = "A blockless menu declares its data count, takes initial values at open, and supplies its own full-width live data to screen_draw instead of an empty data view. Block-backed synchronization is unchanged."
+migrate = "Pass the initial values after the opening bytes (an empty vector for a menu with no data). A screen reads the values for this window with data.get; the owning server mod can update them with MenuRef::set_data_slot."

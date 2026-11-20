@@ -1028,19 +1028,29 @@ ask the block entity part.
 #### Menu types
 
 A mod menu type (vanilla's `MenuType`) is declared in `data/<id>/sunrise/menu/<name>.json`: its container's slot count
-(1 to 256), the data slots its menu syncs (`ContainerData`, 0 to 256, 0 by default), and the slots players only take
+(0 to 256), the data slots its menu syncs (`ContainerData`, 0 to 256, 0 by default), and the slots players only take
 from (`results`, as a furnace's result slot):
 
 ```json
 { "slots": 9, "data_slots": 2, "results": [7, 8] }
 ```
 
+A status or control screen that has no item slots at all can omit the player inventory group too:
+
+```json
+{ "slots": 0, "player_inventory": false, "data_slots": 2 }
+```
+
+`player_inventory` defaults to `true`. Result, crafting, linked-slot and recipe-book mappings name declared
+container slots, never the optional player group. A mapping to an absent slot is refused at load.
+
 It is the menu type `<id>:<name>`, with its network id after vanilla's. A mod block's container opens it when its
 `menu` names it with as many slots ([native mods](native-mods.md), `r.block_container(&block, container)`). The menu holds
-its slots, then the player's 36. A shift-click from the inventory goes to the first slots with room, never a result
+its slots, then the player's 36 if `player_inventory` is on. A shift-click from the inventory goes to the first slots with room, never a result
 slot, and one on the container goes to the inventory, as a chest's does. `results` fence players only: hoppers follow the
-container's faces and `inputs`, so leave result slots out of `inputs`. The data slots are the block entity's `data`
-(16-bit on the network, as vanilla's), all sent when it opens, then each change. A Sunrise client shows it through the
+container's faces and `inputs`, so leave result slots out of `inputs`. A block-backed menu syncs the block entity's
+`data` (16-bit on the network, as vanilla's). A [blockless menu](world/machine-menu-data.md#blockless-status-menus)
+gets its initial data from its opener and syncs subsequent signed `i32` changes without reopening. A Sunrise client shows it through the
 mod's own screen (`screen`); without one it closes again. `player.open_mod_menu` can open the same type without a
 block, and a registered recipe-book screen applies to either opening. Clients join a server only with the same mods' menu
 types, as with its blocks, and a client that isn't Sunrise's is never sent one: the block opens nothing for it. Its

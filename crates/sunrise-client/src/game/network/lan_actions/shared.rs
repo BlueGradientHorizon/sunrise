@@ -638,6 +638,7 @@ mod tests {
                 let menu_type = Box::leak(Box::new(ModMenuType {
                     id: "test:menu",
                     slots: 27,
+                    player_inventory: true,
                     data_slots: 0,
                     results: Vec::new(),
                     crafting: None,

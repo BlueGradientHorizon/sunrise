@@ -1241,6 +1241,10 @@ pub enum OpenMenuError {
     TooLarge,
     /// The title could not cross to the game.
     Title(crate::text::TextFormError),
+    /// The initial data must contain exactly the menu type's `data_slots` values.
+    DataCountMismatch,
+    /// The title cannot be encoded as vanilla network NBT.
+    TitleNotEncodable,
 }
 
 impl From<crate::text::TextFormError> for OpenMenuError {

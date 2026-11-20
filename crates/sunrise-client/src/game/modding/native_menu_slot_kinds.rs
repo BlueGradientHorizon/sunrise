@@ -12,7 +12,7 @@ impl Game<'_> {
         let name = self.native_client_menu_name(menu)?;
         let content = mod_menu_type(name);
         let count = match content {
-            Some(content) => content.slots + 36,
+            Some(content) => content.slot_count(),
             None => self.menu_slot_count(menu)?,
         };
         Some(layout_kinds(name, count, content, |slot| {
@@ -228,6 +228,7 @@ mod tests {
         let content = ModMenuType {
             id: "test:roles",
             slots: 8,
+            player_inventory: true,
             data_slots: 0,
             results: vec![7],
             crafting: Some(ModCrafting {

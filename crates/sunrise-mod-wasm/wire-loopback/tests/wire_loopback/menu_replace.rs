@@ -41,6 +41,7 @@ impl mod_api::prelude::PlayerMenusBackendMut for Server {
         _: mod_api::MenuKey,
         _: mod_api::Text,
         extra: Vec<u8>,
+        _: Vec<i32>,
         _: Option<[i32; 3]>,
         replace: mod_api::MenuReplace,
     ) -> Result<Option<i32>, mod_api::OpenMenuError> {
@@ -88,6 +89,7 @@ fn a_wasm_mod_menu_open_carries_the_close_choice() {
                 menu,
                 mod_api::Text::literal("new"),
                 vec![7],
+                Vec::new(),
                 None,
                 replace,
             ),

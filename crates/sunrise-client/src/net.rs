@@ -1350,8 +1350,10 @@ fn configure(
                 reply(crate::viewed_levels_net::answer(&p.data).map_err(Reason::plain)?)?
             }
             cfg::Clientbound::CustomPayload(p) if crate::menu_extra_net::asked(&p) => {
-                reply(crate::menu_extra_net::answer(&p.data).map_err(Reason::plain)?)?;
-                registries.menu_extra_revision = sunrise_protocol::menu_extra::REVISION;
+                let (revision, answer) =
+                    crate::menu_extra_net::answer(&p.data).map_err(Reason::plain)?;
+                reply(answer)?;
+                registries.menu_extra_revision = revision;
             }
             cfg::Clientbound::CustomPayload(p) if p.channel == crate::datapack_net::CHANNEL => {
                 crate::datapack_net::accept_chunk(&p.data).map_err(Reason::plain)?;
@@ -2546,7 +2548,7 @@ mod tests {
         for expected in [
             cfg::Serverbound::CustomPayload(cfg::CustomPayload {
                 channel: "sunrise:menu_extra".into(),
-                data: sunrise_protocol::menu_extra::answer(),
+                data: sunrise_protocol::menu_extra::answer(sunrise_protocol::menu_extra::REVISION),
             }),
             cfg::Serverbound::FinishConfiguration(Empty),
         ] {

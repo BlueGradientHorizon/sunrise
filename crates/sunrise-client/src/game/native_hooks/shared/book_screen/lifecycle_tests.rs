@@ -95,6 +95,7 @@ fn entering_inventory_requests_catalogue_for_preinstalled_bound_screen() {
                 window: 1,
                 menu: "bound:menu".into(),
                 block: Some("bound:block".into()),
+                mod_type: None,
                 data: Vec::new(),
                 extra: None,
                 screen: mod_api::RecipeBookLayout::registered_screen("bound:menu").unwrap(),
@@ -194,6 +195,7 @@ fn authoritative_custom_book_rebuilds_cached_geometry_without_observe_screen() {
                 window: 1,
                 menu: "geometry:menu".into(),
                 block: Some("minecraft:stone".into()),
+                mod_type: None,
                 data: Vec::new(),
                 extra: None,
                 screen: mod_api::Screen {
@@ -374,6 +376,7 @@ fn a_moved_slot_takes_its_place_for_drawing_and_input_from_the_next_frame() {
                 window: 1,
                 menu: "minecraft:generic_9x1".into(),
                 block: Some("minecraft:stone".into()),
+                mod_type: None,
                 data: Vec::new(),
                 extra: None,
                 screen: mod_api::Screen {
@@ -487,6 +490,7 @@ fn a_hidden_slot_leaves_the_screen_and_comes_back_where_put() {
                 window: 1,
                 menu: MENU.into(),
                 block: Some(STONE.into()),
+                mod_type: None,
                 data: Vec::new(),
                 extra: None,
                 screen: mod_api::Screen {
@@ -588,6 +592,7 @@ fn a_bound_books_catalogue_survives_slot_moves_and_hides() {
                     window: 1,
                     menu: "bound:menu".into(),
                     block: Some("bound:block".into()),
+                    mod_type: None,
                     data: Vec::new(),
                     extra: None,
                     screen: mod_api::RecipeBookLayout::registered_screen("bound:menu").unwrap(),

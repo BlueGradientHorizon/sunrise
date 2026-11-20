@@ -566,7 +566,9 @@ impl Menu {
                         },
                     },
                 }));
-                player(&mut slots);
+                if t.player_inventory {
+                    player(&mut slots);
+                }
             }
             Kind::Crafter | Kind::CrafterBlock => {
                 containers[MAIN] = vec![None; 9];
@@ -944,7 +946,7 @@ impl Menu {
     /// Container slot `slot` of a mod menu type is left out by its screen.
     pub fn hide_slot(&mut self, slot: usize) {
         self.touch();
-        if matches!(self.state.kind, Kind::Mod(_)) && slot < self.state.slots.len() - 36 {
+        if matches!(self.state.kind, Kind::Mod(kind) if slot < kind.slots) {
             self.state.slots[slot].role = Role::Hidden;
         }
     }
@@ -1543,7 +1545,7 @@ impl Menu {
     pub fn load_container(&mut self, env: &Env, items: &[Option<ItemStack>]) {
         self.touch();
         let result = self.mod_crafting().map(|c| c.result);
-        for (k, stack) in items.iter().enumerate().take(self.state.slots.len() - 36) {
+        for (k, stack) in items.iter().enumerate().take(self.container_slot_count()) {
             if Some(k) != result {
                 self.put(env, k, stack.clone());
             }
@@ -1555,9 +1557,16 @@ impl Menu {
     /// crafting result's left empty.
     pub fn container_items(&self) -> Vec<Option<ItemStack>> {
         let result = self.mod_crafting().map(|c| c.result);
-        (0..self.state.slots.len() - 36)
+        (0..self.container_slot_count())
             .map(|k| (Some(k) != result).then(|| self.slot(k).cloned()).flatten())
             .collect()
+    }
+
+    fn container_slot_count(&self) -> usize {
+        match self.state.kind {
+            Kind::Mod(kind) => kind.slots,
+            _ => self.state.slots.len() - 36,
+        }
     }
 
     pub fn player_item(&self, i: usize) -> Option<&ItemStack> {
@@ -4032,6 +4041,7 @@ pub(crate) mod tests {
         let kind = Kind::Mod(Box::leak(Box::new(crate::containers::ModMenuType {
             id: "test:context",
             slots: 2,
+            player_inventory: true,
             data_slots: 0,
             results: vec![],
             links: None,
@@ -4067,6 +4077,7 @@ pub(crate) mod tests {
         let kind = Kind::Mod(Box::leak(Box::new(crate::containers::ModMenuType {
             id: "test:rules",
             slots: 1,
+            player_inventory: true,
             data_slots: 0,
             results: vec![],
             links: None,
@@ -4356,6 +4367,7 @@ pub(crate) mod tests {
             Box::leak(Box::new(crate::containers::ModMenuType {
                 id: "test:rules",
                 slots: 27,
+                player_inventory: true,
                 data_slots: 0,
                 results: vec![],
                 links: None,
@@ -4383,6 +4395,7 @@ pub(crate) mod tests {
                 sent: Vec::new(),
                 drag: None,
                 sent_data: Vec::new(),
+                blockless_data: Vec::new(),
                 hidden: Vec::new(),
                 mod_type,
                 registry_id: registry_id.into(),
@@ -4450,6 +4463,7 @@ pub(crate) mod tests {
                 sent: Vec::new(),
                 drag: None,
                 sent_data: Vec::new(),
+                blockless_data: Vec::new(),
                 hidden: Vec::new(),
                 mod_type: Some(mod_type),
                 registry_id: "test:rules".into(),
@@ -4554,6 +4568,7 @@ pub(crate) mod tests {
         Kind::Mod(Box::leak(Box::new(crate::containers::ModMenuType {
             id: "test:press",
             slots: 4,
+            player_inventory: true,
             data_slots: 0,
             results: vec![3],
             links: None,
@@ -4661,6 +4676,7 @@ pub(crate) mod tests {
         Kind::Mod(Box::leak(Box::new(crate::containers::ModMenuType {
             id: "test:station",
             slots: 10,
+            player_inventory: true,
             data_slots: 0,
             results: vec![],
             links: None,

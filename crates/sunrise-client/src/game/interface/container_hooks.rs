@@ -678,6 +678,7 @@ mod tests {
         let menu = ModMenuType {
             id: "test:big",
             slots: 201,
+            player_inventory: true,
             data_slots: 0,
             results: vec![200],
             links: None,

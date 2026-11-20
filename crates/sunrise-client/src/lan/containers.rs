@@ -425,6 +425,7 @@ impl Hub {
                 sent: Vec::new(),
                 drag: None,
                 sent_data: Vec::new(),
+                blockless_data: Vec::new(),
                 hidden: Vec::new(),
                 mod_type,
                 craft: None,
@@ -487,6 +488,7 @@ impl Hub {
                 sent: Vec::new(),
                 drag: None,
                 sent_data: Vec::new(),
+                blockless_data: Vec::new(),
                 hidden: Vec::new(),
                 mod_type: None,
                 craft: None,
@@ -571,7 +573,10 @@ impl Hub {
     }
 
     fn send_menu_content(&mut self, i: usize, mut items: Vec<Option<ItemStack>>) {
-        for j in 0..36 {
+        let Some(menu) = &self.guests[i].menu else {
+            return;
+        };
+        for j in 0..menu.player_slots() {
             items.push(self.guests[i].inventory[player_slot(j)].clone());
         }
         let net: Vec<_> = items.iter().map(|s| self.stack(s)).collect();
@@ -675,11 +680,12 @@ impl Hub {
         let g = &self.guests[i];
         match &g.menu {
             Some(m) if slot < m.size => m.slots.get(world, g, slot),
-            Some(m) => g
+            Some(m) if slot < m.slot_count() => g
                 .inventory
                 .get(player_slot(slot - m.size))
                 .cloned()
                 .flatten(),
+            Some(_) => None,
             None => g.menu_slot(slot),
         }
     }
@@ -727,9 +733,18 @@ impl Hub {
             self.resend_menu(conn, p.container, world);
             return None;
         }
+        let open = self.guests[i].menu.as_ref().filter(|_| in_menu);
+        // Reject a target that isn't in the declared layout before forwarding it to a mod.
+        if let Some(m) = open
+            && m.mod_type.is_some()
+            && p.slot >= 0
+            && p.slot as usize >= m.slot_count()
+        {
+            return None;
+        }
         // A native mod's menu: the click is the mod's to answer, and the
         // whole menu and the cursor go back as they were.
-        if in_menu && self.guests[i].menu.as_ref().map(|m| m.slots) == Some(Slots::Native) {
+        if open.is_some_and(|m| m.slots == Slots::Native) {
             self.native_menu_events.push(NativeMenuEvent::Click {
                 uuid: self.guests[i].uuid,
                 window: p.container,
@@ -749,7 +764,7 @@ impl Hub {
         // AbstractContainerMenu.isValidSlotIndex: -999 or below the menu's slot
         // count. A slot past the menu would reach the inventory beyond its 36 slots.
         let slots = match self.guests[i].menu.as_ref().filter(|_| in_menu) {
-            Some(m) => m.size + 36,
+            Some(m) => m.slot_count(),
             None => 46,
         };
         if i32::from(p.slot) >= slots as i32 && p.slot != -999 {
@@ -972,18 +987,18 @@ impl Hub {
     /// lives on the server's stack until the click that takes from it.
     pub fn select_bundle_item(&mut self, conn: u32, slot: usize, index: i32, world: &mut World) {
         let _ = self.update_guest(conn, |g| {
-            let open = g.menu.as_ref().map(|m| (m.size, m.slots));
+            let open = g.menu.as_ref().map(|m| (m.size, m.slot_count(), m.slots));
             let mut items = match open {
-                Some((size, source)) if slot < size => source.read(world, g),
+                Some((size, _, source)) if slot < size => source.read(world, g),
                 _ => None,
             };
             let stack = match open {
-                Some((size, _)) if slot < size => items
+                Some((size, _, _)) if slot < size => items
                     .as_mut()
                     .and_then(|items| items.get_mut(slot))
                     .and_then(Option::as_mut),
                 // setSelectedBundleItemIndex: a slot of the menu only.
-                Some((size, _)) if slot - size < 36 => g
+                Some((size, total, _)) if slot < total => g
                     .inventory
                     .get_mut(player_slot(slot - size))
                     .and_then(Option::as_mut),
@@ -998,7 +1013,7 @@ impl Hub {
             if let Some(stack) = stack {
                 crate::bundle::toggle_selected(stack, index);
             }
-            if let (Some((_, source)), Some(items)) = (open, items) {
+            if let (Some((_, _, source)), Some(items)) = (open, items) {
                 source.write(world, g, items);
             }
         });
@@ -1079,7 +1094,7 @@ impl Hub {
             .map(|(s, h)| (*s as usize, h.clone()))
             .collect();
         let total = if in_menu {
-            self.guests[i].menu.as_ref().map_or(0, |m| m.size) + 36
+            self.guests[i].menu.as_ref().map_or(0, Menu::slot_count)
         } else {
             46
         };
@@ -1128,7 +1143,7 @@ impl Hub {
                 // ServerPlayer.tick broadcasts only the open menu.
                 let own = open.map_or(0, |(size, _)| size);
                 let settled = claimed.keys().copied().chain(changed.iter().copied());
-                for slot in settled.filter(|&s| s >= own && s < own + 36) {
+                for slot in settled.filter(|&s| (own..total).contains(&s)) {
                     g.menu_sent[slot - own + 9] = items[slot].clone();
                 }
                 if let Some(m) = g.menu.as_mut() {
@@ -1216,12 +1231,12 @@ impl Hub {
             else {
                 continue;
             };
-            let (size, window, slots) = (menu.size, menu.window, menu.slots);
+            let (total, window, slots) = (menu.slot_count(), menu.window, menu.slots);
             if !slots.valid(world) {
                 self.close_container_at(i);
                 continue;
             }
-            for slot in 0..size + 36 {
+            for slot in 0..total {
                 let now = self.view_slot(i, world, slot);
                 let sent = self.guests[i]
                     .menu

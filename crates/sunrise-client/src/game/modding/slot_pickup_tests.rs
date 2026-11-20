@@ -99,6 +99,7 @@ fn pot_type() -> &'static ModMenuType {
     Box::leak(Box::new(ModMenuType {
         id: MENU,
         slots: SLOTS,
+        player_inventory: true,
         data_slots: 0,
         results: vec![RESULT],
         crafting: None,

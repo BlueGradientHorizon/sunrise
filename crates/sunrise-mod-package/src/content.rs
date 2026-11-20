@@ -967,16 +967,19 @@ pub struct BlockEntityType {
 /// a menu type the mod adds (vanilla's `MenuType`, NeoForge's
 /// `IMenuTypeExtension.create`): its container's slot count, the
 /// `ContainerData` count its menu syncs, and its take-only slots
-/// (`FurnaceResultSlot.mayPlace`). The slots come first in the menu, then the
-/// player's 36, and a mod screen (`native_screen`) places them.
+/// (`FurnaceResultSlot.mayPlace`). The container slots come first, then the
+/// player's 36 if included. A mod screen (`native_screen`) places them.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct MenuType {
     /// `<mod id>:<path>`.
     #[serde(skip)]
     pub id: String,
-    /// 1 to [`MAX_MENU_SLOTS`].
+    /// 0 to [`MAX_MENU_SLOTS`].
     pub slots: u16,
+    /// Append the 36 player inventory slots (default: true).
+    #[serde(default = "yes")]
+    pub player_inventory: bool,
     /// 0 to [`MAX_MENU_SLOTS`].
     #[serde(default)]
     pub data_slots: u16,
@@ -1643,17 +1646,17 @@ impl Content {
         for (menu, name) in menus {
             let file: MenuType =
                 serde_json::from_slice(&reader.read(&name)?).map_err(|e| format!("{name}: {e}"))?;
-            if !(1..=MAX_MENU_SLOTS).contains(&file.slots) || file.data_slots > MAX_MENU_SLOTS {
+            if file.slots > MAX_MENU_SLOTS || file.data_slots > MAX_MENU_SLOTS {
                 return Err(format!(
-                    "{name}: slots is 1 to {MAX_MENU_SLOTS}, data_slots 0 to {MAX_MENU_SLOTS}"
+                    "{name} ({menu}): slots and data_slots are each 0 to {MAX_MENU_SLOTS}"
                 ));
             }
             let mut seen = BTreeSet::new();
             for &r in &file.results {
                 if r >= file.slots {
                     return Err(format!(
-                        "{name}: result {r} is past the last slot, {}",
-                        file.slots - 1
+                        "{name} ({menu}): result slot {r} is outside the {} container slots",
+                        file.slots
                     ));
                 }
                 if !seen.insert(r) {
@@ -1667,8 +1670,8 @@ impl Content {
                 }
                 if end > u32::from(file.slots) || c.result >= file.slots {
                     return Err(format!(
-                        "{name}: the crafting grid and result are slots below {}",
-                        file.slots
+                        "{name} ({menu}): crafting grid {}..{end} and result slot {} must be within the {} container slots",
+                        c.grid, c.result, file.slots
                     ));
                 }
                 if (u32::from(c.grid)..end).contains(&u32::from(c.result)) {
@@ -1688,7 +1691,7 @@ impl Content {
                 let linked = l.range();
                 if l.count == 0 || linked.end > u32::from(file.slots) {
                     return Err(format!(
-                        "{name}: links are 1 or more slots below {}",
+                        "{name} ({menu}): linked slots {linked:?} must be nonempty and within the {} container slots",
                         file.slots
                     ));
                 }
@@ -2665,6 +2668,10 @@ capabilities = ["registries"]
             ),
             ("data/ruby/sunrise/menu/bag.json", br#"{"slots": 4}"#),
             (
+                "data/ruby/sunrise/menu/status.json",
+                br#"{"slots": 0, "player_inventory": false, "data_slots": 2}"#,
+            ),
+            (
                 "data/ruby/sunrise/menu/station.json",
                 br#"{"slots": 16, "results": [11], "crafting": {"grid": 1, "result": 0}, "links": {"from": 12, "count": 4}}"#,
             ),
@@ -2673,20 +2680,34 @@ capabilities = ["registries"]
         let menus: Vec<_> = content
             .menu_types
             .iter()
-            .map(|m| (m.id.as_str(), m.slots, m.data_slots, m.results.clone()))
+            .map(|m| {
+                (
+                    m.id.as_str(),
+                    m.slots,
+                    m.player_inventory,
+                    m.data_slots,
+                    m.results.clone(),
+                )
+            })
             .collect();
         assert_eq!(
             menus,
             [
-                ("ruby:bag", 4, 0, vec![]),
-                ("ruby:press", 9, 2, vec![7, 8]),
-                ("ruby:station", 16, 0, vec![11])
+                ("ruby:bag", 4, true, 0, vec![]),
+                ("ruby:press", 9, true, 2, vec![7, 8]),
+                ("ruby:station", 16, true, 0, vec![11]),
+                ("ruby:status", 0, false, 2, vec![]),
             ]
         );
         let links: Vec<_> = content.menu_types.iter().map(|m| m.links).collect();
         assert_eq!(
             links,
-            [None, None, Some(super::MenuLinks { from: 12, count: 4 })]
+            [
+                None,
+                None,
+                Some(super::MenuLinks { from: 12, count: 4 }),
+                None
+            ]
         );
         let crafting: Vec<_> = content.menu_types.iter().map(|m| m.crafting).collect();
         assert_eq!(
@@ -2698,21 +2719,25 @@ capabilities = ["registries"]
                     grid: 1,
                     size: 3,
                     result: 0
-                })
+                }),
+                None,
             ]
         );
         for (case, file, why) in [
-            ("menu-empty", r#"{"slots": 0}"#, "slots is 1 to 256"),
-            ("menu-large", r#"{"slots": 257}"#, "slots is 1 to 256"),
+            (
+                "menu-large",
+                r#"{"slots": 257}"#,
+                "slots and data_slots are each 0 to 256",
+            ),
             (
                 "menu-data",
                 r#"{"slots": 1, "data_slots": 257}"#,
-                "data_slots 0 to 256",
+                "slots and data_slots are each 0 to 256",
             ),
             (
                 "menu-result",
-                r#"{"slots": 3, "results": [3]}"#,
-                "result 3 is past the last slot, 2",
+                r#"{"slots": 0, "results": [0]}"#,
+                "ruby:a): result slot 0 is outside the 0 container slots",
             ),
             (
                 "menu-twice",
@@ -2728,12 +2753,12 @@ capabilities = ["registries"]
             (
                 "craft-past",
                 r#"{"slots": 9, "crafting": {"grid": 1, "result": 0}}"#,
-                "grid and result are slots below 9",
+                "crafting grid 1..10 and result slot 0 must be within the 9 container slots",
             ),
             (
                 "craft-result-past",
-                r#"{"slots": 9, "crafting": {"grid": 0, "size": 2, "result": 9}}"#,
-                "grid and result are slots below 9",
+                r#"{"slots": 0, "crafting": {"grid": 0, "size": 2, "result": 4}}"#,
+                "ruby:a): crafting grid 0..4 and result slot 4 must be within the 0 container slots",
             ),
             (
                 "craft-overlap",
@@ -2752,13 +2777,13 @@ capabilities = ["registries"]
             ),
             (
                 "links-past",
-                r#"{"slots": 10, "links": {"from": 8, "count": 3}}"#,
-                "links are 1 or more slots below 10",
+                r#"{"slots": 0, "links": {"from": 0, "count": 1}}"#,
+                "ruby:a): linked slots 0..1 must be nonempty and within the 0 container slots",
             ),
             (
                 "links-empty",
                 r#"{"slots": 10, "links": {"from": 2, "count": 0}}"#,
-                "links are 1 or more slots below 10",
+                "linked slots 2..2 must be nonempty and within the 10 container slots",
             ),
             (
                 "links-results",

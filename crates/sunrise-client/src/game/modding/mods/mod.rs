@@ -1405,6 +1405,7 @@ fn register_menu_types(
             results,
             crafting,
             links,
+            m.player_inventory,
         )
     }));
     if !set

@@ -3243,7 +3243,11 @@ impl Game<'_> {
             // A workstation: its inputs, its result, then the inventory.
             m => {
                 if let Some(t) = sunrise_client::containers::mod_menu_type(m) {
-                    return slots(t.slots);
+                    return if t.player_inventory {
+                        slots(t.slots)
+                    } else {
+                        (s < t.slots).then_some(300 + s)
+                    };
                 }
                 let kind = Self::remote_station_kind(m)?;
                 let inputs = kind.inputs();
@@ -3361,8 +3365,19 @@ impl Game<'_> {
             C::CustomPayload(p) if p.channel == sunrise_protocol::collider_sync::CHANNEL => {
                 self.remote_collider_sync(&p.data);
             }
-            // A mod menu type's block and its mod's bytes, just before the
-            // menu's `OpenScreen`.
+            // Full-width data slots for the open blockless mod menu.
+            C::CustomPayload(p) if p.channel == sunrise_protocol::menu_extra::DATA_CHANNEL => {
+                use sunrise_protocol::menu_extra::{DataSlot, LIVE_DATA_REVISION};
+                if self
+                    .remote
+                    .as_ref()
+                    .is_some_and(|r| r.registries.menu_extra_revision >= LIVE_DATA_REVISION)
+                    && let Ok(slot) = DataSlot::decode(&p.data)
+                {
+                    self.native_screen_data(slot.window, usize::from(slot.index), slot.value);
+                }
+            }
+            // A mod menu type's opening context, just before its OpenScreen.
             C::CustomPayload(p) if p.channel == sunrise_protocol::menu_extra::CHANNEL => {
                 self.receive_menu_extra(&p.data);
             }
@@ -4885,7 +4900,12 @@ impl Game<'_> {
             C::ContainerSetData(p) if self.remote_station_open(p.container) => {
                 self.remote_station_data(usize::try_from(p.id).unwrap_or(usize::MAX), p.value);
             }
-            C::ContainerSetData(p) if self.native_screen_data(p.container, p.id, p.value) => {}
+            C::ContainerSetData(p)
+                if self.native_screen_data(
+                    p.container,
+                    usize::from(p.id as u16),
+                    i32::from(p.value),
+                ) => {}
             C::ContainerSetData(p) => {
                 let v = i32::from(p.value);
                 match self
