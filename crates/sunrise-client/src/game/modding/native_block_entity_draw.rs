@@ -34,11 +34,30 @@ pub(super) struct StandaloneGeometry {
     slots: Vec<Option<Vec<super::minecarts::PreparedModelFace>>>,
     translucent: Vec<bool>,
     bounds: Vec<[[f32; 3]; 2]>,
+    /// What each fluid draws as in a `fluid_box`, by fluid slot, resolved on its first box of
+    /// this generation (the table is rebuilt with the resources, so a reload resolves anew).
+    fluid_looks: std::cell::RefCell<
+        Vec<Option<Result<super::native_fluid_render::FluidBoxLook, mod_api::FluidBoxError>>>,
+    >,
+    /// The first slot past the baked store's: block state `n` is slot `states_from + n`.
+    states_from: u32,
+    /// Block states resolved by `block_state_model`, each once per generation.
+    states: std::cell::OnceCell<Box<[std::cell::OnceCell<StateModel>]>>,
+    /// How many block states the registry has: the table's size once a mod resolves one.
+    state_count: usize,
+}
+
+/// A block state's faces as vanilla draws it outside the terrain: default tints in the colour.
+pub(super) struct StateModel {
+    faces: Vec<sunrise_client::models::catalog::BakedFace>,
+    bounds: [[f32; 3]; 2],
 }
 
 /// Whether a resolved slot can take instances, and the local box used to cull copies.
 pub(super) struct InstanceSlot {
     pub translucent: bool,
+    /// A block state's model: drawn on the CPU route only, never as a GPU instance.
+    pub state: bool,
     pub bounds: [[f32; 3]; 2],
 }
 
@@ -97,19 +116,87 @@ impl StandaloneGeometry {
             slots,
             translucent,
             bounds,
+            fluid_looks: Default::default(),
+            states_from: catalog.model_count(),
+            states: std::cell::OnceCell::new(),
+            state_count: pack.assets.registry.len(),
         }
     }
 
     pub(super) fn instance_slot(&self, slot: u32) -> Option<InstanceSlot> {
+        if let Some(state) = slot.checked_sub(self.states_from) {
+            let model = self.states.get()?.get(state as usize)?.get()?;
+            return Some(InstanceSlot {
+                translucent: false,
+                state: true,
+                bounds: model.bounds,
+            });
+        }
         let index = slot as usize;
         self.slots.get(index)?.is_some().then_some(InstanceSlot {
             translucent: self.translucent[index],
+            state: false,
             bounds: self.bounds[index],
         })
     }
 
+    /// The slot of block state `state`, resolved with `faces` the first time.
+    pub(super) fn state_slot(
+        &self,
+        state: u32,
+        faces: impl FnOnce() -> Vec<sunrise_client::models::catalog::BakedFace>,
+    ) -> Option<u32> {
+        let states = self.states.get_or_init(|| {
+            std::iter::repeat_with(Default::default)
+                .take(self.state_count)
+                .collect()
+        });
+        let model = states.get(state as usize)?.get_or_init(|| {
+            let faces = faces();
+            let mut min = [f32::INFINITY; 3];
+            let mut max = [f32::NEG_INFINITY; 3];
+            for pos in faces.iter().flat_map(|face| face.quad.positions) {
+                for axis in 0..3 {
+                    min[axis] = min[axis].min(pos[axis]);
+                    max[axis] = max[axis].max(pos[axis]);
+                }
+            }
+            let bounds = if min[0].is_finite() {
+                [min, max]
+            } else {
+                [[0.0; 3], [0.0; 3]]
+            };
+            StateModel { faces, bounds }
+        });
+        (!model.faces.is_empty()).then_some(self.states_from + state)
+    }
+
+    /// The baked faces of a block state's slot.
+    pub(super) fn state_faces(
+        &self,
+        slot: u32,
+    ) -> Option<&[sunrise_client::models::catalog::BakedFace]> {
+        let state = slot.checked_sub(self.states_from)?;
+        Some(&self.states.get()?.get(state as usize)?.get()?.faces)
+    }
+
     pub(super) fn faces(&self, slot: u32) -> Option<&[super::minecarts::PreparedModelFace]> {
         self.slots.get(slot as usize)?.as_deref()
+    }
+
+    /// The `fluid_box` look of fluid `slot`, from `resolve` the first time.
+    pub(super) fn fluid_look(
+        &self,
+        slot: u32,
+        resolve: impl FnOnce()
+            -> Result<super::native_fluid_render::FluidBoxLook, mod_api::FluidBoxError>,
+    ) -> Result<super::native_fluid_render::FluidBoxLook, mod_api::FluidBoxError> {
+        let mut looks = self.fluid_looks.borrow_mut();
+        let at = slot as usize;
+        if looks.len() <= at {
+            looks.resize(at + 1, None);
+        }
+        *looks[at].get_or_insert_with(resolve)
     }
 
     pub(super) fn generation(&self) -> u64 {
@@ -1184,8 +1271,73 @@ impl Game<'_> {
             return false;
         };
         let pose = draw.pose();
-        self.block_model_vertices(id, 42, pose, draw.light, true, &mut draw.vertices);
+        self.block_model_vertices(
+            id,
+            Self::BLOCK_MODEL_SEED,
+            pose,
+            draw.light,
+            true,
+            &mut draw.vertices,
+        );
         true
+    }
+
+    /// Block state `state` as one model: what `native_draw_block` draws, the blockstate file's
+    /// parts for its properties at seed 42, each tinted face holding the block's default tint
+    /// (no position) in its colour. Resolved once per state in this generation.
+    pub(super) fn native_block_state_model(
+        &self,
+        state: mod_api::BlockStateId,
+    ) -> Result<ModelRef, ModelError> {
+        let id = BlockStateId(state.0);
+        let slot = self
+            .standalone_geometry
+            .state_slot(state.0, || {
+                use sunrise_client::models::catalog::BakedFace;
+                // An unknown state resolves to no faces, which `state_slot` refuses.
+                let Ok(models) = self
+                    .pack
+                    .render
+                    .model_catalog
+                    .collect_seeded(id, Self::BLOCK_MODEL_SEED)
+                else {
+                    return Vec::new();
+                };
+                let default_tint = self.default_block_tint(id);
+                models
+                    .iter()
+                    .flat_map(|(_, model)| &model.faces)
+                    .map(|face| {
+                        let mut quad = face.quad.clone();
+                        if let Some(tint) = default_tint(quad.tint_index) {
+                            let base = quad.color.map_or(u32::MAX, |v| v as u32);
+                            quad.color = Some(sunrise_client::hud_layout::multiply(
+                                base,
+                                0xFF00_0000 | tint,
+                            ) as i32);
+                        }
+                        BakedFace::new(quad, face.layer, face.opaque, face.translucent, None)
+                    })
+                    .collect()
+            })
+            .ok_or(ModelError::UnknownModel)?;
+        Ok(mod_api::__private::built::model_ref(
+            self.standalone_geometry.generation(),
+            slot,
+        ))
+    }
+
+    /// The baked faces a slot draws through the terrain materials: a standalone model's, or a
+    /// block state's from `native_block_state_model`.
+    pub(super) fn model_faces(
+        &self,
+        slot: u32,
+    ) -> Option<&[sunrise_client::models::catalog::BakedFace]> {
+        let catalog = &self.pack.render.model_catalog;
+        match catalog.model_by_slot(slot) {
+            Some(model) => Some(&model.faces),
+            None => self.standalone_geometry.state_faces(slot),
+        }
     }
 
     /// Resolve a registered standalone model once in `client_setup` and again in

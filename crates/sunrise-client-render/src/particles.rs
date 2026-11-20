@@ -1058,6 +1058,16 @@ impl PendingParticle {
     }
 }
 
+thread_local! {
+    static REQUESTED: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+/// How many particle requests this thread's captures (`Particles::requested`) have taken. A
+/// sound captured beside them records it (`CapturedSound::particles_before`), so a test reads
+/// the two captures as one ordered stream.
+pub fn requested_count() -> u64 {
+    REQUESTED.get()
+}
+
 /// `ParticleEngine` plus the sprite sets of `ParticleResources`.
 pub struct ParticleEngine {
     particles: Vec<Particle>,
@@ -1542,6 +1552,7 @@ impl ParticleEngine {
         let d2 = (p[0] - c[0]).powi(2) + (p[1] - c[1]).powi(2) + (p[2] - c[2]).powi(2);
         if let Some(requested) = &mut self.requested {
             requested.push((options.clone(), p, v));
+            REQUESTED.set(REQUESTED.get() + 1);
             return;
         }
         let minimal = self.calculate_particle_level(always_show) == 2;
@@ -2957,16 +2968,8 @@ impl ParticleEngine {
                         q.set_color(b, 0.0, b);
                     }
                     T::EntityEffect => {
-                        if let Some(ambient) = o.legacy_entity_effect {
-                            q.set_color(v[0] as f32, v[1] as f32, v[2] as f32);
-                            // AmbientMobProvider overrides constructor alpha; MobProvider only sets RGB.
-                            if ambient {
-                                q.rgba[3] = 0.15;
-                            }
-                        } else {
-                            q.set_color(o.color[0], o.color[1], o.color[2]);
-                            q.rgba[3] = o.color[3];
-                        }
+                        q.set_color(o.color[0], o.color[1], o.color[2]);
+                        q.rgba[3] = o.color[3];
                     }
                     T::Effect | T::InstantEffect => {
                         q.set_color(o.color[0], o.color[1], o.color[2]);
@@ -2975,12 +2978,7 @@ impl ParticleEngine {
                     _ => {}
                 }
                 q.behaviour = Behaviour::Spell {
-                    // The old SpellParticle.tick always eased back to 1, including ambient effects.
-                    original_alpha: if o.legacy_entity_effect.is_some() {
-                        1.0
-                    } else {
-                        q.rgba[3]
-                    },
+                    original_alpha: q.rgba[3],
                 };
                 q.set = set;
                 q
@@ -3136,6 +3134,12 @@ impl ParticleEngine {
                 let uo = r.next_float() * 3.0;
                 let vo = r.next_float() * 3.0;
                 q.uv = [(uo + 1.0) / 4.0, vo / 4.0, uo / 4.0, (vo + 1.0) / 4.0];
+                // The spawn's colour, white unless a mod gave one (`ParticleOptions::with_color`).
+                if ty.is_item_crumb() {
+                    for i in 0..3 {
+                        q.rgba[i] *= o.color[i];
+                    }
+                }
                 if ty == T::Item {
                     for i in 0..3 {
                         q.velocity[i] = q.velocity[i] * f64::from(0.1f32) + v[i];
@@ -3272,11 +3276,7 @@ impl ParticleEngine {
                     scaled(o.color[2], jb),
                 );
                 q.size = 0.26;
-                q.lifetime = if o.legacy_trail_lifetime {
-                    self.level_random.next_int_bound(40).unwrap_or(0) + 10
-                } else {
-                    duration
-                };
+                q.lifetime = duration;
                 q.has_physics = false;
                 q.free_move = true;
                 q.light = Light::FullBright;
@@ -4805,6 +4805,40 @@ mod tests {
         });
     }
 
+    /// An entity effect takes its colour and alpha from the option, and its spell behaviour
+    /// restores that alpha; a trail lasts the ticks the option gives, `-1` included.
+    #[test]
+    fn entity_effect_and_trail_particles_read_their_options() {
+        let mut engine = ParticleEngine::new(
+            &ResourceSource::indexed(Default::default()),
+            &HashMap::new(),
+            &HashSet::new(),
+        );
+        let effect = engine
+            .make(
+                &ParticleOptions::colored(ParticleType::EntityEffect, [0.25, 0.5, 0.75, 0.4]),
+                [0.0; 3],
+                [0.0; 3],
+                1,
+            )
+            .expect("an entity effect is made");
+        assert_eq!(effect.rgba, [0.25, 0.5, 0.75, 0.4]);
+        assert!(matches!(
+            effect.behaviour,
+            Behaviour::Spell { original_alpha } if original_alpha == 0.4
+        ));
+        for duration in [30, -1] {
+            let options = ParticleOptions {
+                trail: Some(([1.0, 2.0, 3.0], duration)),
+                ..ParticleOptions::simple(ParticleType::Trail)
+            };
+            let trail = engine
+                .make(&options, [0.0; 3], [0.0; 3], 1)
+                .expect("a trail is made");
+            assert_eq!(trail.lifetime, duration);
+        }
+    }
+
     #[test]
     fn special_particles_wait_for_admission_without_ticking_or_counting() {
         with_empty_particle_level(|level| {
@@ -4990,49 +5024,6 @@ mod tests {
                 "Particle.tick removes at age++ >= lifetime"
             );
         });
-    }
-
-    #[test]
-    fn legacy_spell_providers_use_velocity_rgb_and_their_original_alpha_rules() {
-        let mut engine = ParticleEngine::new(
-            &ResourceSource::indexed(Default::default()),
-            &HashMap::new(),
-            &HashSet::new(),
-        );
-        let velocity = [0.25, 0.5, 0.75];
-        for scoped in [false, true] {
-            engine.set_scope_eye(scoped.then_some([0.0; 3]));
-            for ambient in [false, true] {
-                let mut options =
-                    ParticleOptions::colored(ParticleType::EntityEffect, [1.0, 0.0, 0.0, 0.8]);
-                options.legacy_entity_effect = Some(ambient);
-                let particle = engine.make(&options, [0.0; 3], velocity, 7).unwrap();
-                let alpha = if ambient {
-                    0.15
-                } else if scoped {
-                    0.0
-                } else {
-                    1.0
-                };
-                assert_eq!(particle.rgba, [0.25, 0.5, 0.75, alpha]);
-                assert_eq!(
-                    particle.behaviour,
-                    Behaviour::Spell {
-                        original_alpha: 1.0
-                    }
-                );
-            }
-            let options =
-                ParticleOptions::colored(ParticleType::EntityEffect, [1.0, 0.0, 0.0, 0.8]);
-            let current = engine.make(&options, [0.0; 3], velocity, 7).unwrap();
-            assert_eq!(current.rgba, options.color);
-            assert_eq!(
-                current.behaviour,
-                Behaviour::Spell {
-                    original_alpha: 0.8
-                }
-            );
-        }
     }
 
     #[test]
@@ -6137,57 +6128,23 @@ mod tests {
         assert!((0.15 * 0.4 - 1e-6..=0.45 * 0.4 + 1e-6).contains(&s));
     }
     #[test]
-    fn legacy_trails_choose_a_lifetime_for_each_particle_from_the_level_random() {
+    fn an_item_crumb_multiplies_its_rgb_by_the_spawn_colour_and_ignores_alpha() {
         let mut engine = ParticleEngine::new(
             &ResourceSource::indexed(Default::default()),
             &HashMap::new(),
             &HashSet::new(),
         );
         engine.seed_randoms(1, 42, 2);
-        let legacy = ParticleOptions {
-            legacy_trail_lifetime: true,
-            ..ParticleOptions::trail([1.0, 2.0, 3.0], 0x7f3f1f, -1)
+        let crumb = |color| ParticleOptions {
+            item: Some(vec!["minecraft:block/water_still".into()]),
+            color,
+            ..ParticleOptions::simple(ParticleType::Item)
         };
-        for _ in 0..5 {
-            engine.create(&legacy, [0.0; 3], [0.0; 3]);
-        }
-        // java.util.Random(42).nextInt(40) + 10, as vanilla 1.21.3 TrailParticle.Provider does.
-        assert_eq!(
-            engine
-                .pending
-                .iter()
-                .map(|p| p
-                    .ordinary()
-                    .expect("trail is an ordinary particle")
-                    .lifetime)
-                .collect::<Vec<_>>(),
-            [20, 13, 18, 14, 20]
-        );
-        engine.create(
-            &ParticleOptions::trail([1.0, 2.0, 3.0], 0x7f3f1f, 37),
-            [0.0; 3],
-            [0.0; 3],
-        );
-        assert_eq!(
-            engine
-                .pending
-                .last()
-                .unwrap()
-                .ordinary()
-                .expect("trail is an ordinary particle")
-                .lifetime,
-            37
-        );
-        // A current server's -1 is a lifetime, not the old protocol marker.
-        engine.create(
-            &ParticleOptions::trail([1.0, 2.0, 3.0], 0x7f3f1f, -1),
-            [0.0; 3],
-            [0.0; 3],
-        );
-        assert_eq!(
-            engine.pending.last().unwrap().ordinary().unwrap().lifetime,
-            -1
-        );
+        engine.create(&crumb([1.0; 4]), [0.0; 3], [0.0; 3]);
+        engine.create(&crumb([0.5, 0.25, 1.0, 0.1]), [0.0; 3], [0.0; 3]);
+        let rgba = |i: usize| engine.pending[i].ordinary().expect("a crumb").rgba;
+        assert_eq!(rgba(0), [1.0, 1.0, 1.0, 1.0]);
+        assert_eq!(rgba(1), [0.5, 0.25, 1.0, 1.0]);
     }
     #[test]
     fn sizes_follow_vanilla_curves() {

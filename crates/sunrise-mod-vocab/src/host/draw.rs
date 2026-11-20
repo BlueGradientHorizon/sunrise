@@ -472,12 +472,15 @@ pub trait BlockEntityDrawContext {
         unimplemented!("BlockEntityDrawContext::draw_model_part")
     }
     /// Draws `stack` as a still fluid filling `bounds` (`[x0, y0, z0, x1, y1, z1]` in blocks
-    /// under `draw`'s pose), as a tank's contents: `minecraft:water` or `minecraft:lava` with no
-    /// components. Each face tiles the fluid's animated still sprite (`block/water_still`), one
-    /// tile per block, cut at whole-block lines and keeping each part's place in its tile, with
-    /// no inset of the box. The tint is the stack's, not the biome's water colour, unless
-    /// `options.argb` replaces it. Sky light stays as `draw.light`; block light rises to the
-    /// fluid's own (15 for lava). No face is shaded by direction. Faces are sorted far to
+    /// under `draw`'s pose), as a tank's contents: `minecraft:water`, `minecraft:lava` or any
+    /// fluid with a look (`data/<mod>/sunrise/fluid/<name>.json`). A stack's components change
+    /// nothing: pass `options.argb` to colour a potion-like stack. Each face tiles the fluid's
+    /// animated still sprite (`block/water_still`, a look's `sprite`; a look with no sprite draws
+    /// its tint flat), one tile per block, cut at whole-block lines and keeping each part's
+    /// place in its tile, with no inset of the box. The tint is the fluid's (water `0xFF3F76E4`,
+    /// lava white, a look's `tint`, grey `0xFF9A9A9A` when it has none, as `fluid` draws it), not the biome's water
+    /// colour, unless `options.argb` replaces it. Sky light stays as `draw.light`; block light
+    /// rises to the fluid's `light_level` (15 for lava). No face is shaded by direction. Faces are sorted far to
     /// near, alpha blended, culled from behind and write depth, drawn with the block entities
     /// before the level's translucent terrain. A stack of 0 draws nothing and is `Ok` without
     /// checking `bounds`; a refusal draws nothing.
@@ -547,9 +550,11 @@ pub trait WorldDrawContext {
     /// [`NameTagOptions::see_through`] it is drawn once, as a sneaking name: depth tested and
     /// translucent, the faded text on the backdrop, in [`NameTagOptions::light`] as given. With
     /// it, twice, as an unsneaking name: opaque in the world (sky and block light each at least
-    /// 2), and faded on the backdrop over everything, walls included, unlit. Labels draw with
-    /// the world's name tags, far to near, whatever the stage. Each glyph and backdrop quad, both copies counted, takes one of
-    /// the view's 4,096 quads shared with [`quads`](Self::quads) ([`usage`](Self::usage)).
+    /// 2, or exactly [`NameTagOptions::light`] with [`NameTagOptions::exact_light`]), and
+    /// faded on the backdrop over everything, walls included, unlit. Labels draw with the
+    /// world's name tags, far to near, whatever the stage. Each glyph and backdrop quad, both
+    /// copies counted, takes one of the view's 4,096 quads shared with
+    /// [`quads`](Self::quads) ([`usage`](Self::usage)).
     /// Refuses a non-finite `at` ([`DrawError::NonFinite`]), text deeper than 512 component
     /// nodes ([`DrawError::TextTooDeep`]) or otherwise refused ([`DrawError::TextRefused`]),
     /// and a label past the quads left ([`DrawError::CapacityExceeded`]); on `Err` nothing
@@ -571,14 +576,19 @@ pub trait WorldDrawContext {
     ///
     /// One batch per model. The engine uploads only the instance records on the opaque
     /// and cutout route, and bakes the same prepared geometry on the CPU when a shader
-    /// pack, a copy with an [`Overlay`], or another route cannot take instances. A
+    /// pack, a copy with an [`Overlay`], a [`ModelInstance::color`] other than white, a
+    /// [`ModelInstance::hidden_faces`] or another route cannot take instances. A
     /// `shaders/` pack shades those copies as block entities, with the program that shades
-    /// [`BlockEntityDrawContext::model`]. A model with a translucent face is refused with
-    /// [`InstanceError::Translucent`] and is never drawn as solid.
+    /// [`BlockEntityDrawContext::model`], except the translucent copies below and copies of a
+    /// block state model, which take the terrain model materials. A copy with a colour alpha below `0xFF`, or of a model
+    /// with a translucent face, is drawn in the sorted translucent material vanilla uses for a
+    /// translucent block outside the terrain (`translucent_moving_block`: alpha blended, depth
+    /// tested, depth written, back faces culled), their quads sorted far to near each frame as
+    /// vanilla's `sortOnUpload` does.
     /// Tint is `0xAARRGGBB` and light is [`LightCoords`]: both stay in
     /// vanilla's space, and the engine converts them to the frame. A tint's alpha
     /// multiplies only faces that have a tint index, the same as vanilla's model
-    /// renderer. The view budget is 16,384 copies. Pass at most that many: a longer
+    /// renderer; [`ModelInstance::color`] multiplies every face. The view budget is 16,384 copies. Pass at most that many: a longer
     /// list is refused with [`InstanceError::CapacityExceeded`] before any copy is
     /// examined. On wasm the guest pays for the list it passes, because the runtime
     /// lifts the slice before that check. Within the bound, copies outside the frustum

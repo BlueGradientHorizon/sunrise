@@ -19,7 +19,8 @@ def package(name, directory=None, kinds=("lib",), dependencies=(), source=None):
 
 
 def node(name, *edges):
-    return {"id": name, "deps": [{"pkg": dependency, "dep_kinds": [{"kind": kind}]} for dependency, kind in edges]}
+    return {"id": name, "deps": [{"pkg": dependency, "name": dependency, "dep_kinds": [{"kind": kind}]}
+                                 for dependency, kind in edges]}
 
 
 def metadata():
@@ -156,6 +157,25 @@ class ManifestTests(unittest.TestCase):
                                               {"serde": resolved})
             self.assertEqual(refused.exception.code, "E_FEATURES")
 
+    def test_a_dependency_only_another_target_names_needs_no_resolved_features(self):
+        crate = Crate("core", "crates/core", False)
+        manifest = {"package": {"name": "core", "version": "0.1.0"},
+                    "dependencies": {"serde": "1"},
+                    "target": {"cfg(target_arch = \"x86_64\")": {"dependencies": {"safe_arch": "=1.2.0"}}}}
+        registry = "registry+https://github.com/rust-lang/crates.io-index"
+        metadata = {"packages": [package("core"), package("serde", source=registry),
+                                 package("safe_arch", source=registry)],
+                    "resolve": {"nodes": [node("core", ("serde", None), ("safe_arch", None)),
+                                          node("serde"), node("safe_arch")]}}
+        game = {"serde 0.1.0": {"default"}}
+        self.assertEqual(api_source.requested_features(metadata, crate, manifest, game),
+                         {"serde": ({"default"}, True)})
+        with self.assertRaises(Refusal) as refused:
+            api_source.requested_features(metadata, crate,
+                                          {**manifest, "dependencies": {"serde": "1", "safe_arch": "=1.2.0"}},
+                                          game)
+        self.assertEqual(refused.exception.code, "E_FEATURES")
+
 
 class RootTests(unittest.TestCase):
     """`check_root`: each API root is judged by a consumer that depends on it."""
@@ -192,31 +212,35 @@ class RootTests(unittest.TestCase):
         wider = self.metadata()
         wider["packages"].append(package("subtle", source=self.REGISTRY))
         wider["resolve"]["nodes"].append(node("subtle"))
-        next(n for n in wider["resolve"]["nodes"] if n["id"] == "wasmtime")["deps"].append(
-            {"pkg": "subtle", "dep_kinds": [{"kind": None}]})
-        game = "\n".join([self.GAME, "1subtle v0.1.0|"])
+        for parent in ("serde", "wasmtime"):
+            next(n for n in wider["resolve"]["nodes"] if n["id"] == parent)["deps"].append(
+                {"pkg": "subtle", "dep_kinds": [{"kind": None}]})
+        game = "\n".join([self.GAME.replace("serde v0.1.0|derive", "serde v0.1.0|derive,rc"), "1subtle v0.1.0|"])
+        # The API root: the game's other crates give serde a feature and a dependency the starter does not get.
+        self.assertEqual(api_source.check_root(wider, self.metadata(), "sunrise-mod-api", game, self.STARTER,
+                                               "consumer"), 2)
+        with self.assertRaises(Refusal) as refused:
+            api_source.check_root(wider, self.metadata(), "sunrise-mod-api", game,
+                                  self.STARTER.replace("|derive", "|derive,extra"), "consumer")
+        self.assertEqual(refused.exception.code, "E_FEATURES")
         args = ("sunrise-wasmtime", game, self.NATIVE, "consumer")
-        self.assertEqual(api_source.check_root(wider, self.metadata(), *args, exact=False), 2)
+        self.assertEqual(api_source.check_root(wider, self.metadata(), *args), 2)
         # Wasmtime itself is exact: a feature the game lacks fails, and so does one the game has that it misses.
         for consumer in (self.NATIVE.replace("cranelift,std", "cranelift,std,wat"),
                          self.NATIVE.replace("cranelift,std", "std")):
             with self.subTest(consumer), self.assertRaises(Refusal) as refused:
-                api_source.check_root(wider, self.metadata(), "sunrise-wasmtime", game, consumer, "consumer",
-                                      exact=False)
+                api_source.check_root(wider, self.metadata(), "sunrise-wasmtime", game, consumer, "consumer")
             self.assertEqual(refused.exception.code, "E_FEATURES")
         # A transitive crate may have fewer features than the game's, never more.
         loose = self.NATIVE + "\n1subtle v0.1.0|"
-        self.assertEqual(api_source.check_root(wider, self.metadata(), "sunrise-wasmtime", game, loose, "consumer",
-                                               exact=False), 2)
+        self.assertEqual(api_source.check_root(wider, self.metadata(), "sunrise-wasmtime", game, loose, "consumer"), 2)
         with self.assertRaises(Refusal) as refused:
             api_source.check_root(wider, self.metadata(), "sunrise-wasmtime", game,
-                                  self.NATIVE + "\n1subtle v0.1.0|extra", "consumer", exact=False)
+                                  self.NATIVE + "\n1subtle v0.1.0|extra", "consumer")
         self.assertEqual(refused.exception.code, "E_FEATURES")
+        # The API source never holds a package the game's closure does not.
         with self.assertRaises(Refusal) as refused:
-            api_source.check_root(wider, self.metadata(), *args)
-        self.assertEqual(refused.exception.code, "E_CLOSURE")
-        with self.assertRaises(Refusal) as refused:
-            api_source.check_root(self.metadata(), wider, *args, exact=False)
+            api_source.check_root(self.metadata(), wider, *args)
         self.assertEqual(refused.exception.code, "E_CLOSURE")
 
 

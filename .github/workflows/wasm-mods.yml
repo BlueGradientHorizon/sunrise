@@ -119,7 +119,7 @@ jobs:
           prebuilt -p sunrise-mod-vocab --lib -- strict_math_seeded_reference_vectors_match_exact_bits
           prebuilt -p sunrise-mod-wasm --test strict_math -- --ignored --nocapture
           prebuilt -p sunrise-mod-points --test registry --test replace --test order
-          prebuilt -p sunrise-mod-wasm --test real_member --test unstaged --test self_refusal --test native_listener --test no_wire_registration --test capability_registration --test chunk_disk --test import_identity -- --include-ignored --nocapture --skip a_mod_built_before_the_break --skip every_hook_part_and_point_the_fixture_implements_is_imported_and_checked
+          prebuilt -p sunrise-mod-wasm --test real_member --test unstaged --test self_refusal --test native_listener --test no_wire_registration --test capability_registration --test chunk_disk --test import_identity -- --include-ignored --nocapture --skip a_mod_built_before_the_break
           prebuilt -p sunrise-mod-wasm --lib -- guest_input_pool_stays_flat_for_100k_no_import_calls --ignored --nocapture
           exit "$failed"
       - name: Build and test the isolated mixed-output boundary
@@ -198,7 +198,10 @@ jobs:
           SUNRISE_WASM_LIBRARY: ${{ github.workspace }}/crates/sunrise-mod-wasm/tests/library-fixture/library/target/sunrise-mod/wasm_test_library.smod
           SUNRISE_WASM_OBSERVER: ${{ github.workspace }}/crates/sunrise-mod-wasm/tests/library-fixture/observer/target/sunrise-mod/wasm_test_observer.smod
           SUNRISE_WASM_DEPENDENT: ${{ github.workspace }}/crates/sunrise-mod-wasm/tests/library-fixture/dependent/target/sunrise-mod/wasm_test_dependent.smod
-        run: python3 tools/ci/ignored_tests.py --prebuilt "$WORKSPACE_TESTS" -p sunrise-mod-wasm --test real_library -- --nocapture
+        run: |
+          # The feature comparison first: when it fails it names the crate that makes the library's bytes differ.
+          python3 tools/ci/ignored_tests.py --prebuilt "$WORKSPACE_TESTS" -p sunrise-mod-wasm --test library_features -- --ignored --nocapture
+          python3 tools/ci/ignored_tests.py --prebuilt "$WORKSPACE_TESTS" -p sunrise-mod-wasm --test real_library -- --nocapture
       - name: Build the same-group capability members
         if: ${{ !cancelled() && steps.fixture.outcome == 'success' }}
         run: |

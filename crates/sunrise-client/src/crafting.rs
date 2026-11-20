@@ -98,6 +98,7 @@ impl Template {
         if !v.is_object() && !v.is_string() {
             return None;
         }
+        sunrise_world::item_defaults::validate_stack(v).ok()?;
         let components = v.get("components").map(json_tag);
         let (damage, extra) = crate::item_data::decode_components(components.as_ref());
         Some(Self {
@@ -1521,7 +1522,8 @@ impl ResolvedSources {
         context: &sunrise_world::native_load_context::LoadContext,
     ) -> Result<Self> {
         let context = context.with_fluid_tags(sunrise_items::items::fluid_tag_list(root, overlay)?);
-        let (mut sources, refused) = sunrise_items::recipe_sources::sources_collecting(root, overlay)?;
+        let (mut sources, refused) =
+            sunrise_items::recipe_sources::sources_collecting(root, overlay)?;
         Self::order_by_priority(&mut sources, root, overlay)?;
         let mut resolved = Self::resolve_collecting(sources, &context)?;
         resolved.failures.extend(refused);
@@ -1558,9 +1560,10 @@ impl ResolvedSources {
     }
     /// `resolve` for `sources` already in their final order.
     fn resolve_collecting(
-        sources: Vec<(String, Value)>,
+        mut sources: Vec<(String, Value)>,
         context: &sunrise_world::native_load_context::LoadContext,
     ) -> Result<Self> {
+        sources.retain(|(name, value)| Ingredient::validate_persistence(value, name));
         let listened = mod_api::__private::listened(mod_api::HookId::Ingredient);
         let recipes = sources
             .into_iter()

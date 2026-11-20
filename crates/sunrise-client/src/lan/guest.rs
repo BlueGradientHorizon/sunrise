@@ -534,6 +534,8 @@ pub struct Guest {
     /// changed since (`progressChanged`).
     pub advancements: crate::advancements::Progress,
     pub advancements_loaded: bool,
+    /// Whether the first advancement snapshot reached this connection.
+    pub advancements_sent: bool,
     pub advancements_visible: Vec<bool>,
     pub advancements_changed: std::collections::BTreeSet<usize>,
     /// The server's scoreboard as this player's client has it (lan/scoreboard.rs).
@@ -849,6 +851,7 @@ impl Guest {
             selected_tab: None,
             advancements: Default::default(),
             advancements_loaded: false,
+            advancements_sent: false,
             advancements_visible: Vec::new(),
             advancements_changed: Default::default(),
             scoreboard: Default::default(),

@@ -961,9 +961,17 @@ pub fn compile_mod<'a>(
         ));
     }
     fs::write(&source, root).map_err(|e| e.to_string())?;
-    cmd.args(["--crate-type", "dylib", "--crate-name", &krate])
-        .arg("-C")
-        .arg(format!("metadata={id}"));
+    // Diagnostics as JSON, which `run_diagnosed` shows at the author's files: the compiler's
+    // inputs and outputs stay those of the staged copy.
+    cmd.args([
+        "--error-format=json",
+        "--crate-type",
+        "dylib",
+        "--crate-name",
+        &krate,
+    ])
+    .arg("-C")
+    .arg(format!("metadata={id}"));
     for name in ["mod_api", "mod_vocab", "mod_points"] {
         refuse_closure_rlib(id, name, library(name))?;
         cmd.arg("--extern")
@@ -1002,8 +1010,18 @@ pub fn compile_mod<'a>(
     let fingerprint = format!("{:x}", hash.finalize());
     let saved = library.with_extension("fingerprint");
     if !library.is_file() || fs::read_to_string(&saved).ok().as_deref() != Some(&fingerprint) {
+        let sources = super::present::Sources::new(
+            cmd.get_current_dir()
+                .map(Path::to_path_buf)
+                .or_else(|| std::env::current_dir().ok())
+                .unwrap_or_default(),
+            vec![super::present::Staged {
+                root: staged,
+                author: project.bundle.dir.clone(),
+            }],
+        );
         cmd.arg("--out-dir").arg(out).arg(&source);
-        super::run(cmd, &compiling(id), |_| {})?;
+        super::run_diagnosed(cmd, &compiling(id), &sources)?;
     }
     super::library_record::validate_exports(&library, id)?;
     super::library_record::stamp(

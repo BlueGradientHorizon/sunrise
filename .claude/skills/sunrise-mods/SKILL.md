@@ -68,6 +68,8 @@ or change generated pins by hand. For code mods, `cargo sunrise-mod update` chan
   "$mod_tool" build
   ```
 
+- `python3 tools/book_quickstart.py --tool target/debug/cargo-sunrise-mod` runs the start pages' commands with that tool in a
+  fresh home; run it after changing `new`, `check`, `build` or a start page.
 - The SDK a project uses is in its `.sunrise/sdk/`; compiled slices and build work are in the per-user cache
   (`SUNRISE_MOD_CACHE`, see `start/first-mod.md`). `SUNRISE_SDK_BASE` (a URL or a folder) replaces the release
   server (`crates/cargo-sunrise-mod/src/sdk_fetch.rs`).

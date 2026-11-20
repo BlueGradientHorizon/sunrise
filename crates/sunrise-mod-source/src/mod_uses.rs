@@ -36,6 +36,9 @@ pub enum ReadError {
     /// A `#[path]` or `include!` in `file` brings in a file of the folder the scan does not read:
     /// not a `.rs` file, under the root `target/` or a hidden folder, or missing.
     NotScanned { file: String, target: String },
+    /// The mod's library root (`[lib].path` in its `Cargo.toml`, or `src/lib.rs`) is one of the
+    /// files the scan was told to leave out, so the root's own uses would go unread.
+    RootSkipped(String),
     /// More source than is read: a file, or the whole mod.
     TooLarge { what: String, size: u64, most: u64 },
     /// `sunrise-mod.toml` is not valid TOML.
@@ -58,6 +61,10 @@ impl std::fmt::Display for ReadError {
             Self::NotScanned { file, target } => write!(
                 f,
                 "{file} brings in `{target}`, which the scan does not read; the mod's source cannot be judged"
+            ),
+            Self::RootSkipped(file) => write!(
+                f,
+                "{file} is the mod's library root and also a file it hands to the game; move one of them to its own file so the mod's source can be judged"
             ),
             Self::TooLarge { what, size, most } => {
                 write!(f, "{what} is {size} bytes; the most read is {most}")
@@ -234,6 +241,30 @@ fn references(text: &str, folder: &[String]) -> Result<Vec<String>, String> {
     Ok(found)
 }
 
+/// The file Cargo compiles as the mod's library: `[lib].path` of the `Cargo.toml` in `dir`,
+/// relative and `/`-separated without `.` parts, or `src/lib.rs` when the manifest names none
+/// (or there is no manifest to read: the build then says so).
+fn library_root(dir: &Path) -> Result<String, ReadError> {
+    let manifest = dir.join("Cargo.toml");
+    let named = if manifest.is_file() {
+        let text = read_bounded(&manifest, "Cargo.toml", MAX_MANIFEST_BYTES)?;
+        toml::from_str::<toml::Table>(&text)
+            .ok()
+            .and_then(|table| Some(table.get("lib")?.get("path")?.as_str()?.to_owned()))
+    } else {
+        None
+    };
+    Ok(named.map_or_else(
+        || "src/lib.rs".to_owned(),
+        |path| {
+            path.split(['/', '\\'])
+                .filter(|part| !part.is_empty() && *part != ".")
+                .collect::<Vec<_>>()
+                .join("/")
+        },
+    ))
+}
+
 /// The first of `skip` that a `mod name;` in `text`, a file in `folder`, may load as the mod's
 /// own source: a file below that folder named for the module (`name.rs`, `name/mod.rs`). Where
 /// the module's file lies is not resolved, so one of that name anywhere below counts.
@@ -285,8 +316,12 @@ fn read_bounded(path: &Path, shown: &str, most: u64) -> Result<String, ReadError
 /// `sunrise-mod.toml` when there is one, but not the files `skip` names (relative and
 /// `/`-separated), which are not the mod's own source. A `#[path]` or `include!` of a file the
 /// scan does not read, a skipped one included, is refused, and so is a `mod` declaration that
-/// may load a skipped file.
+/// may load a skipped file, and so is a skipped file that is the mod's library root.
 pub fn read(dir: &Path, skip: &[&str]) -> Result<ModInput, ReadError> {
+    let root = library_root(dir)?;
+    if skip.contains(&root.as_str()) {
+        return Err(ReadError::RootSkipped(root));
+    }
     let mut input = ModInput::default();
     let mut total = 0u64;
     let mut brought: Vec<(String, String)> = Vec::new();
@@ -449,6 +484,38 @@ mod tests {
             read(root, &[]).unwrap_err(),
             ReadError::TooLarge { what, most: MAX_SOURCE_BYTES, .. } if what == "src/lib.rs"
         ));
+    }
+
+    #[test]
+    fn a_skipped_file_that_is_the_library_root_is_refused_by_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write(root, "src/lib.rs", "");
+        write(root, "src/entry.rs", "");
+        // The default root, with and without a manifest that names none.
+        let refused = |skip: &str| read(root, &[skip]).unwrap_err();
+        assert_eq!(
+            refused("src/lib.rs"),
+            ReadError::RootSkipped("src/lib.rs".into())
+        );
+        write(root, "Cargo.toml", "[package]\nname = \"m\"\n");
+        assert_eq!(
+            refused("src/lib.rs"),
+            ReadError::RootSkipped("src/lib.rs".into())
+        );
+        // A named root, however its path is written; the default is then an ordinary file.
+        write(root, "Cargo.toml", "[lib]\npath = \"./src//entry.rs\"\n");
+        assert_eq!(
+            refused("src/entry.rs"),
+            ReadError::RootSkipped("src/entry.rs".into())
+        );
+        let scanned = read(root, &["src/lib.rs"]).unwrap();
+        let files: Vec<_> = scanned
+            .sources
+            .iter()
+            .map(|(file, _)| file.as_str())
+            .collect();
+        assert_eq!(files, ["src/entry.rs"]);
     }
 
     #[test]
