@@ -1,1 +1,1 @@
-sunrise-client game::remote::set_camera_kinds_tests::set_camera_follows_the_real_26_3_clients_camera_for_every_entity_kind lib daily resources
+sunrise-client game::remote::tests::set_camera_kinds_tests::set_camera_follows_the_real_26_3_clients_camera_for_every_entity_kind lib daily resources

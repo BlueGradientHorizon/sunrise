@@ -2333,8 +2333,6 @@ impl Remote {
 }
 
 #[cfg(test)]
-mod set_camera_kinds_tests;
-#[cfg(test)]
 pub(crate) mod tests {
     use super::super::api_values::TryIntoApi;
 
@@ -2367,6 +2365,9 @@ pub(crate) mod tests {
     }
     mod client_camera_tests {
         include!("client_camera_tests.rs");
+    }
+    mod set_camera_kinds_tests {
+        include!("set_camera_kinds_tests.rs");
     }
     mod client_day_time_tests {
         include!("client_day_time_tests.rs");
