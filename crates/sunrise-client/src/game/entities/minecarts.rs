@@ -36,14 +36,11 @@ use sunrise_core::{
     random::{LegacyRandom, RandomSource},
 };
 use sunrise_world::registry::BlockStateId;
-#[path = "minecarts/cells.rs"]
-mod cells;
 #[path = "minecarts/hit.rs"]
 mod hit;
-#[path = "minecarts/seat.rs"]
-mod seat;
 pub(super) use hit::CartHit;
-use seat::*;
+pub(in crate::game) use sunrise_gameplay::minecart_cells::CartCells;
+use sunrise_gameplay::minecart_seat::*;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(super) enum CartKind {
     Rideable,
@@ -1691,7 +1688,7 @@ impl Game<'_> {
         // Every mob, each asked which carts it is near: a mob far from all of them is turned
         // away by a bitmap of the carts' coarse cells, without a lookup or a grid of the mobs.
         let reach = self.vehicle_mob_reach();
-        let coarse = reach.map(|_| cells::CartCells::of(self.carts.iter().map(Minecart::bounds)));
+        let coarse = reach.map(|_| CartCells::of(self.carts.iter().map(Minecart::bounds)));
         // (mob index, feet, box)
         let pushers: Vec<(usize, Vec3, Aabb)> = (0..self.mobs.len() as u32)
             .into_iter()
