@@ -63,9 +63,11 @@ struct Controls {
     first_part_answer: Option<Answer>,
     block_answer: Option<Answer>,
     block_part_answer: Option<Answer>,
+    block_part_select_slot: Option<u8>,
     record_empty: bool,
     empty_part_answer: Option<Answer>,
     item_on_answer: Option<Answer>,
+    client_use_on_answer: Option<Answer>,
     air_answer: Option<Answer>,
     air_main_only: bool,
     consume_item: bool,
@@ -244,9 +246,15 @@ impl Hooks for Observer {
 impl BlockPart for Observer {
     fn use_item_on(&self, host: HostSide<'_>, event: &mut UseItemOnEvent<'_>) -> Option<Answer> {
         assert_eq!(side(&host), event.click.side);
-        let mut state = self.0.lock().unwrap();
-        state.steps.push(Step::BlockPart);
-        state.block_part_answer
+        let (select_slot, answer) = {
+            let mut state = self.0.lock().unwrap();
+            state.steps.push(Step::BlockPart);
+            (state.block_part_select_slot, state.block_part_answer)
+        };
+        if let (Some(slot), HostSide::Client(host)) = (select_slot, host) {
+            assert_eq!(host.select_hotbar_slot(slot), Ok(()));
+        }
+        answer
     }
     fn use_without_item(
         &self,
@@ -281,11 +289,13 @@ impl ItemPart for Observer {
         state.first_part_answer
     }
     fn use_on(&self, host: HostSide<'_>, _: &mut UseOnEvent<'_>) -> Option<Answer> {
-        let HostSide::Server(_) = host else {
-            return None;
+        let mut state = self.0.lock().unwrap();
+        let answer = match host {
+            HostSide::Server(_) => Answer::SuccessServer,
+            HostSide::Client(_) => state.client_use_on_answer?,
         };
-        self.0.lock().unwrap().steps.push(Step::UseOnPart);
-        Some(Answer::SuccessServer)
+        state.steps.push(Step::UseOnPart);
+        Some(answer)
     }
     fn use_item(&self, host: HostSide<'_>, event: &mut UseItemEvent<'_>) -> Option<Answer> {
         if let Some(hand) = self.0.lock().unwrap().expected_hand {
@@ -1369,6 +1379,34 @@ fn client_empty_block_part_runs_only_for_the_selected_main_hand_fallback() {
                     assert_eq!(state.steps, expected);
                 }
             }
+            // The empty-hand Part replaces the lever's toggle even when its
+            // answer falls through. The selected item phase and Part run next.
+            for answer in [Answer::Pass, Answer::Fail, Answer::TryWithEmptyHand] {
+                *observer.0.lock().unwrap() = Controls {
+                    record_empty: true,
+                    empty_part_answer: Some(answer),
+                    client_use_on_answer: Some(Answer::Consume),
+                    ..Controls::default()
+                };
+                let before = game.swings_started;
+                assert!(game.remote_use_item_on(Hand::Main), "{answer:?}");
+                assert_eq!(game.swings_started, before);
+                assert_eq!(game.world.block(0, 64, 0), lever);
+                let state = observer.0.lock().unwrap();
+                assert_eq!(state.use_item_on_packets, 1);
+                assert_eq!(state.use_item_packets, 0);
+                assert_eq!(
+                    state.steps,
+                    [
+                        Step::Phase(UsePhase::Block, LogicalSide::Client),
+                        Step::BlockPart,
+                        Step::EmptyPart(Hand::Main, true),
+                        Step::Phase(UsePhase::ItemAfterBlock, LogicalSide::Client),
+                        Step::UseOnPart,
+                    ],
+                    "{answer:?}",
+                );
+            }
             // When neither Part answers, the ordinary lever prediction still runs.
             *observer.0.lock().unwrap() = Controls::default();
             let before = game.swings_started;
@@ -1449,6 +1487,81 @@ fn a_stale_client_block_click_discards_the_part_decision() {
             assert_eq!(calls, 1);
             assert_eq!(answer, Err(crate::game::native_hooks::StaleBlockClick));
         }
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_slot_changing_client_part_keeps_the_original_slot_for_the_block_request() {
+    use crate::game::native_hotbar_slot::hotbar_slot_tests::{logged_in, sent};
+    use sunrise_protocol::packets::play::{self, Serverbound as S};
+
+    let observer = Observer::default();
+    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+        "slot_changing_part",
+        Box::new(observer.clone()),
+    )]
+    .into();
+    crate::game::api_values::install_parts(&mods).unwrap();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            let mut reader = logged_in(game);
+            game.set_mode_id(1);
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            let lever = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:lever")
+                .unwrap();
+            game.world.set(0, 64, 0, lever).unwrap();
+            game.forced_hit = Some(hit());
+            game.selected = 2;
+            game.inventory[2] = Some(ItemStack::new("minecraft:stick", 1));
+            game.inventory[4] = Some(ItemStack::new("minecraft:stone", 1));
+            game.offhand = Some(ItemStack::new("minecraft:shield", 1));
+            *observer.0.lock().unwrap() = Controls {
+                block_part_select_slot: Some(4),
+                block_part_answer: Some(Answer::Success),
+                ..Controls::default()
+            };
+            let before = game.swings_started;
+            game.remote_use(mod_api::InteractionAttempt::Press);
+
+            assert_eq!(game.selected, 4, "the local selection still changes");
+            assert_eq!(
+                game.swings_started, before,
+                "the stale answer must not swing"
+            );
+            assert_eq!(game.world.block(0, 64, 0), lever);
+            let packets = sent(&mut reader);
+            assert!(
+                matches!(
+                    packets.as_slice(),
+                    [S::SetCarriedItem(play::SetCarriedItem { slot: 2 }), S::UseItemOn(request)]
+                        if request.hand == 0
+                            && request.pos == [0, 64, 0]
+                            && request.face == 1
+                            && request.cursor == [0.5, 1.0, 0.5]
+                            && !request.inside
+                            && !request.world_border
+                            && request.sequence == 1
+                ),
+                "expected the original slot followed by one unchanged request: {packets:?}",
+            );
+            let state = observer.0.lock().unwrap();
+            assert_eq!(state.click_hands, [Hand::Main]);
+            assert_eq!(
+                state.steps,
+                [
+                    Step::Phase(UsePhase::Block, LogicalSide::Client),
+                    Step::BlockPart
+                ],
+                "the stale decision must not retry or fall through",
+            );
+        });
     });
 }
 

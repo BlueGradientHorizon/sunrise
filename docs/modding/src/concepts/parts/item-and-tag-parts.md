@@ -44,7 +44,7 @@ as `UseOnEvent` does: on a server the acting player's UUID and entity id (a gues
 own, never the host's), on a client this client's own player. They come with the
 event, so a Part does not need `players().acting_player()` to be set while it runs. `living_used_item_hand` instead answers only during active item use and
 cannot identify an instantaneous click. The Part runs on both sides with `HostSide`,
-after the global right-click event and before the item's own use, on native and wasm.
+after the global right-click event and before the item's own use.
 Return `Some(InteractionResult::Success)` to consume and swing on the client,
 `Some(SuccessServer)` to consume and swing on the server, or `Some(Consume)`
 to consume without a swing. `Some(Fail)` skips this item's own use without
@@ -61,7 +61,7 @@ The hand field corresponds to NeoForge's
 `Hooks::right_click_item` runs before `Item.use`, including after the same hand's
 unhandled block or entity interaction. A block success or FAIL, or an entity success, stops fallback.
 The server fires it for the separate use-item packet, once for that packet's hand.
-Canceling skips the item Part and vanilla action on native and wasm alike.
+Canceling skips the item Part and vanilla action.
 `Success`, `SuccessServer` and `Consume` end the client's hand loop.
 `Success` swings on the client, `SuccessServer` on the server, and `Consume` has no swing.
 
@@ -104,6 +104,8 @@ entity writes; perform those on the server. A client Part changes only predictio
 not whether the ordinary `UseItemOn` request goes to the server. If its click or
 stack cannot be represented, the engine keeps the ordinary path; if the captured
 block or hand changed while deciding, it discards the prediction without retrying.
+A main-hand request still uses the hotbar slot selected before prediction; a Part's
+change of slot applies to later actions.
 Answer on the client as well when prediction must stop the hand loop: a server-only
 answer cannot suppress an offhand attempt already predicted by the client.
 

@@ -192,6 +192,9 @@ impl Game<'_> {
             use mod_api::InteractionResult as Answer;
             use mod_api::{LogicalSide, TriState};
             use sunrise_world::level::UseBranch;
+            // MultiPlayerGameMode.useItemOn syncs the original slot before prediction.
+            // A Part can select a different slot, but not for this request.
+            self.remote_send_carried();
             // startPrediction reserves one sequence for the request, even if
             // the client does not apply a prediction.
             let seq = self.next_sequence();
@@ -606,10 +609,11 @@ impl Game<'_> {
         false
     }
 
-    /// A prediction, even a discarded one, sends the ordinary block-use request.
-    fn send_use_item_on(&mut self, hit: &crate::game::Hit, hand: Hand, sequence: i32) {
+    /// Send the ordinary block-use request, even for a discarded prediction.
+    /// The carried slot was already synced before prediction; don't sync it again here.
+    fn send_use_item_on(&self, hit: &crate::game::Hit, hand: Hand, sequence: i32) {
         let cursor = [0, 1, 2].map(|i| (hit.point[i] - f64::from(hit.pos[i])) as f32);
-        self.send(S::UseItemOn(play::UseItemOn {
+        self.send_play(S::UseItemOn(play::UseItemOn {
             hand: hand_id(hand),
             pos: hit.pos,
             face: i32::from(face_direction(hit.face)),
