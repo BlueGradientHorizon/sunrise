@@ -12,11 +12,12 @@ Gameplay tests run in its library test target, separately from the reusable libr
 There is no copy of gameplay in the executable's test target. Tools and probes depend only
 on the reusable library, so gameplay edits do not invalidate their builds.
 Gameplay is moving out of it (#2210): `sunrise-gameplay` takes the server side (vanilla's logical side) and
-`sunrise-client-gameplay` the client-only side. Waves 1 and 2 moved the modules that need no `Game` (mob families
-on the `MobLevel` and `CustomSpawnerLevel` traits, stats, block entity ticks, item areas, the server halves of
-`lan/` and `dedicated/`; occlusion and particle culling on the client side), and `game/` keeps the `impl Game` glue.
-`LanHost`, the types `World`, `ChunkMap`, `Mob` and `ItemEntity`, the level events and their dispatchers have not
-moved (wave 3 and later).
+`sunrise-client-gameplay` the client-only side. Waves 1 and 2 moved the modules that need no `Game` (the mob families
+on the `MobLevel` trait, the cat spawner's clock and picks and the wandering trader's state, stats, the block-entity
+ticker helpers, item areas, the server halves of `lan/` and `dedicated/`; occlusion and particle culling on the client
+side), and `game/` keeps the `impl Game` glue. `LanHost`, the types `World`, `ChunkMap`, `Mob` and `ItemEntity`, the
+level events and their dispatchers, the custom spawners' dispatch (`G/mobs/custom_spawners.rs`), the village siege
+(`G/mobs/raids/mod.rs`) and the block-entity tick loop (`G/blocks/block_entity_ticks.rs`) have not moved.
 
 Paths: `L/` = `crates/sunrise-client/src/`, `G/` = `crates/sunrise-client/src/game/`, `W/` =
 `crates/sunrise-world/src/`, `K/` = `crates/sunrise-client-core/src/`, `C/` = `crates/sunrise-command/src/`,
@@ -53,7 +54,7 @@ command above to inspect the selection rather than relying on historical counts.
 | 18 | Command execution (88) | `G/commands.rs`, `G/commands/*.rs`, `L/scoreboard_cmd.rs`, `L/data_cmd.rs`, `K/scoreboard.rs`, `G/functions.rs` | command_exec (corpus `tools/command_exec_corpus.py`), scoreboard, server_ops_feedback, lan_e2e commands |
 | 19 | Chunk streaming, light, tickets (85) | `R/streaming.rs`, `R/world.rs`, `R/chunk.rs`, `R/chunk_map.rs`, `R/light.rs`, `L/ticket_levels.rs`, `L/tick_chunk_membership.rs`, `G/world_loading.rs`, `G/world_entry.rs` | light, chunk_status, random_tick_sections; `cargo test -p sunrise-client --test streaming_meshes` |
 | 20 | Mob models and animation (78) | `L/mobs/render.rs`, `L/mobs/anim.rs`, `L/mobs/body_anim.rs`, `L/mobs/keyframes.rs`, `R/entity.wgsl` | entity_model |
-| 21 | Block behaviour, server side (78) | `W/level/` (`mod.rs`, `tick.rs`, `hooks.rs`, `data.rs`, `redstone.rs`, `place.rs`), `crates/sunrise-gameplay/src/block_entity_ticks.rs`, `G/moving_pistons.rs` | block_update, redstone, random_tick, simple_block, piston_movement, block_entity_tickers |
+| 21 | Block behaviour, server side (78) | `W/level/` (`mod.rs`, `tick.rs`, `hooks.rs`, `data.rs`, `redstone.rs`, `place.rs`), `G/block_entity_ticks.rs` (the ordered loop, mod dispatch, the ticking-state table; its eligibility and ticker-name helpers in `crates/sunrise-gameplay/src/block_entity_ticks.rs`), `G/moving_pistons.rs` | block_update, redstone, random_tick, simple_block, piston_movement, block_entity_tickers |
 | 22 | Player movement and collision (75) | `L/motion.rs` + `L/motion/`, `R/collisions.rs`, `W/entity_move.rs`, `W/player_travel.rs`, `W/collision.rs` | collision, entity_move, player_travel, living_motion, climbing, swimming; `python3 tools/test_native_scene_motion.py` |
 | 23 | Resource packs and models (65) | `R/packs.rs` + `R/packs/`, `R/pack_screen.rs`, `R/atlas_sources.rs`, `R/sprites.rs`, `R/model_library.rs`, `G/packs.rs`, `L/mobs/cem.rs`, `L/mobs/cem_anim.rs`, `R/block_entity_cem.rs`, `crates/sunrise-assets/`, `crates/sunrise-optifine/` | resource_pack, pack_selection, pack_screen, model_resolution, item_model, mipmap |
 | 24 | Container menus and inventory (61) | `L/menu.rs`, `L/container_screen.rs`, `R/containers.rs`, `L/creative.rs`; `G/menu_clicks.rs` (`fn menu_ops`, `fn click_inventory`), `G/inventory_input.rs`, `G/inventory_slots.rs` | menu_click, container_screen, creative, lan_e2e containers clicks |

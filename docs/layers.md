@@ -88,9 +88,10 @@ instead. They stay that way: the layer check fails when one takes `winit`, `wgpu
 `ureq`, or an engine crate outside the list (#13002). Most gameplay still lives in `sunrise-client`; step P of
 the [plan](#plan) moves it into `sunrise-gameplay` (what the server jar holds) and `sunrise-client-gameplay`
 (client only) over time. Done so far (#2210, waves 1 and 2): the modules that need no `Game`, such as the mob
-families on `MobLevel` and `CustomSpawnerLevel`, stats, block entity ticks, the server halves of `lan/` and
-`dedicated/`, and occlusion and particle culling. Not done: `LanHost`, the types `World`, `ChunkMap`, `Mob` and
-`ItemEntity`, level events and the dispatchers (wave 3 and later). `sunrise-gameplay` is not on the list yet: `portable.pending` in `tools/layers.json`
+families on `MobLevel`, the cat spawner's picks and the wandering trader's state, stats, the block-entity ticker
+helpers, the server halves of `lan/` and `dedicated/`, and occlusion and particle culling. Not done: `LanHost`, the
+types `World`, `ChunkMap`, `Mob` and `ItemEntity`, level events and the dispatchers, the custom spawners' dispatch and
+the village siege, and the block-entity tick loop. `sunrise-gameplay` is not on the list yet: `portable.pending` in `tools/layers.json`
 lets it take `sunrise-client-lib` until the types it needs move down, and only ever shrinks.
 
 ## Platform
