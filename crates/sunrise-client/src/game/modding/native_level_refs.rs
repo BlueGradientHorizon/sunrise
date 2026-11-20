@@ -2705,17 +2705,23 @@ mod tests {
     fn validation_sees_the_saved_tickets_not_ones_added_after_the_load() {
         with_machines(|game| {
             let level = game.level(game.dim.id()).unwrap();
+            let owner = mod_api::TicketOwner::Block([1, 64, 1]);
+            let live = game.level_chunk_ref(level, [5, 5]).unwrap();
+            {
+                let _guard = in_mod("machines");
+                assert!(game.chunk_set_mod_forced(live, quarry(), owner, true, false));
+            }
             let tickets = vec![saved("machines:quarry", [1, 64, 1], (7, 7))];
             game.streaming.load_forced(Default::default(), tickets);
             // `level_load` runs after the load: its hold is the same owner's.
             let fresh = game.level_chunk_ref(level, [6, 6]).unwrap();
             {
                 let _guard = in_mod("machines");
-                let owner = mod_api::TicketOwner::Block([1, 64, 1]);
                 assert!(game.chunk_set_mod_forced(fresh, quarry(), owner, true, false));
             }
             game.validate_mod_chunk_tickets(game.dim);
             assert!(!game.streaming.forced.contains(&(7, 7)), "saved one pruned");
+            assert!(game.streaming.forced.contains(&(5, 5)), "live one kept");
             assert!(game.streaming.forced.contains(&(6, 6)), "fresh one kept");
         });
     }
