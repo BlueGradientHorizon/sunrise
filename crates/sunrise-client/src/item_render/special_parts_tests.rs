@@ -2,17 +2,76 @@
 //! (`ItemEnv::special_model_parts`), with the `base` model's display transforms, particle and GUI
 //! light, in every display context and after a reload. Original assets: one cube A, two cubes B.
 use super::*;
+use mod_api::{
+    __private::parts_installation::item_key, ClientHost, ItemDisplayContext, ItemStack,
+    SpecialModelContext, SpecialModelFactory, SpecialModelPart, SpecialModelPolicy,
+    SpecialModelQuad, SpecialModelRenderer, SpecialPartContent, testing::FakeHost,
+};
 use std::fs;
 use sunrise_assets::{
-    item_model::{PreparedParts, SpecialContent, SpecialPart, register_special_model_types},
+    item_model::{PreparedParts, RegisteredSpecialModel, SpecialContent, SpecialPart},
+    math::Mat4 as AssetMatrix,
     resource_source::{Resource, ResourceRoot},
 };
 
-/// A for a stack of one, B for more, tinted; a stack of three names a model no pack has, and one
-/// of four is refused (the renderer failed); stacks of six and seven draw A tinted white and grey
-/// (encoded 0.5). The answer is prepared by the renderer that draws it.
-struct Pan<'r>(&'r ItemRenderer);
-impl ItemEnv for Pan<'_> {
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Pan {
+    handle: u8,
+}
+
+impl SpecialModelRenderer for Pan {
+    fn extract(
+        &self,
+        _: &dyn ClientHost,
+        input_stack: &ItemStack,
+        _: &SpecialModelContext,
+    ) -> Result<Vec<SpecialModelPart>, String> {
+        let stack_part = |key, count| {
+            SpecialModelPart::stack(
+                ItemStack::new(item_key(key), count).unwrap(),
+                ItemDisplayContext::Gui,
+            )
+        };
+        let part = |model| {
+            SpecialModelPart::new(model)
+                .translated([f32::from(self.handle) / 8.0, 0.0, 0.0])
+                .with_tints(vec![0xFFCC_2211])
+        };
+        let a = || part("spt:item/a");
+        let b = || part("spt:item/b");
+        let parts = match input_stack.count() {
+            1 => vec![a()],
+            3 => vec![a(), part("spt:item/nope")],
+            4 => return Err("the test renderer refuses this stack".into()),
+            5 => vec![
+                a().with_transform([2.0, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0]),
+            ],
+            6 | 7 => {
+                vec![a().with_tints(vec![[WHITE, GREY][input_stack.count() as usize - 6] as u32])]
+            }
+            // The plain cube item nested beside B; then the pan itself, a cycle.
+            8 => vec![stack_part(1, 1).translated([0.25, 0.0, 0.0]), b()],
+            9 => vec![stack_part(0, 9).translated([0.25, 0.0, 0.0])],
+            // A to B to A with a valid sibling model: the cycle refuses every answer above it.
+            10 => vec![b(), stack_part(0, 11)],
+            11 => vec![a(), stack_part(0, 10)],
+            // 64 cubes, 65, and the same below a first level: draws expand 1 + 64 and 1 + 63.
+            20 | 21 => (0..44 + input_stack.count())
+                .map(|_| stack_part(1, 1))
+                .collect(),
+            22 => vec![b(), stack_part(0, 20)],
+            23 => vec![b(), stack_part(0, 24)],
+            24 => (0..63).map(|_| stack_part(1, 1)).collect(),
+            _ => vec![b()],
+        };
+        Ok(parts)
+    }
+}
+
+/// Bridge the fixture's two synthetic items to the recipe consumer, without booting a game.
+struct PanEnv<'r>(&'r ItemRenderer, FakeHost);
+impl ItemEnv for PanEnv<'_> {
     fn special_model_parts(
         &self,
         base: &str,
@@ -20,67 +79,61 @@ impl ItemEnv for Pan<'_> {
         input_stack: &StackView,
         _: &Context,
     ) -> Option<PreparedParts> {
-        let model = model.0.downcast_ref::<RegisteredSpecialConfig>().unwrap();
-        assert_eq!((model.slot, base), (SpecialModelSlot(0), "spt:item/base"));
-        assert_eq!(model.config.get("handle"), Some(&Tag::Byte(2)));
-        let stack_part = |item: &str, count| SpecialPart {
-            content: SpecialContent::Stack {
-                stack: stack(item, count),
-                display: DisplayContext::Gui,
-            },
-            pose: sunrise_assets::math::Mat4::IDENTITY,
-            tints: Vec::new(),
-        };
-        let part = |model: &str| SpecialPart {
-            content: SpecialContent::Model(model.to_owned()),
-            pose: sunrise_assets::math::Mat4::translation([0.25, 0.0, 0.0]),
-            tints: vec![0xFFCC_2211_u32 as i32],
-        };
-        let parts = match input_stack.count {
-            1 => vec![part("spt:item/a")],
-            3 => vec![part("spt:item/a"), part("spt:item/nope")],
-            4 => return None,
-            5 => vec![SpecialPart {
-                pose: sunrise_assets::math::Mat4::IDENTITY.scale([2.0; 3]),
-                ..part("spt:item/a")
-            }],
-            6 | 7 => vec![SpecialPart {
-                tints: vec![[WHITE, GREY][input_stack.count as usize - 6]],
-                ..part("spt:item/a")
-            }],
-            // The plain cube item nested, then B; and the pan itself, a cycle.
-            8 => vec![
-                SpecialPart {
-                    content: SpecialContent::Stack {
-                        stack: stack("spt:cube", 1),
+        let model = model.0.downcast_ref::<BakedSpecialModel>().unwrap();
+        assert_eq!((model.kind.as_ref(), base), ("spt:pan", "spt:item/base"));
+        let api_stack = ItemStack::new(item_key(0), input_stack.count as u32).unwrap();
+        let parts: Vec<_> = model
+            .renderer
+            .extract(&self.1, &api_stack, &SpecialModelContext::STACK)
+            .ok()?
+            .into_iter()
+            .map(|part| {
+                let [a, b, c, d, e, f, g, h, i, j, k, l] = part.transform;
+                let content = match part.content {
+                    SpecialPartContent::Model(model) => SpecialContent::Model(model),
+                    SpecialPartContent::Stack {
+                        stack: inner,
+                        display: ItemDisplayContext::Gui,
+                    } => SpecialContent::Stack {
+                        stack: stack(
+                            if inner.item() == item_key(0) {
+                                "spt:pan"
+                            } else {
+                                "spt:cube"
+                            },
+                            inner.count() as i32,
+                        ),
                         display: DisplayContext::Gui,
                     },
-                    tints: Vec::new(),
-                    ..part("")
-                },
-                part("spt:item/b"),
-            ],
-            9 => vec![SpecialPart {
-                content: SpecialContent::Stack {
-                    stack: stack("spt:pan", 9),
-                    display: DisplayContext::Gui,
-                },
-                ..part("")
-            }],
-            // A to B to A with a valid sibling model: the cycle refuses every answer above it.
-            10 => vec![part("spt:item/b"), stack_part("spt:pan", 11)],
-            11 => vec![part("spt:item/a"), stack_part("spt:pan", 10)],
-            // 64 cubes, 65, and the same below a first level: draws expand 1 + 64 and 1 + 63.
-            20 | 21 => (0..44 + input_stack.count)
-                .map(|_| stack_part("spt:cube", 1))
-                .collect(),
-            22 => vec![part("spt:item/b"), stack_part("spt:pan", 20)],
-            23 => vec![part("spt:item/b"), stack_part("spt:pan", 24)],
-            24 => (0..63).map(|_| stack_part("spt:cube", 1)).collect(),
-            _ => vec![part("spt:item/b")],
-        };
+                    _ => unreachable!("the pan fixture only gives known recipes"),
+                };
+                SpecialPart {
+                    content,
+                    pose: AssetMatrix::from_row_major([
+                        a, b, c, d, e, f, g, h, i, j, k, l, 0.0, 0.0, 0.0, 1.0,
+                    ]),
+                    tints: part.tints.into_iter().map(|argb| argb as i32).collect(),
+                }
+            })
+            .collect();
         Some(self.0.prepare_parts(base, &parts))
     }
+}
+
+fn pan_factories(on_bake: impl Fn(u8) + Send + Sync + 'static) -> SpecialModelFactories {
+    BTreeMap::from([(
+        "spt:pan".into(),
+        (
+            SpecialModelPolicy::Stack,
+            SpecialModelFactory::new(
+                |config| config.decode::<Pan>(),
+                move |pan, _| {
+                    on_bake(pan.handle);
+                    Ok(pan)
+                },
+            ),
+        ),
+    )])
 }
 
 /// White and an encoded 0.5 grey, packed vanilla-space ARGB.
@@ -112,7 +165,12 @@ fn write(root: &std::path::Path, name: &str, data: &str) {
 }
 
 /// The packs in `root`, with B of `b_cubes` cubes.
-fn renderer(root: &std::path::Path, b_cubes: usize) -> ItemRenderer {
+fn renderer(
+    root: &std::path::Path,
+    b_cubes: usize,
+    handle: u8,
+    factories: &SpecialModelFactories,
+) -> ItemRenderer {
     write(root, "items.json", "{}");
     write(
         root,
@@ -134,7 +192,9 @@ fn renderer(root: &std::path::Path, b_cubes: usize) -> ItemRenderer {
     write(
         root,
         "assets/spt/items/pan.json",
-        r#"{"model":{"type":"minecraft:special","base":"spt:item/base","model":{"type":"spt:pan","handle":2}}}"#,
+        &format!(
+            r#"{{"model":{{"type":"minecraft:special","base":"spt:item/base","model":{{"type":"spt:pan","handle":{handle}}}}}}}"#
+        ),
     );
     write(
         root,
@@ -175,7 +235,16 @@ fn renderer(root: &std::path::Path, b_cubes: usize) -> ItemRenderer {
         sunrise_world::native_load_context::DataLoadOrigin::ClientPreload,
     )
     .unwrap();
-    ItemRenderer::load(&ResourceRoot::directory(root.to_path_buf()), &data).unwrap()
+    let root = ResourceRoot::directory(root.to_path_buf());
+    ItemRenderer::load_tables(
+        &root,
+        crate::model_library::ParsedModels::load(root.source()).into_item_library(),
+        true,
+        &data,
+        None,
+        Some(factories),
+    )
+    .unwrap()
 }
 
 fn stack(item: &str, count: i32) -> StackView {
@@ -209,7 +278,6 @@ fn quads(renderer: &ItemRenderer, state: &ItemRenderState) -> Vec<ItemQuad> {
 
 #[test]
 fn an_invalid_winning_registered_model_does_not_load_a_lower_pack() {
-    register_special_model_types(vec!["spt:pan".into()]);
     let item_path = "assets/spt/items/pan.json".to_owned();
     let lower = Resource::bytes(
         br#"{"model":{"type":"special","base":"spt:item/base","model":{"type":"spt:pan","handle":2}}}"#.to_vec(),
@@ -220,13 +288,63 @@ fn an_invalid_winning_registered_model_does_not_load_a_lower_pack() {
     let files = BTreeMap::from([
         (item_path.clone(), winner.clone()),
         ("assets/spt/items/other.json".to_owned(), lower.clone()),
+        ("assets/spt/items/decode-panic.json".to_owned(), Resource::bytes(
+            br#"{"model":{"type":"special","base":"spt:item/base","model":{"type":"spt:decode-panic"}}}"#.to_vec(),
+        )),
+        ("assets/spt/items/bake-panic.json".to_owned(), Resource::bytes(
+            br#"{"model":{"type":"special","base":"spt:item/base","model":{"type":"spt:bake-panic"}}}"#.to_vec(),
+        )),
     ]);
     let pack = ResourceSource::indexed_with_layers(
         files,
         BTreeMap::from([(item_path, vec![lower, winner])]),
     );
-    let definitions = load_definitions(&pack);
-    assert!(!definitions.contains_key("spt:pan"));
+    let temp = tempfile::tempdir().unwrap();
+    let directory = temp.path();
+    write(directory, "items.json", "{}");
+    let item_data = crate::test_resources::item_data(
+        directory,
+        sunrise_world::native_load_context::DataLoadOrigin::ClientPreload,
+    )
+    .unwrap();
+    let root = ResourceRoot::new(directory.to_owned(), directory.to_owned(), pack);
+    let mut factories = pan_factories(|_| {});
+    factories.extend([
+        (
+            "spt:decode-panic".into(),
+            (
+                SpecialModelPolicy::Stack,
+                SpecialModelFactory::new(
+                    |_| -> Result<Pan, String> { panic!("decoder panicked") },
+                    |pan, _| Ok(pan),
+                ),
+            ),
+        ),
+        (
+            "spt:bake-panic".into(),
+            (
+                SpecialModelPolicy::Stack,
+                SpecialModelFactory::new(
+                    |_| Ok(()),
+                    |(), _| -> Result<Pan, String> { panic!("baker panicked") },
+                ),
+            ),
+        ),
+    ]);
+    let renderer = ItemRenderer::load_tables(
+        &root,
+        crate::model_library::ParsedModels::load(root.source()).into_item_library(),
+        true,
+        &item_data,
+        None,
+        Some(&factories),
+    )
+    .unwrap();
+    let definitions = &renderer.models.definitions;
+    assert_eq!(
+        definitions.keys().map(String::as_str).collect::<Vec<_>>(),
+        ["spt:other"]
+    );
     assert!(matches!(
         &definitions["spt:other"].model,
         sunrise_assets::item_model::ItemModelNode::RegisteredSpecial { .. },
@@ -234,18 +352,125 @@ fn an_invalid_winning_registered_model_does_not_load_a_lower_pack() {
 }
 
 #[test]
+fn a_generation_bakes_typed_config_once_and_draws_use_the_baked_instance() {
+    let temp = tempfile::tempdir().unwrap();
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let factories = pan_factories({
+        let calls = Arc::clone(&calls);
+        move |handle| calls.lock().unwrap().push(handle)
+    });
+    let draw = |renderer: &ItemRenderer| {
+        let env = PanEnv(renderer, FakeHost::new());
+        let state = renderer.resolve(
+            &stack("spt:pan", 1),
+            DisplayContext::None,
+            None,
+            None,
+            0,
+            &env,
+        );
+        assert_eq!(quads(renderer, &state).len(), 6);
+        let (lo, hi) = state.bounding_box();
+        (lo.x, hi.x)
+    };
+    let first = renderer(temp.path(), 2, 2, &factories);
+    assert_eq!(*calls.lock().unwrap(), [2]);
+    assert_eq!(draw(&first), (-0.25, 0.0));
+    assert_eq!(draw(&first), (-0.25, 0.0));
+    assert_eq!(*calls.lock().unwrap(), [2]);
+
+    let second = renderer(temp.path(), 2, 4, &factories);
+    assert_eq!(*calls.lock().unwrap(), [2, 4]);
+    assert_eq!(draw(&second), (0.0, 0.25));
+    assert_eq!(draw(&first), (-0.25, 0.0));
+    assert_eq!(draw(&second), (0.0, 0.25));
+    assert_eq!(*calls.lock().unwrap(), [2, 4]);
+}
+
+#[test]
+fn special_geometry_leases_resolve_pack_sprites_and_reject_invalid_quads() {
+    let temp = tempfile::tempdir().unwrap();
+    let leases = Arc::new(Mutex::new(None));
+    let bake = {
+        let leases = Arc::clone(&leases);
+        move |pan, context: &dyn mod_api::SpecialModelBakeContext| {
+            let positions = [
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [1.0, 1.0, 0.0],
+                [0.0, 1.0, 0.0],
+            ];
+            let mut quad = SpecialModelQuad::new(
+                positions,
+                [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]],
+                "spt:item/grey",
+            );
+            quad.tint_index = Some(2);
+            quad.light_emission = 12;
+            quad.force_translucent = true;
+            let resource = context.bake_model("spt:item/b")?;
+            let custom = context.bake_geometry(&[quad.clone()])?;
+            let invalid: [(&str, fn(&mut SpecialModelQuad)); 6] = [
+                ("non-finite", |q| q.positions[0][0] = f32::NAN),
+                ("facing", |q| q.positions = [[0.0; 3]; 4]),
+                ("UV", |q| q.uv[0][0] = -1.0),
+                ("light", |q| q.light_emission = 16),
+                ("tint", |q| q.tint_index = Some(u32::MAX)),
+                ("missing", |q| q.sprite = "spt:item/not-present".into()),
+            ];
+            for (message, invalidate) in invalid {
+                let mut invalid_quad = quad.clone();
+                invalidate(&mut invalid_quad);
+                match context.bake_geometry(&[invalid_quad]) {
+                    Err(error) if error.contains(message) => {}
+                    _ => return Err(format!("did not reject invalid {message}")),
+                }
+            }
+            *leases.lock().unwrap() = Some((resource, custom));
+            Ok(pan)
+        }
+    };
+    let factories = BTreeMap::from([(
+        "spt:pan".into(),
+        (
+            SpecialModelPolicy::Stack,
+            SpecialModelFactory::new(|config| config.decode::<Pan>(), bake),
+        ),
+    )]);
+    let renderer = renderer(temp.path(), 2, 2, &factories);
+    assert!(renderer.models.definitions.contains_key("spt:pan"));
+    let (resource, custom) = leases.lock().unwrap().take().unwrap();
+    let resource = resource.downcast_ref::<BakedSpecialGeometry>().unwrap();
+    assert_eq!(resource.model.quads.len(), 12);
+    let custom = custom.downcast_ref::<BakedSpecialGeometry>().unwrap();
+    assert_eq!(
+        custom.extents.as_slice(),
+        [Vec3::ZERO, Vec3::X, Vec3::new(1.0, 1.0, 0.0), Vec3::Y]
+    );
+    let [quad] = custom.model.quads.as_slice() else {
+        panic!("expected one custom quad")
+    };
+    assert_eq!(quad.facing, Direction::South);
+    assert_eq!(quad.material.sprite, "spt:item/grey");
+    assert!(quad.material.force_translucent);
+    assert_eq!(quad.tint_index, 2);
+    assert_eq!(quad.light_emission, 12);
+}
+
+#[test]
 #[ignore = "daily"]
 fn a_registered_special_model_draws_its_renderers_resource_models() {
     let root = std::env::temp_dir().join(format!("sunrise-special-parts-{}", std::process::id()));
-    register_special_model_types(vec!["spt:pan".into()]);
     write(
         &root,
         "assets/spt/items/bundle.json",
         r#"{"model":{"type":"bundle/selected_item"}}"#,
     );
-    let renderer = renderer(&root, 2);
+    let factories = pan_factories(|_| {});
+    let renderer = renderer(&root, 2, 2, &factories);
+    let env = PanEnv(&renderer, FakeHost::new());
     let resolve = |item: &str, count, display| {
-        renderer.resolve(&stack(item, count), display, None, None, 0, &Pan(&renderer))
+        renderer.resolve(&stack(item, count), display, None, None, 0, &env)
     };
 
     // A or B, in the inventory and in hand, tinted and with the base's particle and GUI light.
@@ -342,7 +567,7 @@ fn a_registered_special_model_draws_its_renderers_resource_models() {
             }
         }])),
     );
-    let picked = renderer.resolve(&bundle, DisplayContext::Gui, None, None, 0, &Pan(&renderer));
+    let picked = renderer.resolve(&bundle, DisplayContext::Gui, None, None, 0, &env);
     let quads_picked = quads(&renderer, &picked);
     assert_eq!(quads_picked.len(), 12);
     assert!(quads_picked.iter().all(|quad| quad.foil == Foil::Standard));
@@ -351,14 +576,14 @@ fn a_registered_special_model_draws_its_renderers_resource_models() {
     assert!(is_missing(&resolve("spt:stranger", 1, DisplayContext::Gui)));
 
     // A reload that makes B three cubes draws 18 quads for the same stack.
-    let reloaded = super::special_parts_tests::renderer(&root, 3);
+    let reloaded = super::special_parts_tests::renderer(&root, 3, 2, &factories);
     let state = reloaded.resolve(
         &stack("spt:pan", 2),
         DisplayContext::Gui,
         None,
         None,
         0,
-        &Pan(&reloaded),
+        &PanEnv(&reloaded, FakeHost::new()),
     );
     assert_eq!(quads(&reloaded, &state).len(), 18);
     fs::remove_dir_all(root).unwrap();
@@ -376,8 +601,8 @@ fn an_old_state_draws_across_a_reload_and_releases_its_models_once() {
         "sunrise-special-parts-lease-{}",
         std::process::id()
     ));
-    register_special_model_types(vec!["spt:pan".into()]);
-    let before = renderer(&root, 2);
+    let factories = pan_factories(|_| {});
+    let before = renderer(&root, 2, 2, &factories);
     let resolve = |renderer: &ItemRenderer| {
         renderer.resolve(
             &stack("spt:pan", 2),
@@ -385,7 +610,7 @@ fn an_old_state_draws_across_a_reload_and_releases_its_models_once() {
             None,
             None,
             0,
-            &Pan(renderer),
+            &PanEnv(renderer, FakeHost::new()),
         )
     };
     let (old, also_old) = (resolve(&before), resolve(&before));
@@ -393,7 +618,7 @@ fn an_old_state_draws_across_a_reload_and_releases_its_models_once() {
         panic!("not quads: {:?}", old.layers[0].geometry);
     };
     let b = Arc::downgrade(b);
-    let after = renderer(&root, 3);
+    let after = renderer(&root, 3, 2, &factories);
     drop(before);
     assert_eq!(quads(&after, &old).len(), 12);
     assert_eq!(quads(&after, &resolve(&after)).len(), 18);
@@ -416,8 +641,9 @@ fn an_old_state_draws_across_a_reload_and_releases_its_models_once() {
 fn a_parts_tint_reaches_the_vertices_as_a_vanilla_tint_does() {
     let root =
         std::env::temp_dir().join(format!("sunrise-special-parts-tint-{}", std::process::id()));
-    register_special_model_types(vec!["spt:pan".into()]);
-    let renderer = renderer(&root, 2);
+    let factories = pan_factories(|_| {});
+    let renderer = renderer(&root, 2, 2, &factories);
+    let env = PanEnv(&renderer, FakeHost::new());
     let colours = |item: &str, count| {
         let state = renderer.resolve(
             &stack(item, count),
@@ -425,7 +651,7 @@ fn a_parts_tint_reaches_the_vertices_as_a_vanilla_tint_does() {
             None,
             None,
             0,
-            &Pan(&renderer),
+            &env,
         );
         quads(&renderer, &state)
             .iter()

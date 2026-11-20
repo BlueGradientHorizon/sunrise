@@ -175,23 +175,16 @@ impl ItemEnv for Env<'_, '_> {
         stack: &StackView,
         ctx: &sunrise_assets::item_model::Context,
     ) -> Option<sunrise_assets::item_model::PreparedParts> {
-        let model = model
-            .0
-            .downcast_ref::<item_render::RegisteredSpecialConfig>()?;
+        let model = model.0.downcast_ref::<item_render::BakedSpecialModel>()?;
         let Ok(display) = ctx.display.try_into_api();
         let context = mod_api::SpecialModelContext::new(
             display,
             ctx.level.map(|level| level.game_time),
             self.game.frame_world_partial_tick() as f32,
         );
-        super::native_special_renderers::parts(
-            self.game,
-            model.slot,
-            &model.config,
-            stack,
-            &context,
-            |parts| self.game.pack.item_renderer.prepare_parts(base, parts),
-        )
+        super::native_special_renderers::parts(self.game, model, stack, &context, |parts| {
+            self.game.pack.item_renderer.prepare_parts(base, parts)
+        })
     }
     fn stack_fluid(&self, stack: &StackView) -> Option<&str> {
         // Vanilla's items keep vanilla's closed set; only a mod's own item asks its parts.

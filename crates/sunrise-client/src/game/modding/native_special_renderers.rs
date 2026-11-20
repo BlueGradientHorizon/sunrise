@@ -1,42 +1,30 @@
 //! Special item models drawn by mods' renderers on the client:
 //! `native_register_special_model_renderer` (NeoForge's `RegisterSpecialModelRendererEvent`) is
 //! asked once at start, before resources load, and its types are what a `minecraft:special` model
-//! may name besides vanilla's, or in place of one; a model resolves its type to the renderer's
-//! slot when it decodes. When an item of such a model is resolved for drawing, on the main thread,
-//! the type's renderer answers the resource models to draw (`ItemEnv::special_model_parts`),
-//! checked here, then prepared by the item renderer, which bakes them once. A renderer registered
-//! with `SpecialModelPolicy::Stack` has its answer kept by the stack for each model node for as
-//! long as that stack is drawn unchanged, so it is asked once across frames, every display
-//! context draws the same answer, and a draw looks nothing up by name. One registered with
-//! `Frame` is asked for each frame, display context and game time an item is drawn with, and
-//! its answers are kept only for that frame of that view.
-use super::native_entity_renderers::Resolved;
+//! may name besides vanilla's, or in place of one. Each model node has its own baked renderer.
+//! The draw asks it for parts, checked here and prepared by the item renderer. Under `Stack`
+//! the answer is kept for as long as every frame draws the unchanged stack; under `Frame` it
+//! is kept only for the same frame, view, display context and game time.
 use mod_api::{
     ClientHost, ItemDisplayContext, MAX_NESTED_STACK_PARTS, MAX_SPECIAL_MODEL_PARTS,
-    SpecialModelContext, SpecialModelPart, SpecialModelPolicy, SpecialModelRenderer,
-    SpecialPartContent,
+    SpecialModelContext, SpecialModelPart, SpecialModelPolicy, SpecialPartContent,
 };
 use serde_json::Value;
 use std::{
     hash::{Hash, Hasher},
-    sync::{Arc, LazyLock, Mutex, MutexGuard, OnceLock, PoisonError, atomic::Ordering},
+    sync::{
+        LazyLock, Mutex, MutexGuard, PoisonError,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 use sunrise_assets::{
-    item_model::{PreparedParts, SpecialContent, SpecialModelSlot, SpecialPart, StackView},
+    item_model::{PreparedParts, SpecialContent, SpecialPart, StackView},
     math::Mat4,
 };
-use sunrise_client::fast_hash::{FxHashMap, FxHasher};
-use sunrise_core::nbt::Tag;
-
-/// The registrations, by slot ([`SpecialModelSlot`]): each type and its renderer, kept once at
-/// start.
-static REGISTERED: OnceLock<
-    Vec<(
-        String,
-        SpecialModelPolicy,
-        Resolved<dyn SpecialModelRenderer>,
-    )>,
-> = OnceLock::new();
+use sunrise_client::{
+    fast_hash::{FxHashMap, FxHasher},
+    item_render::BakedSpecialModel,
+};
 
 /// The prepared answers of the stacks drawn since the last frame began.
 static ANSWERS: LazyLock<Mutex<Answers>> = LazyLock::new(Mutex::default);
@@ -45,26 +33,8 @@ fn answers() -> MutexGuard<'static, Answers> {
     ANSWERS.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// Keeps the mods' registrations in slot order, once per process (false when they already were).
-pub(super) fn register(
-    renderers: Vec<(String, SpecialModelPolicy, Arc<dyn SpecialModelRenderer>)>,
-) -> bool {
-    REGISTERED
-        .set(
-            renderers
-                .into_iter()
-                .map(|(kind, policy, renderer)| (kind, policy, Resolved::new(renderer)))
-                .collect(),
-        )
-        .is_ok()
-}
-
-/// On every resource reload: the renderers that failed are asked again, and no answer is kept
-/// (the model nodes and baked models they belonged to are gone).
+/// On a committed resource reload, drop prepared answers from the old renderer.
 pub(in crate::game) fn reload() {
-    for (_, _, resolved) in REGISTERED.get().into_iter().flatten() {
-        resolved.failed.store(false, Ordering::Relaxed);
-    }
     let mut answers = answers();
     answers.kept.clear();
     answers.refused.clear();
@@ -77,36 +47,32 @@ pub(in crate::game) fn begin_frame(view: usize) {
     answers().begin_frame(view);
 }
 
-/// What the renderer of `slot` draws for `stack` in the model node of `config`, drawn as
-/// `context` says: under `Stack`, the kept answer when this node drew an equal stack last frame or
-/// this one, else the renderer's, checked, prepared by `prepare` and kept; under `Frame`, the
-/// answer of this frame for the same stack, display context and time, else the renderer's. `None`
-/// when no mod registered it, when it failed since resources last loaded, or when it fails now.
+/// The baked model node's answer for `stack`, retained according to its policy. `None` for a
+/// renderer that fails now or whose type has failed in this resource load.
 pub(in crate::game) fn parts(
     host: &dyn ClientHost,
-    slot: SpecialModelSlot,
-    config: &Arc<Tag>,
+    model: &BakedSpecialModel,
     stack: &StackView,
     context: &SpecialModelContext,
     prepare: impl FnOnce(&[SpecialPart]) -> PreparedParts,
 ) -> Option<PreparedParts> {
-    let (kind, policy, resolved) = REGISTERED.get()?.get(slot.0 as usize)?;
-    if resolved.failed.load(Ordering::Relaxed) {
+    let kind = &model.kind;
+    if model.failed.load(Ordering::Relaxed) {
         return None;
     }
-    let (frame, context) = match policy {
+    let (frame, context) = match model.policy {
         SpecialModelPolicy::Frame => (Some(FrameTiming::of(context)), context),
         _ => (None, &SpecialModelContext::STACK),
     };
-    answer(&ANSWERS, Arc::as_ptr(config) as usize, stack, frame, || {
+    answer(&ANSWERS, model.node, stack, frame, || {
         // A stack the API can't take is refused alone: the renderer isn't at fault.
         use super::api_values::TryIntoApi;
         let api_stack = stack
             .try_into_api()
             .map_err(|e| warn_unreadable_once(kind, &stack.item, || format!("{e:?}")))
             .ok()?;
-        let parts = guarded(kind, resolved, || {
-            resolved.inner.extract(host, &api_stack, context)
+        let parts = guarded(kind, &model.failed, || {
+            model.renderer.extract(host, &api_stack, context)
         })?;
         Some(prepare(&parts))
     })
@@ -207,8 +173,7 @@ fn answer(
     Some(prepared)
 }
 
-/// The prepared answers kept, by model node (its `config`'s address, stable until resources
-/// reload) and the stack's [`stack_hash`].
+/// The prepared answers kept by baked model node and the stack's [`stack_hash`].
 #[derive(Default)]
 struct Answers {
     /// Counts the frames begun, by any view.
@@ -323,15 +288,15 @@ fn value_hash(value: &Value) -> u64 {
     h.finish()
 }
 
-/// Runs `extract` for the renderer `resolved` of `kind` and checks its answer: `None`, with
+/// Runs `extract` for the renderer of `kind` and checks its answer: `None`, with
 /// `failed` set and logged once, when it returns an `Err`, panics or answers parts the resolver
 /// refuses.
 fn guarded(
     kind: &str,
-    resolved: &Resolved<dyn SpecialModelRenderer>,
+    failed: &AtomicBool,
     extract: impl FnOnce() -> Result<Vec<SpecialModelPart>, String>,
 ) -> Option<Vec<SpecialPart>> {
-    if resolved.failed.load(Ordering::Relaxed) {
+    if failed.load(Ordering::Relaxed) {
         return None;
     }
     let answer = std::panic::catch_unwind(std::panic::AssertUnwindSafe(extract))
@@ -340,7 +305,7 @@ fn guarded(
     match answer {
         Ok(parts) => Some(parts),
         Err(error) => {
-            if !resolved.failed.swap(true, Ordering::Relaxed) {
+            if !failed.swap(true, Ordering::Relaxed) {
                 log::warn!(
                     "Sunrise: the special model renderer of {kind} failed ({error}); its models draw the missing model until resources reload"
                 );
@@ -422,27 +387,12 @@ fn kept_answers() -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    struct Unused;
-    impl SpecialModelRenderer for Unused {
-        fn extract(
-            &self,
-            _: &dyn ClientHost,
-            _: &mod_api::ItemStack,
-            _: &SpecialModelContext,
-        ) -> Result<Vec<SpecialModelPart>, String> {
-            unreachable!("the tests answer through `guarded`'s closure")
-        }
-    }
-
-    fn renderer() -> Resolved<dyn SpecialModelRenderer> {
-        Resolved::new(Arc::new(Unused))
-    }
+    use std::sync::Arc;
 
     /// A renderer's parts reach the resolver posed by their row-major transform and tinted.
     #[test]
     fn parts_reach_the_resolver_posed_and_tinted() {
-        let parts = guarded("t:pan", &renderer(), || {
+        let parts = guarded("t:pan", &AtomicBool::new(false), || {
             Ok(vec![
                 SpecialModelPart::new("t:item/a")
                     .translated([1.0, 2.0, 3.0])
@@ -612,26 +562,26 @@ mod tests {
             Box::new(move || Ok(vec![SpecialModelPart::new("t:item/b"), nan.clone()])),
         ];
         for fail in failures {
-            let resolved = renderer();
-            assert_eq!(guarded("t:pan", &resolved, fail), None);
+            let failed = AtomicBool::new(false);
+            assert_eq!(guarded("t:pan", &failed, fail), None);
             let mut asked = false;
             assert_eq!(
-                guarded("t:pan", &resolved, || {
+                guarded("t:pan", &failed, || {
                     asked = true;
                     Ok(Vec::new())
                 }),
                 None
             );
             assert!(!asked, "a failed renderer is asked again before reload");
-            resolved.failed.store(false, Ordering::Relaxed);
+            failed.store(false, Ordering::Relaxed);
             assert_eq!(
-                guarded("t:pan", &resolved, || Ok(Vec::new())),
+                guarded("t:pan", &failed, || Ok(Vec::new())),
                 Some(Vec::new())
             );
         }
         let full = vec![SpecialModelPart::new("t:item/a"); MAX_SPECIAL_MODEL_PARTS];
         assert_eq!(
-            guarded("t:pan", &renderer(), || Ok(full)).map(|parts| parts.len()),
+            guarded("t:pan", &AtomicBool::new(false), || Ok(full)).map(|parts| parts.len()),
             Some(MAX_SPECIAL_MODEL_PARTS)
         );
     }

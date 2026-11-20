@@ -127,7 +127,7 @@ fn a_special_type_draws_by_its_renderer_or_fails_by_name() {
     // A mod may replace a vanilla type: its models then go to the mod's renderer.
     let skillet = RegisteredSpecialModel(Arc::new(2));
     let bell = RegisteredSpecialModel(Arc::new(()));
-    let load = |kind: &str, base: &str, json: &Value| {
+    let load = |kind: &str, base: &str, json: &Map<String, Value>| {
         Ok(match kind {
             "foreigntest:skillet" => {
                 assert_eq!(base, "minecraft:item/pan");
@@ -158,7 +158,7 @@ fn a_special_type_draws_by_its_renderer_or_fails_by_name() {
 
 #[test]
 fn a_registered_vanilla_override_error_rejects_only_its_enclosing_item() {
-    let load = |kind: &str, _: &str, _: &Value| match kind {
+    let load = |kind: &str, _: &str, _: &Map<String, Value>| match kind {
         "minecraft:bell" => Err("the bell override rejected its model".into()),
         _ => Ok(None),
     };

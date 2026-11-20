@@ -23,10 +23,9 @@ mod mod_properties;
 mod special;
 pub use fluid_container::{FluidAppearance, FluidContainer, FluidContainerTextures};
 pub use mod_properties::{
-    SpecialModelSlot, is_item_model_type, is_mod_id, is_range_property, is_select_property,
-    is_skull_kind, is_tint_source, keep_mod_ids, register_item_models, register_range_properties,
-    register_select_properties, register_skull_kinds, register_special_model_types,
-    register_tint_sources, special_model_slot,
+    is_item_model_type, is_mod_id, is_range_property, is_select_property, is_skull_kind,
+    is_tint_source, keep_mod_ids, register_item_models, register_range_properties,
+    register_select_properties, register_skull_kinds, register_tint_sources,
 };
 pub use special::{SpecialKind, SpecialModel};
 
@@ -364,11 +363,15 @@ fn channel(v: f32) -> i32 {
 /// Engine callback for a special renderer's model object, called while loading the item
 /// definition. The ids are canonical. `Ok(None)` lets the builtin decoder handle the type;
 /// `Err` rejects the enclosing definition, even if the type is also builtin.
-pub type SpecialModelLoader<'a> =
-    dyn Fn(&str, &str, &Value) -> std::result::Result<Option<RegisteredSpecialModel>, String> + 'a;
+pub type SpecialModelLoader<'a> = dyn Fn(
+        &str,
+        &str,
+        &Map<String, Value>,
+    ) -> std::result::Result<Option<RegisteredSpecialModel>, String>
+    + 'a;
 
-/// A registered special renderer's decoded model. The payload is opaque to assets; the
-/// decoder and draw host agree on its type. Clones retain the same model identity.
+/// A registered special renderer's baked model. The payload is opaque to assets; the
+/// baker and draw host agree on its type. Clones retain the same model identity.
 #[derive(Clone)]
 pub struct RegisteredSpecialModel(pub Arc<dyn std::any::Any + Send + Sync>);
 impl std::fmt::Debug for RegisteredSpecialModel {
@@ -613,7 +616,7 @@ impl ItemModelNode {
                 let kind = ident(required(fields, "type")?)?;
                 // A registration may replace a vanilla decoder. A refusal is an error, not a miss.
                 let registered = match loader {
-                    Some(load) => load(&kind, &base, model).map_err(DecodeError)?,
+                    Some(load) => load(&kind, &base, fields).map_err(DecodeError)?,
                     None => None,
                 };
                 match registered {
@@ -1216,7 +1219,7 @@ pub trait ItemEnv {
     ) {
     }
     /// Prepare a registered model's answer for the stack that selected the node, in `ctx`.
-    /// `model` is the payload decoded for this node at load. `None` when the renderer refused
+    /// `model` is the renderer baked for this node at load. `None` when the renderer refused
     /// or failed: the layer draws the missing model. Nothing draws for an empty answer.
     fn special_model_parts(
         &self,

@@ -1,17 +1,174 @@
-//! Preparation and expansion of registered special item renderers' recipes.
-use super::{ItemRenderState, ItemRenderer, LayerGeometry, LayerRender, glam_matrix, sprite_name};
+//! Baking special model nodes at load and preparing their recipes at draw time.
+use super::{
+    ItemRenderState, ItemRenderer, LayerGeometry, LayerRender, corners, glam_matrix, sprite_name,
+};
 use glam::Vec3;
-use std::sync::{Arc, Mutex};
-use sunrise_assets::{
-    item_bake::BakedItemModel,
-    item_model::{
-        DisplayContext, FoilType, ItemEnv, LayerTransform, LevelState, OwnerState, PreparedParts,
-        SpecialContent, StackView,
+use mod_api::{
+    SpecialModelBakeContext, SpecialModelConfig, SpecialModelFactory, SpecialModelGeometry,
+    SpecialModelPolicy, SpecialModelQuad, SpecialModelRenderer,
+};
+use std::{
+    collections::BTreeMap,
+    sync::{
+        Arc, Mutex, OnceLock, PoisonError,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
+};
+use sunrise_assets::{
+    DecodeError,
+    bake::{ModelQuad, facing},
+    item_bake::{BakedItemModel, MISSING_SPRITE, SpriteLookup, bake_resolved},
+    item_model::{
+        ClientItem, DisplayContext, FoilType, ItemEnv, LayerTransform, LevelState, OwnerState,
+        PreparedParts, RegisteredSpecialModel, SpecialContent, StackView, identifier,
+    },
+    model::Material,
     resolve::MISSING_MODEL,
 };
 
+pub type SpecialModelFactories = BTreeMap<String, (SpecialModelPolicy, SpecialModelFactory)>;
+
+pub(super) static FACTORIES: OnceLock<SpecialModelFactories> = OnceLock::new();
+
+/// Install the winning factories before the first client resource load. A type may replace a
+/// builtin, but must be a fully qualified resource identifier.
+pub fn install_special_model_factories(mut factories: SpecialModelFactories) -> bool {
+    factories.retain(|kind, _| {
+        let valid = identifier(kind).is_ok_and(|canonical| canonical == kind.as_str());
+        if !valid {
+            log::warn!("special model type {kind:?} is not <namespace>:<path>");
+        }
+        valid
+    });
+    FACTORIES.set(factories).is_ok()
+}
+
+/// One baked `minecraft:special` node. Every resource load owns its own instances and failures.
+pub struct BakedSpecialModel {
+    /// A unique answer-cache key, even when a node's storage is reused after a reload.
+    pub node: usize,
+    pub kind: Box<str>,
+    pub policy: SpecialModelPolicy,
+    pub renderer: Arc<dyn SpecialModelRenderer>,
+    /// A draw failure disables this type in this resource load only.
+    pub failed: Arc<AtomicBool>,
+}
+
+/// The item geometry and extents retained by an API lease from this bake context.
+pub struct BakedSpecialGeometry {
+    pub model: Arc<BakedItemModel>,
+    pub extents: Arc<Vec<Vec3>>,
+}
+
+impl BakedSpecialGeometry {
+    fn lease(model: BakedItemModel) -> SpecialModelGeometry {
+        SpecialModelGeometry::new(Self {
+            extents: Arc::new(corners(&model)),
+            model: Arc::new(model),
+        })
+    }
+}
+
+struct SpecialBaker<'a>(&'a ItemRenderer);
+
+impl SpecialModelBakeContext for SpecialBaker<'_> {
+    fn bake_model(&self, model: &str) -> Result<SpecialModelGeometry, String> {
+        let model = self
+            .0
+            .library
+            .resolve_required(model)
+            .map_err(|error| error.to_string())?;
+        let model = bake_resolved(&model, &self.0.sprites).map_err(|error| error.to_string())?;
+        Ok(BakedSpecialGeometry::lease(model))
+    }
+
+    fn bake_geometry(&self, quads: &[SpecialModelQuad]) -> Result<SpecialModelGeometry, String> {
+        let mut baked = Vec::with_capacity(quads.len());
+        for (index, quad) in quads.iter().enumerate() {
+            if quad.positions.iter().flatten().any(|v| !v.is_finite()) {
+                return Err(format!("quad {index}: non-finite position"));
+            }
+            let facing =
+                facing(&quad.positions).ok_or_else(|| format!("quad {index}: invalid facing"))?;
+            if quad.uv.iter().flatten().any(|v| !(0.0..=1.0).contains(v)) {
+                return Err(format!("quad {index}: UV is outside [0, 1]"));
+            }
+            if quad.light_emission > 15 {
+                return Err(format!("quad {index}: light emission is over 15"));
+            }
+            let tint_index = quad
+                .tint_index
+                .map_or(Ok(-1), i32::try_from)
+                .map_err(|_| format!("quad {index}: tint index is out of range"))?;
+            let sprite =
+                identifier(&quad.sprite).map_err(|error| format!("quad {index}: {error}"))?;
+            if sprite != MISSING_SPRITE && self.0.sprites.mask(&sprite).is_none() {
+                return Err(format!("quad {index}: sprite {sprite} is missing"));
+            }
+            baked.push(ModelQuad {
+                positions: quad.positions,
+                uv: quad.uv,
+                facing,
+                cull: None,
+                material: Material {
+                    sprite,
+                    force_translucent: quad.force_translucent,
+                },
+                tint_index,
+                shade_direction_override: None,
+                light_emission: quad.light_emission,
+                light: [quad.light_emission, 0],
+                color: None,
+                ambient_occlusion: None,
+                render_type: None,
+                shade: true,
+            });
+        }
+        let model = BakedItemModel {
+            quads: baked,
+            uses_block_light: false,
+            particle: Material {
+                sprite: MISSING_SPRITE.to_owned(),
+                force_translucent: false,
+            },
+            transforms: Default::default(),
+        };
+        Ok(BakedSpecialGeometry::lease(model))
+    }
+}
+
 impl ItemRenderer {
+    /// Decode an item definition, baking its registered special nodes against this renderer's
+    /// selected models and sprites. Any failed decode or bake refuses the enclosing definition.
+    pub fn decode_definition(
+        &self,
+        text: &str,
+        factories: Option<&SpecialModelFactories>,
+    ) -> Result<ClientItem, DecodeError> {
+        static NEXT_NODE: AtomicUsize = AtomicUsize::new(0);
+        ClientItem::from_json_with_specials(text, &|kind, _, fields| {
+            let Some((policy, factory)) = factories.and_then(|factories| factories.get(kind))
+            else {
+                return Ok(None);
+            };
+            let renderer = factory
+                .bake(SpecialModelConfig::new(fields), &SpecialBaker(self))
+                .map_err(|error| format!("special model {kind}: {error}"))?;
+            let mut failures = self
+                .special_failures
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            let failed = failures.entry(kind.to_owned()).or_default().clone();
+            Ok(Some(RegisteredSpecialModel(Arc::new(BakedSpecialModel {
+                node: NEXT_NODE.fetch_add(1, Ordering::Relaxed),
+                kind: kind.into(),
+                policy: *policy,
+                renderer,
+                failed,
+            }))))
+        })
+    }
+
     /// A special model renderer's answer `parts` for a model node of `base`, prepared to draw:
     /// `base` and each part's model baked, once, when the answer is accepted, so a draw looks
     /// nothing up by name. A part naming a model the packs don't have refuses them all, and the

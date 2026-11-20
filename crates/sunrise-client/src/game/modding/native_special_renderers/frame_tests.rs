@@ -3,10 +3,16 @@
 //! `docs/design/mod-api/resource-renderers.md`). Each test runs alone in its own process: it
 //! registers the process's renderers and changes the game's stick into a special model.
 use crate::game::Game;
-use mod_api::{ClientHost, ItemStack, SpecialModelPart, SpecialModelRenderer};
-use std::sync::{Arc, Mutex, Once};
-use sunrise_assets::item_model::{DisplayContext, register_special_model_types};
-use sunrise_client::item_render::{ItemRenderState, decode_definition};
+use mod_api::{
+    ClientHost, ItemStack, SpecialModelFactory, SpecialModelPart, SpecialModelPolicy,
+    SpecialModelRenderer,
+};
+use std::{
+    collections::BTreeMap,
+    sync::{Arc, Mutex},
+};
+use sunrise_assets::item_model::DisplayContext;
+use sunrise_client::item_render::ItemRenderState;
 
 /// The stack counts the renderer was asked about, in order.
 static ASKED: Mutex<Vec<u32>> = Mutex::new(Vec::new());
@@ -38,19 +44,17 @@ pub(in crate::game) fn asked(count: u32) -> usize {
 /// Makes `game`'s stick a `minecraft:special` model of the type `test:stick`, drawn by [`Stick`]:
 /// in the game's own item definitions, which every route that resolves a stick reads.
 pub(in crate::game) fn install_special_stick(game: &mut Game<'_>) {
-    static REGISTER: Once = Once::new();
-    REGISTER.call_once(|| {
-        register_special_model_types(vec!["test:stick".into()]);
-        assert!(super::register(vec![(
-            "test:stick".into(),
-            mod_api::SpecialModelPolicy::Stack,
-            Arc::new(Stick)
-        )]));
-    });
-    let definition = decode_definition(
+    let factories = BTreeMap::from([(
+        "test:stick".into(),
+        (
+            SpecialModelPolicy::Stack,
+            SpecialModelFactory::new(|_| Ok(()), |(), _| Ok(Stick)),
+        ),
+    )]);
+    let definition = game.pack.item_renderer.decode_definition(
         r#"{"model":{"type":"minecraft:special","base":"minecraft:item/stick","model":{"type":"test:stick"}}}"#,
-    )
-    .unwrap();
+        Some(&factories),
+    ).unwrap();
     Arc::get_mut(&mut game.pack.item_renderer)
         .expect("the game's item renderer is shared")
         .models

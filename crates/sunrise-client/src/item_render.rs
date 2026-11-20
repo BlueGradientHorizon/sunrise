@@ -27,18 +27,21 @@ use crate::{
     mesher::{CULL_BACK, Vertex},
 };
 use glam::{Mat3, Mat4, Vec3};
-use registered_special::{NESTING, ResolveDepth};
+pub use registered_special::{
+    BakedSpecialGeometry, BakedSpecialModel, SpecialModelFactories, install_special_model_factories,
+};
+use registered_special::{FACTORIES, NESTING, ResolveDepth};
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, HashMap},
-    sync::{Arc, Mutex},
+    panic::{AssertUnwindSafe, catch_unwind},
+    sync::{Arc, Mutex, atomic::AtomicBool},
 };
 use sunrise_assets::{
     item_bake::{BakedItemModel, SpriteLookup, SpriteMask, bake_item_model, bake_sprite_layer},
     item_model::{
         ClientItem, Context, DisplayContext, FoilType, ItemEnv, ItemModels, Layer, LayerContent,
-        LayerTransform, LevelState, OwnerState, RegisteredSpecialModel, SpecialModel,
-        SpecialModelSlot, StackView, special_model_slot,
+        LayerTransform, LevelState, OwnerState, SpecialModel, StackView,
     },
     model::Direction,
     resolve::{MISSING_MODEL, ModelLibrary},
@@ -694,6 +697,7 @@ pub struct ItemRenderer {
     sprites: FileSprites,
     baked: Mutex<HashMap<String, Arc<BakedItemModel>>>,
     extents: Mutex<HashMap<String, Arc<Vec<Vec3>>>>,
+    special_failures: Mutex<HashMap<String, Arc<AtomicBool>>>,
     /// GUI items already drawn: the HUD vertices of a static item at a GUI position
     /// (`gui::draw`), which are the same every frame it stays there.
     pub(crate) gui_drawn: Mutex<HashMap<gui::DrawnKey, Arc<[crate::hud::HudVertex]>>>,
@@ -712,33 +716,12 @@ pub struct ItemRenderer {
     glint_atlas: Mutex<HashMap<String, Rect>>,
 }
 
-/// The resolved renderer slot and configuration carried by a registered model payload.
-pub struct RegisteredSpecialConfig {
-    pub slot: SpecialModelSlot,
-    pub config: Arc<Tag>,
-}
-
-/// Decode a client item definition with the special renderer registrations. A registered type
-/// receives its entire model object as NBT, converted once for that node.
-pub fn decode_definition(text: &str) -> Result<ClientItem, sunrise_assets::DecodeError> {
-    ClientItem::from_json_with_specials(text, &|kind, _, model| {
-        let Some(slot) = special_model_slot(kind) else {
-            return Ok(None);
-        };
-        let config = sunrise_core::json_nbt::json_to_tag(model)
-            .map_err(|error| format!("invalid special model data for {kind}: {error}"))?;
-        Ok(Some(RegisteredSpecialModel(Arc::new(
-            RegisteredSpecialConfig {
-                slot,
-                config: Arc::new(config),
-            },
-        ))))
-    })
-}
-
-/// Every winning `items/**/*.json` client item definition, by identifier. A decode error omits
-/// the definition rather than looking in a lower pack.
-fn load_definitions(root: &ResourceSource) -> BTreeMap<String, ClientItem> {
+/// Every winning `items/**/*.json` client item definition, by identifier. An error or panic
+/// while decoding or baking omits the definition rather than looking in a lower pack.
+fn load_definitions(
+    root: &ResourceSource,
+    decode: impl Fn(&str) -> Result<ClientItem, sunrise_assets::DecodeError>,
+) -> BTreeMap<String, ClientItem> {
     let mut out = BTreeMap::new();
     for namespace in root.namespaces("assets") {
         let prefix = format!("assets/{namespace}/items/");
@@ -752,12 +735,28 @@ fn load_definitions(root: &ResourceSource) -> BTreeMap<String, ClientItem> {
             let Ok(text) = root.read_to_string(&name) else {
                 continue;
             };
-            match decode_definition(&text) {
-                Ok(item) => {
+            match catch_unwind(AssertUnwindSafe(|| decode(&text))) {
+                Ok(Ok(item)) => {
                     out.insert(format!("{namespace}:{id}"), item);
                 }
-                Err(error) => {
-                    log::warn!("Sunrise: item definition {namespace}:{id} not loaded: {error}")
+                Ok(Err(error)) => {
+                    log::warn!("Sunrise: item definition {namespace}:{id} not loaded: {error}");
+                }
+                Err(panic) => {
+                    // An arbitrary native panic payload can itself panic when dropped.
+                    let reason = match panic.downcast::<String>() {
+                        Ok(message) => std::borrow::Cow::Owned(*message),
+                        Err(panic) => match panic.downcast::<&'static str>() {
+                            Ok(message) => std::borrow::Cow::Borrowed(*message),
+                            Err(panic) => {
+                                std::mem::forget(panic);
+                                std::borrow::Cow::Borrowed("unknown panic payload")
+                            }
+                        },
+                    };
+                    log::warn!(
+                        "Sunrise: item definition {namespace}:{id} not loaded; decode or bake panicked: {reason}"
+                    );
                 }
             }
         }
@@ -798,13 +797,13 @@ impl ItemRenderer {
         )
     }
     /// Reuse the immutable models prepared with the block resources at `root`.
-    /// Defer item-only validation failures until after item definitions are loaded.
+    /// Decode special item definitions against this library and its pack sprites.
     pub fn load_with_library(
         root: &ResourceRoot,
         library: std::result::Result<Arc<ModelLibrary>, String>,
         item_data: &sunrise_world::item_defaults::ItemData,
     ) -> crate::Result<Self> {
-        Self::load_tables(root, library, true, item_data, None)
+        Self::load_tables(root, library, true, item_data, None, FACTORIES.get())
     }
     /// What a dedicated server reads: the item prototypes (the stacks'
     /// default components) and ids, without the client item definitions,
@@ -815,7 +814,7 @@ impl ItemRenderer {
         library: std::result::Result<Arc<ModelLibrary>, String>,
         item_data: &sunrise_world::item_defaults::ItemData,
     ) -> crate::Result<Self> {
-        Self::load_tables(root, library, false, item_data, None)
+        Self::load_tables(root, library, false, item_data, None, None)
     }
     pub fn load_with_library_and_entity_models(
         root: &sunrise_assets::resource_source::ResourceRoot,
@@ -823,7 +822,14 @@ impl ItemRenderer {
         document: &crate::mobs::EntityModelDocument,
         item_data: &sunrise_world::item_defaults::ItemData,
     ) -> crate::Result<Self> {
-        Self::load_tables(root, library, true, item_data, Some(document))
+        Self::load_tables(
+            root,
+            library,
+            true,
+            item_data,
+            Some(document),
+            FACTORIES.get(),
+        )
     }
     fn load_tables(
         root: &ResourceRoot,
@@ -831,16 +837,9 @@ impl ItemRenderer {
         drawn: bool,
         item_data: &sunrise_world::item_defaults::ItemData,
         entity_models: Option<&crate::mobs::EntityModelDocument>,
+        factories: Option<&SpecialModelFactories>,
     ) -> crate::Result<Self> {
         let prototypes = Arc::clone(item_data.prototypes()?);
-        let models = ItemModels {
-            definitions: if drawn {
-                load_definitions(root.source())
-            } else {
-                BTreeMap::new()
-            },
-            prototypes,
-        };
         // CIT models and glint textures only affect drawing. A server still
         // needs item prototypes and ids, but never these resource-pack assets.
         let (library, cit) = if drawn {
@@ -886,20 +885,30 @@ impl ItemRenderer {
                 Some(out)
             })
             .unwrap_or_default();
-        Ok(Self {
+        let mut renderer = Self {
             glint_atlas: Mutex::default(),
             item_ids,
-            models,
+            models: ItemModels {
+                definitions: BTreeMap::new(),
+                prototypes,
+            },
             library,
             sprites: FileSprites::new(root.source().clone()),
             baked: Mutex::default(),
             extents: Mutex::default(),
+            special_failures: Mutex::default(),
             gui_drawn: Mutex::default(),
             parts,
             skull_textures,
             grass,
             cit,
-        })
+        };
+        if drawn {
+            renderer.models.definitions = load_definitions(root.source(), |text| {
+                renderer.decode_definition(text, factories)
+            });
+        }
+        Ok(renderer)
     }
     /// `ModelBakery` item baking, cached per model.
     pub fn bake(&self, model: &str) -> Arc<BakedItemModel> {
@@ -1514,7 +1523,7 @@ mod tests {
             ]))
         };
         let models = |full: &str| {
-            let loaded = load_definitions(&source(full));
+            let loaded = load_definitions(&source(full), ClientItem::from_json);
             assert!(!loaded.contains_key("loadtest:other"));
             let mut models = Vec::new();
             loaded["loadtest:cell"].model.dependencies(&mut models);
@@ -1657,7 +1666,9 @@ mod tests {
         writer.finish().unwrap();
         let source = ResourceSource::archive(&jar).unwrap();
         fs::remove_file(&jar).unwrap();
-        assert!(load_definitions(&source).contains_key("example:nested/mask"));
+        assert!(
+            load_definitions(&source, ClientItem::from_json).contains_key("example:nested/mask")
+        );
         let sprites = FileSprites::new(source.clone());
         let mask = sprites.mask("example:item/mask").unwrap();
         assert_eq!((mask.width, mask.height), (1, 1));
@@ -1899,7 +1910,10 @@ mod tests {
         let empty = r#"{"model":{"type":"minecraft:empty"}}"#;
         fs::write(definitions.join("top.json"), empty)?;
         fs::write(definitions.join("postman/head.json"), empty)?;
-        let loaded = load_definitions(&ResourceSource::directory(root.clone()));
+        let loaded = load_definitions(
+            &ResourceSource::directory(root.clone()),
+            ClientItem::from_json,
+        );
         let _ = fs::remove_dir_all(&root);
         assert!(loaded.contains_key("sunrise:top"));
         assert!(loaded.contains_key("sunrise:postman/head"));

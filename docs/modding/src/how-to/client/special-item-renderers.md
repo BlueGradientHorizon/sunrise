@@ -1,25 +1,33 @@
 # Drawing an item with a special model renderer
 
 You can draw an item from several resource models chosen from its stack: a skillet with what it
-cooks, a tool with moving parts. This is the counterpart of NeoForge 26.3's
-`RegisterSpecialModelRendererEvent`: the mod registers one renderer per special model type at start,
-before resources load, and every `minecraft:special` item model of that type is drawn by it.
+cooks, a tool with moving parts. In `register_special_model_renderer` (NeoForge 26.3's
+`RegisterSpecialModelRendererEvent`), register a factory for the special model type. When client
+resources load, the factory decodes and bakes each `minecraft:special` model node of that type.
 
-The geometry stays in the packs. The renderer doesn't make quads: it answers which model files to
-draw, each with a transform and tints, and the game draws them as it draws any item model.
+## Decode, bake, then draw
 
-## Write the renderer
+`SpecialModelFactory::new(decode, bake)` pairs two callbacks. `decode` receives a
+`SpecialModelConfig`; use `config.decode::<YourConfig>()` with an owned `serde::Deserialize`
+type. The fields are the inline `model` object **without** `type`. `bake` takes that typed
+value and a `SpecialModelBakeContext`, and returns a renderer that owns the data it needs.
+A resource reload creates new instances; drawing does not decode or bake them again.
 
-A renderer implements `SpecialModelRenderer`. Its `extract` gets a `ClientHost`, the stack, the
-special model's `model` object (`config`, its JSON converted to NBT once at load) and a
-`SpecialModelContext`, and answers the parts. If this model comes from a bundle's selected item,
-`stack` is that selected item, not the bundle:
+The renderer's `extract` gets a `ClientHost`, the stack and a `SpecialModelContext`, and answers
+the parts. If this model comes from a bundle's selected item, `stack` is that selected item, not
+the bundle. The example uses serde with the `derive` feature:
 
 ```rust,ignore
 use mod_api::*;
-use std::sync::Arc;
 
-struct Skillet;
+#[derive(serde::Deserialize)]
+struct SkilletConfig {
+    food_height: f32,
+}
+
+struct Skillet {
+    food_height: f32,
+}
 impl SpecialModelRenderer for Skillet {
     fn extract(
         &self,
@@ -29,9 +37,8 @@ impl SpecialModelRenderer for Skillet {
     ) -> Result<Vec<SpecialModelPart>, String> {
         let mut parts = vec![SpecialModelPart::new("example:item/skillet_pan")];
         if stack.count() > 1 {
-            // The food sits one pixel above the pan.
             parts.push(
-                SpecialModelPart::new("example:item/skillet_food").translated([0.0, 0.0625, 0.0]),
+                SpecialModelPart::new("example:item/skillet_food").translated([0.0, self.food_height, 0.0]),
             );
         }
         Ok(parts)
@@ -48,7 +55,10 @@ impl Hooks for MyMod {
         event.renderers.register(
             "example:skillet".into(),
             SpecialModelPolicy::Stack,
-            Arc::new(Skillet),
+            SpecialModelFactory::new(
+                |config| config.decode::<SkilletConfig>(),
+                |config, _bake| Ok(Skillet { food_height: config.food_height }),
+            ),
         );
     }
 }
@@ -58,8 +68,12 @@ The item definition names the type in a `minecraft:special` model, with a `base`
 
 ```json
 {"model": {"type": "minecraft:special", "base": "example:item/skillet",
-  "model": {"type": "example:skillet"}}}
+  "model": {"type": "example:skillet", "food_height": 0.0625}}}
 ```
+
+The bake context can also prepare a pack model with `bake_model` or custom item quads with
+`bake_geometry`. Both return a process-local `SpecialModelGeometry` lease. These leases can be
+kept on the baked renderer; `extract` currently still draws only the model and stack parts below.
 
 ## What the parts are
 
@@ -80,7 +94,7 @@ vanilla's special models do. The node's own `transformation` applies to every pa
 
 ## When it is asked
 
-Registering a renderer names its `SpecialModelPolicy`.
+Registering the factory names its renderers' `SpecialModelPolicy`.
 
 - `Stack`: the renderer is asked on the client's main thread when an item of such a model is drawn
   with a stack that model didn't draw in the last frame. An unchanged stack is asked once, however
@@ -119,7 +133,7 @@ names the item.
   included, as in NeoForge; the log names both mods. An id that is not `<namespace>:<path>` is logged
   and left out.
 - A special model of a type no mod registered and vanilla doesn't have is an error naming the type and
-  the item. If a registered model's JSON cannot be converted to NBT, the game rejects the entire item
+  the item. If a registered decoder or baker errors or panics, the game rejects the entire item
   definition, even for a builtin type or a special model inside a composite. It does not try a lower
   pack's definition. The affected item draws the missing model; other resources still load.
 - A renderer that returns an `Err`, panics, answers more than `MAX_SPECIAL_MODEL_PARTS` (256) parts

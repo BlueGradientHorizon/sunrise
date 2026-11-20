@@ -3,11 +3,13 @@
 //! `docs/performance/special-item-renderers.md`). Each test runs alone in its own process, the
 //! measurement by hand: it registers the process's renderers.
 use crate::game::Game;
-use mod_api::{ClientHost, SpecialModelPart, SpecialModelRenderer};
-use std::sync::Arc;
-use sunrise_assets::item_model::{DisplayContext, register_special_model_types};
+use mod_api::{
+    ClientHost, SpecialModelFactory, SpecialModelPart, SpecialModelPolicy, SpecialModelRenderer,
+};
+use std::{collections::BTreeMap, sync::Arc};
+use sunrise_assets::item_model::DisplayContext;
 use sunrise_client::{
-    item_render::{ItemRenderState, decode_definition},
+    item_render::{ItemRenderState, install_special_model_factories},
     items::ItemStack,
     mesher::Vertex,
 };
@@ -91,40 +93,39 @@ fn built_in_scenes_cost_nothing_more_without_a_listener() {
 }
 
 fn built_in_scenes_cost_nothing_more_without_a_listener_isolated() {
-    crate::game::native_entity_refs::tests::with_game(|game| {
+    fn scene(game: &mut Game<'_>) -> (Vec<u8>, usize) {
         let stacks: Vec<ItemStack> = SCENE.iter().map(|id| ItemStack::new(id, 1)).collect();
         give_every_quad_a_sprite(game);
         let mut out = Vec::new();
-        // Ten frames, the first warming the game's own caches: what each steady frame allocated
-        // and the vertices of the last.
-        let mut scene = |game: &Game<'_>| {
-            frame(game, &stacks, &mut out);
-            let first = bytemuck::cast_slice::<Vertex, u8>(&out).to_vec();
-            assert!(!first.is_empty(), "the scene drew nothing");
-            let mut counts = Vec::new();
-            for _ in 1..10 {
-                let (started, drawn) = frame(game, &stacks, &mut out);
-                assert_eq!(started, 0, "the frame's start allocated");
-                assert_eq!(bytemuck::cast_slice::<Vertex, u8>(&out), first);
-                assert_eq!(super::kept_answers(), 0);
-                counts.push(drawn);
-            }
-            assert!(
-                counts.windows(2).all(|w| w[0] == w[1]),
-                "a frame allocated more than the one before: {counts:?}"
-            );
-            (first, counts[0])
-        };
-        let (unregistered, allocations) = scene(game);
-        register_special_model_types(vec!["test:unmatched".into()]);
-        assert!(super::register(vec![(
-            "test:unmatched".into(),
-            mod_api::SpecialModelPolicy::Stack,
-            Arc::new(Unmatched)
-        )]));
-        let (registered, registered_allocations) = scene(game);
-        assert_eq!(registered, unregistered);
-        assert_eq!(registered_allocations, allocations);
+        // Warm the game's caches, then compare steady frames and allocation counts.
+        frame(game, &stacks, &mut out);
+        let first = bytemuck::cast_slice::<Vertex, u8>(&out).to_vec();
+        assert!(!first.is_empty(), "the scene drew nothing");
+        let mut counts = Vec::new();
+        for _ in 1..10 {
+            let (started, drawn) = frame(game, &stacks, &mut out);
+            assert_eq!(started, 0, "the frame's start allocated");
+            assert_eq!(bytemuck::cast_slice::<Vertex, u8>(&out), first);
+            assert_eq!(super::kept_answers(), 0);
+            counts.push(drawn);
+        }
+        assert!(
+            counts.windows(2).all(|w| w[0] == w[1]),
+            "a frame allocated more than the one before: {counts:?}"
+        );
+        (first, counts[0])
+    }
+    let mut unregistered = None;
+    crate::game::native_entity_refs::tests::with_game(|game| unregistered = Some(scene(game)));
+    assert!(install_special_model_factories(BTreeMap::from([(
+        "test:unmatched".into(),
+        (
+            SpecialModelPolicy::Stack,
+            SpecialModelFactory::new(|_| Ok(()), |(), _| Ok(Unmatched))
+        ),
+    )])));
+    crate::game::native_entity_refs::tests::with_game(|game| {
+        assert_eq!(scene(game), unregistered.unwrap());
     });
 }
 
@@ -154,18 +155,19 @@ impl SpecialModelRenderer for Stone {
 fn special_item_draw_cost() {
     const WARM: usize = 1_000;
     const SAMPLES: usize = 10_000;
-    register_special_model_types(vec!["test:stone".into()]);
-    assert!(super::register(vec![(
+    let factories = BTreeMap::from([(
         "test:stone".into(),
-        mod_api::SpecialModelPolicy::Stack,
-        Arc::new(Stone)
-    )]));
+        (
+            SpecialModelPolicy::Stack,
+            SpecialModelFactory::new(|_| Ok(()), |(), _| Ok(Stone)),
+        ),
+    )]);
     crate::game::native_entity_refs::tests::with_game(|game| {
         // Dirt becomes a special model drawing stone's cube under stone's display transforms.
-        let special = decode_definition(
+        let special = game.pack.item_renderer.decode_definition(
             r#"{"model":{"type":"minecraft:special","base":"minecraft:block/stone","model":{"type":"test:stone"}}}"#,
-        )
-        .unwrap();
+            Some(&factories),
+        ).unwrap();
         Arc::get_mut(&mut game.pack.item_renderer)
             .expect("the game's item renderer is shared")
             .models
