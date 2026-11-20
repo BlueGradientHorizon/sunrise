@@ -356,6 +356,67 @@ fn part_state_saves_with_its_chunk_and_reloads_under_a_fresh_handle() {
     });
 }
 
+#[test]
+#[ignore = "daily"]
+fn item_slot_writes_save_but_menu_data_is_transient() {
+    const NAME: &str =
+        "game::block_entity_part_state_tests::item_slot_writes_save_but_menu_data_is_transient";
+    with_state_mod(NAME, |game| {
+        use super::api_values::TryIntoApi;
+        use sunrise_client::{containers::ModContainer, items::ItemStack};
+
+        let entity = press(game, (1, 64, 1));
+        let state = game.world.block(1, 64, 1);
+        game.world.block_entities.set_mod_containers(
+            [(
+                state.0,
+                Arc::new(ModContainer {
+                    slots: 1,
+                    ..Default::default()
+                }),
+            )]
+            .into_iter()
+            .collect(),
+        );
+        game.save_level(true).unwrap();
+        assert!(game.world.modified.is_empty());
+
+        assert_eq!(entity.set_data_slots(game, vec![23]), Ok(true));
+        assert_eq!(entity.set_data_slot(game, 0, 42), Ok(true));
+        assert_eq!(entity.data_slots(game), Some(vec![42]));
+        assert!(game.world.modified.is_empty(), "menu data is not saved");
+
+        // Both growing a lazy slot list and editing an existing slot must save
+        // without an explicit notification, a ticker, or another dirty write.
+        for count in [1, 2] {
+            let item = ItemStack::new("minecraft:stone", count);
+            let stack = item.clone().try_into_api().unwrap();
+            assert_eq!(
+                (game as &mut dyn ServerHost).transaction(|host, tx| entity.set_item_slot(
+                    host,
+                    tx,
+                    0,
+                    Some(stack)
+                )),
+                Ok(true)
+            );
+            game.save_level(true).unwrap();
+            let chunk = game
+                .save
+                .load(0, 0, game.pack.assets.registry, world_biomes!(game))
+                .unwrap();
+            let [((1, 64, 1), BlockEntity::Mod(reloaded))] = chunk.block_entities.as_slice() else {
+                panic!("mod holder missing from saved chunk")
+            };
+            assert_eq!(reloaded.items, [Some(item)]);
+            assert!(
+                reloaded.data.is_empty(),
+                "menu data resets even on a real save"
+            );
+        }
+    });
+}
+
 /// What the attachment index answers for `entity`'s `PROGRESS`, without the handle check.
 fn indexed(game: &Game<'_>, entity: BlockEntityRef) -> Option<i32> {
     use mod_api::AttachmentQueries;

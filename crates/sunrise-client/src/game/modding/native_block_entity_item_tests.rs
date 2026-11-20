@@ -107,6 +107,10 @@ fn internal_slots_preserve_automation_limits_and_nested_transactions() {
             assert_eq!(aborted, Err(()));
             assert_eq!(get(game, 0), Ok(Some(dirt.clone())));
             assert_eq!(get(game, 1), Ok(None));
+            assert!(
+                game.world.modified.is_empty(),
+                "aborted writes need no save"
+            );
             commit(game, |host, tx| {
                 assert_eq!(
                     set(
@@ -127,13 +131,8 @@ fn internal_slots_preserve_automation_limits_and_nested_transactions() {
             );
             assert_eq!(get(game, 1), Ok(Some(diamond.clone())));
             assert!(
-                game.world.modified.is_empty(),
-                "raw mod slot writes are silent"
-            );
-            assert!(entity.set_changed(game).unwrap());
-            assert!(
-                !game.world.modified.is_empty(),
-                "explicit notification marks the chunk"
+                game.world.modified.contains(&(0, 0)),
+                "committed internal slot writes require a save"
             );
             let BlockEntity::Mod(holder) = game.world.block_entities.get(&pos).unwrap() else {
                 panic!()

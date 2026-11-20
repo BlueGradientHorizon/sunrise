@@ -348,6 +348,8 @@ pub(super) enum After {
     FluidEffects(Box<super::world_fluids::FluidEffects>),
     /// `BlockEntity.setChanged`.
     Changed(Pos),
+    /// The save mark alone (`Level.blockEntityChanged`), with no world notification.
+    MarkChunkUnsaved((i32, i32)),
     /// A provider's answer changed here (`level_invalidate_capabilities`): the capability
     /// generation moves on.
     Capabilities(Pos),
@@ -1169,6 +1171,9 @@ impl Game<'_> {
             After::FluidEffects(effects) => self.commit_fluid_effects(*effects),
             After::LevelWrite(write) => self.commit_level_write(*write),
             After::Changed(pos) => self.container_changed(pos),
+            After::MarkChunkUnsaved(key) => {
+                self.world.modified.insert(key);
+            }
             After::Capabilities(pos) => self.world.capability_generations.invalidate(pos),
 
             After::BreakProgress(breaker, pos, progress) => {
