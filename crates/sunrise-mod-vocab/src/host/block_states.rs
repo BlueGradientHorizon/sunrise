@@ -90,18 +90,23 @@ pub trait BlockStatesServerHost {
 pub trait BlockStatesBackend {
     /// Side: both. The age read by `BlockStates::weathering_age`.
     #[access(Metadata)]
+    #[forward_api_inputs]
     fn block_weathering_age(&self, state: BlockState) -> Option<WeatheringAge>;
     /// Side: both. The state read by `BlockStates::next_weathering_stage`.
     #[access(Metadata)]
+    #[forward_api_inputs]
     fn block_next_weathering_stage(&self, state: BlockState) -> Option<BlockState>;
     /// Side: both. The state read by `BlockStates::previous_weathering_stage`.
     #[access(Metadata)]
+    #[forward_api_inputs]
     fn block_previous_weathering_stage(&self, state: BlockState) -> Option<BlockState>;
     /// Side: both. The state read by `BlockStates::waxed`.
     #[access(Metadata)]
+    #[forward_api_inputs]
     fn block_state_waxed(&self, state: BlockState) -> Option<BlockState>;
     /// Side: both. The state read by `BlockStates::unwaxed`.
     #[access(Metadata)]
+    #[forward_api_inputs]
     fn block_state_unwaxed(&self, state: BlockState) -> Option<BlockState>;
     /// Side: both.
     /// Borrow the canonical block name through the block metadata resource.
@@ -110,14 +115,17 @@ pub trait BlockStatesBackend {
     /// Side: both.
     /// Borrow a property's serialized value from the block metadata resource.
     #[access(Metadata)]
+    #[forward_api_inputs]
     fn block_metadata_property(
         &self,
         state: BlockState,
         name: &str,
     ) -> Result<Option<&str>, BlockStateError>;
     /// Side: both.
-    /// Change a property through the block metadata resource.
+    /// Return the state with one property changed, without a world write.
     #[access(Metadata)]
+    #[forward_api_inputs]
+    #[forward_api_output]
     fn block_metadata_with(
         &self,
         state: BlockState,
@@ -125,8 +133,9 @@ pub trait BlockStatesBackend {
         value: &str,
     ) -> Result<BlockState, BlockStateError>;
     /// Side: both.
-    /// Apply partial properties through the block metadata resource.
+    /// Return the default state with partial properties applied.
     #[access(Metadata)]
+    #[forward_api_output]
     fn block_metadata_of(
         &self,
         block: BlockKey,

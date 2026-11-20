@@ -1,7 +1,7 @@
 //! Process-local block values, independent of the game's numeric registry.
-use crate::{BlockKey, BlockMetadata, BlockStateError, BlockStateRecord, StateConstraint};
+use crate::{BlockKey, BlockMetadata, BlockStateError, StateConstraint};
 
-/// A block and its local state ordinal. Persist canonical names and properties, not this value.
+/// A copyable block key and local state ordinal. Persist canonical names and properties, not this value.
 #[derive(sunrise_mod_api_macros::Wire, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub struct BlockState {
@@ -23,7 +23,7 @@ impl BlockState {
         metadata: &'a dyn BlockMetadata,
         name: &str,
     ) -> Result<Option<&'a str>, BlockStateError> {
-        metadata.property((&self).into(), name)
+        metadata.property(self, name)
     }
     /// Return a state with one property changed, without mutating metadata or the world.
     pub fn with(
@@ -32,7 +32,7 @@ impl BlockState {
         name: &str,
         value: &str,
     ) -> Result<Self, BlockStateError> {
-        metadata.with((&self).into(), name, value).map(Into::into)
+        metadata.with(self, name, value)
     }
     /// Start at the block's default and apply partial property constraints.
     pub fn of(
@@ -40,7 +40,7 @@ impl BlockState {
         block: BlockKey,
         properties: &[StateConstraint],
     ) -> Result<Self, BlockStateError> {
-        metadata.of(block, properties).map(Into::into)
+        metadata.of(block, properties)
     }
 }
 /// Construct a state without looking up the key or ordinal in block metadata.
@@ -49,19 +49,5 @@ pub const fn block_state_from_ordinal(block: BlockKey, ordinal: u16) -> BlockSta
     BlockState {
         block,
         state: ordinal,
-    }
-}
-
-impl From<BlockStateRecord> for BlockState {
-    fn from(value: BlockStateRecord) -> Self {
-        Self {
-            block: value.block,
-            state: value.state,
-        }
-    }
-}
-impl From<&BlockState> for BlockStateRecord {
-    fn from(value: &BlockState) -> Self {
-        Self::new(value.block, value.state)
     }
 }

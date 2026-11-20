@@ -77,11 +77,11 @@ block key. Classes are added when a consumer needs one.
   `HoneycombItem`'s waxables or inverse map. If `unwaxed(state)` has a result,
   the input is waxed. Use the unwaxed result to read the underlying age.
 
-The relations return owned states and keep the input's compatible properties
-(such as stair facing or waterlogging). They use the host's loaded
-[block data maps](../items/data-maps.md) where present, falling back to the
-vanilla relations; server data maps aren't synced to remote clients. No call
-changes the world. These reads return `None` until the corresponding tables
+Pass a `BlockState` directly to each query. The relations return `BlockState` values
+and keep the input's compatible properties (such as stair facing or waterlogging).
+They use the host's loaded [block data maps](../items/data-maps.md) where present,
+falling back to the vanilla relations; server data maps aren't synced to remote clients.
+No call changes the world. These reads return `None` until the corresponding tables
 are published.
 
 ## Fluid-state facts

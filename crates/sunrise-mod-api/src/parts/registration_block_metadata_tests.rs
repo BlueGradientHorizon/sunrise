@@ -46,7 +46,7 @@ mod tests {
     crate::impl_host_areas!(Empty);
 
     #[test]
-    fn metadata_service_reads_edits_and_refuses_invalid_transport() {
+    fn metadata_service_reads_edits_and_refuses_invalid_states() {
         crate::__private::part_tests::install_parts_fixture(&[]).unwrap();
         let states = [
             std::collections::BTreeMap::from([("lit".into(), "false".into())]),

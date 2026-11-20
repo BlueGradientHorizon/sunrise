@@ -141,7 +141,7 @@ impl<'a> BlockTables<'a> {
         Ok(())
     }
 
-    /// Convert the canonical ordinal before reading the published weathering tables.
+    /// Require published weathering tables before resolving the API state to its engine ID.
     fn weathering_state(&self, state: BlockState) -> Option<(&WorldRest, BlockStateId)> {
         Some((self.res.rest.get()?, state.try_into_engine(&()).ok()?))
     }
@@ -360,17 +360,17 @@ impl<'a> BlockTables<'a> {
     }
     pub(in crate::game) fn block_metadata_property(
         &self,
-        state: mod_api::BlockState,
+        state: BlockState,
         name: &str,
     ) -> Result<Option<&'static str>, mod_api::BlockStateError> {
         mod_api::BlockMetadata::property(super::api_values::block_metadata_table()?, state, name)
     }
     pub(in crate::game) fn block_metadata_with(
         &self,
-        state: mod_api::BlockState,
+        state: BlockState,
         name: &str,
         value: &str,
-    ) -> Result<mod_api::BlockState, mod_api::BlockStateError> {
+    ) -> Result<BlockState, mod_api::BlockStateError> {
         mod_api::BlockMetadata::with(
             super::api_values::block_metadata_table()?,
             state,
@@ -382,7 +382,7 @@ impl<'a> BlockTables<'a> {
         &self,
         block: mod_api::BlockKey,
         properties: &[mod_api::StateConstraint],
-    ) -> Result<mod_api::BlockState, mod_api::BlockStateError> {
+    ) -> Result<BlockState, mod_api::BlockStateError> {
         mod_api::BlockMetadata::of(
             super::api_values::block_metadata_table()?,
             block,

@@ -57,13 +57,14 @@ request `.id(host)` explicitly. `UnspawnedMobRef::kind` keeps its separate scope
 
 ## Block states
 
-`BlockState` is a small owned value with private fields, not a tint-specific snapshot or an
+`BlockState` is a small `Copy` value with private fields, not a tint-specific snapshot or an
 engine numeric ID. `state.block()` reads its `BlockKey`; `state.ordinal()` reads its local
-ordinal. Property operations take explicit metadata: retain `let metadata = host.block_states()`
+ordinal. Use the state directly with immutable metadata: retain `let metadata = host.block_states()`
 and call `state.property(&metadata, "facing")` or `state.with(&metadata, "facing", "east")`.
-`BlockState::of(&metadata, key, constraints)` starts from the published default and applies the
-supplied `StateConstraint`s. Changes return a new value and never mutate the original.
-Unknown keys, ordinals and property combinations return typed `BlockStateError`s.
+A property read borrows the value from that metadata. `BlockState::of(&metadata, key, constraints)`
+starts from the published default and applies the supplied `StateConstraint`s. Changes return a
+new value and never mutate the original or write to the world. Unknown keys, ordinals and property
+combinations return typed `BlockStateError`s.
 
 `SceneBlock::new(pos, state, entity)` and `StructureTemplateBlock::new(pos, state, nbt)`
 use this owned `BlockState`, including all properties. Structure reads preserve vanilla palette
