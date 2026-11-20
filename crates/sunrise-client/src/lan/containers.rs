@@ -2,7 +2,7 @@
 //! level events, animations and block containers with their clicks.
 use super::{
     hub::Hub,
-    menu::{self, Menu, NativeMenuEvent, Rules, Slots, View},
+    menu::{self, Menu, Rules, Slots, View},
 };
 use crate::{
     containers::{BlockEntity, ModContainerInsertRule},
@@ -505,29 +505,31 @@ impl Hub {
 
     /// Replaces what the guest's open native menu `window` shows with `items` (padded to its
     /// slots, extra ones dropped) and sends them at once, as
-    /// `AbstractContainerMenu.sendAllDataToRemote`: the screen stays open. False when that window
-    /// isn't the guest's open native menu.
+    /// `AbstractContainerMenu.sendAllDataToRemote`: the screen stays open.
     pub fn set_native_menu_items(
         &mut self,
         conn: u32,
         window: i32,
         mut items: Vec<Option<ItemStack>>,
-    ) -> bool {
-        let Some(i) = self.guests.iter().position(|g| g.conn == conn) else {
-            return false;
-        };
-        let Some(size) = self.guests[i]
+    ) -> Result<(), mod_api::MenuItemsRefusal> {
+        use mod_api::MenuItemsRefusal;
+        let i = self
+            .guests
+            .iter()
+            .position(|g| g.conn == conn)
+            .ok_or(MenuItemsRefusal::NoPlayer)?;
+        let menu = self.guests[i]
             .menu
             .as_ref()
-            .filter(|m| m.slots == Slots::Native && m.window == window && m.owned_slots().is_none())
-            .map(|m| m.size)
-        else {
-            return false;
-        };
-        items.resize(size, None);
+            .filter(|m| m.slots == Slots::Native && m.window == window)
+            .ok_or(MenuItemsRefusal::NotOpen)?;
+        if menu.owned_slots().is_some() {
+            return Err(MenuItemsRefusal::OwnedSlots);
+        }
+        items.resize(menu.size, None);
         self.guests.update(i, |g| g.native_menu = items.clone());
         self.send_menu_content(i, items);
-        true
+        Ok(())
     }
 
     /// Open a trading window for a guest (`Merchant.openTradingScreen`):
@@ -734,17 +736,10 @@ impl Hub {
         {
             return None;
         }
-        // A native mod's menu: the click is the mod's to answer, and the
-        // whole menu and the cursor go back as they were.
+        // A native display menu has no default slot moves. The game handles native
+        // listeners and handler-backed slots before entering this click engine.
         if open.is_some_and(|m| m.slots == Slots::Native) {
-            self.native_menu_events.push(NativeMenuEvent::Click {
-                uuid: self.guests[i].uuid,
-                window: p.container,
-                slot: i32::from(p.slot),
-                button: i32::from(p.button),
-                mode: p.input,
-            });
-            self.resend_menu(conn, p.container, world);
+            self.answer_click(i, p, world, &[]);
             return None;
         }
         // A menu that is no longer valid takes no clicks.
@@ -1011,8 +1006,7 @@ impl Hub {
         });
     }
 
-    /// A click on the inventory menu (window 0) the game applied itself
-    /// (the crafting grid): the client is corrected like after any click.
+    /// Reconcile a click the game applied outside the hub's click engine.
     pub fn inventory_clicked(
         &mut self,
         conn: u32,
@@ -1097,7 +1091,15 @@ impl Hub {
             let mine = self.view_slot(i, world, slot);
             let agreed = match claimed.get(&slot) {
                 Some(c) => self.hashed_matches(c, &mine),
-                None => !changed.contains(&slot),
+                None => {
+                    !changed.contains(&slot)
+                        && (!in_menu
+                            || self.guests[i]
+                                .menu
+                                .as_ref()
+                                .and_then(|m| m.sent.get(slot))
+                                .is_none_or(|sent| *sent == mine))
+                }
             };
             if !agreed {
                 resend.push(slot);

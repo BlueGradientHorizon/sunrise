@@ -472,6 +472,73 @@ impl Game<'_> {
         true
     }
 
+    /// Run a blockless owned menu through the same slot layout and click engine as its client.
+    pub(super) fn lan_owned_menu_click(&mut self, conn: u32, p: &play::ContainerClick) -> bool {
+        let Some(host) = self.lan.as_mut() else {
+            return false;
+        };
+        let Some(gi) = host.hub.guests.connection_index(conn) else {
+            return false;
+        };
+        let guest = &host.hub.guests[gi];
+        let Some(open) = guest
+            .menu
+            .as_ref()
+            .filter(|m| m.window == p.container && m.owned_slots().is_some() && !guest.spectator())
+        else {
+            return false;
+        };
+        let layout = open.mod_type.unwrap();
+        let generation = guest.menu_generation;
+        let items = guest.native_menu.clone();
+        let mut menu = host
+            .menus
+            .entry(conn)
+            .or_default()
+            .owned_drag
+            .take()
+            .filter(|(g, _)| *g == generation)
+            .map_or_else(|| Box::new(Menu::new(Kind::Mod(layout))), |(_, menu)| menu);
+        for &slot in &open.hidden {
+            menu.hide_slot(slot);
+        }
+        let live = |g: &sunrise_client::lan::Guest| {
+            g.menu_generation == generation
+                && g.menu.as_ref().is_some_and(|m| m.window == p.container)
+        };
+        let click = super::lan_pickup::click_of(p);
+        let prepare = |menu: &mut Menu, env: &Env| menu.load_container(env, &items);
+        self.guest_menu_op_settled(
+            gi,
+            &mut menu,
+            Some(click),
+            Some(&prepare),
+            |menu, env| {
+                prepare(menu, env);
+                menu.click(env, click.0, click.1, click.2)
+            },
+            |game, menu, result| {
+                if result.is_ok()
+                    && let Some(host) = game.lan.as_mut()
+                    && host.hub.guest(conn).is_some_and(live)
+                {
+                    host.hub.guests.update(gi, |g| {
+                        g.native_menu = (0..layout.slots).map(|s| menu.slot(s).cloned()).collect();
+                    });
+                }
+            },
+        );
+        if let Some(host) = self.lan.as_mut()
+            && host.hub.guest(conn).is_some_and(live)
+        {
+            if menu.quick_crafting() {
+                host.menus.entry(conn).or_default().owned_drag = Some((generation, menu));
+            }
+            host.hub.inventory_clicked(conn, p, &self.world, &[]);
+        }
+        true
+    }
+
     /// A click on the guest's open furnace, blast furnace, smoker or brewing stand:
     /// the host's `AbstractFurnaceMenu` (fuel slot, take-only result, quick moves by
     /// recipe and fuel), `BrewingStandMenu` (one bottle per slot, ingredient and

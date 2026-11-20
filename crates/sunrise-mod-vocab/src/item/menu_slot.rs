@@ -2,7 +2,29 @@
 //! NeoForge 26.3's `ItemAccess.forPlayerSlot`. A slot is the storage it shows, so a write through
 //! [`ItemPlace::MenuSlot`] is a write to that storage, journaled once, through its own handler,
 //! under the slot's own rules.
-use crate::{EntityRef, Hand, ItemPlace, LevelRef, MenuRef, MenuSlotPlace};
+use crate::{
+    EntityRef, Hand, ItemPlace, LevelRef, MenuKey, MenuRef, MenuReplace, MenuSlotPlace, Text,
+};
+
+/// The complete request to open a blockless mod menu, passed to [`crate::PlayerRef::open_mod_menu`].
+// no wire: A native Host request; the game sends the title, extra and data via the menu protocol.
+// exhaustive: Openers write the context as a struct literal.
+pub struct ModMenuOpen {
+    /// The declared mod menu type.
+    pub menu: MenuKey,
+    /// The menu title sent to the client.
+    pub title: Text,
+    /// Opening context for `screen_extra_data`, at most 32 KiB.
+    pub extra: Vec<u8>,
+    /// Exactly the menu type's declared number of live data values, in slot order.
+    pub data: Vec<i32>,
+    /// Optional position reported to the screen; it supplies no block backing.
+    pub pos: Option<[i32; 3]>,
+    /// The hand used to open the menu from an item, or `None` for a different opener.
+    pub opening_hand: Option<Hand>,
+    /// Whether to send the client a close before replacing the old window.
+    pub replace: MenuReplace,
+}
 
 /// The hand that opened a mod menu and its status at a `menu_still_valid` check.
 #[non_exhaustive]

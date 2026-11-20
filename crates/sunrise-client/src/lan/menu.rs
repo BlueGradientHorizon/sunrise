@@ -149,11 +149,8 @@ impl Menu {
         self.size + self.player_slots()
     }
 
-    /// Stack limits for a blockless menu's explicitly declared transient container.
+    /// Stack limits for an explicitly declared transient container; owned types are blockless.
     pub fn owned_slots(&self) -> Option<&[u8]> {
-        if self.slots != Slots::Native {
-            return None;
-        }
         self.mod_type?.owned_slots.as_deref()
     }
 
@@ -256,19 +253,9 @@ impl Menu {
     }
 }
 
-/// What a guest did with a native mod's menu (`Slots::Native`), for the game
-/// to tell the mod once the hub is back in its hands.
+/// A native menu notice for the game once it has the hub back.
 #[derive(Clone, Debug, PartialEq)]
 pub enum NativeMenuEvent {
-    /// A click (`ServerboundContainerClickPacket`): the menu's slot (its own
-    /// first, then the player's 36; -999 outside), the button and the mode.
-    Click {
-        uuid: u128,
-        window: i32,
-        slot: i32,
-        button: i32,
-        mode: i32,
-    },
     /// The menu closed: by the player, by the server, another opened, or
     /// the player left.
     Closed {
@@ -298,8 +285,8 @@ pub enum Slots {
     Double((i32, i32, i32), (i32, i32, i32)),
     /// The player's own ender chest inventory (`PlayerEnderChestContainer`).
     Ender,
-    /// A native mod's menu (`Guest::native_menu`): items to look at, which no
-    /// click moves; the clicks go to the mod.
+    /// A blockless mod menu's vector (`Guest::native_menu`), either transient
+    /// owned slots or a display of stacks controlled by mods.
     Native,
 }
 
@@ -517,7 +504,9 @@ impl Slots {
             return;
         }
         if self == Slots::Native {
-            // Only the mod changes what it shows.
+            if guest.menu.as_ref().and_then(Menu::owned_slots).is_some() {
+                guest.native_menu = items;
+            }
             return;
         }
         let mut items = items;

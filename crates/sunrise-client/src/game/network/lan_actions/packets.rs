@@ -658,7 +658,9 @@ impl Game<'_> {
                     });
                 }
             }
-            // AbstractContainerMenu.quickMoveStack of a mod container: the mods first.
+            // The mod may replace the click before the menu's ordinary routing.
+            S::ContainerClick(p) if self.mod_menu_click(conn, &p) => {}
+            S::ContainerClick(p) if self.lan_owned_menu_click(conn, &p) => {}
             S::ContainerClick(p) if self.lan_mod_quick_move(conn, &p) => {}
             S::ContainerClick(p) if self.lan_merchant_click(conn, &p) => {}
             S::ContainerClick(p) if self.lan_inventory_click(conn, &p) => {}

@@ -8,7 +8,11 @@ use sunrise_core::nbt::Tag;
 struct Listener;
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for Listener {
-    fn menu_clicked(&self, host: &mut dyn ServerHost, event: &mut mod_api::MenuClickedEvent) {
+    fn menu_clicked(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut mod_api::MenuClickedEvent,
+    ) -> mod_api::Flow {
         assert_eq!(event.uuid, 12);
         assert_eq!(
             ItemPlace::PlayerSlot {
@@ -55,6 +59,7 @@ impl mod_api::Hooks for Listener {
             Ok::<_, ()>(())
         })
         .unwrap();
+        mod_api::Flow::Continue
     }
 }
 
@@ -134,7 +139,7 @@ fn exercise(reopen: bool) {
                         Ok::<_, ()>(())
                     })
                     .unwrap();
-                game.native_menu_clicked(12, window, 9, 0, 0);
+                game.native_menu_clicked(12, window, 9, 0, 0, &mut false);
                 assert_eq!(take.stack(game).unwrap().count(), 6);
                 assert_eq!(give.stack(game).unwrap().count(), 5);
                 assert_eq!(partial.stack(game).unwrap().count(), 16);
@@ -193,7 +198,11 @@ mod owner {
     struct Owner;
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for Owner {
-        fn menu_clicked(&self, host: &mut dyn ServerHost, event: &mut mod_api::MenuClickedEvent) {
+        fn menu_clicked(
+            &self,
+            host: &mut dyn ServerHost,
+            event: &mut mod_api::MenuClickedEvent,
+        ) -> mod_api::Flow {
             let menu = host.menu(event.uuid, event.window).unwrap();
             let diamond = mod_api::ItemResource::of(
                 &ItemStack::new("minecraft:diamond", 1)
@@ -219,6 +228,7 @@ mod owner {
             })
             .unwrap();
             SEEN.with(|s| *s.borrow_mut() = seen);
+            mod_api::Flow::Continue
         }
     }
 
@@ -245,7 +255,7 @@ mod owner {
                         .hub
                         .open_native_menu(12, 5, Tag::String("owner".into()), vec![None; 45])
                         .unwrap();
-                    game.native_menu_clicked(12, window, 9, 0, 0);
+                    game.native_menu_clicked(12, window, 9, 0, 0, &mut false);
                     // Each extract takes 1, the own slot and the cursor take 1; then 0 left
                     // in the first slot's pair of reads (2 - 1 - 1).
                     assert_eq!(SEEN.with(|s| s.borrow().clone()), [1, 1, 1, 1, 0, 0]);

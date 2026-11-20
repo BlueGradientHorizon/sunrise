@@ -1094,13 +1094,15 @@ mod tests {
         let window = game
             .player_open_mod_menu(
                 player,
-                key,
-                sunrise_client::text::Text::literal("satchel"),
-                Vec::new(),
-                Vec::new(),
-                Some(pos),
-                None,
-                MenuReplace::CloseFirst,
+                mod_api::ModMenuOpen {
+                    menu: key,
+                    title: mod_api::Text::literal("satchel"),
+                    extra: Vec::new(),
+                    data: Vec::new(),
+                    pos: Some(pos),
+                    opening_hand: None,
+                    replace: MenuReplace::CloseFirst,
+                },
             )
             .unwrap()
             .unwrap();

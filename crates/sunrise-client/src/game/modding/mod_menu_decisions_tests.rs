@@ -199,7 +199,11 @@ impl Hooks for Mod {
         r.menu_part(DEPOT_MENU, Part);
         r.menu_part(STATUS_MENU, Part);
     }
-    fn menu_clicked(&self, host: &mut dyn ServerHost, event: &mut MenuClickedEvent) {
+    fn menu_clicked(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut MenuClickedEvent,
+    ) -> mod_api::Flow {
         DISPATCHES.set(DISPATCHES.get() + 1);
         IN_ACTION.with(|a| a.borrow_mut().push(host.transaction_current().is_some()));
         // Guest 12's menu from `open_native_menu`.
@@ -211,6 +215,7 @@ impl Hooks for Mod {
         if s.panic {
             panic!("a listener failed");
         }
+        mod_api::Flow::Continue
     }
 }
 
@@ -856,13 +861,15 @@ fn a_code_opened_menus_button_reaches_a_blocks_menu_button_only_for_its_menu_typ
                 let window = player
                     .open_mod_menu(
                         game,
-                        key,
-                        mod_api::Text::literal("Status"),
-                        vec![],
-                        vec![],
-                        Some([POS.0, POS.1, POS.2]),
-                        None,
-                        mod_api::MenuReplace::InPlace,
+                        mod_api::ModMenuOpen {
+                            menu: key,
+                            title: mod_api::Text::literal("Status"),
+                            extra: vec![],
+                            data: vec![],
+                            pos: Some([POS.0, POS.1, POS.2]),
+                            opening_hand: None,
+                            replace: mod_api::MenuReplace::InPlace,
+                        },
                     )
                     .unwrap()
                     .unwrap();

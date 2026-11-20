@@ -1301,6 +1301,8 @@ pub enum MenuItemsRefusal {
     /// One of the stacks was refused at the game's item conversion boundary: an item the world
     /// lacks, a count or damage the item does not allow.
     Stack(StackWriteError),
+    /// The window owns its slots. Write them through [`ItemPlace::MenuSlot`](crate::ItemPlace::MenuSlot).
+    OwnedSlots,
 }
 
 impl From<StackWriteError> for MenuItemsRefusal {

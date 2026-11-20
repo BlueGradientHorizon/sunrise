@@ -203,41 +203,40 @@ impl Game<'_> {
 }
 
 impl Game<'_> {
-    /// `native_menu_clicked`, the mods told of a click on a menu one of them opened. With a
-    /// listener the notice runs in an action: a listener that fails, or whose menu is busy, has its
-    /// writes undone. The click moved nothing, so there is nothing to apply and nothing read. A
-    /// click drained after its guest left (no actor) is still told, with the plain call.
-    pub(in crate::game) fn menu_clicked_decided(
+    /// Whether to skip the default click after the mod callback. Its writes are committed
+    /// when it returns, but a failed or busy action leaves both the callback and default undone.
+    pub(super) fn menu_clicked_decided(
         &mut self,
+        conn: u32,
         uuid: u128,
-        window: i32,
-        slot: i32,
-        button: i32,
-        mode: i32,
-    ) {
+        click: &sunrise_protocol::packets::play::ContainerClick,
+    ) -> bool {
         if !mod_api::__private::listened(mod_api::HookId::MenuClicked) {
-            return self.native_menu_clicked(uuid, window, slot, button, mode);
+            return false;
         }
-        let decided = self
-            .lan
-            .as_ref()
-            .and_then(|host| host.hub.guests.iter().find(|g| g.uuid == uuid))
-            .map(|g| g.conn)
-            .and_then(|conn| Some((self.guest_actor(conn)?, self.guest_route(conn)?)));
-        let Some((actor, route)) = decided else {
-            return self.native_menu_clicked(uuid, window, slot, button, mode);
+        let mut handled = false;
+        let Some((actor, route)) = self.guest_actor(conn).zip(self.guest_route(conn)) else {
+            return true;
         };
-        self.decided_action(
+        let applied = self.decided_action(
             "menu_clicked",
             route,
             actor,
             Epoch::Off,
             |_| true,
             |game| {
-                game.native_menu_clicked(uuid, window, slot, button, mode);
+                game.native_menu_clicked(
+                    uuid,
+                    click.container,
+                    i32::from(click.slot),
+                    i32::from(click.button),
+                    i32::from(click.input),
+                    &mut handled,
+                );
                 Reply::Allow
             },
             |_| {},
         );
+        !applied || handled
     }
 }

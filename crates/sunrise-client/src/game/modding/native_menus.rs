@@ -5,9 +5,10 @@
 //! it again. A stock client shows it; nothing on the player's side. A trade
 //! built on these menus moves the items between the players' `ENTITY_ITEMS`
 //! handlers in one transaction, so nothing moves before both sides are settled.
+use super::api_values::TryIntoEngine;
 use super::{Game, lan::LanHost, lan_menus::GuestMenus};
 use mod_api::__private::game::*;
-use mod_api::{MenuRef, MenuReplace};
+use mod_api::{MenuRef, MenuReplace, ModMenuOpen};
 use sunrise_client::{
     items::ItemStack,
     lan::{
@@ -121,21 +122,24 @@ impl Game<'_> {
     /// `open_menu`'s do; `extra` and `pos` go first in its `sunrise:menu_extra` payload, and
     /// `replace` is the provider's choice of the client's close, as for `open_menu`. The slots
     /// its screen hides at open (`native_hidden_slots`) take no shift-click there.
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn player_open_mod_menu(
         &mut self,
         player: mod_api::PlayerRef,
-        menu: mod_api::MenuKey,
-        title: Text,
-        extra: Vec<u8>,
-        data: Vec<i32>,
-        pos: Option<[i32; 3]>,
-        opening_hand: Option<mod_api::Hand>,
-        replace: MenuReplace,
+        request: ModMenuOpen,
     ) -> Result<Option<i32>, mod_api::OpenMenuError> {
         use mod_api::OpenMenuError;
         use sunrise_protocol::menu_extra;
 
+        let ModMenuOpen {
+            menu,
+            title,
+            extra,
+            data,
+            pos,
+            opening_hand,
+            replace,
+        } = request;
+        let title = title.try_into_engine(&())?;
         let id = mod_api::__private::menu_key_id(menu).ok_or(OpenMenuError::NotModMenu)?;
         let kind =
             sunrise_client::containers::mod_menu_type(&id).ok_or(OpenMenuError::NotModMenu)?;
@@ -242,12 +246,53 @@ impl Game<'_> {
         }
         let conn = self.native_conn(uuid).ok_or(MenuItemsRefusal::NoPlayer)?;
         let host = self.lan.as_mut().ok_or(MenuItemsRefusal::NoPlayer)?;
-        if host.hub.set_native_menu_items(conn, window, items) {
-            Ok(())
-        } else {
-            Err(MenuItemsRefusal::NotOpen)
-        }
+        host.hub.set_native_menu_items(conn, window, items)
     }
+    /// Give a mod its `clicked` override before any normal slot, crafting or handler click.
+    /// True when the caller must skip default dispatch (including a displaced window).
+    pub(in crate::game) fn mod_menu_click(
+        &mut self,
+        conn: u32,
+        click: &sunrise_protocol::packets::play::ContainerClick,
+    ) -> bool {
+        let Some(guest) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+            return false;
+        };
+        let Some(menu) = guest.menu.as_ref().filter(|m| {
+            m.window == click.container && (m.mod_type.is_some() || m.slots == Slots::Native)
+        }) else {
+            return false;
+        };
+        if guest.spectator() {
+            return false;
+        }
+        if usize::try_from(click.slot).is_ok_and(|slot| slot >= menu.slot_count()) {
+            return true;
+        }
+        let (uuid, generation) = (guest.uuid, guest.menu_generation);
+        let display = menu.slots == Slots::Native && menu.owned_slots().is_none();
+        let handled = self.menu_clicked_decided(conn, uuid, click);
+        let Some(host) = self.lan.as_mut().filter(|host| {
+            host.hub
+                .guest(conn)
+                .is_some_and(|guest| guest.menu_generation == generation)
+        }) else {
+            return true;
+        };
+        if handled {
+            host.hub.inventory_clicked(conn, click, &self.world, &[]);
+            return true;
+        }
+        display
+            && self.place_menu_click(
+                uuid,
+                click.container,
+                i32::from(click.slot),
+                i32::from(click.button),
+                i32::from(click.input),
+            )
+    }
+
     /// Closes the player's native menu (a `native_menu_closed` follows).
     pub(super) fn close_menu(&mut self, uuid: u128) {
         if let Some(conn) = self.native_conn(uuid)
@@ -388,7 +433,10 @@ impl Game<'_> {
             .lan
             .as_mut()
             .and_then(|host| host.menus.get_mut(&conn))
-            .and_then(|p| p.menu_heard.take());
+            .and_then(|p| {
+                p.owned_drag = None;
+                p.menu_heard.take()
+            });
         if let Some(old) = heard {
             self.player_menu_changed(conn, old, false);
         }
@@ -448,9 +496,7 @@ impl Game<'_> {
         }
     }
 
-    /// The clicks on and closings of native menus the hub collected, each
-    /// told to the mods with the hub in `self.lan`, no player's state
-    /// swapped in.
+    /// The notices the hub collected, dispatched with the hub in `self.lan` and no guest turn active.
     pub(super) fn run_native_menu_events(&mut self) {
         loop {
             let Some(host) = self.lan.as_mut() else {
@@ -460,19 +506,6 @@ impl Game<'_> {
                 return;
             }
             match host.hub.native_menu_events.remove(0) {
-                NativeMenuEvent::Click {
-                    uuid,
-                    window,
-                    slot,
-                    button,
-                    mode,
-                } => {
-                    // A click a mod's backed slots answer (#3385); any other goes to the mods,
-                    // as a decided action when a listener is subscribed (#784 3b).
-                    if !self.place_menu_click(uuid, window, slot, button, mode) {
-                        self.menu_clicked_decided(uuid, window, slot, button, mode);
-                    }
-                }
                 NativeMenuEvent::Closed {
                     uuid,
                     window,
@@ -1460,13 +1493,15 @@ mod tests {
             let window = game
                 .player_open_mod_menu(
                     player,
-                    key,
-                    Text::literal("new"),
-                    vec![7],
-                    Vec::new(),
-                    None,
-                    None,
-                    replace,
+                    ModMenuOpen {
+                        menu: key,
+                        title: mod_api::Text::literal("new"),
+                        extra: vec![7],
+                        data: Vec::new(),
+                        pos: None,
+                        opening_hand: None,
+                        replace,
+                    },
                 )
                 .unwrap()
                 .unwrap();
@@ -1551,13 +1586,15 @@ mod tests {
             let window = game
                 .player_open_mod_menu(
                     player,
-                    key,
-                    Text::literal("new"),
-                    bytes.clone(),
-                    Vec::new(),
-                    None,
-                    None,
-                    MenuReplace::CloseFirst,
+                    ModMenuOpen {
+                        menu: key,
+                        title: mod_api::Text::literal("new"),
+                        extra: bytes.clone(),
+                        data: Vec::new(),
+                        pos: None,
+                        opening_hand: None,
+                        replace: MenuReplace::CloseFirst,
+                    },
                 )
                 .unwrap()
                 .unwrap();
@@ -1610,13 +1647,15 @@ mod tests {
                 assert_eq!(
                     game.player_open_mod_menu(
                         player,
-                        key,
-                        Text::literal("refused"),
-                        extra,
-                        Vec::new(),
-                        None,
-                        None,
-                        MenuReplace::InPlace,
+                        ModMenuOpen {
+                            menu: key,
+                            title: mod_api::Text::literal("refused"),
+                            extra,
+                            data: Vec::new(),
+                            pos: None,
+                            opening_hand: None,
+                            replace: MenuReplace::InPlace,
+                        },
                     ),
                     Err(expected)
                 );
@@ -1816,13 +1855,15 @@ mod tests {
                         let show = |host: &mut dyn ServerHost, data| {
                             player.open_mod_menu(
                                 host,
-                                key,
-                                mod_api::Text::literal("status"),
-                                vec![7],
-                                data,
-                                None,
-                                None,
-                                MenuReplace::InPlace,
+                                ModMenuOpen {
+                                    menu: key,
+                                    title: mod_api::Text::literal("status"),
+                                    extra: vec![7],
+                                    data,
+                                    pos: None,
+                                    opening_hand: None,
+                                    replace: MenuReplace::InPlace,
+                                },
                             )
                         };
                         assert_eq!(show(game, vec![9]), Err(OpenMenuError::DataCountMismatch));
@@ -1840,13 +1881,15 @@ mod tests {
                         assert_eq!(
                             player.open_mod_menu(
                                 game,
-                                key,
-                                network_title,
-                                vec![],
-                                vec![1, 2],
-                                None,
-                                None,
-                                MenuReplace::CloseFirst
+                                ModMenuOpen {
+                                    menu: key,
+                                    title: network_title,
+                                    extra: vec![],
+                                    data: vec![1, 2],
+                                    pos: None,
+                                    opening_hand: None,
+                                    replace: MenuReplace::CloseFirst,
+                                }
                             ),
                             Err(OpenMenuError::TitleNotEncodable),
                         );

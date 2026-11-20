@@ -251,7 +251,7 @@ does not resolve. It never opens a replacement through an old handle.
 ## Blockless status menus
 
 To open a content mod menu type with no block (from an item, an entity or a command),
-call `player.open_mod_menu(host, menu, title, extra, data, pos, opening_hand, replace)` (NeoForge's
+call `player.open_mod_menu(host, request)` with a `ModMenuOpen` request (NeoForge's
 `openMenu(provider, extraDataWriter)`). `menu` is the type's `MenuKey`. `extra`, at most
 32 KiB, is one-time context available through the client's `host.screen_extra_data()`;
 `pos` is an optional hint returned by `screen_pos()`. Neither is live data or block backing.
@@ -267,10 +267,15 @@ For a slotless status screen, declare `data/mymod/sunrise/menu/status.json` as
 to `mymod:status`. Open it with two signed values, in index order:
 
 ```rust,ignore
-player.open_mod_menu(
-    host, status, Text::translate("mymod.status", vec![]),
-    vec![], vec![-80_000, 7], None, None, MenuReplace::CloseFirst,
-)?;
+player.open_mod_menu(host, ModMenuOpen {
+    menu: status,
+    title: Text::translate("mymod.status", vec![]),
+    extra: vec![],
+    data: vec![-80_000, 7],
+    pos: None,
+    opening_hand: None,
+    replace: MenuReplace::CloseFirst,
+})?;
 ```
 
 The initial values are sent after the new window opens. In `screen_draw`, read

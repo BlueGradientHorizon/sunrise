@@ -48,8 +48,8 @@ pub trait MenusServerHost {
     /// the next tick's sync instead; this is the whole-contents form, for a page turned or a
     /// list rebuilt. Each refusal sends nothing and changes nothing, and is named by
     /// `MenuItemsRefusal`: `Client`, `NoPlayer` (no placed player of that UUID), `NotOpen`
-    /// (`window` is not their open `open_menu` menu) and `Stack` (a stack the game's item
-    /// conversion refuses).
+    /// (`window` is not their open native menu), `Stack` (a stack the game's item conversion
+    /// refuses), or `OwnedSlots` (use `ItemPlace::MenuSlot` for an owned window).
     #[access(WorldOnly)]
     fn menu_set_items(
         &mut self,

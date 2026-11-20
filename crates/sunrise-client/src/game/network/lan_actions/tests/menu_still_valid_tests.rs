@@ -387,14 +387,13 @@ fn a_blockless_mod_menu_closes_when_its_part_answers_false() {
                     assert_eq!(window_of_guest(game), None);
                     assert_eq!(answer.asks.load(Ordering::Relaxed), before + 1);
                     assert!(
-                        !game
-                            .lan
+                        game.lan
                             .as_ref()
                             .unwrap()
                             .hub
                             .native_menu_events
                             .iter()
-                            .any(|event| matches!(event, NativeMenuEvent::Click { .. }))
+                            .any(|event| matches!(event, NativeMenuEvent::Closed { window: closed, .. } if *closed == window))
                     );
                 });
             },

@@ -17,6 +17,8 @@ pub(in crate::game) struct GuestMenus {
     pub(in crate::game) crafting: GuestCrafting,
     /// The workstation menu the guest has open (game/network/lan_stations.rs).
     pub(in crate::game) station: MenuOwner<Option<GuestStation>>,
+    /// The transient menu engine during a drag, keyed by window generation.
+    pub(super) owned_drag: Option<(u64, Box<sunrise_client::menu::Menu>)>,
     /// Identity and mutation stamp for this connection's merchant window, even while loaned.
     pub(super) merchant: MenuOwner<()>,
     /// Names the hub's container clicks of this guest, which have no menu value of their own: a

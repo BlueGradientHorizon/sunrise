@@ -1,19 +1,34 @@
 use super::tests::{MOD_MENU, mod_menu_guest, sent};
-use crate::game::{Game, api_values, native_entity_refs::tests::with_game};
+use crate::game::{
+    Game,
+    api_values::{self, TryIntoApi},
+    native_entity_refs::tests::with_game,
+};
 use mod_api::{
-    Hand, Hooks, HostTransaction, ItemPlace, ItemResource, MenuClickedEvent, MenuClosedEvent,
-    MenuKey, MenuPart, MenuRef, MenuReplace, MenuSlotBackRefusal, MenuSlotBacking, MenuSlotPlace,
-    MenuStillValidEvent, ModEntry, Mods, Registrar, ServerHost,
+    Flow, Hand, Hooks, HostTransaction, ItemPlace, ItemResource, MenuClickedEvent, MenuClosedEvent,
+    MenuItemsRefusal, MenuKey, MenuPart, MenuRef, MenuReplace, MenuSlotBackRefusal,
+    MenuSlotBacking, MenuSlotPlace, MenuStillValidEvent, ModEntry, Mods, Registrar, ServerHost,
 };
 use std::sync::mpsc;
 use sunrise_client::{items::ItemStack, lan::Out};
 use sunrise_protocol::packets::play::{
-    Clientbound as C, ContainerClick, ContainerClose, Serverbound as S,
+    Clientbound as C, ContainerClick, ContainerClose, Serverbound as S, SetCursorItem,
 };
 
 struct Part;
 #[mod_api::sunrise_part]
 impl MenuPart for Part {
+    fn screen(
+        &self,
+        _: &dyn mod_api::Host,
+        _: &mut mod_api::ScreenEvent<'_>,
+    ) -> Option<mod_api::Screen> {
+        Some(mod_api::Screen {
+            slots: vec![Some(mod_api::ScreenSlot::default()); 2],
+            ..Default::default()
+        })
+    }
+
     fn menu_still_valid(&self, _: &dyn mod_api::LoopContext, event: &mut MenuStillValidEvent<'_>) {
         if let Some(item) = event.opening_item {
             assert_eq!(item.hand, Hand::Off);
@@ -32,17 +47,20 @@ impl Hooks for Listener {
         r.menu_part(MOD_MENU, Part);
     }
 
-    fn menu_clicked(&self, host: &mut dyn ServerHost, event: &mut MenuClickedEvent) {
-        if event.slot != 0 {
-            return;
+    fn menu_clicked(&self, host: &mut dyn ServerHost, event: &mut MenuClickedEvent) -> Flow {
+        if event.slot != 1 {
+            return Flow::Continue;
         }
         let menu = host.menu(event.uuid, event.window).unwrap();
-        let cursor = menu.carried(host).flatten().unwrap();
+        let Some(cursor) = menu.carried(host).flatten() else {
+            return Flow::Continue;
+        };
         host.transaction(|host, tx| {
-            ItemPlace::MenuSlot { menu, slot: 0 }.insert(host, tx, &ItemResource::of(&cursor), 1);
+            ItemPlace::MenuSlot { menu, slot: 1 }.insert(host, tx, &ItemResource::of(&cursor), 1);
             Ok::<_, ()>(())
         })
         .unwrap();
+        Flow::Cancel
     }
 
     fn menu_closed(&self, host: &mut dyn ServerHost, event: &mut MenuClosedEvent<'_>) {
@@ -112,13 +130,15 @@ fn open(game: &mut Game<'_>, key: MenuKey) -> (i32, MenuRef) {
         .as_guest(1, |game| {
             player.open_mod_menu(
                 game,
-                key,
-                mod_api::Text::literal("Owned slots"),
-                Vec::new(),
-                Vec::new(),
-                None,
-                Some(Hand::Off),
-                MenuReplace::CloseFirst,
+                mod_api::ModMenuOpen {
+                    menu: key,
+                    title: mod_api::Text::literal("Owned slots"),
+                    extra: Vec::new(),
+                    data: Vec::new(),
+                    pos: None,
+                    opening_hand: Some(Hand::Off),
+                    replace: MenuReplace::CloseFirst,
+                },
             )
         })
         .unwrap()
@@ -185,28 +205,140 @@ fn an_item_opened_menu_has_two_empty_owned_slots_with_individual_caps() {
             })
             .unwrap();
         }
+        let host: &mut dyn ServerHost = game;
+        assert_eq!(
+            host.menu_set_items(123, window, vec![]),
+            Err(MenuItemsRefusal::OwnedSlots)
+        );
+        assert_eq!(menu.slot(host, 0), Some(Some(stick)));
     });
 }
 
 #[test]
 #[ignore = "daily"]
-fn a_click_copies_into_an_owned_slot_and_syncs_without_consuming_the_cursor() {
+fn owned_click_prediction_applies_caps_and_the_server_corrects_an_override() {
+    use crate::game::execution_role::ExecutionRole;
+    use sunrise_client::menu::Input;
+    use sunrise_protocol::{connection::Pipe, item::Hashed};
     with_owned_menu(false, |game, rx, key| {
         let (window, menu) = open(game, key);
-        game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
-            g.carried = Some(ItemStack::new("minecraft:stick", 7));
-        });
-        click(game, window, 0);
-        let stack = menu.slot(game, 0).flatten().unwrap();
-        let cursor = menu.carried(game).flatten().unwrap();
-        assert_eq!(cursor.item(), stack.item());
-        assert_eq!(stack.count(), 1);
-        assert_eq!(cursor.count(), 7);
-        sent(&rx);
-        game.lan.as_mut().unwrap().hub.sync_containers(&game.world);
-        assert!(sent(&rx).iter().any(|p| matches!(p,
-            C::ContainerSetSlot(slot) if slot.container == window && slot.slot == 0 && slot.item.is_some()
+        let opening = sent(&rx);
+        let state = opening
+            .iter()
+            .find_map(|p| match p {
+                C::ContainerSetContent(p) if p.container == window => Some(p.state),
+                _ => None,
+            })
+            .unwrap();
+        let stack = |count| Some(ItemStack::new("minecraft:stick", count));
+        let hub = &mut game.lan.as_mut().unwrap().hub;
+        let builtin = hub.sync_data().builtin.clone();
+        let network = [1, 3, 4, 6, 7].map(|count| hub.stack(&stack(count)).unwrap());
+        let [one, three, four, six, seven] = &network;
+        let prediction = |slot, placed, left| {
+            S::ContainerClick(ContainerClick {
+                container: window,
+                state,
+                slot,
+                button: 0,
+                input: 0,
+                changed: vec![(slot, Some(Hashed::of(placed)))],
+                carried: Some(Hashed::of(left)),
+            })
+        };
+        let set_server_cursor = |game: &mut Game<'_>| {
+            game.lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .update(0, |g| g.carried = stack(7));
+        };
+        set_server_cursor(game);
+        game.lan_guest_packet(1, prediction(0, one, six));
+        assert_eq!(
+            menu.slot(game, 0),
+            Some(Some(stack(1).unwrap().try_into_api().unwrap()))
+        );
+        assert_eq!(
+            menu.carried(game),
+            Some(Some(stack(6).unwrap().try_into_api().unwrap()))
+        );
+        assert!(
+            sent(&rx).is_empty(),
+            "the server agreed with the ordinary click"
+        );
+
+        game.lan_guest_packet(
+            1,
+            S::ContainerClick(ContainerClick {
+                container: window,
+                state,
+                slot: 0,
+                button: 0,
+                input: sunrise_client::lan::menu::input::QUICK_MOVE,
+                changed: Vec::new(),
+                carried: Some(Hashed::of(six)),
+            }),
+        );
+        assert_eq!(
+            menu.slot(game, 0),
+            Some(Some(stack(1).unwrap().try_into_api().unwrap())),
+            "shift-click must not move an item to an omitted player inventory"
+        );
+        assert!(sent(&rx).is_empty());
+
+        set_server_cursor(game);
+        game.lan_guest_packet(1, prediction(1, four, three));
+        assert_eq!(
+            menu.slot(game, 1),
+            Some(Some(stack(1).unwrap().try_into_api().unwrap()))
+        );
+        assert_eq!(
+            menu.carried(game),
+            Some(Some(stack(7).unwrap().try_into_api().unwrap()))
+        );
+        let corrections = sent(&rx);
+        assert!(corrections.iter().any(|p| matches!(p,
+            C::ContainerSetSlot(p) if p.container == window && p.slot == 1 && p.item.as_ref() == Some(one)
         )));
+        assert!(corrections.iter().any(|p| matches!(p,
+            C::SetCursorItem(p) if p.item.as_ref() == Some(seven)
+        )));
+
+        // Run the real client click path and apply those authoritative packets. Both sides
+        // know the declared caps; only the server executes the part's override.
+        game.lan = None;
+        game.options.execution_role = ExecutionRole::Client;
+        let (client, _peer) = Pipe::pair();
+        game.connect_local(client, "Owned slots").unwrap();
+        game.remote.as_mut().unwrap().builtin = std::sync::Arc::new(builtin);
+        for packet in opening {
+            game.handle_packet(packet).unwrap();
+        }
+        assert_eq!(game.slots(), [300, 301]);
+        let cursor = || {
+            C::SetCursorItem(SetCursorItem {
+                item: Some(seven.clone()),
+            })
+        };
+        game.handle_packet(cursor()).unwrap();
+        assert!(game.menu_ops(&[(Some(300), 0, Input::Pickup)]));
+        assert_eq!(*game.slot_mut(300), stack(1));
+        assert_eq!(game.carried, stack(6));
+        assert!(game.menu_ops(&[(Some(300), 0, Input::QuickMove)]));
+        assert_eq!(*game.slot_mut(300), stack(1));
+
+        game.handle_packet(cursor()).unwrap();
+        assert!(game.menu_ops(&[(Some(301), 0, Input::Pickup)]));
+        assert_eq!(*game.slot_mut(301), stack(4));
+        assert_eq!(game.carried, stack(3));
+        for packet in corrections {
+            game.handle_packet(packet).unwrap();
+        }
+        assert_eq!(*game.slot_mut(300), stack(1));
+        assert_eq!(*game.slot_mut(301), stack(1));
+        assert_eq!(game.carried, stack(7));
     });
 }
 
@@ -278,13 +410,15 @@ fn abort_after_replacement_restores_only_committed_contents_to_the_old_close() {
             player
                 .open_mod_menu(
                     host,
-                    key,
-                    mod_api::Text::literal("Replacement"),
-                    Vec::new(),
-                    Vec::new(),
-                    None,
-                    Some(Hand::Off),
-                    MenuReplace::InPlace,
+                    mod_api::ModMenuOpen {
+                        menu: key,
+                        title: mod_api::Text::literal("Replacement"),
+                        extra: Vec::new(),
+                        data: Vec::new(),
+                        pos: None,
+                        opening_hand: Some(Hand::Off),
+                        replace: MenuReplace::InPlace,
+                    },
                 )
                 .unwrap()
                 .unwrap();
@@ -334,6 +468,19 @@ fn the_part_closes_the_menu_when_the_opening_stack_leaves_its_hand() {
         change_hand(game, |s| {
             s.data_mut().custom_name = Some(sunrise_core::nbt::Tag::String("Different".into()));
         });
+        click(game, window, 1);
+        assert_eq!(menu.container_id(game), None);
+        assert!(sent(&rx).iter().any(|p| matches!(p,
+            C::ContainerClose(p) if p.container == window
+        )));
+
+        let (window, menu) = open(game, key);
+        game.lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .guests
+            .update(0, |g| g.offhand = None);
         click(game, window, 1);
         assert_eq!(menu.container_id(game), None);
         assert!(sent(&rx).iter().any(|p| matches!(p,

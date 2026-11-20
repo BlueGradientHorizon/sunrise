@@ -37,15 +37,14 @@ pub trait PlayerMenusBackendMut {
     /// Opens content mod menu type `menu` for a connected player from anywhere, with no
     /// block (`ServerPlayer.openMenu(provider, extraDataWriter)`): an item's use, an entity,
     /// a command. The menu replaces the one they had open. Its container slots show empty
-    /// and their clicks go to the mods (`native_menu_clicked`), as `open_menu`'s do. `extra`
-    /// (at most 32 KiB) is the one-time context that `screen_extra_data` reads, and `pos`,
-    /// when given, its `screen_pos`. `data` has exactly the menu type's `data_slots` values;
-    /// the client receives them after the new window opens. Pass `opening_hand` for an item
-    /// opener, whether or not this type declares transient slots; pass `None` for other openers.
-    /// The server remembers that hand's stack for `menu_still_valid`. A type declaring
-    /// `owned_slots` starts with an empty transient container, written through `ItemPlace::MenuSlot`.
-    /// The menu's owning mod can change
-    /// them with [`MenuRef::set_data_slot`]. The old menu closes on the server as a close does (its
+    /// and their clicks reach `menu_clicked`. `extra` (at most 32 KiB) is the one-time context
+    /// that `screen_extra_data` reads, and `pos`, when given, its `screen_pos`. `data` has exactly
+    /// the menu type's `data_slots` values; the client receives them after opening, and the owning
+    /// mod can change them with [`MenuRef::set_data_slot`]. Pass `opening_hand` for an item
+    /// opener regardless of slot backing, or `None` for another opener. The server remembers that
+    /// hand's stack for `menu_still_valid`. A type declaring `owned_slots` uses ordinary clicks
+    /// and accepts writes through `ItemPlace::MenuSlot`.
+    /// The old menu closes on the server as a close does (its
     /// `removed`, `player_container_close`, the cursor stack and crafting grids back to the
     /// inventory) before the new one is built; `replace` says whether the client is first sent
     /// a close for it, as for `open_menu`. `MenuReplace::InPlace` sends none: the client keeps
@@ -58,13 +57,7 @@ pub trait PlayerMenusBackendMut {
     fn player_open_mod_menu(
         &mut self,
         player: PlayerRef,
-        menu: MenuKey,
-        title: Text,
-        extra: Vec<u8>,
-        data: Vec<i32>,
-        pos: Option<[i32; 3]>,
-        opening_hand: Option<Hand>,
-        replace: MenuReplace,
+        request: ModMenuOpen,
     ) -> Result<Option<i32>, OpenMenuError>;
     /// Side: server.
     /// Backs the container slots of the mod menu `window` that `player_open_mod_menu` opened

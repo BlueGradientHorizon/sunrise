@@ -3112,12 +3112,8 @@ impl Game<'_> {
     ) {
         self.fire_player_level_change(player, name, from, to);
     }
-    /// A click in a menu a mod opened (`open_menu`), which moved
-    /// nothing: the menu's `slot` (its own first, then the player's
-    /// inventory, `native_menu_inventory_slot`; -999 outside), the `button`
-    /// and the click's `mode` (`ClickType`'s id) of the player `uuid`.
-    /// No player's state is swapped in: the menu helpers take the player's
-    /// UUID.
+    /// A server click in a mod menu before the default slot action. A listener sets
+    /// `handled` after doing the click itself.
     pub(in crate::game) fn native_menu_clicked(
         &mut self,
         uuid: u128,
@@ -3125,8 +3121,9 @@ impl Game<'_> {
         slot: i32,
         button: i32,
         mode: i32,
+        handled: &mut bool,
     ) {
-        self.fire_menu_clicked(uuid, window, slot, button, mode);
+        self.fire_menu_clicked(uuid, window, slot, button, mode, handled);
     }
     /// A menu a mod opened closed: the player closed it, the server or a mod
     /// opened another, or the player left.
