@@ -81,10 +81,6 @@ pub struct Entry {
     /// At most 8, in order: `screenshots/<id>/<name>.png|.jpg` in the registry repository.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub screenshots: Vec<String>,
-    /// An API-only or library mod with nothing to show: exempt from the screenshot a new project
-    /// or a new version needs ([`review`]). Only for `mod` and `native-mod`.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub library: bool,
     /// The author's minisign public key.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key: Option<String>,
@@ -247,12 +243,6 @@ impl Entry {
                 "{id}: {} screenshots, at most {}",
                 self.screenshots.len(),
                 rules::MAX_SCREENSHOTS
-            ));
-        }
-        if self.library && !matches!(self.kind, Kind::Mod | Kind::NativeMod) {
-            errors.push(format!(
-                "{id}: library = true is only for a mod or native-mod, not a {}",
-                self.kind.name()
             ));
         }
         errors
@@ -949,6 +939,80 @@ pub fn check_kind(id: &str, old: &Kind, new: &Kind) -> Result<(), String> {
     Ok(())
 }
 
+/// A `mod` or `native-mod` listed in the `library` category has nothing to show: it is exempt from
+/// [`screenshot_required`].
+fn is_library(entry: &Entry) -> bool {
+    matches!(entry.kind, Kind::Mod | Kind::NativeMod)
+        && entry.categories.iter().any(|c| c == "library")
+}
+
+/// Whether a project needs a screenshot: it is new (`base` is `None`), or `head` adds a version to
+/// a listing, unless it is a library mod. An existing listing with no screenshots that gains no
+/// version stays valid. Collections are not entries, so they never need one.
+pub fn screenshot_required(base: Option<&Entry>, head: &Entry) -> bool {
+    if is_library(head) {
+        return false;
+    }
+    base.is_none_or(|old| {
+        head.versions
+            .iter()
+            .any(|w| old.versions.iter().all(|v| v.version != w.version))
+    })
+}
+
+/// The one screenshot rule, for `registry check`, `registry review` and `publish`: every project of
+/// `head` that [`screenshot_required`] says needs a screenshot must list at least one that is an
+/// image file (`screenshots/<id>/<name>.png|.jpg`) in the `registry` checkout, not empty and a
+/// valid PNG or JPEG: an address elsewhere does not count.
+pub fn check_screenshot_rule(base: &[Entry], head: &[Entry], registry: &Path) -> Vec<String> {
+    let mut errors = Vec::new();
+    for new in head {
+        let old = base.iter().find(|e| e.id == new.id);
+        if !screenshot_required(old, new) {
+            continue;
+        }
+        let id = &new.id;
+        let what = if old.is_none() {
+            "a new project"
+        } else {
+            "a new version"
+        };
+        let folder = format!("screenshots/{id}/");
+        let mut problems = Vec::new();
+        let mut found = false;
+        for path in &new.screenshots {
+            let named = path.strip_prefix(&folder).is_some_and(super::plain_name);
+            if !named {
+                problems.push(format!(
+                    "{path:?} is not a file {folder}<name>.png|.jpg in the registry"
+                ));
+                continue;
+            }
+            match read_regular(registry, Path::new(path), rules::MAX_SCREENSHOT) {
+                Err(e) => problems.push(format!("{path}: {e}")),
+                Ok(bytes) if bytes.is_empty() => {
+                    problems.push(format!("{path}: the file is empty"))
+                }
+                Ok(bytes) => match rules::check_screenshot(path, &bytes) {
+                    Ok(()) => found = true,
+                    Err(e) => problems.push(e),
+                },
+            }
+        }
+        if !found {
+            let detail = if problems.is_empty() {
+                String::new()
+            } else {
+                format!(" ({})", problems.join("; "))
+            };
+            errors.push(format!(
+                "{id}: {what} needs at least one screenshot: add an image as `{folder}<name>.png|.jpg` to the registry and list it in `screenshots`{detail} (a mod in the `library` category is exempt)"
+            ));
+        }
+    }
+    errors
+}
+
 /// Compares the entries of a pull request (`head`) with `main`'s (`base`):
 /// a published file never changes and is never removed (take it down in
 /// `revoked.toml`), a project's kind never changes, and changes by someone who
@@ -988,16 +1052,6 @@ pub fn review_with_revoked(
         }
         if let Err(error) = check_kind(&old.id, &old.kind, &new.kind) {
             r.errors.push(error);
-        }
-        let adds_version = new
-            .versions
-            .iter()
-            .any(|w| old.versions.iter().all(|v| v.version != w.version));
-        if adds_version && new.screenshots.is_empty() && !new.library {
-            r.errors.push(format!(
-                "{}: a new version needs at least one screenshot: add `screenshots/{}/<name>.png|.jpg` and list it in `screenshots` (or set `library = true` for an API-only mod)",
-                old.id, old.id
-            ));
         }
         for v in &old.versions {
             let taken_down = || {
@@ -1074,12 +1128,6 @@ pub fn review_with_revoked(
             ));
         }
         if !base.iter().any(|e| e.id == new.id) {
-            if new.screenshots.is_empty() && !new.library {
-                r.errors.push(format!(
-                    "{}: a new project needs at least one screenshot: add `screenshots/{}/<name>.png|.jpg` and list it in `screenshots` (or set `library = true` for an API-only mod)",
-                    new.id, new.id
-                ));
-            }
             r.notes.push(format!(
                 "{}: a new {} by {}{}",
                 new.id,

@@ -365,22 +365,3 @@ fn replacing_an_icon_at_the_same_path_requires_review() {
     assert_eq!(changes[0].status, CollectionReviewStatus::ReviewRequired);
     assert_eq!(changes[0].id, ID);
 }
-
-#[test]
-fn a_collection_needs_no_screenshot() {
-    // The mods are already listed (no screenshots, no new version); the head adds the collection.
-    let base = Scratch::new("collection-shots-base");
-    for (id, name) in [
-        ("creature", "Sunrise Creatures"),
-        ("fireflies", "Fireflies"),
-        ("butterflies", "Butterflies"),
-    ] {
-        write_mod(&base, id, name, "EAnathos");
-    }
-    let head = checkout("collection-shots-head");
-    let base = registry::load(&base.0.join("repo")).unwrap();
-    let head = registry::load(&head.0.join("repo")).unwrap();
-    assert!(head.entries.iter().all(|e| e.screenshots.is_empty()));
-    let r = registry::review_with_revoked(&base.entries, &head.entries, &head.revoked, "EAnathos");
-    assert!(r.errors.is_empty(), "{r:?}");
-}

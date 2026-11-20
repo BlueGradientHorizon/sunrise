@@ -342,7 +342,6 @@ fn a_review_protects_published_files() {
     assert_eq!(same, Review::default());
 
     let mut update = base.clone();
-    update.screenshots = vec!["screenshots/coords_hud/one.png".into()];
     let mut next = update.versions[0].clone();
     next.version = "0.2.0".into();
     update.versions.insert(0, next);
@@ -363,97 +362,8 @@ fn a_review_protects_published_files() {
     assert!(r.errors.iter().any(|e| e.contains("kind can't change")));
     assert!(r.notes.iter().any(|n| n.contains("signing key")));
 
-    let mut cozy = cozy;
-    cozy.screenshots = vec!["screenshots/cozy/one.png".into()];
     let r = review(&[], &[cozy], "newcomer");
     assert_eq!(r.notes, ["cozy: a new modpack by ludovic111"]);
-}
-
-fn shot_errors(r: &Review) -> usize {
-    r.errors
-        .iter()
-        .filter(|e| e.contains("needs at least one screenshot"))
-        .count()
-}
-
-#[test]
-fn a_new_project_needs_a_screenshot() {
-    let mut new: Entry = toml::from_str(&hud_entry()).unwrap();
-    let r = review(&[], std::slice::from_ref(&new), "newcomer");
-    assert_eq!(shot_errors(&r), 1, "{r:?}");
-    assert!(r.errors[0].contains("a new project needs"), "{r:?}");
-    new.screenshots = vec!["screenshots/coords_hud/one.png".into()];
-    let r = review(&[], &[new], "newcomer");
-    assert_eq!(shot_errors(&r), 0, "{r:?}");
-}
-
-#[test]
-fn an_existing_project_needs_a_screenshot_only_for_a_new_version() {
-    let base: Entry = toml::from_str(&hud_entry()).unwrap();
-    assert!(base.screenshots.is_empty());
-    // Untouched, and changed without a new version: still valid.
-    let r = review(
-        std::slice::from_ref(&base),
-        std::slice::from_ref(&base),
-        "ludovic111",
-    );
-    assert_eq!(r, Review::default());
-    let mut edited = base.clone();
-    edited.tags = vec!["hud".into()];
-    let r = review(
-        std::slice::from_ref(&base),
-        std::slice::from_ref(&edited),
-        "ludovic111",
-    );
-    assert_eq!(shot_errors(&r), 0, "{r:?}");
-    // A new version without one is refused, with one it passes.
-    let mut update = base.clone();
-    let mut next = update.versions[0].clone();
-    next.version = "0.2.0".into();
-    update.versions.insert(0, next);
-    let r = review(
-        std::slice::from_ref(&base),
-        std::slice::from_ref(&update),
-        "ludovic111",
-    );
-    assert_eq!(shot_errors(&r), 1, "{r:?}");
-    assert!(r.errors[0].contains("a new version needs"), "{r:?}");
-    update.screenshots = vec!["screenshots/coords_hud/one.jpg".into()];
-    let r = review(
-        std::slice::from_ref(&base),
-        std::slice::from_ref(&update),
-        "ludovic111",
-    );
-    assert!(r.errors.is_empty(), "{r:?}");
-}
-
-#[test]
-fn a_library_needs_no_screenshot() {
-    let mut lib: Entry = toml::from_str(&hud_entry()).unwrap();
-    lib.library = true;
-    assert!(lib.check_fields().iter().all(|e| !e.contains("library")));
-    let r = review(&[], std::slice::from_ref(&lib), "newcomer");
-    assert_eq!(shot_errors(&r), 0, "{r:?}");
-    let base = lib.clone();
-    let mut update = lib.clone();
-    let mut next = update.versions[0].clone();
-    next.version = "0.2.0".into();
-    update.versions.insert(0, next);
-    let r = review(&[base], &[update], "ludovic111");
-    assert_eq!(shot_errors(&r), 0, "{r:?}");
-    // The field is written only when set, and only a mod may set it.
-    assert!(lib.to_toml().unwrap().contains("library = true"));
-    assert!(
-        !toml::to_string(&toml::from_str::<Entry>(&hud_entry()).unwrap())
-            .unwrap()
-            .contains("library")
-    );
-    lib.kind = Kind::Modpack;
-    assert!(
-        lib.check_fields()
-            .iter()
-            .any(|e| e.contains("library = true"))
-    );
 }
 
 #[test]
@@ -462,7 +372,6 @@ fn a_version_taken_down_by_hash_may_leave_its_entry() {
     let base: Entry = toml::from_str(&hud_entry()).unwrap();
     let old = base.versions[0].clone();
     let mut rotated = base.clone();
-    rotated.screenshots = vec!["screenshots/coords_hud/one.png".into()];
     rotated.versions[0].version = "0.2.0".into();
     rotated.versions[0].sha256 = SPACK.into();
     let down = |id: &str, sha256: &str| Revoked {
@@ -944,4 +853,21 @@ fn native_binary_build_limits() {
                 .contains("invalid native build or canonical target triple")
         );
     }
+}
+
+#[test]
+fn the_screenshot_rule_covers_new_projects_new_versions_and_exempts_libraries() {
+    let base: Entry = toml::from_str(&hud_entry()).unwrap();
+    assert!(screenshot_required(None, &base));
+    assert!(!screenshot_required(Some(&base), &base));
+    let mut update = base.clone();
+    let mut next = update.versions[0].clone();
+    next.version = "0.2.0".into();
+    update.versions.insert(0, next);
+    assert!(screenshot_required(Some(&base), &update));
+    // Only a mod or native-mod in the `library` category is exempt.
+    update.categories = vec!["library".into()];
+    assert!(!screenshot_required(None, &update));
+    update.kind = Kind::Modpack;
+    assert!(screenshot_required(None, &update));
 }

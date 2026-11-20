@@ -203,10 +203,20 @@ fn draft(
         },
         tags: o.tags.clone(),
         screenshots: Vec::new(),
-        library: false,
         key: o.key.clone(),
         versions: vec![version],
     }
+}
+
+/// The checklist line when the registry's screenshot rule will refuse this draft: the entry is new,
+/// or gains a version, and lists none.
+fn screenshot_todo(before: Option<&Entry>, entry: &Entry) -> Option<String> {
+    let id = &entry.id;
+    (registry::screenshot_required(before, entry) && entry.screenshots.is_empty()).then(|| {
+        format!(
+            "{id}: add a screenshot to the registry as screenshots/{id}/<name>.png|.jpg and list it in the entry's `screenshots` field (a mod in the `library` category is exempt)"
+        )
+    })
 }
 
 fn pull_request(entry: &Entry, v: &EntryVersion, size: u64, first: bool) -> (String, String) {
@@ -418,6 +428,7 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
         signature,
         changelog: o.changelog.clone(),
     };
+    let before = existing.clone();
     let entry = match existing {
         Some(mut entry) => {
             entry.versions.insert(0, version.clone());
@@ -457,6 +468,7 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
         .into_iter()
         .map(|p| format!("{}: {p}", entry.id)),
     );
+    remaining.extend(screenshot_todo(before.as_ref(), &entry));
     // A category that is still the TODO is already listed as such.
     remaining.retain(|r| !r.contains("is not a category") || !r.contains(TODO));
     println!(
@@ -534,6 +546,34 @@ mod tests {
             signature: None,
             changelog: String::new(),
         }
+    }
+
+    #[test]
+    fn the_checklist_names_the_screenshot_a_new_project_or_version_needs() {
+        let mut o = Options {
+            owners: vec!["ada".into()],
+            categories: vec!["decoration".into()],
+            ..Options::default()
+        };
+        let entry = draft(&manifest(), Kind::Mod, &o, true, row("0.2.0"));
+        let todo = screenshot_todo(None, &entry).unwrap();
+        assert!(
+            todo.contains("screenshots/glowing_blocks/<name>.png|.jpg")
+                && todo.contains("`screenshots` field"),
+            "{todo}"
+        );
+        // Listed: nothing to add. An update of a listing without one needs it for the new version.
+        let mut shown = entry.clone();
+        shown.screenshots = vec!["screenshots/glowing_blocks/one.png".into()];
+        assert_eq!(screenshot_todo(None, &shown), None);
+        let mut update = entry.clone();
+        update.versions.insert(0, row("0.3.0"));
+        assert!(screenshot_todo(Some(&entry), &update).is_some());
+        // The same entry, unchanged, and a library mod are exempt.
+        assert_eq!(screenshot_todo(Some(&entry), &entry), None);
+        o.categories = vec!["library".into()];
+        let library = draft(&manifest(), Kind::Mod, &o, true, row("0.2.0"));
+        assert_eq!(screenshot_todo(None, &library), None);
     }
 
     #[test]

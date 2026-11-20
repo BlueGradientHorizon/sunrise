@@ -48,7 +48,7 @@ entry leaves out.
 | `icon` | Required for a listed project. An HTTPS URL in the generated index, from the registry's `icons/<id>.png` (not a remote image input). |
 | `categories` | 1–3 from the kind’s category list for a listed project. |
 | `tags` | Up to 10 lowercase tags. |
-| `screenshots` | Up to 8 HTTPS PNG or JPEG URLs in the generated index, from files kept in the registry under `screenshots/<id>/`. A new project, or an existing one whose pull request adds a version, needs at least one unless it is a collection or sets `library = true` in its entry. |
+| `screenshots` | Up to 8 HTTPS PNG or JPEG URLs in the generated index, from files kept in the registry under `screenshots/<id>/`. A new project, or an existing one whose pull request adds a version, needs at least one unless it is a collection or a `mod` or `native-mod` whose `categories` include `library`. The file must be a PNG or JPEG kept in the checkout and listed here, not a remote address. |
 | `key` | The author's [minisign](https://jedisct1.github.io/minisign/) public key. When set, every version must be signed with it; an update signed with another key is refused. Absent: the project is unsigned and the launcher says so. |
 | `versions` | Newest first, at least one. |
 | `downloads` | How many times its files were downloaded, every version together: GitHub's count of each release asset, summed across release assets. Absent when no file has been downloaded. Read-only: never in an entry. The registry's publish workflow reads the counts from GitHub and hands them to `cargo sunrise-mod registry build --counts <file>` (`{"downloads": {"<file address>": n}, "stars": {"<owner>/<repo>": n}}`), so both refresh each time the index is republished. |
@@ -233,7 +233,7 @@ pull request yourself. See [Publishing your mod](../how-to/publish.md) for the s
 - A description of 50–10,000 characters after trimming.
 - 1–3 categories from your project kind’s list and up to 10 lowercase tags.
 - A square PNG icon, 64–1024 pixels and at most 256 KiB, stored in the registry as `icons/<id>.png`.
-- 1–8 PNG or JPEG screenshots stored in the registry as `screenshots/<id>/<name>.png|.jpg`. `registry review` refuses a new project with none, and a pull request that adds a version to a project that still has none. Existing listings the pull request leaves without a new version stay valid, and collections need none. An API-only or library mod sets `library = true` in its entry (only for `mod` and `native-mod`) instead of adding a placeholder image.
+- 1–8 PNG or JPEG screenshots stored in the registry as `screenshots/<id>/<name>.png|.jpg`. `registry review` refuses a new project with none, and a pull request that adds a version to a project that still has none. Existing listings the pull request leaves without a new version stay valid, and collections need none. `registry check` and `registry review` apply the same rule, and the listed file must be a non-empty PNG or JPEG in the checkout. A `mod` or `native-mod` in the `library` category needs no screenshot: it does not take a placeholder image.
 
 The generated index supplies HTTPS URLs for images. Unknown entry keys are refused. A project’s kind cannot change.
 If you set a minisign key, sign every version with it. The registry takes no new entry that follows a repository's
@@ -254,7 +254,7 @@ source = "https://github.com/you/coords_hud"
 icon = "icons/coords_hud.png"
 categories = ["utility"]        # 1 to 3 from your kind's list
 tags = ["hud"]                  # up to 10, lowercase
-screenshots = ["screenshots/coords_hud/main.png"]  # 1 to 8; or library = true for an API-only mod
+screenshots = ["screenshots/coords_hud/main.png"]  # 1 to 8, files kept in the registry
 # key = "RWT..."                # optional minisign public key: every version must then carry a signature
 
 [[versions]]                    # newest first

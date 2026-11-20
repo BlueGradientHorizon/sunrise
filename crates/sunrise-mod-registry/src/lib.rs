@@ -969,7 +969,6 @@ pub fn publish(
                 categories: form.categories.clone(),
                 tags: form.tags.clone(),
                 screenshots: Vec::new(),
-                library: false,
                 key: form.key.clone().filter(|k| !k.trim().is_empty()),
                 versions: vec![version.clone()],
             },
