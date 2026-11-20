@@ -310,7 +310,12 @@ pub(super) fn emit<'a>(
                     format!(" -> Option<{}>", answer.to_token_stream())
                 }
                 Contract::Replace => format!(" -> {}", reference.elem.to_token_stream()),
-                Contract::Collect if answered && answered_batch(&reference.elem).is_none() => {
+                Contract::Collect
+                    if answered
+                        && answered_batch(&reference.elem).is_none()
+                        && !(matches!(name, "blocks" | "items")
+                            && declaration_sink(&reference.elem).is_some()) =>
+                {
                     return Err(format!("{name}: output must be Vec<Answered<T>>"));
                 }
                 Contract::Collect => String::new(),
@@ -446,7 +451,9 @@ pub(super) fn emit<'a>(
         // Surface export reads the input tree's types, including older trees.
         let declaration = match (name, output.as_ref()) {
             ("blocks" | "items", Some((_, Type::Reference(output)))) => {
-                answered_batch(&output.elem).map(ToTokens::to_token_stream)
+                declaration_sink(&output.elem)
+                    .or_else(|| answered_batch(&output.elem))
+                    .map(ToTokens::to_token_stream)
             }
             _ => None,
         };
@@ -970,7 +977,8 @@ pub(super) fn emit<'a>(
                 "impl {event_type}<'_> {{\n\
                  /// Submit a declaration in a manifest-owned namespace. A bare name or reference\n\
                  /// uses the mod's ID as its namespace. A locally invalid declaration returns\n\
-                 /// a [`DeclarationError`] and is also reported at startup if ignored.\n\
+                 /// a [`DeclarationError`] and is also reported at startup if ignored. Collisions\n\
+                 /// and checks needing other declarations or resources run after collection.\n\
                  pub fn register(&mut self, entry: {entry}) -> Result<(), DeclarationError> {{\n\
                      super::parts::submit_declaration(self.context, self.mod_id, self.{out}, entry)\n\
                  }}\n}}\n"
@@ -2327,6 +2335,21 @@ fn answered_type(ty: &Type) -> Option<&Type> {
 /// `T` of a `Vec<Answered<T>>` output, if that is its type.
 fn answered_batch(ty: &Type) -> Option<&Type> {
     generic_of(generic_of(ty, "Vec")?, "Answered")
+}
+
+/// `T` of the engine callback that validates and stages an `Answered<T>`.
+fn declaration_sink(ty: &Type) -> Option<&Type> {
+    let Type::TraitObject(object) = ty else {
+        return None;
+    };
+    let syn::TypeParamBound::Trait(bound) = object.bounds.first()? else {
+        return None;
+    };
+    let segment = bound.path.segments.last().filter(|s| s.ident == "FnMut")?;
+    let syn::PathArguments::Parenthesized(args) = &segment.arguments else {
+        return None;
+    };
+    generic_of(args.inputs.first()?, "Answered")
 }
 
 /// `T` of a `name<T>` type.

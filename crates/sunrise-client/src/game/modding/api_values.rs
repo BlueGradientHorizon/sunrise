@@ -2631,11 +2631,10 @@ impl TryIntoEngine<()> for mod_api::BlockEntityTypeDecl {
     }
 }
 pub(in crate::game) fn block_entity_declarations()
--> Vec<sunrise_mod_package::content::BlockEntityType> {
+-> impl Iterator<Item = (&'static str, sunrise_mod_package::content::BlockEntityType)> {
     mod_api::__private::block_entity_types()
         .iter()
-        .map(|decl| decl.try_into_engine(&()).unwrap())
-        .collect()
+        .map(|(owner, decl)| (*owner, decl.try_into_engine(&()).unwrap()))
 }
 
 #[cfg(test)]
@@ -2659,9 +2658,10 @@ mod declaration_snapshot_tests {
             }
         }
         install_parts(&[mod_api::ModEntry::new("test", Box::new(Mod))]).unwrap();
-        let declarations = block_entity_declarations();
-        assert_eq!(declarations[0].id, "test:machine");
-        assert_eq!(declarations[0].blocks, ["test:second", "test:first"]);
+        let (owner, declaration) = block_entity_declarations().next().unwrap();
+        assert_eq!(owner, "test");
+        assert_eq!(declaration.id, "test:machine");
+        assert_eq!(declaration.blocks, ["test:second", "test:first"]);
         let registry = game_rule_registry();
         let key = *KEY.get().unwrap();
         assert_eq!(
@@ -2966,9 +2966,10 @@ pub(in crate::game) fn register_game_keys(ids: impl IntoIterator<Item = String>)
         mod_api::__private::resolve_block_entity_types(
             types
                 .names()
-                .chain(declared.iter().map(|kind| kind.id.as_str())),
+                .chain(declared.iter().map(|(_, kind)| kind.id.as_str())),
             |id| {
-                (types.key(id).is_some() || declared.iter().any(|kind| kind.id == id)).then_some(())
+                (types.key(id).is_some() || declared.iter().any(|(_, kind)| kind.id == id))
+                    .then_some(())
             },
         )
         .unwrap();

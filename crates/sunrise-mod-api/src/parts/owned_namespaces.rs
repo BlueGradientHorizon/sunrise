@@ -129,7 +129,7 @@ mod tests {
                 kind,
                 mod_vocab::__private::parts_installation::block_entity_type_key(u32::MAX)
             );
-            assert_eq!(r.block_entity_types[0].id, "legacy:pot");
+            assert_eq!(r.block_entity_types[0].1.id, "legacy:pot");
             let fluid = r.declare_fluid("legacy:soup");
             assert_ne!(
                 fluid,
@@ -200,9 +200,9 @@ mod tests {
                 .blocks(&["press", "legacy:pot", "minecraft:stone"])
                 .build();
             assert!(r.refused.is_empty(), "{:?}", r.refused);
-            assert_eq!(r.block_entity_types[0].id, "porter:press");
+            assert_eq!(r.block_entity_types[0].1.id, "porter:press");
             assert_eq!(
-                r.block_entity_types[0].blocks,
+                r.block_entity_types[0].1.blocks,
                 ["porter:press", "legacy:pot", "minecraft:stone"]
             );
         });
@@ -240,7 +240,10 @@ mod tests {
         crate::testing::with_mods(vec![ModEntry::new("late", Box::new(Late))].into(), || {
             let mut blocks = Vec::new();
             // Call the engine dispatcher out of phase; a mod cannot retain the event.
-            crate::dispatch_blocks(&RegistrationContext::new(), &mut blocks);
+            crate::dispatch_blocks(&RegistrationContext::new(), &mut |block| {
+                blocks.push(block);
+                Ok(())
+            });
             assert!(blocks.is_empty());
         });
     }
@@ -286,8 +289,14 @@ mod tests {
                 let context = RegistrationContext::new();
                 let mut blocks = Vec::new();
                 let mut items = Vec::new();
-                crate::dispatch_blocks(&context, &mut blocks);
-                crate::dispatch_items(&context, &mut items);
+                crate::dispatch_blocks(&context, &mut |block| {
+                    blocks.push(block);
+                    Ok(())
+                });
+                crate::dispatch_items(&context, &mut |item| {
+                    items.push(item);
+                    Ok(())
+                });
                 assert_eq!(blocks.len(), 1);
                 assert_eq!(blocks[0].mod_id, "porter");
                 let pot = &blocks[0].answer;

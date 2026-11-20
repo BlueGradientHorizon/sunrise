@@ -19,7 +19,7 @@ mod stubs {
         pub(in crate::tests) fn submit_declaration<T: Declaration>(
             context: &RegistrationContext,
             mod_id: &'static str,
-            output: &mut Vec<Answered<T>>,
+            output: &mut dyn FnMut(Answered<T>) -> Result<(), DeclarationError>,
             mut answer: T,
         ) -> Result<(), DeclarationError> {
             let id = answer.id();
@@ -33,8 +33,7 @@ mod stubs {
                 });
             }
             *id = format!("{mod_id}/checked/{id}");
-            output.push(Answered { answer, mod_id });
-            Ok(())
+            output(Answered { answer, mod_id })
         }
     }
 }
@@ -74,7 +73,10 @@ fn block_dispatch_keeps_owner_context_and_valid_output() {
         },
         mod_id: "existing",
     }];
-    dispatch_blocks(&RegistrationContext("bootstrap"), &mut blocks);
+    dispatch_blocks(&RegistrationContext("bootstrap"), &mut |block| {
+        blocks.push(block);
+        Ok(())
+    });
     assert_eq!(
         blocks
             .iter()

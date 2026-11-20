@@ -6,18 +6,18 @@ with `event.register(declaration)` in `Hooks::blocks` and `Hooks::items`. Like N
 `DeferredRegister` rejects new entries after `RegisterEvent` fires; Sunrise's registrar and
 collect events are borrowed, so a mod cannot keep them for a later hook.
 
-If you expose registration to scripts, use `mod_api::registration_open()` in the binding to
-reject late calls with the requested ID (for example `DeclarationError::RegistrationClosed`).
-Run your declaring scripts in the relevant registration hook, not in `player_logged_in`.
-Queuing into a mod-owned list after registration is closed does not change the game's registry.
-A `true` phase read does not replace the event or registrar: you still need the borrowed
-registration API for the kind of declaration you are making.
+If you expose registration to scripts, require the matching registration hook before
+queuing a declaration. `mod_api::registration_open()` can reject calls outside the phase,
+but it does not tell you which hook is running. A late call (for example, from
+`player_logged_in`) must not enter the queue: return `DeclarationError::RegistrationClosed`
+and log the submitting mod and requested ID in the binding. The phase query itself does not log.
 
-`BlocksEvent::register` and `ItemsEvent::register` return `DeclarationError` for a malformed ID
-or a namespace your manifest does not own. The game records the refusal even if you ignore the
-error. Valid declarations stay staged until cross-declaration checks complete: for example,
-a submitted item may conflict with another declaration's generated block item. Startup refuses
-invalid batches and reports the mod, kind, ID, and reason on separate lines in the startup error
+`BlocksEvent::register` and `ItemsEvent::register` return `DeclarationError` for a malformed ID,
+a namespace your manifest does not own, or invalid fields in the declaration. The game records
+the refusal even if you ignore the error. Checks that need other declarations or loaded
+resources run after collection: for example, a submitted item may conflict with another
+declaration's generated block item. Startup refuses
+invalid batches and reports the mod, kind, ID, and reason on one line per refusal in the startup error
 and log, following NeoForge's `ModLoadingIssue` model.
 
 If your `Hooks::register` bootstrap cannot complete, call `cx.refuse("reason")` and return.

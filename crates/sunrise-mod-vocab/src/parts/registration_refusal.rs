@@ -61,7 +61,7 @@ impl std::error::Error for DeclarationError {}
 // hidden: the game collects these records before opening any world.
 #[doc(hidden)]
 #[derive(Clone, Debug, PartialEq, Eq)]
-// exhaustive: the engine provides all three fields.
+#[non_exhaustive]
 pub struct DeclarationRefusal {
     /// ID of the submitting package, not necessarily the declaration's namespace.
     pub mod_id: String,

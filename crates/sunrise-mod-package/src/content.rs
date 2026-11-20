@@ -1224,6 +1224,53 @@ impl Content {
         blocks: &[Block],
         items: &[Item],
     ) -> Result<(), Vec<(DeclarationKind, DeclarationError)>> {
+        let in_own = |id: &str| {
+            if namespaced_id(id)
+                && id
+                    .split_once(':')
+                    .is_some_and(|(ns, _)| self.namespaces.iter().any(|owned| owned == ns))
+            {
+                Ok(())
+            } else {
+                Err(format!(
+                    "not an id in owned namespaces {:?}",
+                    self.namespaces
+                ))
+            }
+        };
+        self.check_declaration_batch(
+            blocks
+                .iter()
+                .map(|b| (b, in_own(&b.id).and_then(|()| check_block(b)))),
+            items
+                .iter()
+                .map(|i| (i, in_own(&i.id).and_then(|()| check_item(i)))),
+        )?;
+        self.blocks.extend_from_slice(blocks);
+        self.items.extend_from_slice(items);
+        Ok(())
+    }
+
+    /// Joins declarations whose fields and submitting namespaces were checked at registration.
+    pub fn declare_validated(
+        &mut self,
+        blocks: &[LocalDeclaration<Block>],
+        items: &[LocalDeclaration<Item>],
+    ) -> Result<(), Vec<(DeclarationKind, DeclarationError)>> {
+        self.check_declaration_batch(
+            blocks.iter().map(|b| (b.get(), Ok(()))),
+            items.iter().map(|i| (i.get(), Ok(()))),
+        )?;
+        self.blocks.extend(blocks.iter().map(|b| b.get().clone()));
+        self.items.extend(items.iter().map(|i| i.get().clone()));
+        Ok(())
+    }
+
+    fn check_declaration_batch<'a>(
+        &self,
+        blocks: impl IntoIterator<Item = (&'a Block, Result<(), String>)>,
+        items: impl IntoIterator<Item = (&'a Item, Result<(), String>)>,
+    ) -> Result<(), Vec<(DeclarationKind, DeclarationError)>> {
         let mut ids: BTreeSet<&str> = self
             .blocks
             .iter()
@@ -1237,12 +1284,6 @@ impl Content {
             .map(|b| b.id.as_str())
             .chain(self.items.iter().map(|i| i.id.as_str()))
             .collect();
-        let in_own = |id: &str| {
-            namespaced_id(id)
-                && id
-                    .split_once(':')
-                    .is_some_and(|(ns, _)| self.namespaces.iter().any(|owned| owned == ns))
-        };
         let mut errors = Vec::new();
         let mut refuse = |kind, id: &str, reason| {
             errors.push((
@@ -1254,16 +1295,9 @@ impl Content {
             ));
         };
         let mut all_blocks: Vec<&Block> = self.blocks.iter().collect();
-        for block in blocks {
+        for (block, fields) in blocks {
             let id = block.id.as_str();
-            let result = (|| {
-                if !in_own(id) {
-                    return Err(format!(
-                        "not an id in owned namespaces {:?}",
-                        self.namespaces
-                    ));
-                }
-                check_block(block)?;
+            let result = fields.and_then(|()| {
                 if !ids.insert(id) {
                     return Err("declared twice".into());
                 }
@@ -1271,7 +1305,7 @@ impl Content {
                     item_ids.insert(id);
                 }
                 Ok(())
-            })();
+            });
             match result {
                 Ok(()) => all_blocks.push(block),
                 Err(reason) => refuse(DeclarationKind::Block, id, reason),
@@ -1280,21 +1314,14 @@ impl Content {
         sign_wall_refusals(&all_blocks)
             .for_each(|(id, reason)| refuse(DeclarationKind::Block, id, reason));
         let mut valid_items = Vec::new();
-        for item in items {
+        for (item, fields) in items {
             let id = item.id.as_str();
-            let result = (|| {
-                if !in_own(id) {
-                    return Err(format!(
-                        "not an id in owned namespaces {:?}",
-                        self.namespaces
-                    ));
-                }
-                check_item(item)?;
+            let result = fields.and_then(|()| {
                 if !item_ids.insert(id) {
                     return Err("declared twice, or is also a block's item".into());
                 }
                 Ok(())
-            })();
+            });
             match result {
                 Ok(()) => valid_items.push(item),
                 Err(reason) => refuse(DeclarationKind::Item, id, reason),
@@ -1317,8 +1344,6 @@ impl Content {
         if !errors.is_empty() {
             return Err(errors);
         }
-        self.blocks.extend_from_slice(blocks);
-        self.items.extend_from_slice(items);
         Ok(())
     }
 
@@ -1781,6 +1806,30 @@ fn check_components(
         }
     }
     Ok(())
+}
+
+/// A declaration checked without consulting other entries or loaded resources.
+#[derive(Clone)]
+pub struct LocalDeclaration<T>(T);
+
+impl<T> LocalDeclaration<T> {
+    pub fn get(&self) -> &T {
+        &self.0
+    }
+}
+
+impl Block {
+    pub fn validate_local(self) -> Result<LocalDeclaration<Self>, String> {
+        check_block(&self)?;
+        Ok(LocalDeclaration(self))
+    }
+}
+
+impl Item {
+    pub fn validate_local(self) -> Result<LocalDeclaration<Self>, String> {
+        check_item(&self)?;
+        Ok(LocalDeclaration(self))
+    }
 }
 
 /// An item's fields, as a file or code gives them.

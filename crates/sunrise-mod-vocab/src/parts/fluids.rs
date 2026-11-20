@@ -1,6 +1,6 @@
 use super::*;
 /// The world fluids the mods declared in code, once they have all registered.
-pub fn declared_world_fluids() -> &'static [(String, crate::WorldFluid)] {
+pub fn declared_world_fluids() -> &'static [(&'static str, (String, crate::WorldFluid))] {
     installed().map_or(&[], |installed| &installed.world_fluids)
 }
 

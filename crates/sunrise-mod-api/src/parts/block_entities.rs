@@ -11,7 +11,11 @@ impl PartRegistrar {
         ids.sort_unstable();
         for id in ids {
             let parts = &self.parts.block_entity_kinds[id];
-            let Some(kind) = self.block_entity_types.iter().find(|kind| kind.id == **id) else {
+            let Some(&(owner, ref kind)) = self
+                .block_entity_types
+                .iter()
+                .find(|(_, kind)| kind.id == **id)
+            else {
                 let namespace = id.split_once(':').map_or("", |(namespace, _)| namespace);
                 // The installed package owning the namespace; an absent one is known only by
                 // its id, which an optional dependency is matched against.
@@ -56,13 +60,9 @@ impl PartRegistrar {
                 }
                 continue;
             };
-            let owner = self.block_entity_owners.get(&**id).copied();
             let allowed: Vec<_> = parts
                 .iter()
                 .filter(|part| {
-                    let Some(owner) = owner else {
-                        return true;
-                    };
                     let depends = dependencies.permits(part.mod_id, owner);
                     if !depends {
                         self.refused.push(format!(
@@ -905,7 +905,9 @@ impl BlockEntitiesRegistrar for PartRegistrar {
             .id(mod_vocab::__private::parts_installation::block_entity_type_key_slot(key))
             .map(str::to_owned);
         if let Some(id) = id.filter(|id| {
-            self.block_entity_types.iter().any(|decl| decl.id == *id)
+            self.block_entity_types
+                .iter()
+                .any(|(_, decl)| decl.id == *id)
                 && self.owned_declaration_id(id).is_ok()
         }) {
             self.block_entity_transforms.insert(id, step);
@@ -947,11 +949,10 @@ impl BlockEntitiesRegistrar for PartRegistrar {
             .iter()
             .map(|block| mod_vocab::__private::qualified(self.mod_id, block))
             .collect();
-        self.block_entity_owners
-            .entry(id.clone())
-            .or_insert(self.mod_id);
-        self.block_entity_types
-            .push(mod_vocab::__private::parts_installation::block_entity_declaration(id, blocks));
+        self.block_entity_types.push((
+            self.mod_id,
+            mod_vocab::__private::parts_installation::block_entity_declaration(id, blocks),
+        ));
         key
     }
 

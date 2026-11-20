@@ -84,30 +84,34 @@ impl Declaration for crate::Item {
 pub(crate) fn submit_declaration<D: Declaration>(
     context: &crate::RegistrationContext,
     mod_id: &'static str,
-    output: &mut Vec<Answered<D>>,
+    submit: &mut dyn FnMut(Answered<D>) -> Result<(), DeclarationError>,
     mut declaration: D,
 ) -> Result<(), DeclarationError> {
-    let (id, references) = declaration.names();
     if !crate::registration_open() {
-        let error = DeclarationError::RegistrationClosed { id: id.clone() };
+        let error = DeclarationError::RegistrationClosed {
+            id: declaration.names().0.clone(),
+        };
         log::warn!("mod {mod_id} {:?} declaration refused: {error}", D::KIND);
         return Err(error);
     }
-    *id = validate_owned_id(mod_id, qualified(mod_id, id)).inspect_err(|error| {
+    let result = (|| {
+        let (id, references) = declaration.names();
+        *id = validate_owned_id(mod_id, qualified(mod_id, id))?;
+        for reference in references.into_iter().flatten() {
+            *reference = qualified(mod_id, reference);
+        }
+        submit(Answered {
+            answer: declaration,
+            mod_id,
+        })
+    })();
+    result.inspect_err(|error| {
         context
             .declaration_refusals
             .lock()
             .unwrap_or_else(|p| p.into_inner())
             .push(DeclarationRefusal::new(mod_id, D::KIND, error.clone()));
-    })?;
-    for reference in references.into_iter().flatten() {
-        *reference = qualified(mod_id, reference);
-    }
-    output.push(Answered {
-        answer: declaration,
-        mod_id,
-    });
-    Ok(())
+    })
 }
 
 impl crate::RegistrationContext {

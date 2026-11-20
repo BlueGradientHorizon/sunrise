@@ -1,10 +1,16 @@
 //! #3120: a bare name is the declaring mod's own, so a block entity type built with
 //! `.blocks(&["press"])` holds the block `press` the same mod declares.
-use std::{collections::BTreeSet, fs, path::Path};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs,
+    path::Path,
+};
 
 use mod_api::Side;
 use mod_api::{__private::game::RegistrationContextNew, BlocksEvent, Hooks, Registrar};
-use sunrise_client::mod_content::{BLOCK_ENTITY_TYPES, accept_declared, resource_root};
+use sunrise_client::mod_content::{
+    BLOCK_ENTITY_TYPES, DeclaredContent, accept_declared, resource_root,
+};
 use sunrise_mod_package::enabled::EnabledMods;
 
 use crate::game::{Game, api_values::TryIntoEngine};
@@ -56,16 +62,36 @@ fn a_bare_block_name_binds_the_type_to_the_mods_own_block() {
             mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
         let context = mod_api::RegistrationContext::new();
         let mut blocks = Vec::new();
-        Game::native_blocks(&context, &mut blocks);
+        Game::native_blocks(&context, &mut |block| {
+            blocks.push(
+                block
+                    .answer
+                    .try_into_engine(&())
+                    .unwrap()
+                    .validate_local()
+                    .unwrap(),
+            );
+            Ok(())
+        });
         assert!(mod_api::__private::take_declaration_refusals(&context).is_empty());
-        let blocks: Vec<sunrise_mod_package::content::Block> = blocks
-            .iter()
-            .map(|block| block.answer.try_into_engine(&()).unwrap())
-            .collect();
-        (blocks, crate::game::api_values::block_entity_declarations())
+        (
+            blocks,
+            crate::game::api_values::block_entity_declarations()
+                .map(|(_, kind)| kind)
+                .collect(),
+        )
     });
     let mut content = Vec::new();
-    let errors = accept_declared(&mut content, &blocks, &[], &types, &BTreeSet::new());
+    let batches = BTreeMap::from([(
+        "press_mod",
+        DeclaredContent {
+            blocks,
+            types,
+            ..Default::default()
+        },
+    )]);
+    let mut errors = Vec::new();
+    accept_declared(&mut content, &batches, &[], &BTreeSet::new(), &mut errors).unwrap();
     assert!(errors.is_empty(), "{errors:?}");
     let scratch = std::env::temp_dir().join(format!(
         "sunrise-bare-declaration-names-{}",
