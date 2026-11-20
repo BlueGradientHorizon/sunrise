@@ -5,7 +5,7 @@ use super::native_entity_refs::tests::with_client_game;
 use mod_api::__private::{ModPhase, PhaseOwner};
 use mod_api::{
     BakedModelKey, BakedModelView, BlockStateRecord, ClientHost, Hooks, ModEntry,
-    ModelBakingCompletedEvent, ModelError,
+    ModelBakingCompletedEvent, ModelError, ModelRef,
 };
 use mod_platform::testing::with_mods;
 use std::sync::{Arc, Mutex};
@@ -18,6 +18,8 @@ struct Read {
     invalid_keys: Vec<[Result<Vec<BakedModelKey>, ModelError>; 2]>,
     /// An oak log lying along x and standing along y: two states of one block, two bindings.
     log_keys: Vec<[Result<Vec<BakedModelKey>, ModelError>; 2]>,
+    /// The drawable model of stone, then of stone at an ordinal past its states.
+    models: Vec<[Result<ModelRef, ModelError>; 2]>,
 }
 struct Reader(Arc<Mutex<Read>>);
 #[mod_api::__subscriptions]
@@ -45,6 +47,10 @@ impl Hooks for Reader {
                 assets.block_state_models(state)
             }),
         );
+        read.models.push([
+            assets.block_state_model(stone),
+            assets.block_state_model(BlockStateRecord::new(stone.block(), u16::MAX).into()),
+        ]);
         read.keys.push(keys);
         read.views.push(views);
     }
@@ -86,6 +92,13 @@ fn a_client_mod_reads_a_block_states_baked_models_once_per_load() {
                 };
                 assert!(!along_x.is_empty() && !along_y.is_empty());
                 assert_ne!(along_x, along_y, "each axis state selects its own binding");
+                let [stone_model, past_ordinal] = &read.models[0];
+                assert!(stone_model.is_ok(), "stone's model: {stone_model:?}");
+                assert_eq!(
+                    past_ordinal,
+                    &Err(ModelError::UnknownModel),
+                    "an ordinal past the block's states is refused"
+                );
                 (keys[0], view.clone())
             };
             reload(game);

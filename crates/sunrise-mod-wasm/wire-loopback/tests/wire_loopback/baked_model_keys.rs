@@ -2,6 +2,7 @@ use super::*;
 use mod_api::prelude::*;
 use mod_api::{
     BakedModelKey, BakedModelView, BakedQuad, BlockState, BlockStateRecord, Direction, ModelError,
+    ModelRef,
 };
 
 /// The game's published store: generation 5 holds slot 2, stone's one model.
@@ -20,6 +21,9 @@ impl ServicesClientHost for Store {
 }
 fn key(generation: u64, slot: u32) -> BakedModelKey {
     mod_api::__private::built::baked_model_key(generation, slot)
+}
+fn stone_model() -> ModelRef {
+    mod_api::__private::built::model_ref(5, 3)
 }
 fn stone() -> BakedModelView {
     let mut quad = BakedQuad::new(
@@ -42,6 +46,13 @@ fn stone() -> BakedModelView {
     view
 }
 impl mod_api::RenderAssets for Store {
+    fn block_state_model(&self, state: BlockState) -> Result<ModelRef, ModelError> {
+        if state == self.stone {
+            Ok(stone_model())
+        } else {
+            Err(ModelError::UnknownModel)
+        }
+    }
     fn block_state_models(&self, state: BlockState) -> Result<Vec<BakedModelKey>, ModelError> {
         if state == self.stone {
             Ok(vec![key(5, 2)])
@@ -127,9 +138,14 @@ fn wire_loopback_a_guest_reads_a_states_keys_and_a_copy_of_its_model() {
             let keys = assets.block_state_models(stone_state).unwrap();
             assert_eq!(keys, [key(5, 2)]);
             assert_eq!(assets.block_state_models(air), Ok(Vec::new()));
+            assert_eq!(assets.block_state_model(stone_state), Ok(stone_model()));
             for invalid in [unknown_block, unknown_ordinal] {
                 assert_eq!(
                     assets.block_state_models(invalid),
+                    Err(ModelError::UnknownModel)
+                );
+                assert_eq!(
+                    assets.block_state_model(invalid),
                     Err(ModelError::UnknownModel)
                 );
             }
