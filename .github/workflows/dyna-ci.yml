@@ -875,9 +875,9 @@ jobs:
         id: ignored_test_policy_files_read_cleanly
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: python3 tools/ci/check_ignored_test_rows.py
-      # The game's modules are plain mod items: a file of game/<area>/ that nothing declares is never compiled.
-      - name: Every game source file is compiled
-        id: every_game_source_file_is_compiled
+      # Modules are plain mod items: a file under a crate's src/ that nothing declares is never compiled.
+      - name: Every crate source file is compiled
+        id: every_crate_source_file_is_compiled
         if: ${{ !cancelled() && steps.setup.outcome == 'success' }}
         run: python3 tools/ci/check_unreached_sources.py
       - name: Fetch locked Cargo dependencies for the vanilla build check
