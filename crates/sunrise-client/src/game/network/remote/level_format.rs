@@ -65,8 +65,8 @@ impl crate::game::Game<'_> {
     ///
     /// Building one reads every biome file, so both are kept by type name with the JSON and the
     /// packs' stacks they were built from (`LevelEnvironments`): entering a level of an unchanged
-    /// type again (a respawn, a travel back) reuses them, and a pack reload, which makes new
-    /// stacks, builds the frame's again.
+    /// type again (a respawn, a travel back) reuses them as kept, without cloning the JSON, and a
+    /// pack reload, which makes new stacks, builds only the frame's again, in the same entry.
     pub(in crate::game) fn build_level_environments(&mut self) {
         let stacks = self.pack.environments.clone();
         let Some(r) = self.remote.as_mut() else {
@@ -77,24 +77,21 @@ impl crate::game::Game<'_> {
             r.level_pack_environment = None;
             return;
         };
-        let built = r.level_environments.get(name).filter(|e| e.json == *json);
-        let own = match built {
-            Some(e) => e.own.clone(),
-            None => Environment::with_type(self.res.environment_of(name), json).map(Arc::new),
-        };
-        let pack = match built.filter(|e| same_stacks(e.stacks.as_ref(), stacks.as_ref())) {
-            Some(e) => e.pack.clone(),
-            None => stacks
-                .as_ref()
-                .and_then(|e| match name.as_str() {
-                    "minecraft:overworld" => Some(&e[0]),
-                    "minecraft:the_nether" => Some(&e[1]),
-                    "minecraft:the_end" => Some(&e[2]),
-                    _ => None,
-                })
-                .and_then(|base| Environment::with_type(base, json))
-                .map(Arc::new),
-        };
+        if let Some(e) = r
+            .level_environments
+            .get_mut(name)
+            .filter(|e| e.json == *json)
+        {
+            if !same_stacks(e.stacks.as_ref(), stacks.as_ref()) {
+                e.pack = pack_environment(name, json, stacks.as_ref());
+                e.stacks = stacks.as_ref().map(Arc::downgrade);
+            }
+            r.level_environment = e.own.clone();
+            r.level_pack_environment = e.pack.clone();
+            return;
+        }
+        let own = Environment::with_type(self.res.environment_of(name), json).map(Arc::new);
+        let pack = pack_environment(name, json, stacks.as_ref());
         r.level_environments.insert(
             name.clone(),
             LevelEnvironments {
@@ -124,6 +121,22 @@ pub(super) struct LevelEnvironments {
 }
 
 /// Whether `built` are the packs' current stacks `now`.
+/// The frame's environment of the synchronized type `name` with `json`: the type over the packs'
+/// stack of that type, or `None` without pack modifiers or for a type with no pack stack.
+fn pack_environment(
+    name: &str,
+    json: &serde_json::Value,
+    stacks: Option<&Arc<[Environment; 3]>>,
+) -> Option<Arc<Environment>> {
+    let base = match name {
+        "minecraft:overworld" => &stacks?[0],
+        "minecraft:the_nether" => &stacks?[1],
+        "minecraft:the_end" => &stacks?[2],
+        _ => return None,
+    };
+    Environment::with_type(base, json).map(Arc::new)
+}
+
 fn same_stacks(
     built: Option<&Weak<[Environment; 3]>>,
     now: Option<&Arc<[Environment; 3]>>,
