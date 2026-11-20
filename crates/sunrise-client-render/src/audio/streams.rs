@@ -26,11 +26,11 @@ use std::sync::{
 /// How far from the origin a position may lie, in blocks (the world border's limit).
 const POSITION_LIMIT: f64 = 30_000_000.0;
 
-/// A stream's samples: written by one pusher, read by the output callback.
+/// A stream's samples: written by one producer, read by the output callback.
 pub(super) struct Ring {
     samples: Box<[AtomicI16]>,
     /// Samples written and consumed since the stream opened; the index is the count modulo the
-    /// length. Only the one pusher moves `tail`, only the callback moves `head`.
+    /// length. Only the producer moves `tail`, only the callback moves `head`.
     head: AtomicU64,
     tail: AtomicU64,
     channels: usize,
@@ -44,6 +44,29 @@ impl Ring {
             tail: AtomicU64::new(0),
             channels,
         }
+    }
+
+    /// The producer's tail (in samples), queued frames and free frames, in that order.
+    fn producer_window(&self) -> (u64, usize, usize) {
+        let tail = self.tail.load(Relaxed);
+        let queued = tail - self.head.load(Acquire);
+        let free = self.samples.len() as u64 - queued;
+        let channels = self.channels as u64;
+        (
+            tail,
+            (queued / channels) as usize,
+            (free / channels) as usize,
+        )
+    }
+
+    /// Write whole frames that the producer has checked fit in its window. No other producer
+    /// may write between taking the window and publishing its samples.
+    fn publish_frames(&self, tail: u64, samples: &[i16]) {
+        let len = self.samples.len() as u64;
+        for (i, sample) in samples.iter().enumerate() {
+            self.samples[((tail + i as u64) % len) as usize].store(*sample, Relaxed);
+        }
+        self.tail.store(tail + samples.len() as u64, Release);
     }
 }
 
@@ -236,14 +259,9 @@ impl AudioStreamSource for StreamHandle {
         let accepted = match self.ring.upgrade() {
             Some(ring) => {
                 let channels = ring.channels;
-                let len = ring.samples.len() as u64;
-                let tail = ring.tail.load(Relaxed);
-                let free = (len - (tail - ring.head.load(Acquire))) / channels as u64;
-                let frames = (samples.len() / channels).min(free as usize);
-                for (i, sample) in samples[..frames * channels].iter().enumerate() {
-                    ring.samples[((tail + i as u64) % len) as usize].store(*sample, Relaxed);
-                }
-                ring.tail.store(tail + (frames * channels) as u64, Release);
+                let (tail, _, free) = ring.producer_window();
+                let frames = (samples.len() / channels).min(free);
+                ring.publish_frames(tail, &samples[..frames * channels]);
                 frames as u32
             }
             None => 0,
