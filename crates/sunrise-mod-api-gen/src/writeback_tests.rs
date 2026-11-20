@@ -192,7 +192,7 @@ fn main() {
             .unwrap();
         assert!(
             output.status.success(),
-            "{}",
+            "rustc could not compile the writeback fixture\n{}\nvariant: {name}",
             String::from_utf8_lossy(&output.stderr)
         );
         let output = std::process::Command::new(binary).output().unwrap();
