@@ -314,8 +314,9 @@ impl mod_api::Hooks for ListenerIngredient {
     fn ingredient(
         &self,
         _: &dyn mod_api::DataLoadContext,
-        event: &mut mod_api::IngredientEvent<'_>,
-    ) {
+        kind: &str,
+        data: &mod_api::Compound,
+    ) -> Option<mod_api::IngredientDefinition> {
         event.items.extend(self.0.iter().map(|i| i.to_string()));
     }
 }

@@ -22,9 +22,10 @@ impl mod_api::Hooks for TypedIngredient {
     fn ingredient(
         &self,
         _: &dyn mod_api::DataLoadContext,
-        event: &mut mod_api::IngredientEvent<'_>,
-    ) {
-        assert_custom_tags(event.data);
+        kind: &str,
+        data: &mod_api::Compound,
+    ) -> Option<mod_api::IngredientDefinition> {
+        assert_custom_tags(data);
         event.items.push("minecraft:emerald".into());
     }
 }
@@ -84,8 +85,9 @@ impl mod_api::Hooks for WidthIngredient {
     fn ingredient(
         &self,
         _: &dyn mod_api::DataLoadContext,
-        event: &mut mod_api::IngredientEvent<'_>,
-    ) {
+        kind: &str,
+        data: &mod_api::Compound,
+    ) -> Option<mod_api::IngredientDefinition> {
         use sunrise_core::nbt::Tag;
         let want = [
             ("flag", Tag::Byte(1)),
@@ -98,7 +100,7 @@ impl mod_api::Hooks for WidthIngredient {
             ("exp", Tag::Short(1000)),
         ];
         for (key, tag) in want {
-            assert_eq!(event.data.get(&key.into()), Some(&tag), "{key}");
+            assert_eq!(data.get(&key.into()), Some(&tag), "{key}");
         }
         event.items.push("minecraft:emerald".into());
     }

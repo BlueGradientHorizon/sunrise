@@ -106,7 +106,14 @@ fn simplicity_follows_all_children_and_custom_display_base() {
     let source = r#"{"type":"neoforge:custom_display","base":{"type":"neoforge:components","items":"minecraft:apple","components":{}},"display":{"type":"minecraft:item","item":"minecraft:diamond"}}"#;
     assert!(!parse(source, &items).is_simple());
     let mut custom = Ingredient::of(vec!["minecraft:apple".into()]);
-    custom.custom = Some(("fixture:custom".into(), Default::default()));
+    custom.custom = Some(
+        mod_api::__private::bind_ingredient_predicate(
+            "fixture",
+            0,
+            mod_api::IngredientDefinition::new(vec![], |_, _| false),
+        )
+        .1,
+    );
     assert!(!custom.is_simple());
 }
 

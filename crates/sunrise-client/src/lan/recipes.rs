@@ -651,11 +651,12 @@ mod content_tests {
         fn ingredient(
             &self,
             context: &dyn mod_api::DataLoadContext,
-            event: &mut mod_api::IngredientEvent<'_>,
-        ) {
+            kind: &str,
+            data: &mod_api::Compound,
+        ) -> Option<mod_api::IngredientDefinition> {
             self.0.lock().unwrap().push((
                 context.origin(),
-                match event.data.get(&"aspect".into()).unwrap() {
+                match data.get(&"aspect".into()).unwrap() {
                     sunrise_core::nbt::Tag::String(s) => format!("\"{}\"", s.to_string().unwrap()),
                     other => panic!("expected aspect string, got {other:?}"),
                 },
@@ -1022,8 +1023,9 @@ fn empty_ingredient_network_consumers_exclude_whole_unplaceable_recipes() {
         fn ingredient(
             &self,
             _: &dyn mod_api::DataLoadContext,
-            _: &mut mod_api::IngredientEvent<'_>,
-        ) {
+            kind: &str,
+            data: &mod_api::Compound,
+        ) -> Option<mod_api::IngredientDefinition> {
         }
     }
 
