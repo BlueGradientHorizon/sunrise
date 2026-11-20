@@ -1,10 +1,7 @@
 ids = [
-    "type:StreamSpec",
     "type:StreamSpec.prebuffer_ms",
     "handle:StreamSpec::with_prebuffer_ms",
-    "type:SpecFault",
     "type:SpecFault.Prebuffer",
-    "type:AudioStreamState",
     "type:AudioStreamState.Buffering",
     "trait:AudioStreamSource",
     "method:AudioStreamSource::buffered_ms",
