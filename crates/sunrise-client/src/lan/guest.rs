@@ -434,6 +434,8 @@ pub struct Guest {
     pub menu_state: i32,
     /// `lastSentHealth`, `lastSentFood` and `lastFoodSaturationZero`.
     pub sent_health: Option<(f32, i32, bool)>,
+    /// Whether the entity tracker has sent the initial health metadata to this player.
+    pub(super) sent_health_data: bool,
     pub sent_xp: Option<(f32, i32, i32)>,
     /// The air supply and absorption the player's client was last sent
     /// (Entity.DATA_AIR_SUPPLY_ID, Player.DATA_PLAYER_ABSORPTION_ID); their
@@ -819,6 +821,7 @@ impl Guest {
             menu_sent: vec![None; 46],
             menu_state: 0,
             sent_health: None,
+            sent_health_data: false,
             sent_xp: None,
             sent_air: (300, 0.0),
             sent_frozen: 0,
@@ -1442,7 +1445,10 @@ fn write_block_predicate(
         struct Key<'a>(&'a sunrise_core::nbt::JavaString);
         impl sunrise_core::java_hash_map::JavaKey for Key<'_> {
             fn java_hash(&self) -> i32 {
-                sunrise_core::java_string::java_string_hash(self.0.units())
+                self.0
+                    .0
+                    .iter()
+                    .fold(0i32, |h, c| h.wrapping_mul(31).wrapping_add(*c as i32))
             }
             fn comparable_compare(&self, other: &Self) -> Option<std::cmp::Ordering> {
                 Some(self.0.cmp(other.0))

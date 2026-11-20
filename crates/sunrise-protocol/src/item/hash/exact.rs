@@ -108,7 +108,7 @@ fn units(key: &[u16]) -> String {
 fn components(map: &Compound, names: &dyn Names) -> Option<HashCode> {
     let mut entries = Vec::with_capacity(map.len());
     for (key, value) in map.iter() {
-        let key = units(key.units());
+        let key = units(&key.0);
         let hashed = match key.strip_prefix('!') {
             Some(_) => HashOps::empty_map(),
             None => {
@@ -145,7 +145,7 @@ fn walk(tag: &Tag, shape: &Shape, names: &dyn Names) -> Option<HashCode> {
         Tag::Compound(map) => {
             let mut entries = Vec::with_capacity(map.len());
             for (key, value) in map.iter() {
-                let name = units(key.units());
+                let name = units(&key.0);
                 let hashed = match value {
                     Tag::Compound(inner) if shape.stacks && name == "components" => {
                         components(inner, names)?
@@ -161,7 +161,7 @@ fn walk(tag: &Tag, shape: &Shape, names: &dyn Names) -> Option<HashCode> {
                     }
                     _ => walk(value, shape, names)?,
                 };
-                entries.push((HashOps::create_string_units(key.units()), hashed));
+                entries.push((HashOps::create_string_units(&key.0), hashed));
             }
             HashOps::create_map(entries)
         }
