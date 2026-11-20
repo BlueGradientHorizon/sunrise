@@ -1,5 +1,5 @@
 // `joml::Mat4::rotation`, `rotate`, `rotate_affine`, `scale`, `transform_affine`,
-// `transform_position` and `invert_orthonormal`, and `joml::Quat::rotation_x`/`_y`/`_z` and
+// `transform_position` and `invert_orthonormal`, and `joml::Quat::rotation_x`/`_y`/`_z`, `rotate_z` and
 // `rotation_zyx`, in this file are adapted from JOML 1.10.9's `Matrix4f`, `Quaternionf`,
 // `Vector3f` and `Vector4f` (https://github.com/JOML-CI/JOML, MIT; see THIRD_PARTY_NOTICES.md).
 //
@@ -189,6 +189,16 @@ pub mod joml {
                 y: 0.0,
                 z,
                 w,
+            }
+        }
+        /// `Quaternionf.rotateZ(angle)`: this quaternion, then a turn about Z.
+        pub fn rotate_z(self, angle: f32) -> Self {
+            let (sin, cos) = Self::half_turn(angle);
+            Self {
+                x: self.x * cos + self.y * sin,
+                y: self.y * cos - self.x * sin,
+                z: self.w * sin + self.z * cos,
+                w: self.w * cos - self.z * sin,
             }
         }
         fn half_turn(angle: f32) -> (f32, f32) {

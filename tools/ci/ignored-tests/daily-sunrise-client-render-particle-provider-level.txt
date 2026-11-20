@@ -1,2 +1,0 @@
-# The particle provider's level view reads a loaded chunk's states and stored light from the prepared registry.
-sunrise-client-render particles::native::tests::the_providers_level_view_reads_the_loaded_chunks_states_and_light lib daily resources

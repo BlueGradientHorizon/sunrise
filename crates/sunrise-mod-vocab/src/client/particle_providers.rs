@@ -1,8 +1,8 @@
 //! Code-defined particle providers, as a client mod registers them in `register_particle_providers`
 //! (NeoForge's `RegisterParticleProvidersEvent` and `ParticleProvider`).
 //!
-//! A provider owns one of the mod's own particle types, named as `ParticleOptions::named` names it
-//! (`mymod:spark`). The particle is built as a declarative one is (the sprite set and the
+//! A provider owns one of the mod's own particle types, named by its id (`mymod:spark`) and spawned
+//! with `ParticleOptions::simple` on the key `Registrar::particle_key` issued for it. The particle is built as a declarative one is (the sprite set and the
 //! `sunrise:behaviour` of `assets/<namespace>/particles/<path>.json` give its spawn values) and the
 //! provider then moves it every tick. The game resolves a type's provider once, when the particle
 //! sprite sets load, so a tick goes to the provider that owns the particle and to no other.
@@ -46,7 +46,9 @@ pub struct ModParticle {
     /// How the quad turns toward the viewer (`SingleQuadParticle.getFacingCameraMode`).
     pub facing: ParticleFacing,
     /// `SingleQuadParticle.roll`: the quad's turn about its own normal, in radians. The game
-    /// interpolates it from the value the previous tick left, as vanilla's `oRoll` does.
+    /// interpolates it from the value the previous tick left, as vanilla's `oRoll` does, and
+    /// draws no turn at all while it is zero. A roll beyond half of `f32::MAX` in either
+    /// direction expires the particle, so that the interpolation stays a finite number.
     pub roll: f32,
 }
 
@@ -58,7 +60,9 @@ pub enum ParticleFacing {
     /// `LOOKAT_XYZ`: the quad faces the camera. The default.
     #[default]
     Camera,
-    /// `LOOKAT_Y`: the quad turns about the Y axis only, to face the camera's side.
+    /// `LOOKAT_Y`: the camera's rotation reduced to its Y turn, as vanilla sets it: the
+    /// quaternion made of the camera's `y` and `w` components alone. The particle's own position
+    /// does not enter.
     AroundY,
     /// A world-fixed orientation, as a unit quaternion `[x, y, z, w]` turning the quad's
     /// default plane (corners in XY, facing +Z). A quad lying flat facing up is
@@ -66,8 +70,13 @@ pub enum ParticleFacing {
     Fixed([f32; 4]),
 }
 
-/// The particles of one provider's batch, in a fixed number and order: a tick edits them and
-/// cannot add or remove one (`ModParticle::removed` expires a particle).
+/// The particles of one provider's batch, in a fixed number and order: a tick edits them through
+/// [`ParticleBatch::get_mut`], [`ParticleBatch::iter_mut`] or a `for` loop, and cannot add or
+/// remove one (`ModParticle::removed` expires a particle). The game builds the batch: the
+/// helpers that fill it and take it back are internal, and a batch that came back at another
+/// size expires its particles. On a native mod the game reuses one batch's storage from tick to
+/// tick, so a warm tick allocates nothing; a wasm tick decodes a new batch from the guest's
+/// reply, which allocates.
 #[derive(Clone, Debug, PartialEq)]
 // exhaustive: its field is private; the game builds it
 #[derive(sunrise_mod_api_macros::Wire)]
@@ -108,9 +117,11 @@ impl<'a> IntoIterator for &'a mut ParticleBatch {
 }
 
 /// What a provider's tick reads of the level around its particles: the loaded world as
-/// `Particle` code sees it (`level.getBlockState`, `level.getBrightness`). Read-only. In a chunk
-/// that is not loaded `block_state` answers the game's air and `brightness` answers 15 for the sky
-/// layer and 0 for the block layer.
+/// `Particle` code reads it (`level.getBlockState`, `level.getBrightness`). Read-only. `block_state`
+/// reads air where a chunk is absent. `brightness` reads the render level's stored light, with sky
+/// always zero in a dimension without skylight. The current client gives absent columns and
+/// positions above build height full sky where present and no block light; below a loaded column
+/// it gives zero on both layers. Retained and padding light are tracked in Sunrise #2761.
 pub trait ParticleLevelView {
     /// `BlockGetter.getBlockState`: the state at `pos`.
     fn block_state(&self, pos: [i32; 3]) -> BlockState;

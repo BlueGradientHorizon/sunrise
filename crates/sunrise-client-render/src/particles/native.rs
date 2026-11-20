@@ -1,9 +1,10 @@
 //! Opt-in, compiled particle behavior. The ordinary engine still owns the
 //! particle, its sprite set, interpolation, rendering and total count limits.
-use super::{Particle, ParticleLevel, ParticleOptions, polytone_gpu};
+use super::{Particle, ParticleLevel, ParticleOptions};
 use mod_api::{
     BlockState, LightLayer, ModParticle, ParticleFacing, ParticleLevelView, ParticleProvider,
 };
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{collections::BTreeMap, fmt::Debug, sync::Arc, sync::OnceLock};
 
 /// Requests made by one particle tick, submitted through normal spawn limits.
@@ -61,11 +62,15 @@ pub(super) fn registered() -> &'static BTreeMap<String, Arc<dyn ParticleProvider
 /// not a number, the particle expires rather than reach the renderer.
 const LIMIT: f64 = 3.0e7;
 
+/// How large a roll a provider may leave, in radians: half of `f32::MAX`, so the difference of
+/// two accepted rolls, which the renderer interpolates, is a finite number. Past it, or not a
+/// number, the particle expires.
+const ROLL_LIMIT: f32 = f32::MAX / 2.0;
+
 /// A particle of a mod's code-defined type. It owns the particle's behaviour for the engine: age
 /// and expiry stay the engine's, the motion is the provider's, called once per type per tick with
-/// every live particle of the type ([`Batch::tick`]). Holds the provider the type resolved to when
+/// every live particle of the type ([`Batch::run`]). Holds the provider the type resolved to when
 /// its sprite sets loaded, so a tick dispatches straight to it.
-#[derive(Clone)]
 pub(super) struct Provided {
     provider: Arc<dyn ParticleProvider>,
     /// The provider's dense slot among the registered ones, which its batch is filled by.
@@ -76,8 +81,37 @@ pub(super) struct Provided {
     frame: u32,
     /// The engine aged the particle this tick and the provider has not run on it yet.
     pending: bool,
-    /// A world-fixed orientation (`ParticleFacing::Fixed`), turning the quad before `roll`.
-    pub(super) fixed_rotation: Option<glam::Quat>,
+    /// How the quad turns toward the viewer, as the provider last set it.
+    facing: Facing,
+    /// The engine's count of live provider particles, which this one is part of until it drops.
+    live: Arc<AtomicUsize>,
+}
+/// A provider particle's facing, as the renderer keeps it (`ParticleFacing`, the quaternion
+/// already normalised).
+#[derive(Clone, Copy, Debug)]
+enum Facing {
+    Camera,
+    AroundY,
+    Fixed(glam::Quat),
+}
+impl Clone for Provided {
+    fn clone(&self) -> Self {
+        self.live.fetch_add(1, Ordering::Relaxed);
+        Self {
+            provider: self.provider.clone(),
+            slot: self.slot,
+            state: self.state,
+            frame: self.frame,
+            pending: self.pending,
+            facing: self.facing,
+            live: self.live.clone(),
+        }
+    }
+}
+impl Drop for Provided {
+    fn drop(&mut self) {
+        self.live.fetch_sub(1, Ordering::Relaxed);
+    }
 }
 impl Debug for Provided {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -88,15 +122,61 @@ impl Debug for Provided {
     }
 }
 impl Provided {
-    pub(super) fn new(provider: Arc<dyn ParticleProvider>, slot: u32, frame: u32) -> Self {
+    pub(super) fn new(
+        provider: Arc<dyn ParticleProvider>,
+        slot: u32,
+        frame: u32,
+        live: &Arc<AtomicUsize>,
+    ) -> Self {
+        live.fetch_add(1, Ordering::Relaxed);
         Self {
             provider,
             slot,
             state: [0.0; 4],
             frame,
             pending: false,
-            fixed_rotation: None,
+            facing: Facing::Camera,
+            live: live.clone(),
         }
+    }
+    /// The quad's rotation at `partial` of a tick (`SingleQuadParticle.extract`): the facing's
+    /// quaternion (`LOOKAT_XYZ` the camera's, `LOOKAT_Y` its y and w alone, as vanilla sets it,
+    /// or the world-fixed one), then `rotateZ` of `Mth.lerp(partial, oRoll, roll)` when the
+    /// particle's roll is not zero. All of it in JOML's f32 maths.
+    pub(super) fn rotation(
+        &self,
+        camera: glam::Quat,
+        o_roll: f32,
+        roll: f32,
+        partial: f32,
+    ) -> glam::Quat {
+        use crate::camera::joml::Quat;
+        let facing = match self.facing {
+            Facing::Camera => Quat {
+                x: camera.x,
+                y: camera.y,
+                z: camera.z,
+                w: camera.w,
+            },
+            Facing::AroundY => Quat {
+                x: 0.0,
+                y: camera.y,
+                z: 0.0,
+                w: camera.w,
+            },
+            Facing::Fixed(q) => Quat {
+                x: q.x,
+                y: q.y,
+                z: q.z,
+                w: q.w,
+            },
+        };
+        let turned = if roll == 0.0 {
+            facing
+        } else {
+            facing.rotate_z(o_roll + partial * (roll - o_roll))
+        };
+        glam::Quat::from_xyzw(turned.x, turned.y, turned.z, turned.w)
     }
     /// The engine's part of the tick: age, `previous` and expiry. A particle that survives it
     /// joins this tick's batch.
@@ -105,27 +185,23 @@ impl Provided {
     }
 }
 
-/// The batches of one tick, kept between ticks so a tick allocates nothing once warm. One pass
-/// over the particles sorts them into a bucket per provider (by the dense slot the provider was
-/// given when it registered); each provider then runs once on its bucket.
+/// The batches of one tick, kept between ticks so native dispatch allocates nothing once warm.
+/// One pass over the particles sorts them into a bucket per provider (by the dense slot the
+/// provider was given when it registered); each provider then runs once on its bucket.
 #[derive(Default)]
 pub(super) struct Batch {
     /// The particle indices of each provider slot's batch.
     buckets: Vec<Vec<usize>>,
+    /// The slots whose bucket holds a particle this pass, in the order they were first met.
+    active: Vec<usize>,
     views: Vec<ModParticle>,
 }
 impl Batch {
-    /// Calls each provider once with every particle of `particles` it owns that the engine aged
-    /// this tick, then takes the results back: a particle that leaves a number past the world's
-    /// limit or not finite expires.
-    pub(super) fn tick(
-        &mut self,
-        particles: &mut [Particle],
-        level: &dyn ParticleLevelView,
-        mut set_frame: impl FnMut(&mut Particle, usize),
-    ) {
-        for bucket in &mut self.buckets {
-            bucket.clear();
+    /// Sorts the particles the engine aged this tick into a bucket per provider slot. Whether
+    /// any provider has a particle to tick.
+    pub(super) fn gather(&mut self, particles: &[Particle]) -> bool {
+        for slot in self.active.drain(..) {
+            self.buckets[slot].clear();
         }
         for (i, p) in particles.iter().enumerate() {
             if let Some(provided) = p.provided.as_ref().filter(|q| q.pending) {
@@ -133,14 +209,26 @@ impl Batch {
                 if self.buckets.len() <= slot {
                     self.buckets.resize_with(slot + 1, Vec::new);
                 }
+                if self.buckets[slot].is_empty() {
+                    self.active.push(slot);
+                }
                 self.buckets[slot].push(i);
             }
         }
-        for bucket in &self.buckets {
-            let Some(&first) = bucket.first() else {
-                continue;
-            };
-            let provider = particles[first]
+        !self.active.is_empty()
+    }
+    /// Calls each provider once with the particles [`Batch::gather`] found for it, then takes the
+    /// results back: a particle that leaves a number past the world's limit or not finite
+    /// expires.
+    pub(super) fn run(
+        &mut self,
+        particles: &mut [Particle],
+        level: &dyn ParticleLevelView,
+        mut set_frame: impl FnMut(&mut Particle, usize),
+    ) {
+        for &slot in &self.active {
+            let bucket = &self.buckets[slot];
+            let provider = particles[bucket[0]]
                 .provided
                 .as_ref()
                 .map(|provided| provided.provider.clone())
@@ -189,29 +277,28 @@ impl Batch {
 impl Particle {
     /// The facing the provider sees.
     fn facing(&self) -> ParticleFacing {
-        match (
-            self.provided.as_ref().and_then(|q| q.fixed_rotation),
-            self.orientation,
-        ) {
-            (Some(q), _) => ParticleFacing::Fixed(q.to_array()),
-            (None, polytone_gpu::Orientation::AroundY) => ParticleFacing::AroundY,
+        match self.provided.as_ref().map(|q| q.facing) {
+            Some(Facing::Fixed(q)) => ParticleFacing::Fixed(q.to_array()),
+            Some(Facing::AroundY) => ParticleFacing::AroundY,
             _ => ParticleFacing::Camera,
         }
     }
     /// What a provider's tick left of the particle, validated as the renderer needs it.
     fn take(&mut self, view: &ModParticle) -> Option<usize> {
         let finite = |v: &[f64; 3]| v.iter().all(|c| c.abs() <= LIMIT);
-        let fixed = match view.facing {
+        let facing = match view.facing {
             ParticleFacing::Fixed(q) => {
                 let q = glam::Quat::from_array(q);
                 let length_squared = q.length_squared();
-                (length_squared.is_finite() && length_squared > 0.0).then(|| Some(q.normalize()))
+                (length_squared.is_finite() && length_squared > 0.0)
+                    .then(|| Facing::Fixed(q.normalize()))
             }
-            _ => Some(None),
+            ParticleFacing::AroundY => Some(Facing::AroundY),
+            ParticleFacing::Camera => Some(Facing::Camera),
         };
         let provided = self.provided.as_mut()?;
         provided.pending = false;
-        let Some(fixed) = fixed else {
+        let Some(facing) = facing else {
             self.remove();
             return None;
         };
@@ -221,6 +308,7 @@ impl Particle {
             || !finite(&view.velocity)
             || !view.size.is_finite()
             || !view.roll.is_finite()
+            || view.roll.abs() > ROLL_LIMIT
             || !view.rgba.iter().all(|c| c.is_finite())
         {
             self.remove();
@@ -234,11 +322,7 @@ impl Particle {
         self.size = view.size.clamp(0.0, 16.0);
         self.rgba = view.rgba.map(|c| c.clamp(0.0, 1.0));
         self.roll = view.roll;
-        self.orientation = match view.facing {
-            ParticleFacing::AroundY => polytone_gpu::Orientation::AroundY,
-            _ => polytone_gpu::Orientation::Camera,
-        };
-        provided.fixed_rotation = fixed;
+        provided.facing = facing;
         provided.state = view.state;
         let changed = view.frame != provided.frame;
         provided.frame = view.frame;
@@ -258,14 +342,12 @@ impl ParticleLevelView for ProviderLevel<'_, '_> {
         self.states[self.level.block(x, y, z).0 as usize]
     }
     fn brightness(&self, layer: LightLayer, [x, y, z]: [i32; 3]) -> u8 {
-        // An unloaded chunk reads as full sky and no block light.
-        let light = self
-            .level
-            .chunk(x >> 4, z >> 4)
-            .map_or(0xF0, |c| c.light(x & 15, y, z & 15));
+        let world = self.level.world;
         match layer {
-            LightLayer::Block => light & 15,
-            LightLayer::Sky => light >> 4,
+            LightLayer::Block => world.light(x, y, z) & 15,
+            // A dimension without skylight has no sky layer to read.
+            LightLayer::Sky if !world.shape.sky_light => 0,
+            LightLayer::Sky => world.light(x, y, z) >> 4,
         }
     }
 }
@@ -273,6 +355,7 @@ impl ParticleLevelView for ProviderLevel<'_, '_> {
 #[cfg(test)]
 pub(super) mod tests {
     use super::super::*;
+    use super::ROLL_LIMIT;
     use crate::chunk::{Chunk, Light};
     use mod_api::{
         BlockState, LightLayer, ModParticle, ParticleBatch, ParticleFacing, ParticleLevelView,
@@ -364,7 +447,7 @@ pub(super) mod tests {
             &HashSet::new(),
         );
         // The game's table of block states; the providers here read none of them.
-        e.block_states = Some(Arc::new(Vec::<BlockState>::new()));
+        e.set_block_state_source(|| Some(Arc::new(Vec::<BlockState>::new())));
         e.mod_sets.insert(
             "example:orbit".into(),
             ModSet {
@@ -641,14 +724,15 @@ pub(super) mod tests {
             assert!(p.removed, "{facing:?}");
         }
     }
-    /// A particle drawn at `center` by a provider's facing and roll, as the renderer builds it.
+    /// A particle a provider poses on each of its ticks (`rolls[age - 1]`), drawn half a tick
+    /// into the last one with the camera turned by `base`, as the renderer builds its corners.
     fn drawn(
         facing: ParticleFacing,
-        roll: f32,
+        rolls: &[f32],
         center: [f64; 3],
         base: glam::Quat,
     ) -> Vec<[f32; 3]> {
-        struct Pose(ParticleFacing, f32, [f64; 3]);
+        struct Pose(ParticleFacing, Vec<f32>, [f64; 3]);
         impl ParticleProvider for Pose {
             fn tick(&self, particles: &mut ParticleBatch, _: &dyn ParticleLevelView) {
                 for particle in particles {
@@ -656,55 +740,120 @@ pub(super) mod tests {
                     particle.previous = self.2;
                     particle.size = 1.0;
                     particle.facing = self.0;
-                    particle.roll = self.1;
+                    particle.roll = self.1[particle.age as usize - 1];
                 }
             }
         }
         let scene = Scene::new();
         let level = scene.level();
         let mut e = engine();
-        let mut p = provided(&mut e, Arc::new(Pose(facing, roll, center)));
+        let mut p = provided(&mut e, Arc::new(Pose(facing, rolls.to_vec(), center)));
         p.lifetime = 20;
-        tick_one(&mut e, &mut p, &level);
+        for _ in rolls {
+            tick_one(&mut e, &mut p, &level);
+        }
+        assert!(!p.removed);
         e.particles.push(p);
         let mut vertices = Vec::new();
         e.render(DVec3::ZERO, base, 0.5, &|_| 0, &mut vertices);
         assert_eq!(vertices.len(), 4);
         vertices.iter().map(|v| v.pos).collect()
     }
+    // The expected corners below come from running JOML 1.10.9 itself: `Quaternionf.rotateZ`
+    // of `Mth.lerp(0.5, oRoll, roll)` on the facing's quaternion, then `transform` of the quad's
+    // corners (1,-1), (1,1), (-1,1), (-1,-1), added to the centre.
     #[test]
     fn a_providers_fixed_facing_and_roll_turn_the_drawn_quad() {
-        // Lying flat facing up, then rolled: the roll interpolates from 0 (the previous tick's)
-        // to 1 over the tick, so half a tick in it is 0.5 radians.
-        let flat = std::f32::consts::FRAC_1_SQRT_2;
+        // A unit quaternion, rolled from 0 (the first tick's) to 1: half a tick in, 0.5 radians.
         let corners = drawn(
-            ParticleFacing::Fixed([-flat, 0.0, 0.0, flat]),
-            1.0,
+            ParticleFacing::Fixed([-0.5, -0.5, -0.5, 0.5]),
+            &[1.0],
             [0.0; 3],
             glam::Quat::IDENTITY,
         );
-        // The quad's corners in the vertex order, turned by the normalised quaternion and then
-        // by `Quaternionf.rotationZ(0.5)` in f32, the order and types vanilla's JOML uses.
-        let roll = crate::camera::joml::Quat::rotation_z(0.5);
-        let rotation = glam::Quat::from_xyzw(-flat, 0.0, 0.0, flat).normalize()
-            * glam::Quat::from_xyzw(roll.x, roll.y, roll.z, roll.w);
-        let expected: Vec<[f32; 3]> = [(1.0, -1.0), (1.0, 1.0), (-1.0, 1.0), (-1.0, -1.0)]
-            .map(|(x, y)| (rotation * glam::Vec3::new(x, y, 0.0)).to_array())
-            .to_vec();
-        assert_eq!(corners, expected);
-        // Lying flat: every corner is level with the centre.
-        assert!(corners.iter().all(|c| c[1] == 0.0), "{corners:?}");
+        assert_eq!(
+            corners,
+            [
+                [-0.39815706, 0.0, 1.3570082],
+                [1.3570082, 0.0, 0.39815706],
+                [0.39815706, 0.0, -1.3570082],
+                [-1.3570082, 0.0, -0.39815706],
+            ]
+        );
     }
     #[test]
-    fn a_providers_around_y_facing_ignores_the_cameras_pitch() {
-        let pitched = glam::Quat::from_rotation_x(std::f32::consts::FRAC_PI_2);
-        let around = drawn(ParticleFacing::AroundY, 0.0, [0.0, 0.0, -4.0], pitched);
-        assert!(around.iter().all(|c| c[2] == -4.0), "{around:?}");
-        let camera = drawn(ParticleFacing::Camera, 0.0, [0.0, 0.0, -4.0], pitched);
-        assert!(
-            camera.iter().any(|c| (c[2] + 4.0).abs() > 0.5),
-            "{camera:?}"
+    fn a_providers_around_y_facing_takes_the_cameras_y_and_w_and_rolls_from_the_last_tick() {
+        // The camera's pitch and roll components (x and z) do not reach the quad, and the
+        // particle is off the camera's axes, so a yaw taken from its direction would differ.
+        let camera = glam::Quat::from_xyzw(0.25, 0.5, -0.25, 0.8);
+        let corners = drawn(
+            ParticleFacing::AroundY,
+            &[0.3, 0.9],
+            [3.0, 1.0, -4.0],
+            camera,
         );
+        assert_eq!(
+            corners,
+            [
+                [3.6090915, 0.7393068, -5.2494183],
+                [3.1142364, 2.389978, -4.234331],
+                [2.3909085, 1.2606932, -2.7505815],
+                [2.8857636, -0.38997805, -3.765669],
+            ]
+        );
+    }
+    #[test]
+    fn a_roll_that_returns_to_zero_draws_unrolled_as_vanilla_does() {
+        // `SingleQuadParticle.extract` rolls only when the current roll is not zero.
+        let camera = glam::Quat::from_xyzw(0.25, 0.5, -0.25, 0.8);
+        let corners = drawn(
+            ParticleFacing::AroundY,
+            &[1.0, 0.0],
+            [3.0, 1.0, -4.0],
+            camera,
+        );
+        assert_eq!(
+            corners,
+            [
+                [3.4382024, 0.0, -4.898876],
+                [3.4382024, 2.0, -4.898876],
+                [2.5617976, 2.0, -3.1011236],
+                [2.5617976, 0.0, -3.1011236],
+            ]
+        );
+    }
+    #[test]
+    fn rolls_at_the_accepted_limit_interpolate_to_finite_corners() {
+        // The difference of the two extremes is `f32::MAX`, still a number.
+        let corners = drawn(
+            ParticleFacing::Camera,
+            &[-ROLL_LIMIT, ROLL_LIMIT],
+            [0.0; 3],
+            glam::Quat::IDENTITY,
+        );
+        assert!(
+            corners.iter().flatten().all(|c| c.is_finite()),
+            "{corners:?}"
+        );
+    }
+    #[test]
+    fn a_roll_past_the_limit_expires_the_particle() {
+        let scene = Scene::new();
+        let level = scene.level();
+        let mut e = engine();
+        for roll in [f32::MAX, -f32::MAX, ROLL_LIMIT * 1.0000001] {
+            struct Set(f32);
+            impl ParticleProvider for Set {
+                fn tick(&self, particles: &mut ParticleBatch, _: &dyn ParticleLevelView) {
+                    for particle in particles {
+                        particle.roll = self.0;
+                    }
+                }
+            }
+            let mut p = provided(&mut e, Arc::new(Set(roll)));
+            tick_one(&mut e, &mut p, &level);
+            assert!(p.removed, "{roll}");
+        }
     }
     #[test]
     fn a_second_tick_reuses_the_batch_storage() {
@@ -728,12 +877,63 @@ pub(super) mod tests {
                 e.batch.buckets.len(),
                 e.batch.buckets[0].as_ptr(),
                 e.batch.buckets[0].capacity(),
+                e.batch.active.capacity(),
             )
         };
         let warm = shape(&e);
         tick(&mut e, &mut all);
         assert_eq!(shape(&e), warm);
         assert_eq!(probe.0.load(std::sync::atomic::Ordering::Relaxed), 6);
+    }
+    /// A provider type in a high slot visits only its own bucket, and an empty list visits none.
+    #[test]
+    fn only_the_slots_with_particles_are_visited() {
+        let mut batch = native::Batch::default();
+        assert!(!batch.gather(&[]));
+        assert!(batch.buckets.is_empty());
+        let scene = Scene::new();
+        let level = scene.level();
+        let mut e = engine();
+        let mut p = provided(&mut e, Arc::new(Probe::default()));
+        p.provided.as_mut().unwrap().slot = 40;
+        p.lifetime = 20;
+        e.tick_particle(&mut p, &level);
+        assert!(batch.gather(std::slice::from_ref(&p)));
+        assert_eq!(batch.active, [40]);
+        assert!(!batch.gather(&[]));
+        assert!(batch.active.is_empty());
+        assert!(batch.buckets[40].is_empty());
+    }
+    /// The block state table is asked for only when a provider has a particle to tick.
+    #[test]
+    fn the_block_state_table_is_not_asked_while_no_provider_particle_is_ready() {
+        static ASKED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        fn counting() -> Option<BlockStates> {
+            ASKED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            Some(Arc::new(Vec::<BlockState>::new()))
+        }
+        let asked = || ASKED.load(std::sync::atomic::Ordering::Relaxed);
+        let scene = Scene::new();
+        let level = scene.level();
+        let mut e = engine();
+        e.set_block_state_source(counting);
+        // A provider is registered, and no particle of it lives.
+        e.providers
+            .insert("example:orbit".into(), Arc::new(Probe::default()));
+        e.tick_providers(&mut [], &level);
+        assert_eq!(asked(), 0);
+        // One lives and the engine has not aged it.
+        let mut p = provided(&mut e, Arc::new(Probe::default()));
+        p.lifetime = 20;
+        e.tick_providers(std::slice::from_mut(&mut p), &level);
+        assert_eq!(asked(), 0);
+        // Aged: it is ticked, and the table is asked once.
+        tick_one(&mut e, &mut p, &level);
+        assert_eq!(asked(), 1);
+        // Gone: nothing runs.
+        drop(p);
+        e.tick_providers(&mut [], &level);
+        assert_eq!(asked(), 1);
     }
     #[test]
     fn a_provider_does_not_run_while_the_game_has_no_block_state_table() {
@@ -743,47 +943,75 @@ pub(super) mod tests {
         let probe = Arc::new(Probe::default());
         let mut p = provided(&mut e, probe.clone());
         p.lifetime = 20;
-        e.set_block_states(None);
+        e.set_block_state_source(|| None);
         tick_one(&mut e, &mut p, &level);
         assert_eq!(probe.0.load(std::sync::atomic::Ordering::Relaxed), 0);
         assert_eq!(p.position, [1.0; 3]);
         assert!(!p.removed);
     }
-    /// The provider's view reads a chunk's states by engine state id and its stored light: a
-    /// stone block and a lit section in a loaded chunk, and the chunks and heights without one.
-    #[test]
-    #[ignore = "daily"]
-    fn the_providers_level_view_reads_the_loaded_chunks_states_and_light() {
-        let root = crate::mesher::mod_tint_tests::resources().expect("prepared resources");
-        let assets = crate::assets::Assets::load(&root).unwrap();
-        let values = crate::mesher::mod_tint_tests::tint_values(assets.registry);
-        let stone = assets.registry.default_state("minecraft:stone").unwrap();
-        let mut scene = Scene::new();
+    /// A chunk whose section holds sky light 11 over block light 4.
+    fn lit_chunk() -> Chunk {
         let mut chunk = Chunk::empty(0, 0);
-        chunk.set(1, 64, 3, stone.0);
         let section = chunk.section_index(64).unwrap();
-        // Sky 11 over block 4 everywhere in the section.
         Arc::make_mut(&mut chunk.sections[section]).light = Light::packed(Box::new([0xB4; 4096]));
-        scene.world.chunks.insert((0, 0), Arc::new(chunk));
-        let level = scene.level();
-        let view = super::ProviderLevel {
-            level: &level,
-            states: &values.states,
-        };
-        assert_eq!(
-            view.block_state([1, 64, 3]),
-            values.states[stone.0 as usize]
-        );
-        assert_eq!(view.block_state([2, 64, 3]), values.states[0]);
-        assert_ne!(view.block_state([1, 64, 3]), view.block_state([2, 64, 3]));
-        assert_eq!(view.brightness(LightLayer::Sky, [1, 64, 3]), 11);
-        assert_eq!(view.brightness(LightLayer::Block, [1, 64, 3]), 4);
-        // Another chunk is not loaded: the stored light of none, full sky.
-        assert_eq!(view.brightness(LightLayer::Sky, [100, 64, 3]), 15);
-        assert_eq!(view.brightness(LightLayer::Block, [100, 64, 3]), 0);
-        // Above and below the loaded chunk's column.
-        assert_eq!(view.brightness(LightLayer::Sky, [1, 10_000, 3]), 15);
-        assert_eq!(view.brightness(LightLayer::Sky, [1, -10_000, 3]), 0);
+        chunk
+    }
+    fn lights(view: &super::ProviderLevel, pos: [i32; 3]) -> (u8, u8) {
+        (
+            view.brightness(LightLayer::Sky, pos),
+            view.brightness(LightLayer::Block, pos),
+        )
+    }
+    #[test]
+    fn the_providers_light_reads_follow_the_dimensions_sky() {
+        for (shape, sky) in [
+            (crate::chunk::LevelShape::OVERWORLD, true),
+            (crate::chunk::LevelShape::NETHER, false),
+        ] {
+            let mut scene = Scene::new();
+            scene.world.shape = shape;
+            scene.world.chunks.insert((0, 0), Arc::new(lit_chunk()));
+            let level = scene.level();
+            let view = super::ProviderLevel {
+                level: &level,
+                states: &[],
+            };
+            let full = if sky { 15 } else { 0 };
+            // The stored nibbles, sky 11 and block 4, but a dimension without skylight has no sky layer.
+            assert_eq!(lights(&view, [1, 64, 3]), (if sky { 11 } else { 0 }, 4));
+            // No chunk is loaded there: the sky the dimension has, and no block light.
+            assert_eq!(lights(&view, [100, 64, 3]), (full, 0));
+            // Outside the build height the view uses the render world's light read as well.
+            // The world owns padding and retained border light (#2761), not the provider.
+            assert_eq!(lights(&view, [1, 10_000, 3]), (full, 0));
+        }
+    }
+    /// The provider's view reads a chunk by numeric state ID, using the game's air if absent.
+    #[test]
+    fn the_providers_level_view_reads_the_loaded_chunks_states() {
+        mod_platform::testing::with_mods(Vec::new().into(), || {
+            mod_api::__private::resolve_block_keys(["minecraft:air", "minecraft:stone"], |_| {
+                sunrise_mod_runtime::block_definitions::BlockDefinition::new(&[&BTreeMap::new()], 0)
+                    .map_err(|error| format!("{error:?}"))
+            })
+            .unwrap();
+            let key = |name| mod_api::__private::block_key(name).unwrap();
+            let air = key("minecraft:air");
+            let stone = key("minecraft:stone");
+            let states = [air, stone].map(|block| mod_api::BlockStateRecord::new(block, 0).into());
+            let mut scene = Scene::new();
+            let mut chunk = Chunk::empty(0, 0);
+            chunk.set(1, 64, 3, 1);
+            scene.world.chunks.insert((0, 0), Arc::new(chunk));
+            let level = scene.level();
+            let view = super::ProviderLevel {
+                level: &level,
+                states: &states,
+            };
+            assert_eq!(view.block_state([1, 64, 3]).block(), stone);
+            assert_eq!(view.block_state([2, 64, 3]).block(), air);
+            assert_eq!(view.block_state([100, 64, 3]).block(), air);
+        });
     }
     #[test]
     fn a_type_resolves_to_its_provider_at_load_and_other_types_stay_declarative() {

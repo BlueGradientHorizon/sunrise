@@ -690,7 +690,7 @@ fn visibility_rows(open: &[u16; 256]) -> u64 {
 #[cfg(test)]
 mod mod_geometry_tests;
 #[cfg(test)]
-pub(crate) mod mod_tint_tests;
+mod mod_tint_tests;
 #[cfg(test)]
 mod particle_tests;
 #[cfg(test)]

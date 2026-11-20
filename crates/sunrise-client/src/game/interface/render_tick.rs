@@ -904,11 +904,6 @@ impl Game<'_> {
         let mob_index = &mut self.mob_index;
         let lan = self.lan.as_ref();
         let dimension = self.dim.id();
-        self.particles.set_block_states(
-            crate::game::api_values::block_state::current()
-                .ok()
-                .map(|states| -> crate::particles::BlockStates { states }),
-        );
         self.particles.tick_tracking(&level, |target| match target {
             TrackingTarget::LocalPlayer => player.map(player_tracking_body),
             TrackingTarget::Entity(id) => {

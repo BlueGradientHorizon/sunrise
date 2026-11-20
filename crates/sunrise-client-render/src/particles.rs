@@ -1117,8 +1117,11 @@ pub struct ParticleEngine {
     /// The code providers of mods' particle types, by name: `register_particle_providers`' registrations as
     /// this engine was built, applied to `mod_sets` at every load.
     providers: BTreeMap<String, Arc<dyn ParticleProvider>>,
-    /// Every engine block state as a mod reads it, for the providers' `ParticleLevelView`.
-    block_states: Option<BlockStates>,
+    /// Where the providers' `ParticleLevelView` finds every engine block state as a mod reads
+    /// it, asked only when a provider has particles to tick.
+    block_state_source: fn() -> Option<BlockStates>,
+    /// How many provider particles live, in every list and still waiting to join.
+    provided_live: Arc<std::sync::atomic::AtomicUsize>,
     batch: native::Batch,
     set_sprites: Vec<Vec<u32>>,
     /// How many live particles it takes to tick them on several threads (`tick_all`), and how many threads.
@@ -1240,7 +1243,8 @@ impl ParticleEngine {
             sets: HashMap::new(),
             mod_sets: HashMap::new(),
             providers: native::registered().clone(),
-            block_states: None,
+            block_state_source: || None,
+            provided_live: Arc::default(),
             batch: native::Batch::default(),
             set_sprites: Vec::new(),
             parallel_min: PARALLEL_MIN,
@@ -1263,21 +1267,12 @@ impl ParticleEngine {
         engine.reload(root, atlas, translucent);
         engine
     }
-    /// The block states a provider's level view reads, by engine state id: set when a game holds
-    /// providers, and again when the registry changes. `None` (the game has no table) stops the
-    /// providers from running, so a provider never reads a state the engine cannot name.
-    pub fn set_block_states(&mut self, states: Option<BlockStates>) {
-        if self.providers.is_empty() {
-            return;
-        }
-        let same = match (&self.block_states, &states) {
-            (Some(known), Some(new)) => Arc::ptr_eq(known, new),
-            (None, None) => true,
-            _ => false,
-        };
-        if !same {
-            self.block_states = states;
-        }
+    /// Where a provider's level view finds the block states, by engine state id: the game's
+    /// table, or `None` while it has none, which stops the providers from running so that none
+    /// reads a state the engine cannot name. It is called only when a provider has particles
+    /// to tick.
+    pub fn set_block_state_source(&mut self, source: fn() -> Option<BlockStates>) {
+        self.block_state_source = source;
     }
     /// `onResourceManagerReload`: sprite rects and sets come from the
     /// reloaded atlas and pack; a live particle keeps drawing its sprite by
@@ -1945,6 +1940,7 @@ impl ParticleEngine {
                     provider,
                     slot,
                     frame as u32,
+                    &self.provided_live,
                 )));
             }
             return Some(q);
@@ -3648,21 +3644,25 @@ impl ParticleEngine {
         }
     }
     /// The providers' part of a tick: each provider once with every particle of its type that
-    /// `tick_particle` aged.
+    /// `tick_particle` aged. Nothing runs while no provider particle lives.
     fn tick_providers(&mut self, particles: &mut [Particle], level: &ParticleLevel) {
-        let Some(states) = self
-            .block_states
-            .as_deref()
-            .filter(|_| !self.providers.is_empty())
-        else {
+        if self
+            .provided_live
+            .load(std::sync::atomic::Ordering::Relaxed)
+            == 0
+        {
             return;
-        };
-        let view = native::ProviderLevel {
-            level,
-            states: states.as_ref(),
-        };
+        }
         let mut batch = std::mem::take(&mut self.batch);
-        batch.tick(particles, &view, |p, frame| self.set_sprite_frame(p, frame));
+        if batch.gather(particles)
+            && let Some(states) = (self.block_state_source)()
+        {
+            let view = native::ProviderLevel {
+                level,
+                states: (*states).as_ref(),
+            };
+            batch.run(particles, &view, |p, frame| self.set_sprite_frame(p, frame));
+        }
         self.batch = batch;
     }
     /// `ParticleGroup.add`: each group's last quarter fills with decreasing probability.
@@ -4599,8 +4599,8 @@ impl ParticleEngine {
                 ) - camera;
                 (pos.as_vec3(), p.quad_size(partial))
             });
-            let rotation = if let Some(fixed) = p.provided.as_ref().and_then(|q| q.fixed_rotation) {
-                fixed * roll_rotation(p.o_roll + (p.roll - p.o_roll) * partial)
+            let rotation = if let Some(provided) = &p.provided {
+                provided.rotation(base, p.o_roll, p.roll, partial)
             } else if p.orientation != polytone_gpu::Orientation::Camera {
                 // A custom particle's `movement_aligned` quad has its texture's top against
                 // its motion (measured in Java: a light ray rising toward the noon sun hangs
@@ -4613,7 +4613,7 @@ impl ParticleEngine {
                 let roll = p.o_roll + (p.roll - p.o_roll) * partial;
                 polytone_gpu::orient(p.orientation, center, velocity, roll, base)
             } else if p.roll != 0.0 {
-                base * roll_rotation(p.o_roll + (p.roll - p.o_roll) * partial)
+                base * Quat::from_rotation_z(p.o_roll + (p.roll - p.o_roll) * partial)
             } else {
                 base
             };
@@ -4731,7 +4731,22 @@ impl ParticleEngine {
                     ((-1.0, 1.0), [u0, v0]),
                     ((-1.0, -1.0), [u0, v1]),
                 ] {
-                    let v = center + rotation * FVec3::new(n.0, n.1, 0.0) * size;
+                    // A provider's quad turns by JOML's `Quaternionf.transform`, which also takes a
+                    // quaternion that is not a unit one, as `LOOKAT_Y`'s is.
+                    let turned = if p.provided.is_some() {
+                        FVec3::from(
+                            crate::camera::joml::Quat {
+                                x: rotation.x,
+                                y: rotation.y,
+                                z: rotation.z,
+                                w: rotation.w,
+                            }
+                            .transform([n.0, n.1, 0.0]),
+                        )
+                    } else {
+                        rotation * FVec3::new(n.0, n.1, 0.0)
+                    };
+                    let v = center + turned * size;
                     target.push(Vertex {
                         normal: [0; 4],
                         pos: v.to_array(),
@@ -4826,12 +4841,6 @@ const CREEPER: [[f64; 2]; 12] = [
 
 #[cfg(test)]
 mod tick_bench;
-/// `SingleQuadParticle`'s roll: `Quaternionf.rotationZ(roll)`, with JOML's sine and cosine.
-fn roll_rotation(roll: f32) -> Quat {
-    let q = crate::camera::joml::Quat::rotation_z(roll);
-    Quat::from_xyzw(q.x, q.y, q.z, q.w)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
