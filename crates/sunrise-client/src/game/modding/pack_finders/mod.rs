@@ -127,6 +127,14 @@ impl ClientHost for DiscoveryHost {}
 mod_api::impl_client_host_areas!(DiscoveryHost, except(audio));
 // Registration opens no audio stream.
 impl mod_api::prelude::AudioClientHost for DiscoveryHost {
+    fn open_audio_stream(
+        &self,
+        _: &mod_api::StreamSpec,
+        _: Box<dyn mod_api::AudioStream>,
+    ) -> Result<mod_api::AudioStreamRef, mod_api::AudioRefusal> {
+        Err(mod_api::AudioRefusal::Unavailable)
+    }
+
     fn open_push_audio_stream(
         &self,
         _: &mod_api::StreamSpec,

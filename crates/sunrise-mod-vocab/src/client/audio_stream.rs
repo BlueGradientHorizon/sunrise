@@ -1,6 +1,6 @@
-//! A client mod's audio streams: PCM the mod makes, played by the game's mixer in place of an
-//! Ogg file (NeoForge's `SoundInstance.getStream`, vanilla's `AudioStream`), on a pool of their
-//! own that never takes one of vanilla's streaming slots.
+//! A client mod's PCM streams: the mixer's worker pulls from a native [`AudioStream`], or an
+//! async producer pushes through [`AudioStreamRef`]. Both use their own pool, never vanilla's
+//! streaming slots.
 use super::types::SoundSource;
 use crate::EntityRef;
 use std::sync::Arc;
@@ -20,7 +20,9 @@ pub const AUDIO_STREAM_RING_MAX_MS: u32 = 1_000;
 /// on demand, never in the device callback or while holding mixer or pool locks.
 ///
 /// The source runs in-process, with no `Host` or world borrow and no reentry into the game.
-/// Reads must do bounded, nonblocking work: do not wait on I/O, another thread or a tick.
+/// Reads must do bounded, nonblocking work: do not wait on I/O, locks, another thread or a tick.
+/// Muting or unplacing the stream does not pause demand. The worker drops an admitted source
+/// at EOF or after stop, without waiting for another device callback.
 // no wire: the mixer owns and calls this native source in-process.
 pub trait AudioStream: Send + 'static {
     /// Fill at most `pcm.len() / channels` whole frames of interleaved signed 16-bit PCM in the
@@ -37,7 +39,8 @@ pub enum AudioRead {
     /// The number of whole interleaved frames written, not the number of samples. A short read
     /// plays what is ready; zero is temporary silence. The worker retries on later demand.
     Frames(usize),
-    /// Permanently out of PCM. The mixer drains ready audio before stopping the stream.
+    /// Permanently out of PCM. Return this on a separate read after reporting any final frames;
+    /// the mixer plays them for their full duration before stopping the stream.
     Eof,
 }
 
@@ -67,9 +70,9 @@ pub enum AudioStreamState {
     /// positional stream after the listener changed dimension, until the next `set_placement`.
     /// The audio is still consumed, so no latency builds up.
     Unplaced,
-    /// Over: the pull source ended and its PCM drained or it reported too many frames,
+    /// Over: the pull source ended and its PCM drained, it reported an invalid frame count,
     /// `stop` was called, the handle was dropped, or the game's sound output went away.
-    /// It never plays again. What a stream reads when a call to the game was refused.
+    /// It never plays again.
     #[default]
     Stopped,
 }
@@ -224,13 +227,14 @@ pub trait AudioStreamSource: Send + Sync + 'static {
     fn stop(&self);
 }
 
-/// The controls for an open mod audio stream, with push access for async streams.
+/// The controls for an open mod audio stream, with push access only for async push streams.
 ///
 /// Keep the handle while the stream should play. Dropping it stops the stream, as [`stop`]
-/// does. It is `Send`: a mod may push to an async stream from any thread, a `Network`-thread
-/// payload handler included, and the audio never waits for a tick.
+/// does. The handle can be used from any thread, including a `Network`-thread payload handler;
+/// neither push nor pull waits for a client tick.
 ///
 /// [`stop`]: AudioStreamRef::stop
+// no wire: the handle controls a stream on this client's mixer.
 // exhaustive: its field is private, so mods cannot build or destructure it
 pub struct AudioStreamRef {
     source: Arc<dyn AudioStreamSource>,
@@ -243,10 +247,11 @@ impl AudioStreamRef {
     pub fn new(source: Arc<dyn AudioStreamSource>) -> Self {
         Self { source }
     }
-    /// Queues interleaved 16-bit samples (`channels` per frame) behind what is waiting and
-    /// returns the frames accepted. The ring holds up to [`AUDIO_STREAM_RING_MAX_MS`]
-    /// milliseconds of source audio; drop what does not fit or push it again later. The mixer
-    /// starts with the first available frame and plays silence when the stream runs dry.
+    /// Queues interleaved signed 16-bit PCM (`channels` samples per frame) and returns the
+    /// number of whole frames accepted. A trailing incomplete frame is not queued. The ring
+    /// holds [`AUDIO_STREAM_RING_MAX_MS`] milliseconds of source audio; drop what does not fit
+    /// or push it again later. The mixer starts with the first available frame and plays
+    /// silence when the stream runs dry.
     ///
     /// A push writes straight into the ring made when the stream opened: it never blocks,
     /// allocates or waits for a tick. Only one thread can push at a time: an overlapping push

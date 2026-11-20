@@ -174,7 +174,7 @@ mod tests {
     use super::super::StreamPool;
     use super::*;
     use mod_api::{AudioStreamSource, AudioStreamState, SoundSource, StreamSpec};
-    use std::sync::Mutex;
+    use std::{sync::Mutex, thread::ThreadId, time::Duration};
 
     struct Source<F>(F);
 
@@ -236,6 +236,63 @@ mod tests {
                 false
             }
         }
+    }
+
+    #[test]
+    fn a_pull_worker_reads_and_drops_the_source_with_both_guards_held() {
+        struct Probe {
+            read: SyncSender<(ThreadId, usize)>,
+            dropped: SyncSender<ThreadId>,
+        }
+
+        impl AudioStream for Probe {
+            fn read(&mut self, pcm: &mut [i16]) -> AudioRead {
+                pcm[0] = 16_384;
+                let _ = self.read.try_send((thread::current().id(), pcm.len()));
+                AudioRead::Frames(1)
+            }
+        }
+
+        impl Drop for Probe {
+            fn drop(&mut self) {
+                let _ = self.dropped.try_send(thread::current().id());
+            }
+        }
+
+        let (read, reads) = mpsc::sync_channel(1);
+        let (dropped, drops) = mpsc::sync_channel(1);
+        let pool = StreamPool::default();
+        let mixer = Mutex::new(Mixer::default());
+        let spec = StreamSpec::new(SoundSource::Voice, 2, 24_000);
+        let stream = pool
+            .open(
+                &mixer,
+                "mod",
+                &spec,
+                Some(Box::new(Probe { read, dropped })),
+            )
+            .unwrap();
+
+        let _pool = pool.state();
+        let mut mixer = mixer.lock().unwrap();
+        let mut out = [0.0; 8];
+        mix_pieces(&mut mixer, &mut out, 2, 48_000);
+        assert_eq!(out, [0.0; 8]);
+
+        let timeout = Duration::from_secs(1);
+        let (worker, samples) = reads
+            .recv_timeout(timeout)
+            .expect("worker did not read PCM");
+        assert_ne!(worker, thread::current().id());
+        assert_eq!(samples, 6); // Four output frames need two stereo source frames plus lookahead.
+
+        stream.stop();
+        assert_eq!(stream.state(), AudioStreamState::Stopped);
+        // Still holding both guards, with no further mix or reap call.
+        assert_eq!(
+            drops.recv_timeout(timeout).expect("source was not dropped"),
+            worker
+        );
     }
 
     #[test]

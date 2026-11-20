@@ -1,24 +1,26 @@
 ids = [
-    "type:StreamSpec",
-    "type:StreamSpec.prebuffer_ms",
-    "handle:StreamSpec::with_prebuffer_ms",
-    "type:SpecFault",
-    "type:SpecFault.Prebuffer",
-    "type:AudioRefusal",
-    "type:AudioRefusal.WorkerUnavailable",
-    "type:AudioStreamState",
-    "type:AudioStreamState.Buffering",
-    "type:AudioStreamState.Stopped",
+    "method:prelude::AudioClientHost::open_audio_stream",
+    "method:prelude::AudioClientHost::open_push_audio_stream",
     "trait:AudioStream",
     "method:AudioStream::read",
     "type:AudioRead",
     "type:AudioRead.Frames",
     "type:AudioRead.Eof",
-    "trait:AudioStreamSource",
-    "method:AudioStreamSource::buffered_ms",
-    "method:AudioStreamSource::push",
-    "handle:AudioStreamRef::buffered_ms",
-    "handle:AudioStreamRef::push",
+    "type:AudioRefusal",
+    "type:AudioRefusal.WorkerUnavailable",
 ]
-why = "Async streams play the first available frame without waiting for a watermark. Their queue is bounded to one second of source PCM; a dry queue plays silence without closing the stream. Playing now means open and placed, not necessarily audible. A native pull source instead supplies PCM on a worker as the mixer needs it, then drains on EOF."
-migrate = "Remove `spec.prebuffer_ms` assignments, `.with_prebuffer_ms(ms)`, imports of `AUDIO_STREAM_PREBUFFER_MIN_MS` and `AUDIO_STREAM_PREBUFFER_MAX_MS`, and `SpecFault::Prebuffer` match arms. Remove `stream.buffered_ms()` polling and `buffered_ms` methods on `AudioStreamSource` implementations; keep any needed jitter buffer with the async producer, call `stream.push(&samples)` when ready, and use the returned accepted frame count to drop or retry the refused suffix. `AUDIO_STREAM_RING_MAX_MS` describes capacity only, not a target. Remove the `AudioStreamState::Buffering` branch and use `Playing` only to tell that a stream is open and placed, even when muted or dry. For a native pull source, move PCM generation out of the tick and implement `AudioStream::read(&mut self, pcm: &mut [i16]) -> AudioRead`. Write interleaved PCM and return `AudioRead::Frames(whole_frame_count)`; return `Frames(0)` to retry later, or `AudioRead::Eof` to drain and stop. Do not call `push` on a pull stream; it returns zero. Handle `AudioRefusal::WorkerUnavailable` like any open refusal. Do not use the old encoded layout of `StreamSpec`, `AudioStreamState`, `SpecFault` or `AudioRefusal`."
+why = "The mixer can now read native PCM on demand instead of waiting for a mod to push it every tick. Async producers still have a bounded push stream. Both use the same separate mod stream pool and keep the existing controls and spatial playback."
+migrate = """
+For tick-generated PCM, move the generator or decoder and its owned state into an implementation of \
+`AudioStream::read(&mut self, pcm: &mut [i16]) -> AudioRead`. Replace `host.open_audio_stream(&spec)` and \
+its tick pushes with `host.open_audio_stream(&spec, Box::new(source))`. On the worker, write interleaved \
+PCM into the lent buffer and return `AudioRead::Frames(n)` in whole frames, not samples. A short read \
+plays what is ready; `AudioRead::Frames(0)` means retry on later demand. Return `AudioRead::Eof` on a \
+separate read after the final frames to drain and stop. Do bounded, nonblocking work with no host or world \
+borrow or calls back into the game. Do not call `AudioStreamRef::push` on a pull handle; it accepts no \
+frames and returns zero. Treat `AudioRefusal::WorkerUnavailable` like any other opening failure. \
+For a network or other async producer, replace `host.open_audio_stream(&spec)` with \
+`host.open_push_audio_stream(&spec)` and keep calling `stream.push(&samples)` on the producer thread. \
+Use the returned accepted frame count times the channel count to find the refused suffix; drop it or retry \
+it later. If you implement `AudioClientHost` in tests, rename the existing push implementation to \
+`open_push_audio_stream` and implement the new `open_audio_stream` with its `Box<dyn AudioStream>` argument."""
