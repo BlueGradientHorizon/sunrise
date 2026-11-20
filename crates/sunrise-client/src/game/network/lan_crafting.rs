@@ -1121,6 +1121,7 @@ impl Game<'_> {
         else {
             return false;
         };
+        let owner = play.crafting.table.stamp();
         // handleContainerClick: broadcastFullState only for a click on an old
         // state, else only what the client got wrong. The whole menu after every
         // click would undo the clicks it has predicted since.
@@ -1146,6 +1147,16 @@ impl Game<'_> {
                         .collect::<Vec<_>>()
                 })
             else {
+                // A refused click keeps its menu open. Don't put it back if the
+                // listener closed or replaced the owner while the table was lifted.
+                if let Some(play) = self.lan.as_mut().and_then(|host| host.menus.get_mut(&conn))
+                    && play.crafting.table.stamp() == owner
+                {
+                    play.crafting
+                        .table
+                        .restore(Some((window, state, menu, pos)));
+                    self.lan_send_table_content(conn);
+                }
                 return true;
             };
             let Some(guest) = self.lan.as_ref().map(|host| &host.hub.guests[gi]) else {
