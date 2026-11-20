@@ -6,7 +6,7 @@ use crate::lan::{NetEvent, PlayerSender};
 use mod_api::{Hooks, IPayloadContext, IPayloadHandler, ModEntry, PayloadBytes, Registrar};
 use sunrise_protocol::packets::{custom_payload::CustomPayload, play};
 
-const CHANNEL: &str = "voicechat:secret";
+pub(super) const CHANNEL: &str = "voicechat:secret";
 const SEND_ONLY: &str = "bungeecord:main";
 
 struct Listener;
@@ -58,7 +58,7 @@ impl Hooks for Typed {
 
 /// Two receiving mods and a send-only one, with a vanilla peer admitted
 /// without an offer, as `finish_without_offer` admits it.
-fn with_vanilla_peer(run: impl FnOnce(Arc<Transport>)) {
+pub(super) fn with_vanilla_peer(run: impl FnOnce(Arc<Transport>)) {
     let mods = vec![
         ModEntry::new(
             "voicechat",
@@ -90,7 +90,7 @@ fn with_vanilla_peer(run: impl FnOnce(Arc<Transport>)) {
     });
 }
 
-fn serverbound(channel: &str, len: usize) -> CustomPayload {
+pub(super) fn serverbound(channel: &str, len: usize) -> CustomPayload {
     CustomPayload {
         channel: channel.into(),
         data: vec![7; len],

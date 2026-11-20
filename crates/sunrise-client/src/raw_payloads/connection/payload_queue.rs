@@ -72,7 +72,14 @@ impl Connection {
         let queue = self.payloads.lock().unwrap();
         let queue = self
             .payload_ready
-            .wait_while(queue, |queue| queue.active && epoch.active())
+            .wait_while(queue, |queue| {
+                let waiting = queue.active && epoch.active();
+                #[cfg(test)]
+                if waiting {
+                    super::tests::notify_payload_wait_entered();
+                }
+                waiting
+            })
             .unwrap();
         epoch.active() && !queue.pending.is_empty()
     }
