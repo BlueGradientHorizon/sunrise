@@ -550,8 +550,6 @@ pub struct Renderer {
     fluid_sampler: wgpu::Sampler,
     terrain_model_group: wgpu::BindGroup,
     terrain_model_sampler: wgpu::Sampler,
-    translucent_model_group: wgpu::BindGroup,
-    translucent_model_sampler: wgpu::Sampler,
     globals: wgpu::Buffer,
     /// Resource-pack normal/specular maps, split like the colour sprite arrays.
     pbr_maps: Option<Vec<[wgpu::Texture; 2]>>,
@@ -1275,22 +1273,11 @@ impl Renderer {
         );
         self.terrain_model_group = terrain_group(
             &self.device,
-            "Native cutout model resources",
+            "Native model resources",
             &self.terrain_layout,
             &self.globals,
             &self.sprite_views,
             &self.terrain_model_sampler,
-            &self.lightmap_view,
-            &self.lightmap_sampler,
-            &self.emission_stats.view,
-        );
-        self.translucent_model_group = terrain_group(
-            &self.device,
-            "Native translucent model resources",
-            &self.terrain_layout,
-            &self.globals,
-            &self.sprite_views,
-            &self.translucent_model_sampler,
             &self.lightmap_view,
             &self.lightmap_sampler,
             &self.emission_stats.view,

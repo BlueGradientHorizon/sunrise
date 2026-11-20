@@ -2851,15 +2851,7 @@ impl Renderer {
                 if count > 0 {
                     pass.stage(self.own_timing.as_mut(), "terrain models");
                     pass.set_pipeline(&self.terrain_model_pipelines[i]);
-                    pass.set_bind_group(
-                        0,
-                        if i == 1 {
-                            &self.terrain_model_group
-                        } else {
-                            &self.fluid_group
-                        },
-                        &[],
-                    );
+                    pass.set_bind_group(0, &self.terrain_model_group, &[]);
                     pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
                     pass.draw_indexed(0..count * 6, (first * 4) as i32, 0..1);
                 }
@@ -2871,7 +2863,7 @@ impl Renderer {
             if native_translucent_quads > 0 {
                 pass.stage(self.own_timing.as_mut(), "translucent terrain models");
                 pass.set_pipeline(&self.terrain_model_pipelines[3]);
-                pass.set_bind_group(0, &self.translucent_model_group, &[]);
+                pass.set_bind_group(0, &self.terrain_model_group, &[]);
                 pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
                 pass.draw_indexed(
                     0..native_translucent_quads * 6,
