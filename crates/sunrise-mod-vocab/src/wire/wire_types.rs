@@ -269,7 +269,7 @@ impl Wire for sunrise_core::nbt::JavaString {
         out.put_u16s(self.units());
     }
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
-        input.nested(|input| input.take_u16s().map(Iterator::collect))
+        input.record(|input| input.take_u16s().map(Iterator::collect))
     }
 }
 
@@ -417,10 +417,10 @@ impl Wire for crate::ReductionChange {
 }
 
 impl Wire for crate::ItemPlace {
-    layout_fields!("tag" => u32, "0:PlayerSlot.player" => u128, "0:PlayerSlot.slot" => i32, "1:PlayerHand.player" => u128, "1:PlayerHand.hand" => crate::Hand, "2:PlayerCursor.menu" => crate::MenuRef, "3:BlockEntity.level" => crate::LevelRef, "3:BlockEntity.pos" => [i32;3], "3:BlockEntity.side" => Option<crate::Direction>, "3:BlockEntity.slot" => usize, "4:ItemEntity.id" => u32, "5:EntitySlot.entity" => u32, "5:EntitySlot.slot" => usize, "6:Nested.parent" => Box<crate::ItemPlace>, "6:Nested.slot" => usize, "7:MenuSlot.menu" => crate::MenuRef, "7:MenuSlot.slot" => usize, "8:Mod.provider" => String, "8:Mod.key" => u64, "9:Equipment.entity" => u32, "9:Equipment.slot" => crate::EquipmentSlot, "10:Scratch.0" => u64, "11:Strict.0" => Box<crate::ItemPlace>, "12:OneByOne.0" => Box<crate::ItemPlace>, "13:InfiniteMaterials.player" => u128, "13:InfiniteMaterials.inner" => Box<crate::ItemPlace>, "14:ScratchSlots.0" => u64);
+    layout_fields!("tag" => u32, "0:PlayerSlot.player" => u128, "0:PlayerSlot.slot" => i32, "1:PlayerHand.player" => u128, "1:PlayerHand.hand" => crate::Hand, "2:PlayerCursor.menu" => crate::MenuRef, "3:BlockEntity.level" => crate::LevelRef, "3:BlockEntity.pos" => [i32;3], "3:BlockEntity.side" => Option<crate::Direction>, "3:BlockEntity.slot" => usize, "4:ItemEntity.id" => u32, "5:EntitySlot.entity" => u32, "5:EntitySlot.slot" => usize, "6:Nested.parent" => Box<crate::ItemPlace>, "6:Nested.slot" => usize, "7:MenuSlot.menu" => crate::MenuRef, "7:MenuSlot.slot" => usize, "8:Mod.provider" => &'static str, "8:Mod.key" => u64, "9:Equipment.entity" => u32, "9:Equipment.slot" => crate::EquipmentSlot, "10:Scratch.0" => u64, "11:Strict.0" => Box<crate::ItemPlace>, "12:OneByOne.0" => Box<crate::ItemPlace>, "13:InfiniteMaterials.player" => u128, "13:InfiniteMaterials.inner" => Box<crate::ItemPlace>, "14:ScratchSlots.0" => u64);
     const MIN: usize = 4;
     fn put(&self, out: &mut Writer) {
-        out.nested(|out| {
+        out.record(|out| {
             use crate::ItemPlace::*;
             match self {
                 PlayerSlot { player, slot } => {
@@ -475,7 +475,7 @@ impl Wire for crate::ItemPlace {
                 }
                 Mod { provider, key } => {
                     out.put(&8u32);
-                    out.put_str(provider);
+                    out.put(provider);
                     out.put(key)
                 }
                 Scratch(id) => {
@@ -504,7 +504,7 @@ impl Wire for crate::ItemPlace {
     }
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
         use crate::ItemPlace::*;
-        input.nested(|input| {
+        input.record(|input| {
             Ok(match input.take::<u32>()? {
                 0 => PlayerSlot {
                     player: input.take()?,
@@ -541,7 +541,7 @@ impl Wire for crate::ItemPlace {
                     slot: input.take()?,
                 },
                 8 => Mod {
-                    provider: crate::wire::intern(&input.take::<String>()?)?,
+                    provider: input.take()?,
                     key: input.take()?,
                 },
                 10 => Scratch(input.take()?),
@@ -749,9 +749,12 @@ impl crate::wire::Wire for crate::Tag {
     }
 }
 impl crate::wire::Wire for serde_json::Value {
-    layout_fields!("json" => String);
+    layout_via!(String, "validated-json-value");
     const MIN: usize = 4;
     fn put(&self, out: &mut crate::wire::Writer) {
+        if !out.ordinary_only() {
+            return;
+        }
         if !super::json_tree::value_depth([self], 0) {
             out.fail(WireError::Depth);
             return;
@@ -807,7 +810,7 @@ impl crate::wire::Wire for crate::BlockPos {
     fn take(
         input: &mut crate::wire::Reader<'_>,
     ) -> ::std::result::Result<Self, crate::wire::WireError> {
-        input.nested(|input| {
+        input.record(|input| {
             Ok(Self {
                 x: input.take()?,
                 y: input.take()?,
@@ -886,7 +889,7 @@ impl crate::wire::Wire for crate::NeighbourUpdate {
     fn take(
         input: &mut crate::wire::Reader<'_>,
     ) -> ::std::result::Result<Self, crate::wire::WireError> {
-        input.nested(|input| {
+        input.record(|input| {
             Ok(match input.take::<u32>()? {
                 0 => Self::OutputSignal,
                 1 => Self::Neighbours,
@@ -906,7 +909,7 @@ impl crate::wire::Wire for crate::ChunkPos {
     fn take(
         input: &mut crate::wire::Reader<'_>,
     ) -> ::std::result::Result<Self, crate::wire::WireError> {
-        input.nested(|input| {
+        input.record(|input| {
             Ok(Self {
                 x: input.take()?,
                 z: input.take()?,
@@ -924,7 +927,7 @@ impl crate::wire::Wire for crate::BoundingBox {
     fn take(
         input: &mut crate::wire::Reader<'_>,
     ) -> ::std::result::Result<Self, crate::wire::WireError> {
-        input.nested(|input| {
+        input.record(|input| {
             Ok(Self {
                 min: input.take()?,
                 max: input.take()?,
@@ -949,7 +952,7 @@ impl crate::wire::Wire for crate::LevelDimension {
     fn take(
         input: &mut crate::wire::Reader<'_>,
     ) -> ::std::result::Result<Self, crate::wire::WireError> {
-        input.nested(|input| {
+        input.record(|input| {
             Ok(match input.take::<u32>()? {
                 0 => Self::Overworld,
                 1 => Self::Nether,
@@ -961,9 +964,12 @@ impl crate::wire::Wire for crate::LevelDimension {
     }
 }
 impl crate::wire::Wire for serde_json::Map<String, serde_json::Value> {
-    layout_fields!("json" => String);
+    layout_via!(String, "validated-json-object");
     const MIN: usize = 4;
     fn put(&self, out: &mut crate::wire::Writer) {
+        if !out.ordinary_only() {
+            return;
+        }
         if !super::json_tree::value_depth(self.values(), 1) {
             out.fail(WireError::Depth);
             return;
@@ -1070,7 +1076,7 @@ impl crate::wire::Wire for crate::AttachmentRowError {
     fn take(
         input: &mut crate::wire::Reader<'_>,
     ) -> ::std::result::Result<Self, crate::wire::WireError> {
-        input.nested(|input| {
+        input.record(|input| {
             Ok(match input.take::<u32>()? {
                 0 => Self::Value(input.take()?),
                 1 => Self::StaleHolder,
@@ -1155,7 +1161,7 @@ impl crate::wire::Wire for crate::TicketOwner {
     fn take(
         input: &mut crate::wire::Reader<'_>,
     ) -> ::std::result::Result<Self, crate::wire::WireError> {
-        input.nested(|input| {
+        input.record(|input| {
             Ok(match input.take::<u32>()? {
                 0 => Self::Block(input.take()?),
                 1 => Self::Entity(input.take()?),
@@ -1199,7 +1205,7 @@ impl crate::wire::Wire for crate::Holder {
     fn take(
         input: &mut crate::wire::Reader<'_>,
     ) -> ::std::result::Result<Self, crate::wire::WireError> {
-        input.nested(|input| {
+        input.record(|input| {
             Ok(match input.take::<u32>()? {
                 0 => Self::Entity(input.take()?),
                 1 => Self::Player(input.take()?),
@@ -1227,7 +1233,7 @@ impl crate::wire::Wire for crate::AttachmentForm {
     fn take(
         input: &mut crate::wire::Reader<'_>,
     ) -> ::std::result::Result<Self, crate::wire::WireError> {
-        input.nested(|input| {
+        input.record(|input| {
             Ok(Self {
                 encoded: input.take()?,
                 policy: input.take()?,
@@ -1247,7 +1253,7 @@ impl crate::wire::Wire for crate::AttachmentPolicy {
     fn take(
         input: &mut crate::wire::Reader<'_>,
     ) -> ::std::result::Result<Self, crate::wire::WireError> {
-        input.nested(|input| {
+        input.record(|input| {
             Ok(Self {
                 copy_on_death: input.take()?,
                 sync: input.take()?,

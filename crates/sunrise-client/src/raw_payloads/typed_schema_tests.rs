@@ -103,3 +103,54 @@ fn another_value_schema_is_refused_when_required_and_unsupported_when_optional()
         },
     );
 }
+
+struct OwnedText;
+
+#[mod_api::__subscriptions]
+impl Hooks for OwnedText {
+    fn register(&self, registrar: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
+        let unreachable =
+            |_: String, _: &mut dyn IPayloadContext| panic!("rejected channel dispatched");
+        registrar
+            .payload_handlers()
+            .registrar("1")
+            .play_bidirectional_typed(
+                PayloadId("typed_schema:owned".into()),
+                unreachable,
+                unreachable,
+            );
+    }
+}
+
+#[test]
+fn static_text_and_checked_model_json_cannot_negotiate_as_owned_text() {
+    mod_platform::testing::with_mods(
+        vec![ModEntry::new("typed_schema", Box::new(OwnedText))].into(),
+        || {
+            mod_platform::__private::part_tests::install_parts_fixture(mod_api::__private::mods())
+                .unwrap();
+            let static_text = mod_api::payload_schema::<&'static str>();
+            let model = mod_api::payload_schema::<mod_api::ModelPart>();
+            assert_ne!(static_text, model);
+            for side in [Side::Client, Side::Server] {
+                let local = Local::capture(side).unwrap();
+                for schema in [static_text, model] {
+                    let mut peer = Manifest::builder();
+                    peer.register(
+                        RegistrationPhase::Play,
+                        "typed_schema:owned",
+                        Flow::Bidirectional,
+                        &mod_api::typed_payload_version("1", schema),
+                        false,
+                    )
+                    .unwrap();
+                    let refused = Negotiation::new(local.manifest.clone())
+                        .receive(Control::Offer(peer.finish().unwrap()));
+                    assert!(matches!(refused, Err(negotiation::Error::Incompatible {
+                        ref id, reason: Mismatch::Schema, ..
+                    }) if id.as_str() == "typed_schema:owned"));
+                }
+            }
+        },
+    );
+}

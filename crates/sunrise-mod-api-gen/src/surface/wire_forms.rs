@@ -55,7 +55,7 @@ fn layout_fields(tokens: proc_macro2::TokenStream) -> Option<Vec<(String, Type)>
 }
 
 /// What a hand-written impl's items declare: `layout_fields!("a" => T, …)`, or `layout_via!(T)`
-/// when it crosses as `T`.
+/// when it crosses as `T`. A `layout_via!` decoder-contract label does not change that layout.
 fn impl_form(items: &[syn::ImplItem], module: usize) -> WireForm {
     for item in items {
         let syn::ImplItem::Macro(mac) = item else {
@@ -69,7 +69,15 @@ fn impl_form(items: &[syn::ImplItem], module: usize) -> WireForm {
                 };
             }
             Some(name) if name.ident == "layout_via" => {
-                return match syn::parse2::<Type>(mac.mac.tokens.clone()) {
+                let via = |input: syn::parse::ParseStream| -> syn::Result<Type> {
+                    let ty = input.parse()?;
+                    if !input.is_empty() {
+                        input.parse::<syn::Token![,]>()?;
+                        input.parse::<syn::LitStr>()?;
+                    }
+                    Ok(ty)
+                };
+                return match syn::parse::Parser::parse2(via, mac.mac.tokens.clone()) {
                     Ok(ty) => WireForm::Via(ty, module),
                     Err(_) => WireForm::Manual,
                 };

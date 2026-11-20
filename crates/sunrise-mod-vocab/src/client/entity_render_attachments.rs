@@ -117,10 +117,14 @@ impl Wire for Snapshot {
     const MIN: usize = 4;
 
     fn put(&self, out: &mut Writer) {
-        out.put_bytes(&self.bytes);
+        if out.ordinary_only() {
+            out.put_bytes(&self.bytes);
+        }
     }
 
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
+        // The embedded vanilla NBT reader does not use Wire's allocation budget.
+        input.ordinary_only()?;
         input.bounded(RENDER_FRAME_BYTES, |payload| {
             let bytes = payload.rest();
             let count = payload.take_len(FIELD_PREFIX_BYTES)?;

@@ -120,12 +120,12 @@ pub(crate) fn expand(mut input: DeriveInput) -> syn::Result<TokenStream> {
         Data::Union(_) => return Err(syn::Error::new_spanned(name, "Wire cannot encode a union")),
     }
     let take = if nested {
-        quote!(input.nested(|input| ::core::result::Result::Ok(#(#takes)*)))
+        quote!(input.record(|input| ::core::result::Result::Ok(#(#takes)*)))
     } else {
         quote!(::core::result::Result::Ok(#(#takes)*))
     };
     let put = if nested {
-        quote!(out.nested(|out| { #(#puts)* }))
+        quote!(out.record(|out| { #(#puts)* }))
     } else {
         quote!(#(#puts)*)
     };

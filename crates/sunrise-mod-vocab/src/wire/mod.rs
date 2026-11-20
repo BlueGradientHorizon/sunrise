@@ -45,6 +45,9 @@ pub fn intern(value: &str) -> Result<&'static str, WireError> {
 /// Container iteration does not itself consume reader depth.
 pub const MAX_DEPTH: u16 = 32;
 
+const UNBOUNDED_PAYLOAD_FORM: WireError =
+    WireError::Invalid("this Wire form is not available in typed payloads");
+
 /// Why a buffer is not a value of the type it was read as.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
@@ -93,7 +96,12 @@ pub struct Writer {
     error: Option<WireError>,
     limit: Option<usize>,
     depth: u16,
-    budget: Option<Budget>,
+    payload: Option<PayloadLimits>,
+}
+
+struct PayloadLimits {
+    ceiling: usize,
+    budget: Budget,
 }
 
 impl Writer {
@@ -104,24 +112,35 @@ impl Writer {
     pub(crate) fn for_payload(limit: usize) -> Self {
         Self {
             limit: Some(limit),
-            budget: Some(Budget::payload()),
+            payload: Some(PayloadLimits {
+                ceiling: limit,
+                budget: Budget::payload(),
+            }),
             ..Self::default()
         }
     }
-    /// Empties it, keeping its allocation and resetting any per-call error and byte limit.
+    /// Empties it, keeping its allocation and resetting the local byte limit. In a typed
+    /// payload the enclosing limits, budget already spent and first failure stay in force.
     pub fn clear(&mut self) {
         self.bytes.clear();
-        self.error = None;
-        self.limit = None;
-        self.budget = None;
+        self.limit = self.payload.as_ref().map(|limits| limits.ceiling);
+        if self.payload.is_none() {
+            self.error = None;
+        }
     }
-    /// Takes `buffer` as its storage, emptied, resetting the error and byte limit.
-    pub fn replace(&mut self, mut buffer: Vec<u8>) {
-        buffer.clear();
+    /// Takes `buffer` as its storage, then resets as in [`Writer::clear`].
+    pub fn replace(&mut self, buffer: Vec<u8>) {
         self.bytes = buffer;
-        self.error = None;
-        self.limit = None;
-        self.budget = None;
+        self.clear();
+    }
+    pub(crate) fn finish_payload(self) -> Result<Vec<u8>, WireError> {
+        if self.payload.is_none() {
+            return Err(WireError::Invalid("payload writer was replaced"));
+        }
+        match self.error {
+            Some(error) => Err(error),
+            None => Ok(self.bytes),
+        }
     }
     /// The bytes written, leaving the writer's storage to the caller.
     pub fn into_bytes(self) -> Vec<u8> {
@@ -131,10 +150,15 @@ impl Writer {
     pub fn bytes(&self) -> &[u8] {
         &self.bytes
     }
-    /// Bound this call's encoded bytes. A refusal is recorded before any growth or copy.
-    /// A new writer has no limit; `clear` and `replace` remove it.
+    /// Bound this call's encoded bytes without raising an enclosing typed payload limit.
+    /// A refusal is recorded before any growth or copy. `clear` and `replace` remove only
+    /// this local limit.
     pub fn limit(&mut self, max_bytes: usize) {
-        self.limit = Some(max_bytes);
+        self.limit = Some(
+            self.payload
+                .as_ref()
+                .map_or(max_bytes, |limits| max_bytes.min(limits.ceiling)),
+        );
         self.can_fit(0);
     }
     fn can_fit(&mut self, bytes: usize) -> bool {
@@ -157,15 +181,15 @@ impl Writer {
     }
     /// A string: its length, then its bytes.
     pub fn put_str(&mut self, text: &str) {
-        if self.budget.is_some() && text.len() > PAYLOAD_MAX_STRING_BYTES {
-            self.fail(WireError::Length);
-            return;
-        }
-        if let Some(budget) = &mut self.budget
-            && let Err(error) = budget.bytes(text.len() as u64)
-        {
-            self.fail(error);
-            return;
+        if let Some(limits) = &mut self.payload {
+            if text.len() > PAYLOAD_MAX_STRING_BYTES {
+                self.fail(WireError::Length);
+                return;
+            }
+            if let Err(error) = limits.budget.bytes(text.len() as u64) {
+                self.fail(error);
+                return;
+            }
         }
         let (Ok(len), Some(size)) = (u32::try_from(text.len()), text.len().checked_add(4)) else {
             self.fail(WireError::Length);
@@ -187,7 +211,7 @@ impl Writer {
         }
     }
     fn list_len(&mut self, len: usize) -> Option<u32> {
-        if self.budget.is_some() && len > PAYLOAD_MAX_LIST_ENTRIES {
+        if self.payload.is_some() && len > PAYLOAD_MAX_LIST_ENTRIES {
             self.fail(WireError::Length);
             return None;
         }
@@ -220,10 +244,20 @@ impl Writer {
             value.put_to(self);
         }
     }
-    /// Writes one structural level of ordinary Wire. Typed payloads instead count the
-    /// indirections in the value, not its records.
+    /// Writes one explicit nesting level. A recursive handwritten codec must use this
+    /// before descending on both the ordinary and the typed payload paths.
     pub fn nested(&mut self, write: impl FnOnce(&mut Self)) {
-        if self.budget.is_some() {
+        let limit = if self.payload.is_some() {
+            PAYLOAD_MAX_DEPTH
+        } else {
+            MAX_DEPTH
+        };
+        self.nest_at(limit, write);
+    }
+    // hidden: transport plumbing used by generated boundary code.
+    #[doc(hidden)]
+    pub fn record(&mut self, write: impl FnOnce(&mut Self)) {
+        if self.payload.is_some() {
             write(self);
         } else {
             self.nest_at(MAX_DEPTH, write);
@@ -242,7 +276,7 @@ impl Writer {
         self.depth -= 1;
     }
     fn payload_nested(&mut self, write: impl FnOnce(&mut Self)) {
-        if self.budget.is_some() {
+        if self.payload.is_some() {
             self.nest_at(PAYLOAD_MAX_DEPTH, write);
         } else {
             write(self);
@@ -250,10 +284,20 @@ impl Writer {
     }
     /// Charge storage for decoded `T`s before writing them in the bounded payload path.
     pub(crate) fn charge<T>(&mut self, count: usize) -> bool {
-        if let Some(budget) = &mut self.budget
-            && let Err(error) = budget.charge::<T>(count)
+        self.charge_with(|budget| budget.charge::<T>(count))
+    }
+    fn charge_with(&mut self, charge: impl FnOnce(&mut Budget) -> Result<(), WireError>) -> bool {
+        if let Some(limits) = &mut self.payload
+            && let Err(error) = charge(&mut limits.budget)
         {
             self.fail(error);
+            return false;
+        }
+        true
+    }
+    pub(crate) fn ordinary_only(&mut self) -> bool {
+        if self.payload.is_some() {
+            self.fail(UNBOUNDED_PAYLOAD_FORM);
             return false;
         }
         true
@@ -289,14 +333,17 @@ impl Put for str {
 
 impl Wire for &str {
     const MIN: usize = 4;
-    fn describe(schema: &mut WireSchema) -> u64 {
-        String::describe(schema)
+    fn describe(_: &mut WireSchema) -> u64 {
+        WireSchema::leaf("process-interned-utf8:u32-le-length")
     }
     fn put(&self, out: &mut Writer) {
-        out.put_str(self);
+        if out.ordinary_only() {
+            out.put_str(self);
+        }
     }
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
-        intern(&input.take::<String>()?)
+        input.ordinary_only()?;
+        intern(input.take_str()?)
     }
 }
 
@@ -363,6 +410,13 @@ impl<'a> Reader<'a> {
             _ => Err(WireError::Length),
         }
     }
+    fn take_str(&mut self) -> Result<&'a str, WireError> {
+        let len = self.take_len(1)?;
+        if self.budget.is_some() && len > PAYLOAD_MAX_STRING_BYTES {
+            return Err(WireError::Length);
+        }
+        std::str::from_utf8(self.take_bytes(len)?).map_err(|_| WireError::Utf8)
+    }
     /// Decodes one value from the current position.
     pub fn take<T: Wire>(&mut self) -> Result<T, WireError> {
         T::take(self)
@@ -391,15 +445,17 @@ impl<'a> Reader<'a> {
     pub(crate) fn take_u16s(
         &mut self,
     ) -> Result<impl ExactSizeIterator<Item = u16> + use<'a>, WireError> {
-        let len = self.take_len(2)?;
-        self.charge::<u16>(len)?;
-        let bytes = self.take_bytes(len * 2)?;
-        Ok(bytes
-            .as_chunks::<2>()
-            .0
-            .iter()
-            .copied()
-            .map(u16::from_le_bytes))
+        self.payload_nested(|input| {
+            let len = input.take_len(2)?;
+            input.charge::<u16>(len)?;
+            let bytes = input.take_bytes(len * 2)?;
+            Ok(bytes
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .copied()
+                .map(u16::from_le_bytes))
+        })
     }
     /// A normal Wire list, with its element cap checked before allocating storage. `read`
     /// may impose a shared payload budget across its elements without a second list codec.
@@ -421,10 +477,22 @@ impl<'a> Reader<'a> {
             Ok(items)
         })
     }
-    // hidden: transport plumbing used by generated boundary code.
-    /// Reads one structural level of ordinary Wire. Typed payloads instead count the
-    /// indirections in the value, not its records.
+    /// Reads one explicit nesting level. A recursive handwritten codec must use this
+    /// before descending on both the ordinary and the typed payload paths.
     pub fn nested<T>(
+        &mut self,
+        read: impl FnOnce(&mut Self) -> Result<T, WireError>,
+    ) -> Result<T, WireError> {
+        let limit = if self.budget.is_some() {
+            PAYLOAD_MAX_DEPTH
+        } else {
+            MAX_DEPTH
+        };
+        self.nest_at(limit, read)
+    }
+    // hidden: transport plumbing used by generated boundary code.
+    #[doc(hidden)]
+    pub fn record<T>(
         &mut self,
         read: impl FnOnce(&mut Self) -> Result<T, WireError>,
     ) -> Result<T, WireError> {
@@ -459,8 +527,20 @@ impl<'a> Reader<'a> {
     }
     /// Charge bounded payload allocations before reserving or copying their storage.
     pub(crate) fn charge<T>(&mut self, count: usize) -> Result<(), WireError> {
-        if let Some(budget) = &mut self.budget {
-            budget.charge::<T>(count)?;
+        self.charge_with(|budget| budget.charge::<T>(count))
+    }
+    fn charge_with(
+        &mut self,
+        charge: impl FnOnce(&mut Budget) -> Result<(), WireError>,
+    ) -> Result<(), WireError> {
+        match &mut self.budget {
+            Some(budget) => charge(budget),
+            None => Ok(()),
+        }
+    }
+    pub(crate) fn ordinary_only(&self) -> Result<(), WireError> {
+        if self.budget.is_some() {
+            return Err(UNBOUNDED_PAYLOAD_FORM);
         }
         Ok(())
     }
@@ -616,17 +696,9 @@ impl Wire for String {
         out.put_str(self);
     }
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
-        let len = input.take_len(1)?;
-        if input.budget.is_some() && len > PAYLOAD_MAX_STRING_BYTES {
-            return Err(WireError::Length);
-        }
-        let bytes = input.take_bytes(len)?;
-        if let Some(budget) = &mut input.budget {
-            budget.bytes(len as u64)?;
-        }
-        std::str::from_utf8(bytes)
-            .map(str::to_owned)
-            .map_err(|_| WireError::Utf8)
+        let text = input.take_str()?;
+        input.charge_with(|budget| budget.bytes(text.len() as u64))?;
+        Ok(text.to_owned())
     }
 }
 
@@ -660,13 +732,18 @@ impl Wire for Box<str> {
 impl Wire for Arc<str> {
     const MIN: usize = 4;
     fn describe(schema: &mut WireSchema) -> u64 {
-        String::describe(schema)
+        WireSchema::mix(WireSchema::leaf("arc-str"), String::describe(schema))
     }
     fn put(&self, out: &mut Writer) {
-        out.put_str(self);
+        // `put_str` charges the text bytes, so charge only the rest of the Arc here.
+        if out.charge_with(|budget| budget.arc_str_overhead(self.len())) {
+            out.put_str(self);
+        }
     }
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
-        String::take(input).map(Arc::from)
+        let text = input.take_str()?;
+        input.charge_with(|budget| budget.arc::<u8>(text.len()))?;
+        Ok(Arc::from(text))
     }
 }
 
@@ -726,13 +803,17 @@ impl<T: Wire> Wire for Arc<[T]> {
     where
         Self: 'static,
     {
-        Vec::<T>::describe(schema)
+        WireSchema::mix(WireSchema::leaf("arc-slice"), Vec::<T>::describe(schema))
     }
     fn put(&self, out: &mut Writer) {
-        T::put_list(self, out);
+        if out.charge_with(|budget| budget.arc::<T>(self.len())) {
+            T::put_list(self, out);
+        }
     }
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
-        Vec::<T>::take(input).map(Into::into)
+        let items = Vec::<T>::take(input)?;
+        input.charge_with(|budget| budget.arc::<T>(items.len()))?;
+        Ok(items.into())
     }
 }
 
@@ -761,24 +842,14 @@ impl<T: Wire> Wire for Box<T> {
         WireSchema::mix(WireSchema::leaf("box"), T::describe(schema))
     }
     fn put(&self, out: &mut Writer) {
-        let limit = if out.budget.is_some() {
-            PAYLOAD_MAX_DEPTH
-        } else {
-            MAX_DEPTH
-        };
-        out.nest_at(limit, |out| {
+        out.nested(|out| {
             if out.charge::<T>(1) {
                 (**self).put(out);
             }
         });
     }
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
-        let limit = if input.budget.is_some() {
-            PAYLOAD_MAX_DEPTH
-        } else {
-            MAX_DEPTH
-        };
-        input.nest_at(limit, |input| {
+        input.nested(|input| {
             input.charge::<T>(1)?;
             T::take(input).map(Box::new)
         })
@@ -794,25 +865,15 @@ impl<T: Wire> Wire for Arc<T> {
         WireSchema::mix(WireSchema::leaf("arc"), T::describe(schema))
     }
     fn put(&self, out: &mut Writer) {
-        let limit = if out.budget.is_some() {
-            PAYLOAD_MAX_DEPTH
-        } else {
-            MAX_DEPTH
-        };
-        out.nest_at(limit, |out| {
-            if out.charge::<T>(1) {
+        out.nested(|out| {
+            if out.charge_with(|budget| budget.arc::<T>(1)) {
                 (**self).put(out);
             }
         });
     }
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
-        let limit = if input.budget.is_some() {
-            PAYLOAD_MAX_DEPTH
-        } else {
-            MAX_DEPTH
-        };
-        input.nest_at(limit, |input| {
-            input.charge::<T>(1)?;
+        input.nested(|input| {
+            input.charge_with(|budget| budget.arc::<T>(1))?;
             T::take(input).map(Arc::new)
         })
     }
@@ -1025,6 +1086,17 @@ macro_rules! layout_fields {
 }
 pub(crate) use layout_fields;
 macro_rules! layout_via {
+    ($ty:ty, $contract:literal) => {
+        fn describe(schema: &mut $crate::wire::WireSchema) -> u64 {
+            use $crate::wire::WireSchema;
+            schema.named::<Self>(|schema| {
+                WireSchema::mix(
+                    WireSchema::leaf($contract),
+                    <$ty as $crate::wire::Wire>::describe(schema),
+                )
+            })
+        }
+    };
     ($ty:ty) => {
         fn describe(schema: &mut $crate::wire::WireSchema) -> u64 {
             schema.named::<Self>(|schema| <$ty as $crate::wire::Wire>::describe(schema))
