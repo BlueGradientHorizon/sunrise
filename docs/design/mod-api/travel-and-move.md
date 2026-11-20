@@ -48,7 +48,8 @@ Reject the entire malformed result (NaN, infinity, out-of-range, including negat
 magnitude budgets); signed negative vector components within range are valid.
 Reject rather than clamp, retain the preceding valid proposal, and diagnose once
 per listener/tick. Dependency-ordered listeners see the preceding valid proposal;
-Cancel is terminal. For both hooks — with no host writes there is nothing to
+a rejected result is dropped alone and later listeners still run on the preceding
+valid values. Cancel is terminal. For both hooks — with no host writes there is nothing to
 go stale — a panic or wasm trap keeps the **requested** values (not a replacement
 an earlier listener had proposed), and the panic poison disables that listener
 for the session; the travel or move carries on. A rejected replacement is
@@ -90,8 +91,10 @@ lands and route their actual Entity.move equivalents through this boundary.
 
 Both hooks, ruled hostless (#2414), reduce to result validation: the gate holds
 the resolved values (travel's input and velocity, move's requested delta), a
-listener result that passes the budgets replaces them, malformed output falls
-back to them, and cancellation skips the invocation. A panic or wasm trap keeps
+listener result that passes the budgets replaces them, malformed output is
+dropped and the preceding valid values stand (`living_travel` checks each
+listener's pair as it returns and names the mod and the field; `entity_move`
+checks the final delta), and cancellation skips the invocation. A panic or wasm trap keeps
 the resolved values while its poison disables that listener for this hook for
 the session. The decide/fire/apply lift with a real Host reopens only on a
 measured need from a real mod, as its own PR. Both take
@@ -135,7 +138,7 @@ cases isolate move from travel acceleration and gravity.
 | Replacement NaN, infinity, 65 or -65 on one axis | Entire result rejected; original delta (1,0,0) still yields (1,64,0) |
 | Replacement (-1,0,0) | Position (-1,64,0) |
 | Listener panics after a replacement | The resolved values run; listener disabled for this hook for the session |
-| Replacement beyond the budgets | Refused by name (NaN, infinity, out of range); the resolved values run |
+| Replacement beyond the budgets | Refused by name (NaN, infinity, out of range); the preceding valid values run, the resolved ones when none |
 | Two identical corrected replays of fixed input sequence | Final position/velocity and attachment bytes equal fresh authoritative simulation; exactly one external effect per action identity |
 | Host window, LAN guest, dedicated player; native and wasm | Each geometric case above has identical values and correct acting-player identity |
 | No listeners: air, water, lava, glide, flying, piston, vehicle | Exact position/velocity/collision/fall-state equality with vanilla 26.3 oracle fixtures for the same inputs |

@@ -1559,6 +1559,22 @@ pub enum TravelMode {
     Flying,
 }
 
+/// The `living_travel` hook's per-listener check of what a listener wrote: an input component
+/// lies in [-1, 1], a velocity component is finite and within ±64 blocks. Returns the name of
+/// the first refused output.
+pub(crate) fn refused_travel_output(
+    input: &[f64; 3],
+    velocity: &[f64; 3],
+) -> Result<(), &'static str> {
+    if !input.iter().all(|v| v.abs() <= 1.0) {
+        return Err("input");
+    }
+    if !velocity.iter().all(|v| v.abs() <= 64.0) {
+        return Err("velocity");
+    }
+    Ok(())
+}
+
 /// How a declared attribute's modifier lines read on item tooltips: NeoForge's
 /// `RangedAttribute`, `PercentageAttribute` and `BooleanAttribute`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -1606,5 +1622,28 @@ pub enum WantedPositionError {
 impl NoBackend for WantedPositionError {
     fn no_backend() -> Self {
         Self::Unavailable
+    }
+}
+
+#[cfg(test)]
+mod travel_tests {
+    use super::*;
+
+    #[test]
+    fn a_travel_output_is_refused_by_the_first_field_outside_its_budget() {
+        let ok = [0.0; 3];
+        assert_eq!(
+            refused_travel_output(&[-1.0, 1.0, 0.0], &[64.0, -64.0, 0.0]),
+            Ok(())
+        );
+        for bad in [1.01, f64::NAN, f64::INFINITY] {
+            assert_eq!(refused_travel_output(&[0.0, bad, 0.0], &ok), Err("input"));
+        }
+        for bad in [64.5, -65.0, f64::NAN, f64::NEG_INFINITY] {
+            assert_eq!(
+                refused_travel_output(&ok, &[0.0, 0.0, bad]),
+                Err("velocity")
+            );
+        }
     }
 }

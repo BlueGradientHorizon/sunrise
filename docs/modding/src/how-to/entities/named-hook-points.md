@@ -78,11 +78,13 @@ that is not finite or beyond 64 blocks on an axis. Fall damage and block effects
 swim steering) and a mob's travel entry. It receives the loop context, not a
 `Host`, and decides only the travel's input, velocity and cancel. `TravelMode`
 names the branch about to run — water, lava, glide, flying, or air — as data a
-replacement does not change. A NoAI mob never travels, so it fires nobody.
+replacement does not change. A NoAI mob never travels, so it fires nobody. A replayed player tick runs the resolved values and fires nothing.
 
 An input component must lie in [-1, 1], and a velocity component must be finite
-and within ±64 blocks; a result with a component outside its budget is refused
-whole, and the travel runs on the values the game resolved. Cancellation skips
+and within ±64 blocks. Each listener's pair is checked as it returns: one with a
+component outside its budget is refused whole (the log names the mod and the
+field), and the pair the preceding listeners left stands for the next listener and
+the branch, the values the game resolved before any. Cancellation skips
 the invocation — the branch, its nested move and the flying vertical damping
 included — without undoing what the tick already did (input processing, the
 player's swim steering). The move the branch ends in still fires `entity_move`,

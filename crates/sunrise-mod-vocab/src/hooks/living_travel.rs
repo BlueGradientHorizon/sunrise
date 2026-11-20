@@ -17,9 +17,12 @@ pub trait Hooks {
     /// the game's own - or set `canceled` to skip this travel invocation:
     /// its nested move does not run, the flying vertical damping is skipped,
     /// and what the tick already did (input processing, the player's swim
-    /// steering) is not undone. A replacement component that is not a finite
-    /// number, or lies outside its budget, is refused whole - the travel
-    /// runs on the values the game resolved, never clamped. A listener that
+    /// steering) is not undone. Each listener's `input` and `velocity` are checked as
+    /// that listener returns: a component that is not a finite number, or
+    /// lies outside its budget, refuses that listener's pair whole (the
+    /// log names the mod and the field), nothing is clamped, and the pair
+    /// the preceding listeners left (the game's resolved values before any)
+    /// stands for the next listener and the branch. A listener that
     /// unwinds keeps those resolved values, not a replacement an earlier
     /// listener had proposed, and is switched off for this hook for the
     /// session. It takes no Host - the maintainer ruling, like
@@ -34,6 +37,7 @@ pub trait Hooks {
         context = "loop",
         cancellable = true,
         isolate = true,
+        output_validator = "crate::entity::types::refused_travel_output",
         neoforge = "none (fork addition; see travel-and-move.md, #2308)",
         target = "sunrise_client_lib::travel_gate::native_living_travel"
     )]

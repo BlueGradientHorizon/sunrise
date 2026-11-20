@@ -393,3 +393,63 @@ fn a_poisoned_travel_listener_keeps_its_move_hook() {
     });
     assert_eq!(*travels.lock().unwrap(), 1);
 }
+
+/// Each listener's pair is checked as it returns: a malformed pair is
+/// dropped alone, the earlier valid pair stands, and a later listener hears
+/// that accepted pair rather than the malformed proposal.
+#[test]
+fn a_refused_pair_keeps_the_preceding_valid_pair_and_is_never_heard() {
+    let heard = Arc::new(Mutex::new(Vec::new()));
+    let probe = |name: &'static str, answer, heard: &Arc<Mutex<Heard>>| {
+        mod_api::ModEntry::new(
+            name,
+            Box::new(Probe {
+                answer,
+                heard: Arc::clone(heard),
+            }),
+        )
+    };
+    let mods: mod_api::Mods = vec![
+        probe(
+            "valid",
+            Answer::Replace {
+                input: [0.5, 0.0, 0.0],
+                velocity: [9.0, 0.0, 0.0],
+            },
+            &Arc::default(),
+        ),
+        probe(
+            "malformed",
+            Answer::Replace {
+                input: [1.01, 0.0, 0.0],
+                velocity: [2.0, 0.0, 0.0],
+            },
+            &Arc::default(),
+        ),
+        probe("later", Answer::Continue, &heard),
+    ]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        let mut input = Vec3::new(0.216, 0.0, 0.0);
+        let mut velocity = Vec3::new(1.0, -0.078_4, 0.0);
+        let runs = sunrise_client::travel_gate::decide(
+            &server_context(),
+            7,
+            "minecraft:zombie",
+            || sunrise_world::travel::TravelMode::Air,
+            &mut input,
+            &mut velocity,
+        );
+        assert!(runs);
+        assert_eq!(
+            (input, velocity),
+            (Vec3::new(0.5, 0.0, 0.0), Vec3::new(9.0, 0.0, 0.0)),
+            "the valid pair stands; the malformed one, velocity 2.0 included, is gone"
+        );
+    });
+    assert_eq!(
+        *heard.lock().unwrap(),
+        vec![(7, TravelMode::Air, [0.5, 0.0, 0.0], [9.0, 0.0, 0.0])],
+        "the later listener hears the accepted pair"
+    );
+}
