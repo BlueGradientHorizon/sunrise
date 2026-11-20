@@ -18,8 +18,8 @@ struct Read {
     invalid_keys: Vec<[Result<Vec<BakedModelKey>, ModelError>; 2]>,
     /// An oak log lying along x and standing along y: two states of one block, two bindings.
     log_keys: Vec<[Result<Vec<BakedModelKey>, ModelError>; 2]>,
-    /// The drawable model of stone, then of stone at an ordinal past its states.
-    models: Vec<[Result<ModelRef, ModelError>; 2]>,
+    /// Stone's drawable model, then lookups for an invalid ordinal and an unknown block.
+    models: Vec<[Result<ModelRef, ModelError>; 3]>,
 }
 struct Reader(Arc<Mutex<Read>>);
 #[mod_api::__subscriptions]
@@ -48,6 +48,7 @@ impl Hooks for Reader {
         read.models.push([
             assets.block_state_model(stone),
             assets.block_state_model(BlockStateRecord::new(stone.block(), u16::MAX).into()),
+            assets.block_state_model(BlockStateRecord::new(unknown, 0).into()),
         ]);
         read.keys.push(keys);
         read.views.push(views);
@@ -90,12 +91,32 @@ fn a_client_mod_reads_a_block_states_baked_models_once_per_load() {
                 };
                 assert!(!along_x.is_empty() && !along_y.is_empty());
                 assert_ne!(along_x, along_y, "each axis state selects its own binding");
-                let [stone_model, past_ordinal] = &read.models[0];
-                assert!(stone_model.is_ok(), "stone's model: {stone_model:?}");
+                let [stone_model, past_ordinal, unknown_block] = &read.models[0];
+                let model = stone_model.as_ref().expect("stone's drawable model");
+                let stone = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:stone")
+                    .unwrap();
+                assert_eq!(*model, game.native_block_state_model(stone).unwrap());
+                let slot = mod_api::__private::game::Fields::fields(model).slot;
+                let faces = game.model_faces(slot).expect("drawable faces");
+                assert_eq!(faces.len(), 6);
+                assert!(
+                    faces
+                        .iter()
+                        .all(|face| face.quad.material.sprite == "minecraft:block/stone")
+                );
                 assert_eq!(
                     past_ordinal,
                     &Err(ModelError::UnknownModel),
                     "an ordinal past the block's states is refused"
+                );
+                assert_eq!(
+                    unknown_block,
+                    &Err(ModelError::UnknownModel),
+                    "an unknown block is refused"
                 );
                 (keys[0], view.clone())
             };
