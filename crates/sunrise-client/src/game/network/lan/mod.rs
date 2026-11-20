@@ -3629,8 +3629,7 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::{
-        EventTimings, Hub, LanHost, LanSettings, OFFHAND_SLOT, living_flags,
-        mob_freeze_meta,
+        EventTimings, Hub, LanHost, LanSettings, OFFHAND_SLOT, living_flags, mob_freeze_meta,
     };
 
     impl LanHost {
