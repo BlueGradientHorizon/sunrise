@@ -1014,7 +1014,18 @@ impl Game<'_> {
         player: PlayerRef,
     ) -> Result<Option<mod_api::CollisionFlags>, mod_api::LevelReadError> {
         Ok(self.player_read_both(player).and_then(|read| {
-            let flags = read.body()?.collision;
+            // A connected player's position reports do not retain collision
+            // flags, even when its body is swapped in for a server guest turn.
+            let PlayerRead::Acting {
+                body: Some(body), ..
+            } = read
+            else {
+                return None;
+            };
+            if self.lan_acting.is_some() {
+                return None;
+            }
+            let flags = body.collision;
             Some(mod_api::CollisionFlags::new(
                 flags.horizontal,
                 flags.minor,

@@ -33,8 +33,10 @@ A call is refused with a `CollisionExclusionsError`, and the set there was stays
 
 Use `player.collision_flags(host)` to read what the last move actually hit, on the side
 that moves the player. `vertical` is set for either a floor or a ceiling; `vertical_below`
-distinguishes the floor. The client reads its own player, not the server's copy. These flags
-do not repeat the collision query, and are not an entity-wide read.
+distinguishes the floor. The client reads its own player's prediction. The call returns
+`Ok(None)` for a stale or untracked player or a connected server guest whose reports do not
+retain collision flags. It returns `Err(LevelReadError::Unavailable)` when the host cannot
+read player motion. It does not repeat the collision query.
 
 A player with no boxes pays one empty-slice check per move. With boxes, each block shape a box reaches is joined
 with it, which allocates, and the server copies the guest's set into its body every turn.

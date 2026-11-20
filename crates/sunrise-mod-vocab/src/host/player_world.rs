@@ -22,7 +22,8 @@ pub trait PlayerWorldBackend {
     /// The collision flags the player's last move left (`Entity.horizontalCollision`,
     /// `minorHorizontalCollision`, `verticalCollision`, `verticalCollisionBelow`).
     /// On the client, reads the local player's prediction. `Ok(None)` for a stale
-    /// handle or a player whose motion this side does not keep.
+    /// or untracked handle and for a connected server guest: the server does not
+    /// yet retain collision flags from its position reports.
     /// `Err(LevelReadError::Unavailable)` if the host cannot read player motion.
     #[access(WorldOnly)]
     fn player_collision_flags(
