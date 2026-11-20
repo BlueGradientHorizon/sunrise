@@ -1,18 +1,104 @@
 //! Configuration tasks and capabilities valid before the player joins.
-use crate::{Identifier, PayloadBytes, PayloadId, ServerHost};
+use crate::{Identifier, PayloadBytes, PayloadId, RegisterConfigurationTasksEvent, ServerHost};
+use std::{collections::BTreeSet, fmt};
 
-/// A task type queued once for this joining connection.
-#[derive(Clone, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
-#[non_exhaustive]
-pub struct ConfigurationTask {
-    /// Namespaced type passed to the task start and tick callbacks.
-    pub id: Identifier,
+// no wire: tasks are owned objects with server-thread callbacks and local state.
+/// One task instance owned by a configuring connection. The server runs it on the
+/// server thread in registration order and keeps the same instance while it waits.
+pub trait ConfigurationTask: Send + 'static {
+    /// The namespaced task type, read once on registration. It must be nonempty and
+    /// unique among all tasks registered for this connection.
+    fn task_type(&self) -> &Identifier;
+
+    /// Start this task exactly once. Request completion or failure through `context`,
+    /// or leave it pending for a tick or a configuration payload reply.
+    fn start(&mut self, host: &mut dyn ServerHost, context: &mut ConfigurationTaskContext<'_>);
+
+    /// Poll a pending task, at most once per server tick after its start. By default
+    /// the task just waits. As in `start`, finishing takes effect only on commit,
+    /// after queued sends; a failure or panic aborts the callback and fails admission.
+    fn tick(&mut self, _host: &mut dyn ServerHost, _context: &mut ConfigurationTaskContext<'_>) {}
 }
-impl ConfigurationTask {
-    /// Queue an instance of this task type.
-    pub fn new(id: Identifier) -> Self {
-        Self { id }
+
+// no wire: local registration diagnostics, not payload data.
+/// An invalid submission to the connection's configuration task queue.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ConfigurationTaskRegistrationError {
+    /// The task type has an empty namespace or path.
+    EmptyType,
+    /// Another task already declared this type for this connection.
+    DuplicateType(Identifier),
+}
+impl fmt::Display for ConfigurationTaskRegistrationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::EmptyType => {
+                f.write_str("Configuration task type has an empty namespace or path")
+            }
+            Self::DuplicateType(id) => write!(f, "Duplicate configuration task type: {id}"),
+        }
     }
+}
+impl std::error::Error for ConfigurationTaskRegistrationError {}
+
+impl RegisterConfigurationTasksEvent<'_> {
+    /// Append a task to this connection's queue. An invalid or duplicate type refuses
+    /// registration, aborting the registration transaction and admission even if the
+    /// listener ignores this result. The first refusal supplies the diagnostic.
+    pub fn register(
+        &mut self,
+        task: impl ConfigurationTask,
+    ) -> Result<(), ConfigurationTaskRegistrationError> {
+        let id = task.task_type();
+        let refusal = if id.namespace().is_empty() || id.path().is_empty() {
+            ConfigurationTaskRegistrationError::EmptyType
+        } else if !self.registration.types.insert(id.clone()) {
+            ConfigurationTaskRegistrationError::DuplicateType(id.clone())
+        } else {
+            self.registration.tasks.push(RegisteredConfigurationTask {
+                task: Box::new(task),
+                owner: crate::content::crash::current_native_mod(),
+            });
+            return Ok(());
+        };
+        self.registration
+            .refusal
+            .get_or_insert_with(|| refusal.clone());
+        Err(refusal)
+    }
+}
+
+/// Engine staging for one registration transaction.
+// no wire: owns pending server-thread tasks.
+#[doc(hidden)]
+#[derive(Default)]
+pub struct ConfigurationTaskRegistration {
+    tasks: Vec<RegisteredConfigurationTask>,
+    types: BTreeSet<Identifier>,
+    refusal: Option<ConfigurationTaskRegistrationError>,
+}
+impl ConfigurationTaskRegistration {
+    /// The first refusal, if any, even if the listener ignored the error.
+    pub fn refusal(&self) -> Option<&ConfigurationTaskRegistrationError> {
+        self.refusal.as_ref()
+    }
+
+    /// Move the ordered queue to the server after registration commits.
+    pub fn into_tasks(self) -> Vec<RegisteredConfigurationTask> {
+        self.tasks
+    }
+}
+
+/// Engine queue entry with the callback's mod scope resolved at registration.
+// no wire: an owned task and its process-local mod identity.
+#[doc(hidden)]
+#[non_exhaustive]
+pub struct RegisteredConfigurationTask {
+    /// The connection-owned instance.
+    pub task: Box<dyn ConfigurationTask>,
+    /// The registering mod, for Host calls that depend on the caller's identity.
+    pub owner: Option<&'static str>,
 }
 
 /// One configuring connection, available while registering its tasks.

@@ -2,10 +2,11 @@
 use super::config_payloads::ConfigSender;
 use crate::raw_payloads::{Endpoint, Transport, connection::Epoch};
 use mod_api::{
-    ConfigurationConnection, ConfigurationTask, ConfigurationTaskError, Identifier, PayloadId,
+    __private::RegisteredConfigurationTask, ConfigurationConnection, ConfigurationTaskError,
+    PayloadId,
 };
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     sync::{
         Arc, Mutex,
         atomic::{AtomicU64, Ordering},
@@ -28,7 +29,7 @@ pub(super) fn next_connection() -> Option<ConfigurationConnection> {
 }
 struct Entry {
     session: Arc<Session>,
-    queue: Vec<ConfigurationTask>,
+    queue: Vec<Option<RegisteredConfigurationTask>>,
 }
 
 #[derive(Default)]
@@ -45,26 +46,19 @@ impl Tasks {
             },
         );
     }
-    /// Validate registered types once, then publish the count to the worker.
-    pub fn register(&mut self, connection: ConfigurationConnection, tasks: Vec<ConfigurationTask>) {
+    /// Publish a committed registration to the worker.
+    pub fn register(
+        &mut self,
+        connection: ConfigurationConnection,
+        tasks: Vec<RegisteredConfigurationTask>,
+    ) {
         let Some(entry) = self
             .sessions
             .get_mut(&mod_api::__private::configuration_connection_id(connection))
         else {
             return;
         };
-        {
-            let mut ids = BTreeSet::new();
-            if tasks.iter().any(|task| {
-                task.id.namespace().is_empty() || task.id.path().is_empty() || !ids.insert(&task.id)
-            }) {
-                entry
-                    .session
-                    .fail("Invalid or duplicate configuration task type");
-                return;
-            }
-        }
-        entry.queue = tasks;
+        entry.queue = tasks.into_iter().map(Some).collect();
         entry.session.register(entry.queue.len());
     }
     pub fn get(&self, connection: ConfigurationConnection) -> Option<&Arc<Session>> {
@@ -72,25 +66,57 @@ impl Tasks {
             .get(&mod_api::__private::configuration_connection_id(connection))
             .map(|entry| &entry.session)
     }
-    pub fn task_type(
-        &self,
+    /// Take the object out of its slot before running or retiring it.
+    pub fn take_task(
+        &mut self,
         connection: ConfigurationConnection,
         ordinal: usize,
-    ) -> Option<&Identifier> {
-        let entry = self
-            .sessions
-            .get(&mod_api::__private::configuration_connection_id(connection))?;
-        entry.queue.get(ordinal).map(|task| &task.id)
+    ) -> Option<RegisteredConfigurationTask> {
+        self.sessions
+            .get_mut(&mod_api::__private::configuration_connection_id(connection))?
+            .queue
+            .get_mut(ordinal)?
+            .take()
     }
-    /// Visit the next session without retaining a borrow across a hook callback.
-    pub fn next_running(
+    /// Put back a pending object only while its original session and turn are live.
+    /// On refusal the caller still owns the object and retires it unlocked.
+    pub fn restore_task(
         &mut self,
+        connection: ConfigurationConnection,
+        session: &Arc<Session>,
+        ordinal: usize,
+        task: &mut Option<RegisteredConfigurationTask>,
+    ) {
+        let Some(entry) = self
+            .sessions
+            .get_mut(&mod_api::__private::configuration_connection_id(connection))
+            .filter(|entry| Arc::ptr_eq(&entry.session, session))
+        else {
+            return;
+        };
+        let state = session.state.lock().unwrap_or_else(|e| e.into_inner());
+        if state.running(ordinal)
+            && !session.transport().closed()
+            && let Some(slot) = entry.queue.get_mut(ordinal).filter(|slot| slot.is_none())
+        {
+            *slot = task.take();
+        }
+    }
+    /// Take out a closed session's remaining tasks so the caller can retire them.
+    pub fn remove(
+        &mut self,
+        connection: ConfigurationConnection,
+    ) -> Vec<Option<RegisteredConfigurationTask>> {
+        self.sessions
+            .remove(&mod_api::__private::configuration_connection_id(connection))
+            .map_or_else(Vec::new, |entry| entry.queue)
+    }
+    /// Visit the next session without retaining a borrow across a task callback.
+    pub fn next_session(
+        &self,
         after: Option<ConfigurationConnection>,
     ) -> Option<(ConfigurationConnection, Arc<Session>)> {
         use std::ops::Bound::{Excluded, Unbounded};
-        if after.is_none() {
-            self.sessions.retain(|_, entry| !entry.session.closed());
-        }
         let lower = after.map_or(Unbounded, |connection| {
             Excluded(mod_api::__private::configuration_connection_id(connection))
         });
@@ -115,8 +141,12 @@ struct State {
     closed: bool,
 }
 impl State {
-    fn active(&self) -> bool {
-        self.started && !self.finished && !self.closed && self.failure.is_none()
+    fn running(&self, ordinal: usize) -> bool {
+        self.at == ordinal
+            && self.started
+            && !self.finished
+            && !self.closed
+            && self.failure.is_none()
     }
 }
 pub struct Turn {
@@ -133,8 +163,7 @@ pub struct ConfigurationCompletion {
 impl ConfigurationCompletion {
     pub fn publish(self) {
         let mut state = self.session.state.lock().unwrap_or_else(|e| e.into_inner());
-        if state.at == self.ordinal
-            && state.active()
+        if state.running(self.ordinal)
             && !self.session.transport().closed()
             && self.ingress.as_ref().is_none_or(|epoch| epoch.active())
         {
@@ -160,26 +189,31 @@ impl Session {
             .unwrap_or_else(|e| e.into_inner())
             .task_count = Some(task_count);
     }
-    pub fn turn(&self) -> Option<Turn> {
+    /// Advance past a published completion, returning its ordinal for retirement
+    /// even when it was the final task. Then take the next eligible turn, if any.
+    pub fn turn(&self) -> (Option<usize>, Option<Turn>) {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        let task_count = state.task_count?;
+        let Some(task_count) = state.task_count else {
+            return (None, None);
+        };
         if state.closed || state.failure.is_some() || self.transport().closed() {
-            return None;
+            return (None, None);
         }
-        if state.finished {
+        let completed = state.finished.then_some(state.at);
+        if completed.is_some() {
             state.at += 1;
             state.started = false;
             state.finished = false;
         }
-        if state.at >= task_count {
-            return None;
-        }
-        let start = !state.started;
-        state.started = true;
-        Some(Turn {
-            ordinal: state.at,
-            start,
-        })
+        let turn = (state.at < task_count).then(|| {
+            let start = !state.started;
+            state.started = true;
+            Turn {
+                ordinal: state.at,
+                start,
+            }
+        });
+        (completed, turn)
     }
     pub fn finished(&self) -> bool {
         self.state
@@ -193,7 +227,7 @@ impl Session {
         if state.closed || state.failure.is_some() || self.transport().closed() {
             return Err(ConfigurationTaskError::Disconnected);
         }
-        if state.at != ordinal || !state.active() {
+        if !state.running(ordinal) {
             return Err(ConfigurationTaskError::StaleTask);
         }
         Ok(())
@@ -259,19 +293,25 @@ mod tests {
         let mut io = ConfigIo::new(&mut server, transport.clone(), events).unwrap();
         let session = Session::new(io.task_sender(transport).unwrap());
         session.register(2);
-        let turn = session.turn().unwrap();
+        let (completed, turn) = session.turn();
+        assert_eq!(completed, None);
+        let turn = turn.unwrap();
         assert!(turn.start);
         assert_eq!(turn.ordinal, 0);
         let completion = session.prepare_finish(turn.ordinal, None).unwrap();
         let delayed = session.prepare_finish(turn.ordinal, None).unwrap();
         assert!(!session.finished());
-        let tick = session.turn().unwrap();
+        let (completed, tick) = session.turn();
+        assert_eq!(completed, None);
+        let tick = tick.unwrap();
         assert!(!tick.start);
         assert_eq!(tick.ordinal, 0);
 
         completion.publish();
         assert!(session.finished());
-        let next = session.turn().unwrap();
+        let (completed, next) = session.turn();
+        assert_eq!(completed, Some(0));
+        let next = next.unwrap();
         assert!(next.start);
         assert_eq!(next.ordinal, 1);
         delayed.publish();
@@ -285,7 +325,9 @@ mod tests {
             .prepare_finish(next.ordinal, None)
             .unwrap()
             .publish();
-        assert!(session.turn().is_none());
+        let (completed, turn) = session.turn();
+        assert_eq!(completed, Some(1));
+        assert!(turn.is_none());
         assert_eq!(session.result(), Some(Ok(())));
     }
 }

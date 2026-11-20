@@ -32,27 +32,34 @@ No packet inspection or editing beyond the existing `ClientPacket` view is provi
 ## Configuration tasks before play
 
 The server's `register_configuration_tasks` hook runs once per connecting client,
-after the built-in registry, tag and resource-pack steps. Append
-`ConfigurationTask::new(type_id)` to its task list. Every peer gets these tasks,
-including vanilla clients.
-
+including vanilla clients, after the built-in registry, tag and resource-pack steps.
 During registration, `event.connection.has_channel(host, &channel)` checks
-whether the peer negotiated a configuration channel. `configuration_task_start`
-runs once for the active task, and `configuration_task_tick` checks a waiting task
-once per server tick. Both events give the registered `task_type` and a borrowed
-`event.context` for the active instance. Use it to check `has_channel`, queue a
-registered configuration payload with `send_payload(host, &channel, bytes)`, or
-request completion with `finish()`. Repeating `finish()` has no further effect;
-`fail(reason)` takes precedence over it.
+whether the peer negotiated a configuration channel.
 
-If a payload handler will finish the task later, keep `event.context.instance()`
+Implement `ConfigurationTask` for a `Send + 'static` struct, and pass an instance
+of that struct to `event.register(task)`. Return its nonempty namespaced type from
+`task_type(&self) -> &Identifier`. The type is read once on registration and must
+be unique for that peer, across all listeners. An empty or duplicate type returns a
+`ConfigurationTaskRegistrationError` and aborts registration and admission even if
+the result is ignored. The first refusal supplies the disconnect diagnostic.
+
+The server owns the tasks for this connection and runs them in registration order
+on the server thread. Each task's `start(&mut self, host, context)` runs once, and
+its optional `tick(&mut self, host, context)` runs at most once per later tick
+while the same instance is pending. Keep state shared between these calls in your
+task struct. Use `context.has_channel(host, &channel)` to check a channel,
+`context.send_payload(host, &channel, bytes)` to queue a registered payload, and
+`context.finish()` to request completion. Repeating `finish()` has no further
+effect; `context.fail(reason)` takes precedence over it.
+
+If a payload handler will finish the task later, keep `context.instance()`
 in server-local state for that peer. In a server main-thread configuration
 handler, use `IPayloadContext::finish_configuration_task(instance)` and send any
 final reply with `IPayloadContext::reply`. Only that physical peer's current
 configuration and exact running instance can complete: an older instance returns
 `StaleTask`, another peer's returns `WrongConnection`, and the wrong side, phase
 or executor returns `WrongContext`. These refusals do not advance either task.
-The instance, connection capability and local errors have no `Wire` encoding.
+Tasks, instance and connection capabilities, and local errors have no `Wire` encoding.
 
 Completion is not immediate: a committed child transaction passes its request
 to the parent, and an abort discards it. The next task starts only after the

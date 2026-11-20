@@ -1,10 +1,14 @@
 //! Configuration admission through the serving Game and its main-thread payload executor.
 use mod_api::{
-    ConfigurationTask, ConfigurationTaskError, ConfigurationTaskRef, Hooks, IPayloadContext,
-    IPayloadHandler, Identifier, ModEntry, PayloadBytes, PayloadId, Registrar, ServerHost,
+    ConfigurationTask, ConfigurationTaskContext, ConfigurationTaskError, ConfigurationTaskRef,
+    ConfigurationTaskRegistrationError, Hooks, IPayloadContext, IPayloadHandler, Identifier,
+    ModEntry, PayloadBytes, PayloadId, Registrar, ServerHost,
 };
 use std::{
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+    },
     time::{Duration, Instant},
 };
 const CHANNEL: &str = "task_fixture:value";
@@ -18,11 +22,15 @@ enum Case {
     Failure,
     Vanilla,
     Tick,
+    Panic,
+    Refusal,
 }
 struct Fixture {
     case: Case,
     instances: Mutex<[Option<ConfigurationTaskRef>; 2]>,
     starts: Mutex<Vec<Identifier>>,
+    type_reads: AtomicUsize,
+    panic_staged_payload: AtomicBool,
 }
 struct Mod(Arc<Fixture>);
 struct Reply(Arc<Fixture>);
@@ -101,19 +109,48 @@ impl Hooks for Mod {
             );
             return;
         }
-        event.tasks.push(ConfigurationTask::new(kind("first")));
-        event.tasks.push(ConfigurationTask::new(kind("second")));
+        let task = |id, second| Task {
+            fixture: self.0.clone(),
+            id,
+            second,
+            waiting: false,
+        };
+        event.register(task(kind("first"), false)).unwrap();
+        event.register(task(kind("second"), true)).unwrap();
+        if matches!(self.0.case, Case::Refusal) {
+            let duplicate = event.register(task(kind("first"), false));
+            assert_eq!(
+                duplicate,
+                Err(ConfigurationTaskRegistrationError::DuplicateType(kind(
+                    "first"
+                )))
+            );
+            let empty = event.register(task(
+                Identifier::from_parts("task_fixture", "").unwrap(),
+                false,
+            ));
+            assert_eq!(empty, Err(ConfigurationTaskRegistrationError::EmptyType));
+            // Do not fail the connection explicitly: even ignored refusals abort admission.
+        }
     }
-    fn configuration_task_start(
-        &self,
-        host: &mut dyn ServerHost,
-        event: &mut mod_api::ConfigurationTaskStartEvent<'_>,
-    ) {
-        self.0.starts.lock().unwrap().push(event.task_type.clone());
-        let second = event.task_type == &kind("second");
-        let context = &mut event.context;
-        self.0.instances.lock().unwrap()[usize::from(second)] = Some(context.instance());
-        match (self.0.case, second) {
+}
+
+struct Task {
+    fixture: Arc<Fixture>,
+    id: Identifier,
+    second: bool,
+    waiting: bool,
+}
+impl ConfigurationTask for Task {
+    fn task_type(&self) -> &Identifier {
+        self.fixture.type_reads.fetch_add(1, Ordering::Relaxed);
+        &self.id
+    }
+    fn start(&mut self, host: &mut dyn ServerHost, context: &mut ConfigurationTaskContext<'_>) {
+        assert_eq!(std::thread::current().name(), Some("Server thread"));
+        self.fixture.starts.lock().unwrap().push(self.id.clone());
+        self.fixture.instances.lock().unwrap()[usize::from(self.second)] = Some(context.instance());
+        match (self.fixture.case, self.second) {
             (Case::Reply, false) | (Case::Stale, true) => {
                 let channel = PayloadId(CHANNEL.into());
                 assert!(context.has_channel(host, &channel));
@@ -121,7 +158,7 @@ impl Hooks for Mod {
                     .send_payload(
                         host,
                         &channel,
-                        PayloadBytes(vec![if second { 10 } else { 7 }]),
+                        PayloadBytes(vec![if self.second { 10 } else { 7 }]),
                     )
                     .unwrap();
             }
@@ -130,19 +167,27 @@ impl Hooks for Mod {
                 context.fail("fixture failure");
                 context.finish(); // Cannot overwrite failure.
             }
-            (Case::Tick, false) => {}
+            (Case::Tick, false) => self.waiting = true,
+            (Case::Panic, false) => {
+                context.finish();
+                context
+                    .send_payload(host, &PayloadId(CHANNEL.into()), PayloadBytes(vec![99]))
+                    .unwrap();
+                self.fixture
+                    .panic_staged_payload
+                    .store(true, Ordering::Relaxed);
+                panic!("fixture panic after staging completion and a payload");
+            }
             _ => context.finish(),
         }
     }
-    fn configuration_task_tick(
-        &self,
-        host: &mut dyn ServerHost,
-        event: &mut mod_api::ConfigurationTaskTickEvent<'_>,
-    ) {
-        if matches!(self.0.case, Case::Tick) {
+    fn tick(&mut self, host: &mut dyn ServerHost, context: &mut ConfigurationTaskContext<'_>) {
+        assert_eq!(std::thread::current().name(), Some("Server thread"));
+        if self.waiting {
+            self.waiting = false;
             let _abandoned = host.transaction_open();
-            event.context.finish();
-            event.context.finish();
+            context.finish();
+            context.finish();
         }
     }
 }
@@ -209,7 +254,9 @@ fn serving_game_drives_configuration_tasks() {
     if super::super::native_entity_refs::tests::run_fresh_cases(
         NAME,
         "SUNRISE_TASK_CHILD",
-        &["reply", "stale", "failure", "vanilla", "tick"],
+        &[
+            "reply", "stale", "failure", "vanilla", "tick", "panic", "refusal",
+        ],
     ) {
         return;
     }
@@ -219,12 +266,16 @@ fn serving_game_drives_configuration_tasks() {
         "failure" => Case::Failure,
         "vanilla" => Case::Vanilla,
         "tick" => Case::Tick,
+        "panic" => Case::Panic,
+        "refusal" => Case::Refusal,
         _ => unreachable!(),
     };
     let fixture = Arc::new(Fixture {
         case,
         instances: Mutex::new([None; 2]),
         starts: Mutex::new(Vec::new()),
+        type_reads: AtomicUsize::new(0),
+        panic_staged_payload: AtomicBool::new(false),
     });
     mod_platform::testing::with_mods(
         vec![ModEntry::new(
@@ -302,15 +353,35 @@ fn serving_game_drives_configuration_tasks() {
                             c.send(&cfg::Serverbound::KeepAlive(p).encode()).unwrap();
                         }
                         cfg::Clientbound::Disconnect(reason) => {
-                            assert!(matches!(case, Case::Failure));
-                            assert_eq!(*fixture.starts.lock().unwrap(), vec![kind("first")]);
                             let reason =
                                 sunrise_protocol::text::plain(&reason.reason, &Default::default());
                             assert!(reason.contains("Configuration error"), "{reason}");
+                            let starts = fixture.starts.lock().unwrap();
+                            match case {
+                                Case::Failure => assert_eq!(*starts, [kind("first")]),
+                                Case::Panic => {
+                                    assert!(fixture.panic_staged_payload.load(Ordering::Relaxed));
+                                    assert!(
+                                        reason.contains("Configuration task callback panicked"),
+                                        "{reason}"
+                                    );
+                                    assert_eq!(*starts, [kind("first")]);
+                                }
+                                Case::Refusal => {
+                                    assert!(starts.is_empty());
+                                    assert!(
+                                        reason.contains(
+                                            "Duplicate configuration task type: task_fixture:first"
+                                        ),
+                                        "{reason}"
+                                    );
+                                }
+                                _ => panic!("unexpected configuration disconnect: {reason}"),
+                            }
                             break;
                         }
                         cfg::Clientbound::FinishConfiguration(_) => {
-                            assert!(!matches!(case, Case::Failure));
+                            assert!(!matches!(case, Case::Failure | Case::Panic | Case::Refusal));
                             assert_eq!(
                                 replies.next(),
                                 None,
@@ -338,6 +409,14 @@ fn serving_game_drives_configuration_tasks() {
                         _ => {}
                     }
                 }
+                assert_eq!(
+                    fixture.type_reads.load(Ordering::Relaxed),
+                    match case {
+                        Case::Vanilla => 0,
+                        Case::Refusal => 4,
+                        _ => 2,
+                    }
+                );
                 game.leave_server(None).unwrap();
             });
         },
