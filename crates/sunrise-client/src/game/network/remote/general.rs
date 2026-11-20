@@ -355,7 +355,7 @@ mod tests {
         use crate::game::native_player_death::tests::add_guest;
         use mod_api::{Flow, HostSide, InteractionResult};
         use std::sync::{Arc, Mutex};
-        use sunrise_client::{first_person::Hand, motion::PlayerMotion};
+        use sunrise_client::{chunk::Chunk, first_person::Hand, motion::PlayerMotion};
         use sunrise_protocol::packets::play::Serverbound as S;
 
         const PACKAGE: &str = "mymod:package";
@@ -477,6 +477,18 @@ mod tests {
                     game.guest_interact(1, 0, id, Hand::Main, [0.0, 1.65, -0.25]),
                     Ok(true)
                 );
+                // The named row is still in packet range, but a fresh ray can't see it.
+                if !game.world.chunks.contains_key(&(0, 0)) {
+                    game.world.chunks.insert((0, 0), Chunk::empty(0, 0).into());
+                }
+                let stone = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:stone")
+                    .unwrap();
+                game.world.set(0, 65, 1, stone).unwrap();
+                game.world.set(0, 66, 1, stone).unwrap();
                 game.as_guest(1, |guest| guest.attack_ticks = 20).unwrap();
                 assert_eq!(
                     game.guest_attack(1, 0, id),
@@ -499,6 +511,14 @@ mod tests {
                         (Event::ServerUse, id, PACKAGE.into()),
                         (Event::Attack, id, PACKAGE.into())
                     ]
+                );
+                game.persist
+                    .removals
+                    .push(crate::game::commands::Target::General(id as u32));
+                assert_eq!(
+                    game.guest_attack(1, 0, id),
+                    Err(mod_api::ActionRefused::InvalidTarget),
+                    "the aim fallback must not recover a pending removal"
                 );
             });
         });

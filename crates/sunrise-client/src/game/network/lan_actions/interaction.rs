@@ -642,7 +642,7 @@ impl Game<'_> {
         };
         let (old_yaw, old_pitch) = (host.hub.guests[gi].yaw, host.hub.guests[gi].pitch);
         let boat = self.boats.iter().position(|boat| boat.id as i32 == id);
-        let general = match self.resident_entities.general.row(id as u32) {
+        let general = match u32::try_from(id).ok().and_then(|id| self.general_row(id)) {
             Some(row) => {
                 let catalog = crate::game::general::general_type_catalog();
                 if !catalog.pickable(row.type_slot) {
