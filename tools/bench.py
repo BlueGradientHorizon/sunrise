@@ -100,7 +100,7 @@ enabled = false
 DONE = re.compile(r'Done|listening|Server started', re.IGNORECASE)
 TICK_AVERAGE = re.compile(r'Average time per tick: ([0-9.]+) ?ms')
 TICK_PERCENTILES = re.compile(r'P50: ([0-9.]+) ?ms P95: ([0-9.]+) ?ms P99: ([0-9.]+) ?ms')
-GAMETIME = re.compile(r'The time is (-?\d+)')
+GAMETIME = re.compile(r'The game time is (-?\d+) tick\(s\)')
 
 
 def free_port():
@@ -123,7 +123,7 @@ def parse_tick_query(lines):
 
 
 def parse_gametime(lines):
-    """The game time `time query gametime` printed, or None."""
+    """The game time `time query gametime` printed ("The game time is N tick(s)"), or None until it is there."""
     for line in lines:
         if m := GAMETIME.search(line):
             return int(m.group(1))
@@ -131,9 +131,9 @@ def parse_gametime(lines):
 
 
 def tps(start_ticks, end_ticks, seconds):
-    """Game ticks per wall-clock second over the window, or None when a query went unanswered."""
-    if start_ticks is None or end_ticks is None or seconds <= 0:
-        return None
+    """Game ticks per wall-clock second over the window."""
+    if seconds <= 0:
+        raise ValueError(f'a window of {seconds} s has no tick rate')
     return round((end_ticks - start_ticks) / seconds, 2)
 
 
@@ -244,19 +244,19 @@ class Server:
         raise RuntimeError(f'the server was not up within {timeout} s')
 
     def ask(self, command, parse, timeout=5):
-        """Sends a console command and returns parse(its output lines), or None if nothing parsed in time."""
+        """Sends a console command and returns parse(its output lines); raises when nothing parsed in time."""
         start = self.count()
         try:
             self.process.stdin.write(command + '\n')
             self.process.stdin.flush()
-        except (BrokenPipeError, OSError):
-            return None
+        except OSError as e:
+            raise RuntimeError(f'`{command}` could not be sent to the server: {e}') from e
         deadline = time.time() + timeout
         while time.time() < deadline:
             if (value := parse(self.since(start))) is not None:
                 return value
             time.sleep(0.05)
-        return None
+        raise RuntimeError(f'`{command}` got no parseable answer within {timeout} s; its output: {self.since(start)}')
 
     def stop(self):
         if self.process.poll() is None:
@@ -357,8 +357,7 @@ def run_once(kind, args, out):
                 cpu.append((u[1] - last_cpu) / (now - last_time) * 100)
                 last_cpu, last_time = u[1], now
             if now >= next_query:
-                if (t := server.ask('tick query', parse_tick_query)) is not None:
-                    ticks.append(t)
+                ticks.append(server.ask('tick query', parse_tick_query))
                 next_query = now + 5
         window = time.time() - began
         last = server.ask('time query gametime', parse_gametime)
