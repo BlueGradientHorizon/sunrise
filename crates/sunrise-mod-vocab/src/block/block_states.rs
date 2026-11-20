@@ -455,7 +455,7 @@ mod tests {
     #[test]
     fn a_host_without_a_game_answers_none() {
         let facts = Double.block_states();
-        let state: BlockState = BlockStateRecord::new(crate::BlockKey(0), 0).into();
+        let state: BlockState = crate::__private::block_state_from_ordinal(crate::BlockKey(0), 0);
         assert_eq!(facts.replaceable(state), None);
         assert_eq!(facts.destroy_speed(state), None);
         assert_eq!(

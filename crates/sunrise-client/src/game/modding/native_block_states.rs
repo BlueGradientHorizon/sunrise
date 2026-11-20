@@ -835,7 +835,7 @@ mod tests {
 #[cfg(test)]
 mod facts_tests {
     use crate::game::api_values::TryIntoApi;
-    use mod_api::{BlockStateRecord, HostBlockStates};
+    use mod_api::HostBlockStates;
 
     #[test]
     #[ignore = "daily"]
@@ -870,7 +870,7 @@ mod facts_tests {
             assert_eq!(facts.unwaxed(waxed), Some(exposed));
             assert_eq!(facts.unwaxed(exposed), None);
 
-            let invalid = BlockStateRecord::new(exposed.block(), u16::MAX).into();
+            let invalid = mod_api::__private::block_state_from_ordinal(exposed.block(), u16::MAX);
             assert_eq!(facts.weathering_age(invalid), None);
             assert_eq!(facts.next_weathering_stage(invalid), None);
             assert_eq!(facts.waxed(invalid), None);
@@ -974,7 +974,7 @@ mod facts_tests {
                 Some((stone, 1))
             );
             // A forged local ordinal refuses at the generated Game crossing.
-            let invalid = BlockStateRecord::new(stone.block(), u16::MAX).into();
+            let invalid = mod_api::__private::block_state_from_ordinal(stone.block(), u16::MAX);
             assert_eq!(facts.destroy_speed(invalid), None);
             assert_eq!(facts.sound(invalid), None);
         });

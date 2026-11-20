@@ -43,6 +43,15 @@ impl BlockState {
         metadata.of(block, properties).map(Into::into)
     }
 }
+/// Construct a state without looking up the key or ordinal in block metadata.
+#[doc(hidden)]
+pub const fn block_state_from_ordinal(block: BlockKey, ordinal: u16) -> BlockState {
+    BlockState {
+        block,
+        state: ordinal,
+    }
+}
+
 impl From<BlockStateRecord> for BlockState {
     fn from(value: BlockStateRecord) -> Self {
         Self {
