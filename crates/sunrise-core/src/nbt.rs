@@ -1431,13 +1431,19 @@ pub fn compare_nbt(expected: &Tag, actual: Option<&Tag>) -> bool {
     }
 }
 
+/// Run the next recursive step over a materialized tree without a binary-read depth limit.
+#[doc(hidden)]
+pub fn with_tree_stack<T>(step: impl FnOnce() -> T) -> T {
+    stacker::maybe_grow(64 * 1024, 1024 * 1024, step)
+}
+
 #[path = "nbt_snbt.rs"]
 mod snbt;
 pub use snbt::{
     SnbtError, parse_snbt, parse_snbt_argument, parse_snbt_utf16, snbt_suggestions, snbt_whitespace,
 };
 
-/// A tag as its network NBT bytes (`write_network`), the form it crosses to a wasm mod in; a
+/// A tag as its network NBT bytes (`write_network`); a
 /// tag past the default limits is refused, with the reason.
 impl TryFrom<&Tag> for Vec<u8> {
     type Error = Error;
