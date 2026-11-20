@@ -12048,12 +12048,6 @@ impl Game<'_> {
             PresenceStatus::Online
         }
     }
-
-    /// How far the block entity of a block state is drawn: its `BlockEntityRenderer`'s reach, which
-    /// every block entity draw and the frame's block entity selection ask.
-    pub(super) fn block_entity_reach(&self, state: u32) -> Reach {
-        Reach::of(&self.res.facts().get(BlockStateId(state)).name)
-    }
 }
 
 #[cfg(test)]
