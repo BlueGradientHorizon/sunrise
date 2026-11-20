@@ -139,7 +139,6 @@
   "How fast the right stick turns the view.": "Колико брзо десни штапић окреће поглед.",
   "How fast the stick moves the crosshair in inventories.": "Колико брзо штапић помера нишан у инвентарима.",
   "How frames reach the screen while VSync is off.": "Како оквири стижу до екрана док је ВСинц искључен.",
-  "How frames reach the screen, and the performance overlay.": "Како оквири стижу до екрана и преклапање перформанси.",
   "How long a held direction takes between repeats.": "Колико траје задржани смер између понављања.",
   "How long a held direction waits before it repeats.": "Колико дуго задржани смер чека пре него што се понови.",
   "How many particles effects spawn.": "Колико честица утиче на појаву.",

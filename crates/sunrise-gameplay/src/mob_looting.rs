@@ -18,8 +18,8 @@ pub trait LootingLevel: MobLevel {
     fn grief_hooked(&self) -> bool;
     /// `Mob.isEquippableInSlot`'s own answer: `Game::stations().enchantments.entity_tags` with `equip::equippable_in_slot`.
     fn equippable_in_slot(&self, stack: &ItemStack, slot: &str, kind: &str) -> bool;
-    /// `IItemExtension.canEquip` preparation: `Game::equip_stack(&self, &ItemStack, &[&str], &[u32]) -> EquipStack`.
-    fn equip_stack(&self, stack: &ItemStack, kinds: &[&str], targets: &[u32]) -> Self::Prepared;
+    /// `IItemExtension.canEquip` preparation: `Game::equip_stack(&self, &ItemStack, &[u32]) -> EquipStack`.
+    fn equip_stack(&self, stack: &ItemStack, targets: &[u32]) -> Self::Prepared;
     /// `IItemExtension.canEquip`: `Game::can_equip(&self, &EquipStack, &str, u32, &str, bool) -> bool`.
     fn can_equip(
         &self,
@@ -137,7 +137,7 @@ pub fn equip_item_if_possible(
     let data = level.equippable_in_slot(stack, slot.name(), &kind.id);
     let observed = mod_api::__private::item_listens(mod_api::HookId::CanEquip, &stack.item);
     let source = observed.then(|| equip::EquipInput::new(u64::from(id), stack.clone()));
-    let prepared = level.equip_stack(source.as_deref().unwrap_or(stack), &[&kind.id], &[id]);
+    let prepared = level.equip_stack(source.as_deref().unwrap_or(stack), &[id]);
     if !level.can_equip(&prepared, slot.name(), id, &kind.id, data) {
         return None;
     }
