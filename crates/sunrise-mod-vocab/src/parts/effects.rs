@@ -19,8 +19,9 @@ pub(crate) fn resolved_effects() -> &'static OnceLock<sunrise_mod_runtime::regis
 pub trait EffectsRegistrar {
     /// Request an effect by canonical registry id. All mods' declarations are checked at load.
     fn effect_key(&mut self, id: &str) -> crate::EffectKey;
-    /// Attach tick behaviour. The declaring package or a declared dependent may attach.
-    /// Missing optional dependencies skip their Parts; other unknown effects refuse loading.
+    /// Attach tick behaviour to an effect declared by this package or an active dependency.
+    /// An absent package with an active optional dependency row skips its Parts; other unknown
+    /// effects refuse loading.
     fn attach_mob_effect_part(
         &mut self,
         effect: &crate::EffectKey,
