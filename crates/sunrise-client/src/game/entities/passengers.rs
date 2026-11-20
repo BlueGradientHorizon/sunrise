@@ -1940,7 +1940,13 @@ mod nested_vehicle_discard_tests {
         }
     }
 
-    struct ObserveSpillItem(Arc<AtomicUsize>);
+    #[derive(Default)]
+    struct SpillJoins {
+        vehicle: AtomicUsize,
+        items: AtomicUsize,
+    }
+
+    struct ObserveSpillItem(Arc<SpillJoins>);
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for ObserveSpillItem {
         fn entity_join_level(
@@ -1948,16 +1954,23 @@ mod nested_vehicle_discard_tests {
             host: &mut dyn mod_api::ServerHost,
             event: &mut mod_api::EntityJoinLevelEvent<'_>,
         ) -> mod_api::Flow {
-            assert_ne!(
-                event.entity, 71,
-                "a removed vehicle must not join during its sweep"
-            );
-            if event.kind == "minecraft:item" {
-                assert!(
-                    host.entity(71).is_none(),
-                    "spill callbacks cannot resolve the removed owner"
+            if event.entity == 71 {
+                assert_eq!(
+                    self.0.vehicle.fetch_add(1, Ordering::Relaxed),
+                    0,
+                    "the vehicle must not join again during its sweep"
                 );
-                self.0.fetch_add(1, Ordering::Relaxed);
+            }
+            if event.kind == "minecraft:item" {
+                if self.0.items.fetch_add(1, Ordering::Relaxed) == 0 {
+                    let vehicle = host.entity(71).expect("contents drop before removal");
+                    assert!(!vehicle.discard(host), "the spill must not reenter removal");
+                } else {
+                    assert!(
+                        host.entity(71).is_none(),
+                        "the vehicle item drops after removal"
+                    );
+                }
             }
             mod_api::Flow::Continue
         }
@@ -1970,7 +1983,7 @@ mod nested_vehicle_discard_tests {
             for mode in 0..3 {
                 let cancel = Arc::new(AtomicBool::new(true));
                 let calls = Arc::new(AtomicUsize::new(0));
-                let item_joins = Arc::new(AtomicUsize::new(0));
+                let joins = Arc::new(SpillJoins::default());
                 let mods: mod_api::Mods = vec![
                     mod_api::ModEntry::new(
                         "cancel_spilling_vehicle",
@@ -1981,7 +1994,7 @@ mod nested_vehicle_discard_tests {
                     ),
                     mod_api::ModEntry::new(
                         "observe_spill",
-                        Box::new(ObserveSpillItem(item_joins.clone())),
+                        Box::new(ObserveSpillItem(joins.clone())),
                     ),
                 ]
                 .into();
@@ -2003,6 +2016,8 @@ mod nested_vehicle_discard_tests {
                                 vehicle.items = items;
                             });
                         }
+                        game.native_joins_flush(false, 0);
+                        assert_eq!(joins.vehicle.load(Ordering::Relaxed), 1);
                         match mode {
                             0 if cart => game.hurt_cart(
                                 0,
@@ -2032,7 +2047,7 @@ mod nested_vehicle_discard_tests {
                                 .sum()
                         };
                         assert_eq!(diamonds(game), 5);
-                        assert!(item_joins.load(Ordering::Relaxed) > 0);
+                        assert!(joins.items.load(Ordering::Relaxed) > 0);
                         assert_eq!(calls.load(Ordering::Relaxed), 1);
                         assert!(game.persist.removed_vehicles.contains_key(&71));
                         for _ in 0..2 {
