@@ -281,10 +281,14 @@ mod tests {
                     }
 
                     widgets.button_mut(ids[1]).unwrap().active = false;
-                    let inactive_pointer = [31.0, 11.0];
-                    let states = frame(&mut widgets, inactive_pointer);
+                    let hovered = frame(&mut widgets, [11.0, 11.0]);
                     widgets::end_frame(3);
-                    assert_eq!(pixel(&states, 31, 11), color(1, 2));
+                    assert_eq!(pixel(&hovered, 11, 11), color(0, 1));
+
+                    let inactive_pointer = [31.0, 11.0];
+                    let disabled = frame(&mut widgets, inactive_pointer);
+                    widgets::end_frame(4);
+                    assert_eq!(pixel(&disabled, 31, 11), color(1, 2));
                     let recorded = widgets::last();
                     assert_eq!(recorded.len(), COUNT);
                     assert_eq!(
@@ -315,7 +319,7 @@ mod tests {
                     assert_eq!(widgets.focused(), Some(ids[2]));
                     widgets::set_narrating(true);
                     let focused = frame(&mut widgets, [0.0, 0.0]);
-                    widgets::end_frame(4);
+                    widgets::end_frame(5);
                     widgets::set_narrating(false);
                     assert_eq!(pixel(&focused, 51, 11), color(2, 1));
                     let narration = widgets::take_last_narration();
