@@ -78,6 +78,9 @@ the panel. Both carry `origin: [f32; 2]`, the panel's top-left; tooltip `at`
 remains relative to that origin. Use these values for hover regions and layout:
 they reflect this frame's resize and panel positioning, not a cached window size.
 
+To draw a sprite from synchronized menu data, see
+[Draw a progress bar and a fuel gauge](menu-gauges.md).
+
 ## Replacing a mod container slot's tooltip
 
 `MenuPart::screen_tooltip` runs for a hovered filled slot as well
@@ -173,6 +176,32 @@ for a 133-high hopper layout. Chest layouts use `height - 94`; a shulker box's
 167-high image places it at y 73.
 When building a complete `Screen` literal, include `title_label: None` and
 `inventory_label: None`, or use `..Default::default()`.
+
+## Buttons with your own art
+
+Set `Button::sprites` before adding a button to your `Widgets`. With `None` (the default), the
+button uses the vanilla sprites. With `Some`, it uses the same GUI sprite names as `DrawContext::sprite`:
+
+```rust
+use mod_api::client::widgets::{Button, ButtonSprites, Widgets};
+
+let mut widgets = Widgets::new();
+let mut art = ButtonSprites::new("mymod:open");
+art.highlighted = Some("mymod:open_highlighted".into());
+art.disabled = Some("mymod:open_disabled".into());
+art.label_offset = [1.0, -1.0];
+let mut button = Button::new([20.0, 24.0, 80.0, 20.0], label);
+button.sprites = Some(art);
+let open = widgets.add_button(button);
+```
+
+`Widgets::draw` stretches the full sprite into the button's rectangle; it doesn't nine-slice custom
+art. Inactive takes precedence over hover or focus. An omitted or unknown state sprite falls back to the
+custom normal sprite, then to the vanilla nine-slice for that state. The label offset is in GUI pixels;
+it moves the text, not the hitbox or the scrolling label's clip. The same button still registers for
+narration and controller focus, and `Widgets` handles clicks, Tab, Enter and Space as before.
+If you call `DrawContext::widget_button` directly, pass the art as `Option<&ButtonSprites>` (`None` for
+vanilla art).
 
 ## Labels: wrapped text without a widget
 

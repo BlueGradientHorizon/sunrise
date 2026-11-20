@@ -296,6 +296,11 @@ seconds crashes the game on purpose, as in vanilla (the world is saved first);
 development builds also crash with `SUNRISE_DEBUG_CRASH=SECONDS`, that long
 after the first frame.
 
+For development, set `SUNRISE_LOG_STDERR` to a comma-separated list of external log targets, such as
+`my_mod,other_mod`. The game also prints records for each target and its `::` submodules to
+stderr in the log file's format. This does not change the log level or file contents, and the
+extra output is off when the variable is unset.
+
 **MCP.** `sunrise-ctl mcp` serves the Model Context Protocol over stdin and
 stdout (JSON-RPC 2.0, one message per line), with one tool per command and a
 JSON schema for each; `screenshot` returns the frame as an image. Register it

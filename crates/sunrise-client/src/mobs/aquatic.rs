@@ -597,52 +597,28 @@ fn squid_step(m: &mut Mob, client: bool) {
         v[X_BODY_ROT] += (-90.0 - v[X_BODY_ROT]) * 0.02;
     }
 }
-/// Species travel overrides. Returns true when handled.
-pub(super) fn travel(
+/// Water travel for axolotls, fish and dolphins.
+pub(super) fn travel_in_water(
     m: &mut Mob,
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
     input: Vec3,
     events: &mut Vec<MobEvent>,
     pause: bool,
-) -> Result<bool, super::living::TravelTrample> {
-    use Species as S;
-    match m.species() {
-        // Squid.travel: move by the current velocity only.
-        S::Squid | S::GlowSquid => {
-            m.travel_move(w, level, events, pause, |_, _, _, _| {})?;
-            Ok(true)
+) -> Result<(), super::living::TravelTrample> {
+    let speed = match m.species() {
+        Species::Axolotl | Species::Dolphin => m.ai.speed,
+        _ => 0.01,
+    };
+    m.move_relative(speed, input);
+    m.travel_move(w, level, events, pause, |m, _, _, _| {
+        m.velocity = Vec3::new(m.velocity.x * 0.9, m.velocity.y * 0.9, m.velocity.z * 0.9);
+        // Axolotl.travelInWater has no fish sinking or generic water gravity.
+        if m.species() != Species::Axolotl && m.ai.target.is_none() {
+            // `Vec3.add(0.0, -0.005, 0.0)`: adding 0.0 turns a -0.0 into 0.0.
+            m.velocity = Vec3::new(m.velocity.x + 0.0, m.velocity.y - 0.005, m.velocity.z + 0.0);
         }
-        // Axolotl.travelInWater: no fish sinking or generic water gravity.
-        S::Axolotl if m.fluids.in_water => {
-            m.move_relative(m.ai.speed, input);
-            m.travel_move(w, level, events, pause, |m, _, _, _| {
-                m.velocity = Vec3::new(m.velocity.x * 0.9, m.velocity.y * 0.9, m.velocity.z * 0.9);
-            })?;
-            Ok(true)
-        }
-        // AbstractFish.travelInWater / Dolphin.travelInWater.
-        S::Cod | S::Salmon | S::TropicalFish | S::Pufferfish | S::Tadpole | S::Dolphin
-            if m.fluids.in_water =>
-        {
-            let speed = if m.species() == S::Dolphin {
-                m.ai.speed
-            } else {
-                0.01
-            };
-            m.move_relative(speed, input);
-            m.travel_move(w, level, events, pause, |m, _, _, _| {
-                m.velocity = Vec3::new(m.velocity.x * 0.9, m.velocity.y * 0.9, m.velocity.z * 0.9);
-                if m.ai.target.is_none() {
-                    // `Vec3.add(0.0, -0.005, 0.0)`: adding 0.0 turns a -0.0 into 0.0.
-                    m.velocity =
-                        Vec3::new(m.velocity.x + 0.0, m.velocity.y - 0.005, m.velocity.z + 0.0);
-                }
-            })?;
-            Ok(true)
-        }
-        _ => Ok(false),
-    }
+    })
 }
 /// FishMoveControl.tick (fish use it instead of the default move control).
 pub fn fish_move_control(m: &mut Mob) {

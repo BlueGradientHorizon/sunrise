@@ -36,7 +36,7 @@ pub mod tests {
                 mod_vocab::__private::parts_installation::fluid_key(u32::MAX)
             );
             assert_eq!(registrar.world_fluids.len(), 1);
-            let world = registrar.world_fluids[0].1;
+            let (_, (_, world)) = registrar.world_fluids[0];
             assert_eq!(
                 (
                     world.tick_delay,
@@ -668,7 +668,7 @@ impl FluidsRegistrar for PartRegistrar {
                 .declared_fluids
                 .insert(flowing.clone(), self.mod_id);
             self.fluid_key(&flowing);
-            self.world_fluids.push((id, fluid));
+            self.world_fluids.push((self.mod_id, (id, fluid)));
         }
         key
     }

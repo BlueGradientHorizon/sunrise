@@ -880,36 +880,26 @@ impl Game<'_> {
     ) {
         Self::fire_component_types(context, types);
     }
-    /// Blocks this mod adds, declared in code rather than one file each
-    /// (NeoForge's `DeferredRegister.Blocks` drained by `RegisterEvent`):
-    /// push a `mod_api::Block` per block, the same declaration
-    /// a content mod's `data/<id>/sunrise/block/<path>.json` holds (a
-    /// vanilla `template`, `properties`, `state_properties`, `shapes`...),
-    /// with its id in your mod's namespace. It has a block item, as a file's
-    /// does, unless `item` is false (`Block::with_item(false)`). They join the content mods' blocks: the one whose
-    /// id is that namespace when it is on (your models, textures, loot and
-    /// recipes are its files), else one of their own, with the template's
-    /// look. Ids, saves and the check that a joining client has the same
-    /// blocks are the files' (docs/modding/src/how-to/content-mods.md). Asked once at start, on every
-    /// side, before any resource loads: push the same ones every time, from
-    /// nothing but your code. Declarations that don't pass the files' checks
-    /// are logged and that namespace's are left out.
+    /// Collect blocks from native mods once at startup on each side, before resources load.
+    /// Each declaration belongs to the submitting package and joins the content declarations
+    /// used by saves and the join check. The event's `register` call returns a typed error for
+    /// invalid IDs or fields. Refusals stop startup even if the caller ignores the error.
     pub(in crate::game) fn native_blocks(
         context: &mod_api::RegistrationContext,
-        blocks: &mut Vec<mod_api::Block>,
+        blocks: &mut dyn FnMut(
+            mod_api::Answered<mod_api::Block>,
+        ) -> Result<(), mod_api::DeclarationError>,
     ) {
         Self::fire_blocks(context, blocks);
     }
-    /// Items this mod adds, declared in code (NeoForge's
-    /// `DeferredRegister.Items`), as `native_blocks` declares blocks: a
-    /// `mod_api::Item` per item, a content mod's
-    /// `data/<id>/sunrise/item/<path>.json` (a vanilla `template`,
-    /// `max_stack_size`, `rarity`, `components`, `crafting_remainder`). A
-    /// block's item comes with its block (`item: true`), not from here.
-    /// Asked once at start, on every side.
+    /// Collect items from native mods at the same startup cutoff as `native_blocks`,
+    /// with the same ownership and refusal rules. A block's item is declared with its block,
+    /// not here.
     pub(in crate::game) fn native_items(
         context: &mod_api::RegistrationContext,
-        items: &mut Vec<mod_api::Item>,
+        items: &mut dyn FnMut(
+            mod_api::Answered<mod_api::Item>,
+        ) -> Result<(), mod_api::DeclarationError>,
     ) {
         Self::fire_items(context, items);
     }
@@ -3514,9 +3504,11 @@ impl Game<'_> {
     /// `dimension`'s level opened on the server (NeoForge's `LevelEvent.Load`,
     /// posted in `MinecraftServer.createLevels`): before any of its chunks
     /// (`native_chunk_load`), so a mod sets up what it keeps for the level
-    /// here. The level the world opens in comes before `WorldOpenReady`; the
-    /// others open when someone first goes there (a player, a portal, an
-    /// `execute in` command), with the level in place. Once for each open:
+    /// here. At startup the Overworld, Nether and End are published and
+    /// announced in that order, before `server_started`, with each level in
+    /// place. A level closed while idle fires this again when it reopens.
+    /// An explicitly opened runtime level can fire while parked: `dimension`
+    /// names that level, not the Host's current one. Once for each open;
     /// `native_level_unload` follows. Server-side.
     pub(in crate::game) fn native_level_load(&mut self, dimension: &str) {
         self.fire_level_load(dimension);

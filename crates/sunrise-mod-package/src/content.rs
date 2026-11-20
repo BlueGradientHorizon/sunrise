@@ -10,6 +10,7 @@
 //! and totals are capped, vanilla ids cannot be redefined, and no two mods
 //! share a namespace ([`clash`]).
 use crate::manifest::Manifest;
+use mod_vocab::{__private::DeclarationKind, DeclarationError};
 use serde::Deserialize;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -1227,7 +1228,58 @@ impl Content {
     /// with what it already has, a vanilla template, a crafting remainder
     /// that is vanilla or this mod's. All or nothing: on an error nothing is
     /// added.
-    pub fn declare(&mut self, blocks: &[Block], items: &[Item]) -> Result<(), String> {
+    pub fn declare(
+        &mut self,
+        blocks: &[Block],
+        items: &[Item],
+    ) -> Result<(), Vec<(DeclarationKind, DeclarationError)>> {
+        let in_own = |id: &str| {
+            if namespaced_id(id)
+                && id
+                    .split_once(':')
+                    .is_some_and(|(ns, _)| self.namespaces.iter().any(|owned| owned == ns))
+            {
+                Ok(())
+            } else {
+                Err(format!(
+                    "not an id in owned namespaces {:?}",
+                    self.namespaces
+                ))
+            }
+        };
+        self.check_declaration_batch(
+            blocks
+                .iter()
+                .map(|b| (b, in_own(&b.id).and_then(|()| check_block(b)))),
+            items
+                .iter()
+                .map(|i| (i, in_own(&i.id).and_then(|()| check_item(i)))),
+        )?;
+        self.blocks.extend_from_slice(blocks);
+        self.items.extend_from_slice(items);
+        Ok(())
+    }
+
+    /// Joins declarations whose fields and submitting namespaces were checked at registration.
+    pub fn declare_validated(
+        &mut self,
+        blocks: &[LocalDeclaration<Block>],
+        items: &[LocalDeclaration<Item>],
+    ) -> Result<(), Vec<(DeclarationKind, DeclarationError)>> {
+        self.check_declaration_batch(
+            blocks.iter().map(|b| (b.get(), Ok(()))),
+            items.iter().map(|i| (i.get(), Ok(()))),
+        )?;
+        self.blocks.extend(blocks.iter().map(|b| b.get().clone()));
+        self.items.extend(items.iter().map(|i| i.get().clone()));
+        Ok(())
+    }
+
+    fn check_declaration_batch<'a>(
+        &self,
+        blocks: impl IntoIterator<Item = (&'a Block, Result<(), String>)>,
+        items: impl IntoIterator<Item = (&'a Item, Result<(), String>)>,
+    ) -> Result<(), Vec<(DeclarationKind, DeclarationError)>> {
         let mut ids: BTreeSet<&str> = self
             .blocks
             .iter()
@@ -1241,58 +1293,66 @@ impl Content {
             .map(|b| b.id.as_str())
             .chain(self.items.iter().map(|i| i.id.as_str()))
             .collect();
-        let in_own = |id: &str| {
-            namespaced_id(id)
-                && id
-                    .split_once(':')
-                    .is_some_and(|(ns, _)| self.namespaces.iter().any(|owned| owned == ns))
+        let mut errors = Vec::new();
+        let mut refuse = |kind, id: &str, reason| {
+            errors.push((
+                kind,
+                DeclarationError::Rejected {
+                    id: id.to_owned(),
+                    reason,
+                },
+            ));
         };
-        for block in blocks {
+        let mut all_blocks: Vec<&Block> = self.blocks.iter().collect();
+        for (block, fields) in blocks {
             let id = block.id.as_str();
-            if !in_own(id) {
-                return Err(format!(
-                    "block {id:?} is not an id in owned namespaces {:?}",
-                    self.namespaces
-                ));
-            }
-            check_block(block).map_err(|e| format!("block {id}: {e}"))?;
-            if !ids.insert(id) {
-                return Err(format!("block {id} is declared twice"));
-            }
-            if block.item {
-                item_ids.insert(id);
+            let result = fields.and_then(|()| {
+                if !ids.insert(id) {
+                    return Err("declared twice".into());
+                }
+                if block.item {
+                    item_ids.insert(id);
+                }
+                Ok(())
+            });
+            match result {
+                Ok(()) => all_blocks.push(block),
+                Err(reason) => refuse(DeclarationKind::Block, id, reason),
             }
         }
-        let all: Vec<&Block> = self.blocks.iter().chain(blocks).collect();
-        check_sign_walls(&all)?;
-        for item in items {
+        sign_wall_refusals(&all_blocks)
+            .for_each(|(id, reason)| refuse(DeclarationKind::Block, id, reason));
+        let mut valid_items = Vec::new();
+        for (item, fields) in items {
             let id = item.id.as_str();
-            if !in_own(id) {
-                return Err(format!(
-                    "item {id:?} is not an id in owned namespaces {:?}",
-                    self.namespaces
-                ));
-            }
-            check_item(item).map_err(|e| format!("item {id}: {e}"))?;
-            if !item_ids.insert(id) {
-                return Err(format!(
-                    "item {id} is declared twice, or is also a block's item"
-                ));
+            let result = fields.and_then(|()| {
+                if !item_ids.insert(id) {
+                    return Err("declared twice, or is also a block's item".into());
+                }
+                Ok(())
+            });
+            match result {
+                Ok(()) => valid_items.push(item),
+                Err(reason) => refuse(DeclarationKind::Item, id, reason),
             }
         }
-        for item in items {
+        for item in valid_items {
             if let Some(rest) = &item.crafting_remainder
                 && (rest == "minecraft:air"
                     || !vanilla_id(rest) && !item_ids.contains(rest.as_str()))
             {
-                return Err(format!(
-                    "item {}: crafting_remainder {rest:?} is not a vanilla item (minecraft:...) or one of this mod's",
-                    item.id
-                ));
+                refuse(
+                    DeclarationKind::Item,
+                    &item.id,
+                    format!(
+                        "crafting_remainder {rest:?} is not a vanilla item (minecraft:...) or one of this mod's"
+                    ),
+                );
             }
         }
-        self.blocks.extend_from_slice(blocks);
-        self.items.extend_from_slice(items);
+        if !errors.is_empty() {
+            return Err(errors);
+        }
         Ok(())
     }
 
@@ -1460,7 +1520,11 @@ impl Content {
             self.blocks.push(block);
         }
         // After every block, so a wall form may be declared in a later file.
-        check_sign_walls(&self.blocks.iter().collect::<Vec<_>>())?;
+        if let Some((id, reason)) =
+            sign_wall_refusals(&self.blocks.iter().collect::<Vec<_>>()).next()
+        {
+            return Err(format!("{id}: {reason}"));
+        }
         let mut remainders = Vec::new();
         for (item, name) in items {
             let file: ItemFile =
@@ -1753,6 +1817,30 @@ fn check_components(
     Ok(())
 }
 
+/// A declaration checked without consulting other entries or loaded resources.
+#[derive(Clone)]
+pub struct LocalDeclaration<T>(T);
+
+impl<T> LocalDeclaration<T> {
+    pub fn get(&self) -> &T {
+        &self.0
+    }
+}
+
+impl Block {
+    pub fn validate_local(self) -> Result<LocalDeclaration<Self>, String> {
+        check_block(&self)?;
+        Ok(LocalDeclaration(self))
+    }
+}
+
+impl Item {
+    pub fn validate_local(self) -> Result<LocalDeclaration<Self>, String> {
+        check_item(&self)?;
+        Ok(LocalDeclaration(self))
+    }
+}
+
 /// An item's fields, as a file or code gives them.
 fn check_item(item: &Item) -> Result<(), String> {
     if !vanilla_id(&item.template) {
@@ -2015,41 +2103,44 @@ fn check_block(file: &Block) -> Result<(), String> {
 /// A sign's `wall_block` is one of the mod's own blocks: the wall form of its
 /// kind, with no item of its own and no other sign. Checked here, a pair that
 /// doesn't fit leaves out its mod alone.
-fn check_sign_walls(blocks: &[&Block]) -> Result<(), String> {
+fn sign_wall_refusals<'a>(blocks: &'a [&'a Block]) -> impl Iterator<Item = (&'a str, String)> + 'a {
     let mut paired = BTreeMap::new();
-    for sign in blocks {
-        let Some(wall) = &sign.wall_block else {
-            continue;
-        };
-        let id = &sign.id;
+    blocks.iter().filter_map(move |sign| {
+        let wall = sign.wall_block.as_ref()?;
+        let id = sign.id.as_str();
         let form = if sign.template.ends_with("_hanging_sign") {
             "_wall_hanging_sign"
         } else {
             "_wall_sign"
         };
         let Some(block) = blocks.iter().find(|b| b.id == *wall) else {
-            return Err(format!(
-                "{id}: wall_block {wall} is not one of this mod's blocks"
+            return Some((
+                id,
+                format!("wall_block {wall} is not one of this mod's blocks"),
             ));
         };
         if !block.template.ends_with(form) {
-            return Err(format!(
-                "{id}: wall_block {wall} needs a template ending in {form}"
+            return Some((
+                id,
+                format!("wall_block {wall} needs a template ending in {form}"),
             ));
         }
         if block.block_item.is_some() {
-            return Err(format!(
-                "{id}: wall_block {wall} has this sign's item, so it declares no block_item"
+            return Some((
+                id,
+                format!("wall_block {wall} has this sign's item, so it declares no block_item"),
             ));
         }
         if block.pick_item.is_some() {
-            return Err(format!(
-                "{id}: wall_block {wall} picks this sign's item, so it declares no pick_item"
+            return Some((
+                id,
+                format!("wall_block {wall} picks this sign's item, so it declares no pick_item"),
             ));
         }
         if block.item {
-            return Err(format!(
-                "{id}: wall_block {wall} has this sign's item, so its own \"item\" is false"
+            return Some((
+                id,
+                format!("wall_block {wall} has this sign's item, so its own \"item\" is false"),
             ));
         }
         fn text(b: &Block) -> (&str, bool) {
@@ -2059,17 +2150,22 @@ fn check_sign_walls(blocks: &[&Block]) -> Result<(), String> {
             )
         }
         if text(sign) != text(block) {
-            return Err(format!(
-                "{id}: wall_block {wall} declares a different sign_text_color or sign_text_glow"
+            return Some((
+                id,
+                format!("wall_block {wall} declares a different sign_text_color or sign_text_glow"),
             ));
         }
-        if let Some(other) = paired.insert(wall, id) {
-            return Err(format!(
-                "{id}: wall_block {wall} is already paired with {other}"
-            ));
+        match paired.entry(wall) {
+            std::collections::btree_map::Entry::Occupied(other) => Some((
+                id,
+                format!("wall_block {wall} is already paired with {}", other.get()),
+            )),
+            std::collections::btree_map::Entry::Vacant(first) => {
+                first.insert(id);
+                None
+            }
         }
-    }
-    Ok(())
+    })
 }
 
 fn reader_of(source: &Source) -> Result<FileReader<'_>, String> {
@@ -2388,7 +2484,7 @@ capabilities = ["registries"]
         let refused = |blocks: &[Block], items: &[Item]| {
             let mut c = Content::declared("ruby");
             c.declare(&[block("ruby:gear")], &[]).unwrap();
-            let e = c.declare(blocks, items).unwrap_err();
+            let e = c.declare(blocks, items).unwrap_err()[0].1.to_string();
             assert_eq!((c.blocks.len(), c.items.len()), (1, 0), "{e}");
             e
         };
@@ -2404,6 +2500,35 @@ capabilities = ["registries"]
         }
         assert!(refused(&[block("ruby:gear")], &[]).contains("declared twice"));
         assert!(refused(&[], &[item("ruby:gear")]).contains("block's item"));
+        let mut content = Content::declared("ruby");
+        content.declare(&[block("ruby:gear")], &[]).unwrap();
+        let errors = content
+            .declare(
+                &[block("ruby:gear"), block("ruby:lamp")],
+                &[item("ruby:lamp")],
+            )
+            .unwrap_err();
+        assert_eq!(
+            errors,
+            [
+                (
+                    DeclarationKind::Block,
+                    DeclarationError::Rejected {
+                        id: "ruby:gear".into(),
+                        reason: "declared twice".into(),
+                    }
+                ),
+                (
+                    DeclarationKind::Item,
+                    DeclarationError::Rejected {
+                        id: "ruby:lamp".into(),
+                        reason: "declared twice, or is also a block's item".into(),
+                    }
+                ),
+            ]
+        );
+        assert_eq!(content.blocks.len(), 1);
+        assert!(content.items.is_empty());
         let modded = Block {
             template: "ruby:other".into(),
             ..block("ruby:casing")
@@ -4105,7 +4230,7 @@ capabilities = ["registries"]
         assert_eq!(code.blocks[0].id, "kaisyn:a");
         let mut foreign = content.blocks[0].clone();
         foreign.id = "unowned:a".into();
-        let error = code.declare(&[foreign], &[]).unwrap_err();
+        let error = code.declare(&[foreign], &[]).unwrap_err()[0].1.to_string();
         assert!(
             error.contains("unowned:a")
                 && error.contains("owned namespaces")

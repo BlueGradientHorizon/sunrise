@@ -86,13 +86,17 @@ server Parts.
 
 ## Declare content in code
 
+For a complete example with Rust and resource files, see
+[Register a block with a model](world/register-a-block.md).
+
 Code mods declare content through `BlocksEvent` and `ItemsEvent`, using API-owned
 `mod_api::Block` and `mod_api::Item` records. Start with `Block::new(id, template)` or
-`Item::new(id, template)`, passing identifier strings, then set the overrides. These records are unvalidated; admission reports malformed values with the content loader's refusal messages.
-These are load-time declarations, not live registry entries. The game admits them
-with the content-file checks, atomically for each namespace, before resources load.
-A block's `item` defaults to true, in code as in a file: `Block::with_item(false)` gives it none. Each mod receives its own declaration
-batch. New identifiers from code—including block entity types and other registrar
+`Item::new(id, template)`, passing identifier strings, then set the overrides and call
+`event.register(declaration)`. Invalid IDs return a typed `DeclarationError`; the remaining checks
+run before resources load. These are load-time declarations, not live registry entries. The game
+admits them with the content-file checks, atomically for each owner.
+A block's `item` defaults to true, in code as in a file: `Block::with_item(false)` gives it none.
+New identifiers from code—including block entity types and other registrar
 declarations—may use any namespace owned by that mod's manifest. Bare names use
 the mod ID; an explicit owned namespace stays unchanged. An unowned namespace
 refuses registration with a diagnostic naming both the mod and namespace. Attaching a Part to an existing vanilla or
@@ -1013,11 +1017,11 @@ physical room after face and input checks. An actual insert asks with its remain
 before applying the stack limit.
 
 The query has no Host and may run for a slot that is never written. Seed a filter from the
-accepted write, not from the query. Default capability writes to mod-owned storage are
-silent: they do not emit `contents_changed` on their own. Use an explicit `set_changed`
-notice or seed in a provider that owns the accepted write. Menu clicks and quick-move
-still use the declared rules and `menu_slot_rules` (vanilla's `Slot.mayPlace`); they do not
-ask the block entity part.
+accepted write, not from the query. Default `ITEMS` and `STORAGE` writes to these slots emit
+`contents_changed` once per backing block at root commit. If your provider writes directly
+to storage it owns, issue `set_changed` explicitly or seed the filter in the provider. Menu
+clicks and quick-move still use the declared rules and `menu_slot_rules` (vanilla's
+`Slot.mayPlace`); they do not ask the block entity part.
 
 #### Menu types
 

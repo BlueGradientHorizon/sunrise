@@ -265,10 +265,9 @@ impl Game<'_> {
                     self.leave_server(Some(Text::literal(reason)))?;
                     return Ok(());
                 }
-                Event::RawPayload(mut incoming) => {
-                    if !self.receive_client_payload(&mut incoming)? {
-                        events.push_front(Received::Event(Event::RawPayload(incoming), _credit));
-                        break;
+                Event::RawPayload(incoming) => {
+                    if let Some(remote) = self.remote.as_ref() {
+                        self.run_payload(remote.session.payload_endpoint(), *incoming);
                     }
                 }
                 Event::Packet(packet) => match *packet {

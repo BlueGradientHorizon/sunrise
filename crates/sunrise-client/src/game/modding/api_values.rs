@@ -1911,53 +1911,6 @@ impl super::Game<'_> {
             *carried = cursor;
         }
     }
-    pub(in crate::game) fn api_menu_quick_move(
-        &mut self,
-        pos: [i32; 3],
-        entity: &mut crate::containers::ModBlockEntity,
-        container_slots: usize,
-        slot: usize,
-        stack: &mut Option<EngineStack>,
-        handled: &mut bool,
-    ) {
-        if !mod_api::__private::has_part_hook(mod_api::HookId::MenuQuickMove) {
-            return;
-        }
-        let (Ok(mut api), Ok(mut held)) = (entity.try_into_api(), stack.try_into_api()) else {
-            return;
-        };
-        let revision = api.revision();
-        let original = held.clone();
-        let mut candidate_handled = *handled;
-        self.native_menu_quick_move(
-            pos,
-            &mut api,
-            container_slots,
-            slot,
-            &mut held,
-            &mut candidate_handled,
-        );
-        let held = if held == original {
-            Ok(None)
-        } else {
-            held.try_into_engine(self.items())
-                .map(Some)
-                .map_err(|_| BlockEntitySnapshotError::InvalidStack)
-        };
-        if let Ok(held) = finish_block_entity_writeback(
-            entity,
-            &api,
-            revision,
-            self.items(),
-            "menu_quick_move",
-            held,
-        ) {
-            if let Some(held) = held {
-                *stack = held;
-            }
-            *handled = candidate_handled;
-        }
-    }
 }
 impl super::GameLevel<'_> {
     pub(in crate::game) fn api_pre_remove_side_effects(
@@ -2631,11 +2584,10 @@ impl TryIntoEngine<()> for mod_api::BlockEntityTypeDecl {
     }
 }
 pub(in crate::game) fn block_entity_declarations()
--> Vec<sunrise_mod_package::content::BlockEntityType> {
+-> impl Iterator<Item = (&'static str, sunrise_mod_package::content::BlockEntityType)> {
     mod_api::__private::block_entity_types()
         .iter()
-        .map(|decl| decl.try_into_engine(&()).unwrap())
-        .collect()
+        .map(|(owner, decl)| (*owner, decl.try_into_engine(&()).unwrap()))
 }
 
 #[cfg(test)]
@@ -2659,9 +2611,10 @@ mod declaration_snapshot_tests {
             }
         }
         install_parts(&[mod_api::ModEntry::new("test", Box::new(Mod))]).unwrap();
-        let declarations = block_entity_declarations();
-        assert_eq!(declarations[0].id, "test:machine");
-        assert_eq!(declarations[0].blocks, ["test:second", "test:first"]);
+        let (owner, declaration) = block_entity_declarations().next().unwrap();
+        assert_eq!(owner, "test");
+        assert_eq!(declaration.id, "test:machine");
+        assert_eq!(declaration.blocks, ["test:second", "test:first"]);
         let registry = game_rule_registry();
         let key = *KEY.get().unwrap();
         assert_eq!(
@@ -2966,9 +2919,10 @@ pub(in crate::game) fn register_game_keys(ids: impl IntoIterator<Item = String>)
         mod_api::__private::resolve_block_entity_types(
             types
                 .names()
-                .chain(declared.iter().map(|kind| kind.id.as_str())),
+                .chain(declared.iter().map(|(_, kind)| kind.id.as_str())),
             |id| {
-                (types.key(id).is_some() || declared.iter().any(|kind| kind.id == id)).then_some(())
+                (types.key(id).is_some() || declared.iter().any(|(_, kind)| kind.id == id))
+                    .then_some(())
             },
         )
         .unwrap();

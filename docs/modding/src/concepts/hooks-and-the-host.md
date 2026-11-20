@@ -40,6 +40,11 @@ Whether a call represents one entity or a family depends on the tick route and t
 registration. Keep cancellations within the current Pre call. The player connection body remains
 separate from the server-side entity tick, and the local client avatar is not observed by these hooks.
 
+Removing a general entity during its own Pre skips its tick and Post. A passenger dismounted by that
+removal can still tick as a root if it is eligible, has not ticked, and its join-order slot is still ahead.
+The pass does not revisit an earlier slot. Canceling an entity's Pre does not by itself skip its passengers'
+ticks, though a listener can separately change the riding graph.
+
 ## Explosion membership
 
 `explosion_detonate` version 2 exposes mutable `blocks` and `entities` lists
