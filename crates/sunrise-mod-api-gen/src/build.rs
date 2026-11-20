@@ -69,7 +69,7 @@ pub fn generate(root: &Path, out_dir: &Path, target: Target) -> Result<(), Strin
             // engine's `GoalCx` in `mobs/part_goals.rs`.
             ("mod_api_goal_view_generated.rs", generated.goal_view),
         ],
-        Target::Api | Target::Vocab => {
+        Target::Api | Target::Vocab | Target::Marks => {
             if matches!(target, Target::Api) {
                 generate_api_parts(root, out_dir)?;
             }
@@ -107,6 +107,7 @@ pub fn generate(root: &Path, out_dir: &Path, target: Target) -> Result<(), Strin
                 crate::rerun_if_changed(&path.display());
             }
             let outputs = vec![
+                (MARKS_OUTPUT, generated_wire.marks),
                 (host::AREAS_OUTPUT, generated.areas),
                 ("mod_api_generated.rs", hooks),
                 ("mod_api_generated_host.rs", generated.host),
@@ -120,7 +121,8 @@ pub fn generate(root: &Path, out_dir: &Path, target: Target) -> Result<(), Strin
                 // take (`generate_api_parts`): it comes from the sources Vocab has just generated.
                 .filter(|(name, _)| match target {
                     Target::Api => *name == GUEST_OUTPUT,
-                    Target::Vocab => true,
+                    Target::Vocab => *name != MARKS_OUTPUT,
+                    Target::Marks => *name == MARKS_OUTPUT,
                     Target::Client => unreachable!(),
                 })
                 .collect()
@@ -137,6 +139,10 @@ pub fn generate(root: &Path, out_dir: &Path, target: Target) -> Result<(), Strin
     }
     Ok(())
 }
+
+/// The handler traits' import functions, which `sunrise-mod-marks` includes: the one place the
+/// imports' unsafe code lives, so the vocabulary holds none.
+pub const MARKS_OUTPUT: &str = "handler_marks_generated.rs";
 
 /// The mod side's WebAssembly guest transport, which `sunrise-mod-api` includes.
 pub const GUEST_OUTPUT: &str = "wire_guest_generated.rs";

@@ -294,6 +294,8 @@ pub(super) fn guest(
             trait_path(owner)
         )
         .unwrap();
+        // The proxy is the game's handler, not one the mod sends: it has nothing to mark.
+        out.push_str("fn __sunrise_marks(&self, _: crate::__private::Sealed) {}\n");
         for m in held_methods(methods)
             .into_iter()
             .filter(|m| m.owner == *owner)
@@ -1097,7 +1099,8 @@ pub(crate) fn mark_block(root: &str, name: &str) -> String {
 /// The `__sunrise_mark!` macro: one arm per export a mod can implement, each a no-op import
 /// named like the export, so a mod's import section lists exactly the hooks and Part methods it
 /// writes; `#[sunrise_mod]` and `#[sunrise_part]` call it for each method an impl overrides. A
-/// plain impl of any other handler trait calls it for nothing, so it carries no marks. The protocol module holds the three imports every guest links.
+/// plain impl of any other handler trait calls it for nothing: its trait's hidden `__sunrise_marks`
+/// method marks it (`handler_marks_module`). The protocol module holds the three imports every guest links.
 pub(super) fn mark_macro(names: &super::Names) -> String {
     let mut out = String::from(
         "/// Marks that the mod implements one export: an import of the game's table, called for nothing.\n#[doc(hidden)]\n#[cfg(not(test))]\n#[macro_export]\nmacro_rules! __sunrise_mark {\n",
@@ -1134,6 +1137,55 @@ pub(super) fn mark_macro(names: &super::Names) -> String {
     }
     // A method the API keeps off wasm crosses nowhere and has no name.
     out.push_str("($owner:literal $method:ident) => {};\n}\n");
+    out
+}
+
+/// The handler marks' module (`sunrise-mod-marks`): for each exported handler trait, one function
+/// importing every method of it as the game's table names them, which the trait's hidden
+/// `__sunrise_marks` method calls with its own `Self`. A mod that implements the trait (and so has
+/// the method in a vtable of its own module) imports them all: the game may call any method of a
+/// handler it stores, so a mod built before one of them changed is refused at load. A Part (or
+/// `Hooks`) marks only the methods a mod writes, through the subscription attribute, and has no
+/// function.
+///
+/// The function is generic so that a module exports and keeps it only for an implementor it
+/// holds: a non-generic public function is exported by every mod's module. A generic trait's
+/// function marks every instance it has, which over-marks a mod that holds one.
+pub(super) fn handler_marks_module(names: &super::Names) -> String {
+    use heck::ToSnakeCase;
+    let mut traits = std::collections::BTreeMap::<&str, Vec<String>>::new();
+    for (owner, _, name) in names.marked() {
+        if !super::SUBSCRIBED.iter().any(|(part, _)| *part == owner) {
+            let base = owner.split('<').next().unwrap();
+            let marks = traits.entry(base).or_default();
+            let mark = name.text();
+            if !marks.contains(&mark) {
+                marks.push(mark);
+            }
+        }
+    }
+    let mut out = String::new();
+    for (base, marks) in traits {
+        writeln!(
+            out,
+            "/// The imports of a mod that implements `{base}`.\npub fn {}<T: ?Sized>() {{\n#[cfg(target_arch = \"wasm32\")]\n{{\n// SAFETY: each import takes nothing and returns nothing, as the entry of that name in the game's\n// `sunrise` module does, and the loader refuses the module, naming the import, when the game's\n// table has no such entry.\n#[link(wasm_import_module = \"sunrise\")]\nunsafe extern \"C\" {{",
+            base.to_snake_case()
+        )
+        .unwrap();
+        for mark in &marks {
+            writeln!(
+                out,
+                "#[link_name = \"{mark}\"]\nsafe fn __sunrise_mark_{}();",
+                mod_call::digest(mark)
+            )
+            .unwrap();
+        }
+        out.push_str("}\n");
+        for mark in &marks {
+            writeln!(out, "__sunrise_mark_{}();", mod_call::digest(mark)).unwrap();
+        }
+        out.push_str("}\n}\n");
+    }
     out
 }
 
