@@ -89,50 +89,11 @@ impl Game<'_> {
         }));
         Ok(PayloadAccepted::Queued)
     }
-    pub(super) fn receive_client_payload(
-        &mut self,
-        incoming: &mut Incoming,
-    ) -> sunrise_client::Result<bool> {
-        let Some(remote) = self.remote.as_ref() else {
-            return Ok(true);
-        };
-        let endpoint = remote.session.payload_endpoint();
-        Ok(self.run_payload(endpoint, incoming))
-    }
-    /// Endpoint identity was captured on ingress, not resolved from a later guest incarnation.
-    pub(super) fn receive_server_payload(
-        &mut self,
-        endpoint: Endpoint,
-        incoming: &mut Incoming,
-    ) -> bool {
-        self.run_payload(endpoint, incoming)
-    }
-    /// False only while the original receiving root remains deferred at the head.
-    fn run_payload(&mut self, endpoint: Endpoint, incoming: &mut Incoming) -> bool {
+    /// Use the receiving endpoint, not a sender resolved from a later guest incarnation.
+    pub(super) fn run_payload(&mut self, endpoint: Endpoint, incoming: Incoming) {
         if !incoming.epoch.active() {
-            return true;
+            return;
         }
-        if let Some(holder) = incoming.expired_busy(std::time::Instant::now()) {
-            let error = incoming.busy_failure(holder);
-            if incoming.raw {
-                log::warn!(
-                    "Mod {} failed on raw channel {}: {error}",
-                    incoming.receiver.owner(),
-                    incoming.id.0
-                );
-            } else {
-                log::warn!("{error}");
-                endpoint.disconnect(Text::translate(
-                    "disconnect.genericReason",
-                    vec![Text::literal(format!(
-                        "a mod's payload handler failed ({})",
-                        sunrise_client::raw_payloads::mod_of(&incoming.id)
-                    ))],
-                ));
-            }
-            return true;
-        }
-        let body = std::mem::replace(&mut incoming.body, Body::Payload(PayloadBytes(Vec::new())));
         let seal = self.transaction_open();
         let mut context = MainContext {
             game: self,
@@ -142,46 +103,15 @@ impl Game<'_> {
             disconnect: None,
             failure: None,
         };
-        let result = match body {
-            Body::Payload(bytes) if incoming.receiver.thread == HandlerThread::Main => {
-                incoming.receiver.handle(bytes, &mut context)
-            }
-            Body::Payload(_) => Err(mod_api::PayloadHandleError::Failed(
-                "payload was not dispatched on its declared network executor".into(),
-            )),
-            Body::Work(work) => incoming
+        let result = match incoming.body {
+            Body::Payload(bytes) if incoming.receiver.thread == HandlerThread::Main => incoming
                 .receiver
-                .run_work(work.as_ref(), &mut context)
-                .map_err(mod_api::PayloadHandleError::Failed),
-        };
-        let result = match result {
-            Err(mod_api::PayloadHandleError::Busy { payload, holder }) => {
-                context.game.transaction_close(&seal, false);
-                drop(context);
-                if incoming.defer(payload, &holder, std::time::Instant::now()) {
-                    return false;
-                }
-                let error = incoming.busy_failure(&holder);
-                if incoming.raw {
-                    log::warn!(
-                        "Mod {} failed on raw channel {}: {error}",
-                        incoming.receiver.owner(),
-                        incoming.id.0
-                    );
-                } else {
-                    log::warn!("{error}");
-                    endpoint.disconnect(Text::translate(
-                        "disconnect.genericReason",
-                        vec![Text::literal(format!(
-                            "a mod's payload handler failed ({})",
-                            sunrise_client::raw_payloads::mod_of(&incoming.id)
-                        ))],
-                    ));
-                }
-                return true;
+                .handle(bytes, &mut context)
+                .map_err(|mod_api::PayloadHandleError::Failed(error)| error),
+            Body::Payload(_) => {
+                Err("payload was not dispatched on its declared network executor".into())
             }
-            Err(mod_api::PayloadHandleError::Failed(error)) => Err(error),
-            Ok(()) => Ok(()),
+            Body::Work(work) => incoming.receiver.run_work(work.as_ref(), &mut context),
         };
         let reason = context.disconnect.take();
         let failure = context.failure.take().or_else(|| result.err());
@@ -207,9 +137,7 @@ impl Game<'_> {
         } else if let Some(reason) = reason {
             endpoint.disconnect(reason);
         }
-        // Both the finish barrier and ingress credit cover root publication/rollback.
-        drop(context);
-        true
+        // The rest of Incoming releases the turn and ingress credit after publication/rollback.
     }
 }
 struct MainContext<'a, 'resources> {

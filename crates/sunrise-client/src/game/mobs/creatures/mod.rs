@@ -272,8 +272,8 @@ pub(super) struct Creatures {
     pub trader: super::wandering_trader::Spawner,
     /// When each player last put a parrot on a shoulder (`timeEntitySatOnShoulder`).
     pub shoulder_time: std::collections::HashMap<[i32; 4], i64>,
-    /// The cat spawner's countdown (`CatSpawner.nextTick`).
-    pub cat_tick: i32,
+    /// The cat spawner (`CatSpawner`): its countdown.
+    pub cat: super::cat_spawner::CatSpawner,
     /// Each level's custom spawners, built when its first tick asks (game/mobs/custom_spawners.rs).
     pub custom_spawners: std::collections::HashMap<super::Dim, mod_api::CustomSpawners>,
     /// Native sounds waiting for the server host to be available.
@@ -6906,11 +6906,8 @@ impl Game<'_> {
         // PiglinAi.mobInteract: hand over barter currency to admire.
         if self.mobs[index].alive() && held.as_ref().is_some_and(|h| self.give_piglin(index, h)) {
             self.swing_arm();
-            if !creative && let Some(stack) = self.stack_in_mut(selected).as_mut() {
-                stack.count -= 1;
-                if stack.count == 0 {
-                    *self.stack_in_mut(selected) = None;
-                }
+            if !creative {
+                self.consume_player_slot(selected, 1);
             }
             return Ok(true);
         }
@@ -7573,14 +7570,8 @@ impl Game<'_> {
                 self.audio.play(&name, Some(feet), volume, pitch);
             }
         }
-        if consume
-            && !creative
-            && let Some(stack) = self.stack_in_mut(selected).as_mut()
-        {
-            stack.count -= 1;
-            if stack.count == 0 {
-                *self.stack_in_mut(selected) = None;
-            }
+        if consume && !creative {
+            self.consume_player_slot(selected, 1);
         }
         if let Some(g) = give {
             let mut stack = ItemStack {
@@ -7811,14 +7802,7 @@ impl Game<'_> {
         let pitch = 0.4 / (self.world.random.next_float() * 0.4 + 0.8);
         self.audio.play(sound, Some(eye), 0.5, pitch);
         self.swing_arm();
-        if !self.creative
-            && let Some(s) = self.held_mut().as_mut()
-        {
-            s.count -= 1;
-            if s.count == 0 {
-                *self.held_mut() = None;
-            }
-        }
+        self.consume_held();
         if kind == ProjectileKind::Egg
             && let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone())
         {
@@ -8130,7 +8114,7 @@ impl Game<'_> {
                 && self.cull_entity_camera_bounds(lo, hi)
                 && let Some((mark, _)) = skinned
             {
-                if self.pack_shadow_casters.0 {
+                if self.occlusion.shadow_casters.0 {
                     let mut frame = self.skin_frame.borrow_mut();
                     let end = frame.vertices as usize;
                     sunrise_client::gfx::pack_draw::EntitySpan::hide(
@@ -8187,12 +8171,13 @@ impl Game<'_> {
         // keep the existing exact mesh-culling path.
         let precheck = self.settings.sunrise.entity_culling == EntityCullingMode::Asynchronous
             && self
-                .async_occlusion_culler
+                .occlusion
+                .async_culler
                 .as_ref()
                 .is_some_and(|culler| culler.camera_is_stationary())
             && self.settings.sunrise.entity_culling_precheck != 0
             && self.mobs.len() >= self.settings.sunrise.entity_culling_precheck as usize
-            && !self.pack_shadow_casters.0
+            && !self.occlusion.shadow_casters.0
             && mod_api::__private::mods().is_empty();
         self.rendered_mobs.set(0);
         // What custom entity model animations read of the frame.

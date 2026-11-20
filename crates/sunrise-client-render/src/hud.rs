@@ -4,7 +4,7 @@
 use crate::{Result, resource_source::ResourceSource};
 use smallvec::SmallVec;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     fs,
     path::{Path, PathBuf},
     sync::{Arc, OnceLock},
@@ -25,6 +25,33 @@ mod model_reducing;
 pub(crate) mod pack_text;
 pub mod pictures;
 pub(crate) mod sprite_modifiers;
+
+/// GUI sprite ids a draw asked for that the atlas lacks, each warned about once.
+static MISSING_GUI_SPRITES: std::sync::Mutex<BTreeSet<String>> =
+    std::sync::Mutex::new(BTreeSet::new());
+
+#[cfg(test)]
+thread_local! {
+    static GUI_SPRITE_MISSES: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// The GUI sprite ids this thread's draws missed since the last call, for tests that a screen names only real sprites.
+#[cfg(test)]
+pub(crate) fn take_gui_sprite_misses() -> Vec<String> {
+    GUI_SPRITE_MISSES.with(|misses| std::mem::take(&mut *misses.borrow_mut()))
+}
+
+/// A draw named a GUI sprite the atlas lacks (a wrong name, a pack's filter, a mod's id): one warning per id.
+fn missing_gui_sprite(id: &str) {
+    #[cfg(test)]
+    GUI_SPRITE_MISSES.with(|misses| misses.borrow_mut().push(id.to_owned()));
+    let mut warned = MISSING_GUI_SPRITES
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    if warned.insert(id.to_owned()) {
+        log::warn!("no GUI sprite {id:?} in the atlas; drawing the missing texture");
+    }
+}
 
 /// A sprite's atlas region, and its size in GUI pixels: the size of the
 /// default resources' texture of that name, whatever the resolution of the
@@ -1198,6 +1225,18 @@ impl HudAtlas {
                 .then(|| self.sprites.get(MISSING_SPRITE))
                 .flatten(),
         }
+    }
+    /// [`HudAtlas::gui_rect`] for a draw: an id the atlas lacks draws the missing texture, as vanilla's atlas does.
+    pub fn gui_draw_rect(&self, id: &str) -> Option<&Rect> {
+        if let Some(rect) = self.gui_rect(id) {
+            return Some(rect);
+        }
+        // An atlas built with no resources has no GUI list, so nothing to miss against.
+        if self.gui.is_empty() {
+            return None;
+        }
+        missing_gui_sprite(id);
+        self.sprites.get(MISSING_SPRITE)
     }
     /// The rect of a texture by its exact name: the packed sprite, else a registered atlas's
     /// sprite. The raw lookup of the camera draw; a GUI id goes through [`HudAtlas::gui_lookup`].
@@ -2467,7 +2506,7 @@ impl HudBatch {
         );
     }
     pub fn sprite(&mut self, atlas: &HudAtlas, name: &str, x: f32, y: f32) {
-        if let Some(r) = atlas.gui_rect(name).copied() {
+        if let Some(r) = atlas.gui_draw_rect(name).copied() {
             self.rect_uv(x, y, r.w as f32, r.h as f32, r, u32::MAX);
         }
     }
@@ -2481,13 +2520,13 @@ impl HudBatch {
         h: f32,
         color: u32,
     ) {
-        if let Some(r) = atlas.gui_rect(name).copied() {
+        if let Some(r) = atlas.gui_draw_rect(name).copied() {
             self.rect_uv(x, y, w, h, r, color);
         }
     }
     /// Draw part of a sprite, `fraction` of its width from the left.
     pub fn sprite_part(&mut self, atlas: &HudAtlas, name: &str, x: f32, y: f32, fraction: f32) {
-        if let Some(mut r) = atlas.gui_rect(name).copied() {
+        if let Some(mut r) = atlas.gui_draw_rect(name).copied() {
             let w = r.w as f32 * fraction;
             r.u1 = r.u0 + (r.u1 - r.u0) * fraction;
             self.rect_uv(x, y, w, r.h as f32, r, u32::MAX);

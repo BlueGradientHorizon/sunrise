@@ -1398,14 +1398,12 @@ impl Game<'_> {
     ) -> Option<[f64; 3]> {
         use super::entity::Entity;
         let from = self.target_position(t);
-        // Entity.calculatePassengerTransition compares a rider's angle with the
-        // vehicle's own, so the vehicle's angles are read before the teleport,
-        // beside its position.
-        let from_rotation = self.target_rotation(t);
         let v = Vec3::new(pos[0], pos[1], pos[2]);
         // The riders turn from the unclamped angles (calculatePassengerTransition
         // adds their offset to the transition's, each rider's own setXRot clamps).
         let requested = rotation;
+        // Entity.teleportSameDimension teleports the riders before their vehicle.
+        let riding = self.teleport_riders_first(t, v, relative, requested.filter(|_| turn_riders));
         // PositionMoveRotation.calculateAbsolute clamps pitch before setXRot.
         let rotation = rotation.map(|[yaw, pitch]| [yaw, pitch.clamp(-90.0, 90.0)]);
         match t {
@@ -1692,17 +1690,7 @@ impl Game<'_> {
                 dragon.teleport_motion(relative);
             }
         }
-        // Entity.teleportSameDimension: the riders go with their vehicle at
-        // once, by the offset it took and the turn it was given.
-        if let (Some(from), Some(to)) = (from, self.target_position(t)) {
-            let placed = requested.filter(|_| turn_riders).map(|after| {
-                super::vehicle_teleport::PlacedRotation {
-                    before: from_rotation,
-                    after,
-                }
-            });
-            self.teleport_passengers(t, from, to, placed);
-        }
+        self.announce_vehicle_teleport(t, &riding);
         from
     }
 

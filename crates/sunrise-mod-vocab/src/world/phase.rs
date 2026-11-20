@@ -227,6 +227,15 @@ pub fn current_phase() -> ModPhase {
         |backend| (backend.current_phase)(),
     )
 }
+/// Whether this thread is in the once-only registration phase.
+///
+/// Use this in a scripting binding before accepting declarations: a script called, for example,
+/// from `Hooks::player_logged_in` is too late. This read does not grant a registrar or reopen
+/// registration. Only the relevant registration hook can submit its declarations.
+pub fn registration_open() -> bool {
+    current_phase() == ModPhase::Registration
+}
+
 /// The catalog-owned access class of a generated game operation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
@@ -622,7 +631,7 @@ impl std::error::Error for RegistrationReadError {}
 pub struct RegistrationContext {
     pub(crate) mods: LoadedMods,
     pub(crate) data: Option<RegistrationData>,
-    pub(crate) declaration_refusals: std::sync::Mutex<Vec<String>>,
+    pub(crate) declaration_refusals: std::sync::Mutex<Vec<crate::__private::DeclarationRefusal>>,
     pub(crate) self_refusal: std::sync::Mutex<Option<String>>,
     pub(crate) warnings: std::sync::Mutex<Vec<crate::LoadingMessage>>,
     pub(crate) instance_dir: Option<crate::InstanceDirectory>,

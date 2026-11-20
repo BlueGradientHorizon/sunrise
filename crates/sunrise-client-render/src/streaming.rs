@@ -15,10 +15,7 @@ use crate::{
 };
 use std::{
     collections::{BinaryHeap, HashSet, VecDeque},
-    sync::{
-        Arc, Condvar, Mutex, MutexGuard, RwLock, TryLockError,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::{Arc, Condvar, Mutex, MutexGuard, RwLock, TryLockError, atomic::Ordering},
 };
 use sunrise_core::biome::BiomeZoom;
 use sunrise_threads::jobs::{Class, PerWorker, Rank, Registration, Source};
@@ -454,13 +451,15 @@ impl Mailbox {
     fn try_recv(&self) -> Option<Done> {
         self.try_lock()?.pop_front()
     }
-    fn recv_timeout(&self, timeout: std::time::Duration) -> Option<Done> {
+    fn wait(&self, timeout: std::time::Duration) -> MutexGuard<'_, VecDeque<Done>> {
         let done = self.done.lock().unwrap();
-        let (mut done, _) = self
-            .arrived
+        self.arrived
             .wait_timeout_while(done, timeout, |done| done.is_empty())
-            .unwrap();
-        done.pop_front()
+            .unwrap()
+            .0
+    }
+    fn recv_timeout(&self, timeout: std::time::Duration) -> Option<Done> {
+        self.wait(timeout).pop_front()
     }
 }
 /// [`Streaming::proto_census`].
@@ -489,24 +488,6 @@ fn commit_unloads(world: &mut World, keys: &[(i32, i32)]) -> Vec<Arc<Chunk>> {
     keys.iter()
         .filter_map(|&key| world.unload_chunk(key))
         .collect()
-}
-
-/// A locally streamed forced column is ready once it can tick: lit with
-/// its 3×3 neighbourhood resident (vanilla's ticking-chunk future).
-fn forced_ready(world: &World, x: i32, z: i32) -> bool {
-    world.chunks.get(&(x, z)).is_some_and(|chunk| chunk.lit) && world.chunks.surrounded((x, z))
-}
-
-fn wait_for_forced_column(
-    world: &mut World,
-    x: i32,
-    z: i32,
-    aborted: &AtomicBool,
-    mut pump: impl FnMut(&mut World),
-) {
-    while !aborted.load(Ordering::Relaxed) && !forced_ready(world, x, z) {
-        pump(world);
-    }
 }
 
 /// An update paused before removing its out-of-range live chunks.
@@ -1488,6 +1469,7 @@ impl Streaming {
         for ([bx, by, bz], state) in writes.blocks {
             let _ = world.set(bx, by, bz, sunrise_world::registry::BlockStateId(state));
         }
+        self.publish_proto_light_support(world, (x, z));
         // After the blocks: the write of a block with a block entity made a
         // default one, which the generated one replaces.
         for (pos, entity) in writes.block_entities {
@@ -1535,6 +1517,7 @@ impl Streaming {
         // neighbours were decorated around it, so generating it again would
         // not give it back.
         if !self.ranges().chunk_kept(key.0, key.1, self.decorates) {
+            world.set_proto_light_support(key, SectionMask::EMPTY);
             if chunk.fresh {
                 self.dropped_new.insert(key);
                 return Some(chunk);
@@ -1562,11 +1545,23 @@ impl Streaming {
         let new = self.dropped_new.remove(&key) || chunk.generated;
         world.loaded_chunks.push((key.0, key.1, new));
         chunk.dynamic_pending = self.light_tables.holds_dynamic(&chunk);
+        let status = self
+            .light_tables
+            .publish_section_status(&mut chunk, world.shape);
         if loaded {
-            self.light_tables
-                .publish_section_status(&mut chunk, world.shape);
+            for dz in -1..=1 {
+                for dx in -1..=1 {
+                    let neighbour = (key.0 + dx, key.1 + dz);
+                    if neighbour != key && !world.chunks.contains_key(&neighbour) {
+                        let support = self.proto_light_support(world, neighbour);
+                        if !support.is_empty() {
+                            world.set_proto_light_support(neighbour, support);
+                        }
+                    }
+                }
+            }
         }
-        world.install_light_column(chunk);
+        world.install_light_column_initialized(chunk, status);
         if loaded {
             self.lit.insert(key);
             for sy in 0..world.layout().sections() as i32 {
@@ -1671,6 +1666,35 @@ impl Streaming {
             return None;
         }
         (self.non_air_sections)(self.protos.get(&(x, z))?.as_ref()?)
+    }
+
+    fn proto_light_support(&self, world: &World, key: (i32, i32)) -> SectionMask {
+        let mut support = SectionMask::EMPTY;
+        if let Some(sections) = self.proto_sections(key.0, key.1) {
+            let first = world.layout().min_y() >> 4;
+            for s in sections
+                .iter()
+                .filter(|s| world.shape.has_section(first + *s as i32))
+            {
+                for padded in s..=s + 2 {
+                    support.insert(padded);
+                }
+            }
+        }
+        support
+    }
+
+    fn publish_proto_light_support(&self, world: &mut World, key: (i32, i32)) {
+        if (-1..=1).any(|dz| {
+            (-1..=1).any(|dx| {
+                world
+                    .chunks
+                    .get(&(key.0 + dx, key.1 + dz))
+                    .is_some_and(|c| c.light_loaded)
+            })
+        }) {
+            world.set_proto_light_support(key, self.proto_light_support(world, key));
+        }
     }
     /// `ChunkMap.getLatestStatus` for the loading screen's chunk map: the
     /// furthest step this column has reached, `None` before it is asked for.
@@ -1869,6 +1893,7 @@ impl Streaming {
                         self.protos.insert((x, z), Some(proto));
                         if decorated || !self.decorates {
                             self.decorated.insert((x, z));
+                            self.publish_proto_light_support(world, (x, z));
                         }
                     }
                 }
@@ -2014,6 +2039,7 @@ impl Streaming {
                 } else {
                     self.protos.remove(&key);
                     self.light_views.remove(&key);
+                    world.set_proto_light_support(key, SectionMask::EMPTY);
                 }
             }
             proto_saves = self.checkout_protos(written);
@@ -2151,6 +2177,7 @@ impl Streaming {
             // updates the entry). Without it, scheduling at render distance 32
             // took most of the thread that runs it while the world loaded.
             let waiting: std::cell::RefCell<FxHashMap<(i32, i32), bool>> = Default::default();
+            let mut initialized = Vec::new();
             while let Some(std::cmp::Reverse((_, x, z))) = wanted.pop() {
                 if self.decorating >= workers * 2 {
                     break;
@@ -2178,6 +2205,7 @@ impl Streaming {
                 let has_final = keys.iter().any(|k| world.chunks.contains_key(k));
                 if has_final && !self.saves_beside_final {
                     self.decorated.insert((x, z));
+                    initialized.push((x, z));
                     waiting.borrow_mut().insert((x, z), false);
                     continue;
                 }
@@ -2206,6 +2234,9 @@ impl Streaming {
                 self.decorating_finals
                     .extend(finals.iter().map(|(i, _)| keys[*i]));
                 self.submit(Some((x, z)), 1, Job::Decorate(x, z, region, finals));
+            }
+            for key in initialized {
+                self.publish_proto_light_support(world, key);
             }
         }
         hz_laps.lap("st_decorate");
@@ -2533,7 +2564,7 @@ impl Streaming {
         for (x, sy, z) in changed.sections() {
             world.modified.insert((x, z));
             if let Some(log) = &mut world.light_log {
-                log.entry((x, z)).or_default().insert(sy as usize);
+                log.entry((x, z)).or_default().insert(sy as usize + 1);
             }
         }
         changed.dirty_sections(|section| {
@@ -2736,10 +2767,9 @@ impl Streaming {
     /// `ServerLevel.setChunkForced`: load a newly forced local column to
     /// ticking readiness before returning. `ChunkMap.prepareTickingChunk`
     /// waits for the lit column and its 3×3 so saved ticks can resume (#3341).
-    /// While paused, record the ticket for when streaming starts. Remote
-    /// streamers can only accept resident columns. Refuse adds after generation
-    /// stops. If it stops during the wait, return true and keep the saved ticket
-    /// so the chunk loads at next startup. Repeated adds and removals do not wait.
+    /// While paused, record the ticket to take effect when its level starts
+    /// streaming. Remote streamers can only accept resident columns. Refuse adds
+    /// after generation stops. Repeated adds and removals do not wait.
     pub fn set_forced_loaded(&mut self, world: &mut World, x: i32, z: i32, forced: bool) -> bool {
         if !forced {
             return self.set_forced(x, z, false);
@@ -2757,8 +2787,7 @@ impl Streaming {
         if !self.set_forced(x, z, true) {
             return false;
         }
-        let shared = self.shared.clone();
-        wait_for_forced_column(world, x, z, &shared.aborted, |world| {
+        while !world.chunks.is_ticking_ready((x, z)) {
             // Pump the existing generation queue. Keep unloads for the
             // normal owner update, which saves entities and notifies mods.
             let mut plan = self.plan_update(world);
@@ -2767,10 +2796,10 @@ impl Streaming {
             let (meshes, unloaded) = self.finish_update(world, plan);
             debug_assert!(unloaded.is_empty());
             self.free(meshes);
-            if !shared.aborted.load(Ordering::Relaxed) && !forced_ready(world, x, z) {
+            if !world.chunks.is_ticking_ready((x, z)) {
                 self.wait(std::time::Duration::from_millis(5));
             }
-        });
+        }
         true
     }
 
@@ -2782,16 +2811,14 @@ impl Streaming {
             self.settle(chunk);
         }
     }
-    /// The level's saved forced state: `/forceload`'s chunks, and the mods'
-    /// tickets (of controllers that are registered), which wait in
-    /// `take_loaded_tickets`.
+    /// Activate saved `/forceload` tickets without discarding live tickets.
+    /// Saved mod tickets wait for validation in `take_loaded_tickets`.
     pub fn load_forced(&mut self, commanded: HashSet<(i32, i32)>, tickets: Vec<ModTicket>) {
-        self.mod_tickets = ModTickets::from_saved(tickets);
-        self.commanded = commanded;
-        self.forced.clear();
-        let held: Vec<_> = self.commanded.iter().copied().collect();
-        for chunk in held {
-            self.settle(chunk);
+        self.mod_tickets.stage_saved(tickets);
+        for chunk in commanded {
+            if self.commanded.insert(chunk) {
+                self.settle(chunk);
+            }
         }
     }
     /// The mods' tickets read from the save, which hold nothing until the
@@ -2920,12 +2947,10 @@ impl Streaming {
         }
         counts
     }
-    /// Wait up to `timeout` for a worker to finish a job; the next `update`
-    /// takes it. A server pumps generation with this between its ticks.
+    /// Wait up to `timeout` for a worker to finish a job, leaving the result
+    /// queued for the next update or synchronous save.
     pub fn wait(&mut self, timeout: std::time::Duration) {
-        if let Some(done) = self.shared.done.recv_timeout(timeout) {
-            self.deferred.push(done);
-        }
+        drop(self.shared.done.wait(timeout));
     }
 }
 /// `ChunkTrackingView.isInViewDistance`: whether the column (x, z) is drawn
@@ -3719,11 +3744,11 @@ mod tests {
     #[test]
     fn forced_column_is_loaded_once_it_can_tick() {
         let mut world = World::new(sunrise_world::registry::BlockStateId(0), 0);
-        assert!(!forced_ready(&world, 4, 4));
-        world.chunks.insert((4, 4), Arc::new(Chunk::empty(4, 4)));
-        assert!(!forced_ready(&world, 4, 4));
-        Arc::make_mut(world.chunks.get_mut(&(4, 4)).unwrap()).lit = true;
-        assert!(!forced_ready(&world, 4, 4));
+        assert!(!world.chunks.is_ticking_ready((4, 4)));
+        let mut center = Chunk::empty(4, 4);
+        center.lit = true;
+        world.chunks.insert((4, 4), Arc::new(center));
+        assert!(!world.chunks.is_ticking_ready((4, 4)));
         for dz in -1..=1 {
             for dx in -1..=1 {
                 if (dx, dz) != (0, 0) {
@@ -3733,20 +3758,9 @@ mod tests {
                 }
             }
         }
-        assert!(forced_ready(&world, 4, 4));
-    }
-
-    #[test]
-    fn forced_column_wait_ends_when_generation_aborts() {
-        let mut world = World::new(sunrise_world::registry::BlockStateId(0), 0);
-        let aborted = AtomicBool::new(false);
-        wait_for_forced_column(&mut world, 4, 4, &aborted, |_| {
-            // Stop on the first pump, leaving the column missing. A second
-            // pump fails the test immediately instead of hanging the runner.
-            assert!(!aborted.swap(true, Ordering::Relaxed), "pumped after abort");
-        });
-        assert!(aborted.load(Ordering::Relaxed));
-        assert!(!world.chunks.contains_key(&(4, 4)));
+        assert!(world.chunks.is_ticking_ready((4, 4)));
+        Arc::make_mut(world.chunks.get_mut(&(4, 4)).unwrap()).lit = false;
+        assert!(!world.chunks.is_ticking_ready((4, 4)));
     }
 
     #[test]
@@ -3852,7 +3866,9 @@ mod tests {
         streaming.save_finished(chunk);
         streaming.finishing.insert((103, 0));
         streaming.shared.done.send(late(103));
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+        // Startup can wait for work and then save before its next update.
+        streaming.wait(std::time::Duration::ZERO);
+        let deadline = std::time::Instant::now();
         let SaveStep::Full(chunk) = streaming.prepare_save(&mut world, true, deadline) else {
             panic!("blocking yield")
         };

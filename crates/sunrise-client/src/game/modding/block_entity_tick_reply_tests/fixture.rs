@@ -106,4 +106,5 @@ pub fn register(registrar: &mut dyn Registrar) {
         .build();
     registrar.block_entity_part(&kind, Ticker).unwrap();
     registrar.block_entity_part(&kind, Later).unwrap();
+    registrar.block_entity_type("no_ticker").blocks(&[]).build();
 }

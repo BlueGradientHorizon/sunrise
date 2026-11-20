@@ -797,14 +797,15 @@ fn a_canceled_passenger_still_follows_and_his_passengers_tick() {
 }
 
 /// A rider removed in its own Pre gets no tick or Post. Its dismounted
-/// passenger still gets its own tick pair at its later root slot.
+/// passenger ticks at its later root slot, after the sibling rider.
 #[test]
 #[ignore = "daily"]
 fn a_riders_removal_in_pre_leaves_its_passengers_later_root_tick() {
     with_counter(|game, l| {
         let bottom = record_at("mymod:robot", [8, 8, 8, 8], [0.5, 64.0, 0.5], Vec::new());
         let middle = record_at("mymod:robot", [9, 9, 9, 9], [0.5, 64.0, 0.5], vec![bottom]);
-        let root = spawn_tree(game, [1, 2, 3, 4], [0.5, 64.0, 0.5], vec![middle]);
+        let sibling = record_at("mymod:robot", [7, 7, 7, 7], [0.5, 64.0, 0.5], Vec::new());
+        let root = spawn_tree(game, [1, 2, 3, 4], [0.5, 64.0, 0.5], vec![middle, sibling]);
         let ids = row_ids(game);
         tick(game);
         l.events.lock().unwrap().clear();
@@ -820,6 +821,9 @@ fn a_riders_removal_in_pre_leaves_its_passengers_later_root_tick() {
                 (root, "tick"),
                 (root, "post"),
                 (ids[1], "pre"),
+                (ids[3], "pre"),
+                (ids[3], "tick"),
+                (ids[3], "post"),
                 (ids[2], "pre"),
                 (ids[2], "tick"),
                 (ids[2], "post"),
@@ -839,7 +843,8 @@ fn a_riders_removal_in_canceled_pre_leaves_its_passengers_later_root_tick() {
     with_counter(|game, l| {
         let bottom = record_at("mymod:robot", [8, 8, 8, 8], [0.5, 64.0, 0.5], Vec::new());
         let middle = record_at("mymod:robot", [9, 9, 9, 9], [0.5, 64.0, 0.5], vec![bottom]);
-        let root = spawn_tree(game, [1, 2, 3, 4], [0.5, 64.0, 0.5], vec![middle]);
+        let sibling = record_at("mymod:robot", [7, 7, 7, 7], [0.5, 64.0, 0.5], Vec::new());
+        let root = spawn_tree(game, [1, 2, 3, 4], [0.5, 64.0, 0.5], vec![middle, sibling]);
         let ids = row_ids(game);
         tick(game);
         l.events.lock().unwrap().clear();
@@ -857,6 +862,9 @@ fn a_riders_removal_in_canceled_pre_leaves_its_passengers_later_root_tick() {
                 (root, "tick"),
                 (root, "post"),
                 (ids[1], "pre"),
+                (ids[3], "pre"),
+                (ids[3], "tick"),
+                (ids[3], "post"),
                 (ids[2], "pre"),
                 (ids[2], "tick"),
                 (ids[2], "post"),

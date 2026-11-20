@@ -1981,13 +1981,24 @@ impl Game<'_> {
 
     /// `HashedStack.create` with the connection's registries (the client's
     /// `decoratedHashOpsGenerator`).
-    fn hashed_stack(&self, s: &Option<ItemStack>) -> Option<Hashed> {
-        let r = self.remote.as_ref()?;
+    fn hashed_stack(&self, s: &Option<ItemStack>) -> sunrise_protocol::Result<Option<Hashed>> {
+        if s.is_none() {
+            return Ok(None);
+        }
+        let r = self
+            .remote
+            .as_ref()
+            .ok_or_else(|| sunrise_protocol::Error::new("no live menu connection"))?;
         let names = SyncedNames {
             builtin: &r.builtin,
             dynamic: &r.registries,
         };
-        self.to_network(s).map(|s| Hashed::create(&s, &names))
+        let stack = self
+            .to_network(s)
+            .ok_or_else(|| sunrise_protocol::Error::new("cannot encode a nonempty stack"))?;
+        Hashed::create(&stack, &names)
+            .map(Some)
+            .map_err(|e| sunrise_protocol::Error::new(e.to_string()))
     }
 
     /// A line in the connection's chat, with its styles, click and hover
@@ -4763,7 +4774,7 @@ impl Game<'_> {
                 // unless the elder guardian is silent.
                 10 => {
                     self.particles.elder_guardian();
-                    if p.param == 1.0
+                    if p.rounded_param() == 1
                         && let Some(at) = self.player.as_ref().map(|m| m.position)
                     {
                         self.play_client_local_sound(
@@ -4784,8 +4795,8 @@ impl Game<'_> {
                 // START_RAINING, STOP_RAINING, RAIN_LEVEL_CHANGE and THUNDER_LEVEL_CHANGE.
                 event @ (1 | 2 | 7 | 8) => self.world.weather.game_event(event, p.param),
                 3 => {
-                    let mode = p.param as i32;
-                    self.set_mode_id(mode);
+                    self.set_mode_id(p.rounded_param());
+                    let mode = self.mode_id();
                     if let Some(r) = self.remote.as_mut() {
                         r.game_mode = mode;
                     }

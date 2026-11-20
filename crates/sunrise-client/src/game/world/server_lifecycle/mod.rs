@@ -67,6 +67,8 @@ impl Game<'_> {
         crashed: bool,
         run_error: Option<&str>,
     ) -> Result<()> {
+        // There will be no next server tick; do not keep logs for another world.
+        sunrise_client::logging::stop_tap();
         let mut failure: Option<String> = None;
         self.exclude_interrupted_players(crashed, |m| log::warn!("{m}"));
         if let Err(payload) =
@@ -276,6 +278,7 @@ impl Game<'_> {
         super::cauldron_interactions::clear();
         self.clear_world_parts();
         self.world_adopted = false;
+        self.startup_ticket_restore_pending = false;
         result
     }
 }

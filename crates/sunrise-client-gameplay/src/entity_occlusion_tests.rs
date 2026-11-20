@@ -1,5 +1,6 @@
 use super::*;
 use sunrise_client::voxel_occlusion::Culler;
+use sunrise_core::geometry::Vec3;
 
 fn vertex(pos: [f32; 3]) -> Vertex {
     Vertex {

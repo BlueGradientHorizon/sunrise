@@ -720,13 +720,6 @@ impl Wire for sunrise_core::nbt::Compound {
             out.put(value);
         }
     }
-    fn put_owned(self, out: &mut Writer) {
-        out.put_len(self.len());
-        for (key, value) in self {
-            out.put_owned(key);
-            out.put_owned(value);
-        }
-    }
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
         let len = input.take_len(sunrise_core::nbt::JavaString::MIN + crate::Tag::MIN)?;
         let mut map = Self::new();
@@ -744,10 +737,6 @@ impl crate::wire::Wire for crate::Tag {
     const MIN: usize = 4;
     fn put(&self, out: &mut Writer) {
         super::tag_tree::put(self, out);
-    }
-    fn put_owned(self, out: &mut Writer) {
-        super::tag_tree::put(&self, out);
-        sunrise_core::nbt::discard_tag(self);
     }
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
         super::tag_tree::take(input)
@@ -808,11 +797,6 @@ impl crate::wire::Wire for crate::BlockPos {
         out.put(&self.x);
         out.put(&self.y);
         out.put(&self.z);
-    }
-    fn put_owned(self, out: &mut crate::wire::Writer) {
-        out.put_owned(self.x);
-        out.put_owned(self.y);
-        out.put_owned(self.z);
     }
     fn take(
         input: &mut crate::wire::Reader<'_>,
@@ -893,16 +877,6 @@ impl crate::wire::Wire for crate::NeighbourUpdate {
             }
         }
     }
-    fn put_owned(self, out: &mut crate::wire::Writer) {
-        match self {
-            Self::OutputSignal => out.put_owned(0u32),
-            Self::Neighbours => out.put_owned(1u32),
-            Self::NeighboursExcept(f0) => {
-                out.put_owned(2u32);
-                out.put_owned(f0);
-            }
-        }
-    }
     fn take(
         input: &mut crate::wire::Reader<'_>,
     ) -> ::std::result::Result<Self, crate::wire::WireError> {
@@ -923,10 +897,6 @@ impl crate::wire::Wire for crate::ChunkPos {
         out.put(&self.x);
         out.put(&self.z);
     }
-    fn put_owned(self, out: &mut crate::wire::Writer) {
-        out.put_owned(self.x);
-        out.put_owned(self.z);
-    }
     fn take(
         input: &mut crate::wire::Reader<'_>,
     ) -> ::std::result::Result<Self, crate::wire::WireError> {
@@ -944,10 +914,6 @@ impl crate::wire::Wire for crate::BoundingBox {
     fn put(&self, out: &mut crate::wire::Writer) {
         out.put(&self.min);
         out.put(&self.max);
-    }
-    fn put_owned(self, out: &mut crate::wire::Writer) {
-        out.put_owned(self.min);
-        out.put_owned(self.max);
     }
     fn take(
         input: &mut crate::wire::Reader<'_>,
@@ -971,17 +937,6 @@ impl crate::wire::Wire for crate::LevelDimension {
             Self::Custom(f0) => {
                 out.put(&3u32);
                 out.put(f0);
-            }
-        }
-    }
-    fn put_owned(self, out: &mut crate::wire::Writer) {
-        match self {
-            Self::Overworld => out.put_owned(0u32),
-            Self::Nether => out.put_owned(1u32),
-            Self::End => out.put_owned(2u32),
-            Self::Custom(f0) => {
-                out.put_owned(3u32);
-                out.put_owned(f0);
             }
         }
     }
@@ -1106,25 +1061,6 @@ impl crate::wire::Wire for crate::AttachmentRowError {
             }
         }
     }
-    fn put_owned(self, out: &mut crate::wire::Writer) {
-        match self {
-            Self::Value(f0) => {
-                out.put_owned(0u32);
-                out.put_owned(f0);
-            }
-            Self::StaleHolder => out.put_owned(1u32),
-            Self::HolderBusy => out.put_owned(2u32),
-            Self::UnsupportedHolder(kind) => {
-                out.put_owned(3u32);
-                out.put_owned(kind);
-            }
-            _ => {
-                out.fail(crate::wire::WireError::Invalid(
-                    "unknown AttachmentRowError",
-                ));
-            }
-        }
-    }
     fn take(
         input: &mut crate::wire::Reader<'_>,
     ) -> ::std::result::Result<Self, crate::wire::WireError> {
@@ -1210,18 +1146,6 @@ impl crate::wire::Wire for crate::TicketOwner {
             }
         }
     }
-    fn put_owned(self, out: &mut crate::wire::Writer) {
-        match self {
-            Self::Block(f0) => {
-                out.put_owned(0u32);
-                out.put_owned(f0);
-            }
-            Self::Entity(f0) => {
-                out.put_owned(1u32);
-                out.put_owned(f0);
-            }
-        }
-    }
     fn take(
         input: &mut crate::wire::Reader<'_>,
     ) -> ::std::result::Result<Self, crate::wire::WireError> {
@@ -1266,34 +1190,6 @@ impl crate::wire::Wire for crate::Holder {
             }
         }
     }
-    fn put_owned(self, out: &mut crate::wire::Writer) {
-        match self {
-            Self::Entity(f0) => {
-                out.put_owned(0u32);
-                out.put_owned(f0);
-            }
-            Self::Player(f0) => {
-                out.put_owned(1u32);
-                out.put_owned(f0);
-            }
-            Self::BlockEntity(f0) => {
-                out.put_owned(2u32);
-                out.put_owned(f0);
-            }
-            Self::Chunk(f0) => {
-                out.put_owned(3u32);
-                out.put_owned(f0);
-            }
-            Self::Level => out.put_owned(4u32),
-            Self::OriginalPlayer(f0) => {
-                out.put_owned(5u32);
-                out.put_owned(f0);
-            }
-            _ => {
-                out.fail(crate::wire::WireError::Invalid("unknown Holder"));
-            }
-        }
-    }
     fn take(
         input: &mut crate::wire::Reader<'_>,
     ) -> ::std::result::Result<Self, crate::wire::WireError> {
@@ -1322,11 +1218,6 @@ impl crate::wire::Wire for crate::AttachmentForm {
         out.put(&self.policy);
         out.put(&self.write);
     }
-    fn put_owned(self, out: &mut crate::wire::Writer) {
-        out.put_owned(self.encoded);
-        out.put_owned(self.policy);
-        out.put_owned(self.write);
-    }
     fn take(
         input: &mut crate::wire::Reader<'_>,
     ) -> ::std::result::Result<Self, crate::wire::WireError> {
@@ -1346,10 +1237,6 @@ impl crate::wire::Wire for crate::AttachmentPolicy {
     fn put(&self, out: &mut crate::wire::Writer) {
         out.put(&self.copy_on_death);
         out.put(&self.sync);
-    }
-    fn put_owned(self, out: &mut crate::wire::Writer) {
-        out.put_owned(self.copy_on_death);
-        out.put_owned(self.sync);
     }
     fn take(
         input: &mut crate::wire::Reader<'_>,
