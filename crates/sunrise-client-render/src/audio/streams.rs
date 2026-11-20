@@ -852,15 +852,28 @@ mod tests {
     }
 
     #[test]
-    fn a_full_ring_refuses_the_excess() {
+    fn an_async_queue_keeps_frame_order_when_a_burst_wraps_a_full_ring() {
         let rig = Rig::new();
-        let stream = rig.open("mod", &spec()).unwrap();
-        assert_eq!(stream.push(&half(50_000)), 48_000);
-        rig.play(0);
-        assert_eq!(stream.push(&half(1)), 0);
-        // Only playing a nonempty buffer makes room again: the 480 frames played.
-        rig.play(480);
-        assert_eq!(stream.push(&half(500)), 480);
+        let stream = rig
+            .open("mod", &StreamSpec::new(SoundSource::Voice, 2, 48_000))
+            .unwrap();
+        // One second of stereo PCM; distinguish both ends and both channels.
+        let mut queued = vec![0; 96_000];
+        queued[..4].copy_from_slice(&[8192, -8192, 4096, -4096]);
+        queued[95_998..].copy_from_slice(&[2048, -2048]);
+        assert_eq!(stream.push(&queued), 48_000);
+        let burst = [16_384, -16_384, -8192, 8192, 4096, -4096];
+        assert!(rig.play(0).is_empty());
+        assert_eq!(stream.push(&burst), 0);
+        assert_eq!(rig.play(2), [0.25, -0.25, 0.125, -0.125]);
+
+        // The next push can reuse the two slots just played, but not overwrite the rest.
+        assert_eq!(stream.push(&burst), 2);
+        let remaining = rig.play(47_998);
+        let (silence, last) = remaining.split_last_chunk::<2>().unwrap();
+        assert!(silence.iter().all(|&sample| sample == 0.0));
+        assert_eq!(*last, [0.0625, -0.0625]);
+        assert_eq!(rig.play(3), [0.5, -0.5, -0.25, 0.25, 0.0, 0.0]);
     }
 
     #[test]
@@ -1224,8 +1237,7 @@ mod tests {
             .unwrap();
         stream.push(&half(2_000));
         // A writer is in the middle of a change when the callback first looks.
-        let control = rig.pool.controls()[0].clone();
-        control.sequence.store(1, Relaxed);
+        rig.pool.state().controls[0].sequence.store(1, Relaxed);
         assert!(rig.play(64).iter().all(|s| *s == 0.0));
         let voice = &rig.mixer.lock().unwrap().streams[0];
         assert!(voice.view.positional && voice.view.placed);
@@ -1268,7 +1280,7 @@ mod tests {
         let rig = Rig::new();
         let stream = rig.open("mod", &spec()).unwrap();
         // Another thread is mid-push: its flag is up.
-        let handle = rig.pool.controls()[0].clone();
+        let handle = rig.pool.state().controls[0].clone();
         handle.pushing.store(true, Release);
         assert_eq!(stream.push(&half(10)), 0);
         handle.pushing.store(false, Release);

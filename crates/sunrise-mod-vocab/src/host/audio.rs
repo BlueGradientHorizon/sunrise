@@ -11,7 +11,8 @@ pub trait AudioClientHost {
     /// Side: client.
     /// Gives the mixer a native source of interleaved signed 16-bit PCM, like NeoForge's
     /// `SoundInstance.getStream`. The mixer takes ownership and calls [`AudioStream::read`]
-    /// serially on its worker as it needs frames, with no `Host` or world borrow. A short or dry
+    /// serially on the output's shared worker as it needs frames, with no `Host` or world borrow.
+    /// The device callback requests PCM but never calls or waits for the source. A short or dry
     /// read is retried on later demand. EOF lets ready frames drain before playback stops.
     /// [`AudioStreamRef::push`] always returns zero on this handle.
     ///
@@ -48,9 +49,10 @@ pub trait AudioClientHost {
 
     /// Side: client.
     /// Opens a stream for an async producer, such as a network payload handler. Use
-    /// [`AudioStreamRef::push`] from the producer thread; it returns the whole frames the
-    /// bounded ring accepted without waiting. Playback starts with the first available frame
-    /// and plays silence when dry. Stop or drop the handle to end the stream.
+    /// [`AudioStreamRef::push`] from one producer thread per stream. It returns the whole
+    /// frames the bounded ring accepted, without waiting for the mixer or a tick. Playback
+    /// starts with the first available frame and plays silence when dry. Stop or drop the
+    /// handle to end the stream.
     ///
     /// Refuses with [`AudioRefusal`] when playback is unavailable, the spec is invalid or a
     /// stream limit is reached.
