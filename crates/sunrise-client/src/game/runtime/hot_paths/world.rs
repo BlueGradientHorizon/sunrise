@@ -56,13 +56,13 @@ impl Game<'_> {
         // A server ticks only the chunks someone holds: no player is here, so they are forced.
         // The level before this one may have left its own forced (the command fails with none).
         self.run_command_quietly("forceload remove all");
+        // The ticket alone, as `forceload add` sets it. The command then waits, pumping streaming,
+        // until each column can tick with its 3x3 resident; streaming never runs here, and the
+        // columns are already in place, inserted above, so there is nothing to wait for.
         for cx in -radius..=radius {
-            let x = cx * 16;
-            self.hot_command(&format!(
-                "forceload add {x} {} {x} {}",
-                -radius * 16,
-                radius * 16
-            ))?;
+            for cz in -radius..=radius {
+                self.streaming.set_forced(cx, cz, true);
+            }
         }
         for rule in ["spawn_mobs", "advance_time", "advance_weather"] {
             self.hot_command(&format!("gamerule {rule} false"))?;
