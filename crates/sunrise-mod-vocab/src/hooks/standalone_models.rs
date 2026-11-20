@@ -35,17 +35,18 @@ pub trait Hooks {
         cancel: &mut bool,
     );
     /// Models no blockstate names, registered once on the client before resources load.
-    /// `models` collects plain namespaced file ids, baked unturned. `forms` collects
-    /// rotated/UV-locked or combined dependencies under a namespaced result id.
-    /// Every resource load rebakes both from the active pack files. A missing dependency
-    /// drops the entire form and logs its registering mod. Resolve the results through
-    /// `RenderAssets::model` after `model_baking_completed`, just like plain ids.
+    /// Use [`StandaloneModelsEvent::register_model`] for plain files or
+    /// [`StandaloneModelsEvent::register`] to bind a baker and its file dependencies.
+    /// Every resource load rebakes both from the active pack files. Failed bakes publish
+    /// no model and log the registering mod. Look up results through `RenderAssets::model`
+    /// in or after `model_baking_completed`.
     #[hook(
         side = "client",
         contract = "collect",
-        out = "forms",
+        out = "registrations",
         answered_by = "mod",
-        version = 2,
+        registration_append = "custom",
+        version = 3,
         context = "registration",
         neoforge = "ModelEvent.RegisterStandalone"
     )]

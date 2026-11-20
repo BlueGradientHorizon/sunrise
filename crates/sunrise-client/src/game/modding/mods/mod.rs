@@ -420,8 +420,8 @@ fn native_declared() -> std::borrow::Cow<'static, NativeDeclared> {
 /// The native mods' standalone models (`native_standalone_models`), set once
 /// before the resources first load.
 pub(super) fn register_standalone_models(role: ExecutionRole) {
-    if let Some(names) = collect_standalone_models(role) {
-        sunrise_client::models::register_standalone(names);
+    if let Some(registrations) = collect_standalone_models(role) {
+        sunrise_client::models::register_standalone(registrations);
     }
     register_fluid_models(role);
 }

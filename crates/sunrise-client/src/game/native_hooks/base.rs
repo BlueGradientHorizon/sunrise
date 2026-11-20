@@ -903,14 +903,13 @@ impl Game<'_> {
     ) {
         Self::fire_items(context, items);
     }
-    /// File-backed standalone models and bake-time forms, registered before resource loading.
-    /// Every resource load rebakes them; dispatch attributes each form to its owning mod.
+    /// Standalone files and bakers, registered before resource loading.
+    /// Every resource load rebakes them; dispatch attributes each entry to its owning mod.
     pub(in crate::game) fn native_standalone_models(
         context: &mod_api::RegistrationContext,
-        models: &mut Vec<String>,
-        forms: &mut Vec<mod_api::Answered<mod_api::StandaloneModelForm>>,
+        registrations: &mut Vec<Answered<StandaloneModelRegistration>>,
     ) {
-        Self::fire_standalone_models(context, models, forms);
+        Self::fire_standalone_models(context, registrations);
     }
     /// The player changed setting `key` of mod `mod_id` on its page in Options > Mods; the new
     /// value is kept already.

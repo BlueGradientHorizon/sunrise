@@ -127,7 +127,7 @@ mod generated {
             pub id: String,
         }
         pub(super) use super::super::ItemStack;
-        // The generated standalone-model dispatch builds the stub `Answered` and names the type through this path.
+        // Generated registration dispatch builds the stub `Answered` through this path.
         pub(super) use super::super::Answered;
         pub(super) use super::super::{
             Command, Config, DeclarationError, Dispensed, InteractionResult, MapDecoration,
@@ -141,6 +141,7 @@ mod generated {
     }
     include!(concat!(env!("OUT_DIR"), "/mod_api_generated.rs"));
     pub(super) use self::mod_api::InlineImageReplacement;
+    use self::mod_api::StandaloneModelRegistration;
     pub(super) use self::mod_api::{
         BlockEntityTickReply, BlockFace, BlockKey, BlockState, CrosshairTarget,
     };

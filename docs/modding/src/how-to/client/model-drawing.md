@@ -135,45 +135,51 @@ discards all of the piece's custom layers, draws the piece with vanilla behaviou
 and disables that provider until reload, with one diagnostic. A failure discards the custom drawing even if an earlier layer succeeded.
 Callbacks work with references and layer values, not geometry or rebakes.
 
-## Bake-time standalone forms
+## Standalone model bakers
 
-`standalone_models` contract version 2 keeps `event.models: &mut Vec<String>` for plain
-file ids and adds `event.forms: &mut Vec<StandaloneModelForm>`. Listeners receive `RegistrationContext`, not a runtime `Host`. Forms are attributed
-to the registering mod by dispatch:
+Implement `Hooks::standalone_models` on the client. It receives a `RegistrationContext`,
+not a runtime `Host`. Call `event.register_model(id)` to bake a file as-is. To build
+a result from one or more files, call `event.register(id, dependencies, baker)`:
 
 ```rust,ignore
-event.forms.push(StandaloneModelForm::Rotated {
-    id: "mymod:shaft_east".into(),
-    model: "mymod:block/shaft".into(),
-    turns: [0, 1, 0],
-    uvlock: true,
+event.register_model("mymod:block/shaft");
+
+event.register("mymod:shaft_east", ["mymod:block/shaft"], |bake| {
+    bake.append_dependency("mymod:block/shaft", [0, 1, 0], true)
 });
-event.forms.push(StandaloneModelForm::Combined {
-    id: "mymod:machine".into(),
-    parts: vec!["mymod:block/base".into(), "mymod:block/overlay".into()],
-});
+
+event.register(
+    "mymod:machine",
+    ["mymod:block/base", "mymod:block/overlay"],
+    |bake| {
+        bake.append_dependency("mymod:block/base", [0; 3], false)?;
+        bake.append_dependency("mymod:block/overlay", [0; 3], false)
+    },
+);
 ```
 
-`turns` are negative quarter-turn counts, modulo four, applied X then Y then Z
-about the block centre, exactly as blockstate baking. UV locking uses the inverse
-face transformation during baking; rotating a draw pose is not equivalent. For a
-Y quarter-turn a north wall becomes east but stays upright either way; a north-pointing
+The callback is `Send + Sync + 'static`; capture owned data. It returns
+`Result<(), StandaloneModelBakeError>` and receives a scoped `StandaloneModelBakeContext`.
+Its quarter-turn counts are negative turns, modulo four, applied X then Y then Z
+about the block centre, exactly as in blockstate baking. UV locking uses the inverse
+face transformation during baking; rotating a draw pose is not equivalent. For a Y
+quarter-turn a north wall becomes east but stays upright either way; a north-pointing
 arrow on the top turns east without UV locking and retains its world orientation with it.
 
-Combined parts bake unturned in declaration order, retaining each part's positions,
-materials and quad metadata in one `ModelRef`. Their particle is the first available
-part particle and model-level ambient occlusion is enabled only if every part enables it.
-Dependencies, including parents and loader references, load through the normal model
-library; they are not implicitly registered as standalone results. If any dependency
-cannot load or bake, no part of that form is published and the warning names the
-registering mod, even when the result or source has a different namespace.
+Quads are appended in call order, retaining each part's positions, materials and quad
+metadata in one model. The particle is the first available part particle, and model-level
+ambient occlusion is enabled only if every appended part enables it. Declare all the model
+files the callback may append. Dependencies, including their parents and loader references,
+load through the normal model library; they are not automatically registered as results.
+An undeclared append, a missing dependency, a bake error or a refused callback discards
+the whole model and logs the registering mod. Ignoring an append error still discards it.
 
-Result ids follow the same rule as plain ids: a nonempty namespace and path are
-required; they need not equal the registering mod id. Plain ids win duplicate result
-ids, then the first successfully baked form wins. Registration runs once, but all
-forms rebake from current resources on every successful load. Resolve result ids in
-`model_baking_completed`; reload invalidates old handles and failed reloads retain them.
-This API bakes quads only, not a mod-defined baked result type.
+Result IDs and plain file IDs require a nonempty namespace and path, which need not equal
+the registering mod's ID. A successfully baked plain file wins over any baker for that ID;
+otherwise the first successful baker in registration order wins. Register once at
+startup; the same callbacks run against current files at each resource load. Resolve result
+IDs in `model_baking_completed`; reload invalidates old handles, while failed reloads
+retain them. The result is baked quads, not a mod-defined baked object.
 
 
 ## Colour, hidden faces and translucency of copies

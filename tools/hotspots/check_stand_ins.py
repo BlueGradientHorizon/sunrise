@@ -14,7 +14,7 @@ This script reads source text only (no build) and fails on:
 
 Known false negatives (these still surface only in the rollup's build):
 - names the generator introduces rather than the hook signature: `Answered<T>` from `answered_by`, an `out =`
-  output type such as `StandaloneModelForm`, `BlockEntityTickReply` from tick dispatch;
+  output type such as `StandaloneModelRegistration`, or `BlockEntityTickReply` from tick dispatch;
 - a derive or a method the generated dispatch needs on an existing stub (`#[derive(Clone)]`,
   `__begin_tick_listener`), and a stand-in whose shape (fields, variants, generics) no longer fits;
 - names are matched by their last segment: a stand-in, trait or impl target is one name across the files read, so

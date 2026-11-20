@@ -26,7 +26,9 @@ use super::{
     native_mob_draw::{MobRender, PlayerRender},
     native_panel_recipes::RecipePage,
 };
-use mod_api::__private::game::{LayerDefinitionRegistration, ParticleGroupRegistration};
+use mod_api::__private::game::{
+    LayerDefinitionRegistration, ParticleGroupRegistration, StandaloneModelRegistration,
+};
 use mod_api::CommandSource;
 use mod_api::GameMode;
 use mod_api::GameTests;
