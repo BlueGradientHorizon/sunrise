@@ -13,7 +13,7 @@ pub struct WireSchema {
 }
 
 impl WireSchema {
-    /// Mark a form that requires an unmetered conversion; used by Wire's derives.
+    // hidden: generated Wire codecs mark conversions that cannot use the payload budget.
     #[doc(hidden)]
     pub fn ordinary_only(&mut self) {
         self.ordinary_only = true;
