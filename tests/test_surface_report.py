@@ -61,6 +61,32 @@ class GateTests(unittest.TestCase):
                 surface_report.gate(config)
 
 
+class FetchTests(unittest.TestCase):
+    """fetch_commit(): shallow only where the checkout already is."""
+
+    def calls(self, shallow, present):
+        made = []
+
+        def git(*args):
+            made.append(args)
+            if args[0] == "rev-parse":
+                return "true\n" if shallow else "false\n"
+            if args[0] == "cat-file" and not present:
+                raise subprocess.CalledProcessError(128, ["git", *args])
+            return ""
+
+        surface_report.fetch_commit("abcd", 2, git)
+        return [args for args in made if args[0] == "fetch"]
+
+    def test_a_shallow_checkout_fetches_shallow(self):
+        self.assertEqual(self.calls(shallow=True, present=False),
+                         [("fetch", "-q", "--no-tags", "--depth", "2", "origin", "abcd")])
+
+    def test_a_full_clone_is_never_fetched_shallow(self):
+        self.assertEqual(self.calls(shallow=False, present=True), [])
+        self.assertEqual(self.calls(shallow=False, present=False), [("fetch", "-q", "--no-tags", "origin", "abcd")])
+
+
 @unittest.skipUnless(shutil.which("bash"), "needs bash for the stub tool")
 class ReportTests(unittest.TestCase):
     """report() against a stub sunrise-stage whose behaviour each test sets."""
