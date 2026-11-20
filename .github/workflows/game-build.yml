@@ -263,7 +263,9 @@ jobs:
       - name: ALSA and udev headers
         # libudev-sys also probes the host (not the target) for hwdb in the musl build.
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev libudev-dev
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev libudev-dev
+          dpkg-query -W libasound2-dev libudev-dev
       - name: Build the official game, sunrise-ctl, sunrise-perf, sunrise-prepare, sunrise-server and sunrise-port-pack
         if: ${{ !matrix.musl }}
         run: cargo build --release --locked --timings ${{ matrix.target && format('--target {0}', matrix.target) || '' }} -p sunrise-official --bin sunrise-official -p sunrise-client-lib --bin sunrise-ctl -p sunrise-perf --bin sunrise-perf -p sunrise-prepare --bin sunrise-prepare -p sunrise-server --bin sunrise-server -p sunrise-port-pack --bin sunrise-port-pack
@@ -393,8 +395,13 @@ jobs:
         run: |
           sysroot="$RUNNER_TEMP/alpine-sysroot"
           mkdir -p "$sysroot"
+          # The image is pinned by digest; its packages come from the live 3.22 repository, so each one the build
+          # links against is held to the upstream version this route was proven with (`~`: Alpine's own rebuilds and
+          # security fixes of it still install), and the whole set is printed for the log.
           docker run --rm "$MUSL_IMAGE" sh -ec '
-            apk add --no-cache build-base linux-headers alsa-lib-dev eudev-dev >&2
+            apk add --no-cache build-base "gcc~14.2" "binutils~2.44" "musl-dev~1.2.5" "linux-headers~6.14" \
+              "alsa-lib-dev~1.2.14" "eudev-dev~3.2.14" >&2
+            apk info -v | sort >&2
             tar -C / -cf - lib usr
           ' | tar --no-same-owner -xf - -C "$sysroot"
           # Let Alpine's GCC and binutils run without putting musl libraries on glibc's search path.
@@ -435,7 +442,8 @@ jobs:
           python3 .workflow-tools/tools/check_cpu_baseline.py "${programs[@]}"
           # This container sees the package only, not the compiler sysroot or host libraries.
           docker run --rm -i -e SUNRISE_VERSION -v "$PWD/$folder:/package:ro" "$MUSL_IMAGE" sh -ec '
-            apk add --no-cache alsa-lib eudev-libs libgcc
+            apk add --no-cache "alsa-lib~1.2.14" "eudev-libs~3.2.14" "libgcc~14.2" "musl~1.2.5"
+            apk info -v | sort
             exec sh -s /package
           ' < .workflow-tools/tools/ci/check-musl-startup.sh
       - name: Notarized

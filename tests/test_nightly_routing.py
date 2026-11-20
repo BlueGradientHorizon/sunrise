@@ -198,6 +198,12 @@ console.log(JSON.stringify(Boolean(eval(s.expression))));
         for step in (steps[cross], steps[validate]):
             self.assertEqual(step["if"], "matrix.musl")
             self.assertIn('"$MUSL_IMAGE"', step["run"])
+            # Every package the build links against, or the programs load, is held to the proven upstream version.
+            installs = " ".join(re.findall(r"apk add --no-cache ([^\n]+)", step["run"].replace("\\\n", " "))).split()
+            held = {spec.strip('"').split("~")[0] for spec in installs if "~" in spec}
+            needed = {"gcc", "binutils", "musl-dev", "linux-headers", "alsa-lib-dev", "eudev-dev"} if step is steps[cross] \
+                else {"alsa-lib", "eudev-libs", "libgcc", "musl"}
+            self.assertEqual(held, needed)
 
     def test_every_shipped_glibc_program_is_checked_by_workflow_owned_tools(self):
         text = GAME.read_text()
