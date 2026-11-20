@@ -12,7 +12,8 @@ use std::collections::{HashMap, VecDeque};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, mpsc};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, MutexGuard, mpsc};
 use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Local, NaiveDate};
@@ -390,7 +391,7 @@ impl Floods {
 
 static LOGGER: std::sync::OnceLock<Logger> = std::sync::OnceLock::new();
 
-/// The most lines the tap keeps between two drains (`take_tapped`); older ones are dropped.
+/// The most lines the tap keeps between two drains (`take_tapped`); new overflow is dropped.
 pub const TAP_LINES: usize = 4096;
 
 /// The most bytes of a line's message the tap keeps; the rest is cut off at a character boundary.
@@ -404,32 +405,82 @@ pub struct TappedLine {
     pub level: log::Level,
     pub thread: String,
     pub message: String,
+    /// The batch's overflow count on its first line; zero on every later line.
+    pub dropped: u64,
 }
 
-/// Whether the tap keeps lines (`set_tap`), read before its lock is taken.
-static TAPPING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-/// The lines kept for the native mods' `console_line` hook, oldest first.
-static TAP: Mutex<VecDeque<TappedLine>> = Mutex::new(VecDeque::new());
+#[derive(Default)]
+struct TapQueue {
+    lines: Vec<TappedLine>,
+    dropped: u64,
+}
+
+impl TapQueue {
+    fn push(&mut self, thread: &str, level: log::Level, message: &str) {
+        if self.lines.len() == TAP_LINES {
+            self.dropped += 1;
+            return;
+        }
+        self.lines.push(TappedLine {
+            level,
+            thread: capped(thread, TAP_THREAD_BYTES),
+            message: capped(message, TAP_MESSAGE_BYTES),
+            dropped: 0,
+        });
+    }
+
+    fn drain(&mut self) -> Vec<TappedLine> {
+        if let Some(first) = self.lines.first_mut() {
+            first.dropped = std::mem::take(&mut self.dropped);
+        }
+        std::mem::take(&mut self.lines)
+    }
+}
+
+/// Read before touching the tap queue. Only the server tick or shutdown changes it.
+static TAPPING: AtomicBool = AtomicBool::new(false);
+static TAP: Mutex<TapQueue> = Mutex::new(TapQueue {
+    lines: Vec::new(),
+    dropped: 0,
+});
 
 thread_local! {
     /// Set while this thread runs `untapped`: its lines are not kept.
     static UNTAPPED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-/// Keeps every line logged from now on for `take_tapped` (`on`), or stops and forgets them.
-pub fn set_tap(on: bool) {
-    TAPPING.store(on, std::sync::atomic::Ordering::Relaxed);
-    if !on {
-        TAP.lock().unwrap_or_else(|e| e.into_inner()).clear();
-    }
+#[cfg(test)]
+thread_local! {
+    static TAP_LOCKS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
-/// The lines the tap kept since the last call, oldest first.
-pub fn take_tapped() -> Vec<TappedLine> {
-    TAP.lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .drain(..)
-        .collect()
+fn lock_tap() -> MutexGuard<'static, TapQueue> {
+    #[cfg(test)]
+    TAP_LOCKS.set(TAP_LOCKS.get() + 1);
+    TAP.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Called by the server at tick start. The first listening tick enables capture; later ones
+/// drain the previous tick's batch in order. With no listener, only the transition from active
+/// to inactive touches the queue, to discard any undelivered lines and release its memory.
+pub fn take_tapped(listened: bool) -> Vec<TappedLine> {
+    if !listened {
+        stop_tap();
+    } else if TAPPING.load(Ordering::Relaxed) {
+        return lock_tap().drain();
+    } else {
+        TAPPING.store(true, Ordering::Relaxed);
+    }
+    Vec::new()
+}
+
+/// Stop capture and forget any undelivered lines. Already idle means no tap lock.
+pub fn stop_tap() {
+    if TAPPING.load(Ordering::Relaxed) {
+        let mut queue = lock_tap();
+        TAPPING.store(false, Ordering::Relaxed);
+        *queue = TapQueue::default();
+    }
 }
 
 /// Runs `f` without tapping the lines this thread logs meanwhile (a `console_line`
@@ -454,19 +505,18 @@ fn capped(text: &str, max: usize) -> String {
     text[..end].to_owned()
 }
 
-fn tap(thread: &str, level: log::Level, message: &str) {
-    if !TAPPING.load(std::sync::atomic::Ordering::Relaxed) || UNTAPPED.get() {
-        return;
+/// Hold the tap lock through publication to the log writer so both queues see the same order.
+fn tap(thread: &str, level: log::Level, message: &str) -> Option<MutexGuard<'static, TapQueue>> {
+    if !TAPPING.load(Ordering::Relaxed) || UNTAPPED.get() {
+        return None;
     }
-    let mut lines = TAP.lock().unwrap_or_else(|e| e.into_inner());
-    if lines.len() >= TAP_LINES {
-        lines.pop_front();
+    let mut queue = lock_tap();
+    // Shutdown may have disabled the tap while this producer waited for the queue.
+    if !TAPPING.load(Ordering::Relaxed) {
+        return None;
     }
-    lines.push_back(TappedLine {
-        level,
-        thread: capped(thread, TAP_THREAD_BYTES),
-        message: capped(message, TAP_MESSAGE_BYTES),
-    });
+    queue.push(thread, level, message);
+    Some(queue)
 }
 
 fn ours(target: &str) -> bool {
@@ -533,7 +583,6 @@ impl log::Log for Logger {
             _ => {}
         }
         let stderr = sunrise.then(|| message.clone());
-        tap(thread, level, &message);
         self.send(thread, level, &message, stderr);
         if gate == Gate::Last {
             self.write(
@@ -586,10 +635,13 @@ impl Logger {
             lines,
             stderr,
         };
+        let queue = tap(thread, level, message);
+        let result = self.out.send(msg);
+        drop(queue);
         if let Err(mpsc::SendError(Out::Write {
             stderr: Some(message),
             ..
-        })) = self.out.send(msg)
+        })) = result
         {
             // No writer (it could not start): the terminal still gets Sunrise's messages.
             eprintln!("{message}");
@@ -651,18 +703,16 @@ pub fn write_only(level: log::Level, message: &str) {
         Some("main") | None => main,
         Some(name) => name,
     };
-    tap(thread, level, message);
-    if let Some(logger) = LOGGER.get() {
-        logger.write(thread, level, message);
-    }
+    write_as(thread, level, message);
 }
 
 /// Writes `message` to the log file only, under the thread vanilla names for it (`Server thread` for
 /// a login refused on a connection's own thread), as the console line beside it shows.
 pub fn write_as(thread: &str, level: log::Level, message: &str) {
-    tap(thread, level, message);
     if let Some(logger) = LOGGER.get() {
         logger.write(thread, level, message);
+    } else {
+        drop(tap(thread, level, message));
     }
 }
 
@@ -714,8 +764,6 @@ pub fn newest_crash_report(home: &Path) -> Option<PathBuf> {
 mod tests {
     use super::*;
 
-    /// The tap keeps lines only while on, never a line logged inside `untapped`, and at most
-    /// `TAP_LINES`, dropping the oldest.
     #[test]
     fn the_tap_keeps_lines_while_on_and_skips_untapped_ones() {
         let probes = |lines: Vec<TappedLine>| -> Vec<String> {
@@ -725,34 +773,35 @@ mod tests {
                 .map(|l| format!("{}/{}: {}", l.thread, l.level, l.message))
                 .collect()
         };
+        let idle_locks = TAP_LOCKS.get();
+        assert!(take_tapped(false).is_empty());
         write_as("Server thread", log::Level::Info, "tap probe off");
-        set_tap(true);
+        assert_eq!(
+            TAP_LOCKS.get(),
+            idle_locks,
+            "an idle tick and log take no tap lock"
+        );
+        assert!(take_tapped(true).is_empty());
         write_as("Server thread", log::Level::Warn, "tap probe 1");
         untapped(|| write_as("Server thread", log::Level::Info, "tap probe hidden"));
         write_only(log::Level::Error, "tap probe 2");
         let thread = std::thread::current().name().unwrap_or("main").to_owned();
         assert_eq!(
-            probes(take_tapped()),
+            probes(take_tapped(true)),
             [
                 "Server thread/WARN: tap probe 1".to_owned(),
                 format!("{thread}/ERROR: tap probe 2"),
             ]
         );
-        for i in 0..TAP_LINES + 5 {
-            write_as("Server thread", log::Level::Info, &format!("tap probe {i}"));
-        }
-        let kept = take_tapped();
-        assert!(kept.len() <= TAP_LINES);
-        assert_eq!(
-            kept.last().unwrap().message,
-            format!("tap probe {}", TAP_LINES + 4)
-        );
         // An oversized line is cut to the stated caps, at a character boundary: the message
         // ends in a three-byte character that straddles the cap, the thread name is long.
         let long = format!("tap probe long {}", "\u{20ac}".repeat(TAP_MESSAGE_BYTES));
         write_as(&"t".repeat(TAP_THREAD_BYTES + 50), log::Level::Info, &long);
-        let kept = take_tapped();
-        let line = kept.last().unwrap();
+        let kept = take_tapped(true);
+        let line = kept
+            .iter()
+            .find(|l| l.message.starts_with("tap probe long"))
+            .unwrap();
         assert_eq!(line.thread, "t".repeat(TAP_THREAD_BYTES));
         assert!(line.message.starts_with("tap probe long \u{20ac}"));
         assert!(line.message.len() <= TAP_MESSAGE_BYTES);
@@ -760,9 +809,36 @@ mod tests {
             TAP_MESSAGE_BYTES - line.message.len() < 3,
             "cut at the last whole character"
         );
-        set_tap(false);
+        write_as(
+            "Server thread",
+            log::Level::Info,
+            "tap probe discarded on stop",
+        );
+        assert!(take_tapped(false).is_empty());
         write_as("Server thread", log::Level::Info, "tap probe after");
-        assert!(probes(take_tapped()).is_empty());
+        assert!(take_tapped(true).is_empty());
+        assert!(probes(take_tapped(true)).is_empty());
+        assert!(take_tapped(false).is_empty());
+    }
+
+    #[test]
+    fn the_tap_keeps_the_oldest_lines_and_reports_overflow_once() {
+        let mut queue = TapQueue::default();
+        for i in 0..4099 {
+            queue.push("Server thread", log::Level::Info, &format!("line {i}"));
+        }
+        let batch = queue.drain();
+        assert_eq!(batch.len(), 4096);
+        for (i, line) in batch.iter().enumerate() {
+            assert_eq!(line.message, format!("line {i}"));
+            assert_eq!(line.dropped, if i == 0 { 3 } else { 0 });
+        }
+        assert!(queue.drain().is_empty());
+        queue.push("Server thread", log::Level::Info, "next batch");
+        let batch = queue.drain();
+        assert_eq!(batch.len(), 1);
+        assert_eq!(batch[0].message, "next batch");
+        assert_eq!(batch[0].dropped, 0);
     }
 
     #[test]

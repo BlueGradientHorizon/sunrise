@@ -9,17 +9,11 @@ impl Game<'_> {
     /// a mod listens; the lines its listeners log are not kept.
     pub(super) fn native_console_lines(&mut self) {
         let listened = mod_api::__private::listened(mod_api::HookId::ConsoleLine);
-        logging::set_tap(listened);
-        if !listened {
-            return;
-        }
-        for line in logging::take_tapped() {
-            let level = match line.level {
-                log::Level::Error => "ERROR",
-                log::Level::Warn => "WARN",
-                _ => "INFO",
-            };
-            logging::untapped(|| self.native_console_line(level, &line.thread, &line.message));
+        for line in logging::take_tapped(listened) {
+            let level = line.level.as_str();
+            logging::untapped(|| {
+                self.native_console_line(level, &line.thread, &line.message, line.dropped);
+            });
         }
     }
 

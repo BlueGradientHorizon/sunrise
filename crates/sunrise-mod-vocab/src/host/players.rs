@@ -26,20 +26,21 @@ pub trait PlayersServerHost {
     fn fake_player(&mut self, level: LevelRef, uuid: u128, name: &str) -> Option<PlayerRef>;
     /// Side: server.
     /// The most players who may be on at once (`PlayerList.getMaxPlayers`,
-    /// `max-players`), as the server list shows it and logins are refused
-    /// beyond. None where no server is open to players (a client, or a server
-    /// nobody can join): the one reason there is none.
+    /// `max-players`), as the server list shows it. Logins at or above the limit
+    /// are refused unless they bypass it. None where no server is open to players
+    /// (a client, or a server nobody can join).
     #[access(WorldOnly)]
     fn server_max_players(&self) -> Option<u32>;
     /// Side: server.
     /// Sets the player limit from the next login and server list ping on
     /// (Paper's `Server.setMaxPlayers`); players already on stay, even when
-    /// they are more than the new limit. `server.properties` is not changed,
-    /// so a restart goes back to its `max-players`. Writes nothing and refuses
-    /// with `PlayerLimitRefusal::NotOpen` where no server is open to players,
+    /// they are more than the new limit. The existing login bypass still applies
+    /// (dedicated operators flagged `bypassesPlayerLimit`). `server.properties`
+    /// is not changed, so a restart goes back to its `max-players`.
+    /// Writes nothing and refuses with `PlayerLimitRefusal::NotOpen` where no server is open to players,
     /// and with `TooHigh { maximum }` for a limit above `i32::MAX`, as vanilla
     /// keeps the limit in an `int` (Paper's `setMaxPlayers` takes one). Zero is
-    /// taken: it lets nobody else on.
+    /// taken: it refuses all new logins that do not bypass the limit.
     #[access(WorldOnly)]
     fn server_set_max_players(&mut self, max_players: u32) -> Result<(), PlayerLimitRefusal>;
 }

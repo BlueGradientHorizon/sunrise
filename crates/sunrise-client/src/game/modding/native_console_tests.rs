@@ -5,19 +5,23 @@ use mod_api::{CommandResult, ConsoleLineEvent, Hooks, ServerHost};
 use std::sync::{Arc, Mutex};
 use sunrise_client::logging;
 
-/// Records the probe lines it hears and logs a line of its own for each.
-struct Mirror(Arc<Mutex<Vec<(String, String, String)>>>);
+/// Records probe lines and overflow reports. Echoes probe lines to test re-entry suppression.
+struct Mirror(Arc<Mutex<Vec<(String, String, String, u64)>>>);
 
 #[mod_api::__subscriptions]
 impl Hooks for Mirror {
     fn console_line(&self, _: &mut dyn ServerHost, event: &mut ConsoleLineEvent<'_>) {
-        if event.message.starts_with("console probe") {
+        let probe = event.message.starts_with("console probe");
+        if probe || event.dropped > 0 {
             self.0.lock().unwrap().push((
                 event.level.to_owned(),
                 event.thread.to_owned(),
                 event.message.to_owned(),
+                event.dropped,
             ));
-            log::info!("console probe echo");
+        }
+        if probe {
+            logging::write_as("Server thread", log::Level::Info, "console probe echo");
         }
     }
 }
@@ -38,22 +42,47 @@ fn logged_lines_reach_a_listener_but_not_its_own() {
             logging::write_as("Server thread", log::Level::Info, "console probe 2");
             game.native_console_lines();
             game.native_console_lines();
-            let heard = heard.lock().unwrap();
+            let probes = std::mem::take(&mut *heard.lock().unwrap());
             assert_eq!(
-                *heard,
+                probes,
                 [
                     (
                         "WARN".into(),
                         "Server thread".into(),
-                        "console probe 1".into()
+                        "console probe 1".into(),
+                        0,
                     ),
                     (
                         "INFO".into(),
                         "Server thread".into(),
-                        "console probe 2".into()
+                        "console probe 2".into(),
+                        0,
                     ),
                 ]
             );
+
+            for _ in 0..4099 {
+                logging::write_as("Server thread", log::Level::Info, "flood");
+            }
+            game.native_console_lines();
+            logging::write_as(
+                "Server thread",
+                log::Level::Info,
+                "console probe after overflow",
+            );
+            game.native_console_lines();
+            logging::stop_tap();
+            let heard = heard.lock().unwrap();
+            assert_eq!(
+                heard.len(),
+                2,
+                "one overflow report and the following probe"
+            );
+            // Other test threads can log while the process-wide tap is on. The queue unit
+            // test checks the exact count in isolation; this checks that it reaches the hook.
+            assert!(heard[0].3 >= 3);
+            assert_eq!(heard[1].2, "console probe after overflow");
+            assert_eq!(heard[1].3, 0);
         });
     });
 }
