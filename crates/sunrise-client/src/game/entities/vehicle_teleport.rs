@@ -683,9 +683,7 @@ impl Game<'_> {
         to: [f64; 3],
         rotation: Option<PlacedRotation>,
     ) {
-        // General cross-level vehicles place their rows directly above; the
-        // command route has not yet given general rows same-level placement.
-        let Some(id) = vehicle_id(t).filter(|_| !matches!(t, Target::General(_))) else {
+        let Some(id) = vehicle_id(t) else {
             return;
         };
         let (old, new) = (
