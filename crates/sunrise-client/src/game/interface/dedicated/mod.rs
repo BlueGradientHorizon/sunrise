@@ -1694,12 +1694,14 @@ impl Game<'_> {
     /// A console or RCON announcement, logged without adding to the source's command output.
     pub(super) fn dedicated_console_say(&mut self, message: String) {
         let name = if self.rcon_source { "Rcon" } else { "Server" };
+        let Some(hidden) = self.chat_hidden_from(|_| (0, name, message.as_str())) else {
+            return;
+        };
         let held = self.rcon_source.then(|| CAPTURE.take());
         log("INFO", &format!("[Not Secure] [{name}] {message}"));
         if let Some(held) = held {
             CAPTURE.set(held);
         }
-        let hidden = self.chat_hidden_from(|_| (0, name, message.as_str()));
         if let Some(host) = &self.lan {
             host.hub.console_say(name, &message, &hidden);
         }

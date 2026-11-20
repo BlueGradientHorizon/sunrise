@@ -163,7 +163,7 @@ impl Game<'_> {
         name: &str,
         shown: &str,
     ) -> Option<()> {
-        let hidden = self.chat_hidden_from(|_| (message.sender, name, shown));
+        let hidden = self.chat_hidden_from(|_| (message.sender, name, shown))?;
         let mut chat = Vec::new();
         let host = self.lan.as_mut()?;
         host.hub
@@ -175,13 +175,13 @@ impl Game<'_> {
     }
 
     /// Unsigned `/say` from the command dispatcher. Returns whether the acting player's copy
-    /// should go with its captured command output.
+    /// should go with its captured command output. `None` refuses reentrant `/say`.
     pub(super) fn lan_broadcast_source_say(
         &mut self,
         name: &Text,
         message: &Text,
         captured_for: Option<u32>,
-    ) -> bool {
+    ) -> Option<bool> {
         use sunrise_client::lan::data::component_nbt;
 
         let hidden = self.chat_hidden_from(|game| {
@@ -191,9 +191,9 @@ impl Game<'_> {
                 _ => 0, // PlayerChatMessage.system uses the nil UUID.
             };
             (sender, name.plain(), message.plain())
-        });
+        })?;
         let Some(host) = &self.lan else {
-            return false;
+            return Some(false);
         };
         host.hub.broadcast_source_chat(
             "say_command",
@@ -202,10 +202,12 @@ impl Game<'_> {
             captured_for,
             &hidden,
         );
-        captured_for.is_some()
-            && !self
-                .lan_acting_uuid
-                .is_some_and(|uuid| hidden.contains(&uuid))
+        Some(
+            captured_for.is_some()
+                && !self
+                    .lan_acting_uuid
+                    .is_some_and(|uuid| hidden.contains(&uuid)),
+        )
     }
 
     /// SayCommand, EmoteCommands and MsgCommand for a guest: chat to the
@@ -304,7 +306,10 @@ impl Game<'_> {
                 "emote_command"
             };
             let (sender, name) = (host.hub.guests[i].uuid, host.hub.guests[i].name.clone());
-            let hidden = self.chat_hidden_from(|_| (sender, name.as_str(), text.as_str()));
+            let Some(hidden) = self.chat_hidden_from(|_| (sender, name.as_str(), text.as_str()))
+            else {
+                return true;
+            };
             let Some(host) = self.lan.as_mut() else {
                 return false;
             };

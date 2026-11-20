@@ -4068,7 +4068,9 @@ impl Game<'_> {
             "say" => {
                 // A visible copy for the acting player goes with their captured output, in order.
                 let captured_for = self.chat_capture.as_ref().and(self.lan_acting);
-                let capture_say = self.lan_broadcast_source_say(&name, &message, captured_for);
+                let capture_say = self
+                    .lan_broadcast_source_say(&name, &message, captured_for)
+                    .ok_or_else(|| err("command.failed", &[]))?;
                 let line = Text::translate("chat.type.announcement", &[name, message]);
                 if self.lan.is_some() && self.is_dedicated_server() {
                     self.lan_log_event(sunrise_client::lan::hub::HostEvent::Chat {

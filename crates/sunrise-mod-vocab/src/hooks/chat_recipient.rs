@@ -14,7 +14,8 @@ pub trait Hooks {
     /// server's log keeps: hiding is per receiver. This is not a second `server_chat`: that
     /// hook is heard once for a line, only for typed chat, and cancels it for everyone; this one
     /// is per receiver, and covers `/say` and `/me`. With no listener nothing is asked and
-    /// nothing is allocated. No player's state is swapped in.
+    /// nothing is allocated. A `/say` requested while this hook is running fails rather than
+    /// reentering the hook or sending an unchecked line. No player's state is swapped in.
     /// Server-side.
     #[hook(
         side = "server",

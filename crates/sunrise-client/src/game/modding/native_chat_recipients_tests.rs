@@ -1,7 +1,7 @@
 //! `chat_recipient`: asked once for each placed receiver before a public line is sent, and a
 //! receiver it hides is sent nothing while the others still get the line.
 use super::native_entity_refs::tests::with_game;
-use mod_api::{ChatRecipientEvent, Flow, Hooks, ServerHost};
+use mod_api::{ChatRecipientEvent, CommandResult, Flow, Hooks, ServerHost};
 use std::sync::{Arc, Mutex, atomic::AtomicI32, mpsc};
 use sunrise_client::lan::hub::chat::ChatMessage;
 use sunrise_client::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest};
@@ -31,6 +31,35 @@ impl Hooks for Ignorer {
         } else {
             Flow::Continue
         }
+    }
+}
+
+struct Echo {
+    asked: Asked,
+    nested: Arc<Mutex<Option<CommandResult>>>,
+}
+
+#[mod_api::__subscriptions]
+impl Hooks for Echo {
+    fn chat_recipient(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut ChatRecipientEvent<'_>,
+    ) -> Flow {
+        self.asked.lock().unwrap().push((
+            event.sender,
+            event.sender_name.to_owned(),
+            event.message.to_owned(),
+            event.recipient,
+        ));
+        // Only retry the outer message so a missing guard fails without overflowing the stack.
+        if event.message == "outer" && event.recipient == 12 {
+            let result = host
+                .commands()
+                .run_command_with_output("execute run say nested");
+            *self.nested.lock().unwrap() = Some(result);
+        }
+        Flow::Continue
     }
 }
 
@@ -254,6 +283,39 @@ fn console_and_command_block_say_can_be_hidden_per_receiver() {
                     message.to_owned(),
                     receiver
                 )),
+            );
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn nested_say_fails_without_sending_an_unchecked_line() {
+    let asked = Asked::default();
+    let nested = Arc::new(Mutex::new(None));
+    let mods = vec![mod_api::ModEntry::new(
+        "echo",
+        Box::new(Echo {
+            asked: asked.clone(),
+            nested: nested.clone(),
+        }),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            let (first, second) = two_guests(game);
+            lines(&first);
+            lines(&second);
+            game.dedicated_console_say("outer".into());
+            let result = nested.lock().unwrap().take().unwrap();
+            assert!(!result.success, "nested /say must fail");
+            assert_eq!(result.feedback.len(), 1, "the command reports its failure");
+            assert_eq!(lines(&first), 1);
+            assert_eq!(lines(&second), 1);
+            assert_eq!(
+                *asked.lock().unwrap(),
+                [12, 13].map(|recipient| (0, "Server".to_owned(), "outer".to_owned(), recipient)),
+                "both delivered copies were asked; no nested copy was asked or sent",
             );
         });
     });
