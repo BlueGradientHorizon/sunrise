@@ -4084,7 +4084,14 @@ impl Game<'_> {
                     pos,
                     state,
                     kind: "push_entities_up",
-                } => self.push_entities_up(pos, state),
+                } => {
+                    self.push_entities_up(
+                        pos,
+                        state,
+                        self.world.block(pos.x, pos.y, pos.z),
+                        |_| true,
+                    );
+                }
                 LevelEvent::GrowTree { .. }
                 | LevelEvent::PlaceFeature { .. }
                 | LevelEvent::BlockEvent { .. } => {}

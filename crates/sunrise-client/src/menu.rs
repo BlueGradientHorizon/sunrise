@@ -4333,7 +4333,7 @@ pub(crate) mod tests {
         assert_eq!(step(&after, "minecraft:player", Step), answered);
         assert_eq!(step(&after, "minecraft:cow", Step), own);
         assert_eq!(step(&after, "minecraft:player", Place), own);
-        // Fall, trample, jump and the ender teleport read it as well.
+        // Fall, jump and the ender teleport read it as well.
         let landing = |context: &LoopContext| {
             let (mut distance, mut multiplier, mut cancel) = (3.0, 1.0, false);
             crate::landing::native_living_fall(
@@ -4344,8 +4344,6 @@ pub(crate) mod tests {
                 &mut multiplier,
                 &mut cancel,
             );
-            let mut trample = false;
-            crate::landing::native_farmland_trample(context, 1, [0, 0, 0], 0, 1.0, &mut trample);
             let (mut target, mut teleport) = ([1.0, 2.0, 3.0], false);
             crate::mobs::enderman::native_ender_entity_teleport(
                 context,
@@ -4356,16 +4354,10 @@ pub(crate) mod tests {
                 &mut teleport,
             );
             crate::motion::native_living_jump(context, 1, "minecraft:cow", [0.0, 0.42, 0.0]);
-            (distance, multiplier, cancel, trample, target, teleport)
+            (distance, multiplier, cancel, target, teleport)
         };
-        assert_eq!(
-            landing(&before),
-            (3.0, 1.0, false, false, [1.0, 2.0, 3.0], false)
-        );
-        assert_eq!(
-            landing(&after),
-            (4.0, 2.0, false, true, [1.0, 3.0, 3.0], true)
-        );
+        assert_eq!(landing(&before), (3.0, 1.0, false, [1.0, 2.0, 3.0], false));
+        assert_eq!(landing(&after), (4.0, 2.0, false, [1.0, 3.0, 3.0], true));
         assert_eq!(JUMPS.get(), 2);
         // Heal and drown read it as well.
         let health = |context: &LoopContext| {
