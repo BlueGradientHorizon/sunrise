@@ -3,6 +3,7 @@ use crate::Tag;
 use sunrise_core::nbt::clone_tag;
 
 /// A proposed substitution in a resolved text run, for [`crate::Hooks::substitute_inline_images`].
+// exhaustive: a plain byte range and sprite id that mods build directly as a literal, like vanilla's records.
 #[derive(Clone, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
 pub struct InlineImageReplacement {
     /// Inclusive start byte in the run.

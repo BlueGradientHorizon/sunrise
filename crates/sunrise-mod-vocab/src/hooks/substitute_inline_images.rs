@@ -9,7 +9,7 @@ pub trait Hooks {
     /// and invalid ranges are ignored, leaving the original characters available to later proposals.
     ///
     /// An accepted range draws one 8×8 `minecraft:gui` atlas glyph with an advance of 8, using
-    /// the span's color. Chat hover and click use the span's style at the glyph's displayed position.
+    /// the span's color, or white when the span has none (on a sign too, never the sign's dye colour). Chat hover and click use the span's style at the glyph's displayed position.
     /// The source component, chat history and signatures, and sign editing are not changed.
     /// Cached layout can reuse answers while the text, resources, sprite geometry and enabled mods
     /// are unchanged. To animate a glyph, update the pixels of the same dynamic texture id.

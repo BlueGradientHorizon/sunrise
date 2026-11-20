@@ -15,7 +15,7 @@ use crate::{
     fast_hash::FxHashMap,
     font::{Font, Glyph, INLINE_OBJECT_SIZE},
     gfx::mark_oit,
-    hud::{MISSING_SPRITE, Rect, find_inline_sprite},
+    hud::Rect,
     mesher::{CULL_BACK, Vertex, cull_back},
     models::load_visibility,
     signs::{self, SignData, SignText},
@@ -721,14 +721,17 @@ fn sign_text_calls(
         let first = calls.len();
         let mut pen = 0.0;
         for span in shown.spans.iter().filter(|s| !s.text.is_empty()) {
-            let inline_sprite = if substituted.is_some()
-                && let Some(InlineObject::Atlas { atlas, sprite, .. }) = &span.style.inline_object
-            {
-                find_inline_sprite(scene.sprites, atlas, sprite)
-                    .or_else(|| scene.sprites.get(MISSING_SPRITE).copied())
-            } else {
-                None
-            };
+            let inline_sprite = scene.inline_images.as_ref().and_then(|images| {
+                if substituted.is_none() {
+                    return None;
+                }
+                match &span.style.inline_object {
+                    Some(InlineObject::Atlas { atlas, sprite, .. }) => {
+                        (images.sprite)(atlas, sprite)
+                    }
+                    _ => None,
+                }
+            });
             let base_color = if inline_sprite.is_some() {
                 0xFFFF_FFFF
             } else {
@@ -846,6 +849,10 @@ pub fn push_text(
     };
     let mut emit = |dx: f32, dy: f32, z: f32, argb: u32, outline: bool| {
         if let Some(sprite) = call.inline_sprite {
+            // The outline is the text's: an image draws once.
+            if outline {
+                return;
+            }
             let mut x = call.x + dx;
             let y = call.y + dy - 1.0;
             let bottom = y + INLINE_OBJECT_SIZE;
@@ -1030,6 +1037,8 @@ pub struct TextRun<'a> {
 pub struct SignInlineImages<'a> {
     pub revision: [u64; 3],
     pub substitute: &'a dyn Fn(&Text) -> Option<Text>,
+    /// The sprite of an inline atlas object (`atlas`, `sprite`), as the HUD atlas resolves it for chat.
+    pub sprite: &'a dyn Fn(&str, &str) -> Option<Rect>,
 }
 
 /// Inputs from the game for one frame of block-entity rendering.
@@ -4520,6 +4529,36 @@ mod tests {
     /// stays the dye's dark colour. `§` codes in a line colour it too, and
     /// `§r` goes back to the sign's colour.
     #[test]
+    fn a_glowing_sign_draws_an_inline_image_once() {
+        let call = |outline| TextCall {
+            matrix: Mat4::IDENTITY,
+            x: 0.0,
+            y: 0.0,
+            text: "\u{fffc}".into(),
+            inline_sprite: Some(Rect {
+                u0: 0.0,
+                v0: 0.0,
+                u1: 1.0,
+                v1: 1.0,
+                w: 8,
+                h: 8,
+            }),
+            style: Style::default(),
+            color: 0xFFFF_FFFF,
+            outline,
+            light: 0,
+            tier: 0,
+        };
+        let draw = |call: &TextCall| {
+            let mut out = Vec::new();
+            push_text(&|_| Glyph::default(), None, &call.run(), &mut out);
+            out.len()
+        };
+        assert_eq!(draw(&call(0xFF00_0000)), 4);
+        assert_eq!(draw(&call(0)), 4);
+    }
+
+    #[test]
     fn glowing_sign_text_keeps_its_outline_under_a_lines_own_colors() {
         let mut data = sign_with([
             Tag::String("plain".into()),
@@ -4742,6 +4781,7 @@ mod tests {
             scene.inline_images = Some(SignInlineImages {
                 revision: [1, 1, 0],
                 substitute: &substitute,
+                sprite: &|_, _| Some(icon),
             });
             let reads = image_reads.get();
             for _ in 0..2 {
@@ -4761,6 +4801,7 @@ mod tests {
             scene.inline_images = Some(SignInlineImages {
                 revision: [1, 2, 0],
                 substitute: &|_| None,
+                sprite: &|_, _| Some(icon),
             });
             vertices.clear();
             renderer.render(&scene, [(pos, state)].iter(), &mut vertices);

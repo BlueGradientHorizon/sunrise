@@ -5825,6 +5825,7 @@ impl Game<'_> {
                     block_entity_render::SignInlineImages {
                         revision,
                         substitute: &substitute,
+                        sprite: &|atlas, sprite| self.gui.atlas.inline_sprite(atlas, sprite),
                     }
                 }),
                 banner: &|p| self.banner_layers_at(p),

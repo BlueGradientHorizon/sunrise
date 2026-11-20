@@ -20,7 +20,6 @@ mod clip_corner;
 pub mod dynamic_textures;
 mod gui_sprite;
 pub use gui_sprite::atlas_key_of_gui_sprite;
-pub(crate) use gui_sprite::find_inline_sprite;
 mod menu_pictures;
 mod model_reducing;
 mod pack_text;

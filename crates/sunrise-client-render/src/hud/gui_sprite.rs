@@ -42,22 +42,6 @@ impl HudAtlas {
     }
 }
 
-pub(crate) fn find_inline_sprite(
-    sprites: &std::collections::HashMap<String, Rect>,
-    atlas: &str,
-    sprite: &str,
-) -> Option<Rect> {
-    let plain = sprite.strip_prefix("minecraft:").unwrap_or(sprite);
-    let gui = atlas_key_of_gui_sprite(sprite);
-    let gui_atlas = atlas.strip_prefix("minecraft:").unwrap_or(atlas) == "gui";
-    let (first, second) = if gui_atlas {
-        (gui.as_str(), plain)
-    } else {
-        (plain, gui.as_str())
-    };
-    sprites.get(first).or_else(|| sprites.get(second)).copied()
-}
-
 #[cfg(test)]
 mod tests {
     use super::atlas_key_of_gui_sprite;
