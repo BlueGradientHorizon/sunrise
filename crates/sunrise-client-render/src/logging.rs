@@ -927,13 +927,24 @@ mod tests {
                 });
             }
             drop(logger);
+            // Keep the byte comparison on one log day, even across midnight.
+            let log_day = day(14);
+            let (fixed, queued) = mpsc::channel();
+            for mut record in receive {
+                let Out::Write { date, .. } = &mut record else {
+                    panic!("a diagnostic must write a record");
+                };
+                *date = log_day;
+                fixed.send(record).unwrap();
+            }
+            drop(fixed);
             let writer = Writer {
                 file: with_file.then(|| open_latest(dir.path()).unwrap().unwrap()),
                 dir: dir.path().to_owned(),
-                date: Local::now().date_naive(),
+                date: log_day,
             };
             let mut stderr = Vec::new();
-            writer.run(receive, &mut stderr);
+            writer.run(queued, &mut stderr);
             let stderr = String::from_utf8(stderr).unwrap();
             let lines: Vec<_> = stderr.lines().collect();
             assert_eq!(lines.len(), 4);
