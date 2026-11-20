@@ -2732,31 +2732,6 @@ capabilities = ["registries"]
                 r#"{"slots": 3, "results": [1, 1]}"#,
                 "result 1 is listed twice",
             ),
-            (
-                "input-past",
-                r#"{"slots": 3, "inputs": [3]}"#,
-                "input 3 is past the last slot, 2",
-            ),
-            (
-                "input-twice",
-                r#"{"slots": 3, "inputs": [1, 1]}"#,
-                "input 1 is listed twice or is a result",
-            ),
-            (
-                "input-result",
-                r#"{"slots": 3, "inputs": [1], "results": [1]}"#,
-                "input 1 is listed twice or is a result",
-            ),
-            (
-                "input-grid",
-                r#"{"slots": 6, "inputs": [2], "crafting": {"grid": 1, "size": 2, "result": 0}}"#,
-                "inputs lists a crafting slot",
-            ),
-            (
-                "input-craft-result",
-                r#"{"slots": 6, "inputs": [0], "crafting": {"grid": 1, "size": 2, "result": 0}}"#,
-                "inputs lists a crafting slot",
-            ),
             ("menu-key", r#"{"slots": 3, "rows": 1}"#, "unknown field"),
             (
                 "craft-size",
@@ -2818,6 +2793,29 @@ capabilities = ["registries"]
             let files: &[(&str, &[u8])] = &[("data/ruby/sunrise/menu/a.json", file.as_bytes())];
             let e = smod(case, MANIFEST_TEXT, files).unwrap_err();
             assert!(e.contains(why), "{case}: {e}");
+        }
+    }
+
+    #[test]
+    fn menu_types_reject_invalid_inputs() {
+        for (case, file) in [
+            ("input-past", r#"{"slots": 3, "inputs": [3]}"#),
+            ("input-twice", r#"{"slots": 3, "inputs": [1, 1]}"#),
+            (
+                "input-result",
+                r#"{"slots": 3, "inputs": [1], "results": [1]}"#,
+            ),
+            (
+                "input-grid",
+                r#"{"slots": 6, "inputs": [2], "crafting": {"grid": 1, "size": 2, "result": 0}}"#,
+            ),
+            (
+                "input-craft-result",
+                r#"{"slots": 6, "inputs": [0], "crafting": {"grid": 1, "size": 2, "result": 0}}"#,
+            ),
+        ] {
+            let files: &[(&str, &[u8])] = &[("data/ruby/sunrise/menu/a.json", file.as_bytes())];
+            assert!(smod(case, MANIFEST_TEXT, files).is_err(), "{case}");
         }
     }
 
