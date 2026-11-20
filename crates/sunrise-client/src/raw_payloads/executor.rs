@@ -92,8 +92,6 @@ fn execute(mut incoming: Incoming, endpoint: &Endpoint, main: &MainQueue) {
         Err(mod_api::PayloadHandleError::Failed(error)) => {
             // Drop reservations and staged work before reporting failure; publish no partial actions.
             drop(context);
-            #[cfg(any(test, feature = "test-payload-probe"))]
-            super::staging_probe::failure(&incoming.id.0, &error);
             handler_failed(&incoming, endpoint, &error);
         }
         Ok(()) => {
