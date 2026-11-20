@@ -44,7 +44,8 @@ fi
 pin() {
   local tip status=1
   exec 8> "$mirror.repack.lock" || return 1
-  if flock -s -w 60 8; then
+  # The two fetch attempts below need 620 s of the step's 660: a borrower waits for a repack only briefly.
+  if flock -s -w 20 8; then
     tip=$(git -C "$mirror" rev-parse -q --verify refs/heads/ci-head) &&
       pinned="refs/borrowed/$(date +%s)-${GITHUB_RUN_ID:-0}-${GITHUB_RUN_ATTEMPT:-0}-$$" &&
       git -C "$mirror" update-ref "$pinned" "$tip"
@@ -58,8 +59,8 @@ if [ -n "$mirror" ] && git -C "$mirror" rev-parse -q --verify refs/heads/ci-head
   if [ -z "$shared" ]; then
     echo "$mirror/objects" >> "$alternates"
     borrowed=1
-  elif pin 2>/dev/null; then
-    git config core.alternateRefsPrefixes "$pinned"
+  elif pin 2>/dev/null && git config core.alternateRefsPrefixes "$pinned"; then
+    # Only with the prefix set: the fetch must negotiate against the pinned head alone.
     echo "$mirror/objects" >> "$alternates"
     borrowed=1
   else
@@ -93,7 +94,8 @@ update_mirror() {
       local made=${ref#refs/borrowed/}
       [ "${made%%-*}" -lt "$cutoff" ] 2>/dev/null && git -C "$mirror" update-ref -d "$ref"
     done
-    exec 8> "$mirror.repack.lock" && flock -x -w 60 8 || {
+    left=$((UPKEEP_BUDGET - SECONDS))
+    exec 8> "$mirror.repack.lock" && flock -x -w "$((left < 60 ? left : 60))" 8 || {
       exec 8>&-
       echo "$step: the history mirror was not repacked this time."
       return
@@ -115,11 +117,12 @@ for attempt in 1 2; do
       echo "$step: no time left to update the history mirror."
     elif [ -n "$mirror" ]; then
       if mkdir -p "$(dirname "$mirror")" && exec 9> "$mirror.lock"; then
-        if flock -n 9; then
-          update_mirror
-        else
-          echo "$step: another job holds the history mirror's update lock; this one leaves the update to it."
-        fi
+        flock -n -E 75 9
+        case $? in
+          0) update_mirror ;;
+          75) echo "$step: another job holds the history mirror's update lock; this one leaves the update to it." ;;
+          *) echo "$step: the history mirror's update lock could not be taken; the mirror is not updated." ;;
+        esac
         exec 9>&-
       else
         echo "$step: the history mirror's update lock could not be opened; the mirror is not updated."

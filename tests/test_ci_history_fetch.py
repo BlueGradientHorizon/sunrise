@@ -120,7 +120,7 @@ class HistoryFetchTests(unittest.TestCase):
             heads = git("rev-list", "--reverse", "main", cwd=server).split()
             build = root / "build"
             mirror = build / "git-mirror" / "org" / "repo.git"
-            # A fork's pull request gets no host folder: the slot keeps the mirror.
+            # With only the slot's folder given (no $DYNA_CI_KEEP), the slot keeps a mirror of its own.
             env = dict(os.environ, **step["env"], DYNA_CI_BUILD=str(build), DYNA_CI_KEEP="",
                        GITHUB_REPOSITORY="org/repo")
 
