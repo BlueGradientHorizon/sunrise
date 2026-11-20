@@ -48,7 +48,7 @@ class HistoryFetchTests(unittest.TestCase):
                     git.chmod(0o755)
                     timeout.chmod(0o755)
                     # Off our runners: no slot, so no mirror.
-                    env = dict(os.environ, **step["env"], MODE=mode, DYNA_CI_BUILD="",
+                    env = dict(os.environ, **step["env"], MODE=mode, DYNA_CI_BUILD="", DYNA_CI_KEEP="",
                                PATH=directory + os.pathsep + os.environ["PATH"],
                                CALLS=str(root / "calls"), LIMITS=str(root / "limits"))
                     result = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", step["run"]], cwd=ROOT,
@@ -87,7 +87,8 @@ class HistoryFetchTests(unittest.TestCase):
             git("remote", "add", "origin", f"file://{server}", cwd=checkout)
             git("fetch", "-q", "--depth=1", "origin", heads[5], cwd=checkout)
             git("checkout", "-q", "FETCH_HEAD", cwd=checkout)
-            env = dict(os.environ, **step["env"], DYNA_CI_BUILD=str(build), GITHUB_REPOSITORY="org/repo")
+            env = dict(os.environ, **step["env"], DYNA_CI_BUILD=str(build), DYNA_CI_KEEP="",
+                       GITHUB_REPOSITORY="org/repo")
             result = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", step["run"].replace(
                 "tools/ci/", f"{ROOT}/tools/ci/")], cwd=checkout, env=env, capture_output=True, text=True, timeout=60)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -119,7 +120,9 @@ class HistoryFetchTests(unittest.TestCase):
             heads = git("rev-list", "--reverse", "main", cwd=server).split()
             build = root / "build"
             mirror = build / "git-mirror" / "org" / "repo.git"
-            env = dict(os.environ, **step["env"], DYNA_CI_BUILD=str(build), GITHUB_REPOSITORY="org/repo")
+            # A fork's pull request gets no host folder: the slot keeps the mirror.
+            env = dict(os.environ, **step["env"], DYNA_CI_BUILD=str(build), DYNA_CI_KEEP="",
+                       GITHUB_REPOSITORY="org/repo")
 
             def job(commit, label):
                 checkout = root / label
@@ -191,7 +194,7 @@ class HistoryFetchTests(unittest.TestCase):
             for status, label in ((124, "fetch-timeout"), (137, "fetch-killed")):
                 answered("refs/heads/ci-head", status)
                 job(heads[5], label)
-                self.assertIn("out of time to update the slot's history mirror", job.output)
+                self.assertIn("out of time to update the history mirror", job.output)
                 self.assertEqual(git("rev-parse", "refs/heads/ci-head", cwd=mirror), heads[4])
             # A repack cut short keeps the update it follows.
             answered(" gc --auto", 124)
@@ -206,6 +209,83 @@ class HistoryFetchTests(unittest.TestCase):
             self.assertNotIn(f"{mirror}/objects", (retried / ".git/objects/info/alternates").read_text())
             self.assertIn("could not take this head", job.output)
             self.assertFalse(mirror.exists())
+
+    @unittest.skipUnless(shutil.which("git") and shutil.which("timeout") and shutil.which("flock"),
+                         "needs git, timeout and flock")
+    def test_the_hosts_shared_mirror_serves_every_slot_and_is_never_dropped(self):
+        _, name, step = list(steps())[1]
+        step = dict(step, env=dict(step["env"], HISTORY_FILTER=""))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            quiet = dict(capture_output=True, text=True, check=True)
+            git = lambda *args, cwd=root: subprocess.run(["git", *args], cwd=cwd, **quiet).stdout.strip()
+            server = root / "server"
+            git("init", "-q", "-b", "main", str(server))
+            for n in range(4):
+                (server / "f").write_text(f"{n}\n")
+                git("add", "f", cwd=server)
+                git("-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "commit", "-qm", f"c{n}",
+                    cwd=server)
+            heads = git("rev-list", "--reverse", "main", cwd=server).split()
+            keep = root / "keep"
+            mirror = keep / "git-mirror" / "org" / "repo.git"
+
+            def job(commit, label, **extra):
+                # Each job on a slot of its own: a fresh, empty slot folder.
+                checkout, slot = root / label, root / f"slot-{label}"
+                slot.mkdir()
+                git("init", "-q", str(checkout))
+                git("remote", "add", "origin", f"file://{server}", cwd=checkout)
+                git("fetch", "-q", "--depth=1", "origin", commit, cwd=checkout)
+                git("checkout", "-q", "FETCH_HEAD", cwd=checkout)
+                env = dict(os.environ, **step["env"], DYNA_CI_BUILD=str(slot), DYNA_CI_KEEP=str(keep),
+                           GITHUB_REPOSITORY="org/repo", **extra)
+                result = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", step["run"].replace(
+                    "tools/ci/", f"{ROOT}/tools/ci/")], cwd=checkout, env=env, capture_output=True, text=True,
+                    timeout=60)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(git("rev-list", "--count", "HEAD", cwd=checkout), str(heads.index(commit) + 1))
+                self.assertFalse((slot / "git-mirror").exists())
+                job.output = result.stdout
+                return checkout
+
+            job(heads[1], "first")
+            self.assertEqual(git("rev-parse", "refs/heads/ci-head", cwd=mirror), heads[1])
+            # A job on another, freshly emptied slot borrows the host's mirror all the same.
+            second = job(heads[3], "second")
+            self.assertEqual((second / ".git/objects/info/alternates").read_text(), f"{mirror}/objects\n")
+            self.assertEqual(git("rev-parse", "refs/heads/ci-head", cwd=mirror), heads[3])
+            # While another job holds the update lock, this one fetches as usual and leaves the mirror alone.
+            holder = subprocess.Popen(["flock", "-x", f"{mirror}.lock", "-c", "echo held; exec sleep 30"],
+                                      stdout=subprocess.PIPE, text=True, start_new_session=True)
+            try:
+                self.assertEqual(holder.stdout.readline(), "held\n")
+                job(heads[2], "locked")
+            finally:
+                # The lock is held by flock's child too: end the whole group.
+                os.killpg(holder.pid, 9)
+                holder.wait()
+                # The killed `sleep` may outlive flock for a moment: wait until the lock is really free.
+                subprocess.run(["flock", "-x", f"{mirror}.lock", "true"], check=True, timeout=30)
+            self.assertIn("another job is updating the history mirror", job.output)
+            self.assertEqual(git("rev-parse", "refs/heads/ci-head", cwd=mirror), heads[3])
+            # A shared mirror that can't take a head stays: other jobs' checkouts may be borrowing from it.
+            stand_in = root / "bin"
+            stand_in.mkdir()
+            (stand_in / "timeout").write_text(
+                f"#!{sys.executable}\n"
+                "import os, sys\n"
+                "args = sys.argv[1:]\n"
+                "while args[0].startswith('--'):\n"
+                "    args.pop(0)\n"
+                "args = args[1:]\n"
+                "if 'refs/heads/ci-head' in ' '.join(args):\n"
+                "    sys.exit(1)\n"
+                "os.execvp(args[0], args)\n")
+            (stand_in / "timeout").chmod(0o755)
+            job(heads[0], "refused", PATH=f"{stand_in}{os.pathsep}{os.environ['PATH']}")
+            self.assertIn("could not take this head", job.output)
+            self.assertEqual(git("rev-parse", "refs/heads/ci-head", cwd=mirror), heads[3])
 
 if __name__ == "__main__":
     unittest.main()
