@@ -245,7 +245,7 @@ impl Game<'_> {
         let Some(Tag::List(list)) = entity
             .nbt
             .iter()
-            .find(|(key, _)| key.units().iter().copied().eq("fluids".encode_utf16()))
+            .find(|(key, _)| key.0.iter().copied().eq("fluids".encode_utf16()))
             .map(|(_, value)| value)
         else {
             return Some((None, 0));
@@ -254,13 +254,7 @@ impl Game<'_> {
             return Some((None, 0));
         };
         let id = match entry.get("Fluid") {
-            Some(Tag::String(id))
-                if !id
-                    .units()
-                    .iter()
-                    .copied()
-                    .eq("minecraft:empty".encode_utf16()) =>
-            {
+            Some(Tag::String(id)) if !id.0.iter().copied().eq("minecraft:empty".encode_utf16()) => {
                 Some(id)
             }
             _ => None,
@@ -304,7 +298,7 @@ impl Game<'_> {
                 let real = side_tanks(&tanks, at.side).nth(tank)?;
                 let (fluid, amount) = self.tank_entry(at.pos, real)?;
                 let amount = u32::try_from(amount).ok().filter(|&amount| amount > 0)?;
-                let id = fluid?.units();
+                let id = &fluid?.0;
                 let identity = fluid_identity(id)?;
                 Some(FluidStack {
                     fluid: identity,
@@ -382,7 +376,7 @@ impl Game<'_> {
                 };
                 if current > 0
                     && !held.is_some_and(|held| {
-                        mod_api::__private::fluid_identity_matches_utf16(fluid.fluid, held.units())
+                        mod_api::__private::fluid_identity_matches_utf16(fluid.fluid, &held.0)
                     })
                 {
                     return Some(fluid);
@@ -433,7 +427,7 @@ impl Game<'_> {
                     .nth(tank)
                     .filter(|real| tanks.outputs.contains(real))?;
                 let (name, amount) = self.tank_entry(at.pos, real)?;
-                let id = name?.units();
+                let id = &name?.0;
                 let identity = fluid_identity(id)?;
                 let mut state = self.tank_state(at.pos, tanks.tanks.len())?;
                 let entry = &mut state[real];

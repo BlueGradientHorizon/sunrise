@@ -42,7 +42,10 @@ impl Modifier {
         if !namespace.bytes().all(valid) || !path.bytes().all(|c| valid(c) || c == b'/') {
             return Err(invalid("invalid attribute modifier identifier"));
         }
-        let hash = |s: &str| sunrise_core::java_string::java_string_hash_str(s) as u32;
+        let hash = |s: &str| {
+            s.bytes()
+                .fold(0u32, |h, b| h.wrapping_mul(31).wrapping_add(u32::from(b)))
+        };
         Ok(Self(Arc::new(ModifierData {
             id: format!("{namespace}:{path}"),
             hash: hash(namespace).wrapping_mul(31).wrapping_add(hash(path)),

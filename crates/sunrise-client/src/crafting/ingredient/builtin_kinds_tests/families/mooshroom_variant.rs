@@ -63,9 +63,7 @@ fn mooshroom_variant_recipe_codec_preserves_names_defaults_removal_and_strictnes
             Tag::Byte(1),
             Tag::List(vec![]),
             Tag::Compound(Default::default()),
-            Tag::String(sunrise_core::nbt::JavaString::from(vec![
-                114, 101, 100, 0xd800,
-            ])),
+            Tag::String(sunrise_core::nbt::JavaString(vec![114, 101, 100, 0xd800])),
         ] {
             egg.data_mut()
                 .set_other("minecraft:mooshroom/variant", Some(value));
@@ -195,7 +193,7 @@ fn mooshroom_variant_boundary_refusals_refuse_whole_load() {
         Tag::Double(0.0_f64.to_bits()),
         Tag::List(vec![]),
         Tag::Compound(Default::default()),
-        Tag::String(sunrise_core::nbt::JavaString::from(vec![0xd800])),
+        Tag::String(sunrise_core::nbt::JavaString(vec![0xd800])),
     ] {
         let rule = IngredientRule::Components {
             patch: [(ID.into(), value)].into_iter().collect(),

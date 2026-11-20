@@ -300,7 +300,7 @@ pub fn decode_component(id: &str, t: &Tag, reg: &Registries) -> Result<(), Strin
             Tag::String(name) => {
                 if sunrise_items::firework::DYE_FIREWORK_COLORS
                     .iter()
-                    .any(|(color, _)| name.units().iter().copied().eq(color.encode_utf16()))
+                    .any(|(color, _)| name.0.iter().copied().eq(color.encode_utf16()))
                 {
                     Ok(())
                 } else {
@@ -531,8 +531,8 @@ fn identifier_value(value: &Tag) -> Result<Tag, String> {
     let Tag::String(value) = value else {
         return Err("Not a string".into());
     };
-    let text = String::from_utf16(value.units())
-        .map_err(|_| "Not a valid resource location".to_owned())?;
+    let text =
+        String::from_utf16(&value.0).map_err(|_| "Not a valid resource location".to_owned())?;
     let id = sunrise_core::identifier::Identifier::parse(&text)
         .map_err(|error| format!("Not a valid resource location: {text} {error}"))?;
     Ok(Tag::String(id.to_string().as_str().into()))
@@ -544,7 +544,7 @@ fn dye_color(t: &Tag) -> Result<&'static str, String> {
     };
     sunrise_items::firework::DYE_FIREWORK_COLORS
         .iter()
-        .find(|(name, _)| value.units().iter().copied().eq(name.encode_utf16()))
+        .find(|(name, _)| value.0.iter().copied().eq(name.encode_utf16()))
         .map(|(name, _)| *name)
         .ok_or_else(|| format!("Unknown element name:{}", value.to_string_lossy()))
 }
@@ -556,7 +556,7 @@ fn string_enum(t: &Tag, names: &[&str]) -> Result<(), String> {
     };
     if names
         .iter()
-        .any(|name| value.units().iter().copied().eq(name.encode_utf16()))
+        .any(|name| value.0.iter().copied().eq(name.encode_utf16()))
     {
         Ok(())
     } else {
@@ -1381,7 +1381,7 @@ mod tests {
                 Tag::String("example:Custom/pet".into()),
                 Tag::String("..:custom/pet".into()),
                 Tag::String("example:custom:pet".into()),
-                Tag::String(JavaString::from(vec![0xd800])),
+                Tag::String(JavaString(vec![0xd800])),
                 Tag::String("é".into()),
                 Tag::Int(1),
                 Tag::Float(f32::NAN.to_bits()),
@@ -1413,8 +1413,8 @@ mod tests {
             Tag::String("minecraft:red".into()),
             Tag::String(" red".into()),
             Tag::String("".into()),
-            Tag::String(JavaString::from(vec![0xd800])),
-            Tag::String(JavaString::from(vec![114, 101, 100, 0xd800])),
+            Tag::String(JavaString(vec![0xd800])),
+            Tag::String(JavaString(vec![114, 101, 100, 0xd800])),
             Tag::Byte(14),
             Tag::Short(14),
             Tag::Long(14),
@@ -1613,8 +1613,8 @@ mod tests {
             Tag::ByteArray(vec![]),
             Tag::IntArray(vec![]),
             Tag::LongArray(vec![]),
-            Tag::String(JavaString::from(vec![0xd800])),
-            Tag::String(JavaString::from(vec![114, 101, 100, 0xd800])),
+            Tag::String(JavaString(vec![0xd800])),
+            Tag::String(JavaString(vec![114, 101, 100, 0xd800])),
         ] {
             assert!(decoded_component_value("minecraft:dye", &value, &registry).is_err());
         }
@@ -1728,7 +1728,7 @@ mod tests {
             assert!(
                 decoded_component_value(
                     "minecraft:fox/variant",
-                    &Tag::String(JavaString::from(units)),
+                    &Tag::String(JavaString(units)),
                     &registry
                 )
                 .is_err()
@@ -1992,7 +1992,7 @@ mod tests {
                 "{value}"
             );
         }
-        let surrogate = Tag::String(sunrise_core::nbt::JavaString::from(vec![0xD800]));
+        let surrogate = Tag::String(sunrise_core::nbt::JavaString(vec![0xD800]));
         assert!(decoded_component_value("minecraft:base_color", &surrogate, &registry).is_err());
         for value in [
             Tag::Byte(0),
@@ -2067,9 +2067,9 @@ mod tests {
             Tag::Int(1),
             Tag::compound([] as [(&str, Tag); 0]),
             Tag::List(vec![]),
-            Tag::String(sunrise_core::nbt::JavaString::from(vec![0xd800])),
-            Tag::String(sunrise_core::nbt::JavaString::from(vec![0xdc00])),
-            Tag::String(sunrise_core::nbt::JavaString::from(vec![0xd83d, 0xde00])),
+            Tag::String(sunrise_core::nbt::JavaString(vec![0xd800])),
+            Tag::String(sunrise_core::nbt::JavaString(vec![0xdc00])),
+            Tag::String(sunrise_core::nbt::JavaString(vec![0xd83d, 0xde00])),
         ] {
             assert!(
                 decoded_component_value("minecraft:note_block_sound", &value, &registry).is_err(),
@@ -2107,9 +2107,9 @@ mod tests {
             Tag::String("a:b:c".into()),
             Tag::String("a b".into()),
             Tag::String("é".into()),
-            Tag::String(JavaString::from(vec![0xd800])),
-            Tag::String(JavaString::from(vec![0xdc00])),
-            Tag::String(JavaString::from(vec![0xd800, 0xdc00])),
+            Tag::String(JavaString(vec![0xd800])),
+            Tag::String(JavaString(vec![0xdc00])),
+            Tag::String(JavaString(vec![0xd800, 0xdc00])),
         ] {
             assert!(
                 decoded_component_value("minecraft:tooltip_style", &invalid, &registry).is_err()
