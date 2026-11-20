@@ -265,14 +265,6 @@ For mods that run where the world is simulated: a dedicated server, a LAN host, 
 - **`player_item_frame_change(player, name, entity_id, action, item, rotation)`**: a server player changed a frame (`put`, `rotate`, `remove_item` or `break`), after its contents and comparator output changed. `item` is empty when none remains.
 - **`player_item_mend(player, name, item, repair, experience)`**: an orb actually repaired `repair` durability on `item` for a server player, after the item changed. `experience` is the orb value.
 - **`player_trade(player, name, entity_id)`**: a server player completed a villager or wandering trader trade, after the merchant applied it. `entity_id` is the merchant network id.
-- **`trade_with_villager(merchant, kind, offer)`**: NeoForge's `TradeWithVillagerEvent`, heard once per trade a
-  server player makes with a villager or a wandering trader (a shift-click that trades several times is heard for each),
-  after the trade's statistic and `villager_trade` trigger. `merchant` is the trader's entity id, `kind` its type
-  (`minecraft:villager` or `minecraft:wandering_trader`), and `offer` the `MerchantOffer` as it was right after the
-  trade: its costs, `result`, `uses` (this trade counted), `max_uses` and `xp`. Listen only, heard once the whole click
-  is done (its payments taken). The player's state is swapped in, so `host.players().acting_player` names
-  them. Unlike `player_trade`, which is heard once per click with no offer. `MerchantRef` operations that
-  conflict with an active menu operation are refused.
 - **`player_shield_disable(player, name, ticks)`**: a blocked melee hit disabled the server player’s shield for `ticks` ticks. It fires just before the cooldown is set.
 - **`player_loom_pattern_select(player, name, pattern)`**: a server player selected loom pattern button `pattern`, after the menu accepted it.
 - **`player_name_entity(player, name, entity_id, entity_name)`**: a server player used a named name tag on a mob, after it became persistent and was named.
@@ -2599,7 +2591,6 @@ registration path.
 
 - A shift-click in a mod container's menu routed by the mod, `AbstractContainerMenu.quickMoveStack`: `menu_quick_move(pos, entity, container_slots, slot, stack, handled)` runs on the server before the game's own routing, for a mod container on a vanilla menu type or its own menu type. The mod takes what it moves out of `stack` and sets `handled`; the slot keeps the rest and the client gets the menu again.
 
-- A server player's trade with a villager or a wandering trader, as NeoForge's `TradeWithVillagerEvent`: `trade_with_villager(merchant, kind, offer)` is heard once per trade made, after its statistic and `villager_trade` trigger, with the trader's entity id and type and the `MerchantOffer` as it is after the trade. Listen only; the player's state is swapped in.
 
 - A server player's or fox's `teleport_randomly` consume effect (chorus fruit) is about to try a spot: version 2 of `item_consumption_teleport(consumer, consumed, from, target, cancel)`, once per attempt (up to 16). `consumer` is the living actor's handle and `consumed` is the public API stack captured before the use, with its count, damage and component patch, rather than the current contents of the hand. The living handle replaces version 1's player-only UUID/name fields; players retain their acting-player context. A mod may move `target`; the game still looks down from it for ground to land on. `cancel` ends the effect with no teleport and no more attempts, not consumption. A fox's callback runs with the full server host before its living AI/movement and before the next mob ticks; listener changes to its mouth item, position or eligibility invalidate the captured decision rather than being overwritten.
 

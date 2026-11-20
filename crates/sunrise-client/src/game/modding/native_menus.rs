@@ -94,6 +94,9 @@ impl Game<'_> {
         replace: MenuReplace,
     ) -> Option<i32> {
         let conn = self.native_conn(uuid)?;
+        if self.merchant_click_in_progress(conn) {
+            return None;
+        }
         self.close_for_open(conn, replace);
         let gi = self.guest_index(conn)?;
         // The first contents show the player's own inventory and cursor, in their turn too.
@@ -149,8 +152,9 @@ impl Game<'_> {
         {
             return Err(OpenMenuError::PlayerUnavailable);
         }
-        // The mods may stop the menu, as for a block's.
-        if !self.guest_may_open(conn, &id, pos) {
+        // Replacing the active merchant window is not a transactional write. As with
+        // a menu-open veto, leave the old menu intact rather than closing it speculatively.
+        if self.merchant_click_in_progress(conn) || !self.guest_may_open(conn, &id, pos) {
             return Ok(None);
         }
         self.close_for_open(conn, replace);
