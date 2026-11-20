@@ -74,7 +74,9 @@ macro_rules! game_side {
             features: $s
                 .remote
                 .as_ref()
-                .map_or(&$s.level.enabled_features, |remote| &remote.features),
+                .map_or($s.level.enabled_features.as_arc(), |remote| {
+                    &remote.features
+                }),
             items: if $s.options.execution_role.is_client() {
                 $s.remote.as_ref().and_then(|remote| remote.tags.as_ref())
             } else {
@@ -5396,7 +5398,9 @@ impl Game<'_> {
             enabled_features: self
                 .remote
                 .as_ref()
-                .map_or(&self.level.enabled_features, |remote| &remote.features),
+                .map_or(self.level.enabled_features.as_arc(), |remote| {
+                    &remote.features
+                }),
             player_box,
             guest_boxes,
             building_player_boxes,
@@ -11210,6 +11214,7 @@ impl Game<'_> {
                 range: self.settings.cloud_range,
                 fast: self.settings.clouds == "fast",
                 color: sky.cloud_color,
+                height: sky.cloud_height,
             }),
             entities: &entities,
             static_block_entities: &static_block_entities,
