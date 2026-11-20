@@ -182,8 +182,8 @@ Which to take:
   pinned SDK as long as that SDK has what the tool needs; when it does not, `build` stops and names both ways out:
   `cargo sunrise-mod update --sunrise nightly`, or the tool in that SDK's own release.
 
-`cargo sunrise-mod --version` prints the commit a tool is built from; a tool older than that option answers with its
-usage instead. The newest tool's commit is `commit` in
+`cargo sunrise-mod --version` prints the commit a tool is built from, or `dev` for a tool you built yourself without
+naming one (`cargo install`); a tool older than that option answers with its usage instead. The newest tool's commit is `commit` in
 [`tool.json`](https://github.com/sunrise-org/sunrise/releases/download/mod-tool/tool.json).
 
 ## With `cargo install`
