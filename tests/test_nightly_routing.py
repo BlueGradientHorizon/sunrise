@@ -228,6 +228,18 @@ console.log(JSON.stringify(Boolean(eval(s.expression))));
             self.assertIn("ref: ${{ github.workflow_sha }}", checkout,
                           "older build candidates may lack the new workflow's validator/smoke helpers")
 
+    def test_build_and_musl_stage_the_workflows_rust_pin(self):
+        game = yaml.safe_load(GAME.read_text())["jobs"]
+        for job in ("build", "musl"):
+            with self.subTest(job=job):
+                tools, = [step for step in game[job]["steps"]
+                          if step.get("name") == "Workflow-owned validation tools"]
+                self.assertTrue(tools["uses"].startswith("actions/checkout@"))
+                self.assertNotIn("if", tools)
+                self.assertEqual(tools["with"]["ref"], "${{ github.workflow_sha }}")
+                self.assertEqual(tools["with"]["path"], ".workflow-tools")
+                self.assertIn("tools/ci/rust-version", tools["with"]["sparse-checkout"].splitlines())
+
     def test_hosted_runners_never_use_machine_specific_tool_setup(self):
         # Only the exporters can run on a self-hosted (Dyna) runner; the build legs are fresh machines and take none.
         workflow_jobs = dict(jobs(GAME.read_text()))
