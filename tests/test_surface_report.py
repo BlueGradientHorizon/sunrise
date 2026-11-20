@@ -133,7 +133,6 @@ echo '{{}}' > "$3"
         self.assertIn("Surface: report\n", text)
         own = [call for call in calls.splitlines() if call.startswith("own ")]
         self.assertEqual(len(own), 1)
-        self.assertIn("--without-calls", own[0])
         self.assertIn("surface-diff", calls)
 
     def test_a_base_neither_tool_can_read_fails_naming_both(self):
@@ -153,6 +152,48 @@ echo '{{}}' > "$3"
         self.assertEqual(code, 1)
         self.assertTrue(text.startswith("No surface report: the head's sunrise-stage cannot read the base surface "), text)
         self.assertIn("surface schema 1, this tool reads 2", text)
+
+    def test_the_schema_reset_checks_only_the_audited_base_and_still_gates_later_changes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            base, head = work / "old", work / "new"
+            reset = head / surface_report.SCHEMA_RESET
+            reset.parent.mkdir(parents=True)
+            audit = {"checkpoint": "checked", "diff": {
+                "old": "old-hash", "new": "checkpoint-hash",
+                "changes": [{"id": "fn:removed", "class": "breaking", "notes": ["native-only.toml"]}],
+            }}
+            reset.write_text(json.dumps(audit))
+
+            def export(command, **_kwargs):
+                tool, _, root, path, _ = command
+                if root == str(base) and tool != "old-tool":
+                    return subprocess.CompletedProcess(command, 1, "", "unsupported old source")
+                schema, digest = {
+                    "old": (2, "old-hash"),
+                    "new": (3, "some-new-change"),
+                    "schema-reset": (3, "checkpoint-hash"),
+                }[Path(root).name]
+                Path(path).write_text(json.dumps({"schema": schema, "hash": digest}))
+                return subprocess.CompletedProcess(command, 0, "", "")
+
+            with (mock.patch.object(surface_report.subprocess, "run", side_effect=export),
+                  mock.patch.object(surface_report, "unpack") as unpack,
+                  mock.patch.object(surface_report, "compare", return_value=(1, "later change refused")) as compare):
+                code, text = surface_report.report("stage", base, head, work, True, own_base_tool=lambda: "old-tool")
+                self.assertEqual(code, 1)
+                self.assertIn("Audited schema 2 → 3 reset", text)
+                self.assertIn("later change refused", text)
+                unpack.assert_called_once_with("checked", work / "schema-reset")
+                self.assertEqual(compare.call_args.args[1:5], (work / "schema-reset", head, work, True))
+
+                audit["diff"]["old"] = "unrelated-base"
+                reset.write_text(json.dumps(audit))
+                compare.reset_mock()
+                code, text = surface_report.report("stage", base, head, work, True, own_base_tool=lambda: "old-tool")
+                self.assertEqual(code, 1)
+                self.assertIn("is not the audited schema-reset base", text)
+                compare.assert_not_called()
 
     def test_this_tree_failing_to_export_fails_the_step(self):
         for base_export in (0, 1):

@@ -45,6 +45,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 NOTES = "crates/sunrise-mod-vocab/changes"
+# Remove this audit and its gate branch after the first complete schema-3 SDK publishes.
+SCHEMA_RESET = "tools/ci/surface-schema-3-reset.json"
 # GitHub refuses a step summary over 1 MiB; the full report stays in the step log.
 # Counted in bytes of UTF-8, frame included.
 SUMMARY_LIMIT = 200_000
@@ -160,26 +162,24 @@ def report(tool: str, base: Path, head: Path, work: Path, gate_on: bool, *,
     not this checkout (a landed merge). `notes` is the (new, base) pair of change-note folders when they are not the
     trees' own; `landed` selects the notes of one merge, and `covered` a (new, base) pair whose new notes count as
     coverage only (that merge's own)."""
-    # The base's records may predate the call names: its export names none (`--without-calls`),
-    # which no comparison reads.
     catalogs = "--with-internals" if with_internals else "--with-points-and-loops"
 
-    def export(name: str, exporter: str, tree: Path, flags: list[str]) -> subprocess.CompletedProcess:
-        return subprocess.run([exporter, "surface", str(tree), str(work / f"{name}.json"), *flags, catalogs],
+    def export(name: str, exporter: str, tree: Path) -> subprocess.CompletedProcess:
+        return subprocess.run([exporter, "surface", str(tree), str(work / f"{name}.json"), catalogs],
                               capture_output=True, text=True)
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         # Drain both subprocesses' diagnostics while they run so a full pipe cannot stall an export.
-        exports = {name: pool.submit(export, name, tool, tree, flags)
-                   for name, tree, flags in (("base", base, ["--without-calls"]), ("head", head, []))}
+        exports = {name: pool.submit(export, name, tool, tree)
+                   for name, tree in (("base", base), ("head", head))}
     head_export = exports["head"].result()
     # This checkout's own tree failing is a broken generator, which no other step would catch.
     if head_export.returncode != 0 and own_head_tool is None:
         return 1, f"The surface export of this tree failed: {last_line(head_export.stderr)}.\n"
     note = ""
-    for name, tree, flags, done, own_tool in (("head", head, [], head_export, own_head_tool),
-                                              ("base", base, ["--without-calls"], exports["base"].result(),
-                                               own_base_tool)):
+    base_from_own = False
+    for name, tree, done, own_tool in (("head", head, head_export, own_head_tool),
+                                       ("base", base, exports["base"].result(), own_base_tool)):
         if done.returncode == 0:
             continue
         # An older tree this tool holds to a newer rule or format: that tree's own tool reads it.
@@ -187,12 +187,44 @@ def report(tool: str, base: Path, head: Path, work: Path, gate_on: bool, *,
         if own_tool is None:
             return 1, f"No surface report: {why}.\n"
         try:
-            own = export(name, own_tool(), tree, flags)
+            own = export(name, own_tool(), tree)
         except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
             return 1, f"No surface report: {why}, and the {name}'s own could not be used: {error}.\n"
         if own.returncode != 0:
             return 1, f"No surface report: {why}, nor can the {name}'s own ({last_line(own.stderr)}).\n"
         note += f"The {name} was exported by its own sunrise-stage: {why}.\n"
+        base_from_own |= name == "base"
+    # This is used only at the native-only schema boundary. A normal comparison does not read the audit.
+    if base_from_own and not with_internals and landed is None and (head / SCHEMA_RESET).is_file():
+        reset = json.loads((head / SCHEMA_RESET).read_text())
+        old = json.loads((work / "base.json").read_text())
+        new = json.loads((work / "head.json").read_text())
+        if (old.get("schema"), new.get("schema")) == (2, 3):
+            audit = reset["diff"]
+            if old["hash"] != audit["old"]:
+                return 1, note + f"The schema-2 base {old['hash']} is not the audited schema-reset base.\n"
+            missing = [change["id"] for change in audit["changes"]
+                       if change["class"] == "breaking" and not change.get("notes")]
+            if missing:
+                return 1, note + f"The schema-reset audit lacks change notes for {', '.join(missing)}.\n"
+            # Audit only the transition itself. The rest of the rollup still goes through the real gate.
+            checkpoint = work / "schema-reset"
+            checkpoint.mkdir()
+            try:
+                unpack(reset["checkpoint"], checkpoint)
+                done = export("base", tool, checkpoint)
+                if done.returncode != 0:
+                    done = export("base", base_tool(reset["checkpoint"], work), checkpoint)
+            except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
+                return 1, note + f"Could not export the schema-reset checkpoint: {error}.\n"
+            if done.returncode != 0:
+                return 1, note + f"Could not export the schema-reset checkpoint: {last_line(done.stderr)}.\n"
+            actual = json.loads((work / "base.json").read_text())
+            if (actual["schema"], actual["hash"]) != (3, audit["new"]):
+                return 1, note + "The schema-reset checkpoint does not reproduce the audited schema-3 surface.\n"
+            note += (f"Audited schema 2 → 3 reset: {audit['old']} → {audit['new']} ({SCHEMA_RESET}).\n"
+                     "Checking all subsequent changes against that checkpoint.\n")
+            base = checkpoint
     code, text = compare(tool, base, head, work, gate_on, with_internals=with_internals, notes=notes, landed=landed,
                          covered=covered)
     return code, note + text

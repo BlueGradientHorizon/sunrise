@@ -2,7 +2,7 @@
 //! source copy, then write the build data (`points.json`, `internals.json`, `loops.json`) with the
 //! header naming COMMIT, the source's full commit sha (#589). Never run on a working tree.
 //!
-//! `sunrise-stage surface ROOT OUT [--without-calls] [--with-points-and-loops] [--with-internals]`:
+//! `sunrise-stage surface ROOT OUT [--with-points-and-loops] [--with-internals]`:
 //! write the SDK surface (`surface.json`) of the source tree at ROOT to OUT, and nothing else. It
 //! only reads the tree, so a working tree is fine. The engine options are for comparisons: choose
 //! the same options for both exports. `--with-internals` also includes points and loops.
@@ -26,21 +26,18 @@
 //! an input cannot be read or the options are wrong.
 use mod_source::mod_uses;
 use mod_surface::Surface;
-use mod_surface::uses::{Fit, ManifestFacts, Origin, UsesTable, fits, uses_contained};
+use mod_surface::uses::{Fit, ManifestFacts, Origin, UsesTable, uses_contained};
 use std::path::PathBuf;
 use sunrise_mod_api_gen::staging::{self, Mode};
 use sunrise_mod_api_gen::surface::{ExportOptions, export_with};
 
 fn surface(args: &[PathBuf]) {
     let [root, out, flags @ ..] = args else {
-        fail(
-            "usage: sunrise-stage surface ROOT OUT [--without-calls] [--with-points-and-loops] [--with-internals]",
-        )
+        fail("usage: sunrise-stage surface ROOT OUT [--with-points-and-loops] [--with-internals]")
     };
     let mut options = ExportOptions::default();
     for flag in flags {
         match flag.to_str() {
-            Some("--without-calls") => options.without_calls = true,
             Some("--with-points-and-loops") => options.with_points_and_loops = true,
             Some("--with-internals") => options.with_internals = true,
             _ => fail(format!("unknown option {}", flag.display())),
@@ -181,19 +178,23 @@ fn fits_command(args: &[PathBuf]) -> ! {
                 .to_owned(),
         );
     }
-    match fits(&table.entries, &target) {
+    let report = table.fits(&table.entries, &target);
+    let code = match report.verdict {
         Fit::Fits => {
             println!(
                 "fits ({} items, made for {})",
                 table.entries.len(),
                 table.made_for
             );
-            std::process::exit(0)
+            0
         }
-        Fit::Unversioned(hooks) => fail(format!(
-            "not known: nothing the list can judge changed, but it holds no version of {}; scan the mod again",
-            hooks.join(", ")
-        )),
+        Fit::Unversioned(hooks) => {
+            eprintln!(
+                "sunrise-stage: not known: nothing the list can judge changed, but it holds no version of {}; scan the mod again",
+                hooks.join(", ")
+            );
+            2
+        }
         Fit::DoesNotFit(misfits) => {
             println!(
                 "does not fit: {} of the {} items it uses changed",
@@ -203,9 +204,13 @@ fn fits_command(args: &[PathBuf]) -> ! {
             for misfit in &misfits {
                 println!("  {misfit}  [{}]", misfit.id);
             }
-            std::process::exit(1)
+            1
         }
+    };
+    if let Some(note) = report.deferred {
+        println!("  {note}");
     }
+    std::process::exit(code)
 }
 
 fn surface_diff(args: &[PathBuf]) -> ! {
@@ -313,7 +318,7 @@ fn main() {
     }
     let usage = || {
         eprintln!(
-            "usage: sunrise-stage ROOT POINTS_JSON INTERNALS_JSON COMMIT [--sync-internals]\n       sunrise-stage surface ROOT OUT [--without-calls] [--with-points-and-loops] [--with-internals]\n       sunrise-stage surface-diff OLD NEW [--notes DIR] [--base-notes DIR] [--api-notes-only] [--landed SHA] [--covered-by DIR --covered-base DIR] [--json OUT] [--gate]\n       sunrise-stage uses SURFACE MOD_DIR [--json OUT --made-for BUILD]\n       sunrise-stage fits USES_JSON TARGET_SURFACE"
+            "usage: sunrise-stage ROOT POINTS_JSON INTERNALS_JSON COMMIT [--sync-internals]\n       sunrise-stage surface ROOT OUT [--with-points-and-loops] [--with-internals]\n       sunrise-stage surface-diff OLD NEW [--notes DIR] [--base-notes DIR] [--api-notes-only] [--landed SHA] [--covered-by DIR --covered-base DIR] [--json OUT] [--gate]\n       sunrise-stage uses SURFACE MOD_DIR [--json OUT --made-for BUILD]\n       sunrise-stage fits USES_JSON TARGET_SURFACE"
         );
         std::process::exit(2)
     };

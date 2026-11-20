@@ -10,8 +10,7 @@ use crate::{BlockState, LightLayer};
 use std::{collections::BTreeMap, sync::Arc};
 
 /// One particle of a provider's type, as its tick reads and writes it: the fields of vanilla's
-/// `Particle` a `tick` moves. The record has no heap-owned fields and is the same on native and
-/// wasm; see [`ParticleBatch`] for dispatch costs.
+/// `Particle` a `tick` moves. Plain numbers, so a tick allocates nothing.
 #[derive(Clone, Debug, PartialEq)]
 // exhaustive: the game builds it for each tick and a mod only edits its fields
 #[derive(sunrise_mod_api_macros::Wire)]
@@ -76,8 +75,7 @@ pub enum ParticleFacing {
 /// and take it back are internal. If a callback returns a different length, the game expires
 /// the batch's particles.
 ///
-/// Native dispatch reuses its batch storage once it has enough capacity. Wasm dispatch decodes
-/// a new batch from the guest's reply, which allocates.
+/// Dispatch reuses its batch storage once it has enough capacity.
 #[derive(Clone, Debug, PartialEq)]
 // exhaustive: its field is private; the game builds it
 #[derive(sunrise_mod_api_macros::Wire)]
@@ -137,13 +135,8 @@ pub trait ParticleLevelView {
 /// A tick has no `Host`: the engine ticks particles inside the render crate, which reaches no
 /// gameplay. It does read the level through [`ParticleLevelView`].
 pub trait ParticleProvider: Send + Sync + 'static {
-    // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
-    #[doc(hidden)]
-    fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        sunrise_mod_marks::particle_provider::<Self>();
-    }
     /// `Particle.tick` for every live particle of this provider's type: one call per type per
-    /// tick, native and wasm alike, with the whole batch. The game has set `previous` and `age`
+    /// tick, with the whole batch. The game has set `previous` and `age`
     /// on each already and expires a particle once `age` passes `lifetime`; the tick sets
     /// `position`, `frame`, `size`, `rgba`, `lifetime`, `removed`, `facing` and `roll`. A number
     /// that is not finite expires the particle. Batch iteration preserves length and order.

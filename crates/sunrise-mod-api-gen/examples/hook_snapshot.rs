@@ -14,7 +14,7 @@ fn main() -> Result<(), String> {
             .map_err(|e| e.to_string())?,
     )
     .map_err(|e| e.to_string())?;
-    sunrise_mod_api_gen::generate(&root, &out, sunrise_mod_api_gen::Target::Api)?;
+    sunrise_mod_api_gen::generate_api_parts(&root, &out)?;
     sunrise_mod_api_gen::generate_points(&root, &out)?;
     fs::write(
         out.join("catalog.json"),
