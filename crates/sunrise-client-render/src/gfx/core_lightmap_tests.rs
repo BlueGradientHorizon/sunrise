@@ -596,3 +596,10 @@ fn copies_from_before_fullbright_are_never_read() {
     assert!(core.collect(&mut pixels));
     assert_eq!(pixels[2], 0);
 }
+
+/// The `notGamma` scale multiplies left to right as `lightmap.fsh` writes it. At 0.0015 Java's
+/// float `1.0f - x * x * x * x` (jshell) gives bits 1002711808; squaring twice gives 1002711680.
+#[test]
+fn the_not_gamma_scale_multiplies_in_the_shaders_order() {
+    assert_eq!(max_scaled(0.0015).to_bits(), 1_002_711_808);
+}

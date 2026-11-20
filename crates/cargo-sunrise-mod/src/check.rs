@@ -4,7 +4,9 @@
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::path::Path;
+use sunrise_mod_package::Package;
 use sunrise_mod_package::index::{self, Facts, Kind};
+use sunrise_mod_package::manifest::{MANIFEST, MAX_USES};
 use sunrise_shader_api::mod_pipeline;
 
 pub struct Report {
@@ -127,6 +129,9 @@ pub fn check(
     }
     index::open(&kind)?;
     let facts = index::inspect(&kind, path)?;
+    if kind == Kind::NativeMod {
+        uses_list(path)?;
+    }
     let signed = match (key, signature) {
         (Some(key), Some(sig)) => {
             index::verify_signature(key, sig, path)?;
@@ -142,6 +147,35 @@ pub fn check(
         size,
         signed,
     })
+}
+
+/// A native mod carries the list of what it uses, made for the build it pins: without it the mod
+/// works on that one build only. A mod with rows no list can judge
+/// ([`sunrise_native_build::game_uses::unjudged`]) is made for one build by nature and needs none.
+fn uses_list(path: &Path) -> Result<(), String> {
+    use sunrise_mod_package::mod_surface::uses::{USES_FILE, UsesTable};
+    let manifest = Package::read(path)?.manifest;
+    if sunrise_native_build::game_uses::unjudged(&manifest).is_some() {
+        return Ok(());
+    }
+    let pin = manifest
+        .native
+        .ok_or_else(|| format!("no [native] table in {MANIFEST}"))?
+        .sunrise;
+    let repack = "Pack the mod with `cargo sunrise-mod build`, which writes the list; if it says it cannot read the mod's code, fix what it names first.";
+    let Some(bytes) = Package::entry(path, USES_FILE, MAX_USES)? else {
+        return Err(format!(
+            "no {USES_FILE}: the package does not list what the mod uses, so it would work on game build {pin} only and stop at the next one. {repack}"
+        ));
+    };
+    let list = UsesTable::read(&bytes).map_err(|e| format!("{USES_FILE}: {e}. {repack}"))?;
+    if list.made_for != pin {
+        return Err(format!(
+            "{USES_FILE} was made for game build {}, and the mod pins {pin}, so the list says nothing about the pinned build. {repack}",
+            list.made_for
+        ));
+    }
+    Ok(())
 }
 
 /// The references among a project's content files ([`sunrise_mod_package::content::check_references`]):

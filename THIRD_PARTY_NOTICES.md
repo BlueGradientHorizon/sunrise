@@ -306,6 +306,12 @@ both files.
 `joml::Mat4::rotate_affine`, `transform_affine`), for the sky's positions shader packs read.
 Changes: ported to Rust; `rotate_affine` keeps only the affine case.
 
+`camera.rs` also adapts `Quaternionf.rotationZYX`, `Matrix4f.rotate(Quaternionfc)` (choosing
+`rotation`, `rotateTranslation` or `rotateAffine` as JOML does), `Matrix4f.scale` and
+`Matrix4f.transformPosition` (`joml::Quat::rotation_zyx`, `joml::Mat4::rotate`, `scale`,
+`transform_position`), for the poses block entity renderers hand to the item renderer.
+Changes: ported to Rust.
+
 ```
 The MIT License
 

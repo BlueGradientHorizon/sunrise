@@ -108,9 +108,13 @@ fn resolve(ids: &[&str]) -> (EntityRendererTable, Vec<String>) {
             )
         })
         .collect();
-    EntityRendererTable::resolve(&registered, &TYPES, &Default::default(), |id| {
-        ["minecraft:oak_boat", "ruby:bolt", "ruby:dart"].contains(&id)
-    })
+    EntityRendererTable::resolve(
+        &registered,
+        &TYPES,
+        &Default::default(),
+        &crate::game::general::GeneralTypeCatalog::freeze(&[]).unwrap(),
+        |id| ["minecraft:oak_boat", "ruby:bolt", "ruby:dart"].contains(&id),
+    )
 }
 
 #[test]

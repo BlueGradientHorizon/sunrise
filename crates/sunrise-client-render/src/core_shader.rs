@@ -11,7 +11,11 @@
 //!   into a texture and a sampler object, combined again where the sampler is named;
 //! - the vertex inputs become globals the caller's [`Glue`] fills before the pack's `main`
 //!   (renamed `hz_main`) runs, and `gl_VertexID` and `gl_VertexIndex` read the glue's expression;
-//! - varyings get locations by name across the stages, the fragment output location 0.
+//! - varyings get locations by name across the stages, the fragment output location 0;
+//! - an integer texel buffer (26.3's clouds read `uniform isamplerBuffer CloudFaces;`) becomes a
+//!   read-only storage buffer of `int`s (`uint`s for `usamplerBuffer`), and `texelFetch` on it
+//!   reads one into the first channel of an `ivec4`: wgpu has no texel buffers. Like any block a
+//!   pipeline gives, it is bound at [`other_binding`], and refused when not given.
 
 use std::collections::HashSet;
 use std::fmt::Write;
@@ -63,6 +67,56 @@ pub struct CoreProgram {
     /// The resources of set 0 the stages' entry points read, each with those stages
     /// ([`bindings_read`], from the validation that made the program).
     pub read: Vec<(u32, wgpu::ShaderStages)>,
+}
+
+/// The integer texel buffers a stage declares (`uniform isamplerBuffer` or `usamplerBuffer`).
+fn texel_buffers(text: &str) -> HashSet<&str> {
+    text.lines()
+        .flat_map(declaration_lines)
+        .filter_map(declaration)
+        .filter(|d| d.storage == "uniform" && matches!(d.ty, "isamplerBuffer" | "usamplerBuffer"))
+        .map(|d| d.name)
+        .collect()
+}
+
+/// `texelFetch(Buffer, i)` on each integer texel buffer as `hz_fetch_Buffer(i)`, which the
+/// buffer's declaration defines (see `rewrite`); `texelFetch` on anything else is left alone.
+/// One pass over the text, however many buffers it declares: each `texelFetch` is looked at
+/// once, its first argument's name looked up among them.
+fn texel_fetches(text: &str) -> String {
+    let buffers = texel_buffers(text);
+    if buffers.is_empty() {
+        return text.to_owned();
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find("texelFetch") {
+        out.push_str(&rest[..at]);
+        let after = &rest[at + "texelFetch".len()..];
+        // A name only ending in `texelFetch` is not it; one only starting with it has no `(`
+        // next, so it isn't rewritten either.
+        let whole = !rest[..at].chars().next_back().is_some_and(is_ident);
+        let args = after.trim_start().strip_prefix('(').map(str::trim_start);
+        let name = args.map(|a| &a[..a.find(|c: char| !is_ident(c)).unwrap_or(a.len())]);
+        match (args, name) {
+            (Some(args), Some(name)) if whole && buffers.contains(name) => {
+                let tail = args[name.len()..].trim_start();
+                if let Some(tail) = tail.strip_prefix(',') {
+                    write!(out, "hz_fetch_{name}(").unwrap();
+                    rest = tail;
+                    continue;
+                }
+                out.push_str("texelFetch");
+                rest = after;
+            }
+            _ => {
+                out.push_str("texelFetch");
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 impl CoreProgram {
@@ -258,9 +312,12 @@ pub fn translate_core_at(
         vertex,
         fragment,
     } = *sources;
-    let expanded = |text| expand_imports(text, dir, read).map_err(|e| e.to_string());
-    let vertex_text = glsl_fixups::fixups(&strip_comments(&expanded(vertex)?));
-    let fragment_text = glsl_fixups::fixups(&strip_comments(&expanded(fragment)?));
+    let stage = |text: &str| -> Result<String, String> {
+        let expanded = expand_imports(text, dir, read).map_err(|e| e.to_string())?;
+        let text = glsl_fixups::fixups(&strip_comments(&expanded));
+        Ok(texel_fetches(&text))
+    };
+    let (vertex_text, fragment_text) = (stage(vertex)?, stage(fragment)?);
     let mut names = Names::default();
     let vertex_code = rewrite(&vertex_text, ShaderStage::Vertex, glue, &mut names)
         .map_err(|e| format!("vertex shader: {e}"))?;
@@ -663,6 +720,21 @@ fn rewrite(
             };
             let qualifiers = decl.qualifiers.join(" ");
             match decl.storage {
+                "uniform" if matches!(decl.ty, "isamplerBuffer" | "usamplerBuffer") => {
+                    let binding = names.other_binding(decl.name);
+                    let name = decl.name;
+                    let (scalar, vector) = if decl.ty == "isamplerBuffer" {
+                        ("int", "ivec4")
+                    } else {
+                        ("uint", "uvec4")
+                    };
+                    writeln!(
+                        out,
+                        "layout(std430, set = 0, binding = {binding}) readonly buffer hz_buffer_{name} {{ {scalar} hz_data_{name}[]; }};\n\
+                         {vector} hz_fetch_{name}(int i) {{ return {vector}(hz_data_{name}[i], 0, 0, 1); }}"
+                    )
+                    .unwrap();
+                }
                 "uniform" if decl.ty == "sampler2D" => {
                     let binding = SAMPLERS
                         .iter()
@@ -1298,3 +1370,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "core_shader_texel_tests.rs"]
+mod texel_buffer_tests;

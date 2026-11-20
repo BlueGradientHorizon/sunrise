@@ -79,6 +79,13 @@ impl LightmapInfo {
 
 /// The light texture `lightmap.fsh` draws for `info`, computed here: RGBA rows of sky level by
 /// block level, what the native path uploads.
+/// `lightmap.fsh`'s `notGamma` scale, its four multiplies in the shader's order: `powi(4)`
+/// squares twice and rounds differently.
+fn max_scaled(max: f32) -> f32 {
+    let inverted = 1.0 - max;
+    1.0 - inverted * inverted * inverted * inverted
+}
+
 pub(crate) fn native_lightmap(info: &LightmapInfo) -> [u8; 16 * 16 * 4] {
     use glam::Vec3;
     let brightness = |level: f32| level / (4.0 - 3.0 * level);
@@ -92,7 +99,7 @@ pub(crate) fn native_lightmap(info: &LightmapInfo) -> [u8; 16 * 16 * 4] {
             let mut color = Vec3::from(info.ambient_color)
                 .max(Vec3::from(info.night_vision_color) * info.night_vision);
             color += Vec3::from(info.sky_light_color) * sky_brightness;
-            let parabolic = (2.0 * block_level - 1.0).powi(2);
+            let parabolic = (2.0 * block_level - 1.0) * (2.0 * block_level - 1.0);
             let block_color = Vec3::from(info.block_light_tint).lerp(Vec3::ONE, 0.9 * parabolic);
             color += block_color * block_brightness;
             // A boss bar mixes the light toward 70/60/60%.
@@ -100,9 +107,7 @@ pub(crate) fn native_lightmap(info: &LightmapInfo) -> [u8; 16 * 16 * 4] {
             color -= Vec3::splat(info.darkness);
             color = color.clamp(Vec3::ZERO, Vec3::ONE);
             let max = color.max_element().max(1e-6);
-            let inverted = 1.0 - max;
-            let scaled = 1.0 - inverted.powi(4);
-            let not_gamma = color * (scaled / max);
+            let not_gamma = color * (max_scaled(max) / max);
             color = color.lerp(not_gamma, info.brightness);
             let i = (s * 16 + b) * 4;
             pixels[i] = (color.x * 255.0) as u8;

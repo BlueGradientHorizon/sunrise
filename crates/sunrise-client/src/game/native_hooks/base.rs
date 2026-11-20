@@ -1017,8 +1017,7 @@ impl Game<'_> {
     /// What clients get of the block entity at `pos` when its `id` is
     /// yours (`BlockEntity.getUpdateTag`): set `tag` to it, read from
     /// `entity` alone. Asked on the server whenever a chunk holding it is
-    /// sent and whenever its block changes, on the server thread or, for a
-    /// saved chunk sent past the view distance (`lan::far`), another one; a client's copy of the block
+    /// sent and whenever its block changes, on the server thread; a client's copy of the block
     /// entity (made by `native_block_entity` there) merges it into its `nbt`.
     /// Leave it unset to send no tag of yours. A block change puts the one-shot fields of
     /// `ModBlockEntityView::set_client_update_fields` over it, and sends them alone when it is unset.
@@ -2727,9 +2726,14 @@ impl Game<'_> {
     ) {
         self.fire_time_skip(dimension, from, to, cause, cancel);
     }
-    /// The world's spawn point changed to `pos` and `angle`.
-    pub(in crate::game) fn native_spawn_change(&mut self, pos: [i32; 3], angle: [f32; 2]) {
-        self.fire_spawn_change(pos, angle);
+    /// The world's spawn point changed to `pos` in level `dimension`, facing `angle`.
+    pub(in crate::game) fn native_spawn_change(
+        &mut self,
+        dimension: &str,
+        pos: [i32; 3],
+        angle: [f32; 2],
+    ) {
+        self.fire_spawn_change(dimension, pos, angle);
     }
 
     /// The server world's border bounds changed, either immediately or when
@@ -3233,19 +3237,21 @@ impl Game<'_> {
         self.fire_use_animation(stack, animation);
     }
     /// `Player.canEat` for a food `stack`, or None for cake and candle cake
-    /// regardless of the held item. Cake uses `can_always_eat = false`;
-    /// `vanilla_can_eat` is vanilla's answer (creative, `can_always_eat`, or hungry).
+    /// regardless of the held item. `player` is the eater on either side.
+    /// Vanilla uses always-eat false for cake or the food component for a stack;
+    /// `vanilla_can_eat` is that answer (creative, always-eat, or hungry).
     /// Answer `Some(false)` to refuse the food,
     /// `Some(true)` to let a full player eat; `can_eat` left `None` keeps
     /// `vanilla_can_eat`. Both sides (the client starts eating as the
     /// server does), so answer from the stack and the player alone.
     pub(in crate::game) fn native_can_eat(
         &self,
+        player: PlayerRef,
         stack: Option<&ItemStack>,
         vanilla_can_eat: bool,
         can_eat: &mut Option<bool>,
     ) {
-        self.fire_can_eat(stack, vanilla_can_eat, can_eat);
+        self.fire_can_eat(player, stack, vanilla_can_eat, can_eat);
     }
     /// NeoForge's `LivingEntityUseItemEvent.Start`: `entity` starts using
     /// `stack` in `hand` (`LivingEntity.startUsingItem`), for `duration`
@@ -4402,7 +4408,7 @@ impl Game<'_> {
         dst: [f32; 4],
         tint: Option<u32>,
     ) -> bool {
-        let Some(mut r) = self.gui.atlas.sprites.get(name).copied() else {
+        let Some(mut r) = self.gui.atlas.gui_rect(name).copied() else {
             return false;
         };
         let (du, dv) = ((r.u1 - r.u0) / r.w as f32, (r.v1 - r.v0) / r.h as f32);

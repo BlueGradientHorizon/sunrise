@@ -103,7 +103,87 @@ fn state(sprite: &str, foil: FoilType, display: DisplayContext) -> ItemRenderSta
         cit_glint: None,
         hdr_tier: 0,
         hdr_light: 0,
+        held_tint: None,
     }
+}
+
+#[test]
+fn held_item_tint_is_per_draw_on_cpu_and_gpu() {
+    use crate::{
+        gfx::entity_skin::{self, SkinFrame},
+        mobs::skin::{Skin, SkinModels},
+    };
+
+    let root = fixture("held-item-tint");
+    let data = crate::test_resources::item_data(
+        &root,
+        sunrise_world::native_load_context::DataLoadOrigin::ClientPreload,
+    )
+    .unwrap();
+    let renderer = ItemRenderer::load(
+        &sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
+        &data,
+    )
+    .unwrap();
+    fs::remove_dir_all(root).unwrap();
+    let sprite = "item/book";
+    let sprites = HashMap::from([(
+        sprite.into(),
+        Rect {
+            u0: 0.0,
+            v0: 0.0,
+            u1: 1.0,
+            v1: 1.0,
+            w: 8,
+            h: 16,
+        },
+    )]);
+    let mut plain = state(sprite, FoilType::None, DisplayContext::ThirdPersonRightHand);
+    let LayerGeometry::Quads(baked) = &mut plain.layers[0].geometry else {
+        unreachable!()
+    };
+    Arc::get_mut(baked).unwrap().quads[0].tint_index = 0;
+    plain.layers[0].tints = vec![0x7F_FF_60_11];
+    let mut tinted = plain.clone();
+    // The high byte is ignored. With ambient-only lighting on the south face,
+    // the blue byte goes 17 -> 13 -> 5; lighting before tinting would give 4.
+    tinted.set_held_tint(0x23_80_40_C8);
+    let lights = Some((Vec3::NEG_Z, Vec3::NEG_Z));
+    let pose = Mat4::from_translation(Vec3::Y);
+    let mut cpu = Vec::new();
+    let mut frame = SkinFrame::default();
+    let mut models = SkinModels::default();
+    for draw in [&plain, &tinted, &plain] {
+        draw.submit(
+            &renderer,
+            &sprites,
+            &NoHost,
+            pose,
+            &mut WorldSink {
+                out: &mut cpu,
+                light: 0xF0F0,
+                lights,
+                glint: None,
+                tier: 0,
+            },
+        );
+        assert!(draw.submit_skinned(
+            &renderer,
+            &sprites,
+            pose,
+            (0xF0F0, lights, 0),
+            &mut Skin::new(&mut models, &mut frame),
+        ));
+    }
+    let gpu = entity_skin::expand(&frame.new_model, &frame);
+    assert_eq!(
+        bytemuck::cast_slice::<_, u8>(&gpu),
+        bytemuck::cast_slice::<_, u8>(&cpu)
+    );
+    assert_eq!(
+        cpu.iter().map(|v| v.color).collect::<Vec<_>>(),
+        [[0x7F_06_26_66; 4], [0x7F_05_09_33; 4], [0x7F_06_26_66; 4]].concat()
+    );
 }
 
 #[test]

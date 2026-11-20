@@ -144,3 +144,21 @@ fn register(r: &mut dyn Registrar) {
   work (a staged disconnect included), and still delivers the other declaring mods' copies. A
   handler that succeeds and asks to disconnect still disconnects, and so does a refusal by the
   main thread's work queue. A typed payload's failure closes the session as above.
+
+## Syncing remote item cooldowns
+
+Vanilla sends an item cooldown to the affected player, not to players tracking
+that player. To display a remote shield's cooldown, register a clientbound play
+payload on both ends and have the server send the authoritative state. For
+example, read `PlayerRef::item_cooldowns(host)` after the change has committed;
+`player_shield_disable` is a pre-cooldown notification, not proof that it started.
+A subsequent `player_item_cooldown` listener can still veto the start.
+
+Send changes (including an early end) with `ToClient::send_tracking_entity` and
+send the current snapshot directly to each new observer in
+`player_start_tracking`. Key the client state by the holder's entity ID in the
+current level, so [held-item tinting](model-drawing.md#third-person-held-items)
+can look it up. Your mod owns expiry, interpolation and cleanup when an entity
+stops being tracked or when the client leaves the level or session. Without an
+authoritative snapshot or update, the remote cooldown is unknown; leave the
+model's tint unchanged rather than guessing from its pose or combat animation.

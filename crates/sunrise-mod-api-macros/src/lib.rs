@@ -114,6 +114,27 @@ fn uninspectable(item: &ImplItem) -> bool {
     matches!(item, ImplItem::Macro(_) | ImplItem::Verbatim(_))
 }
 
+/// The marks of a block part's plain `explosion_resistance_is_pure`: one per `explosion_resistance`
+/// declaration, each with its own cfgs (cfg alternatives are exclusive, so at most one survives).
+fn purity_marks(
+    name: &syn::Ident,
+    owner: &proc_macro2::Literal,
+    methods: &[syn::Ident],
+    cfgs: &[Vec<syn::Attribute>],
+) -> Vec<proc_macro2::TokenStream> {
+    if name != "BlockPart" {
+        return Vec::new();
+    }
+    methods
+        .iter()
+        .zip(cfgs)
+        .filter(|(method, _)| *method == "explosion_resistance")
+        .map(|(_, cfgs)| {
+            quote! { #(#cfgs)* mod_api::__sunrise_mark!(#owner explosion_resistance_is_pure); }
+        })
+        .collect()
+}
+
 fn expand(mut implementation: ItemImpl, export: bool) -> TokenStream {
     let Some((_, trait_path, _)) = &implementation.trait_ else {
         return syn::Error::new_spanned(
@@ -190,22 +211,12 @@ fn expand(mut implementation: ItemImpl, export: bool) -> TokenStream {
     let owner = proc_macro2::Literal::string(&name.to_string());
     // A block part's plain `explosion_resistance_is_pure` is asked, across the boundary, of every
     // part subscribed to `explosion_resistance` (its default included), so that listener marks it.
-    let purity = (name == "BlockPart")
-        .then(|| {
-            methods
-                .iter()
-                .zip(&cfgs)
-                .find(|(method, _)| *method == "explosion_resistance")
-                .map(|(_, cfgs)| {
-                    quote! { #(#cfgs)* mod_api::__sunrise_mark!(#owner explosion_resistance_is_pure); }
-                })
-        })
-        .flatten();
+    let purity = purity_marks(name, &owner, &methods, &cfgs);
     let marks = {
         let marked = methods.iter().zip(&cfgs).map(|(method, cfgs)| {
             quote! { #(#cfgs)* mod_api::__sunrise_mark!(#owner #method); }
         });
-        quote! { #(#marked)* #purity mod_api::__sunrise_mark!(#owner #subscribed_name); }
+        quote! { #(#marked)* #(#purity)* mod_api::__sunrise_mark!(#owner #subscribed_name); }
     };
     // Entity parts (#1077) carry plain methods beside their scoped hooks
     // (#792): the goal, behavior and spawn-size registrars are not hooks, so
@@ -320,10 +331,15 @@ fn expand(mut implementation: ItemImpl, export: bool) -> TokenStream {
 }
 
 /// Generate the panicking defaults of a host area from each method's access declaration.
-/// The same declarations drive game forwarders in the build-time API generator.
+/// The same declarations drive game forwarders in the build-time API generator. A backend trait
+/// may carry `#[table_backend("path")]`: the game answers its reads from the borrowed view at
+/// `path`, which implements the trait, and `Game` forwards to it.
 #[proc_macro_attribute]
 pub fn host_area(_attribute: TokenStream, input: TokenStream) -> TokenStream {
     let mut area = parse_macro_input!(input as syn::ItemTrait);
+    // `#[table_backend("path")]` is read by the build-time generator alone.
+    area.attrs
+        .retain(|attr| !attr.path().is_ident("table_backend"));
     let name = area.ident.to_string();
     let union = [
         "ClientBackendMut",
@@ -556,6 +572,43 @@ pub fn replaceable(args: TokenStream, item: TokenStream) -> TokenStream {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_purity_mark_follows_each_explosion_resistance_declaration_cfgs() {
+        let name: syn::Ident = syn::parse_quote!(BlockPart);
+        let owner = proc_macro2::Literal::string("BlockPart");
+        let methods: Vec<syn::Ident> = vec![
+            syn::parse_quote!(explosion_resistance),
+            syn::parse_quote!(explosion_resistance),
+        ];
+        let cfgs: Vec<Vec<syn::Attribute>> = vec![
+            vec![syn::parse_quote!(#[cfg(not(target_arch = "wasm32"))])],
+            vec![syn::parse_quote!(#[cfg(target_arch = "wasm32")])],
+        ];
+        let marks: Vec<String> = purity_marks(&name, &owner, &methods, &cfgs)
+            .iter()
+            .map(|t| t.to_string())
+            .collect();
+        assert_eq!(marks.len(), 2);
+        assert!(
+            marks[0].contains("not (target_arch = \"wasm32\")"),
+            "{}",
+            marks[0]
+        );
+        assert!(!marks[1].contains("not"), "{}", marks[1]);
+        assert!(
+            marks[1].contains("target_arch = \"wasm32\""),
+            "{}",
+            marks[1]
+        );
+        assert!(
+            marks
+                .iter()
+                .all(|m| m.contains("explosion_resistance_is_pure"))
+        );
+        let other: syn::Ident = syn::parse_quote!(ItemPart);
+        assert!(purity_marks(&other, &owner, &methods, &cfgs).is_empty());
+    }
 
     #[test]
     fn verbatim_items_are_uninspectable() {

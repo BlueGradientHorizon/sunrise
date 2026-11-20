@@ -30,7 +30,7 @@ impl Game<'_> {
         uv: [[f32; 2]; 4],
         argb: u32,
     ) -> bool {
-        let Some(r) = self.gui.atlas.sprites.get(name) else {
+        let Some(r) = self.gui.atlas.texture_rect(name) else {
             return false;
         };
         let flags = self.gui.atlas.flags.get(name).copied();
@@ -105,11 +105,12 @@ impl Game<'_> {
     }
     /// A mod's label as `SubmitNodeCollection.submitNameTag` draws a name: 0.5 above `at`,
     /// facing the camera, 0.025 blocks a font pixel. See-through, twice: opaque white text in
-    /// the world, its light raised to at least 2 (no backdrop), and the faded text on the
-    /// backdrop over everything, unlit. Otherwise once, depth tested and translucent: the faded
-    /// text on the backdrop in the caller's light. The faded text's alpha and the backdrop's
-    /// follow the player's text background opacity. Refused whole, before any layout, for a
-    /// position that is not finite; glyphs a refused label rasterized still upload.
+    /// the world, its light raised to at least 2 unless `exact_light` (no backdrop), and the
+    /// faded text on the backdrop over everything, unlit. Otherwise once, depth tested and
+    /// translucent: the faded text on the backdrop in the caller's light. The faded text's alpha
+    /// (unless `faded_alpha`) and the backdrop's follow the player's text background opacity.
+    /// Refused whole, before any layout, for a position that is not finite; glyphs a refused
+    /// label rasterized still upload.
     pub(super) fn native_world_name_tag(
         &self,
         draw: &mut WorldGeometry,
@@ -132,7 +133,9 @@ impl Game<'_> {
         } else {
             0
         };
-        let faded = self.settings.faded_text_alpha(0.25);
+        let faded = options
+            .faded_alpha
+            .map_or_else(|| self.settings.faded_text_alpha(0.25), u32::from);
         let light = options.light;
         let unit = super::names::NAME_TAG_UNIT;
         let (mut world, mut see_through) = (Vec::new(), Vec::new());
@@ -141,9 +144,11 @@ impl Game<'_> {
         };
         let mut patches = if options.see_through {
             // LightCoordsUtil.lightCoordsWithEmission(light, 2): sky and block at least 2.
-            let lit = sunrise_client::block_entity_render::vertex_light(
-                (light >> 4).max(2) << 4 | (light & 15).max(2),
-            );
+            let lit = sunrise_client::block_entity_render::vertex_light(if options.exact_light {
+                light
+            } else {
+                (light >> 4).max(2) << 4 | (light & 15).max(2)
+            });
             let mut patches = quads(0xFF, 0, 0, lit, &mut world);
             // RenderPipelines.TEXT_SEE_THROUGH: no depth test, no lightmap.
             patches.extend(quads(faded, backdrop, 2, 0, &mut see_through));

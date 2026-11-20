@@ -143,7 +143,7 @@ needs prepared resources, a child process or the network.
 | --- | --- | --- |
 | Push | every pull request push | `format`, `verify-static` |
 | Gate | rollup and sync pull requests, pushes to main | `lint`, `verify` (unit tests only), `verify-static` |
-| Daily | once a day on main's head | every test that boots the game or needs prepared resources, the wasm fixture, `fn-replace-check`, the SDK build and its linkage probe, the machine sample built against the mod API, and vanilla parity on the main head captured at dispatch |
+| Daily | once a day on main's head | every test that boots the game or needs prepared resources, the wasm fixture, `fn-replace-check`, the SDK build and its linkage probe, the machine sample built against the mod API, the modding book's quickstart run with the mod tool alone, and vanilla parity on the main head captured at dispatch |
 
 **A unit test** uses no prepared resources, boots no game, starts no child process, uses no network and no compiled
 wasm fixture, and finishes in under 2 seconds. Any other test is a daily test: it carries `#[ignore]` and a row in
@@ -226,6 +226,11 @@ it (edited on every push, never repeated): talk to its author in the thread befo
 - **Release labels** (we set them if you can't): `feature` also puts it under "New" in the release notes,
   `skip-release` when players see no change (tooling, docs, tests), nothing for a fix. `release-now` is for crash
   fixes that shouldn't wait. pr_ready suggests one.
+- **`breaking`** when players or server owners must do something after they update: a save or settings format that
+  changes, a removed feature, a changed command or `server.toml` key. Say what they must do under a
+  `## Breaking change` heading in the description, for example "Set your render distance again in Options." Sunrise's
+  Discord feed posts that text as a ⚠️ breaking-change notice, so write it for players. Mod API breaks don't need the
+  label: the `migrate` line of their change note in `crates/sunrise-mod-vocab/changes/` says what mod makers do.
 
 Who reviews and merges: the Sunrise Team, on CI for ordinary pull requests; risky ones (saves, network, world
 generation, the launcher's updates) wait for a local proof first ([merging](docs/release-flow.md#merging)).
