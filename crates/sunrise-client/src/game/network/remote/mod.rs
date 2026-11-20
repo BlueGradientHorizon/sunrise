@@ -872,14 +872,6 @@ impl Game<'_> {
         Some(names)
     }
 
-    /// The open menu's window id (0: the inventory).
-    pub(super) fn remote_menu_id(&self) -> i32 {
-        self.remote
-            .as_ref()
-            .and_then(|r| r.menu.as_ref())
-            .map_or(0, |m| m.0)
-    }
-
     /// Received events left for the next frame (`poll_remote`): until they
     /// are handled, the terrain the server sent is not all there.
     pub(super) fn remote_backlog(&self) -> usize {
@@ -892,25 +884,6 @@ impl Game<'_> {
             r.input
                 .queued(sunrise_client::interaction_input::Button::Attack)
         })
-    }
-
-    /// A headless command oracle has a real connection but no movement tick.
-    /// Acknowledge loaded terrain without predicting or sending movement.
-    pub(super) fn poll_stationary_client(&mut self) -> Result<()> {
-        self.poll_remote()?;
-        let loaded = self.player.as_ref().is_some_and(|p| {
-            self.streaming.is_lit(
-                (p.position.x.floor() as i32) >> 4,
-                (p.position.z.floor() as i32) >> 4,
-            )
-        });
-        if loaded && self.remote.as_ref().is_some_and(|r| !r.loaded_sent) {
-            self.send(S::PlayerLoaded(Empty));
-            let r = self.remote.as_mut().unwrap();
-            r.loaded_sent = true;
-            r.level_load.finish();
-        }
-        Ok(())
     }
 
     /// Process what the network thread received (once per frame, like the
@@ -1268,72 +1241,6 @@ impl Game<'_> {
                 index.get(mobs, id as u32).map(mob_tracking_body)
             });
     }
-
-    /// Find a game slot in the menu's complete, contiguous slot mapping.
-    pub(super) fn menu_slot_index(menu: &str, internal: usize) -> Option<usize> {
-        (0..)
-            .map_while(|slot| Self::inventory_screen_slot(menu, slot))
-            .position(|slot| slot == internal)
-    }
-
-    /// The workstation screen of a menu type a server opens.
-    pub(super) fn remote_station_kind(menu: &str) -> Option<super::stations::Kind> {
-        use super::stations::Kind;
-        Some(match menu {
-            "minecraft:loom" => Kind::Loom,
-            "minecraft:stonecutter" => Kind::Stonecutter,
-            "minecraft:grindstone" => Kind::Grindstone,
-            "minecraft:anvil" => Kind::Anvil,
-            "minecraft:smithing" => Kind::Smithing,
-            "minecraft:enchantment" => Kind::Enchanting,
-            "minecraft:beacon" => Kind::Beacon,
-            "minecraft:cartography_table" => Kind::Cartography,
-            _ => return None,
-        })
-    }
-    fn open_menu_name(&self, container: i32) -> String {
-        match self.remote.as_ref().and_then(|r| r.menu.as_ref()) {
-            Some((id, name)) if *id == container && container != 0 => name.clone(),
-            _ => "inventory".into(),
-        }
-    }
-    fn set_menu_slot(&mut self, container: i32, slot: i32, item: Option<ItemStack>) {
-        let menu = self.open_menu_name(container);
-        if menu == "minecraft:lectern" {
-            if slot == 0 {
-                self.remote_lectern_book(item);
-            }
-            return;
-        }
-        if container != 0 && menu == "inventory" {
-            return;
-        }
-        let Some(internal) = Self::inventory_screen_slot(&menu, slot) else {
-            return;
-        };
-        if internal == 200 {
-            // ClientboundContainerSetSlotPacket for the open menu's slot 0: the
-            // server's result of its own recipes (a world's data packs' too).
-            if container == self.remote_menu().0
-                && let Some(r) = self.remote.as_mut()
-            {
-                r.craft_result = item;
-            }
-            return;
-        }
-        let slot = self.slot_mut(internal);
-        let changed = !super::hand::matches_for_swap(slot.as_ref(), item.as_ref());
-        *slot = item;
-        if internal < 36 {
-            self.remote_hand_slot_set(internal, changed);
-        } else if internal == 504 {
-            self.remote_hand_slot_set(super::shield::OFFHAND_SLOT, changed);
-        }
-        if internal >= super::stations::INPUT && self.station.is_some() {
-            self.remote_station_slot_changed(internal);
-        }
-    }
-
     pub(in crate::game) fn apply_packet(&mut self, packet: C) -> Result<()> {
         self.observe_client_packet(&packet);
         match packet {
@@ -1837,24 +1744,6 @@ impl Game<'_> {
     }
 
     // remote_player_eating: remote/use.rs
-
-    // remote_send_state: remote/sync.rs
-    /// `MultiPlayerGameMode.handleCreativeModeItemAdd` for inventory slot `i` (0 to 35): the
-    /// stack goes out now and counts as synced. Nothing without a server.
-    pub(in crate::game) fn remote_creative_slot_add(&mut self, i: usize) {
-        let stack = self.inventory.get(i).cloned().flatten();
-        let Some(r) = self.remote.as_mut() else {
-            return;
-        };
-        if let Some(synced) = r.synced.get_mut(i) {
-            *synced = stack.clone();
-        }
-        let item = self.to_network(&stack);
-        self.send(S::SetCreativeModeSlot(play::SetCreativeModeSlot {
-            slot: creative_sync_slot(i),
-            item,
-        }));
-    }
     /// Inventory as the server last described it.
     fn remote_synced(&mut self) {
         let stacks = self.creative_stacks();
@@ -2189,30 +2078,6 @@ impl Game<'_> {
         let moves = !super::hand::matches_for_swap(main, off);
         if let Some(r) = self.remote.as_mut() {
             r.swap_answer = [moves; 2];
-        }
-    }
-
-    /// The server set inventory `slot` (`shield::OFFHAND_SLOT` for the off
-    /// hand), `changed` from the stack this client held there. The stack
-    /// that answers a swap (`setItemInHand`) is another object, which the
-    /// hand shows after the swap animation (`hand_stack_replaced`); other
-    /// updates of a hand's slot count as the held stack changing in place,
-    /// as this client doesn't predict every use the way vanilla's does
-    /// (a thrown snowball's stack shrinks only when the server says so).
-    fn remote_hand_slot_set(&mut self, slot: usize, changed: bool) {
-        let hand = if slot == super::shield::OFFHAND_SLOT {
-            1
-        } else if slot == self.selected {
-            0
-        } else {
-            return;
-        };
-        let answer = self
-            .remote
-            .as_mut()
-            .is_some_and(|r| std::mem::take(&mut r.swap_answer[hand]));
-        if answer && changed {
-            self.hand_stack_replaced(slot);
         }
     }
 
