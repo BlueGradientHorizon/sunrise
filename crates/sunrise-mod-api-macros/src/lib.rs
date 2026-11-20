@@ -242,7 +242,8 @@ fn expand(mut implementation: ItemImpl, export: bool) -> TokenStream {
 /// Generate the panicking defaults of a host area from each method's access declaration.
 /// The same declarations drive game forwarders in the build-time API generator. A backend trait
 /// may carry `#[table_backend("path")]`: the game answers its reads from the borrowed view at
-/// `path`, which implements the trait, and `Game` forwards to it.
+/// `path`, which implements the trait, and `Game` forwards to it. A backend method may carry
+/// `#[manual_handle]` when its inherent handle wrapper is written by hand.
 #[proc_macro_attribute]
 pub fn host_area(_attribute: TokenStream, input: TokenStream) -> TokenStream {
     let mut area = parse_macro_input!(input as syn::ItemTrait);
@@ -289,6 +290,7 @@ pub fn host_area(_attribute: TokenStream, input: TokenStream) -> TokenStream {
             !attr.path().is_ident("static_call")
                 && !attr.path().is_ident("service")
                 && !attr.path().is_ident("read_stack")
+                && !attr.path().is_ident("manual_handle")
         });
         let operation = method.sig.ident.to_string();
         let label = format!("{union}::{operation}");

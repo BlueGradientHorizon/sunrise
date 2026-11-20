@@ -1,6 +1,7 @@
-//! Owned item values. Registry-dependent validation belongs to the game's write boundary.
+//! Owned and borrowed item values. Registry-dependent validation belongs to the game's write boundary.
 use crate::ItemKey;
 use std::num::NonZeroU32;
+use std::ops::Range;
 use std::sync::Arc;
 use sunrise_core::nbt::{Compound, JavaString, Tag};
 
@@ -66,6 +67,128 @@ pub struct ItemStack {
     count: NonZeroU32,
     damage: Option<u32>,
     components: Option<Arc<Components>>,
+}
+
+type StackMetadata = (ItemKey, NonZeroU32, Option<u32>);
+type StackProjector<'a> = dyn Fn(StackMetadata) -> Option<ItemStack> + 'a;
+type SlotMetadata<'a> = dyn Fn(u32) -> Option<StackMetadata> + 'a;
+type SlotProjector<'a> = dyn Fn(u32, StackMetadata) -> Option<ItemStack> + 'a;
+
+/// A read-only loan of a nonempty stack. Reading its scalars does not copy the stack or
+/// encode its components. Use [`Self::project`] to retain an owned value or read its patch.
+// no wire: borrows a call-scoped stack or projection callable.
+#[non_exhaustive]
+pub struct ItemStackView<'a> {
+    metadata: StackMetadata,
+    projection: StackProjection<'a>,
+}
+
+enum StackProjection<'a> {
+    Borrowed(&'a ItemStack),
+    Resident(&'a StackProjector<'a>),
+    Slot(u32, &'a SlotProjector<'a>),
+}
+
+impl<'a> ItemStackView<'a> {
+    /// Lend an existing API value, including one synthesized for the current call.
+    pub fn from_stack(stack: &'a ItemStack) -> Self {
+        Self {
+            metadata: (stack.item, stack.count, stack.damage),
+            projection: StackProjection::Borrowed(stack),
+        }
+    }
+
+    /// Lend the resident stack's checked `(item, count, damage override)` without encoding it.
+    /// The projector receives those same scalars when an owned stack is requested.
+    #[doc(hidden)]
+    pub fn resident(metadata: StackMetadata, project: &'a StackProjector<'a>) -> Self {
+        Self {
+            metadata,
+            projection: StackProjection::Resident(project),
+        }
+    }
+
+    /// The process-local identity of the item.
+    pub fn item(&self) -> ItemKey {
+        self.metadata.0
+    }
+
+    /// The nonzero item count.
+    pub fn count(&self) -> u32 {
+        self.metadata.1.get()
+    }
+
+    /// Stored damage, or zero when no numeric damage override is present.
+    pub fn damage(&self) -> u32 {
+        self.damage_component().unwrap_or(0)
+    }
+
+    /// The numeric damage override. `Some(0)` is explicit zero; `None` means the
+    /// component is inherited or explicitly removed, not a numeric override.
+    pub fn damage_component(&self) -> Option<u32> {
+        self.metadata.2
+    }
+
+    /// Copy this stack into an owned API value, including its normalized component patch.
+    /// Returns `None` if the source cannot be represented as an owned [`ItemStack`].
+    pub fn project(&self) -> Option<ItemStack> {
+        match self.projection {
+            StackProjection::Borrowed(stack) => Some(stack.clone()),
+            StackProjection::Resident(project) => project(self.metadata),
+            StackProjection::Slot(slot, project) => project(slot, self.metadata),
+        }
+    }
+}
+
+/// A read-only loan of numbered inventory slots, in their source's numbering.
+/// Construction reads no slots. Looking up or iterating slots does not project their stacks.
+// no wire: borrows the storage's call-scoped readers.
+#[non_exhaustive]
+pub struct InventoryView<'a> {
+    slots: Range<u32>,
+    metadata: &'a SlotMetadata<'a>,
+    project: &'a SlotProjector<'a>,
+}
+
+impl<'a> InventoryView<'a> {
+    /// Lend the given slot range. `metadata` reads only the addressed slot and returns
+    /// `(item, count, damage override)` for a readable stack. `project` receives the
+    /// original index and those checked scalars; it runs only on explicit projection.
+    #[doc(hidden)]
+    pub fn new(
+        slots: Range<u32>,
+        metadata: &'a SlotMetadata<'a>,
+        project: &'a SlotProjector<'a>,
+    ) -> Self {
+        Self {
+            slots,
+            metadata,
+            project,
+        }
+    }
+
+    /// Read one slot. Out-of-range, empty and unreadable slots return `None`.
+    pub fn get(&self, slot: u32) -> Option<ItemStackView<'a>> {
+        if !self.slots.contains(&slot) {
+            return None;
+        }
+        self.stack(slot)
+    }
+
+    /// Visit readable nonempty slots lazily, in ascending order, with their original indices.
+    /// Empty and unreadable slots are skipped, not renumbered.
+    pub fn iter(&self) -> impl Iterator<Item = (u32, ItemStackView<'a>)> + '_ {
+        self.slots
+            .clone()
+            .filter_map(move |slot| self.stack(slot).map(|stack| (slot, stack)))
+    }
+
+    fn stack(&self, slot: u32) -> Option<ItemStackView<'a>> {
+        Some(ItemStackView {
+            metadata: (self.metadata)(slot)?,
+            projection: StackProjection::Slot(slot, self.project),
+        })
+    }
 }
 
 /// A stack operation could not represent the requested count or component patch.
@@ -181,19 +304,19 @@ pub struct StackSplit {
 impl ItemStack {
     /// Construct a nonempty stack. Registry maxima are validated by the game on writes.
     pub fn new(item: ItemKey, count: u32) -> Option<Self> {
-        Some(Self {
-            item,
-            count: NonZeroU32::new(count)?,
-            damage: None,
-            components: None,
-        })
+        Some(Self::from_scalars(item, NonZeroU32::new(count)?, None))
     }
     /// Construct a single item without a component patch.
     pub fn of(item: ItemKey) -> Self {
+        Self::from_scalars(item, NonZeroU32::MIN, None)
+    }
+    /// Start a projection from checked scalar metadata before attaching any patch.
+    #[doc(hidden)]
+    pub fn from_scalars(item: ItemKey, count: NonZeroU32, damage: Option<u32>) -> Self {
         Self {
             item,
-            count: NonZeroU32::MIN,
-            damage: None,
+            count,
+            damage,
             components: None,
         }
     }
@@ -518,6 +641,57 @@ mod tests {
         fn encode(&self, value: i32) -> Tag {
             Tag::Int(value)
         }
+    }
+
+    #[test]
+    fn inventory_views_read_only_requested_slots_and_project_on_demand() {
+        use std::cell::RefCell;
+
+        let reads = RefCell::new(Vec::new());
+        let projected = RefCell::new(Vec::new());
+        let metadata = |slot| {
+            reads.borrow_mut().push(slot);
+            match slot {
+                5 => Some((ItemKey(2), NonZeroU32::MIN, None)),
+                8 => Some((ItemKey(3), NonZeroU32::new(7).unwrap(), Some(0))),
+                _ => None,
+            }
+        };
+        let project = |slot, (item, count, damage)| {
+            projected.borrow_mut().push(slot);
+            Some(ItemStack::from_scalars(item, count, damage))
+        };
+        let view = InventoryView::new(4..9, &metadata, &project);
+        assert!(reads.borrow().is_empty());
+
+        let stack = view.get(8).unwrap();
+        assert_eq!(stack.item(), ItemKey(3));
+        assert_eq!(stack.count(), 7);
+        assert_eq!(stack.damage(), 0);
+        assert_eq!(stack.damage_component(), Some(0));
+        assert!(view.get(9).is_none());
+        assert_eq!(*reads.borrow(), [8]);
+        assert!(projected.borrow().is_empty());
+        reads.borrow_mut().clear();
+
+        let mut slots = view.iter();
+        let (index, first) = slots.next().unwrap();
+        assert_eq!(index, 5);
+        assert_eq!(first.item(), ItemKey(2));
+        assert_eq!(first.damage_component(), None);
+        assert_eq!(*reads.borrow(), [4, 5]);
+        assert!(projected.borrow().is_empty());
+
+        let owned = stack.project().unwrap();
+        assert_eq!(owned.item(), ItemKey(3));
+        assert_eq!(owned.count(), 7);
+        assert_eq!(owned.damage_component(), Some(0));
+        assert_eq!(*projected.borrow(), [8]);
+        assert_eq!(*reads.borrow(), [4, 5]);
+        assert_eq!(slots.next().map(|(slot, _)| slot), Some(8));
+        assert!(slots.next().is_none());
+        assert_eq!(*reads.borrow(), [4, 5, 6, 7, 8]);
+        assert_eq!(*projected.borrow(), [8]);
     }
 
     #[test]

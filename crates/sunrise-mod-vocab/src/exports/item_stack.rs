@@ -1,3 +1,4 @@
 pub use item::item_stack::{
-    Component, Components, CraftedByError, ItemStack, StackError, StackSplit, StackWriteError,
+    Component, Components, CraftedByError, InventoryView, ItemStack, ItemStackView, StackError,
+    StackSplit, StackWriteError,
 };

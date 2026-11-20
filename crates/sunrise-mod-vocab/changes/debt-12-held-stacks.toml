@@ -1,0 +1,14 @@
+ids = [
+    "type:item::item_stack::ItemStackView",
+    "handle:item::item_stack::ItemStackView::from_stack",
+    "handle:item::item_stack::ItemStackView::item",
+    "handle:item::item_stack::ItemStackView::count",
+    "handle:item::item_stack::ItemStackView::damage",
+    "handle:item::item_stack::ItemStackView::damage_component",
+    "handle:item::item_stack::ItemStackView::project",
+    "type:item::item_stack::InventoryView",
+    "handle:item::item_stack::InventoryView::get",
+    "handle:item::item_stack::InventoryView::iter",
+]
+why = "Stack views let mods read item, count and damage without copying a resident stack or encoding its components. Inventory views keep the original slot numbers and read only the slots the caller asks for."
+migrate = "No existing calls change with these primitives. When reading an InventoryView, use view.get(slot) for one slot or view.iter() for ascending (slot, stack) pairs. Read scalars directly on the ItemStackView; call stack.project() for an owned ItemStack if you need the component patch or need to keep it after the callback. Use ItemStackView::from_stack(&stack) to lend an existing owned API value."
