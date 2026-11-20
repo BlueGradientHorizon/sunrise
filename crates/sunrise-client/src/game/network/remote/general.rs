@@ -282,13 +282,17 @@ mod tests {
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for Declare {
         fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-            for (name, height, pickable) in [("missile", 0.5, false), ("package", 2.0, true)] {
+            let types = [
+                ("missile", 0.5, Some([1.0, 1.25, 0.0]), false),
+                ("package", 2.0, None, true),
+            ];
+            for (name, height, passenger_attachment, pickable) in types {
                 r.declare_general_entity(
                     name,
                     mod_api::GeneralEntityCategory::Misc,
                     0.5,
                     height,
-                    None,
+                    passenger_attachment,
                     mod_api::GeneralSavePolicy::Save,
                     true,
                     pickable,
