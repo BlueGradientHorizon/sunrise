@@ -85,7 +85,7 @@ fn with_owned_menu(
     test: impl FnOnce(&mut Game<'_>, mpsc::Receiver<Out>, MenuKey),
 ) {
     let mods: Mods = vec![ModEntry::new(
-        "owned",
+        "listen",
         Box::new(Listener { return_contents }),
     )]
     .into();
@@ -98,7 +98,7 @@ fn with_owned_menu(
         sunrise_client::containers::with_mod_menu_types(
             [(
                 MOD_MENU.into(),
-                "owned".into(),
+                "listen".into(),
                 2,
                 0,
                 Vec::new(),
@@ -219,7 +219,7 @@ fn an_item_opened_menu_has_two_empty_owned_slots_with_individual_caps() {
 fn owned_click_prediction_applies_caps_and_the_server_corrects_an_override() {
     use crate::game::execution_role::ExecutionRole;
     use sunrise_client::menu::Input;
-    use sunrise_protocol::{connection::Pipe, item::Hashed};
+    use sunrise_protocol::item::Hashed;
     with_owned_menu(false, |game, rx, key| {
         let (window, menu) = open(game, key);
         let opening = sent(&rx);
@@ -310,12 +310,12 @@ fn owned_click_prediction_applies_caps_and_the_server_corrects_an_override() {
         // know the declared caps; only the server executes the part's override.
         game.lan = None;
         game.options.execution_role = ExecutionRole::Client;
-        let (client, _peer) = Pipe::pair();
-        game.connect_local(client, "Owned slots").unwrap();
+        let _peer = crate::game::native_client_session::tests::logged_client(game);
         game.remote.as_mut().unwrap().builtin = std::sync::Arc::new(builtin);
         for packet in opening {
             game.handle_packet(packet).unwrap();
         }
+        assert_eq!(game.remote_menu_type(), Some(MOD_MENU));
         assert_eq!(game.slots(), [300, 301]);
         let cursor = || {
             C::SetCursorItem(SetCursorItem {
