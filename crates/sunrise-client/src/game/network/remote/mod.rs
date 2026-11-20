@@ -2363,6 +2363,9 @@ pub(crate) mod tests {
     mod client_block_changed_tests {
         include!("client_block_changed_tests.rs");
     }
+    mod camera_draw_tests {
+        include!("camera_draw_tests.rs");
+    }
     mod client_camera_tests {
         include!("client_camera_tests.rs");
     }
