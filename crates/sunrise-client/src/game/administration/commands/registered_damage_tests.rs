@@ -1,17 +1,17 @@
 use crate::game::{Game, native_entity_refs::tests::with_game};
 use sunrise_client::{
     health::{damage_type, source_damage_type},
-    mobs::{NamedDamage as Tags, Who, gear},
+    mobs::{Damage, DamageKind, NamedDamage as Tags, Who, gear},
 };
 use sunrise_world::damage_source::Catalog;
 
 #[test]
 fn formerly_aliased_types_keep_their_id_and_registry_tags() {
-    let cases = [
-        (
-            "minecraft:indirect_magic",
-            Tags::BYPASSES_ARMOR | Tags::BYPASSES_WOLF_ARMOR | Tags::WITCH_RESISTANT_TO,
-        ),
+    let built_in = [
+        ("minecraft:indirect_magic", DamageKind::IndirectMagic),
+        ("minecraft:fly_into_wall", DamageKind::FlyIntoWall),
+    ];
+    let named = [
         (
             "minecraft:dragon_breath",
             Tags::BYPASSES_ARMOR | Tags::NO_KNOCKBACK,
@@ -40,16 +40,14 @@ fn formerly_aliased_types_keep_their_id_and_registry_tags() {
             "minecraft:ender_pearl",
             Tags::IS_FALL | Tags::BYPASSES_ARMOR | Tags::NO_KNOCKBACK,
         ),
-        (
-            "minecraft:fly_into_wall",
-            Tags::BYPASSES_ARMOR | Tags::NO_KNOCKBACK,
-        ),
     ];
     // Model only the tags relevant to these cases. The raw tag fixture and
     // expected flags are separate so an omitted or misread tag fails the test.
-    let types: Vec<_> = cases
+    let types: Vec<_> = named
         .iter()
-        .map(|(id, _)| {
+        .map(|(id, _)| *id)
+        .chain(built_in.iter().map(|(id, _)| *id))
+        .map(|id| {
             serde_json::json!({
                 "id": id, "message_id": "test", "exhaustion": "00000000",
                 "scaling": "never", "effects": "hurt", "death_message_type": "default"
@@ -57,10 +55,8 @@ fn formerly_aliased_types_keep_their_id_and_registry_tags() {
         })
         .collect();
     let tags = serde_json::json!({
-        "minecraft:bypasses_armor": r#"{"values":["indirect_magic","dragon_breath","ender_pearl","fly_into_wall"]}"#,
-        "minecraft:bypasses_wolf_armor": r#"{"values":["indirect_magic"]}"#,
-        "minecraft:witch_resistant_to": r#"{"values":["indirect_magic"]}"#,
-        "minecraft:no_knockback": r#"{"values":["dragon_breath","explosion","player_explosion","bad_respawn_point","ender_pearl","fly_into_wall"]}"#,
+        "minecraft:bypasses_armor": r#"{"values":["dragon_breath","ender_pearl"]}"#,
+        "minecraft:no_knockback": r#"{"values":["dragon_breath","explosion","player_explosion","bad_respawn_point","ender_pearl"]}"#,
         "minecraft:is_projectile": r#"{"values":["mob_projectile","unattributed_fireball"]}"#,
         "minecraft:is_fire": r#"{"values":["unattributed_fireball"]}"#,
         "minecraft:is_explosion": r#"{"values":["explosion","player_explosion","bad_respawn_point"]}"#,
@@ -73,15 +69,22 @@ fn formerly_aliased_types_keep_their_id_and_registry_tags() {
     )
     .unwrap();
 
-    for (id, expected_tags) in cases {
+    for (id, expected_kind) in built_in.into_iter().chain(
+        named
+            .into_iter()
+            .map(|(id, tags)| (id, DamageKind::Named(Tags::new(id, tags)))),
+    ) {
         let kind = Game::damage_kind(&catalog, id);
-        assert_eq!(
-            kind,
-            sunrise_client::mobs::DamageKind::Named(Tags::new(id, expected_tags)),
-        );
+        assert_eq!(kind, expected_kind);
         assert_eq!(damage_type(kind, false), id);
         assert_eq!(damage_type(kind, true), id);
     }
+    let collision = Damage::of(Game::damage_kind(&catalog, "minecraft:fly_into_wall"));
+    assert!(collision.bypasses_armor() && collision.no_knockback());
+    assert!(!collision.causes_panic());
+    let magic = Damage::of(Game::damage_kind(&catalog, "minecraft:indirect_magic"));
+    assert!(magic.bypasses_armor() && magic.kind.witch_resistant_to());
+    assert!(!magic.no_knockback());
 }
 
 #[test]

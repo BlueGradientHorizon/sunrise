@@ -911,6 +911,7 @@ impl Damage {
         !matches!(
             self.kind,
             DamageKind::Fall
+                | DamageKind::FlyIntoWall
                 | DamageKind::Drown
                 | DamageKind::DryOut
                 | DamageKind::Generic
@@ -3985,7 +3986,7 @@ impl Mob {
             &mut passed_invulnerability,
         );
         if enderman && passed_invulnerability {
-            enderman::after_hurt(self, &source);
+            enderman::after_hurt(self, &source, level.attack().direct.is_some());
         }
         hurt
     }
