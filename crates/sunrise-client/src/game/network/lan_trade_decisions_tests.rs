@@ -18,6 +18,7 @@ struct Script {
     invalid: bool,
     /// An answer whose result stack is not a valid one for the game.
     invalid_stack: bool,
+    edit_other_merchant_and_board: bool,
 }
 thread_local! {
     static SCRIPT: RefCell<Script> = RefCell::new(Script::default());
@@ -90,6 +91,19 @@ fn trade(host: &mut dyn ServerHost, event: &mut TradeWithVillagerEvent<'_>) {
         if s.invalid_stack {
             event.offer.result.set_damage(u32::MAX);
         }
+        if s.edit_other_merchant_and_board {
+            let other = host.merchant(host.entity(41).unwrap()).unwrap();
+            let mut offer = other.offers(host).unwrap().remove(0);
+            offer.uses = 6;
+            assert!(other.set_offer(host, 0, offer).unwrap());
+            host.add_objective(
+                "temporary",
+                "dummy",
+                mod_api::Text::literal("Temporary"),
+                mod_api::ObjectiveRenderType::Integer,
+            )
+            .unwrap();
+        }
         if s.panic_on == Some(call) {
             panic!("trade listener failed");
         }
@@ -157,6 +171,52 @@ fn open(game: &mut Game<'_>, payment: u32) -> ContainerClick {
         carried: None,
     }
 }
+#[test]
+#[ignore = "daily"]
+fn refusal_restores_crafted_score_and_another_merchants_offers() {
+    use mod_api::{ObjectiveRenderType, ScoreboardServerHost};
+    with_mod(|| {
+        with_guests(|game| {
+            let click = open(game, 2);
+            use super::native_merchant_refs::tests::{offer, spawn};
+            spawn(game, 41, "minecraft:villager");
+            game.mobs[1].extra.trade = Some(Box::new(Trader {
+                offers: vec![offer("minecraft:stick", "minecraft:emerald")],
+                ..Trader::default()
+            }));
+            ScoreboardServerHost::add_objective(
+                game,
+                "crafted",
+                "minecraft.crafted:minecraft.emerald",
+                mod_api::Text::literal("Crafted"),
+                ObjectiveRenderType::Integer,
+            )
+            .unwrap();
+            let player = game
+                .lan
+                .as_ref()
+                .unwrap()
+                .hub
+                .guest(12)
+                .unwrap()
+                .name
+                .clone();
+            script(Script {
+                edit_other_merchant_and_board: true,
+                panic_on: Some(1),
+                ..Script::default()
+            });
+            assert!(game.lan_merchant_click(12, &click));
+            unchanged(game, 2);
+            assert_eq!(CALLS.get(), 1);
+            assert!(game.score.board.objective("temporary").is_none());
+            assert!(game.score.board.score(&player, "crafted").is_none());
+            let other = game.mobs[1].extra.trade.as_ref().unwrap();
+            assert_eq!(other.offers[0].uses, 0);
+        })
+    });
+}
+
 #[test]
 #[ignore = "daily"]
 fn exploration_trade_maps_share_nested_reservations() {

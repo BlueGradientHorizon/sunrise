@@ -288,6 +288,9 @@ impl Game<'_> {
         run: MerchantRun<'_>,
         op: impl FnOnce(&mut Menu, &Env),
     ) -> bool {
+        if !matches!(&run, MerchantRun::Probe(_)) {
+            self.journal_guest_merchant(conn);
+        }
         let Some(mut gm) = self
             .lan
             .as_mut()
@@ -773,6 +776,16 @@ impl Game<'_> {
             &session.profession,
             session.level,
         );
+        let stale: Vec<String> = session
+            .sequences
+            .keys()
+            .filter(|id| !needed.contains(id))
+            .cloned()
+            .collect();
+        if stale.is_empty() && needed.iter().all(|id| session.sequences.contains_key(id)) {
+            return;
+        }
+        self.journal_trade_sequences();
         let Some(gm) = self
             .lan
             .as_mut()
@@ -782,12 +795,6 @@ impl Game<'_> {
             return;
         };
         let session = &mut gm.merchant.session;
-        let stale: Vec<String> = session
-            .sequences
-            .keys()
-            .filter(|id| !needed.contains(id))
-            .cloned()
-            .collect();
         for id in stale {
             if let Some(random) = session.sequences.remove(&id) {
                 self.rand_sequences.give_back(id, random);

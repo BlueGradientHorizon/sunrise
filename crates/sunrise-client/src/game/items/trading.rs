@@ -221,6 +221,7 @@ impl Game<'_> {
         let Some(sequence) = self.stations().trades.sequence(set) else {
             return Vec::new();
         };
+        self.journal_trade_sequences();
         let mut random = self.rand_sequences.lend(&sequence, self.level.seed);
         let next_map = self.peek_map_id();
         let tag = |t: &str| self.structure_tag(t);
@@ -264,6 +265,7 @@ impl Game<'_> {
             .as_ref()
             .is_none_or(|t| t.unset);
         if unset {
+            self.journal_merchant_mob(self.mobs[index].id);
             let m = &self.mobs[index];
             let variant = format!(
                 "minecraft:{}",
@@ -533,6 +535,9 @@ impl Game<'_> {
         let events = std::mem::take(&mut session.events);
         let mut traded = Vec::new();
         let (villager, origin) = (session.villager, session.origin);
+        if let Some(id) = mob {
+            self.journal_merchant_mob(id);
+        }
         if let Some(m) = mob.and_then(|id| self.mobs.iter_mut().find(|m| m.id == id)) {
             m.random = session.random.clone();
             m.ambient_timer = session.ambient_sound_time;

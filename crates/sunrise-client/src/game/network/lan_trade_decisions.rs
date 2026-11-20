@@ -13,7 +13,6 @@ use sunrise_client::{
     advancements::Advancement,
     lan::conn::transaction_packets::{Packets, Scope},
     merchant::MerchantOffer,
-    scoreboard::Scoreboard,
 };
 use sunrise_protocol::packets::play;
 
@@ -30,7 +29,8 @@ type Restore = Box<dyn FnOnce(&mut Game<'_>)>;
 #[derive(Default)]
 pub(in crate::game) struct Journal {
     guests: HashMap<u32, Restore>,
-    board: Option<Scoreboard>,
+    mobs: HashMap<u32, Restore>,
+    sequences: Option<sunrise_client::random_sequences::RandomSequences>,
     /// Why the listener's answer was refused; the take then ends as an invalid action.
     refused: Option<InvalidReason>,
 }
@@ -39,8 +39,11 @@ impl Journal {
         for (conn, kept) in child.guests {
             self.guests.entry(conn).or_insert(kept);
         }
-        if self.board.is_none() {
-            self.board = child.board;
+        for (id, kept) in child.mobs {
+            self.mobs.entry(id).or_insert(kept);
+        }
+        if self.sequences.is_none() {
+            self.sequences = child.sequences;
         }
         if self.refused.is_none() {
             self.refused = child.refused;
@@ -50,8 +53,11 @@ impl Journal {
         for restore in self.guests.into_values() {
             restore(game);
         }
-        if let Some(board) = self.board {
-            game.score.board = board;
+        for restore in self.mobs.into_values() {
+            restore(game);
+        }
+        if let Some(sequences) = self.sequences {
+            game.rand_sequences = sequences;
         }
     }
 }
@@ -113,7 +119,17 @@ impl Game<'_> {
     }
 
     fn journal_merchant_take(&mut self, conn: u32) {
-        self.journal_guest_click(conn);
+        self.journal_guest_merchant(conn);
+        if let Some(level) = self.transactions.last_mut()
+            && level.packets.is_none()
+        {
+            level.packets = Some(Scope::begin());
+        }
+    }
+
+    /// Any write to an open merchant menu, including a MerchantRef edit to another guest,
+    /// belongs to the transaction that first changed it.
+    pub(super) fn journal_guest_merchant(&mut self, conn: u32) {
         let Some(level) = self.transactions.last() else {
             return;
         };
@@ -137,22 +153,8 @@ impl Game<'_> {
         let changed = g.advancements_changed.clone();
         let unlocked = g.recipes_unlocked.clone();
         let book = g.recipe_book.clone();
-        let mob = merchant
-            .merchant
-            .mob
-            .and_then(|id| self.mobs.iter().find(|m| m.id == id))
-            .map(|m| {
-                (
-                    m.id,
-                    m.random.clone(),
-                    m.ambient_timer,
-                    m.extra.clone(),
-                    m.needs_sync,
-                )
-            });
-        let board = self.score.board.clone();
+        self.journal_guest_click(conn);
         let level = self.transactions.last_mut().expect("the action is open");
-        level.trades.board.get_or_insert(board);
         level.trades.guests.insert(
             conn,
             Box::new(move |game| {
@@ -169,18 +171,59 @@ impl Game<'_> {
                         });
                     }
                 }
-                if let Some((id, random, timer, extra, sync)) = mob
-                    && let Some(m) = game.mobs.iter_mut().find(|m| m.id == id)
-                {
-                    m.random = random;
-                    m.ambient_timer = timer;
-                    m.extra = extra;
-                    m.needs_sync = sync;
-                }
             }),
         );
-        if level.packets.is_none() {
-            level.packets = Some(Scope::begin());
+    }
+
+    /// Keep the fields merchant operations own, not the mob's unrelated health, equipment or
+    /// other transaction state. Level-up regeneration owns the effect data and its dirty bit.
+    pub(super) fn journal_merchant_mob(&mut self, id: u32) {
+        let Some(level) = self.transactions.last_mut() else {
+            return;
+        };
+        let std::collections::hash_map::Entry::Vacant(entry) = level.trades.mobs.entry(id) else {
+            return;
+        };
+        let Some(m) = self.mobs.iter().find(|m| m.id == id) else {
+            return;
+        };
+        let random = m.random.clone();
+        let timer = m.ambient_timer;
+        let trade = m.extra.trade.clone();
+        let profession = m.extra.profession.clone();
+        let level = m.extra.villager_level;
+        let variant = m.extra.variant;
+        let villager = m.extra.villager.clone();
+        let effects = m.extra.effects.clone();
+        let chains = m.extra.effect_chains.clone();
+        let ambient = m.extra.ambient_effects.clone();
+        let hidden = m.extra.hidden_effects.clone();
+        let dirty = m.effects_dirty;
+        entry.insert(Box::new(move |game| {
+            if let Some(m) = game.mobs.iter_mut().find(|m| m.id == id) {
+                m.random = random;
+                m.ambient_timer = timer;
+                m.extra.trade = trade;
+                m.extra.profession = profession;
+                m.extra.villager_level = level;
+                m.extra.variant = variant;
+                m.extra.villager = villager;
+                m.extra.effects = effects;
+                m.extra.effect_chains = chains;
+                m.extra.ambient_effects = ambient;
+                m.extra.hidden_effects = hidden;
+                m.effects_dirty = dirty;
+            }
+        }));
+    }
+
+    /// Keep trade-set sequence loans and draws at their first transactional write.
+    pub(super) fn journal_trade_sequences(&mut self) {
+        if let Some(level) = self.transactions.last_mut() {
+            level
+                .trades
+                .sequences
+                .get_or_insert_with(|| self.rand_sequences.clone());
         }
     }
 
@@ -201,9 +244,7 @@ impl Game<'_> {
     }
 
     pub(super) fn merchant_take_active(&self) -> bool {
-        self.transactions
-            .iter()
-            .any(|l| !l.trades.guests.is_empty())
+        self.transactions.iter().any(|l| l.packets.is_some())
     }
 
     /// Collect a post-take offer, preserving the distinction between a bad price and a bad stack.
