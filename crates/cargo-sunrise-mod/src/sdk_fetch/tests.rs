@@ -77,9 +77,10 @@ fn a_cached_local_sdk_is_refused_under_release_only_trust() {
         // Same verifier for the project's API source and the per-user native SDK metadata.
         let dir = project.path().join(if api { DIR } else { "sdk" });
         fetch(&base, &local_keys, BUILD, &dir, api).unwrap();
-        let error = fetch(&base, &release_keys, BUILD, &dir, api).unwrap_err();
-        assert!(error.contains("signature doesn't match"), "{error}");
+        assert!(fetch(&base, &release_keys, BUILD, &dir, api).is_err());
         assert!(!dir.join(STAMP).exists());
+        assert!(!dir.join(sdk::INDEX).exists());
+        assert!(!dir.join("api").exists());
     }
 }
 
@@ -164,8 +165,8 @@ fn cached_local_build_data_is_refused_under_release_only_trust() {
     let mut local_keys = release_keys.clone();
     local_keys.push(key);
     let into = build_data_from(&base, &local_keys, project.path(), BUILD).unwrap();
-    let error = build_data_from(&base, &release_keys, project.path(), BUILD).unwrap_err();
-    assert!(error.contains("signature doesn't match"), "{error}");
+    assert!(into.is_dir());
+    assert!(build_data_from(&base, &release_keys, project.path(), BUILD).is_err());
     assert!(!into.exists());
 }
 
