@@ -5,8 +5,8 @@
 //! (`sunrise_threads::callgrind`), so the same run under Valgrind gives the instructions of each
 //! region; setup is never counted. `SUNRISE_HOT_PATHS_ONLY=a,b` keeps the workloads whose names
 //! start with one of the prefixes. With `SUNRISE_HOT_PATHS_MODS=native` the executable
-//! (`sunrise-hot-paths-game`) has installed one native mod that listens to the entity tick hooks:
-//! that run measures only the hook workload, under its listener's name.
+//! (`sunrise-hot-paths-game`) has installed the legacy entity tick listener; `fanout-N` instead
+//! installs N separately registered native listeners for the fan-out workloads.
 //!
 //! A workload builds its own world on a server `Game`, as the component harnesses do. Nothing is
 //! compared with vanilla here: the checksum only shows that two runs did the same work.
@@ -21,9 +21,12 @@ use sunrise_client::Result;
 
 mod chunks;
 mod commands;
+mod fanout;
 mod mods;
 mod ticks;
 mod world;
+
+pub use fanout::{HotPathsMods, note_hot_paths_listener_call};
 
 /// Where the measured workloads report.
 pub(super) struct Recorder {
@@ -93,13 +96,15 @@ impl Game<'_> {
         self.reset_entity_residency();
         self.native_lifecycle
             .begin_open(mod_api::Authority::DedicatedServer);
-        let listening =
-            std::env::var_os("SUNRISE_HOT_PATHS_MODS").is_some_and(|mods| mods == "native");
-        if !listening {
-            self.hot_ticks(&mut recorder)?;
-            self.hot_commands(&mut recorder)?;
-            self.hot_chunks(&mut recorder)?;
+        match HotPathsMods::from_env()? {
+            HotPathsMods::None => {
+                self.hot_ticks(&mut recorder)?;
+                self.hot_commands(&mut recorder)?;
+                self.hot_chunks(&mut recorder)?;
+                self.hot_mods(&mut recorder, false)
+            }
+            HotPathsMods::Native => self.hot_mods(&mut recorder, true),
+            HotPathsMods::Fanout(count) => self.hot_hook_fanout(&mut recorder, count),
         }
-        self.hot_mods(&mut recorder, listening)
     }
 }

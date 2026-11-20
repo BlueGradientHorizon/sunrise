@@ -1,6 +1,8 @@
 """tools/hot_paths.py: what a published record may hold, which runs a trend compares, and what a dump counts."""
 import copy
 import importlib.util
+import tempfile
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -17,6 +19,27 @@ def run(commit, date, value, host='alpha', checksum='0' * 16, wall=100.0):
             'metrics': {'server.tick.mobs_128.instructions': [value, value, value],
                         'server.tick.mobs_128.wall_ns': [wall, wall * 1.05]},
             'notes': []}
+
+
+class Install(unittest.TestCase):
+    def test_native_listeners_have_separate_matching_packages(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            game = root / 'game'
+            game.write_bytes(b'benchmark executable')
+            copy = Path(hot_paths.install(game, root, 10))
+            self.assertEqual(copy.read_bytes(), game.read_bytes())
+            packages = root / 'sunrise-native-mods'
+            self.assertEqual({p.name for p in packages.iterdir()},
+                             {'hot_paths_listener', *(f'hot_paths_fanout_{i}' for i in range(10))})
+            for package in packages.iterdir():
+                manifest = tomllib.loads((package / 'sunrise-mod.toml').read_text())
+                cargo = tomllib.loads((package / 'Cargo.toml').read_text())['package']
+                self.assertEqual(manifest['id'], package.name)
+                self.assertEqual(cargo['name'], package.name)
+                self.assertEqual(manifest['version'], '1.0.0')
+                self.assertEqual(manifest['side'], 'both')
+                self.assertIn('native', manifest)
 
 
 class Record(unittest.TestCase):

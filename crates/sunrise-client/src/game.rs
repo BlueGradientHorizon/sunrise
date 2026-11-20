@@ -94,6 +94,8 @@ fn pack_files(world_tables: &Option<WorldTables>) -> sunrise_world::loot::PackOv
     }
 }
 include!(concat!(env!("OUT_DIR"), "/game_modules.rs"));
+pub use hot_paths::{HotPathsMods, note_hot_paths_listener_call};
+
 /// Installs the dispatcher of each injection point a mod listens at as its function's entry,
 /// once the points are sealed. The prebuilt game's staging pass writes the call; a build without
 /// points has none to arm.
