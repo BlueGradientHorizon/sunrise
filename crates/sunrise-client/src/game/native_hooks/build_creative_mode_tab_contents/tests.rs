@@ -330,6 +330,10 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
                 host.creative_tabs(CreativeTabPermissions::Normal),
                 Err(CreativeTabReadError::Unavailable)
             );
+            assert_eq!(
+                host.built_creative_tabs(),
+                Err(CreativeTabReadError::Unavailable)
+            );
         }
         let flags = |game: &mut Game<'_>, ids: [&str; 2]| {
             let flags = ids.map(str::to_owned).into();
@@ -342,7 +346,21 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
         flags(game, ["test:alpha", "test:beta"]);
         assert_eq!(game.stock_sort_order()[0].item.as_ref(), "minecraft:stick");
         assert!(seen.lock().unwrap().events.is_empty());
+        {
+            // A plain read before any build answers nothing and builds nothing.
+            let reader: &dyn mod_api::Host = game;
+            assert_eq!(reader.built_creative_tabs(), Ok(None));
+            assert!(seen.lock().unwrap().events.is_empty());
+        }
         let normal = ItemsHost::creative_tabs(game, CreativeTabPermissions::Normal).unwrap();
+        let built_events = seen.lock().unwrap().events.len();
+        {
+            // After the build, a plain read gives that same snapshot without building again.
+            let reader: &dyn mod_api::Host = game;
+            let built = reader.built_creative_tabs().unwrap().unwrap();
+            assert!(Arc::ptr_eq(&normal, &built));
+            assert_eq!(seen.lock().unwrap().events.len(), built_events);
+        }
         assert_eq!(game.stock_sort_order()[0].item.as_ref(), "minecraft:torch");
         let a = normal.tab("test:a").unwrap();
         assert_eq!(
