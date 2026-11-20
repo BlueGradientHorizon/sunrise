@@ -96,18 +96,17 @@ impl Game<'_> {
         if mod_api::content::crash::current_native_mod() != Some(kind.owner) {
             return Err(WrongOwner);
         }
-        let &before = open.blockless_data.get(index).ok_or(InvalidIndex)?;
-        if before == value {
+        let &committed = open.blockless_data.get(index).ok_or(InvalidIndex)?;
+        let (conn, index) = (guest.conn, index as u16);
+        let key = (conn, guest.menu_generation, index);
+        if self.pending_menu_data(key).unwrap_or(committed) == value {
             return Ok(false);
         }
-        let (conn, generation, window) = (guest.conn, guest.menu_generation, open.window);
-        let deferred = self.journal_menu_data(conn, generation, index as u16, before);
-        self.lan.as_mut().unwrap().hub.update_guest(conn, |guest| {
-            guest.menu.as_mut().unwrap().blockless_data[index] = value;
-            if !deferred {
-                guest.send_menu_data(window, index as u16, value);
-            }
-        });
+        if !self.journal_menu_data(key, value) {
+            self.lan.as_mut().unwrap().hub.update_guest(conn, |guest| {
+                guest.set_menu_data(index, value);
+            });
+        }
         Ok(true)
     }
 
@@ -135,23 +134,32 @@ impl Game<'_> {
             [renderer.config.width, renderer.config.height],
             self.settings.gui_scale_inputs(),
         );
-        self.inventory_menu_slot_boxes(name, &batch)
+        self.inventory_menu_slot_boxes(menu.fields().window, name, &batch)
     }
 
     fn inventory_menu_slot_boxes(
         &self,
+        window: i32,
         name: &str,
         batch: &super::HudBatch,
     ) -> Option<Vec<Option<[f32; 4]>>> {
-        Self::inventory_screen_slot(name, 0)?;
         if self.book_covers_menu(batch.width) {
             return None;
+        }
+        let kind = self.native_screen_menu_type(window, name);
+        let slot_id = |slot| Self::inventory_screen_slot_with_type(name, slot, || kind);
+        match kind {
+            None => {
+                slot_id(0)?;
+            }
+            Some(kind) if kind.slot_count() == 0 => return Some(Vec::new()),
+            Some(_) => {}
         }
         let visible = self.slots();
         let (ox, oy) = self.inventory_origin(batch);
         Some(
             (0..)
-                .map_while(|slot| Self::inventory_screen_slot(name, slot))
+                .map_while(slot_id)
                 .map(|slot| {
                     visible.contains(&slot).then(|| {
                         let (x, y) = self.slot_position(slot);
@@ -248,16 +256,16 @@ impl Game<'_> {
         self.player_read_both(player)?;
         if !self.is_logical_server() {
             let remote = self.remote.as_ref()?;
-            let name = remote
+            let (window, name) = remote
                 .menu
                 .as_ref()
-                .map_or("inventory", |entry| entry.1.as_str());
-            if sunrise_client::containers::mod_menu_type(name).is_none() {
-                Self::inventory_screen_slot(name, 0)?;
+                .map_or((0, "inventory"), |entry| (entry.0, entry.1.as_str()));
+            if self.native_screen_menu_type(window, name).is_none() {
+                Self::inventory_screen_slot_with_type(name, 0, || None)?;
             }
             return Some(mod_api::__private::game::menu_ref(
                 player,
-                remote.menu.as_ref().map_or(0, |entry| entry.0),
+                window,
                 remote.menu.generation,
             ));
         }
@@ -297,11 +305,11 @@ impl Game<'_> {
     pub(super) fn menu_slot_count(&self, menu: MenuRef) -> Option<usize> {
         if self.remote.is_some() {
             let name = self.native_client_menu_name(menu)?;
-            if let Some(kind) = sunrise_client::containers::mod_menu_type(name) {
+            if let Some(kind) = self.native_screen_menu_type(menu.fields().window, name) {
                 return Some(kind.slot_count());
             }
             let count = (0..)
-                .map_while(|slot| Self::inventory_screen_slot(name, slot))
+                .map_while(|slot| Self::inventory_screen_slot_with_type(name, slot, || None))
                 .count();
             return (count != 0).then_some(count);
         }
@@ -696,13 +704,83 @@ mod tests {
     use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
     use sunrise_protocol::packets::configuration::ClientInformation;
 
+    const PANEL: &str = "test:panel";
+
+    struct Panel(usize);
+    #[mod_api::sunrise_part]
+    impl mod_api::MenuPart for Panel {
+        fn screen(
+            &self,
+            _: &dyn mod_api::Host,
+            _: &mut mod_api::ScreenEvent<'_>,
+        ) -> Option<mod_api::Screen> {
+            Some(mod_api::Screen {
+                slots: vec![Some(mod_api::ScreenSlot::default()); self.0],
+                ..Default::default()
+            })
+        }
+    }
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for Panel {
+        fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+            r.menu_part(PANEL, Panel(self.0));
+        }
+    }
+
+    fn with_panel(slots: usize, test: impl FnOnce(&mut Game<'_>)) {
+        let mods: mod_api::Mods =
+            vec![mod_api::ModEntry::new("test", Box::new(Panel(slots)))].into();
+        mod_platform::testing::with_mods(mods.clone(), || {
+            mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
+            sunrise_client::containers::with_mod_menu_types(
+                [(
+                    PANEL.into(),
+                    "test".into(),
+                    slots,
+                    0,
+                    vec![],
+                    vec![],
+                    None,
+                    None,
+                    false,
+                )],
+                || {
+                    super::super::native_entity_refs::tests::with_client_game(|game| {
+                        let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
+                        game.connect_local(pipe, "Panel").unwrap();
+                        Arc::make_mut(&mut game.remote.as_mut().unwrap().builtin)
+                            .registries
+                            .insert(
+                                "minecraft:menu".into(),
+                                sunrise_protocol::registry::Ids::from_names(vec![PANEL.into()]),
+                            );
+                        test(game);
+                    })
+                },
+            );
+        });
+    }
+
+    fn open_panel(game: &mut Game<'_>) {
+        use sunrise_protocol::packets::play::{Clientbound, OpenScreen};
+        game.handle_packet(Clientbound::OpenScreen(OpenScreen {
+            container: 1,
+            menu: 0,
+            title: sunrise_core::nbt::Tag::String("Panel".into()),
+        }))
+        .unwrap();
+        assert!(game.native_screen_shown());
+    }
+
     #[test]
     #[ignore = "daily"]
     fn inventory_boxes_follow_menu_indices_and_the_input_layout() {
-        super::super::native_entity_refs::tests::with_client_game(|game| {
+        with_panel(0, |game| {
             game.screen = super::super::Screen::Inventory;
             let batch = super::super::HudBatch::new([800, 600], game.settings.gui_scale_inputs());
-            let boxes = game.inventory_menu_slot_boxes("inventory", &batch).unwrap();
+            let boxes = game
+                .inventory_menu_slot_boxes(0, "inventory", &batch)
+                .unwrap();
             assert_eq!(boxes.len(), 46);
             for (index, expected_slot) in [(0, 200), (9, 9), (36, 0), (45, 504)] {
                 let [x, y, w, h] = boxes[index].unwrap();
@@ -711,10 +789,33 @@ mod tests {
                     Some(expected_slot)
                 );
             }
+            assert!(game.inventory_menu_slot_boxes(1, PANEL, &batch).is_none());
+            open_panel(game);
             assert!(
-                game.inventory_menu_slot_boxes("unsupported", &batch)
+                game.inventory_menu_slot_boxes(1, "unsupported", &batch)
                     .is_none()
             );
+            assert_eq!(
+                game.inventory_menu_slot_boxes(1, PANEL, &batch),
+                Some(vec![])
+            );
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn number_key_swaps_predict_with_the_undisplayed_hotbar() {
+        with_panel(1, |game| {
+            open_panel(game);
+            assert_eq!(game.slots(), [300]);
+            let held = ItemStack::new("minecraft:stone", 5);
+            let stored = ItemStack::new("minecraft:dirt", 2);
+            game.inventory[2] = Some(held.clone());
+            *game.slot_mut(300) = Some(stored.clone());
+            assert!(game.menu_ops(&[(Some(300), 2, Input::Swap)]));
+            assert_eq!(game.inventory[2], Some(stored));
+            assert_eq!(*game.slot_mut(300), Some(held));
+            assert_eq!(game.slots(), [300]);
         });
     }
 

@@ -42,6 +42,7 @@ pub enum MenuSlotBacking {
     Place(MenuSlotPlace),
 }
 
+// no wire: An in-process refusal from the native menu setter, not a transported payload.
 /// Why [`MenuRef::set_data_slot`] left the menu unchanged.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

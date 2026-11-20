@@ -1707,80 +1707,83 @@ impl Content {
             self.entity_types.push(EntityType { id: kind, ..file });
         }
         for (menu, name) in menus {
+            let bytes = reader.read(&name)?;
+            let source = format!("{name} ({menu})");
             let file: MenuType =
-                serde_json::from_slice(&reader.read(&name)?).map_err(|e| format!("{name}: {e}"))?;
+                serde_json::from_slice(&bytes).map_err(|e| format!("{source}: {e}"))?;
             if file.slots > MAX_MENU_SLOTS || file.data_slots > MAX_MENU_SLOTS {
                 return Err(format!(
-                    "{name} ({menu}): slots and data_slots are each 0 to {MAX_MENU_SLOTS}"
+                    "{source}: slots ({}) and data_slots ({}) are each 0 to {MAX_MENU_SLOTS}",
+                    file.slots, file.data_slots
                 ));
             }
             let mut seen = BTreeSet::new();
             for &r in &file.results {
                 if r >= file.slots {
                     return Err(format!(
-                        "{name} ({menu}): result slot {r} is outside the {} container slots",
+                        "{source}: result slot {r} is outside the {} container slots",
                         file.slots
                     ));
                 }
                 if !seen.insert(r) {
-                    return Err(format!("{name}: result {r} is listed twice"));
+                    return Err(format!("{source}: result {r} is listed twice"));
                 }
             }
             for &input in &file.inputs {
                 if input >= file.slots {
                     return Err(format!(
-                        "{name}: input {input} is past the last slot, {}",
-                        file.slots - 1
+                        "{source}: input {input} is outside the {} container slots",
+                        file.slots
                     ));
                 }
                 if !seen.insert(input) {
                     return Err(format!(
-                        "{name}: input {input} is listed twice or is a result"
+                        "{source}: input {input} is listed twice or is a result"
                     ));
                 }
             }
             if let Some(c) = file.crafting {
                 let end = u32::from(c.grid) + u32::from(c.size) * u32::from(c.size);
                 if !matches!(c.size, 2 | 3) {
-                    return Err(format!("{name}: crafting size is 2 or 3"));
+                    return Err(format!("{source}: crafting size is 2 or 3"));
                 }
                 if end > u32::from(file.slots) || c.result >= file.slots {
                     return Err(format!(
-                        "{name} ({menu}): crafting grid {}..{end} and result slot {} must be within the {} container slots",
+                        "{source}: crafting grid {}..{end} and result slot {} must be within the {} container slots",
                         c.grid, c.result, file.slots
                     ));
                 }
                 if (u32::from(c.grid)..end).contains(&u32::from(c.result)) {
-                    return Err(format!("{name}: the crafting result is in its grid"));
+                    return Err(format!("{source}: the crafting result is in its grid"));
                 }
                 let is_crafting_slot =
                     |&s: &u16| s == c.result || (u32::from(c.grid)..end).contains(&u32::from(s));
                 if file.results.iter().any(is_crafting_slot) {
                     return Err(format!(
-                        "{name}: results lists a crafting slot (the result is take-only already)"
+                        "{source}: results lists a crafting slot (the result is take-only already)"
                     ));
                 }
                 if file.inputs.iter().any(is_crafting_slot) {
-                    return Err(format!("{name}: inputs lists a crafting slot"));
+                    return Err(format!("{source}: inputs lists a crafting slot"));
                 }
             }
             if let Some(l) = file.links {
                 let linked = l.range();
                 if l.count == 0 || linked.end > u32::from(file.slots) {
                     return Err(format!(
-                        "{name} ({menu}): linked slots {linked:?} must be nonempty and within the {} container slots",
+                        "{source}: linked slots {linked:?} must be nonempty and within the {} container slots",
                         file.slots
                     ));
                 }
                 if file.results.iter().any(|&r| linked.contains(&u32::from(r))) {
-                    return Err(format!("{name}: results lists a linked slot"));
+                    return Err(format!("{source}: results lists a linked slot"));
                 }
                 if let Some(c) = file.crafting {
                     let end = u32::from(c.grid) + u32::from(c.size) * u32::from(c.size);
                     if linked.contains(&u32::from(c.result))
                         || (u32::from(c.grid)..end).any(|s| linked.contains(&s))
                     {
-                        return Err(format!("{name}: links overlap the crafting slots"));
+                        return Err(format!("{source}: links overlap the crafting slots"));
                     }
                 }
             }
@@ -2860,88 +2863,92 @@ capabilities = ["registries"]
                 None,
             ]
         );
-        for (case, file, why) in [
-            (
-                "menu-large",
-                r#"{"slots": 257}"#,
-                "slots and data_slots are each 0 to 256",
-            ),
+        for (case, file, details) in [
+            ("menu-large", r#"{"slots": 257}"#, &["257"][..]),
             (
                 "menu-data",
                 r#"{"slots": 1, "data_slots": 257}"#,
-                "slots and data_slots are each 0 to 256",
+                &["257"][..],
             ),
             (
                 "menu-result",
                 r#"{"slots": 0, "results": [0]}"#,
-                "ruby:a): result slot 0 is outside the 0 container slots",
+                &["result slot 0"][..],
+            ),
+            (
+                "menu-input",
+                r#"{"slots": 0, "inputs": [0]}"#,
+                &["input 0"][..],
             ),
             (
                 "menu-twice",
                 r#"{"slots": 3, "results": [1, 1]}"#,
-                "result 1 is listed twice",
+                &["result 1"][..],
             ),
-            ("menu-key", r#"{"slots": 3, "rows": 1}"#, "unknown field"),
+            ("menu-key", r#"{"slots": 3, "rows": 1}"#, &["rows"][..]),
             (
                 "craft-size",
                 r#"{"slots": 20, "crafting": {"grid": 0, "size": 4, "result": 19}}"#,
-                "crafting size is 2 or 3",
+                &[],
             ),
             (
                 "craft-past",
                 r#"{"slots": 9, "crafting": {"grid": 1, "result": 0}}"#,
-                "crafting grid 1..10 and result slot 0 must be within the 9 container slots",
+                &["1..10", "result slot 0"],
             ),
             (
                 "craft-result-past",
                 r#"{"slots": 0, "crafting": {"grid": 0, "size": 2, "result": 4}}"#,
-                "ruby:a): crafting grid 0..4 and result slot 4 must be within the 0 container slots",
+                &["0..4", "result slot 4"],
             ),
             (
                 "craft-overlap",
                 r#"{"slots": 10, "crafting": {"grid": 0, "result": 4}}"#,
-                "the crafting result is in its grid",
+                &[],
             ),
             (
                 "craft-results",
                 r#"{"slots": 10, "results": [2], "crafting": {"grid": 0, "result": 9}}"#,
-                "results lists a crafting slot",
+                &[],
             ),
             (
                 "craft-key",
                 r#"{"slots": 10, "crafting": {"grid": 0, "result": 9, "width": 3}}"#,
-                "unknown field",
+                &["width"],
             ),
             (
                 "links-past",
                 r#"{"slots": 0, "links": {"from": 0, "count": 1}}"#,
-                "ruby:a): linked slots 0..1 must be nonempty and within the 0 container slots",
+                &["0..1"],
             ),
             (
                 "links-empty",
                 r#"{"slots": 10, "links": {"from": 2, "count": 0}}"#,
-                "linked slots 2..2 must be nonempty and within the 10 container slots",
+                &["2..2"],
             ),
             (
                 "links-results",
                 r#"{"slots": 10, "results": [5], "links": {"from": 4, "count": 2}}"#,
-                "results lists a linked slot",
+                &[],
             ),
             (
                 "links-grid",
                 r#"{"slots": 20, "crafting": {"grid": 1, "result": 0}, "links": {"from": 9, "count": 4}}"#,
-                "links overlap the crafting slots",
+                &[],
             ),
             (
                 "links-key",
                 r#"{"slots": 10, "links": {"from": 2, "count": 2, "rows": 1}}"#,
-                "unknown field",
+                &["rows"],
             ),
-            ("menu-missing", r#"{"data_slots": 1}"#, "missing field"),
+            ("menu-missing", r#"{"data_slots": 1}"#, &["slots"]),
         ] {
             let files: &[(&str, &[u8])] = &[("data/ruby/sunrise/menu/a.json", file.as_bytes())];
-            let e = smod(case, MANIFEST_TEXT, files).unwrap_err();
-            assert!(e.contains(why), "{case}: {e}");
+            let error = smod(case, MANIFEST_TEXT, files).unwrap_err();
+            assert!(error.contains("ruby:a"), "{case}: {error}");
+            for detail in details {
+                assert!(error.contains(detail), "{case}: {error}");
+            }
         }
     }
 

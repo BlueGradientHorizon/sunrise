@@ -1220,6 +1220,7 @@ impl ProfileProperty {
     }
 }
 
+// no wire: An in-process result of a native menu open, not a transported payload.
 /// Why [`PlayerRef::open_mod_menu`] opened nothing.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]

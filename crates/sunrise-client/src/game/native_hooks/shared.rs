@@ -740,6 +740,19 @@ impl SlotMoves {
     }
 }
 
+impl Game<'_> {
+    /// The registered layout already resolved for this client's open window.
+    pub(in crate::game) fn native_screen_menu_type(
+        &self,
+        window: i32,
+        name: &str,
+    ) -> Option<&'static sunrise_client::containers::ModMenuType> {
+        self.shown_native_screen()
+            .filter(|screen| screen.window == window && screen.menu == name)?
+            .mod_type
+    }
+}
+
 impl OpenNativeScreen {
     /// How many slot moves changed a position, so a layout built before the
     /// last one is rebuilt.

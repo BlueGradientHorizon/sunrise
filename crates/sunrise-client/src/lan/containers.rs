@@ -603,7 +603,7 @@ impl Hub {
     }
 
     /// `AbstractContainerMenu.sendAllDataToRemote` for the guest's open
-    /// block container `window`: every slot and the carried stack again.
+    /// container `window`: every slot, the carried stack, and committed blockless data.
     pub fn resend_menu(&mut self, conn: u32, window: i32, world: &World) {
         let Some(i) = self.guests.iter().position(|g| g.conn == conn) else {
             return;
@@ -618,6 +618,7 @@ impl Hub {
             return;
         };
         self.send_menu_content(i, items);
+        self.guests[i].send_menu_data_snapshot();
     }
 
     fn close_container_at(&mut self, i: usize) {

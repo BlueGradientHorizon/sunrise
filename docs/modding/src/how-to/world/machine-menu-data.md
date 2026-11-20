@@ -275,9 +275,9 @@ The initial values are sent after the new window opens. In `screen_draw`, read
 gets the live `MenuRef` from `player.container_menu(host)` or the open event and calls, for
 example, `menu.set_data_slot(host, 0, 120_000)?`. It returns `true` for a changed value,
 `false` for a repeat, and refuses unsupported, stale or foreign menus and undeclared indices.
-Updates go only to this player and this window. Inside a transaction, writes take effect on
-the server immediately but only the final changed values are sent on commit. Abort restores
-the old values without sending anything. Closing or replacing the menu discards its data.
+Updates go only to this player and this window. Within a transaction, another write sees the
+pending value, but a full resend only includes committed values. Commit sends the final changed
+values and abort discards pending writes. Closing or replacing the menu discards its data.
 Buttons and validity still use `menu_button` and `menu_still_valid`; neither needs a slot.
 
 The menu the player had open closes on the server first, as a close does: its `removed`, one

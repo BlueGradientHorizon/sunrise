@@ -3193,6 +3193,17 @@ impl Game<'_> {
 
     /// Map a menu slot to Sunrise's inventory screen slot ids.
     pub(super) fn inventory_screen_slot(menu: &str, slot: i32) -> Option<usize> {
+        Self::inventory_screen_slot_with_type(menu, slot, || {
+            sunrise_client::containers::mod_menu_type(menu)
+        })
+    }
+
+    /// Map a slot when the caller already knows the window's registered layout.
+    pub(super) fn inventory_screen_slot_with_type(
+        menu: &str,
+        slot: i32,
+        mod_type: impl FnOnce() -> Option<&'static sunrise_client::containers::ModMenuType>,
+    ) -> Option<usize> {
         let s = usize::try_from(slot).ok()?;
         // A container of `n` slots, then the inventory and the hotbar.
         let slots = |n: usize| -> Option<usize> {
@@ -3264,7 +3275,7 @@ impl Game<'_> {
             // A content mod's menu type: its container, then the inventory.
             // A workstation: its inputs, its result, then the inventory.
             m => {
-                if let Some(t) = sunrise_client::containers::mod_menu_type(m) {
+                if let Some(t) = mod_type() {
                     return if t.player_inventory {
                         slots(t.slots)
                     } else {

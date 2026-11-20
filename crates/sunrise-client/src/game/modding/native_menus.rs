@@ -202,11 +202,7 @@ impl Game<'_> {
                     let open = g.menu.as_mut().expect("the window was just installed");
                     open.hidden = hidden;
                     open.blockless_data = data;
-                    for (index, &value) in
-                        g.menu.as_ref().unwrap().blockless_data.iter().enumerate()
-                    {
-                        g.send_menu_data(window, index as u16, value);
-                    }
+                    g.send_menu_data_snapshot();
                 });
                 Some(window)
             })
@@ -1803,9 +1799,23 @@ mod tests {
                         });
                         hub.resend_menu(1, window, &game.world);
                         assert_eq!(hub.guests[0].menu_sent[36], None);
-                        assert!(sent(&rx).iter().any(|p| matches!(p,
-                            C::ContainerSetContent(p) if p.container == window && p.items.is_empty()
-                        )));
+                        let packets = sent(&rx);
+                        assert!(matches!(packets.first(), Some(C::ContainerSetContent(p))
+                            if p.container == window && p.items.is_empty()
+                        ));
+                        let snapshot = [
+                            DataSlot {
+                                window,
+                                index: 0,
+                                value: -80_000,
+                            },
+                            DataSlot {
+                                window,
+                                index: 1,
+                                value: 0,
+                            },
+                        ];
+                        assert_eq!(updates(packets), snapshot);
                         let _guard = mod_api::content::crash::enter_native_mod(
                             mod_api::content::crash::ModCall {
                                 id: "status_package",
@@ -1817,15 +1827,48 @@ mod tests {
                             menu.set_data_slot(game, 2, 1),
                             Err(MenuDataRefusal::InvalidIndex)
                         );
-                        let host = game as &mut dyn ServerHost;
-                        let aborted: Result<(), ()> = host.transaction(|host, _| {
-                            assert_eq!(menu.set_data_slot(host, 0, i32::MAX), Ok(true));
-                            assert!(sent(&rx).is_empty());
-                            Err(())
-                        });
-                        assert_eq!(aborted, Err(()));
-                        assert_eq!(menu.set_data_slot(host, 0, -80_000), Ok(false));
+                        let resend = |game: &mut Game<'_>| {
+                            game.lan
+                                .as_mut()
+                                .unwrap()
+                                .hub
+                                .resend_menu(1, window, &game.world);
+                        };
+                        let abort = game.transaction_open();
+                        assert_eq!(menu.set_data_slot(game, 0, i32::MAX), Ok(true));
                         assert!(sent(&rx).is_empty());
+                        resend(game);
+                        assert_eq!(
+                            updates(sent(&rx)),
+                            snapshot,
+                            "a resend cannot see the pending write"
+                        );
+                        game.transaction_close(&abort, false);
+                        assert_eq!(menu.set_data_slot(game, 0, -80_000), Ok(false));
+                        assert!(sent(&rx).is_empty());
+
+                        let capture = game.transaction_open();
+                        game.transactions.last_mut().unwrap().packets =
+                            Some(sunrise_client::lan::conn::transaction_packets::Scope::begin());
+                        assert_eq!(menu.set_data_slot(game, 0, 100_000), Ok(true));
+                        resend(game);
+                        assert!(sent(&rx).is_empty());
+                        game.transaction_close(&capture, true);
+                        assert_eq!(
+                            updates(sent(&rx)),
+                            [
+                                snapshot[0],
+                                snapshot[1],
+                                DataSlot {
+                                    window,
+                                    index: 0,
+                                    value: 100_000
+                                },
+                            ],
+                            "the captured resend cannot roll back the committed delta"
+                        );
+
+                        let host = game as &mut dyn ServerHost;
                         let committed: Result<(), ()> = host.transaction(|host, _| {
                             assert_eq!(menu.set_data_slot(host, 0, 1), Ok(true));
                             let nested: Result<(), ()> = host.transaction(|host, _| {

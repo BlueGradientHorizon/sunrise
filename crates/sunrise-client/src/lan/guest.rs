@@ -889,8 +889,27 @@ impl Guest {
             Err(error) => eprintln!("[lan] send refused: {error}"),
         }
     }
-    /// Send a full-width data-slot change to this guest's blockless menu.
-    pub fn send_menu_data(&self, window: i32, index: u16, value: i32) {
+    /// Send the complete committed data of this guest's current blockless menu.
+    pub fn send_menu_data_snapshot(&self) {
+        let Some(menu) = &self.menu else { return };
+        for (index, &value) in menu.blockless_data.iter().enumerate() {
+            self.send_menu_data(menu.window, index as u16, value);
+        }
+    }
+
+    /// Commit one blockless-menu data slot. The caller resolves the window generation
+    /// and validates the index before supplying a write.
+    pub fn set_menu_data(&mut self, index: u16, value: i32) {
+        let Some(menu) = &mut self.menu else { return };
+        let slot = &mut menu.blockless_data[usize::from(index)];
+        if *slot != value {
+            *slot = value;
+            let window = menu.window;
+            self.send_menu_data(window, index, value);
+        }
+    }
+
+    fn send_menu_data(&self, window: i32, index: u16, value: i32) {
         use sunrise_protocol::menu_extra::{DATA_CHANNEL, DataSlot};
         self.send(&play::Clientbound::CustomPayload(CustomPayload {
             channel: DATA_CHANNEL.into(),

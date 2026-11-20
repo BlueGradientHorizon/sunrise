@@ -79,7 +79,7 @@ pub struct Menu {
     /// The data slots the client was last sent (ContainerSetData), a furnace's
     /// progress; None until sent, so any first value goes out.
     pub sent_data: Vec<Option<i16>>,
-    /// Live data owned by this blockless mod menu window, not a block entity.
+    /// Committed live data owned by this blockless mod menu window, not a block entity.
     pub blockless_data: Vec<i32>,
     /// Container slots the menu does not have: a mod's screen hides them, so
     /// no click or quick move reaches them (`Slot` positions are the screen's).
