@@ -160,6 +160,7 @@ pub struct World {
     /// The sections whose light changed since the log was last drained, as
     /// a bit per section of each column, kept while `block_log` is
     /// (`ChunkHolder.sectionLightChanged`).
+    /// Pending network light updates, indexed from the column's lower light pad.
     pub light_log: Option<crate::fast_hash::FxHashMap<(i32, i32), SectionMask>>,
     /// The villager POIs of each section (`PoiManager`'s sections).
     pub pois: crate::poi_sections::PoiSections<sunrise_world::poi::PoiIdentity>,

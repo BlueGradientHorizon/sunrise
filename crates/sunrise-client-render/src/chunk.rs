@@ -652,7 +652,8 @@ impl ColumnCensus {
 #[derive(Clone, Copy)]
 pub struct StoredLight {
     pub(crate) masks: [crate::section_mask::SectionMask; 2],
-    pub(crate) from_save: bool,
+    /// Materialized arrays in a save-backed snapshot, including all-zero arrays.
+    pub(crate) saved_arrays: Option<[crate::section_mask::SectionMask; 2]>,
 }
 
 impl StoredLight {
@@ -661,10 +662,10 @@ impl StoredLight {
         [sky.contains(b), block.contains(b)]
     }
 
-    /// Whether these masks name NBT byte arrays rather than packet layers.
-    /// NBT leaves out empty layers that the lighting engine creates from section status.
-    pub fn is_from_save(&self) -> bool {
-        self.from_save
+    /// Saved byte arrays are data layers even if every byte is zero.
+    pub fn saved_arrays(&self, b: usize) -> Option<[bool; 2]> {
+        let [sky, block] = self.saved_arrays.as_ref()?;
+        Some([sky.contains(b), block.contains(b)])
     }
 }
 

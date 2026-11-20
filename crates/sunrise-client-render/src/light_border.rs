@@ -4,7 +4,10 @@
 //! (the full 3x3x3 cube). `queueLightRemoval` drops a column's own support, but keeps its
 //! last stored layers where another column still supports them.
 
-use crate::chunk::{Chunk, Light, index};
+use std::{borrow::Cow, sync::Arc};
+
+use crate::chunk::{Chunk, Light, StoredLight, index};
+use crate::light::{SectionStatus, update_light_layers};
 use crate::section_mask::SectionMask;
 use crate::world::World;
 
@@ -16,6 +19,7 @@ struct Layer {
     section: usize,
     sky: bool,
     block: bool,
+    arrays: [bool; 2],
     values: Light,
 }
 
@@ -65,9 +69,57 @@ impl World {
 
     /// Install a column with its light section status already sampled at publication, not on reads.
     pub fn install_light_column(&mut self, chunk: Chunk) {
+        self.install_light_column_initialized(chunk, SectionMask::EMPTY, SectionStatus::default());
+    }
+
+    pub(crate) fn install_light_column_initialized(
+        &mut self,
+        chunk: Chunk,
+        proto_support: SectionMask,
+        status: SectionStatus,
+    ) {
         let key = (chunk.x, chunk.z);
-        let old = self.chunks.insert(key, std::sync::Arc::new(chunk));
+        let mut chunk = Arc::new(chunk);
+        if chunk
+            .light_layers
+            .is_some_and(|light| light.saved_arrays.is_some())
+        {
+            let earlier = self.border_support(key, None) | proto_support;
+            let support = chunk.light_support | earlier;
+            restore_saved_layers(
+                &mut chunk,
+                support,
+                Some(InitialSky {
+                    earlier,
+                    border: self.border.get(&key),
+                    occupied: status.occupied,
+                    fully_lit_from: status.fully_lit_from,
+                }),
+            );
+        }
+        let old = self.chunks.insert(key, chunk);
         self.publish_light_border(key, old.map_or(SectionMask::EMPTY, |c| c.light_support));
+    }
+
+    /// A newly published non-air section can initialize layers in an adjacent saved column.
+    pub(crate) fn publish_saved_neighbour_support(&mut self, key: (i32, i32), added: SectionMask) {
+        if added.is_empty() {
+            return;
+        }
+        for (x, z) in neighbours(key) {
+            let Some(chunk) = self.chunks.get_mut(&(x, z)) else {
+                continue;
+            };
+            let (stored, changed) = restore_saved_layers(chunk, added, None);
+            if !changed.is_empty() {
+                crate::streaming::Streaming::light_updated(self, x, z, &changed);
+            }
+            if !stored.is_empty()
+                && let Some(log) = &mut self.light_log
+            {
+                *log.entry((x, z)).or_default() |= stored;
+            }
+        }
     }
 
     /// Update the neighbouring missing columns for a new section-status snapshot.
@@ -77,6 +129,7 @@ impl World {
         if current == before {
             return;
         }
+        self.publish_saved_neighbour_support(key, current & !before);
         for near in neighbours(key).filter(|near| !self.chunks.contains_key(near)) {
             let other = self.border_support(near, Some(key));
             let added = current & !(before | other);
@@ -112,6 +165,7 @@ impl World {
                         section,
                         sky,
                         block: true,
+                        arrays: [false; 2],
                         values,
                     },
                 );
@@ -138,6 +192,10 @@ impl World {
                     section: b,
                     sky,
                     block,
+                    arrays: chunk
+                        .stored_light()
+                        .and_then(|m| m.saved_arrays(b))
+                        .unwrap_or_default(),
                     values: light.light.clone(),
                 })
             })
@@ -161,11 +219,211 @@ impl World {
     }
 }
 
+#[derive(Clone, Copy)]
+struct InitialSky<'a> {
+    earlier: SectionMask,
+    border: Option<&'a Border>,
+    occupied: SectionMask,
+    fully_lit_from: Option<usize>,
+}
+
+/// Saved arrays were queued independently of section status. Initialize the omitted layers
+/// against storage already present in this column, then apply `SkyLightEngine.setLightEnabled`.
+/// Later status additions use the enabled column's live sky storage instead.
+fn restore_saved_layers(
+    chunk: &mut Arc<Chunk>,
+    supported: SectionMask,
+    initializing: Option<InitialSky<'_>>,
+) -> (SectionMask, Vec<usize>) {
+    let Some(StoredLight {
+        masks: [sky, block],
+        saved_arrays: Some(mut arrays),
+    }) = chunk.light_layers
+    else {
+        return Default::default();
+    };
+    let new_sky = if chunk.light_sky {
+        supported & !sky
+    } else {
+        SectionMask::EMPTY
+    };
+    let new_block = supported & !block;
+    let added = new_sky | new_block;
+    if added.is_empty() {
+        return Default::default();
+    }
+
+    const DARK: &[u8] = &[0; 2048];
+    const OPEN: &[u8] = &[0xFF; 2048];
+    let border = initializing
+        .and_then(|initial| initial.border)
+        .map_or(&[][..], |border| &border.0);
+    let mut layers = vec![(None, None); chunk.sections.len() + 2];
+    for b in new_block.iter() {
+        layers[b].1 = Some(
+            if let Some(layer) = border.iter().find(|l| l.section == b && l.block) {
+                if layer.arrays[1] {
+                    arrays[1].insert(b);
+                }
+                if layer.values.any(15) {
+                    Cow::Owned(
+                        (0..2048)
+                            .map(|i| {
+                                (layer.values.get(2 * i) & 15) | (layer.values.get(2 * i + 1) << 4)
+                            })
+                            .collect(),
+                    )
+                } else {
+                    Cow::Borrowed(DARK)
+                }
+            } else {
+                Cow::Borrowed(DARK)
+            },
+        );
+    }
+    let initial_sources = initializing.filter(|_| !new_sky.is_empty()).map(|initial| {
+        let mut source = vec![None; layers.len()];
+        let mut active = initial.earlier;
+        for b in active.iter() {
+            if sky.contains(b) || border.iter().any(|l| l.section == b && l.sky) {
+                source[b] = Some(b);
+            }
+        }
+        // `updateSectionStatus` visits non-air sections from the bottom up. It
+        // initializes the section itself before its neighbours, so its queued
+        // array can seed the newly allocated layer underneath.
+        for s in initial.occupied.iter() {
+            for b in [s + 1, s, s + 2] {
+                if !active.contains(b) {
+                    source[b] = if sky.contains(b) {
+                        Some(b)
+                    } else {
+                        active
+                            .from(b + 1)
+                            .iter()
+                            .next()
+                            .and_then(|above| source[above])
+                    };
+                    active.insert(b);
+                }
+            }
+        }
+        source
+    });
+    for b in new_sky.iter() {
+        let source_section = initial_sources
+            .as_ref()
+            .map_or_else(|| sky.from(b + 1).iter().next(), |sources| sources[b]);
+        let source = source_section.and_then(|s| {
+            if sky.contains(s) {
+                Some((
+                    s,
+                    &chunk
+                        .light_section(s)
+                        .expect("stored sky has a section")
+                        .light,
+                    arrays[0].contains(s),
+                ))
+            } else {
+                border
+                    .iter()
+                    .find(|l| l.section == s && l.sky)
+                    .map(|l| (s, &l.values, l.arrays[0]))
+            }
+        });
+        let mut layer = Cow::Borrowed(if initializing.is_none() { OPEN } else { DARK });
+        if let Some((s, light, materialized)) = source {
+            if materialized {
+                arrays[0].insert(b);
+            }
+            let sky_byte = |i| (light.get(2 * i) >> 4) | (light.get(2 * i + 1) & 0xF0);
+            layer = match light {
+                Light::Block(_, 0) => Cow::Borrowed(DARK),
+                Light::Uniform(v) if v & 0xF0 == 0 => Cow::Borrowed(DARK),
+                Light::Uniform(v) if v & 0xF0 == 0xF0 => Cow::Borrowed(OPEN),
+                _ if s == b => Cow::Owned((0..2048).map(sky_byte).collect()),
+                _ => Cow::Owned(std::array::from_fn::<_, 128, _>(sky_byte).repeat(16)),
+            };
+        }
+        if initializing
+            .and_then(|initial| initial.fully_lit_from)
+            .is_some_and(|start| b >= start)
+            && !arrays[0].contains(b)
+            && layer.as_ref() == DARK
+        {
+            layer = Cow::Borrowed(OPEN);
+        }
+        layers[b].0 = Some(layer);
+    }
+    let sky_light = chunk.light_sky;
+    let chunk = Arc::make_mut(chunk);
+    let changed = update_light_layers(chunk, &layers, sky_light);
+    chunk
+        .light_layers
+        .as_mut()
+        .expect("light update stored layers")
+        .saved_arrays = Some(arrays);
+    (added, changed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{chunk::SECTIONS, light::light_from_layers};
     use sunrise_world::registry::BlockStateId;
+
+    #[test]
+    fn saved_padding_uses_initialization_and_already_stored_sky() {
+        // Same fixture as the saved-padding Java oracle: a proto has opened the
+        // target's lowest build section, but not its lower light pad.
+        use crate::{
+            chunk::MIN_Y,
+            light::{light_from_saved_layers, tests::tables},
+        };
+        let top = MIN_Y + (SECTIONS as i32 - 1) * 16;
+        let mut chunk = Chunk::empty(0, 0);
+        chunk.set(0, MIN_Y, 0, 1);
+        chunk.set(0, top, 0, 1);
+        let mut layers = vec![(None, None); SECTIONS + 2];
+        let sky: Vec<_> = (0..2048)
+            .map(|i| {
+                let v = (((i * 2) & 15) + ((i >> 3) & 15) * 2 + (i >> 7) * 3 + 7) as u8;
+                (v & 15) | (v.wrapping_add(1) << 4)
+            })
+            .collect();
+        layers[1] = (Some(sky), Some(vec![0; 2048]));
+        light_from_saved_layers(&mut chunk, &layers, true);
+        let mut world = World::new(BlockStateId(0), 0);
+        let status = tables().publish_section_status(&mut chunk, world.shape);
+        let mut without_proto = World::new(BlockStateId(0), 0);
+        without_proto.install_light_column_initialized(chunk.clone(), SectionMask::EMPTY, status);
+        assert_eq!(without_proto.light(0, MIN_Y - 1, 0), 0x70);
+        assert_eq!(
+            without_proto.chunks[&(0, 0)].stored_light_layers(3),
+            Some([false; 2])
+        );
+        // Announcing the same proto later still publishes the missing layer, even
+        // when the values did not change from the old read cache.
+        without_proto.light_log = Some(Default::default());
+        without_proto.publish_saved_neighbour_support((1, 0), SectionMask::from_iter([1, 2, 3]));
+        assert_eq!(
+            without_proto.chunks[&(0, 0)].stored_light_layers(3),
+            Some([true; 2])
+        );
+        assert_eq!(
+            without_proto.light_log.as_ref().unwrap()[&(0, 0)],
+            SectionMask::single(3)
+        );
+
+        world.install_light_column_initialized(chunk, SectionMask::from_iter([1, 2, 3]), status);
+        let stored = world.chunks[&(0, 0)].stored_light().unwrap();
+        assert_eq!(stored.presence(3), [true; 2]);
+        assert_eq!(stored.saved_arrays(0), Some([true, false]));
+        assert_eq!(stored.saved_arrays(1), Some([true, true]));
+        assert_eq!(world.light(0, top + 16, 0), 0xF0);
+        assert_eq!(world.light(0, MIN_Y - 1, 0), 0x70);
+        assert_eq!(world.light(1, MIN_Y - 16, 1), 0xA0);
+    }
 
     #[test]
     fn a_retained_gap_uses_the_nearest_stored_sky_not_cached_inheritance() {

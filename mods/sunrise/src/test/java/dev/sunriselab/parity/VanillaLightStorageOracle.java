@@ -3,15 +3,23 @@ package dev.sunriselab.parity;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.BitSet;
 import java.util.List;
+import net.minecraft.SharedConstants;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
+import net.minecraft.network.protocol.game.ClientboundLightUpdatePacketData;
+import net.minecraft.server.Bootstrap;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.LightLayer;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.DataLayer;
 import net.minecraft.world.level.chunk.LightChunk;
 import net.minecraft.world.level.chunk.LightChunkGetter;
+import net.minecraft.world.level.lighting.ChunkSkyLightSources;
 import net.minecraft.world.level.lighting.LevelLightEngine;
 
 /**
@@ -23,7 +31,7 @@ public final class VanillaLightStorageOracle {
     private static final int MIN_SECTION = -4;
     private static final int SECTIONS = 24;
 
-    private static LevelLightEngine engine(boolean sky) {
+    private static LevelLightEngine engine(boolean sky, LightChunk center) {
         BlockGetter level = new BlockGetter() {
             public net.minecraft.world.level.block.entity.BlockEntity getBlockEntity(BlockPos pos) { return null; }
             public net.minecraft.world.level.block.state.BlockState getBlockState(BlockPos pos) { return null; }
@@ -32,7 +40,7 @@ public final class VanillaLightStorageOracle {
             public int getMinY() { return MIN_SECTION * 16; }
         };
         LightChunkGetter getter = new LightChunkGetter() {
-            public LightChunk getChunkForLighting(int x, int z) { return null; }
+            public LightChunk getChunkForLighting(int x, int z) { return x == 0 && z == 0 ? center : null; }
             public BlockGetter getLevel() { return level; }
         };
         return new LevelLightEngine(getter, true, sky);
@@ -52,6 +60,78 @@ public final class VanillaLightStorageOracle {
         return layer;
     }
 
+    /** The same queue-and-initialize order as loading a light-correct column from NBT. */
+    private static void savedPadding() {
+        SharedConstants.tryDetectVersion();
+        Bootstrap.bootStrap();
+        int bottom = MIN_SECTION * 16;
+        int top = (MIN_SECTION + SECTIONS - 1) * 16;
+        LightChunk chunk = new LightChunk() {
+            final ChunkSkyLightSources sources = new ChunkSkyLightSources(this);
+            public net.minecraft.world.level.block.entity.BlockEntity getBlockEntity(BlockPos pos) { return null; }
+            public BlockState getBlockState(BlockPos pos) {
+                return (pos.getX() == 0 && pos.getZ() == 0 && (pos.getY() == top || pos.getY() == bottom))
+                    ? Blocks.STONE.defaultBlockState() : Blocks.AIR.defaultBlockState();
+            }
+            public net.minecraft.world.level.material.FluidState getFluidState(BlockPos pos) { return getBlockState(pos).getFluidState(); }
+            public int getHeight() { return SECTIONS * 16; }
+            public int getMinY() { return bottom; }
+            public void findBlockLightSources(java.util.function.BiConsumer<BlockPos, BlockState> consumer) {}
+            public ChunkSkyLightSources getSkyLightSources() { return sources; }
+        };
+        chunk.getSkyLightSources().update(chunk, 0, top, 0);
+        verifySavedPadding(chunk, false);
+        verifySavedPadding(chunk, true);
+    }
+
+    private static void verifySavedPadding(LightChunk chunk, boolean initializedProto) {
+        var engine = engine(true, chunk);
+        var center = new ChunkPos(0, 0);
+        var lowest = SectionPos.of(center, MIN_SECTION);
+        engine.queueSectionData(LightLayer.SKY, lowest, layer("P7"));
+        engine.queueSectionData(LightLayer.BLOCK, lowest, layer("U0"));
+        engine.runLightUpdates();
+        // The adjacent proto initially has not reported any section status.
+        var before = new ClientboundLightUpdatePacketData(center, engine, null, null);
+        checkMask(before.emptyBlockYMask());
+        if (initializedProto) {
+            // INITIALIZE_LIGHT on the proto, without converting it to a full chunk.
+            engine.updateSectionStatus(SectionPos.of(1, MIN_SECTION + 1, 0), false);
+            engine.runLightUpdates();
+            var onProto = new ClientboundLightUpdatePacketData(center, engine, null, null);
+            checkMask(onProto.emptyBlockYMask(), 2, 3);
+        }
+        engine.updateSectionStatus(lowest, false);
+        engine.updateSectionStatus(SectionPos.of(center, MIN_SECTION + SECTIONS - 1), false);
+        engine.runLightUpdates();
+        engine.setLightEnabled(center, true);
+        engine.runLightUpdates();
+        var initial = new ClientboundLightUpdatePacketData(center, engine, null, null);
+        checkMask(initial.skyYMask(), 0, 1, SECTIONS + 1);
+        checkMask(initial.blockYMask(), 1);
+        checkMask(initial.emptySkyYMask(), initializedProto ? new int[] {2, 3, SECTIONS - 1, SECTIONS}
+            : new int[] {2, SECTIONS - 1, SECTIONS});
+        checkMask(initial.emptyBlockYMask(), initializedProto ? new int[] {0, 2, 3, SECTIONS - 1, SECTIONS, SECTIONS + 1}
+            : new int[] {0, 2, SECTIONS - 1, SECTIONS, SECTIONS + 1});
+        byte[] row = Arrays.copyOf(layer("P7").getData(), 128);
+        byte[] lower = initial.skyUpdates().getFirst();
+        for (int y = 0; y < 16; y++) {
+            if (!Arrays.equals(lower, y * 128, (y + 1) * 128, row, 0, 128)) {
+                throw new AssertionError("saved lower pad must repeat the bottom row");
+            }
+        }
+        if (!Arrays.equals(initial.skyUpdates().getLast(), new DataLayer(15).getData())
+            || !Arrays.equals(initial.blockUpdates().getFirst(), new byte[2048])) {
+            throw new AssertionError("saved upper pad must carry full sky; saved zero array must carry bytes");
+        }
+    }
+
+    private static void checkMask(BitSet mask, int... bits) {
+        var expected = new BitSet();
+        for (int bit : bits) expected.set(bit);
+        if (!mask.equals(expected)) throw new AssertionError("expected " + expected + ", got " + mask);
+    }
+
     public static void main(String[] args) throws Exception {
         List<String> out = new ArrayList<>();
         LevelLightEngine engine = null;
@@ -60,7 +140,7 @@ public final class VanillaLightStorageOracle {
             String[] f = line.split(" ");
             switch (f[0]) {
                 case "case" -> {
-                    engine = engine(f.length < 3 || !f[2].equals("nosky"));
+                    engine = engine(f.length < 3 || !f[2].equals("nosky"), null);
                     out.add("== " + f[1]);
                 }
                 case "column" -> {
@@ -100,6 +180,7 @@ public final class VanillaLightStorageOracle {
                 default -> throw new IllegalArgumentException(line);
             }
         }
+        savedPadding();
         Files.write(Path.of(args[1]), out);
     }
 }

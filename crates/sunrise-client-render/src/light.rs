@@ -68,6 +68,12 @@ pub struct LightTables {
     /// Any state is [`Cell::dynamic`]: without one, no chunk waits to be asked.
     dynamic: bool,
 }
+#[derive(Clone, Copy, Default)]
+pub(crate) struct SectionStatus {
+    pub occupied: SectionMask,
+    pub fully_lit_from: Option<usize>,
+}
+
 impl LightTables {
     /// Dampening and emission only: every occlusion face is empty.
     pub fn new(facts: &BlockFacts) -> Self {
@@ -97,9 +103,15 @@ impl LightTables {
         tables.rebuild_cache();
         tables
     }
-    /// `LevelChunkSection.hasOnlyAir`: only used when a column first publishes its light.
-    pub(crate) fn publish_section_status(&self, chunk: &mut Chunk, shape: LevelShape) {
+    /// Publish the storage supported by non-air sections and gather the inputs
+    /// for initializing omitted layers in a light-correct saved chunk.
+    pub(crate) fn publish_section_status(
+        &self,
+        chunk: &mut Chunk,
+        shape: LevelShape,
+    ) -> SectionStatus {
         let first = chunk.min_y() >> 4;
+        let mut status = SectionStatus::default();
         chunk.light_support = SectionMask::EMPTY;
         chunk.light_sky = shape.sky_light;
         for s in 0..chunk.sections.len() {
@@ -109,8 +121,36 @@ impl LightTables {
                     .has(|id| !self.air_states.get(id as usize).copied().unwrap_or(true))
             {
                 chunk.add_light_support(s);
+                status.occupied.insert(s);
             }
         }
+        if shape.sky_light
+            && chunk.light_layers.is_some_and(|m| m.saved_arrays.is_some())
+            && let Some(upper) = status.occupied.iter().last()
+        {
+            // `ChunkSkyLightSources.getHighestLowestSourceY` bounds the sections
+            // filled by `setLightEnabled`. Search down to the first occluded edge.
+            let mut above = [0; 256];
+            let lower = (shape.min_section() - first) as usize;
+            'sections: for s in (lower..=upper).rev() {
+                if !status.occupied.contains(s) {
+                    above.fill(0);
+                    continue;
+                }
+                let section = &chunk.sections[s];
+                for y in (0..16).rev() {
+                    for (xz, top) in above.iter_mut().enumerate() {
+                        let bottom = section.get(y * 256 + xz) as usize;
+                        if self.edge_occluded(*top, bottom) {
+                            status.fully_lit_from = Some(s + 2);
+                            break 'sections;
+                        }
+                        *top = bottom;
+                    }
+                }
+            }
+        }
+        status
     }
 
     /// Build the packed per-cell info and the per-configuration blocking masks
@@ -1138,7 +1178,7 @@ fn hydrate_light<L: AsRef<[u8]>>(
     }
     chunk.light_layers = Some(StoredLight {
         masks: stored,
-        from_save,
+        saved_arrays: from_save.then_some(stored),
     });
     chunk.light_sky = sky_light;
     crate::chunk::share_uniform(&mut chunk.sections);
@@ -1244,7 +1284,7 @@ pub fn update_light_layers<L: AsRef<[u8]>>(
     }
     chunk.light_layers = Some(StoredLight {
         masks: stored,
-        from_save: false,
+        saved_arrays: chunk.light_layers.and_then(|light| light.saved_arrays),
     });
     chunk.light_sky = sky_light;
     changed.iter().collect()
