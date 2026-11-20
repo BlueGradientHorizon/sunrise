@@ -455,6 +455,21 @@ fn find_extractable_probes_the_whole_int_amount_and_rolls_back() {
 }
 
 #[test]
+fn stacking_moves_each_allowed_resource_into_an_existing_stack() {
+    let (mut fake, r) = items_host(&["minecraft:stone", "minecraft:dirt"]);
+    let (stone, dirt) = (&r[0], &r[1]);
+    chest(&mut fake, A, &[Some((stone, 5)), Some((dirt, 3))]);
+    chest(&mut fake, B, &[None, Some((stone, 4)), Some((dirt, 6))]);
+    let (from, to) = (items_at(&mut fake, A), items_at(&mut fake, B));
+    assert_eq!(
+        move_resources_stacking(&mut fake, &from, &to, |_| true, 8, None),
+        Ok(8)
+    );
+    assert_eq!(counts(&fake, A), [0, 0]);
+    assert_eq!(counts(&fake, B), [0, 9, 9]);
+}
+
+#[test]
 fn extract_first_only_takes_the_selected_resource_and_commits_its_root() {
     let (mut fake, r) = items_host(&["minecraft:stone", "minecraft:dirt"]);
     let (stone, dirt) = (&r[0], &r[1]);
