@@ -1014,14 +1014,14 @@ pub fn with_controller_tables<R>(
 // exhaustive: the platform or fixture constructs this process-local record as a complete unit.
 pub struct TestReader {
     pub registries: std::collections::BTreeMap<String, std::sync::Arc<[String]>>,
-    pub tags: std::sync::Arc<[(String, std::sync::Arc<[String]>)]>,
+    pub tags: Option<std::sync::Arc<[(String, std::sync::Arc<[String]>)]>>,
 }
 impl crate::LoadReader for TestReader {
     fn registry(&self, name: &str) -> Option<&[String]> {
         self.registries.get(name).map(AsRef::as_ref)
     }
-    fn fluid_tags(&self) -> std::sync::Arc<[(String, std::sync::Arc<[String]>)]> {
-        self.tags.clone()
+    fn fluid_tags(&self) -> Option<&[(String, std::sync::Arc<[String]>)]> {
+        self.tags.as_deref()
     }
     fn setting(&self, _: &str, _: &str) -> Option<&str> {
         None

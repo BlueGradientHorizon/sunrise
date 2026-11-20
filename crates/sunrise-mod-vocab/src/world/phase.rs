@@ -760,7 +760,7 @@ pub trait DataLoadContext {
     /// each tag id to the fluids it names, in the sources' order — what a
     /// recipe's fluid ingredient resolves its `#tag`s with. `None` where the
     /// load reads no recipe resources.
-    fn fluid_tags(&self) -> Option<Arc<[(String, Arc<[String]>)]>> {
+    fn fluid_tags(&self) -> Option<&[(String, Arc<[String]>)]> {
         None
     }
 
@@ -776,7 +776,7 @@ pub trait LoadReader: Sync {
     /// Borrows registry names in ID order.
     fn registry(&self, name: &str) -> Option<&[String]>;
     /// Fluid tags and their members in source order.
-    fn fluid_tags(&self) -> Arc<[(String, Arc<[String]>)]>;
+    fn fluid_tags(&self) -> Option<&[(String, Arc<[String]>)]>;
     /// Borrows a captured setting, without file I/O.
     fn setting(&self, mod_id: &str, key: &str) -> Option<&str>;
 }
@@ -813,8 +813,8 @@ impl DataLoadContext for OwningLoad<'_> {
     fn fluid_key(&self, id: &str) -> Option<crate::FluidKey> {
         crate::content::registry_keys::fluid_key(id)
     }
-    fn fluid_tags(&self) -> Option<Arc<[(String, Arc<[String]>)]>> {
-        Some(self.source.fluid_tags())
+    fn fluid_tags(&self) -> Option<&[(String, Arc<[String]>)]> {
+        self.source.fluid_tags()
     }
     fn setting(&self, mod_id: &str, key: &str) -> Option<&str> {
         self.source.setting(mod_id, key)

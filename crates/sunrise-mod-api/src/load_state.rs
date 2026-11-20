@@ -181,15 +181,15 @@ pub(crate) fn set_phase(state: PhaseState) {
 #[derive(Default)]
 pub(crate) struct TestReader {
     pub registries: std::collections::BTreeMap<String, Arc<[String]>>,
-    pub tags: Arc<[(String, Arc<[String]>)]>,
+    pub tags: Option<Arc<[(String, Arc<[String]>)]>>,
 }
 #[cfg(test)]
 impl LoadReader for TestReader {
     fn registry(&self, name: &str) -> Option<&[String]> {
         self.registries.get(name).map(AsRef::as_ref)
     }
-    fn fluid_tags(&self) -> Arc<[(String, Arc<[String]>)]> {
-        self.tags.clone()
+    fn fluid_tags(&self) -> Option<&[(String, Arc<[String]>)]> {
+        self.tags.as_deref()
     }
     fn setting(&self, _: &str, _: &str) -> Option<&str> {
         None
@@ -543,7 +543,7 @@ mod tests {
                 "item".to_owned(),
                 vec!["a:b".into()].into(),
             )]),
-            tags: Arc::from([]),
+            tags: None,
         };
         with_test_packages(&["one", "two"], || {
             let context = OwningLoop::new(LoopSide::Client, &source);

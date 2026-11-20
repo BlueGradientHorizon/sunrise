@@ -32,8 +32,8 @@ impl mod_api::LoadReader for LoadReader<'_> {
     fn registry(&self, name: &str) -> Option<&[String]> {
         self.0.registry(name)
     }
-    fn fluid_tags(&self) -> Arc<[(String, Arc<[String]>)]> {
-        self.0.fluid_tags().clone()
+    fn fluid_tags(&self) -> Option<&[(String, Arc<[String]>)]> {
+        self.0.fluid_tags()
     }
     fn setting(&self, mod_id: &str, key: &str) -> Option<&str> {
         self.0.setting(mod_id, key)

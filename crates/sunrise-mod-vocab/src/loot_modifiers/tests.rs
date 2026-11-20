@@ -49,8 +49,8 @@ impl LoadReader for Reader {
     fn registry(&self, _: &str) -> Option<&[String]> {
         None
     }
-    fn fluid_tags(&self) -> Arc<[(String, Arc<[String]>)]> {
-        Arc::from([])
+    fn fluid_tags(&self) -> Option<&[(String, Arc<[String]>)]> {
+        None
     }
     fn setting(&self, _: &str, _: &str) -> Option<&str> {
         None
