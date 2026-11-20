@@ -507,7 +507,7 @@ impl Globals {
     pub(crate) fn bytes(&self, size: [u32; 2], menu_blur_radius: i32) -> [u8; 48] {
         let [x, y, z] = self.camera_block_pos.map(i32::to_le_bytes);
         let [ox, oy, oz] = self.camera_offset.map(f32::to_le_bytes);
-        let words = [
+        let words: [[u8; 4]; 12] = [
             x,
             y,
             z,

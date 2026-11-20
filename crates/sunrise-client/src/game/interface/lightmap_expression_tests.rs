@@ -174,7 +174,8 @@ fn the_particles_frame_keeps_its_strings() {
             Default::default(),
             game.pack.assets.registry,
         );
-        if let Ok(mut held) = registry.frame.write() {
+        {
+            let mut held = registry.frame.write().unwrap();
             held.dimension = String::with_capacity(64);
             held.biome = String::with_capacity(64);
         }
