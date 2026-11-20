@@ -276,23 +276,28 @@ impl Game<'_> {
             let Some(ammo) = self.get_projectile(stack) else {
                 return;
             };
-            if !self.creative
-                && let Some(i) = ammo.slot
+            // The projectile hook may have changed the selected ammunition or weapon.
+            if let Some(i) = ammo.slot
+                && self.stack_in(i) != Some(&ammo.stack)
             {
-                self.consume_player_slot(i, 1);
-            }
-            // The ammo notice is allowed to replace the weapon, even with
-            // a different crossbow. Only charge the stack that drew it.
-            if self.stack_in(slot) != Some(stack) {
                 return;
             }
-            let ammo = ammo.stack;
+            let creative = self.creative;
+            let Some(bow) = self
+                .stack_in_mut(slot)
+                .as_mut()
+                .filter(|bow| &**bow == stack)
+            else {
+                return;
+            };
+            // Store the projectile before debiting the ammo slot: its destruction
+            // listener can now move the loaded bow without losing the projectile.
             // useAmmo: the extra multishot arrows and creative's are intangible.
-            let drawn = (0..shots)
-                .map(|i| sunrise_client::arrows::drawn_ammo(&ammo, self.creative || i > 0))
+            bow.data_mut().charged = (0..shots)
+                .map(|i| sunrise_client::arrows::drawn_ammo(&ammo.stack, creative || i > 0))
                 .collect();
-            if let Some(bow) = self.stack_in_mut(slot).as_mut() {
-                bow.data_mut().charged = drawn;
+            if !creative && let Some(i) = ammo.slot {
+                self.consume_player_slot(i, 1);
             }
             let pitch = 1.0 / (self.world.random.next_float() * 0.5 + 1.0) + 0.2;
             self.audio.play(sounds[2], at, 1.0, pitch);

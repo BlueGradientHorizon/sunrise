@@ -16,11 +16,16 @@ struct Notice {
     resolved: bool,
 }
 
+enum HandWrite {
+    Replace(Hand, ItemStack),
+    MoveBowAndReplace(ItemStack),
+}
+
 #[derive(Default)]
 struct Observations {
     notices: Vec<Notice>,
     mining_order: Vec<&'static str>,
-    replacement: Option<(Hand, ItemStack)>,
+    hand_write: Option<HandWrite>,
     refuse_use: bool,
 }
 
@@ -54,12 +59,20 @@ impl Hooks for Observer {
             hand: event.hand,
             original: event.original.clone(),
         });
-        let replacement = seen.replacement.take();
+        let hand_write = seen.hand_write.take();
         drop(seen);
-        if let (HostSide::Server(host), Some((hand, stack))) = (host, replacement) {
+        if let (HostSide::Server(host), Some(write)) = (host, hand_write) {
+            let living = living.unwrap();
+            let (hand, stack) = match write {
+                HandWrite::Replace(hand, stack) => (hand, stack),
+                HandWrite::MoveBowAndReplace(stack) => {
+                    let bow = living.hand_item(host, Hand::Main).unwrap();
+                    assert!(living.set_hand_item(host, Hand::Off, Some(bow)).unwrap());
+                    (Hand::Main, stack)
+                }
+            };
             assert!(
                 living
-                    .unwrap()
                     .set_hand_item(host, hand, Some(stack.try_into_api().unwrap()))
                     .unwrap()
             );
@@ -196,8 +209,10 @@ fn continuations_preserve_listener_hand_writes(game: &mut Game<'_>, observer: &O
     let mut stick = named_stack("minecraft:carrot_on_a_stick", 1);
     stick.damage = 24;
     game.inventory[game.selected] = Some(stick);
-    observer.0.lock().unwrap().replacement =
-        Some((Hand::Main, ItemStack::new("minecraft:apple", 1)));
+    observer.0.lock().unwrap().hand_write = Some(HandWrite::Replace(
+        Hand::Main,
+        ItemStack::new("minecraft:apple", 1),
+    ));
     assert!(game.use_steering_stick("minecraft:carrot_on_a_stick"));
     take_notice(
         observer,
@@ -211,23 +226,38 @@ fn continuations_preserve_listener_hand_writes(game: &mut Game<'_>, observer: &O
     // The same applies to a powder snow bucket's pending empty bucket.
     let powder = named_stack("minecraft:powder_snow_bucket", 1);
     game.offhand = Some(powder.clone());
-    observer.0.lock().unwrap().replacement =
-        Some((Hand::Off, ItemStack::new("minecraft:stick", 1)));
+    observer.0.lock().unwrap().hand_write = Some(HandWrite::Replace(
+        Hand::Off,
+        ItemStack::new("minecraft:stick", 1),
+    ));
     game.with_hand(Hand::Off, |game| game.consume_placed(&powder));
     take_notice(observer, Some(Hand::Off), "minecraft:powder_snow_bucket", 0);
     assert_eq!(&*game.offhand.as_ref().unwrap().item, "minecraft:stick");
 
-    // Consuming the last projectile must not charge even a replacement crossbow.
+    // The notice may move the loaded bow and install a different one. The
+    // original bow must keep its projectile; the replacement gets none.
     let bow = ItemStack::new("minecraft:crossbow", 1);
     let mut replacement = bow.clone();
     replacement.damage = 2;
     let slot = game.selected;
     game.inventory[slot] = Some(bow.clone());
     game.offhand = Some(named_stack("minecraft:arrow", 1));
-    observer.0.lock().unwrap().replacement = Some((Hand::Main, replacement));
+    observer.0.lock().unwrap().hand_write = Some(HandWrite::MoveBowAndReplace(replacement));
     game.tick_crossbow(slot, Game::charge_ticks(&bow), &bow);
-    take_notice(observer, Some(Hand::Off), "minecraft:arrow", 0);
-    assert!(game.offhand.is_none());
+    let notice = take_notice(observer, Some(Hand::Off), "minecraft:arrow", 0);
+    assert!(
+        notice.in_hand.is_none(),
+        "the ammo was debited before the move"
+    );
+    let moved = game.offhand.as_ref().unwrap();
+    assert_eq!(&*moved.item, "minecraft:crossbow");
+    assert_eq!(moved.damage, 0);
+    let [arrow] = moved.data().unwrap().charged.as_slice() else {
+        panic!("the moved bow must keep its one arrow");
+    };
+    assert_eq!(&*arrow.item, "minecraft:arrow");
+    assert_eq!(arrow.count, 1);
+    assert_eq!(arrow.custom_name().as_deref(), Some("Destruction snapshot"));
     let kept = game.stack_in(slot).unwrap();
     assert_eq!(&*kept.item, "minecraft:crossbow");
     assert_eq!(kept.damage, 2);
