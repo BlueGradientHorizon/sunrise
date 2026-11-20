@@ -163,6 +163,39 @@ pub fn wrap(a: f32) -> f32 {
     }
     a
 }
+/// `BlockState.getCollisionShape(level, pos)` with the empty collision context.
+fn block_shape_in(
+    world: &crate::world::World,
+    collision: &sunrise_world::block_collision::BlockCollisionRegistry,
+    x: i32,
+    y: i32,
+    z: i32,
+) -> Option<sunrise_core::geometry::VoxelShape> {
+    let mut scene = SceneCollisions {
+        world,
+        binding: collision,
+        subject: None,
+    };
+    let state = world.block(x, y, z);
+    let at = sunrise_core::position::BlockPos::new(x, y, z);
+    let context = sunrise_world::collision_context::CollisionContext::empty(false);
+    collision
+        .collision_shape_with_context(&mut scene, state, at, &context)
+        .ok()
+}
+/// [`block_shape_in`] as boxes in the world.
+pub fn collision_boxes_in(
+    world: &crate::world::World,
+    collision: &sunrise_world::block_collision::BlockCollisionRegistry,
+    x: i32,
+    y: i32,
+    z: i32,
+) -> Vec<Aabb> {
+    let offset = Vec3::new(f64::from(x), f64::from(y), f64::from(z));
+    block_shape_in(world, collision, x, y, z)
+        .map(|shape| shape.boxes().iter().map(|b| b.move_by(offset)).collect())
+        .unwrap_or_default()
+}
 impl MobWorld<'_> {
     /// Entity.updateFluidHeightAndDoFluidPushing's currents over the deflated
     /// box: the flow of every water and lava block it touches, summed (a thin
@@ -223,10 +256,7 @@ impl MobWorld<'_> {
     /// `BlockState.getCollisionShape(level, pos)` (the empty collision
     /// context) as boxes in the world.
     pub fn block_collision_boxes(&self, x: i32, y: i32, z: i32) -> Vec<Aabb> {
-        let offset = Vec3::new(f64::from(x), f64::from(y), f64::from(z));
-        self.block_shape(x, y, z)
-            .map(|shape| shape.boxes().iter().map(|b| b.move_by(offset)).collect())
-            .unwrap_or_default()
+        collision_boxes_in(self.world, self.collision, x, y, z)
     }
     /// Whether the block's collision shape (empty context) has a box meeting `area`.
     fn block_collides_with(&self, x: i32, y: i32, z: i32, area: Aabb) -> bool {
@@ -239,17 +269,7 @@ impl MobWorld<'_> {
         })
     }
     fn block_shape(&self, x: i32, y: i32, z: i32) -> Option<sunrise_core::geometry::VoxelShape> {
-        let mut scene = SceneCollisions {
-            world: self.world,
-            binding: self.collision,
-            subject: None,
-        };
-        let state = self.world.block(x, y, z);
-        let at = sunrise_core::position::BlockPos::new(x, y, z);
-        let context = sunrise_world::collision_context::CollisionContext::empty(false);
-        self.collision
-            .collision_shape_with_context(&mut scene, state, at, &context)
-            .ok()
+        block_shape_in(self.world, self.collision, x, y, z)
     }
     /// `Level.findSupportingBlock`: of the blocks whose collision shape
     /// meets `area`, the one whose centre is nearest `from` (ties: the

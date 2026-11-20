@@ -19,3 +19,4 @@ sunrise-client-lib mobs::dragon_contacts::parity::contact_transcript tools/test_
 sunrise-client-lib mobs::villager_brain::farming_tests::vanilla_farming_classification_matches_the_oracle tools/test_villager_farming_parity.py harness
 sunrise-client-lib mobs::villager_brain::reputation_witness_tests::witnesses_use_sensor_candidates_radius_invisibility_and_cached_results tools/test_villager_witness_parity.py harness
 sunrise-client-render packs::cache::tests::benchmark_real_resource_root SUNRISE_OVERLAY_BENCH_VANILLA harness
+sunrise-client game::campfire::block_entity_items_tests::block_entity_items_match_the_vanilla_cases tools/test_block_entity_item_geometry_parity.py harness

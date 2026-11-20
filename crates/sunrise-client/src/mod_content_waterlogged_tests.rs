@@ -152,7 +152,7 @@ fn declared_waterlogged_blocks_keep_their_class_and_gain_liquid_defaults() {
     assert_eq!(block_flags[dry_plant.0 as usize], (false, false));
 
     let facts = BlockFacts::load(&root, &registry).unwrap();
-    let mobs = MobData::load(&ResourceRoot::directory(root), &facts);
+    let mobs = MobData::load(&ResourceRoot::directory(root.clone()), &facts);
     assert_eq!(mobs.path_type(plant), PathType::Water);
     assert_eq!(mobs.path_type(dry_plant), PathType::Open);
     assert!(mobs.pathfindable(plant, PathComputationType::Water));
@@ -170,6 +170,18 @@ fn declared_waterlogged_blocks_keep_their_class_and_gain_liquid_defaults() {
         !b.data(stone)
             .is(sunrise_world::level::classes::Class::Stair)
     );
+    // A mod block's item, whose prototype carries no `item_name`, is named by its block's key.
+    let blocks: &'static sunrise_world::registry::BlockRegistry = Box::leak(Box::new(
+        sunrise_world::level::data::load_registry(&root).unwrap(),
+    ));
+    let names = crate::creative::Names::default().with_item_names(&Default::default(), blocks);
+    for (item, key) in [
+        ("wet:stone", "block.wet.stone"),
+        ("wet:plain_item", "item.wet.plain_item"),
+    ] {
+        let name = crate::stations::hover_name_text(&names, &crate::items::ItemStack::new(item, 1));
+        assert_eq!(name.component()["translate"], key, "{item}");
+    }
     assert!(!mobs.pathfindable(stairs, PathComputationType::Water));
 
     let is_waterlogged = |state| b.table.bool(state, b.props.waterlogged);

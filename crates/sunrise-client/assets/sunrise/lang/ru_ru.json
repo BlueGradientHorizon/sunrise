@@ -139,7 +139,6 @@
   "How fast the right stick turns the view.": "Как быстро правый стик поворачивает обзор.",
   "How fast the stick moves the crosshair in inventories.": "Как быстро стик двигает курсор в инвентарях.",
   "How frames reach the screen while VSync is off.": "Как кадры попадают на экран, когда вертикальная синхронизация выключена.",
-  "How frames reach the screen, and the performance overlay.": "Как кадры попадают на экран, и оверлей производительности.",
   "How long a held direction takes between repeats.": "Сколько длится пауза между повторами удерживаемого направления.",
   "How long a held direction waits before it repeats.": "Как долго удерживаемое направление ждёт до повтора.",
   "How many particles effects spawn.": "Сколько частиц создают эффекты.",

@@ -57,7 +57,7 @@ pub struct FrictionLevel<'a> {
 }
 
 /// `IBlockExtension.getFriction` of a state at a position. A cyclic or over-deep mod
-/// query gets no answer. An out-of-range answer keeps the state's own coefficient.
+/// query gets no answer. A non-finite answer keeps the state's own coefficient; any finite one is used as given.
 #[inline(never)]
 pub fn read_friction(
     level: FrictionLevel<'_>,
@@ -70,11 +70,7 @@ pub fn read_friction(
     if !crate::native_client_hooks::friction(level, entity, pos, state, &mut friction) {
         return None;
     }
-    Some(if (0.0..=2.0).contains(&friction) {
-        friction
-    } else {
-        own
-    })
+    Some(if friction.is_finite() { friction } else { own })
 }
 
 /// The friction of the block at `pos` for the entity on it, starting at its `StateFacts` value.
