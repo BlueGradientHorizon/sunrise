@@ -91,7 +91,7 @@ impl ResourceHandler<ItemResource> for Storage {
         tx: &Transaction,
         resource: &ItemResource,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, Overanswered> {
         assert_eq!(amount, 1);
         assert_eq!(host.transaction_depth(tx), Some(0));
         let item = mod_api::__private::item_key_id(resource.as_stack().item()).unwrap();
@@ -131,7 +131,7 @@ impl ResourceHandler<ItemResource> for Storage {
         if notify {
             entity.set_changed(host).unwrap();
         }
-        u32::from(accept)
+        Ok(u32::from(accept))
     }
     fn extract_at(
         &self,
@@ -224,7 +224,7 @@ impl BlockPart for Probe {
                 host.transaction(|host, tx| {
                     if let Some(resource) = source.resource(host, 0) {
                         let taken = source.extract_at(host, tx, 0, &resource, 1);
-                        assert_eq!(sink.insert(host, tx, &resource, taken), taken);
+                        assert_eq!(sink.insert(host, tx, &resource, taken), Ok(taken));
                     }
                     if self.rules.lock().unwrap().replace_source_on_notice {
                         let stick = ItemResource::of(
@@ -279,7 +279,7 @@ impl BlockPart for CommitMover {
             let other = event.level.capability(host, &ITEMS, OTHER, None).unwrap();
             host.transaction(|host, tx| {
                 assert_eq!(source.extract_at(host, tx, 0, &resource, 1), 1);
-                assert_eq!(other.insert(host, tx, &resource, 1), 1);
+                assert_eq!(other.insert(host, tx, &resource, 1), Ok(1));
                 Ok::<_, ()>(())
             })
             .unwrap();

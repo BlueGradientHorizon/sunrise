@@ -90,7 +90,7 @@ pub fn move_energy(
         },
         want,
         |host, tx, want| from.extract(host, tx, want),
-        |host, tx, out| to.insert(host, tx, out),
+        |host, tx, out| Ok(to.insert(host, tx, out)),
     )
 }
 

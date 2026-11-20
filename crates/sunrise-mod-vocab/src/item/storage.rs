@@ -61,7 +61,9 @@ impl From<(crate::Identifier, String)> for StorageError {
 
 impl From<crate::Overanswered> for StorageError {
     fn from(error: crate::Overanswered) -> Self {
-        Self::Overanswered { owner: error.owner }
+        Self::Overanswered {
+            owner: error.owner.unwrap_or_else(|| "unknown provider".into()),
+        }
     }
 }
 
@@ -429,7 +431,7 @@ pub fn transfer(
         },
         want,
         |host, tx, want| from.extract(host, tx, resource, want),
-        |host, tx, out| to.insert(host, tx, resource, out),
+        |host, tx, out| Ok(to.insert(host, tx, resource, out)),
     )?)
 }
 

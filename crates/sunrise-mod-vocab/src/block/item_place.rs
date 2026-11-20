@@ -780,7 +780,9 @@ impl ItemPlace {
                 while left > 0 {
                     let moved = match (insert, anywhere) {
                         (true, false) => handler.insert_at(host, tx, slot, resource, left),
-                        (true, true) => handler.insert(host, tx, resource, left),
+                        (true, true) => handler
+                            .insert(host, tx, resource, left)
+                            .map_err(|_| warn_broken(handler.owner, self))?,
                         (false, _) => handler.extract_at(host, tx, slot, resource, left),
                     };
                     match handler.checked(moved, left, self).ok_or(())? {

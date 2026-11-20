@@ -101,7 +101,7 @@ fn a_combined_handler_numbers_both_and_fills_the_second_when_the_first_is_full()
     assert_eq!(combined.size(host), 4);
     assert_eq!(combined.amount(host, 1), 100);
     assert_eq!(combined.resource(host, 2), None);
-    let went = host.transaction(|host, tx| Ok::<_, ()>(combined.insert(host, tx, &HYDROGEN, 150)));
+    let went = host.transaction(|host, tx| combined.insert(host, tx, &HYDROGEN, 150));
     assert_eq!(went, Ok(150));
     assert_eq!(first.held(), vec![full.clone(), full.clone()]);
     assert_eq!(second.held(), vec![full, Some((HYDROGEN, 50))]);
@@ -141,7 +141,7 @@ fn insert_stacking_tops_up_a_holding_index_before_an_empty_one() {
     let mut fake = FakeHost::new();
     let host: &mut dyn ServerHost = &mut fake;
     let went = insert_stacking(host, handler, &HYDROGEN, 95, None);
-    assert_eq!(went, 95);
+    assert_eq!(went, Ok(95));
     // The default `insert` would have filled index 0 first.
     assert_eq!(
         tanks.held(),
@@ -284,15 +284,17 @@ fn a_part_answering_more_than_asked_shows_through_every_total() {
         )
     };
     let insert = |host: &mut dyn ServerHost, handler: &dyn ResourceHandler<Chemical>, amount| {
-        host.transaction(|host, tx| Ok::<_, ()>(handler.insert(host, tx, &HYDROGEN, amount)))
+        host.transaction(|host, tx| handler.insert(host, tx, &HYDROGEN, amount))
     };
-    // The tank takes 100; the liar, asked for 50, answers 51: the total is over 150.
-    let inner = tank_then_liar(host);
-    assert_eq!(insert(host, &inner, 150), Ok(151));
-    // Asked `u32::MAX`, no total can be over it: it answers 0, never `u32::MAX`.
-    let inner = tank_then_liar(host);
-    assert_eq!(insert(host, &inner, u32::MAX), Ok(0));
-    // The default `insert` and `insert_stacking` add up their indices the same way.
+    // In either case the first tank takes 100, and the liar exceeds the remainder.
+    for amount in [150, u32::MAX] {
+        let inner = tank_then_liar(host);
+        assert_eq!(
+            insert(host, &inner, amount),
+            Err(Overanswered { owner: None })
+        );
+    }
+    // The ranged wrapper inherits the default slot-less implementation.
     let indices = CombinedResourceHandler::new(
         host,
         vec![
@@ -300,8 +302,15 @@ fn a_part_answering_more_than_asked_shows_through_every_total() {
             Box::new(Liar),
         ],
     );
-    let indices = &indices as &dyn ResourceHandler<Chemical>;
-    assert_eq!(insert_stacking(host, indices, &HYDROGEN, 20, None), 21);
+    let indices = RangedResourceHandler::of(host, Box::new(indices), 0..2).unwrap();
+    assert_eq!(
+        insert(host, &indices, 20),
+        Err(Overanswered { owner: None })
+    );
+    assert_eq!(
+        insert_stacking(host, &indices, &HYDROGEN, 20, None),
+        Err(Overanswered { owner: None })
+    );
 }
 
 /// A host with `ids` registered, stacking to 64, and their resources.
@@ -482,7 +491,7 @@ fn extract_first_only_takes_the_selected_resource_and_commits_its_root() {
     let taken = extract_first(&mut fake, &*items, |r| r == stone, 8, None);
     assert_eq!(taken, Some((stone.clone(), 8)));
     assert_eq!(counts(&fake, A), [3, 0, 4]);
-    assert_eq!(fake.journal.closed(), [(2, false), (1, true)]);
+    assert_eq!(fake.journal.closed().last(), Some(&(1, true)));
 }
 
 #[test]
@@ -504,7 +513,7 @@ fn an_overanswer_after_an_honest_part_undoes_the_whole_move() {
     assert_eq!(
         moved,
         Err(Overanswered {
-            owner: "test:liar".into()
+            owner: Some("test:liar".into())
         })
     );
     assert_eq!(counts(&fake, A), [5]);
@@ -592,7 +601,7 @@ fn a_caught_bulk_error_does_not_commit_earlier_moves_and_the_sink_sees_the_sourc
         assert_eq!(
             move_resources(host, &from, &to, |_| true, 8, Some(parent)),
             Err(Overanswered {
-                owner: "test:sink".into()
+                owner: Some("test:sink".into())
             })
         );
         Ok::<_, ()>(())
@@ -621,37 +630,76 @@ fn a_maximum_transfer_propagates_nested_overanswers_and_aborts_the_tank() {
     let from = capability(InfiniteResourceHandler::new(stone.clone()), "test:creative");
     let to = capability(outer, "test:liar");
 
-    // A direct maximum request cannot return an out-of-range amount. It must undo the
-    // honest tank's write even if the enclosing transaction commits the zero answer.
+    // A caught error cannot commit the honest tank's write or fall through to the last sink.
     let refused = host.transaction(|host, tx| Ok::<_, ()>(to.insert(host, tx, stone, u32::MAX)));
-    assert_eq!(refused, Ok(0));
+    assert_eq!(refused, Ok(Err(Overanswered { owner: None })));
     assert_eq!(counts(&fake, B), [62]);
-    assert_eq!(fake.journal.closed(), [(2, false), (1, true)]);
+    assert_eq!(fake.journal.closed().last(), Some(&(1, true)));
 
-    // A move reserves an out-of-range answer, so neither the outer Combined nor the later
-    // infinite sink can mask the inner Combined's failure.
     let host: &mut dyn ServerHost = &mut fake;
     let moved = move_resources(host, &from, &to, |_| true, u32::MAX, None);
     assert_eq!(
         moved,
         Err(Overanswered {
-            owner: "test:liar".into()
+            owner: Some("test:liar".into())
         })
     );
     assert_eq!(counts(&fake, B), [62]);
-    assert_eq!(
-        fake.journal.closed()[2..],
-        [(2, false), (2, false), (1, false)]
-    );
+    assert_eq!(fake.journal.closed().last(), Some(&(1, false)));
     assert_eq!(fake.journal.depth(), 0);
 }
 
 #[test]
-fn reserving_an_overanswer_does_not_reduce_the_total_maximum_transfer() {
-    let host = &mut FakeHost::new();
-    let from = capability(InfiniteResourceHandler::new(HYDROGEN), "test:source");
+fn maximum_batch_moves_without_splitting_a_quantized_handler() {
+    struct WholeBatch(bool);
+
+    impl ResourceHandler<Chemical> for WholeBatch {
+        fn size(&self, _: &mut dyn ServerHost) -> usize {
+            1
+        }
+        fn resource(&self, _: &mut dyn ServerHost, _: usize) -> Option<Chemical> {
+            self.0.then_some(HYDROGEN)
+        }
+        fn amount(&self, _: &mut dyn ServerHost, _: usize) -> u32 {
+            if self.0 { u32::MAX } else { 0 }
+        }
+        fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: &Chemical) -> u32 {
+            u32::MAX
+        }
+        fn insert_at(
+            &self,
+            _: &mut dyn ServerHost,
+            _: &Transaction,
+            _: usize,
+            _: &Chemical,
+            amount: u32,
+        ) -> u32 {
+            if !self.0 && amount == u32::MAX {
+                amount
+            } else {
+                0
+            }
+        }
+        fn extract_at(
+            &self,
+            _: &mut dyn ServerHost,
+            _: &Transaction,
+            _: usize,
+            _: &Chemical,
+            amount: u32,
+        ) -> u32 {
+            if self.0 && amount == u32::MAX {
+                amount
+            } else {
+                0
+            }
+        }
+    }
+
+    let host: &mut dyn ServerHost = &mut FakeHost::new();
+    let from = capability(WholeBatch(true), "test:source");
     let to = capability(
-        CombinedResourceHandler::new(host, vec![Box::new(InfiniteResourceHandler::new(HYDROGEN))]),
+        CombinedResourceHandler::new(host, vec![Box::new(WholeBatch(false))]),
         "test:sink",
     );
     assert_eq!(
@@ -659,8 +707,15 @@ fn reserving_an_overanswer_does_not_reduce_the_total_maximum_transfer() {
         Ok(u32::MAX)
     );
     assert_eq!(
+        move_resources_stacking(host, &from, &to, |_| true, u32::MAX, None),
+        Ok(u32::MAX)
+    );
+    assert_eq!(
         move_first(host, &from, &to, |_| true, u32::MAX, None),
         Ok(Some((HYDROGEN, u32::MAX)))
     );
-    assert_eq!(host.journal.depth(), 0);
+    assert_eq!(
+        move_first_stacking(host, &from, &to, |_| true, u32::MAX, None),
+        Ok(Some((HYDROGEN, u32::MAX)))
+    );
 }

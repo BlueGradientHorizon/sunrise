@@ -3,8 +3,8 @@
 //! `Capabilities.Item.ENTITY`). A player's inventory is the game's own answer for a player.
 use crate::{
     Capability, ComponentId, Direction, EnergyHandler, EntityRef, EquipmentSlot, FluidResource,
-    Host, ItemPlace, ItemResource, PREVENT_ARMOR_CHANGE, ProvidedBy, ResourceHandler, ServerHost,
-    Tag, Transaction, backend_of,
+    Host, ItemPlace, ItemResource, Overanswered, PREVENT_ARMOR_CHANGE, ProvidedBy, ResourceHandler,
+    ServerHost, Tag, Transaction, backend_of,
 };
 use std::marker::PhantomData;
 
@@ -446,9 +446,9 @@ impl ResourceHandler<ItemResource> for PlayerItems {
         tx: &Transaction,
         resource: &ItemResource,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, Overanswered> {
         if !live(host, self.entity) {
-            return 0;
+            return Ok(0);
         }
         let limit = max_stack(host, resource);
         // The selected slot as a slot, not a hand: a creative player's hand takes anything.
@@ -475,6 +475,6 @@ impl ResourceHandler<ItemResource> for PlayerItems {
                 went += fill(host, tx, &place, resource, amount - went, limit);
             }
         }
-        went
+        Ok(went)
     }
 }

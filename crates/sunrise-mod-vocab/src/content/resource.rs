@@ -544,19 +544,18 @@ pub trait ResourceHandler<R> {
         amount: u32,
     ) -> u32;
     /// Puts up to `amount` of `resource` in wherever it goes: by default index by index from 0.
-    /// Prefer this to `insert_at` unless targeting a specific index. If a part overanswers, the
-    /// default returns more than `amount` so the caller can abort. At `u32::MAX`, it aborts its
-    /// own nested transaction and returns 0 instead, since no greater `u32` exists.
+    /// Prefer this to `insert_at` unless targeting a specific index. The default runs in its
+    /// own journal and rolls back with [`Overanswered`] if an index answers more than requested.
     fn insert(
         &self,
         host: &mut dyn ServerHost,
         tx: &Transaction,
         resource: &R,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, Overanswered> {
         let size = self.size(host);
         in_turn(host, tx, amount, 0..size, |host, tx, index, left| {
-            self.insert_at(host, tx, *index, resource, left)
+            Ok(self.insert_at(host, tx, *index, resource, left))
         })
     }
     /// Takes up to `amount` of `resource` out from wherever it is: by default index by index
@@ -568,78 +567,61 @@ pub trait ResourceHandler<R> {
         tx: &Transaction,
         resource: &R,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, Overanswered> {
         let size = self.size(host);
         in_turn(host, tx, amount, 0..size, |host, tx, index, left| {
-            self.extract_at(host, tx, *index, resource, left)
+            Ok(self.extract_at(host, tx, *index, resource, left))
         })
     }
 }
 
-/// Leave one representable answer above every request sent to a composed handler.
-pub(crate) const MAX_TRANSFER_STEP: u32 = u32::MAX - 1;
-
-/// Aggregates indexed or composed transfers. A smaller request has an out-of-range answer for
-/// failure, so it needs no extra transaction. Only the outermost maximum request needs a guard:
-/// no child ever receives that request, so a child's overanswer propagates to this guard.
+/// A slot-less transfer owns its journal, so an overanswer cannot leave part of it committed.
 pub(crate) fn in_turn<P>(
     host: &mut dyn ServerHost,
     tx: &Transaction,
     amount: u32,
     parts: impl IntoIterator<Item = P>,
-    ask: impl FnMut(&mut dyn ServerHost, &Transaction, &P, u32) -> u32,
-) -> u32 {
-    if let Some(overanswer) = amount.checked_add(1) {
-        try_in_turn(host, tx, amount, parts, ask).unwrap_or(overanswer)
-    } else if host.transaction_depth(tx).is_some() {
-        host.transaction(|host, tx| try_in_turn(host, tx, amount, parts, ask))
-            .unwrap_or(0)
-    } else {
-        0
+    ask: impl FnMut(&mut dyn ServerHost, &Transaction, &P, u32) -> Result<u32, Overanswered>,
+) -> Result<u32, Overanswered> {
+    if amount == 0 || host.transaction_current().as_ref() != Some(tx) {
+        return Ok(0);
     }
+    host.transaction(|host, tx| try_in_turn(host, tx, amount, parts, ask))
 }
 
-/// Asks each part for what remains; a maximum request may need two calls to its first part.
-/// The caller owns the transaction and must abort on `Err`.
+/// Asks each part for the full remaining amount. The owning transaction aborts on `Err`.
 pub(crate) fn try_in_turn<P>(
     host: &mut dyn ServerHost,
     tx: &Transaction,
     amount: u32,
     parts: impl IntoIterator<Item = P>,
-    mut ask: impl FnMut(&mut dyn ServerHost, &Transaction, &P, u32) -> u32,
-) -> Result<u32, ()> {
+    mut ask: impl FnMut(&mut dyn ServerHost, &Transaction, &P, u32) -> Result<u32, Overanswered>,
+) -> Result<u32, Overanswered> {
     let mut done = 0;
     for part in parts {
         let left = amount - done;
         if left == 0 {
             break;
         }
-        let requested = left.min(MAX_TRANSFER_STEP);
-        let answer = ask(host, tx, &part, requested);
-        if answer > requested {
-            return Err(());
-        }
-        done += answer;
-        if left > requested && answer == requested {
-            let last = ask(host, tx, &part, 1);
-            if last > 1 {
-                return Err(());
-            }
-            done += last;
-        }
+        done += checked_transfer(ask(host, tx, &part, left)?, left)?;
     }
     Ok(done)
 }
 
-/// A handler answered more than it was asked (`move_resources`): a mod bug, warned once naming
-/// the mod. Returned from a `host.transaction` closure with `?`, it aborts the whole move, so
-/// neither end keeps any of it.
+pub(crate) fn checked_transfer(answer: u32, asked: u32) -> Result<u32, Overanswered> {
+    if answer > asked {
+        return Err(Overanswered { owner: None });
+    }
+    Ok(answer)
+}
+
+/// A handler answered more than it was asked. A move that returns this error rolls back.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
 pub struct Overanswered {
-    /// The mod whose handler answered, or "the game".
-    pub owner: String,
+    /// The mod whose handler answered, or "the game", if the provider is known.
+    pub owner: Option<String>,
 }
 
 /// The two ends of a move and where it is, for warnings.
@@ -653,14 +635,14 @@ pub(crate) struct Ends<'a, A: ?Sized, B: ?Sized> {
 /// nothing in a transaction of its own, nested in the caller's: how much moved. A move `to` takes
 /// only part of is undone and tried again with that part, and one that moves nothing is undone
 /// (NeoForge's `move` commits only what moved); a handler answering more than it was asked has
-/// its move undone and gives [`Overanswered`]. Used by `move_energy` and the 64-bit
-/// `transfer`; the resource-handler kit has its own probe-before-insert contract.
+/// its move undone and gives [`Overanswered`]. The fluid pickup, `move_energy` and the 64-bit
+/// `transfer` keep this order; the resource-handler kit has its own probe-before-insert contract.
 pub(crate) fn move_once<A: ?Sized, B: ?Sized, N: Copy + PartialOrd + Default>(
     host: &mut dyn ServerHost,
     ends: Ends<'_, A, B>,
     want: N,
     extract: impl Fn(&mut dyn ServerHost, &Transaction, N) -> N,
-    insert: impl Fn(&mut dyn ServerHost, &Transaction, N) -> N,
+    insert: impl Fn(&mut dyn ServerHost, &Transaction, N) -> Result<N, Overanswered>,
 ) -> Result<N, Overanswered> {
     let Ends { from, to, at } = ends;
     // `Err(Ok(took))`: `to` took only that much; `Err(Err(_))`: a handler answered more than it
@@ -669,11 +651,20 @@ pub(crate) fn move_once<A: ?Sized, B: ?Sized, N: Copy + PartialOrd + Default>(
         host.transaction(|host, tx| {
             let Some(out) = from.checked(extract(host, tx, want), want, at) else {
                 return Err(Err(Overanswered {
-                    owner: from.owner(),
+                    owner: Some(from.owner()),
                 }));
             };
-            match to.checked(insert(host, tx, out), out, at) {
-                None => Err(Err(Overanswered { owner: to.owner() })),
+            let took = insert(host, tx, out).map_err(|mut error| {
+                if error.owner.is_none() {
+                    crate::block::item_place::warn_broken(to.owner, at);
+                    error.owner = Some(to.owner());
+                }
+                Err(error)
+            })?;
+            match to.checked(took, out, at) {
+                None => Err(Err(Overanswered {
+                    owner: Some(to.owner()),
+                })),
                 Some(took) if took == out && took > N::default() => Ok(out),
                 Some(took) => Err(Ok(took)),
             }

@@ -2,7 +2,7 @@
 //! Writes and probes take an optional enclosing transaction. With `None`, the helper opens its
 //! own transaction (a root if the host has none open); with `Some(tx)`, the caller can abort the
 //! encompassing operation. Probes always roll back.
-use crate::content::resource::{MAX_TRANSFER_STEP, in_turn, try_in_turn};
+use crate::content::resource::{checked_transfer, in_turn, try_in_turn};
 use crate::{Capability, HostTransaction, Overanswered, ResourceHandler, ServerHost, Transaction};
 use std::ops::Range;
 
@@ -98,7 +98,7 @@ impl<R> ResourceHandler<R> for CombinedResourceHandler<R> {
         tx: &Transaction,
         resource: &R,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, Overanswered> {
         in_turn(
             host,
             tx,
@@ -113,7 +113,7 @@ impl<R> ResourceHandler<R> for CombinedResourceHandler<R> {
         tx: &Transaction,
         resource: &R,
         amount: u32,
-    ) -> u32 {
+    ) -> Result<u32, Overanswered> {
         in_turn(
             host,
             tx,
@@ -129,7 +129,7 @@ impl<R> ResourceHandler<R> for CombinedResourceHandler<R> {
 /// [`ResourceHandler`] on a struct holding the handler and forward to it:
 ///
 /// ```
-/// use mod_api::{ResourceHandler, ServerHost, Transaction};
+/// use mod_api::{Overanswered, ResourceHandler, ServerHost, Transaction};
 ///
 /// struct Delegating<R>(Box<dyn ResourceHandler<R>>);
 ///
@@ -169,10 +169,10 @@ impl<R> ResourceHandler<R> for CombinedResourceHandler<R> {
 ///     ) -> u32 {
 ///         self.0.extract_at(host, tx, index, resource, amount)
 ///     }
-///     fn insert(&self, host: &mut dyn ServerHost, tx: &Transaction, r: &R, n: u32) -> u32 {
+///     fn insert(&self, host: &mut dyn ServerHost, tx: &Transaction, r: &R, n: u32) -> Result<u32, Overanswered> {
 ///         self.0.insert(host, tx, r, n)
 ///     }
-///     fn extract(&self, host: &mut dyn ServerHost, tx: &Transaction, r: &R, n: u32) -> u32 {
+///     fn extract(&self, host: &mut dyn ServerHost, tx: &Transaction, r: &R, n: u32) -> Result<u32, Overanswered> {
 ///         self.0.extract(host, tx, r, n)
 ///     }
 /// }
@@ -448,7 +448,7 @@ pub fn comparator_signal<R>(host: &mut dyn ServerHost, handler: &dyn ResourceHan
 }
 
 /// Inserts up to `amount` of `resource`, topping up matching indices before empty ones.
-/// An overanswer rolls back the insertion and returns more than `amount`, or 0 at `u32::MAX`.
+/// An overanswer rolls back the insertion and returns [`Overanswered`].
 /// `None` opens a transaction of its own.
 pub fn insert_stacking<R: PartialEq>(
     host: &mut dyn ServerHost,
@@ -456,12 +456,11 @@ pub fn insert_stacking<R: PartialEq>(
     resource: &R,
     amount: u32,
     tx: Option<&Transaction>,
-) -> u32 {
+) -> Result<u32, Overanswered> {
     if !can_open(host, tx) || amount == 0 {
-        return 0;
+        return Ok(0);
     }
     host.transaction(|host, tx| try_insert_stacking(host, handler, resource, amount, tx))
-        .unwrap_or(amount.checked_add(1).unwrap_or(0))
 }
 
 fn try_insert_stacking<R: PartialEq>(
@@ -470,7 +469,7 @@ fn try_insert_stacking<R: PartialEq>(
     resource: &R,
     amount: u32,
     tx: &Transaction,
-) -> Result<u32, ()> {
+) -> Result<u32, Overanswered> {
     let size = handler.size(host);
     let indices = [true, false]
         .into_iter()
@@ -487,11 +486,11 @@ fn try_insert_stacking<R: PartialEq>(
             } else {
                 handler.amount(host, index) == 0
             };
-            if matches {
+            Ok(if matches {
                 handler.insert_at(host, tx, index, resource, left)
             } else {
                 0
-            }
+            })
         },
     )
 }
@@ -510,9 +509,10 @@ pub fn extract_first<R>(
     }
     host.transaction(|host, tx| {
         let resource = probe_extractable(host, handler, filter).ok_or(())?;
-        let taken = try_in_turn(host, tx, amount, [()], |host, tx, &(), remaining| {
-            handler.extract(host, tx, &resource, remaining)
-        })?;
+        let taken = handler
+            .extract(host, tx, &resource, amount)
+            .map_err(|_| ())?;
+        let taken = checked_transfer(taken, amount).map_err(|_| ())?;
         if taken == 0 {
             Err(())
         } else {
@@ -602,9 +602,7 @@ pub fn move_resources_stacking<R: PartialEq>(
         filter,
         max,
         tx,
-        |host, tx, resource, out| {
-            try_insert_stacking(host, &**to, resource, out, tx).unwrap_or(out + 1)
-        },
+        |host, tx, resource, out| try_insert_stacking(host, &**to, resource, out, tx),
     )
 }
 
@@ -615,7 +613,7 @@ fn move_resources_by<R>(
     filter: impl Fn(&R) -> bool,
     max: u32,
     tx: Option<&Transaction>,
-    insert: impl Fn(&mut dyn ServerHost, &Transaction, &R, u32) -> u32,
+    insert: impl Fn(&mut dyn ServerHost, &Transaction, &R, u32) -> Result<u32, Overanswered>,
 ) -> Result<u32, Overanswered> {
     with_move_transaction(host, tx, |host| {
         let mut moved = 0;
@@ -675,9 +673,7 @@ pub fn move_first_stacking<R: PartialEq>(
         filter,
         max,
         tx,
-        |host, tx, resource, out| {
-            try_insert_stacking(host, &**to, resource, out, tx).unwrap_or(out + 1)
-        },
+        |host, tx, resource, out| try_insert_stacking(host, &**to, resource, out, tx),
     )
 }
 
@@ -688,7 +684,7 @@ fn move_first_by<R: PartialEq>(
     filter: impl Fn(&R) -> bool,
     max: u32,
     tx: Option<&Transaction>,
-    insert: impl Fn(&mut dyn ServerHost, &Transaction, &R, u32) -> u32,
+    insert: impl Fn(&mut dyn ServerHost, &Transaction, &R, u32) -> Result<u32, Overanswered>,
 ) -> Result<Option<(R, u32)>, Overanswered> {
     with_move_transaction(host, tx, |host| {
         let mut selected = None;
@@ -711,11 +707,6 @@ fn move_first_by<R: PartialEq>(
                 continue;
             }
             moved += went;
-            // Only the representational limit, not partial acceptance, needs a second call
-            // to this index: the selected resource's one remaining unit still fits in `max`.
-            if went == MAX_TRANSFER_STEP && moved < max {
-                moved += move_slot(host, from, to, index, &resource, max - moved, &insert)?;
-            }
             selected = Some(resource);
         }
         Ok(selected.map(|r| (r, moved)))
@@ -740,9 +731,9 @@ fn move_slot<R>(
     index: usize,
     resource: &R,
     max: u32,
-    insert: &impl Fn(&mut dyn ServerHost, &Transaction, &R, u32) -> u32,
+    insert: &impl Fn(&mut dyn ServerHost, &Transaction, &R, u32) -> Result<u32, Overanswered>,
 ) -> Result<u32, Overanswered> {
-    let want = max.min(from.amount(host, index)).min(MAX_TRANSFER_STEP);
+    let want = max.min(from.amount(host, index));
     if want == 0 {
         return Ok(0);
     }
@@ -752,15 +743,24 @@ fn move_slot<R>(
     let available = from
         .checked(probe.unwrap_err(), want, &index)
         .ok_or_else(|| Overanswered {
-            owner: from.owner(),
+            owner: Some(from.owner()),
         })?;
     if available == 0 {
         return Ok(0);
     }
     host.transaction(|host, tx| {
-        let accepted = to
-            .checked(insert(host, tx, resource, available), available, &index)
-            .ok_or_else(|| Some(Overanswered { owner: to.owner() }))?;
+        let accepted = insert(host, tx, resource, available).map_err(|mut error| {
+            if error.owner.is_none() {
+                crate::block::item_place::warn_broken(to.owner, &index);
+                error.owner = Some(to.owner());
+            }
+            Some(error)
+        })?;
+        let accepted = to.checked(accepted, available, &index).ok_or_else(|| {
+            Some(Overanswered {
+                owner: Some(to.owner()),
+            })
+        })?;
         if accepted == 0 {
             return Err(None);
         }
@@ -772,7 +772,7 @@ fn move_slot<R>(
             )
             .ok_or_else(|| {
                 Some(Overanswered {
-                    owner: from.owner(),
+                    owner: Some(from.owner()),
                 })
             })?;
         if taken != accepted {

@@ -190,7 +190,7 @@ fn default_items_insert_checks_admission_and_overrides_the_declared_rule() {
         let resource = ItemResource::of(&stack.try_into_api().unwrap());
         assert_eq!(
             mod_api::run_transaction(game, |host, tx| {
-                let first = handler.insert(host, tx, &resource, 2);
+                let first = handler.insert(host, tx, &resource, 2).map_err(|_| ())?;
                 // Slot 1's declared OnlyWhenEmpty would refuse this subsequent insert.
                 let second = handler.insert_at(host, tx, 1, &resource, 1);
                 Ok::<_, ()>((first, second))
@@ -352,9 +352,7 @@ fn storage_rechecks_the_entity_after_an_accepted_write_in_the_same_attempt() {
         let resource =
             ItemResource::of(&ItemStack::new("minecraft:stone", 1).try_into_api().unwrap());
         assert_eq!(
-            mod_api::run_transaction(game, |host, tx| {
-                Ok::<_, ()>(handler.insert(host, tx, &resource, 65))
-            }),
+            mod_api::run_transaction(game, |host, tx| { handler.insert(host, tx, &resource, 65) }),
             Ok(64)
         );
         // Slot 2 would take the remainder if the query still saw slot 1 empty.
