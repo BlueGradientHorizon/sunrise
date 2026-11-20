@@ -3,9 +3,7 @@
 //! `living_travel` hook (#2414, PR 2) fires at this family's branch selection.
 use super::{MotionEvent, MotionWorld, Result, fall_flying_movement};
 use sunrise_core::{geometry::Vec3, position::BlockPos};
-use sunrise_world::{living_air, move_gate::MoveGate, part_collision::InParts};
-
-pub(super) mod rules;
+use sunrise_world::{living_air, move_gate::MoveGate};
 
 /// How the server's own travel changes the movement the client may report.
 #[derive(Clone, Copy)]
@@ -14,10 +12,8 @@ pub enum ServerTravel {
     Continue,
     /// Reject new position reports until the next server travel decision.
     Veto,
-    /// Keep the accepted live position; let the usual move validator handle later reports.
-    Validate { position: Option<(Vec3, bool)> },
-    /// Correct the velocity alone, or also commit a changed position and its ground flag.
-    Replace { position: Option<(Vec3, bool)> },
+    /// Commit the authoritative position and send it with the body's velocity.
+    Replace { position: Vec3, on_ground: bool },
 }
 
 #[derive(Clone, Copy)]
@@ -78,86 +74,30 @@ impl MotionWorld<'_, '_, '_> {
             return Ok(ServerTravel::Veto);
         }
 
-        // In air and fluids both inputs go through getInputVector. Inputs
-        // in its dead zone are identical; gliding doesn't read input at all.
-        let same_input = || {
-            matches!(branch, TravelBranch::Glide)
-                || same_vector(input, requested_input)
-                || (input.length_squared() < living_air::MIN_INPUT_LENGTH_SQUARED
-                    && requested_input.length_squared() < living_air::MIN_INPUT_LENGTH_SQUARED)
-        };
-        if !self.player.server_copy || (same_vector(velocity, requested_velocity) && same_input()) {
-            self.player.velocity = velocity;
-            self.apply_player_travel(branch, input)?;
-            return Ok(ServerTravel::Continue);
-        }
-
-        // Run the accepted move once, keeping the answers from that run for
-        // the scratch comparison. Never ask a listener about a new input.
-        let mut unedited = self.player.clone();
-        self.player.travel_rules = Some(Box::default());
+        // Compare the accepted vectors before travel: a real edit calls for
+        // a correction even if the live move's collision absorbs it.
+        let within_dead_zone =
+            |input: Vec3| input.length_squared() < living_air::MIN_INPUT_LENGTH_SQUARED;
+        let edited = self.player.server_copy
+            && (!same_vector(velocity, requested_velocity)
+                || (!same_vector(input, requested_input)
+                    && !(within_dead_zone(input) && within_dead_zone(requested_input))));
         self.player.velocity = velocity;
-        let live = self.apply_player_travel(branch, input);
-        let rules = self.player.travel_rules.take();
-        live?;
-
-        unedited.travel_probe = true;
-        unedited.travel_rules = rules;
-        let start = unedited.position;
-        let parts = InParts::replay();
-        let result = self.replay_travel(branch, requested_input, &mut unedited);
-        if result.is_err()
-            || unedited.travel_rules.as_ref().unwrap().missing
-            || parts.is_some_and(|parts| !parts.complete())
-        {
-            let position = (!same_vector(self.player.position, start))
-                .then_some((self.player.position, self.player.ground.on_ground));
-            return Ok(ServerTravel::Validate { position });
-        }
-        let (position, velocity) = (unedited.position, unedited.velocity);
-        let position = (!same_vector(self.player.position, position))
-            .then_some((self.player.position, self.player.ground.on_ground));
-        Ok(
-            if position.is_some() || !same_vector(self.player.velocity, velocity) {
-                ServerTravel::Replace { position }
-            } else {
-                ServerTravel::Continue
-            },
-        )
-    }
-
-    fn replay_travel(
-        &mut self,
-        branch: TravelBranch,
-        input: Vec3,
-        body: &mut super::PlayerMotion,
-    ) -> Result<()> {
-        MotionWorld {
-            player: body,
-            scene: self.scene,
-            entities: self.entities,
-            assets: self.assets,
-            collision_binding: self.collision_binding,
-            resources: self.resources,
-            health: self.health,
-            tag_items: self.tag_items,
-            loop_context: self.loop_context,
-            side: self.side,
-            damage_hooks: &crate::health::DamageHooks::NONE,
-            block_registries: self.block_registries,
-        }
-        .apply_player_travel(branch, input)
-    }
-
-    fn apply_player_travel(&mut self, branch: TravelBranch, input: Vec3) -> Result<()> {
         // Creative flight damps the accepted vertical speed, not the speed
         // left by the branch after the move.
-        let flying_y = self.player.flying.then_some(self.player.velocity.y);
+        let flying_y = self.player.flying.then_some(velocity.y);
         self.apply_travel_branch(branch, &mut MoveGate::new(), input)?;
         if let Some(y) = flying_y {
             self.player.velocity.y = y * 0.6;
         }
-        Ok(())
+        Ok(if edited {
+            ServerTravel::Replace {
+                position: self.player.position,
+                on_ground: self.player.ground.on_ground,
+            }
+        } else {
+            ServerTravel::Continue
+        })
     }
 
     /// `LivingEntity.travel` without `Player.travel`'s swim steering, hook and
@@ -217,7 +157,7 @@ impl MotionWorld<'_, '_, '_> {
         // must reach its own ears, #8906), only the server hurts, and it
         // compares the horizontal speed before `updateFallFlyingMovement`
         // with the delta `Entity.move` leaves (the collided axes zeroed).
-        if self.player.collision.horizontal && !self.player.travel_probe {
+        if self.player.collision.horizontal {
             let v = self.player.velocity;
             let after_h = (v.x * v.x + v.z * v.z).sqrt();
             let dmg = super::environment::fly_into_wall_damage(move_h, after_h);
@@ -269,12 +209,8 @@ impl MotionWorld<'_, '_, '_> {
     }
 }
 
-pub(super) fn vector_bits(vector: Vec3) -> [u64; 3] {
-    vector.components().map(f64::to_bits)
-}
-
 fn same_vector(a: Vec3, b: Vec3) -> bool {
-    vector_bits(a) == vector_bits(b)
+    a.components().map(f64::to_bits) == b.components().map(f64::to_bits)
 }
 
 #[cfg(test)]

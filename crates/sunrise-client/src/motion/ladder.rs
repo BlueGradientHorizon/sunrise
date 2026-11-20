@@ -46,23 +46,15 @@ impl ClimbingWorld for MotionWorld<'_, '_, '_> {
         self.player.last_climbable = Some(position);
     }
     fn adjust_ladder(&mut self, position: BlockPos, state: BlockStateId, tagged: bool) -> bool {
-        self.travel_rule(
-            |rules| &mut rules.ladder,
-            (position, state, tagged),
-            tagged,
-            || super::travel::rules::part_may_answer(mod_api::HookId::IsLadder, state),
-            |world| {
-                let mut ladder = tagged;
-                native_is_ladder(
-                    world.loop_context,
-                    world.player.entity_id as u32,
-                    position,
-                    state,
-                    &mut ladder,
-                );
-                ladder
-            },
-        )
+        let mut ladder = tagged;
+        native_is_ladder(
+            self.loop_context,
+            self.player.entity_id as u32,
+            position,
+            state,
+            &mut ladder,
+        );
+        ladder
     }
     fn adjust_trapdoor_ladder(
         &mut self,
@@ -71,28 +63,15 @@ impl ClimbingWorld for MotionWorld<'_, '_, '_> {
         trapdoor: BlockStateId,
         ladder: bool,
     ) -> bool {
-        self.travel_rule(
-            |rules| &mut rules.trapdoor,
-            (position, state, trapdoor, ladder),
-            ladder,
-            || {
-                super::travel::rules::part_may_answer(
-                    mod_api::HookId::MakesOpenTrapdoorAboveClimbable,
-                    state,
-                )
-            },
-            |world| {
-                let mut climbable = ladder;
-                native_makes_open_trapdoor_above_climbable(
-                    world.loop_context,
-                    state,
-                    position,
-                    trapdoor,
-                    &mut climbable,
-                );
-                climbable
-            },
-        )
+        let mut climbable = ladder;
+        native_makes_open_trapdoor_above_climbable(
+            self.loop_context,
+            state,
+            position,
+            trapdoor,
+            &mut climbable,
+        );
+        climbable
     }
 }
 
@@ -108,49 +87,31 @@ impl LivingAirWorld for MotionWorld<'_, '_, '_> {
         let state = self.block(p);
         let blocks = &self.resources.blocks;
         let own = blocks.get(state)?.coefficients.friction;
-        Ok(self.travel_rule(
-            |rules| &mut rules.friction,
-            (p, state, own.to_bits()),
-            own,
-            || super::travel::rules::part_may_answer(mod_api::HookId::Friction, state),
-            |world| {
-                let blocks = &world.resources.blocks;
-                let level = FrictionLevel {
-                    world: world.scene,
-                    registry: world.assets.registry,
-                    context: world.loop_context,
-                    side: world.side,
-                    coefficient: &|id| Some(blocks.get(id).ok()?.coefficients.friction),
-                };
-                let player = (world.player.entity_id as u32, "minecraft:player");
-                read_friction(level, Some(player), p, state, own).unwrap_or(own)
-            },
-        ))
+        let level = FrictionLevel {
+            world: self.scene,
+            registry: self.assets.registry,
+            context: self.loop_context,
+            side: self.side,
+            coefficient: &|id| Some(blocks.get(id).ok()?.coefficients.friction),
+        };
+        let player = (self.player.entity_id as u32, "minecraft:player");
+        Ok(read_friction(level, Some(player), p, state, own).unwrap_or(own))
     }
     fn friction_modifier(&mut self) -> Result<f64> {
         self.player.attribute("minecraft:friction_modifier")
     }
     fn speed(&mut self) -> Result<f32> {
-        let speed = self.player.attribute("minecraft:movement_speed")? as f32;
-        Ok(self.travel_rule(
-            |rules| &mut rules.speed,
-            speed.to_bits(),
-            speed,
-            || mod_api::__private::listened(mod_api::HookId::LivingSpeed),
-            |world| {
-                let mut speed = speed;
-                native_living_speed(
-                    world.loop_context,
-                    world.player.entity_id as u32,
-                    "minecraft:player",
-                    &mut speed,
-                );
-                speed
-            },
-        ))
+        let mut speed = self.player.attribute("minecraft:movement_speed")? as f32;
+        native_living_speed(
+            self.loop_context,
+            self.player.entity_id as u32,
+            "minecraft:player",
+            &mut speed,
+        );
+        Ok(speed)
     }
     fn flying_speed(&mut self) -> Result<f32> {
-        let speed = if self.player.flying {
+        let mut speed = if self.player.flying {
             // Player.getFlyingSpeed: abilities speed, doubled when sprinting.
             self.player.flying_speed * if self.player.sprinting { 2.0 } else { 1.0 }
         } else if self.player.sprinting {
@@ -158,22 +119,13 @@ impl LivingAirWorld for MotionWorld<'_, '_, '_> {
         } else {
             0.02
         };
-        Ok(self.travel_rule(
-            |rules| &mut rules.flying_speed,
-            speed.to_bits(),
-            speed,
-            || mod_api::__private::listened(mod_api::HookId::LivingFlyingSpeed),
-            |world| {
-                let mut speed = speed;
-                native_living_flying_speed(
-                    world.loop_context,
-                    world.player.entity_id as u32,
-                    "minecraft:player",
-                    &mut speed,
-                );
-                speed
-            },
-        ))
+        native_living_flying_speed(
+            self.loop_context,
+            self.player.entity_id as u32,
+            "minecraft:player",
+            &mut speed,
+        );
+        Ok(speed)
     }
     fn yaw(&mut self) -> Result<f32> {
         Ok(self.player.yaw)

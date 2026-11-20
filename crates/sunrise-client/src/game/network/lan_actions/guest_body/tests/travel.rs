@@ -140,6 +140,7 @@ fn correction(rx: &mpsc::Receiver<Out>) -> play::PlayerPosition {
         .into_iter()
         .filter_map(|(id, body)| match C::decode(id, &body).unwrap() {
             C::PlayerPosition(packet) => Some(packet),
+            C::SetEntityMotion(_) => panic!("travel correction must carry velocity itself"),
             _ => None,
         })
         .collect::<Vec<_>>();
@@ -241,10 +242,6 @@ fn another_travel_replacement_waits_for_the_first_correction_acknowledgement() {
             let first = correction(&rx);
             assert_eq!(first.position, NEXT);
 
-            let epoch = guest(game).teleport_counter;
-            let hub = &mut game.lan.as_mut().unwrap().hub;
-            assert!(!hub.apply_server_travel(1, epoch, ServerTravel::Replace { position: None }));
-
             for _ in 0..2 {
                 game.lan.as_mut().unwrap().hub.ticks += 1;
                 game.guest_server_tick(1, true);
@@ -270,7 +267,7 @@ fn another_travel_replacement_waits_for_the_first_correction_acknowledgement() {
 
 #[test]
 #[ignore = "daily"]
-fn collision_can_absorb_a_velocity_edit_without_sending_a_correction() {
+fn an_edit_absorbed_by_collision_still_sends_one_correction() {
     struct IntoWall(Arc<AtomicUsize>);
 
     #[mod_api::__subscriptions]
@@ -308,6 +305,10 @@ fn collision_can_absorb_a_velocity_edit_without_sending_a_correction() {
 
             game.guest_server_tick(1, true);
             let guest = guest(game);
+            let packet = correction(&rx);
+            let expected_velocity = [0.0, -0.08 * f64::from(0.98_f32), 0.0].map(f64::to_bits);
+            assert_eq!(packet.position.map(f64::to_bits), at.map(f64::to_bits));
+            assert_eq!(packet.delta.map(f64::to_bits), expected_velocity);
             assert_eq!(guest.position.map(f64::to_bits), at.map(f64::to_bits));
             assert_eq!(
                 guest
@@ -317,13 +318,9 @@ fn collision_can_absorb_a_velocity_edit_without_sending_a_correction() {
                     .velocity
                     .components()
                     .map(f64::to_bits),
-                [0.0, -0.08 * f64::from(0.98_f32), 0.0].map(f64::to_bits)
+                expected_velocity
             );
             assert_eq!(calls.load(Ordering::Relaxed), 1);
-            assert!(!packets(&rx).into_iter().any(|(id, body)| matches!(
-                C::decode(id, &body).unwrap(),
-                C::PlayerPosition(_) | C::SetEntityMotion(_)
-            )));
         });
     });
 }
@@ -342,7 +339,13 @@ fn an_unchanged_player_travel_outcome_keeps_vanilla_reports_and_packets() {
                     let guest = guest(game);
                     assert_eq!(guest.position, NEXT);
                     assert!(guest.awaiting_teleport.is_none());
-                    let outcome = (guest.motion.as_ref().unwrap().velocity, packets(&rx));
+                    let sent = packets(&rx);
+                    assert!(!sent.iter().any(|(id, body)| matches!(
+                        C::decode(*id, body).unwrap(),
+                        C::PlayerPosition(_) | C::SetEntityMotion(_)
+                    )));
+                    let velocity = guest.motion.as_ref().unwrap().velocity;
+                    let outcome = (velocity.components().map(f64::to_bits), sent);
                     if let Some(baseline) = &baseline {
                         assert_eq!(&outcome, baseline);
                     } else {
@@ -354,14 +357,13 @@ fn an_unchanged_player_travel_outcome_keeps_vanilla_reports_and_packets() {
     }
 }
 
-struct MoveListener {
+struct MoveVeto {
     travel: Reply,
-    veto: bool,
     moves: Arc<AtomicUsize>,
 }
 
 #[mod_api::__subscriptions]
-impl Hooks for MoveListener {
+impl Hooks for MoveVeto {
     fn living_travel(&self, context: &dyn LoopContext, event: &mut LivingTravelEvent<'_>) -> Flow {
         self.travel.living_travel(context, event)
     }
@@ -369,9 +371,7 @@ impl Hooks for MoveListener {
     fn entity_move(&self, _: &dyn LoopContext, event: &mut EntityMoveEvent<'_>) -> Flow {
         if event.kind == "minecraft:player" && event.cause == MoveCause::SelfMovement {
             self.moves.fetch_add(1, Ordering::Relaxed);
-            if self.veto {
-                return Flow::Cancel;
-            }
+            return Flow::Cancel;
         }
         Flow::Continue
     }
@@ -384,9 +384,8 @@ fn a_tiny_travel_edit_and_move_veto_leave_the_player_outcome_unchanged() {
         let moves = Arc::new(AtomicUsize::new(0));
         let mods = vec![mod_api::ModEntry::new(
             "travel-veto-test",
-            Box::new(MoveListener {
+            Box::new(MoveVeto {
                 travel,
-                veto: true,
                 moves: moves.clone(),
             }),
         )];
@@ -415,46 +414,4 @@ fn a_tiny_travel_edit_and_move_veto_leave_the_player_outcome_unchanged() {
             });
         });
     }
-}
-
-#[test]
-#[ignore = "daily"]
-fn an_unanswered_replay_leaves_the_next_report_to_the_move_validator() {
-    let moves = Arc::new(AtomicUsize::new(0));
-    let mods = vec![mod_api::ModEntry::new(
-        "travel-replay-test",
-        Box::new(MoveListener {
-            travel: Reply::Velocity,
-            veto: false,
-            moves: moves.clone(),
-        }),
-    )];
-    mod_platform::testing::with_mods(mods.into(), || {
-        with_player(false, |game, rx| {
-            let stone = game
-                .pack
-                .assets
-                .registry
-                .default_state("minecraft:stone")
-                .unwrap();
-            game.world.set(4, 64, 5, stone).unwrap();
-            game.guest_server_tick(1, true);
-            assert_eq!(moves.load(Ordering::Relaxed), 1);
-            assert_eq!(
-                guest(game).position,
-                NEXT,
-                "keep the accepted server travel"
-            );
-            assert!(!packets(&rx).into_iter().any(|(id, body)| matches!(
-                C::decode(id, &body).unwrap(),
-                C::PlayerPosition(_) | C::SetEntityMotion(_)
-            )));
-
-            // The ordinary move validator refuses a report inside the wall,
-            // sending the live server position, not the start of travel.
-            report(game, [4.5, 64.0, 5.0]);
-            assert_eq!(correction(&rx).position, NEXT);
-            assert_eq!(guest(game).position, NEXT);
-        });
-    });
 }

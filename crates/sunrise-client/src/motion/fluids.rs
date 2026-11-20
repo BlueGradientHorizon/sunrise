@@ -326,34 +326,13 @@ impl MotionWorld<'_, '_, '_> {
         if !is_tagged(fluid.kind(), WATER) {
             return Ok(false);
         }
-        let cache = &self.resources.fluids.shapes;
-        let shape = if self.player.travel_probe {
-            let mut scratch = match self
-                .player
-                .travel_rules
-                .as_mut()
-                .unwrap()
-                .fluid_shapes
-                .take()
-            {
-                Some(shapes) => shapes,
-                None => cache
-                    .lock()
-                    .map_err(|_| "fluid shape cache poisoned")?
-                    .clone(),
-            };
-            let shape = scratch.shape(self, fluid, p);
-            self.player.travel_rules.as_mut().unwrap().fluid_shapes = Some(scratch);
-            shape?
-        } else {
-            let mut cache = cache.lock().map_err(|_| "fluid shape cache poisoned")?;
-            if let Some(rules) = &mut self.player.travel_rules {
-                // Keep the cache as the unedited branch would first see it.
-                // Neither branch may seed the other branch's first query.
-                rules.fluid_shapes.get_or_insert_with(|| cache.clone());
-            }
-            cache.shape(self, fluid, p)?
-        };
+        let resources = self.resources;
+        let shape = resources
+            .fluids
+            .shapes
+            .lock()
+            .map_err(|_| "fluid shape cache poisoned")?
+            .shape(self, fluid, p)?;
         Ok(shape.clip(from, to, p).is_some())
     }
 }

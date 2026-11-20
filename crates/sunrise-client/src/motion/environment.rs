@@ -5,36 +5,7 @@ use sunrise_core::random::RandomSource;
 use sunrise_world::{
     fluid::FluidKind,
     living_fluid::{LivingFluidWorld, TravelFluidTag},
-    movement_properties::BlockFactorEdits,
 };
-struct TravelFactors<'a> {
-    live: &'a ModBlockFactors<'a>,
-    rules: std::cell::RefCell<&'a mut travel::rules::TravelRules>,
-    replay: bool,
-}
-
-impl BlockFactorEdits for TravelFactors<'_> {
-    fn jump(&self, state: BlockStateId, factor: f32) -> f32 {
-        self.live.jump(state, factor)
-    }
-
-    fn speed(&self, state: BlockStateId, factor: f32) -> f32 {
-        let mut rules = self.rules.borrow_mut();
-        let key = (state, factor.to_bits());
-        if self.replay {
-            rules.speed_factor.replay(key).unwrap_or_else(|| {
-                rules.missing |=
-                    travel::rules::part_may_answer(mod_api::HookId::BlockSpeedFactor, state);
-                factor
-            })
-        } else {
-            let value = self.live.speed(state, factor);
-            rules.speed_factor.record(key, value);
-            value
-        }
-    }
-}
-
 impl MotionWorld<'_, '_, '_> {
     pub(super) fn environment_hurt(&mut self, source: &str, damage: f32) -> Result<()> {
         if self.player.invulnerable || self.player.spectator {
@@ -337,29 +308,17 @@ impl MotionWorld<'_, '_, '_> {
         let efficiency = self.player.attribute("minecraft:movement_efficiency")? as f32;
         let flying = self.player.flying || self.player.fall_flying;
         let location = self.location();
-        let mod_factors = ModBlockFactors(self.loop_context);
-        let mut rules = self.player.travel_rules.take();
-        let travel_factors = rules.as_deref_mut().map(|rules| TravelFactors {
-            live: &mod_factors,
-            rules: std::cell::RefCell::new(rules),
-            replay: self.player.travel_probe,
-        });
-        let edits: &dyn BlockFactorEdits = match &travel_factors {
-            Some(travel) => travel,
-            None => &mod_factors,
-        };
-        let factor = movement_support::player_block_speed_factor(
+        let context = self.loop_context;
+        Ok(movement_support::player_block_speed_factor(
             &mut RegistryMovementWorld {
                 properties: &self.resources.blocks,
                 world: self,
-                edits,
+                edits: &ModBlockFactors(context),
             },
             location,
             flying,
             efficiency,
-        );
-        self.player.travel_rules = rules;
-        Ok(factor?)
+        )?)
     }
     /// `LivingEntity.aiStep`'s jump phase: rise in water or lava, else jump
     /// from the ground (or from shallow fluid); nothing while flying.

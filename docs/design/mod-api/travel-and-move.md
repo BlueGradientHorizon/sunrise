@@ -101,11 +101,13 @@ subscribes — dispatch only to subscribed mods, resolved once.
 The first native travel hook runs only on the server. For players, its single
 `ServerPlayer.doTick` travel boundary governs new position reports, not reports
 already accepted. The ordinary move validator corrects divergent reports while
-a veto stands. A changed replacement uses the server branch's displacement and
-velocity through the existing position and velocity corrections. A no-op or an
-input-only edit with bit-identical branch position and velocity does not change
-the move validator or send a correction. There is no new packet or replayed
-hook. Integrated and network players use the same path.
+a veto stands. An edit that changes the input or velocity always sends one
+correction, even if collision absorbs it. The packet carries the position and
+velocity from the one live move. The server compares the vectors bit for bit,
+except that inputs within vanilla's movement dead zone are equivalent. No-op
+edits leave the ordinary move validator and packets unchanged. Travel does not
+replace an outstanding correction while it awaits acknowledgement. There is no
+new packet or replayed hook. Integrated and network players use the same path.
 
 For future shared prediction, integrate with the [client action pipeline](client-action-pipeline.md), preserving
 its input/action ordering and server validation. Negotiate movement-rule identity

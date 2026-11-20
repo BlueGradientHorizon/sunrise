@@ -544,9 +544,6 @@ pub struct PlayerMotion {
     /// it travels on the server: `isLocalInstanceAuthoritative` is false, so
     /// its moves check no fall damage.
     pub server_copy: bool,
-    /// Unedited travel replay: use the live answers without publishing effects.
-    travel_probe: bool,
-    travel_rules: Option<Box<travel::rules::TravelRules>>,
     /// A tick played again (`replayed_tick`): the notifications of what it did (`living_jump`,
     /// `living_fall`, `player_flyable_fall`) don't fire. What its movement asks (block parts'
     /// answers, the movement value hooks) still answers, as on any tick.
@@ -1989,40 +1986,19 @@ impl MotionWorld<'_, '_, '_> {
     /// horizontal displacement. The gate is this invocation's (#2414), armed
     /// here before the move's own handling, no-physics included.
     pub fn move_self(&mut self, gate: &mut MoveGate, movement: Vec3) -> Result<()> {
-        let entity = self.player.entity_id as u32;
-        let delta = self.travel_rule(
-            |rules| &mut rules.movement,
-            travel::vector_bits(movement),
-            Some(movement),
-            || mod_api::__private::listened(mod_api::HookId::EntityMove),
-            |world| {
-                crate::move_gate::arm(
-                    gate,
-                    world.loop_context,
-                    entity,
-                    "minecraft:player",
-                    MoverType::SelfMovement,
-                    movement,
-                );
-                (!gate.skipped()).then(|| gate.delta())
-            },
+        crate::move_gate::arm(
+            gate,
+            self.loop_context,
+            self.player.entity_id as u32,
+            "minecraft:player",
+            MoverType::SelfMovement,
+            movement,
         );
-        if self.player.travel_probe {
-            gate.arm(entity, MoverType::SelfMovement, movement);
-            if let Some(delta) = delta {
-                gate.decide(delta);
-            } else {
-                gate.skip();
-            }
-        }
-        let Some(delta) = delta else {
+        if gate.skipped() {
             return Ok(());
-        };
+        }
         let before = self.player.position;
-        entity_move::move_entity(self, MoverType::SelfMovement, delta)?;
-        if self.player.travel_probe {
-            return Ok(());
-        }
+        entity_move::move_entity(self, MoverType::SelfMovement, gate.delta())?;
         let dx = (self.player.position.x - before.x) as f32;
         let dz = (self.player.position.z - before.z) as f32;
         self.update_auto_jump(dx, dz)
@@ -2114,22 +2090,13 @@ impl EdgeBackoffWorld for MotionWorld<'_, '_, '_> {
         Ok(self.player.attribute("minecraft:step_height")? as f32)
     }
     fn staying_on_ground_surface(&mut self) -> Result<bool> {
-        let shift = self.player.shift_key_down;
-        Ok(self.travel_rule(
-            |rules| &mut rules.edge,
-            shift,
-            shift,
-            || mod_api::__private::listened(mod_api::HookId::PlayerStaysOnGroundSurface),
-            |world| {
-                let mut staying = shift;
-                native_player_stays_on_ground_surface(
-                    world.loop_context,
-                    world.player.entity_id as u32,
-                    &mut staying,
-                );
-                staying
-            },
-        ))
+        let mut staying = self.player.shift_key_down;
+        native_player_stays_on_ground_surface(
+            self.loop_context,
+            self.player.entity_id as u32,
+            &mut staying,
+        );
+        Ok(staying)
     }
     fn on_ground(&mut self) -> Result<bool> {
         Ok(self.player.ground.on_ground)
@@ -2149,7 +2116,7 @@ impl EntityMoveWorld for MotionWorld<'_, '_, '_> {
     fn set_position(&mut self, p: Vec3) -> Result<()> {
         let from = self.player.position;
         self.player.position = p;
-        if from != p && !self.player.travel_probe {
+        if from != p {
             section_writes::position_written(self.player, from);
         }
         Ok(())
@@ -2571,13 +2538,11 @@ impl MovementEmissionWorld for MotionWorld<'_, '_, '_> {
     /// the ground.
     fn movement_emission(&mut self) -> Result<MovementEmission> {
         let discreet = self.player.ground.on_ground && self.player.shift_key_down;
-        Ok(
-            if self.player.travel_probe || self.player.flying || discreet {
-                MovementEmission::None
-            } else {
-                MovementEmission::All
-            },
-        )
+        Ok(if self.player.flying || discreet {
+            MovementEmission::None
+        } else {
+            MovementEmission::All
+        })
     }
 }
 impl RestitutionWorld for MotionWorld<'_, '_, '_> {
@@ -2613,51 +2578,36 @@ impl RestitutionWorld for MotionWorld<'_, '_, '_> {
         fall_distance: f64,
         movement: Vec3,
     ) -> Result<Vec3> {
-        if !self.player.travel_probe {
-            self.player.events.push(MotionEvent::Bounce {
+        self.player.events.push(MotionEvent::Bounce {
+            state,
+            position,
+            fall_distance,
+        });
+        self.resources
+            .landing
+            .bounce_on(
+                self,
                 state,
                 position,
-                fall_distance,
-            });
-            self.resources
-                .landing
-                .bounce_on(
-                    self,
-                    state,
-                    position,
-                    sunrise_world::block_landing::LandingEntityKind::Player,
-                )
-                .map_err(|e| e.to_string())?;
-        }
-        Ok(self.travel_rule(
-            |rules| &mut rules.bounce,
-            (
-                position,
-                state,
-                fall_distance.to_bits(),
-                travel::vector_bits(movement),
+                sunrise_world::block_landing::LandingEntityKind::Player,
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(crate::block_contact::bounce(
+            &mut crate::health::DamageLevel::of(
+                &mut *self.scene,
+                self.assets.registry,
+                self.tag_items,
+                self.block_registries,
+                self.damage_hooks,
             ),
-            movement,
-            || travel::rules::part_may_answer(mod_api::HookId::BounceOn, state),
-            |world| {
-                crate::block_contact::bounce(
-                    &mut crate::health::DamageLevel::of(
-                        &mut *world.scene,
-                        world.assets.registry,
-                        world.tag_items,
-                        world.block_registries,
-                        world.damage_hooks,
-                    ),
-                    crate::block_contact::Contact {
-                        entity: world.player.entity_id,
-                        kind: "minecraft:player",
-                        state,
-                        position,
-                    },
-                    fall_distance,
-                    movement,
-                )
+            crate::block_contact::Contact {
+                entity: self.player.entity_id,
+                kind: "minecraft:player",
+                state,
+                position,
             },
+            fall_distance,
+            movement,
         ))
     }
     fn bounce_event(&mut self) -> Result<()> {

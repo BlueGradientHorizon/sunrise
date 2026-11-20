@@ -8,7 +8,6 @@ use sunrise_core::{
 /// Share this cache across world views using the same fluid registry, as native
 /// registered Fluid instances retain their shape maps across world queries.
 /// The pinned registry has no amount-nine state; amounts are zero through eight.
-#[derive(Clone)]
 pub struct FluidShapeCache {
     shapes: Vec<Option<VoxelShape>>,
 }

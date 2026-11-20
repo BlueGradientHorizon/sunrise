@@ -22,21 +22,17 @@ impl MotionWorld<'_, '_, '_> {
             state,
             position,
         };
-        Ok(self.travel_rule(
-            |rules| &mut rules.restitution,
-            (position, state, own.to_bits()),
+        let level = DamageLevel::of(
+            &mut *self.scene,
+            self.assets.registry,
+            self.tag_items,
+            self.block_registries,
+            self.damage_hooks,
+        );
+        Ok(block_contact::bounce_restitution(
+            &mut level.on_client(client_side),
+            contact,
             own,
-            || true,
-            |world| {
-                let level = DamageLevel::of(
-                    &mut *world.scene,
-                    world.assets.registry,
-                    world.tag_items,
-                    world.block_registries,
-                    world.damage_hooks,
-                );
-                block_contact::bounce_restitution(&mut level.on_client(client_side), contact, own)
-            },
         ))
     }
 }

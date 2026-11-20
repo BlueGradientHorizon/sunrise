@@ -2192,44 +2192,25 @@ impl Hub {
         if !eligible || g.awaiting_teleport.is_some() {
             return false;
         }
-        let position = match decision {
-            ServerTravel::Validate {
-                position: Some((position, on_ground)),
-            } => {
-                let position = position.components();
-                let carried = g.on_collider;
-                self.guests.update(i, |g| {
-                    g.on_ground = on_ground;
-                    g.moved = true;
-                    g.known_movement = [0, 1, 2].map(|axis| position[axis] - g.position[axis]);
-                    g.accept_move(position);
-                });
-                self.keep_carried_at(i, carried, position);
-                return false;
-            }
-            ServerTravel::Replace { position } => position,
-            _ => return false,
+        let ServerTravel::Replace {
+            position,
+            on_ground,
+        } = decision
+        else {
+            return false;
         };
         let Some(velocity) = g.motion.as_ref().map(|b| b.velocity.components()) else {
             return false;
         };
-        if let Some((position, on_ground)) = position {
-            let position = position.components();
-            let carried = g.on_collider;
-            self.guests.update(i, |g| {
-                g.on_ground = on_ground;
-                g.moved = true;
-                g.known_movement = [0, 1, 2].map(|axis| position[axis] - g.position[axis]);
-            });
-            self.send_position_correction(i, Some(position), 0, [0.0; 3], Some(velocity));
-            self.keep_carried_at(i, carried, position);
-        } else {
-            // Don't send a position packet when only velocity changed.
-            g.send(&C::SetEntityMotion(play::SetEntityMotion {
-                id: g.entity_id,
-                velocity,
-            }));
-        }
+        let position = position.components();
+        let carried = g.on_collider;
+        self.guests.update(i, |g| {
+            g.on_ground = on_ground;
+            g.moved = true;
+            g.known_movement = [0, 1, 2].map(|axis| position[axis] - g.position[axis]);
+        });
+        self.send_position_correction(i, Some(position), 0, [0.0; 3], Some(velocity));
+        self.keep_carried_at(i, carried, position);
         true
     }
 
