@@ -108,10 +108,12 @@ The record also carries three `Fluid` facts: `explosion_resistance` (100 for wat
 world fluid, 0 for the empty or a tank-only fluid), `randomly_ticks` (lava only) and `drip_particle`
 (`minecraft:dripping_water` or `minecraft:dripping_lava`, none for the rest).
 
-`legacy_block(state)` is `FluidState.createLegacyBlock`: the water, lava or mod-fluid block that holds a
-fluid state (a source is level 0, a flowing amount is `8 - amount`, falling adds 8) and air for the empty
-fluid. It is `None` for a state no fluid can be in: a tank-only fluid, an amount above 8, a zero amount
-for anything but the empty fluid, or a source that isn't full.
+`legacy_block(state)` is `FluidState.createLegacyBlock`: it returns the canonical `BlockState` of the
+water, lava or mod-fluid block that holds a fluid state (a source is level 0, a flowing amount is
+`8 - amount`, falling adds 8), or the air state for the empty fluid. Pass the result directly to other
+block-state queries. It is `None` without a resolved registry or for a state no fluid can be in: a
+tank-only fluid, an amount above 8, a zero amount for anything but the empty fluid, or a source that
+isn't full.
 
 What depends on a position is on `LevelRef`, not in this service: `fluid_tick_delay(host, fluid, pos)`
 (water 5, lava 30 and 10 in the Nether, a mod fluid's as its `fluid_rules` parts change it there),

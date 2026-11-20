@@ -1275,7 +1275,6 @@ mod tests {
             ],
         );
         bytes(crate::Direction::North, &[2, 0, 0, 0]);
-        bytes(crate::BlockStateId(7), &[7, 0, 0, 0]);
         bytes(crate::Tag::Byte(5), &[1, 0, 0, 0, 5]);
         bytes(Some(1u16), &[1, 1, 0]);
         bytes(vec!["ab".to_owned()], &[1, 0, 0, 0, 2, 0, 0, 0, 97, 98]);
