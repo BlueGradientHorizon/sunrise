@@ -13,11 +13,11 @@
 //! - a tuple struct's field (`X.0`) counts only where the parser ties the read to `X`: `X(..).0`,
 //!   `v.0` where `v` is bound by `let v: X`, `let v = X(..)` or a parameter `v: X` (through `&`
 //!   and `&mut`), `self.0` in a method of an impl for `X`, and each position a pattern
-//!   `X(a, b, ..)` lists before its `..`. A qualified `X` (`mod_api::Pos`, or an impl's target
-//!   written so) is the API struct its path leads to; one through the mod's own modules to a name
-//!   the mod defines (`local::Pos`) counts for none. A position read anywhere else (on a tuple, a closure's
-//!   untyped argument, another field, a method's result, in a macro body) counts for no struct;
-//!   the compile against the target build judges it.
+//!   `X(a, b, ..)` lists before its `..`. A qualified `X` counts for no API field only if its
+//!   path reaches a concrete type defined in the mod (`local::Pos`). Imports, aliases and
+//!   paths the scan cannot place keep their API candidates. A position read anywhere else (on a
+//!   tuple, a closure's untyped argument, another field, a method's result, in a macro body)
+//!   counts for no struct; the compile against the target build judges it.
 //!
 //! For each struct the source names it also records how the mod builds it, read with a Rust
 //! parser ([`crate::syntax`]): [`Built::Full`] where a struct literal or call lists its fields
@@ -80,6 +80,8 @@ use crate::syntax::{self, How, Syntax};
 use crate::{MacroKind, Role, Surface, Type, TypeKind, leaf};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
+use std::ops::Range;
+use std::path::Path;
 
 /// What a mod's manifest says that the list depends on.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -399,6 +401,9 @@ struct FileFacts<'t> {
     impls: Vec<(usize, Option<usize>)>,
     /// The names some `use` in the file binds.
     imported: BTreeSet<&'t str>,
+    /// Per module: the names bound by `use`, with `*` for any glob. Block imports also count
+    /// here: where they might shadow a module name, leave its path unresolved.
+    module_imported: Vec<BTreeSet<&'t str>>,
     /// What the parser reads of the file.
     syntax: Syntax<'t>,
     /// Tokens inside a macro call's delimiters or a `macro_rules!` body, which the parser does
@@ -496,9 +501,14 @@ impl std::fmt::Display for ScanError {
 
 impl std::error::Error for ScanError {}
 
-/// The `use` statements a file's tokens hold: each import, whether each token is in one, and
-/// whether one holds a macro metavariable.
-type UseStatements<'t> = (Vec<(Vec<&'t str>, &'t str)>, Vec<bool>, bool);
+/// The `use` statements a file's tokens hold: each import, each statement's first token and
+/// range of imports, whether each token is in one, and whether one holds a macro metavariable.
+type UseStatements<'t> = (
+    Vec<(Vec<&'t str>, &'t str)>,
+    Vec<(usize, Range<usize>)>,
+    Vec<bool>,
+    bool,
+);
 
 /// A file's tokens, each with its line and its first byte, and its `use` statements; or why it
 /// cannot be judged before it is parsed.
@@ -524,7 +534,8 @@ fn checked_tokens<'t>(
 
 /// A file's facts, or why it cannot be judged.
 fn file_facts<'t>(file: &str, text: &'t str) -> Result<FileFacts<'t>, ScanError> {
-    let (tokens, starts, (imports, in_use, use_metavariable)) = checked_tokens(file, text)?;
+    let (tokens, starts, (imports, statements, in_use, use_metavariable)) =
+        checked_tokens(file, text)?;
     let syntax = syntax::read(text).map_err(|unread| match unread {
         syntax::Unread::Parse(line) => ScanError::Parse {
             file: file.to_owned(),
@@ -547,6 +558,11 @@ fn file_facts<'t>(file: &str, text: &'t str) -> Result<FileFacts<'t>, ScanError>
         .filter(|(_, local)| *local != "*")
         .map(|(_, local)| *local)
         .collect();
+    let mut module_imported = vec![BTreeSet::new(); syntax.scopes.len()];
+    for (at, range) in statements {
+        module_imported[syntax.module_at(starts[at])]
+            .extend(imports[range].iter().map(|(_, name)| *name));
+    }
     Ok(FileFacts {
         tokens,
         starts,
@@ -557,6 +573,7 @@ fn file_facts<'t>(file: &str, text: &'t str) -> Result<FileFacts<'t>, ScanError>
         enclosing,
         impls,
         imported,
+        module_imported,
         syntax,
         in_macro,
         imports,
@@ -576,6 +593,7 @@ fn file_facts<'t>(file: &str, text: &'t str) -> Result<FileFacts<'t>, ScanError>
 fn use_statements<'t>(file: &str, tokens: &Tokens<'t>) -> Result<UseStatements<'t>, ScanError> {
     let mut in_use = vec![false; tokens.len()];
     let mut imports = Vec::new();
+    let mut statements = Vec::new();
     let mut use_metavariable = false;
     let mut at = 0;
     while at < tokens.len() {
@@ -602,6 +620,7 @@ fn use_statements<'t>(file: &str, tokens: &Tokens<'t>) -> Result<UseStatements<'
                     });
                 }
             }
+            let first_import = imports.len();
             let mut start = at + 1;
             while start < end {
                 if punct(tokens, start, b':') {
@@ -610,7 +629,7 @@ fn use_statements<'t>(file: &str, tokens: &Tokens<'t>) -> Result<UseStatements<'
                 start = use_tree(tokens, start, end, &mut Vec::new(), &mut imports);
             }
             // `a::b::{self}` binds `b`, and `{self as x}` binds `x`, both to `a::b`.
-            for (path, local) in imports.iter_mut() {
+            for (path, local) in &mut imports[first_import..] {
                 if path.len() >= 2 && path.last() == Some(&"self") {
                     path.pop();
                     if *local == "self" {
@@ -618,11 +637,12 @@ fn use_statements<'t>(file: &str, tokens: &Tokens<'t>) -> Result<UseStatements<'
                     }
                 }
             }
+            statements.push((at, first_import..imports.len()));
             at = end;
         }
         at += 1;
     }
-    Ok((imports, in_use, use_metavariable))
+    Ok((imports, statements, in_use, use_metavariable))
 }
 
 /// Which tokens lie inside a macro body: one sweep over the bodies by where they start.
@@ -1389,6 +1409,70 @@ struct Resolved<'s> {
     aliased: bool,
 }
 
+type ModuleScope = (usize, usize);
+
+/// Ordinary `mod name;` links reachable from a conventional crate root. A path override,
+/// expansion or ambiguous link means the file names don't prove where the files are mounted.
+#[derive(Default)]
+struct FileModules<'t> {
+    roots: BTreeSet<usize>,
+    children: BTreeMap<(ModuleScope, &'t str), usize>,
+}
+
+impl<'t> FileModules<'t> {
+    fn new(files: &[FileFacts<'t>], sources: &[(&str, &str)], certain: &[bool]) -> Self {
+        if files.iter().zip(certain).any(|(file, certain)| {
+            !certain
+                || file.attributes.iter().any(|(open, close)| {
+                    (*open + 1..*close).any(|at| ident(&file.tokens, at) == Some("path"))
+                })
+        }) {
+            return Self::default();
+        }
+        let paths: BTreeMap<&Path, usize> = sources
+            .iter()
+            .enumerate()
+            .map(|(i, (path, _))| (Path::new(path), i))
+            .collect();
+        if paths.len() != sources.len() {
+            return Self::default();
+        }
+        let mut tree = Self::default();
+        let mut pending = Vec::new();
+        for (root, stem) in [("src/lib.rs", "lib"), ("src/main.rs", "main")] {
+            if let Some(&file) = paths.get(Path::new(root))
+                && !files.iter().any(|file| file.syntax.modules.contains(stem))
+            {
+                tree.roots.insert(file);
+                pending.push(((file, 0), Path::new("src").to_owned()));
+            }
+        }
+        let mut mounted = tree.roots.clone();
+        while let Some((scope @ (file, module), dir)) = pending.pop() {
+            for (&name, &inline) in &files[file].syntax.scopes[module].children {
+                let child_dir = dir.join(name);
+                if let Some(inline) = inline {
+                    pending.push(((file, inline), child_dir));
+                    continue;
+                }
+                let flat = paths.get(dir.join(format!("{name}.rs")).as_path());
+                let index = paths.get(child_dir.join("mod.rs").as_path());
+                if flat.is_some() && index.is_some() {
+                    continue;
+                }
+                if let Some(&child) = flat.or(index) {
+                    if !mounted.insert(child) {
+                        return Self::default();
+                    }
+                    tree.children.insert((scope, name), child);
+                    pending.push(((child, 0), child_dir));
+                }
+            }
+        }
+        tree
+    }
+}
+
 /// What names mean across the mod: the facts of every file, which files nothing the scan cannot
 /// follow may change, and each name's API ids, kept as they are worked out.
 struct Resolver<'a, 's, 't> {
@@ -1397,6 +1481,10 @@ struct Resolver<'a, 's, 't> {
     files: &'a [FileFacts<'t>],
     /// Per file: whether nothing the scan cannot follow may change what names mean there.
     certain: Vec<bool>,
+    /// Unlike unqualified names, a qualified path can be judged in an inline module, or in
+    /// the presence of globs that cannot take its name away from a concrete definition.
+    qualified_certain: Vec<bool>,
+    file_modules: FileModules<'t>,
     /// Per file: the `type` aliases of an API item, which define no type of the mod's own.
     api_aliases: Vec<BTreeSet<&'t str>>,
     /// The API modules some file imports with a glob, `mod_api::` left out.
@@ -1405,7 +1493,12 @@ struct Resolver<'a, 's, 't> {
 }
 
 impl<'a, 's, 't> Resolver<'a, 's, 't> {
-    fn new(index: &'a Index<'s>, module: &'a ModFacts<'t>, files: &'a [FileFacts<'t>]) -> Self {
+    fn new(
+        index: &'a Index<'s>,
+        module: &'a ModFacts<'t>,
+        files: &'a [FileFacts<'t>],
+        sources: &[(&str, &str)],
+    ) -> Self {
         let trusted = index.trusted(module);
         // A file brought in by `include!` (under any name: `use std::include as inc;`, which
         // the folder reader refuses) is part of its includer's scope: with one anywhere, no
@@ -1425,23 +1518,29 @@ impl<'a, 's, 't> Resolver<'a, 's, 't> {
             .iter()
             .map(|file| file.use_metavariable || !trusted.followed(file))
             .collect();
-        let certain = files
+        let qualified_certain: Vec<bool> = files
             .iter()
             .zip(&opaque)
-            .map(|(file, opaque)| {
-                !included
-                    && !opaque
-                    && trusted.file(file)
+            .map(|(file, opaque)| !included && !opaque && trusted.file(file))
+            .collect();
+        let certain = files
+            .iter()
+            .zip(&qualified_certain)
+            .map(|(file, certain)| {
+                *certain
                     && !file.syntax.inline_modules
                     && !file.imports.iter().any(|(_, local)| *local == "*")
             })
             .collect();
+        let file_modules = FileModules::new(files, sources, &qualified_certain);
         let mod_globs = files.iter().flat_map(|f| api_globs(f, module)).collect();
         let mut resolver = Resolver {
             index,
             module,
             files,
             certain,
+            qualified_certain,
+            file_modules,
             api_aliases: Vec::new(),
             mod_globs,
             memo: BTreeMap::new(),
@@ -1474,23 +1573,6 @@ impl<'a, 's, 't> Resolver<'a, 's, 't> {
         })
     }
 
-    /// The API modules file `index` imports with a glob, and the mod's own API globs when the
-    /// file has a glob of the mod's own (`use super::*;`, `use api::*;`).
-    fn globs(&self, index: usize) -> BTreeSet<Vec<&'t str>> {
-        let file = &self.files[index];
-        let mut globs = api_globs(file, self.module);
-        if file.imports.iter().any(|(segments, local)| {
-            *local == "*"
-                && segments.first().is_some_and(|first| {
-                    matches!(*first, "crate" | "self" | "super")
-                        || self.module.modules.contains(first)
-                })
-        }) {
-            globs.extend(self.mod_globs.iter().cloned());
-        }
-        globs
-    }
-
     /// Whether an unqualified `name` in file `index` certainly means the mod's own type: the
     /// file defines it at its top level under no `#[cfg]` (a `type` alias of an API item is no
     /// definition), no `use` in it binds the name, and the file is certain. Anything else
@@ -1501,6 +1583,80 @@ impl<'a, 's, 't> Resolver<'a, 's, 't> {
             && file.syntax.defines.contains(name)
             && !self.api_aliases[index].contains(name)
             && !file.imported.contains(name)
+    }
+
+    /// Whether a qualified path is demonstrably a concrete local type or an enum variant.
+    /// Follow only declared module edges; imports and aliases may lead back to the API.
+    fn qualified_own(&self, index: usize, byte: usize, path: &[&str]) -> bool {
+        let resolve = || {
+            if !self.qualified_certain[index] {
+                return None;
+            }
+            let (name, mut prefix) = path.split_last()?;
+            let file = &self.files[index];
+            let mut scope = (index, file.syntax.module_at(byte));
+            // Source paths alone don't tell us how Cargo mounted a non-root source file.
+            // Stay in its inline modules unless the walk starts at a known crate root.
+            let crate_root = self.file_modules.roots.contains(&index);
+            match prefix {
+                ["crate", rest @ ..] => {
+                    if !crate_root {
+                        return None;
+                    }
+                    scope.1 = 0;
+                    prefix = rest;
+                }
+                ["self", rest @ ..] => prefix = rest,
+                ["super", ..] => {
+                    while let ["super", rest @ ..] = prefix {
+                        if scope.1 == 0 {
+                            return None;
+                        }
+                        scope.1 = file.syntax.scopes[scope.1].parent;
+                        prefix = rest;
+                    }
+                }
+                [first, ..] => {
+                    let module = &file.syntax.scopes[scope.1];
+                    let imports = &file.module_imported[scope.1];
+                    if module.block_items
+                        || module.type_params.contains(first)
+                        || imports.contains(first)
+                        || imports.contains("*")
+                    {
+                        return None;
+                    }
+                }
+                [] => return None,
+            }
+            while let Some((first, rest)) = prefix.split_first() {
+                let (file, module) = scope;
+                let facts = &self.files[file];
+                let declared = &facts.syntax.scopes[module];
+                if rest.is_empty()
+                    && !facts.module_imported[module].contains(first)
+                    && declared
+                        .variants
+                        .get(first)
+                        .is_some_and(|v| v.contains(name))
+                {
+                    return Some(true);
+                }
+                scope = match declared.children.get(first)? {
+                    Some(inline) => (file, *inline),
+                    None if crate_root => (*self.file_modules.children.get(&(scope, first))?, 0),
+                    None => return None,
+                };
+                prefix = rest;
+            }
+            let (file, module) = scope;
+            let facts = &self.files[file];
+            Some(
+                facts.syntax.scopes[module].types.contains(name)
+                    && !facts.module_imported[module].contains(name),
+            )
+        };
+        resolve().unwrap_or(false)
     }
 
     /// Each API path (`mod_api::` left out) a path written in a file may be: through an API
@@ -1761,9 +1917,8 @@ impl<'s, 't> Walk<'_, '_, 's, 't> {
     }
 
     /// Every tuple struct field the parser ties a read to ([`syntax::TupleField`]), with the
-    /// struct's name read as for a build: `Self` through the impl it stands in, an unqualified
-    /// name the mod's own type defines nothing of the API's, and a variant (`Shape::Pos(a, ..)`)
-    /// is no struct.
+    /// struct's name read through the impl's target for `Self`. Skip a name only when it is
+    /// known to name the mod's own type or variant.
     fn tuple_fields(&mut self) {
         let Walk {
             resolver,
@@ -1795,39 +1950,16 @@ impl<'s, 't> Walk<'_, '_, 's, 't> {
             resolver.lookup(name);
             let resolver: &Resolver<'_, 's, 't> = resolver;
             let resolved = &resolver.memo[name];
-            if (unqualified && !resolved.aliased && resolver.own_in(index, name))
-                || (!resolved.aliased && resolver.is_member(written, rooted))
+            if resolved.ids.is_empty()
+                || (unqualified && !resolved.aliased && resolver.own_in(index, name))
+                || (!unqualified && !rooted && resolver.qualified_own(index, field.byte, written))
             {
                 continue;
             }
             let api = resolver.index;
-            // A path is the API struct it leads to (`mod_api::Pos`, `crate::Pos` through a
-            // re-export); one through the mod's own modules to a name the mod defines
-            // (`local::Pos`) may be that type, so it counts for none.
-            let within = |segment: &&str| {
-                matches!(*segment, "crate" | "self" | "super")
-                    || resolver.module.modules.contains(segment)
-            };
-            let leads_to: Option<BTreeSet<String>> = (!unqualified).then(|| {
-                if written.first().is_some_and(within) && resolver.module.types.contains(name) {
-                    return BTreeSet::new();
-                }
-                resolver
-                    .api_paths(written, &resolver.globs(index))
-                    .iter()
-                    .map(|path| path.join("::"))
-                    .collect()
-            });
             for id in &resolved.ids {
                 if api.kind(id) != Some(TypeKind::TupleStruct) {
                     continue;
-                }
-                if let Some(leads_to) = &leads_to {
-                    let own = id.split_once(':').map_or("", |(_, rest)| rest);
-                    let public = api.public_paths.get(id).copied().unwrap_or_default();
-                    if !leads_to.contains(own) && !public.iter().any(|p| leads_to.contains(p)) {
-                        continue;
-                    }
                 }
                 let member = format!("{id}.{}", field.position);
                 if let Some((member, _)) = api.hashes.get_key_value(member.as_str()) {
@@ -1843,7 +1975,18 @@ impl<'s, 't> Walk<'_, '_, 's, 't> {
         let resolver = &*self.resolver;
         let file = &resolver.files[self.index];
         let tokens = &file.tokens;
-        let globs = resolver.globs(self.index);
+        // A file with a glob of the mod's own (`use super::*;`, `use api::*;`) sees the mod's
+        // API globs.
+        let mut globs = api_globs(file, resolver.module);
+        if file.imports.iter().any(|(segments, local)| {
+            *local == "*"
+                && segments.first().is_some_and(|first| {
+                    matches!(*first, "crate" | "self" | "super")
+                        || resolver.module.modules.contains(first)
+                })
+        }) {
+            globs.extend(resolver.mod_globs.iter().cloned());
+        }
         let mut paths: Vec<Vec<String>> = Vec::new();
         for (segments, local) in &file.imports {
             if *local != "*" {
@@ -2112,7 +2255,7 @@ pub(crate) fn uses<'t>(
         .map(|(file, text)| file_facts(file, text))
         .collect::<Result<_, _>>()?;
     let module = mod_facts(&files, &index.api_prefixes);
-    let mut resolver = Resolver::new(&index, &module, &files);
+    let mut resolver = Resolver::new(&index, &module, &files, &sources);
     let mut found = Found {
         direct: BTreeMap::new(),
         building: BTreeMap::new(),

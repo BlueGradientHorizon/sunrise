@@ -1308,13 +1308,13 @@ fn a_position_read_tied_to_the_struct_names_its_field() {
 
 #[test]
 fn a_qualified_struct_path_is_the_struct_it_leads_to() {
-    let field = |source: &str| {
-        ids(&scan_on(
+    let scan = |source: &str| {
+        scan_on(
             wider(),
             &format!("use mod_api::Pos;\nmod local {{ pub struct Pos(pub i32); }}\n{source}"),
-        ))
-        .contains(&"type:Pos.0")
+        )
     };
+    let field = |source| ids(&scan(source)).contains(&"type:Pos.0");
     // The mod's own `local::Pos`, by a typed binding, a pattern and an impl's `self`.
     assert!(!field("fn read(p: local::Pos) -> i32 { p.0 }"));
     assert!(!field("fn read(p: local::Pos) { let local::Pos(x) = p; }"));
@@ -1326,13 +1326,64 @@ fn a_qualified_struct_path_is_the_struct_it_leads_to() {
     assert!(field(
         "trait Tr { fn f(&self) -> i32; } impl Tr for ::mod_api::Pos { fn f(&self) -> i32 { self.0 } }"
     ));
-    // Through the mod's own modules: the API's where the mod defines no `Pos`, none where it does.
-    assert!(!field("fn read(p: crate::Pos) -> i32 { p.0 }"));
+    let mixed = scan("fn read(l: local::Pos, p: crate::Pos) -> i32 { l.0 + p.1 }");
+    let found = ids(&mixed);
+    assert!(!found.contains(&"type:Pos.0"));
+    assert!(found.contains(&"type:Pos.1"));
+    assert!(!field(
+        "mod owned { pub struct Pos(pub i32); mod inner { fn read(p: super::Pos) -> i32 { p.0 } } }"
+    ));
+    assert!(field(
+        "mod nested { pub use mod_api::Pos; } fn read(p: nested::Pos) -> i32 { p.0 }"
+    ));
+    assert!(field(
+        "mod nested { pub use mod_api::Pos; mod inner { fn read(p: super::Pos) -> i32 { p.0 } } }"
+    ));
+}
+
+#[test]
+fn a_qualified_type_alias_keeps_the_api_field() {
     let uses = scan_on(
         wider(),
-        "use mod_api::Pos;\nfn read(p: crate::Pos) -> i32 { p.0 }",
+        "type P = mod_api::Pos; fn read(p: crate::P) -> i32 { p.0 }",
     );
     assert!(ids(&uses).contains(&"type:Pos.0"));
+}
+
+#[test]
+fn an_opaque_qualifier_keeps_the_api_field() {
+    // `dep` re-exports the API type; a type named `dep` in another module isn't its owner.
+    let field = |source| ids(&scan_on(wider(), source)).contains(&"type:Pos.0");
+    assert!(field(
+        "mod decoy { pub struct dep; } fn read(p: dep::Pos) -> i32 { p.0 }"
+    ));
+    // The same is true when a block import shadows a real module.
+    assert!(field(
+        "mod local { pub struct Pos(pub i32); } fn read() { use dep as local; let p: local::Pos = todo!(); let _ = p.0; }"
+    ));
+}
+
+#[test]
+fn a_qualified_type_follows_file_module_declarations() {
+    let uses = uses(
+        [
+            (
+                "src/lib.rs",
+                "mod local; use mod_api::Pos; fn read(l: local::inner::Pos) -> i32 { l.0 }",
+            ),
+            ("src/local/mod.rs", "pub mod inner;"),
+            (
+                "src/local/inner.rs",
+                "pub struct Pos(pub i32); fn read(p: crate::Pos) -> i32 { p.1 }",
+            ),
+        ],
+        &ManifestFacts::default(),
+        &wider().build(),
+    )
+    .unwrap();
+    let found = ids(&uses);
+    assert!(!found.contains(&"type:Pos.0"));
+    assert!(found.contains(&"type:Pos.1"));
 }
 
 #[test]
