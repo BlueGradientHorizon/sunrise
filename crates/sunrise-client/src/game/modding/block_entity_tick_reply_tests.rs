@@ -115,6 +115,51 @@ fn native_tick_reply_matrix() {
                     .into_iter()
                     .collect(),
                 );
+                // The type is registered, and other types do subscribe. Neither
+                // a lazy container nor a slotless holder should be normalized here.
+                for (pos, items) in [
+                    ((1, 64, 1), vec![]),
+                    (
+                        (1, 64, 2),
+                        vec![Some(sunrise_client::items::ItemStack::new(
+                            "minecraft:stone",
+                            1,
+                        ))],
+                    ),
+                ] {
+                    let data = sunrise_client::containers::ModBlockEntityFields {
+                        data: vec![23],
+                        items: items.clone(),
+                        ..Default::default()
+                    };
+                    let entity = ModBlockEntity::new("tick_reply_fixture:no_ticker".into(), data);
+                    let revision = entity.revision();
+                    game.world
+                        .block_entities
+                        .insert(pos, BlockEntity::Mod(Box::new(entity)));
+                    let generation = game.world.block_entities.generation(&pos);
+                    game.world.block_entities.sleep(pos);
+                    game.world.modified.clear();
+                    game.tick_mod_block_entity(pos);
+                    let Some(BlockEntity::Mod(current)) = game.world.block_entities.get(&pos)
+                    else {
+                        panic!("unsubscribed entity lost")
+                    };
+                    assert_eq!(current.id(), "tick_reply_fixture:no_ticker");
+                    assert_eq!(current.data, [23]);
+                    assert!(current.nbt.is_empty());
+                    assert_eq!(current.items, items);
+                    assert_eq!(current.revision(), revision);
+                    assert_eq!(game.world.block_entities.generation(&pos), generation);
+                    assert!(game.world.block_entities.is_asleep(pos));
+                    assert!(game.world.modified.is_empty());
+                    assert!(
+                        effects
+                            .iter()
+                            .all(|counter| counter.load(Ordering::Relaxed) == 0)
+                    );
+                    game.world.block_entities.remove(&pos);
+                }
                 game.spawn_item(
                     sunrise_client::items::ItemStack::new("minecraft:stone", 5),
                     [0.0; 3],

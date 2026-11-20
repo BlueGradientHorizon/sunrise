@@ -67,6 +67,10 @@ its container; acquire a new handle for the replacement.
 
 ## Skip unchanged tick write-back
 
+A tick with no `BlockEntityPart::block_entity_tick` subscriber for the entity's
+registered type does not snapshot the row, resize its items or mark its chunk
+unsaved. Pending load notices are still delivered before the tick.
+
 The `BlockEntityPart::block_entity_tick` reply defaults to `Changed`, retaining full checked payload write-back.
 When no payload should be written back, set:
 
