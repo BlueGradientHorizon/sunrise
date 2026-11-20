@@ -23,6 +23,7 @@ enum PlayerWrite {
 #[derive(Clone, Copy)]
 enum EffectWrite {
     ReplaceSlowness,
+    ReapplySpeed,
     Clear,
     ReplaceTransient,
 }
@@ -171,6 +172,11 @@ fn trade(host: &mut dyn ServerHost, event: &mut TradeWithVillagerEvent<'_>) {
                     assert!(other.remove_effect(host, key("minecraft:slowness")));
                     add(host, "minecraft:speed");
                     add(host, "minecraft:absorption");
+                }
+                EffectWrite::ReapplySpeed => {
+                    assert!(other.remove_effect(host, key("minecraft:speed")));
+                    assert!(!other.potion_affected(host, key("minecraft:speed")));
+                    add(host, "minecraft:speed");
                 }
                 EffectWrite::Clear => {
                     host.transaction(|host, _| {
@@ -364,6 +370,41 @@ fn speed_modifier_ids(game: &Game<'_>) -> [Vec<String>; 2] {
         .map(|row| row.id.to_string())
         .collect();
     [legacy, live]
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_refused_trade_restores_modifier_order_after_reapplying_the_same_effect() {
+    with_mod(|| {
+        with_guests(|game| {
+            let click = open(game, 2);
+            super::native_merchant_refs::tests::spawn(game, 41, "minecraft:villager");
+            let mob = &mut game.mobs[1];
+            mob.add_effect("minecraft:speed", 300, 0);
+            finalize::add_modifier(
+                mob,
+                Attr::MovementSpeed,
+                "test:survivor",
+                0.25,
+                Op::AddMultipliedTotal,
+            );
+            let expected = ["minecraft:effect.speed", "test:survivor"];
+            for ids in speed_modifier_ids(game) {
+                assert_eq!(ids, expected);
+            }
+            script(Script {
+                invalid: true,
+                effect_write: Some(EffectWrite::ReapplySpeed),
+                ..Script::default()
+            });
+            assert!(game.lan_merchant_click(12, &click));
+            assert!(STAGED_WRITES.get(), "Speed was removed and re-added");
+            unchanged(game, 2);
+            for ids in speed_modifier_ids(game) {
+                assert_eq!(ids, expected);
+            }
+        });
+    });
 }
 
 #[test]
