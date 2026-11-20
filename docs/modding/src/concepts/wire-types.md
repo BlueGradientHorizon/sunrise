@@ -42,8 +42,8 @@ charge `PAYLOAD_DECODE_BUDGET` for decoded storage, separately from the 8 MiB bo
 A failed encode is never queued.
 
 Ordinary Wire keeps the NBT `Tag` limit of **512** containers and the `Text` limit of
-**512** nested components. `Text` crosses as the validated flat `TextForm` table in
-ordinary Wire; it is not admitted to typed payloads.
+**512** nested components. Build `Text` directly; ordinary Wire validates it and
+uses a private node-table encoding. `Text` is not admitted to typed payloads.
 
 JSON-backed `serde_json::Value`, JSON maps and `ModelPart` also refuse beyond
 32 JSON containers. Their encoders preflight the in-memory tree iteratively

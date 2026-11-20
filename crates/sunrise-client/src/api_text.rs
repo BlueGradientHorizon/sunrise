@@ -944,7 +944,7 @@ fn api_nodes(root: &Text) -> Vec<&Text> {
         } else {
             work.push((text, true));
             let mut children = Vec::new();
-            text.visit_children(|text, _| children.push((text, false)));
+            text.visit_children(|text| children.push((text, false)));
             work.extend(children.into_iter().rev());
         }
     }
@@ -1722,7 +1722,7 @@ mod text_encoding_tests {
 #[cfg(test)]
 mod iterative_tests {
     use super::*;
-    use mod_api::text::TextForm;
+    use mod_api::wire::Writer;
     use serde_json::json;
 
     #[test]
@@ -1745,7 +1745,7 @@ mod iterative_tests {
                     }
                     let engine = text.try_into_engine(&()).unwrap();
                     let restored = engine.try_into_api().unwrap();
-                    assert_eq!(TextForm::try_from(&restored).unwrap().nodes.len(), 512);
+                    assert_eq!(api_nodes(&restored).len(), 512);
                     drop((text.clone(), restored.clone(), engine.clone()));
                     drop((text, restored, engine));
                 })
@@ -1792,13 +1792,19 @@ mod iterative_tests {
                     continue;
                 }
                 let api = engine.try_into_api().unwrap();
-                let expected = TextForm::try_from(&api).unwrap();
-                assert_eq!(expected.nodes.len(), 512);
-                assert!(matches!(&expected.nodes.last().unwrap().content, mod_api::text::TextNodeContent::Literal(s) if s == "leaf"));
+                let nodes = api_nodes(&api);
+                assert_eq!(nodes.len(), 512);
+                assert!(matches!(&nodes[0].content, TextContent::Literal(s) if s == "leaf"));
+                // Compare the full trees without calling recursive PartialEq on this small stack.
+                let mut expected = Writer::new();
+                expected.put(&api);
+                assert_eq!(expected.error(), None);
                 let emitted = api.try_into_engine(&()).unwrap();
                 let restored = emitted.try_into_api().unwrap();
-                let actual = TextForm::try_from(&restored).unwrap();
-                assert_eq!(actual, expected);
+                let mut actual = Writer::new();
+                actual.put(&restored);
+                assert_eq!(actual.error(), None);
+                assert_eq!(actual.bytes(), expected.bytes());
                 // Recursive ownership operations are not the crossing guarantee.
                 std::mem::forget((engine, api, emitted, restored));
             }
@@ -1875,13 +1881,7 @@ mod iterative_tests {
                     if depth == 513 {
                         assert!(matches!(api, Err(mod_api::text::TextFormError::TooDeep)));
                     } else {
-                        assert_eq!(
-                            TextForm::try_from(api.as_ref().unwrap())
-                                .unwrap()
-                                .nodes
-                                .len(),
-                            512
-                        );
+                        assert_eq!(api_nodes(api.as_ref().unwrap()).len(), 512);
                     }
                     std::mem::forget((text, api));
                 }
