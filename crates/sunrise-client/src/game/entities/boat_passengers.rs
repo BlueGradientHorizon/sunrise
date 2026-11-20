@@ -625,42 +625,76 @@ impl Game<'_> {
     /// `Entity.setRemoved` for a killed boat or cart; false on a reentrant
     /// removal of the same object while its dismount callbacks are running.
     pub(super) fn kill_vehicle_object(&mut self, target: super::commands::Target) -> bool {
-        use super::{commands::Target, persist::RemovedVehicle};
+        use super::commands::Target;
         let id = match target {
             Target::Boat(id) | Target::Cart(id) => id,
             _ => unreachable!("only boat and cart removals use this helper"),
         };
-        let remove = |game: &mut Self| {
-            game.release_vehicle_container(id);
-            match target {
-                Target::Boat(_) => {
-                    if let Some(i) = game.boats.iter().position(|b| b.id == id) {
-                        game.unpack_boat_loot(i, false);
-                    }
-                    if let Some(i) = game.boats.iter().position(|b| b.id == id) {
-                        let boat = game.boats.remove(i);
-                        game.drop_vehicle_contents(boat.position.components(), &boat.items);
-                        game.boat_removed(&boat);
-                        game.retain_removed_vehicle(id, RemovedVehicle::Boat(boat));
-                    }
-                }
-                Target::Cart(_) => {
-                    game.unpack_loot(super::container_loot::LootTarget::Cart(id), None);
-                    if let Some(i) = game.carts.iter().position(|c| c.id == id) {
-                        let cart = game.carts.remove(i);
-                        game.drop_vehicle_contents(cart.position.components(), &cart.items);
-                        game.retain_removed_vehicle(id, RemovedVehicle::Cart(cart));
-                    }
-                }
-                _ => unreachable!(),
-            }
+        self.with_vehicle_removal_effects(
+            target,
+            |game| game.prepare_vehicle_removal(target, id),
+            |game| game.take_destroyed_vehicle_row(target, id),
+        )
+        .is_some()
+    }
+
+    /// The physical sweep of an already logically removed boat or cart.
+    pub(super) fn take_destroyed_vehicle_row(&mut self, target: super::commands::Target, id: u32) {
+        use super::{commands::Target, persist::RemovedVehicle};
+        let vehicle = match target {
+            Target::Boat(_) => self
+                .boats
+                .iter()
+                .position(|b| b.id == id)
+                .map(|i| RemovedVehicle::Boat(self.boats.remove(i))),
+            Target::Cart(_) => self
+                .carts
+                .iter()
+                .position(|c| c.id == id)
+                .map(|i| RemovedVehicle::Cart(self.carts.remove(i))),
+            _ => unreachable!(),
         };
-        if self.persist.notified_vehicle_removals.remove(&id) {
-            // A deferred native removal already marked the vehicle and told its riders.
-            remove(self);
-            true
-        } else {
-            self.with_destroying_vehicle(target, remove).is_some()
+        if let Some(vehicle) = vehicle {
+            self.retain_removed_vehicle(id, vehicle);
+        }
+    }
+
+    /// Container `remove` spills before `Entity.setRemoved`; `AbstractBoat.remove`
+    /// then releases the lead. Keep the emptied owner in place for the dismount.
+    pub(super) fn prepare_vehicle_removal(&mut self, target: super::commands::Target, id: u32) {
+        use super::{commands::Target, container_loot::LootTarget};
+        self.release_vehicle_container(id);
+        let loot = match target {
+            Target::Boat(_) => LootTarget::Boat(id),
+            Target::Cart(_) => LootTarget::Cart(id),
+            _ => unreachable!("only boats and carts have vehicle containers"),
+        };
+        self.unpack_loot(loot, None);
+        let take = |at: Vec3, items: &mut [Option<sunrise_client::items::ItemStack>]| {
+            (
+                at.components(),
+                items.iter_mut().map(Option::take).collect::<Vec<_>>(),
+            )
+        };
+        let slots = match target {
+            Target::Boat(_) => self
+                .boats
+                .iter()
+                .position(|b| b.id == id)
+                .map(|i| self.boats.update(i, |b| take(b.position, &mut b.items))),
+            _ => self
+                .carts
+                .iter()
+                .position(|c| c.id == id)
+                .map(|i| self.carts.update(i, |c| take(c.position, &mut c.items))),
+        };
+        if let Some((at, items)) = slots {
+            self.drop_vehicle_contents(at, &items);
+        }
+        if matches!(target, Target::Boat(_))
+            && let Some(i) = self.boats.iter().position(|b| b.id == id)
+        {
+            self.drop_removed_boat_lead(i);
         }
     }
 

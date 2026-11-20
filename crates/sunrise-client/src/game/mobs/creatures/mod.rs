@@ -1603,12 +1603,7 @@ impl Game<'_> {
         // 🤖 Agent: the split follows the poof, as `LivingEntity.tickDeath`
         // broadcasts event 60 before it calls `remove`.
         for (id, at, width, height, split) in gone {
-            let at = [at.x, at.y, at.z];
-            self.lan_entity_event(id as i32, 60, at);
-            self.death_poof(at, width, height);
-            if let Some(m) = split {
-                self.split_dead_cube(m);
-            }
+            self.finish_mob_death_animation(id, at, width, height, split);
         }
         laps.lap("creature_retain");
         self.sync_riders();
@@ -1710,6 +1705,24 @@ impl Game<'_> {
         self.native_mob_sizes();
         Ok(())
     }
+    /// `LivingEntity.tickDeath` broadcasts the poof before `remove`, which
+    /// also splits a large cube before it reaches `Entity.setRemoved`.
+    fn finish_mob_death_animation(
+        &mut self,
+        id: u32,
+        at: Vec3,
+        width: f64,
+        height: f64,
+        split: Option<Mob>,
+    ) {
+        let at = at.components();
+        self.lan_entity_event(id as i32, 60, at);
+        self.death_poof(at, width, height);
+        if let Some(mob) = split {
+            self.split_dead_cube(mob);
+        }
+    }
+
     /// `LivingEntity.makePoofParticles` (entity event 60) about a mob's box.
     pub(super) fn death_poof(&mut self, at: [f64; 3], width: f64, height: f64) {
         let options = sunrise_client::particles::ParticleOptions::simple(

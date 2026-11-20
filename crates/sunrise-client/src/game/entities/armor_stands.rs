@@ -929,13 +929,15 @@ impl Game<'_> {
         let at = self.armor_stands[i].position;
         let at = [at.x, at.y, at.z];
         if creative {
-            let Some(stand) = self.take_removed_armor_stand(self.armor_stands[i].id) else {
+            let id = self.armor_stands[i].id;
+            let (width, height) = stand_box(&self.armor_stands[i]);
+            if !self.remove_armor_stand_after(id, |game| {
+                game.audio
+                    .play("minecraft:entity.armor_stand.break", Some(at), 1.0, 1.0);
+                game.show_breaking_particles(at, f64::from(width), f64::from(height));
+            }) {
                 return false;
-            };
-            let (width, height) = stand_box(&stand);
-            self.audio
-                .play("minecraft:entity.armor_stand.break", Some(at), 1.0, 1.0);
-            self.show_breaking_particles(at, f64::from(width), f64::from(height));
+            }
             // ArmorStand.kill(level, the causing entity).
             self.stand_game_event("minecraft:entity_die", at, by);
             return true;
@@ -950,34 +952,39 @@ impl Game<'_> {
             return true;
         }
         // brokenByPlayer: the stand item, then brokenByAnything: the equipment.
-        let Some(a) = self.take_removed_armor_stand(self.armor_stands[i].id) else {
-            return false;
-        };
-        let (width, height) = stand_box(&a);
-        self.audio
-            .play("minecraft:entity.armor_stand.break", Some(at), 1.0, 1.0);
-        self.show_breaking_particles(at, f64::from(width), f64::from(height));
-        let center = [at[0], at[1] + if a.small { 0.4875 } else { 0.9875 }, at[2]];
-        let mut stand = ItemStack::new("minecraft:armor_stand", 1);
-        if let Some(name) = &a.custom_name {
-            stand
-                .data_mut()
-                .set_loot_name("minecraft:custom_name", &name.component());
+        let a = self.armor_stands[i].clone();
+        let removed = self.remove_armor_stand_after(a.id, |game| {
+            let (width, height) = stand_box(&a);
+            let center = [at[0], at[1] + if a.small { 0.4875 } else { 0.9875 }, at[2]];
+            let mut stand = ItemStack::new("minecraft:armor_stand", 1);
+            if let Some(name) = &a.custom_name {
+                stand
+                    .data_mut()
+                    .set_loot_name("minecraft:custom_name", &name.component());
+            }
+            game.spawn_item(stand, center, [0.0; 3], 10);
+            game.audio
+                .play("minecraft:entity.armor_stand.break", Some(at), 1.0, 1.0);
+            game.armor_stand_death_drops(
+                &a,
+                "minecraft:player_attack",
+                game.own_entity_id() as u32,
+            );
+            for stack in a.equipment.into_iter().flatten() {
+                let r = &mut game.world.random;
+                let v = [
+                    f64::from(r.next_float()) * 0.2 - 0.1,
+                    0.2,
+                    f64::from(r.next_float()) * 0.2 - 0.1,
+                ];
+                game.spawn_item(stack, center, v, 10);
+            }
+            game.show_breaking_particles(at, f64::from(width), f64::from(height));
+        });
+        if removed {
+            self.stand_game_event("minecraft:entity_die", at, by);
         }
-        self.spawn_item(stand, center, [0.0; 3], 10);
-        self.armor_stand_death_drops(&a, "minecraft:player_attack", self.own_entity_id() as u32);
-        for stack in a.equipment.into_iter().flatten() {
-            let r = &mut self.world.random;
-            let v = [
-                f64::from(r.next_float()) * 0.2 - 0.1,
-                0.2,
-                f64::from(r.next_float()) * 0.2 - 0.1,
-            ];
-            self.spawn_item(stack, center, v, 10);
-        }
-        self.show_breaking_particles(at, f64::from(width), f64::from(height));
-        self.stand_game_event("minecraft:entity_die", at, by);
-        true
+        removed
     }
     /// `Entity.gameEvent(event, attributedTo)` for a stand at `at`: the
     /// causing player (a LAN guest too) or mob, else the stand itself (which
@@ -1366,14 +1373,17 @@ impl Game<'_> {
             |_| None,
         );
     }
-    pub(super) fn take_removed_armor_stand(
+    pub(super) fn remove_armor_stand_after(
         &mut self,
         id: u32,
-    ) -> Option<sunrise_client::entities::ArmorStand> {
-        self.with_destroying_vehicle(super::commands::Target::Stand(id), |game| {
-            let i = game.armor_stands.iter().position(|stand| stand.id == id)?;
-            Some(game.armor_stands.remove(i))
-        })?
+        effects: impl FnOnce(&mut Self),
+    ) -> bool {
+        self.with_vehicle_removal_effects(super::commands::Target::Stand(id), effects, |game| {
+            if let Some(i) = game.armor_stands.iter().position(|stand| stand.id == id) {
+                game.armor_stands.remove(i);
+            }
+        })
+        .is_some()
     }
 
     /// `ArmorStand.brokenByAnything`, then `kill`, as burning out or a blast
@@ -1384,23 +1394,27 @@ impl Game<'_> {
         i: usize,
         damage_type: &str,
         causing: u32,
-    ) {
-        let Some(a) = self.take_removed_armor_stand(self.armor_stands[i].id) else {
-            return;
-        };
-        let at = [a.position.x, a.position.y, a.position.z];
-        self.armor_stand_death_drops(&a, damage_type, causing);
-        let source = self
-            .level_entity(causing as i32)
-            .or(Some(super::commands::Target::Stand(a.id)));
-        let (pos, drops) = broken_armor_stand_equipment(a);
-        for stack in drops {
-            self.pop_resource(pos, stack);
+    ) -> bool {
+        let a = self.armor_stands[i].clone();
+        let id = a.id;
+        let at = a.position.components();
+        let removed = self.remove_armor_stand_after(id, |game| {
+            game.audio
+                .play("minecraft:entity.armor_stand.break", Some(at), 1.0, 1.0);
+            game.armor_stand_death_drops(&a, damage_type, causing);
+            let (pos, drops) = broken_armor_stand_equipment(a);
+            for stack in drops {
+                game.pop_resource(pos, stack);
+            }
+            game.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
+        });
+        if removed {
+            let source = self
+                .level_entity(causing as i32)
+                .or(Some(super::commands::Target::Stand(id)));
+            self.entity_killed_event_by(at, source);
         }
-        self.audio
-            .play("minecraft:entity.armor_stand.break", Some(at), 1.0, 1.0);
-        self.entity_killed_event_by(at, source);
-        self.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
+        removed
     }
     /// `ArmorStand.hurtServer` for a command's damage of `damage_type` from the
     /// causing entity `causing`, up to its sources that act and still return

@@ -33,7 +33,9 @@ impl Game<'_> {
     ) {
         if self.riding == Some(id)
             || self.ridden_by_guest(id)
-            || self.mob_objects().any(|mob| mob.extra.mount == Some(id))
+            || self
+                .mob_objects()
+                .any(|mob| !mob.removed && mob.extra.mount == Some(id))
             || self.general_passengers(id).next().is_some()
         {
             vehicle.retire_attachment_registration();
@@ -46,7 +48,9 @@ impl Game<'_> {
         if self.persist.removed_vehicles.contains_key(&id)
             && self.riding != Some(id)
             && !self.ridden_by_guest(id)
-            && !self.mob_objects().any(|mob| mob.extra.mount == Some(id))
+            && !self
+                .mob_objects()
+                .any(|mob| !mob.removed && mob.extra.mount == Some(id))
             && self.general_passengers(id).next().is_none()
         {
             self.persist.removed_vehicles.remove(&id);
@@ -60,7 +64,11 @@ impl Game<'_> {
         if self.persist.off_level.is_empty() {
             return Default::default();
         }
-        let mounts: HashMap<_, _> = self.mob_objects().map(|m| (m.id, m.extra.mount)).collect();
+        let mounts: HashMap<_, _> = self
+            .mob_objects()
+            .filter(|m| !m.removed)
+            .map(|m| (m.id, m.extra.mount))
+            .collect();
         self.mobs
             .iter()
             .filter_map(|m| {
@@ -168,20 +176,22 @@ impl Game<'_> {
         let invalid: Vec<_> = self
             .mob_objects()
             .filter_map(|m| {
+                if m.removed {
+                    return None;
+                }
                 let v = m.extra.mount?;
                 // Removed vehicles are retried only in the passenger's own
                 // eligible entity tick, after its cancellable Pre event.
                 if self.persist.removed_vehicles.contains_key(&v) {
                     return None;
                 }
-                let valid = !m.removed
-                    && (self.mob_object(v).is_some_and(|m| !m.removed)
-                        || self.boat_object(v).is_some()
-                        || self.cart_object(v).is_some()
-                        || self.cushions.iter().any(|c| c.id == v)
-                        || self.tnts.iter().any(|t| t.id == v && v != 0)
-                        || self.seat(v).is_some()
-                        || self.player_vehicle(v).is_some());
+                let valid = self.mob_object(v).is_some_and(|m| !m.removed)
+                    || self.boat_object(v).is_some()
+                    || self.cart_object(v).is_some()
+                    || self.cushions.iter().any(|c| c.id == v)
+                    || self.tnts.iter().any(|t| t.id == v && v != 0)
+                    || self.seat(v).is_some()
+                    || self.player_vehicle(v).is_some();
                 (!valid).then_some((m.id, v))
             })
             .collect();

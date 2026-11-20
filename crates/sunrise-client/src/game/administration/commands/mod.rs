@@ -2265,7 +2265,7 @@ impl Game<'_> {
             Target::Orb(id) => self.orbs.retain(|o| o.id != id),
             Target::Projectile(id) => self.remove_projectile(id),
             Target::Stand(id) => {
-                if self.take_removed_armor_stand(id).is_none() {
+                if !self.remove_armor_stand_after(id, |_| {}) {
                     return;
                 }
             }

@@ -251,14 +251,6 @@ impl Game<'_> {
                     // Its checks ran before its Pre was told: they don't run again.
                     let resuming = resume.is_some();
                     let checked = resuming || told_at == Some(slot);
-                    if blocked.contains(&m.id) {
-                        cursor += 1;
-                        resume = None;
-                        trample = None;
-                        resume_selection = None;
-                        resume_sampled = None;
-                        continue;
-                    }
                     if m.removed && !resuming {
                         keep[slot] = false;
                         gone_rows = true;
@@ -267,6 +259,14 @@ impl Game<'_> {
                         // that is still in the level keeps resolving (#795).
                         snapshot[slot].removed = true;
                         cursor += 1;
+                        continue;
+                    }
+                    if blocked.contains(&m.id) {
+                        cursor += 1;
+                        resume = None;
+                        trample = None;
+                        resume_selection = None;
+                        resume_sampled = None;
                         continue;
                     }
                     let (bx, bz) = (m.position.x.floor() as i32, m.position.z.floor() as i32);
@@ -297,8 +297,10 @@ impl Game<'_> {
                         gone_rows |= !keep[slot];
                         cursor += 1;
                         let id = m.id;
-                        if !keep[slot] && self.has_seated_passengers_with_lent_mobs(id, &mobs) {
-                            mobs[i].removed = true;
+                        if !keep[slot]
+                            && (m.extra.mount.is_some()
+                                || self.has_seated_passengers_with_lent_mobs(id, &mobs))
+                        {
                             removing_vehicle = Some(id);
                             break;
                         }
@@ -394,7 +396,10 @@ impl Game<'_> {
                         gone_rows |= !kept;
                         cursor += 1;
                         let id = m.id;
-                        if !kept && self.has_seated_passengers_with_lent_mobs(id, &mobs) {
+                        if !kept
+                            && (m.extra.mount.is_some()
+                                || self.has_seated_passengers_with_lent_mobs(id, &mobs))
+                        {
                             removing_vehicle = Some(id);
                             break;
                         }
@@ -768,9 +773,11 @@ impl Game<'_> {
                         from,
                     );
                     cursor += 1;
-                    if !kept && !was_removed && self.has_seated_passengers_with_lent_mobs(id, &mobs)
+                    if !kept
+                        && !was_removed
+                        && (mobs[i].extra.mount.is_some()
+                            || self.has_seated_passengers_with_lent_mobs(id, &mobs))
                     {
-                        mobs[i].removed = true;
                         removing_vehicle = Some(id);
                         break;
                     }
@@ -814,8 +821,8 @@ impl Game<'_> {
             let same_rows = told_only && !gone_rows;
             if !same_rows {
                 mobs.retain(|m| {
-                    // Give the removed vehicle back for its dismount hooks; its
-                    // position is still needed but its handle no longer resolves.
+                    // Give the departing vehicle back for its pre-removal effects
+                    // and for marking it removed before the dismount hooks.
                     removing_vehicle == Some(m.id)
                         || index
                             .get(&m.id)
@@ -870,16 +877,24 @@ impl Game<'_> {
                     }
                 }
                 if let Some(id) = removing_vehicle {
-                    self.finish_mob_removal(id);
+                    // LivingEntity.tickDeath broadcasts event 60 before remove;
+                    // cube splitting and the killed effects also precede setRemoved.
+                    let was_marked = self.mob_object(id).is_some_and(|mob| mob.removed);
+                    if gone.last().is_some_and(|death| death.0 == id) {
+                        let (_, at, width, height, split) = gone.pop().unwrap();
+                        self.finish_mob_death_animation(id, at, width, height, split);
+                    }
+                    let killed_effects = corpses.last().is_some_and(|mob| mob.id == id);
+                    if killed_effects {
+                        corpses.pop();
+                    }
+                    if was_marked {
+                        self.finish_mob_removal(id);
+                    } else {
+                        self.remove_mob_now(id, killed_effects);
+                    }
                     if let Some(index) = self.mobs.iter().position(|mob| mob.id == id) {
-                        let removed = self.mobs.remove(index);
-                        if !self.persist.off_level.is_empty()
-                            && self.mob_objects().any(|mob| mob.extra.mount == Some(id))
-                        {
-                            self.persist
-                                .off_level
-                                .insert(id, crate::game::persist::OffLevel::Mob(removed));
-                        }
+                        self.mobs.remove(index);
                     }
                 }
                 if let Some((id, kind)) = &tell_post {
@@ -981,27 +996,6 @@ impl Game<'_> {
         }
         laps.lap("creature_loop");
         if dispatch_panic.is_none() {
-            if !self.persist.off_level.is_empty() {
-                let mounted: std::collections::HashSet<_> = mobs
-                    .iter()
-                    .chain(self.mob_objects())
-                    .filter_map(|passenger| passenger.extra.mount)
-                    .collect();
-                for mob in &mobs {
-                    let kept = index
-                        .get(&mob.id)
-                        .and_then(|&slot| keep.get(slot as usize))
-                        .copied()
-                        .unwrap_or(true);
-                    if !kept && mounted.contains(&mob.id) {
-                        let mut removed = mob.clone();
-                        removed.removed = true;
-                        self.persist
-                            .off_level
-                            .insert(mob.id, crate::game::persist::OffLevel::Mob(removed));
-                    }
-                }
-            }
             if positions.is_none() {
                 let mut flags = keep.into_iter();
                 mobs.retain(|_| flags.next().unwrap_or(true));

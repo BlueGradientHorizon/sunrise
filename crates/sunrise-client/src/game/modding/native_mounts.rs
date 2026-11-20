@@ -20,6 +20,25 @@ impl Game<'_> {
         }
     }
 
+    /// Run a vehicle's effects before `Entity.setRemoved`. Keep the entity accessible
+    /// to effects, but don't let those effects start destroying it again.
+    pub(super) fn with_vehicle_removal_effects<R>(
+        &mut self,
+        target: Target,
+        effects: impl FnOnce(&mut Self),
+        remove: impl FnOnce(&mut Self) -> R,
+    ) -> Option<R> {
+        if self.target_removed(&target) || !self.persist.preparing_vehicle_removals.insert(target) {
+            return None;
+        }
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| effects(self)));
+        self.persist.preparing_vehicle_removals.remove(&target);
+        if let Err(payload) = result {
+            std::panic::resume_unwind(payload);
+        }
+        self.with_destroying_vehicle(target, remove)
+    }
+
     /// `Entity.setRemoved` makes a vehicle invisible before notifying riders.
     /// The owning list is kept stable while callbacks run.
     pub(super) fn with_destroying_vehicle<R>(
@@ -29,7 +48,9 @@ impl Game<'_> {
     ) -> Option<R> {
         let id = self.network_entity_id(target)? as u32;
         let y = self.target_position(target)?[1];
-        if !self.persist.destroying_vehicles.insert(target) {
+        if self.persist.preparing_vehicle_removals.contains(&target)
+            || !self.persist.destroying_vehicles.insert(target)
+        {
             return None;
         }
         self.retire_vehicle_registration(target);
@@ -76,6 +97,8 @@ impl Game<'_> {
             "minecraft:cushion".into()
         } else if let Some(m) = self.mob_object(id) {
             mob_kind(m)
+        } else if self.tnts.iter().any(|t| t.id == id) {
+            "minecraft:tnt".into()
         } else if self.armor_stands.iter().any(|a| a.id == id) {
             self.target_type(Target::Stand(id))
         } else if self.others.iter().any(|o| o.id == id) {

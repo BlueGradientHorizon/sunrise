@@ -981,7 +981,7 @@ fn killing_or_removing_a_general_row_keeps_its_passengers_in_the_level() {
     });
 }
 
-struct ObserveDismounts(std::sync::Arc<std::sync::Mutex<Vec<u32>>>);
+struct ObserveDismounts(std::sync::Arc<std::sync::Mutex<Vec<(u32, String)>>>);
 
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for ObserveDismounts {
@@ -991,7 +991,10 @@ impl mod_api::Hooks for ObserveDismounts {
         event: &mut mod_api::EntityMountEvent<'_>,
     ) -> mod_api::Flow {
         if !event.mounting {
-            self.0.lock().unwrap().push(event.entity);
+            self.0
+                .lock()
+                .unwrap()
+                .push((event.entity, event.vehicle_kind.to_owned()));
         }
         mod_api::Flow::Continue
     }
@@ -1080,7 +1083,9 @@ fn removing_a_vehicle_dismounts_general_and_mob_passengers_immediately_in_order(
                     assert!(game.as_console(|g| g.run_command("kill @e[type=minecraft:minecart]")))
                 }
                 "boat damage" => assert!(game.hurt_boat(0, 5.0, false)),
-                "stand damage" => game.break_armor_stand_by_anything(0, "minecraft:in_fire", 0),
+                "stand damage" => {
+                    assert!(game.break_armor_stand_by_anything(0, "minecraft:in_fire", 0))
+                }
                 "mob death" | "mob death with only a mob rider" => {
                     game.world.chunks.insert(
                         (0, 0),
@@ -1102,7 +1107,12 @@ fn removing_a_vehicle_dismounts_general_and_mob_passengers_immediately_in_order(
                 .copied()
                 .filter(|&id| game.entity_is_passenger(game.entity(id).unwrap()) != Some(false))
                 .collect();
-            let actual = std::mem::take(&mut *dismounts.lock().unwrap());
+            let actual: Vec<_> = dismounts
+                .lock()
+                .unwrap()
+                .drain(..)
+                .map(|(id, _)| id)
+                .collect();
             outcomes.push((case, still_riding, actual, expected));
         }
         // Primed TNT is not a typed start_riding target, but the real NBT
@@ -1139,15 +1149,9 @@ fn removing_a_vehicle_dismounts_general_and_mob_passengers_immediately_in_order(
         assert_eq!(game.general_row(rider).unwrap().mount, Some(tnt));
         game.tick_one_tnt(0, &[]).unwrap();
         assert!(game.tnts.is_empty());
-        let still_riding = game
-            .general_row(rider)
-            .unwrap()
-            .mount
-            .into_iter()
-            .map(|_| rider)
-            .collect();
+        assert_eq!(game.general_row(rider).unwrap().mount, None);
         let actual = std::mem::take(&mut *dismounts.lock().unwrap());
-        outcomes.push(("TNT fuse", still_riding, actual, vec![rider]));
+        assert_eq!(actual, [(rider, "minecraft:tnt".into())]);
         for (case, still_riding, notifications, expected) in outcomes {
             assert_eq!(
                 (still_riding, notifications),

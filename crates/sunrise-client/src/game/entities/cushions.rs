@@ -402,14 +402,14 @@ impl Game<'_> {
     /// `BlockAttachedEntity.hurtServer`: `kill` (the `entity_die` event), then
     /// `Cushion.dropItem`.
     pub(super) fn break_cushion(&mut self, index: usize, by_player: bool) {
-        self.break_cushion_by(index, by_player.then_some(super::commands::Target::Player))
+        self.break_cushion_by(index, by_player.then_some(super::commands::Target::Player));
     }
     pub(super) fn break_cushion_by(
         &mut self,
         index: usize,
         source: Option<super::commands::Target>,
-    ) {
-        self.remove_cushion(index, source, true);
+    ) -> bool {
+        self.remove_cushion(index, source, true)
     }
     /// `BlockAttachedEntity.tick` on lost support: `discard()` and then
     /// `dropItem(level, null)`, which posts no game event.
@@ -423,9 +423,13 @@ impl Game<'_> {
         index: usize,
         source: Option<super::commands::Target>,
         killed: bool,
-    ) {
-        let Some(c) = self.take_removed_cushion(self.cushions[index].id) else {
-            return;
+    ) -> bool {
+        let id = self.cushions[index].id;
+        if self.target_removed(&super::commands::Target::Cushion(id)) {
+            return false;
+        }
+        let Some(c) = self.take_removed_cushion(id) else {
+            return false;
         };
         let p = c.position;
         if killed {
@@ -447,10 +451,11 @@ impl Game<'_> {
             .bool_at(sunrise_client::gamerules::vanilla::ENTITY_DROPS)
             || self.infinite_materials(source.as_ref())
         {
-            return;
+            return true;
         }
         let stack = c.item_stack_with_data();
         self.spawn_item(stack, [p.x, p.y, p.z], [0.0; 3], 10);
+        true
     }
     /// `Player.hasInfiniteMaterials` of a hurt's cause: the mode of the body in
     /// place, or of the guest the blast names.

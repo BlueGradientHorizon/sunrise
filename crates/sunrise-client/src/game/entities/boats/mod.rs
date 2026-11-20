@@ -2105,6 +2105,10 @@ impl Game<'_> {
             .persist
             .destroying_vehicles
             .contains(&super::commands::Target::Boat(id))
+            || self
+                .persist
+                .preparing_vehicle_removals
+                .contains(&super::commands::Target::Boat(id))
         {
             return Some(true);
         }
@@ -2133,33 +2137,14 @@ impl Game<'_> {
         });
         if destroyed {
             self.native_vehicle_destroy("boat", at);
-            if !self.boats.iter().any(|b| {
-                b.id == id
-                    && !self
-                        .persist
-                        .removals
-                        .contains(&crate::game::commands::Target::Boat(id))
-            }) {
-                return Some(true);
-            }
-            let Some(Some(b)) =
-                self.with_destroying_vehicle(super::commands::Target::Boat(id), |game| {
-                    game.release_vehicle_container(id);
-                    let i = game.boats.iter().position(|b| b.id == id)?;
-                    game.unpack_boat_loot(i, false);
-                    let i = game.boats.iter().position(|b| b.id == id)?;
-                    Some(game.boats.remove(i))
-                })
-            else {
+            let Some(b) = self.boats.iter().find(|b| b.id == id) else {
                 return Some(true);
             };
-            // `AbstractChestBoat.remove` spills the chest through
-            // `Containers.dropContents` for every destroying removal reason
-            // (the kill below, and a creative hit's discard); that has no
-            // `entity_drops` gate of its own. A plain boat has no slots.
-            self.drop_vehicle_contents(at, &b.items);
-            // AbstractBoat.remove, after that: a destroyed boat drops its lead.
-            self.boat_removed(&b);
+            let item = b.entity_type();
+            let slots = b.items.len();
+            if !self.kill_vehicle_object(super::commands::Target::Boat(id)) {
+                return Some(true);
+            }
             // `VehicleEntity.destroy(level, dropItem)`: `kill` (the boat's own
             // ENTITY_DIE after that removal), then the boat item on the death
             // path only, and only with `entity_drops` on, by `spawnAtLocation`
@@ -2175,7 +2160,6 @@ impl Game<'_> {
                     .rules
                     .bool_at(sunrise_client::gamerules::vanilla::ENTITY_DROPS)
             {
-                let item = b.entity_type();
                 self.spawn_item_own(
                     ItemStack {
                         item: Arc::from(item.as_str()),
@@ -2188,12 +2172,10 @@ impl Game<'_> {
                 );
                 // AbstractChestBoat.destroy: `chestVehicleDestroyed` drops the
                 // emptied chest again, which only draws each slot's spot.
-                if b.chest {
-                    let empty = vec![None; b.items.len()];
-                    self.drop_vehicle_contents(at, &empty);
+                if slots != 0 {
+                    self.drop_vehicle_contents(at, &vec![None; slots]);
                 }
             }
-            self.retain_removed_vehicle(id, super::persist::RemovedVehicle::Boat(b));
         }
         Some(destroyed)
     }
