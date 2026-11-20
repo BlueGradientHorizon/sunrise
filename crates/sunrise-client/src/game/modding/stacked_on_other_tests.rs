@@ -959,7 +959,8 @@ fn an_outer_abort_after_an_applied_lan_click_restores_the_guest_and_the_containe
             assert_eq!(state(game), (3, 0, 0));
             game.transaction_close(&seal, false);
             assert_eq!(state(game), (0, 3, 0));
-            // The guest's inventory menu: slot 9 and the cursor.
+            // The guest's inventory menu: close the chest before the window-0 click.
+            game.guest_close_all(12);
             give(game);
             let seal = game.transaction_open();
             game.lan_guest_packet(12, packet(0, 9));
