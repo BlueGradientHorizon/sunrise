@@ -13,9 +13,9 @@
 //! - a tuple struct's field (`X.0`) counts only where the parser ties the read to `X`: `X(..).0`,
 //!   `v.0` where `v` is bound by `let v: X`, `let v = X(..)` or a parameter `v: X` (through `&`
 //!   and `&mut`), `self.0` in a method of an impl for `X`, and each position a pattern
-//!   `X(a, b, ..)` lists before its `..`. A qualified `X` counts for no API field only if its
-//!   path reaches a concrete type defined in the mod (`local::Pos`). Imports, aliases and
-//!   paths the scan cannot place keep their API candidates. A position read anywhere else (on a
+//!   `X(a, b, ..)` lists before its `..`. A qualified `X` counts for no API field if it can be
+//!   proved to name a mod-local type or tuple constructor (`local::Pos`), or a tuple enum variant
+//!   (`Shape::Pos`). Paths the scan cannot place keep their API candidates. A position read anywhere else (on a
 //!   tuple, a closure's untyped argument, another field, a method's result, in a macro body)
 //!   counts for no struct; the compile against the target build judges it.
 //!
@@ -76,7 +76,7 @@
 //! entries. [`UsesTable::read`] refuses an unknown schema, malformed JSON, repeated ids and
 //! documents over [`MAX_USES_BYTES`] with a typed [`UsesError`].
 use crate::scan::{self, Token};
-use crate::syntax::{self, How, Syntax};
+use crate::syntax::{self, How, Namespace, Syntax};
 use crate::{MacroKind, Role, Surface, Type, TypeKind, leaf};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -401,9 +401,10 @@ struct FileFacts<'t> {
     impls: Vec<(usize, Option<usize>)>,
     /// The names some `use` in the file binds.
     imported: BTreeSet<&'t str>,
-    /// Per module: the names bound by `use`, with `*` for any glob. Block imports also count
-    /// here: where they might shadow a module name, leave its path unresolved.
-    module_imported: Vec<BTreeSet<&'t str>>,
+    /// Per module: each name bound by `use` (`*` for globs). It identifies an import only
+    /// when the binding is unique and unconditional, directly in the module. Block imports
+    /// and conditional imports can prevent a proof but cannot establish one.
+    module_imported: Vec<BTreeMap<&'t str, Option<usize>>>,
     /// What the parser reads of the file.
     syntax: Syntax<'t>,
     /// Tokens inside a macro call's delimiters or a `macro_rules!` body, which the parser does
@@ -558,10 +559,17 @@ fn file_facts<'t>(file: &str, text: &'t str) -> Result<FileFacts<'t>, ScanError>
         .filter(|(_, local)| *local != "*")
         .map(|(_, local)| *local)
         .collect();
-    let mut module_imported = vec![BTreeSet::new(); syntax.scopes.len()];
+    let mut module_imported = vec![BTreeMap::new(); syntax.scopes.len()];
     for (at, range) in statements {
-        module_imported[syntax.module_at(starts[at])]
-            .extend(imports[range].iter().map(|(_, name)| *name));
+        let byte = starts[at];
+        let bindings = &mut module_imported[syntax.module_at(byte)];
+        let direct = syntax.direct_uses.contains(&byte);
+        for i in range {
+            bindings
+                .entry(imports[i].1)
+                .and_modify(|import| *import = None)
+                .or_insert(direct.then_some(i));
+        }
     }
     Ok(FileFacts {
         tokens,
@@ -846,8 +854,8 @@ struct ModFacts<'t> {
     item_aliases: BTreeSet<&'t str>,
     /// Every other name the mod defines: traits, associated types.
     others: BTreeSet<&'t str>,
-    /// Names some `macro_rules!` or some `use` that does not start at an API root binds: a
-    /// standard or API macro or attribute of that name may be another.
+    /// Names a `macro_rules!`, an external dependency alias, or a `use` that does not start
+    /// at an API root binds: a standard or API macro or attribute of that name may be another.
     rebound: BTreeSet<&'t str>,
     /// Some glob outside the API and the mod (`use dep::*;`) or a `#[macro_use]` may bring in
     /// macros of any name.
@@ -898,6 +906,9 @@ fn mod_facts<'t>(files: &[FileFacts<'t>], api_prefixes: &BTreeSet<String>) -> Mo
     let mut imported = BTreeSet::new();
     for file in files {
         facts.rebound.extend(file.macro_rules.iter().copied());
+        facts
+            .rebound
+            .extend(file.syntax.extern_aliases.iter().copied());
         facts.rebound_all |= file
             .attributes
             .iter()
@@ -1124,6 +1135,7 @@ const STD_DERIVES: &[&str] = &[
 /// standard ones and the API's own, less every name something in the mod may rebind.
 struct Trusted<'s> {
     roots: &'s BTreeSet<&'s str>,
+    local_modules: &'s BTreeSet<&'s str>,
     /// By kind, the API's own macro names.
     api_macros: BTreeSet<&'s str>,
     api_attributes: BTreeSet<&'s str>,
@@ -1157,8 +1169,15 @@ impl Trusted<'_> {
                         || api.contains(name)
                         || (matches!(kind, Named::Macro) && *name == "macro_rules"))
             }
-            [root, .., name] if self.roots.contains(root) => api.contains(name),
-            [root, .., name] if matches!(*root, "std" | "core" | "alloc") => std.contains(name),
+            [root, .., _] if self.local_modules.contains(root) || self.rebound.contains(root) => {
+                false
+            }
+            [root, .., name] if self.roots.contains(root) => {
+                !self.rebound_all && api.contains(name)
+            }
+            [root, .., name] if matches!(*root, "std" | "core" | "alloc") => {
+                !self.rebound_all && std.contains(name)
+            }
             [root, ..] => {
                 matches!(kind, Named::Attribute)
                     && matches!(*root, "rustfmt" | "clippy" | "diagnostic")
@@ -1370,6 +1389,7 @@ impl<'s> Index<'s> {
         let macros = &self.surface.macros;
         Trusted {
             roots: &module.roots,
+            local_modules: &module.modules,
             api_macros: macros
                 .iter()
                 .filter(|m| {
@@ -1484,6 +1504,8 @@ struct Resolver<'a, 's, 't> {
     /// Unlike unqualified names, a qualified path can be judged in an inline module, or in
     /// the presence of globs that cannot take its name away from a concrete definition.
     qualified_certain: Vec<bool>,
+    /// The literal `mod_api` root can name only the API crate; aliases are not proof.
+    api_root_certain: bool,
     file_modules: FileModules<'t>,
     /// Per file: the `type` aliases of an API item, which define no type of the mod's own.
     api_aliases: Vec<BTreeSet<&'t str>>,
@@ -1533,6 +1555,13 @@ impl<'a, 's, 't> Resolver<'a, 's, 't> {
             })
             .collect();
         let file_modules = FileModules::new(files, sources, &qualified_certain);
+        let api_root_certain = qualified_certain.iter().all(|&certain| certain)
+            && !module.modules.contains("mod_api")
+            && !module.rebound.contains("mod_api")
+            && !module.bound.contains_key("mod_api")
+            && !module.types.contains("mod_api")
+            && !module.item_aliases.contains("mod_api")
+            && !module.others.contains("mod_api");
         let mod_globs = files.iter().flat_map(|f| api_globs(f, module)).collect();
         let mut resolver = Resolver {
             index,
@@ -1540,6 +1569,7 @@ impl<'a, 's, 't> Resolver<'a, 's, 't> {
             files,
             certain,
             qualified_certain,
+            api_root_certain,
             file_modules,
             api_aliases: Vec::new(),
             mod_globs,
@@ -1585,9 +1615,15 @@ impl<'a, 's, 't> Resolver<'a, 's, 't> {
             && !file.imported.contains(name)
     }
 
-    /// Whether a qualified path is demonstrably a concrete local type or an enum variant.
+    /// Whether a qualified path is demonstrably a local type or constructor in its namespace.
     /// Follow only declared module edges; imports and aliases may lead back to the API.
-    fn qualified_own(&self, index: usize, byte: usize, path: &[&str]) -> bool {
+    fn qualified_own(
+        &self,
+        index: usize,
+        byte: usize,
+        path: &[&str],
+        namespace: Namespace,
+    ) -> bool {
         let resolve = || {
             if !self.qualified_certain[index] {
                 return None;
@@ -1621,8 +1657,8 @@ impl<'a, 's, 't> Resolver<'a, 's, 't> {
                     let imports = &file.module_imported[scope.1];
                     if module.block_items
                         || module.type_params.contains(first)
-                        || imports.contains(first)
-                        || imports.contains("*")
+                        || imports.contains_key(first)
+                        || imports.contains_key("*")
                     {
                         return None;
                     }
@@ -1633,10 +1669,11 @@ impl<'a, 's, 't> Resolver<'a, 's, 't> {
                 let (file, module) = scope;
                 let facts = &self.files[file];
                 let declared = &facts.syntax.scopes[module];
-                if rest.is_empty()
-                    && !facts.module_imported[module].contains(first)
+                if namespace == Namespace::Value
+                    && rest.is_empty()
+                    && !facts.module_imported[module].contains_key(first)
                     && declared
-                        .variants
+                        .tuple_variants
                         .get(first)
                         .is_some_and(|v| v.contains(name))
                 {
@@ -1651,12 +1688,72 @@ impl<'a, 's, 't> Resolver<'a, 's, 't> {
             }
             let (file, module) = scope;
             let facts = &self.files[file];
-            Some(
-                facts.syntax.scopes[module].types.contains(name)
-                    && !facts.module_imported[module].contains(name),
-            )
+            let declared = &facts.syntax.scopes[module];
+            let names = match namespace {
+                Namespace::Type => &declared.types,
+                Namespace::Value => &declared.tuple_constructors,
+            };
+            Some(names.contains(name) && !facts.module_imported[module].contains_key(name))
         };
         resolve().unwrap_or(false)
+    }
+
+    /// Prove an API variant in the value namespace through `mod_api` or a direct, unshadowed
+    /// import in this module. A same-named enum or import elsewhere says nothing about this path.
+    fn api_variant(&self, index: usize, byte: usize, path: &[&str], rooted: bool) -> bool {
+        let [first, rest @ .., variant] = path else {
+            return false;
+        };
+        if !self.api_root_certain {
+            return false;
+        }
+        let file = &self.files[index];
+        let at = file.syntax.module_at(byte);
+        let declared = &file.syntax.scopes[at];
+        let imports = &file.module_imported[at];
+        if !rooted
+            && (declared.block_items
+                || declared.type_params.contains(first)
+                || declared.type_params.contains("mod_api")
+                || imports.contains_key("*")
+                || imports.contains_key("mod_api"))
+        {
+            return false;
+        }
+        let owner = if *first == "mod_api" {
+            rest.join("::")
+        } else if !rooted
+            && let Some(Some(import)) = imports.get(first)
+            && let ["mod_api", prefix @ ..] = &file.imports[*import].0[..]
+        {
+            prefix
+                .iter()
+                .chain(rest)
+                .copied()
+                .collect::<Vec<_>>()
+                .join("::")
+        } else {
+            return false;
+        };
+        self.index
+            .by_name
+            .get(variant)
+            .into_iter()
+            .flatten()
+            .any(|id| {
+                let Some(ty) = self
+                    .index
+                    .owners
+                    .get(id)
+                    .and_then(|o| self.index.types.get(o.as_str()))
+                else {
+                    return false;
+                };
+                ty.contract.kind == TypeKind::Enum
+                    && (ty.id.strip_prefix("type:") == Some(owner.as_str())
+                        || ty.paths.contains(&owner))
+                    && ty.variants.iter().any(|v| v.id == *id && !v.contract.named)
+            })
     }
 
     /// Each API path (`mod_api::` left out) a path written in a file may be: through an API
@@ -1918,7 +2015,7 @@ impl<'s, 't> Walk<'_, '_, 's, 't> {
 
     /// Every tuple struct field the parser ties a read to ([`syntax::TupleField`]), with the
     /// struct's name read through the impl's target for `Self`. Skip a name only when it is
-    /// known to name the mod's own type or variant.
+    /// known to name the mod's own type or constructor, or an enum variant.
     fn tuple_fields(&mut self) {
         let Walk {
             resolver,
@@ -1933,7 +2030,8 @@ impl<'s, 't> Walk<'_, '_, 's, 't> {
             let place = (path, field.line);
             // The struct's path as written, or the impl's target for `Self`; a leading empty name
             // is a leading `::`.
-            let (written, rooted): (&[&'t str], bool) = match &field.path[..] {
+            let namespace = field.tie.namespace;
+            let (written, rooted): (&[&'t str], bool) = match &field.tie.path[..] {
                 ["Self"] => match resolver.impl_at(index, field.byte) {
                     Some(Some(target)) => match &target[..] {
                         ["", rest @ ..] => (rest, true),
@@ -1941,7 +2039,7 @@ impl<'s, 't> Walk<'_, '_, 's, 't> {
                     },
                     _ => continue,
                 },
-                path => (path, field.rooted),
+                path => (path, field.tie.rooted),
             };
             let Some(&name) = written.last() else {
                 continue;
@@ -1950,9 +2048,21 @@ impl<'s, 't> Walk<'_, '_, 's, 't> {
             resolver.lookup(name);
             let resolver: &Resolver<'_, 's, 't> = resolver;
             let resolved = &resolver.memo[name];
+            let top = &file.syntax.scopes[0];
+            let owns_unqualified = unqualified
+                && !resolved.aliased
+                && resolver.own_in(index, name)
+                && (namespace == Namespace::Type
+                    || (!top.block_items
+                        && !top.block_values
+                        && top.tuple_constructors.contains(name)));
             if resolved.ids.is_empty()
-                || (unqualified && !resolved.aliased && resolver.own_in(index, name))
-                || (!unqualified && !rooted && resolver.qualified_own(index, field.byte, written))
+                || owns_unqualified
+                || (!unqualified
+                    && !rooted
+                    && resolver.qualified_own(index, field.byte, written, namespace))
+                || (namespace == Namespace::Value
+                    && resolver.api_variant(index, field.byte, written, rooted))
             {
                 continue;
             }

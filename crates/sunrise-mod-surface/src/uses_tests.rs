@@ -1342,6 +1342,126 @@ fn a_qualified_struct_path_is_the_struct_it_leads_to() {
 }
 
 #[test]
+fn a_proven_api_variant_does_not_read_a_same_named_tuple_field() {
+    let pieces = |pos_type, named| {
+        let mut pieces = wider();
+        let mut shape = api_enum(
+            "type:Shape",
+            &[if named { "Pos { x: i32 }" } else { "Pos(i32)" }],
+        );
+        shape.variants = vec![Variant::new(
+            "type:Shape.Pos",
+            "",
+            VariantContract {
+                fields: vec![Argument {
+                    name: if named { "x" } else { "0" }.into(),
+                    ty: "i32".into(),
+                }],
+                named,
+                refs: vec!["type:Shape".into()],
+            },
+        )];
+        pieces.types.push(shape);
+        pieces.replace_type(api_tuple("type:Pos", &[pos_type, "i32"]));
+        pieces
+    };
+    let uses = scan_on(
+        pieces("i32", false),
+        r#"
+use mod_api::{Pos, Shape};
+use mod_api::Shape as S;
+fn read(_: Pos, s: Shape) {
+    if let Shape::Pos(x) = s {}
+    if let S::Pos(x) = s {}
+    if let ::mod_api::Shape::Pos(x) = s {}
+}
+mod local { pub enum Shape { Pos(i32) } }
+fn read_local(s: local::Shape) { let local::Shape::Pos(_) = s; }
+"#,
+    );
+    let found = ids(&uses);
+    assert!(found.contains(&"type:Shape.Pos"));
+    assert!(!found.contains(&"type:Pos.0"));
+    assert_eq!(
+        fits(uses.entries(), &pieces("i64", false).build()),
+        Fit::Fits
+    );
+
+    // An import in another scope, or one shadowed in a block, proves nothing about the call.
+    for source in [
+        "mod elsewhere { use mod_api::Shape; } use dep as Shape; fn f() { let _ = Shape::Pos().0; }",
+        "use mod_api::Shape; fn f() { use dep as Shape; let _ = Shape::Pos().0; }",
+    ] {
+        let uses = scan_on(pieces("i32", false), &format!("use mod_api::Pos; {source}"));
+        assert!(ids(&uses).contains(&"type:Pos.0"), "{source}");
+    }
+
+    // A braced variant cannot be called; this is a same-named associated function.
+    let uses = scan_on(
+        pieces("i32", true),
+        "use mod_api::{Pos, Shape}; fn read() -> i32 { Shape::Pos().0 }",
+    );
+    assert!(ids(&uses).contains(&"type:Pos.0"));
+}
+
+#[test]
+fn a_call_needs_a_local_tuple_constructor_not_a_same_named_type() {
+    let uses = scan_on(
+        wider(),
+        r#"
+mod local {
+    pub struct Pos { pub x: i32 }
+    pub fn Pos() -> ::mod_api::Pos { todo!() }
+}
+mod own { pub struct Pos(pub i32, pub i32); }
+fn read() -> i32 {
+    let p = local::Pos();
+    p.0 + own::Pos(0, 1).1
+}
+"#,
+    );
+    let found = ids(&uses);
+    assert!(found.contains(&"type:Pos.0"));
+    assert!(!found.contains(&"type:Pos.1"));
+
+    let uses = scan_on(
+        wider(),
+        r#"
+use mod_api::Pos;
+enum Shape { Pos { x: i32 } }
+impl Shape { fn Pos() -> Pos { todo!() } }
+fn read() -> i32 { Shape::Pos().0 }
+"#,
+    );
+    assert!(ids(&uses).contains(&"type:Pos.0"));
+}
+
+#[test]
+fn a_shadowed_macro_root_does_not_prove_a_local_type() {
+    for root in ["mod_api", "sunrise_mod", "std"] {
+        let attribute = if root == "std" {
+            "allow"
+        } else {
+            "sunrise_mod"
+        };
+        let uses = scan_on(
+            wider(),
+            &format!(
+                r#"
+use ::mod_api::Pos;
+mod elsewhere {{ use ::mod_api as sunrise_mod; }}
+mod {root} {{ pub use rewrites::replace as {attribute}; }}
+#[{root}::{attribute}]
+mod local {{ pub struct Pos(pub i32); }}
+fn read(p: local::Pos) -> i32 {{ p.0 }}
+"#
+            ),
+        );
+        assert!(ids(&uses).contains(&"type:Pos.0"), "{root}");
+    }
+}
+
+#[test]
 fn a_qualified_type_alias_keeps_the_api_field() {
     let uses = scan_on(
         wider(),
