@@ -11,6 +11,8 @@
 //! Not ported: test sequences (`GameTestSequence`: the built-in tests, only
 //! `always_pass`, do not use them), test environments other than the empty
 //! `all_of`, and removing the entities of a finished test.
+#[cfg(test)]
+use super::test_instances::TestDefSample;
 use super::{
     Dim, Game,
     commands::{Target, execute::Source},
