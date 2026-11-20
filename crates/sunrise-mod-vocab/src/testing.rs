@@ -1017,21 +1017,21 @@ pub struct TestReader {
     pub tags: std::sync::Arc<[(String, std::sync::Arc<[String]>)]>,
 }
 impl crate::LoadReader for TestReader {
-    fn registry(&self, name: &str) -> Option<std::sync::Arc<[String]>> {
-        self.registries.get(name).cloned()
+    fn registry(&self, name: &str) -> Option<&[String]> {
+        self.registries.get(name).map(AsRef::as_ref)
     }
     fn fluid_tags(&self) -> std::sync::Arc<[(String, std::sync::Arc<[String]>)]> {
         self.tags.clone()
     }
-    fn setting(&self, _: &str, _: &str) -> Option<String> {
+    fn setting(&self, _: &str, _: &str) -> Option<&str> {
         None
     }
 }
 impl crate::LoopReader for TestReader {
-    fn registry(&self, name: &str) -> Option<std::sync::Arc<[String]>> {
-        self.registries.get(name).cloned()
+    fn registry(&self, name: &str) -> Option<&[String]> {
+        self.registries.get(name).map(AsRef::as_ref)
     }
-    fn setting(&self, _: &str, _: &str) -> Option<String> {
+    fn setting(&self, _: &str, _: &str) -> Option<&str> {
         None
     }
 }

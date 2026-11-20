@@ -185,22 +185,22 @@ pub(crate) struct TestReader {
 }
 #[cfg(test)]
 impl LoadReader for TestReader {
-    fn registry(&self, name: &str) -> Option<Arc<[String]>> {
-        self.registries.get(name).cloned()
+    fn registry(&self, name: &str) -> Option<&[String]> {
+        self.registries.get(name).map(AsRef::as_ref)
     }
     fn fluid_tags(&self) -> Arc<[(String, Arc<[String]>)]> {
         self.tags.clone()
     }
-    fn setting(&self, _: &str, _: &str) -> Option<String> {
+    fn setting(&self, _: &str, _: &str) -> Option<&str> {
         None
     }
 }
 #[cfg(test)]
 impl LoopReader for TestReader {
-    fn registry(&self, name: &str) -> Option<Arc<[String]>> {
-        self.registries.get(name).cloned()
+    fn registry(&self, name: &str) -> Option<&[String]> {
+        self.registries.get(name).map(AsRef::as_ref)
     }
-    fn setting(&self, _: &str, _: &str) -> Option<String> {
+    fn setting(&self, _: &str, _: &str) -> Option<&str> {
         None
     }
 }
@@ -548,10 +548,7 @@ mod tests {
         with_test_packages(&["one", "two"], || {
             let context = OwningLoop::new(LoopSide::Client, &source);
             assert_eq!(context.side(), LoopSide::Client);
-            assert_eq!(
-                context.registry("item").as_deref(),
-                Some(&["a:b".to_owned()][..])
-            );
+            assert_eq!(context.registry("item"), Some(&["a:b".to_owned()][..]));
             assert_eq!(context.registry("block"), None);
             assert_eq!(context.setting("one", "mode"), None);
             assert_eq!(context.mods().ids().collect::<Vec<_>>(), ["one", "two"]);

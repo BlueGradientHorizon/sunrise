@@ -750,8 +750,8 @@ pub trait DataLoadContext {
     /// The phase selected at the owning load boundary.
     fn origin(&self) -> DataLoadOrigin;
 
-    /// Registry names in ID order, from this resource generation's snapshot.
-    fn registry(&self, name: &str) -> Option<Arc<[String]>>;
+    /// Borrows registry names in ID order from this resource generation.
+    fn registry(&self, name: &str) -> Option<&[String]>;
 
     /// Resolve a fluid name against this load's registered fluid identities.
     fn fluid_key(&self, id: &str) -> Option<crate::FluidKey>;
@@ -764,21 +764,21 @@ pub trait DataLoadContext {
         None
     }
 
-    /// A loaded mod's setting captured at the owning load boundary, without file I/O.
-    fn setting(&self, mod_id: &str, key: &str) -> Option<String>;
+    /// Borrows a setting captured for this generation, without file I/O.
+    fn setting(&self, mod_id: &str, key: &str) -> Option<&str>;
 
-    /// The same loaded-mod view available during registration.
-    fn mods(&self) -> LoadedMods;
+    /// Borrows the loaded-mod inventory in dispatch order.
+    fn mods(&self) -> &LoadedMods;
 }
 
 /// Immutable resource-generation reads supplied by an owning loader.
 pub trait LoadReader: Sync {
-    /// Registry names in ID order.
-    fn registry(&self, name: &str) -> Option<Arc<[String]>>;
+    /// Borrows registry names in ID order.
+    fn registry(&self, name: &str) -> Option<&[String]>;
     /// Fluid tags and their members in source order.
     fn fluid_tags(&self) -> Arc<[(String, Arc<[String]>)]>;
-    /// A captured setting, without file I/O.
-    fn setting(&self, mod_id: &str, key: &str) -> Option<String>;
+    /// Borrows a captured setting, without file I/O.
+    fn setting(&self, mod_id: &str, key: &str) -> Option<&str>;
 }
 
 // no wire: borrowed phase-scoped host readers; authority stays with their owning thread.
@@ -807,7 +807,7 @@ impl DataLoadContext for OwningLoad<'_> {
     fn origin(&self) -> DataLoadOrigin {
         self.origin
     }
-    fn registry(&self, name: &str) -> Option<Arc<[String]>> {
+    fn registry(&self, name: &str) -> Option<&[String]> {
         self.source.registry(name)
     }
     fn fluid_key(&self, id: &str) -> Option<crate::FluidKey> {
@@ -816,11 +816,11 @@ impl DataLoadContext for OwningLoad<'_> {
     fn fluid_tags(&self) -> Option<Arc<[(String, Arc<[String]>)]>> {
         Some(self.source.fluid_tags())
     }
-    fn setting(&self, mod_id: &str, key: &str) -> Option<String> {
+    fn setting(&self, mod_id: &str, key: &str) -> Option<&str> {
         self.source.setting(mod_id, key)
     }
-    fn mods(&self) -> LoadedMods {
-        self.mods.clone()
+    fn mods(&self) -> &LoadedMods {
+        &self.mods
     }
 }
 
@@ -867,14 +867,14 @@ pub trait LoopContext {
     /// The side whose loop fires the hook.
     fn side(&self) -> LoopSide;
 
-    /// Registry names in ID order, from the resource generation's snapshot.
-    fn registry(&self, name: &str) -> Option<Arc<[String]>>;
+    /// Borrows registry names in ID order from this resource generation.
+    fn registry(&self, name: &str) -> Option<&[String]>;
 
-    /// A loaded mod's setting captured when this context was built, without file I/O.
-    fn setting(&self, mod_id: &str, key: &str) -> Option<String>;
+    /// Borrows a setting captured for this generation, without file I/O.
+    fn setting(&self, mod_id: &str, key: &str) -> Option<&str>;
 
-    /// The same loaded-mod view available during registration.
-    fn mods(&self) -> LoadedMods;
+    /// Borrows the loaded-mod inventory in dispatch order.
+    fn mods(&self) -> &LoadedMods;
 }
 
 /// Immutable resource-generation reads supplied by an owning loop.
@@ -899,10 +899,10 @@ pub trait LoopReader: Sync {
         let _ = (set, item);
         false
     }
-    /// Registry names in ID order.
-    fn registry(&self, name: &str) -> Option<Arc<[String]>>;
-    /// A captured setting, without file I/O.
-    fn setting(&self, mod_id: &str, key: &str) -> Option<String>;
+    /// Borrows registry names in ID order.
+    fn registry(&self, name: &str) -> Option<&[String]>;
+    /// Borrows a captured setting, without file I/O.
+    fn setting(&self, mod_id: &str, key: &str) -> Option<&str>;
 }
 
 // no wire: borrowed phase-scoped host readers; authority stays with their owning thread.
@@ -943,14 +943,14 @@ impl LoopContext for OwningLoop<'_> {
     fn side(&self) -> LoopSide {
         self.side
     }
-    fn registry(&self, name: &str) -> Option<Arc<[String]>> {
+    fn registry(&self, name: &str) -> Option<&[String]> {
         self.source.registry(name)
     }
-    fn setting(&self, mod_id: &str, key: &str) -> Option<String> {
+    fn setting(&self, mod_id: &str, key: &str) -> Option<&str> {
         self.source.setting(mod_id, key)
     }
-    fn mods(&self) -> LoadedMods {
-        self.mods.clone()
+    fn mods(&self) -> &LoadedMods {
+        &self.mods
     }
 }
 
@@ -981,8 +981,8 @@ pub trait WorldgenHost {
     /// A loaded mod's setting captured when the server built this view, without file I/O.
     fn setting(&self, mod_id: &str, key: &str) -> Option<String>;
 
-    /// The same loaded-mod view available during registration.
-    fn mods(&self) -> LoadedMods;
+    /// Borrows the loaded-mod inventory in dispatch order.
+    fn mods(&self) -> &LoadedMods;
 
     /// `BlockState.setValue`: `state` with its property `key` set to `value`; `state` itself
     /// when it already has that value, None when its block has no such property or value.
@@ -1034,8 +1034,8 @@ impl WorldgenHost for OwningWorldgen<'_> {
     fn setting(&self, mod_id: &str, key: &str) -> Option<String> {
         (self.setting)(mod_id, key)
     }
-    fn mods(&self) -> LoadedMods {
-        self.mods.clone()
+    fn mods(&self) -> &LoadedMods {
+        &self.mods
     }
     fn state_with_property(
         &self,

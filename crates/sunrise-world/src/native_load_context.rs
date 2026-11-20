@@ -62,8 +62,8 @@ impl Snapshot {
         Self { inputs, settings }
     }
 
-    fn registry(&self, name: &str) -> Option<Arc<[String]>> {
-        self.inputs.registries.get(name).cloned()
+    fn registry(&self, name: &str) -> Option<&Arc<[String]>> {
+        self.inputs.registries.get(name)
     }
 
     /// The fluid tags the inputs carry, each tag's fluids in the sources'
@@ -72,7 +72,7 @@ impl Snapshot {
         &self.inputs.fluid_tags
     }
 
-    fn setting(&self, mod_id: &str, key: &str) -> Option<String> {
+    fn setting(&self, mod_id: &str, key: &str) -> Option<&str> {
         let mod_at = self
             .settings
             .binary_search_by(|(known, _)| known.as_str().cmp(mod_id))
@@ -81,7 +81,7 @@ impl Snapshot {
         let at = values
             .binary_search_by(|(known, _)| known.as_str().cmp(key))
             .ok()?;
-        Some(values[at].1.clone())
+        Some(values[at].1.as_str())
     }
 }
 
@@ -224,12 +224,12 @@ impl LoadContext {
     }
 
     /// Names in registry ID order, from the load's registry snapshot.
-    pub fn registry(&self, name: &str) -> Option<Arc<[String]>> {
-        self.snapshot.registry(name)
+    pub fn registry(&self, name: &str) -> Option<&[String]> {
+        self.snapshot.registry(name).map(Arc::as_ref)
     }
 
     /// A loaded mod's setting captured at this load boundary, with no file I/O.
-    pub fn setting(&self, mod_id: &str, key: &str) -> Option<String> {
+    pub fn setting(&self, mod_id: &str, key: &str) -> Option<&str> {
         self.snapshot.setting(mod_id, key)
     }
 }
@@ -272,12 +272,12 @@ impl LoopContext {
     }
 
     /// Names in registry ID order, from the registry snapshot it was built over.
-    pub fn registry(&self, name: &str) -> Option<Arc<[String]>> {
-        self.snapshot.registry(name)
+    pub fn registry(&self, name: &str) -> Option<&[String]> {
+        self.snapshot.registry(name).map(Arc::as_ref)
     }
 
     /// A loaded mod's setting captured when this context was built, with no file I/O.
-    pub fn setting(&self, mod_id: &str, key: &str) -> Option<String> {
+    pub fn setting(&self, mod_id: &str, key: &str) -> Option<&str> {
         self.snapshot.setting(mod_id, key)
     }
 }
@@ -652,12 +652,12 @@ pub struct WorldgenContext {
 impl WorldgenContext {
     /// Names in registry ID order, from the registry snapshot it was built over.
     pub fn registry(&self, name: &str) -> Option<Arc<[String]>> {
-        self.snapshot.registry(name)
+        self.snapshot.registry(name).cloned()
     }
 
     /// A loaded mod's setting captured when this context was built, with no file I/O.
     pub fn setting(&self, mod_id: &str, key: &str) -> Option<String> {
-        self.snapshot.setting(mod_id, key)
+        self.snapshot.setting(mod_id, key).map(str::to_owned)
     }
 }
 
@@ -813,7 +813,7 @@ mod tests {
                 assert_eq!(worldgen.setting("reader", "invalid"), None);
             });
             scope.spawn(|| {
-                assert_eq!(audio.setting("reader", "value").as_deref(), Some("before"));
+                assert_eq!(audio.setting("reader", "value"), Some("before"));
                 assert_eq!(audio.setting("reader", "later-invalid"), None);
             });
         });
@@ -866,18 +866,12 @@ mod tests {
             &admitted.snapshot.settings,
             &loop_context.snapshot.settings
         ));
-        assert_eq!(
-            loop_context.setting("reader", "mode").as_deref(),
-            Some("before")
-        );
+        assert_eq!(loop_context.setting("reader", "mode"), Some("before"));
         assert_eq!(worldgen.setting("reader", "late"), None);
         let next = admitted.for_load(DataLoadOrigin::ClientPreload, ["reader"]);
-        assert_eq!(next.setting("reader", "mode").as_deref(), Some("after"));
-        assert_eq!(next.setting("reader", "late").as_deref(), Some("later key"));
-        assert_eq!(
-            loop_context.setting("reader", "mode").as_deref(),
-            Some("before")
-        );
+        assert_eq!(next.setting("reader", "mode"), Some("after"));
+        assert_eq!(next.setting("reader", "late"), Some("later key"));
+        assert_eq!(loop_context.setting("reader", "mode"), Some("before"));
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -1119,19 +1113,19 @@ mod tests {
         // Change the files before the first lookup, not just between reads.
         fs::write(active.join("mode"), "  after\n").unwrap();
         fs::write(active.join("late"), "new key").unwrap();
-        assert_eq!(before.setting("active", "mode").as_deref(), Some("before"));
-        assert_eq!(before.setting("active", "empty").as_deref(), Some(""));
+        assert_eq!(before.setting("active", "mode"), Some("before"));
+        assert_eq!(before.setting("active", "empty"), Some(""));
         assert_eq!(before.setting("active", "invalid"), None);
         assert_eq!(before.setting("active", "late"), None);
         assert_eq!(before.setting("inactive", "mode"), None);
         assert_eq!(read_setting(&active, "mode").as_deref(), Some("after"));
 
         let after = LoadContext::new(DataLoadOrigin::ClientPreload, inputs.clone(), ["active"]);
-        assert_eq!(after.setting("active", "mode").as_deref(), Some("after"));
-        assert_eq!(after.setting("active", "late").as_deref(), Some("new key"));
+        assert_eq!(after.setting("active", "mode"), Some("after"));
+        assert_eq!(after.setting("active", "late"), Some("new key"));
         fs::remove_dir_all(&root).unwrap();
-        assert_eq!(before.setting("active", "mode").as_deref(), Some("before"));
-        assert_eq!(after.setting("active", "mode").as_deref(), Some("after"));
+        assert_eq!(before.setting("active", "mode"), Some("before"));
+        assert_eq!(after.setting("active", "mode"), Some("after"));
         let missing = LoadContext::new(DataLoadOrigin::ServerDataLoad, inputs, ["active"]);
         assert_eq!(missing.setting("active", "mode"), None);
         assert!(!root.exists());
@@ -1157,14 +1151,11 @@ mod tests {
 
         assert_eq!(client.side(), LoopSide::Client);
         assert_eq!(server.side(), LoopSide::Server);
-        assert_eq!(
-            client.registry("item").as_deref(),
-            Some(&["a:b".to_owned()][..])
-        );
+        assert_eq!(client.registry("item"), Some(&["a:b".to_owned()][..]));
         assert_eq!(server.registry("item"), client.registry("item"));
-        assert_eq!(client.setting("active", "mode").as_deref(), Some("one"));
-        assert_eq!(server.setting("active", "mode").as_deref(), Some("two"));
-        assert_eq!(load.setting("active", "mode").as_deref(), Some("one"));
+        assert_eq!(client.setting("active", "mode"), Some("one"));
+        assert_eq!(server.setting("active", "mode"), Some("two"));
+        assert_eq!(load.setting("active", "mode"), Some("one"));
         fs::remove_dir_all(&root).unwrap();
     }
 
@@ -1192,7 +1183,7 @@ mod tests {
         );
         assert_eq!(worldgen.setting("active", "ground").as_deref(), Some("mud"));
         assert_eq!(worldgen.setting("inactive", "ground"), None);
-        assert_eq!(load.setting("active", "ground").as_deref(), Some("podzol"));
+        assert_eq!(load.setting("active", "ground"), Some("podzol"));
         fs::remove_dir_all(&root).unwrap();
     }
 }

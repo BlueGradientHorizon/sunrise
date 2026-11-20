@@ -29,13 +29,13 @@ impl LoadReader<'_> {
     }
 }
 impl mod_api::LoadReader for LoadReader<'_> {
-    fn registry(&self, name: &str) -> Option<Arc<[String]>> {
+    fn registry(&self, name: &str) -> Option<&[String]> {
         self.0.registry(name)
     }
     fn fluid_tags(&self) -> Arc<[(String, Arc<[String]>)]> {
         self.0.fluid_tags().clone()
     }
-    fn setting(&self, mod_id: &str, key: &str) -> Option<String> {
+    fn setting(&self, mod_id: &str, key: &str) -> Option<&str> {
         self.0.setting(mod_id, key)
     }
 }
@@ -68,10 +68,10 @@ impl mod_api::LoopReader for LoopReader<'_> {
         mod_api::__private::item_key_id(item)
             .is_some_and(|name| self.0.mod_recipe_property_contains(set, name))
     }
-    fn registry(&self, name: &str) -> Option<Arc<[String]>> {
+    fn registry(&self, name: &str) -> Option<&[String]> {
         self.0.registry(name)
     }
-    fn setting(&self, mod_id: &str, key: &str) -> Option<String> {
+    fn setting(&self, mod_id: &str, key: &str) -> Option<&str> {
         self.0.setting(mod_id, key)
     }
 }
@@ -197,12 +197,12 @@ mod tests {
                 let context = reader.context();
                 assert_eq!(context.origin(), expected);
                 assert_eq!(
-                    context.registry("item").as_deref(),
+                    context.registry("item"),
                     Some(&["test:second".into(), "test:first".into()][..])
                 );
-                assert!(Arc::ptr_eq(
-                    &context.registry("item").unwrap(),
-                    &load.registry("item").unwrap()
+                assert!(std::ptr::eq(
+                    context.registry("item").unwrap(),
+                    load.registry("item").unwrap()
                 ));
                 assert!(Arc::ptr_eq(
                     &context.fluid_tags().unwrap(),
@@ -214,10 +214,7 @@ mod tests {
                 );
                 assert_eq!(context.registry("missing"), None);
                 assert_eq!(context.setting("missing", "key"), None);
-                assert_eq!(
-                    context.setting("active", "mode").as_deref(),
-                    Some("captured")
-                );
+                assert_eq!(context.setting("active", "mode"), Some("captured"));
                 assert_eq!(
                     context.mods().ids().collect::<Vec<_>>(),
                     ["second", "first"]
@@ -231,15 +228,12 @@ mod tests {
                     let context = reader.context();
                     assert_eq!(context.side(), expected);
                     assert_eq!(
-                        context.registry("item").as_deref(),
+                        context.registry("item"),
                         Some(&["test:second".into(), "test:first".into()][..])
                     );
                     assert_eq!(context.registry("missing"), None);
                     assert_eq!(context.setting("missing", "key"), None);
-                    assert_eq!(
-                        context.setting("active", "mode").as_deref(),
-                        Some("captured")
-                    );
+                    assert_eq!(context.setting("active", "mode"), Some("captured"));
                     assert_eq!(
                         context.mods().ids().collect::<Vec<_>>(),
                         ["second", "first"]
