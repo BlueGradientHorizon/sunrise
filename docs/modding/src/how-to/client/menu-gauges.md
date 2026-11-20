@@ -9,8 +9,11 @@ Draw a machine's gauges in `MenuPart::screen_draw`. It runs on the client with a
 On the server, [set up the block entity's data slots](../world/machine-menu-data.md)
 and update them as the machine runs. This example uses a slot for each value:
 elapsed work, total work, fuel remaining, and fuel capacity, in that order.
-The open menu sends the values to its viewers. The client reads them in
-`event.data`; some or all can be missing before the first updates arrive.
+For a custom menu, also set `"data_slots": 4` in the [menu type definition](../content-mods.md#menu-types).
+Without it the server sends zero data slots and neither gauge draws, even if
+the block entity has all four values. The open menu sends the values to its
+viewers. The client reads them in `event.data`; some or all can be missing
+before the first updates arrive.
 Use values that fit in a signed 16-bit integer: larger values wrap on the wire.
 
 ## Crop the sprite and the destination
