@@ -1,0 +1,3 @@
+# #3596: unplaced block survival against vanilla support and a registered Part on prepared resources.
+sunrise-client game::native_placement_state_tests::can_survive_reads_unplaced_states_and_dispatches_parts_without_writing lib daily resources
+sunrise-client game::native_placement_state_tests::can_survive_refuses_invalid_reads_and_preserves_transaction_writes lib daily resources

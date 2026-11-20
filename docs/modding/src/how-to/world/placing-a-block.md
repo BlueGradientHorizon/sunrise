@@ -23,8 +23,18 @@ These are all server operations on the level in place.
 
 ```rust,ignore
 let fitted = level.update_from_neighbour_shapes(host, pos, door)?;
+if !level.can_survive(host, pos, fitted)? {
+    return Ok(false);
+}
 level.place_block(host, pos, fitted, true)?;
 ```
+
+`can_survive` evaluates the supplied state even when it is not placed yet. It runs the block's
+survival rule and its `BlockPart::can_survive` hook; vegetation also asks the soil's
+`can_sustain_plant` hook before the plant's `may_place_on` hook. It answers only survival: it does
+not run `must_survive`, placement-context, obstruction, or permission checks. A client reads its
+loaded copy as a prediction. The destination must be in bounds and loaded; an unavailable read
+returns `LevelReadError` instead of `false`.
 
 `place_block` is `player.place_block` without a player: `setPlacedBy` gets no placer and no item. Nothing
 else of `BlockItem.place` runs: no survival or obstruction check, item placement sound, placement

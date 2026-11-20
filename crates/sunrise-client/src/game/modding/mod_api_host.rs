@@ -388,6 +388,134 @@ impl SidedLevel for super::native_hooks::HitLevel<'_> {
     }
 }
 
+impl SidedLevel for super::native_hooks::LevelView<'_> {
+    fn client_side(&self) -> bool {
+        self.level.client_side()
+    }
+}
+
+impl mod_api::LevelHost for super::native_hooks::LevelView<'_> {
+    fn block_states(&self) -> mod_api::BlockStates<'_> {
+        mod_api::LevelHost::block_states(self.level)
+    }
+    fn block_face_sturdy(
+        &self,
+        pos: [i32; 3],
+        face: mod_api::BlockFace,
+        support: mod_api::SupportType,
+    ) -> Option<bool> {
+        mod_api::LevelHost::block_face_sturdy(self.level, pos, face, support)
+    }
+    fn can_see_sky(&self, pos: [i32; 3]) -> Option<bool> {
+        mod_api::LevelHost::can_see_sky(self.level, pos)
+    }
+    fn block_entity(&self, pos: [i32; 3]) -> Option<mod_api::BlockEntityRef> {
+        mod_api::LevelHost::block_entity(self.level, pos)
+    }
+    fn container_size(&self, at: mod_api::BlockSide) -> Option<usize> {
+        mod_api::LevelHost::container_size(self.level, at)
+    }
+    fn container_stack(&self, at: mod_api::BlockSide, slot: usize) -> Option<mod_api::ItemStack> {
+        mod_api::LevelHost::container_stack(self.level, at, slot)
+    }
+    fn block_entity_part_snapshot(
+        &self,
+        entity: mod_api::BlockEntityRef,
+        namespace: &str,
+        name: &str,
+    ) -> Result<mod_api::AttachmentBatch, mod_api::PartStateError> {
+        mod_api::LevelHost::block_entity_part_snapshot(self.level, entity, namespace, name)
+    }
+    fn block_entity_data(&self, entity: mod_api::BlockEntityRef) -> Option<mod_api::Compound> {
+        mod_api::LevelHost::block_entity_data(self.level, entity)
+    }
+    fn block_state(&self, pos: [i32; 3]) -> Option<mod_api::BlockState> {
+        mod_api::LevelHost::block_state(self.level, pos)
+    }
+    fn friction(
+        &self,
+        pos: [i32; 3],
+        state: mod_api::BlockState,
+        entity: Option<(u32, &str)>,
+    ) -> Option<f32> {
+        mod_api::LevelHost::friction(self.level, pos, state, entity)
+    }
+    fn state_block(&self, state: mod_api::BlockState) -> Option<&str> {
+        mod_api::LevelHost::state_block(self.level, state)
+    }
+    fn block_state_id(&self, name: &str) -> Option<mod_api::BlockState> {
+        mod_api::LevelHost::block_state_id(self.level, name)
+    }
+    fn block_state_default(&self, block: mod_api::BlockKey) -> Option<mod_api::BlockState> {
+        mod_api::LevelHost::block_state_default(self.level, block)
+    }
+    fn state_string(&self, state: mod_api::BlockState) -> Option<String> {
+        mod_api::LevelHost::state_string(self.level, state)
+    }
+    fn min_y(&self) -> i32 {
+        mod_api::LevelHost::min_y(self.level)
+    }
+    fn height(&self) -> i32 {
+        mod_api::LevelHost::height(self.level)
+    }
+    fn block_in_tag(&self, block: mod_api::BlockKey, tag: &str) -> Option<bool> {
+        mod_api::LevelHost::block_in_tag(self.level, block, tag)
+    }
+    fn tags(&self) -> &dyn mod_api::Tags {
+        mod_api::LevelHost::tags(self.level)
+    }
+    fn fluid_state(&self, pos: [i32; 3]) -> Option<mod_api::FluidState> {
+        mod_api::LevelHost::fluid_state(self.level, pos)
+    }
+    fn state_fluid_state(&self, state: mod_api::BlockState) -> Option<mod_api::FluidState> {
+        mod_api::LevelHost::state_fluid_state(self.level, state)
+    }
+    fn fluid_in_tag(&self, fluid: &str, tag: &str) -> Option<bool> {
+        mod_api::LevelHost::fluid_in_tag(self.level, fluid, tag)
+    }
+    fn state_with_property(
+        &self,
+        state: mod_api::BlockState,
+        key: &str,
+        value: &str,
+    ) -> Option<mod_api::BlockState> {
+        mod_api::LevelHost::state_with_property(self.level, state, key, value)
+    }
+    fn brightness(&self, layer: mod_api::LightLayer, pos: [i32; 3]) -> i32 {
+        mod_api::LevelHost::brightness(self.level, layer, pos)
+    }
+    fn raw_brightness(&self, pos: [i32; 3], sky_darken: i32) -> i32 {
+        mod_api::LevelHost::raw_brightness(self.level, pos, sky_darken)
+    }
+    fn is_loaded(&self, pos: [i32; 3]) -> bool {
+        mod_api::LevelHost::is_loaded(self.level, pos)
+    }
+    fn is_raining_at(&self, pos: [i32; 3]) -> bool {
+        mod_api::LevelHost::is_raining_at(self.level, pos)
+    }
+    fn enabled_features(&self) -> mod_api::FeatureFlags {
+        mod_api::LevelHost::enabled_features(self.level)
+    }
+    fn signal(&self, pos: [i32; 3], direction: mod_api::Direction) -> Option<i32> {
+        mod_api::LevelHost::signal(self.level, pos, direction)
+    }
+    fn direct_signal(&self, pos: [i32; 3], direction: mod_api::Direction) -> Option<i32> {
+        mod_api::LevelHost::direct_signal(self.level, pos, direction)
+    }
+    fn direct_signal_to(&self, pos: [i32; 3]) -> Option<i32> {
+        mod_api::LevelHost::direct_signal_to(self.level, pos)
+    }
+    fn best_neighbor_signal(&self, pos: [i32; 3]) -> Option<i32> {
+        mod_api::LevelHost::best_neighbor_signal(self.level, pos)
+    }
+    fn has_neighbor_signal(&self, pos: [i32; 3]) -> Option<bool> {
+        mod_api::LevelHost::has_neighbor_signal(self.level, pos)
+    }
+    fn collision_shape(&self, pos: [i32; 3]) -> Option<Vec<[f64; 6]>> {
+        mod_api::LevelHost::collision_shape(self.level, pos)
+    }
+}
+
 pub(super) fn level_side(level: &impl SidedLevel) -> mod_api::LevelSide<'_> {
     if level.client_side() {
         mod_api::LevelSide::Client(level)
