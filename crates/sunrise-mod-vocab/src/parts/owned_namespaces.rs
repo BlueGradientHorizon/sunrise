@@ -98,11 +98,7 @@ pub(crate) fn submit_declaration<D: Declaration>(
             .declaration_refusals
             .lock()
             .unwrap_or_else(|p| p.into_inner())
-            .push(DeclarationRefusal {
-                mod_id: mod_id.into(),
-                kind: D::KIND,
-                error: error.clone(),
-            });
+            .push(DeclarationRefusal::new(mod_id, D::KIND, error.clone()));
     })?;
     for reference in references.into_iter().flatten() {
         *reference = qualified(mod_id, reference);

@@ -71,6 +71,17 @@ pub struct DeclarationRefusal {
     pub error: DeclarationError,
 }
 
+impl DeclarationRefusal {
+    /// Attribute a refused declaration to the package that submitted it.
+    pub fn new(mod_id: impl Into<String>, kind: DeclarationKind, error: DeclarationError) -> Self {
+        Self {
+            mod_id: mod_id.into(),
+            kind,
+            error,
+        }
+    }
+}
+
 // no wire: engine-side admission record discriminant.
 // hidden: the game owns the admission report.
 #[doc(hidden)]

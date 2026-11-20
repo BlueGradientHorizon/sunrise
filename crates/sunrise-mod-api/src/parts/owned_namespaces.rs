@@ -306,21 +306,21 @@ mod tests {
                 assert_eq!(
                     take_declaration_refusals(&context),
                     [
-                        DeclarationRefusal {
-                            mod_id: "porter".into(),
-                            kind: DeclarationKind::Block,
-                            error: DeclarationError::UnownedNamespace {
+                        DeclarationRefusal::new(
+                            "porter",
+                            DeclarationKind::Block,
+                            DeclarationError::UnownedNamespace {
                                 id: "unowned:pot".into(),
                                 namespace: "unowned".into(),
                             },
-                        },
-                        DeclarationRefusal {
-                            mod_id: "porter".into(),
-                            kind: DeclarationKind::Item,
-                            error: DeclarationError::InvalidId {
+                        ),
+                        DeclarationRefusal::new(
+                            "porter",
+                            DeclarationKind::Item,
+                            DeclarationError::InvalidId {
                                 id: "porter:Bad Name".into()
                             },
-                        },
+                        ),
                     ]
                 );
             })

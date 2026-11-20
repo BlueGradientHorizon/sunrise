@@ -379,14 +379,14 @@ fn native_declared() -> std::borrow::Cow<'static, NativeDeclared> {
                     answer
                         .try_into_engine(&())
                         .map_err(|reason| {
-                            refusals.push(DeclarationRefusal {
-                                mod_id: mod_id.into(),
+                            refusals.push(DeclarationRefusal::new(
+                                mod_id,
                                 kind,
-                                error: DeclarationError::Rejected {
+                                DeclarationError::Rejected {
                                     id: id(&answer).to_owned(),
                                     reason,
                                 },
-                            });
+                            ));
                         })
                         .ok()
                 })

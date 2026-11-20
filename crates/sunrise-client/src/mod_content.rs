@@ -940,11 +940,7 @@ pub fn accept_declared(
             errors.extend(
                 refusals
                     .into_iter()
-                    .map(|(kind, error)| DeclarationRefusal {
-                        mod_id: id.clone(),
-                        kind,
-                        error,
-                    }),
+                    .map(|(kind, error)| DeclarationRefusal::new(id.as_str(), kind, error)),
             );
             continue;
         }
@@ -960,14 +956,14 @@ pub fn accept_declared(
             )
         {
             if let Err(reason) = validate_components_for(components, known) {
-                errors.push(DeclarationRefusal {
-                    mod_id: id.clone(),
+                errors.push(DeclarationRefusal::new(
+                    id.as_str(),
                     kind,
-                    error: DeclarationError::Rejected {
+                    DeclarationError::Rejected {
                         id: name.clone(),
                         reason: reason.to_string(),
                     },
-                });
+                ));
             }
         }
         if errors.len() != before {
