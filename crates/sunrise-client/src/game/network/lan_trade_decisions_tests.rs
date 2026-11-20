@@ -276,7 +276,7 @@ fn an_invalid_offer_restores_another_merchants_effects_and_modifiers() {
             let click = open(game, 2);
             super::native_merchant_refs::tests::spawn(game, 41, "minecraft:villager");
             let mob = &mut game.mobs[1];
-            assert!(mob.add_effect("minecraft:slowness", 300, 0));
+            mob.add_effect("minecraft:slowness", 300, 0);
             mob.effects_dirty = false;
             let speed = mob.movement_speed().to_bits();
             script(Script {

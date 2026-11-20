@@ -1007,12 +1007,12 @@ impl Game<'_> {
     }
     /// Writes one mob effect, or any active effect when `effect` is `None`. In a transaction,
     /// keep the effect lists and use the same health journal as `set_health` and `set_absorption`.
-    pub(super) fn mutate_mob_effects(
+    pub(super) fn mutate_mob_effects<R>(
         &mut self,
         id: u32,
         effect: Option<&'static str>,
-        mutate: impl FnOnce(&mut Mob) -> bool,
-    ) -> Option<bool> {
+        mutate: impl FnOnce(&mut Mob) -> R,
+    ) -> Option<R> {
         let before = self.snapshot_mob_modifiers(id);
         self.journal_mob_health(id);
         let mob = self
@@ -1045,7 +1045,7 @@ impl Game<'_> {
                 }
             }
         }
-        let changed = mutate(mob);
+        let result = mutate(mob);
         // An effect may invalidate the live map and lose its equipment rows and
         // detection cache; undo those changes through the existing modifier journal.
         if let Some(before) = before
@@ -1054,7 +1054,7 @@ impl Game<'_> {
         {
             self.transactions.journal_modifier_changes(id, changes);
         }
-        Some(changed)
+        Some(result)
     }
     /// Keeps `player`'s menu storage as it is, if a transaction is open and hasn't yet.
     pub(super) fn journal_menus(&mut self, player: mod_api::PlayerRef) {
