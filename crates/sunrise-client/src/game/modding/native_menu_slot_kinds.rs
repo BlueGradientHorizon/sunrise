@@ -87,8 +87,9 @@ fn layout_kinds(
                     }
                 }
                 "minecraft:furnace" | "minecraft:blast_furnace" | "minecraft:smoker" => {
-                    if slot == 2 { Result } else { Storage }
+                    if slot == 2 { Result } else { Input }
                 }
+                "minecraft:brewing_stand" => Input,
                 "minecraft:crafter_3x3" => CraftingGrid,
                 "minecraft:generic_9x1"
                 | "minecraft:generic_9x2"
@@ -98,8 +99,7 @@ fn layout_kinds(
                 | "minecraft:generic_9x6"
                 | "minecraft:generic_3x3"
                 | "minecraft:shulker_box"
-                | "minecraft:hopper"
-                | "minecraft:brewing_stand" => Storage,
+                | "minecraft:hopper" => Storage,
                 m if m.starts_with("sunrise:mount") => {
                     if slot < 2 {
                         Equipment
@@ -110,6 +110,11 @@ fn layout_kinds(
                 _ => Other,
             }
         };
+    }
+    if let Some(content) = content {
+        for &slot in &content.inputs {
+            kinds[slot] = Input;
+        }
     }
     kinds
 }
@@ -191,7 +196,11 @@ mod tests {
                     CraftingGrid,
                 ],
             ),
-            ("minecraft:furnace", vec![Storage, Storage, Result]),
+            ("minecraft:furnace", vec![Input, Input, Result]),
+            ("minecraft:blast_furnace", vec![Input, Input, Result]),
+            ("minecraft:smoker", vec![Input, Input, Result]),
+            ("minecraft:brewing_stand", vec![Input; 5]),
+            ("minecraft:hopper", vec![Storage; 5]),
             (
                 "minecraft:generic_9x3",
                 vec![
@@ -230,6 +239,7 @@ mod tests {
             slots: 8,
             data_slots: 0,
             results: vec![7],
+            inputs: vec![5],
             crafting: Some(ModCrafting {
                 grid: 0,
                 size: 2,
@@ -243,7 +253,7 @@ mod tests {
             CraftingGrid,
             CraftingGrid,
             Result,
-            Storage,
+            Input,
             Storage,
             Result,
         ];
