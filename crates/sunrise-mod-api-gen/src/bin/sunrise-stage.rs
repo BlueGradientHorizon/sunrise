@@ -15,7 +15,7 @@
 //! `sunrise-stage fits USES_JSON TARGET_SURFACE`: whether a uses table fits a build's surface,
 //! naming each changed item. Exit 0 fits, 1 does not fit, 2 error.
 //!
-//! `sunrise-stage surface-diff OLD NEW [--notes DIR] [--base-notes DIR] [--api-notes-only] [--json OUT] [--gate]`:
+//! `sunrise-stage surface-diff OLD NEW [--notes DIR] [--base-notes DIR] [--api-notes-only] [--landed SHA] [--json OUT] [--gate]`:
 //! print what changed between two surface exports, breaking changes first. `--notes` attaches
 //! the change notes of DIR (`crates/sunrise-mod-vocab/changes`) whose file names are not in
 //! `--base-notes` (the base tree's folder; required with `--notes`). For an SDK comparison,
@@ -210,10 +210,10 @@ fn surface_diff(args: &[PathBuf]) -> ! {
     use sunrise_mod_api_gen::surface::notes;
     let [old, new, options @ ..] = args else {
         fail(
-            "usage: sunrise-stage surface-diff OLD NEW [--notes DIR] [--base-notes DIR] [--api-notes-only] [--json OUT] [--gate]",
+            "usage: sunrise-stage surface-diff OLD NEW [--notes DIR] [--base-notes DIR] [--api-notes-only] [--landed SHA] [--json OUT] [--gate]",
         )
     };
-    let (mut notes_dir, mut base_notes, mut json) = (None, None, None);
+    let (mut notes_dir, mut base_notes, mut json, mut landed) = (None, None, None, None);
     let (mut gate, mut api_notes_only) = (false, false);
     let mut options = options.iter();
     while let Some(option) = options.next() {
@@ -229,6 +229,7 @@ fn surface_diff(args: &[PathBuf]) -> ! {
             Some("--notes") => &mut notes_dir,
             Some("--base-notes") => &mut base_notes,
             Some("--json") => &mut json,
+            Some("--landed") => &mut landed,
             _ => fail(format!("unknown option {}", option.display())),
         };
         let value = options
@@ -243,6 +244,13 @@ fn surface_diff(args: &[PathBuf]) -> ! {
         let base = base_notes.unwrap_or_else(|| fail("--notes needs --base-notes"));
         let found = notes::read(dir, base).unwrap_or_else(|e| fail(e));
         for mut file in found {
+            // The notes of one merge are checked against that merge's diff, and no other's.
+            let wanted = landed
+                .and_then(|sha| sha.to_str())
+                .map(str::to_ascii_lowercase);
+            if file.landed != wanted {
+                continue;
+            }
             if api_notes_only {
                 file.ids.retain(|id| {
                     !matches!(id.split_once(':'), Some(("point" | "loop" | "internal", _)))
@@ -287,7 +295,7 @@ fn main() {
     }
     let usage = || {
         eprintln!(
-            "usage: sunrise-stage ROOT POINTS_JSON INTERNALS_JSON COMMIT [--sync-internals]\n       sunrise-stage surface ROOT OUT [--without-calls] [--with-points-and-loops] [--with-internals]\n       sunrise-stage surface-diff OLD NEW [--notes DIR] [--base-notes DIR] [--api-notes-only] [--json OUT] [--gate]\n       sunrise-stage uses SURFACE MOD_DIR [--json OUT --made-for BUILD]\n       sunrise-stage fits USES_JSON TARGET_SURFACE"
+            "usage: sunrise-stage ROOT POINTS_JSON INTERNALS_JSON COMMIT [--sync-internals]\n       sunrise-stage surface ROOT OUT [--without-calls] [--with-points-and-loops] [--with-internals]\n       sunrise-stage surface-diff OLD NEW [--notes DIR] [--base-notes DIR] [--api-notes-only] [--landed SHA] [--json OUT] [--gate]\n       sunrise-stage uses SURFACE MOD_DIR [--json OUT --made-for BUILD]\n       sunrise-stage fits USES_JSON TARGET_SURFACE"
         );
         std::process::exit(2)
     };
