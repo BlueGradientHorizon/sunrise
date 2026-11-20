@@ -449,6 +449,109 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
+    fn ordinary_moves_and_short_farmland_landings_do_not_pause() {
+        use sunrise_client::{
+            health::{DamageLevel, LentLevel},
+            mobs::{Mob, ai},
+            motion::MotionWorld,
+        };
+
+        crate::entry::install_client_hooks();
+        let trace = Trace::default();
+        mod_platform::testing::with_mods(
+            vec![ModEntry::new(
+                "gardener",
+                Box::new(Gardener(Choice::Allow, trace.clone())),
+            )]
+            .into(),
+            || {
+                with_game(|game| {
+                    game.options.dedicated = Some(Vec::new());
+                    game.streaming
+                        .insert_remote(&mut game.world, Chunk::empty(0, 0));
+                    let registry = game.pack.assets.registry;
+                    let farmland = registry.default_state("minecraft:farmland").unwrap();
+                    let [x, y, z] = FIELD;
+                    game.world.set(x, y, z, farmland).unwrap();
+                    let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
+                    let mut lent = LentLevel::take(&mut game.world);
+                    {
+                        let view = game.mob_world_base(&[]);
+                        let mut level = DamageLevel::lent(
+                            &game.world,
+                            registry,
+                            &mut lent,
+                            Some(game.items()),
+                            Some(&game.pack.block_registries),
+                            &game.damage_hooks,
+                        );
+                        for walking in [false, true] {
+                            let (start_y, velocity) = if walking {
+                                (LANDING_Y, Vec3::new(0.125, -0.08, 0.0))
+                            } else {
+                                // Even the smallest random draw cannot pass this short fall.
+                                (64.125, Vec3::new(0.0, -0.5, 0.0))
+                            };
+                            let mut mob =
+                                Mob::new(LANDING, pig.clone(), Vec3::new(1.5, start_y, 1.5), 0.0);
+                            mob.ai.goals = Default::default();
+                            mob.ai.targets = Default::default();
+                            mob.on_ground = walking;
+                            mob.velocity = velocity;
+                            let progress = ai::tick_until_consumption(
+                                &mut mob,
+                                &view,
+                                &mut level,
+                                &mut Vec::new(),
+                            );
+                            assert!(
+                                matches!(progress, ai::TickProgress::Complete(true)),
+                                "walking={walking}: {progress:?}"
+                            );
+                            assert!(mob.on_ground);
+                            assert_eq!(mob.position.y, LANDING_Y);
+                            assert_eq!(mob.fall_distance, 0.0);
+                            assert_eq!(mob.position.x > 1.5, walking);
+                        }
+                    }
+                    lent.give_back(&mut game.world);
+
+                    // The guest motion pass finishes a short fall by itself:
+                    // `None` means no continuation and no return to the owning host.
+                    let mut guest =
+                        PlayerMotion::new(game.motion, Vec3::new(1.5, LANDING_Y, 1.5)).unwrap();
+                    guest.fall_distance = 0.125;
+                    let side = game_side!(game);
+                    let mut motion = MotionWorld {
+                        side: &side,
+                        entities: &[],
+                        player: &mut guest,
+                        scene: &mut game.world,
+                        assets: &game.pack.assets,
+                        collision_binding: game.collision,
+                        resources: game.motion,
+                        health: &game.health_resources,
+                        tag_items: Some(world_items!(game)),
+                        loop_context: &game.loop_context,
+                        damage_hooks: &game.damage_hooks,
+                        block_registries: Some(&game.pack.block_registries),
+                    };
+                    assert!(
+                        motion
+                            .check_guest_fall_damage(-0.125, true, farmland, BlockPos::new(x, y, z))
+                            .unwrap()
+                            .is_none()
+                    );
+                    assert_eq!(guest.fall_distance, 0.0);
+                    assert_eq!(game.world.block(x, y, z), farmland);
+                    assert!(trace.lock().unwrap().is_empty());
+                });
+            },
+        );
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn a_listener_that_changes_the_block_refuses_the_trample() {
         for body in [WALKING, Body::Pig] {
             land(body, Choice::Replace);
