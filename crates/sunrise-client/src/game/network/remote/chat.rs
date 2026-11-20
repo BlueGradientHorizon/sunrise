@@ -11,7 +11,7 @@ pub(in super::super) enum Decoration {
 /// entry: its translation, with the sender, the target or the message as its
 /// parameters, in its style. A chat type the registry lacks decorates as
 /// `minecraft:chat` (`chat.type.text`, narrated `chat.type.text.narrate`).
-pub(in super::super) fn chat_type_decorate(
+pub(super) fn chat_type_decorate(
     chat_type: Option<&Tag>,
     decoration: Decoration,
     bound: &play::ChatTypeBound,
@@ -64,7 +64,7 @@ pub(in super::super) enum ChatTrust {
 }
 impl ChatTrust {
     /// `ChatTrustLevel.createTag`.
-    pub(in super::super) fn tag(&self) -> Option<sunrise_client::chat::Tag> {
+    pub(super) fn tag(&self) -> Option<sunrise_client::chat::Tag> {
         match self {
             Self::Secure => None,
             Self::Modified(original) => Some(sunrise_client::chat::Tag::modified(original)),
