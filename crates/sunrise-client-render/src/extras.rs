@@ -555,11 +555,10 @@ impl Item {
             UiSoundReserve => return None,
             MouseTweaksWheel => MouseTweaks,
             SortKey => Sort,
-            ChatIndicator => ChatAnimation,
             Pvp(o) => return o.parent().map(Pvp),
             Fullbright | DynamicLights | OwnNameTag | HideBlockParticles | MouseTweaks | Sort
-            | NoAi | AgentControl | ReproKeys | ChatAnimation | WheelCyclesSettings | MusicPage
-            | PackBrowser | Pregen | ShaderPackKey => {
+            | ChatAnimation | ChatIndicator | NoAi | AgentControl | ReproKeys
+            | WheelCyclesSettings | MusicPage | PackBrowser | Pregen | ShaderPackKey => {
                 return None;
             }
         })
