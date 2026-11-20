@@ -738,7 +738,8 @@ fn level_queries_take_their_hosts(
     shooter: EntityRef,
     tool: &ItemStack,
 ) {
-    let _: Option<Vec<PlayerRef>> = level.online_players(read);
+    let _: Result<core::ops::ControlFlow<()>, LevelReadError> =
+        level.visit_online_players(read, &mut |_: PlayerRef| core::ops::ControlFlow::Break(()));
     let _: Option<Vec<PlayerRef>> = chunk.watchers(read);
     let _: Option<StructureSearchResult> = level.find_nearest_structure(
         read,

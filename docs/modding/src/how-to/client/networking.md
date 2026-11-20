@@ -119,7 +119,9 @@ fn register(r: &mut dyn Registrar) {
   are NeoForge's `PacketDistributor` `sendToAllPlayers`, `sendToPlayersInDimension`,
   `sendToPlayersNear` and `sendToPlayersTrackingChunk`. A player whose send is refused (no
   channel, gone since the list was read, backpressure) is skipped and not counted; only a
-  stale token or an encode failure is an `Err`, before anything is sent.
+  stale token or an encode failure is an `Err`, before anything is sent. `send_in_level` and
+  `send_near` use the level's online-player visit and return `Ok(0)` for a stale or
+  unavailable level, after the same token and encoding checks.
 - **To the players tracking an entity.** `send_tracking_entity(host, entity, and_self, &value)`
   sends to the entity's trackers (`ChunkMap.TrackedEntity.seenBy`, NeoForge's
   `sendToPlayersTrackingEntity`; `EntityRef::trackers(host)` is the same list), and

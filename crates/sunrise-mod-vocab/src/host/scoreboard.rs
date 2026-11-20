@@ -159,10 +159,20 @@ pub trait ScoreboardBackend {
     #[access(WorldOnly)]
     fn team_collision_rule(&self, team: TeamRef) -> Option<CollisionRule>;
     /// Side: server.
-    /// `PlayerTeam.getPlayers`: the members, as [`ScoreHolder::Name`] keys, in the team's own
-    /// order. Vanilla's is a hash set's, so no order is promised.
+    /// Visit `PlayerTeam.getPlayers` in the team's native Java hash set order, which
+    /// vanilla leaves unspecified. Each holder key is a name borrowed for the call,
+    /// including names that do not resolve to an online player.
+    ///
+    /// Return `ControlFlow::Break(())` to stop and get `Ok(ControlFlow::Break(()))`.
+    /// Completion, including an empty team, returns `Ok(ControlFlow::Continue(()))`.
+    /// A stale team or unavailable server world access returns a
+    /// [`TeamMembersReadError`] without calling the visitor.
     #[access(WorldOnly)]
-    fn team_members(&self, team: TeamRef) -> Option<Vec<ScoreHolder>>;
+    fn team_visit_members(
+        &self,
+        team: TeamRef,
+        visit: &mut dyn FnMut(&str) -> core::ops::ControlFlow<()>,
+    ) -> Result<core::ops::ControlFlow<()>, TeamMembersReadError>;
 }
 /// The handles' writes of the `scoreboard` area, implemented by the game and reached through [`BackendMut`].
 // hidden: a handle's backend, reached through `Backend`; mods call the handle, never this trait

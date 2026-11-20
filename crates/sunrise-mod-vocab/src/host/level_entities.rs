@@ -76,14 +76,23 @@ pub trait LevelEntitiesBackend {
         visit: &mut dyn FnMut(EntityRef) -> core::ops::ControlFlow<()>,
     ) -> Result<core::ops::ControlFlow<()>, LevelReadError>;
     /// Side: server.
-    /// `ServerLevel.players`: the online players in this level, parked or in
-    /// place, each once under their own UUID, also during a guest's turn. Fake
-    /// players are not listed, as vanilla's list leaves out connectionless
-    /// players; a player displaced by a nested guest turn is not listed either,
-    /// since its handle cannot resolve until that turn ends. None on a client
-    /// and for a stale handle.
+    /// Visit `ServerLevel.players` in level player order, without building a list.
+    /// In the active level, the local or acting player comes first, then the placed
+    /// guests in server order. A parked level has only its placed guests. Each
+    /// resolvable player is visited once under their own UUID. Fake players and
+    /// players displaced by a nested guest turn are skipped.
+    ///
+    /// The visitor can read the player through the same host. Return
+    /// `ControlFlow::Break(())` to stop and get `Ok(ControlFlow::Break(()))`.
+    /// Completion, including an empty level, returns `Ok(ControlFlow::Continue(()))`.
+    /// A stale level returns `LevelReadError::Stale`; a client or unavailable world
+    /// access returns `LevelReadError::Unavailable`. A refusal never calls the visitor.
     #[access(WorldOnly)]
-    fn level_online_players(&self, level: LevelRef) -> Option<Vec<PlayerRef>>;
+    fn level_visit_online_players(
+        &self,
+        level: LevelRef,
+        visit: &mut dyn FnMut(PlayerRef) -> core::ops::ControlFlow<()>,
+    ) -> Result<core::ops::ControlFlow<()>, LevelReadError>;
     /// Side: server.
     /// Every entity the segment from `from` to `to` passes through, nearest first: the test
     /// `ProjectileUtil.getEntityHitResult` makes on each candidate, each entity's box grown by

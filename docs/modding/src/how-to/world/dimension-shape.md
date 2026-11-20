@@ -175,10 +175,18 @@ position, not the position above it used by Pre.
 
 ## Players, structures and chunk watchers
 
-`level.online_players(host)` lists the real online players in that server level, including
-when it is parked. Obtain a chunk with `host.chunk(level, pos)`, then call
-`chunk.watchers(host)` to ask which players were sent it and have it inside their
-view distance; fake players watch nothing.
+`level.visit_online_players(host, &mut visit)` visits the real online players in that server
+level without building a list, even if the level is parked. In the active level the local
+or acting player comes first, then the placed guests in server order; a parked level has
+only its placed guests. Fake players and players displaced by a nested guest turn are skipped.
+The callback takes a `PlayerRef`, which you can read through the same host. Return
+`core::ops::ControlFlow::Break(())` to stop or `Continue(())` to keep going. The call returns
+`Ok(Break(()))` if you stopped it or `Ok(Continue(()))` if it finished, including when
+the level had no players. A stale level gives `Err(LevelReadError::Stale)`; a client or
+unavailable world access gives `Err(LevelReadError::Unavailable)`. Neither calls the visitor.
+
+Obtain a chunk with `host.chunk(level, pos)`, then call `chunk.watchers(host)` to ask which
+players were sent it and have it inside their view distance; fake players watch nothing.
 
 `level.find_nearest_structure(host, structure, StructureSearch::new(origin, radius))` searches
 for a structure id or `#tag` and returns its structure and locate position. This is a

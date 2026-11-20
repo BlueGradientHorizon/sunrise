@@ -1,0 +1,15 @@
+ids = [
+    "handle:LevelRef::online_players",
+    "handle:LevelRef::visit_online_players",
+    "handle:TeamRef::members",
+    "handle:TeamRef::visit_members",
+    "type:TeamMembersReadError",
+    "handle:ToClient::send_in_level",
+    "handle:ToClient::send_near",
+]
+why = "Read live players and team members in their existing order without building a list or copying member names. Both visits can stop at the first match and distinguish an empty collection from a refused read."
+migrate = """
+Replace `level.online_players(host)` with `level.visit_online_players(host, &mut |player| { /* use PlayerRef */ core::ops::ControlFlow::Continue(()) })`. Replace `team.members(host)` with `team.visit_members(host, &mut |name| { /* use &str */ core::ops::ControlFlow::Continue(()) })`. The name is borrowed only for that callback; use `name.to_owned()` to retain it or `ScoreHolder::Name(name.to_owned())` to pass an owned holder key to an API that takes one. If you still need a list, push values into your own `Vec` inside the callback.
+Return `core::ops::ControlFlow::Break(())` to stop, storing any match outside the callback. Both calls return `Ok(Break(()))` on an early stop and `Ok(Continue(()))` on completion, including an empty collection. Where you handled `None`, handle `Err(LevelReadError::Stale)` or `Err(LevelReadError::Unavailable)` for levels, and `Err(TeamMembersReadError::Stale)` or `Err(TeamMembersReadError::Unavailable)` for teams. Neither error calls the visitor.
+Keep `send_in_level` and `send_near` calls unchanged; after the usual token and encoding checks they return `Ok(0)` for a stale or unavailable level.
+"""

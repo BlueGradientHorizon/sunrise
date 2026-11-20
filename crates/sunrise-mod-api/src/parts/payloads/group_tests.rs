@@ -2,10 +2,11 @@
 //! would give and records every one-player send.
 use super::*;
 use crate::{
-    Backend, BackendMut, ChunkRef, DimensionKey, EntityRef, Host, IPayloadContext, LevelRef,
-    PayloadAccepted, PayloadBytes, PayloadSendError, PayloadToken, PlayerRef, Players, ServerHost,
-    ToClient, Wire, WorldEpoch,
+    Backend, BackendMut, ChunkRef, DimensionKey, EntityRef, Host, IPayloadContext, LevelReadError,
+    LevelRef, PayloadAccepted, PayloadBytes, PayloadSendError, PayloadToken, PlayerRef, Players,
+    ServerHost, ToClient, Wire, WorldEpoch,
 };
+use core::ops::ControlFlow;
 use std::collections::HashMap;
 
 #[derive(Debug, PartialEq, Wire)]
@@ -71,8 +72,18 @@ impl crate::prelude::ServicesServerHost for Double {
 crate::impl_server_host_areas!(Double, except(services, payloads));
 impl Backend for Double {}
 impl crate::prelude::LevelEntitiesBackend for Double {
-    fn level_online_players(&self, level: LevelRef) -> Option<Vec<PlayerRef>> {
-        self.levels.get(&level).cloned()
+    fn level_visit_online_players(
+        &self,
+        level: LevelRef,
+        visit: &mut dyn FnMut(PlayerRef) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, LevelReadError> {
+        Ok(self
+            .levels
+            .get(&level)
+            .ok_or(LevelReadError::Stale)?
+            .iter()
+            .copied()
+            .try_for_each(visit))
     }
 }
 impl crate::prelude::LevelChunksBackend for Double {
@@ -208,11 +219,15 @@ fn every_group_reaches_its_list_with_the_same_body() {
 }
 
 #[test]
-fn a_level_nobody_can_list_has_no_recipients() {
+fn a_stale_level_has_no_recipients() {
     let (mut host, down, _) = setup();
-    host.levels.clear();
+    let stale = LevelRef::new(WorldEpoch::new(2), DimensionKey::OVERWORLD);
     let value = Counter { counter: 1 };
-    assert_eq!(down.send_in_level(&mut host, overworld(), &value), Ok(0));
+    assert_eq!(down.send_in_level(&mut host, stale, &value), Ok(0));
+    assert_eq!(
+        down.send_near(&mut host, stale, [0.0, 64.0, 0.0], 100.0, None, &value),
+        Ok(0)
+    );
     assert!(host.sent.is_empty());
 }
 

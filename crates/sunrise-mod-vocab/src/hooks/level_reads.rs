@@ -117,11 +117,17 @@ queues one."#]
     fn level_reads_note4();
     #[notes = r#"## Players, structures and chunk watchers
 
-`LevelRef::online_players(host)` is `ServerLevel.players`: the online players in the level, parked or in
-place, each once under their own UUID, also while a guest's turn is running. Fake players are not
-listed, nor is a player a nested guest turn displaced, whose handle resolves again when that turn
-ends. `visit_entities_in` is the spatial query: it visits placed non-spectator guests on a
-server, or the tracked players and the window's own non-spectator player on a client.
+`LevelRef::visit_online_players(host, &mut visit)` visits `ServerLevel.players` without collecting
+them. This works on active and parked server levels. In the active level, the local or acting
+player comes first, followed by placed guests in server order. A parked level has only its
+placed guests. Each resolvable player is visited once; fake players and players displaced by a
+nested guest turn are skipped. Return `ControlFlow::Break(())` to stop, or `Continue(())` for the
+next player. The walk returns `Ok(Break(()))` on an early stop and `Ok(Continue(()))` on completion,
+including an empty walk. A stale level returns `LevelReadError::Stale`; a client or unavailable
+world access returns `LevelReadError::Unavailable`. Neither calls the visitor.
+
+`visit_entities_in` is the spatial query: it visits placed non-spectator guests on a server,
+or the tracked players and the window's own non-spectator player on a client.
 
 `find_nearest_structure(host, structure, StructureSearch::new(origin, radius))` is
 `ServerLevel.findNearestMapStructure` without skipping known starts, the search `/locate
