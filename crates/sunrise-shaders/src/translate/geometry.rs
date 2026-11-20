@@ -52,14 +52,7 @@ pub fn translate_geometry(
     // The vertex's place isn't the fragment's through a geometry stage.
     gbuffers.water_patches = false;
     gbuffers.attributes = Vec::new();
-    let program = super::translate(
-        &combined,
-        fragment,
-        Target::Buffers,
-        Some(&gbuffers),
-        true,
-        true,
-    )?;
+    let program = super::translate(&combined, fragment, Target::Buffers, Some(&gbuffers), true)?;
     Ok((program, triangles))
 }
 
@@ -132,6 +125,39 @@ fn statements(tokens: &[&str]) -> Vec<Statement> {
         i += 1;
     }
     out
+}
+
+/// The tokens among `tokens` that declare a member of a struct of `statements` (`vaNormal` in
+/// `struct S { vec3 vaNormal; };`): a word in the struct's body after its type or a `,` and
+/// before a `;`, a `,` or an array's `[`. A member keeps its name, as each access to it
+/// (`s.vaNormal`) does.
+fn struct_members(tokens: &[&str], statements: &[Statement]) -> BTreeSet<usize> {
+    let mut members = BTreeSet::new();
+    for s in statements {
+        let words: Vec<usize> = s
+            .range
+            .clone()
+            .filter(|&i| significant(tokens[i]))
+            .collect();
+        let Some(open) = words.iter().position(|&i| tokens[i] == "{") else {
+            continue;
+        };
+        if !words[..open].iter().any(|&i| tokens[i] == "struct") {
+            continue;
+        }
+        let close = words[open..]
+            .iter()
+            .position(|&i| tokens[i] == "}")
+            .map_or(words.len(), |p| open + p);
+        for k in open + 1..close {
+            let after_type = !matches!(tokens[words[k - 1]], "{" | ";");
+            let declared = matches!(words.get(k + 1).map(|&i| tokens[i]), Some(";" | "," | "["));
+            if after_type && declared {
+                members.insert(words[k]);
+            }
+        }
+    }
+    members
 }
 
 fn classify(tokens: &[&str], range: std::ops::Range<usize>) -> Statement {
@@ -351,8 +377,9 @@ fn combine(
         .map(String::as_str)
         .chain(vs_outs.iter().map(|(n, _)| n.as_str()))
         .collect();
+    let members = struct_members(&vs_tokens, &vs);
     for (i, t) in vs_tokens.iter().enumerate() {
-        if vs_text[i] != *t {
+        if vs_text[i] != *t || members.contains(&i) {
             continue;
         }
         let prev = (0..i).rev().find(|&j| significant(vs_tokens[j]));
@@ -604,6 +631,16 @@ mod tests {
     use crate::pack::tests::zip;
     use crate::{Macros, Pack, preprocess};
 
+    /// A geometry stage that passes each triangle through with the vertex stage's `vNormal`.
+    const PASS_GSH: &str = "#version 430\nlayout(triangles) in;\n\
+                            layout(triangle_strip, max_vertices = 3) out;\n\
+                            in vec3 vNormal[];\nout vec3 gNormal;\nvoid main() {\n    \
+                            for (int i = 0; i < 3; i++) {\n        gNormal = vNormal[i];\n        \
+                            gl_Position = gl_in[i].gl_Position;\n        EmitVertex();\n    }\n    \
+                            EndPrimitive();\n}\n";
+    /// The fragment stage after [`PASS_GSH`].
+    const PASS_FSH: &str = "#version 430\nin vec3 gNormal;\nvoid main() {\n    gl_FragData[0] = vec4(gNormal, 1.0);\n}\n";
+
     /// `vsh`, `gsh` and `fsh` (a pack's shadow program) folded and translated.
     fn fold(vsh: &str, gsh: &str, fsh: &str) -> Result<(Program, u32), Vec<Error>> {
         fold_given(vsh, gsh, fsh, Vec::new())
@@ -668,37 +705,50 @@ mod tests {
 
     /// A vertex stage under a geometry stage reads the game's `vaPosition` and `vaNormal`
     /// without declaring them, as one without a geometry stage does: they're set for each
-    /// pulled vertex. Not given, they stay unknown. Though it reads its vertex index and
-    /// `gl_Normal`, it places no vertices (`hz_places_vertices`): the geometry stage does.
+    /// pulled vertex. Without either one, the stage is refused.
     #[test]
     fn a_vertex_stage_under_a_geometry_stage_reads_undeclared_game_inputs() {
         let vsh = "#version 430\nout vec3 vNormal;\nvoid main() {\n    vNormal = vaNormal;\n    \
-                   gl_Position = gl_ModelViewProjectionMatrix * vec4(vaPosition, 1.0);\n    \
-                   gl_Position.xy += gl_Normal.yx * float(gl_VertexID % 2);\n}\n";
-        let gsh = "#version 430\nlayout(triangles) in;\nlayout(triangle_strip, max_vertices = 3) out;\n\
-                   in vec3 vNormal[];\nout vec3 gNormal;\nvoid main() {\n    \
-                   for (int i = 0; i < 3; i++) {\n        gNormal = vNormal[i];\n        \
-                   gl_Position = gl_in[i].gl_Position;\n        EmitVertex();\n    }\n    \
-                   EndPrimitive();\n}\n";
-        let fsh = "#version 430\nin vec3 gNormal;\nvoid main() {\n    gl_FragData[0] = vec4(gNormal, 1.0);\n}\n";
-        let given = ["vaPosition", "vaNormal"]
-            .map(|name| (name.to_owned(), "hz_Vertex.xyz".to_owned()))
-            .to_vec();
-        let (program, _) = fold_given(vsh, gsh, fsh, given).unwrap_or_else(|e| panic!("{e:?}"));
-        assert!(!crate::translate::tests::places_vertices_constant(
-            &program.vertex
-        ));
-        for name in ["vaPosition", "vaNormal"] {
-            let given = vec![(name.to_owned(), "hz_Vertex.xyz".to_owned())];
-            let Err(errors) = fold_given(vsh, gsh, fsh, given) else {
-                panic!("{name} alone was enough");
-            };
+                   gl_Position = gl_ModelViewProjectionMatrix * vec4(vaPosition, 1.0);\n}\n";
+        let given = |names: &[&str]| {
+            names
+                .iter()
+                .map(|name| (name.to_string(), "hz_Vertex.xyz".to_owned()))
+                .collect()
+        };
+        if let Err(errors) = fold_given(vsh, PASS_GSH, PASS_FSH, given(&["vaPosition", "vaNormal"]))
+        {
+            panic!("{errors:?}");
+        }
+        for kept in ["vaPosition", "vaNormal"] {
             assert!(
-                errors
-                    .iter()
-                    .any(|e| e.message.contains("Unknown variable")),
-                "{errors:?}"
+                fold_given(vsh, PASS_GSH, PASS_FSH, given(&[kept])).is_err(),
+                "only {kept} given"
             );
+        }
+    }
+
+    /// A struct of the vertex stage with members named as game inputs (`vaNormal`, `vaColor`)
+    /// keeps them: the implicit inputs are renamed for the fold (`hz_vs_vaNormal`), the members
+    /// and each access to them (`value.vaNormal`) aren't. Beside them the stage reads the real
+    /// `vaNormal` and `vaPosition` undeclared. The stage's own names in a struct's body, a
+    /// member's type (`Inner`) and an array's size (`N`), are renamed with their declarations.
+    #[test]
+    fn a_struct_member_named_as_a_game_input_keeps_its_name_under_a_geometry_stage() {
+        let vsh = "#version 430\nconst int N = 2;\nstruct Inner { float a; };\n\
+                   struct Sample { vec3 vaNormal; Inner[2] inner; float w, vaColor[N]; };\n\
+                   out vec3 vNormal;\nvoid main() {\n    Sample value;\n    \
+                   value.vaNormal = vaNormal;\n    value.vaColor[1] = 1.0;\n    \
+                   value.inner[1].a = 2.0;\n    \
+                   vNormal = value.vaNormal * value.vaColor[1] * value.inner[1].a;\n    \
+                   gl_Position = gl_ModelViewProjectionMatrix * vec4(vaPosition, 1.0);\n}\n";
+        let given = vec![
+            ("vaPosition".to_owned(), "hz_Vertex.xyz".to_owned()),
+            ("vaNormal".to_owned(), "hz_Vertex.xyz".to_owned()),
+            ("vaColor".to_owned(), "hz_Color".to_owned()),
+        ];
+        if let Err(errors) = fold_given(vsh, PASS_GSH, PASS_FSH, given) {
+            panic!("{errors:?}");
         }
     }
 

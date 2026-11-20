@@ -170,12 +170,7 @@ pub struct GbuffersInputs {
     /// `mc_chunkFade`, and the core-profile vertex attributes (`vaPosition`, `vaColor`,
     /// `vaUV0`, `vaUV1`, `vaUV2`, `vaNormal`).
     pub attributes: Vec<(String, String)>,
-    /// GLSL statements run last in `main`, with `gl_Position` in wgpu's clip space. They may
-    /// read `hz_places_vertices`, a `const bool` the translator defines in every gbuffers vertex
-    /// stage: true when the pack's vertex stage reads its vertex index (`gl_VertexID`,
-    /// `gl_VertexIndex`) and the line's direction (`vaNormal`, `gl_Normal`), as vanilla's
-    /// `rendertype_lines.vsh` does to widen a line itself (Complementary Reimagined's
-    /// `gbuffers_line` too). False through a geometry stage, which places the vertices instead.
+    /// GLSL statements run last in `main`, with `gl_Position` in wgpu's clip space.
     pub after: String,
     /// The alpha test applied to output 0 (`gl_FragData[0]`, `gl_FragColor`), the loader's
     /// (3.2 `alphaTest.<program>`): `None` keeps every fragment. With `parts`, solid terrain's.
@@ -258,7 +253,7 @@ pub fn translate_composite(
     fragment: &Preprocessed,
     target: Target,
 ) -> Result<Program, Vec<Error>> {
-    translate(vertex, fragment, target, None, false, false)
+    translate(vertex, fragment, target, None, false)
 }
 
 /// Translates a gbuffers-style program (`gbuffers_terrain`...) drawing the game's geometry
@@ -269,7 +264,7 @@ pub fn translate_gbuffers(
     target: Target,
     inputs: &GbuffersInputs,
 ) -> Result<Program, Vec<Error>> {
-    translate(vertex, fragment, target, Some(inputs), false, false)
+    translate(vertex, fragment, target, Some(inputs), false)
 }
 
 /// Translates a shadow program (`shadow`, `shadow_water`...) drawing the game's geometry
@@ -280,7 +275,7 @@ pub fn translate_shadow(
     fragment: &Preprocessed,
     inputs: &GbuffersInputs,
 ) -> Result<Program, Vec<Error>> {
-    translate(vertex, fragment, Target::Buffers, Some(inputs), true, false)
+    translate(vertex, fragment, Target::Buffers, Some(inputs), true)
 }
 
 /// The matrices of the compatibility profile in a gbuffers-style program, from the frame's.
@@ -340,14 +335,6 @@ fn implicit_inputs<'a>(
         .collect()
 }
 
-/// Whether a vertex stage places its line's vertices itself (`hz_places_vertices`): it reads
-/// its vertex index and the line's direction, as vanilla's `rendertype_lines.vsh` widens a line
-/// by `gl_VertexIndex % 2` along the perpendicular of its normal.
-fn places_vertices(vertex: &Preprocessed) -> bool {
-    let reads = |names: [&str; 2]| names.iter().any(|name| uses_name(&vertex.code, name));
-    reads(["gl_VertexID", "gl_VertexIndex"]) && reads(["vaNormal", "gl_Normal"])
-}
-
 /// Whether `code` names `name` (a whole identifier).
 fn uses_name(code: &str, name: &str) -> bool {
     let ident = |c: char| c.is_ascii_alphanumeric() || c == '_';
@@ -361,7 +348,6 @@ fn translate(
     target: Target,
     gbuffers: Option<&GbuffersInputs>,
     shadow: bool,
-    geometry: bool,
 ) -> Result<Program, Vec<Error>> {
     let matrices = if shadow {
         GBUFFERS_MATRICES.replace("gbuffer", "shadow")
@@ -563,7 +549,6 @@ fn translate(
         vertex,
         &v.globals,
     );
-    let places = !geometry && places_vertices(vertex);
     let header = |stage: &Stage| {
         let mut h = resources(&uniforms, &samplers, &images);
         match (alpha_test_ref, &part_ref) {
@@ -615,7 +600,6 @@ fn translate(
         if let (Some(inputs), ShaderStage::Vertex) = (gbuffers, stage.kind) {
             h.push_str(&inputs.declarations);
             h.push('\n');
-            writeln!(h, "const bool hz_places_vertices = {places};").unwrap();
             for (name, _, ty) in &implicit {
                 writeln!(h, "{ty} {name};").unwrap();
             }
@@ -1822,6 +1806,8 @@ mod tests {
             "#version 130\n",
             "#version 330 core\nin vec3 vaPosition;\nin vec3 vaNormal;\n",
             "#version 130\nvec3 vaPosition = vec3(1.0);\nvec3 vaNormal = vec3(0.0);\n",
+            // A struct member of the name doesn't declare it: the stage reads the game's.
+            "#version 130\nstruct Sample { vec3 vaNormal; };\nSample value = Sample(vec3(0.0));\n",
         ] {
             let source = format!("{header}{reads}");
             if let Err(errors) = program(&source) {
@@ -1897,75 +1883,6 @@ mod tests {
         assert_eq!(ty("vaUV1"), (Some(S::Bi), K::Sint));
         assert_eq!(ty("vaUV2"), (Some(S::Bi), K::Sint));
         assert_eq!(ty("mc_chunkFade"), (None, K::Float));
-    }
-
-    /// The value of the `hz_places_vertices` constant in a translated vertex stage.
-    pub(super) fn places_vertices_constant(module: &naga::Module) -> bool {
-        let (_, constant) = module
-            .constants
-            .iter()
-            .find(|(_, c)| c.name.as_deref() == Some("hz_places_vertices"))
-            .expect("every gbuffers vertex stage defines hz_places_vertices");
-        match module.global_expressions[constant.init] {
-            naga::Expression::Literal(naga::Literal::Bool(places)) => places,
-            ref other => panic!("hz_places_vertices = {other:?}"),
-        }
-    }
-
-    /// `hz_places_vertices` is true only for a vertex stage that reads its vertex index and the
-    /// line's direction, as a line program widening its line by `gl_VertexID % 2` along the
-    /// perpendicular of its normal does: the lines' `after` then leaves the widening to it. A
-    /// stage that reads its index for something else (a hash, a dither), or reads the normal
-    /// but places nothing by index, keeps the game's widening.
-    #[test]
-    fn a_stage_places_its_vertices_by_index_and_normal() {
-        let places = |reads: &str| {
-            let source = format!(
-                "#version 130\nvarying float seen;\nvoid main() {{\n    \
-                 gl_Position = ftransform();\n    {reads}\n}}\n"
-            );
-            let files = [
-                ("shaders/gbuffers_line.vsh", source.as_str()),
-                (
-                    "shaders/gbuffers_line.fsh",
-                    "#version 130\nvarying float seen;\nvoid main() { gl_FragData[0] = vec4(seen); }",
-                ),
-            ];
-            let pack = Pack::from_zip_bytes("line-places.zip", zip(&files)).unwrap();
-            let macros = Macros::standard();
-            let vertex = preprocess(&pack, "gbuffers_line.vsh", &macros);
-            let fragment = preprocess(&pack, "gbuffers_line.fsh", &macros);
-            let inputs = GbuffersInputs {
-                body: "hz_Vertex = vec4(0.25, 0.5, -2.0, 1.0);\nhz_Normal = vec3(1.0, 0.0, 0.0);"
-                    .into(),
-                attributes: vec![("vaNormal".into(), "hz_Normal".into())],
-                ..Default::default()
-            };
-            let program = translate_gbuffers(&vertex, &fragment, Target::Buffers, &inputs)
-                .unwrap_or_else(|e| panic!("{reads}: {e:?}"));
-            places_vertices_constant(&program.vertex)
-        };
-        for (reads, expected) in [
-            (
-                "seen = 0.0; gl_Position.xy += vaNormal.yx * float(gl_VertexID % 2);",
-                true,
-            ),
-            (
-                "seen = 0.0; gl_Position.xy += vaNormal.yx * float(gl_VertexIndex % 2);",
-                true,
-            ),
-            (
-                "seen = 0.0; gl_Position.xy += gl_Normal.yx * float(gl_VertexID % 2);",
-                true,
-            ),
-            ("seen = float(gl_VertexID * 7 % 3);", false),
-            ("seen = float(gl_VertexIndex * 7 % 3);", false),
-            ("seen = vaNormal.x;", false),
-            ("seen = gl_Normal.x;", false),
-            ("seen = 0.0;", false),
-        ] {
-            assert_eq!(places(reads), expected, "{reads}");
-        }
     }
 
     /// Core matrix state and compatibility matrix state describe the same geometry transform.

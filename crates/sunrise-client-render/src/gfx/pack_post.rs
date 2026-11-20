@@ -565,10 +565,12 @@ pub(super) struct World<'a> {
 }
 
 /// This frame's block outline, when the pack draws it: the outline buffer (one instance per
-/// edge, pack_lines.rs) and the edges in it.
+/// edge, pack_lines.rs), the edges of a stroke and the strokes in it, each drawn over the one
+/// before (a high contrast outline's black stroke, then its bright one).
 pub(super) struct Lines {
     pub edges: wgpu::Buffer,
     pub count: u32,
+    pub strokes: u32,
 }
 
 /// This frame's clouds, when the pack draws them: their vertices, uniform, quad indices and
@@ -2889,7 +2891,10 @@ impl PackPost {
             .clouds
             .zip(cloud_geometry.as_ref())
             .and_then(|(p, g)| build(p, Some(g)));
-        let line_buffers = [Some(super::pack_lines::layout())];
+        let line_buffers = [
+            Some(super::pack_lines::layout()),
+            Some(super::pack_lines::over_layout()),
+        ];
         let line_geometry = Geometry {
             buffers: &line_buffers,
             table: None,
@@ -4498,7 +4503,19 @@ impl PackPost {
                 self.draws.bind(&mut rp, "OUTLINE");
             }
             rp.set_vertex_buffer(0, lines.edges.slice(..));
-            rp.draw(0..6, 0..lines.count);
+            // Each edge reads the width of the stroke drawn over it from the second buffer: the
+            // next stroke's edge (the outline buffer from that stroke's first edge on, as this
+            // stroke's edges are instances from its own first edge on), or the last stroke's own.
+            let stroke_bytes = u64::from(lines.count) * 32;
+            for stroke in 0..lines.strokes {
+                let over = if stroke + 1 < lines.strokes {
+                    stroke_bytes
+                } else {
+                    0
+                };
+                rp.set_vertex_buffer(1, lines.edges.slice(over..));
+                rp.draw(0..6, stroke * lines.count..(stroke + 1) * lines.count);
+            }
         }
         self.mips_valid &= !pass.written;
         self.lines = Some(pass);
