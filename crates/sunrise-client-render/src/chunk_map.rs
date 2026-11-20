@@ -269,6 +269,14 @@ impl ChunkMap {
     pub fn surrounded(&self, key: Key) -> bool {
         self.near.get(&key) == Some(&9)
     }
+
+    /// Whether the centre is lit and its 3×3 is resident, the column readiness
+    /// required by `ChunkMap.prepareTickingChunk`.
+    #[inline]
+    pub fn is_ticking_ready(&self, key: Key) -> bool {
+        self.columns.get(&key).is_some_and(|chunk| chunk.lit) && self.surrounded(key)
+    }
+
     pub fn has_fresh(&self) -> bool {
         !self.fresh.is_empty()
     }

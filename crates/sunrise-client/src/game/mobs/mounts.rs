@@ -6,6 +6,7 @@ use super::Game;
 use sunrise_client::actions::Action;
 use sunrise_client::{
     blocks::Fluid,
+    first_person::Hand,
     hud::HudBatch,
     items::ItemStack,
     mobs::{Mob, MobEvent, Species, Who, equine},
@@ -260,20 +261,27 @@ impl Game<'_> {
         if self.mobs[i].species() != species || !equine::boost(&mut self.mobs[i]) {
             return false;
         }
-        if let Some(stack) = self.inventory[self.selected].clone() {
+        let slot = self.held_slot();
+        let hand = self.hand;
+        if let Some(stack) = self.stack_in(slot).cloned() {
             let (updated, broken) = self.damage_stack(&stack, wear, true);
-            if self.inventory[self.selected].as_ref() == Some(&stack) {
-                self.inventory[self.selected] = updated;
+            if self.stack_in(slot) == Some(&stack) {
+                *self.stack_in_mut(slot) = updated;
                 if let Some(broken) = broken {
-                    self.player_equipment_broke(
-                        sunrise_core::equipment_slot::EquipmentSlot::MainHand,
-                        &broken,
-                    );
+                    use sunrise_core::equipment_slot::EquipmentSlot;
+                    let equipment = match hand {
+                        Hand::Main => EquipmentSlot::MainHand,
+                        Hand::Off => EquipmentSlot::OffHand,
+                    };
+                    self.player_equipment_broke(equipment, &broken);
                     self.award_stat("broken", &broken.item, 1);
+                    self.player_item_destroyed(&stack, Some(hand));
                     // hurtAndConvertOnBreak keeps the broken stick's components.
-                    let mut rod = stack.transmute("minecraft:fishing_rod", 1);
-                    rod.damage = 0;
-                    self.inventory[self.selected] = Some(rod);
+                    if self.stack_in(slot).is_none() {
+                        let mut rod = stack.transmute("minecraft:fishing_rod", 1);
+                        rod.damage = 0;
+                        *self.stack_in_mut(slot) = Some(rod);
+                    }
                 }
             }
         }

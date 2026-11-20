@@ -2,7 +2,7 @@
 //! matched, which paths are written, which impl each `Self` stands in, what the file defines,
 //! and the byte ranges of macro bodies, whose tokens the parser does not see into.
 use crate::scan::Token;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Range;
 use syn::visit::{self, Visit};
 
@@ -39,10 +39,7 @@ pub(crate) struct Build<'t> {
 /// `Self`), and each position a pattern `X(a, b, ..)` lists before its `..`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct TupleField<'t> {
-    /// The struct's path, as names.
-    pub path: Vec<&'t str>,
-    /// Written with a leading `::`.
-    pub rooted: bool,
+    pub tie: Tie<'t>,
     pub position: u32,
     pub line: usize,
     /// The byte where the read is.
@@ -56,6 +53,26 @@ pub(crate) struct Impl<'t> {
     /// Its names, an empty first one for a leading `::`; `None` when the type is not a plain
     /// path the scan can read (a tuple, a macro), so what `Self` means there is unknown.
     pub target: Option<Vec<&'t str>>,
+}
+
+/// One module's direct items, separate from the names visible in other modules or blocks.
+#[derive(Debug, Default)]
+pub(crate) struct Module<'t> {
+    pub body: Range<usize>,
+    pub parent: usize,
+    /// Unconditional child modules: an inline scope index, or `None` for a file declaration.
+    pub children: BTreeMap<&'t str, Option<usize>>,
+    /// Unconditional concrete types, not aliases that can stand for API types.
+    pub types: BTreeSet<&'t str>,
+    /// The subset that also declare a tuple constructor in the value namespace.
+    pub tuple_constructors: BTreeSet<&'t str>,
+    /// The tuple variants of each unconditional enum.
+    pub tuple_variants: BTreeMap<&'t str, BTreeSet<&'t str>>,
+    /// A block item or type parameter may shadow the first segment of a relative path.
+    pub block_items: bool,
+    /// A block value item may shadow an unqualified constructor.
+    pub block_values: bool,
+    pub type_params: BTreeSet<&'t str>,
 }
 
 /// What the parser reads of one file.
@@ -80,8 +97,28 @@ pub(crate) struct Syntax<'t> {
     pub inline_modules: bool,
     /// Every module the file declares, inline or not (`mod api;`).
     pub modules: BTreeSet<&'t str>,
+    /// Names from `extern crate dep as name` that do not refer to the API itself.
+    pub extern_aliases: BTreeSet<&'t str>,
+    /// The first bytes of unconditional `use` statements directly in a module.
+    pub direct_uses: BTreeSet<usize>,
+    /// The file's top-level items and its inline modules, and their indices in source order.
+    pub scopes: Vec<Module<'t>>,
+    scope_order: Vec<usize>,
     /// The bytes inside each macro call's delimiters, and each `macro_rules!` body.
     pub macro_bodies: Vec<Range<usize>>,
+}
+
+impl Syntax<'_> {
+    pub fn module_at(&self, byte: usize) -> usize {
+        let after = self
+            .scope_order
+            .partition_point(|&scope| self.scopes[scope].body.start <= byte);
+        let mut scope = self.scope_order[after - 1];
+        while byte >= self.scopes[scope].body.end && scope != 0 {
+            scope = self.scopes[scope].parent;
+        }
+        scope
+    }
 }
 
 /// The path a type is, through parentheses and invisible groups; `None` for any other type.
@@ -108,16 +145,30 @@ fn type_path<'t>(reader: &Reader<'t>, ty: &syn::Type) -> Option<Tie<'t>> {
         syn::Type::Reference(r) => type_path(reader, &r.elem),
         syn::Type::Paren(t) => type_path(reader, &t.elem),
         syn::Type::Group(t) => type_path(reader, &t.elem),
-        _ => plain_path(ty).map(|path| (reader.names(path), path.leading_colon.is_some())),
+        _ => plain_path(ty).map(|path| reader.path_tie(path, Namespace::Type)),
     }
 }
 
-/// A struct's path as names, and whether it is written with a leading `::`.
-type Tie<'t> = (Vec<&'t str>, bool);
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Namespace {
+    Type,
+    /// A call or tuple pattern resolves a constructor, not a type name.
+    Value,
+}
+
+/// A path that may tie a positional read to a struct.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Tie<'t> {
+    pub path: Vec<&'t str>,
+    /// Written with a leading `::`.
+    pub rooted: bool,
+    pub namespace: Namespace,
+}
 
 struct Reader<'t> {
     text: &'t str,
     out: Syntax<'t>,
+    module: usize,
     /// The names bound in the function being read, innermost last, each with the struct path
     /// it is tied to when the binding says it.
     bindings: Vec<(&'t str, Option<Tie<'t>>)>,
@@ -132,6 +183,96 @@ impl<'t> Reader<'t> {
 
     fn names(&self, path: &syn::Path) -> Vec<&'t str> {
         path.segments.iter().map(|s| self.name(&s.ident)).collect()
+    }
+
+    fn path_tie(&self, path: &syn::Path, namespace: Namespace) -> Tie<'t> {
+        Tie {
+            path: self.names(path),
+            rooted: path.leading_colon.is_some(),
+            namespace,
+        }
+    }
+
+    fn module_items(&mut self, items: &[syn::Item]) {
+        for item in items {
+            let concrete = match item {
+                syn::Item::Struct(i) if !conditional(&i.attrs) => {
+                    if matches!(i.fields, syn::Fields::Unnamed(_)) {
+                        let name = self.name(&i.ident);
+                        self.out.scopes[self.module].tuple_constructors.insert(name);
+                    }
+                    Some(&i.ident)
+                }
+                syn::Item::Enum(i) if !conditional(&i.attrs) => {
+                    let name = self.name(&i.ident);
+                    let variants = i
+                        .variants
+                        .iter()
+                        .filter(|v| {
+                            !conditional(&v.attrs) && matches!(v.fields, syn::Fields::Unnamed(_))
+                        })
+                        .map(|v| self.name(&v.ident))
+                        .collect();
+                    self.out.scopes[self.module]
+                        .tuple_variants
+                        .insert(name, variants);
+                    Some(&i.ident)
+                }
+                syn::Item::Union(i) if !conditional(&i.attrs) => Some(&i.ident),
+                _ => None,
+            };
+            if let Some(ident) = concrete {
+                let name = self.name(ident);
+                self.out.scopes[self.module].types.insert(name);
+                if self.module == 0 {
+                    self.out.defines.insert(name);
+                }
+            }
+            // For the existing unqualified-name check, a readable alias is also a definition.
+            if self.module == 0
+                && let syn::Item::Type(i) = item
+                && !conditional(&i.attrs)
+                && plain_path(&i.ty).is_some()
+            {
+                self.out.defines.insert(self.name(&i.ident));
+            }
+            match item {
+                syn::Item::Mod(m) => self.module_item(m, true),
+                syn::Item::Use(u) if !conditional(&u.attrs) => {
+                    self.out
+                        .direct_uses
+                        .insert(u.use_token.span.byte_range().start);
+                    self.visit_item_use(u);
+                }
+                item => self.visit_item(item),
+            }
+        }
+    }
+
+    fn module_item(&mut self, m: &syn::ItemMod, direct: bool) {
+        let name = self.name(&m.ident);
+        self.out.modules.insert(name);
+        let parent = self.module;
+        if direct && !conditional(&m.attrs) && !m.attrs.iter().any(|a| a.path().is_ident("path")) {
+            let inline = m.content.as_ref().map(|_| self.out.scopes.len());
+            self.out.scopes[parent].children.insert(name, inline);
+        }
+        if let Some((brace, items)) = &m.content {
+            self.out.inline_modules = true;
+            self.module = self.out.scopes.len();
+            self.out.scopes.push(Module {
+                body: brace.span.join().byte_range(),
+                parent,
+                ..Module::default()
+            });
+            for attr in &m.attrs {
+                self.visit_attribute(attr);
+            }
+            self.module_items(items);
+            self.module = parent;
+        } else {
+            visit::visit_item_mod(self, m);
+        }
     }
 
     fn alias(&mut self, alias: &syn::Ident, ty: &syn::Type, item: bool) {
@@ -172,8 +313,8 @@ impl<'t> Reader<'t> {
         }
     }
 
-    /// The struct a value is tied to: a tuple struct's constructor call, a name bound with its
-    /// type, `self` in a method. Anything else (a tuple, a field, a method's result, a closure's
+    /// The path a value is tied to: a possible constructor call, a name bound with its type,
+    /// or `self` in a method. Anything else (a tuple, a field, a method's result, a closure's
     /// untyped argument) is tied to none.
     fn tie(&self, expr: &syn::Expr) -> Option<Tie<'t>> {
         match expr {
@@ -181,7 +322,7 @@ impl<'t> Reader<'t> {
             syn::Expr::Group(e) => self.tie(&e.expr),
             syn::Expr::Call(call) => match &*call.func {
                 syn::Expr::Path(p) if p.qself.is_none() => {
-                    Some((self.names(&p.path), p.path.leading_colon.is_some()))
+                    Some(self.path_tie(&p.path, Namespace::Value))
                 }
                 _ => None,
             },
@@ -198,10 +339,9 @@ impl<'t> Reader<'t> {
         }
     }
 
-    fn tuple_field(&mut self, (path, rooted): Tie<'t>, position: u32, at: proc_macro2::Span) {
+    fn tuple_field(&mut self, tie: Tie<'t>, position: u32, at: proc_macro2::Span) {
         self.out.tuple_fields.push(TupleField {
-            path,
-            rooted,
+            tie,
             position,
             line: at.start().line,
             byte: at.byte_range().start,
@@ -215,7 +355,11 @@ impl<'t> Reader<'t> {
             match input {
                 syn::FnArg::Receiver(r) => {
                     let tie = match r.colon_token {
-                        None => Some((vec!["Self"], false)),
+                        None => Some(Tie {
+                            path: vec!["Self"],
+                            rooted: false,
+                            namespace: Namespace::Type,
+                        }),
                         Some(_) => type_path(self, &r.ty),
                     };
                     self.bindings.push(("self", tie));
@@ -286,7 +430,7 @@ impl<'a, 't> Visit<'a> for Reader<'t> {
         // The positions before a `..` are known; those after it count from an end the scan
         // does not know.
         if let Some(first) = p.path.segments.first() {
-            let tie = (self.names(&p.path), p.path.leading_colon.is_some());
+            let tie = self.path_tie(&p.path, Namespace::Value);
             let at = first.ident.span();
             let listed = p
                 .elems
@@ -320,8 +464,36 @@ impl<'a, 't> Visit<'a> for Reader<'t> {
         self.function(&i.sig, |this| visit::visit_trait_item_fn(this, i));
     }
 
+    fn visit_type_param(&mut self, p: &'a syn::TypeParam) {
+        let name = self.name(&p.ident);
+        self.out.scopes[self.module].type_params.insert(name);
+        visit::visit_type_param(self, p);
+    }
+
     fn visit_block(&mut self, b: &'a syn::Block) {
         let outer = self.bindings.len();
+        let module = &mut self.out.scopes[self.module];
+        for stmt in &b.stmts {
+            if let syn::Stmt::Item(item) = stmt {
+                match item {
+                    syn::Item::Mod(_)
+                    | syn::Item::ExternCrate(_)
+                    | syn::Item::Struct(_)
+                    | syn::Item::Enum(_)
+                    | syn::Item::Union(_)
+                    | syn::Item::Trait(_)
+                    | syn::Item::TraitAlias(_)
+                    | syn::Item::Type(_) => module.block_items = true,
+                    syn::Item::Const(_)
+                    | syn::Item::Fn(_)
+                    | syn::Item::ForeignMod(_)
+                    | syn::Item::Static(_) => {
+                        module.block_values = true;
+                    }
+                    _ => {}
+                }
+            }
+        }
         visit::visit_block(self, b);
         self.bindings.truncate(outer);
     }
@@ -425,10 +597,17 @@ impl<'a, 't> Visit<'a> for Reader<'t> {
     }
 
     fn visit_item_mod(&mut self, m: &'a syn::ItemMod) {
-        self.out.inline_modules |= m.content.is_some();
-        let name = self.name(&m.ident);
-        self.out.modules.insert(name);
-        visit::visit_item_mod(self, m);
+        self.module_item(m, false);
+    }
+
+    fn visit_item_extern_crate(&mut self, item: &'a syn::ItemExternCrate) {
+        if self.name(&item.ident) != "mod_api"
+            && let Some((_, name)) = &item.rename
+        {
+            let name = self.name(name);
+            self.out.extern_aliases.insert(name);
+        }
+        visit::visit_item_extern_crate(self, item);
     }
 
     fn visit_item_struct(&mut self, i: &'a syn::ItemStruct) {
@@ -726,25 +905,22 @@ pub(crate) fn parse(text: &str) -> Result<Syntax<'_>, Unread> {
             let mut reader = Reader {
                 text,
                 out: Syntax::default(),
+                module: 0,
                 bindings: Vec::new(),
             };
-            for item in &file.items {
-                let defined = match item {
-                    syn::Item::Struct(i) if !conditional(&i.attrs) => Some(&i.ident),
-                    syn::Item::Enum(i) if !conditional(&i.attrs) => Some(&i.ident),
-                    syn::Item::Union(i) if !conditional(&i.attrs) => Some(&i.ident),
-                    // An alias defines its name only when the scan can read what it stands for.
-                    syn::Item::Type(i) if !conditional(&i.attrs) && plain_path(&i.ty).is_some() => {
-                        Some(&i.ident)
-                    }
-                    _ => None,
-                };
-                if let Some(ident) = defined {
-                    let name = reader.name(ident);
-                    reader.out.defines.insert(name);
-                }
+            reader.out.scopes.push(Module {
+                body: 0..text.len(),
+                ..Module::default()
+            });
+            for attr in &file.attrs {
+                reader.visit_attribute(attr);
             }
-            reader.visit_file(&file);
+            reader.module_items(&file.items);
+            reader.out.scope_order = (0..reader.out.scopes.len()).collect();
+            reader
+                .out
+                .scope_order
+                .sort_by_key(|&scope| reader.out.scopes[scope].body.start);
             Ok(reader.out)
         }
         Err(error) => Err(Unread::Parse(error.span().start().line.max(1))),

@@ -87,6 +87,8 @@ pub struct World {
     pub chunks: crate::chunk_map::ChunkMap,
     /// The light the columns that left the level keep (`light_border.rs`).
     pub border: crate::fast_hash::FxHashMap<(i32, i32), crate::light_border::Border>,
+    /// Published section support of proto neighbours of saved columns.
+    pub(crate) proto_light_support: crate::fast_hash::FxHashMap<(i32, i32), SectionMask>,
     pub random: LevelRandom,
     pub revision: u64,
     pub health_rules: HealthRules,
@@ -160,6 +162,7 @@ pub struct World {
     /// The sections whose light changed since the log was last drained, as
     /// a bit per section of each column, kept while `block_log` is
     /// (`ChunkHolder.sectionLightChanged`).
+    /// Pending network light updates, indexed from the column's lower light pad.
     pub light_log: Option<crate::fast_hash::FxHashMap<(i32, i32), SectionMask>>,
     /// The villager POIs of each section (`PoiManager`'s sections).
     pub pois: crate::poi_sections::PoiSections<sunrise_world::poi::PoiIdentity>,
@@ -313,6 +316,7 @@ impl World {
             shape: LevelShape::OVERWORLD,
             chunks: Default::default(),
             border: Default::default(),
+            proto_light_support: Default::default(),
             random: LevelRandom::for_level(LegacyRandom::new(seed)),
             revision: 0,
             health_rules: HealthRules::default(),

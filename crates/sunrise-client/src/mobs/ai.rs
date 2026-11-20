@@ -4124,36 +4124,6 @@ pub fn forgive_dead_player(m: &mut Mob) {
         _ => super::tame::forgive_dead_player(m),
     }
 }
-/// Species-specific travel (fish, squid, dolphins swim with their own rules).
-pub(super) fn custom_travel(
-    m: &mut Mob,
-    w: &MobWorld,
-    level: &mut DamageLevel<'_>,
-    input: Vec3,
-    events: &mut Vec<MobEvent>,
-    pause: bool,
-) -> Result<bool, super::living::TravelTrample> {
-    if m.species() == Species::Drowned {
-        return undead::drowned_travel(m, w, level, input, events, pause);
-    }
-    if m.species() == Species::Turtle {
-        return super::turtle::travel(m, w, level, input, events, pause);
-    }
-    if m.species() == Species::Frog {
-        return super::frog::travel(m, w, level, input, events, pause);
-    }
-    match family(m.species()) {
-        Family::Aquatic => aquatic::travel(m, w, level, input, events, pause),
-        Family::Guardian => super::guardian::travel(m, w, level, input, events, pause),
-        // Shulkers never move on their own.
-        Family::Shulker => Ok(true),
-        Family::Allay => super::allay::travel(m, w, level, input, events, pause),
-        Family::Vex => Ok(super::vex::travel(m, w)),
-        Family::Nautilus => super::nautilus::travel(m, w, level, input, events, pause),
-        _ => Ok(false),
-    }
-}
-
 /// [`tick_effects_hurting`] with no hook, for the effect tests: a hurt it
 /// deals leaves its teleport pending.
 #[cfg(test)]
