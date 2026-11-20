@@ -277,6 +277,10 @@ mod tests {
                 let initial_health = if let Body::Guest { sneaking } = body {
                     let mut player = guest(1);
                     player.loaded = true;
+                    player.loading = false;
+                    // A real client has reported that it loaded the level.
+                    // Otherwise ServerPlayer.isInvulnerableTo refuses fall damage.
+                    player.load_timeout = 0;
                     player.sneaking = sneaking;
                     player.position = [1.5, LANDING_Y, 1.5];
                     player.moves.push(([0.0, -0.25, 0.0], true));
@@ -356,7 +360,12 @@ mod tests {
                 assert_eq!(landing_y, y_after);
                 assert_eq!(game.mob_object(OTHER).unwrap().position.y, y_after);
                 assert_eq!(game.mob_object(OUTSIDE).unwrap().position.y, LANDING_Y);
-                assert_eq!(health, initial_health - damage);
+                assert_eq!(
+                    health,
+                    initial_health - damage,
+                    "trace: {:?}",
+                    *trace.lock().unwrap()
+                );
 
                 let api_state =
                     |state: sunrise_world::registry::BlockStateId| -> mod_api::BlockState {
