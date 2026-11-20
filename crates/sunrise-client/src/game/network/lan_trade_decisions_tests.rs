@@ -43,6 +43,7 @@ struct Script {
     player_write: Option<PlayerWrite>,
     raise_second_price: bool,
     refuse_stacked: bool,
+    replace_stacked_result: bool,
 }
 thread_local! {
     static SCRIPT: RefCell<Script> = RefCell::new(Script::default());
@@ -93,12 +94,16 @@ impl Hooks for Both {
     ) {
         trade(host, event);
     }
-    fn item_stacked_on_other(&self, _: HostSide, _: &mut ItemStackedOnOtherEvent<'_>) -> Flow {
+    fn item_stacked_on_other(&self, _: HostSide, event: &mut ItemStackedOnOtherEvent<'_>) -> Flow {
         STACKED.set(STACKED.get() + 1);
-        assert!(
-            !SCRIPT.with(|s| s.borrow().refuse_stacked),
-            "stacked listener failed"
-        );
+        let script = SCRIPT.with(|s| s.borrow().clone());
+        assert!(!script.refuse_stacked, "stacked listener failed");
+        if script.replace_stacked_result {
+            event.result.handled = true;
+            event.result.clicked = mod_api::StackResult::Set(None);
+            event.cancelled = true;
+            return Flow::Cancel;
+        }
         Flow::Continue
     }
 }
@@ -857,6 +862,16 @@ fn a_trade_refused_inside_the_stacked_pickup_undoes_the_whole_take() {
             corrected(&rx, click.container, 2);
             script(Script {
                 refuse_stacked: true,
+                ..Script::default()
+            });
+            assert!(game.lan_merchant_click(12, &click));
+            assert_eq!((CALLS.get(), STACKED.get()), (0, 1));
+            unchanged(game, 2);
+            corrected(&rx, click.container, 2);
+            // The merged slot-rule probe must reject an answer that removes the result without
+            // running its take effects. No trade hook fires and the client gets a correction.
+            script(Script {
+                replace_stacked_result: true,
                 ..Script::default()
             });
             assert!(game.lan_merchant_click(12, &click));

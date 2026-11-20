@@ -48,9 +48,11 @@ pub(super) fn opaque_villager(
         && professions.state_index(profession).is_none()
 }
 
-/// A plain merchant menu op, or a pickup with frozen slot rules and a stacked answer.
+/// How a merchant menu op runs: ordinary, a read-only probe on a copy, or a pickup with
+/// frozen slot rules and a stacked answer.
 pub(super) enum MerchantRun<'a> {
     Plain,
+    Probe,
     Decided(
         &'a dyn sunrise_client::menu::SlotRules,
         Option<&'a sunrise_client::menu::StackedOutcome>,
@@ -279,7 +281,7 @@ impl Game<'_> {
     }
 
     /// `lan_merchant_op`, run as a decision asks (see `MerchantRun`).
-    fn lan_merchant_op_with(
+    pub(super) fn lan_merchant_op_with(
         &mut self,
         conn: u32,
         window: Option<i32>,
@@ -299,9 +301,13 @@ impl Game<'_> {
         if window.is_some_and(|window| window != gm.window) {
             return false;
         }
+        let probe = matches!(run, MerchantRun::Probe);
         let Some((mut menu, made)) = self.read_merchant_menu(conn, gm, run, op) else {
             return false;
         };
+        if probe {
+            return true;
+        }
         self.journal_guest_merchant(conn);
         let host = self.lan.as_mut().expect("open merchant");
         host.menus.entry(conn).or_default().merchant.restore(());
@@ -498,24 +504,19 @@ impl Game<'_> {
         if !Self::stacked_listened() || input != Input::Pickup {
             return self.lan_merchant_op(conn, Some(p.container), false, op);
         }
-        // Plan: what the click finds in the menu as the guest's trade state makes it, and what
-        // the slot rules say to it, on copies; nothing is kept.
-        let answers = std::rc::Rc::new(sunrise_client::menu::RuleAnswers::default());
-        let open = self
-            .lan
-            .as_ref()
-            .and_then(|host| host.play.get(&conn)?.merchant.as_ref())
-            .filter(|gm| gm.window == p.container);
-        let Some(frozen) = open.and_then(|gm| {
-            let mut found = None;
-            self.read_merchant_menu(conn, gm, MerchantRun::Plain, |menu, env| {
+        // Freeze what the click finds as the guest's trade state makes it, without a write.
+        let answers = sunrise_client::menu::RuleAnswers::default();
+        let mut found = None;
+        self.lan_merchant_op_with(
+            conn,
+            Some(p.container),
+            false,
+            MerchantRun::Probe,
+            |menu, env| {
                 found = menu.stacked_click(env, slot, button, input);
-                if found.is_some() {
-                    super::stacked_on_other::plan_click(menu, env, slot, button, &answers);
-                }
-            })?;
-            found
-        }) else {
+            },
+        );
+        let Some(frozen) = found else {
             return self.lan_merchant_op(conn, Some(p.container), false, op);
         };
         let route = match self.lan.as_mut() {
@@ -534,6 +535,21 @@ impl Game<'_> {
             move |game| {
                 let now = game.lan.as_ref()?.hub.guests.get(gi?)?.carried.clone();
                 (now == carried).then(|| same.clone())
+            },
+            |game, answer| {
+                if !game.lan_merchant_op_with(
+                    conn,
+                    Some(p.container),
+                    false,
+                    MerchantRun::Probe,
+                    |menu, env| {
+                        super::stacked_on_other::plan_click(
+                            menu, env, slot, button, &answers, answer,
+                        );
+                    },
+                ) {
+                    answer.refused.set(true);
+                }
             },
             |game, answer| {
                 game.journal_guest_click(conn);

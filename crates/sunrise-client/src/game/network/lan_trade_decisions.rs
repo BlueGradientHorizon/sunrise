@@ -11,7 +11,7 @@ use super::{
         decision::{Identity, OwnerStamp, Reply, Side},
     },
 };
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{cell::RefCell, collections::HashMap};
 use sunrise_client::{
     advancements::Advancement,
     items::ItemStack,
@@ -207,17 +207,19 @@ impl Game<'_> {
         let mut stacked = None::<StackedOutcome>;
         let mut rules = None;
         if input == Input::Pickup && Self::stacked_listened() {
-            let host = self.lan.as_ref().unwrap();
-            let gm = host.play[&conn].merchant.as_ref().unwrap();
-            let answers = Rc::new(RuleAnswers::default());
+            let answers = RuleAnswers::default();
             let mut seen = None;
-            self.read_merchant_menu(conn, gm, MerchantRun::Plain, |menu, env| {
-                seen = menu.stacked_click(env, 2, button, input);
-                if seen.is_some() {
-                    super::stacked_on_other::plan_click(menu, env, 2, button, &answers);
-                }
-            });
+            self.lan_merchant_op_with(
+                conn,
+                Some(p.container),
+                false,
+                MerchantRun::Probe,
+                |menu, env| {
+                    seen = menu.stacked_click(env, 2, button, input);
+                },
+            );
             if let Some(frozen) = seen {
+                let host = self.lan.as_ref().unwrap();
                 let stamp = host.menus[&conn].merchant.stamp();
                 let hub_generation = host.hub.guest(conn).expect("planned guest").menu_generation;
                 // The shared pickup decision checks its journal epoch as well as these stacks.
@@ -237,6 +239,21 @@ impl Game<'_> {
                             && gm.slots[2] == same.clicked
                             && guest.carried == same.carried)
                             .then(|| same.clone())
+                    },
+                    |game, answer| {
+                        if !game.lan_merchant_op_with(
+                            conn,
+                            Some(p.container),
+                            false,
+                            MerchantRun::Probe,
+                            |menu, env| {
+                                super::stacked_on_other::plan_click(
+                                    menu, env, 2, button, &answers, answer,
+                                );
+                            },
+                        ) {
+                            answer.refused.set(true);
+                        }
                     },
                     |_, answer| stacked = answer.cloned(),
                 ) == Pickup::Refused
