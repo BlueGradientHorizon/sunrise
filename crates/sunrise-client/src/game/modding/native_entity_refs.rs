@@ -47,40 +47,31 @@ pub(super) fn block_face_direction(face: BlockFace) -> sunrise_core::geometry::D
     }
 }
 
-/// `ProjectileUtil.getEntityHitResult`'s test on each candidate: its box grown by `margin`
-/// and clipped against the segment. Every hit, nearest first; a segment that starts inside a
-/// box does not hit it (`AABB.clip`).
-fn entity_ray_hits(
-    from: [f64; 3],
-    to: [f64; 3],
-    margin: f64,
-    candidates: impl IntoIterator<Item = (EntityRef, [[f64; 3]; 2])>,
-) -> Vec<EntityRayHit> {
-    let start = Vec3::new(from[0], from[1], from[2]);
-    let end = Vec3::new(to[0], to[1], to[2]);
-    let mut hits: Vec<EntityRayHit> = candidates
-        .into_iter()
-        .filter_map(|(entity, [lo, hi])| {
-            let grown = Aabb::new(
-                Vec3::new(lo[0], lo[1], lo[2]),
-                Vec3::new(hi[0], hi[1], hi[2]),
-            )
-            .inflate(Vec3::new(margin, margin, margin));
-            let at = grown.clip(start, end)?;
-            let location = [at.x, at.y, at.z];
-            let distance = (0..3)
-                .map(|i| (location[i] - from[i]).powi(2))
-                .sum::<f64>()
-                .sqrt();
-            Some(EntityRayHit {
-                entity,
-                location,
-                distance,
-            })
-        })
-        .collect();
-    hits.sort_by(|a, b| a.distance.total_cmp(&b.distance));
-    hits
+/// `ProjectileUtil.getEntityHitResult`'s test on a candidate: grow its box and clip it
+/// against the segment. A segment starting inside the grown box finds no entry (`AABB.clip`).
+fn clip_entity_ray(
+    start: Vec3,
+    end: Vec3,
+    padding: Vec3,
+    entity: EntityRef,
+    [lo, hi]: [[f64; 3]; 2],
+) -> Option<(EntityRayHit, f64)> {
+    let grown = Aabb::new(
+        Vec3::new(lo[0], lo[1], lo[2]),
+        Vec3::new(hi[0], hi[1], hi[2]),
+    )
+    .inflate(padding);
+    let location = grown.clip(start, end)?.components();
+    let from = start.components();
+    let distance_squared = (0..3).map(|i| (location[i] - from[i]).powi(2)).sum::<f64>();
+    Some((
+        EntityRayHit {
+            entity,
+            location,
+            distance: distance_squared.sqrt(),
+        },
+        distance_squared,
+    ))
 }
 
 impl Game<'_> {
@@ -421,10 +412,7 @@ impl Game<'_> {
         }
         Ok(self.visit_dragon_query_ids(bounds, true, &mut visit_id))
     }
-    /// Every entity the segment `from`..`to` passes through, nearest first, each box grown by
-    /// `margin` (`ProjectileUtil.getEntityHitResult`'s test, without its filter: the caller
-    /// takes the first hit it accepts). `exclude` is skipped. None for a bad margin or point,
-    /// and where `level_entities_in` is None.
+    /// Every geometric hit, stably sorted nearest first. None for a refused walk.
     pub(super) fn level_ray_trace_entities(
         &self,
         level: LevelRef,
@@ -433,22 +421,61 @@ impl Game<'_> {
         margin: f64,
         exclude: Option<EntityRef>,
     ) -> Option<Vec<EntityRayHit>> {
+        let mut hits = Vec::new();
+        self.visit_entity_ray_hits(level, from, to, margin, exclude, |hit, _| hits.push(hit))
+            .ok()?;
+        hits.sort_by(|a, b| a.distance.total_cmp(&b.distance));
+        Some(hits)
+    }
+
+    pub(super) fn level_ray_trace_nearest_entity(
+        &self,
+        level: LevelRef,
+        from: [f64; 3],
+        to: [f64; 3],
+        margin: f64,
+        exclude: Option<EntityRef>,
+        accept: &mut dyn FnMut(EntityRayHit) -> bool,
+    ) -> Result<Option<EntityRayHit>, LevelReadError> {
+        let mut nearest = None;
+        self.visit_entity_ray_hits(level, from, to, margin, exclude, |hit, distance_squared| {
+            if accept(hit) && nearest.is_none_or(|(_, best)| distance_squared < best) {
+                nearest = Some((hit, distance_squared));
+            }
+        })?;
+        Ok(nearest.map(|(hit, _)| hit))
+    }
+
+    fn visit_entity_ray_hits(
+        &self,
+        level: LevelRef,
+        from: [f64; 3],
+        to: [f64; 3],
+        margin: f64,
+        exclude: Option<EntityRef>,
+        mut visit: impl FnMut(EntityRayHit, f64),
+    ) -> Result<(), LevelReadError> {
         if !(margin.is_finite() && margin >= 0.0 && from.iter().chain(&to).all(|v| v.is_finite())) {
-            return None;
+            return Err(LevelReadError::Unavailable);
         }
         // Every box the grown test can hit meets the segment's own box grown the same way.
         let min = std::array::from_fn(|i| from[i].min(to[i]) - margin);
         let max = std::array::from_fn(|i| from[i].max(to[i]) + margin);
-        let candidates = self.level_entities_in(level, min, max)?;
-        Some(entity_ray_hits(
-            from,
-            to,
-            margin,
-            candidates
-                .into_iter()
-                .filter(|entity| Some(*entity) != exclude)
-                .filter_map(|entity| Some((entity, self.entity_bounding_box(entity)?))),
-        ))
+        let start = Vec3::new(from[0], from[1], from[2]);
+        let end = Vec3::new(to[0], to[1], to[2]);
+        let padding = Vec3::new(margin, margin, margin);
+        let _ = self.level_visit_entities_in(level, min, max, &mut |entity| {
+            // The walk and bounding-box read release any residency borrow before calling mod code.
+            if Some(entity) != exclude
+                && let Some(bounds) = self.entity_bounding_box(entity)
+                && let Some((hit, distance_squared)) =
+                    clip_entity_ray(start, end, padding, entity, bounds)
+            {
+                visit(hit, distance_squared);
+            }
+            ControlFlow::Continue(())
+        })?;
+        Ok(())
     }
     /// What the block at `pos` would drop (`Block.getDrops`) with `tool` and `entity` as the
     /// breaker, without breaking it: the level's `block_drops_of`, which draws from the random
@@ -1031,43 +1058,46 @@ mod ray_tests {
     }
 
     #[test]
-    fn hits_come_nearest_first_where_the_ray_enters_each_box() {
-        let hits = entity_ray_hits(
-            [0.0; 3],
-            [10.0, 0.0, 0.0],
-            0.0,
-            [
-                (entity(1), at(6.0)),
-                (entity(2), at(2.0)),
-                (entity(3), at(20.0)),
-            ],
-        );
-        let order: Vec<_> = hits.iter().map(|h| h.entity).collect();
+    fn clipping_reports_the_entry_and_distance_of_each_hit() {
+        let to = Vec3::new(10.0, 0.0, 0.0);
+        for (id, x, squared) in [(1, 6.0, 36.0), (2, 2.0, 4.0)] {
+            assert_eq!(
+                clip_entity_ray(Vec3::ZERO, to, Vec3::ZERO, entity(id), at(x)),
+                Some((
+                    EntityRayHit {
+                        entity: entity(id),
+                        location: [x, 0.0, 0.0],
+                        distance: x,
+                    },
+                    squared,
+                )),
+            );
+        }
         assert_eq!(
-            order,
-            [entity(2), entity(1)],
+            clip_entity_ray(Vec3::ZERO, to, Vec3::ZERO, entity(3), at(20.0)),
+            None,
             "the box past the segment's end is not hit"
         );
-        for (hit, x) in hits.iter().zip([2.0, 6.0]) {
-            assert!((hit.location[0] - x).abs() < 1e-9 && hit.location[1] == 0.0);
-            assert!((hit.distance - x).abs() < 1e-9);
-        }
     }
 
     #[test]
     fn the_margin_grows_every_box_and_a_start_inside_one_misses_it() {
-        // 0.3 above the ray: missed without a margin, hit with one.
+        // The box is above the ray: missed without a margin, hit with one.
         let above = [[3.0, 0.8, -0.5], [4.0, 1.8, 0.5]];
-        let to = [10.0, 0.0, 0.0];
-        assert!(entity_ray_hits([0.0; 3], to, 0.0, [(entity(1), above)]).is_empty());
-        let grown = entity_ray_hits([0.0; 3], to, 1.0, [(entity(1), above)]);
-        assert_eq!(grown.len(), 1);
-        assert!(
-            (grown[0].location[0] - 2.0).abs() < 1e-9,
+        let to = Vec3::new(10.0, 0.0, 0.0);
+        assert!(clip_entity_ray(Vec3::ZERO, to, Vec3::ZERO, entity(1), above).is_none());
+        let (grown, _) =
+            clip_entity_ray(Vec3::ZERO, to, Vec3::new(1.0, 1.0, 1.0), entity(1), above)
+                .expect("the ray enters the grown box");
+        assert_eq!(
+            grown.location,
+            [2.0, 0.0, 0.0],
             "entered at the grown box's face"
         );
         // `AABB.clip` from inside finds no entry, as for a projectile still in its shooter.
-        assert!(entity_ray_hits([0.5, 0.0, 0.0], to, 0.0, [(entity(1), at(0.0))]).is_empty());
+        assert!(
+            clip_entity_ray(Vec3::new(0.5, 0.0, 0.0), to, Vec3::ZERO, entity(1), at(0.0)).is_none()
+        );
     }
 }
 

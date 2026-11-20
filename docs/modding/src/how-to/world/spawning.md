@@ -66,6 +66,23 @@ for a non-finite bound, a parked or undisplayed level, or unavailable world acce
 A refused call does not run the visitor. Collect in the visitor only if you need
 a list after the call.
 
+## Finding the nearest entity hit
+
+Use `level.ray_trace_nearest_entity(host, from, to, margin, exclude, &mut accept)`
+when you need just one hit. It visits the same kinds of entities as the box query,
+grows their boxes by `margin`, and clips them to the segment. It skips `exclude`
+(such as the shooter) and boxes the ray starts inside.
+
+The predicate runs once per geometric hit, in spatial traversal order rather than
+nearest-first order, and can read `hit.entity` through the same host. Return `true`
+to consider a hit. The smallest squared distance from `from` wins; exact ties keep
+the first visited hit. The query doesn't allocate a hit list. It returns `Ok(None)`
+if nothing is accepted, `Err(LevelReadError::Stale)` for a stale level, and
+`Err(LevelReadError::Unavailable)` for invalid ray geometry or unavailable world access.
+
+Keep using `level.ray_trace_entities(host, from, to, margin, exclude)` when you need
+all hits or need to process hits in nearest-first order.
+
 ## Walking every entity in a level
 
 `level.visit_all_entities(host, &mut visit)` visits the authoritative level's

@@ -254,6 +254,79 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
+    fn nearest_ray_rejects_closer_hits_and_keeps_first_tie() {
+        with_game(|game| {
+            let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
+            let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
+            // Far first, then a closer rejected hit, then two accepted hits at the same distance.
+            // The excluded pig would hit; the last pig encloses the ray's start and does not hit.
+            for (id, x) in [
+                (90, 9.0),
+                (60, 3.0),
+                (40, 6.0),
+                (20, 6.0),
+                (10, 1.5),
+                (30, 0.0),
+            ] {
+                game.mobs
+                    .push(Mob::new(id, kind.clone(), Vec3::new(x, 64.0, 0.0), 0.0));
+            }
+            let level = game.level(game.dim.id()).unwrap();
+            let exclude = Some(game.entity(10).unwrap());
+            let host: &dyn mod_api::Host = game;
+            let from = [0.0, 64.5, 0.0];
+            let to = [12.0, 64.5, 0.0];
+            let mut seen = Vec::new();
+            let nearest = level
+                .ray_trace_nearest_entity(host, from, to, 0.25, exclude, &mut |hit| {
+                    assert!(hit.entity.position(host).is_some());
+                    seen.push(hit.entity.id());
+                    hit.entity.id() != 60
+                })
+                .unwrap();
+            assert_eq!(seen, [90, 60, 40, 20]);
+            assert_eq!(nearest.map(|hit| hit.entity.id()), Some(40));
+
+            let hits = level
+                .ray_trace_entities(host, from, to, 0.25, exclude)
+                .unwrap();
+            let ordered: Vec<_> = hits.into_iter().map(|hit| hit.entity.id()).collect();
+            assert_eq!(ordered, [60, 40, 20, 90]);
+
+            assert_eq!(
+                level.ray_trace_nearest_entity(host, from, to, 0.25, exclude, &mut |_| false),
+                Ok(None),
+            );
+            let empty_from = [0.0, 80.5, 0.0];
+            let empty_to = [12.0, 80.5, 0.0];
+            assert_eq!(
+                level.ray_trace_entities(host, empty_from, empty_to, 0.25, exclude),
+                Some(Vec::new()),
+            );
+            let stale = LevelRef::new(
+                mod_api::WorldEpoch::new(level.epoch().get() + 1),
+                level.dimension(),
+            );
+            for (level, margin, error) in [
+                (level, -1.0, LevelReadError::Unavailable),
+                (stale, 0.25, LevelReadError::Stale),
+            ] {
+                assert_eq!(
+                    level.ray_trace_entities(host, from, to, margin, exclude),
+                    None
+                );
+                assert_eq!(
+                    level.ray_trace_nearest_entity(host, from, to, margin, exclude, &mut |_| {
+                        panic!("a refused query must not invoke the predicate")
+                    }),
+                    Err(error),
+                );
+            }
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn entities_in_includes_dragon_and_separate_parts() {
         with_game(|game| {
             let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();

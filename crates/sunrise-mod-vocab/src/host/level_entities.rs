@@ -101,6 +101,30 @@ pub trait LevelEntitiesBackend {
         margin: f64,
         exclude: Option<EntityRef>,
     ) -> Option<Vec<EntityRayHit>>;
+    /// Side: both.
+    /// The nearest accepted hit on the segment from `from` to `to`, without collecting hits.
+    /// Uses the candidates of `visit_entities_in` in the segment's bounds padded by `margin`.
+    /// Each candidate's box is grown by `margin` before clipping. A ray starting inside a
+    /// grown box does not hit it, and `exclude` (for example, the shooter) is skipped.
+    ///
+    /// `accept` runs once per geometric hit in spatial traversal order, not distance order.
+    /// It can read the hit entity through the same host. Among the hits it accepts, the
+    /// smallest squared distance from `from` wins; an exact tie keeps the first visited hit.
+    ///
+    /// Returns `Ok(None)` when no hit is accepted. A stale level returns
+    /// `LevelReadError::Stale`. A negative or non-finite margin, non-finite endpoints or
+    /// padded bounds, an inactive or undisplayed level, or unavailable world access return
+    /// `LevelReadError::Unavailable`. A refused query does not call `accept`.
+    #[access(WorldOnly)]
+    fn level_ray_trace_nearest_entity(
+        &self,
+        level: LevelRef,
+        from: [f64; 3],
+        to: [f64; 3],
+        margin: f64,
+        exclude: Option<EntityRef>,
+        accept: &mut dyn FnMut(EntityRayHit) -> bool,
+    ) -> Result<Option<EntityRayHit>, LevelReadError>;
 }
 /// The handles' writes of the `level_entities` area, implemented by the game and reached through [`BackendMut`].
 // hidden: a handle's backend, reached through `Backend`; mods call the handle, never this trait

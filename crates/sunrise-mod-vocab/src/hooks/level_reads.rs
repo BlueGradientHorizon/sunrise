@@ -75,13 +75,19 @@ up to the fluid's height, a full block under the same fluid. `has_collisions(hos
 whether any block collision shape is in a box, with `collision_boxes`'s walk and limits and
 without building the list; entities and the world border are not part of it.
 
-`ray_trace_entities(host, from, to, margin, exclude)` lists every entity the segment passes
-through, nearest first, with where it enters each box grown by `margin` and how far that is:
-the test `ProjectileUtil.getEntityHitResult` makes on each candidate. Vanilla's filter is a
-predicate (`canHitEntity`, `isPickable`); here it is the caller's, who takes the first hit it
-accepts, for example the first living entity. A ray starting inside a box does not hit it, so
-pass the shooter as `exclude` or start outside it. Candidates are the entities
-`visit_entities_in` visits, so spectator guests are not hit."#]
+`ray_trace_entities(host, from, to, margin, exclude)` lists every geometric hit, nearest
+first, preserving spatial traversal order for ties. `ray_trace_nearest_entity(host, from,
+to, margin, exclude, &mut accept)` needs no list: it calls the predicate once per geometric
+hit in `visit_entities_in` order and returns the accepted hit with the smallest squared
+distance, keeping the first visited exact tie. The predicate can read an entity through
+the same host. No accepted hit is `Ok(None)`; invalid geometry or unavailable world access
+returns `LevelReadError::Unavailable`, and a stale level returns `LevelReadError::Stale`.
+
+Both queries use the test `ProjectileUtil.getEntityHitResult` makes on each candidate:
+clip against its box grown by `margin` and report the entry point and distance. A ray
+starting inside a grown box does not hit it. `exclude` skips an entity such as the shooter;
+`visit_entities_in` supplies the candidates, so spectator guests are not hit. The filter
+(`canHitEntity`, `isPickable`) is up to the caller."#]
     fn level_reads_note2();
     #[notes = r#"## Fluid properties and the explicit fluid tick
 
