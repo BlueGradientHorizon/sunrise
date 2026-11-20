@@ -1,3 +1,4 @@
+from contextlib import chdir
 import hashlib
 import io
 import json
@@ -22,12 +23,18 @@ def release(tag, *, draft=False, prerelease=False):
     return {"tag_name": tag, "draft": draft, "prerelease": prerelease}
 
 
-def sdk_assets(sha, surface, content_api, functions):
+def function(signature="signature", source="source", span=(5, 9)):
+    return {"module": "module", "file": "module.rs", "span": span, "signature_hash": signature, "sha256": source}
+
+
+def sdk_assets(sha, surface, content_api, functions, *, function_header=None):
+    header = {"schema": 1, "build": {"commit": sha}}
+    index_body = {"functions": functions, "crates": {}, "refused": {}}
     build_data = io.BytesIO()
     with tarfile.open(fileobj=build_data, mode="w:xz") as tar:
-        for name, doc in (("functions", {"functions": functions}), ("internals", {"build": sha}),
-                          ("loops", {"build": sha})):
-            data = json.dumps(doc).encode()
+        for name, fields in (("functions", index_body | (function_header or {})), ("internals", {"internals": []}),
+                             ("loops", {"loops": []})):
+            data = json.dumps(header | fields).encode()
             member = tarfile.TarInfo(f"./{name}.json")
             member.size = len(data)
             tar.addfile(member, io.BytesIO(data))
@@ -58,8 +65,11 @@ class StableModApiTests(unittest.TestCase):
         )
         for tag, surface, verdict, content_api, error in cases:
             with self.subTest(tag=tag, verdict=verdict, content_api=content_api):
-                old_functions = {"body_change": {"sha256": "a"}, "unchanged": {"span": [5, 9]}, "removed": {}}
-                new_functions = {"body_change": {"sha256": "b"}, "unchanged": {"span": [5, 9]}, "added": {}}
+                old_functions = {"body_change": function(), "signature_change": function(),
+                                 "span_move": function(), "removed": function()}
+                new_functions = {"body_change": function(source="new body"),
+                                 "signature_change": function(signature="new signature"),
+                                 "span_move": function(span=(7, 11)), "added": function()}
                 assets = {OLD: sdk_assets(OLD, SURFACE, "1", old_functions),
                           HEAD: sdk_assets(HEAD, surface, content_api, new_functions)}
 
@@ -82,6 +92,7 @@ class StableModApiTests(unittest.TestCase):
                 self.notes.write_text(original)
                 with mock.patch.object(nightly.train, "gh_json", return_value=pages), \
                         mock.patch.object(nightly, "remote_tags", return_value=tags), \
+                        mock.patch.object(nightly, "require_stable_lineage") as lineage, \
                         mock.patch.object(nightly, "released_assets", side_effect=verified), \
                         mock.patch.object(nightly.subprocess, "run", side_effect=compare) as diff:
                     if error:
@@ -92,7 +103,9 @@ class StableModApiTests(unittest.TestCase):
                         nightly.stable_mod_api(HEAD, tag, self.notes)
                         self.assertEqual(self.notes.read_text(), original + f"\n### Changed mixin targets\n\n"
                                          f"Compared with `{PREVIOUS}`:\n\n- Added: `added`\n"
-                                         "- Changed: `body_change`\n- Removed: `removed`\n")
+                                         "- Changed: `body_change`\n- Removed: `removed`\n"
+                                         "- Changed: `signature_change`\n")
+                    lineage.assert_called_once_with(HEAD, tag, OLD, PREVIOUS)
                     diff.assert_called_once()
 
     def test_first_release_does_not_need_an_earlier_sdk(self):
@@ -103,14 +116,16 @@ class StableModApiTests(unittest.TestCase):
         self.assertIn("No earlier stable release to compare.", self.notes.read_text())
 
     def test_new_major_only_compares_mixin_targets(self):
-        old = sdk_assets(OLD, SURFACE, "1", {"target": {"span": [5, 9]}})
-        new = sdk_assets(HEAD, BREAKING, "2", {"target": {"span": [7, 11]}})
+        old = sdk_assets(OLD, SURFACE, "1", {"target": function()})
+        new = sdk_assets(HEAD, BREAKING, "2", {"target": function(source="new body")})
         with mock.patch.object(nightly.train, "gh_json", return_value=[[release(PREVIOUS)]]), \
                 mock.patch.object(nightly, "remote_tags", return_value={PREVIOUS: OLD}), \
+                mock.patch.object(nightly, "require_stable_lineage") as lineage, \
                 mock.patch.object(nightly, "released_assets", side_effect=[old, new]) as inputs, \
                 mock.patch.object(nightly.subprocess, "run") as diff:
             nightly.stable_mod_api(HEAD, "26.3-1.0.0", self.notes)
         diff.assert_not_called()
+        lineage.assert_not_called()
         self.assertEqual(inputs.call_args_list, [mock.call(sha, nightly.SDK_INDEX, nightly.SDK_BUILD_DATA)
                                                 for sha in (OLD, HEAD)])
         self.assertIn(f"Compared with `{PREVIOUS}`:\n\n- Changed: `target`", self.notes.read_text())
@@ -149,9 +164,56 @@ class StableModApiTests(unittest.TestCase):
             with self.assertRaisesRegex(SystemExit, "surface.json does not match sdk.json"):
                 nightly.stable_sdk_inputs(OLD, self.notes.with_name("surface.json"))
 
+    def test_function_index_must_name_its_build_and_have_a_supported_schema(self):
+        cases = (({"build": {"commit": HEAD}}, f"functions.json describes game build {HEAD}, not {OLD}"),
+                 ({"schema": 2}, "functions.json has build-data schema 2; expected 1"))
+        for header, error in cases:
+            with self.subTest(header=header), \
+                    mock.patch.object(nightly, "released_assets",
+                                      return_value=sdk_assets(OLD, SURFACE, "1", {}, function_header=header)), \
+                    self.assertRaisesRegex(SystemExit, error):
+                nightly.stable_sdk_inputs(OLD, None)
+
+    def test_same_line_accepts_pr_merges_of_backports_but_not_new_main_history(self):
+        repo, checkout = (self.notes.with_name(name) for name in ("upstream", "checkout"))
+        repo.mkdir()
+        git = nightly.git
+        with chdir(repo):
+            git("init", "--initial-branch=main")
+            for key, default in (("user.name", "Release Test"), ("user.email", "release-test@example.invalid")):
+                git("config", key, git("config", "--default", default, "--get", key))
+            # The base is shared; the upstream-only change makes the cherry-pick a different commit.
+            git("commit", "--allow-empty", "-m", "initial")
+            unrelated = git("rev-parse", "HEAD")
+            git("commit", "--allow-empty", "-m", "previous stable")
+            previous = git("rev-parse", "HEAD")
+            git("branch", "release")
+            git("commit", "--allow-empty", "-m", "main-only change")
+            Path("fix").touch()
+            git("add", "fix")
+            git("commit", "-m", "fix")
+            main = git("rev-parse", "HEAD")
+            git("switch", "-c", "backport", previous)
+            git("cherry-pick", main)
+            git("switch", "release")
+            git("merge", "--no-ff", "backport", "-m", "backport PR")
+            candidate = git("rev-parse", "HEAD")
+            git("switch", "-c", "imported")
+            git("merge", "--no-ff", "main", "-m", "bring in main")
+            imported = git("rev-parse", "HEAD")
+        git("clone", "--depth", "1", "--branch", "release", repo.as_uri(), str(checkout))
+        with chdir(checkout):
+            tag = "26.3-0.1.11"
+            nightly.require_stable_lineage(candidate, tag, previous, PREVIOUS)
+            self.assertEqual(git("rev-parse", "--is-shallow-repository"), "false")
+            with self.assertRaisesRegex(SystemExit, "brings in main history"):
+                nightly.require_stable_lineage(imported, tag, previous, PREVIOUS)
+            with self.assertRaisesRegex(SystemExit, "does not descend from"):
+                nightly.require_stable_lineage(unrelated, tag, previous, PREVIOUS)
+
     def test_large_notes_keep_every_target_in_a_linked_file(self):
         target = "module::" + "x" * 125_000
-        nightly.append_mixin_notes(self.notes, "26.3-0.1.11", PREVIOUS, {}, {target: {}})
+        nightly.append_mixin_notes(self.notes, "26.3-0.1.11", PREVIOUS, {}, {target: ("signature", "source")})
         listing = self.notes.with_name("changed-mixin-targets.md")
         self.assertIn(f"- Added: `{target}`", listing.read_text())
         self.assertIn(f"/releases/download/26.3-0.1.11/{listing.name}", self.notes.read_text())

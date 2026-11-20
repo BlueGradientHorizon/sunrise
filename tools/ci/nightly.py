@@ -533,8 +533,13 @@ def remote_tags() -> dict[str, str]:
     return refs
 
 
-def stable_sdk_inputs(sha: str, surface: Path | None) -> tuple[str, dict]:
-    """Read verified content and mixin declarations; write the plain SDK surface only for a same-line comparison."""
+# The build-data header shared with sunrise_mod_surface::build_data.
+BUILD_DATA_SCHEMA = 1
+MixinFingerprints = dict[str, tuple[str, str]]
+
+
+def stable_sdk_inputs(sha: str, surface: Path | None) -> tuple[str, MixinFingerprints]:
+    """Read the verified content version and mixin fingerprints; save the SDK surface for same-line comparisons."""
     names = (SDK_BUILD_DATA, SDK_SURFACE) if surface is not None else (SDK_BUILD_DATA,)
     files = released_assets(sha, SDK_INDEX, *names)
     try:
@@ -553,9 +558,22 @@ def stable_sdk_inputs(sha: str, surface: Path | None) -> tuple[str, dict]:
             if not member.isfile():
                 raise ValueError("functions.json is not a file")
             with archive.extractfile(member) as file:
-                functions = json.load(file)["functions"]
-        if not isinstance(functions, dict):
+                document = json.load(file)
+        schema = document["schema"]
+        if type(schema) is not int or schema != BUILD_DATA_SCHEMA:
+            raise ValueError(f"functions.json has build-data schema {schema!r}; expected {BUILD_DATA_SCHEMA}")
+        described = document["build"]["commit"]
+        if described != sha:
+            raise ValueError(f"functions.json describes game build {described}, not {sha}")
+        records = document["functions"]
+        if not isinstance(records, dict):
             raise ValueError("functions.json has no function map")
+        functions: MixinFingerprints = {}
+        for name, record in records.items():
+            signature, source = record["signature_hash"], record["sha256"]
+            if not isinstance(signature, str) or not isinstance(source, str):
+                raise ValueError(f"functions.json: {name} has invalid fingerprints")
+            functions[name] = signature, source
     except (KeyError, TypeError, ValueError, tarfile.TarError) as error:
         raise SystemExit(f"sdk-{sha}: cannot read stable comparison inputs: {error}")
     if surface is not None:
@@ -563,8 +581,8 @@ def stable_sdk_inputs(sha: str, surface: Path | None) -> tuple[str, dict]:
     return content_api, functions
 
 
-def append_mixin_notes(notes: Path, tag: str, previous: str, old: dict, new: dict) -> None:
-    """Compare complete function records, including their source spans, not internals or refusal rows."""
+def append_mixin_notes(notes: Path, tag: str, previous: str, old: MixinFingerprints, new: MixinFingerprints) -> None:
+    """Compare the signature and source hashes the native fit reader uses, not lookup metadata."""
     changes = []
     for name in sorted(old.keys() | new.keys()):
         if name not in old:
@@ -585,6 +603,23 @@ def append_mixin_notes(notes: Path, tag: str, previous: str, old: dict, new: dic
         out.write(intro + section)
 
 
+def require_stable_lineage(sha: str, tag: str, old_sha: str, old_tag: str) -> None:
+    """Backports may be merged by PR; new history shared with main starts a new major."""
+    main = "refs/remotes/origin/main"
+    # The publish job normally has a shallow checkout. Both sides' full ancestry is needed;
+    # only fetch the candidate, its previous stable build and main, not every branch and tag.
+    unshallow = ["--unshallow"] if git("rev-parse", "--is-shallow-repository") == "true" else []
+    git("fetch", "--quiet", "--no-tags", *unshallow, "origin", f"+refs/heads/main:{main}", sha, old_sha)
+    if not is_ancestor(old_sha, sha):
+        raise SystemExit(f"::error::refused: {tag} does not descend from {old_tag}")
+    # Every common ancestor of main and the candidate is reachable from some merge base.
+    # If one base is newer than the stable history, the candidate imported main history.
+    bases = git("merge-base", "--all", main, sha).splitlines()
+    if imported := next((base for base in bases if not is_ancestor(base, old_sha)), None):
+        raise SystemExit(f"::error::refused: {tag} brings in main history ({imported}) absent from {old_tag}; "
+                         "cherry-pick fixes on this line or use a new major")
+
+
 def stable_mod_api(sha: str, tag: str, notes: Path) -> None:
     """Compare to the latest published stable release, not sdk.json's previous SDK or a reserved tag."""
     parsed = train.stable_version(tag)
@@ -603,6 +638,8 @@ def stable_mod_api(sha: str, tag: str, notes: Path) -> None:
     if not old_sha:
         raise SystemExit(f"::error::refused: {tag} cannot resolve the previous stable tag {old_tag}")
     same_line = old_version[0] == version[0]
+    if same_line:
+        require_stable_lineage(sha, tag, old_sha, old_tag)
     with tempfile.TemporaryDirectory() as directory:
         work = Path(directory)
         before, after = work / "before.json", work / "after.json"
