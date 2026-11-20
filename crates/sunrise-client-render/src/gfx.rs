@@ -10,7 +10,7 @@ use crate::{
     section_mask::SectionMask,
     sprites::SpriteAnimation,
 };
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(test)]
 use glam::Vec4;
 use glam::{DVec3, Mat4, Vec3};
 use std::{collections::HashMap, path::PathBuf, sync::Arc, time::Instant};
