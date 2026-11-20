@@ -363,10 +363,11 @@ cursor and insert a copy without extracting from the cursor; for a real input, m
 the source in the same transaction instead.
 
 The storage is never saved. `menu_closed` sees its final `owned_slots` in slot order and the supplied
-`opening_hand`, if any. The old window and its handles are already stale. The game does not return
-or drop those values automatically. A listener can use the server Host to give real inputs back or to
-write a filter selection to the held item. Check that the player and item are still available before
-writing; do not give filter copies back as real items. The cursor's ordinary close behavior is unchanged.
+`opening_hand`, if any. The old window and its handles are already stale. Unlike vanilla's `clearContainer`, the game does not
+return or drop those values automatically. A part that wants real inputs returned must return them using
+the server Host. A listener can instead write a filter selection to the held item. Check that the player and
+item are still available before writing; do not give filter copies back as real items. The cursor's ordinary
+close behavior is unchanged.
 
 ## Slots backed by a held item or an entity's handler
 
