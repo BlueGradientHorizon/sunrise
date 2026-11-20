@@ -243,6 +243,13 @@ fn surface_diff(args: &[PathBuf]) -> ! {
         *slot = Some(value);
     }
     let mut diff = mod_surface::diff(&read_surface(old), &read_surface(new));
+    let filter_ids = |file: &mut notes::NoteFile| {
+        if api_notes_only {
+            file.ids.retain(|id| {
+                !matches!(id.split_once(':'), Some(("point" | "loop" | "internal", _)))
+            });
+        }
+    };
     let mut stale = Vec::new();
     if let Some(dir) = notes_dir {
         // Without the base's notes every older note would read as new, and stale.
@@ -256,11 +263,7 @@ fn surface_diff(args: &[PathBuf]) -> ! {
             if file.landed != wanted {
                 continue;
             }
-            if api_notes_only {
-                file.ids.retain(|id| {
-                    !matches!(id.split_once(':'), Some(("point" | "loop" | "internal", _)))
-                });
-            }
+            filter_ids(&mut file);
             for id in diff.attach(&file.note, &file.ids) {
                 stale.push(format!(
                     "change note {} names {id}, which did not change",
@@ -272,8 +275,9 @@ fn surface_diff(args: &[PathBuf]) -> ! {
     if let Some(dir) = covered_by {
         let base = covered_base.unwrap_or_else(|| fail("--covered-by needs --covered-base"));
         // Read apart from --notes, so neither set's file names can hide or replace the other's.
-        for file in notes::read(dir, base).unwrap_or_else(|e| fail(e)) {
+        for mut file in notes::read(dir, base).unwrap_or_else(|e| fail(e)) {
             if file.landed.is_none() {
+                filter_ids(&mut file);
                 diff.attach(&file.note, &file.ids);
             }
         }
