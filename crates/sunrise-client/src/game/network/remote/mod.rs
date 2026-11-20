@@ -4763,7 +4763,7 @@ impl Game<'_> {
                 // unless the elder guardian is silent.
                 10 => {
                     self.particles.elder_guardian();
-                    if p.param == 1.0
+                    if p.rounded_param() == 1
                         && let Some(at) = self.player.as_ref().map(|m| m.position)
                     {
                         self.play_client_local_sound(
@@ -4784,7 +4784,7 @@ impl Game<'_> {
                 // START_RAINING, STOP_RAINING, RAIN_LEVEL_CHANGE and THUNDER_LEVEL_CHANGE.
                 event @ (1 | 2 | 7 | 8) => self.world.weather.game_event(event, p.param),
                 3 => {
-                    let mode = p.param as i32;
+                    let mode = p.rounded_param();
                     self.set_mode_id(mode);
                     if let Some(r) = self.remote.as_mut() {
                         r.game_mode = mode;
