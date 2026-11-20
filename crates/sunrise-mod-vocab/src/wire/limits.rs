@@ -47,8 +47,16 @@ impl Budget {
         if len == 0 {
             return Ok(());
         }
-        // Allow for slack in the power-of-two bucket array and its control bytes.
-        self.charge::<(T, usize)>(len.saturating_mul(2).max(4))
+        // Allow at most 7/8 occupancy of the power-of-two bucket array. Control
+        // bytes include one byte per bucket, up to 15 bytes of alignment padding,
+        // and the trailing 16-byte control group.
+        let buckets = len
+            .checked_mul(8)
+            .and_then(|scaled| scaled.div_ceil(7).checked_next_power_of_two())
+            .ok_or(WireError::Budget)?
+            .max(4);
+        self.charge::<T>(buckets)?;
+        self.bytes(buckets as u64 + 31)
     }
 
     pub(super) fn compound(&mut self, len: usize) -> Result<(), WireError> {

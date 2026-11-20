@@ -4,7 +4,7 @@ r"""Move the existing vanilla writer below protocol, rewriting its callers (#363
 Replay from a clean checkout with `python3 tools/move_vanilla_writer.py`, then
 format the changed Rust files and the new module:
 
-    (git diff --name-only -z -- '*.rs'; printf '%s\\0' crates/sunrise-core/src/vanilla_bytes.rs) \\
+    (git diff --name-only -z -- '*.rs'; printf '%s\0' crates/sunrise-core/src/vanilla_bytes.rs) \
         | xargs -0 rustfmt --edition 2024 --config skip_children=true
 """
 

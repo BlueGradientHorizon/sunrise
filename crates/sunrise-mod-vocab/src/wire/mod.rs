@@ -958,13 +958,28 @@ impl<T: Wire, const N: usize> Wire for [T; N] {
     }
 }
 
+// Reserve the charged hash table once; insertion cannot temporarily hold two tables.
+// Ordinary Wire keeps its existing incremental insertion path.
+macro_rules! collection_storage {
+    (btree, $input:ident, $len:ident) => {
+        Self::new()
+    };
+    (hash_table, $input:ident, $len:ident) => {
+        if $input.budget.is_some() {
+            Self::with_capacity($len)
+        } else {
+            Self::new()
+        }
+    };
+}
+
 /// Sets and maps cross as a list of their entries; a key that repeats keeps the last.
 macro_rules! sets {
-    ($($ty:ident [$($bound:tt)+] => $budget:ident),*) => {$(
+    ($($ty:ident [$($bound:tt)+] => $budget:ident, $contract:literal;)*) => {$(
         impl<T: Wire + $($bound)+> Wire for $ty<T> {
             const MIN: usize = 4;
             fn describe(schema: &mut WireSchema) -> u64 where Self: 'static {
-                WireSchema::mix(WireSchema::leaf("set:u32-le-length"), T::describe(schema))
+                WireSchema::mix(WireSchema::leaf($contract), T::describe(schema))
             }
             fn put(&self, out: &mut Writer) {
                 out.payload_nested(|out| {
@@ -979,7 +994,7 @@ macro_rules! sets {
                 input.payload_nested(|input| {
                     let len = input.take_len(T::MIN)?;
                     input.charge_with(|budget| budget.$budget::<T>(len))?;
-                    let mut set = Self::default();
+                    let mut set = collection_storage!($budget, input, len);
                     for _ in 0..len {
                         set.insert(T::take(input)?);
                     }
@@ -989,14 +1004,17 @@ macro_rules! sets {
         }
     )*};
 }
-sets!(BTreeSet[Ord] => btree, HashSet[Eq + Hash] => hash_table);
+sets!(
+    BTreeSet[Ord] => btree, "btree-set:u32-le-length:v1";
+    HashSet[Eq + Hash] => hash_table, "hash-set:u32-le-length:v1";
+);
 
 macro_rules! maps {
-    ($($ty:ident [$($bound:tt)+] => $budget:ident),*) => {$(
+    ($($ty:ident [$($bound:tt)+] => $budget:ident, $contract:literal;)*) => {$(
         impl<K: Wire + $($bound)+, V: Wire> Wire for $ty<K, V> {
             const MIN: usize = 4;
             fn describe(schema: &mut WireSchema) -> u64 where Self: 'static {
-                let hash = WireSchema::mix(WireSchema::leaf("map:u32-le-length"), K::describe(schema));
+                let hash = WireSchema::mix(WireSchema::leaf($contract), K::describe(schema));
                 WireSchema::mix(hash, V::describe(schema))
             }
             fn put(&self, out: &mut Writer) {
@@ -1013,7 +1031,7 @@ macro_rules! maps {
                 input.payload_nested(|input| {
                     let len = input.take_len(K::MIN + V::MIN)?;
                     input.charge_with(|budget| budget.$budget::<(K, V)>(len))?;
-                    let mut map = Self::default();
+                    let mut map = collection_storage!($budget, input, len);
                     for _ in 0..len {
                         let key = K::take(input)?;
                         map.insert(key, V::take(input)?);
@@ -1024,7 +1042,10 @@ macro_rules! maps {
         }
     )*};
 }
-maps!(BTreeMap[Ord] => btree, HashMap[Eq + Hash] => hash_table);
+maps!(
+    BTreeMap[Ord] => btree, "btree-map:u32-le-length:v1";
+    HashMap[Eq + Hash] => hash_table, "hash-map:u32-le-length:v1";
+);
 
 macro_rules! tuples {
     ($(($($name:ident),+)),*) => {$(

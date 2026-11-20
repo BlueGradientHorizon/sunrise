@@ -182,25 +182,32 @@ slot_keys!(registries;
 slot_keys!(u64; UnresolvedFluid);
 
 impl Wire for crate::Identifier {
-    layout_fields!("namespace" => String, "path" => String);
+    layout_fields!(ordinary_only "validated-identifier:v1"; "namespace" => String, "path" => String);
     const MIN: usize = 8;
     fn put(&self, out: &mut Writer) {
-        out.put_str(self.namespace());
-        out.put_str(self.path());
+        if out.ordinary_only() {
+            out.put_str(self.namespace());
+            out.put_str(self.path());
+        }
     }
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
-        Self::from_parts(&input.take::<String>()?, &input.take::<String>()?)
+        input.ordinary_only()?;
+        Self::from_parts(input.take_str()?, input.take_str()?)
             .map_err(|_| WireError::Invalid("invalid identifier"))
     }
 }
 impl Wire for crate::LevelKey {
-    layout_fields!("text" => String);
+    layout_fields!(ordinary_only "interned-level-key:v1"; "text" => String);
     const MIN: usize = 4;
     fn put(&self, out: &mut Writer) {
-        out.put_str(&String::from(self));
+        if out.ordinary_only() {
+            out.put_str(self.id());
+        }
     }
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
-        Self::try_from(input.take::<String>()?).map_err(|_| WireError::Invalid("invalid level key"))
+        // The level key's process-wide interner cannot charge this payload's budget.
+        input.ordinary_only()?;
+        Self::parse(input.take_str()?).map_err(|_| WireError::Invalid("invalid level key"))
     }
 }
 impl Wire for crate::ConfigPath {
@@ -219,22 +226,28 @@ impl Wire for crate::ConfigPath {
     }
 }
 impl Wire for crate::SpawnerKey {
-    layout_fields!("text" => String);
+    layout_fields!(ordinary_only "validated-spawner-key:v1"; "text" => String);
     const MIN: usize = 4;
     fn put(&self, out: &mut Writer) {
-        out.put_str(self.as_str());
+        if out.ordinary_only() {
+            out.put_str(self.as_str());
+        }
     }
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
-        Self::new(&input.take::<String>()?).ok_or(WireError::Invalid("invalid spawner key"))
+        input.ordinary_only()?;
+        Self::new(input.take_str()?).ok_or(WireError::Invalid("invalid spawner key"))
     }
 }
 impl Wire for crate::CustomSpawners {
-    layout_fields!("entries" => Vec<crate::SpawnerEntry>);
+    layout_fields!(ordinary_only "unique-spawner-entries:v1"; "entries" => Vec<crate::SpawnerEntry>);
     const MIN: usize = 4;
     fn put(&self, out: &mut Writer) {
-        out.put(&Vec::from(self));
+        if out.ordinary_only() {
+            crate::SpawnerEntry::put_list(self.entries(), out);
+        }
     }
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
+        input.ordinary_only()?;
         Self::try_from(input.take::<Vec<crate::SpawnerEntry>>()?)
             .map_err(|_| WireError::Invalid("duplicate spawner"))
     }
@@ -254,7 +267,9 @@ impl Wire for crate::ReloadResourceError {
     layout_fields!("id" => crate::Identifier, "message" => String);
     const MIN: usize = 12;
     fn put(&self, out: &mut Writer) {
-        out.put(&<(crate::Identifier, String)>::from(self));
+        if out.ordinary_only() {
+            out.put(&<(crate::Identifier, String)>::from(self));
+        }
     }
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
         Ok(Self::from(input.take::<(crate::Identifier, String)>()?))
@@ -721,24 +736,28 @@ impl Wire for sunrise_core::nbt::Compound {
     layout_via!(std::collections::BTreeMap<sunrise_core::nbt::JavaString, crate::Tag>);
     const MIN: usize = 4;
     fn put(&self, out: &mut Writer) {
-        if !out.charge_with(|budget| budget.compound(self.len())) {
-            return;
-        }
-        out.put_len(self.len());
-        for (key, value) in self {
-            out.put(key);
-            out.put(value);
-        }
+        out.payload_nested(|out| {
+            if !out.charge_with(|budget| budget.compound(self.len())) {
+                return;
+            }
+            out.put_len(self.len());
+            for (key, value) in self {
+                out.put(key);
+                out.put(value);
+            }
+        });
     }
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
-        let len = input.take_len(sunrise_core::nbt::JavaString::MIN + crate::Tag::MIN)?;
-        input.charge_with(|budget| budget.compound(len))?;
-        let mut map = Self::new();
-        for _ in 0..len {
-            let key = input.take()?;
-            map.insert(key, input.take()?);
-        }
-        Ok(map)
+        input.payload_nested(|input| {
+            let len = input.take_len(sunrise_core::nbt::JavaString::MIN + crate::Tag::MIN)?;
+            input.charge_with(|budget| budget.compound(len))?;
+            let mut map = Self::new();
+            for _ in 0..len {
+                let key = input.take()?;
+                map.insert(key, input.take()?);
+            }
+            Ok(map)
+        })
     }
 }
 
@@ -941,9 +960,12 @@ impl crate::wire::Wire for crate::BoundingBox {
     }
 }
 impl crate::wire::Wire for crate::LevelDimension {
-    layout_fields!("tag" => u32, "0:Overworld" => (), "1:Nether" => (), "2:End" => (), "3:Custom" => crate::LevelKey);
+    layout_fields!(ordinary_only "level-dimension:v1"; "tag" => u32, "0:Overworld" => (), "1:Nether" => (), "2:End" => (), "3:Custom" => crate::LevelKey);
     const MIN: usize = 4;
     fn put(&self, out: &mut crate::wire::Writer) {
+        if !out.ordinary_only() {
+            return;
+        }
         match self {
             Self::Overworld => out.put(&0u32),
             Self::Nether => out.put(&1u32),
@@ -957,6 +979,7 @@ impl crate::wire::Wire for crate::LevelDimension {
     fn take(
         input: &mut crate::wire::Reader<'_>,
     ) -> ::std::result::Result<Self, crate::wire::WireError> {
+        input.ordinary_only()?;
         input.record(|input| {
             Ok(match input.take::<u32>()? {
                 0 => Self::Overworld,
