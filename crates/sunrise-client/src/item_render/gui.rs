@@ -386,7 +386,7 @@ pub struct GuiItemEnv<'a> {
 /// An item drawn under the caller's `pose` (GUI pixels, the slot's `translate(x + 8, y + 8)`
 /// and `scale(16, -16, 16)` with a turn of the caller's in between), lit and culled as in a
 /// slot but cut by no slot, and with a depth of its own like a GUI model
-/// ([`HudBatch::depth_glint_since`]): its faces meet each other by depth, whatever the turn, and
+/// ([`HudBatch::depth_glint_over`]): its faces meet each other by depth, whatever the turn, and
 /// never intersect what the screen drew before or after. The OptiFine CIT glint layers are not
 /// drawn. False, with nothing drawn, when a corner is not finite.
 pub fn draw_posed(
@@ -412,7 +412,7 @@ pub fn draw_posed(
     batch.glint_alpha = frame.alpha;
     let glint = frame.glint(8.0);
     let start = batch.vertices.len();
-    // The foil's faces follow the item's own, as `depth_glint_since` takes them.
+    // The foil's faces follow the item's own, as `depth_glint_over` takes them.
     let mut foil = Vec::new();
     let (mut lo, mut hi) = ([f32::INFINITY; 2], [f32::NEG_INFINITY; 2]);
     for face in depth::sort(&quads) {
