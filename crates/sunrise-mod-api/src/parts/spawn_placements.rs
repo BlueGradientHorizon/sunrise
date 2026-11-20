@@ -25,7 +25,7 @@ pub mod tests {
         #[mod_api::__subscriptions]
         impl Hooks for Ghoul {
             fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
-                r.declare_spawn_placement("ghoul", rule()).unwrap();
+                r.register_spawn_placement("ghoul", rule()).unwrap();
             }
         }
         crate::parts::tests::install_parts_fixture(&[ModEntry::new("ruby", Box::new(Ghoul))])
@@ -39,15 +39,15 @@ pub mod tests {
     #[test]
     pub(crate) fn spawn_placement_declarations_validate_and_refuse_duplicates() {
         let mut registrar = super::PartRegistrar::new("ruby");
-        registrar.declare_spawn_placement("ghoul", rule()).unwrap();
+        registrar.register_spawn_placement("ghoul", rule()).unwrap();
         // The same type twice is a duplicate, spelled bare or with the namespace.
         assert_eq!(
-            registrar.declare_spawn_placement("ruby:ghoul", rule()),
+            registrar.register_spawn_placement("ruby:ghoul", rule()),
             Err(SpawnPlacementError::Duplicate)
         );
         // The path stays in the declaring mod's namespace.
         assert_eq!(
-            registrar.declare_spawn_placement("foreign:ghoul", rule()),
+            registrar.register_spawn_placement("foreign:ghoul", rule()),
             Err(SpawnPlacementError::InvalidId)
         );
         // A tag is namespaced and written without `#`.
@@ -57,7 +57,7 @@ pub mod tests {
                 ..rule()
             };
             assert_eq!(
-                registrar.declare_spawn_placement("wraith", bad),
+                registrar.register_spawn_placement("wraith", bad),
                 Err(SpawnPlacementError::InvalidTag),
                 "{tag}"
             );
@@ -67,7 +67,7 @@ pub mod tests {
             ..rule()
         };
         assert_eq!(
-            registrar.declare_spawn_placement("wraith", bad),
+            registrar.register_spawn_placement("wraith", bad),
             Err(SpawnPlacementError::InvalidTag)
         );
         // The refusals name the mod; the good declaration stands.
@@ -85,7 +85,7 @@ pub mod tests {
 }
 
 impl SpawnPlacementsRegistrar for PartRegistrar {
-    fn declare_spawn_placement(
+    fn register_spawn_placement(
         &mut self,
         path: &str,
         rule: crate::SpawnPlacementRule,

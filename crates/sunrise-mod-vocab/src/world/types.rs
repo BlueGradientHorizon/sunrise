@@ -1035,7 +1035,7 @@ pub enum SpawnLight {
 }
 
 /// A mod entity type's spawn rule, declared with
-/// [`Registrar::declare_spawn_placement`](SpawnPlacementsRegistrar::declare_spawn_placement):
+/// [`Registrar::register_spawn_placement`](SpawnPlacementsRegistrar::register_spawn_placement):
 /// the arguments of NeoForge's `RegisterSpawnPlacementsEvent.register` as data. Every field
 /// must hold for a spawn to pass; a trial spawner ignores `light`, as for vanilla types.
 #[derive(Clone, Debug, PartialEq)]
@@ -1055,7 +1055,7 @@ pub struct SpawnPlacementRule {
 }
 
 /// Why a spawn placement declaration was refused
-/// ([`Registrar::declare_spawn_placement`](SpawnPlacementsRegistrar::declare_spawn_placement)).
+/// ([`Registrar::register_spawn_placement`](SpawnPlacementsRegistrar::register_spawn_placement)).
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]

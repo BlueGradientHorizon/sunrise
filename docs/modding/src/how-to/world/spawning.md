@@ -11,10 +11,10 @@ Use spawn hooks to accept or reject a spawn, edit a mob before finalization, or 
 
 ## Saying where a mod mob spawns
 
-`Registrar::declare_spawn_placement(path, rule)` is NeoForge's `RegisterSpawnPlacementsEvent`: during registration a mod gives its entity type a `SpawnPlacementRule`, and the game's own spawn checks answer from it for that type, wherever they run (natural spawning, chunk generation, spawners, patrols, sieges, reinforcements).
+`Registrar::register_spawn_placement(path, rule)` is NeoForge's `RegisterSpawnPlacementsEvent`: during registration a mod gives its entity type a `SpawnPlacementRule`, and the game's own spawn checks answer from it for that type, wherever they run (natural spawning, chunk generation, spawners, patrols, sieges, reinforcements).
 
 ```rust,ignore
-r.declare_spawn_placement("ghoul", mod_api::SpawnPlacementRule {
+r.register_spawn_placement("ghoul", mod_api::SpawnPlacementRule {
     placement: mod_api::SpawnPlacementType::OnGround,
     heightmap: mod_api::Heightmap::MotionBlockingNoLeaves,
     spawnable_on: Some("mymod:ghoul_ground".to_owned()), // a block tag the block below is in

@@ -32,7 +32,7 @@ pub trait SpawnPlacementsRegistrar {
     /// not a namespaced name or a second declaration of the same type refuses
     /// the mods, naming the mod; a type no content file defines refuses the
     /// resource load, naming the type.
-    fn declare_spawn_placement(
+    fn register_spawn_placement(
         &mut self,
         path: &str,
         rule: crate::SpawnPlacementRule,
