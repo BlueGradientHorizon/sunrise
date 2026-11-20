@@ -110,6 +110,12 @@ pub fn listened(hook: HookId) -> bool {
     crate::listened(hook)
 }
 
+/// How many listeners of `hook` are switched off for the session by an isolated dispatch after
+/// they unwound.
+pub fn poisoned_listeners(hook: HookId) -> usize {
+    crate::runtime::poisoned_count(hook)
+}
+
 /// Whether at least one enabled mod subscribes to `hook`, visiting only its subscribers.
 pub fn enabled_listened(hook: HookId) -> bool {
     crate::runtime::enabled_listened(hook)

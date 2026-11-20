@@ -55,8 +55,9 @@ intersection.
 
 An answer is checked whole before any of it is used: a cell outside 0 to 15, a face mask above 63, a cell named
 twice or more than 4096 records refuses that mod's whole answer for the section with one log line
-(`E_SECTION_VISIBILITY_...`), and the section draws as if it had not answered. A listener that panics or traps is
-not asked again until the next `refresh_render_visibility`. The decision is asked on the client world thread, so
+(`E_SECTION_VISIBILITY_...`), and the section draws as if it had not answered. A listener that panics is switched off
+for this hook for the session, alone: the other listeners are asked as before, and every section
+is asked again without the one that failed, so no mask it gave earlier stays. The decision is asked on the client world thread, so
 it may read the `ClientHost`; it changes when the section meshes again, which a mod asks for with
 `ClientHost::refresh_render_visibility`, never by polling."#]
     #[hook(
@@ -64,6 +65,7 @@ it may read the `ClientHost`; it changes when the section meshes again, which a 
         contract = "collect",
         out = "answers",
         answered_by = "mod",
+        isolate = true,
         neoforge = "none (Sunrise-only; NeoForge has no counterpart)"
     )]
     fn section_visibility(

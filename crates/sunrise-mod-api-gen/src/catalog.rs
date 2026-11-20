@@ -124,9 +124,11 @@ pub struct Hook {
     /// The inert answer for a disabled content owner's subscribed block Part: Rust statements
     /// setting the answer, or `signal` to report engine inactivity separately from listener output.
     pub inert: Option<String>,
-    /// A global cancel hook whose dispatch runs every listener inside `catch_unwind`: one that
-    /// unwinds is switched off for this hook for the session, and the outputs it had written roll
-    /// back to what the game requested (#2414 ruling).
+    /// A global cancel hook, or a global collect hook answered by mod, whose dispatch runs every
+    /// listener inside `catch_unwind`: one that unwinds is switched off for this hook for the
+    /// session, and the outputs it had written roll back to what the game requested (#2414
+    /// ruling). A cancel hook stops there; a collector's later listeners still run, each answering
+    /// into its own batch.
     pub isolate: bool,
     pub scope: Option<PartScope>,
     pub host: Option<HostAccess>,
@@ -395,13 +397,19 @@ impl Hook {
         {
             return Err(CatalogError::InvalidContract(name));
         }
-        // Isolation is the cancel loop's own: a listener that unwinds rolls the outputs back
-        // to the requested ones and is skipped for the hook for the session (#2414 ruling).
+        // Isolation is the cancel loop's own, and an answered collector's: a listener that
+        // unwinds rolls the outputs back to the requested ones (a collector's batch is dropped)
+        // and is skipped for the hook for the session (#2414 ruling).
         let isolate = api.isolate.unwrap_or(false);
-        if isolate && (api.contract != Contract::Cancel || scope.is_some()) {
+        if isolate
+            && (scope.is_some()
+                || !(api.contract == Contract::Cancel
+                    || api.contract == Contract::Collect && answered_by_mod))
+        {
             return Err(CatalogError::InvalidHook {
                 hook: name.clone(),
-                error: "isolate is for a global cancel hook".into(),
+                error: "isolate is for a global cancel hook or a global collect hook answered by mod"
+                    .into(),
             });
         }
         let counterparts = Counterparts {

@@ -19,14 +19,26 @@ impl Game<'_> {
         if requests.is_empty() {
             return;
         }
+        let switched_off = mod_api::__private::poisoned_listeners(mod_api::HookId::SectionVisibility);
         let mut answered = Vec::with_capacity(requests.len());
         let (mut cells, mut light) = (Vec::new(), Vec::new());
         for request in requests {
-            let answer = if self.streaming.section_visibility.asks() {
-                self.ask_section_visibility(&request, &mut cells, &mut light)
-            } else {
-                None
-            };
+            let answer = self.ask_section_visibility(&request, &mut cells, &mut light);
+            // A listener unwound in that call and was switched off alone: the other listeners
+            // keep answering, but every answer given so far, to this batch and earlier ones,
+            // may hold what it gave, so all are dropped and every section is asked again.
+            if mod_api::__private::poisoned_listeners(mod_api::HookId::SectionVisibility)
+                != switched_off
+            {
+                log::warn!(
+                    "Sunrise: a section_visibility listener failed ({}); it is switched off for \
+                     the session and every section is asked again without it",
+                    SectionVisibilityRefusal::Failed
+                );
+                self.streaming
+                    .refresh_section_visibility(&mut self.world, true);
+                return;
+            }
             answered.push((request, answer));
         }
         self.streaming
@@ -58,22 +70,10 @@ impl Game<'_> {
                 }
             };
         let mut answers: Vec<Answered<SectionVisibility>> = Vec::new();
-        let asked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            self.native_section_visibility(mod_api::__private::SectionVisibilityCall {
-                input: &input,
-                answers: &mut answers,
-            })
-        }));
-        if asked.is_err() {
-            log::warn!(
-                "Sunrise: section visibility at {:?}: {}; no section is asked again until \
-                 refresh_render_visibility",
-                input.origin,
-                SectionVisibilityRefusal::Failed
-            );
-            self.streaming.section_visibility.disable();
-            return None;
-        }
+        self.native_section_visibility(mod_api::__private::SectionVisibilityCall {
+            input: &input,
+            answers: &mut answers,
+        });
         let mut plan = SectionPlanBuilder::new();
         for Answered { answer, mod_id, .. } in &answers {
             if let Err(refusal) = answer.check() {

@@ -1201,6 +1201,16 @@ pub(super) fn emit<'a>(
                     owner = hook.owner.as_deref().unwrap(),
                 ),
             ),
+            None if answered && hook.isolate && contract == Contract::Collect => (
+                // A collector's listener that unwinds loses only its own batch: it is skipped for
+                // the hook for the session and the listeners after it still answer.
+                String::new(),
+                format!(
+                    "{{ let mut {entered} = super::runtime::ListenerScope::new(); for (_, {mod_entry}) in super::listening(HookId::{hook_id}) {{ let mod_id = {mod_entry}.id; if super::runtime::poisoned(HookId::{hook_id}, mod_id) {{ continue; }} let {mod_item} = {entered}.enter({mod_entry}, \"{name}\"); if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {{ {} }})).is_err() {{ {event}.{o}.clear(); super::runtime::poison(HookId::{hook_id}, mod_id); }} }} }}",
+                    call(&mod_item, ""),
+                    o = out.unwrap()
+                ),
+            ),
             None if mod_cancel && hook.isolate => (
                 String::new(),
                 format!(

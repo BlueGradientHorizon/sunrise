@@ -53,7 +53,10 @@ The game checks each mod's answer whole before it uses any of it. More than 4096
 (`E_SECTION_VISIBILITY_TOO_MANY`), a cell outside 0 to 15 (`E_SECTION_VISIBILITY_OUTSIDE_SECTION`), a face mask
 above 63 (`E_SECTION_VISIBILITY_FACE_MASK`) or a cell named twice (`E_SECTION_VISIBILITY_DUPLICATE`) refuses that
 mod's answer for the section, logged once per mod and code, and the section draws as if the mod had not answered.
-A listener that panics (`E_SECTION_VISIBILITY_PANIC`) stops every section being asked until the next refresh.
+A listener that panics (`E_SECTION_VISIBILITY_PANIC`) is switched off for this hook for the session, alone: the
+other listeners are asked as before, and every loaded section is asked again without it, so no mask it gave earlier
+stays in a neighbour's border or in a queued mesh.
+
 `SectionVisibility::check` is the same check, for a mod's own tests.
 
 ## When it is asked

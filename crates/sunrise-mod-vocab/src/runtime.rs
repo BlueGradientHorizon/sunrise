@@ -200,6 +200,25 @@ pub(crate) fn poisoned(hook: generated::HookId, id: &str) -> bool {
     })
 }
 
+/// How many listeners of `hook` are poisoned for the session.
+pub(crate) fn poisoned_count(hook: generated::HookId) -> usize {
+    installed().map_or(0, |installed| {
+        if installed
+            .poison_free
+            .load(std::sync::atomic::Ordering::Acquire)
+        {
+            return 0;
+        }
+        installed
+            .poisons
+            .lock()
+            .unwrap()
+            .as_ref()
+            .and_then(|poisons| poisons[hook as usize].as_ref())
+            .map_or(0, |poisoned| poisoned.len())
+    })
+}
+
 /// The process-wide list in dispatch order, or an empty list before installation.
 pub(crate) fn mods() -> &'static [ModEntry] {
     installed().map_or(&[], |installed| &installed.mods)
