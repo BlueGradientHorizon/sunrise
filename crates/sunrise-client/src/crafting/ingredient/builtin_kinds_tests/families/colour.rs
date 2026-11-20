@@ -702,8 +702,8 @@ fn malformed_shulker_color_payloads_refuse_load_with_component_errors() {
     }
     for value in [
         Tag::End,
-        Tag::String(sunrise_core::nbt::JavaString(vec![0xd800])),
-        Tag::String(sunrise_core::nbt::JavaString(vec![
+        Tag::String(sunrise_core::nbt::JavaString::from(vec![0xd800])),
+        Tag::String(sunrise_core::nbt::JavaString::from(vec![
             112, 117, 114, 112, 108, 101, 0xd800,
         ])),
         Tag::Byte(-1),

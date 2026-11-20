@@ -167,7 +167,7 @@ pub fn get_value(tag: &Tag, path: &NbtPath) -> Result<i32, CommandError> {
         Tag::IntArray(a) => a.len() as i32,
         Tag::LongArray(a) => a.len() as i32,
         Tag::Compound(c) => c.len() as i32,
-        Tag::String(s) => s.0.len() as i32,
+        Tag::String(s) => s.units().len() as i32,
         Tag::End => {
             return Err(CommandError::tr(
                 "commands.data.get.unknown",

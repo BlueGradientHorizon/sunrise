@@ -852,7 +852,7 @@ fn use_cooldown_recipe_decodes_record_and_matches_borrowed_values() {
                 ("seconds", Tag::Int(2)),
                 (
                     "cooldown_group",
-                    Tag::String(sunrise_core::nbt::JavaString(units))
+                    Tag::String(sunrise_core::nbt::JavaString::from(units))
                 ),
             ]))
             .is_err()

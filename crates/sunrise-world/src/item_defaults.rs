@@ -179,16 +179,16 @@ pub(crate) fn ascii_name<'a>(
     name: &sunrise_core::nbt::JavaString,
     scratch: &'a mut [u8; 128],
 ) -> Option<&'a str> {
-    if name.0.len() > scratch.len() {
+    if name.units().len() > scratch.len() {
         return None;
     }
-    for (out, unit) in scratch.iter_mut().zip(&name.0) {
+    for (out, unit) in scratch.iter_mut().zip(name.units()) {
         if *unit > 127 {
             return None;
         }
         *out = *unit as u8;
     }
-    std::str::from_utf8(&scratch[..name.0.len()]).ok()
+    std::str::from_utf8(&scratch[..name.units().len()]).ok()
 }
 /// Persistent exact item/block predicate names; any-value type predicates stay valid.
 pub fn validate_item_predicate_tag(value: &sunrise_core::nbt::Tag) -> Result<(), String> {

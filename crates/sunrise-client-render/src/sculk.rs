@@ -532,7 +532,7 @@ fn cursors_from_nbt(tag: &Tag) -> SculkSpreader {
             Some(Tag::List(v)) => Some(
                 v.iter()
                     .filter_map(|t| match t {
-                        Tag::String(s) => direction_from_name(&String::from_utf16_lossy(&s.0)),
+                        Tag::String(s) => direction_from_name(&String::from_utf16_lossy(s.units())),
                         _ => None,
                     })
                     .collect(),

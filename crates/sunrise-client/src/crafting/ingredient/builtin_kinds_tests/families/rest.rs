@@ -347,7 +347,7 @@ fn item_model_component_literals_decode_validate_and_match() {
         );
     }
     for units in [vec![0xd800], vec![0xdc00], vec![0xd83d, 0xde00]] {
-        let invalid_utf16 = Tag::String(sunrise_core::nbt::JavaString(units));
+        let invalid_utf16 = Tag::String(sunrise_core::nbt::JavaString::from(units));
         assert!(
             sunrise_command::item::decoded_component_value(
                 "minecraft:item_model",
@@ -870,8 +870,8 @@ fn block_state_component_recipes_decode_validate_and_match() {
     // deliberately not Identifier.CODEC or a UTF-8/lossy conversion.
     for units in [vec![0xd800], vec![0xdc00], vec![0xd83d, 0xde00]] {
         let raw = Tag::Compound(sunrise_core::nbt::Compound::from([(
-            sunrise_core::nbt::JavaString(units.clone()),
-            Tag::String(sunrise_core::nbt::JavaString(units)),
+            sunrise_core::nbt::JavaString::from(units.clone()),
+            Tag::String(sunrise_core::nbt::JavaString::from(units)),
         )]));
         assert_eq!(
             sunrise_command::item::decoded_component_value(
@@ -1126,7 +1126,7 @@ fn next_component_codecs_reject_bad_records_preserve_siblings_and_presence() {
             Tag::End,
             Tag::Byte(0),
             Tag::List(vec![]),
-            Tag::String(sunrise_core::nbt::JavaString(vec![0xd800])),
+            Tag::String(sunrise_core::nbt::JavaString::from(vec![0xd800])),
         ] {
             if id == "minecraft:recipes" && value == Tag::List(vec![]) {
                 continue;
@@ -1305,7 +1305,7 @@ fn custom_model_data_recipe_decodes_ordered_lists_and_matches_without_allocating
             "strings",
             Tag::List(vec![
                 Tag::String("".into()),
-                Tag::String(JavaString(vec![0xd83d, 0xde00])),
+                Tag::String(JavaString::from(vec![0xd83d, 0xde00])),
             ]),
         ),
         (
@@ -1436,7 +1436,10 @@ fn custom_model_data_recipe_decodes_ordered_lists_and_matches_without_allocating
     // Unpaired UTF-16 surrogates never become replacement characters.
     let special = |units| {
         Tag::compound([
-            ("strings", Tag::List(vec![Tag::String(JavaString(units))])),
+            (
+                "strings",
+                Tag::List(vec![Tag::String(JavaString::from(units))]),
+            ),
             ("floats", Tag::List(vec![Tag::Float(0x7fc01234)])),
         ])
     };
@@ -1652,7 +1655,7 @@ fn mob_visibility_component_recipe_codec_and_borrowed_matching() {
         let payload = Tag::compound([
             (
                 "targeting_entity_types",
-                Tag::String(sunrise_core::nbt::JavaString(units)),
+                Tag::String(sunrise_core::nbt::JavaString::from(units)),
             ),
             ("visibility", Tag::Int(1)),
         ]);
@@ -1735,7 +1738,7 @@ fn mob_visibility_component_recipe_codec_and_borrowed_matching() {
     )];
     let overlay = sunrise_world::loot::PackOverlay {
         files: &files,
-        ..sunrise_world::loot::PackOverlay::NONE
+        ..sunrise_world::loot::PackOverlay::default()
     };
     let active = Items::tags_only(root.path(), &overlay, &defaults).unwrap();
     let custom = ingredient(
@@ -2095,15 +2098,15 @@ fn recipes_component_cooking_decodes_keys_and_matches_without_allocations() {
         Tag::ByteArray(vec![0]),
         Tag::IntArray(vec![0]),
         Tag::LongArray(vec![0]),
-        Tag::List(vec![Tag::String(sunrise_core::nbt::JavaString(vec![
-            0xd800,
-        ]))]),
-        Tag::List(vec![Tag::String(sunrise_core::nbt::JavaString(vec![
-            0xdc00,
-        ]))]),
-        Tag::List(vec![Tag::String(sunrise_core::nbt::JavaString(vec![
-            0xd83d, 0xde00,
-        ]))]),
+        Tag::List(vec![Tag::String(sunrise_core::nbt::JavaString::from(
+            vec![0xd800],
+        ))]),
+        Tag::List(vec![Tag::String(sunrise_core::nbt::JavaString::from(
+            vec![0xdc00],
+        ))]),
+        Tag::List(vec![Tag::String(sunrise_core::nbt::JavaString::from(
+            vec![0xd83d, 0xde00],
+        ))]),
     ] {
         assert!(
             sunrise_command::item::decoded_component_value(

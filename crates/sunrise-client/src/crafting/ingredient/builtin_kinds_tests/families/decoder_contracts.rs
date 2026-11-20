@@ -97,7 +97,7 @@ fn rollup_90_codecs_reject_bad_records_preserve_siblings_and_presence() {
             Tag::End,
             Tag::Byte(0),
             Tag::List(vec![]),
-            Tag::String(sunrise_core::nbt::JavaString(vec![0xd800])),
+            Tag::String(sunrise_core::nbt::JavaString::from(vec![0xd800])),
         ] {
             let rule = IngredientRule::Components {
                 patch: sunrise_core::nbt::Compound::from([(id.into(), value)]),
@@ -115,7 +115,7 @@ fn rollup_90_codecs_reject_bad_records_preserve_siblings_and_presence() {
             Tag::End,
             Tag::Byte(0),
             Tag::List(vec![]),
-            Tag::String(sunrise_core::nbt::JavaString(vec![0xd800])),
+            Tag::String(sunrise_core::nbt::JavaString::from(vec![0xd800])),
             Tag::String("unknown".into()),
         ] {
             let mut candidate = ItemStack::new("minecraft:paper", 1);

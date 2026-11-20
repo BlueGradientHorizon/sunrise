@@ -76,7 +76,7 @@ fn rabbit_variant_recipe_codec_presence_and_borrowed_matching() {
         for value in [
             Tag::String(if name == "evil" { "brown" } else { "evil" }.into()),
             Tag::Int(99),
-            Tag::String(sunrise_core::nbt::JavaString(vec![0xd800])),
+            Tag::String(sunrise_core::nbt::JavaString::from(vec![0xd800])),
         ] {
             egg.data_mut()
                 .set_other("minecraft:rabbit/variant", Some(value));

@@ -1,5 +1,8 @@
 //! Java HashSet traversal, backed by the same buckets and tree bins as HashMap.
-use crate::java_hash_map::{JavaHashMap, JavaKey};
+use crate::{
+    hashed_key::HashedKey,
+    java_hash_map::{JavaHashMap, JavaKey},
+};
 use std::{borrow::Borrow, cmp::Ordering, fmt};
 
 #[derive(Clone)]
@@ -37,6 +40,24 @@ impl<K: JavaKey> JavaHashSet<K> {
 
     pub fn insert(&mut self, key: K) -> bool {
         self.0.put(key, ()).is_none()
+    }
+
+    pub fn contains_hashed<Q: JavaKey + ?Sized>(&self, key: &HashedKey<&Q>) -> bool
+    where
+        K: Borrow<Q>,
+    {
+        self.0.contains_key_hashed(key)
+    }
+
+    pub fn insert_hashed(&mut self, key: HashedKey<K>) -> bool {
+        self.0.put_hashed(key, ()).is_none()
+    }
+
+    pub fn remove_hashed<Q: JavaKey + ?Sized>(&mut self, key: &HashedKey<&Q>) -> bool
+    where
+        K: Borrow<Q>,
+    {
+        self.0.remove_hashed(key).is_some()
     }
 
     pub fn remove<Q: JavaKey + ?Sized>(&mut self, key: &Q) -> bool
@@ -117,6 +138,17 @@ impl JavaKey for JavaUuid {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hashed_set_methods_match_the_plain_ones() {
+        let mut set = JavaHashSet::<String>::default();
+        assert!(set.insert_hashed(HashedKey::<String>::new("a".into())));
+        assert!(!set.insert_hashed(HashedKey::<String>::new("a".into())));
+        assert!(set.contains_hashed(&HashedKey::<&str>::new("a")));
+        assert!(set.contains("a"));
+        assert!(set.remove_hashed(&HashedKey::<&str>::new("a")));
+        assert!(!set.contains_hashed(&HashedKey::<&str>::new("a")));
+    }
 
     #[test]
     fn supplementary_string_keys_follow_java_utf16_bucket_order() {

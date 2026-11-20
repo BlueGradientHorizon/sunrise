@@ -49,15 +49,15 @@ pub fn stack_can_be_hurt_by(
             let types = match component {
                 Tag::Compound(fields) => fields
                     .iter()
-                    .find(|(key, _)| key.0.iter().copied().eq("types".encode_utf16()))
+                    .find(|(key, _)| key.units().iter().copied().eq("types".encode_utf16()))
                     .map(|(_, value)| value),
                 _ => None,
             };
             let resistant = match types {
-                Some(Tag::String(id)) => matches(&id.0),
+                Some(Tag::String(id)) => matches(id.units()),
                 Some(Tag::List(ids)) => ids
                     .iter()
-                    .any(|id| matches!(id, Tag::String(id) if matches(&id.0))),
+                    .any(|id| matches!(id, Tag::String(id) if matches(id.units()))),
                 _ => false,
             };
             return Some(!resistant);

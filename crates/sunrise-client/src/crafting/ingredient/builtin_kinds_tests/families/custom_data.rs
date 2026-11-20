@@ -313,8 +313,8 @@ fn custom_data_component_recipes_decode_and_match() {
     assert!(matches("empty_key", &stack));
     let unicode = Tag::compound([
         (
-            sunrise_core::nbt::JavaString(vec![0xd800]),
-            Tag::String(sunrise_core::nbt::JavaString(vec![0xd800])),
+            sunrise_core::nbt::JavaString::from(vec![0xd800]),
+            Tag::String(sunrise_core::nbt::JavaString::from(vec![0xd800])),
         ),
         ("name".into(), Tag::String("☃".into())),
         ("cjk".into(), Tag::String("一".into())),
@@ -331,9 +331,10 @@ fn custom_data_component_recipes_decode_and_match() {
         "':'\\uD800',name:'☃',cjk:'一',numeric:255ub,bool:true,uuid:uuid('1-1-1-1-1')}"
             .encode_utf16(),
     );
-    stack
-        .data_mut()
-        .set_other(ID, Some(Tag::String(sunrise_core::nbt::JavaString(units))));
+    stack.data_mut().set_other(
+        ID,
+        Some(Tag::String(sunrise_core::nbt::JavaString::from(units))),
+    );
     assert_eq!(stack.data().unwrap().other(ID), Some(&unicode));
     assert!(matches("unicode", &stack));
     let Recipe::Shapeless {
@@ -374,8 +375,8 @@ fn custom_data_component_recipes_decode_and_match() {
     // equality canonicalizes NaNs, but neither coalesces tag types nor signed zero.
     let payload = Tag::compound([
         (
-            sunrise_core::nbt::JavaString(vec![0xd800]),
-            Tag::String(sunrise_core::nbt::JavaString(vec![0xdc00])),
+            sunrise_core::nbt::JavaString::from(vec![0xd800]),
+            Tag::String(sunrise_core::nbt::JavaString::from(vec![0xdc00])),
         ),
         (
             "floats".into(),
@@ -427,7 +428,7 @@ fn custom_data_refusals_name_the_component_and_refuse_the_whole_load() {
         Tag::End,
         Tag::Byte(0),
         Tag::List(vec![]),
-        Tag::String(sunrise_core::nbt::JavaString(vec![0xd800])),
+        Tag::String(sunrise_core::nbt::JavaString::from(vec![0xd800])),
     ] {
         let rule = IngredientRule::Components {
             patch: [("minecraft:custom_data".into(), payload.clone())]

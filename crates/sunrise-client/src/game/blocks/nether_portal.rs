@@ -1810,9 +1810,9 @@ impl Game<'_> {
         let (tag, reason) = pending.into_parts();
         let uuid = sunrise_client::entity_nbt::uuid(&tag);
         let is_item = matches!(tag.get("id"), Some(Tag::String(kind))
-            if kind.0.iter().copied().eq("minecraft:item".encode_utf16()));
+            if kind.units().iter().copied().eq("minecraft:item".encode_utf16()));
         let is_tnt = matches!(tag.get("id"), Some(Tag::String(kind))
-            if kind.0.iter().copied().eq("minecraft:tnt".encode_utf16()));
+            if kind.units().iter().copied().eq("minecraft:tnt".encode_utf16()));
         self.spawn_loaded_entity_reason(key, tag, transferred, reason);
         if !is_item && !is_tnt {
             return;

@@ -1,58 +1,158 @@
 //! Java Edition NBT with lossless UTF-16 strings and 26.3 mixed-list wrappers.
 use crate::{
+    hashed_key::HashedKey,
     java_hash_map::{IntoIter, Iter, JavaHashMap, JavaKey},
-    random::java_string_hash,
+    java_string::{INLINE_CAPACITY, Units, ascii_with_hash, java_string_hash, utf16_with_hash},
 };
 use std::{
     cmp::Ordering,
+    fmt,
     hash::{Hash, Hasher},
 };
 
-/// Java strings can contain unpaired surrogates, which Rust UTF-8 strings cannot.
-#[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct JavaString(pub Vec<u16>);
+pub mod keyed;
+
+/// Lossless UTF-16 text, including the unpaired surrogates that Rust strings cannot hold.
+#[derive(Clone)]
+pub struct JavaString(Units);
+
+impl Default for JavaString {
+    fn default() -> Self {
+        Self(Units::EMPTY)
+    }
+}
+
+impl fmt::Debug for JavaString {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("JavaString").field(&self.units()).finish()
+    }
+}
+
+impl PartialEq for JavaString {
+    fn eq(&self, other: &Self) -> bool {
+        self.units() == other.units()
+    }
+}
+impl Eq for JavaString {}
+
+impl PartialOrd for JavaString {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for JavaString {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.units().cmp(other.units())
+    }
+}
+
+impl Hash for JavaString {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.units().hash(state);
+    }
+}
 
 impl From<&str> for JavaString {
     fn from(value: &str) -> Self {
-        Self(value.encode_utf16().collect())
+        if value.is_ascii() {
+            return value.bytes().map(u16::from).collect();
+        }
+        value.encode_utf16().collect()
     }
 }
-/// `key` in UTF-16 in a buffer kept per thread, to search a compound
-/// without allocating a key every time.
+
+impl From<Vec<u16>> for JavaString {
+    fn from(value: Vec<u16>) -> Self {
+        Self(value.into())
+    }
+}
+
+impl FromIterator<u16> for JavaString {
+    fn from_iter<T: IntoIterator<Item = u16>>(iter: T) -> Self {
+        Self(iter.into_iter().collect())
+    }
+}
+/// Use inline storage for short lookups and reuse a per-thread buffer for longer keys.
 fn with_key<R>(key: &str, f: impl FnOnce(&JavaString) -> R) -> R {
+    let mut encoded = key.encode_utf16();
+    let mut inline = [0; INLINE_CAPACITY];
+    for (i, unit) in inline.iter_mut().enumerate() {
+        let Some(next) = encoded.next() else {
+            return f(&JavaString(Units::inline(inline, i)));
+        };
+        *unit = next;
+    }
+    let Some(next) = encoded.next() else {
+        return f(&JavaString(Units::inline(inline, INLINE_CAPACITY)));
+    };
     thread_local! {
         static KEY: std::cell::RefCell<JavaString> = Default::default();
     }
-    KEY.with_borrow_mut(|units| {
-        units.0.clear();
-        units.0.extend(key.encode_utf16());
-        f(units)
+    KEY.with_borrow_mut(|key_buffer| {
+        let units = key_buffer.units_mut();
+        units.clear();
+        units.extend(inline.into_iter().chain([next]).chain(encoded));
+        f(key_buffer)
     })
 }
 
 impl JavaString {
+    pub(crate) const fn from_static(units: &'static [u16]) -> Self {
+        Self(Units::from_static(units))
+    }
+
+    pub(crate) fn with_hash(text: &str) -> (Self, i32) {
+        let (units, hash) = utf16_with_hash(text);
+        (Self(units), hash)
+    }
+
+    /// Borrow the UTF-16 code units, including any unpaired surrogates.
+    pub fn units(&self) -> &[u16] {
+        self.0.as_slice()
+    }
+
+    /// Edit the UTF-16 code units. Copies static or inline storage into a vector on first use.
+    pub fn units_mut(&mut self) -> &mut Vec<u16> {
+        self.0.as_vec_mut()
+    }
+
+    /// Take the units as a vector, copying only when there is no vector to move out.
+    pub fn into_units(self) -> Vec<u16> {
+        self.0.into_vec()
+    }
+
     pub fn to_string(&self) -> Result<String, std::string::FromUtf16Error> {
-        String::from_utf16(&self.0)
+        String::from_utf16(self.units())
     }
     pub fn to_string_lossy(&self) -> String {
-        String::from_utf16_lossy(&self.0)
+        String::from_utf16_lossy(self.units())
     }
     /// Encoded byte length for Java's `DataOutput.writeUTF`, including each surrogate separately.
     pub fn modified_utf8_len(&self) -> usize {
-        self.0
-            .iter()
-            .map(|&unit| match unit {
-                1..=127 => 1,
-                0..=2047 => 2,
-                _ => 3,
-            })
-            .sum()
+        modified_utf8_len(self.units())
     }
+}
+
+fn modified_utf8_len(units: &[u16]) -> usize {
+    units
+        .iter()
+        .map(|&unit| match unit {
+            1..=127 => 1,
+            0..=2047 => 2,
+            _ => 3,
+        })
+        .sum()
+}
+
+/// Bytes reserved on the heap by this NBT string, excluding allocator overhead.
+/// Inline values and string literals do not own any heap storage.
+pub fn java_string_heap_bytes(value: &JavaString) -> usize {
+    value.0.heap_capacity() * size_of::<u16>()
 }
 
 impl JavaKey for JavaString {
     fn java_hash(&self) -> i32 {
-        java_string_hash(self.0.iter().copied())
+        java_string_hash(self.units())
     }
 
     fn comparable_compare(&self, other: &Self) -> Option<Ordering> {
@@ -113,12 +213,13 @@ impl Iterator for CompoundIntoIter {
     }
 }
 impl ExactSizeIterator for CompoundIntoIter {}
+
 impl std::iter::FusedIterator for CompoundIntoIter {}
 
 /// An entry defers allocating a never-populated map until a value is inserted.
 pub struct CompoundEntry<'a> {
     map: &'a mut Compound,
-    key: JavaString,
+    key: HashedKey<JavaString>,
 }
 impl<'a> CompoundEntry<'a> {
     pub fn or_insert(self, value: Tag) -> &'a mut Tag {
@@ -131,14 +232,14 @@ impl<'a> CompoundEntry<'a> {
                 .map
                 .0
                 .insert(Box::new(JavaHashMap::default()))
-                .entry(self.key)
+                .entry_hashed(self.key)
                 .or_insert(value);
         }
         self.map
             .0
             .as_deref_mut()
             .expect("allocated map")
-            .entry(self.key)
+            .entry_hashed(self.key)
             .or_insert_with(make)
     }
 }
@@ -186,7 +287,10 @@ impl Compound {
         }
     }
     pub fn entry(&mut self, key: JavaString) -> CompoundEntry<'_> {
-        CompoundEntry { map: self, key }
+        CompoundEntry {
+            map: self,
+            key: HashedKey::from_parts(key.java_hash(), key),
+        }
     }
     pub fn iter(&self) -> CompoundIter<'_> {
         CompoundIter {
@@ -677,10 +781,38 @@ impl<'a> Reader<'a, '_> {
         }
         Ok(count)
     }
-    fn string(&mut self) -> Result<JavaString, Error> {
+    fn string<const ACCOUNT_HEAP: bool>(&mut self) -> Result<JavaString, Error> {
         let len = u16::from_be_bytes(self.number()?) as usize;
         let bytes = self.take(len)?;
-        modified_utf8(bytes).ok_or_else(|| self.error("invalid Java modified UTF-8"))
+        if bytes.is_ascii() {
+            if ACCOUNT_HEAP {
+                self.charge(2 * len as u64)?;
+            }
+            return Ok(bytes.iter().copied().map(u16::from).collect());
+        }
+        let text = modified_utf8_non_ascii(bytes)
+            .ok_or_else(|| self.error("invalid Java modified UTF-8"))?;
+        if ACCOUNT_HEAP && self.heap.is_some() {
+            self.charge(2 * text.units().len() as u64)?;
+        }
+        Ok(text)
+    }
+    /// Decode and charge for a compound key, keeping its `String.hashCode` for insertion.
+    fn key(&mut self) -> Result<HashedKey<JavaString>, Error> {
+        let len = u16::from_be_bytes(self.number()?) as usize;
+        let bytes = self.take(len)?;
+        if bytes.is_ascii() {
+            // ASCII has one UTF-16 unit per byte, regardless of the storage used below.
+            self.charge(28 + 2 * len as u64)?;
+            let (units, hash) = ascii_with_hash(bytes);
+            return Ok(HashedKey::from_parts(hash, JavaString(units)));
+        }
+        let text = modified_utf8_non_ascii(bytes)
+            .ok_or_else(|| self.error("invalid Java modified UTF-8"))?;
+        if self.heap.is_some() {
+            self.charge(28 + 2 * text.units().len() as u64)?;
+        }
+        Ok(HashedKey::from_parts(text.java_hash(), text))
     }
     /// `StringTag.skipString`: vanilla skips a file root's name unread, so a
     /// name that isn't modified UTF-8 is read as empty rather than refused.
@@ -729,7 +861,9 @@ impl<'a> Reader<'a, '_> {
             _ => self.scalar_payload(id),
         }
     }
-    // Scalar temporaries must not occupy every recursive container frame.
+    // Keep scalar and container frames separate: inlining the branches together
+    // gives every recursive call the largest stack frame and mixes their hot code.
+    #[inline(never)]
     fn scalar_payload(&mut self, id: u8) -> Result<Tag, Error> {
         Ok(match id {
             0 => Tag::End,
@@ -750,12 +884,7 @@ impl<'a> Reader<'a, '_> {
                 self.charge(len as u64)?;
                 Tag::ByteArray(self.take(len)?.to_vec())
             }
-            8 => {
-                let value = self.string()?;
-                self.charge(2 * value.0.len() as u64)?;
-                Tag::String(value)
-            }
-
+            8 => Tag::String(self.string::<true>()?),
             11 => {
                 let len = self.count(4)?;
                 self.charge(4 * len as u64)?;
@@ -777,6 +906,7 @@ impl<'a> Reader<'a, '_> {
             _ => return Err(self.error("unknown tag type")),
         })
     }
+    #[inline(never)]
     fn list_payload(&mut self, depth: usize) -> Result<Tag, Error> {
         let (element_id, len) = self.list_header()?;
         self.charge(4 * len as u64)?;
@@ -793,6 +923,7 @@ impl<'a> Reader<'a, '_> {
         }
         Ok(Tag::List(values))
     }
+    #[inline(never)]
     fn compound_payload(&mut self, depth: usize) -> Result<Tag, Error> {
         let paths = std::mem::take(&mut self.entering);
         let parent = self.holds_bounded(paths, depth);
@@ -802,28 +933,27 @@ impl<'a> Reader<'a, '_> {
             if id == 0 {
                 break;
             }
-            let name = self.string()?;
-            self.charge(28 + 2 * name.0.len() as u64)?;
-            if self.strict && map.contains_key(&name) {
+            let name = self.key()?;
+            if self.strict && keyed::contains_key(&map, &name) {
                 return Err(self.error("duplicate key"));
             }
-            let value = if id == 9 && depth <= 1 && self.streams(&name) {
+            let value = if id == 9 && depth <= 1 && self.streams(name.text()) {
                 self.stream_list(depth + 1)?
-            } else if parent && !self.strict && self.bounds(&name) {
+            } else if parent && !self.strict && self.bounds(name.text()) {
                 match self.bounded_payload(id, depth + 1)? {
                     Some(value) => value,
                     None => continue,
                 }
             } else {
                 self.entering = if id == 10 && !self.strict {
-                    self.descend(paths, depth, &name)
+                    self.descend(paths, depth, name.text())
                 } else {
                     0
                 };
                 self.payload(id, depth + 1)?
             };
             // Java maps retain the last duplicate key and charge new entries only.
-            if map.insert(name, value).is_none() {
+            if keyed::insert(&mut map, name, value).is_none() {
                 self.charge(36)?;
             }
         }
@@ -914,7 +1044,7 @@ impl<'a> Reader<'a, '_> {
                 let len = self.count(width)?;
                 self.take(len * width)?;
             }
-            8 => drop(self.string()?),
+            8 => drop(self.string::<false>()?),
             9 => {
                 let element_id = self.byte()?;
                 let len = self.count(0)?;
@@ -931,7 +1061,7 @@ impl<'a> Reader<'a, '_> {
                 if id == 0 {
                     break;
                 }
-                self.string()?;
+                self.string::<false>()?;
                 self.skip(id, depth + 1)?;
             },
             _ => return Err(self.error("unknown tag type")),
@@ -941,7 +1071,7 @@ impl<'a> Reader<'a, '_> {
     fn streams(&self, name: &JavaString) -> bool {
         self.stream
             .as_ref()
-            .is_some_and(|(key, _)| name.0.iter().copied().eq(key.encode_utf16()))
+            .is_some_and(|(key, _)| name.units().iter().copied().eq(key.encode_utf16()))
     }
     /// A list's payload handed to the visitor element by element; the tree
     /// keeps it empty. Elements the visitor leaves are read and dropped.
@@ -1018,42 +1148,57 @@ impl ListElements<'_, '_, '_> {
 }
 
 fn is_key(name: &JavaString, key: &str) -> bool {
-    name.0.iter().copied().eq(key.encode_utf16())
+    name.units().iter().copied().eq(key.encode_utf16())
+}
+
+/// Consume one UTF-16 unit, including overlong forms accepted by `DataInput.readUTF`.
+#[inline]
+fn modified_utf8_unit(bytes: &mut &[u8]) -> Option<u16> {
+    let (&b, rest) = bytes.split_first()?;
+    let (unit, rest) = match (b, rest) {
+        (0..=127, rest) => (u16::from(b), rest),
+        (192..=223, [c @ 128..=191, rest @ ..]) => {
+            ((u16::from(b & 31) << 6) | u16::from(c & 63), rest)
+        }
+        (224..=239, [c @ 128..=191, d @ 128..=191, rest @ ..]) => (
+            (u16::from(b & 15) << 12) | (u16::from(c & 63) << 6) | u16::from(d & 63),
+            rest,
+        ),
+        _ => return None,
+    };
+    *bytes = rest;
+    Some(unit)
 }
 
 /// `DataInput.readUTF`'s decoding, accepting its overlong sequences; `None`
 /// for bytes that aren't modified UTF-8.
 fn modified_utf8(bytes: &[u8]) -> Option<JavaString> {
     if bytes.is_ascii() {
-        return Some(JavaString(bytes.iter().map(|&b| u16::from(b)).collect()));
+        return Some(bytes.iter().copied().map(u16::from).collect());
     }
-    let len = bytes.len();
-    let mut units = Vec::with_capacity(len);
-    let mut i = 0;
-    while i < bytes.len() {
-        let b = bytes[i];
-        let (unit, size) = match b {
-            0..=127 => (u16::from(b), 1),
-            192..=223 if i + 1 < len && bytes[i + 1] & 0xc0 == 0x80 => {
-                ((u16::from(b & 31) << 6) | u16::from(bytes[i + 1] & 63), 2)
-            }
-            224..=239
-                if i + 2 < len && bytes[i + 1] & 0xc0 == 0x80 && bytes[i + 2] & 0xc0 == 0x80 =>
-            {
-                (
-                    (u16::from(b & 15) << 12)
-                        | (u16::from(bytes[i + 1] & 63) << 6)
-                        | u16::from(bytes[i + 2] & 63),
-                    3,
-                )
-            }
-            _ => return None,
-        };
-        // Match DataInput.readUTF, including accepted overlong sequences.
-        units.push(unit);
-        i += size;
+    modified_utf8_non_ascii(bytes)
+}
+
+fn modified_utf8_non_ascii(mut bytes: &[u8]) -> Option<JavaString> {
+    let mut inline = [0; INLINE_CAPACITY];
+    for (i, unit) in inline.iter_mut().enumerate() {
+        if bytes.is_empty() {
+            return Some(JavaString(Units::inline(inline, i)));
+        }
+        *unit = modified_utf8_unit(&mut bytes)?;
     }
-    Some(JavaString(units))
+    if bytes.is_empty() {
+        return Some(JavaString(Units::inline(inline, INLINE_CAPACITY)));
+    }
+    let next = modified_utf8_unit(&mut bytes)?;
+    // Each unconsumed byte emits at most one unit.
+    let mut units = Vec::with_capacity(INLINE_CAPACITY + 1 + bytes.len());
+    units.extend(inline);
+    units.push(next);
+    while !bytes.is_empty() {
+        units.push(modified_utf8_unit(&mut bytes)?);
+    }
+    Some(JavaString(Units::heap(units)))
 }
 
 /// Read a file root (type, modified-UTF name, payload), returning bytes consumed.
@@ -1225,7 +1370,8 @@ impl Writer {
         self.put(&len.to_be_bytes())
     }
     fn string(&mut self, string: &JavaString) -> Result<(), Error> {
-        let Ok(len) = u16::try_from(string.modified_utf8_len()) else {
+        let units = string.units();
+        let Ok(len) = u16::try_from(modified_utf8_len(units)) else {
             if self.empty_long_strings {
                 return self.put(&0u16.to_be_bytes());
             }
@@ -1233,13 +1379,13 @@ impl Writer {
         };
         self.put(&len.to_be_bytes())?;
         // One byte per unit (most strings): written at once while they fit.
-        if usize::from(len) == string.0.len()
+        if usize::from(len) == units.len()
             && usize::from(len) <= self.limits.max_bytes.saturating_sub(self.bytes.len())
         {
-            self.bytes.extend(string.0.iter().map(|&c| c as u8));
+            self.bytes.extend(units.iter().map(|&c| c as u8));
             return Ok(());
         }
-        for &c in &string.0 {
+        for &c in units {
             match c {
                 1..=127 => self.put(&[c as u8])?,
                 0..=2047 => self.put(&[0xc0 | (c >> 6) as u8, 0x80 | (c & 63) as u8])?,
@@ -1628,6 +1774,46 @@ impl<'a> Cursor<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A literal's hashed key finds what `get` finds, and nothing else: in a small map, in one
+    /// with many keys (collisions, resizes) and for a key that is not UTF-8-simple.
+    #[test]
+    fn hashed_literal_keys_find_what_the_string_lookup_finds() {
+        let mut tag = Tag::compound([
+            ("Pos", Tag::Int(1)),
+            ("id", Tag::Int(2)),
+            ("caf\u{e9}", Tag::Int(3)),
+            ("\u{1F600}", Tag::Int(4)),
+        ]);
+        for i in 0..200 {
+            let Tag::Compound(map) = &mut tag else {
+                unreachable!()
+            };
+            map.insert(
+                JavaString::from(format!("k{i}").as_str()),
+                Tag::Int(100 + i),
+            );
+        }
+        assert_eq!(keyed::get(&tag, crate::nbt_key!("Pos")), tag.get("Pos"));
+        assert_eq!(keyed::get(&tag, crate::nbt_key!("id")), Some(&Tag::Int(2)));
+        assert_eq!(
+            keyed::get(&tag, crate::nbt_key!("caf\u{e9}")),
+            tag.get("caf\u{e9}")
+        );
+        assert_eq!(
+            keyed::get(&tag, crate::nbt_key!("\u{1F600}")),
+            Some(&Tag::Int(4))
+        );
+        assert_eq!(
+            keyed::get(&tag, crate::nbt_key!("k150")),
+            Some(&Tag::Int(250))
+        );
+        assert_eq!(keyed::get(&tag, crate::nbt_key!("missing")), None);
+        *keyed::get_mut(&mut tag, crate::nbt_key!("Pos")).unwrap() = Tag::Int(9);
+        assert_eq!(tag.get("Pos"), Some(&Tag::Int(9)));
+        assert_eq!(keyed::get(&Tag::Int(0), crate::nbt_key!("Pos")), None);
+    }
+
     #[test]
     fn collecting_into_a_compound_keeps_insertion_order_whatever_the_size_hint() {
         let entries =
@@ -1636,7 +1822,11 @@ mod tests {
         for (key, value) in entries() {
             inserted.insert(key, value);
         }
-        let order = |map: &Compound| map.keys().map(|key| key.0.clone()).collect::<Vec<_>>();
+        let order = |map: &Compound| {
+            map.keys()
+                .map(|key| key.units().to_vec())
+                .collect::<Vec<_>>()
+        };
         // `entries()` reports an exact size; the filter reports only an upper bound.
         let exact: Compound = entries().collect();
         let inexact: Compound = entries().filter(|_| true).collect();
@@ -1651,7 +1841,11 @@ mod tests {
         let Tag::Compound(mut parsed) = parse_snbt("{BB:1,Aa:2,BB:3}").unwrap().0 else {
             panic!("compound");
         };
-        let order = |map: &Compound| map.keys().map(|key| key.0.clone()).collect::<Vec<_>>();
+        let order = |map: &Compound| {
+            map.keys()
+                .map(|key| key.units().to_vec())
+                .collect::<Vec<_>>()
+        };
         assert_eq!(order(&parsed), [vec![66, 66], vec![65, 97]]);
         assert_eq!(parsed.get(&"BB".into()), Some(&Tag::Int(3)));
         let Tag::Compound(copied) = clone_tag(&Tag::Compound(parsed.clone())) else {
@@ -1687,13 +1881,13 @@ mod tests {
         let hashes = [1, 17, 33, 49, 0, 16, 2, 18, 34, 3, 35, 4, 20];
         let mut map = Compound::new();
         for id in [5, 1, 4, 0, 7, 3, 6, 2, 12, 8, 10, 9] {
-            map.insert(JavaString(vec![hashes[id]]), Tag::Int(id as i32));
+            map.insert(JavaString::from(vec![hashes[id]]), Tag::Int(id as i32));
         }
         assert_eq!(
             map.values().cloned().collect::<Vec<_>>(),
             [5, 4, 1, 0, 3, 2, 7, 6, 8, 10, 9, 12].map(Tag::Int),
         );
-        map.insert(JavaString(vec![4]), Tag::Int(11));
+        map.insert(JavaString::from(vec![4]), Tag::Int(11));
         assert_eq!(
             map.into_values().collect::<Vec<_>>(),
             [4, 0, 2, 6, 8, 10, 9, 11, 5, 1, 3, 7, 12].map(Tag::Int),
@@ -1702,9 +1896,9 @@ mod tests {
 
     #[test]
     fn compound_keeps_unpaired_utf16_keys_distinct_and_lossless() {
-        let high = JavaString(vec![0xd800]);
-        let low = JavaString(vec![0xdc00]);
-        let replacement = JavaString(vec![0xfffd]);
+        let high = JavaString::from(vec![0xd800]);
+        let low = JavaString::from(vec![0xdc00]);
+        let replacement = JavaString::from(vec![0xfffd]);
         let map = Compound::from([
             (high.clone(), Tag::Int(1)),
             (low.clone(), Tag::Int(2)),
@@ -1740,7 +1934,7 @@ mod tests {
     /// it. Vanilla 26.3's bytes for `{s: 32768 x U+0000}` (65536 encoded).
     #[test]
     fn the_disk_writer_empties_a_string_too_long_for_modified_utf8() {
-        let long = Tag::String(JavaString(vec![0; 32768]));
+        let long = Tag::String(JavaString::from(vec![0; 32768]));
         let root = NamedTag {
             name: "".into(),
             tag: Tag::compound([("s", long.clone())]),
@@ -1895,7 +2089,7 @@ mod tests {
     fn modified_utf_and_mixed_lists_preserve_java_values() {
         let tag = Tag::List(vec![
             Tag::Int(3),
-            Tag::String(JavaString(vec![0, 0xd800, 0xdc00, 0xdfff])),
+            Tag::String(JavaString::from(vec![0, 0xd800, 0xdc00, 0xdfff])),
             Tag::compound([("", Tag::Int(9))]),
             Tag::compound([("x", Tag::Byte(1))]),
         ]);
@@ -1938,7 +2132,7 @@ mod tests {
             (0..3000).map(|i| 1 + (i % 127) as u16).collect(),
         ];
         for units in strings {
-            let string = JavaString(units.clone());
+            let string = JavaString::from(units.clone());
             let encoded = utf_units(&units);
             assert_eq!(modified_utf8(&encoded), Some(string.clone()));
             let mut expected = vec![8, 0, 0];
@@ -2005,7 +2199,11 @@ mod tests {
             .is_err()
         );
         assert!(
-            write_network(&Tag::String(JavaString(vec![0; 32768])), Limits::default()).is_err()
+            write_network(
+                &Tag::String(JavaString::from(vec![0; 32768])),
+                Limits::default()
+            )
+            .is_err()
         );
     }
     #[test]
@@ -2289,12 +2487,126 @@ mod tests {
         map.retain(|key, value| {
             visited.push(key.to_string().unwrap());
             *value = Tag::Int(15);
-            key.0 != [66, 66]
+            key.units() != [66, 66]
         });
         assert_eq!(visited, ["Aa", "BB"]);
         assert_eq!(
             map.into_iter().collect::<Vec<_>>(),
             [(JavaString::from("Aa"), Tag::Int(15))],
+        );
+    }
+
+    /// Keys read from bytes carry the hash `String.hashCode` gives, and the keyed functions agree with the
+    /// string ones, for ASCII, non-ASCII, surrogate-pair and unpaired-surrogate keys.
+    #[test]
+    fn hashed_keys_agree_with_string_keys() {
+        let keys: Vec<Vec<u16>> = vec![
+            "Count".encode_utf16().collect(),
+            "caf\u{e9}".encode_utf16().collect(),
+            "\u{1F600}x".encode_utf16().collect(),
+            vec![0xD800, 0x61],
+            vec![0x61, 0xDC00],
+            Vec::new(),
+        ];
+        let mut written = Compound::new();
+        for (i, k) in keys.iter().enumerate() {
+            keyed::insert(
+                &mut written,
+                HashedKey::<JavaString>::new(k.clone()),
+                Tag::Int(i as i32),
+            );
+        }
+        let root = NamedTag {
+            name: JavaString::default(),
+            tag: Tag::Compound(written.clone()),
+        };
+        let bytes = write_named(&root, Limits::default()).unwrap();
+        let (read, _) = read_named(&bytes, Limits::default()).unwrap();
+        assert_eq!(read.tag, Tag::Compound(written.clone()));
+        let Tag::Compound(read) = read.tag else {
+            unreachable!()
+        };
+        for (i, k) in keys.iter().enumerate() {
+            let key = HashedKey::<&[u16]>::new(k);
+            assert_eq!(key.hash(), java_string_hash(k));
+            assert_eq!(keyed::compound_get(&read, &key), Some(&Tag::Int(i as i32)));
+            assert_eq!(
+                read.get(&JavaString::from(k.clone())),
+                Some(&Tag::Int(i as i32))
+            );
+            assert!(keyed::contains_key(&read, &key));
+        }
+        let mut c = read;
+        let first = HashedKey::<&[u16]>::new(&keys[0]);
+        assert_eq!(keyed::remove(&mut c, &first), Some(Tag::Int(0)));
+        assert!(!keyed::contains_key(&c, &first));
+        assert_eq!(
+            keyed::insert(
+                &mut c,
+                HashedKey::<JavaString>::new(keys[0].clone()),
+                Tag::Int(9)
+            ),
+            None
+        );
+        assert_eq!(keyed::compound_get(&c, &first), Some(&Tag::Int(9)));
+        assert_eq!(
+            keyed::compound_get(&c, crate::nbt_key!("Count")),
+            Some(&Tag::Int(9))
+        );
+    }
+
+    #[test]
+    fn java_string_storage_does_not_affect_its_value() {
+        #[cfg(target_pointer_width = "64")]
+        assert_eq!(size_of::<JavaString>(), 24);
+        let hash = |s: &JavaString| {
+            let mut state = std::hash::DefaultHasher::new();
+            s.hash(&mut state);
+            state.finish()
+        };
+        for units in [&[0xd800, 65][..], &[0xd800, 65, 0, 1, 2, 3, 4, 5]] {
+            let static_string = JavaString::from_static(units);
+            let inline = JavaString::from(units.to_vec());
+            let mut heap = static_string.clone();
+            let _ = heap.units_mut();
+            for value in [&static_string, &heap] {
+                assert_eq!(value, &inline);
+                assert_eq!(value.cmp(&inline), Ordering::Equal);
+                assert_eq!(hash(value), hash(&inline));
+                assert_eq!(format!("{value:?}"), format!("JavaString({units:?})"));
+            }
+            heap.units_mut().push(66);
+            assert!(heap > inline);
+            assert_eq!(heap.into_units(), [units, &[66]].concat());
+            assert_eq!(static_string.into_units(), units);
+        }
+    }
+
+    /// Keys copied between compounds keep the hash the map stored, in an order that matches the source.
+    #[test]
+    fn iteration_yields_each_keys_hash_and_copies_keep_order() {
+        let mut source = Compound::new();
+        for k in ["Aa", "BB", "x", "caf\u{e9}", "\u{1F600}"] {
+            source.insert(JavaString::from(k), Tag::Int(k.len() as i32));
+        }
+        for (key, _) in keyed::iter(&source) {
+            assert_eq!(key.hash(), java_string_hash(key.text().units()));
+        }
+        let mut copy = Compound::new();
+        for (key, value) in keyed::iter(&source) {
+            keyed::insert(&mut copy, key, value.clone());
+        }
+        assert!(copy.iter().eq(source.iter()));
+        let Tag::Compound(owned) = keyed::compound(keyed::into_iter(source.clone())) else {
+            unreachable!()
+        };
+        assert!(owned.iter().eq(source.iter()));
+        let lit = crate::nbt_key!("Aa");
+        keyed::entry(&mut copy, lit).or_insert(Tag::Int(0));
+        assert_eq!(keyed::compound_get(&copy, lit), Some(&Tag::Int(2)));
+        assert_eq!(
+            keyed::insert(&mut copy, lit, Tag::Int(7)),
+            Some(Tag::Int(2))
         );
     }
 }

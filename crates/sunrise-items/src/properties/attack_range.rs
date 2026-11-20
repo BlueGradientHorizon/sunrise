@@ -24,7 +24,7 @@ pub fn decode(value: &Tag) -> Option<[Float<'static>; 6]> {
     for (index, (name, default, maximum)) in FIELDS.into_iter().enumerate() {
         // Avoid Tag::get's thread-local UTF-16 buffer, including its first-use allocation.
         let value = map.iter().find_map(|(key, value)| {
-            key.0
+            key.units()
                 .iter()
                 .copied()
                 .eq(name.encode_utf16())
