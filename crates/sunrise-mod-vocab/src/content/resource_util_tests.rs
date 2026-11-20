@@ -591,6 +591,32 @@ fn extract_first_only_takes_the_selected_resource_and_commits_its_root() {
 }
 
 #[test]
+fn optional_tokens_must_name_the_current_transaction() {
+    let (mut fake, r) = items_host(&["minecraft:stone"]);
+    let stone = &r[0];
+    chest(&mut fake, A, &[Some((stone, 5))]);
+    let items = items_at(&mut fake, A);
+    let assert_refused = |host: &mut dyn ServerHost, token: Option<&Transaction>| {
+        assert_eq!(insert_stacking(host, &items, stone, 1, token), Ok(0));
+        assert_eq!(extract_first(host, &items, |_| true, 1, token), None);
+        assert_eq!(
+            find_extractable_resource(host, &items, |_| true, token),
+            None
+        );
+    };
+    let host: &mut dyn ServerHost = &mut fake;
+    host.transaction(|host, parent| {
+        assert_refused(host, None);
+        host.transaction(|host, _| {
+            assert_refused(host, Some(parent));
+            Ok::<_, ()>(())
+        })
+    })
+    .unwrap();
+    assert_eq!(counts(&fake, A), [5]);
+}
+
+#[test]
 fn an_overanswer_after_an_honest_part_undoes_the_whole_move() {
     let (mut fake, r) = items_host(&["minecraft:stone"]);
     let stone = &r[0];
@@ -603,14 +629,30 @@ fn an_overanswer_after_an_honest_part_undoes_the_whole_move() {
         CombinedResourceHandler::new(host, vec![honest, Box::new(Liar)]),
         "test:liar",
     );
-    // B takes 2; the liar, asked for 3, answers 4.
-    let moved =
-        host.transaction(|host, tx| move_resources(host, &from, &to, |_| true, 5, Some(tx)));
+    // B takes 2; the liar, asked for 3, answers 4. Both slot-less and indexed stacking
+    // insertion identify the destination provider and restore the honest index.
+    for stacking in [false, true] {
+        let host: &mut dyn ServerHost = &mut fake;
+        let moved = host.transaction(|host, tx| {
+            if stacking {
+                move_resources_stacking(host, &from, &to, |_| true, 5, Some(tx))
+            } else {
+                move_resources(host, &from, &to, |_| true, 5, Some(tx))
+            }
+        });
+        assert_eq!(
+            moved,
+            Err(Overanswered {
+                owner: Some("test:liar".into())
+            })
+        );
+        assert_eq!(counts(&fake, A), [5]);
+        assert_eq!(counts(&fake, B), [62]);
+    }
+    let host: &mut dyn ServerHost = &mut fake;
     assert_eq!(
-        moved,
-        Err(Overanswered {
-            owner: Some("test:liar".into())
-        })
+        move_resources_stacking(host, &from, &*to, |_| true, 5, None),
+        Err(Overanswered { owner: None })
     );
     assert_eq!(counts(&fake, A), [5]);
     assert_eq!(counts(&fake, B), [62]);
@@ -836,8 +878,12 @@ fn moves_accept_public_wrappers_without_registering_providers() {
     )
     .unwrap();
     let sink = CombinedResourceHandler::new(host, vec![Box::new(VoidingResourceHandler)]);
+    let (source, sink): (
+        &dyn ResourceHandler<Chemical>,
+        &dyn ResourceHandler<Chemical>,
+    ) = (&source, &sink);
     assert_eq!(
-        move_resources(host, &source, &sink, |_| true, 17, None),
+        move_resources(host, source, sink, |_| true, 17, None),
         Ok(17)
     );
 }

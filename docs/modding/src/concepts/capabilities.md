@@ -119,7 +119,8 @@ back before asking the destination to insert. A step commits only if the source 
 exactly what went in. An overanswer rolls back the entire helper call, even if you handle the error
 and commit the enclosing transaction. Use `Some(tx)` for the current transaction or `None` to open a
 root transaction; a token for a different transaction, or `None` while one is open, moves nothing.
-The endpoints can be capabilities or handlers you compose directly.
+Pass capability references to keep their provider names in `Overanswered` errors. For a handler
+you compose directly, pass it as `&dyn ResourceHandler<R>`; the helper does not infer a provider.
 
 `move_resources_stacking` tops up matching destination indices before filling empty ones.
 `move_first` and `move_first_stacking` move only the first resource the destination accepts,
@@ -131,7 +132,8 @@ uses general capacity at empty indices, so an empty, zero-capacity index is alre
 zero and overfilled indices contribute at most one. `insert_stacking` tops up matching indices
 before filling empty ones; an overanswer rolls it back and returns `Overanswered`. `extract_first`
 takes the first extractable resource matching a filter. `find_extractable_resource` probes each
-candidate with its full int amount in a separate transaction that always rolls back.
+candidate with its full int amount in a separate transaction that always rolls back. These three
+helpers also require the current transaction token, or `None` when opening a root.
 
 Compose handlers from the same module: `CombinedResourceHandler` assigns indices in order and fixes
 its size at construction; `RangedResourceHandler::of` and `of_single_index` return `None` for

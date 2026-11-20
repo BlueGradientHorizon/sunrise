@@ -1,9 +1,9 @@
 //! Stock resource handlers and transfer helpers, following NeoForge's `ResourceHandlerUtil`.
-//! Writes and probes take an optional enclosing transaction. With `None`, the helper opens its
-//! own transaction (a root if the host has none open); with `Some(tx)`, the caller can abort the
-//! encompassing operation. Probes always roll back.
+//! Writes and probes take `Some(tx)` for the current transaction or `None` to open a root.
+//! They refuse without calling handlers if the token does not name the current transaction,
+//! or if a transaction is open but no token was supplied. Probes always roll back.
 use crate::content::resource::{checked_transfer, in_turn, try_in_turn};
-use crate::{HostTransaction, Overanswered, ResourceHandler, ServerHost, Transaction};
+use crate::{Capability, HostTransaction, Overanswered, ResourceHandler, ServerHost, Transaction};
 use std::ops::Range;
 
 /// Several handlers as one (`CombinedResourceHandler`): their indices one after another, the
@@ -448,8 +448,9 @@ pub fn comparator_signal<R>(host: &mut dyn ServerHost, handler: &dyn ResourceHan
 }
 
 /// Inserts up to `amount` of `resource`, topping up matching indices before empty ones.
-/// An overanswer rolls back the insertion and returns [`Overanswered`].
-/// `None` opens a transaction of its own.
+/// An overanswer rolls back the insertion and returns [`Overanswered`]. Pass `Some(tx)` for
+/// the current transaction or `None` to open a root. A mismatched token, including a missing
+/// token when a transaction is open, returns `Ok(0)` without calling the handler.
 pub fn insert_stacking<R: PartialEq>(
     host: &mut dyn ServerHost,
     handler: &dyn ResourceHandler<R>,
@@ -460,16 +461,17 @@ pub fn insert_stacking<R: PartialEq>(
     if !can_open(host, tx) || amount == 0 {
         return Ok(0);
     }
-    host.transaction(|host, tx| try_insert_stacking(host, handler, resource, amount, tx))
+    host.transaction(|host, tx| try_insert_stacking(host, &handler.into(), resource, amount, tx))
 }
 
 fn try_insert_stacking<R: PartialEq>(
     host: &mut dyn ServerHost,
-    handler: &dyn ResourceHandler<R>,
+    endpoint: &Attributed<'_, R>,
     resource: &R,
     amount: u32,
     tx: &Transaction,
 ) -> Result<u32, Overanswered> {
+    let handler = endpoint.handler;
     let size = handler.size(host);
     let indices = [true, false]
         .into_iter()
@@ -493,10 +495,13 @@ fn try_insert_stacking<R: PartialEq>(
             })
         },
     )
+    .map_err(|error| endpoint.attribute(error))
 }
 
 /// Takes up to `amount` of the first extractable resource `filter` accepts. An overanswer
-/// aborts the extraction. `None` opens a transaction of its own.
+/// aborts the extraction. Pass `Some(tx)` for the current transaction or `None` to open a root.
+/// A mismatched token, including a missing token when a transaction is open, returns `None`
+/// without calling the handler.
 pub fn extract_first<R>(
     host: &mut dyn ServerHost,
     handler: &dyn ResourceHandler<R>,
@@ -523,7 +528,9 @@ pub fn extract_first<R>(
 }
 
 /// The first resource `filter` accepts that can be extracted. Probes with the slot's whole
-/// int amount in a transaction that always rolls back. `None` opens a transaction of its own.
+/// int amount in a transaction that always rolls back. Pass `Some(tx)` for the current
+/// transaction or `None` to probe at the root. A mismatched token, including a missing token
+/// when a transaction is open, returns `None` without calling the handler.
 pub fn find_extractable_resource<R>(
     host: &mut dyn ServerHost,
     handler: &dyn ResourceHandler<R>,
@@ -553,49 +560,100 @@ fn probe_extractable<R>(
     })
 }
 
-/// Validates an optional enclosing transaction before opening any new journal. A stale token
-/// must not give the helper permission to write in an unrelated transaction.
+/// Validates an optional enclosing transaction before opening any new journal.
 fn can_open(host: &dyn ServerHost, tx: Option<&Transaction>) -> bool {
-    tx.is_none_or(|tx| host.transaction_depth(tx).is_some())
+    host.transaction_current().as_ref() == tx
+}
+
+/// A borrowed move endpoint. Pass a capability reference to retain its provider's name in
+/// [`Overanswered`], or a `&dyn ResourceHandler<R>` for a directly composed handler.
+// no wire: borrows a process-local trait object.
+pub struct Attributed<'a, R> {
+    handler: &'a (dyn ResourceHandler<R> + 'a),
+    owner: Option<&'static str>,
+}
+
+impl<'a, R> From<&'a Capability<dyn ResourceHandler<R>>> for Attributed<'a, R> {
+    fn from(capability: &'a Capability<dyn ResourceHandler<R>>) -> Self {
+        Self {
+            handler: capability,
+            owner: Some(capability.owner.unwrap_or("the game")),
+        }
+    }
+}
+
+impl<'a, R> From<&'a (dyn ResourceHandler<R> + 'a)> for Attributed<'a, R> {
+    fn from(handler: &'a (dyn ResourceHandler<R> + 'a)) -> Self {
+        Self {
+            handler,
+            owner: None,
+        }
+    }
+}
+
+impl<R> Attributed<'_, R> {
+    fn attribute(&self, mut error: Overanswered) -> Overanswered {
+        if error.owner.is_none() {
+            error.owner = self.owner.map(str::to_owned);
+        }
+        error
+    }
+
+    fn insert(
+        &self,
+        host: &mut dyn ServerHost,
+        tx: &Transaction,
+        resource: &R,
+        asked: u32,
+    ) -> Result<u32, Overanswered> {
+        self.handler
+            .insert(host, tx, resource, asked)
+            .and_then(|answer| checked_transfer(answer, asked))
+            .map_err(|error| self.attribute(error))
+    }
 }
 
 /// Moves up to `max` of the resources `filter` accepts, in index order. The helper probes what
 /// it can extract, rolls the probe back, inserts, then extracts exactly what went in. A step
 /// that cannot extract that exact amount rolls back. [`Overanswered`] rolls back the entire
-/// move, even if the caller catches the error and commits the enclosing transaction.
+/// move, even if the caller catches the error and commits the enclosing transaction. Pass a
+/// capability reference to retain its provider in the error, or a `&dyn ResourceHandler<R>`
+/// for a directly composed handler.
 ///
 /// Pass `Some(tx)` to run under the current transaction, or `None` to open a root. A token
 /// that does not name the current transaction, or `None` while one is open, moves nothing.
-pub fn move_resources<R>(
+pub fn move_resources<'a, R: 'a>(
     host: &mut dyn ServerHost,
-    from: &dyn ResourceHandler<R>,
-    to: &dyn ResourceHandler<R>,
+    from: impl Into<Attributed<'a, R>>,
+    to: impl Into<Attributed<'a, R>>,
     filter: impl Fn(&R) -> bool,
     max: u32,
     tx: Option<&Transaction>,
 ) -> Result<u32, Overanswered> {
+    let (from, to) = (from.into(), to.into());
     move_resources_by(host, from, filter, max, tx, |host, tx, resource, out| {
         to.insert(host, tx, resource, out)
     })
 }
 
 /// As [`move_resources`], topping up matching destination indices before filling empty ones.
-pub fn move_resources_stacking<R: PartialEq>(
+pub fn move_resources_stacking<'a, R: PartialEq + 'a>(
     host: &mut dyn ServerHost,
-    from: &dyn ResourceHandler<R>,
-    to: &dyn ResourceHandler<R>,
+    from: impl Into<Attributed<'a, R>>,
+    to: impl Into<Attributed<'a, R>>,
     filter: impl Fn(&R) -> bool,
     max: u32,
     tx: Option<&Transaction>,
 ) -> Result<u32, Overanswered> {
+    let (from, to) = (from.into(), to.into());
     move_resources_by(host, from, filter, max, tx, |host, tx, resource, out| {
-        try_insert_stacking(host, to, resource, out, tx)
+        try_insert_stacking(host, &to, resource, out, tx)
     })
 }
 
 fn move_resources_by<R>(
     host: &mut dyn ServerHost,
-    from: &dyn ResourceHandler<R>,
+    from: Attributed<'_, R>,
     filter: impl Fn(&R) -> bool,
     max: u32,
     tx: Option<&Transaction>,
@@ -603,15 +661,16 @@ fn move_resources_by<R>(
 ) -> Result<u32, Overanswered> {
     with_move_transaction(host, tx, |host| {
         let mut moved = 0;
-        for index in 0..from.size(host) {
+        for index in 0..from.handler.size(host) {
             if moved == max {
                 break;
             }
             while moved < max {
-                let Some(resource) = from.resource(host, index).filter(|r| filter(r)) else {
+                let Some(resource) = from.handler.resource(host, index).filter(|r| filter(r))
+                else {
                     break;
                 };
-                let went = move_slot(host, from, index, &resource, max - moved, &insert)?;
+                let went = move_slot(host, &from, index, &resource, max - moved, &insert)?;
                 if went == 0 {
                     break;
                 }
@@ -624,36 +683,38 @@ fn move_resources_by<R>(
 
 /// As [`move_resources`], but only moves the first matching resource the destination accepts.
 /// Once selected, that same resource can also be moved from later source indices.
-pub fn move_first<R: PartialEq>(
+pub fn move_first<'a, R: PartialEq + 'a>(
     host: &mut dyn ServerHost,
-    from: &dyn ResourceHandler<R>,
-    to: &dyn ResourceHandler<R>,
+    from: impl Into<Attributed<'a, R>>,
+    to: impl Into<Attributed<'a, R>>,
     filter: impl Fn(&R) -> bool,
     max: u32,
     tx: Option<&Transaction>,
 ) -> Result<Option<(R, u32)>, Overanswered> {
+    let (from, to) = (from.into(), to.into());
     move_first_by(host, from, filter, max, tx, |host, tx, resource, out| {
         to.insert(host, tx, resource, out)
     })
 }
 
 /// As [`move_first`], topping up matching destination indices before filling empty ones.
-pub fn move_first_stacking<R: PartialEq>(
+pub fn move_first_stacking<'a, R: PartialEq + 'a>(
     host: &mut dyn ServerHost,
-    from: &dyn ResourceHandler<R>,
-    to: &dyn ResourceHandler<R>,
+    from: impl Into<Attributed<'a, R>>,
+    to: impl Into<Attributed<'a, R>>,
     filter: impl Fn(&R) -> bool,
     max: u32,
     tx: Option<&Transaction>,
 ) -> Result<Option<(R, u32)>, Overanswered> {
+    let (from, to) = (from.into(), to.into());
     move_first_by(host, from, filter, max, tx, |host, tx, resource, out| {
-        try_insert_stacking(host, to, resource, out, tx)
+        try_insert_stacking(host, &to, resource, out, tx)
     })
 }
 
 fn move_first_by<R: PartialEq>(
     host: &mut dyn ServerHost,
-    from: &dyn ResourceHandler<R>,
+    from: Attributed<'_, R>,
     filter: impl Fn(&R) -> bool,
     max: u32,
     tx: Option<&Transaction>,
@@ -662,11 +723,11 @@ fn move_first_by<R: PartialEq>(
     with_move_transaction(host, tx, |host| {
         let mut selected = None;
         let mut moved = 0;
-        for index in 0..from.size(host) {
+        for index in 0..from.handler.size(host) {
             if moved == max {
                 break;
             }
-            let Some(resource) = from.resource(host, index) else {
+            let Some(resource) = from.handler.resource(host, index) else {
                 continue;
             };
             if !selected
@@ -675,7 +736,7 @@ fn move_first_by<R: PartialEq>(
             {
                 continue;
             }
-            let went = move_slot(host, from, index, &resource, max - moved, &insert)?;
+            let went = move_slot(host, &from, index, &resource, max - moved, &insert)?;
             if went == 0 {
                 continue;
             }
@@ -691,7 +752,7 @@ fn with_move_transaction<T: Default>(
     tx: Option<&Transaction>,
     run: impl FnOnce(&mut dyn ServerHost) -> Result<T, Overanswered>,
 ) -> Result<T, Overanswered> {
-    if host.transaction_current().as_ref() != tx {
+    if !can_open(host, tx) {
         return Ok(T::default());
     }
     host.transaction(|host, _| run(host))
@@ -699,31 +760,30 @@ fn with_move_transaction<T: Default>(
 
 fn move_slot<R>(
     host: &mut dyn ServerHost,
-    from: &dyn ResourceHandler<R>,
+    from: &Attributed<'_, R>,
     index: usize,
     resource: &R,
     max: u32,
     insert: &impl Fn(&mut dyn ServerHost, &Transaction, &R, u32) -> Result<u32, Overanswered>,
 ) -> Result<u32, Overanswered> {
-    let want = max.min(from.amount(host, index));
+    let want = max.min(from.handler.amount(host, index));
     if want == 0 {
         return Ok(0);
     }
     // The destination must see the source before extraction, even though the probe may write.
     let probe: Result<std::convert::Infallible, _> =
-        host.transaction(|host, tx| Err(from.extract_at(host, tx, index, resource, want)));
-    let available = checked_transfer(probe.unwrap_err(), want)?;
+        host.transaction(|host, tx| Err(from.handler.extract_at(host, tx, index, resource, want)));
+    let available = checked_transfer(probe.unwrap_err(), want).map_err(|e| from.attribute(e))?;
     if available == 0 {
         return Ok(0);
     }
     host.transaction(|host, tx| {
         let accepted = insert(host, tx, resource, available).map_err(Some)?;
-        let accepted = checked_transfer(accepted, available).map_err(Some)?;
         if accepted == 0 {
             return Err(None);
         }
-        let taken = from.extract_at(host, tx, index, resource, accepted);
-        let taken = checked_transfer(taken, accepted).map_err(Some)?;
+        let taken = from.handler.extract_at(host, tx, index, resource, accepted);
+        let taken = checked_transfer(taken, accepted).map_err(|e| Some(from.attribute(e)))?;
         if taken != accepted {
             return Err(None);
         }

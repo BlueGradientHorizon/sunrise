@@ -570,9 +570,7 @@ pub mod tests {
                 Ok(first + second)
             });
             let error: Overanswered = moved.unwrap_err();
-            // Indexed answers cannot carry the provider; the boundary still logs it.
-            let owner = (at == TANK).then_some("doubler");
-            assert_eq!(error.owner.as_deref(), owner, "{liar}");
+            assert_eq!(error.owner.as_deref(), Some("doubler"), "{liar}");
             assert!(crate::parts::warned_about("doubler"));
             let held = [SOURCE, OTHER, TANK].map(|pos| world.held(pos));
             assert_eq!(held, [water(1000), water(1000), None], "{liar}");
