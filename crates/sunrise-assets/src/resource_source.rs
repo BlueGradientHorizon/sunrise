@@ -1,7 +1,6 @@
 //! Open resource layers, shared by asset packs and passive mod data.
 //! Archive layers retain one reader and never materialize their entries.
 //! Diverges from upstream: asset and passive jar-data layers share this source.
-#[cfg(not(target_arch = "wasm32"))]
 use crate::zip::Zip;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
@@ -57,7 +56,6 @@ fn copy_resource_bytes(
 
 enum Storage {
     Directory(PathBuf),
-    #[cfg(not(target_arch = "wasm32"))]
     Archive(Zip),
     Prefix {
         source: ResourceSource,
@@ -120,7 +118,6 @@ impl std::fmt::Debug for ResourceSource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let kind = match self.0.as_ref() {
             Storage::Directory(_) => "Directory",
-            #[cfg(not(target_arch = "wasm32"))]
             Storage::Archive(_) => "Archive",
             Storage::Prefix { .. } => "Prefix",
             Storage::Index(..) => "Index",
@@ -302,7 +299,6 @@ impl ResourceSource {
                 .collect()
         }
         match self.0.as_ref() {
-            #[cfg(not(target_arch = "wasm32"))]
             Storage::Archive(archive) => {
                 collect(archive.names().filter(|name| stays_inside(name)), top)
             }
@@ -395,12 +391,10 @@ impl ResourceSource {
     pub fn directory(root: PathBuf) -> Self {
         Self::from(Storage::Directory(root))
     }
-    #[cfg(not(target_arch = "wasm32"))]
     pub fn archive(path: &Path) -> io::Result<Self> {
         Ok(Self::opened_archive(Zip::open(path)?))
     }
     /// Share an archive that was already opened while discovering its metadata.
-    #[cfg(not(target_arch = "wasm32"))]
     pub fn opened_archive(archive: Zip) -> Self {
         Self::from(Storage::Archive(archive))
     }
@@ -433,7 +427,6 @@ impl ResourceSource {
         }
         match self.0.as_ref() {
             Storage::Directory(root) => sunrise_core::prepared_files::read(&root.join(name)),
-            #[cfg(not(target_arch = "wasm32"))]
             Storage::Archive(archive) => archive.read(name),
             Storage::Prefix { source, prefix } => source.read(&format!("{prefix}{name}")),
             Storage::Index(files, ..) => files
@@ -450,7 +443,6 @@ impl ResourceSource {
         }
         match self.0.as_ref() {
             Storage::Directory(root) => root.join(name).is_file().then(|| root.clone()),
-            #[cfg(not(target_arch = "wasm32"))]
             Storage::Archive(_) => None,
             Storage::Prefix { source, prefix } => source.folder_of(&format!("{prefix}{name}")),
             Storage::Index(files, ..) => match &files.get(name)?.0 {
@@ -473,7 +465,6 @@ impl ResourceSource {
             ));
         }
         match self.0.as_ref() {
-            #[cfg(not(target_arch = "wasm32"))]
             Storage::Archive(archive) => archive.copy_to(name, out, budget).map(|_| ()),
             Storage::Prefix { source, prefix } => {
                 source.copy_to(&format!("{prefix}{name}"), out, budget)
@@ -509,7 +500,6 @@ impl ResourceSource {
             Storage::Directory(root) => {
                 sunrise_core::prepared_files::read_head(&root.join(name), max)
             }
-            #[cfg(not(target_arch = "wasm32"))]
             Storage::Archive(archive) => archive.read_head(name, max),
             Storage::Prefix { source, prefix } => source.read_head(&format!("{prefix}{name}"), max),
             Storage::Index(files, ..) => match &files
@@ -538,7 +528,6 @@ impl ResourceSource {
                     path.is_file()
                 }
             }
-            #[cfg(not(target_arch = "wasm32"))]
             Storage::Archive(archive) => archive.contains(name),
             Storage::Prefix { source, prefix } => source.contains(&format!("{prefix}{name}")),
             Storage::Index(files, ..) => files.contains_key(name),
@@ -557,7 +546,6 @@ impl ResourceSource {
             Storage::Directory(root) => {
                 sunrise_core::prepared_files::read_head(&root.join(name), max.saturating_add(1))?
             }
-            #[cfg(not(target_arch = "wasm32"))]
             Storage::Archive(archive) => return archive.read_limited(name, max),
             Storage::Prefix { source, prefix } => {
                 return source.read_limited(&format!("{prefix}{name}"), max);
@@ -604,7 +592,6 @@ impl ResourceSource {
                 out.sort();
                 out
             }
-            #[cfg(not(target_arch = "wasm32"))]
             Storage::Archive(archive) => archive
                 .names()
                 .filter(|name| name.starts_with(prefix) && stays_inside(name))
@@ -687,7 +674,6 @@ impl ResourceSource {
             Storage::Directory(root) => {
                 metadata_fingerprint(&fs::metadata(root.join(name)).ok()?).ok()
             }
-            #[cfg(not(target_arch = "wasm32"))]
             Storage::Archive(archive) => {
                 let key = Arc::as_ptr(&self.0) as usize;
                 let fingerprint = match archives.get(&key) {

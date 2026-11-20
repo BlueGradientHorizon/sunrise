@@ -17,12 +17,6 @@ mod registered_commands;
 #[cfg(test)]
 #[path = "native_server/selector_tests.rs"]
 mod selector_tests;
-#[cfg(test)]
-#[path = "native_server/wasm_provider_tests.rs"]
-mod wasm_provider_tests;
-#[cfg(test)]
-#[path = "native_server/wasm_selector_tests.rs"]
-mod wasm_selector_tests;
 
 use super::api_values::{TryIntoApi, TryIntoEngine};
 use super::{Dim, Game, commands::execute, respawn_anchor::RespawnConfig};
@@ -1803,6 +1797,7 @@ impl Game<'_> {
         let outer = self.command_source.replace(server);
         let filter = std::mem::replace(&mut self.native_command_filter, true);
         let outer_exec = std::mem::take(&mut self.exec);
+        let outer_results = self.cmds.results.take();
         let outer_capture = capture.then(|| self.chat_capture.replace(Vec::new()));
         let ok = self.as_console(|g| g.run_command(line));
         let lines = match outer_capture {
@@ -1812,6 +1807,7 @@ impl Game<'_> {
             None => Vec::new(),
         };
         self.exec = outer_exec;
+        self.cmds.results = outer_results;
         self.native_command_filter = filter;
         self.command_source = outer;
         (ok, lines)
@@ -1819,9 +1815,6 @@ impl Game<'_> {
     /// The open world's folder (`world/`, beside its `level.dat`): a server
     /// mod keeps its data in a folder of its own there, so the world's
     /// backups carry it. None when no world is open.
-    ///
-    /// Not on wasm: a path in the game's file system, which a wasm mod has none of; a wasm mod
-    /// keeps world data in level attachments.
     pub(super) fn world_dir(&self) -> Option<PathBuf> {
         (!self.world_root.as_os_str().is_empty()).then(|| self.world_root.clone())
     }

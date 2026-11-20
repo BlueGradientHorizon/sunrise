@@ -480,6 +480,9 @@ impl Game<'_> {
         if !self.native_level_write_position(level, pos)? {
             return Ok(false);
         }
+        if let Some(mut host) = super::journal_level_write::JournalLevelWrite::new(self, level) {
+            return Ok(host.write_block(pos, state, flags.bits()));
+        }
         Ok(self.native_set_block(level.dimension_id(), pos, state, flags.bits()))
     }
     /// `Block.updateFromNeighbourShapes` for `state` at `pos`, nothing written: the state
@@ -509,6 +512,9 @@ impl Game<'_> {
     ) -> bool {
         if !self.native_level_write_allowed(level, pos) || self.dim.key() != level.dimension() {
             return false;
+        }
+        if let Some(mut host) = super::journal_level_write::JournalLevelWrite::new(self, level) {
+            return mod_api::LevelWriteHost::remove_block(&mut host, pos, moved);
         }
         let changed =
             self.with_level(|_, level, ticks| level.remove_block_write(ticks, pos, moved));
@@ -573,7 +579,11 @@ impl Game<'_> {
         tool: Option<&ItemStack>,
         collect: bool,
     ) -> Option<Vec<ItemStack>> {
-        if !self.native_level_write_allowed(level, pos) || self.dim.key() != level.dimension() {
+        // Loot and break effects cannot be rolled back by the level journal.
+        if self.transaction_current().is_some()
+            || !self.native_level_write_allowed(level, pos)
+            || self.dim.key() != level.dimension()
+        {
             return None;
         }
         let at = sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
@@ -1045,7 +1055,7 @@ pub(super) mod tests {
     }
 
     /// [`run_fresh_cases`] with up to `at_once` children running together, for a test that runs
-    /// alone in its job (the wasm fixture's): each child still has its own process and folders.
+    /// alone in its job: each child still has its own process and folders.
     pub(in crate::game) fn run_fresh_cases_at_once(
         name: &str,
         flag: &str,
@@ -1319,22 +1329,8 @@ pub(super) mod tests {
         with_game_at(fixture_root(), test);
     }
 
-    /// The root a plain fixture game is built over: the prepared resources, or, when the compiled wasm
-    /// fixture is installed, the content root its mods make. The fixture declares blocks, block entity
-    /// types and Parts of its own (its `part_state` counter), which a loaded game has registered and the
-    /// bare prepared resources lack.
     pub(in crate::game) fn fixture_root() -> std::path::PathBuf {
-        use mod_api::__private::game::Fields;
-        let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-        let mods = mod_api::__private::mods();
-        if !mods.iter().any(|entry| entry.fields().id == "wasm_fixture") {
-            return base;
-        }
-        crate::game::api_values::install_parts(mods).unwrap();
-        crate::game::mods::content_root(&base, &Default::default())
-            .unwrap()
-            .prepared()
-            .to_owned()
+        std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap())
     }
 
     pub(in crate::game) fn with_game_at(
@@ -1782,32 +1778,6 @@ pub(super) mod tests {
             );
             assert!(!game.level_set_biome(level, [0, 64, 0], "minecraft:nope"));
             assert!(!game.level_set_biome(level, [100_000, 64, 0], &name));
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn a_level_can_survive_asks_the_blocks_own_rule() {
-        use std::sync::Arc;
-        use sunrise_client::chunk::Chunk;
-
-        with_game(|game| {
-            game.world
-                .chunks
-                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            let registry = game.pack.assets.registry;
-            let grass = registry.default_state("minecraft:grass_block").unwrap();
-            let stone = registry.default_state("minecraft:stone").unwrap();
-            let sapling = registry.default_state("minecraft:oak_sapling").unwrap();
-            game.world.set(0, 64, 0, grass).unwrap();
-            assert!(game.level_can_survive([0, 65, 0], sapling));
-            game.world.set(0, 64, 0, stone).unwrap();
-            assert!(!game.level_can_survive([0, 65, 0], sapling));
-            assert!(
-                !game
-                    .level_can_survive([0, 65, 0], sunrise_world::registry::BlockStateId(u32::MAX))
-            );
-            assert!(!game.level_can_survive([100, 65, 100], sapling));
         });
     }
 

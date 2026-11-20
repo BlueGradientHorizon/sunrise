@@ -55,6 +55,11 @@ impl Renderer {
             self.follow_translucent_layout();
             self.follow_packed_layout();
         }
+        // No world runs on a title or loading frame: the text's expression uniforms and
+        // `PolyGlobals` are 0 there, whatever the game last gave them.
+        if frame.title {
+            self.zero_text_blocks();
+        }
         let released = self.arena.trim();
         self.graveyard.add(released);
         let left = self.compact_arena();
@@ -1242,7 +1247,19 @@ impl Renderer {
             )
         };
         let pack = self.pack_blocks(frame, fog, globals.fog_ends);
-        self.write_core_text(&pack, views.primary(), pose, jitter, fog_color);
+        // Vanilla's four blocks as the pack's world text and GPU particles read them (the block
+        // outline's layout), made once a frame and only when one of them asks.
+        let vanilla_blocks = std::cell::OnceCell::new();
+        let vanilla_blocks = || {
+            *vanilla_blocks.get_or_init(|| {
+                let view = views.primary();
+                core_lines::uniforms(pack.globals, view, pose, jitter, 1.0, fog_color, pack.fog)
+            })
+        };
+        // The pack's world text: vanilla's blocks, then its expression uniforms.
+        if let Some(core) = &self.core_text {
+            core.prepare(&mut self.uploads, &mut encoder, &vanilla_blocks());
+        }
         let outline_edges = frame.outline.len().min(MAX_OUTLINE_EDGES as usize);
         if outline_edges > 0 {
             // The same per-line colour and pixel width layout as the gizmo lines. A high
@@ -1317,10 +1334,7 @@ impl Renderer {
         // Polytone GPU particles with their own shader: the vanilla blocks as the block outline's
         // (a particle's ModelViewMat is the camera's rotation, its positions camera relative).
         self.core_particles
-            .prepare_frame(&self.device, &self.queue, frame.title, || {
-                let view = views.primary();
-                core_lines::uniforms(pack.globals, view, pose, jitter, 1.0, fog_color, pack.fog)
-            });
+            .prepare_frame(&self.device, &self.queue, frame.title, vanilla_blocks);
         let skin = frame.skin.filter(|skin| match &mut self.entity_skin {
             Some(skinner) => skinner.register(&self.device, &mut self.uploads, &mut encoder, skin),
             None => false,
@@ -2851,15 +2865,7 @@ impl Renderer {
                 if count > 0 {
                     pass.stage(self.own_timing.as_mut(), "terrain models");
                     pass.set_pipeline(&self.terrain_model_pipelines[i]);
-                    pass.set_bind_group(
-                        0,
-                        if i == 1 {
-                            &self.terrain_model_group
-                        } else {
-                            &self.fluid_group
-                        },
-                        &[],
-                    );
+                    pass.set_bind_group(0, &self.terrain_model_group, &[]);
                     pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
                     pass.draw_indexed(0..count * 6, (first * 4) as i32, 0..1);
                 }
@@ -2871,7 +2877,7 @@ impl Renderer {
             if native_translucent_quads > 0 {
                 pass.stage(self.own_timing.as_mut(), "translucent terrain models");
                 pass.set_pipeline(&self.terrain_model_pipelines[3]);
-                pass.set_bind_group(0, &self.translucent_model_group, &[]);
+                pass.set_bind_group(0, &self.terrain_model_group, &[]);
                 pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
                 pass.draw_indexed(
                     0..native_translucent_quads * 6,

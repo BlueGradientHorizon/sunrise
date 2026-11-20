@@ -67,7 +67,9 @@ pub struct ModelInstance {
     pub tint: u32,
     /// Block and sky light in vanilla's `0..=15` convention.
     pub light: LightCoords,
-    /// Hurt tint and white flash, in vanilla's overlay convention.
+    /// Hurt tint and white flash, in vanilla's overlay convention. Copies with draw alpha below
+    /// `0xFF`, copies of models with translucent faces, and block state model copies ignore
+    /// overlays on every face, including opaque faces.
     pub overlay: Overlay,
     /// The draw colour: `0xAARRGGBB`, white (`0xFFFFFFFF`) by default. Its red, green and blue
     /// multiply every face's vertex colour, tinted or not, after the model's own baked colour and,
@@ -149,7 +151,6 @@ pub enum InstanceError {
 /// Persistent copies of one resolved model, retired on reload, world close, mod disable or destroy.
 /// Only the creating mod may access or submit the group; others receive [`GroupError::Stale`].
 /// Retired handles never become valid again, even when their storage slot is reused.
-/// Native and wasm mods use the same storage, ownership and drawing rules.
 /// Static groups cache CPU conversion; all visible GPU-routed copies still upload every frame.
 /// Frequent group pose changes rebuild the live cache and can cost more than transient copies.
 // no wire: decoding from_parts rejects generation zero (an unpublished instance group handle).
