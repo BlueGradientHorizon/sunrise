@@ -110,6 +110,7 @@ mod tests {
     enum Choice {
         Absent,
         Allow,
+        Trap,
         Cancel,
         Replace,
     }
@@ -198,6 +199,10 @@ mod tests {
                         Ok(true)
                     );
                     Flow::Continue
+                }
+                Choice::Trap => {
+                    event.cancelled = true;
+                    panic!("trample listener trapped");
                 }
                 Choice::Allow => Flow::Continue,
                 Choice::Absent => unreachable!(),
@@ -289,7 +294,7 @@ mod tests {
                     let m = game.mob_object(LANDING).unwrap();
                     (m.position.y, m.health)
                 };
-                let converted = matches!(choice, Choice::Absent | Choice::Allow);
+                let converted = matches!(choice, Choice::Absent | Choice::Allow | Choice::Trap);
                 let floor = match choice {
                     Choice::Replace => stone,
                     Choice::Cancel => farmland,
@@ -348,6 +353,16 @@ mod tests {
         let baseline = land(false, Choice::Absent);
         let allowed = land(false, Choice::Allow);
         assert_eq!(allowed[1..], baseline);
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_trapping_listener_does_not_change_the_landing_order() {
+        for player in [true, false] {
+            let baseline = land(player, Choice::Absent);
+            let trapped = land(player, Choice::Trap);
+            assert_eq!(trapped[1..], baseline);
+        }
     }
 
     #[test]
