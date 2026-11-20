@@ -6509,7 +6509,11 @@ impl Game<'_> {
                         ) {
                             return None;
                         }
-                        self.capture_block_entity_payload(*pos, entity.id(), &entity.nbt)
+                        let registry = self.pack.assets.registry;
+                        let block = registry
+                            .state(c.block(pos.0 & 15, pos.1, pos.2 & 15))
+                            .map_or("", |state| state.name.as_str());
+                        self.capture_block_entity_payload(*pos, block, entity, self.res.items())
                             .map(|edited| (*pos, edited))
                     })
                     .collect();
