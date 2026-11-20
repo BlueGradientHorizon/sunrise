@@ -76,10 +76,16 @@ fn reconcile_locked(home: &Path) -> Result<(), String> {
     };
     if published {
         let mut list = Installed::read(home)?;
-        let current = list.position(&pending.id).map(|i| &list.entries[i]);
         // Compare parsed rows so formatting changes don't matter but metadata edits do.
-        let unchanged = current == pending.old.as_ref();
-        if unchanged && list.taken_by(&pending.file, &pending.id).is_none() {
+        let current = list.position(&pending.id).map(|i| &list.entries[i]);
+        if current == Some(&pending.new) {
+            // The row may be visible before its rename is durable. This also handles a
+            // completed Windows install whose sidecar deletion did not survive power loss.
+            let manifest = home.join(MANIFEST);
+            durable::sync_parent(&manifest).map_err(|e| format!("{}: {e}", manifest.display()))?;
+        } else if current == pending.old.as_ref()
+            && list.taken_by(&pending.file, &pending.id).is_none()
+        {
             // The process could have died after renaming but before syncing this directory.
             durable::sync_parent(&target).map_err(|e| format!("{}: {e}", target.display()))?;
             list.record(pending.new);
