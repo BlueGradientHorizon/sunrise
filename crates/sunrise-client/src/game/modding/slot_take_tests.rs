@@ -713,8 +713,12 @@ fn replacing_the_detached_holder_spills_only_the_contents_after_the_take() {
         SCRIPT.set(TakeScript::RemoveBacking);
         click(game, 0, 0, 0);
         assert_eq!(heard(), [took(0, 5, 0)]);
-        assert_eq!(held(game, 8).1, 5);
         assert!(game.world.block_entities.get(&POS).is_none());
+        let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+        assert!(guest.menu.is_none());
+        // A live close returns the stack just taken from the cursor to the inventory.
+        assert_eq!(guest.carried, None);
+        assert_eq!(guest.inventory[0], stone(5));
         let spawned = game.dropped.iter().map(|e| &e.stack);
         let queued = game.spill.spawns.iter().map(|e| &e.stack);
         assert_eq!(
