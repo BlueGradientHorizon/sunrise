@@ -1131,11 +1131,10 @@ impl ChunkEncoder {
 
     /// ClientboundLightUpdatePacket for the light sections over `changed` (a
     /// bit per section of the column, `sectionLightChanged`), as vanilla's
-    /// `ClientboundLightUpdatePacketData` writes them, with both kinds of
-    /// each section (Sunrise's light engine doesn't tell them apart; the
-    /// client keeps the same light either way). A section changed as its
-    /// last block went (light dimming around a removed block) is sent too:
-    /// a client not tracking the block would otherwise keep its old light.
+    /// `ClientboundLightUpdatePacketData` writes them. For sections with
+    /// tracked layer presence, send each stored layer independently. A section
+    /// whose last block was removed is sent too: a client not tracking the
+    /// block would otherwise keep its old light.
     pub fn light_update(&self, chunk: &Chunk, changed: SectionMask) -> Vec<u8> {
         let first = self.sections.start;
         // Light section b holds the column's section first + b - 1.

@@ -2336,7 +2336,6 @@ sunrise-client game::remote::tests::object_interactions_tests::transactional_buc
 sunrise-client game::remote::tests::particle_group_tests::connection_and_dimension_replacement_clear_every_particle_group lib daily resources
 sunrise-client game::remote::tests::player_animation_tests::remote_player_use_animation_dispatches_once lib daily resources
 sunrise-client game::remote::tests::player_sleep_tests::client_sleep_metadata_and_tick_preserve_shape_and_authoritative_positions lib daily resources
-sunrise-client game::remote::tests::remote_columns_tests::a_forget_packet_keeps_published_light_beside_a_loaded_column lib daily resources
 sunrise-client game::remote::tests::remote_columns_tests::every_free_route_returns_the_columns_it_freed_once lib daily resources
 sunrise-client game::remote::tests::remote_columns_tests::forgetting_and_closing_remote_columns_clear_their_data lib daily resources
 sunrise-client game::remote::tests::remote_columns_tests::streaming_adoption_and_resend_stay_resident_until_the_forget lib daily resources
