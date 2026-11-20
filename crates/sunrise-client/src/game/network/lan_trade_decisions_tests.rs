@@ -1,8 +1,8 @@
 //! Real LAN merchant result takes, with native listeners and the production coordinator.
 use super::{Game, native_guest_turn_tests::with_guests};
 use mod_api::{
-    Flow, Hooks, HostSide, ItemPlace, ItemResource, ItemStackedOnOtherEvent, ModEntry, Mods,
-    PlayerTradeEvent, ServerHost, TradeWithVillagerEvent,
+    Flow, Hooks, Host, HostSide, HostTransaction, ItemPlace, ItemResource, ItemStackedOnOtherEvent,
+    ModEntry, Mods, PlayerTradeEvent, ServerHost, TradeWithVillagerEvent,
 };
 use std::cell::{Cell, RefCell};
 use std::sync::{Arc, mpsc};
@@ -10,6 +10,7 @@ use sunrise_client::lan::{Out, PlayerSender};
 use sunrise_client::{
     items::ItemStack,
     merchant::{Session, Trader},
+    mobs::finalize::{self, Attr, Op},
 };
 use sunrise_protocol::packets::play::{Clientbound, ContainerClick};
 
@@ -18,6 +19,15 @@ enum PlayerWrite {
     Unrelated,
     ShiftDestination { restore: bool },
 }
+
+#[derive(Clone, Copy)]
+enum EffectWrite {
+    ReplaceSlowness,
+    Clear,
+    ReplaceTransient,
+}
+
+const SPEED: &str = "minecraft:movement_speed";
 
 #[derive(Clone, Default)]
 struct Script {
@@ -28,7 +38,7 @@ struct Script {
     /// An answer whose result stack is not a valid one for the game.
     invalid_stack: bool,
     edit_other_merchant_and_board: bool,
-    edit_other_merchants_effects: bool,
+    effect_write: Option<EffectWrite>,
     player_write: Option<PlayerWrite>,
     raise_second_price: bool,
     refuse_stacked: bool,
@@ -38,6 +48,7 @@ thread_local! {
     static CALLS: Cell<usize> = const { Cell::new(0) };
     static STACKED: Cell<usize> = const { Cell::new(0) };
     static COMPLETED: Cell<usize> = const { Cell::new(0) };
+    static STAGED_WRITES: Cell<bool> = const { Cell::new(false) };
     static USES: RefCell<Vec<i32>> = const { RefCell::new(Vec::new()) };
     static IN_ACTION: RefCell<Vec<bool>> = const { RefCell::new(Vec::new()) };
 }
@@ -46,6 +57,7 @@ fn script(value: Script) {
     CALLS.set(0);
     STACKED.set(0);
     COMPLETED.set(0);
+    STAGED_WRITES.set(false);
     USES.with(|uses| uses.borrow_mut().clear());
     IN_ACTION.with(|a| a.borrow_mut().clear());
     super::decided_action::DECIDED.set(0);
@@ -114,6 +126,7 @@ fn trade(host: &mut dyn ServerHost, event: &mut TradeWithVillagerEvent<'_>) {
             if matches!(write, PlayerWrite::ShiftDestination { restore: true }) {
                 assert_eq!(place.extract(host, &tx, &dirt, 2), 2);
             }
+            STAGED_WRITES.set(true);
         }
         if s.raise_second_price && call == 2 {
             event.offer.special_price_diff = 1;
@@ -145,15 +158,45 @@ fn trade(host: &mut dyn ServerHost, event: &mut TradeWithVillagerEvent<'_>) {
             )
             .unwrap();
         }
-        if s.edit_other_merchants_effects {
+        if let Some(write) = s.effect_write {
             let other = host.living(host.entity(41).unwrap()).unwrap();
             let key = |id| mod_api::__private::effect_key(id).unwrap();
-            assert!(other.remove_effect(host, key("minecraft:slowness")));
-            for id in ["minecraft:speed", "minecraft:absorption"] {
+            let add = |host: &mut dyn ServerHost, id| {
                 let effect = mod_api::ActiveEffect::new(key(id), 200, 0, false, true, true);
                 assert!(other.add_effect(host, &effect));
                 assert!(other.potion_affected(host, effect.id));
+            };
+            match write {
+                EffectWrite::ReplaceSlowness => {
+                    assert!(other.remove_effect(host, key("minecraft:slowness")));
+                    add(host, "minecraft:speed");
+                    add(host, "minecraft:absorption");
+                }
+                EffectWrite::Clear => {
+                    host.transaction(|host, _| {
+                        assert!(other.remove_all_effects(host));
+                        Ok::<_, ()>(())
+                    })
+                    .unwrap();
+                    assert!(!other.potion_affected(host, key("minecraft:speed")));
+                    assert!(!other.potion_affected(host, key("minecraft:slowness")));
+                }
+                EffectWrite::ReplaceTransient => {
+                    add(host, "minecraft:speed");
+                    let explicit = mod_api::AttributeModifier::new(
+                        mod_api::Identifier::parse("test:explicit").unwrap(),
+                        0.0625,
+                        mod_api::AttributeOperation::AddValue,
+                    );
+                    assert!(other.add_attribute_modifier(
+                        host,
+                        SPEED,
+                        explicit,
+                        mod_api::ModifierLifetime::Transient
+                    ));
+                }
             }
+            STAGED_WRITES.set(true);
         }
         if s.panic_on == Some(call) {
             panic!("trade listener failed");
@@ -281,11 +324,15 @@ fn an_invalid_offer_restores_another_merchants_effects_and_modifiers() {
             let speed = mob.movement_speed().to_bits();
             script(Script {
                 invalid: true,
-                edit_other_merchants_effects: true,
+                effect_write: Some(EffectWrite::ReplaceSlowness),
                 ..Script::default()
             });
             assert!(game.lan_merchant_click(12, &click));
             assert_eq!(CALLS.get(), 1);
+            assert!(
+                STAGED_WRITES.get(),
+                "effect writes must succeed before refusing the trade"
+            );
             unchanged(game, 2);
             let other = &game.mobs[1];
             assert_eq!(other.extra.effects.len(), 1);
@@ -295,6 +342,123 @@ fn an_invalid_offer_restores_another_merchants_effects_and_modifiers() {
             assert_eq!(other.absorption, 0.0);
             assert!(!other.effects_dirty);
             assert!(game.transactions.is_empty());
+        });
+    });
+}
+
+/// Observe the order from gameplay's store and independently through the mod API's live map.
+fn speed_modifier_ids(game: &Game<'_>) -> [Vec<String>; 2] {
+    let attrs = game.mobs[1].extra.attributes.as_deref().unwrap();
+    let legacy = attrs
+        .modifiers
+        .iter()
+        .chain(&attrs.transient)
+        .filter(|row| row.attr == Attr::MovementSpeed)
+        .map(|row| row.id.to_string())
+        .collect();
+    let other = game.living(game.entity(41).unwrap()).unwrap();
+    let live = other
+        .attribute_modifiers(game, SPEED)
+        .unwrap()
+        .into_iter()
+        .map(|row| row.id.to_string())
+        .collect();
+    [legacy, live]
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_refused_trade_restores_modifier_order_after_a_nested_effect_clear() {
+    with_mod(|| {
+        with_guests(|game| {
+            let click = open(game, 2);
+            super::native_merchant_refs::tests::spawn(game, 41, "minecraft:villager");
+            let mob = &mut game.mobs[1];
+            mob.add_effect("minecraft:speed", 300, 0);
+            mob.add_effect("minecraft:slowness", 400, 0);
+            finalize::add_modifier(
+                mob,
+                Attr::MovementSpeed,
+                "test:survivor",
+                0.25,
+                Op::AddMultipliedTotal,
+            );
+            let expected = [
+                "minecraft:effect.speed",
+                "minecraft:effect.slowness",
+                "test:survivor",
+            ];
+            for ids in speed_modifier_ids(game) {
+                assert_eq!(ids, expected);
+            }
+            script(Script {
+                invalid: true,
+                effect_write: Some(EffectWrite::Clear),
+                ..Script::default()
+            });
+            assert!(game.lan_merchant_click(12, &click));
+            assert!(
+                STAGED_WRITES.get(),
+                "the nested clear committed inside the refused trade"
+            );
+            unchanged(game, 2);
+            for ids in speed_modifier_ids(game) {
+                assert_eq!(ids, expected);
+            }
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_refused_trade_restores_a_replaced_transient_in_place() {
+    with_mod(|| {
+        with_guests(|game| {
+            let click = open(game, 2);
+            super::native_merchant_refs::tests::spawn(game, 41, "minecraft:villager");
+            let mob = &mut game.mobs[1];
+            finalize::add_transient_modifier(
+                mob,
+                Attr::MovementSpeed,
+                "minecraft:effect.speed",
+                0.125,
+                Op::AddValue,
+            );
+            finalize::add_transient_modifier(
+                mob,
+                Attr::MovementSpeed,
+                "test:survivor",
+                0.25,
+                Op::AddValue,
+            );
+            for ids in speed_modifier_ids(game) {
+                assert_eq!(ids, ["minecraft:effect.speed", "test:survivor"]);
+            }
+            script(Script {
+                invalid: true,
+                effect_write: Some(EffectWrite::ReplaceTransient),
+                ..Script::default()
+            });
+            assert!(game.lan_merchant_click(12, &click));
+            assert!(
+                STAGED_WRITES.get(),
+                "the colliding effect and the explicit write must succeed"
+            );
+            unchanged(game, 2);
+            for ids in speed_modifier_ids(game) {
+                assert_eq!(
+                    ids,
+                    ["minecraft:effect.speed", "test:survivor", "test:explicit"]
+                );
+            }
+            assert_eq!(
+                finalize::transient_modifier_amount(
+                    &game.mobs[1],
+                    Attr::MovementSpeed,
+                    "minecraft:effect.speed"
+                ),
+                Some(0.125)
+            );
         });
     });
 }
@@ -716,6 +880,10 @@ fn player_writes_refuse_the_frozen_take_without_recomputing() {
                 });
                 assert!(game.lan_merchant_click(12, &click));
                 assert_eq!(CALLS.get(), 1);
+                assert!(
+                    STAGED_WRITES.get(),
+                    "the scripted slot writes must succeed before refusal"
+                );
                 unchanged(game, 3);
                 assert!(game.lan.as_ref().unwrap().hub.guest(12).unwrap().inventory[8].is_none());
                 corrected(&rx, click.container, 3);

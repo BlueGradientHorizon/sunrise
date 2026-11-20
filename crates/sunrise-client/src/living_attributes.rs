@@ -351,6 +351,45 @@ impl ModifierSnapshot {
     }
 }
 
+/// Rewind only the rows a write owned. Walking the whole before-order anchors
+/// restored rows to surviving neighbours, even if a later explicit write moved
+/// or removed a row. Among those later writes the current order wins.
+pub(crate) fn restore_modifier_order<Row: Clone>(
+    current: &mut Vec<Row>,
+    before: Vec<Row>,
+    owned: impl Fn(&Row) -> bool,
+    same_key: impl Fn(&Row, &Row) -> bool,
+    same_row: impl Fn(&Row, &Row) -> bool,
+) -> bool {
+    let mut restored: Vec<_> = current.iter().filter(|row| !owned(row)).cloned().collect();
+    let mut at = 0;
+    for old in before {
+        if owned(&old) {
+            restored.insert(at, old);
+            at += 1;
+        } else if let Some(index) = restored.iter().position(|row| same_key(row, &old)) {
+            at = at.max(index + 1);
+        }
+    }
+    if current.len() == restored.len() && current.iter().zip(&restored).all(|(a, b)| same_row(a, b))
+    {
+        return false;
+    }
+    *current = restored;
+    true
+}
+
+/// The transient seed in its insertion order, independent of the built equipment map.
+#[derive(Default)]
+pub(crate) struct TransientModifiers(Vec<(Arc<str>, Modifier)>);
+
+impl TransientModifiers {
+    pub(crate) fn forget(&mut self, attribute: &str, id: &str) {
+        self.0
+            .retain(|(name, m)| &**name != attribute || m.id() != id);
+    }
+}
+
 impl LivingAttributes {
     /// Keeps the entries of a loaded `attributes` list that `keep` accepts
     /// (`LivingEntity.readAdditionalSaveData`), for the map to take.
@@ -478,6 +517,27 @@ impl LivingAttributes {
         if list.is_empty() {
             self.transient = None;
         }
+    }
+
+    pub(crate) fn transient_modifiers(&self) -> TransientModifiers {
+        TransientModifiers(self.transient.as_deref().cloned().unwrap_or_default())
+    }
+
+    pub(crate) fn restore_transient_modifiers(
+        &mut self,
+        before: TransientModifiers,
+        owned: impl Fn(&str, &str) -> bool,
+    ) -> bool {
+        let mut current = self.transient.take().unwrap_or_default();
+        let changed = restore_modifier_order(
+            &mut current,
+            before.0,
+            |(name, m)| owned(name, m.id()),
+            |(name, m), (other, n)| name == other && m.id() == n.id(),
+            |(name, m), (other, n)| name == other && m.same_identity(n),
+        );
+        self.transient = (!current.is_empty()).then_some(current);
+        changed
     }
 
     /// `AttributeMap.getValue` or `getBaseValue` of `name`: None for an

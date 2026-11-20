@@ -88,9 +88,13 @@ impl OpenTransactions {
             if let Some(changes) = level.modifier_changes.get_mut(&mob) {
                 changes.keep_explicit_write(attribute, id);
             }
-            level
+            for (_, kept) in level
                 .effect_modifiers
-                .retain(|(owner, kept)| *owner != mob || !kept.names(attribute, id));
+                .iter_mut()
+                .filter(|(owner, _)| *owner == mob)
+            {
+                kept.keep_explicit_write(attribute, id);
+            }
         }
     }
 
@@ -1032,17 +1036,12 @@ impl Game<'_> {
                     hidden: mob.extra.hidden_effects.clone(),
                     dirty: mob.effects_dirty,
                 });
-            let mut keep = |effect| {
-                level
-                    .effect_modifiers
-                    .extend(mob.effect_modifier_undo(effect).map(|kept| (id, kept)));
+            let modifiers = match effect {
+                Some(effect) => mob.effect_modifier_undo(std::iter::once(effect)),
+                None => mob.effect_modifier_undo(mob.extra.effects.iter().map(|effect| effect.id)),
             };
-            if let Some(effect) = effect {
-                keep(effect);
-            } else {
-                for effect in &mob.extra.effects {
-                    keep(effect.id);
-                }
+            if let Some(modifiers) = modifiers {
+                level.effect_modifiers.push((id, modifiers));
             }
         }
         let result = mutate(mob);

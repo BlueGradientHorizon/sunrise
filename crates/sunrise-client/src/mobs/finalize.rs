@@ -636,91 +636,105 @@ fn effect_modifier_id(name: &str) -> String {
         _ => format!("minecraft:effect.{name}"),
     }
 }
-/// The modifier rows one effect can replace, including a pre-existing transient modifier
-/// with the same id. Keep their positions: modifier evaluation follows insertion order.
+/// One effect mutation's before-order in the legacy and live modifier seed stores.
+/// A clear is one batch: restore all of its rows together, not at stale indices.
 pub struct EffectModifierUndo {
-    attr: Attr,
-    id: String,
-    permanent: Option<(usize, Modifier)>,
-    transient: Option<(usize, Modifier)>,
+    keys: Vec<(Attr, String)>,
+    permanent: Vec<Modifier>,
+    transient: Vec<Modifier>,
+    live: crate::living_attributes::TransientModifiers,
 }
 
 impl EffectModifierUndo {
-    pub fn names(&self, attribute: &str, id: &str) -> bool {
-        self.attr.id() == attribute && self.id == id
+    pub fn keep_explicit_write(&mut self, attribute: &str, id: &str) {
+        self.keys
+            .retain(|(attr, key)| attr.id() != attribute || key != id);
+        let unaffected = |row: &Modifier| row.attr.id() != attribute || row.id != id;
+        self.permanent.retain(unaffected);
+        self.transient.retain(unaffected);
+        self.live.forget(attribute, id);
     }
 
     pub fn restore(self, mob: &mut Mob) {
-        let Self {
-            attr,
-            id,
-            permanent,
-            transient,
-        } = self;
-        let matches = |modifier: &Modifier| modifier.attr == attr && modifier.id == id;
-        let Some(attrs) = mob.extra.attributes.as_mut() else {
-            return; // An effect's modifier write never takes the entire store away.
-        };
-        let restore = |rows: &mut Vec<Modifier>, kept: Option<(usize, Modifier)>| {
-            let current = rows.iter().position(matches);
-            if current.and_then(|i| rows.get(i).map(|row| (i, row)))
-                == kept.as_ref().map(|(i, row)| (*i, row))
-            {
-                return false;
-            }
-            if let Some(i) = current {
-                rows.remove(i);
-            }
-            if let Some((index, row)) = kept {
-                rows.insert(index.min(rows.len()), row);
-            }
-            true
-        };
-        let permanent_changed = restore(&mut attrs.modifiers, permanent);
-        let saved_transient = transient.as_ref().map(|(_, row)| (row.amount, row.op));
-        if restore(&mut attrs.transient, transient) {
-            if let Some((amount, op)) = saved_transient {
-                // Keep the legacy and live stores in step. The legacy row retains its
-                // original position, not the append position of a new explicit write.
-                let modifier =
-                    sunrise_world::attributes::Modifier::new(&id, amount, op.into()).ok();
-                mob.extra.live.keep_transient(attr.id(), &id, modifier);
-            } else {
-                mob.extra.live.keep_transient(attr.id(), &id, None);
-            }
-        } else if !permanent_changed {
+        if self.keys.is_empty() {
             return;
         }
-        mob.extra.live.invalidate();
-        refresh(mob, attr);
+        let Self {
+            keys,
+            permanent,
+            transient,
+            live,
+        } = self;
+        let owns = |row: &Modifier| {
+            keys.iter()
+                .any(|(attr, id)| *attr == row.attr && *id == row.id)
+        };
+        let same_key = |a: &Modifier, b: &Modifier| a.attr == b.attr && a.id == b.id;
+        let mut changed = false;
+        if let Some(attrs) = mob.extra.attributes.as_mut() {
+            use crate::living_attributes::restore_modifier_order;
+            changed |= restore_modifier_order(
+                &mut attrs.modifiers,
+                permanent,
+                owns,
+                same_key,
+                Modifier::eq,
+            );
+            changed |= restore_modifier_order(
+                &mut attrs.transient,
+                transient,
+                owns,
+                same_key,
+                Modifier::eq,
+            );
+        }
+        changed |= mob
+            .extra
+            .live
+            .restore_transient_modifiers(live, |attribute, id| {
+                keys.iter()
+                    .any(|(attr, key)| attr.id() == attribute && key == id)
+            });
+        if changed {
+            mob.extra.live.invalidate();
+            for attr in Attr::ALL {
+                if keys.iter().any(|(key, _)| *key == attr) {
+                    refresh(mob, attr);
+                }
+            }
+        }
     }
 }
 
 impl Mob {
-    /// Before-images for the attribute rows this effect's add/remove path can write.
+    /// The modifier rows one effect write (or one bulk clear of the given effects) can replace.
     pub fn effect_modifier_undo(
         &self,
-        effect: &'static str,
-    ) -> impl Iterator<Item = EffectModifierUndo> {
-        let name = effect.trim_start_matches("minecraft:");
-        Attr::ALL.into_iter().filter_map(move |attr| {
-            if effect_modifier(name, 0, attr).is_none() || default_value(self, attr).is_none() {
-                return None;
-            }
-            let id = effect_modifier_id(name);
-            let kept = |rows: &[Modifier]| {
-                rows.iter()
-                    .enumerate()
-                    .find(|(_, row)| row.attr == attr && row.id == id)
-                    .map(|(i, row)| (i, row.clone()))
-            };
-            let attrs = self.extra.attributes.as_deref();
-            Some(EffectModifierUndo {
-                attr,
-                permanent: attrs.and_then(|attrs| kept(&attrs.modifiers)),
-                transient: attrs.and_then(|attrs| kept(&attrs.transient)),
-                id,
+        effects: impl Iterator<Item = &'static str>,
+    ) -> Option<EffectModifierUndo> {
+        let keys: Vec<_> = effects
+            .flat_map(|effect| {
+                let name = effect.trim_start_matches("minecraft:");
+                Attr::ALL.into_iter().filter_map(move |attr| {
+                    (effect_modifier(name, 0, attr).is_some()
+                        && default_value(self, attr).is_some())
+                    .then(|| (attr, effect_modifier_id(name)))
+                })
             })
+            .collect();
+        if keys.is_empty() {
+            return None;
+        }
+        let attrs = self.extra.attributes.as_deref();
+        Some(EffectModifierUndo {
+            keys,
+            permanent: attrs
+                .map(|attrs| attrs.modifiers.clone())
+                .unwrap_or_default(),
+            transient: attrs
+                .map(|attrs| attrs.transient.clone())
+                .unwrap_or_default(),
+            live: self.extra.live.transient_modifiers(),
         })
     }
 
