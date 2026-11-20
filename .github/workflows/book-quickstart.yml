@@ -162,7 +162,7 @@ jobs:
           cp "$QS_SCRATCH/sdk-base/sdk-$commit/sdk.json" "$QS_SCRATCH/sdk-base/nightly/sdk.json"
           echo "SUNRISE_SDK_BASE=$QS_SCRATCH/sdk-base" >> "$GITHUB_ENV"
       - name: The start pages run with the mod tool alone
-        run: python3 tools/book_quickstart.py --tool target/debug/cargo-sunrise-mod
+        run: python3 tools/book_quickstart.py --tool "${CARGO_TARGET_DIR:-target}/debug/cargo-sunrise-mod"
       - name: Clean private scratch
         if: always() && inputs.own_sdk
         run: |
