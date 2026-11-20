@@ -166,6 +166,18 @@ console.log(JSON.stringify(Boolean(eval(s.expression))));
                     self.assertEqual(ran.returncode == 0, expected, ran.stdout)
                     self.assertEqual(output.exists() and output.read_text() == "complete=true\n", expected)
 
+    def test_build_timings_are_a_report_and_never_a_signed_or_released_asset(self):
+        build = dict(jobs(GAME.read_text()))["build"]
+        self.assertIn("cargo build --release --locked --timings", build)
+        upload = build.split("- name: The build's timings, by leg\n", 1)[1].split("- name: This leg built\n", 1)[0]
+        name = re.search(r"name: (cargo-timings-\S+)", upload).group(1)
+        # The sign job hashes every `sunrise-*` artifact; publish uploads only the archives it names.
+        nightly = (ROOT / ".github/workflows/nightly-build.yml").read_text()
+        self.assertIn("pattern: sunrise-*", nightly)
+        self.assertFalse(name.startswith("sunrise-"))
+        self.assertIn("continue-on-error: true", upload)
+        self.assertNotIn("cargo-timing", nightly)
+
     def test_every_shipped_glibc_program_is_checked_by_workflow_owned_tools(self):
         text = GAME.read_text()
         commands = re.findall(r"check_glibc.py ([^\n]+)", text.replace("\\\n", " "))

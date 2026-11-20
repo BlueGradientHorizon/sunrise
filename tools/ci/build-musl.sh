@@ -13,7 +13,7 @@ export RUSTUP_TOOLCHAIN="$(cat tools/ci/rust-version)"
 export RUSTFLAGS='-C target-feature=-crt-static'
 target=x86_64-unknown-linux-musl
 bin="target/$target/release"
-cargo build --release --locked --target "$target" \
+cargo build --release --locked --timings --target "$target" \
   -p sunrise-official --bin sunrise-official -p sunrise-client-lib --bin sunrise-ctl \
   -p sunrise-perf --bin sunrise-perf \
   -p sunrise-prepare --bin sunrise-prepare -p sunrise-server --bin sunrise-server \
