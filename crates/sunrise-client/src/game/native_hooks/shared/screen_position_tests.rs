@@ -106,6 +106,7 @@ fn slotless_screen_draw_sees_full_width_updates_only_for_its_window() {
             0,
             2,
             Vec::new(),
+            Vec::new(),
             None,
             None,
             false,

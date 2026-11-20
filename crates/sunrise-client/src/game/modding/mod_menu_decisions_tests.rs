@@ -656,6 +656,7 @@ fn a_quick_move_cannot_reach_a_player_slot_omitted_from_the_menu() {
             9,
             0,
             Vec::new(),
+            Vec::new(),
             None,
             None,
             false,
