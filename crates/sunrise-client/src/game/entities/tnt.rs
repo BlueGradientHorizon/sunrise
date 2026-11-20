@@ -723,7 +723,13 @@ impl Game<'_> {
     }
     /// `TntRenderer`: the block centred on the entity, swelling over the last
     /// 10 ticks and flashing white every 5 ticks.
-    pub(super) fn tnt_geometry(&self, camera: glam::DVec3, alpha: f64, out: &mut Vec<Vertex>) {
+    pub(super) fn tnt_geometry(
+        &self,
+        camera: glam::DVec3,
+        alpha: f64,
+        out: &mut Vec<Vertex>,
+        run: std::ops::Range<usize>,
+    ) {
         if self.tnts.is_empty() {
             return;
         }
@@ -762,7 +768,7 @@ impl Game<'_> {
             glam::DVec3::splat(PrimedTnt::SIZE),
             self.view_scale(),
         );
-        for t in &self.tnts {
+        for t in &self.tnts[run] {
             // LevelExtractor: the camera entity is not drawn from its own eyes.
             if self.hides_as_camera(t.id) {
                 continue;

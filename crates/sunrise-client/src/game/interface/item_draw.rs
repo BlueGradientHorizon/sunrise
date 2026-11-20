@@ -813,8 +813,9 @@ impl Game<'_> {
         camera: glam::DVec3,
         alpha: f64,
         out: &mut Vec<Vertex>,
+        run: std::ops::Range<usize>,
     ) {
-        let live = self.dropped.iter().map(|item| {
+        let live = self.dropped[run].iter().map(|item| {
             let (p, q) = (item.previous, item.position);
             let at = [
                 p.x + (q.x - p.x) * alpha,

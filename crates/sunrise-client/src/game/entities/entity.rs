@@ -1256,6 +1256,77 @@ pub(super) enum JoinOrderError {
     OutOfOrder(EntityHandle),
 }
 
+/// A stretch of one family's entities, `first` through the list index before `end`, that the
+/// join-order walk visits back to back as far as the families drawn in order are concerned.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct DrawRun {
+    pub(super) first: EntityHandle,
+    pub(super) end: usize,
+}
+
+impl Game<'_> {
+    /// The entities of the families `entity_geometry` draws in one ordered pass, as runs in the
+    /// order the entities joined the level (`EntityLookup`'s order, which
+    /// `LevelExtractor.extractVisibleEntities` follows), whatever their family. Families the
+    /// pass does not draw are skipped, so they split no run. Lists the walk refuses (see
+    /// [`JoinOrderError`]) are drawn list by list instead.
+    pub(super) fn ordered_draw_runs(&self, runs: &mut Vec<DrawRun>) {
+        draw_runs(entity_lists_of!(self), runs);
+    }
+}
+
+fn draw_runs(lists: EntityLists<'_>, runs: &mut Vec<DrawRun>) {
+    use EntityHandle as H;
+    runs.clear();
+    let (items, orbs, falling, tnts) = (lists.dropped, lists.orbs, lists.falling, lists.tnts);
+    let (stands, boats, carts) = (lists.armor_stands, lists.boats, lists.carts);
+    let (tridents, rockets) = (lists.tridents, lists.rockets);
+    let walked = lists.walk_in_join_order(|handle, _| {
+        let index = match handle {
+            H::Item(i)
+            | H::Orb(i)
+            | H::Falling(i)
+            | H::Tnt(i)
+            | H::ArmorStand(i)
+            | H::Boat(i)
+            | H::Cart(i)
+            | H::Trident(i)
+            | H::Rocket(i) => i,
+            _ => return,
+        };
+        match runs.last_mut() {
+            Some(run)
+                if std::mem::discriminant(&run.first) == std::mem::discriminant(&handle)
+                    && run.end == index =>
+            {
+                run.end += 1;
+            }
+            _ => runs.push(DrawRun {
+                first: handle,
+                end: index + 1,
+            }),
+        }
+    });
+    if walked.is_err() {
+        runs.clear();
+        for (first, len) in [
+            (H::Item(0), items.len()),
+            (H::Orb(0), orbs.len()),
+            (H::Falling(0), falling.len()),
+            (H::Tnt(0), tnts.len()),
+            (H::ArmorStand(0), stands.len()),
+            (H::Boat(0), boats.len()),
+            (H::Cart(0), carts.len()),
+            (H::Trident(0), tridents.len()),
+            (H::Rocket(0), rockets.len()),
+        ] {
+            if len > 0 {
+                runs.push(DrawRun { first, end: len });
+            }
+        }
+    }
+}
+
 /// The merge behind the join-order walk, over `N` lists: `lens` are their
 /// lengths, `seq(list, i)` the join number of entity `i` of a list, `handle`
 /// names it. Each step takes the lowest next number among the `N` cursors
@@ -3048,6 +3119,54 @@ mod join_order_tests {
         assert_eq!(lists.walk().unwrap(), joined);
         // Walked list by list they would come in another order.
         assert_ne!(joined[0], EntityHandle::ArmorStand(0));
+    }
+
+    fn runs(lists: &Lists) -> Vec<(EntityHandle, usize)> {
+        let mut runs = Vec::new();
+        super::draw_runs(lists.view(), &mut runs);
+        runs.into_iter().map(|r| (r.first, r.end)).collect()
+    }
+
+    /// The ordered draw takes the families' entities in join order, not family by family, and
+    /// each run names the list range its family draws.
+    #[test]
+    fn draw_runs_interleave_families_in_join_order() {
+        let (lists, _) = mixed();
+        assert_eq!(
+            runs(&lists),
+            [
+                (EntityHandle::Trident(0), 1),
+                (EntityHandle::Rocket(0), 1),
+                (EntityHandle::ArmorStand(0), 1),
+                (EntityHandle::Boat(0), 1),
+                (EntityHandle::Trident(1), 2),
+                (EntityHandle::ArmorStand(1), 2),
+                (EntityHandle::Rocket(1), 2),
+            ]
+        );
+    }
+
+    /// Entities of one family that joined back to back are one run.
+    #[test]
+    fn draw_runs_join_a_family_that_joined_back_to_back() {
+        let mut lists = Lists {
+            stands: JoinList::default(),
+            tridents: JoinList::default(),
+            rockets: JoinList::default(),
+            boats: JoinList::default(),
+        };
+        lists.stand(1);
+        lists.stand(2);
+        lists.boat(3);
+        lists.stand(4);
+        assert_eq!(
+            runs(&lists),
+            [
+                (EntityHandle::ArmorStand(0), 2),
+                (EntityHandle::Boat(0), 1),
+                (EntityHandle::ArmorStand(2), 3),
+            ]
+        );
     }
 
     /// An entity taken out and put back (a tick takes its list) keeps its place.

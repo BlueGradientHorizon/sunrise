@@ -245,7 +245,7 @@ fn tnt_frame(game: &mut Game<'_>, id: u32, fuse: i32) -> Vec<Vertex> {
     game.tnts.clear();
     game.tnts.push(primed(id, fuse));
     let mut out = Vec::new();
-    game.tnt_geometry(CAMERA, ALPHA, &mut out);
+    game.tnt_geometry(CAMERA, ALPHA, &mut out, 0..game.tnts.len());
     out
 }
 
@@ -365,7 +365,7 @@ fn a_registered_tnt_draws_its_renderer_in_place_of_the_cube() {
             game.tnts.clear();
             game.tnts.push(tnt);
             let mut drawn = Vec::new();
-            game.tnt_geometry(CAMERA, ALPHA, &mut drawn);
+            game.tnt_geometry(CAMERA, ALPHA, &mut drawn, 0..game.tnts.len());
             assert_eq!(drawn.len(), 4, "one quad and no cube: {drawn:?}");
             // Interpolated position [1.0, 64.5, 1.5] minus CAMERA [0.5, 64.0, -4.5] is
             // [0.5, 0.5, 6.0]; the raised quad sits 100..101 above that origin, 0..1 in x, at z.
