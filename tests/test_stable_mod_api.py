@@ -19,8 +19,9 @@ CONDITIONAL = {**SURFACE, "behaviours": [{**DECLARATION, "version": 2}]}
 BREAKING = {**SURFACE, "behaviours": []}
 
 
-def release(tag, *, draft=False, prerelease=False):
-    return {"tag_name": tag, "draft": draft, "prerelease": prerelease}
+def release(tag, *, draft=False, prerelease=False, body=""):
+    return {"tag_name": tag, "draft": draft, "prerelease": prerelease, "published_at": "2026-11-20T10:00:00Z",
+            "body": body}
 
 
 def function(signature="signature", source="source", span=(5, 9)):
@@ -87,11 +88,12 @@ class StableModApiTests(unittest.TestCase):
                 pages = [[release("26.3-0.1.9"), release("26.2-2.0.1"), release(tag),
                           release("26.3-0.2.0", draft=True), release("26.3-0.1.20", prerelease=True),
                           release(f"sdk-{HEAD}")], [release(PREVIOUS)]]
-                tags = {tag: HEAD, PREVIOUS: OLD, "26.3-0.1.12": "d" * 40}  # 0.1.12 is only a reserved tag.
+                tags = {tag: HEAD, PREVIOUS: OLD}
                 original = "Existing notes.\n"
                 self.notes.write_text(original)
                 with mock.patch.object(nightly.train, "gh_json", return_value=pages), \
                         mock.patch.object(nightly.train, "origin_tags", return_value=tags), \
+                        mock.patch.object(nightly, "git"), \
                         mock.patch.object(nightly, "require_stable_lineage") as lineage, \
                         mock.patch.object(nightly, "released_assets", side_effect=verified), \
                         mock.patch.object(nightly.subprocess, "run", side_effect=compare) as diff:
@@ -108,8 +110,55 @@ class StableModApiTests(unittest.TestCase):
                     lineage.assert_called_once_with(HEAD, tag, OLD, PREVIOUS)
                     diff.assert_called_once()
 
+    def test_a_break_glass_release_keeps_its_parents_surface_judged_by_the_parents_own_stage(self):
+        tag = "26.3-0.1.11"
+        tags = {tag: HEAD, PREVIOUS: OLD}
+        calls = []
+
+        def compare(args, *, check):
+            calls.append(args)
+            Path(args[-1]).write_text(json.dumps({"verdict": "identical"}))
+
+        for surface, error in ((SURFACE, None), ({**SURFACE, "hash": "other"}, "changes surface.json from 26.3-0.1.10")):
+            assets = {OLD: sdk_assets(OLD, SURFACE, "1", {}), HEAD: sdk_assets(HEAD, surface, "1", {})}
+            calls.clear()
+            with self.subTest(surface=surface), \
+                    mock.patch.dict(nightly.os.environ, {"BREAK_GLASS": "true"}), \
+                    mock.patch.object(nightly.train, "gh_json", return_value=[[release(PREVIOUS)]]), \
+                    mock.patch.object(nightly.train, "origin_tags", return_value=tags), \
+                    mock.patch.object(nightly, "git") as git, \
+                    mock.patch.object(nightly, "require_stable_lineage"), \
+                    mock.patch.object(nightly, "released_assets", side_effect=lambda sha, *names: assets[sha]), \
+                    mock.patch.object(nightly.subprocess, "run", side_effect=compare):
+                if error:
+                    with self.assertRaisesRegex(SystemExit, error):
+                        nightly.stable_mod_api(HEAD, tag, self.notes)
+                    self.assertEqual(calls, [], "refused before any stage runs")
+                    continue
+                nightly.stable_mod_api(HEAD, tag, self.notes)
+                worktree = next(call.args for call in git.call_args_list if call.args[0] == "worktree")
+                self.assertEqual((worktree[:4], worktree[-1]), (("worktree", "add", "--quiet", "--detach"), OLD))
+                [args] = calls
+                manifest = args[args.index("--manifest-path") + 1]
+                self.assertEqual(manifest, str(Path(worktree[4]) / "Cargo.toml"), "the parent's sunrise-stage judges")
+                self.assertLess(args.index("--manifest-path"), args.index("--"))
+
+    def test_a_break_glass_release_needs_a_published_parent_on_its_line(self):
+        for pages, tags, tag, error in (
+                ([[]], {}, "26.3-0.1.1", "needs a published stable release to compare with"),
+                ([[release(PREVIOUS)]], {PREVIOUS: OLD}, "26.3-1.0.0", "is a patch of 26.3-0.1.10, not 26.3-1.0.0")):
+            with self.subTest(tag=tag), mock.patch.dict(nightly.os.environ, {"BREAK_GLASS": "true"}), \
+                    mock.patch.object(nightly.train, "gh_json", return_value=pages), \
+                    mock.patch.object(nightly.train, "origin_tags", return_value=tags), \
+                    mock.patch.object(nightly, "git"), \
+                    mock.patch.object(nightly, "released_assets") as inputs, \
+                    self.assertRaisesRegex(SystemExit, error):
+                nightly.stable_mod_api(HEAD, tag, self.notes)
+            inputs.assert_not_called()
+
     def test_first_release_does_not_need_an_earlier_sdk(self):
         with mock.patch.object(nightly.train, "gh_json", return_value=[[release("26.2-0.1.3")]]), \
+                mock.patch.object(nightly.train, "origin_tags", return_value={"26.2-0.1.3": OLD}), \
                 mock.patch.object(nightly, "released_assets") as inputs:
             nightly.stable_mod_api(HEAD, "26.3-0.1.0", self.notes)
         inputs.assert_not_called()
@@ -120,6 +169,7 @@ class StableModApiTests(unittest.TestCase):
         new = sdk_assets(HEAD, BREAKING, "2", {"target": function(source="new body")})
         with mock.patch.object(nightly.train, "gh_json", return_value=[[release(PREVIOUS)]]), \
                 mock.patch.object(nightly.train, "origin_tags", return_value={PREVIOUS: OLD}), \
+                mock.patch.object(nightly, "git"), \
                 mock.patch.object(nightly, "require_stable_lineage") as lineage, \
                 mock.patch.object(nightly, "released_assets", side_effect=[old, new]) as inputs, \
                 mock.patch.object(nightly.subprocess, "run") as diff:
@@ -133,8 +183,34 @@ class StableModApiTests(unittest.TestCase):
     def test_previous_stable_missing_a_tag_stops_the_comparison(self):
         with mock.patch.object(nightly.train, "gh_json", return_value=[[release(PREVIOUS)]]), \
                 mock.patch.object(nightly.train, "origin_tags", return_value={}):
-            with self.assertRaisesRegex(SystemExit, f"cannot resolve the previous stable tag {PREVIOUS}"):
+            with self.assertRaisesRegex(SystemExit, f"the published release {PREVIOUS} has no tag"):
                 nightly.stable_mod_api(HEAD, "26.3-0.1.11", self.notes)
+
+    def test_the_parent_is_the_newest_published_release_and_an_orphan_tag_above_it_refuses(self):
+        pages = [[release("26.3-0.1.9"), release(PREVIOUS, body=f"x\n{nightly.BREAK_GLASS_SECTION}\ny"),
+                  release("26.3-0.2.0", draft=True), release("26.4-0.1.0"), release("26.3-0.1.11")]]
+        tags = {"26.3-0.1.9": "9" * 40, PREVIOUS: OLD, "26.3-0.1.11": HEAD, "26.4-0.1.0": "4" * 40}
+        with mock.patch.object(nightly.train, "gh_json", return_value=pages), mock.patch.object(nightly, "git") as git:
+            with mock.patch.object(nightly.train, "origin_tags", return_value=tags):
+                parent = nightly.stable_parent("26.3-0.1.11")
+                self.assertEqual(parent, nightly.train.Release(PREVIOUS, OLD, "2026-11-20T10:00:00Z", True))
+                git.assert_called_once_with("fetch", "--quiet", "--no-tags", "origin", OLD)
+                self.assertEqual(nightly.stable_parent().tag, "26.3-0.1.11", "no bound: the newest")
+                self.assertEqual(nightly.stable_parent("26.3-0.1.10").break_glass, False)
+            # An aborted run's tag, or one pushed by hand, above the newest published release: no release may be
+            # judged against the wrong parent. The draft has no tag and doesn't count.
+            for orphan in ("26.3-0.1.12", "26.3-0.2.0", "26.3-1.0.0"):
+                with self.subTest(orphan=orphan), \
+                        mock.patch.object(nightly.train, "origin_tags", return_value={**tags, orphan: "e" * 40}), \
+                        self.assertRaisesRegex(SystemExit, f"{orphan} is a tag with no published release above 26.3-0.1.11"):
+                    nightly.stable_parent("26.3-1.1.0")
+            with mock.patch.object(nightly.train, "origin_tags", return_value={"26.3-0.1.0": "e" * 40}), \
+                    mock.patch.object(nightly.train, "gh_json", return_value=[[release("26.4-0.1.0")]]), \
+                    self.assertRaisesRegex(SystemExit, "26.3-0.1.0 is a tag with no published release above every"):
+                nightly.stable_parent("26.3-0.1.1")
+            with mock.patch.object(nightly.train, "origin_tags", return_value={"26.3-0.1.0": "e" * 40}), \
+                    mock.patch.object(nightly.train, "gh_json", return_value=[[]]):
+                self.assertIsNone(nightly.stable_parent("26.3-0.1.0"), "the first release's own tag is not an orphan")
 
     def test_download_only_returns_assets_verified_under_their_sdk_tag(self):
         files = {nightly.SDK_INDEX: b"index", nightly.SDK_SURFACE: b"surface"}

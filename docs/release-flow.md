@@ -483,31 +483,46 @@ gh workflow run "nightly build" --ref release/26.3 -f kind=stable -f base=<appro
 A stable patch release whose cherry-picks need only part of the daily (agreed by umceko and ari, 2026-11-20). It
 waives the full daily on the release commit and nothing else:
 
+- **One parent.** Every check compares with the same release: the newest published (not draft, not pre-release)
+  stable release on the target before this one (`nightly.stable_parent`). A `26.3-*` tag above it with no published
+  release (an aborted run's, or one pushed by hand) stops every stable release, break-glass or not, until it is
+  published or deleted; with no published stable release there is nothing to patch, and the release takes the full
+  daily.
 - **Two people approve it in GitHub.** `nightly-build.yml` binds one job to each environment in
-  `BREAK_GLASS_ENVIRONMENTS` (`tools/release_train.py`), and each environment has one required reviewer, umceko on one
-  and ari on the other (GitHub lets any one reviewer of an environment approve, so two people take two
-  environments). The `break-glass` job then reads the run's recorded approvals and refuses unless both environments
-  were approved by two different people; an environment left without reviewers records no approval, so it refuses
-  too. Nothing builds until it passes. No input or variable stands in for an approval.
+  `BREAK_GLASS_APPROVERS` (`tools/release_train.py`), which names each environment's approver by GitHub user id. Each
+  environment has that one person as its required reviewer, deployments only from `release/26.3`, and admin bypass
+  off: GitHub lets any one reviewer of an environment approve, so two people take two environments. The `break-glass`
+  job reads the run's recorded approvals and refuses unless each environment was approved once, by its own approver,
+  a user, with no rejection or second review. Only a run's first attempt counts, since the approvals record has no
+  attempt: a re-run refuses, and a new dispatch asks again. Nothing builds, signs or publishes until it passes, and
+  `reserve-stable-tag` checks the approvals again before the tag. No input or variable stands in for an approval.
 - **The changed paths choose the daily legs.** `release_train.break_glass_legs` maps each path that differs between
-  the parent release's tag and the release commit to daily legs, by the rows of `BREAK_GLASS_LEGS`. The SDK legs
-  sdk-publish waits for always run, since a release ships only after its `sdk-<sha>`. A path no row matches means the
-  full daily: the break-glass daily refuses to start and the release refuses to build. The release build's own smoke
-  test boots the game headless on the commit, as for every release.
+  the parent and the release commit (`git diff -z --raw`) to daily legs, by the rows of `BREAK_GLASS_LEGS`, the
+  first matching row deciding. A path no row matches, a row with no legs (the crates that judge a release: its mod API
+  surface, packages and signature), a symbolic link, a submodule or a name holding a line break means the full daily:
+  the break-glass daily refuses to start and the release refuses to build. The SDK legs sdk-publish waits for always
+  run, since a release ships only after its `sdk-<sha>`. A game crate's change runs the ignored-test shards and the
+  Windows rows too, and the release build's smoke test boots the game headless on the commit; only the parity
+  harnesses wait for the full daily after publishing.
 - **The gate always applies.** dyna-checks runs on pushes to `release/26.3`, and the release needs `lint`, `verify` and
   `verify-static` passed on a push of exactly its commit.
-- **Never for** a minor or major release (only a patch of the newest stable release on the target), a release whose
-  `surface.json` differs from the parent release's, or a parent release whose newest full daily run did not pass every
-  leg. The surface rule is the stable mod API check every stable release runs (`nightly.py stable-mod-api`, above):
-  a patch's surface diff must be identical, and break-glass takes only a patch. A break-glass daily run never counts
-  as a full one.
-- **Recorded and followed up.** The release notes and the run's summary say it was a break-glass release, why (the
-  `break_glass` input) and who approved it with their comments. Once it is published, `full-daily` dispatches the full
-  daily on the release branch for its commit: a real run, whose reds file `bug` issues titled
-  `Daily (release/26.3): …`. Until it passes, the next patch can't take this path.
+- **Never for** a minor or major release (only a patch of the parent), a commit that is the parent's or doesn't
+  descend from it, a release whose `surface.json` differs from the parent's, a commit whose own newest full daily
+  failed, or a parent whose newest full daily did not pass every leg. `nightly.py stable-mod-api` holds the surface:
+  under break-glass it refuses any change to `surface.json` and runs the surface diff with the parent's own
+  `sunrise-stage` (a worktree of the parent), never the candidate's. It runs in `pick`, before anything is approved,
+  built or signed, and again in `publish` before the tag. A break-glass daily run never counts as a full one, and it
+  files and closes no issue.
+- **Recorded and followed up.** The run's summary and the release notes (a `### Break-glass release` section above
+  the closing disclaimer) name the parent, the legs it passed, why (the `break_glass` input) and who approved it with
+  their comments. Once it is published, `full-daily` dispatches the full daily on the release branch for its commit:
+  a real run, whose reds file `bug` issues titled `Daily (release/26.3): …`. Each commit on `release/26.3` has its own
+  daily queue, so another commit's run never replaces it. Until a full daily of it created after its publication
+  passes, the next patch can't take this path; if the follow-up was lost, dispatch it again:
+  `gh workflow run daily.yml --ref release/26.3 -f dry_run=false -f commit=<its sha>`.
 
-`pick` checks the rules of `release_train.break_glass_problems`, and `nightly.py reserve-stable-tag` checks them again
-right before the tag is made.
+`pick` checks the rules of `release_train.break_glass_problems`, and `nightly.py reserve-stable-tag` checks the
+parent, the rules and the approvals again right before the tag is made.
 
 ```sh
 # 1. The legs the cherry-picks select, on the release branch's head: publishes its SDK, writes nothing else.

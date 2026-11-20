@@ -23,6 +23,8 @@
     nightly.py sdk-previous <sha> <out>  prints the SDK published before <sha> on its history, and writes its
                                    surface.json to <out>, checked; prints nothing when there is none
     nightly.py stable-mod-api <sha> <tag> <notes>  checks the stable mod API step and appends changed mixin targets
+    nightly.py break-glass-legs <sha>    the daily legs a break-glass daily run of <sha> runs (daily.yml resolve)
+    nightly.py break-glass-notes <notes>  adds a break-glass release's section, with its verified approvals
 
 A nightly builds main plus the pull requests the trusted reviewers picked (the set: tools/ci/nightly_set.py), merged
 in their order and pushed as nightly/build-<date>-<n>; with no set, main alone. Main is the commit the
@@ -502,9 +504,10 @@ def pick_stable() -> None:
     tag = train.next_stable_tag(tags, version=version, own=own)
     older = [t for t in tags if t != tag and (found := train.stable_version(t)) and found[0] == train.TARGET]
     previous = max(older, key=train.stable_key, default=None)
-    legs = []
+    parent, legs = None, []
     if reason:
-        problems, _, legs = train.break_glass_problems(sha, tag, tags)
+        parent = stable_parent(tag)
+        problems, legs = train.break_glass_problems(sha, tag, parent)
         if problems:
             text = "the break-glass release stopped: " + "; ".join(problems) + "."
             if not dry_run:
@@ -522,20 +525,88 @@ def pick_stable() -> None:
         parts.append(f"The first stable release for Minecraft {train.TARGET}: what the Nightly of this commit holds.")
     if issues := train.known_issues():
         parts.append("### Known issues\n" + "\n".join(issues))
-    if reason:
-        parts.append(f"### Break-glass release\nThis patch release passed the daily legs its changes select "
-                     f"({', '.join(legs)}) and dyna-checks' gate on its commit instead of the full daily, which runs on "
-                     f"it after publishing. Why: {reason}\n\n{BREAK_GLASS_APPROVALS}")
     parts.append(train.DISCLAIMER)
     with open("nightly-notes.md", "w") as f:
         f.write("\n\n".join(parts) + "\n")
     output(build="true", sha=sha, short=sha[:7], source=train.RELEASE_BRANCH, date=today, version=tag, nightly="",
-           source_tag="", tag=tag, sdk=str(sdk).lower(), break_glass=str(bool(reason)).lower())
+           source_tag="", tag=tag, sdk=str(sdk).lower(), break_glass=str(bool(reason)).lower(),
+           parent_sha=parent.sha if parent else "", parent_tag=parent.tag if parent else "",
+           break_glass_legs=" ".join(legs))
     print(f"build: {tag} {sha}")
 
 
-# Where the publish job puts the break-glass approvals (the break-glass job's `note`) in a release's notes.
-BREAK_GLASS_APPROVALS = "<!-- break-glass approvals -->"
+# A break-glass release's own section of its notes: how the next one knows its parent was one (stable_parent).
+BREAK_GLASS_SECTION = "### Break-glass release"
+
+
+def stable_parent(tag: str = "") -> train.Release | None:
+    """The newest published (not draft, not pre-release) stable release on the target before `tag`, or the newest
+    without one: the one parent every stable check compares with (stable-mod-api, the break-glass rules, the legs a
+    break-glass daily runs). Refuses while a stable tag above it, other than `tag`, has no published release (a
+    failed publish's reservation, or one pushed by hand): the next version would be judged against the wrong
+    release. Its commit is fetched, so a shallow checkout can diff against it."""
+    bound = train.stable_version(tag)[1] if tag else None
+    published = {release["tag_name"]: release for release in published_releases() if not release["prerelease"]
+                 and (found := train.stable_version(release["tag_name"])) and found[0] == train.TARGET}
+    newest = max((name for name in published if bound is None or train.stable_version(name)[1] < bound),
+                 key=train.stable_key, default=None)
+    floor = train.stable_version(newest)[1] if newest else None
+    tags = train.origin_tags()
+    unpublished = sorted(name for name in tags if name != tag and name not in published
+                         and (found := train.stable_version(name)) and found[0] == train.TARGET
+                         and (floor is None or found[1] > floor))
+    if unpublished:
+        raise SystemExit(f"::error::refused: {', '.join(unpublished)} {'is a tag' if len(unpublished) == 1 else 'are tags'} "
+                         f"with no published release above {newest or 'every published release'}: publish or delete "
+                         "it first")
+    if not newest:
+        return None
+    if not (sha := tags.get(newest)):
+        raise SystemExit(f"::error::refused: the published release {newest} has no tag")
+    git("fetch", "--quiet", "--no-tags", "origin", sha)
+    release = published[newest]
+    return train.Release(newest, sha, release["published_at"], BREAK_GLASS_SECTION in (release["body"] or ""))
+
+
+def break_glass_legs(sha: str) -> None:
+    """The legs a break-glass daily run of `sha` runs (daily.yml's resolve: `legs`, a JSON list), against the newest
+    published stable release. Refuses a commit that is not a new
+    descendant of it, or whose changes need the full daily."""
+    parent = stable_parent()
+    if not parent:
+        raise SystemExit(f"::error::no published stable release on {train.TARGET}: run the full daily")
+    if sha == parent.sha or not is_ancestor(parent.sha, sha):
+        raise SystemExit(f"::error::{sha} is not a new commit descending from {parent.tag} ({parent.sha})")
+    plain, special = train.changed_since(parent.sha, sha)
+    legs, unmapped = train.break_glass_legs(plain)
+    if unmapped or special:
+        raise SystemExit("::error::these changes need the full daily: "
+                         + ", ".join(f"`{path!r}`" for path in unmapped + special))
+    line = f"Break-glass legs of {sha[:9]} against {parent.tag}: {', '.join(legs)}"
+    print(line)
+    if os.environ.get("GITHUB_STEP_SUMMARY"):
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+            summary.write(f"### {line}\n")
+    output(legs=json.dumps(legs))
+
+
+def break_glass_notes(notes: Path) -> None:
+    """Adds a break-glass release's own section to its notes, above the closing disclaimer: the tag and commit, its
+    parent, the legs it passed, why (BREAK_GLASS_REASON) and the approvals the break-glass job verified
+    (BREAK_GLASS_APPROVALS), which must be there."""
+    env = os.environ
+    approvals = env.get("BREAK_GLASS_APPROVALS", "")
+    if not approvals:
+        raise SystemExit("::error::refused: a break-glass release without its verified approvals")
+    text = notes.read_text()
+    head, disclaimer, tail = text.rpartition(train.DISCLAIMER)
+    if not disclaimer:
+        raise SystemExit("::error::the notes end without their disclaimer")
+    section = (f"{BREAK_GLASS_SECTION}\n{env['TAG']} (commit {env['SHA']}) patches {env['PARENT_TAG']} on the daily "
+               f"legs its changes select ({', '.join(env['LEGS'].split())}) and dyna-checks' gate on its commit, "
+               "instead of the full daily, which runs on it after publishing.\n\n"
+               f"Why: {' '.join(env.get('BREAK_GLASS_REASON', '').split())}\n\nApproved by: {approvals}\n\n")
+    notes.write_text(head + section + disclaimer + tail)
 
 
 # The build-data header shared with sunrise_mod_surface::build_data.
@@ -631,18 +702,19 @@ def stable_mod_api(sha: str, tag: str, notes: Path) -> None:
     if not parsed or parsed[0] != train.TARGET:
         raise SystemExit(f"::error::refused: {tag} is not a stable tag on {train.TARGET}")
     target, version = parsed
-    tags = (release["tag_name"] for release in published_releases() if not release["prerelease"])
-    previous = max(((before[1], name) for name in tags if (before := train.stable_version(name))
-                    and before[0] == target and before[1] < version), default=None)
-    if previous is None:
+    break_glass = os.environ.get("BREAK_GLASS") == "true"
+    parent = stable_parent(tag)
+    if parent is None:
+        if break_glass:
+            raise SystemExit(f"::error::refused: a break-glass release needs a published stable release to compare with")
         with notes.open("a", encoding="utf-8") as out:
             out.write("\n### Changed mixin targets\n\nNo earlier stable release to compare.\n")
         return
-    old_version, old_tag = previous
-    old_sha = train.origin_tags().get(old_tag)
-    if not old_sha:
-        raise SystemExit(f"::error::refused: {tag} cannot resolve the previous stable tag {old_tag}")
+    old_tag, old_sha = parent.tag, parent.sha
+    old_version = train.stable_version(old_tag)[1]
     same_line = old_version[0] == version[0]
+    if break_glass and not same_line:
+        raise SystemExit(f"::error::refused: a break-glass release is a patch of {old_tag}, not {tag}")
     if same_line:
         require_stable_lineage(sha, tag, old_sha, old_tag)
     with tempfile.TemporaryDirectory() as directory:
@@ -652,9 +724,18 @@ def stable_mod_api(sha: str, tag: str, notes: Path) -> None:
         new_content, new_functions = stable_sdk_inputs(sha, after if same_line else None)
         if same_line:
             report = work / "diff.json"
+            stage = ["cargo", "run", "--locked", "--quiet", "-p", "sunrise-mod-api-gen", "--bin", "sunrise-stage"]
+            if break_glass:
+                # A break-glass release keeps its parent's surface.json as it is, and the parent's own sunrise-stage
+                # judges it, never the candidate's.
+                if json.loads(before.read_bytes()) != json.loads(after.read_bytes()):
+                    raise SystemExit(f"::error::refused: {tag} changes surface.json from {old_tag}'s; a break-glass "
+                                     "release never does")
+                judge = work / "judge"
+                git("worktree", "add", "--quiet", "--detach", str(judge), old_sha)
+                stage += ["--manifest-path", str(judge / "Cargo.toml")]
             # Both files are plain SDK surfaces: no native internals, loops, or change-note waivers.
-            subprocess.run(["cargo", "run", "--locked", "--quiet", "-p", "sunrise-mod-api-gen", "--bin", "sunrise-stage",
-                            "--", "surface-diff", str(before), str(after), "--json", str(report)], check=True)
+            subprocess.run([*stage, "--", "surface-diff", str(before), str(after), "--json", str(report)], check=True)
             verdict = json.loads(report.read_text())["verdict"]
             minor = old_version[1] != version[1]
             allowed = {"identical", "additive"} if minor else {"identical"}
@@ -683,11 +764,15 @@ def reserve_stable_tag(sha: str, tag: str) -> None:
         raise SystemExit(f"::error::refused: {sha} is no longer the approved release head")
     tags = train.origin_tags()
     if break_glass:
-        # Its surface is held to the parent release's by the stable-mod-api step before this: a patch's verdict
-        # must be identical, and break_glass_problems takes only a patch.
-        problems, _, _ = train.break_glass_problems(sha, tag, tags)
+        # The parent the pick judged it against, its rules, and both approvals again; its surface was checked by the
+        # stable-mod-api step just before this.
+        parent = stable_parent(tag)
+        if not parent or parent.sha != os.environ.get("PARENT_SHA"):
+            raise SystemExit(f"::error::refused: the parent release changed since the pick ({parent})")
+        problems, _ = train.break_glass_problems(sha, tag, parent)
         if problems:
             raise SystemExit("::error::refused: " + "; ".join(problems))
+        train.break_glass_approvals(os.environ["GITHUB_RUN_ID"], os.environ["GITHUB_RUN_ATTEMPT"])
     there = tags.get(tag)
     if there and there != sha:
         raise SystemExit(f"::error::refused: the tag {tag} already names {there}, not {sha}")
@@ -929,6 +1014,8 @@ def main() -> None:
     previous = sub.add_parser("sdk-previous")
     previous.add_argument("sha")
     previous.add_argument("out", type=Path)
+    sub.add_parser("break-glass-legs").add_argument("sha")
+    sub.add_parser("break-glass-notes").add_argument("notes", type=Path)
     stable_api = sub.add_parser("stable-mod-api")
     stable_api.add_argument("sha")
     stable_api.add_argument("tag")
@@ -973,6 +1060,10 @@ def main() -> None:
         if build := previous_sdk(args.sha):
             args.out.write_bytes(released(build, SDK_SURFACE))
             print(build)
+    elif args.cmd == "break-glass-legs":
+        break_glass_legs(args.sha)
+    elif args.cmd == "break-glass-notes":
+        break_glass_notes(args.notes)
     elif args.cmd == "stable-mod-api":
         stable_mod_api(args.sha, args.tag, args.notes)
     elif args.cmd == "rotate":

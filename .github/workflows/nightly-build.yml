@@ -134,6 +134,10 @@ jobs:
       source_tag: ${{ steps.pick.outputs.source_tag }}
       tag: ${{ inputs.kind == 'nightly' && 'nightly' || steps.pick.outputs.tag }}
       break_glass: ${{ steps.pick.outputs.break_glass == 'true' && 'true' || 'false' }}
+      # The published stable release a break-glass release patches, and the daily legs it passed (nightly.py pick).
+      parent_sha: ${{ steps.pick.outputs.parent_sha }}
+      parent_tag: ${{ steps.pick.outputs.parent_tag }}
+      break_glass_legs: ${{ steps.pick.outputs.break_glass_legs }}
       # Exactly authorize's `publish`; every signing and publishing gate reads it, so a missing output signs and writes nothing.
       publish: ${{ steps.mode.outputs.publish }}
       dry_run: ${{ steps.mode.outputs.publish == 'true' && 'false' || 'true' }}
@@ -241,11 +245,24 @@ jobs:
           path: sdk.json
           if-no-files-found: error
           retention-days: 3
+      # A break-glass release's surface rules before anything is approved, built or signed: unchanged surface.json, an
+      # identical diff and content API against the one published parent (publish checks them again before the tag).
+      - name: A break-glass release keeps its parent's mod API (stable-mod-api)
+        if: steps.pick.outputs.break_glass == 'true' && steps.pick.outputs.sdk != 'false'
+        continue-on-error: ${{ steps.mode.outputs.publish != 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.pick.outputs.sha }}
+          TAG: ${{ steps.pick.outputs.tag }}
+          BREAK_GLASS: 'true'
+        run: |
+          : > "$RUNNER_TEMP/mod-api.md"
+          python3 tools/ci/nightly.py stable-mod-api "$SHA" "$TAG" "$RUNNER_TEMP/mod-api.md"
 
   # A break-glass release builds nothing until both people approved: one job bound to each break-glass environment,
   # each of which has that one person as its required reviewer (GitHub lets any one reviewer of an environment
-  # approve). `break-glass` then reads the run's recorded approvals and refuses unless both environments were
-  # approved by two different people; an environment without reviewers records none. A dry run binds none.
+  # approve). `break-glass` then reads the first attempt's recorded approvals and refuses unless each environment was
+  # approved once, by its own approver (release_train.BREAK_GLASS_APPROVERS), and by nobody else. A dry run binds none.
   break-glass-umceko:
     needs: pick
     if: needs.pick.outputs.break_glass == 'true'
@@ -254,7 +271,9 @@ jobs:
     environment: ${{ needs.pick.outputs.publish == 'true' && 'break-glass-umceko' || '' }}
     permissions: {}
     steps:
-      - run: echo "### break-glass-umceko approved" >> "$GITHUB_STEP_SUMMARY"
+      - env:
+          SAID: ${{ needs.pick.outputs.publish == 'true' && 'approved' || 'not bound, as a dry run approves nothing' }}
+        run: echo "### break-glass-umceko $SAID" >> "$GITHUB_STEP_SUMMARY"
   break-glass-aria:
     needs: pick
     if: needs.pick.outputs.break_glass == 'true'
@@ -263,7 +282,9 @@ jobs:
     environment: ${{ needs.pick.outputs.publish == 'true' && 'break-glass-aria' || '' }}
     permissions: {}
     steps:
-      - run: echo "### break-glass-aria approved" >> "$GITHUB_STEP_SUMMARY"
+      - env:
+          SAID: ${{ needs.pick.outputs.publish == 'true' && 'approved' || 'not bound, as a dry run approves nothing' }}
+        run: echo "### break-glass-aria $SAID" >> "$GITHUB_STEP_SUMMARY"
   break-glass:
     needs: [pick, break-glass-umceko, break-glass-aria]
     if: needs.pick.outputs.break_glass == 'true'
@@ -284,21 +305,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PUBLISH: ${{ needs.pick.outputs.publish }}
-          REASON: ${{ inputs.break_glass }}
-        run: |
-          printf '### Break-glass release\nWhy: %s\n' "$REASON" >> "$GITHUB_STEP_SUMMARY"
-          if [[ "$PUBLISH" == true ]]; then
-            python3 tools/release_train.py break-glass-approvals
-          else
-            echo "note=Dry run: a real run waits for both break-glass environments' approvals." >> "$GITHUB_OUTPUT"
-          fi
+          BREAK_GLASS_REASON: ${{ inputs.break_glass }}
+        run: python3 tools/release_train.py break-glass-approvals
 
   exporters:
     needs: [pick, break-glass]
     # A break-glass release only once `break-glass` found both approvals; build, musl-build and so sign and publish
     # all wait for this job.
     if: >-
-      !cancelled() && needs.pick.outputs.build == 'true' &&
+      !cancelled() && needs.pick.result == 'success' && needs.pick.outputs.build == 'true' &&
       (needs.pick.outputs.break_glass == 'false' || needs.break-glass.result == 'success')
     uses: ./.github/workflows/game-build.yml
     with:
@@ -351,8 +366,10 @@ jobs:
           path: ${{ runner.temp }}/build-complete
 
   sign:
-    needs: [pick, build, complete]
-    if: ${{ !cancelled() && needs.complete.outputs.complete == 'true' }}
+    needs: [pick, build, complete, break-glass]
+    if: >-
+      !cancelled() && needs.complete.outputs.complete == 'true' &&
+      (needs.pick.outputs.break_glass == 'false' || needs.break-glass.result == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # Main's sign_release.sh hashes the archives and signs with the runner's OpenSSL.
@@ -412,18 +429,22 @@ jobs:
 
   publish:
     needs: [pick, build, complete, sign, break-glass]
-    if: ${{ !cancelled() && needs.complete.outputs.complete == 'true' && needs.sign.result == 'success' }}
+    if: >-
+      !cancelled() && needs.complete.outputs.complete == 'true' && needs.sign.result == 'success' &&
+      (needs.pick.outputs.break_glass == 'false' || needs.break-glass.result == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: write
       issues: read          # the open release-blocker issues (gate)
-      actions: read         # a stable release's daily run, checked again before its tag (reserve-stable-tag)
+      actions: read         # a stable release's daily run and a break-glass one's approvals, checked again before its tag
     outputs:
       release_id: ${{ steps.identity.outputs.id }}
     steps:
       - uses: actions/checkout@v7
         with:
+          # The whole history: a break-glass release's checks diff it against its parent release (reserve-stable-tag).
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/download-artifact@v8
         with:
@@ -550,6 +571,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ needs.pick.outputs.sha }}
           TAG: ${{ needs.pick.outputs.tag }}
+          BREAK_GLASS: ${{ needs.pick.outputs.break_glass }}
         run: python3 tools/ci/nightly.py stable-mod-api "$SHA" "$TAG" dist/nightly-notes.md
       - name: Publish as the stable release <target>-<semver>
         if: needs.pick.outputs.publish == 'true' && inputs.kind == 'stable'
@@ -558,18 +580,20 @@ jobs:
           SHA: ${{ needs.pick.outputs.sha }}
           SHORT: ${{ needs.pick.outputs.short }}
           TAG: ${{ needs.pick.outputs.tag }}
-          # A break-glass release: reserve-stable-tag checks its rules again, and its notes name who approved it.
+          # A break-glass release: reserve-stable-tag checks its parent, rules and approvals again, and its notes get its
+          # own section with the verified approvals.
           BREAK_GLASS: ${{ needs.pick.outputs.break_glass }}
-          APPROVALS: ${{ needs.break-glass.outputs.note }}
+          BREAK_GLASS_APPROVALS: ${{ needs.break-glass.outputs.note }}
+          BREAK_GLASS_REASON: ${{ inputs.break_glass }}
+          PARENT_SHA: ${{ needs.pick.outputs.parent_sha }}
+          PARENT_TAG: ${{ needs.pick.outputs.parent_tag }}
+          LEGS: ${{ needs.pick.outputs.break_glass_legs }}
         run: |
           set -euo pipefail
           python3 tools/ci/nightly.py require-sdk "$SHA"
           [[ "${SHA:0:7}" == "$SHORT" ]] || { echo "::error::the build's commit isn't the one signed"; exit 1; }
           if [[ "${BREAK_GLASS:-}" == true ]]; then
-            marker='<!-- break-glass approvals -->'
-            notes=$(<dist/nightly-notes.md)
-            [[ -n "${APPROVALS:-}" && "$notes" == *"$marker"* ]] || { echo "::error::a break-glass release without its recorded approvals"; exit 1; }
-            printf '%s\n' "${notes/"$marker"/"$APPROVALS"}" > dist/nightly-notes.md
+            python3 tools/ci/nightly.py break-glass-notes dist/nightly-notes.md
           fi
           # The approved head, its daily run and the version again, then the tag at that commit in one write.
           python3 tools/ci/nightly.py reserve-stable-tag "$SHA" "$TAG"

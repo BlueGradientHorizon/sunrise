@@ -32,7 +32,7 @@ on:
       break_glass:
         description: >-
           Run only the legs a break-glass patch release of this commit needs, chosen from its changes since the
-          previous stable release (release_train.py break-glass-legs, which refuses a change no leg covers). A real
+          newest published stable release (nightly.py break-glass-legs, which refuses a change no leg covers). A real
           run only on release/26.3. It is no full daily: no `green` job, so no full-daily check ever takes it
         type: boolean
         default: false
@@ -42,7 +42,8 @@ concurrency:
   # One daily run runs and at most one waits; a newer waiting dispatch replaces an older waiting one (GitHub keeps one
   # pending run per group), and a running one is never cancelled. The scheduled event only dispatches (below), so it
   # never waits in this group.
-  group: daily${{ github.event_name == 'schedule' && format('-schedule-{0}', github.run_id) || '' }}${{ github.ref == 'refs/heads/release/26.3' && '-release' || '' }}
+  # On release/26.3, one group per commit: a release's follow-up full daily is never replaced by another commit's.
+  group: daily${{ github.event_name == 'schedule' && format('-schedule-{0}', github.run_id) || '' }}${{ github.ref == 'refs/heads/release/26.3' && format('-release-{0}', inputs.commit || github.sha) || '' }}
   cancel-in-progress: false
 env:
   # Test runs never reach the telemetry server: no live-count ping, no uploads (docs/telemetry.md).
@@ -80,7 +81,6 @@ jobs:
       branch: ${{ steps.commit.outputs.branch }}
       # A break-glass run's legs (a JSON list, and their names in one line), else empty: every leg runs.
       legs: ${{ steps.commit.outputs.legs }}
-      leg_names: ${{ steps.commit.outputs.leg_names }}
       self_hosted: ${{ steps.route.outputs.self_hosted }}
     steps:
       - uses: actions/checkout@v4
@@ -139,13 +139,13 @@ jobs:
           fi
           printf 'commit=%s\nskip=%s\ndry_run=%s\nparity_required=%s\nbranch=%s\n' \
             "$sha" "$skip" "$DRY_RUN" "$parity_required" "$branch" >> "$GITHUB_OUTPUT"
-          # A break-glass run: only the legs its changes select (`legs`, `leg_names`), as evidence for a release of
+          # A break-glass run: only the legs its changes select (`legs`), as evidence for a release of
           # release/26.3 only (release_train.legs_passed).
           if [ "$BREAK_GLASS" = true ]; then
             if [ "$DRY_RUN" = false ] && [ "$GITHUB_REF" != refs/heads/release/26.3 ]; then
               echo "::error::a real break-glass daily runs only on release/26.3"; exit 1
             fi
-            python3 tools/release_train.py break-glass-legs --head "$sha"
+            python3 tools/ci/nightly.py break-glass-legs "$sha"
           fi
 
   shards:
@@ -326,6 +326,8 @@ jobs:
           COMMIT: ${{ needs.resolve.outputs.commit }}
           DRY_RUN: ${{ needs.resolve.outputs.dry_run }}
           RESULT: ${{ needs.sdk-publish.result }}
+          # A break-glass run files and closes no issue.
+          PARTIAL: ${{ needs.resolve.outputs.legs != '' }}
         run: python3 tools/ci/daily_summary.py --after sdk-publish "$RESULT"
 
   # The run's own evidence of a passed daily (release_train.daily_passed): a writing run, every leg green, the SDK out.
@@ -349,7 +351,9 @@ jobs:
   # A break-glass run's evidence (release_train.legs_passed): a writing run on release/26.3, every leg it ran green,
   # the SDK out. Its name lists those legs; it is never a `green` job, which only a full daily run has.
   legs:
-    name: legs ${{ needs.resolve.outputs.commit }} ${{ needs.resolve.outputs.leg_names }}
+    # One job per leg it passed, `legs <sha> <leg>`, what release_train.legs_passed reads: a job name over 100
+    # characters is cut by the Jobs API.
+    name: legs ${{ needs.resolve.outputs.commit }} ${{ matrix.leg }}
     needs: [resolve, summary, sdk, sdk-publish]
     if: >-
       !cancelled() && needs.resolve.result == 'success' && needs.resolve.outputs.dry_run == 'false' &&
@@ -357,14 +361,17 @@ jobs:
       needs.summary.result == 'success' && needs.summary.outputs.green == 'true' &&
       (needs.sdk-publish.result == 'success' ||
       (needs.sdk-publish.result == 'skipped' && needs.sdk.result == 'success' && needs.sdk.outputs.needed == 'false'))
+    strategy:
+      matrix:
+        leg: ${{ fromJSON(needs.resolve.outputs.legs || '["none"]') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}
     steps:
       - env:
           COMMIT: ${{ needs.resolve.outputs.commit }}
-          LEGS: ${{ needs.resolve.outputs.leg_names }}
-        run: echo "### $COMMIT passed the break-glass legs ($LEGS) of this real daily run, and its SDK is published" >> "$GITHUB_STEP_SUMMARY"
+          LEG: ${{ matrix.leg }}
+        run: echo "### $COMMIT passed the break-glass leg $LEG of this real daily run, and its SDK is published" >> "$GITHUB_STEP_SUMMARY"
 
   # nightly/26.3 fast-forwarded to the green commit with the sunrise-sunny App's token, which its ruleset lets update it.
   nightly-branch:

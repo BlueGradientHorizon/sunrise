@@ -477,8 +477,10 @@ def previous_run(commit, call, git):
         if run["id"] == current or run["conclusion"] not in ("success", "failure"):
             continue
         jobs = pages(call, f"actions/runs/{run['id']}/jobs?filter=latest", "jobs")
+        # A break-glass run's summary ran only some legs: it says nothing of the others.
         tested = [job["name"].split()[1] for job in jobs if job["name"].startswith("summary ")
-                  and job["conclusion"] in ("success", "failure") and len(job["name"].split()) > 1]
+                  and job["conclusion"] in ("success", "failure") and len(job["name"].split()) > 1
+                  and "(break-glass legs)" not in job["name"]]
         if tested and tested[0] != commit and git("merge-base", "--is-ancestor", tested[0], commit) is not None:
             return tested[0], run["html_url"], {job["name"]: job["conclusion"] for job in jobs}
     return None
@@ -675,9 +677,12 @@ def git(*args):
 def main(call=api, run_git=git, query=graphql):
     env = os.environ
     commit = env["COMMIT"]
-    # Only main and the release branch write, whatever the input says: another branch's run is always a dry run.
+    needs = json.loads(env["RESULTS"])
+    selected = needs.get("resolve", {}).get("outputs", {}).get("legs")
+    # Only main and the release branch write, whatever the input says: another branch's run is always a dry run. A
+    # break-glass run (daily.yml `break_glass`, its legs selected) files and closes no issue either.
     prefix = WRITING_REFS.get(env.get("GITHUB_REF"), PREFIX)
-    writes = env.get("GITHUB_REF") in WRITING_REFS and env.get("DRY_RUN") == "false"
+    writes = env.get("GITHUB_REF") in WRITING_REFS and env.get("DRY_RUN") == "false" and not selected
     run_url = f"{env.get('GITHUB_SERVER_URL', 'https://github.com')}/{env['GITHUB_REPOSITORY']}/actions/runs/{env['GITHUB_RUN_ID']}"
     reports_dir = Path(env["REPORTS"])
     reports = [json.loads(path.read_text()) for path in sorted(reports_dir.glob("*/*.json")) if path.name != "parity.json"]
@@ -688,15 +693,14 @@ def main(call=api, run_git=git, query=graphql):
             "run_id": env["GITHUB_RUN_ID"], "run_attempt": attempt, "commit": commit}:
         parity_report = None
     jobs = pages(call, f"actions/runs/{env['GITHUB_RUN_ID']}/jobs?filter=latest", "jobs")
-    needs = json.loads(env["RESULTS"])
     all_legs, results = daily_legs(needs), leg_results(needs)
     # Only a run that writes nothing may leave parity out: a writing run's skipped parity holds green and the tag.
     parity_not_applicable = (not writes and results.get("resolve", {}).get("outputs", {}).get("parity_required") == "false"
                              and results.get(PARITY, {}).get("result") == "skipped")
     legs = tuple(leg for leg in all_legs if leg != PARITY or not parity_not_applicable)
-    if selected := results.get("resolve", {}).get("outputs", {}).get("legs"):
+    if selected:
         # A break-glass run (daily.yml `break_glass`) ran only these legs: the others, and their skipped jobs, are no
-        # part of its verdict. It runs on release/26.3 only.
+        # part of its verdict.
         chosen = set(json.loads(selected))
         all_legs = legs = tuple(leg for leg in legs if leg in chosen)
         jobs = [job for job in jobs if job["name"].partition(" / ")[0] not in set(daily_legs(needs)) - chosen]
@@ -736,7 +740,7 @@ def after(name, result, call=api, run_git=git, query=graphql):
     issue for it while it fails, closed by its next success. Writes only where the summary would."""
     env = os.environ
     prefix = WRITING_REFS.get(env.get("GITHUB_REF"), PREFIX)
-    writes = env.get("GITHUB_REF") in WRITING_REFS and env.get("DRY_RUN") == "false"
+    writes = env.get("GITHUB_REF") in WRITING_REFS and env.get("DRY_RUN") == "false" and env.get("PARTIAL") != "true"
     run_url = f"{env.get('GITHUB_SERVER_URL', 'https://github.com')}/{env['GITHUB_REPOSITORY']}/actions/runs/{env['GITHUB_RUN_ID']}"
     commit = env["COMMIT"]
     open_issues = {issue["title"]: issue["number"]
