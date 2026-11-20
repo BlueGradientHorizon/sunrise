@@ -152,6 +152,7 @@ mod tests {
         AvoidSneak,
         Replace,
         ReplaceDuringLift,
+        MoveBystander,
     }
 
     #[derive(Clone, Copy)]
@@ -174,7 +175,7 @@ mod tests {
 
     // This observer listens to the effects, not to farmland_trample. It can be
     // installed on both sides of the allow/no-listener comparison.
-    struct Observe(Trace, bool);
+    struct Observe(Trace, Choice);
     #[mod_api::__subscriptions]
     impl Hooks for Observe {
         fn entity_entering_section(
@@ -195,14 +196,27 @@ mod tests {
                     event.entity.position(host).unwrap()[1],
                     state,
                 ));
-                if self.1 && event.entity.id() == LANDING {
-                    let level = event.entity.level(host).unwrap();
-                    let key = host.block_key("minecraft:stone").unwrap();
-                    let stone = mod_api::BlockState::of(&host.block_states(), key, &[]).unwrap();
-                    assert_eq!(
-                        level.set_block(host, FIELD, stone, BlockUpdateFlags::KNOWN_SHAPE),
-                        Ok(true)
-                    );
+                if event.entity.id() == LANDING {
+                    match self.1 {
+                        Choice::ReplaceDuringLift => {
+                            let level = event.entity.level(host).unwrap();
+                            let key = host.block_key("minecraft:stone").unwrap();
+                            let stone =
+                                mod_api::BlockState::of(&host.block_states(), key, &[]).unwrap();
+                            assert_eq!(
+                                level.set_block(host, FIELD, stone, BlockUpdateFlags::KNOWN_SHAPE),
+                                Ok(true)
+                            );
+                        }
+                        Choice::MoveBystander => {
+                            // This body was already selected. Raise it by 1/32 before
+                            // its lift: using its old box would now overshoot the dirt.
+                            assert!(host.commands().run_command(
+                                "tp @e[type=minecraft:pig,x=1.8,y=63.9375,z=1.5,distance=..0,limit=1] 1.8 63.96875 1.5"
+                            ));
+                        }
+                        _ => {}
+                    }
                 }
             }
         }
@@ -292,7 +306,7 @@ mod tests {
                     panic!("trample listener trapped");
                 }
                 Choice::Allow | Choice::ReplaceDuringLift => Flow::Continue,
-                Choice::Absent => unreachable!(),
+                Choice::Absent | Choice::MoveBystander => unreachable!(),
             }
         }
     }
@@ -322,9 +336,10 @@ mod tests {
         let trace = Trace::default();
         let mut mods = vec![ModEntry::new(
             "trample-observer",
-            Box::new(Observe(trace.clone(), choice == Choice::ReplaceDuringLift)),
+            Box::new(Observe(trace.clone(), choice)),
         )];
-        if choice != Choice::Absent {
+        let listens = !matches!(choice, Choice::Absent | Choice::MoveBystander);
+        if listens {
             mods.push(ModEntry::new(
                 "gardener",
                 Box::new(Gardener(choice, trace.clone())),
@@ -493,7 +508,7 @@ mod tests {
                 // FarmlandBlock.turnToBaseBlock and fallOn. The farmland's top is
                 // 15/16 high; replacing it with a full cube raises both bodies to 64.
                 let mut expected = Vec::new();
-                if choice != Choice::Absent {
+                if listens {
                     expected.push(Moment::Hook {
                         y: LANDING_Y,
                         health: initial_health,
@@ -533,6 +548,12 @@ mod tests {
         for body in [WALKING, Body::Pig] {
             land(body, Choice::Absent);
         }
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn the_lift_reads_a_bystanders_bounds_after_an_earlier_lift_callback() {
+        land(Body::Pig, Choice::MoveBystander);
     }
 
     #[test]

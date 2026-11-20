@@ -873,27 +873,50 @@ impl Game<'_> {
         let mut lift: Vec<_> = self
             .push_targets()
             .filter_map(|target| {
-                if !self.lift_body_bounds(target)?.intersects(bounds) {
-                    return None;
-                }
-                let (id, join) = match target {
-                    MoveWho::Player => (self.own_entity_id() as u32, None),
-                    MoveWho::Guest(conn) => {
-                        (self.lan.as_ref()?.hub.guest(conn)?.entity_id as u32, None)
+                let (body, id, join) = match target {
+                    MoveWho::Player => {
+                        let p = self.player.as_ref().filter(|p| !p.spectator)?;
+                        (p.bounds(), p.entity_id as u32, None)
                     }
+                    MoveWho::Guest(conn) if Some(conn) != self.lan_acting => {
+                        let g = self
+                            .lan
+                            .as_ref()?
+                            .hub
+                            .guest(conn)
+                            .filter(|g| !g.spectator())?;
+                        let [x, y, z] = g.position;
+                        (
+                            g.dimensions().bounds(Vec3::new(x, y, z)),
+                            g.entity_id as u32,
+                            None,
+                        )
+                    }
+                    MoveWho::Guest(_) => return None,
                     MoveWho::Entity(handle) => with_entity!(self, handle, entity => {
-                        (entity.id(), Some(entity.join_seq()))
+                        if entity.is_removed() {
+                            return None;
+                        }
+                        (Entity::bounds(entity), entity.id(), Some(entity.join_seq()))
                     }),
                 };
-                Some((target, id, join, None))
+                body.intersects(bounds).then_some((target, id, join, None))
             })
             .collect();
         for &mut (hint, id, join, ref mut moved) in &mut lift {
             let Some(target) = self.resolve_lift_target(hint, id, join) else {
                 continue;
             };
-            let Some(body) = self.lift_body_bounds(target) else {
-                continue;
+            let body = match target {
+                MoveWho::Player => self.player.as_ref().unwrap().bounds(),
+                MoveWho::Guest(conn) => {
+                    let g = self.lan.as_ref().unwrap().hub.guest(conn).unwrap();
+                    let [x, y, z] = g.position;
+                    g.dimensions().bounds(Vec3::new(x, y, z))
+                }
+                MoveWho::Entity(handle) => {
+                    with_entity!(self, handle, entity => Entity::bounds(entity))
+                }
             };
             let dy = 1.0 + added.collide(Axis::Y, body.move_by(Vec3::new(0.0, 1.0, 0.0)), -1.0);
             // `teleportRelative` writes the position only. It does not run an
@@ -973,41 +996,25 @@ impl Game<'_> {
         join: Option<JoinSeq>,
     ) -> Option<MoveWho> {
         match hint {
-            MoveWho::Player => (self.own_entity_id() as u32 == id).then_some(hint),
-            MoveWho::Guest(conn) => self
-                .lan
-                .as_ref()?
-                .hub
-                .guest(conn)
-                .filter(|g| g.entity_id as u32 == id && self.lan_acting != Some(conn))
+            MoveWho::Player => self
+                .player
+                .as_ref()
+                .filter(|p| p.entity_id as u32 == id)
                 .map(|_| hint),
+            MoveWho::Guest(conn) => {
+                let hub = &self.lan.as_ref()?.hub;
+                hub.guest(conn)
+                    .filter(|g| {
+                        g.entity_id as u32 == id && hub.here(g) && self.lan_acting != Some(conn)
+                    })
+                    .map(|_| hint)
+            }
             MoveWho::Entity(handle) => {
                 let handle = self.refresh_entity_handle(id, handle)?;
                 with_entity!(self, handle, entity => {
                     (!entity.is_removed() && Some(entity.join_seq()) == join).then_some(MoveWho::Entity(handle))
                 })
             }
-        }
-    }
-
-    fn lift_body_bounds(&self, target: MoveWho) -> Option<Aabb> {
-        match target {
-            MoveWho::Player => self
-                .player
-                .as_ref()
-                .filter(|p| !p.spectator)
-                .map(|p| p.bounds()),
-            MoveWho::Guest(conn) if Some(conn) != self.lan_acting => {
-                let host = self.lan.as_ref()?;
-                let g = host.hub.guest(conn)?;
-                let [x, y, z] = g.position;
-                (host.hub.here(g) && g.loaded && !g.dead && !g.spectator())
-                    .then(|| g.dimensions().bounds(Vec3::new(x, y, z)))
-            }
-            MoveWho::Guest(_) => None,
-            MoveWho::Entity(handle) => with_entity!(self, handle, entity => {
-                (!entity.is_removed()).then(|| Entity::bounds(entity))
-            }),
         }
     }
 
