@@ -79,7 +79,20 @@ jobs:
           tar -xzf "$folder/mdbook.tar.gz" -C "$folder" mdbook
           echo "$folder" >> "$GITHUB_PATH"
       - if: steps.book.outputs.present == 'true'
-        run: python3 -m unittest tests.test_modding_concept_pages tests.test_modding_hook_notes tests.test_neoforge_counterparts tests.test_modding_book_guard tests.test_modding_book_links tests.test_modding_sdk_tables
+        run: python3 -m unittest tests.test_modding_concept_pages tests.test_modding_hook_notes tests.test_neoforge_counterparts tests.test_modding_book_guard tests.test_modding_book_links tests.test_modding_sdk_tables tests.test_modding_book_redirects
+      # A page the change removes or renames keeps its address through docs/modding/redirects.json (a dispatch has no base).
+      - name: Every address the book loses has a redirect
+        if: steps.book.outputs.present == 'true'
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ -z "$BASE" ] || [ "$BASE" = 0000000000000000000000000000000000000000 ]; then
+            echo "::notice::no base commit for this event; only the redirects file itself is checked"
+            python3 tools/modding_book_redirects.py
+          else
+            git fetch --no-tags --depth=1 origin "$BASE"
+            python3 tools/modding_book_redirects.py --base "$BASE"
+          fi
       # mdBook logs a link or include it can't resolve as an [ERROR] and still succeeds, leaving the page without it.
       # `shell: bash` runs with pipefail, so mdBook's own failure still fails the step through tee.
       - name: Build the book
