@@ -167,15 +167,14 @@ impl Writer {
             self.fail(error);
             return;
         }
-        let Some(bytes) = text.len().checked_add(4) else {
+        let (Ok(len), Some(size)) = (u32::try_from(text.len()), text.len().checked_add(4)) else {
             self.fail(WireError::Length);
             return;
         };
-        if !self.can_fit(bytes) {
-            return;
+        if self.can_fit(size) {
+            self.reserve_and_prefix(len, size);
+            self.bytes.extend_from_slice(text.as_bytes());
         }
-        self.put_len(text.len());
-        self.put_bytes(text.as_bytes());
     }
     /// A list of `u16`: its count, then each item, in one pass (the bytes of `Vec<u16>`'s own form).
     pub(crate) fn put_u16s(&mut self, items: &[u16]) {
@@ -183,14 +182,27 @@ impl Writer {
     }
     /// A length or count.
     pub fn put_len(&mut self, len: usize) {
+        if let Some(len) = self.list_len(len) {
+            self.put(&len);
+        }
+    }
+    fn list_len(&mut self, len: usize) -> Option<u32> {
         if self.budget.is_some() && len > PAYLOAD_MAX_LIST_ENTRIES {
             self.fail(WireError::Length);
-            return;
+            return None;
         }
         match u32::try_from(len) {
-            Ok(len) => self.put(&len),
-            Err(_) => self.fail(WireError::Length),
+            Ok(len) => Some(len),
+            Err(_) => {
+                self.fail(WireError::Length);
+                None
+            }
         }
+    }
+    // The caller checked that `size` (prefix plus body) fits. Grow for both in one step.
+    fn reserve_and_prefix(&mut self, len: u32, size: usize) {
+        self.bytes.reserve(size);
+        self.bytes.extend_from_slice(&len.to_le_bytes());
     }
     /// An optional borrowed value, written as the `Option` it stands for.
     pub fn put_opt<T: Put + ?Sized>(&mut self, value: Option<&T>) {
@@ -513,11 +525,12 @@ macro_rules! numbers {
                         return;
                     };
                     if !out.can_fit(size) || !out.charge::<Self>(items.len()) { return; }
-                    out.put_len(items.len());
+                    let Some(len) = out.list_len(items.len()) else { return; };
+                    out.reserve_and_prefix(len, size);
                     #[cfg(target_endian = "little")]
-                    out.put_bytes(bytemuck::cast_slice(items));
+                    out.bytes.extend_from_slice(bytemuck::cast_slice(items));
                     #[cfg(target_endian = "big")]
-                    for item in items { out.put_bytes(&item.to_le_bytes()); }
+                    for item in items { out.bytes.extend_from_slice(&item.to_le_bytes()); }
                 });
             }
             fn take_list(input: &mut Reader<'_>) -> Result<Vec<Self>, WireError> {
