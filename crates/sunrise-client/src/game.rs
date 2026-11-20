@@ -5564,6 +5564,69 @@ impl Game<'_> {
             }
         }
         laps.lap("eg_fire_stands");
+        // `LevelRenderer.submitFeatures`: `submitEntities` walks the entities in the order they
+        // joined the level (`EntityLookup.byId`, as `LevelExtractor.extractVisibleEntities`
+        // lists them), whatever the family, before `submitBlockEntities`. Each run of one
+        // family is drawn by that family's own geometry.
+        let orb_view = billboard_frustum
+            .as_ref()
+            .filter(|_| self.pack_ids.is_none() && self.native_shaders.picked.is_empty());
+        let mut runs = std::mem::take(&mut self.entity_runs);
+        self.ordered_draw_runs(&mut runs);
+        for run in &runs {
+            use entity::DrawFamily as F;
+            let range = run.range.clone();
+            match run.family {
+                F::Item => {
+                    // `ItemEntityRenderer`.
+                    self.mark_entity(out.len(), "minecraft:item");
+                    self.dropped_item_geometry(camera, alpha, &mut out, range);
+                }
+                F::Orb => {
+                    self.mark_entity(out.len(), "minecraft:experience_orb");
+                    let live = self.orbs[range].iter().map(|o| {
+                        let at = [
+                            o.previous.x + (o.position.x - o.previous.x) * alpha,
+                            o.previous.y + (o.position.y - o.previous.y) * alpha,
+                            o.previous.z + (o.position.z - o.previous.z) * alpha,
+                        ];
+                        (o, at, alpha as f32)
+                    });
+                    self.orb_geometry(camera, live, orb_view, &mut out);
+                }
+                F::Falling => {
+                    self.mark_entity(out.len(), "minecraft:falling_block");
+                    self.falling_geometry(camera, alpha, range, &mut out);
+                }
+                F::Tnt => {
+                    self.mark_entity(out.len(), "minecraft:tnt");
+                    self.tnt_geometry(camera, alpha, &mut out, range);
+                }
+                F::ArmorStand => {
+                    self.mark_entity(out.len(), "minecraft:armor_stand");
+                    self.armor_stand_geometry(camera, alpha, &mut out, range);
+                }
+                F::Boat => {
+                    self.mark_entity(out.len(), "minecraft:oak_boat");
+                    self.boat_geometry(camera, alpha, &mut out, range);
+                }
+                F::Cart => {
+                    self.mark_entity(out.len(), "minecraft:minecart");
+                    self.cart_geometry(camera, alpha, &mut out, range);
+                }
+                F::Trident => {
+                    self.mark_entity(out.len(), "minecraft:trident");
+                    self.trident_geometry(camera, alpha, &mut out, range);
+                }
+                F::Rocket => {
+                    self.mark_entity(out.len(), "minecraft:firework_rocket");
+                    self.rocket_geometry(camera, alpha, &mut out, range);
+                }
+            }
+            self.mark_motion(out.len(), 0);
+        }
+        self.entity_runs = runs;
+        laps.lap("eg_ordered_entities");
         // `VaultRenderer`.
         self.mark_entity(out.len(), "");
         self.vault_geometry(camera, alpha, &mut out);
@@ -5925,69 +5988,6 @@ impl Game<'_> {
             }
         }
         laps.lap("eg_block_entities");
-        // `LevelExtractor.extractVisibleEntities` and `LevelRenderer.submitEntities`: these
-        // families' entities in the order they joined the level (`EntityLookup`), whatever the
-        // family, each run of one family drawn by that family's own geometry.
-        let orb_view = billboard_frustum
-            .as_ref()
-            .filter(|_| self.pack_ids.is_none() && self.native_shaders.picked.is_empty());
-        let mut runs = std::mem::take(&mut self.entity_runs);
-        self.ordered_draw_runs(&mut runs);
-        for run in &runs {
-            use entity::EntityHandle as H;
-            let end = run.end;
-            match run.first {
-                H::Item(i) => {
-                    // `ItemEntityRenderer`.
-                    self.mark_entity(out.len(), "minecraft:item");
-                    self.dropped_item_geometry(camera, alpha, &mut out, i..end);
-                }
-                H::Orb(i) => {
-                    self.mark_entity(out.len(), "minecraft:experience_orb");
-                    let live = self.orbs[i..end].iter().map(|o| {
-                        let at = [
-                            o.previous.x + (o.position.x - o.previous.x) * alpha,
-                            o.previous.y + (o.position.y - o.previous.y) * alpha,
-                            o.previous.z + (o.position.z - o.previous.z) * alpha,
-                        ];
-                        (o, at, alpha as f32)
-                    });
-                    self.orb_geometry(camera, live, orb_view, &mut out);
-                }
-                H::Falling(i) => {
-                    self.mark_entity(out.len(), "minecraft:falling_block");
-                    self.falling_geometry(camera, alpha, i..end, &mut out);
-                }
-                H::Tnt(i) => {
-                    self.mark_entity(out.len(), "minecraft:tnt");
-                    self.tnt_geometry(camera, alpha, &mut out, i..end);
-                }
-                H::ArmorStand(i) => {
-                    self.mark_entity(out.len(), "minecraft:armor_stand");
-                    self.armor_stand_geometry(camera, alpha, &mut out, i..end);
-                }
-                H::Boat(i) => {
-                    self.mark_entity(out.len(), "minecraft:oak_boat");
-                    self.boat_geometry(camera, alpha, &mut out, i..end);
-                }
-                H::Cart(i) => {
-                    self.mark_entity(out.len(), "minecraft:minecart");
-                    self.cart_geometry(camera, alpha, &mut out, i..end);
-                }
-                H::Trident(i) => {
-                    self.mark_entity(out.len(), "minecraft:trident");
-                    self.trident_geometry(camera, alpha, &mut out, i..end);
-                }
-                H::Rocket(i) => {
-                    self.mark_entity(out.len(), "minecraft:firework_rocket");
-                    self.rocket_geometry(camera, alpha, &mut out, i..end);
-                }
-                _ => unreachable!("{:?} is not drawn by the ordered pass", run.first),
-            }
-            self.mark_motion(out.len(), 0);
-        }
-        self.entity_runs = runs;
-        laps.lap("eg_orbs");
         self.mark_motion(out.len(), 0);
         self.mark_entity(out.len(), "");
         self.moving_piston_geometry(camera, alpha, &mut out);

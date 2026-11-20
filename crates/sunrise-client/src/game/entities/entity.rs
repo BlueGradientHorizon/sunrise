@@ -1256,72 +1256,70 @@ pub(super) enum JoinOrderError {
     OutOfOrder(EntityHandle),
 }
 
-/// A stretch of one family's entities, `first` through the list index before `end`, that the
-/// join-order walk visits back to back as far as the families drawn in order are concerned.
-#[derive(Clone, Copy, Debug)]
+/// The families `entity_geometry` draws in one ordered pass.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum DrawFamily {
+    Item,
+    Orb,
+    Falling,
+    Tnt,
+    ArmorStand,
+    Boat,
+    Cart,
+    Trident,
+    Rocket,
+}
+
+/// Entities of one family, by list index, that joined back to back as far as the ordered
+/// pass is concerned.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct DrawRun {
-    pub(super) first: EntityHandle,
-    pub(super) end: usize,
+    pub(super) family: DrawFamily,
+    pub(super) range: std::ops::Range<usize>,
+}
+
+/// Adds the entity to the runs: to the last one when it is its family's next, else as a run of
+/// its own. Entities of families the pass does not draw are skipped, so they split no run.
+fn push_draw_run(runs: &mut Vec<DrawRun>, handle: EntityHandle) {
+    use DrawFamily as F;
+    use EntityHandle as H;
+    let (family, index) = match handle {
+        H::Item(i) => (F::Item, i),
+        H::Orb(i) => (F::Orb, i),
+        H::Falling(i) => (F::Falling, i),
+        H::Tnt(i) => (F::Tnt, i),
+        H::ArmorStand(i) => (F::ArmorStand, i),
+        H::Boat(i) => (F::Boat, i),
+        H::Cart(i) => (F::Cart, i),
+        H::Trident(i) => (F::Trident, i),
+        H::Rocket(i) => (F::Rocket, i),
+        _ => return,
+    };
+    match runs.last_mut() {
+        Some(run) if run.family == family && run.range.end == index => run.range.end += 1,
+        _ => runs.push(DrawRun {
+            family,
+            range: index..index + 1,
+        }),
+    }
+}
+
+/// The entities of `lists`' drawn families as runs in the order they joined the level.
+fn draw_runs(lists: EntityLists<'_>, runs: &mut Vec<DrawRun>) -> Result<(), JoinOrderError> {
+    runs.clear();
+    lists.walk_in_join_order(|handle, _| push_draw_run(runs, handle))
 }
 
 impl Game<'_> {
     /// The entities of the families `entity_geometry` draws in one ordered pass, as runs in the
-    /// order the entities joined the level (`EntityLookup`'s order, which
-    /// `LevelExtractor.extractVisibleEntities` follows), whatever their family. Families the
-    /// pass does not draw are skipped, so they split no run. Lists the walk refuses (see
-    /// [`JoinOrderError`]) are drawn list by list instead.
+    /// order they joined the level (`EntityLookup.byId`, which
+    /// `LevelExtractor.extractVisibleEntities` follows), whatever their family. Lists the walk
+    /// refuses (see [`JoinOrderError`]) are taken list by list, as the state digest takes them.
     pub(super) fn ordered_draw_runs(&self, runs: &mut Vec<DrawRun>) {
-        draw_runs(entity_lists_of!(self), runs);
-    }
-}
-
-fn draw_runs(lists: EntityLists<'_>, runs: &mut Vec<DrawRun>) {
-    use EntityHandle as H;
-    runs.clear();
-    let (items, orbs, falling, tnts) = (lists.dropped, lists.orbs, lists.falling, lists.tnts);
-    let (stands, boats, carts) = (lists.armor_stands, lists.boats, lists.carts);
-    let (tridents, rockets) = (lists.tridents, lists.rockets);
-    let walked = lists.walk_in_join_order(|handle, _| {
-        let index = match handle {
-            H::Item(i)
-            | H::Orb(i)
-            | H::Falling(i)
-            | H::Tnt(i)
-            | H::ArmorStand(i)
-            | H::Boat(i)
-            | H::Cart(i)
-            | H::Trident(i)
-            | H::Rocket(i) => i,
-            _ => return,
-        };
-        match runs.last_mut() {
-            Some(run)
-                if std::mem::discriminant(&run.first) == std::mem::discriminant(&handle)
-                    && run.end == index =>
-            {
-                run.end += 1;
-            }
-            _ => runs.push(DrawRun {
-                first: handle,
-                end: index + 1,
-            }),
-        }
-    });
-    if walked.is_err() {
-        runs.clear();
-        for (first, len) in [
-            (H::Item(0), items.len()),
-            (H::Orb(0), orbs.len()),
-            (H::Falling(0), falling.len()),
-            (H::Tnt(0), tnts.len()),
-            (H::ArmorStand(0), stands.len()),
-            (H::Boat(0), boats.len()),
-            (H::Cart(0), carts.len()),
-            (H::Trident(0), tridents.len()),
-            (H::Rocket(0), rockets.len()),
-        ] {
-            if len > 0 {
-                runs.push(DrawRun { first, end: len });
+        if draw_runs(entity_lists_of!(self), runs).is_err() {
+            runs.clear();
+            for handle in self.entity_handles() {
+                push_draw_run(runs, handle);
             }
         }
     }
@@ -3028,7 +3026,7 @@ mod restore_tests;
 
 #[cfg(test)]
 mod join_order_tests {
-    use super::{EntityHandle, EntityLists, JoinOrderError};
+    use super::{DrawFamily, EntityHandle, EntityLists, JoinOrderError};
     use crate::game::{boats::Boat, fireworks::Rocket, trident::ThrownTrident};
     use sunrise_client::entities::ArmorStand;
     use sunrise_client::join_seq::JoinList;
@@ -3121,10 +3119,10 @@ mod join_order_tests {
         assert_ne!(joined[0], EntityHandle::ArmorStand(0));
     }
 
-    fn runs(lists: &Lists) -> Vec<(EntityHandle, usize)> {
+    fn runs(lists: &Lists) -> Vec<(DrawFamily, std::ops::Range<usize>)> {
         let mut runs = Vec::new();
-        super::draw_runs(lists.view(), &mut runs);
-        runs.into_iter().map(|r| (r.first, r.end)).collect()
+        super::draw_runs(lists.view(), &mut runs).unwrap();
+        runs.into_iter().map(|r| (r.family, r.range)).collect()
     }
 
     /// The ordered draw takes the families' entities in join order, not family by family, and
@@ -3135,13 +3133,13 @@ mod join_order_tests {
         assert_eq!(
             runs(&lists),
             [
-                (EntityHandle::Trident(0), 1),
-                (EntityHandle::Rocket(0), 1),
-                (EntityHandle::ArmorStand(0), 1),
-                (EntityHandle::Boat(0), 1),
-                (EntityHandle::Trident(1), 2),
-                (EntityHandle::ArmorStand(1), 2),
-                (EntityHandle::Rocket(1), 2),
+                (DrawFamily::Trident, 0..1),
+                (DrawFamily::Rocket, 0..1),
+                (DrawFamily::ArmorStand, 0..1),
+                (DrawFamily::Boat, 0..1),
+                (DrawFamily::Trident, 1..2),
+                (DrawFamily::ArmorStand, 1..2),
+                (DrawFamily::Rocket, 1..2),
             ]
         );
     }
@@ -3162,9 +3160,9 @@ mod join_order_tests {
         assert_eq!(
             runs(&lists),
             [
-                (EntityHandle::ArmorStand(0), 2),
-                (EntityHandle::Boat(0), 1),
-                (EntityHandle::ArmorStand(2), 3),
+                (DrawFamily::ArmorStand, 0..2),
+                (DrawFamily::Boat, 0..1),
+                (DrawFamily::ArmorStand, 2..3),
             ]
         );
     }
