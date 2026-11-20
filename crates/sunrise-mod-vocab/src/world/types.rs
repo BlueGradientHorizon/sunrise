@@ -1401,10 +1401,11 @@ pub trait LevelHost {
     /// no skylight always returns false. Returns None without a light view. Never loads chunks;
     /// available only on the owning game thread, never in worker-thread hook bodies.
     ///
-    /// Vanilla's light storage includes padding above and below build height. Sky light is full
-    /// above the highest stored section and in columns with no stored sections. A missing
-    /// section below a stored one repeats that next section's bottom row. Unloaded border
-    /// sections can retain the last light on a server; they have no full sky on a client.
+    /// Stored light can include padding above and below build height, and layers an unloaded
+    /// column retains beside a loaded one. Missing sky light uses the bottom row of the nearest
+    /// stored sky layer above it, or 15 if there is none. The engine does not yet compute new light
+    /// in padding sections (#3494) or refresh unloaded borders when a block edit changes whether
+    /// a section is empty (#3495).
     fn can_see_sky(&self, _pos: [i32; 3]) -> Option<bool> {
         None
     }
@@ -1524,8 +1525,8 @@ pub trait LevelHost {
         unimplemented!("LevelHost::state_with_property")
     }
     /// The stored light of one layer at `pos` (`BlockAndLightGetter.getBrightness`), 0 to 15.
-    /// It reads the game's own light query: above the build height the sky is 15 and below it 0,
-    /// and a chunk that isn't loaded reads as full sky and no block light. It never loads a chunk.
+    /// It reads published light, including stored padding and retained border layers (see
+    /// [`Self::can_see_sky`]). Missing block light is zero. It never loads a chunk.
     fn brightness(&self, _layer: LightLayer, _pos: [i32; 3]) -> i32 {
         unimplemented!("LevelHost::brightness")
     }
