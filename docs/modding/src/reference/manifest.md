@@ -148,11 +148,11 @@ selection. A missing required dependency, incompatible installed version or disp
 refuses loading; an absent optional dependency is ignored. Content, native and wasm manifests
 share the installed-set rule resolver, including mixed content/code relationships.
 
-**Sunrise addition: physical linking is separate from dispatch policy.** A code package's
-`[dependencies]` also declares real API library requirements. `before`, `none`, and instance
-overrides do not remove Cargo/wasm imports, reverse compiler staging, bypass ABI/hash/toolchain
-checks, or manufacture a missing library. Physical libraries still resolve dependency-first
-or refuse by name. Content constraints do not require an API package.
+**Sunrise addition: physical linking is separate from dispatch policy.** A dependency from
+a code package to another code package also declares an API library requirement. A content-only
+target has no Cargo alias or wasm library. `before`, `none`, and instance overrides do not remove
+Cargo/wasm imports, reverse compiler staging, bypass ABI/hash/toolchain checks, or manufacture a
+missing library. Physical libraries still resolve dependency-first or refuse by name.
 See [Dependencies between mods](../concepts/dependencies.md).
 
 Top-level `[properties]` holds free-form values other mods read: strings, integers, floats and booleans only,

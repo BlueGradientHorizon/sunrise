@@ -767,6 +767,7 @@ fn wire_loopback_checked_append_is_atomic_and_bit_exact() {
     )
     .unwrap();
     mod_api::__private::resolve_effects(["wire_test:tick"], |_| Some(0)).unwrap();
+    mod_api::__private::validate_effect_part_owners(|_| Some("wire_test")).unwrap();
     let holder = mod_api::LivingRef::new(mod_api::EntityRef::new(mod_api::WorldEpoch::new(1), 7));
     mod_api::testing::with_mods(Arc::from(mods), || {
         let effect = REGISTERED_EFFECT.get().unwrap();

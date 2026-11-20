@@ -79,21 +79,6 @@ pub fn main_with(
                 "loaded code has checked manifests"
             );
             let side = launch.installation_side();
-            let declared: Vec<_> = code_manifests
-                .iter()
-                .map(|m| sunrise_mod_package::dependencies::from_manifest(&m.dependencies, side))
-                .collect();
-            let inputs: Vec<_> = code_manifests
-                .iter()
-                .zip(&declared)
-                .map(|(m, dependencies)| sunrise_mod_package::dependencies::Mod {
-                    id: &m.id,
-                    version: &m.version,
-                    has_api: true,
-                    code: true,
-                    dependencies,
-                })
-                .collect();
             let code_ids: std::collections::HashSet<_> =
                 mods.iter().map(|entry| entry.fields().id).collect();
             let settings = sunrise_mod_package::mod_list::ModList::load(&launch.context.game_dir);
@@ -116,6 +101,27 @@ pub fn main_with(
                         })
                         .map(|source| &source.package.manifest),
                 )
+                .collect();
+            let declared: Vec<_> = code_manifests
+                .iter()
+                .map(|m| {
+                    sunrise_mod_package::dependencies::link_dependencies(m, side, |id| {
+                        manifests.iter().any(|target| {
+                            target.id == id && target.native.is_none() && target.wasm.is_none()
+                        })
+                    })
+                })
+                .collect();
+            let inputs: Vec<_> = code_manifests
+                .iter()
+                .zip(&declared)
+                .map(|(m, dependencies)| sunrise_mod_package::dependencies::Mod {
+                    id: &m.id,
+                    version: &m.version,
+                    has_api: true,
+                    code: true,
+                    dependencies,
+                })
                 .collect();
             let order = sunrise_mod_package::dependencies::Overrides::read(
                 &launch
@@ -163,6 +169,7 @@ pub fn main_with(
                 .map(|i| entries.remove(manifests[i].id.as_str()).unwrap())
                 .collect();
             let ids: Vec<_> = mods.iter().map(|entry| entry.fields().id).collect();
+            mod_api::__private::install_dependencies(order.effective);
             mod_api::__private::install(mods.into());
             for &id in &ids {
                 for slot in slots.iter().filter(|slot| slot.id() == id) {

@@ -58,7 +58,7 @@ pub(crate) fn call_refused<E: From<(mod_api::Identifier, String)>>() -> E {
     ))
 }
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::sync::OnceLock;
 use sunrise_mod_package::dependencies;
@@ -230,6 +230,7 @@ impl std::error::Error for Refusal {}
 fn groups(
     packages: &[WasmPackage],
     side: sunrise_mod_package::manifest::Side,
+    content_ids: &BTreeSet<String>,
 ) -> (Vec<Vec<usize>>, Vec<(String, Refusal)>) {
     let by_id: BTreeMap<&str, usize> = packages
         .iter()
@@ -239,14 +240,32 @@ fn groups(
     let mut refused: BTreeMap<usize, Refusal> = BTreeMap::new();
     let declared: Vec<_> = packages
         .iter()
-        .map(|p| dependencies::from_manifest(&p.manifest.dependencies, side))
+        .enumerate()
+        .map(|(i, package)| {
+            let linked = package
+                .manifest
+                .wasm
+                .as_ref()
+                .expect("wasm package")
+                .linked();
+            let physical = dependencies::link_dependencies(&package.manifest, side, |id| {
+                content_ids.contains(id) && !linked.contains_key(id)
+            });
+            // Engine internals are native-only. A code library cannot be replaced
+            // by content with the same ID, even on an optional dependency row.
+            if !package.manifest.internals.is_empty() {
+                refused.insert(i, Refusal::Internals);
+            } else if let Some(dep) = physical.iter().find(|dep| content_ids.contains(&dep.id)) {
+                refused.insert(
+                    i,
+                    Refusal::LinkedAgainst {
+                        dependency: dep.id.clone(),
+                    },
+                );
+            }
+            physical
+        })
         .collect();
-    // Engine internals are native-only. A mod dependency's internals stay inside the group.
-    for (i, package) in packages.iter().enumerate() {
-        if !package.manifest.internals.is_empty() {
-            refused.insert(i, Refusal::Internals);
-        }
-    }
     propagate_refusals(&declared, &by_id, &mut refused);
     // Physical library ordering cannot be dropped or reversed by a manifest
     // dispatch override. Joint host validation owns version/rule checks; the
@@ -535,6 +554,7 @@ pub fn load_installed(
                     .filter(sunrise_mod_package::Package::is_native),
             })
             .collect();
+    let mut content_ids = BTreeSet::new();
     let packages: Vec<WasmPackage> =
         sunrise_mod_package::selection::content_packages_read(game_dir, &enabled, dev, |path| {
             reads
@@ -546,7 +566,13 @@ pub fn load_installed(
                     layouts: package.layouts.clone(),
                 })
         })
-        .filter(|selected| selected.package.manifest.wasm.is_some())
+        .filter(|selected| {
+            let manifest = &selected.package.manifest;
+            if manifest.native.is_none() && manifest.wasm.is_none() {
+                content_ids.insert(manifest.id.clone());
+            }
+            manifest.wasm.is_some()
+        })
         .filter_map(|selected| {
             if let Some(reason) = native.iter().find_map(|library| {
                 sunrise_mod_package::layouts::mixed_refusal(&selected.package, library)
@@ -597,6 +623,7 @@ pub fn load_installed(
                 Some(&cache),
                 memory_cap_mib,
                 launch.installation_side(),
+                &content_ids,
             )
         }
     };
@@ -715,9 +742,10 @@ fn load_available_std(
     cache: Option<&module_cache::ModuleCache>,
     memory_cap_mib: u32,
     side: sunrise_mod_package::manifest::Side,
+    content_ids: &BTreeSet<String>,
 ) -> Loaded {
     match std {
-        Some(std) => load_with_cache(std, packages, cache, memory_cap_mib, side),
+        Some(std) => load_with_cache(std, packages, cache, memory_cap_mib, side, content_ids),
         None => Loaded {
             refused: packages
                 .into_iter()
@@ -736,6 +764,7 @@ pub fn load(std_member: &[u8], packages: Vec<WasmPackage>) -> Loaded {
         None,
         sunrise_mod_package::manifest::MAX_WASM_MEMORY_MIB,
         sunrise_mod_package::manifest::Side::Both,
+        &BTreeSet::new(),
     )
 }
 
@@ -767,6 +796,7 @@ fn load_with_cache(
     cache: Option<&module_cache::ModuleCache>,
     memory_cap_mib: u32,
     side: sunrise_mod_package::manifest::Side,
+    content_ids: &BTreeSet<String>,
 ) -> Loaded {
     // Each mod's imports are checked on their own, before any group forms: a mod whose items
     // are gone is refused by name, and no mod that merely shares a library with it is.
@@ -787,7 +817,7 @@ fn load_with_cache(
             }
         })
         .collect();
-    let (groups, refused) = groups(&packages, side);
+    let (groups, refused) = groups(&packages, side, content_ids);
     let mut loaded = Loaded {
         refused,
         ..Loaded::default()
@@ -984,6 +1014,7 @@ mod tests {
             None,
             sunrise_mod_package::manifest::MAX_WASM_MEMORY_MIB,
             sunrise_mod_package::manifest::Side::Both,
+            &BTreeSet::new(),
         );
         assert!(loaded.mods.is_empty());
         assert!(matches!(loaded.refused[0].1, Refusal::NoStd));
@@ -1260,6 +1291,43 @@ mod tests {
     }
 
     #[test]
+    fn content_dependencies_do_not_link_or_join_wasm_groups() {
+        let side = sunrise_mod_package::manifest::Side::Client;
+        let manifest_row = "data='^1'";
+        let make = |id| package(id, "1", manifest_row, 'a', "t", "");
+        let packages = [make("first"), make("second")];
+        let (admitted, refused) = groups(&packages, side, &["data".to_owned()].into());
+        assert!(refused.is_empty());
+        assert_eq!(admitted, [vec![0], vec![1]]);
+
+        let (admitted, refused) = groups(&packages, side, &BTreeSet::new());
+        assert!(admitted.is_empty());
+        assert_eq!(refused.len(), 2);
+        assert!(refused.iter().all(|(_, reason)| matches!(
+            reason, Refusal::MissingDependency { dependency, .. } if dependency == "data"
+        )));
+
+        let pinned = format!("[wasm.linked]\ndata='{}'", "b".repeat(128));
+        let packages = [package(
+            "uses_library",
+            "1",
+            manifest_row,
+            'a',
+            "t",
+            &pinned,
+        )];
+        assert_eq!(
+            groups(&packages, side, &["data".to_owned()].into()).1,
+            [(
+                "uses_library".into(),
+                Refusal::LinkedAgainst {
+                    dependency: "data".into()
+                }
+            )],
+        );
+    }
+
+    #[test]
     fn a_mod_whose_imports_are_gone_is_refused_alone_by_name() {
         let module = |import: &str| {
             wat::parse_str(format!(
@@ -1285,6 +1353,7 @@ mod tests {
             None,
             sunrise_mod_package::manifest::MAX_WASM_MEMORY_MIB,
             sunrise_mod_package::manifest::Side::Both,
+            &BTreeSet::new(),
         );
         let boundary: Vec<_> = loaded
             .refused
@@ -1337,6 +1406,7 @@ mod tests {
             None,
             sunrise_mod_package::manifest::MAX_WASM_MEMORY_MIB,
             sunrise_mod_package::manifest::Side::Both,
+            &BTreeSet::new(),
         );
         let why = |id: &str| {
             loaded
@@ -1403,6 +1473,7 @@ mod tests {
             None,
             1024,
             sunrise_mod_package::manifest::Side::Both,
+            &BTreeSet::new(),
         );
         assert!(loaded.mods.is_empty());
         let mut refused: Vec<_> = loaded
@@ -1433,7 +1504,11 @@ mod tests {
             package("e", "1.0.0", "lib = \"^1\"", 'c', "t", ""),
             package("alone", "1.0.0", "", 'd', "t", ""),
         ];
-        let (groups, refused) = groups(&packages, sunrise_mod_package::manifest::Side::Both);
+        let (groups, refused) = groups(
+            &packages,
+            sunrise_mod_package::manifest::Side::Both,
+            &BTreeSet::new(),
+        );
         assert!(refused.is_empty());
         assert_eq!(
             ids(&packages, &groups),
@@ -1448,7 +1523,11 @@ mod tests {
             package("lib", "1.2", "", 'a', "t", ""),
             package("a", "1", "lib = '^1'", 'c', "t", ""),
         ];
-        let (group, refused) = groups(&packages, sunrise_mod_package::manifest::Side::Both);
+        let (group, refused) = groups(
+            &packages,
+            sunrise_mod_package::manifest::Side::Both,
+            &BTreeSet::new(),
+        );
         assert!(refused.is_empty());
         assert_eq!(ids(&packages, &group), [vec!["lib", "z", "a"]]);
         let declared: Vec<_> = packages
@@ -1478,7 +1557,11 @@ mod tests {
             package("user", "1", "a = '^1'", 'c', "t", ""),
             package("free", "1", "", 'd', "t", ""),
         ];
-        let (group, refused) = groups(&cyclic, sunrise_mod_package::manifest::Side::Both);
+        let (group, refused) = groups(
+            &cyclic,
+            sunrise_mod_package::manifest::Side::Both,
+            &BTreeSet::new(),
+        );
         assert_eq!(ids(&cyclic, &group), [vec!["free"]]);
         assert!(
             matches!(&refused[0].1, Refusal::DependencyOrder { reason } if reason.contains("a -> b -> a"))
@@ -1501,7 +1584,11 @@ mod tests {
                 "",
             ),
         ];
-        let (groups, refused) = groups(&packages, sunrise_mod_package::manifest::Side::Both);
+        let (groups, refused) = groups(
+            &packages,
+            sunrise_mod_package::manifest::Side::Both,
+            &BTreeSet::new(),
+        );
         assert_eq!(ids(&packages, &groups), [vec!["lib"]]);
         assert_eq!(
             refused,
@@ -1538,7 +1625,11 @@ mod tests {
             package("user", "1.0.0", "deep = \"^1\"", 'b', "t", ""),
             package("typed", "1.0.0", "", 'c', "t", inject),
         ];
-        let (groups, refused) = groups(&packages, sunrise_mod_package::manifest::Side::Both);
+        let (groups, refused) = groups(
+            &packages,
+            sunrise_mod_package::manifest::Side::Both,
+            &BTreeSet::new(),
+        );
         assert_eq!(ids(&packages, &groups), [vec!["typed"]]);
         assert_eq!(
             refused,
@@ -1566,7 +1657,11 @@ mod tests {
             package("b", "1.0.0", "lib = \"^1\"", 'b', "t", &linked),
             package("e", "1.0.0", "lib = \"^1\"", 'c', "other", ""),
         ];
-        let (_, refused) = groups(&packages, sunrise_mod_package::manifest::Side::Both);
+        let (_, refused) = groups(
+            &packages,
+            sunrise_mod_package::manifest::Side::Both,
+            &BTreeSet::new(),
+        );
         assert_eq!(
             refused,
             [

@@ -2910,6 +2910,10 @@ pub(in crate::game) fn register_game_keys(ids: impl IntoIterator<Item = String>)
         |id| sunrise_client_core::potions::effect(id).map(|def| def.index),
     )
     .unwrap();
+    mod_api::__private::validate_effect_part_owners(|id| {
+        sunrise_client_core::potions::effect(id)?.owner
+    })
+    .unwrap();
     if let Some(types) = sunrise_client_core::block_entity_types::current() {
         // Registration just replaced the mod snapshot, but the process-wide engine
         // table can still belong to an earlier fixture. Include this fixture's

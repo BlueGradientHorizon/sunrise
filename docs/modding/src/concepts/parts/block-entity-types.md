@@ -38,8 +38,9 @@ Parts are expanded after every mod has registered, so a Part can target a type d
 
 A Part attaches by type id, whoever declared the type: `r.block_entity_type_key("owner:press")` then
 `r.block_entity_part(&press, MyPart)`. Only a package that lists the declaring package in its
-`[dependencies]` (required or optional) may do so. Otherwise load is refused by name, even when that
-package is installed:
+`[dependencies]` (required or optional) may do so, and that row must apply on the current
+installation side and survive instance overrides. Otherwise load is refused by name,
+even when that package is installed:
 `mod b attached <Part> to block entity type owner:press, declared by package owner; declare owner as a dependency`.
 A type that no package declares keeps the refusal `mod b attached <Part> to undeclared native block entity type owner:press`;
 when `b` lists the installed package that owns the type's namespace (its id or one of its manifest `namespaces`) as a

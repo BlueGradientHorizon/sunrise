@@ -12,10 +12,15 @@ extra_mod = { version = "^2", optional = true }
 Requirements use Cargo semver syntax and are checked against each installed mod's `sunrise-mod.toml`
 `version`, not its Cargo package version. That version is semver, checked when the manifest is read,
 so a mod whose version isn't semver never loads, whatever requirement a dependent states. Content-only mods use these declarations to validate their
-requirements and, by default, load their layers after dependencies. Code dependencies additionally require
-API packages for the dependent and every installed dependency. Missing required dependencies,
-incompatible versions and cycles refuse resolution with the mods named. An absent optional dependency
-is permitted; an installed optional dependency must match its requirement.
+requirements and, by default, load their layers after dependencies. Native and wasm packages can
+depend on content-only packages without linking anything from them. A dependency between code
+packages also requires a same-target API library. Missing required dependencies, incompatible versions
+and cycles refuse resolution with the mods named. An absent optional dependency is permitted; an
+installed optional dependency must match its requirement.
+
+A standalone build wires only the code projects it is given. Other requirements stay in
+`sunrise-mod.toml` and are checked against the installed packages at install and startup.
+Code that references an unsupplied library still fails to compile.
 
 The [registry index and installers](../reference/registry-index.md#planning-installs-and-removals) use these
 same manifest declarations. A new submission must resolve with the listed dependencies on its Minecraft release.
@@ -31,15 +36,16 @@ before checking it: an integrated server is client, a dedicated server is server
 or `"none"` changes listener/content dispatch, not compiler staging or actual imports.
 
 The instance's `sunrise-mods/dependency-overrides.toml` can drop a logical constraint/dispatch edge
-or make it a warning. These overrides also cover ordinary dependency rows. This policy is a Sunrise
-addition: it cannot fabricate a code library or bypass native Cargo or wasm ABI/hash/toolchain checks.
+or make it a warning. A removed dependency row no longer lets a Part attach to that package's
+effect or block entity type. This policy cannot fabricate a code library or bypass native Cargo
+or wasm ABI/hash/toolchain checks.
 A code dependency still links dependency-first or is refused by name. Selected content and loaded
 native/wasm code share one rule resolver; warnings and every applied override appear on both affected
 installed Mods rows, alongside any failed/off status.
 
-The launcher adds a path dependency using the mod ID as the Cargo alias and the target's actual Cargo
-package name. Optional dependencies also get a Cargo feature named exactly as their mod ID, enabled
-only when that mod is installed. Guard calls with `if_installed!`, which builds the block only with
+Native builds add a path dependency for each supplied library using the mod ID as the Cargo alias
+and the target's actual Cargo package name. Optional code libraries use a Cargo feature named
+exactly as their mod ID and enabled only when that library is supplied. Guard calls with `if_installed!`, which builds the block only with
 that feature and runs it only when the mod is installed, so the same source works when built to
 `mod.wasm`, where the library is linked at load and an absent one's functions trap:
 

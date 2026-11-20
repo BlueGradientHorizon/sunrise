@@ -172,6 +172,40 @@ fn native_only_dependency(package: &Value) -> Option<&str> {
         .find(|name| *name == "sunrise-wasmtime")
 }
 
+/// Only supplied code projects enter the build group. Other requirements stay
+/// in the manifests for install/startup validation.
+fn dependency_group(
+    members: &[Member],
+    mut needed: std::collections::BTreeSet<String>,
+) -> Result<std::collections::BTreeSet<String>, String> {
+    loop {
+        let before = needed.len();
+        for member in members {
+            if !needed.contains(member.manifest["id"].as_str().ok_or("no id")?) {
+                continue;
+            }
+            if let Some(deps) = member
+                .manifest
+                .get("dependencies")
+                .and_then(|d| d.as_table_like())
+            {
+                for (id, _) in deps.iter() {
+                    if members
+                        .iter()
+                        .any(|m| m.manifest["id"].as_str() == Some(id))
+                    {
+                        needed.insert(id.to_owned());
+                    }
+                }
+            }
+        }
+        if before == needed.len() {
+            break;
+        }
+    }
+    Ok(needed)
+}
+
 pub(super) fn build(
     root: &Path,
     catalog: Option<&Path>,
@@ -253,41 +287,7 @@ pub(super) fn build(
             .ok_or("group root has no sunrise-mod.toml")?;
         needed.insert(member.manifest["id"].as_str().ok_or("no id")?.to_owned());
     }
-    loop {
-        let before = needed.len();
-        for member in &members {
-            if !needed.contains(member.manifest["id"].as_str().ok_or("no id")?) {
-                continue;
-            }
-            if let Some(deps) = member
-                .manifest
-                .get("dependencies")
-                .and_then(|d| d.as_table_like())
-            {
-                for (id, dependency) in deps.iter() {
-                    if members
-                        .iter()
-                        .any(|m| m.manifest["id"].as_str() == Some(id))
-                    {
-                        needed.insert(id.to_owned());
-                    } else if dependency
-                        .as_table_like()
-                        .and_then(|d| d.get("optional"))
-                        .and_then(|o| o.as_bool())
-                        != Some(true)
-                    {
-                        return Err(format!(
-                            "{}: declared mod dependency {id} is not a Cargo dependency",
-                            member.package
-                        ));
-                    }
-                }
-            }
-        }
-        if before == needed.len() {
-            break;
-        }
-    }
+    let needed = dependency_group(&members, needed)?;
     members.retain(|m| {
         m.manifest["id"]
             .as_str()
@@ -428,11 +428,12 @@ pub(super) fn build(
             .and_then(|v| v.as_table_like())
         {
             for (id, dep) in deps.iter() {
-                if dep
-                    .as_table_like()
-                    .and_then(|d| d.get("optional"))
-                    .and_then(|v| v.as_bool())
-                    == Some(true)
+                if needed.contains(id)
+                    && dep
+                        .as_table_like()
+                        .and_then(|d| d.get("optional"))
+                        .and_then(|v| v.as_bool())
+                        == Some(true)
                 {
                     features.push(format!("{}/{id}", member.package));
                 }
@@ -849,6 +850,32 @@ mod tests {
         ));
         // A build script of std runs on the host: no `--target`.
         assert!(!is_wasm_std_unit(&wasm[..2], library));
+    }
+
+    #[test]
+    fn standalone_group_leaves_unsupplied_rows_for_installation() {
+        let member = |id: &str, extra: &str| Member {
+            root: PathBuf::new(),
+            stage: PathBuf::new(),
+            manifest: format!("id='{id}'\n{extra}").parse().unwrap(),
+            krate: id.into(),
+            package: id.into(),
+            registrations: String::new(),
+            points: String::new(),
+        };
+        let members = [
+            member("addon", "[dependencies]\ndata='^1'\nlib='^1'"),
+            member("lib", ""),
+            member("unrelated", ""),
+        ];
+        assert_eq!(
+            dependency_group(&members, ["addon".into()].into()).unwrap(),
+            ["addon".into(), "lib".into()].into()
+        );
+        assert_eq!(
+            members[0].manifest["dependencies"]["data"].as_str(),
+            Some("^1")
+        );
     }
 
     #[test]
