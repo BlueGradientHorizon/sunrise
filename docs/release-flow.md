@@ -108,8 +108,9 @@ commit on main. In order:
    it: no daily tests, no `daily-green`, no batch rules, no daily cap, no pause, no release-blocker.
 2. `snapshot-sdk` builds the commit's prebuilt SDK on every OS (`prebuilt-game-build.yml`; skipped when
    `sdk-<sha>` already exists). A build it makes runs the SDK's own checks too, as the daily run's does: the native
-   linkage probe on the Linux and Windows client legs and the API-source check on Linux; an `sdk-<sha>` that already
-   exists is reused as it is, and neither check runs again. `snapshot-sdk-publish` signs and publishes it as `sdk-<sha>` from this run's
+   linkage probe on the Linux and Windows client legs, and the API-source check and the source stage
+   (`tools/ci/test_stage_catalog.py`) on Linux; an `sdk-<sha>` that already exists is reused as it is, and no check
+   runs again. `snapshot-sdk-publish` signs and publishes it as `sdk-<sha>` from this run's
    artifacts through `sdk-publish.yml`, the one workflow that publishes an SDK (the daily run and `prebuilt-game.yml` call it too).
 3. `snapshot` starts `nightly build` with `kind=snapshot` and that commit. It re-checks the gate and the SDK, builds
    the commit alone (no picked pull requests, no build branch, no nightly-state), as `SUNRISE_VERSION`

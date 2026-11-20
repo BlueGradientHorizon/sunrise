@@ -82,6 +82,8 @@ removals and changes, and names removed or changed items, subject to its length 
 only when:
 
 - the head's tree cannot be exported;
+- the base can be read neither by the head's `sunrise-stage` nor by the base's own (which the report builds when the
+  head's cannot read it), or the base's own writes a surface the head's cannot compare;
 - a change note cannot be read, or names an item that did not change;
 - a breaking change has no change note: every breaking record the report lists, members included (a removed field is
   its own line), must be named by a note the pull request adds. Conditional, additive and advisory changes need none.
@@ -96,7 +98,10 @@ SUNRISE_STAGE_TOOL=target/debug/sunrise-stage \
 ```
 
 `BASE` and `HEAD` are source directories, such as two Git worktrees. The option adds advisory internal changes to
-the report without changing the gate.
+the report without changing the gate. The audit only reads both trees. When this `sunrise-stage` cannot read an older
+`BASE`, add `--build-base-tool` to build `BASE`'s own `sunrise-stage` from that tree and export it with that. This
+compiles and runs `BASE`'s code, so use it only on a whole checkout you trust. The build needs POSIX file locking
+(Linux or macOS); elsewhere it refuses and the report says so.
 
 ## Command completion layouts
 
@@ -132,6 +137,11 @@ ids = [
 why = "Commit e0e8269d76a moved the world and mob tick methods into game::level_tick."
 migrate = "Replacement ids: point:sunrise_client::game::level_tick::Game<'_>::tick_world and point:sunrise_client::game::level_tick::Game<'_>::tick_mobs. In [[inject]], set at to the corresponding path without point: and update hash if pinned."
 ```
+
+A note can also say that a merge already changed its ids, without a note, with `landed = "<full merge sha>"`. Its ids are
+then checked against that merge's first parent and the merge itself, not against the pull request that adds the note,
+and must have changed there: a wrong `landed` fails the report, naming the note and the id. The merge must have two
+parents. The pull request's own comparison leaves such notes out, and a note without `landed` is checked as before.
 
 The reader checks new top-level notes; a note with an unknown key, a missing `ids` or `why`, an empty `ids`, or an id
 that did not change is refused. `changes/history/` holds backfilled notes in the same format. The reader does not

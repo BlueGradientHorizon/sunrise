@@ -53,7 +53,7 @@ Two consequences a reviewer should keep in mind:
 | `item_stacked_on_other` | `hooks/item_stacked_on_other.rs:15` | `menu.rs:388` | both, cancel | cancel + slot/cursor write-back | typed decision |
 | `menu_slot_rules` | `hooks/menu_slot_rules.rs:23` | `menu.rs:615` | both, listen, menu Part | query + write-back (`may_place`, `max_stack`) | typed decision |
 | `living_heal` | `hooks/living_heal.rs:16` | `hunger.rs:23` | both, cancel | value transform + cancel | typed decision |
-| `living_breathe` | `hooks/living_breathe.rs:27` | `breathing.rs:34` | server, listen | query + write-back (3 out-params) | typed decision |
+| `living_breathe` | `hooks/living_breathe.rs` | `breathing.rs` `AirStep` | server, listen | decided air step, hook fired with the owning host, answer applied to the decided air | typed decision |
 | `living_drown` | `hooks/living_drown.rs:25` | `breathing.rs:71` | server, cancel | query + write-back + cancel | typed decision |
 | `living_fall` | `hooks/living_fall.rs:16` | `landing.rs:45` | both, cancel | value transform + cancel | typed decision |
 | `farmland_trample` | `hooks/farmland_trample.rs:15` | `landing.rs:31` | server, cancel | cancel notice | typed decision |

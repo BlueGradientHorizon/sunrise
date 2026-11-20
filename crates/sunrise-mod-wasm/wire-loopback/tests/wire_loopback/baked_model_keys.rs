@@ -1,9 +1,14 @@
 use super::*;
 use mod_api::prelude::*;
-use mod_api::{BakedModelKey, BakedModelView, BakedQuad, BlockStateId, Direction, ModelError};
+use mod_api::{
+    BakedModelKey, BakedModelView, BakedQuad, BlockState, BlockStateRecord, Direction, ModelError,
+};
 
 /// The game's published store: generation 5 holds slot 2, stone's one model.
-struct Store;
+struct Store {
+    stone: BlockState,
+    air: BlockState,
+}
 impl mod_api::Host for Store {}
 mod_api::impl_host_areas!(Store);
 impl mod_api::ClientHost for Store {}
@@ -37,11 +42,13 @@ fn stone() -> BakedModelView {
     view
 }
 impl mod_api::RenderAssets for Store {
-    fn block_state_models(&self, state: BlockStateId) -> Result<Vec<BakedModelKey>, ModelError> {
-        match state.0 {
-            1 => Ok(vec![key(5, 2)]),
-            0 => Ok(Vec::new()),
-            _ => Err(ModelError::UnknownModel),
+    fn block_state_models(&self, state: BlockState) -> Result<Vec<BakedModelKey>, ModelError> {
+        if state == self.stone {
+            Ok(vec![key(5, 2)])
+        } else if state == self.air {
+            Ok(Vec::new())
+        } else {
+            Err(ModelError::UnknownModel)
         }
     }
     fn baked_model(&self, model: BakedModelKey) -> Result<BakedModelView, ModelError> {
@@ -75,30 +82,61 @@ fn baked_model_keys_round_trip_as_generation_and_slot_and_refuse_generation_zero
 #[test]
 fn wire_loopback_a_guest_reads_a_states_keys_and_a_copy_of_its_model() {
     mod_api::__private::initialize().unwrap();
-    let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
-    let mut store = Store;
-    let mut frame = boundary::Frame::default();
-    frame.set_client_host_mut(&mut store);
-    let mut cx = boundary::Cx::default();
-    cx.frames.push(frame);
-    let cx = std::cell::RefCell::new(cx);
-    guest::set_transport(Some(Rc::new(move |id, bytes| {
-        let mut out = Writer::new();
-        // SAFETY: the store and its frame live throughout the synchronous transport.
-        unsafe { boundary::serve(id, &mut *cx.borrow_mut(), bytes, &mut out) }.unwrap();
-        out.into_bytes()
-    })));
-    let host = &mut guest::Guest;
-    let assets = host.render_assets();
-    let keys = assets.block_state_models(BlockStateId(1)).unwrap();
-    assert_eq!(keys, [key(5, 2)]);
-    assert_eq!(assets.block_state_models(BlockStateId(0)), Ok(Vec::new()));
-    assert_eq!(
-        assets.block_state_models(BlockStateId(9)),
-        Err(ModelError::UnknownModel)
-    );
-    assert_eq!(assets.baked_model(keys[0]), Ok(stone()));
-    assert_eq!(assets.baked_model(key(4, 2)), Err(ModelError::StaleModel));
-    assert_eq!(assets.baked_model(key(5, 7)), Err(ModelError::UnknownModel));
-    guest::set_transport(None);
+    let mods: mod_api::Mods = vec![].into();
+    mod_api::testing::with_mods(mods.clone(), || {
+        use mod_api::__private::{ModPhase, PhaseOwner};
+        mod_api::__private::part_tests::install_parts_fixture(&mods).unwrap();
+        let properties = std::collections::BTreeMap::new();
+        mod_api::__private::resolve_block_keys(
+            ["minecraft:stone", "minecraft:air", "minecraft:dirt"],
+            |_| {
+                sunrise_mod_runtime::block_definitions::BlockDefinition::new(&[&properties], 0)
+                    .map_err(|error| format!("{error:?}"))
+            },
+        )
+        .unwrap();
+        let state = |name| {
+            BlockState::from(BlockStateRecord::new(
+                mod_api::__private::block_key(name).unwrap(),
+                0,
+            ))
+        };
+        let stone_state = state("minecraft:stone");
+        let air = state("minecraft:air");
+        // Dirt has an issued token for Wire, but the fixture store knows only stone and air.
+        let unknown_block = state("minecraft:dirt");
+        let unknown_ordinal = BlockStateRecord::new(stone_state.block(), u16::MAX).into();
+        let mut store = Store {
+            stone: stone_state,
+            air,
+        };
+        let mut frame = boundary::Frame::default();
+        frame.set_client_host_mut(&mut store);
+        let mut cx = boundary::Cx::default();
+        cx.frames.push(frame);
+        let cx = std::cell::RefCell::new(cx);
+        guest::set_transport(Some(Rc::new(move |id, bytes| {
+            let mut out = Writer::new();
+            // SAFETY: the store and its frame live throughout the synchronous transport.
+            unsafe { boundary::serve(id, &mut *cx.borrow_mut(), bytes, &mut out) }.unwrap();
+            out.into_bytes()
+        })));
+        for phase in [ModPhase::Setup, ModPhase::Reloading, ModPhase::World] {
+            let _phase = PhaseOwner::scope(phase);
+            let assets = guest::Guest.render_assets();
+            let keys = assets.block_state_models(stone_state).unwrap();
+            assert_eq!(keys, [key(5, 2)]);
+            assert_eq!(assets.block_state_models(air), Ok(Vec::new()));
+            for invalid in [unknown_block, unknown_ordinal] {
+                assert_eq!(
+                    assets.block_state_models(invalid),
+                    Err(ModelError::UnknownModel)
+                );
+            }
+            assert_eq!(assets.baked_model(keys[0]), Ok(stone()));
+            assert_eq!(assets.baked_model(key(4, 2)), Err(ModelError::StaleModel));
+            assert_eq!(assets.baked_model(key(5, 7)), Err(ModelError::UnknownModel));
+        }
+        guest::set_transport(None);
+    });
 }

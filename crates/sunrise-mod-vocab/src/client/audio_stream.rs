@@ -201,6 +201,11 @@ impl std::fmt::Display for SpecFault {
 /// directly. A wasm mod holds the game's stream by id and each call crosses to the game. Every
 /// method works from any thread; `push` and the controls never wait on the mixer.
 pub trait AudioStreamSource: Send + Sync + 'static {
+    // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
+    #[doc(hidden)]
+    fn __sunrise_marks(&self, _: crate::__private::Sealed) {
+        sunrise_mod_marks::audio_stream_source::<Self>();
+    }
     /// Queues interleaved `samples`: whole frames only (a trailing odd sample of a stereo stream
     /// is not taken). Returns the frames accepted, which falls short of the frames offered when
     /// the ring is full, or when another thread is pushing to the same stream at that moment

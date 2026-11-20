@@ -355,10 +355,12 @@ pub trait RenderAssets {
     /// position. Any state: a mod's, vanilla's, a resource pack's. It draws through
     /// [`WorldDrawContext::draw_model_instances`](crate::WorldDrawContext::draw_model_instances),
     /// [`InstanceGroupRef`] and `BlockEntityDrawContext::terrain_model`. `ModelError::UnknownModel` for a
-    /// state with no baked model (air, a block drawn by a special renderer) or an id past the
-    /// block state table. Resolve once per distinct state in `client_setup` and again in
-    /// `client_resources_reloaded`, not each frame; the handle goes stale on a reload.
-    fn block_state_model(&self, state: BlockStateId) -> Result<ModelRef, ModelError> {
+    /// state with no baked model (air, a block drawn by a special renderer) or one the live
+    /// block-state index lacks (a block it does not hold, or an ordinal past the block's states).
+    /// In a wasm mod, a block key the game never issued is refused when the call crosses the
+    /// boundary, before this lookup. Resolve once per distinct state in `client_setup` and again
+    /// in `client_resources_reloaded`, not each frame; the handle goes stale on a reload.
+    fn block_state_model(&self, state: BlockState) -> Result<ModelRef, ModelError> {
         crate::world::phase::unprovided(
             "RenderAssets::block_state_model",
             "block_state_model",
@@ -367,12 +369,14 @@ pub trait RenderAssets {
     }
     /// Side: client.
     /// Published asset/data read: available in Setup, Reloading and World.
-    /// Keys of every baked model block state `state` can draw in the published store, in bake
+    /// Keys of every baked model `state` can draw in the current published generation, in bake
     /// order without repeats: each weighted alternative and each multipart part its properties
-    /// select, whichever one a position's seed would pick. Empty for a state no blockstate file
-    /// binds (air) and on a store that bakes no models. `ModelError::UnknownModel` for an id
-    /// past the block state table. Ask once in `model_baking_completed`, not each frame.
-    fn block_state_models(&self, state: BlockStateId) -> Result<Vec<BakedModelKey>, ModelError> {
+    /// select, whichever one a position's seed would pick. A valid state with no baked binding
+    /// returns an empty list. A state the live block-state index lacks (a block it does not
+    /// hold, or an ordinal past the block's states) returns `ModelError::UnknownModel`; in a wasm
+    /// mod, a block key the game never issued is refused when the call crosses the boundary,
+    /// before this lookup. Cache keys until the next `model_baking_completed`.
+    fn block_state_models(&self, state: BlockState) -> Result<Vec<BakedModelKey>, ModelError> {
         crate::world::phase::unprovided(
             "RenderAssets::block_state_models",
             "block_state_models",

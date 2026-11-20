@@ -174,11 +174,13 @@ This API bakes quads only, not a mod-defined baked result type.
 - `hidden_faces` (bits 0 to 5: down, up, north, south, west, east) leaves out the faces whose
   `cull` side is set, so a structure of many copies can drop the sides its neighbours cover.
 
-A copy whose colour alpha is below `0xFF`, or of a model with a translucent face, is drawn in
-the translucent material described below; nothing is drawn when a view has no such copy. Copies with a colour other than
-white, hidden faces or a block state model are baked on the CPU instead of drawn as GPU
-instances; the 16,384-copy budget bounds that cost, and native and wasm are identical. `overlay`
-(the hurt tint) has no effect on a block state model.
+A copy whose colour alpha is below `0xFF` draws every quad in the translucent material described below.
+A model with translucent faces otherwise keeps its per-quad routing: only those faces take the translucent
+material. Copies with a colour other than white, hidden faces, a model with translucent faces or a block state model are baked on the CPU
+instead of drawn as GPU instances; the 16,384-copy budget bounds that cost, and native and wasm are identical.
+`overlay` (the hurt tint) has no effect on a copy on the translucent or block state model route, including any
+opaque faces it holds. `color` (the whole baked block model, multiplied at draw time) and `hidden_faces` (a
+cull mask the caller supplies) are Sunrise's options for mod copies.
 
 `block_state_model(state)` (on `RenderAssets`) resolves a block state as one model: the parts
 its blockstate file selects for its properties, weighted alternatives at the fixed seed
@@ -201,11 +203,12 @@ let options = TerrainModelOptions::default()
 draw.terrain_model(self.belt, options)?;
 ```
 
-- Faces sample the animated block sprites, cull back faces and write colour and depth like
+- Faces sample the animated block sprites (mipmapped, linear minification and nearest
+  magnification, as vanilla samples a moving block), cull back faces and write colour and depth like
   opaque terrain. Light is the draw's own, raised by each quad's emission.
 - `material`: `Model` keeps each quad's `render_type` (solid, `cutout`, `cutout_mipped`), and
-  draws a translucent quad in the translucent material (below). `Solid`, `Cutout` (alpha under 0.1 discarded, no
-  mipmaps) and `CutoutMipped` (under 0.5, mipmapped) choose one material for all quads.
+  draws a translucent quad in the translucent material (below). `Solid`, `Cutout` (alpha under
+  0.1 discarded) and `CutoutMipped` (under 0.5) choose one material for all quads.
 - `shade`: `Model` follows each quad's `shade` flag, `Off` turns directional shading off, and
   `Entity` shades every quad by the level's entity light directions. Full-bright light never
   turns shading off.

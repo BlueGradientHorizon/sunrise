@@ -70,6 +70,7 @@ READERS = {
     "sunrise-guest-stack": ["crates/sunrise-client/src", "crates/sunrise-threads/src"],
     "sunrise-mod-api": MOD_API_GEN,
     "sunrise-mod-api-gen": MOD_API_GEN,
+    "sunrise-mod-marks": MOD_API_GEN,
     "sunrise-mod-api-gen-tests": MOD_API_GEN,
     "sunrise-mod-package": [
         "Cargo.lock", "docs/modding/src/how-to/native-mods/07-local-developer-builds.md",
