@@ -1720,8 +1720,8 @@ pub fn encode_components(stack: &ItemStack, items: &crate::items::Items) -> Opti
         entries.retain(|id, _| {
             // PatchedDataComponentMap: a removal stays in the patch only where
             // the prototype has the component; elsewhere nothing is removed.
-            if let Some(removed) = id.units().strip_prefix(&[u16::from(b'!')]) {
-                return prototype.contains_key(&JavaString::from(removed.to_vec()));
+            if let Some(removed) = id.0.strip_prefix(&[u16::from(b'!')]) {
+                return prototype.contains_key(&JavaString(removed.to_vec()));
             }
             !prototype.contains_key(id)
                 || !ingredient_components::component_equal(
@@ -1916,7 +1916,7 @@ fn components_tag_inner(
 /// The ASCII bytes of an NBT key, in `buf`. Every component ID is ASCII; a key
 /// with any other unit cannot be one of them and needs no comparison.
 fn ascii_key<'a>(key: &JavaString, buf: &'a mut [u8; 64]) -> Option<&'a str> {
-    let units = key.units();
+    let units = &key.0;
     if units.len() > buf.len() {
         return None;
     }
@@ -4311,8 +4311,8 @@ mod custom_data_boundary_tests {
         let opaque = Tag::Compound(
             [
                 (
-                    JavaString::from(vec![0xd800]),
-                    Tag::String(JavaString::from(vec![0xdc00])),
+                    JavaString(vec![0xd800]),
+                    Tag::String(JavaString(vec![0xdc00])),
                 ),
                 (
                     JavaString::from("mixed"),
@@ -4332,8 +4332,8 @@ mod custom_data_boundary_tests {
         let literal = Tag::Compound(
             [
                 (
-                    JavaString::from(vec![0xd800]),
-                    Tag::String(JavaString::from(vec![0xdc00])),
+                    JavaString(vec![0xd800]),
+                    Tag::String(JavaString(vec![0xdc00])),
                 ),
                 (
                     JavaString::from("mixed"),

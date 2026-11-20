@@ -56,7 +56,7 @@ mod tests {
             fuel(Tag::List(vec![]), Tag::Int(1)),
             fuel(Tag::Int(1), Tag::String("BAD".into())),
             fuel(Tag::String("..:bad".into()), Tag::Int(1)),
-            fuel(Tag::String(JavaString::from(vec![0xd800])), Tag::Int(1)),
+            fuel(Tag::String(JavaString(vec![0xd800])), Tag::Int(1)),
         ] {
             assert!(decode(&value).is_err(), "{value:?}");
         }

@@ -110,7 +110,7 @@ fn datapack_game_reload_delivers_only_successful_generations_and_disconnects_ref
                     .update(0, |g| g.sender.datapack_offer = Some(Arc::from([255_u8])));
                 write(&entry, r#"{"power":11}"#);
                 assert!(game.run_command("reload"));
-                assert!(rx.try_iter().any(|out| matches!(out, Out::Disconnect(sunrise_core::nbt::Tag::String(reason)) if String::from_utf16_lossy(reason.units()).contains("registries are unreadable"))));
+                assert!(rx.try_iter().any(|out| matches!(out, Out::Disconnect(sunrise_core::nbt::Tag::String(reason)) if String::from_utf16_lossy(&reason.0).contains("registries are unreadable"))));
                 datapack_net::clear_received();
             });
         },

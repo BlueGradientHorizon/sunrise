@@ -492,7 +492,7 @@ fn stacks_equal(a: &[ItemStack], b: &[ItemStack]) -> bool {
     a.len() == b.len() && a.iter().zip(b).all(|(a, b)| a.matches(b))
 }
 fn java_is(value: &JavaString, text: &str) -> bool {
-    value.units().iter().copied().eq(text.encode_utf16())
+    value.0.iter().copied().eq(text.encode_utf16())
 }
 fn implicit_ominous_name(stack: &ItemStack) -> bool {
     stack
@@ -552,14 +552,10 @@ fn identifier_equal(a: Option<&Tag>, b: Option<&Tag>) -> bool {
         return false;
     };
     fn units(value: &JavaString) -> impl Iterator<Item = u16> + '_ {
-        let (prefix, path) = match value
-            .units()
-            .iter()
-            .position(|unit| *unit == u16::from(b':'))
-        {
-            Some(0) => ("minecraft:", &value.units()[1..]),
-            None => ("minecraft:", value.units()),
-            Some(_) => ("", value.units()),
+        let (prefix, path) = match value.0.iter().position(|unit| *unit == u16::from(b':')) {
+            Some(0) => ("minecraft:", &value.0[1..]),
+            None => ("minecraft:", value.0.as_slice()),
+            Some(_) => ("", value.0.as_slice()),
         };
         prefix.encode_utf16().chain(path.iter().copied())
     }
@@ -659,24 +655,24 @@ fn block_entity_equal(a: Option<&Tag>, b: Option<&Tag>) -> bool {
         let Some(other) = b.get(key) else {
             return false;
         };
-        if key.units().iter().copied().eq("id".encode_utf16()) {
+        if key.0.iter().copied().eq("id".encode_utf16()) {
             let (Tag::String(a), Tag::String(b)) = (value, other) else {
                 return false;
             };
-            let a_prefix = if a.units().contains(&u16::from(b':')) {
+            let a_prefix = if a.0.contains(&u16::from(b':')) {
                 ""
             } else {
                 "minecraft:"
             };
-            let b_prefix = if b.units().contains(&u16::from(b':')) {
+            let b_prefix = if b.0.contains(&u16::from(b':')) {
                 ""
             } else {
                 "minecraft:"
             };
             a_prefix
                 .encode_utf16()
-                .chain(a.units().iter().copied())
-                .eq(b_prefix.encode_utf16().chain(b.units().iter().copied()))
+                .chain(a.0.iter().copied())
+                .eq(b_prefix.encode_utf16().chain(b.0.iter().copied()))
         } else {
             value == other
         }
@@ -689,8 +685,7 @@ fn levels_equal(a: &[(Arc<str>, u32)], b: &[(Arc<str>, u32)]) -> bool {
 // Borrow the same plain-literal normalization as collapsed_text, without cloning a tag.
 fn text_value(tag: &Tag) -> &Tag {
     let Tag::Compound(map) = tag else { return tag };
-    let key_is =
-        |key: &JavaString, value: &str| key.units().iter().copied().eq(value.encode_utf16());
+    let key_is = |key: &JavaString, value: &str| key.0.iter().copied().eq(value.encode_utf16());
     let Some((_, text @ Tag::String(_))) = map.iter().find(|(key, _)| key_is(key, "text")) else {
         return tag;
     };

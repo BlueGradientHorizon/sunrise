@@ -296,19 +296,17 @@ impl<'a> Reader<'a> {
         self.data = &data[len - inner.data.len()..];
         value
     }
-    /// A list of `u16` written by [`Writer::put_u16s`]. Check the length against the remaining
-    /// bytes first and let the caller collect straight into its destination storage.
-    pub(crate) fn take_u16s(
-        &mut self,
-    ) -> Result<impl ExactSizeIterator<Item = u16> + use<'a>, WireError> {
+    /// A list of `u16` written by [`Writer::put_u16s`], read in one pass: the length is checked
+    /// against the bytes left before anything is allocated.
+    pub(crate) fn take_u16s(&mut self) -> Result<Vec<u16>, WireError> {
         let len = self.take_len(2)?;
         let bytes = self.take_bytes(len * 2)?;
         Ok(bytes
             .as_chunks::<2>()
             .0
             .iter()
-            .copied()
-            .map(u16::from_le_bytes))
+            .map(|pair| u16::from_le_bytes(*pair))
+            .collect())
     }
     /// A normal Wire list, with its element cap checked before allocating storage. `read`
     /// may impose a shared payload budget across its elements without a second list codec.
