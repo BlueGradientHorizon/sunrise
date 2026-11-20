@@ -272,6 +272,9 @@ impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_> {
     fn set_light(&mut self, light: u32) {
         self.game.native_draw_set_light(&mut *self.surface, light)
     }
+    fn level_light(&mut self) {
+        self.game.native_draw_level_light(&mut *self.surface)
+    }
     fn quad(&mut self, sprite: &str, corners: [[f32; 3]; 4], uv: [f32; 4], tint: u32) -> bool {
         self.game
             .native_draw_quad(&mut *self.surface, sprite, corners, uv, tint)

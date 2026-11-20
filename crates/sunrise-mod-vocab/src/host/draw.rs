@@ -329,6 +329,20 @@ pub trait BlockEntityDrawContext {
     fn set_light(&mut self, light: u32) {
         unimplemented!("BlockEntityDrawContext::draw_set_light")
     }
+    /// Lights what is drawn next by the level's sky and block light at each
+    /// element's centre, where the element is this frame: under the pose and
+    /// turned by `spin`. An element is one `block`, `model`, `terrain_model`,
+    /// `cube` or `quad` call, lit once as a whole, as vanilla lights a moving
+    /// block (a falling block, a piston's moving block) once at its position;
+    /// items, text and the rest keep `draw.light`. Until `set_light`, which
+    /// goes back to a fixed light. With `keep`, geometry under `spin` is lit
+    /// again each frame where it has turned to, with no new submit; geometry
+    /// that stands still keeps the light it was drawn with, and is drawn again
+    /// when the block's own light changes. A mob's frame and other scenes have
+    /// no level around them and keep the fixed light.
+    fn level_light(&mut self) {
+        unimplemented!("BlockEntityDrawContext::draw_level_light")
+    }
     /// Draws a quad with `corners` in blocks under `draw`'s pose, in a model
     /// face's order (top left, bottom left, bottom right, top right as seen
     /// from its front), textured with the `uv` rectangle (u0, v0, u1, v1 in
@@ -392,8 +406,9 @@ pub trait BlockEntityDrawContext {
     /// their phases apart (a cog meshing with its neighbour). Draw the part at rest; the
     /// game turns it each frame, and with `keep` without asking again until the block
     /// entity changes. With a new speed, pass `old_angle - animation_time() * new_speed`
-    /// as the phase to keep the part where it was. Quads drawn while it is active are lit
-    /// where they turn to. Until `still` or the next `spin`. A mob's frame draws it at rest.
+    /// as the phase to keep the part where it was. The shading of a quad drawn while it is
+    /// active follows the turn (its normal turns); its light is fixed, and follows the
+    /// turn only under `level_light`. Until `still` or the next `spin`. A mob's frame draws it at rest.
     fn spin(&mut self, axis: [f32; 3], pivot: [f32; 3], degrees_per_tick: f32, phase: f32) {
         unimplemented!("BlockEntityDrawContext::draw_spin")
     }

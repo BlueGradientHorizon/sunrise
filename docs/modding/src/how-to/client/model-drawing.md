@@ -337,6 +337,17 @@ holds that clock; `/tick freeze` holds the level partial at 1 and stops texture 
 Camera motion during a freeze does not spin a part backwards. Server time updates do
 not reset animation. Held-arm, hand, mob and scene draws use this same level partial.
 
+A turning part's shading follows the turn (its normal turns with it), but its light does
+not: it keeps the light it was drawn with. Call `BlockEntityDrawContext::level_light` before
+drawing a moving structure (a rotating bearing, a contraption) and each `block`, `model`,
+`terrain_model`, `cube` or `quad` call after it is lit by the level's sky and block light at
+that element's centre, as the element is this frame: under the pose and turned by `spin`.
+One light is taken per element, not per vertex, as vanilla lights a falling block or a
+piston's moving block once at its position. After `keep`, spun elements are lit again each
+frame at the cell they have turned into, with no new submit; elements that stand still keep
+the light they were drawn with, and are drawn again when the block's own light changes.
+`set_light` returns to a fixed light, which stays the default.
+
 ## Copycat faces
 
 Ask `block_sprites` for the material's side faces, then use each face's `texture` and
