@@ -149,6 +149,8 @@ impl Scratch {
             release: super::super::FILE_HOST,
             site: "https://horizon-rust.github.io/horizon-mods/",
             generated: "2026-10-24T18:00:00Z".into(),
+            releases: None,
+            nightly: None,
         })
     }
 }
@@ -330,6 +332,86 @@ fn owner_ids_are_optional_and_kept() {
             .iter()
             .any(|n| n.contains("owner IDs (none) -> 583231")),
         "{r:?}"
+    );
+}
+
+#[test]
+fn owner_only_nightly_changes_are_routine() {
+    let old: Entry = toml::from_str(&hud_entry()).unwrap();
+    let mut with_source = old.clone();
+    with_source.nightly = Some(NightlySource {
+        repo: "ludovic111/coords_hud".into(),
+        path: None,
+    });
+    let status = |base: Option<&Entry>, head: &Entry, author| {
+        let review = review(
+            base.map_or(&[], std::slice::from_ref),
+            std::slice::from_ref(head),
+            author,
+        );
+        assert!(review.errors.is_empty(), "{:?}", review.errors);
+        assert_eq!(review.nightly_reviews[0].id, head.id);
+        review.nightly_reviews[0].status
+    };
+    assert_eq!(
+        status(Some(&old), &with_source, "Ludovic111"),
+        ReviewStatus::Routine
+    );
+    assert_eq!(
+        status(Some(&old), &with_source, "someone_else"),
+        ReviewStatus::ReviewRequired
+    );
+    let mut edited = with_source.clone();
+    edited.nightly.as_mut().unwrap().path = Some("new-path".into());
+    assert_eq!(
+        status(Some(&with_source), &edited, "ludovic111"),
+        ReviewStatus::Routine
+    );
+    edited.owners.push("someone_else".into());
+    assert_eq!(
+        status(Some(&with_source), &edited, "ludovic111"),
+        ReviewStatus::ReviewRequired
+    );
+    assert_eq!(
+        status(None, &with_source, "ludovic111"),
+        ReviewStatus::ReviewRequired
+    );
+    with_source.versions.clear();
+    assert_eq!(
+        status(None, &with_source, "ludovic111"),
+        ReviewStatus::Routine
+    );
+    assert_eq!(
+        status(None, &with_source, "someone_else"),
+        ReviewStatus::ReviewRequired
+    );
+}
+
+#[test]
+fn the_release_list_refuses_malformed_or_ambiguous_releases() {
+    let hex = "ab".repeat(20);
+    let row = |tag: &str, commit: &str| serde_json::json!({ "tag": tag, "commit": commit });
+    let check = |rows| parse_releases(&serde_json::Value::Array(rows).to_string());
+    for tag in [
+        "26-0.1.0",
+        "26..3-0.1.0",
+        "26.3-0.1",
+        "26.3-v0.1.0",
+        "26.3-0.1.0-rc.1",
+        "26.3-0.1.0+x",
+    ] {
+        assert!(check(vec![row(tag, &hex)]).unwrap_err().contains(tag));
+    }
+    assert!(
+        check(vec![row("26.3-0.1.0", "abc")])
+            .unwrap_err()
+            .contains("40 hex digits")
+    );
+    let release = row("26.3-0.1.0", &hex);
+    assert!(
+        check(vec![release.clone(), release])
+            .unwrap_err()
+            .contains("listed twice")
     );
 }
 
@@ -585,6 +667,8 @@ fn only_open_kinds_are_taken() {
         release: super::super::FILE_HOST,
         site: "https://x.test/",
         generated: String::new(),
+        releases: None,
+        nightly: None,
     };
     for page in ["submit", "mine", "account", "policy"] {
         submit.id = page.into();

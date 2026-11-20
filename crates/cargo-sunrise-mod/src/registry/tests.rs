@@ -22,17 +22,25 @@ impl Registry {
     }
 
     fn add(&self, id: &str, version: &str, game: &str, dependencies: &str) -> String {
+        self.add_package(id, version, game, "mod", &[(sunrise_mod_package::manifest::MANIFEST,
+            &format!("id='{id}'\nname='{id}'\nversion='{version}'\napi='0.2'\ncapabilities=['registries']\n[dependencies]\n{dependencies}")
+        )])
+    }
+
+    fn add_package(
+        &self,
+        id: &str,
+        version: &str,
+        game: &str,
+        kind: &str,
+        contents: &[(&str, &str)],
+    ) -> String {
         let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
-        zip.start_file(
-            sunrise_mod_package::manifest::MANIFEST,
-            zip::write::SimpleFileOptions::default(),
-        )
-        .unwrap();
-        write!(
-            zip,
-            "id='{id}'\nname='{id}'\nversion='{version}'\napi='0.2'\ncapabilities=['registries']\n[dependencies]\n{dependencies}"
-        )
-        .unwrap();
+        for &(name, text) in contents {
+            zip.start_file(name, zip::write::SimpleFileOptions::default())
+                .unwrap();
+            zip.write_all(text.as_bytes()).unwrap();
+        }
         let bytes = zip.finish().unwrap().into_inner();
         let hash = sha256(&bytes);
         std::fs::write(self.0.path().join("files").join(&hash), bytes).unwrap();
@@ -44,7 +52,7 @@ impl Registry {
             std::fs::write(self.0.path().join(format!("head/icons/{id}.png")), icon).unwrap();
             self.screenshot(id, SHOT);
             format!(
-                "id='{id}'\nkind='mod'\nname='{id}'\nsummary='A content mod for registry validation.'\n\
+                "id='{id}'\nkind='{kind}'\nname='{id}'\nsummary='A mod for registry validation.'\n\
                  description='An example package for testing version selection and registry policy.'\n\
                  owners=['author']\nlicense='MIT'\nsource='https://example.test/{id}'\n\
                  icon='icons/{id}.png'\ncategories=['utility']\n\
@@ -110,6 +118,171 @@ impl Registry {
 
     fn check(&self) -> Result<(), String> {
         self.run("check", &["base", "head"], &["--json"])
+    }
+
+    fn build(&self, flags: &[&str]) -> Result<Index, String> {
+        let out = self.0.path().join("index.json");
+        let mut args = vec!["--out", out.to_str().unwrap()];
+        args.extend_from_slice(flags);
+        self.run("build", &["head"], &args)?;
+        Index::parse(&std::fs::read_to_string(out).unwrap())
+    }
+}
+
+const PROJECT_PAGE: &str = "id='example'\nkind='native-mod'\nname='Example'\nsummary='A source example.'\nowners=['author']\n";
+const RELEASE_TAG: &str = "26.3-0.1.0";
+const RELEASE_PIN: &str = "0123456789abcdef0123456789abcdef01234567";
+
+#[test]
+fn a_stable_native_version_must_pin_the_named_release_commit() {
+    use sunrise_mod_package::index::check_file;
+
+    let r = Registry::new();
+    let manifest = format!(
+        "id='coords'\nname='Coords'\nversion='1.0.0'\napi='0.2'\n[native]\ngame='26.3'\nsunrise='{RELEASE_PIN}'\n\
+         [[native.module]]\nid='example'\nfile='game.rs'\nname='example'\nsource='src/example.rs'\n"
+    );
+    let hash = r.add_package(
+        "coords",
+        "1.0.0",
+        "26.3",
+        "native-mod",
+        &[
+            (sunrise_mod_package::manifest::MANIFEST, &manifest),
+            (
+                "Cargo.toml",
+                "[package]\nname='coords'\nversion='1.0.0'\nedition='2024'\n",
+            ),
+            ("src/lib.rs", ""),
+            ("src/example.rs", ""),
+        ],
+    );
+    r.edit("coords", |t| format!("{t}sunrise='{RELEASE_TAG}'\n"));
+    let path = r.0.path().join("releases.json");
+    let flag = ["--releases", path.to_str().unwrap()];
+    let write_release = |tag: &str, commit: &str| {
+        std::fs::write(
+            &path,
+            serde_json::json!([{ "tag": tag, "commit": commit }]).to_string(),
+        )
+        .unwrap();
+    };
+    write_release(RELEASE_TAG, &RELEASE_PIN.to_ascii_uppercase());
+    assert_eq!(r.run("check", &["base", "head"], &flag), Ok(()));
+    let mut index = r.build(&flag).unwrap();
+    let release = &index.releases.as_ref().unwrap()[0];
+    assert_eq!(
+        (&*release.tag, &*release.commit, &*release.line),
+        (RELEASE_TAG, RELEASE_PIN, "26.3-0")
+    );
+    let package = r.0.path().join("files").join(&hash);
+    let verify = |index: &Index| {
+        let p = index.project("coords").unwrap();
+        assert_eq!(p.versions[0].sunrise.as_deref(), Some(RELEASE_TAG));
+        check_file(index, p, &p.versions[0], &package)
+    };
+    assert!(verify(&index).is_ok());
+
+    let wrong = "f".repeat(40);
+    index.releases.as_mut().unwrap()[0].commit = wrong.clone();
+    write_release(RELEASE_TAG, &wrong);
+    let err = r.run("check", &["base", "head"], &flag).unwrap_err();
+    assert!(err.contains("coords 1.0.0"), "{err}");
+    let mismatch = verify(&index).unwrap_err();
+    assert!(
+        err.contains(&mismatch) && mismatch.contains(RELEASE_TAG) && mismatch.contains(RELEASE_PIN),
+        "{err}"
+    );
+
+    write_release("26.3-0.2.0", RELEASE_PIN);
+    let err = r.build(&flag).unwrap_err();
+    assert!(
+        err.contains(RELEASE_TAG) && err.contains("not in the supplied Sunrise releases"),
+        "{err}"
+    );
+}
+
+#[test]
+fn review_without_packages_checks_stable_release_declarations() {
+    let r = Registry::new();
+    r.add("coords", "1.0.0", "26.3", "");
+    let releases = r.0.path().join("releases.json");
+    std::fs::write(&releases, "[]").unwrap();
+    let review = || {
+        super::main(&[
+            "review".into(),
+            r.0.path().join("base").to_str().unwrap().into(),
+            r.0.path().join("head").to_str().unwrap().into(),
+            "--author".into(),
+            "author".into(),
+            "--releases".into(),
+            releases.to_str().unwrap().into(),
+        ])
+    };
+    assert_eq!(review(), Ok(())); // Legacy row without a release declaration.
+    r.edit("coords", |t| format!("{t}sunrise='{RELEASE_TAG}'\n"));
+    assert!(review().is_err());
+}
+
+#[test]
+fn a_nightly_only_project_publishes_its_source_and_supplied_metadata() {
+    let r = Registry::new();
+    std::fs::write(
+        r.0.path().join("head/mods/example.toml"),
+        format!("{PROJECT_PAGE}\n[nightly]\nrepo='author/example'\npath='mods/example'\n"),
+    )
+    .unwrap();
+    assert_eq!(r.check(), Ok(()));
+    assert_eq!(r.review(), Ok(()));
+    let index = r.build(&[]).unwrap();
+    let project = index.project("example").unwrap();
+    assert!(project.versions.is_empty());
+    let source = project.nightly.as_ref().unwrap();
+    assert_eq!(
+        (&*source.repo, source.path.as_deref()),
+        ("author/example", Some("mods/example"))
+    );
+    assert!(source.metadata.commit.is_none());
+
+    let path = r.0.path().join("nightly.json");
+    let metadata = serde_json::json!({"branch": "main", "commit": "ab".repeat(20), "pin": RELEASE_PIN, "updated": "2026-11-20T18:00:00Z"});
+    std::fs::write(&path, serde_json::json!({"example": metadata}).to_string()).unwrap();
+    let index = r.build(&["--nightly", path.to_str().unwrap()]).unwrap();
+    let source = index.project("example").unwrap().nightly.as_ref().unwrap();
+    assert_eq!(serde_json::to_value(&source.metadata).unwrap(), metadata);
+}
+
+#[test]
+fn a_project_waiting_to_publish_keeps_its_id_out_of_the_index() {
+    let r = Registry::new();
+    std::fs::write(r.0.path().join("head/mods/example.toml"), PROJECT_PAGE).unwrap();
+    assert_eq!(r.check(), Ok(()));
+    assert_eq!(r.review(), Ok(()));
+    let index = r.build(&[]).unwrap();
+    assert!(index.projects.is_empty() && index.left_out.is_empty());
+}
+
+#[test]
+fn nightly_rejects_unsafe_repos_paths_and_a_branch_key() {
+    let r = Registry::new();
+    for (fields, problem) in [
+        ("repo='https://github.com/author/example'", "nightly.repo"),
+        (
+            "repo='author/example'\npath='mods/../outside'",
+            "nightly.path",
+        ),
+        (
+            "repo='author/example'\nbranch='main'",
+            "unknown field `branch`",
+        ),
+    ] {
+        std::fs::write(
+            r.0.path().join("head/mods/example.toml"),
+            format!("{PROJECT_PAGE}\n[nightly]\n{fields}"),
+        )
+        .unwrap();
+        let err = r.check().unwrap_err();
+        assert!(err.contains(problem), "{err}");
     }
 }
 

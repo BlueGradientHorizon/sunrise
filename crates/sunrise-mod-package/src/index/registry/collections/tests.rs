@@ -241,6 +241,8 @@ fn the_publisher_refuses_invalid_collection_links_and_selection() {
         release: crate::index::FILE_HOST,
         site: "https://example.test/",
         generated: String::new(),
+        releases: None,
+        nightly: None,
     });
     assert!(
         errors
@@ -327,19 +329,13 @@ fn only_owners_membership_edits_for_their_projects_are_routine() {
     let remove = |c: &mut CollectionEntry| {
         c.members.retain(|m| m.id != "butterflies");
     };
-    assert_eq!(
-        review(&add("cyclops"), owner).status,
-        CollectionReviewStatus::Routine
-    );
-    assert_eq!(
-        review(&remove, owner).status,
-        CollectionReviewStatus::Routine
-    );
+    assert_eq!(review(&add("cyclops"), owner).status, ReviewStatus::Routine);
+    assert_eq!(review(&remove, owner).status, ReviewStatus::Routine);
     let foreign = review(&add("vulture"), owner);
-    assert_eq!(foreign.status, CollectionReviewStatus::ReviewRequired);
+    assert_eq!(foreign.status, ReviewStatus::ReviewRequired);
     assert!(foreign.reason.contains("vulture"));
     let non_owner = review(&add("cyclops"), "someone_else");
-    assert_eq!(non_owner.status, CollectionReviewStatus::ReviewRequired);
+    assert_eq!(non_owner.status, ReviewStatus::ReviewRequired);
     assert!(non_owner.reason.contains("someone_else"));
     for edit in [
         (|c: &mut CollectionEntry| c.members[0].default = false) as fn(&mut CollectionEntry),
@@ -347,10 +343,7 @@ fn only_owners_membership_edits_for_their_projects_are_routine() {
         |c: &mut CollectionEntry| c.owners.push("new_owner".into()),
         |c: &mut CollectionEntry| c.members.swap(0, 1),
     ] {
-        assert_eq!(
-            review(&edit, owner).status,
-            CollectionReviewStatus::ReviewRequired
-        );
+        assert_eq!(review(&edit, owner).status, ReviewStatus::ReviewRequired);
     }
 }
 
@@ -362,6 +355,6 @@ fn replacing_an_icon_at_the_same_path_requires_review() {
     let base = registry::load(&base.0.join("repo")).unwrap();
     let head = registry::load(&head.0.join("repo")).unwrap();
     let changes = review_collections(&base, &head, "EAnathos");
-    assert_eq!(changes[0].status, CollectionReviewStatus::ReviewRequired);
+    assert_eq!(changes[0].status, ReviewStatus::ReviewRequired);
     assert_eq!(changes[0].id, ID);
 }

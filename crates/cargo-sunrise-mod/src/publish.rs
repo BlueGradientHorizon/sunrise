@@ -171,6 +171,7 @@ fn draft(
         id: m.id.clone(),
         kind,
         repo: None,
+        nightly: None,
         name: m.name.clone(),
         summary: o
             .summary
@@ -434,6 +435,7 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
     }
     let file = release_name(id, &release_version, "smod");
     let version = EntryVersion {
+        sunrise: None,
         native_binaries: Vec::new(),
         version: release_version,
         published: today(),
@@ -560,6 +562,7 @@ mod tests {
 
     fn row(version: &str) -> EntryVersion {
         EntryVersion {
+            sunrise: None,
             native_binaries: Vec::new(),
             version: version.into(),
             published: "2026-11-18".into(),

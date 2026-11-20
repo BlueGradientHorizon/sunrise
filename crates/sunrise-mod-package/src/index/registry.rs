@@ -8,18 +8,17 @@
 //! a modpack's mods, a file's size) is read from the file, never typed.
 pub use super::open;
 use super::{
-    File, Index, Kind, Project, Revoked, SCHEMA, Version, hex64, inspect, page as rules, valid_id,
+    File, Index, Kind, Nightly, NightlyMetadata, Project, Revoked, SCHEMA, SunriseRelease, Version,
+    check_stable_tag, find_release, hex64, inspect, page as rules, stable_tag, valid_id,
 };
-use crate::manifest::parse_version;
+use crate::manifest::{parse_version, revision};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::collections::BTreeMap;
 use std::io::{self, Read};
 use std::path::{Component, Path, PathBuf};
 
 mod collections;
-pub use collections::{
-    COLLECTIONS, CollectionEntry, CollectionReview, CollectionReviewStatus, review_collections,
-};
+pub use collections::{COLLECTIONS, CollectionEntry, review_collections};
 
 /// The folder of entries in the registry repository.
 pub const ENTRIES: &str = "mods";
@@ -85,10 +84,39 @@ pub struct Entry {
     /// The author's minisign public key.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key: Option<String>,
+    /// Source for the Nightly channel, separate from reviewed versions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nightly: Option<NightlySource>,
     /// Hosted by the registry itself, newest first: the versions of before releases were read from
     /// the repository (and of Sunrise's own mods). Optional.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub versions: Vec<EntryVersion>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct NightlySource {
+    pub repo: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+}
+
+pub(super) fn check_nightly_source(repo: &str, path: Option<&str>) -> Result<(), String> {
+    if !valid_repo(repo) {
+        return Err(format!(
+            "nightly.repo {repo:?} must be owner/name on GitHub"
+        ));
+    }
+    if let Some(path) = path
+        && (path.contains(['\\', ':'])
+            || path.chars().any(char::is_control)
+            || path.split('/').any(|part| matches!(part, "" | "." | "..")))
+    {
+        return Err(format!(
+            "nightly.path {path:?} must be a relative directory in the repository"
+        ));
+    }
+    Ok(())
 }
 
 /// The page fields a project's repository may hold, in its [`PAGE_FILE`]. Only these: who owns the
@@ -185,6 +213,10 @@ impl Entry {
 
     /// Everything about the project but its versions, once the page is filled in.
     pub fn check_fields(&self) -> Vec<String> {
+        self.check_page(self.nightly.is_some() && self.versions.is_empty() && self.repo.is_none())
+    }
+
+    fn check_page(&self, nightly_only: bool) -> Vec<String> {
         let id = &self.id;
         let mut errors = Vec::new();
         if !valid_id(id) {
@@ -199,6 +231,11 @@ impl Entry {
         if self.repo.as_deref().is_some_and(|r| !valid_repo(r)) {
             errors.push(format!("{id}: repo must be owner/name on GitHub"));
         }
+        if let Some(nightly) = &self.nightly
+            && let Err(error) = check_nightly_source(&nightly.repo, nightly.path.as_deref())
+        {
+            errors.push(format!("{id}: {error}"));
+        }
         if self.owners.is_empty() {
             errors.push(format!("{id}: needs at least one owner (a GitHub login)"));
         }
@@ -206,7 +243,7 @@ impl Entry {
             errors.push(format!("{id}: {error}"));
         }
         for (field, value) in [("license", &self.license), ("source", &self.source)] {
-            if value.trim().is_empty() {
+            if !nightly_only && value.trim().is_empty() {
                 errors.push(format!(
                     "{id}: has no {field} (in the entry, or in {PAGE_FILE} of its repo)"
                 ));
@@ -268,6 +305,9 @@ pub struct EntryVersion {
     pub published: String,
     /// The Minecraft version it is for.
     pub game: String,
+    /// The stable Sunrise release tag it was made for, when declared.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sunrise: Option<String>,
     /// The name players download, with the kind's extension.
     pub file: String,
     /// Lowercase hex: pins the reviewed file.
@@ -299,6 +339,40 @@ pub struct Sources<'a> {
     pub site: &'a str,
     /// RFC 3339.
     pub generated: String,
+    /// The stable releases CI supplied. `None` means no releases file was given.
+    pub releases: Option<&'a [SunriseRelease]>,
+    /// Nightly branch heads CI supplied, keyed by project ID.
+    pub nightly: Option<&'a BTreeMap<String, NightlyMetadata>>,
+}
+
+/// Read the workflow's release list, adding the line from each validated tag.
+pub fn parse_releases(text: &str) -> Result<Vec<SunriseRelease>, String> {
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct ReleaseInput {
+        tag: String,
+        commit: String,
+    }
+    let inputs: Vec<ReleaseInput> = serde_json::from_str(text).map_err(|e| e.to_string())?;
+    let mut seen = std::collections::HashSet::new();
+    let mut releases = Vec::with_capacity(inputs.len());
+    for ReleaseInput { tag, commit } in &inputs {
+        let (game, major) = stable_tag(tag)
+            .ok_or_else(|| format!("{tag:?}: expected a stable release tag like 26.3-0.1.0"))?;
+        let commit = commit.to_ascii_lowercase();
+        if !revision(&commit) {
+            return Err(format!("{tag}: commit {commit:?} must be 40 hex digits"));
+        }
+        if !seen.insert(tag) {
+            return Err(format!("{tag}: release listed twice"));
+        }
+        releases.push(SunriseRelease {
+            tag: tag.clone(),
+            commit,
+            line: format!("{game}-{major}"),
+        });
+    }
+    Ok(releases)
 }
 
 /// The release tag a version's file is published under.
@@ -317,15 +391,34 @@ pub struct Checkout {
 }
 
 impl Checkout {
-    /// A repo-backed project waits for its first release. A rejected cache never reaches here.
+    /// A project with neither reviewed versions nor Nightly source is not published yet.
     fn listed(&self) -> impl Iterator<Item = (&Entry, Option<&Cache>)> {
         self.entries.iter().filter_map(|entry| {
             let cache = self.caches.get(&entry.id);
-            let listed = entry.repo.is_none()
-                || !entry.versions.is_empty()
-                || cache.is_some_and(|c| !c.versions.is_empty());
-            listed.then_some((entry, cache))
+            (entry.nightly.is_some() || has_versions(entry, cache)).then_some((entry, cache))
         })
+    }
+
+    /// Validate release declarations and Nightly entries for a review without package files.
+    pub fn check_declarations(&self, releases: Option<&[SunriseRelease]>) -> Vec<String> {
+        let mut errors = Vec::new();
+        let empty = Cache::default();
+        for (entry, cache) in self.listed() {
+            let cache = cache.unwrap_or(&empty);
+            if entry.nightly.is_some() {
+                errors.extend(
+                    entry
+                        .resolved(&cache.page)
+                        .check_page(!has_versions(entry, Some(cache))),
+                );
+            }
+            for v in &entry.versions {
+                if let Err(error) = v.release(releases) {
+                    errors.push(format!("{} {}: {error}", entry.id, v.version));
+                }
+            }
+        }
+        errors
     }
 
     /// The required `dependencies` (a package's facts) that no listed, not taken down mod version
@@ -591,9 +684,14 @@ pub fn project(entry: &Entry, src: &Sources) -> Result<Project, Vec<String>> {
     project_with_cache(entry, &cache, src)
 }
 
+fn has_versions(entry: &Entry, cache: Option<&Cache>) -> bool {
+    !entry.versions.is_empty() || cache.is_some_and(|c| !c.versions.is_empty())
+}
+
 fn project_with_cache(entry: &Entry, cache: &Cache, src: &Sources) -> Result<Project, Vec<String>> {
     let entry = &entry.resolved(&cache.page);
-    let mut errors = entry.check_fields();
+    let no_versions = !has_versions(entry, Some(cache));
+    let mut errors = entry.check_page(no_versions && entry.nightly.is_some());
     let id = &entry.id;
     if !valid_id(id) || crate::manifest::RESERVED_IDS.contains(&id.as_str()) {
         return Err(errors);
@@ -607,7 +705,7 @@ fn project_with_cache(entry: &Entry, cache: &Cache, src: &Sources) -> Result<Pro
         .iter()
         .filter_map(|s| image(src, id, s, &format!("screenshots/{id}/"), &mut errors))
         .collect();
-    if entry.versions.is_empty() && cache.versions.is_empty() {
+    if no_versions && entry.nightly.is_none() {
         errors.push(format!("{id}: has no version"));
     }
     let mut versions = Vec::new();
@@ -633,12 +731,24 @@ fn project_with_cache(entry: &Entry, cache: &Cache, src: &Sources) -> Result<Pro
         authors: entry.authors.clone(),
         owners: entry.owners.clone(),
         license: entry.license.clone(),
-        source: entry.source.clone(),
+        source: match &entry.nightly {
+            Some(n) if entry.source.is_empty() => format!("https://github.com/{}", n.repo),
+            _ => entry.source.clone(),
+        },
         icon,
         categories: entry.categories.clone(),
         tags: entry.tags.clone(),
         screenshots,
         key: entry.key.as_ref().map(|k| k.trim().to_owned()),
+        nightly: entry.nightly.as_ref().map(|n| Nightly {
+            repo: n.repo.clone(),
+            path: n.path.clone(),
+            metadata: src
+                .nightly
+                .and_then(|m| m.get(id))
+                .cloned()
+                .unwrap_or_default(),
+        }),
         versions,
         downloads: 0,
         stars: 0,
@@ -692,10 +802,22 @@ fn image(
     }
 }
 
+impl EntryVersion {
+    fn release<'a>(
+        &self,
+        releases: Option<&'a [SunriseRelease]>,
+    ) -> Result<Option<&'a SunriseRelease>, String> {
+        if let Some(tag) = &self.sunrise {
+            check_stable_tag(tag, &self.game)?;
+        }
+        find_release(releases, self.sunrise.as_deref())
+    }
+}
+
 fn version(entry: &Entry, v: &EntryVersion, src: &Sources) -> Result<Version, String> {
-    hex64(&v.sha256)?;
+    let release = v.release(src.releases)?;
     let url = format!("{}{}/{}", src.release, tag(&entry.id, &v.version), v.file);
-    version_at(entry, v, &src.files.join(&v.sha256), url)
+    version_at(entry, v, &src.files.join(&v.sha256), url, release)
 }
 
 /// A version of `entry` whose file is at `path` and is downloaded from `url`.
@@ -704,6 +826,7 @@ fn version_at(
     v: &EntryVersion,
     path: &Path,
     url: String,
+    release: Option<&SunriseRelease>,
 ) -> Result<Version, String> {
     if !plain_version(&v.version) {
         return Err("a version is letters, digits, '.', '-' and '_'".into());
@@ -755,7 +878,11 @@ fn version_at(
             v.game
         ));
     }
+    if let Some(release) = release {
+        facts.matches_release(release)?;
+    }
     Ok(Version {
+        sunrise: v.sunrise.clone(),
         native_binaries: v.native_binaries.clone(),
         version: v.version.clone(),
         published: v.published.clone(),
@@ -831,6 +958,7 @@ pub fn release_version(entry: &Entry, r: &Release, path: &Path) -> Result<Versio
         notes.push_str("\n\n(Cut: the full notes are on the release.)");
     }
     let v = EntryVersion {
+        sunrise: None,
         native_binaries: Vec::new(),
         game: facts.game.clone().unwrap_or_else(|| r.game.to_owned()),
         file: r.asset.to_owned(),
@@ -847,7 +975,7 @@ pub fn release_version(entry: &Entry, r: &Release, path: &Path) -> Result<Versio
         "https://github.com/{repo}/releases/download/{}/{}",
         r.tag, r.asset
     );
-    version_at(entry, &v, path, url)
+    version_at(entry, &v, path, url, None)
 }
 
 /// A project's page file as it would fill `entry` (which names the repository): refused when it
@@ -876,8 +1004,12 @@ pub fn build(src: &Sources) -> Result<Index, Vec<String>> {
     let mut errors = Vec::new();
     let empty = Cache::default();
     for (entry, cache) in checkout.listed() {
+        let cache = cache.unwrap_or(&empty);
+        if !has_versions(entry, Some(cache)) {
+            continue;
+        }
         // A listed project's page is complete (registry v2's rollout, step 4).
-        let e = entry.resolved(&cache.unwrap_or(&empty).page);
+        let e = entry.resolved(&cache.page);
         errors.extend(
             rules::check_required(
                 &e.id,
@@ -923,6 +1055,7 @@ pub fn candidate(checkout: &Checkout, src: &Sources) -> Result<Index, Vec<String
         schema: SCHEMA,
         generated: src.generated.clone(),
         projects,
+        releases: src.releases.map(<[_]>::to_vec),
         collections,
         revoked: checkout.revoked.clone(),
         left_out: Vec::new(),
@@ -987,6 +1120,22 @@ pub struct Review {
     /// What reviewers should look at: new projects, new owners or keys, a
     /// change by someone who isn't an owner.
     pub notes: Vec<String>,
+    /// Changes to a project's Nightly source declaration.
+    pub nightly_reviews: Vec<ReviewChange>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReviewStatus {
+    Routine,
+    ReviewRequired,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct ReviewChange {
+    pub id: String,
+    pub status: ReviewStatus,
+    pub reason: String,
 }
 
 /// Reject a change to a published project's kind.
@@ -1008,7 +1157,7 @@ fn is_library(entry: &Entry) -> bool {
 /// a listing, unless it is a library mod. An existing listing with no screenshots that gains no
 /// version stays valid. Collections are not entries, so they never need one.
 fn screenshot_required(base: Option<&Entry>, head: &Entry) -> bool {
-    if is_library(head) {
+    if is_library(head) || (head.versions.is_empty() && head.repo.is_none()) {
         return false;
     }
     base.is_none_or(|old| {
@@ -1101,7 +1250,28 @@ pub fn review_with_revoked(
         if new == old {
             continue;
         }
-        if !owned_by(&old.owners, author) {
+        let owner = owned_by(&old.owners, author);
+        if old.nightly != new.nightly {
+            let mut without_change = new.clone();
+            without_change.nightly.clone_from(&old.nightly);
+            let (status, reason) = if owner && new.nightly.is_some() && without_change == *old {
+                (
+                    ReviewStatus::Routine,
+                    "an owner changed only the Nightly source",
+                )
+            } else {
+                (
+                    ReviewStatus::ReviewRequired,
+                    "not an owner-only Nightly source update",
+                )
+            };
+            r.nightly_reviews.push(ReviewChange {
+                id: new.id.clone(),
+                status,
+                reason: reason.into(),
+            });
+        }
+        if !owner {
             r.notes.push(format!(
                 "{}: changed by {author}, who isn't one of its owners ({})",
                 old.id,
@@ -1186,6 +1356,27 @@ pub fn review_with_revoked(
             ));
         }
         if !base.iter().any(|e| e.id == new.id) {
+            if new.nightly.is_some() {
+                let (status, reason) = if new.versions.is_empty()
+                    && new.repo.is_none()
+                    && owned_by(&new.owners, author)
+                {
+                    (
+                        ReviewStatus::Routine,
+                        "the author owns this new Nightly-only project",
+                    )
+                } else {
+                    (
+                        ReviewStatus::ReviewRequired,
+                        "a new Nightly project must be source-only and owned by the author to be routine",
+                    )
+                };
+                r.nightly_reviews.push(ReviewChange {
+                    id: new.id.clone(),
+                    status,
+                    reason: reason.into(),
+                });
+            }
             r.notes.push(format!(
                 "{}: a new {} by {}{}",
                 new.id,

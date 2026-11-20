@@ -2,6 +2,7 @@
 //! (`sunrise-org/sunrise-mods`, docs/modding/src/reference/registry-index.md). Network-free: the
 //! workflow downloads the files and publishes what this writes.
 use crate::options::Options;
+use serde::de::DeserializeOwned;
 use std::path::Path;
 
 #[cfg(test)]
@@ -15,9 +16,9 @@ use sunrise_mod_package::index::{
 const RELEASE: &str = "https://github.com/sunrise-org/sunrise-mods/releases/download/";
 const SITE: &str = "https://sunrise-org.github.io/sunrise-mods/";
 
-const USAGE: &str = "usage: cargo sunrise-mod registry build <checkout> --files <dir> --out <index.json> [--release <url>] [--site <url>] [--generated <time>] [--counts <counts.json>]
-       cargo sunrise-mod registry review <base checkout> <head checkout> --author <login> [--files <dir>] [--json]
-       cargo sunrise-mod registry check <base checkout> <head checkout> --files <dir> [--json]
+const USAGE: &str = "usage: cargo sunrise-mod registry build <checkout> --files <dir> --out <index.json> [--release <url>] [--site <url>] [--generated <time>] [--counts <counts.json>] [--releases <file>] [--nightly <file>]
+       cargo sunrise-mod registry review <base checkout> <head checkout> --author <login> [--files <dir>] [--releases <file>] [--json]
+       cargo sunrise-mod registry check <base checkout> <head checkout> --files <dir> [--releases <file>] [--json]
        cargo sunrise-mod registry list <checkout>
        cargo sunrise-mod registry release <checkout> <id> <file> --tag <tag> --published <YYYY-MM-DD> [--notes <file>] [--signature <file>] [--name <asset>] [--game <version>]
        cargo sunrise-mod registry page <checkout> <id> <sunrise-registry.toml>";
@@ -36,6 +37,8 @@ pub fn main(args: &[String]) -> Result<(), String> {
         "--release",
         "--site",
         "--counts",
+        "--releases",
+        "--nightly",
         "--author",
         "--tag",
         "--published",
@@ -51,6 +54,8 @@ pub fn main(args: &[String]) -> Result<(), String> {
             let (files, out) = (options.value("--files")?, options.value("--out")?);
             let (generated, release) = (options.value("--generated")?, options.value("--release")?);
             let (site, counts) = (options.value("--site")?, options.value("--counts")?);
+            let releases = options.value("--releases")?;
+            let nightly = options.value("--nightly")?;
             let pos = options.positional();
             options.finish()?;
             let [checkout] = pos[..] else {
@@ -63,12 +68,16 @@ pub fn main(args: &[String]) -> Result<(), String> {
                 .map(str::to_owned)
                 .or_else(|| std::env::var("REGISTRY_GENERATED").ok())
                 .unwrap_or_default();
+            let releases = read_releases(releases)?;
+            let nightly = nightly.map(read_json).transpose()?;
             let mut index = registry::build(&Sources {
                 registry: Path::new(checkout),
                 files: Path::new(files),
                 release: release.unwrap_or(RELEASE),
                 site: site.unwrap_or(SITE),
                 generated,
+                releases: releases.as_deref(),
+                nightly: nightly.as_ref(),
             })
             .map_err(lines)?;
             for problem in uninstallable_versions(&index, |_| true) {
@@ -76,9 +85,7 @@ pub fn main(args: &[String]) -> Result<(), String> {
             }
             // GitHub's download and star counts, which the workflow fetched.
             if let Some(path) = counts {
-                let text = std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
-                let counts = serde_json::from_str(&text).map_err(|e| format!("{path}: {e}"))?;
-                registry::count(&mut index, &counts);
+                registry::count(&mut index, &read_json(path)?);
             }
             let text = serde_json::to_string_pretty(&index).map_err(|e| e.to_string())?;
             std::fs::write(out, text + "\n").map_err(|e| format!("{out}: {e}"))?;
@@ -91,6 +98,7 @@ pub fn main(args: &[String]) -> Result<(), String> {
         }
         Some("review") => {
             let (author, files) = (options.value("--author")?, options.value("--files")?);
+            let releases = options.value("--releases")?;
             let json = options.switch("--json");
             let pos = options.positional();
             options.finish()?;
@@ -98,6 +106,7 @@ pub fn main(args: &[String]) -> Result<(), String> {
                 return Err(USAGE.into());
             };
             let author = author.ok_or(USAGE)?;
+            let releases = read_releases(releases)?;
             let base = registry::load(Path::new(base)).map_err(lines)?;
             let checkout = Path::new(head);
             let head = registry::load(checkout).map_err(lines)?;
@@ -110,6 +119,8 @@ pub fn main(args: &[String]) -> Result<(), String> {
                 release: RELEASE,
                 site: SITE,
                 generated: String::new(),
+                releases: releases.as_deref(),
+                nightly: None,
             };
             if files.is_some() {
                 match registry::candidate(&head, &sources) {
@@ -126,6 +137,9 @@ pub fn main(args: &[String]) -> Result<(), String> {
                     Err(errors) => review.errors.extend(errors),
                 }
             } else {
+                review
+                    .errors
+                    .extend(head.check_declarations(sources.releases));
                 review.errors.extend(head.check_collections(&sources));
                 if registry::new_takedowns(&base.revoked, &head.revoked)
                     .next()
@@ -141,18 +155,21 @@ pub fn main(args: &[String]) -> Result<(), String> {
             ));
             let collections = registry::review_collections(&base, &head, author);
             if json {
-                let json = serde_json::json!({"errors": review.errors, "notes": review.notes, "collection_reviews": collections});
+                let json = serde_json::json!({"errors": review.errors, "notes": review.notes,
+                    "collection_reviews": collections, "nightly_reviews": review.nightly_reviews});
                 println!("{json}");
             } else {
-                for change in collections {
-                    let status = match change.status {
-                        registry::CollectionReviewStatus::Routine => "routine",
-                        registry::CollectionReviewStatus::ReviewRequired => "review required",
-                    };
-                    println!(
-                        "note: collection {}: {status}: {}",
-                        change.id, change.reason
-                    );
+                for (label, changes) in [
+                    ("collection", collections),
+                    ("nightly", review.nightly_reviews),
+                ] {
+                    for change in changes {
+                        let status = match change.status {
+                            registry::ReviewStatus::Routine => "routine",
+                            registry::ReviewStatus::ReviewRequired => "review required",
+                        };
+                        println!("note: {label} {}: {status}: {}", change.id, change.reason);
+                    }
                 }
                 for n in &review.notes {
                     println!("note: {n}");
@@ -174,12 +191,14 @@ pub fn main(args: &[String]) -> Result<(), String> {
         // doesn't: a pull request's new files.
         Some("check") => {
             let (files, json) = (options.value("--files")?, options.switch("--json"));
+            let releases = options.value("--releases")?;
             let pos = options.positional();
             options.finish()?;
             let [base, head] = pos[..] else {
                 return Err(USAGE.into());
             };
             let files = Path::new(files.ok_or(USAGE)?);
+            let releases = read_releases(releases)?;
             let base_entries = registry::load(Path::new(base)).map_err(lines)?.entries;
             let old: std::collections::HashSet<String> = base_entries
                 .iter()
@@ -195,6 +214,8 @@ pub fn main(args: &[String]) -> Result<(), String> {
                     release: RELEASE,
                     site: SITE,
                     generated: String::new(),
+                    releases: releases.as_deref(),
+                    nightly: None,
                 },
             );
             let mut reports = Vec::new();
@@ -345,6 +366,21 @@ pub fn main(args: &[String]) -> Result<(), String> {
         }
         _ => Err(USAGE.into()),
     }
+}
+
+fn read_json<T: DeserializeOwned>(path: &str) -> Result<T, String> {
+    let text = std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
+    serde_json::from_str(&text).map_err(|e| format!("{path}: {e}"))
+}
+
+fn read_releases(
+    path: Option<&str>,
+) -> Result<Option<Vec<sunrise_mod_package::index::SunriseRelease>>, String> {
+    path.map(|path| {
+        let text = std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
+        registry::parse_releases(&text).map_err(|e| format!("{path}: {e}"))
+    })
+    .transpose()
 }
 
 /// `mods/<id>.toml` of the checkout, which must name a repository.

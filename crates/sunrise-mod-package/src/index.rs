@@ -36,6 +36,9 @@ pub struct Index {
     pub generated: String,
     #[serde(default)]
     pub projects: Vec<Project>,
+    /// Sunrise releases named by the registry, not mod releases.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub releases: Option<Vec<SunriseRelease>>,
     /// Curated lists of existing mods. Collections have no file or version of their own.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub collections: Vec<Collection>,
@@ -45,6 +48,27 @@ pub struct Index {
     /// the index still loads. Never written.
     #[serde(skip)]
     pub left_out: Vec<LeftOut>,
+}
+
+/// The stable Sunrise release a package was made for.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SunriseRelease {
+    pub tag: String,
+    pub commit: String,
+    /// The game version and Sunrise major version (for example, `26.3-0`).
+    pub line: String,
+}
+
+fn stable_tag(tag: &str) -> Option<(&str, u64)> {
+    let (game, release) = tag.split_once('-')?;
+    let version = semver::Version::parse(release).ok()?;
+    (game.contains('.')
+        && game
+            .split('.')
+            .all(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+        && version.pre.is_empty()
+        && version.build.is_empty())
+    .then_some((game, version.major))
 }
 
 /// A project, version, collection or takedown [`Index::parse`] left out, and why.
@@ -163,9 +187,11 @@ pub struct Project {
     /// The GitHub logins allowed to publish its updates.
     #[serde(default)]
     pub owners: Vec<String>,
-    /// An SPDX expression.
+    /// An SPDX expression. May be empty for a Nightly-only project.
+    #[serde(default)]
     pub license: String,
     /// Where its source code is, `https://`.
+    #[serde(default)]
     pub source: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
@@ -182,8 +208,11 @@ pub struct Project {
     /// it. None: unsigned (the SHA-256 still pins the reviewed file).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key: Option<String>,
-    /// Newest first.
+    /// Newest first. May be empty when the project lists Nightly source.
+    #[serde(default)]
     pub versions: Vec<Version>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nightly: Option<Nightly>,
     /// Its files' downloads from their releases, all versions together:
     /// GitHub's counts, added by the registry's publish job (hourly).
     #[serde(default, skip_serializing_if = "is_zero")]
@@ -192,6 +221,31 @@ pub struct Project {
     /// publish job (hourly); 0 when it has none or isn't on GitHub.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub stars: u64,
+}
+
+/// A project's unreviewed Nightly source, optionally with its default branch's metadata.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Nightly {
+    pub repo: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(flatten)]
+    pub metadata: NightlyMetadata,
+}
+
+/// Facts collected from GitHub by the registry workflow, never by the registry tool.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NightlyMetadata {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commit: Option<String>,
+    /// The build pinned by the source manifest, not the mod repository's commit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pin: Option<String>,
+    /// The date of the branch head, RFC 3339.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated: Option<String>,
 }
 
 fn is_zero(n: &u64) -> bool {
@@ -214,6 +268,9 @@ pub struct Version {
     pub capabilities: Capabilities,
     /// The Minecraft version it is for.
     pub game: String,
+    /// The stable Sunrise release tag it was made for, when declared.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sunrise: Option<String>,
     /// A mod's dependencies, sorted by id. None means the index did not list the field.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dependencies: Option<Vec<Dependency>>,
@@ -427,7 +484,7 @@ impl Index {
     }
 
     /// Every rule a reader relies on: unique valid ids, at least one
-    /// version each, plain file names with the kind's extension, `https`
+    /// version or a Nightly source each, plain file names with the kind's extension, `https`
     /// URLs, hex hashes, keys and signatures that decode, and each
     /// modpack's mods present in the index with the same hash. A mod dependency row must be
     /// well-formed, but resolving it is a separate install decision.
@@ -441,7 +498,7 @@ impl Index {
                 return Err(format!("{}: listed twice", p.id));
             }
             check_project(p)?;
-            if p.versions.is_empty() {
+            if p.versions.is_empty() && p.nightly.is_none() {
                 return Err(format!("{}: has no version", p.id));
             }
             for (j, v) in p.versions.iter().enumerate() {
@@ -464,7 +521,11 @@ impl Index {
                 ));
             }
             if let Some(error) = collection
-                .check(|id| self.project(id).map(|p| &p.kind))
+                .check(|id| {
+                    self.project(id)
+                        .filter(|p| !p.versions.is_empty())
+                        .map(|p| &p.kind)
+                })
                 .into_iter()
                 .next()
             {
@@ -477,7 +538,8 @@ impl Index {
     /// What a reader keeps of an index that fails [`Index::check`]: each project, version and
     /// collection or takedown that fails its own rule is left out with its reason ([`Index::left_out`]), and
     /// the rest loads. A modpack version whose mod was left out goes too, and so does a project
-    /// left with no version. An id listed twice leaves out every project with that id.
+    /// left with neither a version nor a Nightly source. An id listed twice leaves out every
+    /// project with that id.
     fn keep_valid(&mut self, local_files: bool) {
         let mut left_out = std::mem::take(&mut self.left_out);
         let mut listed: std::collections::HashMap<String, usize> = Default::default();
@@ -531,11 +593,12 @@ impl Index {
             }
         }
         self.projects.retain(|p| {
-            if p.versions.is_empty() {
+            if p.versions.is_empty() && p.nightly.is_none() {
                 let reason = format!("{}: has no version this Sunrise can use", p.id);
                 left_out.push(LeftOut::project(p, reason));
+                return false;
             }
-            !p.versions.is_empty()
+            true
         });
         let mut collection_counts = std::collections::HashMap::new();
         for collection in &self.collections {
@@ -554,7 +617,12 @@ impl Index {
                 ))
             } else {
                 collection
-                    .check(|id| self.projects.iter().find(|p| p.id == id).map(|p| &p.kind))
+                    .check(|id| {
+                        self.projects
+                            .iter()
+                            .find(|p| p.id == id && !p.versions.is_empty())
+                            .map(|p| &p.kind)
+                    })
                     .into_iter()
                     .next()
             };
@@ -650,10 +718,25 @@ fn check_project(p: &Project) -> Result<(), String> {
     if !valid_id(&p.id) {
         return Err(format!("project id {:?} is not [a-z0-9_]{{1,64}}", p.id));
     }
-    if p.name.trim().is_empty() || p.license.trim().is_empty() {
-        return Err(at("needs a name and a licence".into()));
+    if let Some(nightly) = &p.nightly {
+        registry::check_nightly_source(&nightly.repo, nightly.path.as_deref()).map_err(at)?;
     }
-    https(&p.source).map_err(at)?;
+    if p.nightly.is_some() && p.versions.is_empty() {
+        if let Some(problem) = page::check_title(&p.name, &p.summary).into_iter().next() {
+            return Err(at(problem));
+        }
+        if p.owners.is_empty() {
+            return Err(at("needs at least one owner (a GitHub login)".into()));
+        }
+        if !p.source.is_empty() {
+            https(&p.source).map_err(at)?;
+        }
+    } else {
+        if p.name.trim().is_empty() || p.license.trim().is_empty() {
+            return Err(at("needs a name and a licence".into()));
+        }
+        https(&p.source).map_err(at)?;
+    }
     if let Some(icon) = &p.icon {
         https(icon).map_err(at)?;
     }
@@ -680,6 +763,9 @@ fn check_version(p: &Project, v: &Version, local_files: bool) -> Result<(), Stri
     let at = |e: String| format!("{} {}: {e}", p.id, v.version);
     if v.version.trim().is_empty() {
         return Err(at("empty or repeated version".into()));
+    }
+    if let Some(tag) = &v.sunrise {
+        check_stable_tag(tag, &v.game).map_err(at)?;
     }
     dependencies::check_shape(p, v)?;
     let mut pairs = std::collections::HashSet::new();
@@ -765,6 +851,31 @@ pub fn valid_id(id: &str) -> bool {
         && id
             .bytes()
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+}
+
+fn check_stable_tag(tag: &str, game: &str) -> Result<(), String> {
+    let (tag_game, _) = stable_tag(tag)
+        .ok_or_else(|| format!("sunrise {tag:?}: expected a stable release tag like 26.3-0.1.0"))?;
+    if game != tag_game {
+        return Err(format!(
+            "sunrise {tag:?} is for Minecraft {tag_game}, not {game}"
+        ));
+    }
+    Ok(())
+}
+
+fn find_release<'a>(
+    releases: Option<&'a [SunriseRelease]>,
+    tag: Option<&str>,
+) -> Result<Option<&'a SunriseRelease>, String> {
+    match (releases, tag) {
+        (Some(releases), Some(tag)) => releases
+            .iter()
+            .find(|r| r.tag == tag)
+            .map(Some)
+            .ok_or_else(|| format!("sunrise {tag:?} is not in the supplied Sunrise releases")),
+        _ => Ok(None),
+    }
 }
 
 fn https(url: &str) -> Result<(), String> {
@@ -882,7 +993,11 @@ pub fn check_file(
             project.kind.name()
         ));
     }
-    inspect(&project.kind, path)?.matches(project, version)?;
+    let facts = inspect(&project.kind, path)?;
+    facts.matches(project, version)?;
+    if let Some(release) = find_release(index.releases.as_deref(), version.sunrise.as_deref())? {
+        facts.matches_release(release)?;
+    }
     Ok(trust)
 }
 
@@ -901,6 +1016,8 @@ pub struct Facts {
     pub capabilities: Vec<Capability>,
     /// The Minecraft version, when the file names one (a modpack does).
     pub game: Option<String>,
+    /// A native package's `[native] sunrise` pin.
+    pub sunrise_pin: Option<String>,
     /// The mod's dependencies, sorted by id.
     pub dependencies: Vec<Dependency>,
     pub requires: Vec<Requirement>,
@@ -922,6 +1039,18 @@ pub(crate) fn same_version(kind: &Kind, found: &str, listed: &str) -> bool {
 }
 
 impl Facts {
+    fn matches_release(&self, release: &SunriseRelease) -> Result<(), String> {
+        if let Some(pin) = &self.sunrise_pin
+            && *pin != release.commit
+        {
+            return Err(format!(
+                "its [native] sunrise pin {pin} does not match the commit {} of Sunrise release {}",
+                release.commit, release.tag
+            ));
+        }
+        Ok(())
+    }
+
     /// Whether the file is the one `version` of `project` describes.
     pub fn matches(&self, project: &Project, version: &Version) -> Result<(), String> {
         // Schema 1 predates this field, and a new index omits it when empty. There is no
