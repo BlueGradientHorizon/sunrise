@@ -664,6 +664,24 @@ struct WasmTrade {
     completed: Arc<AtomicUsize>,
 }
 
+impl WasmTrade {
+    fn observe_write<T>(
+        &self,
+        host: &mut dyn ServerHost,
+        call: impl FnOnce(&mut dyn ServerHost) -> T,
+    ) -> T {
+        // Take the observation after the guest returns to native code, but before the action
+        // catches the unwind and rolls the Host write back. Do not consume the refusal here.
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| call(host)));
+        self.wrote
+            .store(host.team("wasm_trade").is_some(), Ordering::Relaxed);
+        match outcome {
+            Ok(value) => value,
+            Err(payload) => std::panic::resume_unwind(payload),
+        }
+    }
+}
+
 #[mod_api::__subscriptions]
 impl Hooks for WasmTrade {
     fn trade_with_villager(
@@ -675,27 +693,25 @@ impl Hooks for WasmTrade {
             !self.fail_stacked,
             "the failed pickup must not fire a trade"
         );
-        self.module.trade_with_villager(host, event);
-        self.wrote
-            .store(host.team("wasm_trade").is_some(), Ordering::Relaxed);
+        self.observe_write(host, |host| self.module.trade_with_villager(host, event));
     }
 
     fn item_stacked_on_other(
         &self,
-        mut host: HostSide,
+        host: HostSide,
         event: &mut ItemStackedOnOtherEvent<'_>,
     ) -> Flow {
         STACKED.set(STACKED.get() + 1);
         if !self.fail_stacked {
             return Flow::Continue;
         }
-        let flow = self.module.item_stacked_on_other(host.reborrow(), event);
         let HostSide::Server(host) = host else {
             unreachable!("LAN merchant is server side")
         };
-        self.wrote
-            .store(host.team("wasm_trade").is_some(), Ordering::Relaxed);
-        flow
+        self.observe_write(host, |host| {
+            self.module
+                .item_stacked_on_other(HostSide::Server(host), event)
+        })
     }
 
     fn player_trade(&self, _: &mut dyn ServerHost, _: &mut PlayerTradeEvent<'_>) {
