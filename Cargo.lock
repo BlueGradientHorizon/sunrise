@@ -4454,6 +4454,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "sunrise-border"
+version = "0.1.0"
+dependencies = [
+ "sunrise-core",
+]
+
+[[package]]
 name = "sunrise-bots"
 version = "0.1.0"
 dependencies = [
@@ -4478,6 +4485,7 @@ dependencies = [
  "fs4",
  "gilrs",
  "glam",
+ "indexmap",
  "libc",
  "log",
  "naga",
@@ -4599,6 +4607,7 @@ dependencies = [
  "sunrise-bench",
  "sunrise-client-core",
  "sunrise-client-input",
+ "sunrise-client-lib",
  "sunrise-client-render",
  "sunrise-command",
  "sunrise-core",
@@ -4662,9 +4671,11 @@ dependencies = [
  "sha2",
  "smallvec",
  "sunrise-assets",
+ "sunrise-border",
  "sunrise-client-core",
  "sunrise-client-input",
  "sunrise-command",
+ "sunrise-connected",
  "sunrise-core",
  "sunrise-engine-slots",
  "sunrise-guest-stack",
@@ -4683,6 +4694,7 @@ dependencies = [
  "sunrise-perf-format",
  "sunrise-polytone",
  "sunrise-protocol",
+ "sunrise-render-core",
  "sunrise-shader-api",
  "sunrise-shaders",
  "sunrise-system",
@@ -4709,6 +4721,10 @@ dependencies = [
  "sunrise-protocol",
  "sunrise-world",
 ]
+
+[[package]]
+name = "sunrise-connected"
+version = "0.1.0"
 
 [[package]]
 name = "sunrise-core"
@@ -4986,6 +5002,7 @@ dependencies = [
  "sunrise-client",
  "sunrise-engine-slots",
  "sunrise-guest-stack",
+ "sunrise-hooks",
  "sunrise-mod-api",
  "sunrise-mod-package",
  "sunrise-mod-points",
@@ -5237,6 +5254,7 @@ dependencies = [
  "log",
  "regex",
  "sunrise-assets",
+ "sunrise-connected",
  "sunrise-system",
  "zip",
 ]
@@ -5387,6 +5405,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "sunrise-render-core"
+version = "0.1.0"
+dependencies = [
+ "glam",
+]
+
+[[package]]
 name = "sunrise-server"
 version = "0.1.0"
 dependencies = [
@@ -5530,6 +5555,8 @@ dependencies = [
  "sunrise-assets",
  "sunrise-core",
  "sunrise-deflate",
+ "sunrise-engine-slots",
+ "sunrise-mod-api-macros",
  "sunrise-threads",
  "xxhash-rust",
 ]

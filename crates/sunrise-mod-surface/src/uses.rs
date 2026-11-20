@@ -142,6 +142,24 @@ pub struct Entry {
     pub version: Option<u64>,
 }
 
+impl Entry {
+    /// An entry that is only an id and its hash.
+    pub fn plain(id: String, hash: String) -> Self {
+        Self {
+            id,
+            hash,
+            impls: Vec::new(),
+            built: None,
+            fields_hash: None,
+            fields: Vec::new(),
+            built_at: None,
+            paths: Vec::new(),
+            reached_from: Vec::new(),
+            version: None,
+        }
+    }
+}
+
 /// An entry and why it is there.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Used {
@@ -2343,6 +2361,17 @@ pub fn item(id: &str) -> Option<(ItemKind, String)> {
 
 /// An item as people read it: its kind and the name a mod writes for it.
 fn describe(id: &str) -> String {
+    // The game's own code a mod declares (`game:<kind>:<path>`), which is no surface item.
+    if let Some((kind, path)) = id
+        .strip_prefix("game:")
+        .and_then(|rest| rest.split_once(':'))
+    {
+        let word = match kind {
+            "fn" | "method" => "function",
+            other => other,
+        };
+        return format!("the game's {word} `{path}`");
+    }
     match item(id) {
         Some((kind, name)) => format!("the {} `{name}`", kind.word()),
         None => format!("`{id}`"),

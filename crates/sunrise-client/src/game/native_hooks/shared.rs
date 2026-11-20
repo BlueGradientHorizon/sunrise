@@ -36,9 +36,6 @@ mod runtime_environment_tests;
 #[path = "shared/screen_position_tests.rs"]
 mod screen_position_tests;
 #[cfg(test)]
-#[path = "shared/screen_slot_tests.rs"]
-mod screen_slot_tests;
-#[cfg(test)]
 #[path = "shared/slot_icon_tests.rs"]
 mod slot_icon_tests;
 #[cfg(test)]
@@ -1891,33 +1888,6 @@ pub(super) const BLOCK_CONTACT_HOOKS: sunrise_client::block_contact::Hooks =
 pub(super) use living_death::hurt_server_args;
 pub(super) use sunrise_client::health::mob_source;
 
-/// Whether `id` is a sound event's id, `namespace:path` as `Identifier`
-/// allows: the namespace of `[a-z0-9_.-]`, the path also with `/`.
-/// Whether a native mod's sound can be sent: a namespaced event, a sound
-/// source, a position inside the world's range and a finite, non-negative
-/// volume and pitch.
-pub(super) fn mod_sound_ok(
-    sound: &str,
-    at: [f64; 3],
-    source: usize,
-    volume: f32,
-    pitch: f32,
-) -> bool {
-    sound_id(sound)
-        && source < sunrise_client::settings::SOUND_SOURCES.len()
-        && level_sound_playable(at, volume, pitch)
-}
-
-/// Whether a sound can be sent: a position inside the world's range and a
-/// finite, non-negative volume and pitch.
-pub(super) fn level_sound_playable(at: [f64; 3], volume: f32, pitch: f32) -> bool {
-    let position_ok = at
-        .into_iter()
-        .all(|v| v.is_finite() && v.abs() <= f64::from(i32::MAX) / 8.0);
-    let gain_ok = volume.is_finite() && volume >= 0.0 && pitch.is_finite() && pitch >= 0.0;
-    position_ok && gain_ok
-}
-
 /// Whether a native mod's particles can be sent. Block particle types need
 /// a known state (`state_ok`), item particles a validated stack; trail and vibration
 /// aren't supported by the network dispatch. A mod's own type must be namespaced.
@@ -1960,19 +1930,6 @@ pub(super) fn mod_particles_ok(
         && options.color.into_iter().all(f32::is_finite)
         && options.to_color.into_iter().all(f32::is_finite)
         && options.scale.is_finite()
-}
-
-pub(super) fn sound_id(id: &str) -> bool {
-    let Some((namespace, path)) = id.split_once(':') else {
-        return false;
-    };
-    let allowed = |c: char, slash: bool| {
-        c.is_ascii_lowercase() || c.is_ascii_digit() || "_.-".contains(c) || (slash && c == '/')
-    };
-    !namespace.is_empty()
-        && !path.is_empty()
-        && namespace.chars().all(|c| allowed(c, false))
-        && path.chars().all(|c| allowed(c, true))
 }
 
 fn dimension_id(dimension: LevelDimension) -> &'static str {
@@ -3235,34 +3192,6 @@ pub(super) fn config_dir(game_dir: &Path) -> std::io::Result<PathBuf> {
     let dir = game_dir.join("config");
     fs::create_dir_all(&dir)?;
     Ok(dir)
-}
-
-/// `params` with each value that isn't finite as 0, so a mod's mistake can't
-/// put a NaN in every pixel of a pack's picture.
-fn finite_params(params: [[f32; 4]; 8]) -> [[f32; 4]; 8] {
-    params.map(|v| v.map(|x| if x.is_finite() { x } else { 0.0 }))
-}
-
-/// Whether `play_local_sound` takes this sound: a sound event's id (`sound_id`, as
-/// `native_play_sound` takes), a finite position, a volume and pitch at or above 0, a repeat
-/// gap that isn't negative, and a start a minute away at most.
-fn local_sound_ok(sound: &SoundPlay, after: u32) -> bool {
-    sound_id(&sound.identifier)
-        && sound
-            .position
-            .iter()
-            .all(|v| v.is_finite() && v.abs() <= 30_000_000.0)
-        && sound.volume.is_finite()
-        && sound.volume >= 0.0
-        && sound.pitch.is_finite()
-        && sound.pitch >= 0.0
-        && sound.delay >= 0
-        && after <= 1200
-}
-
-/// `v` within `lo..=hi`; `lo` when it is not a number.
-fn finite(v: f32, lo: f32, hi: f32) -> f32 {
-    if v.is_finite() { v.clamp(lo, hi) } else { lo }
 }
 
 /// An item entity as `native_item_entities` lists it.

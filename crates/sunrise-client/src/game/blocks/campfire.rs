@@ -8,6 +8,7 @@ use sunrise_client::{
     Result, actions::Action, block_entities::Pos, block_entity_render::vertex_light,
     containers::BlockEntity, items::ItemStack, mesher::Vertex, mobs::Who,
 };
+use sunrise_client_render::block_entity_reach::Reach;
 use sunrise_core::position::BlockPos;
 
 /// The `campfire_cooking` recipe kind (`RecipeType.CAMPFIRE_COOKING`).
@@ -156,7 +157,7 @@ impl Game<'_> {
                 continue;
             }
             let at = glam::DVec3::new(f64::from(key.0), f64::from(key.1), f64::from(key.2));
-            if at.distance_squared(camera) >= 64.0 * 64.0 {
+            if !Reach::Default.should_render([key.0, key.1, key.2], camera, 0) {
                 continue;
             }
             // Direction.get2DDataValue: south 0, west 1, north 2, east 3.

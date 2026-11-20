@@ -784,7 +784,7 @@ impl Game<'_> {
         if offers.get(shop).is_some_and(MerchantOffer::out_of_stock) {
             batch.sprite(
                 atlas,
-                "gui/sprites/container/villager/out_of_stock",
+                "container/villager/out_of_stock",
                 ox + SHIFT + 182.0,
                 oy + 35.0,
             );
@@ -793,7 +793,7 @@ impl Game<'_> {
         if progress && level < 5 {
             batch.sprite(
                 atlas,
-                "gui/sprites/container/villager/experience_bar_background",
+                "container/villager/experience_bar_background",
                 ox + SHIFT + 136.0,
                 oy + 16.0,
             );
@@ -803,7 +803,7 @@ impl Game<'_> {
                 let w = ((mult * (xp - min) as f32).floor()).min(102.0);
                 batch.sprite_part(
                     atlas,
-                    "gui/sprites/container/villager/experience_bar_current",
+                    "container/villager/experience_bar_current",
                     ox + SHIFT + 136.0,
                     oy + 16.0,
                     w / 102.0,
@@ -812,7 +812,7 @@ impl Game<'_> {
                     let fw = (future as f32 * mult).floor().min(102.0 - w);
                     if let Some(mut r) = atlas
                         .sprites
-                        .get("gui/sprites/container/villager/experience_bar_result")
+                        .get("container/villager/experience_bar_result")
                         .copied()
                     {
                         let du = (r.u1 - r.u0) / r.w as f32;
@@ -825,19 +825,14 @@ impl Game<'_> {
         }
         // Scroller (`extractScroller`): its thumb, or the disabled sprite.
         if let Some([x, y, w, h]) = scroller_rect(offers.len(), scroll) {
-            batch.sprite(
-                atlas,
-                "gui/sprites/container/villager/scroller",
-                ox + x,
-                oy + y,
-            );
+            batch.sprite(atlas, "container/villager/scroller", ox + x, oy + y);
             if let Some(cursor) = scroller_cursor(local, [x, y, w, h], dragging) {
                 request_cursor(cursor);
             }
         } else {
             batch.sprite(
                 atlas,
-                "gui/sprites/container/villager/scroller_disabled",
+                "container/villager/scroller_disabled",
                 ox + SHIFT + 94.0,
                 oy + 18.0,
             );
@@ -851,9 +846,9 @@ impl Game<'_> {
                 && local.1 >= 18.0 + 20.0 * row as f32
                 && local.1 < 38.0 + 20.0 * row as f32;
             let sprite = if hover || focused == Some(row) {
-                "gui/sprites/widget/button_highlighted"
+                "widget/button_highlighted"
             } else {
-                "gui/sprites/widget/button"
+                "widget/button"
             };
             batch.sprite_scaled(&self.gui.atlas, sprite, bx, by, 88.0, 20.0, u32::MAX);
             let y = oy + 16.0 + 1.0 + 20.0 * row as f32 + 2.0;
@@ -894,7 +889,7 @@ impl Game<'_> {
                 );
                 batch.sprite(
                     atlas,
-                    "gui/sprites/container/villager/discount_strikethrough",
+                    "container/villager/discount_strikethrough",
                     x + 7.0,
                     y + 12.0,
                 );
@@ -909,7 +904,7 @@ impl Game<'_> {
             };
             batch.sprite(
                 &self.gui.atlas,
-                &format!("gui/sprites/container/villager/{arrow}"),
+                &format!("container/villager/{arrow}"),
                 ox + SHIFT + 60.0,
                 y + 3.0,
             );
