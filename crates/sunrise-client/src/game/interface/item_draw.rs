@@ -170,7 +170,6 @@ impl ItemEnv for Env<'_, '_> {
     }
     fn special_model_parts(
         &self,
-        base: &str,
         model: &RegisteredSpecialModel,
         stack: &StackView,
         ctx: &sunrise_assets::item_model::Context,
@@ -183,7 +182,7 @@ impl ItemEnv for Env<'_, '_> {
             self.game.frame_world_partial_tick() as f32,
         );
         super::native_special_renderers::parts(self.game, model, stack, &context, |parts| {
-            self.game.pack.item_renderer.prepare_parts(base, parts)
+            self.game.pack.item_renderer.prepare_parts(model, parts)
         })
     }
     fn stack_fluid(&self, stack: &StackView) -> Option<&str> {

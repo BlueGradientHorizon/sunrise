@@ -13,6 +13,7 @@ use crate::{
 use serde_json::{Map, Value};
 use std::{
     collections::BTreeMap,
+    ops::ControlFlow,
     sync::{Arc, Mutex},
 };
 
@@ -1220,10 +1221,10 @@ pub trait ItemEnv {
     }
     /// Prepare a registered model's answer for the stack that selected the node, in `ctx`.
     /// `model` is the renderer baked for this node at load. `None` when the renderer refused
-    /// or failed: the layer draws the missing model. Nothing draws for an empty answer.
+    /// or failed: the outermost special layer draws the missing model. Nothing draws for an
+    /// empty answer.
     fn special_model_parts(
         &self,
-        _base: &str,
         _model: &RegisteredSpecialModel,
         _stack: &StackView,
         _ctx: &Context,
@@ -1293,10 +1294,7 @@ pub enum LayerContent {
     /// `MissingItemModel`.
     Missing,
     /// A registered special model; the renderer reads it with the stack that selected this layer.
-    RegisteredSpecial {
-        base: Arc<str>,
-        model: RegisteredSpecialModel,
-    },
+    RegisteredSpecial { model: RegisteredSpecialModel },
     Special {
         base: String,
         model: SpecialModel,
@@ -1416,9 +1414,10 @@ impl ItemModels {
         ctx: &Context,
         env: &dyn ItemEnv,
     ) {
-        if let Some(oversized_in_gui) =
+        if let ControlFlow::Continue(Some(oversized_in_gui)) =
             self.visit_layers(stack, ctx, env, LayerTransform::Model, &mut |layer, _| {
                 out.layers.push(layer);
+                ControlFlow::Continue(())
             })
         {
             out.oversized_in_gui = oversized_in_gui;
@@ -1426,20 +1425,21 @@ impl ItemModels {
     }
     /// Visit each layer in draw order with the stack it resolved from (which may be a bundle's
     /// selected stack). An inherited [`LayerTransform::None`] suppresses the model transform
-    /// for every descendant. Returns the final `oversized_in_gui`, or `None` if the stack has
-    /// no `minecraft:item_model` string. Like [`Self::append_layers`], this does not filter
-    /// empty stacks.
+    /// for every descendant. A visitor break stops traversal, including within composites and
+    /// selected stacks. On completion returns the final `oversized_in_gui`, or `None` if the
+    /// stack has no `minecraft:item_model` string. Like [`Self::append_layers`], this does not
+    /// filter empty stacks.
     pub fn visit_layers(
         &self,
         stack: &StackView,
         ctx: &Context,
         env: &dyn ItemEnv,
         display_transform: LayerTransform,
-        visit: &mut impl FnMut(Layer, &StackView),
-    ) -> Option<bool> {
+        visit: &mut impl FnMut(Layer, &StackView) -> ControlFlow<()>,
+    ) -> ControlFlow<(), Option<bool>> {
         let components = self.components_view(stack);
         let Some(Value::String(model_id)) = components.get("minecraft:item_model") else {
-            return None;
+            return ControlFlow::Continue(None);
         };
         let id = identifier(model_id).unwrap_or_else(|_| model_id.clone());
         let definition = self.definitions.get(&id);
@@ -1455,8 +1455,8 @@ impl ItemModels {
         match definition {
             Some(d) => state.node(&d.model, &Mat4::IDENTITY, display_transform),
             None => state.missing(&Mat4::IDENTITY, display_transform),
-        }
-        Some(state.oversized_in_gui)
+        }?;
+        ControlFlow::Continue(Some(state.oversized_in_gui))
     }
     /// `ItemModelResolver.shouldPlaySwapAnimation`.
     pub fn hand_animation_on_swap(&self, stack: &StackView) -> bool {
@@ -1506,7 +1506,7 @@ fn compose(parent: &Mat4, own: &Option<Mat4>) -> Mat4 {
     own.as_ref().map_or(*parent, |t| parent.mul(t))
 }
 
-impl<F: FnMut(Layer, &StackView)> Resolve<'_, '_, F> {
+impl<F: FnMut(Layer, &StackView) -> ControlFlow<()>> Resolve<'_, '_, F> {
     fn component(&self, key: &str) -> Option<&Value> {
         self.components.get(key)
     }
@@ -1544,21 +1544,26 @@ impl<F: FnMut(Layer, &StackView)> Resolve<'_, '_, F> {
             .and_then(|v| int(v).ok())
             .unwrap_or(1)
     }
-    fn emit(&mut self, layer: Layer) {
-        (self.visit)(layer, self.stack);
+    fn emit(&mut self, layer: Layer) -> ControlFlow<()> {
+        (self.visit)(layer, self.stack)
     }
-    fn missing(&mut self, transform: &Mat4, display_transform: LayerTransform) {
+    fn missing(&mut self, transform: &Mat4, display_transform: LayerTransform) -> ControlFlow<()> {
         self.emit(Layer {
             content: LayerContent::Missing,
             tints: Vec::new(),
             foil: FoilType::None,
             transform: *transform,
             display_transform,
-        });
+        })
     }
-    fn node(&mut self, node: &ItemModelNode, parent: &Mat4, display_transform: LayerTransform) {
+    fn node(
+        &mut self,
+        node: &ItemModelNode,
+        parent: &Mat4,
+        display_transform: LayerTransform,
+    ) -> ControlFlow<()> {
         match node {
-            ItemModelNode::Empty => {}
+            ItemModelNode::Empty => ControlFlow::Continue(()),
             ItemModelNode::Model(leaf) => {
                 let transform = compose(parent, &leaf.transformation);
                 let foil = if self.has_foil() {
@@ -1581,7 +1586,7 @@ impl<F: FnMut(Layer, &StackView)> Resolve<'_, '_, F> {
                     foil,
                     transform,
                     display_transform,
-                });
+                })
             }
             ItemModelNode::Composite {
                 models,
@@ -1589,8 +1594,9 @@ impl<F: FnMut(Layer, &StackView)> Resolve<'_, '_, F> {
             } => {
                 let child = compose(parent, transformation);
                 for m in models {
-                    self.node(m, &child, display_transform);
+                    self.node(m, &child, display_transform)?;
                 }
+                ControlFlow::Continue(())
             }
             ItemModelNode::Condition {
                 transformation,
@@ -1604,7 +1610,7 @@ impl<F: FnMut(Layer, &StackView)> Resolve<'_, '_, F> {
                 } else {
                     on_false
                 };
-                self.node(chosen, &child, display_transform);
+                self.node(chosen, &child, display_transform)
             }
             ItemModelNode::Select {
                 transformation,
@@ -1666,30 +1672,27 @@ impl<F: FnMut(Layer, &StackView)> Resolve<'_, '_, F> {
                     },
                     transform,
                     display_transform,
-                });
+                })
             }
             ItemModelNode::RegisteredSpecial {
-                base,
                 transformation,
                 model,
-            } => {
-                self.emit(Layer {
-                    content: LayerContent::RegisteredSpecial {
-                        base: Arc::clone(base),
-                        model: model.clone(),
-                    },
-                    tints: Vec::new(),
-                    foil: if self.has_foil() {
-                        FoilType::Standard
-                    } else {
-                        FoilType::None
-                    },
-                    transform: compose(parent, transformation),
-                    display_transform,
-                });
-            }
+                ..
+            } => self.emit(Layer {
+                content: LayerContent::RegisteredSpecial {
+                    model: model.clone(),
+                },
+                tints: Vec::new(),
+                foil: if self.has_foil() {
+                    FoilType::Standard
+                } else {
+                    FoilType::None
+                },
+                transform: compose(parent, transformation),
+                display_transform,
+            }),
             ItemModelNode::FluidContainer(container) => {
-                self.fluid_container(container, parent, display_transform);
+                self.fluid_container(container, parent, display_transform)
             }
             ItemModelNode::BundleSelectedItem => {
                 if let Some(selected) = self.bundle_selected()
@@ -1699,10 +1702,11 @@ impl<F: FnMut(Layer, &StackView)> Resolve<'_, '_, F> {
                         self.env,
                         display_transform,
                         self.visit,
-                    )
+                    )?
                 {
                     self.oversized_in_gui = oversized_in_gui;
                 }
+                ControlFlow::Continue(())
             }
             ItemModelNode::Registered {
                 kind,
@@ -1722,9 +1726,10 @@ impl<F: FnMut(Layer, &StackView)> Resolve<'_, '_, F> {
                         } else {
                             choice.transform
                         };
-                        self.node(model, &child, display_transform);
+                        self.node(model, &child, display_transform)?;
                     }
                 }
+                ControlFlow::Continue(())
             }
         }
     }
@@ -1738,13 +1743,13 @@ impl<F: FnMut(Layer, &StackView)> Resolve<'_, '_, F> {
         container: &FluidContainer,
         parent: &Mat4,
         display_transform: LayerTransform,
-    ) {
+    ) -> ControlFlow<()> {
         let textures = &container.textures;
         // `update`: the fluid the stack holds, else the model's own (offsets 0-29).
         let held = self.env.stack_fluid(self.stack);
         let drawn = held.unwrap_or(&container.fluid);
         if let Some(base) = &textures.base {
-            self.sprite_layer(base, None, Vec::new(), parent, display_transform);
+            self.sprite_layer(base, None, Vec::new(), parent, display_transform)?;
         }
         // `fluid != EMPTY ? FluidStateModelSet.get(fluid).stillMaterial() : null` (offsets
         // 129-145): a fluid the host has no model for gets `ModelBakery.MissingModels.fluid`,
@@ -1768,7 +1773,7 @@ impl<F: FnMut(Layer, &StackView)> Resolve<'_, '_, F> {
                 vec![tint],
                 &parent,
                 display_transform,
-            );
+            )?;
         }
         // The cover is always the mask (`bakeItemMaskQuads(baker, 0, cover, drawn, ...)`, offsets
         // 631-639). With `cover_is_mask` it picks out the parts of `base` drawn again over the
@@ -1781,9 +1786,10 @@ impl<F: FnMut(Layer, &StackView)> Resolve<'_, '_, F> {
             };
             if let Some(drawn) = drawn {
                 let parent = parent.mul(&depth_scale(1.004));
-                self.sprite_layer(drawn, Some(cover), Vec::new(), &parent, display_transform);
+                self.sprite_layer(drawn, Some(cover), Vec::new(), &parent, display_transform)?;
             }
         }
+        ControlFlow::Continue(())
     }
     /// One `item/generated` layer, which [`crate::item_bake::bake_sprite_layer`] extrudes.
     fn sprite_layer(
@@ -1793,7 +1799,7 @@ impl<F: FnMut(Layer, &StackView)> Resolve<'_, '_, F> {
         tints: Vec<i32>,
         parent: &Mat4,
         display_transform: LayerTransform,
-    ) {
+    ) -> ControlFlow<()> {
         self.emit(Layer {
             content: LayerContent::Sprite {
                 sprite: sprite.to_owned(),
@@ -1807,7 +1813,7 @@ impl<F: FnMut(Layer, &StackView)> Resolve<'_, '_, F> {
             },
             transform: *parent,
             display_transform,
-        });
+        })
     }
     fn item_in_compass_tag(&self) -> bool {
         // `ItemTags.COMPASSES`: the compass and the recovery compass.

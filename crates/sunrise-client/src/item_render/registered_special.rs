@@ -1,15 +1,15 @@
-//! Baking special model nodes at load and preparing their recipes at draw time.
+//! Baking special model nodes at load and writing their layers atomically at draw time.
 use super::{
-    ItemRenderState, ItemRenderer, LayerGeometry, LayerRender, LayerTints, corners, glam_matrix,
-    sprite_name,
+    ItemRenderer, LayerGeometry, LayerRender, LayerTints, corners, glam_matrix, sprite_name,
 };
-use glam::Vec3;
+use glam::{Mat4, Vec3};
 use mod_api::{
     SpecialModelBakeContext, SpecialModelConfig, SpecialModelFactory, SpecialModelGeometry,
     SpecialModelPolicy, SpecialModelQuad, SpecialModelRenderer,
 };
 use std::{
     collections::BTreeMap,
+    ops::ControlFlow,
     sync::{
         Arc, Mutex, OnceLock, PoisonError,
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -20,11 +20,11 @@ use sunrise_assets::{
     bake::{ModelQuad, facing},
     item_bake::{BakedItemModel, MISSING_SPRITE, SpriteLookup, bake_resolved},
     item_model::{
-        ClientItem, DisplayContext, FoilType, ItemEnv, LayerTransform, LevelState, OwnerState,
-        PreparedParts, RegisteredSpecialModel, SpecialContent, StackView, identifier,
+        ClientItem, Context, DisplayContext, FoilType, ItemEnv, LayerTransform, PreparedParts,
+        RegisteredSpecialModel, SpecialContent, SpecialPart, StackView, identifier,
     },
+    math::Mat4 as AssetMatrix,
     model::Material,
-    resolve::MISSING_MODEL,
 };
 
 pub type SpecialModelFactories = BTreeMap<String, (SpecialModelPolicy, SpecialModelFactory)>;
@@ -51,6 +51,7 @@ pub struct BakedSpecialModel {
     pub kind: Box<str>,
     pub policy: SpecialModelPolicy,
     pub renderer: Arc<dyn SpecialModelRenderer>,
+    base: SpecialLayerBase,
     /// A draw failure disables this type in this resource load only.
     pub failed: Arc<AtomicBool>,
 }
@@ -147,7 +148,7 @@ impl ItemRenderer {
         factories: Option<&SpecialModelFactories>,
     ) -> Result<ClientItem, DecodeError> {
         static NEXT_NODE: AtomicUsize = AtomicUsize::new(0);
-        ClientItem::from_json_with_specials(text, &|kind, _, fields| {
+        ClientItem::from_json_with_specials(text, &|kind, base, fields| {
             let Some((policy, factory)) = factories.and_then(|factories| factories.get(kind))
             else {
                 return Ok(None);
@@ -155,6 +156,8 @@ impl ItemRenderer {
             let renderer = factory
                 .bake(SpecialModelConfig::new(fields), &SpecialBaker(self))
                 .map_err(|error| format!("special model {kind}: {error}"))?;
+            let base = self.bake(base);
+            let particle = Arc::from(sprite_name(&base.particle.sprite));
             let mut failures = self
                 .special_failures
                 .lock()
@@ -165,190 +168,122 @@ impl ItemRenderer {
                 kind: kind.into(),
                 policy: *policy,
                 renderer,
+                base: SpecialLayerBase {
+                    model: base,
+                    particle,
+                },
                 failed,
             }))))
         })
     }
 
-    /// A special model renderer's answer `parts` for a model node of `base`, prepared to draw:
-    /// `base` and each part's model baked, once, when the answer is accepted, so a draw looks
-    /// nothing up by name. A part naming a model the packs don't have refuses them all, and the
-    /// layer draws the missing model.
+    /// Bake an answer's named geometry once. An unavailable model refuses the answer.
     pub fn prepare_parts(
         &self,
-        base: &str,
-        parts: &[sunrise_assets::item_model::SpecialPart],
-    ) -> PreparedParts {
-        let part = |model: &str, tints, pose| {
-            let geometry = self.bake(model);
-            PreparedPart {
-                content: PreparedContent::Model {
-                    extents: self.quad_extents(model, &geometry),
-                    geometry,
-                    tints,
-                },
-                pose,
-            }
-        };
-        let unknown = parts.iter().find_map(|p| match &p.content {
-            SpecialContent::Model(model) if !self.library.resolves(model) => Some(model),
-            _ => None,
-        });
-        let parts = match unknown {
-            Some(unknown) => {
-                warn_unknown_part_once(unknown);
-                vec![part(
-                    MISSING_MODEL,
-                    Arc::default(),
-                    sunrise_assets::math::Mat4::IDENTITY,
-                )]
-            }
-            None => parts
-                .iter()
-                .map(|p| match &p.content {
-                    SpecialContent::Model(model) => part(model, p.tints.as_slice().into(), p.pose),
-                    SpecialContent::Stack { stack, display } => PreparedPart {
-                        content: PreparedContent::Stack {
-                            stack: stack.clone(),
-                            display: *display,
-                        },
-                        pose: p.pose,
+        model: &BakedSpecialModel,
+        parts: &[SpecialPart],
+    ) -> Option<PreparedParts> {
+        let parts = parts
+            .iter()
+            .map(|part| {
+                let content = match &part.content {
+                    SpecialContent::Model(id) => {
+                        if !self.library.resolves(id) {
+                            warn_unknown_part_once(id);
+                            return None;
+                        }
+                        let baked = self.bake(id);
+                        PreparedContent::Model {
+                            geometry: BakedSpecialGeometry {
+                                extents: self.quad_extents(id, &baked),
+                                model: baked,
+                            },
+                            tints: part.tints.as_slice().into(),
+                        }
+                    }
+                    SpecialContent::Stack { stack, display } => PreparedContent::Stack {
+                        stack: stack.clone(),
+                        display: *display,
                     },
+                };
+                Some(PreparedPart {
+                    content,
+                    pose: part.pose,
                 })
-                .collect(),
-        };
-        PreparedParts(Arc::new(PreparedSpecial {
-            base: self.bake(base),
+            })
+            .collect::<Option<Vec<_>>>()?;
+        Some(PreparedParts(Arc::new(PreparedSpecial {
+            base: model.base.clone(),
             parts,
-        }))
+        })))
     }
-    /// The layers of a prepared answer, one for each model part and the
-    /// layers of each stack part's own resolve: the part's own model's quads, posed under the
-    /// layer's transform, with the base model's display transform, particle and GUI light. A
-    /// stack part's layers keep their own foil, tints and display transform, and sit under the
-    /// part's pose. Returns the state's animation flag, or `None` (with `layers` as they were)
-    /// when a stack part is refused: it meets a stack that is already being expanded above it, or
-    /// the draw has expanded [`mod_api::MAX_NESTED_STACK_PARTS`].
+
+    /// Submit the prepared answer through the same destination as ordinary item layers.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn push_parts(
         &self,
         layers: &mut Vec<LayerRender>,
-        display: DisplayContext,
-        (foil, transform, display_transform): (
-            FoilType,
-            sunrise_assets::math::Mat4,
-            LayerTransform,
-        ),
         prepared: &PreparedParts,
-        (outer, owner, level, seed, env): (
-            &StackView,
-            Option<&OwnerState>,
-            Option<&LevelState>,
-            i32,
-            &dyn ItemEnv,
-        ),
-    ) -> Option<bool> {
+        (foil, outer_transform, display_transform): (FoilType, AssetMatrix, LayerTransform),
+        ctx: &Context<'_>,
+        env: &dyn ItemEnv,
+        ancestor: &StackAncestor<'_>,
+        remaining: &mut usize,
+    ) -> ControlFlow<()> {
         let Some(prepared) = prepared.0.downcast_ref::<PreparedSpecial>() else {
-            // Only `prepare_parts` makes them.
-            return Some(false);
+            return ControlFlow::Break(());
         };
-        let base = &prepared.base;
-        let start = layers.len();
-        let mut animated = false;
+        let mut writer = LayerWriter {
+            checkpoint: layers.len(),
+            layers,
+            renderer: self,
+            base: &prepared.base,
+            ctx,
+            env,
+            ancestor,
+            remaining,
+            foil,
+            outer_transform,
+            display_transform,
+            local_pose: AssetMatrix::IDENTITY,
+            refused: false,
+            committed: false,
+        };
         for part in &prepared.parts {
-            // Under `applyTransform`'s half-block offset, so a part's pose is about the model's
-            // corner, as its elements are.
-            let matrix = glam_matrix(&base.layer_matrix(
-                display_transform,
-                display,
-                &transform.mul(&part.pose),
-            ));
+            writer.local_pose = part.pose;
             match &part.content {
-                PreparedContent::Model {
-                    geometry,
-                    extents,
-                    tints,
-                } => layers.push(LayerRender {
-                    geometry: LayerGeometry::Quads(geometry.clone()),
-                    tints: LayerTints::Shared(tints.clone()),
-                    foil,
-                    matrix,
-                    uses_block_light: base.uses_block_light,
-                    particle: Arc::from(sprite_name(&base.particle.sprite)),
-                    extents: extents.clone(),
-                    display,
-                }),
+                PreparedContent::Model { geometry, tints } => {
+                    writer.submit_geometry(geometry, tints)
+                }
+                // The answer is atomic even when the caller does not look at this return value.
                 PreparedContent::Stack { stack, display } => {
-                    let Some(inner) =
-                        self.expand_stack(outer, stack, *display, (owner, level, seed, env))
-                    else {
-                        layers.truncate(start);
-                        return None;
-                    };
-                    animated |= inner.animated;
-                    layers.extend(inner.layers.into_iter().map(|mut layer| {
-                        layer.matrix = matrix * layer.matrix;
-                        layer
-                    }));
+                    let _ = writer.submit_stack(stack, *display);
                 }
             }
         }
-        Some(animated)
+        writer.commit()
     }
-    /// The resolve of the stack part `stack` of an answer drawn for `outer`, or `None` when it is
-    /// refused (see [`Self::push_parts`]).
-    fn expand_stack(
-        &self,
-        outer: &StackView,
-        stack: &StackView,
-        display: DisplayContext,
-        (owner, level, seed, env): (Option<&OwnerState>, Option<&LevelState>, i32, &dyn ItemEnv),
-    ) -> Option<ItemRenderState> {
-        let pushed = NESTING.with_borrow_mut(|n| {
-            if n.expanded >= mod_api::MAX_NESTED_STACK_PARTS
-                || n.chain.contains(stack)
-                || (n.chain.is_empty() && outer == stack)
-            {
-                return None;
-            }
-            n.expanded += 1;
-            let root = n.chain.is_empty();
-            if root {
-                n.chain.push(outer.clone());
-            }
-            n.chain.push(stack.clone());
-            Some(root)
-        });
-        let Some(root) = pushed else {
-            warn_refused_nesting_once(&stack.item);
-            return None;
-        };
-        let state = self.resolve_with_rule(stack, display, owner, level, seed, env, None);
-        let refused = NESTING.with_borrow_mut(|n| {
-            n.chain.pop();
-            if root {
-                n.chain.pop();
-            }
-            n.refused
-        });
-        (!refused).then_some(state)
-    }
+}
+
+/// The base draw properties shared by all answers for one baked node.
+#[derive(Clone)]
+struct SpecialLayerBase {
+    model: Arc<BakedItemModel>,
+    particle: Arc<str>,
 }
 
 /// A special model renderer's answer as [`ItemRenderer::prepare_parts`] baked it.
 struct PreparedSpecial {
-    /// The model node's `base`: its display transforms, particle and GUI light.
-    base: Arc<BakedItemModel>,
+    base: SpecialLayerBase,
     parts: Vec<PreparedPart>,
 }
 struct PreparedPart {
     content: PreparedContent,
-    pose: sunrise_assets::math::Mat4,
+    pose: AssetMatrix,
 }
 enum PreparedContent {
-    /// A model, baked once.
     Model {
-        geometry: Arc<BakedItemModel>,
-        extents: Arc<Vec<Vec3>>,
+        geometry: BakedSpecialGeometry,
         tints: Arc<[i32]>,
     },
     /// A stack, resolved when the item is drawn, so what it draws moves with its own models.
@@ -357,51 +292,124 @@ enum PreparedContent {
         display: DisplayContext,
     },
 }
-/// The stacks being expanded by this thread's draw, outermost first, and how many stack parts
-/// the draw has expanded: a stack met again while it is expanding is a cycle, and a draw expands
-/// at most [`mod_api::MAX_NESTED_STACK_PARTS`], both refusing the whole answer.
-#[derive(Default)]
-pub(super) struct Nesting {
-    chain: Vec<StackView>,
-    expanded: usize,
-    /// Resolves in progress on this thread; the budget starts again when the outermost ends.
-    pub(super) depth: u32,
-    /// Set by a nested resolve that met a refused stack part, until the outermost answer
-    /// takes it: the refusal reaches every answer above it.
-    pub(super) refused: bool,
+
+/// The active stack path, borrowed from the resolvers and their callers, with no stack copies.
+pub(super) struct StackAncestor<'a> {
+    pub(super) stack: &'a StackView,
+    pub(super) parent: Option<&'a StackAncestor<'a>>,
 }
-thread_local! {
-    pub(super) static NESTING: std::cell::RefCell<Nesting> = std::cell::RefCell::default();
+
+/// A single special layer's writes directly into the item state. A refusal is sticky, and
+/// dropping without committing rolls the whole layer back, including on an unwind.
+struct LayerWriter<'out, 'draw> {
+    layers: &'out mut Vec<LayerRender>,
+    checkpoint: usize,
+    renderer: &'draw ItemRenderer,
+    base: &'draw SpecialLayerBase,
+    ctx: &'draw Context<'draw>,
+    env: &'draw dyn ItemEnv,
+    ancestor: &'draw StackAncestor<'draw>,
+    remaining: &'out mut usize,
+    foil: FoilType,
+    outer_transform: AssetMatrix,
+    display_transform: LayerTransform,
+    local_pose: AssetMatrix,
+    refused: bool,
+    committed: bool,
 }
-/// Counts a resolve of this thread in progress; the budget resets when the last one ends.
-pub(super) struct ResolveDepth;
-impl ResolveDepth {
-    pub(super) fn enter() -> Self {
-        NESTING.with_borrow_mut(|n| n.depth += 1);
-        Self
+
+impl LayerWriter<'_, '_> {
+    fn matrix(&self) -> Mat4 {
+        // Under the display transform's half-block offset: poses are about the model's corner.
+        glam_matrix(&self.base.model.layer_matrix(
+            self.display_transform,
+            self.ctx.display,
+            &self.outer_transform.mul(&self.local_pose),
+        ))
+    }
+
+    fn submit_geometry(&mut self, geometry: &BakedSpecialGeometry, tints: &Arc<[i32]>) {
+        if !self.refused {
+            let matrix = self.matrix();
+            self.layers.push(LayerRender {
+                geometry: LayerGeometry::Quads(geometry.model.clone()),
+                tints: LayerTints::Shared(tints.clone()),
+                foil: self.foil,
+                matrix,
+                uses_block_light: self.base.model.uses_block_light,
+                particle: self.base.particle.clone(),
+                extents: geometry.extents.clone(),
+                display: self.ctx.display,
+            });
+        }
+    }
+
+    fn submit_stack(&mut self, stack: &StackView, display: DisplayContext) -> ControlFlow<()> {
+        if self.refused {
+            return ControlFlow::Break(());
+        }
+        if *self.remaining == 0
+            || std::iter::successors(Some(self.ancestor), |entry| entry.parent)
+                .any(|entry| entry.stack == stack)
+        {
+            warn_refused_nesting_once(&stack.item);
+            self.refused = true;
+            return ControlFlow::Break(());
+        }
+        *self.remaining -= 1;
+        let ancestor = StackAncestor {
+            stack,
+            parent: Some(self.ancestor),
+        };
+        let ctx = Context {
+            display,
+            ..*self.ctx
+        };
+        let start = self.layers.len();
+        if self
+            .renderer
+            .append_render_layers(self.layers, &ancestor, &ctx, self.env, None, self.remaining)
+            .is_break()
+        {
+            self.refused = true;
+            return ControlFlow::Break(());
+        }
+        // Compose after resolving the child: preserve parent * (child * grandchild) order
+        // as well as the child's own display, foil and tint state.
+        let matrix = self.matrix();
+        for layer in &mut self.layers[start..] {
+            layer.matrix = matrix * layer.matrix;
+        }
+        ControlFlow::Continue(())
+    }
+
+    fn commit(mut self) -> ControlFlow<()> {
+        if self.refused {
+            return ControlFlow::Break(());
+        }
+        self.committed = true;
+        ControlFlow::Continue(())
     }
 }
-impl Drop for ResolveDepth {
+
+impl Drop for LayerWriter<'_, '_> {
     fn drop(&mut self) {
-        NESTING.with_borrow_mut(|n| {
-            n.depth -= 1;
-            if n.depth == 0 {
-                n.expanded = 0;
-            }
-        });
+        if !self.committed {
+            self.layers.truncate(self.checkpoint);
+        }
     }
 }
+
 /// Says once per model id that a mod's special model renderer drew a model the packs don't have.
 fn warn_unknown_part_once(model: &str) {
     static SEEN: Mutex<std::collections::BTreeSet<String>> =
         Mutex::new(std::collections::BTreeSet::new());
-    if SEEN
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .insert(model.to_owned())
-    {
+    let mut seen = SEEN.lock().unwrap_or_else(PoisonError::into_inner);
+    if !seen.contains(model) {
+        seen.insert(model.to_owned());
+        drop(seen);
         log::warn!(
-            "Sunrise: a special model renderer drew the model {model}, which no pack has; the item draws the missing model"
+            "Sunrise: a special model renderer drew the model {model}, which no pack has; the special layer draws the missing model"
         );
     }
 }
@@ -410,13 +418,12 @@ fn warn_unknown_part_once(model: &str) {
 fn warn_refused_nesting_once(item: &str) {
     static SEEN: Mutex<std::collections::BTreeSet<String>> =
         Mutex::new(std::collections::BTreeSet::new());
-    if SEEN
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .insert(item.to_owned())
-    {
+    let mut seen = SEEN.lock().unwrap_or_else(PoisonError::into_inner);
+    if !seen.contains(item) {
+        seen.insert(item.to_owned());
+        drop(seen);
         log::warn!(
-            "Sunrise: a special model renderer's stack part of {item} is a cycle or past the nesting budget; the item draws the missing model"
+            "Sunrise: a special model renderer's stack part of {item} is a cycle or past the nesting budget; the special layer draws the missing model"
         );
     }
 }

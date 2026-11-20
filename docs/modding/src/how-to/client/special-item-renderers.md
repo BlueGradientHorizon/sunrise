@@ -124,8 +124,9 @@ food stack and the resource pack decides how it looks.
 The inner item resolves every time the outer one is drawn, so its own `Frame` renderers and
 animations keep moving. A stack that is already being expanded above itself (a cycle), more than
 `MAX_NESTED_STACK_PARTS` (64) stack parts in one draw of an item, or a stack the game can't read,
-refuses the answer whole, as the other limits do: the item draws the missing model and the log
-names the item.
+refuses the answer whole. Any refusal in a nested special renderer also discards every part
+of the enclosing special layer, including parts already drawn. Only that outermost layer draws
+the missing model; unrelated layers of a composite item still draw normally.
 
 ## Registrations and refusals
 

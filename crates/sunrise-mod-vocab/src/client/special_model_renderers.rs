@@ -296,9 +296,11 @@ pub trait SpecialModelRenderer: Send + Sync + 'static {
     /// resource models, so geometry stays in the packs.
     ///
     /// An `Err`, a panic, more than [`MAX_SPECIAL_MODEL_PARTS`] parts or a non-finite
-    /// transform refuses the entire answer: the special model draws the missing model, the error is logged once with the type,
-    /// and renderers of this type are asked no more in this resource load. A part naming a
-    /// model no pack has refuses the answer too, logged once for the model.
+    /// transform refuses the entire answer. The error is logged once with the type, and
+    /// renderers of this type are asked no more in this resource load. A part naming a model
+    /// no pack has refuses the answer too, logged once for the model. A refusal in a nested
+    /// stack also discards all parts of the enclosing special layer. Only that outermost
+    /// layer draws the missing model; unrelated layers of the item are drawn as usual.
     fn extract(
         &self,
         host: &dyn ClientHost,

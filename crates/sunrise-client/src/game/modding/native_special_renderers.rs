@@ -54,7 +54,7 @@ pub(in crate::game) fn parts(
     model: &BakedSpecialModel,
     stack: &StackView,
     context: &SpecialModelContext,
-    prepare: impl FnOnce(&[SpecialPart]) -> PreparedParts,
+    prepare: impl FnOnce(&[SpecialPart]) -> Option<PreparedParts>,
 ) -> Option<PreparedParts> {
     let kind = &model.kind;
     if model.failed.load(Ordering::Relaxed) {
@@ -74,7 +74,7 @@ pub(in crate::game) fn parts(
         let parts = guarded(kind, &model.failed, || {
             model.renderer.extract(host, &api_stack, context)
         })?;
-        Some(prepare(&parts))
+        prepare(&parts)
     })
 }
 

@@ -30,10 +30,11 @@ use glam::{Mat3, Mat4, Vec3};
 pub use registered_special::{
     BakedSpecialGeometry, BakedSpecialModel, SpecialModelFactories, install_special_model_factories,
 };
-use registered_special::{FACTORIES, NESTING, ResolveDepth};
+use registered_special::{FACTORIES, StackAncestor};
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, HashMap},
+    ops::ControlFlow,
     panic::{AssertUnwindSafe, catch_unwind},
     sync::{Arc, Mutex, atomic::AtomicBool},
 };
@@ -243,6 +244,13 @@ pub struct ItemRenderState {
     /// A third-person held-item submission's opaque ARGB multiplier, never cached with the model.
     held_tint: Option<u32>,
 }
+
+#[derive(Default)]
+struct RenderLayerFlags {
+    oversized_in_gui: bool,
+    animated: bool,
+}
+
 impl ItemRenderState {
     /// Apply a held-item Part's RGB answer to this draw only, preserving model alpha.
     pub fn set_held_tint(&mut self, rgb: u32) {
@@ -1021,19 +1029,57 @@ impl ItemRenderer {
             level,
             seed,
         };
-        let _depth = ResolveDepth::enter();
-        let mut animated = false;
         let mut layers = Vec::new();
-        let mut refused = false;
+        let mut remaining = mod_api::MAX_NESTED_STACK_PARTS;
+        let flags = self
+            .append_render_layers(
+                &mut layers,
+                &StackAncestor {
+                    stack,
+                    parent: None,
+                },
+                &ctx,
+                env,
+                rule,
+                &mut remaining,
+            )
+            .continue_value()
+            .unwrap_or_default();
+        ItemRenderState {
+            display,
+            layers,
+            oversized_in_gui: flags.oversized_in_gui,
+            animated: flags.animated,
+            cit_glint: None,
+            hdr_tier: 0,
+            hdr_light: 0,
+            held_tint: None,
+        }
+    }
+
+    /// Append into the top-level state even when resolving a nested stack. Nested refusals
+    /// unwind to the outer special layer's checkpoint; only that layer emits a missing model.
+    fn append_render_layers(
+        &self,
+        layers: &mut Vec<LayerRender>,
+        ancestor: &StackAncestor<'_>,
+        ctx: &Context<'_>,
+        env: &dyn ItemEnv,
+        rule: Option<usize>,
+        remaining: &mut usize,
+    ) -> ControlFlow<(), RenderLayerFlags> {
+        let stack = ancestor.stack;
+        let mut flags = RenderLayerFlags::default();
+        if stack.count <= 0 || stack.item == "minecraft:air" {
+            return ControlFlow::Continue(flags);
+        }
+        let display = ctx.display;
         let missing = || {
             let baked = self.bake(MISSING_MODEL);
             let extents = self.quad_extents(MISSING_MODEL, &baked);
             (LayerGeometry::Quads(baked.clone()), baked, extents)
         };
         let mut visit = |layer: Layer, layer_stack: &StackView| {
-            if refused {
-                return;
-            }
             let (geometry, baked, extents) = match layer.content {
                 LayerContent::Model { model } => {
                     let (baked, extents) = rule
@@ -1063,40 +1109,42 @@ impl ItemRenderer {
                     let extents = self.special_extents(&model);
                     (LayerGeometry::Special { model, argument }, baked, extents)
                 }
-                LayerContent::RegisteredSpecial { base, model } => {
-                    if let Some(prepared) =
-                        env.special_model_parts(&base, &model, layer_stack, &ctx)
-                    {
+                LayerContent::RegisteredSpecial { model } => {
+                    if let Some(prepared) = env.special_model_parts(&model, layer_stack, ctx) {
                         // What a mod drew may change with every draw, so no GUI item is kept.
-                        animated = true;
+                        flags.animated = true;
+                        // Vanilla's bundle model can produce a layer for its selected stack.
+                        let selected = StackAncestor {
+                            stack: layer_stack,
+                            parent: Some(ancestor),
+                        };
+                        let source = if std::ptr::eq(stack, layer_stack) {
+                            ancestor
+                        } else {
+                            &selected
+                        };
                         if self
                             .push_parts(
-                                &mut layers,
-                                display,
-                                (layer.foil, layer.transform, layer.display_transform),
+                                layers,
                                 &prepared,
-                                (layer_stack, owner, level, seed, env),
+                                (layer.foil, layer.transform, layer.display_transform),
+                                ctx,
+                                env,
+                                source,
+                                remaining,
                             )
-                            .is_some()
+                            .is_continue()
                         {
-                            return;
+                            return ControlFlow::Continue(());
                         }
-                        // A refused stack part refuses the answer whole, and every answer that
-                        // nests it: only the outermost draws the missing model in its place.
-                        refused = NESTING.with_borrow_mut(|n| {
-                            n.refused = n.depth > 1;
-                            n.refused
-                        });
-                        if refused {
-                            return;
-                        }
+                    }
+                    if ancestor.parent.is_some() {
+                        return ControlFlow::Break(());
                     }
                     missing()
                 }
             };
-            if layer.foil != FoilType::None {
-                animated = true;
-            }
+            flags.animated |= layer.foil != FoilType::None;
             layers.push(LayerRender {
                 geometry,
                 tints: LayerTints::Owned(layer.tints),
@@ -1111,23 +1159,13 @@ impl ItemRenderer {
                 extents,
                 display,
             });
+            ControlFlow::Continue(())
         };
-        let oversized_in_gui = stack.count > 0
-            && stack.item != "minecraft:air"
-            && self
-                .models
-                .visit_layers(stack, &ctx, env, LayerTransform::Model, &mut visit)
-                .unwrap_or_default();
-        ItemRenderState {
-            display,
-            layers,
-            oversized_in_gui,
-            animated,
-            cit_glint: None,
-            hdr_tier: 0,
-            hdr_light: 0,
-            held_tint: None,
-        }
+        flags.oversized_in_gui = self
+            .models
+            .visit_layers(stack, ctx, env, LayerTransform::Model, &mut visit)?
+            .unwrap_or_default();
+        ControlFlow::Continue(flags)
     }
     /// `GrassColor.get` over the loaded colormap.
     pub fn grass_color(&self, temperature: f64, downfall: f64) -> i32 {

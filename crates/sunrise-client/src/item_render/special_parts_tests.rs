@@ -50,12 +50,16 @@ impl SpecialModelRenderer for Pan {
             6 | 7 => {
                 vec![a().with_tints(vec![[WHITE, GREY][input_stack.count() as usize - 6] as u32])]
             }
-            // The plain cube item nested beside B; then the pan itself, a cycle.
-            8 => vec![stack_part(1, 1).translated([0.25, 0.0, 0.0]), b()],
+            // The tinted, foiled cube nested beside B; then the pan itself, a cycle.
+            8 => vec![stack_part(2, 1).translated([0.25, 0.0, 0.0]), b()],
             9 => vec![stack_part(0, 9).translated([0.25, 0.0, 0.0])],
             // A to B to A with a valid sibling model: the cycle refuses every answer above it.
             10 => vec![b(), stack_part(0, 11)],
             11 => vec![a(), stack_part(0, 10)],
+            // Both layers submit quads before the cycle, with more after it in the recipe.
+            12 => vec![b(), stack_part(0, 13), b()],
+            13 => vec![a(), stack_part(3, 12), a()],
+            14 => vec![b(), stack_part(0, 4)],
             // 64 cubes, 65, and the same below a first level: draws expand 1 + 64 and 1 + 63.
             20 | 21 => (0..44 + input_stack.count())
                 .map(|_| stack_part(1, 1))
@@ -74,13 +78,12 @@ struct PanEnv<'r>(&'r ItemRenderer, FakeHost);
 impl ItemEnv for PanEnv<'_> {
     fn special_model_parts(
         &self,
-        base: &str,
         model: &RegisteredSpecialModel,
         input_stack: &StackView,
         _: &Context,
     ) -> Option<PreparedParts> {
         let model = model.0.downcast_ref::<BakedSpecialModel>().unwrap();
-        assert_eq!((model.kind.as_ref(), base), ("spt:pan", "spt:item/base"));
+        assert_eq!(model.kind.as_ref(), "spt:pan");
         let api_stack = ItemStack::new(item_key(0), input_stack.count as u32).unwrap();
         let parts: Vec<_> = model
             .renderer
@@ -94,17 +97,26 @@ impl ItemEnv for PanEnv<'_> {
                     SpecialPartContent::Stack {
                         stack: inner,
                         display: ItemDisplayContext::Gui,
-                    } => SpecialContent::Stack {
-                        stack: stack(
-                            if inner.item() == item_key(0) {
-                                "spt:pan"
-                            } else {
-                                "spt:cube"
-                            },
-                            inner.count() as i32,
-                        ),
-                        display: DisplayContext::Gui,
-                    },
+                    } => {
+                        let (item, glint) = match inner.item() {
+                            key if key == item_key(0) => ("spt:pan", false),
+                            key if key == item_key(1) => ("spt:cube", false),
+                            key if key == item_key(2) => ("spt:grey_cube", true),
+                            key if key == item_key(3) => ("spt:composite", false),
+                            _ => unreachable!("the pan fixture only gives known items"),
+                        };
+                        let mut stack = stack(item, inner.count() as i32);
+                        if glint {
+                            stack.patch.insert(
+                                "minecraft:enchantment_glint_override".into(),
+                                Some(serde_json::json!(true)),
+                            );
+                        }
+                        SpecialContent::Stack {
+                            stack,
+                            display: DisplayContext::Gui,
+                        }
+                    }
                     _ => unreachable!("the pan fixture only gives known recipes"),
                 };
                 SpecialPart {
@@ -116,7 +128,7 @@ impl ItemEnv for PanEnv<'_> {
                 }
             })
             .collect();
-        Some(self.0.prepare_parts(base, &parts))
+        self.0.prepare_parts(model, &parts)
     }
 }
 
@@ -466,6 +478,17 @@ fn a_registered_special_model_draws_its_renderers_resource_models() {
         "assets/spt/items/bundle.json",
         r#"{"model":{"type":"bundle/selected_item"}}"#,
     );
+    write(
+        &root,
+        "assets/spt/items/composite.json",
+        &format!(
+            r#"{{"model":{{"type":"composite","models":[
+            {{"type":"model","model":"spt:item/a","tints":[{{"type":"constant","value":{GREY}}}]}},
+            {{"type":"special","base":"spt:item/base","model":{{"type":"spt:pan","handle":2}}}},
+            {{"type":"model","model":"spt:item/b","tints":[{{"type":"constant","value":{WHITE}}}]}}
+        ]}}}}"#
+        ),
+    );
     let factories = pan_factories(|_| {});
     let renderer = renderer(&root, 2, 2, &factories);
     let env = PanEnv(&renderer, FakeHost::new());
@@ -485,6 +508,10 @@ fn a_registered_special_model_draws_its_renderers_resource_models() {
                 .all(|q| q.color == 0xFFCC_2211)
         );
         assert_eq!(two.layers[0].particle.as_ref(), "spt:item/flour");
+        assert!(Arc::ptr_eq(
+            &one.layers[0].particle,
+            &two.layers[0].particle
+        ));
         assert!(!two.uses_block_light());
         assert!(
             two.animated,
@@ -525,25 +552,42 @@ fn a_registered_special_model_draws_its_renderers_resource_models() {
     // A part naming a model no pack has, or a refused draw, draws the missing model; a plain
     // cube item still draws its 6 quads.
     let missing = renderer.bake(MISSING_MODEL);
-    let is_missing = |state: &ItemRenderState| {
-        matches!(&state.layers[..], [layer]
-            if matches!(&layer.geometry, LayerGeometry::Quads(baked) if Arc::ptr_eq(baked, &missing)))
-    };
+    let is_missing_layer = |layer: &LayerRender| matches!(&layer.geometry, LayerGeometry::Quads(baked) if Arc::ptr_eq(baked, &missing));
+    let is_missing = |state: &ItemRenderState| matches!(state.layers.as_slice(), [layer] if is_missing_layer(layer));
     assert!(is_missing(&resolve("spt:pan", 3, DisplayContext::Gui)));
     assert!(is_missing(&resolve("spt:pan", 4, DisplayContext::Gui)));
     // A stack part draws the inner item through the resolver, under its own display context and
-    // tints, not the part's: the cube's 6 white quads beside B's 12 tinted ones. A stack part
-    // that names the stack being drawn is a cycle, refused whole.
+    // tints and foil, not the part's: the cube's six glinting grey quads beside B's twelve
+    // tinted ones. A stack part that names the stack being drawn is a cycle, refused whole.
     let nested = resolve("spt:pan", 8, DisplayContext::Fixed);
-    let colours: Vec<u32> = quads(&renderer, &nested).iter().map(|q| q.color).collect();
-    assert_eq!(colours.iter().filter(|&&c| c == 0xFFFF_FFFF).count(), 6);
-    assert_eq!(colours.iter().filter(|&&c| c == 0xFFCC_2211).count(), 12);
+    let draws: Vec<_> = quads(&renderer, &nested)
+        .iter()
+        .map(|q| (q.color, q.foil))
+        .collect();
+    assert_eq!(nested.layers[0].display, DisplayContext::Gui);
+    assert_eq!(nested.layers[1].display, DisplayContext::Fixed);
+    assert_eq!(draws[..6], [(GREY as u32, Foil::Standard); 6]);
+    assert_eq!(draws[6..], [(0xFFCC_2211, Foil::None); 12]);
     assert!(nested.animated);
     assert!(is_missing(&resolve("spt:pan", 9, DisplayContext::Gui)));
     // A refusal below a first level refuses the answers above it whole, their valid sibling
     // models too; the expansion budget is 64 for the whole draw, below the first level as well.
     assert!(is_missing(&resolve("spt:pan", 10, DisplayContext::Gui)));
     assert!(is_missing(&resolve("spt:pan", 11, DisplayContext::Gui)));
+    let composite = resolve("spt:composite", 12, DisplayContext::Gui);
+    let [before, replacement, after] = composite.layers.as_slice() else {
+        panic!("the failed parent and child must leave just one replacement between siblings");
+    };
+    assert!(is_missing_layer(replacement));
+    assert!(matches!(&before.geometry, LayerGeometry::Quads(baked) if baked.quads.len() == 6));
+    assert!(matches!(&after.geometry, LayerGeometry::Quads(baked) if baked.quads.len() == 12));
+    assert_eq!(before.tints.as_slice(), &[GREY]);
+    assert_eq!(after.tints.as_slice(), &[WHITE]);
+    assert_eq!(
+        quads(&renderer, &resolve("spt:pan", 1, DisplayContext::Gui)).len(),
+        6
+    );
+    assert!(is_missing(&resolve("spt:pan", 14, DisplayContext::Gui)));
     let quads_of = |count| quads(&renderer, &resolve("spt:pan", count, DisplayContext::Gui)).len();
     assert_eq!(quads_of(20), 64 * 6);
     assert!(is_missing(&resolve("spt:pan", 21, DisplayContext::Gui)));

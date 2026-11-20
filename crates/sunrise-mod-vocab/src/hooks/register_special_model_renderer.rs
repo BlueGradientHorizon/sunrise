@@ -93,9 +93,10 @@ rejects the enclosing item definition, never falling back to a lower pack. A par
 inner item's own models, tints and foil under the display context you name; a cycle or more than
 `MAX_NESTED_STACK_PARTS` (64) stack parts in one draw refuses the answer. A renderer that returns an `Err`,
 panics, returns more than `MAX_SPECIAL_MODEL_PARTS` (256) parts or returns a non-finite transform
-is logged once with its type and asked no more until resources reload. Its special models draw the
-missing model until then. A part naming a model no pack has makes that
-answer draw the missing model, logged once for the model."#]
+is logged once with its type and asked no more until resources reload. A part naming a model no
+pack has refuses the answer, logged once for the model. A nested refusal discards the enclosing
+special layer's parts too. The outermost special layer draws one missing model; unrelated item
+layers are unchanged."#]
     #[hook(
         side = "client",
         contract = "listen",
