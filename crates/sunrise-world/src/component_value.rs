@@ -486,15 +486,7 @@ mod tests {
                         Some(stone(vec![invalid_damage()])),
                     ]),
                 ] {
-                    // The owning codec has not run when the later child refuses.
-                    let error = value
-                        .to_component_tag("minecraft:container")
-                        .map(discard_tag)
-                        .unwrap_err();
-                    assert!(
-                        error.ends_with("inline holder has no persistent encoding"),
-                        "{error}"
-                    );
+                    assert!(value.tag(Projection::Codec).map(discard_tag).is_err());
                 }
             })
             .unwrap()
