@@ -15,7 +15,9 @@ const CASE: &str = "SUNRISE_TEXT_EXPRESSION_CASE";
 /// A pack whose text covers the whole frame with one triangle of each glyph's (a vertex's index
 /// picks its corner) in red: the GUI text's `Gui` (0.1 + 0.1: 51 in a byte), the world text's
 /// `World` (0.3 * 2: 153), the see-through text's `Fade` (0.25 * 4: 255), each read by that
-/// program only, by the shader's own defines, beside a full green that shows the text drew.
+/// program only, by the shader's own defines, beside a full green that shows the text drew. The
+/// world text's also writes vanilla's `ColorModulator` in blue: white (255) in the blocks the
+/// frame shares with the GPU particles.
 fn pack() -> ResourceSource {
     let vsh = "#version 330\nlayout(location = 0) in vec3 Position;\nvoid main() {\n    \
                int corner = gl_VertexID % 3;\n    \
@@ -23,9 +25,12 @@ fn pack() -> ResourceSource {
                gl_Position = vec4(uv * 2.0 - 1.0 + 0.0 * Position.xy, 0.5, 1.0);\n}\n";
     let fsh = "#version 330\n#ifdef IS_GUI\nlayout(std140) uniform Gui {\n    float value;\n};\n\
                #else\n#ifdef IS_SEE_THROUGH\nlayout(std140) uniform Fade {\n    float value;\n};\n\
-               #else\nlayout(std140) uniform World {\n    float value;\n};\n#endif\n#endif\n\
+               #else\nlayout(std140) uniform World {\n    float value;\n};\n\
+               layout(std140) uniform DynamicTransforms {\n    mat4 ModelViewMat;\n    \
+               mat4 TextureMat;\n    vec4 ColorModulator;\n    vec3 ModelOffset;\n};\n\
+               #define BLUE ColorModulator.b\n#endif\n#endif\n#ifndef BLUE\n#define BLUE 0.0\n#endif\n\
                layout(location = 0) out vec4 fragColor;\n\
-               void main() {\n    fragColor = vec4(value, 1.0, 0.0, 1.0);\n}\n";
+               void main() {\n    fragColor = vec4(value, 1.0, BLUE, 1.0);\n}\n";
     let files = [
         ("assets/minecraft/shaders/core/text.vsh", vsh),
         ("assets/minecraft/shaders/core/text.fsh", fsh),
@@ -94,7 +99,7 @@ fn a_packs_text_draws_its_expression_uniforms() {
         game.ui.hide_gui = true;
         assert_eq!(
             corner(game, frame),
-            [153, 255, 0],
+            [153, 255, 255],
             "fullbright {fullbright}"
         );
         game.ui.hide_gui = false;
