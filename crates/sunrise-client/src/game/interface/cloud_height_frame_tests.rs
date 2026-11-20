@@ -1,8 +1,8 @@
 //! The cloud layer's height through a game's frames: `EnvironmentAttributes.CLOUD_HEIGHT` as the
-//! server's synchronized dimension type sets it (`minecraft:visual/cloud_height`), probed at the camera each frame as
-//! vanilla's `LevelExtractor` does, places the layer the renderer draws. A pack's `core/clouds`
-//! shows it: its `CloudInfo.CloudOffset.y` is the layer's bottom less the camera's height. Each
-//! case runs in a process of its own (one event loop, its own resources).
+//! server's synchronized dimension type sets it (`minecraft:visual/cloud_height`), probed at the
+//! camera each frame as vanilla's `LevelExtractor` does, places the layer the renderer draws. A
+//! pack's `core/clouds` shows it: its `CloudInfo.CloudOffset.y` is the layer's bottom less the
+//! camera's height. Each case runs in a process of its own (one event loop, its own resources).
 use super::native_entity_refs::tests::{run_fresh_cases, with_client_game};
 use crate::game::native_hooks::particle_count_tests::frame_scene;
 use sunrise_assets::resource_source::{Resource, ResourceSource};

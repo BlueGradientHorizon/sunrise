@@ -244,8 +244,8 @@ fn a_joined_levels_synced_cloud_height_reaches_the_frame_under_its_own_pack_laye
         assert_eq!(drawn(game).cloud_height, 430.0);
         assert_eq!(gameplay(game).cloud_height, 400.0);
 
-        // Back in the Overworld, nothing changed: the environment built on the first entry is
-        // drawn again, not built anew.
+        // Back in the Overworld, nothing changed: the environment the reload built is drawn
+        // again, not built anew.
         respawn(game, spawn(0, "minecraft:overworld"));
         let (overworld_gameplay, frame) = built(game);
         assert!(Arc::ptr_eq(

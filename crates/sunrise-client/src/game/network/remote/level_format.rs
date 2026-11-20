@@ -1,6 +1,7 @@
-//! A level's shape, chunk format, facts and environment attributes, from the dimension type its
-//! server synced: what the player's level takes on entering it (`enter_remote_dimension`), and a
-//! viewed level's world on its `open` (`viewed_worlds`).
+//! A level's shape, chunk format and facts, from the dimension type its server synced: what the
+//! player's level takes on entering it (`enter_remote_dimension`), and a viewed level's world on
+//! its `open` (`viewed_worlds`). Only the player's level also takes the type's environment
+//! attributes (`build_level_environments`).
 use super::Remote;
 use crate::game::{Dim, remote_chunks::ChunkFormat};
 use std::sync::{Arc, Weak};
