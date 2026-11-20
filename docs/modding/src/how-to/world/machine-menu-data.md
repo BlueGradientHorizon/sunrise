@@ -253,7 +253,10 @@ does not resolve. It never opens a replacement through an old handle.
 To open a content mod menu type with no block (from an item, an entity or a command),
 call `player.open_mod_menu(host, menu, title, extra, data, pos, replace)` (NeoForge's
 `openMenu(provider, extraDataWriter)`). `menu` is the type's `MenuKey`. `extra`, at most
-32 KiB, is one-time context available through the client's `host.screen_extra_data()`;
+32 KiB, is one-time context. On the client, `host.screen_extra_data()` returns
+`Option<&[u8]>`: decode the slice directly during the host borrow. `None` means no mod
+screen is showing; `Some(&[])` means one is showing but no bytes arrived for its window.
+Copy the bytes with `to_vec()` only if you need to keep them beyond the host borrow.
 `pos` is an optional hint returned by `screen_pos()`. Neither is live data or block backing.
 The menu's declared container slots, if any, start empty. Opening returns the window id or
 `Ok(None)` when vetoed. Invalid type, connection or client support, opening bytes, data count or

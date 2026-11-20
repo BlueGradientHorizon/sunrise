@@ -23,12 +23,12 @@ pub trait ScreensClientHost {
     #[access(ClientSetup)]
     fn screen_pos(&self) -> Option<[i32; 3]>;
     /// Side: client.
-    /// What the block's mod wrote for the mod screen that is open
-    /// (`menu_extra_data` on the server), empty when it wrote nothing;
-    /// None when no mod screen is open. The same for a menu `PlayerRef::open_mod_menu`
-    /// opened with its `extra`. Returns a copy. @API:menu_extra_data@.
+    /// The open mod screen's one-time context from `menu_extra_data` or
+    /// `PlayerRef::open_mod_menu`, borrowed for the duration of the host borrow.
+    /// Returns `None` when no mod screen is showing, and `Some(&[])` when a
+    /// mod screen is showing but no bytes arrived for its window. @API:menu_extra_data@.
     #[access(ClientSetup)]
-    fn screen_extra_data(&self) -> Option<Vec<u8>>;
+    fn screen_extra_data(&self) -> Option<&[u8]>;
     /// Side: client.
     /// Where the open screen draws outside its `rect`, and where mods draw
     /// over it: the recipe book's panel, the creative tab rows, the active
