@@ -141,8 +141,9 @@ impl Reverb {
     }
 
     /// Adds the reverb of `input` (mono, one sample a frame) into `out` (`channels` interleaved:
-    /// left and right, or the middle of both on a mono output). `sent` says whether `input`
-    /// holds anything but silence.
+    /// left and right, or the middle of both on a mono output). `sent` says whether anything was
+    /// sent to it this buffer; a send of silence lets its tail die away and the bus go idle, as
+    /// no send does.
     pub(super) fn run(
         &mut self,
         input: &[f32],
@@ -154,7 +155,8 @@ impl Reverb {
         if self.rate != rate {
             self.set_rate(rate);
         }
-        if self.idle && !sent {
+        let fed = sent && input.iter().any(|x| *x != 0.0);
+        if self.idle && !fed {
             return;
         }
         let mut loudest = 0.0f32;
@@ -187,7 +189,7 @@ impl Reverb {
                 }
             }
         }
-        self.idle = !sent && loudest < SILENT;
+        self.idle = !fed && loudest < SILENT;
     }
 }
 

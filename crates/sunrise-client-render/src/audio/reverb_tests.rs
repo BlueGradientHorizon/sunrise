@@ -131,3 +131,18 @@ fn the_buses_decay_times_and_damping_are_the_documented_ones() {
     let numbers: Vec<(f32, f32)> = ROOMS.iter().map(|r| (r.decay, r.damping)).collect();
     assert_eq!(numbers, [(0.6, 7_000.0), (1.8, 4_500.0), (4.0, 3_000.0)]);
 }
+
+#[test]
+fn a_send_of_silence_lets_the_tail_die_away() {
+    // A click into the room, then a sending sound gone quiet: the bus still goes idle.
+    let mut reverb = Reverb::new(ROOMS[0]);
+    let mut input = vec![0.0; 480];
+    input[0] = 1.0;
+    let mut out = vec![0.0; 960];
+    reverb.run(&input, true, &mut out, 2, RATE);
+    input[0] = 0.0;
+    for _ in 0..1000 {
+        reverb.run(&input, true, &mut out, 2, RATE);
+    }
+    assert!(reverb.idle());
+}

@@ -161,3 +161,20 @@ fn a_voice_starts_on_its_effects_from_its_first_frame() {
         .collect();
     assert_eq!(first, through(muffled, &signal));
 }
+
+#[test]
+fn a_send_reaches_only_the_buses_it_is_sent_to() {
+    let mut e = SoundEffects::NONE;
+    e.room = 0.5;
+    let mut fx = VoiceFx {
+        target: e,
+        ..VoiceFx::default()
+    };
+    assert_eq!(fx.begin(480, RATE).sent, [true, false, false]);
+    // Gliding from the room to the cavern, both are fed for that buffer.
+    e.room = 0.0;
+    e.cavern = 0.5;
+    fx.target = e;
+    assert_eq!(fx.begin(480, RATE).sent, [true, false, true]);
+    assert_eq!(fx.begin(480, RATE).sent, [false, false, true]);
+}

@@ -165,6 +165,8 @@ pub(super) struct Glide {
     highpass: bool,
     /// The voice sends to a reverb at some point of the buffer.
     pub(super) sends: bool,
+    /// Which reverb buses it sends to at some point of the buffer.
+    pub(super) sent: [bool; BUSES],
     /// The filters' coefficients, worked out again each frame only while a cutoff moves.
     lowpass_c: SvfCoefficients,
     highpass_c: SvfCoefficients,
@@ -228,7 +230,9 @@ impl VoiceFx {
         if !highpass {
             self.highpass = [Svf::default(); 2];
         }
-        let sends = at.sends() || target.sends();
+        let sent: [bool; BUSES] =
+            std::array::from_fn(|i| at.send[i] != 0.0 || target.send[i] != 0.0);
+        let sends = sent.contains(&true);
         if !sends {
             self.send_lp = 0.0;
         }
@@ -240,6 +244,7 @@ impl VoiceFx {
             lowpass,
             highpass,
             sends,
+            sent,
             lowpass_c: SvfCoefficients::of(at.lowpass_g),
             highpass_c: SvfCoefficients::of(at.highpass_g),
         }

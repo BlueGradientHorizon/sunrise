@@ -881,7 +881,9 @@ fn mix_with_effects(
     let mut glide = c.fx.begin(buffer_frames, rate);
     let mut input: &mut [f32] = &mut [];
     if glide.sends {
-        reverbs.sent = [true; reverb::BUSES];
+        for (sent, to) in reverbs.sent.iter_mut().zip(glide.sent) {
+            *sent |= to;
+        }
         input = reverbs.input(buffer_frames);
     }
     for (f, frame) in out.chunks_mut(channels).enumerate() {
@@ -3318,6 +3320,19 @@ mod tests {
         m.channels.insert(1, c);
         assert!(listen(&mut m, 0.1).iter().all(|s| *s == 0.0));
         assert!(m.reverbs.buses.iter().all(reverb::Reverb::idle));
+    }
+
+    #[test]
+    fn a_send_to_one_reverb_leaves_the_others_idle() {
+        let mut m = Mixer::default();
+        let mut c = channel(sine(440.0), None, [0.0, 0.0, 2.0], true);
+        let mut effects = mod_api::SoundEffects::NONE;
+        effects.room = 1.0;
+        c.fx.target = effects;
+        m.channels.insert(1, c);
+        listen(&mut m, 0.1);
+        let idle = m.reverbs.buses.each_ref().map(reverb::Reverb::idle);
+        assert_eq!(idle, [false, true, true]);
     }
 
     #[test]
