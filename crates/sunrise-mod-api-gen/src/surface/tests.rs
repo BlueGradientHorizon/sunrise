@@ -256,6 +256,14 @@ pub fn sunrise_mod(_: TokenStream, input: TokenStream) -> TokenStream { input }
 "#,
     ),
     (
+        extension_tags::INPUTS,
+        r#"["crates/sunrise-mod-package/src/fixture.extension-tags.json"]"#,
+    ),
+    (
+        "crates/unlisted/src/ignored.extension-tags.json",
+        "invalid JSON: the export must not read an unlisted declaration",
+    ),
+    (
         "crates/sunrise-mod-package/src/fixture.extension-tags.json",
         r#"[
     {"registry": "item", "id": "sunrise:fixture", "doc": "Fixture items."},

@@ -1,29 +1,21 @@
-//! Extension tag records come from declarations beside engine readers, not a shared list.
+//! Extension tag records come from the same explicit inputs as the package and book catalogs.
 use mod_surface::ExtensionTag;
+use serde::de::DeserializeOwned;
 use std::{collections::BTreeSet, fs, path::Path};
 
+pub(super) const INPUTS: &str = "crates/sunrise-mod-vocab/extension-tag-inputs.json";
+
+fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T, String> {
+    let text = fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))
+}
+
 pub fn read(root: &Path) -> Result<Vec<ExtensionTag>, String> {
-    fn visit(dir: &Path, tags: &mut Vec<ExtensionTag>) -> Result<(), String> {
-        for entry in fs::read_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))? {
-            let path = entry.map_err(|e| e.to_string())?.path();
-            if path.is_dir() {
-                visit(&path, tags)?;
-            } else if path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|n| n.ends_with(".extension-tags.json"))
-            {
-                let text =
-                    fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-                let rows: Vec<ExtensionTag> =
-                    serde_json::from_str(&text).map_err(|e| format!("{}: {e}", path.display()))?;
-                tags.extend(rows);
-            }
-        }
-        Ok(())
-    }
+    let inputs: Vec<String> = read_json(&root.join(INPUTS))?;
     let mut tags = Vec::new();
-    visit(&root.join("crates"), &mut tags)?;
+    for input in inputs {
+        tags.extend(read_json::<Vec<ExtensionTag>>(&root.join(input))?);
+    }
     let mut seen = BTreeSet::new();
     for tag in &tags {
         if !tag.id.starts_with("sunrise:")
