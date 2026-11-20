@@ -1,6 +1,6 @@
 //! A mod's general entity rows on the window (#792, stage 5): each row the server shows, with its
 //! first synced fields here (`game/network/remote/general.rs`), drawn by the renderer a mod
-//! registered for its type (`register_entity_renderers`), with a frozen copy of the row's synced
+//! registered for its type (`register_entity_renderers`), with the row's shared, frozen synced
 //! attachments. A general type has no look of its own: without a renderer, or
 //! with one that failed until the next resource load, its rows draw nothing.
 use super::{Game, entity_culling};
@@ -9,8 +9,8 @@ use sunrise_client::mesher::Vertex;
 use sunrise_core::geometry::Vec3;
 
 /// `EntityRenderState` for a general row: its identity, age and pose at the frame's `partial`
-/// tick, interpolated from the tick before as `Entity.getYRot(partial)` does, with no family's
-/// fields.
+/// tick, interpolated from the tick before as `Entity.getYRot(partial)` does. The frame clones
+/// only the attachment generation's Arc; it never consults the live holder.
 fn render_state(
     id: u32,
     row: &super::remote::general::RemoteGeneral,

@@ -8,6 +8,8 @@ mod lifetime;
 pub mod observer;
 mod query;
 mod resident;
+#[doc(hidden)]
+pub mod snapshot;
 
 pub use query::{
     AttachmentBatch, AttachmentIter, AttachmentQuery, AttachmentRowError, AttachmentRowRef,
@@ -23,7 +25,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,
     hash::Hash,
-    sync::{Arc, Mutex, OnceLock, Weak},
+    sync::{Arc, LazyLock, Mutex, OnceLock, Weak},
 };
 
 use sunrise_core::nbt::{Compound, JavaString, Tag};
@@ -586,7 +588,8 @@ fn envelope(value: &Decoded) -> Option<Compound> {
     })
 }
 fn raw_value(raw: &Compound) -> Option<&Compound> {
-    match raw.get(&"value".into()) {
+    static VALUE: LazyLock<JavaString> = LazyLock::new(|| "value".into());
+    match raw.get(&VALUE) {
         Some(Tag::Compound(value)) => Some(value),
         _ => None,
     }
@@ -688,7 +691,10 @@ impl AttachmentEntry {
     }
     fn is_synced(&self) -> bool {
         match &self.state {
-            Entry::Raw { saved, .. } => matches!(saved.get(&"sync".into()), Some(Tag::Byte(1))),
+            Entry::Raw { saved, .. } => {
+                static SYNC: LazyLock<JavaString> = LazyLock::new(|| "sync".into());
+                matches!(saved.get(&SYNC), Some(Tag::Byte(1)))
+            }
             Entry::Decoded(value) => value.policy.sync,
         }
     }

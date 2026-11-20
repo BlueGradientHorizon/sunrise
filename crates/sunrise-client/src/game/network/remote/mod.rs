@@ -3460,7 +3460,7 @@ impl Game<'_> {
                 // replaces ServerReconfigScreen.
                 if let Some(r) = self.remote.as_mut() {
                     r.reconfiguring = None;
-                    r.attachments.clear();
+                    r.clear_attachments();
                     r.viewed.clear();
                     // A new ClientPacketListener owns a fresh clock manager.
                     r.clocks.clear();
@@ -3538,6 +3538,7 @@ impl Game<'_> {
                 if let Some(r) = self.remote.as_mut() {
                     r.attachments
                         .retain(|holder, _| matches!(holder, Holder::Player(_)));
+                    r.general.snapshots_before_spawn.clear();
                 }
                 self.using = None;
                 self.end_mod_use();

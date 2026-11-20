@@ -262,6 +262,7 @@ pub mod built {
 /// What the game reads of handles and calls on the API's own types.
 pub mod game {
     include!(concat!(env!("OUT_DIR"), "/mod_api_exports_private_game.rs"));
+    pub use crate::client::entity_render_attachments::capture_entity_render_attachments;
     use crate::*;
     use std::fmt::Debug;
 
