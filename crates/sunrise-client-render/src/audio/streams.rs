@@ -12,10 +12,9 @@
 //!   left the mixer: a handle holds only a weak reference to its ring.
 use super::{Basis, Mixer, distance_gain};
 use mod_api::{
-    AUDIO_STREAM_PREBUFFER_MAX_MS, AUDIO_STREAM_PREBUFFER_MIN_MS, AUDIO_STREAM_RATE_MAX,
-    AUDIO_STREAM_RATE_MIN, AUDIO_STREAM_RING_MAX_MS, AUDIO_STREAMS_PER_MOD, AUDIO_STREAMS_TOTAL,
-    AudioRefusal, AudioStreamSource, AudioStreamState, EntityRef, SpecFault, StreamPlacement,
-    StreamSpec,
+    AUDIO_STREAM_RATE_MAX, AUDIO_STREAM_RATE_MIN, AUDIO_STREAM_RING_MAX_MS, AUDIO_STREAMS_PER_MOD,
+    AUDIO_STREAMS_TOTAL, AudioRefusal, AudioStreamSource, AudioStreamState, EntityRef, SpecFault,
+    StreamPlacement, StreamSpec,
 };
 use std::sync::{
     Arc, Mutex, MutexGuard, Weak,
@@ -46,14 +45,6 @@ impl Ring {
             channels,
         }
     }
-    /// The frames waiting. `head` is read first: it never passes a `tail` read after it, so the
-    /// difference cannot go negative however the producer and the callback interleave with this
-    /// read, and it is at most the ring (a stale `head` may make it look fuller than it is).
-    fn buffered_frames(&self) -> u64 {
-        let head = self.head.load(Acquire);
-        let tail = self.tail.load(Acquire);
-        tail.saturating_sub(head).min(self.samples.len() as u64) / self.channels as u64
-    }
 }
 
 /// Where a stream was last placed, as writers see it.
@@ -78,16 +69,11 @@ struct View {
 pub(super) struct Control {
     channels: usize,
     rate: u32,
-    prebuffer_frames: u64,
     /// The stream's `SoundSource` index.
     category: usize,
     range: f32,
     owner: String,
     volume: AtomicU32,
-    /// Prebuffered and playing, as against buffering.
-    playing: AtomicBool,
-    /// Times the stream ran dry and went back to buffering.
-    underruns: AtomicU32,
     closed: AtomicBool,
     /// Another thread is pushing: this push is refused, which keeps the ring single-producer.
     pushing: AtomicBool,
@@ -285,9 +271,6 @@ impl AudioStreamSource for StreamHandle {
         if c.closed.load(Acquire) {
             return AudioStreamState::Stopped;
         }
-        if !c.playing.load(Acquire) {
-            return AudioStreamState::Buffering;
-        }
         // One atomic holds both flags, so what this reads is a whole placement even while a writer
         // is in the middle of publishing the position: the old one or the new.
         let flags = c.flags.load(Acquire);
@@ -295,14 +278,6 @@ impl AudioStreamSource for StreamHandle {
             AudioStreamState::Unplaced
         } else {
             AudioStreamState::Playing
-        }
-    }
-    fn buffered_ms(&self) -> u32 {
-        match self.ring.upgrade() {
-            Some(ring) if !self.control.closed.load(Acquire) => {
-                (ring.buffered_frames() * 1000 / u64::from(self.control.rate)) as u32
-            }
-            _ => 0,
         }
     }
     fn stop(&self) {
@@ -319,7 +294,9 @@ impl Drop for StreamHandle {
 pub(super) struct StreamVoice {
     control: Arc<Control>,
     ring: Arc<Ring>,
-    /// The last frame taken from the ring, and how far (0 to 1) the output is towards the next.
+    /// True once there is a current source frame; cleared when the next required frame is missing.
+    primed: bool,
+    /// The last frame taken from the ring and the output phase relative to it, in source frames.
     current: [f32; 2],
     fraction: f64,
     /// The placement the callback last read whole.
@@ -362,11 +339,6 @@ impl StreamPool {
         if !(AUDIO_STREAM_RATE_MIN..=AUDIO_STREAM_RATE_MAX).contains(&spec.rate) {
             return fault(SpecFault::Rate);
         }
-        if !(AUDIO_STREAM_PREBUFFER_MIN_MS..=AUDIO_STREAM_PREBUFFER_MAX_MS)
-            .contains(&spec.prebuffer_ms)
-        {
-            return fault(SpecFault::Prebuffer);
-        }
         if !(0.0..=1.0).contains(&spec.volume) {
             return fault(SpecFault::Volume);
         }
@@ -388,19 +360,15 @@ impl StreamPool {
             return Err(AudioRefusal::ModStreamLimit);
         }
         let channels = spec.channels as usize;
-        let ring_ms = (2 * spec.prebuffer_ms + 100).min(AUDIO_STREAM_RING_MAX_MS);
-        let ring_frames = (u64::from(spec.rate) * u64::from(ring_ms) / 1000) as usize;
+        let ring_frames = (spec.rate * AUDIO_STREAM_RING_MAX_MS / 1000) as usize;
         let ring = Arc::new(Ring::new(ring_frames, channels));
         let control = Arc::new(Control {
             channels,
             rate: spec.rate,
-            prebuffer_frames: u64::from(spec.rate) * u64::from(spec.prebuffer_ms) / 1000,
             category: spec.category.index(),
             range: spec.range,
             owner: owner.to_owned(),
             volume: AtomicU32::new(spec.volume.to_bits()),
-            playing: AtomicBool::new(false),
-            underruns: AtomicU32::new(0),
             closed: AtomicBool::new(false),
             pushing: AtomicBool::new(false),
             held: Mutex::new(Held::Flat),
@@ -416,6 +384,7 @@ impl StreamPool {
         let voice = StreamVoice {
             control: control.clone(),
             ring,
+            primed: false,
             current: [0.0; 2],
             fraction: 0.0,
             // The placement just published: a voice is never heard Flat while its real placement
@@ -488,18 +457,6 @@ impl StreamPool {
         }
     }
 
-    /// Each open stream's `prebuffer_ms` and how many times it ran dry: what a test of a mod's
-    /// pacing reads.
-    pub(super) fn underruns(&self) -> Vec<(u32, u32)> {
-        self.controls()
-            .iter()
-            .map(|c| {
-                let prebuffer_ms = c.prebuffer_frames * 1000 / u64::from(c.rate);
-                (prebuffer_ms as u32, c.underruns.load(Relaxed))
-            })
-            .collect()
-    }
-
     /// The output went away (or came back): its streams stop, and none opens until it is back.
     #[cfg(any(feature = "audio", test))]
     pub(super) fn output_lost(&self, lost: bool) {
@@ -523,6 +480,10 @@ pub(super) fn mix(
     channels: usize,
     rate: u32,
 ) {
+    let output_frames = out.len() / channels;
+    if output_frames == 0 {
+        return;
+    }
     let shared_listeners = cameras.len() > 1;
     for voice in streams.iter_mut() {
         let c = &*voice.control;
@@ -536,7 +497,7 @@ pub(super) fn mix(
         let tail = ring.tail.load(Acquire);
         let mut avail = (tail - head) / ch as u64;
         let mut taken = 0u64;
-        // The frame `frame` places past the ones taken, from the ring.
+        // The frame at this offset from the ring head at the start of the buffer.
         let frame_at = |frame: u64| -> [f32; 2] {
             let base = head + frame * ch as u64;
             let sample = |i: u64| {
@@ -545,19 +506,19 @@ pub(super) fn mix(
             let left = sample(0);
             [left, if ch > 1 { sample(1) } else { left }]
         };
-        if !c.playing.load(Relaxed) {
-            if avail < c.prebuffer_frames.max(2) {
+        if !voice.primed {
+            if avail == 0 {
                 continue;
             }
             voice.current = frame_at(0);
             voice.fraction = 0.0;
             taken = 1;
             avail -= 1;
-            c.playing.store(true, Release);
+            voice.primed = true;
         }
         let volume = f32::from_bits(c.volume.load(Relaxed)) * category_gain[c.category];
         // Gain per output channel, and the one a mono output takes (no panning); NaN anywhere
-        // is silence. A stream with no volume is not looked at.
+        // is silence. Skip reading placement if the stream has no volume.
         let [left, right, mono] = if volume == 0.0 {
             [0.0; 3]
         } else {
@@ -610,50 +571,38 @@ pub(super) fn mix(
         };
         let [left, right, mono] = [left, right, mono].map(|g| if g.is_finite() { g } else { 0.0 });
         let step = f64::from(c.rate) / f64::from(rate);
-        let output_frames = out.len() / channels;
         if left == 0.0 && right == 0.0 && mono == 0.0 {
-            // Inaudible (muted, no volume, unplaced, out of range): no resampling and no mixing,
-            // only the ring's head moves, as far as the output would have taken it. The source
-            // frame wanted at the start of each output frame but the first is
-            // `floor(fraction + step * (frames - 1))`, as the loop below counts them.
-            if output_frames > 0 {
-                let wanted = (voice.fraction + step * (output_frames - 1) as f64) as u64;
-                let advance = wanted.min(avail);
-                if advance > 0 {
-                    voice.current = frame_at(taken + advance - 1);
-                }
-                taken += advance;
-                if wanted > advance {
-                    c.playing.store(false, Release);
-                    c.underruns.fetch_add(1, Relaxed);
-                } else {
-                    voice.fraction += step * output_frames as f64 - wanted as f64;
-                }
+            // Inaudible (muted, no volume, unplaced, out of range): no interpolation or mixing.
+            // Advance the resampler and ring head as far as audible output would have taken them.
+            let wanted = (voice.fraction + step * (output_frames - 1) as f64) as u64;
+            let advance = wanted.min(avail);
+            if advance > 0 {
+                voice.current = frame_at(taken + advance - 1);
+            }
+            taken += advance;
+            if wanted > advance {
+                voice.primed = false;
+            } else {
+                voice.fraction += step * output_frames as f64 - wanted as f64;
             }
             ring.head.store(head + taken * ch as u64, Release);
             continue;
         }
-        for frame in out.chunks_mut(channels) {
-            // The source frames the last output frame moved past. A frame that is not there yet
-            // is an underrun only now, when the output needs it: one that merely has not arrived
-            // by the end of a buffer is looked for again in the next.
+        'output: for frame in out.chunks_exact_mut(channels) {
+            // Look for a source frame only when the output needs it. If none is queued, leave
+            // the rest silent and start again with the next frame that arrives.
             while voice.fraction >= 1.0 {
                 if avail == 0 {
-                    // Silence, and buffering again until `prebuffer_ms` is back.
-                    c.playing.store(false, Release);
-                    c.underruns.fetch_add(1, Relaxed);
-                    break;
+                    voice.primed = false;
+                    break 'output;
                 }
                 voice.current = frame_at(taken);
                 taken += 1;
                 avail -= 1;
                 voice.fraction -= 1.0;
             }
-            if !c.playing.load(Relaxed) {
-                break;
-            }
-            // Between two source frames the output is their mix; past the last one queued it
-            // holds that one, so every accepted frame plays for its whole length.
+            // Interpolate between source frames. With no next frame yet, hold the last one
+            // for the rest of its duration.
             let now = if voice.fraction > 0.0 && avail > 0 {
                 let next = frame_at(taken);
                 let t = voice.fraction as f32;
@@ -721,9 +670,8 @@ mod tests {
             self.mixer.lock().unwrap().streams.len()
         }
     }
-    /// A mono 48 kHz stream with the shortest prebuffer: 960 frames to start, a 6720 frame ring.
     fn spec() -> StreamSpec {
-        StreamSpec::new(SoundSource::Voice, 1, 48_000).with_prebuffer_ms(20)
+        StreamSpec::new(SoundSource::Voice, 1, 48_000)
     }
     /// Half-scale samples: 0.5 once mixed at gain 1.
     fn half(frames: usize) -> Vec<i16> {
@@ -735,47 +683,29 @@ mod tests {
     }
 
     #[test]
-    fn a_stream_is_silent_until_its_prebuffer_is_in_and_then_plays() {
+    fn an_async_stream_starts_and_resumes_with_one_frame() {
         let rig = Rig::new();
-        let stream = rig.open("mod", &spec()).unwrap();
-        assert_eq!(stream.push(&half(959)), 959);
-        assert!(rig.play(8).iter().all(|s| *s == 0.0));
-        assert_eq!(stream.state(), AudioStreamState::Buffering);
-        assert_eq!(stream.push(&half(1)), 1);
-        let out = rig.play(8);
-        assert!(out.iter().all(|s| *s == 0.5), "{out:?}");
+        let stream = rig
+            .open("mod", &StreamSpec::new(SoundSource::Voice, 1, 36_000))
+            .unwrap();
         assert_eq!(stream.state(), AudioStreamState::Playing);
-    }
-
-    #[test]
-    fn every_accepted_frame_plays_and_then_the_stream_goes_back_to_buffering() {
-        let rig = Rig::new();
-        let stream = rig.open("mod", &spec()).unwrap();
-        stream.push(&ramp(960));
-        let out = rig.play(2_000);
-        // Equal rates: frame k is output k, exactly, all 960 of them, left and right alike.
-        for k in 0..960 {
-            let expected = f32::from(ramp(960)[k]) / 32768.0;
-            assert_eq!(out[2 * k], expected, "frame {k}");
-            assert_eq!(out[2 * k + 1], expected, "frame {k}");
-        }
-        assert!(out[1_920..].iter().all(|s| *s == 0.0));
-        assert_eq!(stream.state(), AudioStreamState::Buffering);
-        // It waits for a whole prebuffer again, and then plays on: it never ended.
-        stream.push(&half(500));
-        assert!(rig.play(8).iter().all(|s| *s == 0.0));
-        stream.push(&half(500));
-        assert!(rig.play(8).iter().all(|s| *s > 0.4));
+        assert_eq!(rig.play(2), [0.0; 4]);
+        assert_eq!(stream.push(&[16_384]), 1);
+        // At 36 kHz a single frame is still current at output phases 0 and 0.75, in
+        // separate buffers here. At 1.5 the source goes dry, without ending the stream.
+        assert_eq!(rig.play(1), [0.5; 2]);
+        assert_eq!(rig.play(3), [0.5, 0.5, 0.0, 0.0, 0.0, 0.0]);
+        assert_eq!(stream.state(), AudioStreamState::Playing);
+        assert_eq!(stream.push(&[-8192]), 1);
+        // Resuming starts at phase zero, not partway through the new frame.
+        assert_eq!(rig.play(3), [-0.25, -0.25, -0.25, -0.25, 0.0, 0.0]);
     }
 
     #[test]
     fn a_slower_stream_is_interpolated_and_keeps_its_last_frame_for_its_whole_length() {
         let rig = Rig::new();
         let stream = rig
-            .open(
-                "mod",
-                &StreamSpec::new(SoundSource::Voice, 1, 24_000).with_prebuffer_ms(20),
-            )
+            .open("mod", &StreamSpec::new(SoundSource::Voice, 1, 24_000))
             .unwrap();
         let samples = ramp(480);
         stream.push(&samples);
@@ -798,12 +728,12 @@ mod tests {
     fn a_full_ring_refuses_the_excess() {
         let rig = Rig::new();
         let stream = rig.open("mod", &spec()).unwrap();
-        assert_eq!(stream.push(&half(10_000)), 6_720);
+        assert_eq!(stream.push(&half(50_000)), 48_000);
+        rig.play(0);
         assert_eq!(stream.push(&half(1)), 0);
-        assert_eq!(stream.buffered_ms(), 140);
-        // Playing makes room again: the 480 frames played.
+        // Only playing a nonempty buffer makes room again: the 480 frames played.
         rig.play(480);
-        assert_eq!(stream.push(&half(10_000)), 480);
+        assert_eq!(stream.push(&half(500)), 480);
     }
 
     #[test]
@@ -935,19 +865,21 @@ mod tests {
                 &spec().with_placement(StreamPlacement::Entity(entity)),
             )
             .unwrap();
-        stream.push(&half(2_000));
-        rig.pool.follow_entities(|_| None);
-        let before = stream.buffered_ms();
-        assert!(rig.play(480).iter().all(|s| *s == 0.0));
         assert_eq!(stream.state(), AudioStreamState::Unplaced);
-        assert_eq!(before - stream.buffered_ms(), 10);
-        // Tracked again, at a place a NaN spoils: still unplaced; at a real one: heard.
+        assert_eq!(stream.push(&[8192, 16_384, -16_384, -8192]), 4);
+        rig.pool.follow_entities(|_| None);
+        assert_eq!(rig.play(2), [0.0; 4]);
+        assert_eq!(stream.state(), AudioStreamState::Unplaced);
+        // Tracked again, at a place a NaN spoils: still unplaced; at the listener: heard.
         rig.pool.follow_entities(|_| Some([f64::NAN, 0.0, 0.0]));
         assert_eq!(stream.state(), AudioStreamState::Unplaced);
         rig.pool
-            .follow_entities(|e| (e == entity).then_some([0.0, 0.0, 1.0]));
-        assert!(rig.play(16).iter().any(|s| *s > 0.0));
+            .follow_entities(|e| (e == entity).then_some([0.0; 3]));
         assert_eq!(stream.state(), AudioStreamState::Playing);
+        let mut out = [0.0; 2];
+        mix_output(&mut rig.mixer.lock().unwrap(), &mut out, 1, 48_000);
+        // At zero distance, mono output has unit gain. The first two source frames were silent.
+        assert_eq!(out, [-0.5, -0.25]);
     }
 
     #[test]
@@ -1020,7 +952,6 @@ mod tests {
         for stream in &kept {
             assert_eq!(stream.push(&half(10)), 0);
             assert_eq!(stream.state(), AudioStreamState::Stopped);
-            assert_eq!(stream.buffered_ms(), 0);
         }
     }
 
@@ -1126,65 +1057,31 @@ mod tests {
         assert!(rig.play(64).iter().all(|s| *s == 0.0));
     }
 
-    /// 24 kHz mono, so one source frame plays for exactly two output frames: no rounding.
-    fn half_rate(category: SoundSource) -> StreamSpec {
-        StreamSpec::new(category, 1, 24_000).with_prebuffer_ms(20)
-    }
-
     #[test]
-    fn a_stream_with_no_volume_takes_its_audio_in_at_the_pace_of_one_that_is_heard() {
+    fn a_muted_stream_advances_and_resumes_after_running_dry() {
         let rig = Rig::new();
-        let heard = rig.open("mod", &half_rate(SoundSource::Voice)).unwrap();
-        let unheard = rig.open("mod", &half_rate(SoundSource::Music)).unwrap();
-        for stream in [&heard, &unheard] {
-            stream.push(&ramp(2_000));
-        }
-        rig.mixer.lock().unwrap().stream_gain[SoundSource::Music.index()] = 0.0;
-        // Odd buffer lengths, so the half frames carry from one buffer to the next.
-        for frames in [481, 479, 1_001, 3] {
-            let out = rig.play(frames);
-            assert!(out.iter().any(|s| *s != 0.0));
-            assert_eq!(heard.buffered_ms(), unheard.buffered_ms());
-        }
-        assert!(heard.buffered_ms() < 2_000 * 1000 / 24_000);
-        // Heard again, it plays from where the audio has got to, as the other does.
-        rig.mixer.lock().unwrap().stream_gain[SoundSource::Music.index()] = 1.0;
-        let out = rig.play(8);
-        for pair in out.chunks(2) {
-            assert!(pair[0] != 0.0 && pair[0] == pair[1]);
-        }
-        assert_eq!(heard.state(), unheard.state());
-    }
-
-    #[test]
-    fn an_unheard_stream_that_runs_dry_goes_back_to_buffering_like_a_heard_one() {
-        let rig = Rig::new();
-        let stream = rig.open("mod", &half_rate(SoundSource::Music)).unwrap();
-        stream.push(&ramp(480));
-        rig.mixer.lock().unwrap().stream_gain[SoundSource::Music.index()] = 0.0;
-        // 480 source frames last 960 output frames.
-        rig.play(960);
+        let stream = rig
+            .open("mod", &StreamSpec::new(SoundSource::Music, 1, 36_000))
+            .unwrap();
+        assert_eq!(stream.push(&[4096, 8192, 16_384, -16_384, -8192]), 5);
+        let set_gain = |gain| {
+            rig.mixer.lock().unwrap().stream_gain[SoundSource::Music.index()] = gain;
+        };
+        set_gain(0.0);
+        assert_eq!(rig.play(1), [0.0; 2]);
+        assert_eq!(rig.play(2), [0.0; 4]);
         assert_eq!(stream.state(), AudioStreamState::Playing);
-        rig.play(2);
-        assert_eq!(stream.state(), AudioStreamState::Buffering);
-    }
-
-    #[test]
-    fn audio_that_has_not_arrived_by_the_end_of_a_buffer_is_not_an_underrun() {
-        let rig = Rig::new();
-        let stream = rig.open("mod", &spec()).unwrap();
-        stream.push(&half(960));
-        // Exactly the audio there is: the buffer ends where it does, nothing has run dry.
-        assert!(rig.play(960).iter().all(|s| *s == 0.5));
+        set_gain(1.0);
+        // Three muted frames advance 2.25 source frames. Unmuting is a quarter of the way
+        // between 0.5 and -0.5, then exactly at -0.5.
+        assert_eq!(rig.play(2), [0.25, 0.25, -0.5, -0.5]);
+        set_gain(0.0);
+        // These output phases are 3.75, 4.5 and 5.25. The last needs PCM that is not there.
+        assert_eq!(rig.play(3), [0.0; 6]);
         assert_eq!(stream.state(), AudioStreamState::Playing);
-        // A chunk much smaller than the prebuffer arrives before the next buffer: it plays.
-        stream.push(&half(100));
-        let out = rig.play(100);
-        assert!(out.iter().all(|s| *s == 0.5), "{out:?}");
-        assert_eq!(stream.state(), AudioStreamState::Playing);
-        // Only now that the output needs a frame and none is there does it run dry.
-        rig.play(1);
-        assert_eq!(stream.state(), AudioStreamState::Buffering);
+        assert_eq!(stream.push(&[16_384]), 1);
+        set_gain(1.0);
+        assert_eq!(rig.play(2), [0.5; 4]);
     }
 
     #[test]
@@ -1247,83 +1144,5 @@ mod tests {
         assert_eq!(stream.push(&half(10)), 0);
         handle.pushing.store(false, Release);
         assert_eq!(stream.push(&half(10)), 10);
-    }
-
-    #[test]
-    fn the_buffered_time_never_wraps_while_the_callback_consumes_and_a_mod_pushes() {
-        let ring = Arc::new(Ring::new(1_000, 1));
-        let running = Arc::new(AtomicBool::new(true));
-        let observer = {
-            let (ring, running) = (ring.clone(), running.clone());
-            std::thread::spawn(move || {
-                let mut worst = 0;
-                while running.load(Relaxed) {
-                    worst = worst.max(ring.buffered_frames());
-                }
-                worst
-            })
-        };
-        // A producer and a consumer racing: tail leads head by up to the ring's length.
-        for step in 1..200_000u64 {
-            let tail = ring.tail.load(Relaxed);
-            let head = ring.head.load(Relaxed);
-            if tail - head < 1_000 {
-                ring.tail.store(tail + 1, Release);
-            }
-            if step % 3 != 0 && head < ring.tail.load(Relaxed) {
-                ring.head.store(head + 1, Release);
-            }
-        }
-        running.store(false, Relaxed);
-        assert!(observer.join().unwrap() <= 1_000);
-    }
-
-    /// How a tick-paced mod supplies audio: it pushes once a tick, 50 ms of audio each, and a tick can
-    /// arrive up to 50 ms late. Returns the underruns in 30 s of 48 kHz mono for `prebuffer_ms`,
-    /// with a device callback every 10 ms. The ticks' lateness is a fixed pseudo-random series,
-    /// so the figures are exact and repeat.
-    fn tick_paced_underruns(prebuffer_ms: u32) -> u32 {
-        let rig = Rig::new();
-        let stream = rig
-            .open(
-                "tick_paced",
-                &StreamSpec::new(SoundSource::Voice, 1, 48_000).with_prebuffer_ms(prebuffer_ms),
-            )
-            .unwrap();
-        let (mut late, mut seed) = (0u32, 0x9e37_79b9u32);
-        let mut next_late = || {
-            seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
-            (seed >> 16) % 51
-        };
-        let mut push_at = next_late();
-        let mut underruns = 0;
-        let mut was_playing = false;
-        for ms in (0..30_000u32).step_by(10) {
-            // The ticks due by now push the 50 ms they have made.
-            while push_at <= ms {
-                stream.push(&half(2_400));
-                late += 1;
-                push_at = late * 50 + next_late();
-            }
-            rig.play(480);
-            let playing = stream.state() == AudioStreamState::Playing;
-            if was_playing && !playing {
-                underruns += 1;
-            }
-            was_playing = playing;
-        }
-        underruns
-    }
-
-    #[test]
-    fn a_tick_paced_stream_underruns_less_the_larger_its_prebuffer() {
-        let (a, b, c) = (
-            tick_paced_underruns(50),
-            tick_paced_underruns(100),
-            tick_paced_underruns(150),
-        );
-        eprintln!("tick-paced underruns in 30 s: 50 ms {a}, 100 ms {b}, 150 ms {c}");
-        // The book's table: these exact counts, on the virtual clock.
-        assert_eq!((a, b, c), (2, 0, 0));
     }
 }

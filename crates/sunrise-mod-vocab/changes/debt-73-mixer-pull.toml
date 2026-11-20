@@ -1,0 +1,15 @@
+ids = [
+    "type:StreamSpec",
+    "type:StreamSpec.prebuffer_ms",
+    "handle:StreamSpec::with_prebuffer_ms",
+    "type:SpecFault",
+    "type:SpecFault.Prebuffer",
+    "type:AudioRefusal",
+    "type:AudioStreamState",
+    "type:AudioStreamState.Buffering",
+    "trait:AudioStreamSource",
+    "method:AudioStreamSource::buffered_ms",
+    "handle:AudioStreamRef::buffered_ms",
+]
+why = "Async streams play the first available frame without waiting for a watermark. Their queue is bounded to one second of source PCM; a dry queue plays silence without closing the stream. Playing now means open and placed, not necessarily audible."
+migrate = "Remove `spec.prebuffer_ms` assignments, `.with_prebuffer_ms(ms)`, imports of `AUDIO_STREAM_PREBUFFER_MIN_MS` and `AUDIO_STREAM_PREBUFFER_MAX_MS`, and `SpecFault::Prebuffer` match arms. Remove `stream.buffered_ms()` polling and `buffered_ms` methods on `AudioStreamSource` implementations; keep any needed jitter buffer with the async producer, call `stream.push(&samples)` when ready, and use the returned accepted frame count to drop or retry the refused suffix. `AUDIO_STREAM_RING_MAX_MS` describes capacity only, not a target. Remove the `AudioStreamState::Buffering` branch and use `Playing` only to tell that a stream is open and placed, even when muted or dry. Do not use the old encoded layout of `StreamSpec`, `AudioStreamState`, `SpecFault` or `AudioRefusal`."

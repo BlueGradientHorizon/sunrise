@@ -2438,13 +2438,6 @@ impl Audio {
     pub fn backend_live_for_bench(&mut self) {
         self.backend.live = true;
     }
-    /// Each open mod stream's `prebuffer_ms` and how many times it ran dry, for a test of a mod's
-    /// pacing that has no device.
-    // hidden: a measurement read for the compiled-guest daily test in sunrise-client, not an API.
-    #[doc(hidden)]
-    pub fn stream_underruns_for_bench(&self) -> Vec<(u32, u32)> {
-        self.backend.streams.underruns()
-    }
 }
 impl Sounds for Audio {
     fn engine(&mut self) -> &mut SoundEngine {

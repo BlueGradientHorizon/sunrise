@@ -12,12 +12,11 @@ use mod_api::{SoundSource, StreamPlacement, StreamSpec};
 
 let spec = StreamSpec::new(SoundSource::Voice, 1, 48_000)
     .with_placement(StreamPlacement::Entity(speaker))
-    .with_range(32.0)
-    .with_prebuffer_ms(100);
+    .with_range(32.0);
 let stream = host.open_push_audio_stream(&spec)?;
 
-// Whenever a frame is ready (interleaved samples, `channels` per frame):
-let accepted = stream.push(&samples);
+// On the async producer, when interleaved PCM is ready (`channels` samples per frame):
+let accepted_frames = stream.push(&samples);
 ```
 
 `open_push_audio_stream` is a client call. It refuses with an `AudioRefusal` and opens nothing on a server, without a sound output, for a spec out of range, and past the limits below.
@@ -30,11 +29,10 @@ let accepted = stream.push(&samples);
 | `placement` | `Flat`, `At([x, y, z])` or `Entity(entity)`, in the client's current level. |
 | `range` | Blocks at which a positioned stream has faded to silence, in a straight line (`AL_LINEAR_DISTANCE`, as a sound's range). |
 | `volume` | 0 to 1, before the group's and the master's. |
-| `prebuffer_ms` | 20 to 500. Playing starts once this much is buffered, and again after an underrun. |
 
-The handle has `push`, `set_placement`, `set_volume`, `state`, `buffered_ms` and `stop`. **Dropping the handle stops the stream**, so keep it for as long as the stream should play. Muffling (`muffle_sounds`) applies to streams like every other sound.
+The handle has `push`, `set_placement`, `set_volume`, `state` and `stop`. **Dropping the handle stops the stream**, so keep it for as long as the stream should play. Muffling (`muffle_sounds`) applies to streams like every other sound.
 
-A stopped stream's samples are freed by the game, whatever handles you keep: afterwards `push` returns 0, `state` reads `Stopped` and `buffered_ms` reads 0.
+A stopped stream's samples are freed by the game, whatever handles you keep: afterwards `push` returns 0 and `state` reads `Stopped`.
 
 ## The player's switch
 
@@ -42,18 +40,16 @@ Sunrise Extras has a "Mod audio streams" switch (Sound section), on by default. 
 
 ## What `state` says
 
-- `Buffering`: silent while the ring fills, or after it ran dry.
-- `Playing`: audible.
-- `Unplaced`: playing, but at a place nobody hears (below).
+- `Playing`: open and placed (or flat), even if muted or out of samples.
+- `Unplaced`: open, but at a place nobody hears (below).
 - `Stopped`: `stop` was called, the handle dropped, or the game's sound output went away (a device that could not be opened again). It never plays again; open a new stream once the output is back (`open_push_audio_stream` answers `NoOutput` until then). Changing the output device does not stop streams.
 
-## Buffering, underruns and overflow
+## Async queue and overflow
 
-Each stream has a fixed ring, allocated when it opens: `2 * prebuffer_ms + 100` milliseconds, at most one second. Nothing allocates per push or per output buffer.
+Each async push stream has a ring for one second of source audio (`AUDIO_STREAM_RING_MAX_MS`), allocated when it opens. This is a capacity, not a playback threshold. Nothing allocates per push or per output buffer.
 
-- **Underrun waits instead of ending.** A dry ring plays silence, with no time-stretching, and the state goes back to `Buffering` until `prebuffer_ms` is queued again. Only `stop` or a drop ends a stream (vanilla's sound ends for good when its queue runs dry; a mod stream is Sunrise's own surface).
-- **Overflow refuses the excess.** `push` returns the frames it took; the rest is refused, never delayed, so a sender that stalls and then bursts cannot build up latency. Drop what was refused, or push it again later.
-- End to end, the delay is about one output period plus `prebuffer_ms`: a target, not a bound.
+- **Playback starts or resumes as soon as a frame is available to the mixer.** A dry ring plays silence without stopping the stream or changing its state. If a network producer needs a jitter buffer, keep it on the producer side.
+- **Overflow refuses the excess.** `push` returns the number of whole frames it accepted; the rest is refused, never delayed. Drop what was refused, or push it again later.
 
 ## Placement
 
@@ -71,7 +67,7 @@ Opening a stream is a host call and runs where the host does. Every call on the 
 ## Limits
 
 - 32 streams open per mod (`AudioRefusal::ModStreamLimit`) and 64 across every mod (`AudioRefusal::TooManyStreams`). A stopped stream frees its place.
-- Sample rate 8000 to 48000 Hz, 1 or 2 channels, `prebuffer_ms` 20 to 500.
+- Sample rate 8000 to 48000 Hz, 1 or 2 channels.
 - A call from no mod, or outside the phases a client opens a stream in, answers `AudioRefusal::Unavailable`.
 - Bad input never panics: a rate or channel count out of range, a volume or range that is not a number, or a position that is not finite is refused (`AudioRefusal::BadSpec`, or `false` from `set_volume` and `set_placement`).
 
