@@ -588,13 +588,7 @@ impl Game<'_> {
         completion: ConfigurationCompletion,
     ) -> bool {
         let frame = match seal {
-            Some(seal) => {
-                let (token, close) = mod_api::__private::seal_tokens(seal);
-                self.transactions
-                    .iter_mut()
-                    .rev()
-                    .find(|level| level.token == token && level.close_token == close)
-            }
+            Some(seal) => self.transaction_frame_for_seal(seal),
             None => self.transactions.last_mut(),
         };
         let Some(frame) = frame else {
@@ -602,6 +596,20 @@ impl Game<'_> {
         };
         frame.configuration_completions.push(completion);
         true
+    }
+    /// Discard this handler's completions without rolling back its other committed effects.
+    /// Any children it abandoned will be aborted by `transaction_close`.
+    pub(in crate::game) fn discard_configuration_completions(&mut self, seal: &TransactionSeal) {
+        if let Some(frame) = self.transaction_frame_for_seal(seal) {
+            frame.configuration_completions.clear();
+        }
+    }
+    fn transaction_frame_for_seal(&mut self, seal: &TransactionSeal) -> Option<&mut Level> {
+        let (token, close) = mod_api::__private::seal_tokens(seal);
+        self.transactions
+            .iter_mut()
+            .rev()
+            .find(|level| level.token == token && level.close_token == close)
     }
     /// `transaction_depth`: how deeply `tx` is nested, 0 for the outermost.
     pub(in crate::game) fn transaction_depth(&self, tx: &Transaction) -> Option<u32> {

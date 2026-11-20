@@ -12,17 +12,16 @@ impl Game<'_> {
     }
     pub(in crate::game) fn native_configuration_task_start(
         &mut self,
-        connection: mod_api::ConfigurationConnection,
+        context: mod_api::ConfigurationTaskContext<'_>,
         task_type: &Identifier,
     ) {
-        self.fire_configuration_task_start(connection, task_type);
+        self.fire_configuration_task_start(context, task_type);
     }
     pub(in crate::game) fn native_configuration_task_tick(
         &mut self,
-        connection: mod_api::ConfigurationConnection,
+        context: mod_api::ConfigurationTaskContext<'_>,
         task_type: &Identifier,
-        finished: &mut bool,
     ) {
-        self.fire_configuration_task_tick(connection, task_type, finished);
+        self.fire_configuration_task_tick(context, task_type);
     }
 }

@@ -1,4 +1,28 @@
-# Completion methods keep their signatures; the hook versions track the new timing.
-ids = ["hook:configuration_task_start", "hook:configuration_task_tick"]
-why = "Finishing a configuration task now waits for the outermost transaction to commit and publish its replies. An aborted handler or child transaction no longer advances the queue."
-migrate = "Keep calling connection.finish(host, task_type) from a configuration callback or main-thread payload handler, or set event.finished = true in configuration_task_tick. Treat Ok from finish as staged, not immediate: commit the enclosing transaction (return Ok from a payload handler), and queue any final reply before returning. Do not call finish without an open transaction; that returns NotRunning for an otherwise valid request."
+ids = [
+    "hook:configuration_task_start", "method:Hooks::configuration_task_start",
+    "hook:configuration_task_start.connection", "hook:configuration_task_start.context",
+    "hook:configuration_task_tick", "method:Hooks::configuration_task_tick",
+    "hook:configuration_task_tick.connection", "hook:configuration_task_tick.context",
+    "hook:configuration_task_tick.finished",
+    "type:ConfigurationTaskStartEvent", "type:ConfigurationTaskStartEvent.connection",
+    "type:ConfigurationTaskStartEvent.context",
+    "type:ConfigurationTaskTickEvent", "type:ConfigurationTaskTickEvent.connection",
+    "type:ConfigurationTaskTickEvent.context", "type:ConfigurationTaskTickEvent.finished",
+    "type:ConfigurationConnection", "handle:ConfigurationConnection::send_payload",
+    "handle:ConfigurationConnection::finish", "handle:ConfigurationConnection::fail",
+    "type:ConfigurationTaskRef", "type:ConfigurationTaskContext",
+    "handle:ConfigurationTaskContext::instance", "handle:ConfigurationTaskContext::has_channel",
+    "handle:ConfigurationTaskContext::send_payload", "handle:ConfigurationTaskContext::finish",
+    "handle:ConfigurationTaskContext::fail",
+    "type:ConfigurationTaskError", "type:ConfigurationTaskError.WrongType",
+    "type:ConfigurationTaskError.NotRunning", "type:ConfigurationTaskError.StaleTask",
+    "type:ConfigurationTaskError.WrongConnection", "type:ConfigurationTaskError.WrongContext",
+    "type:ConfigurationTaskError.Disconnected",
+    "method:prelude::ConfigurationTasksServerHost::configuration_send_payload",
+    "method:prelude::ConfigurationTasksServerHost::configuration_finish",
+    "method:prelude::ConfigurationTasksServerHost::configuration_fail",
+    "trait:IPayloadContext", "method:IPayloadContext::finish_configuration_task",
+    "method:IPayloadContext::disconnect",
+]
+why = "Start and tick now address the exact running task. A delayed reply cannot finish a different task or peer, and successful completion advances the queue only after commit publishes deferred sends. Task capabilities and errors stay in-process."
+migrate = "In start and tick, use event.context.has_channel(host, channel) and event.context.send_payload(host, channel, bytes) in place of event.connection calls. Replace connection.finish(host, task_type), host.configuration_finish(connection, task_type), and event.finished = true with event.context.finish(); replace connection.fail(host, reason) and host.configuration_fail(connection, reason) with event.context.fail(reason). Direct host.configuration_send_payload takes event.context.instance() instead of a connection. Keep event.task_type to identify the registered type and leave event.connection.has_channel unchanged in registration. For delayed completion, save event.context.instance() locally per peer and use context.finish_configuration_task(instance) on the receiving server main-thread configuration handler; use context.reply(channel, bytes) instead of connection.send_payload for its reply. Implement finish_configuration_task on any custom IPayloadContext, returning WrongContext where no server main-thread configuration journal is available. Replace WrongType matches with StaleTask and handle WrongConnection, WrongContext and Disconnected as distinct refusals; missing journal is WrongContext instead of NotRunning. Do not put ConfigurationConnection, ConfigurationTaskRef, ConfigurationTaskContext or ConfigurationTaskError in Wire values."

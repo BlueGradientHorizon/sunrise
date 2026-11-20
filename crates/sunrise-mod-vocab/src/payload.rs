@@ -14,7 +14,9 @@ pub use registrar::{
 mod typed;
 pub use typed::{PayloadToken, ToClient, ToServer};
 
-use crate::{ClientHost, PlayerRef, ServerHost, Text};
+use crate::{
+    ClientHost, ConfigurationTaskError, ConfigurationTaskRef, PlayerRef, ServerHost, Text,
+};
 use std::sync::Arc;
 
 /// Opaque application bytes. The transport never prepends a mod envelope.
@@ -308,7 +310,17 @@ pub trait IPayloadContext {
         id: &PayloadId,
         bytes: PayloadBytes,
     ) -> Result<u32, PayloadSendError>;
-    /// Disconnect this session with the supplied component.
+    /// In a server main-thread configuration handler, request completion of the exact
+    /// running task for this receiving peer. Keep the instance locally from the task
+    /// callback; do not take it from the wire. Completion takes effect only after the
+    /// enclosing transaction commits and publishes its replies. Abort, handler failure,
+    /// or explicitly disconnecting this peer discards the request.
+    fn finish_configuration_task(
+        &mut self,
+        instance: ConfigurationTaskRef,
+    ) -> Result<(), ConfigurationTaskError>;
+    /// Disconnect this session with the supplied component. This discards any configuration
+    /// task completion staged by the handler.
     fn disconnect(&mut self, reason: Text);
     /// Run now on the main thread or schedule there from the network executor.
     /// Failure of the work is reported as a named session failure.

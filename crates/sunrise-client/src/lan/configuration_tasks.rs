@@ -1,6 +1,6 @@
 //! Main-thread configuration task state shared with one connection worker.
 use super::config_payloads::ConfigSender;
-use crate::raw_payloads::{Endpoint, Transport};
+use crate::raw_payloads::{Endpoint, Transport, connection::Epoch};
 use mod_api::{
     ConfigurationConnection, ConfigurationTask, ConfigurationTaskError, Identifier, PayloadId,
 };
@@ -89,11 +89,16 @@ pub struct Turn {
 pub struct ConfigurationCompletion {
     session: Arc<Session>,
     ordinal: usize,
+    ingress: Option<Arc<Epoch>>,
 }
 impl ConfigurationCompletion {
     pub fn publish(self) {
         let mut state = self.session.state.lock().unwrap_or_else(|e| e.into_inner());
-        if state.at == self.ordinal && state.active() && !self.session.transport().closed() {
+        if state.at == self.ordinal
+            && state.active()
+            && !self.session.transport().closed()
+            && self.ingress.as_ref().is_none_or(|epoch| epoch.active())
+        {
             state.finished = true;
         }
     }
@@ -126,7 +131,8 @@ impl Session {
     }
     pub fn turn(&self) -> Option<Turn> {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        if state.closed || state.failure.is_some() || !state.registered {
+        if state.closed || state.failure.is_some() || !state.registered || self.transport().closed()
+        {
             return None;
         }
         if state.finished {
@@ -149,33 +155,29 @@ impl Session {
             .unwrap_or_else(|e| e.into_inner())
             .finished
     }
-    pub fn active(&self) -> bool {
-        self.state
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .active()
-    }
-    /// Validate the legacy type-based request without marking the task complete.
-    pub fn prepare_finish(
-        self: &Arc<Self>,
-        task_type: &Identifier,
-    ) -> Result<ConfigurationCompletion, ConfigurationTaskError> {
-        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+    /// Resolve an issued ordinal without mutating or failing any other turn.
+    pub fn require_running(&self, ordinal: usize) -> Result<(), ConfigurationTaskError> {
+        let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         if state.closed || state.failure.is_some() || self.transport().closed() {
             return Err(ConfigurationTaskError::Disconnected);
         }
-        if !state.started || state.finished || state.tasks.get(state.at) != Some(task_type) {
-            state.failure = Some("Finished a configuration task with the wrong type".into());
-            return Err(ConfigurationTaskError::WrongType);
+        if state.at != ordinal || !state.active() {
+            return Err(ConfigurationTaskError::StaleTask);
         }
-        Ok(self.completion(state.at))
+        Ok(())
     }
-    /// Bind a completion to an ordinal already issued by this session's turn.
-    pub fn completion(self: &Arc<Self>, ordinal: usize) -> ConfigurationCompletion {
-        ConfigurationCompletion {
+    /// Validate before staging; a delayed ingress also needs its epoch alive at publication.
+    pub fn prepare_finish(
+        self: &Arc<Self>,
+        ordinal: usize,
+        ingress: Option<Arc<Epoch>>,
+    ) -> Result<ConfigurationCompletion, ConfigurationTaskError> {
+        self.require_running(ordinal)?;
+        Ok(ConfigurationCompletion {
             session: self.clone(),
             ordinal,
-        }
+            ingress,
+        })
     }
     pub fn fail(&self, reason: impl Into<String>) {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -191,7 +193,7 @@ impl Session {
     pub fn endpoint(&self) -> Endpoint {
         Endpoint::configuration(self.sender.clone())
     }
-    fn transport(&self) -> &Arc<Transport> {
+    pub fn transport(&self) -> &Arc<Transport> {
         self.sender.payload_transport()
     }
     pub fn result(&self) -> Option<Result<(), String>> {
@@ -230,9 +232,10 @@ mod tests {
             ConfigurationTask::new(first.clone()),
             ConfigurationTask::new(second.clone()),
         ]);
-        assert!(session.turn().unwrap().start);
-        let completion = session.prepare_finish(&first).unwrap();
-        let delayed = session.prepare_finish(&first).unwrap();
+        let turn = session.turn().unwrap();
+        assert!(turn.start);
+        let completion = session.prepare_finish(turn.ordinal, None).unwrap();
+        let delayed = session.prepare_finish(turn.ordinal, None).unwrap();
         assert!(!session.finished());
         assert_eq!(session.turn().unwrap().task_type, first);
 
@@ -243,14 +246,16 @@ mod tests {
         assert_eq!(next.task_type, second);
         delayed.publish();
         assert!(!session.finished());
-
-        session.prepare_finish(&second).unwrap().publish();
-        // No intervening turn: publication consumes the right to finish this type.
         assert!(matches!(
-            session.prepare_finish(&second),
-            Err(ConfigurationTaskError::WrongType)
+            session.prepare_finish(turn.ordinal, None),
+            Err(ConfigurationTaskError::StaleTask)
         ));
-        assert!(matches!(session.result(), Some(Err(_))));
+
+        session
+            .prepare_finish(next.ordinal, None)
+            .unwrap()
+            .publish();
         assert!(session.turn().is_none());
+        assert_eq!(session.result(), Some(Ok(())));
     }
 }

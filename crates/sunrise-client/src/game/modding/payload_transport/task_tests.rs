@@ -1,8 +1,7 @@
 //! Configuration admission through the serving Game and its main-thread payload executor.
 use mod_api::{
-    ConfigurationConnection, ConfigurationTask, ConfigurationTaskError, Hooks, HostTransaction,
-    IPayloadContext, IPayloadHandler, Identifier, ModEntry, PayloadBytes, PayloadId, Registrar,
-    ServerHost,
+    ConfigurationTask, ConfigurationTaskError, ConfigurationTaskRef, Hooks, IPayloadContext,
+    IPayloadHandler, Identifier, ModEntry, PayloadBytes, PayloadId, Registrar, ServerHost,
 };
 use std::{
     sync::{Arc, Mutex},
@@ -15,14 +14,14 @@ fn kind(name: &str) -> Identifier {
 #[derive(Clone, Copy)]
 enum Case {
     Reply,
-    WrongType,
+    Stale,
     Failure,
     Vanilla,
     Tick,
 }
 struct Fixture {
     case: Case,
-    connection: Mutex<Option<ConfigurationConnection>>,
+    instances: Mutex<[Option<ConfigurationTaskRef>; 2]>,
     starts: Mutex<Vec<Identifier>>,
 }
 struct Mod(Arc<Fixture>);
@@ -34,31 +33,40 @@ impl IPayloadHandler for Reply {
         context: &mut dyn IPayloadContext,
     ) -> Result<(), mod_api::PayloadHandleError> {
         assert_eq!(std::thread::current().name(), Some("Server thread"));
-        let first = kind("first");
-        assert_eq!(
-            self.0.starts.lock().unwrap().as_slice(),
-            std::slice::from_ref(&first)
-        );
-        let connection = self.0.connection.lock().unwrap().unwrap();
-        let host = context.server_host().unwrap();
+        let [first, second] = *self.0.instances.lock().unwrap();
+        let first = first.unwrap();
         let reply = match bytes.0.as_slice() {
-            [7] => {
-                let aborted: Result<(), ()> = host.transaction(|host, _| {
-                    connection.finish(host, &first).unwrap();
-                    Err(())
-                });
-                assert_eq!(aborted, Err(()));
-                8
+            [step @ (7 | 8)] => {
+                assert_eq!(*self.0.starts.lock().unwrap(), [kind("first")]);
+                // Open a child explicitly: the scoped reply context needs its own mutable
+                // borrow to finish, so it cannot be used inside the host's closure guard.
+                let child = context.server_host().unwrap().transaction_open();
+                context.finish_configuration_task(first).unwrap();
+                context
+                    .server_host()
+                    .unwrap()
+                    .transaction_close(&child, *step == 8);
+                *step + 1
             }
-            [8] => {
-                host.transaction(|host, _| connection.finish(host, &first))
-                    .unwrap();
-                9
+            [10] => {
+                assert_eq!(
+                    *self.0.starts.lock().unwrap(),
+                    [kind("first"), kind("second")]
+                );
+                assert_eq!(
+                    context.finish_configuration_task(first),
+                    Err(ConfigurationTaskError::StaleTask)
+                );
+                11
+            }
+            [11] => {
+                context.finish_configuration_task(second.unwrap()).unwrap();
+                12
             }
             other => panic!("unexpected configuration request: {other:?}"),
         };
-        connection
-            .send_payload(host, &PayloadId(CHANNEL.into()), PayloadBytes(vec![reply]))
+        context
+            .reply(&PayloadId(CHANNEL.into()), PayloadBytes(vec![reply]))
             .unwrap();
         Ok(())
     }
@@ -85,7 +93,6 @@ impl Hooks for Mod {
         if event.name != "ConfigPeer" {
             return;
         }
-        *self.0.connection.lock().unwrap() = Some(event.connection);
         if matches!(self.0.case, Case::Vanilla) {
             assert!(
                 !event
@@ -103,38 +110,39 @@ impl Hooks for Mod {
         event: &mut mod_api::ConfigurationTaskStartEvent<'_>,
     ) {
         self.0.starts.lock().unwrap().push(event.task_type.clone());
-        if event.task_type == &kind("second") {
-            event.connection.finish(host, event.task_type).unwrap();
-            return;
-        }
-        match self.0.case {
-            Case::Reply => event
-                .connection
-                .send_payload(host, &PayloadId(CHANNEL.into()), PayloadBytes(vec![7]))
-                .unwrap(),
-            Case::WrongType => assert_eq!(
-                event.connection.finish(host, &kind("wrong")),
-                Err(ConfigurationTaskError::WrongType)
-            ),
-            Case::Failure => event.connection.fail(host, "fixture failure"),
-            Case::Vanilla => {
-                assert!(
-                    !event
-                        .connection
-                        .has_channel(host, &PayloadId(CHANNEL.into()))
-                );
-                event.connection.finish(host, event.task_type).unwrap();
+        let second = event.task_type == &kind("second");
+        let context = &mut event.context;
+        self.0.instances.lock().unwrap()[usize::from(second)] = Some(context.instance());
+        match (self.0.case, second) {
+            (Case::Reply, false) | (Case::Stale, true) => {
+                let channel = PayloadId(CHANNEL.into());
+                assert!(context.has_channel(host, &channel));
+                context
+                    .send_payload(
+                        host,
+                        &channel,
+                        PayloadBytes(vec![if second { 10 } else { 7 }]),
+                    )
+                    .unwrap();
             }
-            Case::Tick => {}
+            (Case::Failure, false) => {
+                context.finish();
+                context.fail("fixture failure");
+                context.finish(); // Cannot overwrite failure.
+            }
+            (Case::Tick, false) => {}
+            _ => context.finish(),
         }
     }
     fn configuration_task_tick(
         &self,
-        _: &mut dyn ServerHost,
+        host: &mut dyn ServerHost,
         event: &mut mod_api::ConfigurationTaskTickEvent<'_>,
     ) {
         if matches!(self.0.case, Case::Tick) {
-            event.finished = true;
+            let _abandoned = host.transaction_open();
+            event.context.finish();
+            event.context.finish();
         }
     }
 }
@@ -201,13 +209,13 @@ fn serving_game_drives_configuration_tasks() {
     if super::super::native_entity_refs::tests::run_fresh_cases(
         NAME,
         "SUNRISE_TASK_CHILD",
-        &["reply", "wrong", "failure", "vanilla", "tick"],
+        &["reply", "stale", "failure", "vanilla", "tick"],
     ) {
         return;
     }
     let case = match std::env::var("SUNRISE_TASK_CHILD").unwrap().as_str() {
         "reply" => Case::Reply,
-        "wrong" => Case::WrongType,
+        "stale" => Case::Stale,
         "failure" => Case::Failure,
         "vanilla" => Case::Vanilla,
         "tick" => Case::Tick,
@@ -215,7 +223,7 @@ fn serving_game_drives_configuration_tasks() {
     };
     let fixture = Arc::new(Fixture {
         case,
-        connection: Mutex::new(None),
+        instances: Mutex::new([None; 2]),
         starts: Mutex::new(Vec::new()),
     });
     mod_platform::testing::with_mods(
@@ -272,16 +280,20 @@ fn serving_game_drives_configuration_tasks() {
                 };
                 c.send(&cfg::Serverbound::SelectKnownPacks(known).encode())
                     .unwrap();
-                let mut replies = [7_u8, 8, 9].into_iter();
+                let mut replies = match case {
+                    Case::Reply => &[7_u8, 8, 9][..],
+                    Case::Stale => &[10, 11, 12],
+                    _ => &[],
+                }
+                .iter()
+                .copied();
                 loop {
                     let (id, body) = c.recv().unwrap();
                     match cfg::Clientbound::decode(id, &body).unwrap() {
                         cfg::Clientbound::CustomPayload(p) if p.channel == CHANNEL => {
-                            assert!(matches!(case, Case::Reply));
                             let expected = replies.next().expect("too many configuration replies");
                             assert_eq!(p.data, [expected]);
-                            if expected != 9 {
-                                assert_eq!(*fixture.starts.lock().unwrap(), [kind("first")]);
+                            if matches!(expected, 7 | 8 | 10 | 11) {
                                 c.send(&cfg::Serverbound::CustomPayload(p).encode())
                                     .unwrap();
                             }
@@ -290,7 +302,7 @@ fn serving_game_drives_configuration_tasks() {
                             c.send(&cfg::Serverbound::KeepAlive(p).encode()).unwrap();
                         }
                         cfg::Clientbound::Disconnect(reason) => {
-                            assert!(matches!(case, Case::WrongType | Case::Failure));
+                            assert!(matches!(case, Case::Failure));
                             assert_eq!(*fixture.starts.lock().unwrap(), vec![kind("first")]);
                             let reason =
                                 sunrise_protocol::text::plain(&reason.reason, &Default::default());
@@ -298,14 +310,12 @@ fn serving_game_drives_configuration_tasks() {
                             break;
                         }
                         cfg::Clientbound::FinishConfiguration(_) => {
-                            assert!(!matches!(case, Case::WrongType | Case::Failure));
-                            if matches!(case, Case::Reply) {
-                                assert_eq!(
-                                    replies.next(),
-                                    None,
-                                    "FinishConfiguration overtook a reply"
-                                );
-                            }
+                            assert!(!matches!(case, Case::Failure));
+                            assert_eq!(
+                                replies.next(),
+                                None,
+                                "FinishConfiguration overtook a reply"
+                            );
                             let expected = if matches!(case, Case::Vanilla) {
                                 vec![]
                             } else {
