@@ -653,8 +653,8 @@ pub(crate) struct Ends<'a, A: ?Sized, B: ?Sized> {
 /// nothing in a transaction of its own, nested in the caller's: how much moved. A move `to` takes
 /// only part of is undone and tried again with that part, and one that moves nothing is undone
 /// (NeoForge's `move` commits only what moved); a handler answering more than it was asked has
-/// its move undone and gives [`Overanswered`]. The one step of `move_resources`, `move_energy`
-/// and the 64-bit `transfer`.
+/// its move undone and gives [`Overanswered`]. Used by `move_energy` and the 64-bit
+/// `transfer`; the resource-handler kit has its own probe-before-insert contract.
 pub(crate) fn move_once<A: ?Sized, B: ?Sized, N: Copy + PartialOrd + Default>(
     host: &mut dyn ServerHost,
     ends: Ends<'_, A, B>,

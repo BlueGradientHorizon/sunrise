@@ -2,7 +2,7 @@
 //! Writes and probes take an optional enclosing transaction. With `None`, the helper opens its
 //! own transaction (a root if the host has none open); with `Some(tx)`, the caller can abort the
 //! encompassing operation. Probes always roll back.
-use crate::content::resource::{Ends, MAX_TRANSFER_STEP, in_turn, move_once, try_in_turn};
+use crate::content::resource::{MAX_TRANSFER_STEP, in_turn, try_in_turn};
 use crate::{Capability, HostTransaction, Overanswered, ResourceHandler, ServerHost, Transaction};
 use std::ops::Range;
 
@@ -560,9 +560,13 @@ fn can_open(host: &dyn ServerHost, tx: Option<&Transaction>) -> bool {
     tx.is_none_or(|tx| host.transaction_depth(tx).is_some())
 }
 
-/// Moves up to `max` of the resources `filter` accepts, in index order. Each step is atomic;
-/// a partial insertion is retried at the accepted amount. Propagate [`Overanswered`] out of an
-/// enclosing transaction to abort the entire move. With `None` the helper does this itself.
+/// Moves up to `max` of the resources `filter` accepts, in index order. The helper probes what
+/// it can extract, rolls the probe back, inserts, then extracts exactly what went in. A step
+/// that cannot extract that exact amount rolls back. [`Overanswered`] rolls back the entire
+/// move, even if the caller catches the error and commits the enclosing transaction.
+///
+/// Pass `Some(tx)` to run under the current transaction, or `None` to open a root. A token
+/// that does not name the current transaction, or `None` while one is open, moves nothing.
 pub fn move_resources<R>(
     host: &mut dyn ServerHost,
     from: &Capability<dyn ResourceHandler<R>>,
@@ -723,14 +727,10 @@ fn with_move_transaction<T: Default>(
     tx: Option<&Transaction>,
     run: impl FnOnce(&mut dyn ServerHost) -> Result<T, Overanswered>,
 ) -> Result<T, Overanswered> {
-    if !can_open(host, tx) {
+    if host.transaction_current().as_ref() != tx {
         return Ok(T::default());
     }
-    if tx.is_some() {
-        run(host)
-    } else {
-        host.transaction(|host, _| run(host))
-    }
+    host.transaction(|host, _| run(host))
 }
 
 fn move_slot<R>(
@@ -746,17 +746,41 @@ fn move_slot<R>(
     if want == 0 {
         return Ok(0);
     }
-    move_once(
-        host,
-        Ends {
-            from,
-            to,
-            at: &index,
-        },
-        want,
-        |host, tx, want| from.extract_at(host, tx, index, resource, want),
-        |host, tx, out| insert(host, tx, resource, out),
-    )
+    // The destination must see the source before extraction, even though the probe may write.
+    let probe: Result<std::convert::Infallible, _> =
+        host.transaction(|host, tx| Err(from.extract_at(host, tx, index, resource, want)));
+    let available = from
+        .checked(probe.unwrap_err(), want, &index)
+        .ok_or_else(|| Overanswered {
+            owner: from.owner(),
+        })?;
+    if available == 0 {
+        return Ok(0);
+    }
+    host.transaction(|host, tx| {
+        let accepted = to
+            .checked(insert(host, tx, resource, available), available, &index)
+            .ok_or_else(|| Some(Overanswered { owner: to.owner() }))?;
+        if accepted == 0 {
+            return Err(None);
+        }
+        let taken = from
+            .checked(
+                from.extract_at(host, tx, index, resource, accepted),
+                accepted,
+                &index,
+            )
+            .ok_or_else(|| {
+                Some(Overanswered {
+                    owner: from.owner(),
+                })
+            })?;
+        if taken != accepted {
+            return Err(None);
+        }
+        Ok(accepted)
+    })
+    .or_else(|error| error.map_or(Ok(0), Err))
 }
 
 #[cfg(test)]

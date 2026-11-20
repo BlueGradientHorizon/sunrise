@@ -512,6 +512,98 @@ fn an_overanswer_after_an_honest_part_undoes_the_whole_move() {
 }
 
 #[test]
+fn a_caught_bulk_error_does_not_commit_earlier_moves_and_the_sink_sees_the_source() {
+    struct ObservingSink {
+        source: Capability<dyn ResourceHandler<ItemResource>>,
+        sink: Capability<dyn ResourceHandler<ItemResource>>,
+    }
+
+    impl ResourceHandler<ItemResource> for ObservingSink {
+        fn size(&self, host: &mut dyn ServerHost) -> usize {
+            self.sink.size(host)
+        }
+        fn resource(&self, host: &mut dyn ServerHost, index: usize) -> Option<ItemResource> {
+            self.sink.resource(host, index)
+        }
+        fn amount(&self, host: &mut dyn ServerHost, index: usize) -> u32 {
+            self.sink.amount(host, index)
+        }
+        fn capacity(&self, host: &mut dyn ServerHost, index: usize, item: &ItemResource) -> u32 {
+            self.sink.capacity(host, index, item)
+        }
+        fn insert_at(
+            &self,
+            host: &mut dyn ServerHost,
+            tx: &Transaction,
+            index: usize,
+            item: &ItemResource,
+            amount: u32,
+        ) -> u32 {
+            if self.source.resource(host, 1).as_ref() == Some(item) {
+                // The previous resource really moved before the second one's bad answer.
+                assert_eq!(self.source.amount(host, 0), 0);
+                assert_eq!(self.sink.amount(host, 0), 5);
+                return amount + 1;
+            }
+            // The destination is called after the probe rolls back, before extraction.
+            assert_eq!(self.source.amount(host, 0), 5);
+            self.sink.insert_at(host, tx, index, item, amount)
+        }
+        fn extract_at(
+            &self,
+            _: &mut dyn ServerHost,
+            _: &Transaction,
+            _: usize,
+            _: &ItemResource,
+            _: u32,
+        ) -> u32 {
+            0
+        }
+    }
+
+    let (mut fake, r) = items_host(&["minecraft:stone", "minecraft:dirt"]);
+    let (stone, dirt) = (&r[0], &r[1]);
+    chest(&mut fake, A, &[Some((stone, 5)), Some((dirt, 3))]);
+    chest(&mut fake, B, &[None, None]);
+    let other_pos = [2, 64, 0];
+    chest(&mut fake, other_pos, &[None]);
+    let other = items_at(&mut fake, other_pos);
+    let from = items_at(&mut fake, A);
+    let to = capability(
+        ObservingSink {
+            source: items_at(&mut fake, A),
+            sink: items_at(&mut fake, B),
+        },
+        "test:sink",
+    );
+    let host: &mut dyn ServerHost = &mut fake;
+    host.transaction(|host, parent| {
+        // Neither `None` under a parent nor a token naming an ancestor admits a move.
+        assert_eq!(move_resources(host, &from, &to, |_| true, 8, None), Ok(0));
+        host.transaction(|host, _| {
+            assert_eq!(
+                move_resources(host, &from, &to, |_| true, 8, Some(parent)),
+                Ok(0)
+            );
+            Ok::<_, ()>(())
+        })?;
+        // Commit this unrelated edit even after catching the helper's failure.
+        assert_eq!(other.insert_at(host, parent, 0, stone, 1), 1);
+        assert_eq!(
+            move_resources(host, &from, &to, |_| true, 8, Some(parent)),
+            Err(Overanswered {
+                owner: "test:sink".into()
+            })
+        );
+        Ok::<_, ()>(())
+    })
+    .unwrap();
+    assert_eq!(counts(&fake, A), [5, 3]);
+    assert_eq!(counts(&fake, B), [0, 0]);
+    assert_eq!(counts(&fake, other_pos), [1]);
+}
+
+#[test]
 fn a_maximum_transfer_propagates_nested_overanswers_and_aborts_the_tank() {
     let (mut fake, r) = items_host(&["minecraft:stone"]);
     let stone = &r[0];
@@ -547,7 +639,10 @@ fn a_maximum_transfer_propagates_nested_overanswers_and_aborts_the_tank() {
         })
     );
     assert_eq!(counts(&fake, B), [62]);
-    assert_eq!(fake.journal.closed()[2..], [(2, false), (1, false)]);
+    assert_eq!(
+        fake.journal.closed()[2..],
+        [(2, false), (2, false), (1, false)]
+    );
     assert_eq!(fake.journal.depth(), 0);
 }
 
