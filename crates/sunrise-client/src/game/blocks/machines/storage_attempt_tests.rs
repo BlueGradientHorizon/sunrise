@@ -23,6 +23,7 @@ type Trace = Arc<Mutex<Vec<String>>>;
 #[derive(Default)]
 struct Rules {
     slots: Option<usize>,
+    zero_capacity_slot: Option<usize>,
     accept: Option<&'static str>,
     notify: bool,
     release_first: bool,
@@ -72,8 +73,12 @@ impl ResourceHandler<ItemResource> for Storage {
     fn amount(&self, host: &mut dyn ServerHost, slot: usize) -> u32 {
         self.stack(host, slot).map_or(0, |stack| stack.count())
     }
-    fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: Option<&ItemResource>) -> u32 {
-        64
+    fn capacity(&self, _: &mut dyn ServerHost, slot: usize, _: Option<&ItemResource>) -> u32 {
+        if self.probe.rules.lock().unwrap().zero_capacity_slot == Some(slot) {
+            0
+        } else {
+            64
+        }
     }
     fn insert_at(
         &self,
@@ -775,6 +780,18 @@ fn full_storage_and_fully_stacked_hopper_are_the_only_capacity_shortcuts() {
                 ABOVE,
                 vec![Some(ItemStack::new("minecraft:diamond", 1)), None],
             );
+            game.tick_hopper(HOPPER);
+            assert_eq!(trace(&probe), ["face:Up"]);
+            assert_eq!(game.hopper_cooldown(HOPPER), 0);
+
+            // An empty index with no capacity is full too, so there is still no push.
+            probe.rules.lock().unwrap().zero_capacity_slot = Some(1);
+            game.world
+                .block_entities
+                .get_mut(&BELOW)
+                .unwrap()
+                .slots_mut()[1] = None;
+            probe.trace.lock().unwrap().clear();
             game.tick_hopper(HOPPER);
             assert_eq!(trace(&probe), ["face:Up"]);
             assert_eq!(game.hopper_cooldown(HOPPER), 0);

@@ -1585,11 +1585,7 @@ impl Game<'_> {
         part: &Capability<dyn ResourceHandler<ItemResource>>,
         at: [i32; 3],
     ) -> bool {
-        if (0..part.size(self)).all(|slot| {
-            part.resource(self, slot).is_some_and(|resource| {
-                part.amount(self, slot) >= part.capacity(self, slot, Some(&resource))
-            })
-        }) {
+        if mod_api::resource_util::is_full(self, part) {
             return false;
         }
         let from = self.container_world_pos(hopper);
