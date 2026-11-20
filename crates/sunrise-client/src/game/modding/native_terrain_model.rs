@@ -88,17 +88,19 @@ fn draw_terrain_model(
     options: TerrainModelOptions<'_>,
 ) -> Result<(), TerrainModelError> {
     let pose = draw.pose();
+    let start = draw.vertices_mut().len();
     let vertices = draw.vertices_mut();
-    draw_model(
+    let drawn = draw_model(
         faces,
         pose,
         light,
         engine_options(options),
         sprite_layer,
         |vertex| vertices.push(vertex),
-    )
-    .then_some(())
-    .ok_or(TerrainModelError::Refused)
+    );
+    let centre = draw.cell_centre();
+    draw.lit_since(start, centre);
+    drawn.then_some(()).ok_or(TerrainModelError::Refused)
 }
 
 #[cfg(test)]
