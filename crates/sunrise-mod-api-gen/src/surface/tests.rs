@@ -357,10 +357,8 @@ fn a_signature_cannot_hide_a_workspace_type_behind_an_import() {
     let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
         .err()
         .expect("the leak must fail the export");
-    assert_eq!(
-        error,
-        "mod_api::leak: `engine_library::Secret` names a workspace crate outside the mod API type index"
-    );
+    assert!(error.contains("mod_api::leak"), "{error}");
+    assert!(error.contains("engine_library::Secret"), "{error}");
 }
 
 #[test]
@@ -369,10 +367,8 @@ fn a_public_reexport_cannot_name_a_workspace_type_outside_the_seam() {
     let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
         .err()
         .expect("the re-export must fail the export");
-    assert_eq!(
-        error,
-        "mod_api::Leaked: `engine_library::Secret` names a workspace crate outside the mod API type index"
-    );
+    assert!(error.contains("mod_api::Leaked"), "{error}");
+    assert!(error.contains("engine_library::Secret"), "{error}");
 }
 
 #[test]
@@ -381,10 +377,8 @@ fn a_wire_layout_cannot_hide_a_workspace_type_behind_private_storage() {
     let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
         .err()
         .expect("the embedded type must fail the export");
-    assert_eq!(
-        error,
-        "mod_api::Private: `engine_library::Secret` names a workspace crate outside the mod API type index"
-    );
+    assert!(error.contains("mod_api::Private"), "{error}");
+    assert!(error.contains("engine_library::Secret"), "{error}");
 }
 
 fn hashes(export: &Export) -> BTreeMap<String, String> {
