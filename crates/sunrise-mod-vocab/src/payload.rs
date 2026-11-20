@@ -311,10 +311,17 @@ pub trait IPayloadContext {
         bytes: PayloadBytes,
     ) -> Result<u32, PayloadSendError>;
     /// In a server main-thread configuration handler, request completion of the exact
-    /// running task for this receiving peer. Keep the instance locally from the task
-    /// callback; do not take it from the wire. Completion takes effect only after the
-    /// enclosing transaction commits and publishes its replies. Abort, handler failure,
-    /// or explicitly disconnecting this peer discards the request.
+    /// running task for this receiving peer. Pass the server-local instance captured
+    /// when sending the original challenge: never take an instance from the wire or
+    /// substitute the task running when the reply arrives.
+    ///
+    /// A different live peer's instance returns `WrongConnection`; a no-longer-current
+    /// task on this connection returns `StaleTask`. `WrongContext` means this is not a
+    /// server main-thread configuration handler with a transaction; `Disconnected`
+    /// means the connection or its configuration epoch has ended. No refusal advances a task.
+    /// Completion takes effect only after the outermost transaction commits and
+    /// publishes its deferred sends. Abort, handler failure, or explicitly disconnecting
+    /// this peer discards the request.
     fn finish_configuration_task(
         &mut self,
         instance: ConfigurationTaskRef,

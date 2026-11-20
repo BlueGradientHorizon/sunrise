@@ -12,6 +12,7 @@ use std::{
     time::{Duration, Instant},
 };
 const CHANNEL: &str = "task_fixture:value";
+const PEER_NAMES: [&str; 2] = ["ConfigPeerA", "ConfigPeerB"];
 fn kind(name: &str) -> Identifier {
     Identifier::parse(&format!("task_fixture:{name}")).unwrap()
 }
@@ -24,11 +25,13 @@ enum Case {
     Tick,
     Panic,
     Refusal,
+    ConcurrentPeers,
 }
 struct Fixture {
     case: Case,
     instances: Mutex<[Option<ConfigurationTaskRef>; 2]>,
     starts: Mutex<Vec<Identifier>>,
+    joins: Mutex<Vec<String>>,
     type_reads: AtomicUsize,
     panic_staged_payload: AtomicBool,
 }
@@ -71,6 +74,20 @@ impl IPayloadHandler for Reply {
                 context.finish_configuration_task(second.unwrap()).unwrap();
                 12
             }
+            [13] => {
+                // B replies to its challenge with the instance saved for A instead.
+                assert_ne!(first, second.unwrap());
+                assert_eq!(
+                    context.finish_configuration_task(first),
+                    Err(ConfigurationTaskError::WrongConnection)
+                );
+                14
+            }
+            [step @ (15 | 16)] => {
+                let instance = if *step == 15 { first } else { second.unwrap() };
+                context.finish_configuration_task(instance).unwrap();
+                17
+            }
             other => panic!("unexpected configuration request: {other:?}"),
         };
         context
@@ -98,6 +115,18 @@ impl Hooks for Mod {
         host: &mut dyn ServerHost,
         event: &mut mod_api::RegisterConfigurationTasksEvent<'_>,
     ) {
+        let task = |id, slot| Task {
+            fixture: self.0.clone(),
+            id,
+            slot,
+            waiting: false,
+        };
+        if matches!(self.0.case, Case::ConcurrentPeers) {
+            if let Some(slot) = PEER_NAMES.iter().position(|&name| name == event.name) {
+                event.register(task(kind("first"), slot)).unwrap();
+            }
+            return;
+        }
         if event.name != "ConfigPeer" {
             return;
         }
@@ -109,28 +138,29 @@ impl Hooks for Mod {
             );
             return;
         }
-        let task = |id, second| Task {
-            fixture: self.0.clone(),
-            id,
-            second,
-            waiting: false,
-        };
-        event.register(task(kind("first"), false)).unwrap();
-        event.register(task(kind("second"), true)).unwrap();
+        event.register(task(kind("first"), 0)).unwrap();
+        event.register(task(kind("second"), 1)).unwrap();
         if matches!(self.0.case, Case::Refusal) {
-            let duplicate = event.register(task(kind("first"), false));
+            let duplicate = event.register(task(kind("first"), 0));
             assert_eq!(
                 duplicate,
                 Err(ConfigurationTaskRegistrationError::DuplicateType(kind(
                     "first"
                 )))
             );
-            let empty = event.register(task(
-                Identifier::from_parts("task_fixture", "").unwrap(),
-                false,
-            ));
+            let empty =
+                event.register(task(Identifier::from_parts("task_fixture", "").unwrap(), 0));
             assert_eq!(empty, Err(ConfigurationTaskRegistrationError::EmptyType));
             // Do not fail the connection explicitly: even ignored refusals abort admission.
+        }
+    }
+    fn player_logged_in(
+        &self,
+        _: &mut dyn ServerHost,
+        event: &mut mod_api::PlayerLoggedInEvent<'_>,
+    ) {
+        if PEER_NAMES.contains(&event.name) {
+            self.0.joins.lock().unwrap().push(event.name.into());
         }
     }
 }
@@ -138,7 +168,7 @@ impl Hooks for Mod {
 struct Task {
     fixture: Arc<Fixture>,
     id: Identifier,
-    second: bool,
+    slot: usize,
     waiting: bool,
 }
 impl ConfigurationTask for Task {
@@ -149,26 +179,28 @@ impl ConfigurationTask for Task {
     fn start(&mut self, host: &mut dyn ServerHost, context: &mut ConfigurationTaskContext<'_>) {
         assert_eq!(std::thread::current().name(), Some("Server thread"));
         self.fixture.starts.lock().unwrap().push(self.id.clone());
-        self.fixture.instances.lock().unwrap()[usize::from(self.second)] = Some(context.instance());
-        match (self.fixture.case, self.second) {
-            (Case::Reply, false) | (Case::Stale, true) => {
+        self.fixture.instances.lock().unwrap()[self.slot] = Some(context.instance());
+        match (self.fixture.case, self.slot) {
+            (Case::Reply, 0) | (Case::Stale, 1) | (Case::ConcurrentPeers, _) => {
                 let channel = PayloadId(CHANNEL.into());
                 assert!(context.has_channel(host, &channel));
+                let challenge = match self.fixture.case {
+                    Case::Reply => 7,
+                    Case::Stale => 10,
+                    // Give the two connections distinct reply selectors even though the task type is the same.
+                    _ => 15 + self.slot as u8,
+                };
                 context
-                    .send_payload(
-                        host,
-                        &channel,
-                        PayloadBytes(vec![if self.second { 10 } else { 7 }]),
-                    )
+                    .send_payload(host, &channel, PayloadBytes(vec![challenge]))
                     .unwrap();
             }
-            (Case::Failure, false) => {
+            (Case::Failure, 0) => {
                 context.finish();
                 context.fail("fixture failure");
                 context.finish(); // Cannot overwrite failure.
             }
-            (Case::Tick, false) => self.waiting = true,
-            (Case::Panic, false) => {
+            (Case::Tick, 0) => self.waiting = true,
+            (Case::Panic, 0) => {
                 context.finish();
                 context
                     .send_payload(host, &PayloadId(CHANNEL.into()), PayloadBytes(vec![99]))
@@ -245,6 +277,58 @@ fn vanilla_peer(
     }
 }
 
+fn publish_task_server(game: &mut super::super::Game<'_>) -> u16 {
+    game.settings.render_distance = 2;
+    game.settings.simulation_distance = 2;
+    let options = sunrise_client::title::WorldOptions {
+        world_type: sunrise_client::save::WorldPreset::Flat,
+        ..Default::default()
+    };
+    game.open_integrated(
+        "config_tasks",
+        Some("Configuration tasks"),
+        Some(1),
+        true,
+        Some(&options),
+    )
+    .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while !game
+        .remote
+        .as_ref()
+        .is_some_and(|r| r.logged_in && r.joined)
+    {
+        game.poll_remote().unwrap();
+        assert!(Instant::now() < deadline);
+        std::thread::yield_now();
+    }
+    game.integrated
+        .as_ref()
+        .unwrap()
+        .call(|server| {
+            server.publish(super::super::lan::LanSettings {
+                port: 0,
+                guest_commands: false,
+                force_game_mode: false,
+            })
+        })
+        .unwrap()
+        .unwrap()
+}
+
+impl Fixture {
+    fn new(case: Case) -> Self {
+        Self {
+            case,
+            instances: Mutex::new([None; 2]),
+            starts: Mutex::new(Vec::new()),
+            joins: Mutex::new(Vec::new()),
+            type_reads: AtomicUsize::new(0),
+            panic_staged_payload: AtomicBool::new(false),
+        }
+    }
+}
+
 #[test]
 #[ignore = "daily"]
 fn serving_game_drives_configuration_tasks() {
@@ -270,13 +354,7 @@ fn serving_game_drives_configuration_tasks() {
         "refusal" => Case::Refusal,
         _ => unreachable!(),
     };
-    let fixture = Arc::new(Fixture {
-        case,
-        instances: Mutex::new([None; 2]),
-        starts: Mutex::new(Vec::new()),
-        type_reads: AtomicUsize::new(0),
-        panic_staged_payload: AtomicBool::new(false),
-    });
+    let fixture = Arc::new(Fixture::new(case));
     mod_platform::testing::with_mods(
         vec![ModEntry::new(
             "task_fixture",
@@ -285,48 +363,12 @@ fn serving_game_drives_configuration_tasks() {
         .into(),
         || {
             super::super::native_entity_refs::tests::with_client_game(|game| {
-                game.settings.render_distance = 2;
-                game.settings.simulation_distance = 2;
-                let options = sunrise_client::title::WorldOptions {
-                    world_type: sunrise_client::save::WorldPreset::Flat,
-                    ..Default::default()
-                };
-                game.open_integrated(
-                    "config_tasks",
-                    Some("Configuration tasks"),
-                    Some(1),
-                    true,
-                    Some(&options),
-                )
-                .unwrap();
-                let deadline = Instant::now() + Duration::from_secs(60);
-                while !game
-                    .remote
-                    .as_ref()
-                    .is_some_and(|r| r.logged_in && r.joined)
-                {
-                    game.poll_remote().unwrap();
-                    assert!(Instant::now() < deadline);
-                    std::thread::yield_now();
-                }
-                let port = game
-                    .integrated
-                    .as_ref()
-                    .unwrap()
-                    .call(|server| {
-                        server.publish(super::super::lan::LanSettings {
-                            port: 0,
-                            guest_commands: false,
-                            force_game_mode: false,
-                        })
-                    })
-                    .unwrap()
-                    .unwrap();
+                let port = publish_task_server(game);
                 use sunrise_protocol::packets::{Empty, configuration as cfg, play};
                 let (mut c, known) = if matches!(case, Case::Vanilla) {
                     vanilla_peer(port)
                 } else {
-                    let (c, _, known) = super::config_tests::configuration_peer(port);
+                    let (c, _, known) = super::config_tests::configuration_peer(port, "ConfigPeer");
                     (c, known)
                 };
                 c.send(&cfg::Serverbound::SelectKnownPacks(known).encode())
@@ -421,4 +463,109 @@ fn serving_game_drives_configuration_tasks() {
             });
         },
     );
+}
+
+#[test]
+#[ignore = "daily"]
+fn peer_completion_rejects_other_connections() {
+    use sunrise_protocol::{
+        connection::Connection,
+        packets::{Empty, configuration as cfg, play},
+    };
+    super::tests::require_resources();
+    if super::super::native_entity_refs::tests::run_fresh_cases(
+        "game::payload_transport::task_tests::peer_completion_rejects_other_connections",
+        "SUNRISE_TASK_PEER_CHILD",
+        &["cross_peer"],
+    ) {
+        return;
+    }
+    let fixture = Arc::new(Fixture::new(Case::ConcurrentPeers));
+    let mods = vec![ModEntry::new(
+        "task_fixture",
+        Box::new(Mod(fixture.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        super::super::native_entity_refs::tests::with_client_game(|game| {
+            let port = publish_task_server(game);
+            let [(mut a, _, packs_a), (mut b, _, packs_b)] =
+                PEER_NAMES.map(|name| super::config_tests::configuration_peer(port, name));
+            a.send(&cfg::Serverbound::SelectKnownPacks(packs_a).encode())
+                .unwrap();
+            b.send(&cfg::Serverbound::SelectKnownPacks(packs_b).encode())
+                .unwrap();
+
+            let next = |c: &mut Connection| loop {
+                let (id, body) = c.recv().unwrap();
+                match cfg::Clientbound::decode(id, &body).unwrap() {
+                    cfg::Clientbound::CustomPayload(p) if p.channel == CHANNEL => {
+                        break Some(p.data);
+                    }
+                    cfg::Clientbound::KeepAlive(p) => {
+                        c.send(&cfg::Serverbound::KeepAlive(p).encode()).unwrap();
+                    }
+                    cfg::Clientbound::FinishConfiguration(_) => break None,
+                    cfg::Clientbound::Disconnect(p) => {
+                        panic!("disconnected in configuration: {p:?}")
+                    }
+                    _ => {}
+                }
+            };
+            let reply = |c: &mut Connection, step| {
+                c.send(
+                    &cfg::Serverbound::CustomPayload(cfg::CustomPayload {
+                        channel: CHANNEL.into(),
+                        data: vec![step],
+                    })
+                    .encode(),
+                )
+                .unwrap();
+            };
+
+            // Both challenges are outstanding, each from the first task of the same type.
+            assert_eq!(next(&mut a), Some(vec![15]));
+            assert_eq!(next(&mut b), Some(vec![16]));
+            assert_eq!(
+                *fixture.starts.lock().unwrap(),
+                [kind("first"), kind("first")]
+            );
+            reply(&mut b, 13);
+            assert_eq!(
+                next(&mut b),
+                Some(vec![14]),
+                "B did not report WrongConnection"
+            );
+
+            // A premature advance of either connection would put FinishConfiguration
+            // before its own reply, or make the handler's own-instance completion fail.
+            for (peer, step) in [(&mut a, 15), (&mut b, 16)] {
+                reply(peer, step);
+                assert_eq!(next(peer), Some(vec![17]), "own task must still be running");
+                assert_eq!(next(peer), None, "own task must finish configuration");
+                peer.send(&cfg::Serverbound::FinishConfiguration(Empty).encode())
+                    .unwrap();
+                loop {
+                    let (id, body) = peer.recv().unwrap();
+                    match play::Clientbound::decode(id, &body).unwrap() {
+                        play::Clientbound::Login(_) => break,
+                        play::Clientbound::Disconnect(p) => {
+                            panic!("disconnected before play login: {p:?}")
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            // The play Login is sent in the same tick as the join announcement.
+            // Read the hook's record between ticks, while both connections are still open.
+            let joins = game
+                .integrated
+                .as_ref()
+                .unwrap()
+                .call(move |_| fixture.joins.lock().unwrap().clone())
+                .unwrap();
+            assert_eq!(joins, PEER_NAMES.map(str::to_owned));
+            game.leave_server(None).unwrap();
+        });
+    });
 }

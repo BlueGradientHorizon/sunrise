@@ -31,40 +31,55 @@ No packet inspection or editing beyond the existing `ClientPacket` view is provi
 
 ## Configuration tasks before play
 
-The server's `register_configuration_tasks` hook runs once per connecting client,
-including vanilla clients, after the built-in registry, tag and resource-pack steps.
-During registration, `event.connection.has_channel(host, &channel)` checks
-whether the peer negotiated a configuration channel.
+The server's `register_configuration_tasks` hook (version 2) runs once per
+connecting client, including vanilla clients, after the built-in registry, tag
+and resource-pack steps. During registration, keep using
+`event.connection.has_channel(host, &channel)` to check what the peer negotiated.
 
-Implement `ConfigurationTask` for a `Send + 'static` struct, and pass an instance
-of that struct to `event.register(task)`. Return its nonempty namespaced type from
-`task_type(&self) -> &Identifier`. The type is read once on registration and must
-be unique for that peer, across all listeners. An empty or duplicate type returns a
-`ConfigurationTaskRegistrationError` and aborts registration and admission even if
-the result is ignored. The first refusal supplies the disconnect diagnostic.
+Instead of `event.tasks.push(ConfigurationTask::new(id))`, implement
+`ConfigurationTask` for a `Send + 'static` struct and call `event.register(MyTask { id, ... })`.
+Replace the old `ConfigurationTask.id` field with your own field and return it
+from `task_type(&self) -> &Identifier`. The type is read once on registration and
+must be nonempty and unique for that connection across all listeners. `register`
+returns `ConfigurationTaskRegistrationError::EmptyType` or `DuplicateType(id)`
+for an invalid submission. The first refusal aborts registration and admission
+and supplies the disconnect diagnostic, even if its result is ignored.
 
-The server owns the tasks for this connection and runs them in registration order
-on the server thread. Each task's `start(&mut self, host, context)` runs once, and
-its optional `tick(&mut self, host, context)` runs at most once per later tick
-while the same instance is pending. Keep state shared between these calls in your
-task struct. Use `context.has_channel(host, &channel)` to check a channel,
-`context.send_payload(host, &channel, bytes)` to queue a registered payload, and
-`context.finish()` to request completion. Repeating `finish()` has no further
-effect; `context.fail(reason)` takes precedence over it.
+Move `configuration_task_start` and `configuration_task_tick` into your task's
+`start` and optional `tick`, both with parameters `&mut self, host: &mut dyn ServerHost,
+context: &mut ConfigurationTaskContext<'_>`. Use your own type field instead of
+`event.task_type` and keep shared state in the task struct. Only the registered
+instance runs: once for `start`, then at most once per later server tick while
+pending. Tasks run in registration order, without holding the connection task lock.
 
-If a payload handler will finish the task later, keep `context.instance()`
-in server-local state for that peer. In a server main-thread configuration
-handler, use `IPayloadContext::finish_configuration_task(instance)` and send any
-final reply with `IPayloadContext::reply`. Only that physical peer's current
-configuration and exact running instance can complete: an older instance returns
-`StaleTask`, another peer's returns `WrongConnection`, and the wrong side, phase
-or executor returns `WrongContext`. These refusals do not advance either task.
-Tasks, instance and connection capabilities, and local errors have no `Wire` encoding.
+| Old call in a start or tick hook | Replacement in the task callback |
+| --- | --- |
+| `event.connection.has_channel(host, &channel)` | `context.has_channel(host, &channel)` |
+| `event.connection.send_payload(host, &channel, bytes)` | `context.send_payload(host, &channel, bytes)` |
+| `host.configuration_send_payload(event.connection, &channel, bytes)` | `context.send_payload(host, &channel, bytes)` (or pass `context.instance()` as the first argument to the Host method) |
+| `event.connection.finish(host, task_type)`, `host.configuration_finish(connection, task_type)`, or `event.finished = true` | `context.finish()` |
+| `event.connection.fail(host, reason)` or `host.configuration_fail(connection, reason)` | `context.fail(reason)` |
 
-Completion is not immediate: a committed child transaction passes its request
-to the parent, and an abort discards it. The next task starts only after the
-outermost commit publishes its queued sends. An explicit handler disconnect
-discards its completion request even if the rest of the handler succeeds.
+For delayed completion, capture `context.instance()` in server-local state when
+you send the **original challenge**. Match the reply to that challenge and pass
+its saved instance to `cx.finish_configuration_task(instance)` in a server
+main-thread configuration payload handler. Never look up whichever task happens
+to be running when the reply arrives, and never send the instance over the wire.
+Use `cx.reply(&channel, bytes)` for a final reply on the same connection. For a
+network-thread handler, use `enqueue_work` and complete from the main-thread work.
+
+A different live connection's instance returns `WrongConnection`; an instance
+that is no longer the running one on this configuration returns `StaleTask`.
+The wrong side, phase, executor or a missing transaction returns `WrongContext`;
+an ended connection or configuration epoch returns `Disconnected`. A refusal
+advances neither task. Tasks, contexts, instance and connection capabilities,
+and task errors have no `Wire` encoding.
+
+Completion publishes only after the outermost transaction commits and publishes
+its deferred sends (including replies). A child commit hands the request to its
+parent; an abort discards it. Repeated callback requests coalesce, and `fail`
+wins over `finish`. An explicit payload-handler disconnect discards the request
+even if the rest of the handler succeeds.
 
 A refused task payload send, explicit `fail`, or callback panic aborts the task
 callback and closes that client with the configuration-error reason. Check the

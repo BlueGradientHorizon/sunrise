@@ -3,20 +3,24 @@ use crate::{Identifier, PayloadBytes, PayloadId, RegisterConfigurationTasksEvent
 use std::{collections::BTreeSet, fmt};
 
 // no wire: tasks are owned objects with server-thread callbacks and local state.
-/// One task instance owned by a configuring connection. The server runs it on the
-/// server thread in registration order and keeps the same instance while it waits.
+/// One task instance owned by a configuring connection. Register the instance with
+/// [`RegisterConfigurationTasksEvent::register`]. The server runs it in queue order,
+/// on the server thread without holding the connection's task lock, and keeps the
+/// same instance while it waits.
 pub trait ConfigurationTask: Send + 'static {
     /// The namespaced task type, read once on registration. It must be nonempty and
     /// unique among all tasks registered for this connection.
     fn task_type(&self) -> &Identifier;
 
-    /// Start this task exactly once. Request completion or failure through `context`,
-    /// or leave it pending for a tick or a configuration payload reply.
+    /// Start this task exactly once. Call [`ConfigurationTaskContext::finish`] or
+    /// [`ConfigurationTaskContext::fail`], or leave it pending for a tick or a reply.
+    /// A finish request publishes only after the outermost transaction commits and
+    /// publishes its deferred sends.
     fn start(&mut self, host: &mut dyn ServerHost, context: &mut ConfigurationTaskContext<'_>);
 
     /// Poll a pending task, at most once per server tick after its start. By default
-    /// the task just waits. As in `start`, finishing takes effect only on commit,
-    /// after queued sends; a failure or panic aborts the callback and fails admission.
+    /// the task just waits. As in [`Self::start`], use the context to send, finish or
+    /// fail. A failure or panic rolls back the callback and fails admission.
     fn tick(&mut self, _host: &mut dyn ServerHost, _context: &mut ConfigurationTaskContext<'_>) {}
 }
 
@@ -115,8 +119,9 @@ impl ConfigurationConnection {
     }
 }
 
-/// The exact running task of one configuring connection. Keep this in local state
-/// if a server main-thread payload handler will finish the task after a reply.
+/// The exact running task of one configuring connection. For delayed completion,
+/// keep the instance from the original challenge in server-local state. Never
+/// substitute the task that happens to be running when the reply arrives.
 // no wire: a process-local capability, never supplied by a peer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
@@ -133,7 +138,8 @@ pub struct ConfigurationTaskContext<'a> {
     outcome: &'a mut ConfigurationTaskOutcome,
 }
 impl ConfigurationTaskContext<'_> {
-    /// The exact task instance, which can outlive this callback.
+    /// The exact task instance, which can outlive this callback. When sending a
+    /// challenge, save this value for the matching reply handler.
     pub fn instance(&self) -> ConfigurationTaskRef {
         self.instance
     }
@@ -151,8 +157,8 @@ impl ConfigurationTaskContext<'_> {
     ) -> Result<(), ConfigurationTaskError> {
         host.configuration_send_payload(self.instance, channel, bytes)
     }
-    /// Request completion when the callback commits, after its queued sends have been
-    /// published. Repeated requests coalesce; failure, panic or disconnect prevents it.
+    /// Request completion after the outermost transaction commits and publishes its
+    /// deferred sends. Repeated requests coalesce; failure, panic or disconnect prevents it.
     pub fn finish(&mut self) {
         if matches!(self.outcome, ConfigurationTaskOutcome::Pending) {
             *self.outcome = ConfigurationTaskOutcome::Finish;
