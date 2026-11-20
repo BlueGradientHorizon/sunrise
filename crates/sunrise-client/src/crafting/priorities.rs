@@ -5,9 +5,7 @@ use crate::Result;
 use serde::Deserialize as _;
 use serde_json::Value;
 use std::{cmp::Reverse, collections::HashMap, fs, path::Path};
-use sunrise_world::{
-    conditions::LoadConditions, loot::PackOverlay,
-};
+use sunrise_world::{conditions::LoadConditions, loot::PackOverlay};
 
 /// One `recipe_priorities.json`, validated whole before any of it applies.
 #[derive(serde::Deserialize)]
