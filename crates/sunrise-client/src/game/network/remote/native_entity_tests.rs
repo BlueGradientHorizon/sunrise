@@ -115,7 +115,9 @@ fn a_client_reads_the_entities_and_menu_the_server_shows_it() {
     .unwrap();
     let me = game.entity(7).expect("the own player");
     assert_eq!(
-        game.entity_kind(me).map(|kind| kind.id(&game)).as_deref(),
+        game.entity_kind(me)
+            .and_then(|kind| kind.id(&game))
+            .as_deref(),
         Some("minecraft:player")
     );
     assert_eq!(game.entity_position(me), Some([0.5, 65.0, 0.5]));
@@ -144,7 +146,7 @@ fn a_client_reads_the_entities_and_menu_the_server_shows_it() {
     let stand = game.entity(20).expect("the stand is tracked");
     assert_eq!(
         game.entity_kind(stand)
-            .map(|kind| kind.id(&game))
+            .and_then(|kind| kind.id(&game))
             .as_deref(),
         Some("minecraft:armor_stand")
     );
@@ -182,7 +184,7 @@ fn a_client_reads_the_entities_and_menu_the_server_shows_it() {
     let display = game.entity(21).expect("the display is tracked");
     assert_eq!(
         game.entity_kind(display)
-            .map(|kind| kind.id(&game))
+            .and_then(|kind| kind.id(&game))
             .as_deref(),
         Some("minecraft:text_display")
     );

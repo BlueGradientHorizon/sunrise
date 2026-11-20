@@ -1054,7 +1054,8 @@ mod tests {
             ) {
                 let old = host
                     .entity(event.entity)
-                    .and_then(|entity| entity.kind(host).map(|kind| kind.id(host)));
+                    .and_then(|entity| entity.kind(host)?.id(host))
+                    .map(|name| name.as_str().to_owned());
                 let outcome = host.entity(event.converted);
                 let weapon = outcome
                     .and_then(|entity| host.living(entity))
@@ -1081,7 +1082,9 @@ mod tests {
                     .count();
                 self.seen.lock().unwrap().push(SeenConversion {
                     old,
-                    outcome: outcome.and_then(|entity| entity.kind(host).map(|kind| kind.id(host))),
+                    outcome: outcome
+                        .and_then(|entity| entity.kind(host)?.id(host))
+                        .map(|name| name.as_str().to_owned()),
                     weapon,
                     mushrooms,
                 });

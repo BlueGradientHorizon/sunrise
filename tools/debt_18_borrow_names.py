@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Migrate resident registry names on the debt integration base (item 18, step 1)."""
+"""Migrate resident and pinned registry-name consumers (debt item 18)."""
 
 import argparse
 from pathlib import Path
@@ -12,25 +12,7 @@ G = "crates/sunrise-mod-api-gen/src/"
 C = "crates/sunrise-client/src/game/"
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--protected-list", type=Path, default=WAVE3)
-    args = parser.parse_args()
-    protected = set(args.protected_list.read_text(encoding="utf-8").splitlines())
-    pending = {}
-
-    def replace(path, old, new, *, count=1):
-        file = ROOT / path
-        if path in protected or file.resolve() != file:
-            raise SystemExit(f"refusing to edit protected or redirected path: {path}")
-        if file not in pending:
-            pending[file] = file.read_text(encoding="utf-8")
-        source = pending[file]
-        matches = source.count(old)
-        if matches != count:
-            raise SystemExit(f"{path}: expected {count} matches for {old!r}, found {matches}")
-        pending[file] = source.replace(old, new)
-
+def resident(replace):
     keys = V + "host/keys.rs"
     states = C + "modding/native_block_states.rs"
     for kind, key, lookup, description in [
@@ -278,6 +260,67 @@ impl<'a> KeyIdResult<'a> for Result<String, crate::GameEventKeyError> {
     ]:
         replace(C + path, old, new)
 
+
+def snapshots(replace):
+    states = C + "modding/native_block_states.rs"
+    for entry, expected in [
+        ("entities[0]", "minecraft:acacia_boat"),
+        ("entities.last().unwrap()", "minecraft:fishing_bobber"),
+        ("menus[0]", "minecraft:generic_9x1"),
+        ("menus.last().unwrap()", "minecraft:stonecutter"),
+        ("enchantments[0]", "minecraft:aqua_affinity"),
+        ("enchantments.last().unwrap()", "minecraft:wind_burst"),
+    ]:
+        gap = "\n                " if entry.startswith(("entities.last", "enchantments.last")) else " "
+        replace(states, f'{entry}.id(host),{gap}"{expected}"', f'{entry}.id(host).as_deref(),{gap}Some("{expected}")')
+
+    for path, host, count in [
+        ("modding/native_dragon_refs.rs", "game", 1),
+        ("modding/native_entities.rs", "host", 1),
+        ("modding/native_entity_refs.rs", "game", 2),
+        ("modding/native_item_places.rs", "host", 1),
+        ("modding/native_level_items.rs", "game", 1),
+        ("modding/native_level_spawning.rs", "game", 2),
+        ("modding/native_living_refs.rs", "game", 1),
+        ("modding/native_player_destroyed_block_tests.rs", "host", 1),
+        ("network/remote/native_entity_tests.rs", "&game", 3),
+    ]:
+        call = f"(|kind| kind.id({host}))"
+        replace(C + path, f".map{call}", f".and_then{call}", count=count)
+    for kind in ("robot", "ghost"):
+        call = f"{kind}.kind(game).unwrap().id(game)"
+        replace(C + "entities/general/save_load_tests.rs", f'{call}, "mymod:{kind}"', f'{call}.as_deref(), Some("mymod:{kind}")')
+    for path, old, new, count in [
+        ("entities/explosion/explosion_part_tests.rs", ".map(|kind| kind.id(host).to_owned())", ".and_then(|kind| kind.id(host)).map(|name| name.as_str().to_owned())", 1),
+        ("entities/lightning.rs", ".and_then(|entity| entity.kind(host).map(|kind| kind.id(host)))", ".and_then(|entity| entity.kind(host)?.id(host)).map(|name| name.as_str().to_owned())", 2),
+        ("modding/native_game_event_keys_tests.rs", 'step.id(game), Ok("minecraft:step".into())', 'step.id(game).as_deref(), Ok("minecraft:step")', 1),
+        ("native_hooks/death_source_tests.rs", '.expect("dying entity has a type").id(host);', '.expect("dying entity has a type").id(host).expect("dying entity type is registered").as_str().to_owned();', 1),
+        ("runtime/transaction_entities_tests.rs", ".map(|key| key.id(host))", ".and_then(|key| key.id(host)).map(|name| name.as_str().to_owned())", 1),
+    ]:
+        replace(C + path, old, new, count=count)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--step", type=int, choices=(1, 2), default=1)
+    parser.add_argument("--protected-list", type=Path, default=WAVE3)
+    args = parser.parse_args()
+    protected = set(args.protected_list.read_text(encoding="utf-8").splitlines())
+    pending = {}
+
+    def replace(path, old, new, *, count=1):
+        file = ROOT / path
+        if path in protected or file.resolve() != file:
+            raise SystemExit(f"refusing to edit protected or redirected path: {path}")
+        if file not in pending:
+            pending[file] = file.read_text(encoding="utf-8")
+        source = pending[file]
+        matches = source.count(old)
+        if matches != count:
+            raise SystemExit(f"{path}: expected {count} matches for {old!r}, found {matches}")
+        pending[file] = source.replace(old, new)
+
+    (resident if args.step == 1 else snapshots)(replace)
     for file, source in pending.items():
         file.write_text(source, encoding="utf-8")
     print(f"Migrated {len(pending)} files; format changed Rust files with rustfmt --edition 2024.")

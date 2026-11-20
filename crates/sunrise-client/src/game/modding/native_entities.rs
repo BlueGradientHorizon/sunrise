@@ -574,7 +574,7 @@ mod tests {
             ) -> Flow {
                 let entity = host.entity(event.entity).expect("joining handle");
                 assert_eq!(
-                    entity.kind(host).map(|kind| kind.id(host)).as_deref(),
+                    entity.kind(host).and_then(|kind| kind.id(host)).as_deref(),
                     Some(event.kind)
                 );
                 assert_eq!(entity.position(host), Some(event.pos));

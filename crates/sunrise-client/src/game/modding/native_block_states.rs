@@ -408,16 +408,22 @@ mod tests {
 
             let entities = host.entity_type_keys();
             assert_eq!(entities.len(), 161);
-            assert_eq!(entities[0].id(host), "minecraft:acacia_boat");
             assert_eq!(
-                entities.last().unwrap().id(host),
-                "minecraft:fishing_bobber"
+                entities[0].id(host).as_deref(),
+                Some("minecraft:acacia_boat")
+            );
+            assert_eq!(
+                entities.last().unwrap().id(host).as_deref(),
+                Some("minecraft:fishing_bobber")
             );
 
             let menus = host.menu_keys();
             assert_eq!(menus.len(), 25);
-            assert_eq!(menus[0].id(host), "minecraft:generic_9x1");
-            assert_eq!(menus.last().unwrap().id(host), "minecraft:stonecutter");
+            assert_eq!(menus[0].id(host).as_deref(), Some("minecraft:generic_9x1"));
+            assert_eq!(
+                menus.last().unwrap().id(host).as_deref(),
+                Some("minecraft:stonecutter")
+            );
 
             // Enchantments load with the item tables, which this harness stops short of;
             // read them the way a world open does.
@@ -435,10 +441,13 @@ mod tests {
             .unwrap();
             let enchantments = host.enchantment_keys();
             assert_eq!(enchantments.len(), 43);
-            assert_eq!(enchantments[0].id(host), "minecraft:aqua_affinity");
             assert_eq!(
-                enchantments.last().unwrap().id(host),
-                "minecraft:wind_burst"
+                enchantments[0].id(host).as_deref(),
+                Some("minecraft:aqua_affinity")
+            );
+            assert_eq!(
+                enchantments.last().unwrap().id(host).as_deref(),
+                Some("minecraft:wind_burst")
             );
 
             // A second read is the same table in the same order.
