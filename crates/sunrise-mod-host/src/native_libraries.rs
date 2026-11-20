@@ -3,7 +3,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::{ffi::CStr, path::Path};
 
-/// Commit used for the pinned SDK ABI.
+/// Commit used for the pinned SDK ABI; `dev` for a build that names none.
 pub const GAME_BUILD_ID: &str = env!("SUNRISE_GAME_BUILD_ID");
 /// Compiler release used for the pinned Rust ABI.
 pub const RUSTC_VERSION: &str = env!("SUNRISE_RUSTC_VERSION");
