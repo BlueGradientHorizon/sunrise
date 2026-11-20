@@ -44,8 +44,9 @@ reader cannot police code outside its codec.
 
 Encoding borrows the input (`writer.put(&value)`); the caller still owns it.
 Constructing an arbitrarily deep Rust tree and then dropping it can overflow a
-thread independently of Wire. Use explicit work stacks when disposing of hostile
-trees (`discard_tag` for NBT).
+thread independently of Wire. To dispose of deeply nested NBT, pop tags from
+an explicit work stack. Push the children of each `Tag::List` and the values
+from `Compound::into_values()` for each `Tag::Compound`; drop leaf tags as you go.
 
 ## Checked representations
 

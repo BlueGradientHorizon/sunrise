@@ -170,6 +170,7 @@ impl Writer {
         }
     }
     /// Encodes a borrowed value unless an earlier write failed.
+    /// The caller keeps ownership and is responsible for disposing of the value.
     pub fn put<T: Put + ?Sized>(&mut self, value: &T) {
         if self.error.is_none() {
             value.put_to(self);
