@@ -3,3 +3,5 @@ sunrise-client game::native_hooks::farmland_trample::tests::an_allowing_listener
 sunrise-client game::native_hooks::farmland_trample::tests::cancelling_keeps_the_crop_without_preventing_fall_damage lib daily resources
 sunrise-client game::native_hooks::farmland_trample::tests::a_listener_that_changes_the_block_refuses_the_trample lib daily resources
 sunrise-client game::native_hooks::farmland_trample::tests::a_trapping_listener_does_not_change_the_landing_order lib daily resources
+sunrise-client game::native_hooks::farmland_trample::tests::a_sneaking_player_keeps_the_farmland_and_a_walking_one_tramples_it lib daily resources
+sunrise-client game::native_hooks::farmland_trample::tests::a_crouching_mob_keeps_the_farmland_and_a_standing_one_tramples_it lib daily resources

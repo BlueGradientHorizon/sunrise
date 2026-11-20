@@ -105,6 +105,7 @@ mod tests {
     const LANDING: u32 = 20;
     const OTHER: u32 = 72;
     const OUTSIDE: u32 = 73;
+    const WALKING: Body = Body::Guest { sneaking: false };
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     enum Choice {
@@ -112,7 +113,15 @@ mod tests {
         Allow,
         Trap,
         Cancel,
+        AvoidSneak,
         Replace,
+    }
+
+    #[derive(Clone, Copy)]
+    enum Body {
+        Guest { sneaking: bool },
+        Pig,
+        Cat { crouching: bool },
     }
 
     #[derive(Debug, PartialEq)]
@@ -191,6 +200,14 @@ mod tests {
             });
             match self.0 {
                 Choice::Cancel => Flow::Cancel,
+                Choice::AvoidSneak => {
+                    if entity.is_shift_key_down(host).unwrap() || entity.is_crouching(host).unwrap()
+                    {
+                        Flow::Cancel
+                    } else {
+                        Flow::Continue
+                    }
+                }
                 Choice::Replace => {
                     let key = host.block_key("minecraft:stone").unwrap();
                     let stone = mod_api::BlockState::of(&host.block_states(), key, &[]).unwrap();
@@ -210,8 +227,21 @@ mod tests {
         }
     }
 
-    fn land(player: bool, choice: Choice) -> Vec<Moment> {
+    fn land(body: Body, choice: Choice) -> Vec<Moment> {
         crate::entry::install_client_hooks();
+        let player = matches!(body, Body::Guest { .. });
+        let cancelled = choice == Choice::Cancel
+            || (choice == Choice::AvoidSneak
+                && matches!(
+                    body,
+                    Body::Guest { sneaking: true } | Body::Cat { crouching: true }
+                ));
+        let converted = !cancelled && choice != Choice::Replace;
+        let damage = if matches!(body, Body::Cat { .. }) {
+            0.0
+        } else {
+            3.0
+        };
         let trace = Trace::default();
         let mut mods = vec![ModEntry::new(
             "trample-observer",
@@ -244,9 +274,10 @@ mod tests {
                 game.world.set(x, y, z, farmland).unwrap();
                 game.world.set(x, y + 1, z, wheat).unwrap();
                 let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-                let initial_health = if player {
+                let initial_health = if let Body::Guest { sneaking } = body {
                     let mut player = guest(1);
                     player.loaded = true;
+                    player.sneaking = sneaking;
                     player.position = [1.5, LANDING_Y, 1.5];
                     player.moves.push(([0.0, -0.25, 0.0], true));
                     let mut body =
@@ -258,12 +289,24 @@ mod tests {
                     game.entity_section_joined(LANDING, [1.5, LANDING_Y, 1.5]);
                     health
                 } else {
+                    let mob_kind = if matches!(body, Body::Cat { .. }) {
+                        game.res.mob_types().get("minecraft:cat").unwrap().clone()
+                    } else {
+                        kind.clone()
+                    };
                     let mut mob = sunrise_client::mobs::Mob::new(
                         LANDING,
-                        kind.clone(),
+                        mob_kind,
                         Vec3::new(1.5, 64.125, 1.5),
                         0.0,
                     );
+                    mob.no_ai = true;
+                    if let Body::Cat { crouching } = body {
+                        // A normal cat cannot trample; a scaled one can. Cats
+                        // still take no fall damage, regardless of the pose.
+                        mob.extra.model_scale = 2.0;
+                        mob.extra.pose = if crouching { 5 } else { 0 };
+                    }
                     mob.fall_distance = 6.0;
                     mob.velocity.y = -0.5;
                     let health = mob.health;
@@ -294,21 +337,22 @@ mod tests {
                     let m = game.mob_object(LANDING).unwrap();
                     (m.position.y, m.health)
                 };
-                let converted = matches!(choice, Choice::Absent | Choice::Allow | Choice::Trap);
-                let floor = match choice {
-                    Choice::Replace => stone,
-                    Choice::Cancel => farmland,
-                    _ => dirt,
+                let floor = if cancelled {
+                    farmland
+                } else if choice == Choice::Replace {
+                    stone
+                } else {
+                    dirt
                 };
                 let y_after = if converted { 64.0 } else { LANDING_Y };
                 assert_eq!(game.world.block(x, y, z), floor);
-                if choice == Choice::Cancel {
+                if cancelled {
                     assert_eq!(game.world.block(x, y + 1, z), wheat);
                 }
                 assert_eq!(landing_y, y_after);
                 assert_eq!(game.mob_object(OTHER).unwrap().position.y, y_after);
                 assert_eq!(game.mob_object(OUTSIDE).unwrap().position.y, LANDING_Y);
-                assert_eq!(health, initial_health - 3.0);
+                assert_eq!(health, initial_health - damage);
 
                 let api_state =
                     |state: sunrise_world::registry::BlockStateId| -> mod_api::BlockState {
@@ -329,10 +373,12 @@ mod tests {
                         Moment::Lift(OTHER, 64.0, farmland),
                     ]);
                 }
-                if choice != Choice::Cancel {
+                if !cancelled {
                     expected.push(Moment::Write(api_state(floor)));
                 }
-                expected.push(Moment::Fall(3.0, y_after, api_state(floor)));
+                if damage != 0.0 {
+                    expected.push(Moment::Fall(damage, y_after, api_state(floor)));
+                }
                 assert_eq!(*trace.lock().unwrap(), expected);
             });
         });
@@ -342,25 +388,25 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn an_allowing_listener_keeps_the_player_landing_order() {
-        let baseline = land(true, Choice::Absent);
-        let allowed = land(true, Choice::Allow);
+        let baseline = land(WALKING, Choice::Absent);
+        let allowed = land(WALKING, Choice::Allow);
         assert_eq!(allowed[1..], baseline);
     }
 
     #[test]
     #[ignore = "daily"]
     fn an_allowing_listener_keeps_the_mob_landing_order_and_lifts_all_bodies() {
-        let baseline = land(false, Choice::Absent);
-        let allowed = land(false, Choice::Allow);
+        let baseline = land(Body::Pig, Choice::Absent);
+        let allowed = land(Body::Pig, Choice::Allow);
         assert_eq!(allowed[1..], baseline);
     }
 
     #[test]
     #[ignore = "daily"]
     fn a_trapping_listener_does_not_change_the_landing_order() {
-        for player in [true, false] {
-            let baseline = land(player, Choice::Absent);
-            let trapped = land(player, Choice::Trap);
+        for body in [WALKING, Body::Pig] {
+            let baseline = land(body, Choice::Absent);
+            let trapped = land(body, Choice::Trap);
             assert_eq!(trapped[1..], baseline);
         }
     }
@@ -368,16 +414,31 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn cancelling_keeps_the_crop_without_preventing_fall_damage() {
-        for player in [true, false] {
-            land(player, Choice::Cancel);
+        for body in [WALKING, Body::Pig] {
+            land(body, Choice::Cancel);
+        }
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_sneaking_player_keeps_the_farmland_and_a_walking_one_tramples_it() {
+        land(Body::Guest { sneaking: true }, Choice::AvoidSneak);
+        land(WALKING, Choice::AvoidSneak);
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_crouching_mob_keeps_the_farmland_and_a_standing_one_tramples_it() {
+        for crouching in [true, false] {
+            land(Body::Cat { crouching }, Choice::AvoidSneak);
         }
     }
 
     #[test]
     #[ignore = "daily"]
     fn a_listener_that_changes_the_block_refuses_the_trample() {
-        for player in [true, false] {
-            land(player, Choice::Replace);
+        for body in [WALKING, Body::Pig] {
+            land(body, Choice::Replace);
         }
     }
 }

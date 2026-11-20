@@ -231,6 +231,8 @@ impl Game<'_> {
                 })();
                 let Ok(landed) = landed else { break };
                 if let Some(trample) = landed {
+                    // The hook sees the current input, not the previous body tick's flag.
+                    w.player.shift_key_down = sneaking;
                     let mut collected = std::mem::take(&mut w.player.events);
                     game.trample_farmland(id, true, trample);
                     let Some(player) = game.player.as_mut().filter(|p| p.entity_id as u32 == id)

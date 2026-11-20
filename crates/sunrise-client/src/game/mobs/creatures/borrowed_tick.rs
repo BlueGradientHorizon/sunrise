@@ -805,9 +805,8 @@ impl Game<'_> {
             }
             // The lift is a position write made by the owning game, not by
             // the borrowed mob. Give it the live section table as well.
-            let trample_sections = section_table
-                .as_ref()
-                .filter(|_| matches!(pause, Some(sunrise_client::mobs::ai::Pause::Trample(_))));
+            let trampling = matches!(pause, Some(Pause::Trample(_)));
+            let trample_sections = section_table.as_ref().filter(|_| trampling);
             if let Some(sections) = trample_sections {
                 std::mem::swap(
                     &mut self.native_lifecycle.entity_sections,
@@ -825,13 +824,13 @@ impl Game<'_> {
                     self.dismount_mob(id);
                 } else if let Some(paused) = pause.as_ref() {
                     match paused {
-                        sunrise_client::mobs::ai::Pause::Consumption { decision, .. } => {
+                        Pause::Consumption { decision, .. } => {
                             self.apply_fox_consumption(decision);
                         }
-                        sunrise_client::mobs::ai::Pause::Breathing { air, .. } => {
+                        Pause::Breathing { air, .. } => {
                             air_answer = self.ask_mob_breath(air);
                         }
-                        sunrise_client::mobs::ai::Pause::Trample(trample) => {
+                        Pause::Trample(trample) => {
                             self.trample_farmland(trample.mob, false, trample.decision());
                         }
                     }
@@ -888,8 +887,9 @@ impl Game<'_> {
                 })
                 .unwrap_or_default();
             spare = guests.first().map(|g| g.1.clone());
-            // The list came back as it went: its views are the loop's still.
-            if !unchanged {
+            // A trample can lift other mobs without changing their slots. Rebuild
+            // their views before the rest of this pass can read their old bounds.
+            if !unchanged || trampling {
                 let current: sunrise_client::fast_hash::FxHashMap<u32, usize> =
                     mobs.iter().enumerate().map(|(i, m)| (m.id, i)).collect();
                 for (slot, s) in snapshot.iter_mut().enumerate() {

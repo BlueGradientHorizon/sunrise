@@ -864,35 +864,54 @@ impl Game<'_> {
         let Some(bounds) = added.bounds() else {
             return;
         };
-        for target in self.push_targets() {
-            // This is teleportRelative, not a piston: neither the step height
-            // nor the entity's piston reaction governs the lift.
-            let body = match target {
-                MoveWho::Player => self
-                    .player
-                    .as_ref()
-                    .filter(|p| !p.spectator)
-                    .map(|p| p.bounds()),
-                MoveWho::Guest(conn) if Some(conn) != self.lan_acting => self
-                    .lan
-                    .as_ref()
-                    .and_then(|host| host.hub.guest(conn))
-                    .filter(|guest| !guest.spectator())
-                    .map(|guest| {
-                        guest.dimensions().bounds(Vec3::new(
-                            guest.position[0],
-                            guest.position[1],
-                            guest.position[2],
-                        ))
+        // Like the level query in `Block.pushEntitiesUp`, take the intersecting
+        // bodies before any lift dispatches a section-change listener. A listener
+        // can remove another entity, so a saved slot alone is not an identity.
+        let lift: Vec<_> = self
+            .push_targets()
+            .filter_map(|target| {
+                let (body, identity) = match target {
+                    MoveWho::Player => (
+                        self.player.as_ref().filter(|p| !p.spectator)?.bounds(),
+                        None,
+                    ),
+                    MoveWho::Guest(conn) if Some(conn) != self.lan_acting => {
+                        let guest = self.lan.as_ref()?.hub.guest(conn)?;
+                        if guest.spectator() {
+                            return None;
+                        }
+                        (
+                            guest.dimensions().bounds(Vec3::new(
+                                guest.position[0],
+                                guest.position[1],
+                                guest.position[2],
+                            )),
+                            None,
+                        )
+                    }
+                    MoveWho::Guest(_) => return None,
+                    MoveWho::Entity(handle) => with_entity!(self, handle, entity => {
+                        if entity.is_removed() {
+                            return None;
+                        }
+                        (Entity::bounds(entity), Some((entity.id(), entity.join_seq())))
                     }),
-                MoveWho::Guest(_) => None,
-                MoveWho::Entity(handle) => with_entity!(self, handle, entity => {
-                    (!entity.is_removed()).then(|| Entity::bounds(entity))
-                }),
-            };
-            let Some(body) = body.filter(|body| body.intersects(bounds)) else {
-                continue;
-            };
+                };
+                body.intersects(bounds).then_some((target, body, identity))
+            })
+            .collect();
+        for (mut target, body, identity) in lift {
+            if let (MoveWho::Entity(hint), Some((id, join))) = (target, identity) {
+                let Some(handle) = self.refresh_entity_handle(id, hint) else {
+                    continue;
+                };
+                if with_entity!(self, handle, entity => {
+                    entity.is_removed() || entity.join_seq() != join
+                }) {
+                    continue;
+                }
+                target = MoveWho::Entity(handle);
+            }
             let dy = added.collide(Axis::Y, body.move_by(Vec3::new(0.0, 1.0, 0.0)), -1.0);
             // `teleportRelative`, a position assignment the design excludes
             // from `entity_move` (#2414): a pending gate, never armed.
