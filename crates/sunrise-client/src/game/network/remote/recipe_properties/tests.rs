@@ -1,21 +1,20 @@
 use super::*;
 use crate::game::{
+    lan_actions::GuestCommand,
     native_entity_refs::tests::with_client_game,
     native_guest_turn_tests::with_guests,
     stations::{Kind, Station},
 };
 use sunrise_client::lan::{Out, PlayerSender};
 use sunrise_mod_package::content::RECIPE_PRIORITIES_PATH;
-use sunrise_protocol::{buf::Reader, packets::recipes::UpdateRecipes};
+use sunrise_protocol::{
+    buf::Reader,
+    packets::recipes::{HolderSet, SlotDisplay, UpdateRecipes},
+};
 
-#[test]
-#[ignore = "daily"]
-fn guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons() {
-    let _publication = sunrise_client::datapack_net::isolate_server_publication();
-    let scratch = tempfile::tempdir().unwrap();
-    let root = scratch.path();
+fn cut_pack(root: &std::path::Path) -> impl Fn(&str, &str) {
     let pack = root.join("datapacks/cuts");
-    let write = |rel: &str, json: &str| {
+    let write = move |rel: &str, json: &str| {
         let path = pack.join(rel);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(path, json).unwrap();
@@ -29,6 +28,31 @@ fn guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons() {
         r#"{"enabled":["vanilla","file/cuts"],"disabled":[]}"#,
     )
     .unwrap();
+    write
+}
+
+fn place_stonecutter(server: &mut Game<'_>) -> Station {
+    server
+        .world
+        .chunks
+        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+    let state = server
+        .pack
+        .assets
+        .registry
+        .default_state("minecraft:stonecutter")
+        .unwrap();
+    server.world.set(3, 64, 4, state).unwrap();
+    Station::new(Kind::Stonecutter, [3, 64, 4])
+}
+
+#[test]
+#[ignore = "daily"]
+fn guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons() {
+    let _publication = sunrise_client::datapack_net::isolate_server_publication();
+    let scratch = tempfile::tempdir().unwrap();
+    let root = scratch.path();
+    let write = cut_pack(root);
     write(
         RECIPE_PRIORITIES_PATH,
         r#"{"entries":{"fixture:z_tag":10}}"#,
@@ -69,18 +93,8 @@ fn guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons() {
             guest.sender = PlayerSender::new(tx, Arc::default());
         });
         server.reload_datapacks(true, &[]).unwrap();
-        server
-            .world
-            .chunks
-            .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
-        let state = server
-            .pack
-            .assets
-            .registry
-            .default_state("minecraft:stonecutter")
-            .unwrap();
-        server.world.set(3, 64, 4, state).unwrap();
-        assert!(server.lan_open_station(12, &Station::new(Kind::Stonecutter, [3, 64, 4])));
+        let station = place_stonecutter(server);
+        assert!(server.lan_open_station(12, &station));
         let window = server.lan.as_ref().unwrap().menus[&12]
             .station
             .as_ref()
@@ -233,7 +247,50 @@ fn guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons() {
                 RECIPE_PRIORITIES_PATH,
                 r#"{"entries":{"fixture:b_plain":10}}"#,
             );
-            server.reload_datapacks(true, &[]).unwrap();
+            // Run the operator's real command handler, with their inventory and cursor
+            // swapped into Game. Neither the outer player nor the other guest owns the input.
+            server.inventory[19] = Some(ItemStack::new("minecraft:gold_ingot", 4));
+            server.carried = Some(ItemStack::new("minecraft:apple", 2));
+            let outer = (server.inventory.clone(), server.carried.clone());
+            let hub = &mut server.lan.as_mut().unwrap().hub;
+            hub.update_guest(12, |g| {
+                g.carried = Some(ItemStack::new("minecraft:iron_ingot", 3));
+            });
+            hub.update_guest(13, |g| {
+                g.inventory[0] = Some(ItemStack::new("minecraft:bread", 5));
+                g.carried = Some(ItemStack::new("minecraft:carrot", 6));
+            });
+            let other = hub.guest(13).unwrap();
+            let other = (other.inventory.clone(), other.carried.clone());
+            assert!(server.run_guest_command(GuestCommand {
+                conn: 12,
+                command: "reload".into(),
+                permission: 4,
+                integrated: true,
+                quiet: false,
+            }));
+            let hub = &server.lan.as_ref().unwrap().hub;
+            let operator = hub.guest(12).unwrap();
+            assert_eq!(operator.carried, None);
+            for (item, count) in [("minecraft:stick", 1), ("minecraft:iron_ingot", 3)] {
+                assert_eq!(
+                    operator
+                        .inventory
+                        .iter()
+                        .flatten()
+                        .filter(|stack| stack.item.as_ref() == item)
+                        .map(|stack| stack.count)
+                        .sum::<u32>(),
+                    count,
+                    "operator did not get back {item}"
+                );
+            }
+            assert_eq!((&server.inventory, &server.carried), (&outer.0, &outer.1));
+            let other_guest = hub.guest(13).unwrap();
+            assert_eq!(
+                (&other_guest.inventory, &other_guest.carried),
+                (&other.0, &other.1)
+            );
             deliver(client, true).expect("new server recipe generation");
             assert!(client.station.is_none());
             server.lan_guest_packet(
@@ -245,5 +302,130 @@ fn guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons() {
             );
             assert!(server.lan.as_ref().unwrap().menus[&12].station.is_none());
         });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn guest_stonecutter_waits_for_deferred_recipe_publication() {
+    let _publication = sunrise_client::datapack_net::isolate_server_publication();
+    let scratch = tempfile::tempdir().unwrap();
+    let root = scratch.path();
+    let write = cut_pack(root);
+    for (name, result) in [("a", "minecraft:diamond"), ("b", "minecraft:emerald")] {
+        write(
+            &format!("data/fixture/recipe/{name}.json"),
+            &format!(
+                r#"{{"type":"minecraft:stonecutting","ingredient":"minecraft:stick","result":{{"id":"{result}"}}}}"#
+            ),
+        );
+    }
+    with_guests(|server| {
+        let _serving = crate::game::integrated::tests::install_serving(server, false);
+        server.world_root = root.to_owned();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let host = server.lan.as_mut().unwrap();
+        host.play.entry(12).or_default();
+        host.hub.update_guest(12, |guest| {
+            guest.sender = PlayerSender::new(tx, Arc::default());
+        });
+        server.reload_datapacks(true, &[]).unwrap();
+        let station = place_stonecutter(server);
+        assert!(server.lan_open_station(12, &station));
+        let menu = |server: &Game<'_>| {
+            server.lan.as_ref().unwrap().menus[&12]
+                .station
+                .as_ref()
+                .map(|station| {
+                    (
+                        station.window,
+                        station.menu.stone.server_buttons.clone().unwrap(),
+                    )
+                })
+        };
+        let buttons = |map: &sunrise_client::lan::recipes::StonecutterButtons| {
+            [0, 1].map(|i| map.recipe("minecraft:stick", i).unwrap().to_owned())
+        };
+        let (old_window, old_buttons) = menu(server).unwrap();
+        assert_eq!(buttons(&old_buttons), ["fixture:a", "fixture:b"]);
+        let packets = || {
+            rx.try_iter()
+                .flat_map(|out| match out {
+                    Out::Packet(body) => vec![body],
+                    Out::Packets(bodies) => bodies,
+                    Out::Disconnect(_) => panic!("guest disconnected"),
+                })
+                .filter_map(|body| {
+                    let mut reader = Reader::new(&body);
+                    let id = reader.varint().unwrap();
+                    let packet = C::decode(id, reader.rest()).unwrap();
+                    matches!(
+                        packet,
+                        C::ContainerClose(_) | C::UpdateRecipes(_) | C::OpenScreen(_)
+                    )
+                    .then_some(packet)
+                })
+                .collect::<Vec<_>>()
+        };
+        let _ = packets();
+        write(RECIPE_PRIORITIES_PATH, r#"{"entries":{"fixture:b":10}}"#);
+        let resources = server.options.resources.clone();
+        let stack = crate::game::functions::pack_stack(
+            root,
+            &resources,
+            &server.pack.data_source,
+            &server.pack.data_changes,
+            false,
+            &[],
+            &[],
+        );
+        let prepared = server.prepare_world_reload(&stack, &resources).unwrap();
+        // Simulate the mod-loaded hub's two real phases without running the second yet.
+        server.lan.as_mut().unwrap().hub.mods_loaded = true;
+        server.install_world_tables(prepared);
+        let hub = &server.lan.as_ref().unwrap().hub;
+        assert!(hub.native_reload_pending);
+        assert_eq!(
+            buttons(&hub.sync_data().stonecutter_buttons),
+            ["fixture:b", "fixture:a"]
+        );
+        assert!(server.lan_open_station(12, &station));
+        assert!(menu(server).is_none(), "opened with unpublished buttons");
+        assert!(matches!(
+            packets().as_slice(),
+            [C::ContainerClose(close)] if close.container == old_window
+        ));
+
+        server.run_native_advancement_grants();
+        assert!(server.lan_open_station(12, &station));
+        let (new_window, new_buttons) = menu(server).unwrap();
+        assert_ne!(new_window, old_window);
+        assert_eq!(buttons(&new_buttons), ["fixture:b", "fixture:a"]);
+        let sent = packets();
+        let [C::UpdateRecipes(recipes), C::OpenScreen(open)] = sent.as_slice() else {
+            panic!("expected UpdateRecipes before OpenScreen");
+        };
+        assert_eq!(open.container, new_window);
+        let items = server
+            .lan
+            .as_ref()
+            .unwrap()
+            .hub
+            .sync_data()
+            .builtin
+            .get("minecraft:item")
+            .unwrap();
+        let stick = items.id("minecraft:stick").unwrap();
+        let shown: Vec<_> = recipes
+            .stonecutter
+            .iter()
+            .filter_map(|(holder, display)| match (holder, display) {
+                (HolderSet::Items(ids), SlotDisplay::ItemStack(stack)) if ids == &[stick] => {
+                    Some(items.name(stack.item).unwrap())
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(shown, ["minecraft:emerald", "minecraft:diamond"]);
     });
 }

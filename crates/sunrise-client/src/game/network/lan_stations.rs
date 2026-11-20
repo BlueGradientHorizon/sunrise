@@ -86,6 +86,16 @@ impl Game<'_> {
         let Some((menu_type, kind, _)) = menu_of(station.kind) else {
             return false;
         };
+        // The hub may already have the new button map while native advancement
+        // hooks are still ahead of UpdateRecipes. Do not open on an unpublished map.
+        if kind == Kind::Stonecutter
+            && self
+                .lan
+                .as_ref()
+                .is_some_and(|host| host.hub.native_reload_pending)
+        {
+            return true;
+        }
         // The mods may stop the menu; the click is spent.
         if !self.guest_may_open(conn, menu_type, Some(station.pos)) {
             return true;
@@ -930,18 +940,8 @@ impl Game<'_> {
             .is_some();
         if lectern {
             // AbstractContainerMenu.removed: the carried stack goes back.
-            if let Some(gi) = self
-                .lan
-                .as_ref()
-                .and_then(|host| host.hub.guests.iter().position(|g| g.conn == conn))
-            {
-                let carried = self
-                    .lan
-                    .as_mut()
-                    .and_then(|host| host.hub.guests.update(gi, |g| g.carried.take()));
-                if let Some(carried) = carried {
-                    self.lan_place_back(gi, vec![carried]);
-                }
+            if let Some(gi) = self.guest_index(conn) {
+                self.guest_carried_back(gi);
             }
             if window.is_some() {
                 self.player_menu_closing(conn);
@@ -956,33 +956,16 @@ impl Game<'_> {
         else {
             return false;
         };
-        let Some(gi) = self
-            .lan
-            .as_ref()
-            .and_then(|host| host.hub.guests.iter().position(|g| g.conn == conn))
-        else {
+        let Some(gi) = self.guest_index(conn) else {
             return true;
         };
-        // AbstractContainerMenu.removed: the carried stack first, then the inputs.
-        let mut back: Vec<ItemStack> = self
-            .lan
-            .as_mut()
-            .map(|host| host.hub.guests.update(gi, |g| g.carried.take()))
-            .unwrap_or_default()
-            .into_iter()
-            .collect();
         let inputs = station_inputs(&gs);
         if gs.kind == StationKind::Beacon {
             // BeaconMenu.removed drops the payment (player.drop).
-            if !back.is_empty() {
-                self.lan_place_back(gi, std::mem::take(&mut back));
-            }
+            self.guest_carried_back(gi);
             self.drop_guest_items(gi, inputs);
         } else {
-            back.extend(inputs);
-        }
-        if !back.is_empty() {
-            self.lan_place_back(gi, back);
+            self.return_guest_menu_items(gi, inputs, true);
         }
         if window.is_some() {
             self.player_menu_closing(conn);
