@@ -1378,9 +1378,9 @@ impl Game<'_> {
             ] {
                 if show {
                     let sprite = if hover(left + x, top + 157.0, 23.0, 13.0) {
-                        format!("gui/sprites/widget/{name}_highlighted")
+                        format!("widget/{name}_highlighted")
                     } else {
-                        format!("gui/sprites/widget/{name}")
+                        format!("widget/{name}")
                     };
                     batch.sprite(atlas, &sprite, left + x, top + 157.0);
                 }

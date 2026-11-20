@@ -8,10 +8,24 @@
 //! maps are kept as found (structure search is not run); conditions that
 //! need an entity, tool or damage source fail when the context has none, as
 //! they do for containers.
+mod component_validation;
 mod fill;
 pub mod global_modifiers;
 pub mod number;
 pub mod query;
+use component_validation::retain_valid;
+pub use component_validation::{
+    validate_entity_predicate, validate_item_modifier, validate_item_predicate,
+    validate_loot_condition, validate_loot_table, validate_slot_source,
+};
+mod component_validation_nbt;
+pub use component_validation_nbt::{
+    validate_item_modifier_tag, validate_loot_condition_tag, validate_loot_table_tag,
+};
+mod number_validation;
+pub use number_validation::{
+    number as validate_number_provider, number_tag as validate_number_provider_tag,
+};
 #[path = "loot_query.rs"]
 mod query_context;
 mod root;
@@ -37,6 +51,14 @@ use {
     sunrise_core::nbt::{Compound, Tag},
 };
 
+/// One pack's copy of the recipe priorities, before JSON or conditions are decoded.
+#[derive(Debug, PartialEq, Eq, Hash)]
+pub struct RecipePriorityLayer {
+    pub pack: String,
+    pub path: &'static str,
+    pub contents: Result<Vec<u8>, String>,
+}
+
 /// Raw files a world's data packs add over the game's own data, by
 /// `<kind>/<ns>:<path>` (a `recipe/minecraft:stick` key names the file
 /// `data/minecraft/recipe/stick.json`), each id's files in pack order.
@@ -48,12 +70,15 @@ pub struct PackOverlay<'a> {
     /// Immutable enabled package IDs for this owning server data load.
     pub conditions: &'a crate::conditions::LoadConditions,
     pub files: &'a [(String, Vec<Vec<u8>>)],
+    /// Recipe-priority layers, lowest pack first. Kept separately from path winners.
+    pub priority_layers: &'a [RecipePriorityLayer],
 }
 impl PackOverlay<'static> {
     /// No packs: the tables are the resource root's alone.
     pub const NONE: Self = Self {
         files: &[],
         conditions: &crate::conditions::LoadConditions::vanilla(),
+        priority_layers: &[],
     };
 }
 impl Default for PackOverlay<'_> {
@@ -67,7 +92,7 @@ impl<'a> PackOverlay<'a> {
     pub const fn new(files: &'a [(String, Vec<Vec<u8>>)]) -> Self {
         Self {
             files,
-            conditions: PackOverlay::NONE.conditions,
+            ..PackOverlay::NONE
         }
     }
     /// The overlay's files under `<kind>/`, with the prefix stripped.
@@ -643,7 +668,8 @@ pub fn shared_tables(root: &Path, overlay: &PackOverlay) -> io::Result<Arc<LootT
     if let Some(tables) = held(&mut LOADED.lock().unwrap_or_else(|e| e.into_inner())) {
         return Ok(tables);
     }
-    let tables = load_resources::load_ordered_kind(root, overlay, "loot_table")?;
+    let mut tables = load_resources::load_ordered_kind(root, overlay, "loot_table")?;
+    tables.retain(|id, table| retain_valid("loot table", id, validate_loot_table(table)));
     let tables: LootTables = tables.into_iter().collect();
     let mut loaded = LOADED.lock().unwrap_or_else(|e| e.into_inner());
     // Another thread may have loaded the same tables meanwhile: keep one.
@@ -702,6 +728,14 @@ impl LootData {
         let mut recipes = HashMap::new();
         load_kind(&root.join("data"), "recipe", &mut recipes)?;
         overlay_map(overlay, "recipe", &mut recipes);
+        recipes.retain(|id, value| {
+            value["type"] != "minecraft:smelting"
+                || retain_valid(
+                    "recipe",
+                    id,
+                    crate::item_defaults::validate_stack(&value["result"]),
+                )
+        });
         let mut ids: Vec<&String> = recipes.keys().collect();
         ids.sort();
         loaded.smelting = ids
@@ -749,8 +783,12 @@ impl LootData {
     ) -> io::Result<Self> {
         let all = root.join("data");
         let tables = shared_tables(root, overlay)?;
-        let modifiers = load_resources::load_ordered_kind(root, overlay, "item_modifier")?;
-        let predicates = load_predicates(root, overlay)?;
+        let mut modifiers = load_resources::load_ordered_kind(root, overlay, "item_modifier")?;
+        modifiers
+            .retain(|id, value| retain_valid("item modifier", id, validate_item_modifier(value)));
+        let mut predicates = load_predicates(root, overlay)?;
+        predicates
+            .retain(|id, value| retain_valid("predicate", id, validate_loot_condition(value)));
         let items = defaults
             .entries()
             .iter()
@@ -2242,11 +2280,12 @@ mod namespace_tests {
         let enabled = crate::conditions::LoadConditions::new(["package_id"]);
         let off = PackOverlay {
             files: &files,
-            ..PackOverlay::NONE
+            ..PackOverlay::default()
         };
         let on = PackOverlay {
             files: &files,
             conditions: &enabled,
+            ..PackOverlay::default()
         };
         let absent = shared_tables(&root, &off).unwrap();
         assert!(!absent.contains_key("demo:base"));
@@ -2938,7 +2977,6 @@ mod namespace_tests {
     #[test]
     fn tag_kind_yields_tag_loader_ids_for_content_id_keys() {
         let overlay = PackOverlay {
-            conditions: &crate::conditions::LoadConditions::vanilla(),
             files: &[
                 (
                     "tags/minecraft:item/food".to_owned(),
@@ -2949,6 +2987,7 @@ mod namespace_tests {
                     vec![br#"{"values": ["minecraft:infinity"]}"#.to_vec()],
                 ),
             ],
+            ..PackOverlay::default()
         };
         let item: Vec<_> = overlay.tag_kind("item").map(|(id, _)| id).collect();
         assert_eq!(item, ["minecraft:food"]);
@@ -2972,7 +3011,6 @@ mod namespace_tests {
         )
         .unwrap();
         let overlay = PackOverlay {
-            conditions: &crate::conditions::LoadConditions::vanilla(),
             files: &[(
                 "tags/minecraft:item/food".to_owned(),
                 vec![
@@ -2980,6 +3018,7 @@ mod namespace_tests {
                     br#"{"replace": true, "values": ["minecraft:apple"]}"#.to_vec(),
                 ],
             )],
+            ..PackOverlay::default()
         };
         let defaults = crate::item_defaults::read(&root).unwrap();
         let data = LootData::load(&root, &overlay, &defaults).unwrap();
