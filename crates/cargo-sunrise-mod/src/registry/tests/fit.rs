@@ -450,6 +450,15 @@ fn missing_or_inconsistent_sdk_files_still_fail_by_build_name() {
         err
     };
 
+    let loops = dir
+        .join(RELEASE_PIN)
+        .join("build-data")
+        .join(build_data::LOOPS);
+    let loops_bytes = fs::read(&loops).unwrap();
+    fs::remove_file(&loops).unwrap();
+    assert_error(build_data::LOOPS);
+    fs::write(loops, loops_bytes).unwrap();
+
     // A surface schema mismatch must not hide a wrong commit in a build-data document.
     let wrong = "b".repeat(40);
     fs::write(
