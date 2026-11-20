@@ -557,7 +557,6 @@ impl Button {
             right,
             self.y,
             self.y + 20.0,
-            self.y + 6.0,
             now_ms,
             color,
         );
