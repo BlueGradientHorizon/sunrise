@@ -16,7 +16,7 @@ Wherever the game has a random stream a mod may draw from, you get a `&mut dyn R
 | The tree-grow hook's random | The tree's own random |
 | `GoalContext::random` | The mob's own random |
 | `host.with_random(\|random\| ...)` on a restricted level host | A scoped borrow of the level's live random |
-| `level.with_random(host, \|random\| ...)` on a `LevelRef` | The named level's random |
+| `level.with_random(host, \|random\| ...)` on a `LevelRef` | A scoped borrow of the named server level's live random, even when parked |
 
 A draw moves the game's own stream, in vanilla's order, so your draws shift vanilla's later ones
 exactly as a Java mod's would. You need no import to call these methods on a `dyn RandomSource`.
@@ -25,20 +25,22 @@ exactly as a Java mod's would. You need no import to call these methods on a `dy
 let roll = goal_context.random().next_int_bound(20);
 // In a hook with a LevelRandomHost, HitHost, or LevelWriteHost:
 let level_roll = host.with_random(|random| random.next_int_bound(20));
+// With a named LevelRef and a ServerHost:
+let named_roll = level.with_random(host, |random| random.next_int_bound(20));
 ```
 
-A restricted host returns `None` without calling the closure if it cannot lend the stream.
-The closure cannot take the random with it or reseed it. On unwinding, the stream goes back to
-where it was before the closure, including its cached Gaussian. On a transactional
-`LevelWriteHost`, successful draws are also rolled back if the transaction aborts.
+Both forms return `None` without calling the closure if the host cannot lend the stream, such
+as when the level is closed or the handle is stale. The closure cannot take the random with
+it or reseed it. On unwinding, the stream goes back to where it was before the closure,
+including its cached Gaussian. For a `LevelRef` draw or a transactional `LevelWriteHost` draw,
+an abort restores the stream to its state before the transaction's first draw.
 
 ## Your own seeded stream
 
 `LegacyRandomSource` is vanilla's `LegacyRandomSource` (the generator Java's `Random` is):
 `LegacyRandomSource::new(seed)`, `set_seed(seed)`, and `RandomSource` for the draws (import the
-trait to call them on the concrete type). Two sources with the same seed give the same values. It
-is a plain value that crosses the boundary, and it is what `level_random` and `level_set_random`
-carry.
+trait to call them on the concrete type). Two sources with the same seed give the same values.
+This stream is independent of the level's random.
 
 ## Never panics
 

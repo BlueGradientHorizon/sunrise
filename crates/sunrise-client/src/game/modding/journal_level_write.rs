@@ -153,7 +153,7 @@ impl LevelRandomHost for JournalLevelWrite<'_, '_> {
     }
     fn lend_random(&mut self, draw: RandomDraw<'_>) {
         let before = super::api_values::with_live_level_random(&mut self.game.world.random, draw);
-        self.game.transactions.keep_level_random(|| before);
+        self.game.journal_active_level_random(|_| before);
     }
 }
 

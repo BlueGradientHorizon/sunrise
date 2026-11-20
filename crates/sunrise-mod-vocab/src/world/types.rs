@@ -336,17 +336,20 @@ impl LevelRef {
         crate::content::registry_keys::dimension_id(self.dimension)
             .expect("the game's table made the key")
     }
-    /// Draw from the level's own random stream (vanilla's `Level.random`), in vanilla's order:
-    /// `draw` gets the stream and the level keeps it after. None where `random` is None.
+    /// Borrow the named server level's live random stream (`Level.getRandom`), in vanilla's
+    /// order. Draws advance that stream even when the level is parked, without switching levels.
+    /// Returns `None` without calling `draw` on a client, for a stale or closed level, or if
+    /// the host cannot lend the stream.
+    ///
+    /// Unwinding restores the stream, including any cached Gaussian, to its state before the
+    /// call. If there is an open transaction, its abort also undoes successful draws.
     pub fn with_random<T>(
         self,
         host: &mut dyn ServerHost,
         draw: impl FnOnce(&mut dyn RandomSource) -> T,
     ) -> Option<T> {
-        let mut random = self.random(host)?;
-        let drawn = draw(&mut random);
-        self.set_random(host, random);
-        Some(drawn)
+        let backend = crate::backend::backend_mut_of(host)?;
+        crate::world::random::with_random_draw(draw, |draw| backend.with_level_random(self, draw))
     }
     /// The open of the world the handle belongs to.
     pub fn epoch(self) -> WorldEpoch {

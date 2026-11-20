@@ -78,8 +78,8 @@ pub(crate) fn with_random_draw<T>(
 
 /// Vanilla's `LegacyRandomSource`: the generator Java's `Random` is, seeded by the mod.
 ///
-/// It crosses the API by value as the level's random (`level_random`, `level_set_random`) and is
-/// what a mod uses for its own seeded draws. Two sources with the same seed draw the same values.
+/// This is an independent stream, not the level's random. Two sources with the same seed draw
+/// the same values.
 #[derive(Clone, Debug, sunrise_mod_api_macros::Wire)]
 #[wire(via = (u64, Option<f64>))]
 // exhaustive: its one field is private, so mods cannot build or destructure it

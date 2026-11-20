@@ -444,8 +444,8 @@ pub(super) fn areas_source(root: &Path) -> Result<String, String> {
 /// Generate every area impl explicitly. Full-path calls plus a hard recursion lint
 /// refuse a missing inherent implementation instead of inheriting a trait default.
 pub(super) fn game_forwarders(root: &Path) -> Result<String, String> {
-    // The gated methods with no refusal-shaped `Result`: a refused call unwinds out of them
-    // (#3123).
+    // The gated methods with neither a typed refusal nor an optional callback:
+    // a refused call unwinds out of them (#3123).
     let mut unwinding = std::collections::BTreeSet::new();
     let refusals = refusal_errors(root)?;
     let mut code = String::from(
@@ -573,16 +573,21 @@ pub(super) fn game_forwarders(root: &Path) -> Result<String, String> {
                     } else {
                         call
                     };
-                    let typed_access_error = refusal_shaped(&entry.sig.output, &refusals);
-                    if typed_access_error.is_none() {
-                        unwinding.insert(format!("{}::{name}", area.stem));
-                    }
-                    let access = if let Some(error) = typed_access_error {
+                    let decline = entry
+                        .attrs
+                        .iter()
+                        .any(|attr| attr.path().is_ident("decline_unavailable"));
+                    let access = if decline {
+                        format!(
+                            "if !mod_api::__private::access_allowed({name:?}, mod_api::__private::LoadAccess::{level}) {{ return; }}"
+                        )
+                    } else if let Some(error) = refusal_shaped(&entry.sig.output, &refusals) {
                         let error = error.to_token_stream();
                         format!(
                             "if !mod_api::__private::access_allowed({name:?}, mod_api::__private::LoadAccess::{level}) {{ return Err(<{error} as mod_api::AccessRefusal>::unavailable()); }}"
                         )
                     } else {
+                        unwinding.insert(format!("{}::{name}", area.stem));
                         format!(
                             "mod_api::__private::check_access({name:?}, mod_api::__private::LoadAccess::{level});"
                         )
@@ -724,10 +729,9 @@ fn refusal_shaped<'a>(
 /// only shrinks: `tools/ci/check_unwinding_methods.py` refuses a line added since the base.
 const UNWINDING_METHODS: &str = "crates/sunrise-mod-api-gen/unwinding-methods.txt";
 
-/// A gated method that returns no `Result` with a refusal error (a type with a `AccessRefusal`
-/// impl, whose `unavailable()` the forwarder returns) can only refuse a wrong-phase
-/// call by unwinding. A new one is refused unless it is listed; a listed one that has gained a
-/// refusal, or is gone, must leave the list.
+/// Without a typed refusal or a callback it can decline to invoke, a gated method can only
+/// refuse a wrong-phase call by unwinding. A new one is refused unless it is listed; a listed
+/// one that has gained a refusal or is gone must leave the list.
 fn check_unwinding(
     root: &Path,
     unwinding: &std::collections::BTreeSet<String>,

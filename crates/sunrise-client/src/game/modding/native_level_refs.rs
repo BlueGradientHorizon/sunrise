@@ -1963,11 +1963,22 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_level_ref_draws_from_its_levels_own_stream() {
-        use mod_api::{LevelRef, ServerHost};
+        use mod_api::{
+            __private::{ModPhase, PhaseOwner},
+            LevelRef, ServerHost,
+        };
         use sunrise_core::random::RandomSource;
 
         with_game(|game| {
             let level = game.level(game.dim.id()).unwrap();
+            {
+                let _phase = PhaseOwner::scope(ModPhase::Reloading);
+                assert!(
+                    level
+                        .with_random::<()>(game, |_| unreachable!("reload lent a world stream"))
+                        .is_none()
+                );
+            }
             // The level in place: the draws advance `World.random` itself.
             let mut expected = game.world.random.clone();
             let host: &mut dyn ServerHost = game;
@@ -2019,6 +2030,66 @@ mod tests {
             let stale = LevelRef::new(WorldEpoch::new(level.epoch().get() + 1), game.dim.key());
             let host: &mut dyn ServerHost = game;
             assert!(stale.with_random(&mut *host, |r| r.next_int()).is_none());
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn child_frame_merges_level_randoms_by_owner() {
+        use sunrise_core::random::{LegacyRandom, RandomSource};
+
+        with_game(|game| {
+            let here = game.dim;
+            let other = if here == Dim::Nether {
+                Dim::End
+            } else {
+                Dim::Nether
+            };
+            game.enter_level(other).unwrap();
+            let parked = game.level(other.id()).unwrap();
+            game.enter_level(here).unwrap();
+            let active = game.level(here.id()).unwrap();
+
+            let with_cached_gaussian = |seed| {
+                let mut random = LegacyRandom::new(seed);
+                random.next_gaussian();
+                random
+            };
+            let active_before = with_cached_gaussian(13);
+            let parked_before = with_cached_gaussian(17);
+            *game.world.random = active_before.clone();
+            *game.levels.parked_world_mut_of(other.id()).unwrap().random = parked_before.clone();
+
+            let outer = game.transaction_open();
+            parked
+                .with_random(game, |random| random.next_gaussian())
+                .unwrap();
+
+            // Simulate a nested operation with a different level temporarily in place.
+            game.enter_level(other).unwrap();
+            let child = game.transaction_open();
+            parked
+                .with_random(game, |random| random.next_long())
+                .unwrap();
+            active
+                .with_random(game, |random| random.next_gaussian())
+                .unwrap();
+            game.transaction_close(&child, true);
+            game.enter_level(here).unwrap();
+
+            active
+                .with_random(game, |random| random.next_long())
+                .unwrap();
+            game.transaction_close(&outer, false);
+            for (level, mut expected) in [(active, active_before), (parked, parked_before)] {
+                assert_eq!(
+                    level.with_random(game, |random| (
+                        random.next_long(),
+                        random.next_gaussian().to_bits()
+                    )),
+                    Some((expected.next_long(), expected.next_gaussian().to_bits())),
+                );
+            }
         });
     }
 
