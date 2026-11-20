@@ -1405,11 +1405,6 @@ pub trait LevelHost {
     /// above the highest stored section and in columns with no stored sections. A missing
     /// section below a stored one repeats that next section's bottom row. Unloaded border
     /// sections can retain the last light on a server; they have no full sky on a client.
-    ///
-    /// **Known gap ([#2761](https://github.com/sunrise-org/sunrise/issues/2761)):** In skylit
-    /// dimensions, Sunrise reads the resident column's allocated sections, with full sky above
-    /// them and in every missing column, and darkness below them, instead of tracking vanilla's
-    /// padding and unloaded border.
     fn can_see_sky(&self, _pos: [i32; 3]) -> Option<bool> {
         None
     }

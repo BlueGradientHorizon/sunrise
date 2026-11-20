@@ -1915,16 +1915,24 @@ pub fn load_light(tag: &Tag, chunk: &mut Chunk, sky_light: bool) {
         return;
     };
     let mut layers: Vec<(Option<&[u8]>, Option<&[u8]>)> = vec![(None, None); chunk.sections.len()];
+    let mut pads: [(Option<&[u8]>, Option<&[u8]>); 2] = [(None, None); 2];
     for section in sections {
         let Some(y) = number(section.get("Y")) else {
-            continue;
-        };
-        let Some(si) = chunk.section_index(y as i32 * 16) else {
             continue;
         };
         let layer = |name: &str| match section.get(name) {
             Some(Tag::ByteArray(a)) if a.len() == 2048 => Some(&a[..]),
             _ => None,
+        };
+        let Some(si) = chunk.section_index(y as i32 * 16) else {
+            // The padding sections one below and one above the column hold light only.
+            let first = chunk.min_y() >> 4;
+            if y as i32 == first - 1 {
+                pads[0] = (layer("SkyLight"), layer("BlockLight"));
+            } else if y as i32 == first + chunk.sections.len() as i32 {
+                pads[1] = (layer("SkyLight"), layer("BlockLight"));
+            }
+            continue;
         };
         layers[si] = (layer("SkyLight"), layer("BlockLight"));
     }
@@ -1942,6 +1950,7 @@ pub fn load_light(tag: &Tag, chunk: &mut Chunk, sky_light: bool) {
         out
     };
     let mut above = [if sky_light { 15 } else { 0 }; 256];
+    let open_sky = above;
     for (si, (sky, block)) in layers.into_iter().enumerate().rev() {
         let sky = sky.filter(|_| sky_light);
         let sky_uniform = sky.and_then(uniform_layer);
@@ -2014,6 +2023,12 @@ pub fn load_light(tag: &Tag, chunk: &mut Chunk, sky_light: bool) {
             }
         }
     }
+    let pad = |(sky, block): (Option<&[u8]>, Option<&[u8]>), above| {
+        (sky.is_some() || block.is_some())
+            .then(|| crate::light::padding_section(sky.as_ref(), block.as_ref(), sky_light, above))
+    };
+    chunk.pad_below = pad(pads[0], above);
+    chunk.pad_above = pad(pads[1], open_sky);
     chunk.lit = true;
     chunk.light_loaded = true;
 }
@@ -8350,13 +8365,13 @@ mod tests {
         let Some(Tag::List(sections)) = tag.get("sections") else {
             return;
         };
-        let mut layers: Vec<(Option<&[u8]>, Option<&[u8]>)> = vec![(None, None); SECTIONS];
+        let mut layers: Vec<(Option<&[u8]>, Option<&[u8]>)> = vec![(None, None); SECTIONS + 2];
         for section in sections {
             let Some(y) = number(section.get("Y")) else {
                 continue;
             };
-            let si = y as i32 - (MIN_Y >> 4);
-            if !(0..SECTIONS as i32).contains(&si) {
+            let si = y as i32 - (MIN_Y >> 4) + 1;
+            if !(0..SECTIONS as i32 + 2).contains(&si) {
                 continue;
             }
             let layer = |name: &str| match section.get(name) {
@@ -8365,8 +8380,7 @@ mod tests {
             };
             layers[si as usize] = (layer("SkyLight"), layer("BlockLight"));
         }
-        let above = [if sky_light { 15 } else { 0 }; 256];
-        crate::light::light_from_layers(chunk, &layers, above, sky_light);
+        crate::light::light_from_layers(chunk, &layers, sky_light);
     }
 
     #[test]

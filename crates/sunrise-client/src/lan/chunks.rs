@@ -391,6 +391,9 @@ struct Prepared {
     tags: Vec<u8>,
     /// The level's sections of the column.
     sections: Vec<Arc<Section>>,
+    /// The sections just below and above them that hold light: the column's own past the level's
+    /// range, else its stored padding sections (`Chunk::pad_below`, `pad_above`).
+    outside: [Option<Arc<Section>>; 2],
     around: SectionMask,
     sky: bool,
 }
@@ -398,7 +401,7 @@ impl Prepared {
     /// The body as `Clientbound::encode` gives it for LevelChunkWithLight,
     /// written once into a buffer of its final size.
     fn write(&self) -> Vec<u8> {
-        let lights = light_sections(&self.sections, self.around, SectionLight::of);
+        let lights = light_sections(&self.sections, &self.outside, self.around, SectionLight::of);
         let buffer: usize = self.wires.iter().map(|w| w.len()).sum();
         // The masks, counts and lengths fit the 64 bytes.
         let size = 64
@@ -1077,6 +1080,7 @@ impl ChunkEncoder {
             wires,
             tags: tags.data,
             sections: chunk.sections[self.sections.clone()].to_vec(),
+            outside: self.outside(chunk),
             around,
             sky: self.sky,
         }
@@ -1271,9 +1275,24 @@ impl ChunkEncoder {
         light_data_of(&self.light_sections(chunk, around), self.sky)
     }
 
+    /// The sections that light layers just past the level's range come from.
+    fn outside(&self, chunk: &Chunk) -> [Option<Arc<Section>>; 2] {
+        [
+            match self.sections.start {
+                0 => chunk.pad_below.clone(),
+                start => Some(chunk.sections[start - 1].clone()),
+            },
+            match chunk.sections.get(self.sections.end) {
+                None => chunk.pad_above.clone(),
+                section => section.cloned(),
+            },
+        ]
+    }
+
     fn light_sections(&self, chunk: &Chunk, around: SectionMask) -> Vec<(usize, SectionLight)> {
         light_sections(
             &chunk.sections[self.sections.clone()],
+            &self.outside(chunk),
             around,
             SectionLight::of,
         )
@@ -1482,7 +1501,7 @@ pub fn pot_tag(chunk: &Chunk, pos: (i32, i32, i32)) -> Option<Tag> {
 /// layer is sent, or marked empty when all dark; the others are left out.
 #[cfg(test)]
 fn light_data(sections: &[Arc<Section>], around: SectionMask) -> LightData {
-    let lights = light_sections(sections, around, SectionLight::of);
+    let lights = light_sections(sections, &[None, None], around, SectionLight::of);
     light_data_of(&lights, true)
 }
 
@@ -1532,9 +1551,11 @@ impl SectionLight {
 }
 
 /// The existing light sections, by index from below the world, with their
-/// layers (`section` giving a section of the world's).
+/// layers (`section` giving a section of the world's). The padding sections come from `outside`; one
+/// with nothing stored is left out, as vanilla's storage defaults it where it is read.
 fn light_sections(
     sections: &[Arc<Section>],
+    outside: &[Option<Arc<Section>>; 2],
     around: SectionMask,
     section: impl Fn(&Arc<Section>) -> SectionLight,
 ) -> Vec<(usize, SectionLight)> {
@@ -1544,14 +1565,13 @@ fn light_sections(
         |b: usize| (b.saturating_sub(2)..=b.min(n - 1)).any(|s| s + 2 >= b && around.contains(s));
     (0..n + 2)
         .filter(|&b| exists(b))
-        .map(|b| {
+        .filter_map(|b| {
             let light = match b {
-                // Below the world nothing is lit; above it the sky is full.
-                0 => SectionLight::Uniform(0),
-                _ if b == n + 1 => SectionLight::Uniform(0xF0),
-                _ => section(&sections[b - 1]),
+                0 => outside[0].as_ref()?,
+                _ if b == n + 1 => outside[1].as_ref()?,
+                _ => &sections[b - 1],
             };
-            (b, light)
+            Some((b, section(light)))
         })
         .collect()
 }

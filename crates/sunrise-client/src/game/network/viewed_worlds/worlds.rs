@@ -110,7 +110,7 @@ impl ViewedWorld {
                 column_changed(&mut self.world, key);
             }
             C::LightUpdate(p) => {
-                let (layers, _) = self.format.light(&p.light);
+                let layers = self.format.light(&p.light);
                 if let Some(chunk) = self.world.chunks.get_mut(&(p.x, p.z)) {
                     sunrise_client::light::update_light_layers(
                         Arc::make_mut(chunk),
