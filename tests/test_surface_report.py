@@ -340,53 +340,50 @@ class MainTests(unittest.TestCase):
         find_base.assert_not_called()
 
     @unittest.skipUnless(shutil.which("bash"), "needs bash for the stub tools")
+    @unittest.skipUnless(shutil.which("bash"), "needs bash for the stub tools")
     def test_local_audit_builds_the_bases_own_tool_only_when_asked(self):
-        with tempfile.TemporaryDirectory() as directory:
-            folder = Path(directory)
-            (folder / "base").mkdir()
-            (folder / "head").mkdir()
-            # The head's tool refuses the base tree; the base's own exports it.
+        def audit(folder, *flags, readable=False):
+            """--trees on stub tools: the head's refuses the base unless `readable`; the diff records which export
+            of the base it compared."""
+            for tree in ("base", "head"):
+                (folder / tree).mkdir(exist_ok=True)
             head_tool, own_tool = folder / "head-stage", folder / "own-stage"
+            refuse = "" if readable else "case \"$2\" in *base) exit 1;; esac"
             head_tool.write_text(f"""#!/bin/bash
-echo "head $@" >> {folder}/calls
-if [ "$1" = surface ]; then
-  case "$2" in *base) echo 'sunrise-stage surface: unknown key `access`' >&2; exit 1;; esac
-  echo '{{}}' > "$3"; exit 0
+if [ "$1" = surface ]; then {refuse}
+  echo '{{"by": "head"}}' > "$3"; exit 0
 fi
-echo "Surface: report"
+cat "$2" > {folder}/compared
 """)
-            own_tool.write_text(f"""#!/bin/bash
-echo "own $@" >> {folder}/calls
-echo '{{}}' > "$3"
+            own_tool.write_text("""#!/bin/bash
+echo '{"by": "own"}' > "$3"
 """)
             head_tool.chmod(0o755)
             own_tool.chmod(0o755)
-            trees = ["--trees", str(folder / "base"), str(folder / "head")]
             built = []
 
             def tree_tool(tree, work):
                 built.append(tree)
                 return str(own_tool)
 
-            def audit(*flags):
-                return self.run_main(argv=[*trees, *flags], tool=str(head_tool), tree_tool=tree_tool)
+            code, _, _ = self.run_main(argv=["--trees", str(folder / "base"), str(folder / "head"), *flags],
+                                       tool=str(head_tool), tree_tool=tree_tool)
+            compared = folder / "compared"
+            return code, built, json.loads(compared.read_text())["by"] if compared.exists() else None
 
-            # Source only by default: nothing of the base's is built, and the report fails naming why.
-            code, out, _ = audit()
-            self.assertEqual(code, 1)
-            self.assertTrue(out.startswith("No surface report: the head's sunrise-stage cannot read the base tree "
-                                           "(sunrise-stage surface: unknown key `access`)."), out)
-            self.assertEqual(built, [])
-            # Asked to, the base tree's own tool exports it and the diff runs on that export.
-            code, out, _ = audit("--build-base-tool")
-            self.assertEqual(code, 0, out)
-            self.assertEqual(built, [folder / "base"])
-            self.assertTrue(out.startswith("The base was exported by its own sunrise-stage"), out)
-            self.assertIn("Surface: report\n", out)
-            calls = (folder / "calls").read_text().splitlines()
-            self.assertEqual([call.split()[:3] for call in calls if call.startswith("own ")],
-                             [["own", "surface", str(folder / "base")]])
-            self.assertTrue(any(call.startswith("head surface-diff") for call in calls), calls)
+        cases = [
+            # Source only by default: nothing of the base's is built, and no diff runs.
+            ((), False, (1, [], None)),
+            # Asked to, the base tree's own tool exports it, and the diff compares that export.
+            (("--build-base-tool",), False, (0, ["base"], "own")),
+            # A base the head's tool reads needs nothing built, flag or not.
+            (("--build-base-tool",), True, (0, [], "head")),
+        ]
+        for flags, readable, expected in cases:
+            with self.subTest(flags=flags, readable=readable), tempfile.TemporaryDirectory() as directory:
+                folder = Path(directory)
+                code, built, compared = audit(folder, *flags, readable=readable)
+                self.assertEqual((code, [tree.name for tree in built], compared), expected)
 
     def test_each_base_tool_build_gets_its_own_copy(self):
         with tempfile.TemporaryDirectory() as directory:

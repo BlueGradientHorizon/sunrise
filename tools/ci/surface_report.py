@@ -29,7 +29,6 @@ tree that cannot be exported, fails naming the note and the sha.
 from argparse import ArgumentParser
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-import fcntl
 import json
 import os
 import re
@@ -122,6 +121,8 @@ def tree_tool(tree: Path, work: Path) -> str:
     """The sunrise-stage of the whole source tree `tree`, built in the test profile in target/surface-base and
     copied into this run's `work`. The build directory is shared (and cached), so a lock held from the build to the
     copy keeps another audit's build from replacing the binary before this one has its copy."""
+    import fcntl  # POSIX only, and only this build needs it: a source-only audit runs anywhere.
+
     target = ROOT / "target" / "surface-base"
     target.mkdir(parents=True, exist_ok=True)
     tool = work / f"base-stage-{len(list(work.glob('base-stage-*')))}"
