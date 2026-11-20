@@ -310,7 +310,10 @@ pub struct BlockEntityDraw {
     /// The block drawn, for `native_draw_item`'s owner.
     block: [i32; 3],
     pose: Mat4,
-    parent_poses: Vec<Mat4>,
+    /// World entity draws track the local translation separately from their camera-relative
+    /// render pose. The affine pose's basis is the same in both spaces.
+    local_light_translation: Option<DVec3>,
+    parent_poses: Vec<(Mat4, Option<DVec3>)>,
     lights: (Vec3, Vec3),
     vertices: Vec<Vertex>,
     kept: bool,
@@ -334,7 +337,7 @@ pub struct BlockEntityDraw {
 struct LitElement {
     start: usize,
     end: usize,
-    centre: Vec3,
+    centre: DVec3,
     /// Fixed ambient fallback. The vertex light stores only the intrinsic floor until
     /// placement, so turning cannot ratchet it.
     ambient: u32,
@@ -359,8 +362,8 @@ pub(super) struct LevelLight<'a> {
 }
 
 impl LevelLight<'_> {
-    fn sample(&self, centre: Vec3) -> Option<u32> {
-        let absolute = (self.origin + centre.as_dvec3()).floor();
+    fn sample(&self, centre: DVec3) -> Option<u32> {
+        let absolute = (self.origin + centre).floor();
         if !absolute.cmpge(DVec3::splat(f64::from(i32::MIN))).all()
             || !absolute.cmple(DVec3::splat(f64::from(i32::MAX))).all()
         {
@@ -395,8 +398,9 @@ impl PlacementLight<'_> {
         if turn.is_none() && matches!(self.pass, LightPass::Retained) {
             return;
         }
+        let light_turn = turn.map(|m| m.as_dmat4());
         for e in elements {
-            let centre = turn.map_or(e.centre, |m| m.transform_point3(e.centre));
+            let centre = light_turn.map_or(e.centre, |m| m.transform_point3(e.centre));
             let ambient = self.level.sample(centre).unwrap_or(e.ambient);
             let span = &mut vertices[e.start - start..e.end - start];
             LitElement::apply_light(span, ambient);
@@ -547,6 +551,7 @@ impl BlockEntityDraw {
             light,
             block,
             pose,
+            local_light_translation: None,
             parent_poses: Vec::new(),
             lights,
             vertices,
@@ -681,14 +686,21 @@ impl BlockEntityDraw {
             LitElement::apply_light(&mut self.vertices[e.start..end], ambient);
         }
     }
+    /// Track the pose from the entity's world origin, not its starting render translation.
+    pub(super) fn track_entity_local_light_pose(&mut self) {
+        self.local_light_translation = Some(DVec3::ZERO);
+    }
+
     /// `PoseStack.pushPose`: `pop` comes back to the pose as it is now.
     fn push(&mut self) {
-        self.parent_poses.push(self.pose);
+        self.parent_poses
+            .push((self.pose, self.local_light_translation));
     }
     /// `PoseStack.popPose`; the block's own pose is never popped.
     fn pop(&mut self) {
-        if let Some(parent) = self.parent_poses.pop() {
-            self.pose = parent;
+        if let Some((pose, light_translation)) = self.parent_poses.pop() {
+            self.pose = pose;
+            self.local_light_translation = light_translation;
         }
     }
     /// Moves what is drawn next by `by`, in blocks.
@@ -769,17 +781,16 @@ impl BlockEntityDraw {
         self.level_lit = true;
     }
     /// Records one element and its fixed fallback only if there are vertices to relight.
-    pub(super) fn lit_since(
-        &mut self,
-        start: usize,
-        centre: impl FnOnce(&Self) -> Vec3,
-        ambient: u32,
-    ) {
+    pub(super) fn lit_since(&mut self, start: usize, centre: impl FnOnce() -> DVec3, ambient: u32) {
         if self.level_lit && self.vertices.len() > start {
+            let pose = self.pose.as_dmat4();
+            let translation = self
+                .local_light_translation
+                .unwrap_or(pose.w_axis.truncate());
             self.lit.push(LitElement {
                 start,
                 end: self.vertices.len(),
-                centre: centre(self),
+                centre: pose.transform_vector3(centre()) + translation,
                 ambient,
             });
         }
@@ -789,11 +800,17 @@ impl BlockEntityDraw {
     pub(super) fn element_ambient(&self) -> u32 {
         if self.level_lit { 0 } else { self.light }
     }
-    /// The centre of the unit cell a model is drawn in, under the pose.
-    pub(super) fn cell_centre(&self) -> Vec3 {
-        self.pose.transform_point3(Vec3::splat(0.5))
+    /// The centre of the unit cell a model is drawn in, before posing.
+    pub(super) fn cell_centre() -> DVec3 {
+        DVec3::splat(0.5)
     }
     fn apply(&mut self, m: Mat4) {
+        if let Some(translation) = &mut self.local_light_translation {
+            *translation += self
+                .pose
+                .as_dmat4()
+                .transform_vector3(m.w_axis.truncate().as_dvec3());
+        }
         self.pose *= m;
     }
     pub(super) fn pose(&self) -> Mat4 {
@@ -811,9 +828,11 @@ impl BlockEntityDraw {
         self.emit_quad(corners, uv, sprite, tint, self.element_ambient());
         self.lit_since(
             start,
-            |draw| {
-                let mean = corners.into_iter().map(|c| Vec3::from_array(c) / 4.0).sum();
-                draw.pose().transform_point3(mean)
+            || {
+                corners
+                    .into_iter()
+                    .map(|c| DVec3::from_array(c.map(f64::from)) / 4.0)
+                    .sum()
             },
             self.light,
         );
@@ -1158,6 +1177,7 @@ impl Game<'_> {
             light: 0,
             block: [0; 3],
             pose: Mat4::IDENTITY,
+            local_light_translation: None,
             parent_poses: Vec::new(),
             lights: diffuse_lights(self.nether_lighting()),
             vertices: std::mem::take(out),
@@ -1513,9 +1533,9 @@ impl Game<'_> {
         }
         draw.lit_since(
             start,
-            |draw| {
-                let middle = Vec3::from_array(from) / 32.0 + Vec3::from_array(to) / 32.0;
-                draw.pose().transform_point3(middle)
+            || {
+                (DVec3::from_array(from.map(f64::from)) + DVec3::from_array(to.map(f64::from)))
+                    / 32.0
             },
             draw.light,
         );
@@ -1812,6 +1832,7 @@ mod tests {
             light: 0xF0F0,
             block: [0; 3],
             pose: Mat4::from_translation(Vec3::new(10.0, 0.0, 0.0)),
+            local_light_translation: None,
             parent_poses: Vec::new(),
             lights: diffuse_lights(false),
             vertices: Vec::new(),
@@ -3464,6 +3485,53 @@ mod tests {
         );
         assert_eq!(bounds_calls.get(), 1);
         assert_eq!(submits.get(), 1);
+    }
+
+    #[test]
+    fn entity_level_light_samples_the_same_cell_at_two_camera_distances() {
+        const DELTA: f32 = 1.0 / 1_048_576.0; // 2^-20, exact in both f32 and f64.
+        let origin = DVec3::new(10.5 - f64::from(DELTA), 64.25, 20.0);
+        let level = LevelLight {
+            origin,
+            light_at: &|cell| {
+                assert_eq!(cell, [11, 64, 20]);
+                0x37
+            },
+        };
+        for relative_x in [1.0, 64.0] {
+            let camera = origin - DVec3::new(relative_x, 0.0, 0.0);
+            let mut draw = BlockEntityDraw::posed(
+                0.0,
+                0,
+                0x50A0,
+                [10, 64, 20],
+                Mat4::from_translation((origin - camera).as_vec3()),
+                diffuse_lights(false),
+                Vec::new(),
+            );
+            draw.track_entity_local_light_pose();
+            draw.translate([DELTA, 0.0, 0.0]);
+            draw.push();
+            draw.translate([1.0, 0.0, 0.0]);
+            draw.pop();
+            draw.level_light();
+            // The local centre is 0.5 + DELTA, so it lies on the X=11 boundary.
+            // With the camera 64 blocks away, the f32 render pose loses DELTA.
+            draw.quad(
+                [
+                    [0.5, 1.0, 0.0],
+                    [0.5, 0.0, 0.0],
+                    [0.5, 0.0, 1.0],
+                    [0.5, 1.0, 1.0],
+                ],
+                [[0.0; 2]; 4],
+                sprite(),
+                0xFFFFFF,
+            );
+            let out = draw.into_vertices_with_light(Some(&level));
+            assert_eq!(out.len(), 4);
+            assert!(out.iter().all(|v| v.light == 0x7030));
+        }
     }
 
     #[test]

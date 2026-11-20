@@ -348,11 +348,7 @@ impl Game<'_> {
         light: u32,
         out: &mut Vec<Vertex>,
     ) -> bool {
-        let at = at.as_vec3();
-        let pose = Mat4::from_translation(at);
-        // Centres are posed in f32 camera-relative space. Undo that exact translation
-        // and add the absolute entity origin in f64 before flooring the sample cell.
-        let level_origin = world_origin.map(|origin| origin - at.as_dvec3());
+        let pose = Mat4::from_translation(at.as_vec3());
         self.guarded_entity_draw(
             &resolved.failed,
             entity.partial,
@@ -360,14 +356,15 @@ impl Game<'_> {
             block,
             pose,
             light,
-            level_origin,
+            world_origin,
             out,
             |draw| resolved.inner.submit(entity, draw),
         )
     }
 
     /// Runs one mod renderer's or layer's `submit` on a draw posed at `pose` (`block` the block the
-    /// entity stands in, lit by `light`), adding to `out`: true when it drew. An `Err`, a panic and
+    /// entity stands in, lit by `light`). `world_origin` enables level light for a translation-only
+    /// starting pose. Adds to `out` and returns true when it drew. An `Err`, a panic and
     /// a refused or trapped wasm call (an `Err` from the proxy) all drop what it drew this frame,
     /// log once and set `failed`, after which it is asked no more until the next resource load
     /// resolves it again.
@@ -380,7 +377,7 @@ impl Game<'_> {
         block: [i32; 3],
         pose: Mat4,
         light: u32,
-        level_origin: Option<DVec3>,
+        world_origin: Option<DVec3>,
         out: &mut Vec<Vertex>,
         submit: impl FnOnce(&mut dyn BlockEntityDrawContext) -> Result<(), String>,
     ) -> bool {
@@ -398,6 +395,9 @@ impl Game<'_> {
             std::mem::take(out),
         )
         .animated(self.animation_time());
+        if world_origin.is_some() {
+            surface.track_entity_local_light_pose();
+        }
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             submit(&mut GameBlockEntityDrawContext {
                 game: self,
@@ -407,7 +407,7 @@ impl Game<'_> {
         .unwrap_or_else(|_| Err("it panicked".into()));
         let Err(error) = result else {
             let light_at = |[x, y, z]: [i32; 3]| self.world.light(x, y, z);
-            let level = level_origin.map(|origin| LevelLight {
+            let level = world_origin.map(|origin| LevelLight {
                 origin,
                 light_at: &light_at,
             });
