@@ -100,25 +100,19 @@ callback shortcuts.
 `IPayloadHandler::handle` returns `Result<(), PayloadHandleError>`, with explicit
 `Failed(String)` for application and execution failures. Native panics and disabled
 owners remain failures. `PayloadWork::run` retains its `Result<(), String>` contract.
-`Busy { payload, holder }` means the handler did not start. It returns the same
-owned body and a resolved `PayloadBusy` snapshot (owner/export/thread names and
-elapsed held milliseconds). The removed guest runtime originally used this result
-for group contention.
 
-The connection transport must requeue busy input at its head, preserving both
-payload and ordinary gameplay ordering, the original ingress lease and accounting,
-and the original payload deadline. Existing queue byte budgets bound retained
-memory. Retries never renew the 60-second deadline. Deadline expiry reports the held
-mod/export/thread/duration. Disconnect and protocol/epoch replacement cancel pending
-retries. This is the transport's contract, not queueing performed by the handler
-itself; it adds no detached retry worker. The original guest design chose a deadline
-longer than its execution budget and refused nested cross-group calls immediately.
+Physical ingress reservations follow payloads and work as they move to the main
+thread. A connection-owned receiving turn spans main-thread root publication or
+rollback. Pooled server receivers advance queued payloads on their existing tick;
+dedicated client and configuration receivers wait for the active root to finish.
+Disconnect and phase replacement cancel pending work from the old epoch.
 
-Busy retries retain the existing 16 MiB physical ingress reservations across work
-and main-thread moves. One connection-owned receiving turn spans MAIN root
-publication or rollback. Pooled server receivers retry on their existing tick;
-dedicated client and configuration receivers use timed condition-variable wakes,
-so progress requires neither another network frame nor a detached worker.
+### Historical WebAssembly retries
+
+The former guest runtime used `Busy { payload, holder }` when contention prevented
+a callback from starting. That result retained the body and a holder snapshot.
+The transport retried at the head of the receive queue under the original ingress
+reservation and 60-second deadline; nested cross-group calls refused immediately.
 
 ## Acceptance and the amendment to #813
 

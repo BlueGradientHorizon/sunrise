@@ -25,16 +25,15 @@ pub fn dispatch(incoming: Incoming, endpoint: Endpoint, main: MainQueue) {
     let Some(connection) = endpoint.transport().connection.as_ref() else {
         return;
     };
-    if let Some(incoming) = connection.queue_payload(incoming)
-        && let Some(incoming) = execute(incoming, &endpoint, &main, std::time::Instant::now())
-    {
-        connection.defer_payload(incoming);
+    // Only dedicated configuration/client receivers may park their physical stream.
+    let wait_epoch =
+        (!matches!(main, MainQueue::Server { conn: Some(_), .. })).then(|| incoming.epoch.clone());
+    if let Some(incoming) = connection.queue_payload(incoming) {
+        execute(incoming, &endpoint, &main);
     }
     dispatch_pending(&endpoint, &main);
-    if !matches!(main, MainQueue::Server { conn: Some(_), .. }) {
-        // Dedicated configuration/client receivers already own their physical
-        // ordered stream. Park that receiver, never a guest or the pooled server.
-        while !endpoint.transport().closed() && connection.wait_payloads() {
+    if let Some(epoch) = wait_epoch {
+        while connection.wait_payloads(&epoch) {
             dispatch_pending(&endpoint, &main);
         }
     }
@@ -42,10 +41,6 @@ pub fn dispatch(incoming: Incoming, endpoint: Endpoint, main: MainQueue) {
 
 /// The pooled play receiver calls this from its existing maintenance turn.
 pub fn dispatch_pending(endpoint: &Endpoint, main: &MainQueue) {
-    dispatch_pending_at(endpoint, main, std::time::Instant::now());
-}
-
-pub(super) fn dispatch_pending_at(endpoint: &Endpoint, main: &MainQueue, now: std::time::Instant) {
     let Some(connection) = endpoint.transport().connection.as_ref() else {
         return;
     };
@@ -53,25 +48,13 @@ pub(super) fn dispatch_pending_at(endpoint: &Endpoint, main: &MainQueue, now: st
         return;
     }
     while let Some(incoming) = connection.next_payload() {
-        if let Some(incoming) = execute(incoming, endpoint, main, now) {
-            connection.defer_payload(incoming);
-            break;
-        }
+        execute(incoming, endpoint, main);
     }
 }
 
-fn execute(
-    mut incoming: Incoming,
-    endpoint: &Endpoint,
-    main: &MainQueue,
-    now: std::time::Instant,
-) -> Option<Incoming> {
+fn execute(mut incoming: Incoming, endpoint: &Endpoint, main: &MainQueue) {
     if !incoming.epoch.active() {
-        return None;
-    }
-    if let Some(holder) = incoming.expired_busy(now) {
-        handler_failed(&incoming, endpoint, &incoming.busy_failure(holder));
-        return None;
+        return;
     }
     if matches!(incoming.body, Body::Work(_)) || incoming.receiver.thread == HandlerThread::Main {
         let epoch = incoming.epoch.clone();
@@ -79,7 +62,7 @@ fn execute(
             Ok(prepared) => prepared,
             Err(error) => {
                 endpoint.disconnect(failure(&format!("payload main refused: {error:?}")));
-                return None;
+                return;
             }
         };
         // The value stays outside the closure if invalidated before publication.
@@ -91,7 +74,7 @@ fn execute(
             drop(error);
             endpoint.disconnect(failure(&format!("payload main refused: {reason:?}")));
         }
-        return None;
+        return;
     }
     let Body::Payload(bytes) =
         std::mem::replace(&mut incoming.body, Body::Payload(PayloadBytes(Vec::new())))
@@ -106,19 +89,10 @@ fn execute(
         disconnect: None,
     };
     match incoming.receiver.handle(bytes, &mut context) {
-        Err(mod_api::PayloadHandleError::Busy { payload, holder }) => {
-            drop(context);
-            if incoming.defer(payload, &holder, now) {
-                return Some(incoming);
-            }
-            handler_failed(&incoming, endpoint, &incoming.busy_failure(&holder));
-        }
         Err(mod_api::PayloadHandleError::Failed(error)) => {
-            // Drop reservations and guest work before handling failure, publishing no partial actions.
+            // Drop reservations and staged work before reporting failure; publish no partial actions.
             drop(context);
-            // The reason (a guest's deadline, trap or refusal) goes to the log; the player is told
-            // only which mod's handler failed.
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-payload-probe"))]
             super::staging_probe::failure(&incoming.id.0, &error);
             handler_failed(&incoming, endpoint, &error);
         }
@@ -161,7 +135,6 @@ fn execute(
             }
         }
     }
-    None
 }
 fn handler_failed(incoming: &Incoming, endpoint: &Endpoint, error: &str) {
     if incoming.raw {
