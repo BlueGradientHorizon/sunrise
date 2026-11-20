@@ -274,6 +274,7 @@ fn several_entries_of_the_project_are_refused_before_download() {
         fs::read(home.join("sunrise-mods/ruby.smod")).unwrap(),
         ruby("1.0")
     );
+    assert!(!home.join(".mod-browser.pending.json").try_exists().unwrap());
     fs::remove_dir_all(home).unwrap();
 }
 
