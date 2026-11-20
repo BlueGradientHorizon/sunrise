@@ -332,11 +332,11 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
             );
         }
         let flags = |game: &mut Game<'_>, ids: [&str; 2]| {
-            let flags = ids.map(str::to_owned).into();
+            let flags = ids.map(str::to_owned);
             if let Some(remote) = &mut game.remote {
-                remote.features = flags;
+                remote.features = flags.into();
             } else {
-                game.level.enabled_features = flags;
+                game.level.enabled_features = flags.into();
             }
         };
         flags(game, ["test:alpha", "test:beta"]);

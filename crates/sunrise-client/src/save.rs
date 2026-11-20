@@ -3614,10 +3614,40 @@ pub fn write_world_gen_settings(dir: &Path, seed: i64, options: WorldGen) -> Res
 }
 include!("save/preset_generation.rs");
 const VANILLA_FEATURE_FLAGS: [&str; 1] = ["minecraft:vanilla"];
-static DEFAULT_LEVEL_FEATURE_FLAGS: std::sync::LazyLock<Arc<[String]>> =
-    std::sync::LazyLock::new(|| VANILLA_FEATURE_FLAGS.map(str::to_owned).into());
+/// The effective feature flags stored by a level. Fresh and defaulted saves have vanilla's set.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FeatureFlagIds(Arc<[String]>);
 
-#[derive(Clone, Debug)]
+impl Default for FeatureFlagIds {
+    fn default() -> Self {
+        static VANILLA: std::sync::LazyLock<Arc<[String]>> =
+            std::sync::LazyLock::new(|| VANILLA_FEATURE_FLAGS.map(str::to_owned).into());
+        Self(Arc::clone(&VANILLA))
+    }
+}
+
+impl FeatureFlagIds {
+    /// Share the flag ids with views of this level without copying them.
+    pub fn as_arc(&self) -> &Arc<[String]> {
+        &self.0
+    }
+}
+
+impl std::ops::Deref for FeatureFlagIds {
+    type Target = [String];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T: Into<Arc<[String]>>> From<T> for FeatureFlagIds {
+    fn from(ids: T) -> Self {
+        Self(ids.into())
+    }
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct Level {
     pub name: String,
     pub seed: i64,
@@ -3695,7 +3725,7 @@ pub struct Level {
     pub data_packs: Option<(Vec<String>, Vec<String>)>,
     /// `WorldDataConfiguration`'s `enabled_features`: the effective feature flag ids.
     /// An omitted `level.dat` tag decodes as vanilla's default, `minecraft:vanilla`.
-    pub enabled_features: std::sync::Arc<[String]>,
+    pub enabled_features: FeatureFlagIds,
     /// The code mods (`fml.LoadingModList` beside `Data`), then the content mods (`sunrise.ContentModList`), the world was saved with; `None` without either list or when both are empty.
     pub saved_mods: Option<Vec<level_mods::ModRecord>>,
     /// Game rule values by name without namespace (`keep_inventory`, ...).
@@ -3734,72 +3764,6 @@ pub struct Level {
     /// or its `.dat_old`): `PlayerList.loadPlayerData` gives the world's owner
     /// that file, not their own.
     pub singleplayer_file: bool,
-}
-
-impl Default for Level {
-    fn default() -> Self {
-        Self {
-            name: String::new(),
-            seed: 0,
-            generator: None,
-            creative: false,
-            game_mode: 0,
-            previous_game_mode: None,
-            time: 0,
-            day_time: 0,
-            end_clock: None,
-            spawn: None,
-            respawn_elsewhere: None,
-            position: None,
-            rotation: [0.0; 2],
-            health: 0.0,
-            absorption: 0.0,
-            food: 0,
-            saturation: 0.0,
-            inventory: Vec::new(),
-            inventory_components: HashMap::new(),
-            xp_seed: 0,
-            seen_credits: false,
-            post_effects: Vec::new(),
-            last_death: None,
-            active_effects: Vec::new(),
-            ender_items: Vec::new(),
-            recipe_book: Default::default(),
-            xp_level: 0,
-            xp_progress: 0.0,
-            xp_total: 0,
-            weather: Default::default(),
-            dimension: String::new(),
-            world_spawn: None,
-            world_spawn_angle: [0.0; 2],
-            world_spawn_dimension: None,
-            difficulty: String::new(),
-            hardcore: false,
-            difficulty_locked: false,
-            allow_commands: None,
-            data_packs: None,
-            enabled_features: Arc::clone(&DEFAULT_LEVEL_FEATURE_FLAGS),
-            saved_mods: None,
-            game_rules: BTreeMap::new(),
-            rule_registry: Default::default(),
-            player_uuid: None,
-            selected_slot: 0,
-            motion: [0.0; 3],
-            fall_distance: 0.0,
-            on_ground: false,
-            fall_flying: false,
-            player_impulse_grace: None,
-            player_fall_particles: None,
-            food_exhaustion: 0.0,
-            food_tick_timer: 0,
-            flying: false,
-            fly_speed: None,
-            abilities: None,
-            root_vehicle: None,
-            player_extra: None,
-            singleplayer_file: false,
-        }
-    }
 }
 
 impl Level {
@@ -3953,7 +3917,11 @@ impl Level {
         // WorldDataConfiguration.MAP_CODEC's `enabled_features`, flat in the
         // Data compound and omitted when the flags are vanilla's default.
         if let Some(Tag::List(flags)) = data.get("enabled_features") {
-            level.enabled_features = flags.iter().filter_map(|f| text(Some(f))).collect();
+            level.enabled_features = flags
+                .iter()
+                .filter_map(|f| text(Some(f)))
+                .collect::<Arc<[_]>>()
+                .into();
         }
         level.saved_mods = level_mods::saved(&root);
         if let Some(packs) = data.get("DataPacks") {

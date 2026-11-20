@@ -153,7 +153,9 @@ impl Game<'_> {
     pub(in crate::game) fn enabled_feature_ids(&self) -> &Arc<[String]> {
         self.remote
             .as_ref()
-            .map_or(&self.level.enabled_features, |remote| &remote.features)
+            .map_or(self.level.enabled_features.as_arc(), |remote| {
+                &remote.features
+            })
     }
     /// Dimension shape of a loaded server level, including parked levels.
     pub(super) fn level_dimension_shape(&self, level: LevelRef) -> Option<LevelDimensionShape> {
