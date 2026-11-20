@@ -4,8 +4,8 @@ use crate::*;
 /// The host's methods both sides share of the `tags` area, implemented by the game and reached through [`Host`].
 #[sunrise_mod_api_macros::host_area]
 pub trait TagsHost {
-    /// The merged-tag service, using load-resolved item and tag keys.
-    /// Not on wasm: a frame resource; its methods are the imports.
+    /// The merged-tag service, using load-resolved item and tag keys. A frame resource: its
+    /// methods are the imports, answered by the host's own service on both targets.
     #[access(Metadata)]
     #[service]
     fn tags(&self) -> &dyn Tags;
