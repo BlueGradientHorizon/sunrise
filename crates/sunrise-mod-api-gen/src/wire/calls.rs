@@ -241,6 +241,8 @@ pub(super) fn guest(
         writeln!(out, "impl {} for {proxy} {{", trait_path(owner)).unwrap();
         out.push_str(match owner {
             "Host" => "fn backend(&self) -> Option<crate::BackendRef<'_>> { Some(crate::BackendRef::of(self)) }\nfn capability_providers(&self) -> &'static dyn crate::CapabilityProviders { &Guest }\n",
+            // The service over the host's own tables: its reads are the `BlockStatesBackend` imports.
+            "LevelHost" => "fn block_states(&self) -> crate::BlockStates<'_> { crate::BlockStates::of(self) }\n",
             "ServerHost" => "fn backend_mut(&mut self) -> Option<crate::BackendMutRef<'_>> { Some(crate::BackendMutRef::of(self)) }\n",
             "ClientHost" => "fn client_backend_mut(&mut self) -> Option<crate::ClientBackendMutRef<'_>> { Some(crate::ClientBackendMutRef::of(self)) }\n",
             _ => "",

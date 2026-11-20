@@ -1376,8 +1376,9 @@ pub trait LevelHost {
     /// inside `random_tick`. Read-only and allocation-free per read. A level view with no
     /// tables answers every fact with `None` (or `BlockStateError::Unavailable`).
     ///
-    /// Not on wasm: the service borrows the game's own tables, which a level frame lends no
-    /// import for; a wasm part reads these facts through the `Host` of its other hooks.
+    /// Computed in the mod: on wasm the reads are the same calls `host.block_states()` makes,
+    /// answered by this level view's tables.
+    #[sunrise_mod_api_macros::computed_in_mod]
     fn block_states(&self) -> crate::BlockStates<'_> {
         crate::BlockStates::unavailable()
     }
@@ -1500,8 +1501,8 @@ pub trait LevelHost {
     fn block_in_tag(&self, _block: BlockKey, _tag: &str) -> Option<bool> {
         unimplemented!("LevelHost::block_in_tag")
     }
-    /// The merged-tag service for this level's owning-thread context.
-    /// Not on wasm: a frame resource; its methods are the imports.
+    /// The merged-tag service for this level's owning-thread context: a frame resource, whose
+    /// methods are the imports.
     fn tags(&self) -> &dyn Tags {
         unimplemented!("LevelHost::tags")
     }

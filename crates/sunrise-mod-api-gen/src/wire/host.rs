@@ -10,6 +10,11 @@ fn snake(owner: &str) -> String {
     owner.rsplit("::").next().unwrap().to_snake_case()
 }
 
+/// The backend area a level view's tables also answer, so a level frame serves its calls with no host.
+const LEVEL_TABLES: &str = "BlockStatesBackend";
+/// The frame accessor that lends [`LEVEL_TABLES`] from the host's backend or the level view.
+const LEVEL_TABLES_ACCESSOR: &str = "block_states_backend";
+
 fn serves(supers: &[(&str, Vec<String>)], child: &str, parent: &str) -> bool {
     let mut stack = vec![child];
     let mut visited = std::collections::HashSet::new();
@@ -147,16 +152,28 @@ fn frame(surface: &mut super::Surface<'_>) -> Result<String, String> {
                 {
                     continue;
                 }
-                let source = snake(method.owner);
-                let source_mut = method.receiver == Some(true);
-                let filter = if source_mut { ".filter(|(_,m)|*m)" } else { "" };
-                let s = if source_mut { "mut " } else { "" };
-                let m = if mutable { "mut " } else { "" };
-                tried.push((source.clone(), mutable || source_mut));
-                if fallible {
-                    choices.push(format!("self.{source}{filter}.and_then(|(p,_)| unsafe {{ (&{s}*p).{}().ok().map(|host| host as &{m}dyn {path}) }})", method.name));
-                } else {
-                    choices.push(format!("self.{source}{filter}.map(|(p,_)| unsafe {{ (&{s}*p).{}() as &{m}dyn {path} }})", method.name));
+                // The accessor is the owner's, so a slot of the owner or of any trait that extends
+                // it can lend it: a `LevelHost` accessor answers in a `LevelRandomHost` frame too.
+                for holder in super::imports() {
+                    if !serves(
+                        &supers,
+                        holder.rsplit("::").next().unwrap(),
+                        method.owner.rsplit("::").next().unwrap(),
+                    ) || super::REACHED.iter().any(|(o, ..)| o == holder)
+                    {
+                        continue;
+                    }
+                    let source = snake(holder);
+                    let source_mut = method.receiver == Some(true);
+                    let filter = if source_mut { ".filter(|(_,m)|*m)" } else { "" };
+                    let s = if source_mut { "mut " } else { "" };
+                    let m = if mutable { "mut " } else { "" };
+                    tried.push((source.clone(), mutable || source_mut));
+                    if fallible {
+                        choices.push(format!("self.{source}{filter}.and_then(|(p,_)| unsafe {{ (&{s}*p).{}().ok().map(|host| host as &{m}dyn {path}) }})", method.name));
+                    } else {
+                        choices.push(format!("self.{source}{filter}.map(|(p,_)| unsafe {{ (&{s}*p).{}() as &{m}dyn {path} }})", method.name));
+                    }
                 }
             }
             // The sources are tried in an order that comes from file names, so it must never
@@ -183,6 +200,11 @@ fn frame(surface: &mut super::Surface<'_>) -> Result<String, String> {
         }
     }
     check_one_source_per_chain(surface, &chains)?;
+    // The block-state reads come from the host's backend, or in a level frame from the tables the
+    // level view's own `block_states()` reads through: the same value a native listener gets.
+    methods.push_str(&format!(
+        "pub unsafe fn {LEVEL_TABLES_ACCESSOR}(&self) -> Result<&'static dyn mod_api::prelude::{LEVEL_TABLES}, ServeError> {{ match self.backend() {{ Ok(backend) => Ok(backend), Err(_) => Ok(self.level_host()?.block_states().backend()) }} }}"
+    ));
     Ok(format!(
         "#[derive(Default)] pub struct Frame {{ {fields} }}\n// SAFETY: pointers are used only by unsafe serve during the synchronous call that lent them.\nunsafe impl Send for Frame {{}}\nimpl Frame {{ {methods} }}"
     ))
@@ -801,6 +823,12 @@ impl Cx {
                 "unsafe {{ (&*cx).held.get(held_id).map_err(|_| ServeError::Stale)?.downcast_ref::<OwnerThread<std::sync::Arc<dyn {}>>>().ok_or(ServeError::Stale)?.get()?.clone() }}",
                 trait_path(m.owner)
             )
+        } else if m
+            .via
+            .as_deref()
+            .is_some_and(|via| via.ends_with(LEVEL_TABLES))
+        {
+            format!("unsafe {{ (&*cx).frame()?.{LEVEL_TABLES_ACCESSOR}()? }}")
         } else if m.owner == "ConfigFiles" {
             "unsafe { (&*cx).frame()?.config_files(file_root)? }".to_string()
         } else {
