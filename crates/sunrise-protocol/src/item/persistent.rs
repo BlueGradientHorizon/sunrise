@@ -6,7 +6,6 @@ use sunrise_core::nbt::Tag;
 use sunrise_world::component_value::{Patch, Template as ValueTemplate, Value};
 
 mod source;
-pub(crate) use source::component_from_upgraded_tag;
 pub use source::{component_from_tag, component_from_value, template_from_parts};
 
 /// The output direction only needs names to ids, not a bidirectional registry.

@@ -318,16 +318,6 @@ pub fn component_from_tag(kind: i32, value: &Tag, ids: &dyn Ids) -> Result<Compo
         sunrise_world::component_value::source::from_component_tag(name, value).map_err(err)?;
     component_from_value(kind, &value, ids)
 }
-pub(crate) fn component_from_upgraded_tag(
-    kind: i32,
-    value: &Tag,
-    ids: &dyn Ids,
-) -> Result<Component> {
-    let name = component_name(kind).ok_or_else(|| err("unknown component type"))?;
-    let value = sunrise_world::component_value::source::from_upgraded_component_tag(name, value)
-        .map_err(err)?;
-    component_from_value(kind, &value, ids)
-}
 pub fn component_from_value(kind: i32, value: &Value, ids: &dyn Ids) -> Result<Component> {
     component_at(kind, value, ids, 0)
 }
