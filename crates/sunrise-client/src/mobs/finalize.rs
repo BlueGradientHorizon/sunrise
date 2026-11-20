@@ -715,11 +715,13 @@ impl Mob {
         let keys: Vec<_> = effects
             .flat_map(|effect| {
                 let name = effect.trim_start_matches("minecraft:");
-                Attr::ALL.into_iter().filter_map(move |attr| {
-                    (effect_modifier(name, 0, attr).is_some()
-                        && default_value(self, attr).is_some())
-                    .then(|| (attr, effect_modifier_id(name)))
-                })
+                Attr::ALL
+                    .into_iter()
+                    .filter(move |&attr| {
+                        effect_modifier(name, 0, attr).is_some()
+                            && default_value(self, attr).is_some()
+                    })
+                    .map(move |attr| (attr, effect_modifier_id(name)))
             })
             .collect();
         if keys.is_empty() {
