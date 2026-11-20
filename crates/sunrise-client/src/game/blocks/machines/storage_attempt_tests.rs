@@ -1242,12 +1242,16 @@ fn dropper_removes_accepted_source_before_a_real_root_commit_callback() {
                 rules.forward_to_vanilla = true;
             }
             game.dispense_from(BlockPos::new(8, 64, 8), state).unwrap();
+            // The forwarded slot-less insert owns a nested journal. Its commit must not
+            // notify the sink before the root closes with the reserved source already gone.
             assert_eq!(
                 trace(&probe),
                 [
                     "face:Up",
                     "open",
                     "insert:minecraft:diamond",
+                    "open",
+                    "commit",
                     "commit",
                     "sink-source:0:RootClosing"
                 ]
