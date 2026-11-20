@@ -800,6 +800,16 @@ fn contains_value(ty: &Type, names: &[&str]) -> bool {
                 .is_some_and(|segment| self.1.contains(&segment.ident.to_string().as_str()));
             syn::visit::visit_type_path(self, path);
         }
+
+        fn visit_path_segment(&mut self, segment: &'ast syn::PathSegment) {
+            if matches!(&segment.arguments, syn::PathArguments::Parenthesized(_))
+                && (segment.ident == "Fn" || segment.ident == "FnMut" || segment.ident == "FnOnce")
+            {
+                // The callee converts values before invoking the unchanged callback.
+                return;
+            }
+            syn::visit::visit_path_segment(self, segment);
+        }
     }
     let mut values = Values(false, names);
     values.visit_type(ty);
@@ -1417,6 +1427,17 @@ mod tests {
         assert!(!checked_write);
         assert!(setup.contains("return Err(mod_api::NoBackend::no_backend())"));
         assert!(!setup.contains("Default::default()"));
+    }
+
+    #[test]
+    fn native_read_callbacks_forward_without_boundary_conversion() {
+        let read = entry(
+            "fn visit(&self, at: BlockSide, visitor: &mut dyn FnMut(&ItemResource, u64) -> std::ops::ControlFlow<()>) -> Result<(), StorageReadError>;",
+        );
+        let (setup, args, checked_write) = boundary_arguments(&read.sig, "visit", false).unwrap();
+        assert!(setup.is_empty());
+        assert_eq!(args, "at, visitor");
+        assert!(!checked_write);
     }
 
     #[test]
