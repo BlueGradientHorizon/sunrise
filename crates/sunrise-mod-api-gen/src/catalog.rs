@@ -129,9 +129,9 @@ pub struct Hook {
     /// back to what the game requested (#2414 ruling).
     pub isolate: bool,
     /// An isolated hook's per-listener check of the outputs it wrote: a path to
-    /// `fn(&output, ...) -> Result<(), &'static str>` taking every output in declaration order
-    /// and naming the first refused one. A refused set is dropped and the preceding accepted
-    /// outputs stand; later listeners still run.
+    /// `fn(&accepted, ..., &proposed, ...) -> Result<(), &'static str>` taking each set of
+    /// vector/scalar outputs in declaration order and naming the first refused one. A refused
+    /// result, including its cancellation, rolls back; later listeners still run.
     pub output_validator: Option<String>,
     pub scope: Option<PartScope>,
     pub host: Option<HostAccess>,

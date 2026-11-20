@@ -1194,9 +1194,10 @@ pub(super) fn emit<'a>(
                     .collect::<String>();
                 let arguments = rollback
                     .iter()
-                    .map(|(name, by_reference)| {
+                    .map(|(name, _)| format!("&__accepted_{name}"))
+                    .chain(rollback.iter().map(|(name, by_reference)| {
                         format!("&{}{event}.{name}", if *by_reference { "*" } else { "" })
-                    })
+                    }))
                     .collect::<Vec<_>>()
                     .join(", ");
                 let keep = rollback
@@ -1220,7 +1221,7 @@ pub(super) fn emit<'a>(
                 (
                     format!("{accepted} let mut __accepted_cancelled = {event}.cancelled;"),
                     format!(
-                        "Ok(Ok(__flow)) => {{ match {validator}({arguments}) {{ Ok(()) => {{ {keep} __accepted_cancelled |= {event}.cancelled || matches!(__flow, Flow::Cancel); }} Err(__field) => {{ {undo} log::warn!(\"mod {{}} hook {name} output {{__field}} refused: its outputs are dropped and the preceding ones stand\", {mod_entry}.id); }} }} {event}.cancelled = __accepted_cancelled; }} "
+                        "Ok(Ok(__flow)) => {{ match {validator}({arguments}) {{ Ok(()) => {{ {keep} __accepted_cancelled |= {event}.cancelled || matches!(__flow, Flow::Cancel); }} Err(__field) => {{ {undo} if super::runtime::first_output_refusal(HookId::{hook_id}, {mod_entry}.id) {{ log::warn!(\"mod {{}} hook {name} output {{__field}} refused: its outputs are dropped and the preceding ones stand\", {mod_entry}.id); }} }} }} {event}.cancelled = __accepted_cancelled; }} "
                     ),
                 )
             }

@@ -59,7 +59,7 @@ fn setter(
     (heard, entry)
 }
 
-fn dispatch(mut input: [f64; 3], mut velocity: [f64; 3]) -> ([f64; 3], [f64; 3], bool) {
+fn dispatch_travel(mut input: [f64; 3], mut velocity: [f64; 3]) -> ([f64; 3], [f64; 3], bool) {
     let mut canceled = false;
     mod_api::dispatch_living_travel(
         &Loop("server"),
@@ -83,7 +83,7 @@ fn a_refused_pair_rolls_back_its_cancel_and_later_listeners_hear_the_accepted_re
         let (later_heard, later) = setter("later", input, velocity, Cancel::None);
         install(vec![accepted, refused, later].into());
         assert_eq!(
-            dispatch([0.1, 0.0, 0.0], [1.0, 0.0, 0.0]),
+            dispatch_travel([0.1, 0.0, 0.0], [1.0, 0.0, 0.0]),
             (input, velocity, false),
             "the accepted result stands; the refused one, cancellation included, is gone"
         );
@@ -114,21 +114,52 @@ fn a_listener_receiving_a_cancellation_cannot_clear_it() {
     let clear = ModEntry::new("clear", Box::new(Clear(Arc::clone(&heard))));
     let (skipped_heard, skipped) = setter("skipped", [0.0; 3], [0.0; 3], Cancel::None);
     install(vec![first, clear, skipped].into());
-    assert_eq!(dispatch([0.0; 3], [0.0; 3]), (input, velocity, true));
+    assert_eq!(dispatch_travel([0.0; 3], [0.0; 3]), (input, velocity, true));
     assert_eq!(*heard.lock().unwrap(), vec![(input, velocity, true)]);
     assert!(skipped_heard.lock().unwrap().is_empty());
+}
+
+#[test]
+fn a_no_op_listener_does_not_propose_the_games_out_of_budget_velocity() {
+    struct Observe;
+    #[mod_api::__subscriptions]
+    impl Hooks for Observe {
+        fn living_travel(&self, _: &dyn LoopContext, event: &mut LivingTravelEvent<'_>) -> Flow {
+            assert_eq!(*event.velocity, [65.0, 0.0, 0.0]);
+            Flow::Continue
+        }
+    }
+
+    install(vec![ModEntry::new("observe", Box::new(Observe))].into());
+    assert_eq!(
+        dispatch_travel([0.0; 3], [65.0, 0.0, 0.0]),
+        ([0.0; 3], [65.0, 0.0, 0.0], false)
+    );
+    assert!(OUTPUT_REFUSALS.with(|refusals| refusals.borrow().is_empty()));
+}
+
+thread_local! {
+    static OUTPUT_REFUSALS: std::cell::RefCell<Vec<&'static str>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
 mod crate_root {
     mod entity {
         pub(crate) mod types {
-            /// The fixture's validator: input.x past 1.0 is refused. The real budgets are
-            /// tested in the vocabulary crate.
+            /// The fixture's validator: input.x past 1.0 or velocity.x past 64.0 is
+            /// refused only on replacement. The real budgets are tested in the vocabulary crate.
             pub(crate) fn refused_travel_output(
+                accepted_input: &[f64; 3],
+                accepted_velocity: &[f64; 3],
                 input: &[f64; 3],
-                _: &[f64; 3],
+                velocity: &[f64; 3],
             ) -> Result<(), &'static str> {
-                if input[0] > 1.0 { Err("input") } else { Ok(()) }
+                if accepted_input[0].to_bits() != input[0].to_bits() && input[0] > 1.0 {
+                    return Err("input");
+                }
+                if accepted_velocity[0].to_bits() != velocity[0].to_bits() && velocity[0] > 64.0 {
+                    return Err("velocity");
+                }
+                Ok(())
             }
         }
     }

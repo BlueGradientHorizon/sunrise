@@ -1550,18 +1550,23 @@ pub enum TravelMode {
     Flying,
 }
 
-/// The `living_travel` hook's per-listener check of what a listener wrote: an input component
-/// lies in [-1, 1], a velocity component is finite and within ±64 blocks. Returns the name of
-/// the first refused output.
+/// Check each replaced vector against its own budget, without applying mod-output
+/// limits to untouched game values. Bit comparisons preserve signed zero and NaN payloads.
 pub(crate) fn refused_travel_output(
+    accepted_input: &[f64; 3],
+    accepted_velocity: &[f64; 3],
     input: &[f64; 3],
     velocity: &[f64; 3],
 ) -> Result<(), &'static str> {
-    if !input.iter().all(|v| v.abs() <= 1.0) {
-        return Err("input");
-    }
-    if !velocity.iter().all(|v| v.abs() <= 64.0) {
-        return Err("velocity");
+    for (accepted, proposed, limit, field) in [
+        (accepted_input, input, 1.0, "input"),
+        (accepted_velocity, velocity, 64.0, "velocity"),
+    ] {
+        if accepted.map(f64::to_bits) != proposed.map(f64::to_bits)
+            && !proposed.iter().all(|v| v.abs() <= limit)
+        {
+            return Err(field);
+        }
     }
     Ok(())
 }
@@ -1624,17 +1629,39 @@ mod travel_tests {
     fn a_travel_output_is_refused_by_the_first_field_outside_its_budget() {
         let ok = [0.0; 3];
         assert_eq!(
-            refused_travel_output(&[-1.0, 1.0, 0.0], &[64.0, -64.0, 0.0]),
+            refused_travel_output(&ok, &ok, &[-1.0, 1.0, 0.0], &[64.0, -64.0, 0.0]),
             Ok(())
         );
         for bad in [1.01, f64::NAN, f64::INFINITY] {
-            assert_eq!(refused_travel_output(&[0.0, bad, 0.0], &ok), Err("input"));
+            assert_eq!(
+                refused_travel_output(&ok, &ok, &[0.0, bad, 0.0], &ok),
+                Err("input")
+            );
         }
         for bad in [64.5, -65.0, f64::NAN, f64::NEG_INFINITY] {
             assert_eq!(
-                refused_travel_output(&ok, &[0.0, 0.0, bad]),
+                refused_travel_output(&ok, &ok, &ok, &[0.0, 0.0, bad]),
                 Err("velocity")
             );
         }
+    }
+
+    #[test]
+    fn an_untouched_vector_is_exempt_from_the_replacement_budget() {
+        let input = [0.0; 3];
+        let velocity = [65.0, f64::from_bits(0x7ff8_0000_0000_0001), -0.0];
+        assert_eq!(
+            refused_travel_output(&input, &velocity, &input, &velocity),
+            Ok(())
+        );
+        assert_eq!(
+            refused_travel_output(&input, &velocity, &[1.0, 0.0, 0.0], &velocity),
+            Ok(())
+        );
+        assert_eq!(
+            refused_travel_output(&input, &velocity, &input, &[65.0, velocity[1], 0.0]),
+            Err("velocity"),
+            "changing only the sign bit still proposes a replacement"
+        );
     }
 }
