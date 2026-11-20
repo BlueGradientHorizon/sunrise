@@ -64,6 +64,7 @@ fn mesh(f: &Fixture, chunk: &Chunk, plan: Option<&SectionVisibilityPlan>) -> Sec
         translucent_layers: &[],
         leaf_culling: LeafCullingMode::Off,
         hidden_states: &[],
+        part_tables: Default::default(),
     };
     let mut scratch = MeshScratch::default();
     mesher.mesh_planned(&region, 0, SectionMesh::default(), &mut scratch, plan)
@@ -198,6 +199,7 @@ fn without_a_plan_meshes_are_byte_identical() {
         translucent_layers: &[],
         leaf_culling: LeafCullingMode::Off,
         hidden_states: &[],
+        part_tables: Default::default(),
     };
     let mut scratch = MeshScratch::default();
     let before = mesher.mesh_reusing(&region, 0, SectionMesh::default(), &mut scratch);
