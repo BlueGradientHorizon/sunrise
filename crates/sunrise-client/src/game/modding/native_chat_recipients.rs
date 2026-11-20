@@ -3,7 +3,7 @@
 use super::Game;
 
 impl Game<'_> {
-    /// The placed players a mod keeps a public line from, asked once each in hub order.
+    /// The placed, connected players a mod keeps a public line from, asked once each in hub order.
     /// Prepare the sender, name and message only when a mod listens.
     pub(in crate::game) fn chat_hidden_from<N: AsRef<str>, M: AsRef<str>>(
         &mut self,
@@ -15,13 +15,7 @@ impl Game<'_> {
         let Some(host) = self.lan.as_ref() else {
             return Vec::new();
         };
-        let receivers: Vec<u128> = host
-            .hub
-            .guests
-            .iter()
-            .filter(|g| g.placed)
-            .map(|g| g.uuid)
-            .collect();
+        let receivers: Vec<u128> = host.hub.online_players().map(|g| g.uuid).collect();
         let (sender, name, message) = fields(self);
         let (name, message) = (name.as_ref(), message.as_ref());
         receivers

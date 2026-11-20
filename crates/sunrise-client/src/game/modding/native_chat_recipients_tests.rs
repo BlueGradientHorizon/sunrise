@@ -221,6 +221,8 @@ fn console_and_command_block_say_can_be_hidden_per_receiver() {
             assert!(game.as_console(|game| game.run_command(
                 r#"setblock 5 100 2 command_block[facing=up]{Command:"say block secret",CustomName:"Announcer",conditionMet:1b}"#,
             )));
+            let level = game.level(game.dim.id()).unwrap();
+            game.fake_player(level, 14, "robot").unwrap();
             lines(&first);
             lines(&second);
 
@@ -230,13 +232,21 @@ fn console_and_command_block_say_can_be_hidden_per_receiver() {
             game.command_block_tick(sunrise_core::position::BlockPos::new(5, 100, 2));
             assert_eq!(lines(&first), 1);
             assert_eq!(lines(&second), 0);
+            game.lan.as_mut().unwrap().hub.update_guest(13, |guest| {
+                guest.info.chat_visibility = 1; // Commands Only
+            });
+            game.dedicated_console_say("public announcement".into());
+            assert_eq!(lines(&first), 1);
+            assert_eq!(lines(&second), 0, "Commands Only does not show /say");
             assert_eq!(
                 *asked.lock().unwrap(),
                 [
                     ("Server", "console secret", 12),
                     ("Server", "console secret", 13),
                     ("Announcer", "block secret", 12),
-                    ("Announcer", "block secret", 13)
+                    ("Announcer", "block secret", 13),
+                    ("Server", "public announcement", 12),
+                    ("Server", "public announcement", 13),
                 ]
                 .map(|(name, message, receiver)| (
                     0,

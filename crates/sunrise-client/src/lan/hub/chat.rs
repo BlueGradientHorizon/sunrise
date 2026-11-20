@@ -508,7 +508,7 @@ impl Hub {
                 },
             }),
             self.online_players()
-                .filter(|guest| !hidden.contains(&guest.uuid)),
+                .filter(|guest| guest.info.chat_visibility == 0 && !hidden.contains(&guest.uuid)),
         );
     }
 
