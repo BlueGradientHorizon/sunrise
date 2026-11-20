@@ -42,7 +42,6 @@ pub struct PartRegistrar {
     pub(crate) biome_regions: Vec<BiomeRegionDeclaration>,
     pub(crate) datapack_registries: Vec<crate::DatapackRegistryDeclaration>,
     pub(crate) menu_recipe_books: HashMap<String, MenuBookDeclaration>,
-    pub(crate) self_refusal: Option<String>,
     /// Loading warnings, by owning mod id, in registration order.
     pub(crate) warnings: Vec<(String, crate::LoadingMessage)>,
     pub(crate) recipe_book_types: HashMap<String, String>,
@@ -57,20 +56,16 @@ pub struct PartRegistrar {
     pub(crate) entity_tick_each: Vec<Option<String>>,
     pub(crate) mod_id: &'static str,
     pub(crate) mod_index: usize,
-    /// Whether the registering mod was loaded as a wasm module.
-    pub(crate) mod_wasm: bool,
     /// Parts registered so far, by every mod: the next part's `order`.
     pub(crate) registered: usize,
     pub(crate) parts: Parts,
     /// Aggregate selector metadata bytes during this registration pass.
     pub(crate) entity_selector_bytes: usize,
     pub(crate) tags: TagParts,
-    pub(crate) block_entity_types: Vec<BlockEntityTypeDecl>,
-    /// The mod that declared each block entity type, by type id.
-    pub(crate) block_entity_owners: HashMap<String, &'static str>,
+    pub(crate) block_entity_types: Vec<(&'static str, BlockEntityTypeDecl)>,
     pub(crate) block_entity_transforms: HashMap<String, Arc<dyn crate::BlockEntityTransform>>,
     pub(crate) entity_attributes: Vec<EntityAttributeDeclaration>,
-    pub(crate) world_fluids: Vec<(String, crate::WorldFluid)>,
+    pub(crate) world_fluids: Vec<(&'static str, (String, crate::WorldFluid))>,
     pub(crate) fluid_interactions: Vec<crate::FluidInteraction>,
     pub(crate) entity_attribute_modifications: Vec<EntityAttributeModification>,
     pub(crate) attributes: Vec<AttributeDeclaration>,
@@ -102,7 +97,6 @@ impl PartRegistrar {
         let _ = crate::__private::initialize();
         Self {
             menu_recipe_books: HashMap::new(),
-            self_refusal: None,
             warnings: Vec::new(),
             biome_modifiers: Vec::new(),
             biome_regions: Vec::new(),
@@ -118,13 +112,11 @@ impl PartRegistrar {
             entity_tick_each: Vec::new(),
             mod_id,
             mod_index: 0,
-            mod_wasm: false,
             registered: 0,
             parts: Self::capability_parts(),
             entity_selector_bytes: 0,
             tags: TagParts::default(),
             block_entity_types: Vec::new(),
-            block_entity_owners: HashMap::new(),
             block_entity_transforms: HashMap::new(),
             entity_attributes: Vec::new(),
             world_fluids: Vec::new(),
@@ -248,16 +240,15 @@ pub(crate) fn register_all(
     for (index, hooks) in mod_vocab::__private::entered_registration(mods, "register").enumerate() {
         registrar.mod_id = mod_vocab::__private::parts_installation::mod_entry_id(&mods[index]);
         registrar.mod_index = index;
-        registrar.mod_wasm = mod_vocab::__private::parts_installation::mod_entry_wasm(&mods[index]);
         let context = crate::RegistrationContext::new();
         let rollback = registrar.registration_checkpoint();
         hooks.register(&mut registrar, &context);
-        for warning in mod_vocab::__private::take_registration_warnings(&context) {
-            RegistrationRefusalRegistrar::registration_warning(&mut registrar, warning);
-        }
-        let reason = mod_vocab::__private::take_registration_refusal(&context)
-            .or_else(|| registrar.self_refusal.take());
-        if let Some(reason) = reason {
+        registrar.warnings.extend(
+            mod_vocab::__private::take_registration_warnings(&context)
+                .into_iter()
+                .map(|warning| (registrar.mod_id.to_owned(), warning)),
+        );
+        if let Some(reason) = mod_vocab::__private::take_registration_refusal(&context) {
             rollback(&mut registrar);
             registrar.refused.push(format!(
                 "mod {} refused registration: {reason}",
@@ -303,7 +294,8 @@ pub(crate) fn install_registrar(
     registrar.validate_attachment_admission()?;
     let game_rule_slots = slots.expect("every schema refusal was collected");
     let installed = Installed {
-        effect_part_packages: crate::load_state::current_packages(),
+        dependencies: crate::load_state::effective_dependencies(),
+        effect_ticks: Default::default(),
         biome_modifiers: registrar.biome_modifiers,
         biome_regions: {
             let mut regions = registrar.biome_regions;

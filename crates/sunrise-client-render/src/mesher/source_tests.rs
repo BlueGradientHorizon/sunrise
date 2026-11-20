@@ -321,6 +321,7 @@ fn a_folder_without_connected_texture_rules_meshes_exactly_as_before() {
         assets.registry,
         &mut crate::sprites::Sprites::default(),
         |_, _| None,
+        |_| false,
     );
     assert!(render.connected.is_empty(), "nothing declares a rule here");
     assert_eq!(bytes(&render), before);
@@ -345,6 +346,7 @@ fn a_folder_without_connected_texture_rules_meshes_exactly_as_before() {
         assets.registry,
         &mut crate::sprites::Sprites::default(),
         |_, _| None,
+        |_| false,
     );
     assert!(!render.connected.is_empty());
     assert_eq!(bytes(&render), before);

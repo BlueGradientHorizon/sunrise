@@ -6,7 +6,7 @@ use std::{
 use sunrise_core::uuid::uuid_text;
 
 /// `stats[type][key]`, with `type` and `key` namespaced ids.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct Stats {
     pub values: BTreeMap<String, BTreeMap<String, i32>>,
     pub loaded: bool,
