@@ -862,7 +862,10 @@ mod tests {
     fn the_friction_view_reads_tags_and_resident_block_entities_of_its_side() {
         use super::super::native_entity_refs::tests::with_game;
         use super::{FrictionLevel, FrictionView};
-        use mod_api::LevelHost;
+        use mod_api::{
+            __private::game::{Fields, block_entity_ref},
+            LevelHost, Tag,
+        };
         let _parts = mod_platform::__private::part_tests::friction_game_thread();
         with_game(|game| {
             game.world.chunks.insert(
@@ -872,6 +875,9 @@ mod tests {
             let dir = tempfile::tempdir().unwrap();
             game.session_lock =
                 Some(sunrise_client::save::SessionLock::acquire(dir.path()).unwrap());
+            let registry = game.pack.assets.registry;
+            let chest = registry.default_state("minecraft:chest").unwrap();
+            game.world.set(3, 64, 3, chest).unwrap();
             game.world.block_entities.insert(
                 (3, 64, 3),
                 sunrise_client::containers::BlockEntity::Chest(vec![None; 27]),
@@ -899,9 +905,14 @@ mod tests {
             );
             // A resident block entity has the handle of this side's level; an empty position none.
             let level = game.level_ref(game.native_lifecycle.epoch().unwrap(), game.dim.key());
-            let found = view.block_entity([3, 64, 3]);
-            assert!(found.is_some());
-            assert_eq!(found, game.block_entity(level, [3, 64, 3]));
+            let found = view.block_entity([3, 64, 3]).unwrap();
+            assert_eq!(Some(found), game.block_entity(level, [3, 64, 3]));
+            let saved = view.block_entity_data(found).unwrap();
+            assert_eq!(saved.get(&"Items".into()), Some(&Tag::List(Vec::new())));
+            let fields = found.fields();
+            let other_level = game.level_ref(level.epoch(), mod_api::DimensionKey::NETHER);
+            let other_entity = block_entity_ref(other_level, fields.position, fields.generation);
+            assert_eq!(view.block_entity_data(other_entity), None);
             assert_eq!(view.block_entity([4, 64, 3]), None);
             assert_eq!(
                 view.enabled_features().iter().collect::<Vec<_>>(),
