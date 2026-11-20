@@ -293,9 +293,8 @@ pub struct Particle {
     random: LegacyRandom,
     controller: Option<Box<dyn native::Controller>>,
     /// A mod provider's particle: its state, ticked in the provider's batch.
-    provided: Option<native::Provided>,
-    /// A provider's world-fixed orientation (`ParticleFacing::Fixed`), turning the quad before `roll`.
-    fixed_rotation: Option<Quat>,
+    /// Boxed so a vanilla particle carries one pointer for it.
+    provided: Option<Box<native::Provided>>,
     /// A resource pack's Polytone custom particle type, for its `limit` and `exclusion_radius`.
     polytone_type: Option<std::sync::Arc<str>>,
     /// A Polytone model particle's faces, drawn instead of its sprite quad.
@@ -661,7 +660,6 @@ impl Particle {
             random: LegacyRandom::new(0),
             controller: None,
             provided: None,
-            fixed_rotation: None,
             polytone_type: None,
             model: None,
             orientation: polytone_gpu::Orientation::Camera,
@@ -1943,7 +1941,11 @@ impl ParticleEngine {
                     .unwrap_or(0);
                 q.set = Some(set);
                 q.behaviour = Behaviour::Controlled { translucent: true };
-                q.provided = Some(native::Provided::new(provider, slot, frame as u32));
+                q.provided = Some(Box::new(native::Provided::new(
+                    provider,
+                    slot,
+                    frame as u32,
+                )));
             }
             return Some(q);
         }
@@ -4597,8 +4599,8 @@ impl ParticleEngine {
                 ) - camera;
                 (pos.as_vec3(), p.quad_size(partial))
             });
-            let rotation = if let Some(fixed) = p.fixed_rotation {
-                fixed * Quat::from_rotation_z(p.o_roll + (p.roll - p.o_roll) * partial)
+            let rotation = if let Some(fixed) = p.provided.as_ref().and_then(|q| q.fixed_rotation) {
+                fixed * roll_rotation(p.o_roll + (p.roll - p.o_roll) * partial)
             } else if p.orientation != polytone_gpu::Orientation::Camera {
                 // A custom particle's `movement_aligned` quad has its texture's top against
                 // its motion (measured in Java: a light ray rising toward the noon sun hangs
@@ -4611,7 +4613,7 @@ impl ParticleEngine {
                 let roll = p.o_roll + (p.roll - p.o_roll) * partial;
                 polytone_gpu::orient(p.orientation, center, velocity, roll, base)
             } else if p.roll != 0.0 {
-                base * Quat::from_rotation_z(p.o_roll + (p.roll - p.o_roll) * partial)
+                base * roll_rotation(p.o_roll + (p.roll - p.o_roll) * partial)
             } else {
                 base
             };
@@ -6280,4 +6282,10 @@ mod tests {
         assert_eq!(engine.pending.len(), 0);
         assert!(engine.tracked_explosions.is_empty());
     }
+}
+
+/// `SingleQuadParticle`'s roll: `Quaternionf.rotationZ(roll)`, with JOML's sine and cosine.
+fn roll_rotation(roll: f32) -> Quat {
+    let q = crate::camera::joml::Quat::rotation_z(roll);
+    Quat::from_xyzw(q.x, q.y, q.z, q.w)
 }

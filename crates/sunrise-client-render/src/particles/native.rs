@@ -76,6 +76,8 @@ pub(super) struct Provided {
     frame: u32,
     /// The engine aged the particle this tick and the provider has not run on it yet.
     pending: bool,
+    /// A world-fixed orientation (`ParticleFacing::Fixed`), turning the quad before `roll`.
+    pub(super) fixed_rotation: Option<glam::Quat>,
 }
 impl Debug for Provided {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -93,6 +95,7 @@ impl Provided {
             state: [0.0; 4],
             frame,
             pending: false,
+            fixed_rotation: None,
         }
     }
     /// The engine's part of the tick: age, `previous` and expiry. A particle that survives it
@@ -186,7 +189,10 @@ impl Batch {
 impl Particle {
     /// The facing the provider sees.
     fn facing(&self) -> ParticleFacing {
-        match (self.fixed_rotation, self.orientation) {
+        match (
+            self.provided.as_ref().and_then(|q| q.fixed_rotation),
+            self.orientation,
+        ) {
             (Some(q), _) => ParticleFacing::Fixed(q.to_array()),
             (None, polytone_gpu::Orientation::AroundY) => ParticleFacing::AroundY,
             _ => ParticleFacing::Camera,
@@ -228,11 +234,11 @@ impl Particle {
         self.size = view.size.clamp(0.0, 16.0);
         self.rgba = view.rgba.map(|c| c.clamp(0.0, 1.0));
         self.roll = view.roll;
-        self.fixed_rotation = fixed;
         self.orientation = match view.facing {
             ParticleFacing::AroundY => polytone_gpu::Orientation::AroundY,
             _ => polytone_gpu::Orientation::Camera,
         };
+        provided.fixed_rotation = fixed;
         provided.state = view.state;
         let changed = view.frame != provided.frame;
         provided.frame = view.frame;
