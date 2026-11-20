@@ -102,8 +102,8 @@ One rule per case, in order. Create's copper roofs, for example, are a rule for 
 
 - Only faces that are drawn are looked at: a face vanilla culls has no connection to work out.
 - The neighbours read are the ones within one block, on the face's plane, the cell in front of each for `cover` and the cell above each for `above`.
-  The game already re-meshes a section when a block within one block changes, so a joined texture follows its
-  neighbours.
+  The game re-meshes a section when a block within one block of it changes, and the one below when a block on
+  its bottom two layers changes (the cell above a neighbour is two up), so a joined texture follows its neighbours.
 - A rule that also names a block the pack formats (OptiFine's connected textures) name is ordered with them:
   by weight, then by path. Tile rules (a rule with `sprites`) come before block rules.
 - There is no hook that decides a connection with code, and a block cannot present another block's look to its
