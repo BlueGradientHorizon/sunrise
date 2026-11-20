@@ -14,7 +14,9 @@ pub trait Hooks {
     /// undoes the listener's writes. An answer the game refuses (`xp` below -1, an empty
     /// `new_top` or `new_bottom` stack, a write to the player's inventory or cursor or to
     /// anything the take read, a failing listener) refuses the whole take: the result, the
-    /// inputs, the cursor, the inventory and the drops go back as they were. Server-side.
+    /// inputs, the cursor, the inventory and the drops go back as they were. A backing block
+    /// that changed and was restored still makes the take stale. Accepted writes and experience
+    /// remain tentative until the outermost transaction commits. Server-side.
     #[hook(
         side = "server",
         contract = "cancel",

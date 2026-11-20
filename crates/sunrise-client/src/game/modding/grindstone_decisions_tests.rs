@@ -6,8 +6,8 @@ use crate::game::{
     stations::{Kind as StationKind, Station},
 };
 use mod_api::{
-    Flow, GrindstonePlaceEvent, GrindstoneTakeEvent, Hooks, ItemPlace, ItemResource, ModEntry,
-    Mods, Registrar, ServerHost,
+    Flow, GrindstonePlaceEvent, GrindstoneTakeEvent, Hooks, HostBlockStates, ItemPlace,
+    ItemResource, ModEntry, Mods, Registrar, ServerHost,
 };
 use std::cell::{Cell, RefCell};
 use sunrise_client::items::ItemStack;
@@ -63,7 +63,12 @@ fn replace_backing(host: &mut dyn ServerHost) {
     let pos = [1, 64, 1];
     let level = host.level("minecraft:overworld").unwrap();
     let original = level.block_state(host, pos).unwrap();
-    let air = host.block_states().block_state_id("minecraft:air").unwrap();
+    let air = mod_api::BlockState::of(
+        &host.block_states(),
+        mod_api::__private::block_key("minecraft:air").unwrap(),
+        &[],
+    )
+    .unwrap();
     let flags = mod_api::BlockUpdateFlags::KNOWN_SHAPE;
     assert_eq!(level.set_block(host, pos, air, flags), Ok(true));
     assert_eq!(level.set_block(host, pos, original, flags), Ok(true));
