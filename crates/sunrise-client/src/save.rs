@@ -1291,7 +1291,6 @@ fn encode_full(
 ) -> NamedTag {
     let sky_light = shape.sky_light;
     let mut sections = Vec::new();
-    let air = tables.map_or(0, |t| t.air);
     // Sky layers below the highest section with light other than 15 are
     // written (even all-zero ones): vanilla derives missing layers from the
     // layer above them.
@@ -1299,9 +1298,42 @@ fn encode_full(
         .sections
         .iter()
         .rposition(|s| s.light.any_not(0xF0, 0xF0));
-    for (si, section) in chunk.sections.iter().enumerate() {
-        let y = (chunk.min_y() >> 4) + si as i32;
+    // `SerializableChunkData.copyOf` checks the engine's whole light range, not just
+    // sections with block data. A dimension can be narrower than the chunk's allocation.
+    let light_y = shape.min_section() - 1..=(shape.max_y() >> 4);
+    let first = (chunk.min_y() >> 4) - 1;
+    for y in light_y {
+        let b = (y - first) as usize;
+        let section = match b {
+            0 => chunk.pad_below.as_ref(),
+            _ if b == chunk.sections.len() + 1 => chunk.pad_above.as_ref(),
+            _ => chunk.sections.get(b - 1),
+        };
+        let Some(section) = section else { continue };
+        let layers = if chunk.lit {
+            chunk.stored_light_layers(b).unwrap_or_else(|| {
+                if !shape.has_section(y) {
+                    return [false; 2];
+                }
+                [
+                    top_sky.is_some_and(|top| b <= top + 2),
+                    section.light.any(15),
+                ]
+            })
+        } else {
+            [false; 2]
+        };
+        let mut entries = vec![("Y", Tag::Byte(y as i8))];
+        if layers[1] {
+            entries.push(("BlockLight", Tag::ByteArray(nibbles(&section.light, false))));
+        }
+        if sky_light && layers[0] {
+            entries.push(("SkyLight", Tag::ByteArray(nibbles(&section.light, true))));
+        }
         if !shape.has_section(y) {
+            if entries.len() > 1 {
+                sections.push(Tag::compound(entries));
+            }
             continue;
         }
         // PalettedContainer.pack: distinct states in index order, indices at
@@ -1354,21 +1386,10 @@ fn encode_full(
                 Tag::LongArray(data.iter().map(|&w| w as i64).collect()),
             ));
         }
-        let mut entries = vec![
-            ("Y", Tag::Byte(y as i8)),
+        entries.extend([
             ("block_states", Tag::compound(states)),
             ("biomes", Tag::compound(biome_tag)),
-        ];
-        if chunk.lit {
-            let block_lit = section.light.any(15);
-            if block_lit {
-                entries.push(("BlockLight", Tag::ByteArray(nibbles(&section.light, false))));
-            }
-            if sky_light && top_sky.is_some_and(|top| si <= top + 1) {
-                entries.push(("SkyLight", Tag::ByteArray(nibbles(&section.light, true))));
-            }
-        }
-        let _ = air;
+        ]);
         sections.push(Tag::compound(entries));
     }
     let extras = chunk.saved.as_deref();
@@ -1914,123 +1935,26 @@ pub fn load_light(tag: &Tag, chunk: &mut Chunk, sky_light: bool) {
     let Some(Tag::List(sections)) = tag.get("sections") else {
         return;
     };
-    let mut layers: Vec<(Option<&[u8]>, Option<&[u8]>)> = vec![(None, None); chunk.sections.len()];
-    let mut pads: [(Option<&[u8]>, Option<&[u8]>); 2] = [(None, None); 2];
+    let mut layers = vec![(None, None); chunk.sections.len() + 2];
+    let first = (chunk.min_y() >> 4) - 1;
     for section in sections {
         let Some(y) = number(section.get("Y")) else {
+            continue;
+        };
+        let Some(slot) = y
+            .checked_sub(i64::from(first))
+            .and_then(|b| usize::try_from(b).ok())
+            .and_then(|b: usize| layers.get_mut(b))
+        else {
             continue;
         };
         let layer = |name: &str| match section.get(name) {
             Some(Tag::ByteArray(a)) if a.len() == 2048 => Some(&a[..]),
             _ => None,
         };
-        let Some(si) = chunk.section_index(y as i32 * 16) else {
-            // The padding sections one below and one above the column hold light only.
-            let first = chunk.min_y() >> 4;
-            if y as i32 == first - 1 {
-                pads[0] = (layer("SkyLight"), layer("BlockLight"));
-            } else if y as i32 == first + chunk.sections.len() as i32 {
-                pads[1] = (layer("SkyLight"), layer("BlockLight"));
-            }
-            continue;
-        };
-        layers[si] = (layer("SkyLight"), layer("BlockLight"));
+        *slot = (layer("SkyLight"), layer("BlockLight"));
     }
-    // A saved layer is already the resident `Light::Sky`/`Light::Block`
-    // layer: byte `i` holds block `2i` in its low nibble and `2i + 1` in its
-    // high one. Both nibbles of each byte must match for a layer to be
-    // uniform; only then is the whole section one value.
-    let uniform_layer = |layer: &[u8]| {
-        let first = layer[0];
-        (first & 15 == first >> 4 && layer.iter().all(|&v| v == first)).then_some(first & 15)
-    };
-    let copy_layer = |layer: &[u8]| {
-        let mut out = Box::new([0u8; 2048]);
-        out.copy_from_slice(layer);
-        out
-    };
-    let mut above = [if sky_light { 15 } else { 0 }; 256];
-    let open_sky = above;
-    for (si, (sky, block)) in layers.into_iter().enumerate().rev() {
-        let sky = sky.filter(|_| sky_light);
-        let sky_uniform = sky.and_then(uniform_layer);
-        let sky_varies = match sky {
-            Some(_) => sky_uniform.is_none(),
-            None => above.iter().any(|&v| v != above[0]),
-        };
-        let block_uniform = block.and_then(uniform_layer);
-        let block_varies = block.is_some() && block_uniform.is_none();
-        let sky_first = sky.map_or(above[0], |layer| layer[0] & 15);
-        let block_first = block.map_or(0, |layer| layer[0] & 15);
-        let section = Arc::make_mut(&mut chunk.sections[si]);
-        section.compact();
-        // The saved layer decides the resident variant directly: expand
-        // only when both nibbles vary (which keeps `Light::Full`).
-        section.light = match (sky_varies, block_varies) {
-            (false, false) => Light::Uniform(sky_first << 4 | block_first),
-            (false, true) => Light::Block(copy_layer(block.expect("block layer")), sky_first),
-            (true, false) => {
-                let layer = match sky {
-                    Some(layer) => copy_layer(layer),
-                    // No stored sky: the same 256-byte bottom row over and
-                    // over, which is exactly `Light::packed`'s layer here.
-                    None => {
-                        let mut layer = Box::new([0u8; 2048]);
-                        for row in layer.as_chunks_mut::<128>().0 {
-                            for (out, v) in
-                                row.iter_mut().zip(above.as_chunks::<2>().0.iter().cycle())
-                            {
-                                *out = v[0] | v[1] << 4;
-                            }
-                        }
-                        layer
-                    }
-                };
-                Light::Sky(layer, block_first)
-            }
-            (true, true) => {
-                let mut data = Box::new([0u8; 4096]);
-                match (sky, block) {
-                    (Some(sky), Some(block)) => {
-                        for ((pair, &s), &b) in
-                            data.as_chunks_mut::<2>().0.iter_mut().zip(sky).zip(block)
-                        {
-                            pair[0] = s << 4 | (b & 15);
-                            pair[1] = (s & 0xf0) | (b >> 4);
-                        }
-                    }
-                    (None, Some(block)) => {
-                        for (i, (pair, &b)) in data
-                            .as_chunks_mut::<2>()
-                            .0
-                            .iter_mut()
-                            .zip(block)
-                            .enumerate()
-                        {
-                            pair[0] = above[(i * 2) & 255] << 4 | (b & 15);
-                            pair[1] = above[(i * 2 + 1) & 255] << 4 | (b >> 4);
-                        }
-                    }
-                    _ => unreachable!("both light kinds vary"),
-                }
-                Light::Full(data)
-            }
-        };
-        if let Some(sky) = sky {
-            for (pair, &s) in above.as_chunks_mut::<2>().0.iter_mut().zip(sky) {
-                pair[0] = s & 15;
-                pair[1] = s >> 4;
-            }
-        }
-    }
-    let pad = |(sky, block): (Option<&[u8]>, Option<&[u8]>), above| {
-        (sky.is_some() || block.is_some())
-            .then(|| crate::light::padding_section(sky.as_ref(), block.as_ref(), sky_light, above))
-    };
-    chunk.pad_below = pad(pads[0], above);
-    chunk.pad_above = pad(pads[1], open_sky);
-    chunk.lit = true;
-    chunk.light_loaded = true;
+    crate::light::light_from_layers(chunk, &layers, sky_light);
 }
 
 type RegionCache = Mutex<RegionFiles>;
@@ -8429,6 +8353,41 @@ mod tests {
         );
         assert!(!unlit.lit && !unlit.light_loaded);
     }
+    #[test]
+    #[ignore = "daily"]
+    fn both_light_pads_survive_full_chunk_save_and_reload() {
+        let root = PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
+        let assets = crate::assets::Assets::load(&root).unwrap();
+        let biomes = Biomes::load(&sunrise_assets::resource_source::ResourceRoot::directory(
+            root,
+        ))
+        .unwrap();
+        let mut original = Chunk::empty(0, 0);
+        let mut layers = vec![(None, None); SECTIONS + 2];
+        layers[0] = (None, Some(vec![0x55; 2048]));
+        layers[SECTIONS + 1] = (Some(vec![0x27; 2048]), Some(vec![0; 2048]));
+        crate::light::light_from_layers(&mut original, &layers, true);
+        let saved = encode(&original, assets.registry, &biomes, &Default::default());
+        let Some(Tag::List(sections)) = saved.tag.get("sections") else {
+            panic!("missing saved sections");
+        };
+        assert_eq!(sections.len(), SECTIONS + 2);
+        for section in [sections.first().unwrap(), sections.last().unwrap()] {
+            assert!(section.get("block_states").is_none());
+            assert!(section.get("biomes").is_none());
+        }
+        let mut loaded = decode(&saved, assets.registry, &biomes).unwrap();
+        load_light(&saved.tag, &mut loaded, true);
+        assert_eq!(loaded.light(0, MIN_Y - 1, 0), 0x75);
+        assert_eq!(loaded.light(1, MIN_Y - 1, 0), 0x25);
+        assert_eq!(loaded.light(0, 70, 0), 0x70);
+        assert_eq!(loaded.light(1, 70, 0), 0x20);
+        assert_eq!(loaded.light(0, loaded.max_y(), 0), 0x70);
+        assert_eq!(loaded.light(1, loaded.max_y(), 0), 0x20);
+        assert_eq!(loaded.stored_light_layers(0), Some([false, true]));
+        assert_eq!(loaded.stored_light_layers(SECTIONS + 1), Some([true, true]));
+    }
+
     #[test]
     #[ignore = "daily"]
     fn saved_light_matches_reference_for_layers_and_metadata() {

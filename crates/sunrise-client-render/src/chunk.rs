@@ -660,6 +660,10 @@ pub struct Chunk {
     /// is a section vanilla's light storage keeps nothing for (see [`Self::section_at`]).
     pub pad_below: Option<Arc<Section>>,
     pub pad_above: Option<Arc<Section>>,
+    /// Packet/save DataLayer presence, indexed from the lower pad. Computed light is dense
+    /// inside the column and has no computed pads yet.
+    pub(crate) light_layers: Option<[crate::section_mask::SectionMask; 2]>,
+    pub(crate) light_sky: bool,
     /// `Heightmap.Types.WORLD_SURFACE` per column (`z << 4 | x`): one above
     /// the highest non-air block, or the column's minimum Y. Built on the first read; a
     /// `set` that can move a column's surface marks that column, found again on its next read.
@@ -718,6 +722,8 @@ impl Chunk {
             sections: (0..layout.sections()).map(|_| empty.clone()).collect(),
             pad_below: None,
             pad_above: None,
+            light_layers: None,
+            light_sky: true,
             surface: Heights::default(),
             motion_blocking: Heights::default(),
             lit: false,
@@ -948,6 +954,21 @@ impl Chunk {
             Err(Outside::Uniform(light)) => light,
         }
     }
+    /// Stored sky and block presence for a hydrated light section `b` (0 is the lower pad).
+    /// Computed columns have no sparse DataLayer map.
+    pub fn stored_light_layers(&self, b: usize) -> Option<[bool; 2]> {
+        self.light_layers
+            .map(|[sky, block]| [sky.contains(b), block.contains(b)])
+    }
+
+    pub(crate) fn light_section(&self, b: usize) -> Option<&Arc<Section>> {
+        match b {
+            0 => self.pad_below.as_ref(),
+            _ if b == self.sections.len() + 1 => self.pad_above.as_ref(),
+            _ => self.sections.get(b - 1),
+        }
+    }
+
     /// The section holding block height `y`; outside the column's sections, the stored padding
     /// section there, else what vanilla's storage answers without one
     /// (`SkyLightSectionStorage.getLightValue`): below, the bottom row of the lowest stored section
@@ -960,7 +981,7 @@ impl Chunk {
         if y >= self.min_y {
             return match &self.pad_above {
                 Some(pad) if y < self.max_y() + 16 => Ok(pad),
-                _ => Err(Outside::Uniform(0xF0)),
+                _ => Err(Outside::Uniform(if self.light_sky { 0xF0 } else { 0 })),
             };
         }
         match &self.pad_below {
