@@ -258,7 +258,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev libudev-dev
       - name: Build the official game, sunrise-ctl, sunrise-perf, sunrise-prepare, sunrise-server and sunrise-port-pack
         if: ${{ !matrix.musl }}
-        run: cargo build --release --locked ${{ matrix.target && format('--target {0}', matrix.target) || '' }} -p sunrise-official --bin sunrise-official -p sunrise-client-lib --bin sunrise-ctl -p sunrise-perf --bin sunrise-perf -p sunrise-prepare --bin sunrise-prepare -p sunrise-server --bin sunrise-server -p sunrise-port-pack --bin sunrise-port-pack
+        run: cargo build --release --locked --timings ${{ matrix.target && format('--target {0}', matrix.target) || '' }} -p sunrise-official --bin sunrise-official -p sunrise-client-lib --bin sunrise-ctl -p sunrise-perf --bin sunrise-perf -p sunrise-prepare --bin sunrise-prepare -p sunrise-server --bin sunrise-server -p sunrise-port-pack --bin sunrise-port-pack
       - name: The official game is the game players get, under its name
         # sunrise-official: sunrise-client's game with Sunrise's own parts plugged in (docs/layers.md, "How a
         # Sunrise crate plugs in"). Everything below, the launcher and players know it as sunrise-client.
@@ -438,7 +438,7 @@ jobs:
           set -euo pipefail
           # After the client is packaged: target/release/sunrise-client is rebuilt without the audio and
           # controllers features, so it needs neither libasound nor libudev (minimal server images lack them).
-          cargo build --release --locked -p sunrise-game --no-default-features --bin sunrise-client
+          cargo build --release --locked --timings -p sunrise-game --no-default-features --bin sunrise-client
           cargo run --locked -p xtask -- package-server "$BIN/sunrise-client" "dist/${{ matrix.server_dir }}"
           folder="dist/${{ matrix.server_dir }}"
           python3 tools/check_imports.py --server "$folder/sunrise-engine" "$folder/sunrise-server" "$folder/sunrise-prepare"
@@ -471,6 +471,23 @@ jobs:
       - name: The signing keychain, locked again
         if: always() && runner.os == 'macOS' && vars.MACOS_SIGN_IDENTITY != '' && inputs.developer_id
         run: packaging/macos/keychain.sh lock
+      # Cargo's --timings reports of this leg's release builds: which units the build waits on (the Nightly's legs
+      # take most of its time). A report, never a release asset, and after the leg's marker so a stalled upload
+      # cannot keep the leg from counting as built.
+      - name: The build's timings, by leg
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: |
+          mkdir -p "$RUNNER_TEMP/cargo-timings/${{ matrix.name }}"
+          cp target/cargo-timings/cargo-timing-*.html "$RUNNER_TEMP/cargo-timings/${{ matrix.name }}/"
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        with:
+          name: cargo-timings-${{ matrix.name }}
+          path: ${{ runner.temp }}/cargo-timings
+          if-no-files-found: warn
+          retention-days: 7
 
   # Whether the build is complete: every required leg left its marker. An optional leg (build's continue-on-error)
   # that failed, timed out or was cancelled drops out alike; a cancelled run stops here.

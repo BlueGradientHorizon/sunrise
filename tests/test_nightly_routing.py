@@ -166,6 +166,32 @@ console.log(JSON.stringify(Boolean(eval(s.expression))));
                     self.assertEqual(ran.returncode == 0, expected, ran.stdout)
                     self.assertEqual(output.exists() and output.read_text() == "complete=true\n", expected)
 
+    def test_build_timings_are_a_report_and_never_a_signed_or_released_asset(self):
+        game = yaml.safe_load(GAME.read_text())
+        steps = game["jobs"]["build"]["steps"]
+        self.assertIn("cargo build --release --locked --timings", GAME.read_text())
+        collect = next(i for i, step in enumerate(steps) if step.get("name") == "The build's timings, by leg")
+        upload = collect + 1
+        self.assertTrue(steps[upload]["uses"].startswith("actions/upload-artifact@"))
+        # Both timing steps are best-effort, and run after the marker and the keychain lock, so a stalled
+        # upload cannot keep a finished leg from counting as built.
+        for index in (collect, upload):
+            self.assertIs(steps[index]["continue-on-error"], True)
+        for name in ("This leg built", "The signing keychain, locked again"):
+            self.assertLess(next(i for i, step in enumerate(steps) if step.get("name") == name), collect)
+        self.assertLess(next(i for i, step in enumerate(steps)
+                             if step.get("with", {}).get("name") == "leg-${{ matrix.name }}"), collect)
+        name = steps[upload]["with"]["name"]
+        self.assertTrue(name.startswith("cargo-timings-"))
+        # The sign job hashes every `sunrise-*` artifact, and publish's download leaves the reports out.
+        nightly = yaml.safe_load((ROOT / ".github/workflows/nightly-build.yml").read_text())
+        self.assertEqual(next(step["with"]["pattern"] for step in nightly["jobs"]["sign"]["steps"]
+                              if step.get("uses", "").startswith("actions/download-artifact@") and "pattern" in step["with"]),
+                         "sunrise-*")
+        download = [step for step in nightly["jobs"]["publish"]["steps"]
+                    if step.get("uses", "").startswith("actions/download-artifact@")]
+        self.assertEqual([step["with"]["pattern"] for step in download], ["!cargo-timings-*"])
+
     def test_every_shipped_glibc_program_is_checked_by_workflow_owned_tools(self):
         text = GAME.read_text()
         commands = re.findall(r"check_glibc.py ([^\n]+)", text.replace("\\\n", " "))

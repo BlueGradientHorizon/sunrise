@@ -143,7 +143,7 @@ echo '{{}}' > "$3"
                                "(sunrise-stage surface: unknown key `access`), nor can the base's own "
                                "(sunrise-stage surface: base.rs: older form).\n")
         self.assertNotIn("surface-diff", calls)
-        # With no base tool to fall back on (a local comparison of two trees), the unreadable base fails too.
+        # With no base tool to fall back on, the unreadable base fails too.
         code, text, _ = self.run_report(base_export=1)
         self.assertEqual(code, 1)
         self.assertTrue(text.startswith("No surface report: the head's sunrise-stage cannot read the base tree"), text)
@@ -289,10 +289,10 @@ class SummaryTests(unittest.TestCase):
 class MainTests(unittest.TestCase):
     """main(): the base it fetches, what it prints, what it writes to the job summary."""
 
-    def run_main(self, event="pull_request", pr="", argv=(), **patches):
+    def run_main(self, event="pull_request", pr="", argv=(), tool="/no/tool", **patches):
         with tempfile.TemporaryDirectory() as directory:
             summary_file = Path(directory) / "summary.md"
-            env = {"SUNRISE_STAGE_TOOL": "/no/tool", "EVENT": event, "PR": pr,
+            env = {"SUNRISE_STAGE_TOOL": tool, "EVENT": event, "PR": pr,
                    "GITHUB_STEP_SUMMARY": str(summary_file), "RUNNER_TEMP": directory}
             with mock.patch.dict(os.environ, env), contextlib.redirect_stdout(io.StringIO()) as out, \
                     contextlib.ExitStack() as stack:
@@ -339,12 +339,119 @@ class MainTests(unittest.TestCase):
         self.assertTrue(report.call_args.kwargs["with_internals"])
         find_base.assert_not_called()
 
+    @unittest.skipUnless(shutil.which("bash"), "needs bash for the stub tools")
+    def test_local_audit_builds_the_bases_own_tool_only_when_asked(self):
+        def audit(folder, *flags, readable=False):
+            """--trees on stub tools; the diff records which exports it compared. Each tree holds a marker file the
+            exporters read, so the diff shows which tree each export came from."""
+            for tree in ("base", "head"):
+                (folder / tree).mkdir(exist_ok=True)
+                (folder / tree / "marker").write_text(tree)
+            head_tool, own_tool = folder / "head-stage", folder / "own-stage"
+            refuse = "" if readable else 'case "$2" in */base) exit 1;; esac'
+            head_tool.write_text(f"""#!/bin/bash
+if [ "$1" = surface ]; then {refuse}
+  echo "{{\\"by\\": \\"head:$(cat "$2/marker")\\"}}" > "$3"; exit 0
+fi
+cat "$2" "$3" > {folder}/compared
+""")
+            own_tool.write_text("""#!/bin/bash
+echo "{\\"by\\": \\"own:$(cat "$2/marker")\\"}" > "$3"
+""")
+            head_tool.chmod(0o755)
+            own_tool.chmod(0o755)
+            built = []
+
+            def tree_tool(tree, work):
+                built.append(tree)
+                return str(own_tool)
+
+            code, _, _ = self.run_main(argv=["--trees", str(folder / "base"), str(folder / "head"), *flags],
+                                       tool=str(head_tool), tree_tool=tree_tool)
+            compared = folder / "compared"
+            exports = [json.loads(line)["by"] for line in compared.read_text().splitlines()] if compared.exists() else []
+            return code, built, exports
+
+        cases = [
+            # Source only by default: nothing of the base's is built, and no diff runs.
+            ((), False, lambda folder: (1, [], [])),
+            # Asked to, BASE's own tool exports BASE, and the diff compares that export with HEAD's.
+            (("--build-base-tool",), False, lambda folder: (0, [folder / "base"], ["own:base", "head:head"])),
+            # A base the head's tool reads needs nothing built, flag or not.
+            (("--build-base-tool",), True, lambda folder: (0, [], ["head:base", "head:head"])),
+        ]
+        for flags, readable, expected in cases:
+            with self.subTest(flags=flags, readable=readable), tempfile.TemporaryDirectory() as directory:
+                folder = Path(directory)
+                self.assertEqual(audit(folder, *flags, readable=readable), expected(folder))
+
+    @unittest.skipUnless(shutil.which("bash"), "needs bash for the stub tools")
+    def test_a_commit_both_comparisons_need_is_built_once(self):
+        """A landed note may name the CI base itself: the base comparison and the landed one share its tool."""
+        sha = "6" * 40
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            head_tool, own_tool = folder / "head-stage", folder / "own-stage"
+            # The head's tool refuses every fetched tree (they all hold a marker); the own tool reads the marker.
+            head_tool.write_text(f"""#!/bin/bash
+if [ "$1" = surface ]; then
+  [ -f "$2/marker" ] && exit 1
+  echo '{{"by": "checkout"}}' > "$3"; exit 0
+fi
+cat "$2" "$3" >> {folder}/compared
+""")
+            own_tool.write_text("""#!/bin/bash
+echo "{\\"by\\": \\"$(cat "$2/marker")\\"}" > "$3"
+""")
+            head_tool.chmod(0o755)
+            own_tool.chmod(0o755)
+            built = []
+
+            def base_tool(commit, work):
+                built.append(commit)
+                return str(own_tool)
+
+            def unpack(commit, into, paths=()):
+                (into / "marker").write_text(commit)
+
+            def git(*args):
+                return MERGE if args[0] == "cat-file" else ""
+
+            code, out, _ = self.run_main(tool=str(head_tool), base_commit=lambda *a: (sha, ""), unpack=unpack,
+                                         git=git, base_tool=base_tool, landed_notes=lambda head, base: {sha: ["n.toml"]})
+            self.assertEqual(code, 0, out)
+            self.assertEqual(built, [sha, "aaaa"])
+            exports = [json.loads(line)["by"] for line in (folder / "compared").read_text().splitlines()]
+            # The base against this checkout, then the landed merge against its first parent.
+            self.assertEqual(exports, [sha, "checkout", "aaaa", sha])
+
+    @unittest.skipUnless(importlib.util.find_spec("fcntl"), "needs POSIX file locking")
+    def test_each_base_tool_build_gets_its_own_copy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            work = folder / "work"
+            work.mkdir()
+
+            def cargo(command, cwd, **_):
+                binary = folder / "target/surface-base/debug/sunrise-stage"
+                binary.parent.mkdir(parents=True, exist_ok=True)
+                binary.write_text(str(cwd))
+                return subprocess.CompletedProcess(command, 0, "", "")
+
+            with mock.patch.object(surface_report, "ROOT", folder), \
+                 mock.patch.object(surface_report.subprocess, "run", cargo):
+                first = surface_report.tree_tool(Path("one"), work)
+                second = surface_report.tree_tool(Path("two"), work)
+            # A later build of another tree replaces the shared binary, never a copy an audit already holds.
+            self.assertNotEqual(first, second)
+            self.assertEqual((Path(first).read_text(), Path(second).read_text()), ("one", "two"))
+
 
 @unittest.skipUnless(shutil.which("bash"), "needs bash for the stub tool")
 class LandedTests(unittest.TestCase):
     SHA = "6" * 40
 
-    def check(self, diff_exit, trees=None, git_text=None):
+    def check(self, diff_exit, trees=None, git_text=None, refuse_landed=False, own_tool=None):
         with tempfile.TemporaryDirectory() as directory:
             work = Path(directory)
             for side in ("head", "base"):
@@ -356,18 +463,30 @@ class LandedTests(unittest.TestCase):
             tool = work / "sunrise-stage"
             tool.write_text(f"""#!/bin/bash
 echo "$@" >> {work}/calls
-if [ "$1" = surface ]; then echo '{{}}' > "$3"; exit 0; fi
+if [ "$1" = surface ]; then
+  case "$2" in */landed-*) [ {int(refuse_landed)} = 0 ] || {{ echo 'sunrise-stage surface: trait T has no marks' >&2; exit 1; }};; esac
+  echo '{{"by": "head"}}' > "$3"; exit 0
+fi
+cat "$2" "$3" > {work}/compared
 if [ {diff_exit} != 0 ]; then echo "change note r61.toml names point:a, which did not change" >&2; fi
 exit {diff_exit}
 """)
             tool.chmod(0o755)
             shas = surface_report.landed_notes(work / "head", work / "base")
             fetched = []
+
+            def fetch(sha, into):
+                # Each fetched tree names its commit, for the exporters to read.
+                fetched.append(sha)
+                (into / "marker").write_text(sha)
+
             git_text = git_text or (lambda *a: MERGE if a[0] == "cat-file" else "")
             code, text = surface_report.landed_check(
-                str(tool), work / "head", work / "base", work, shas,
-                git_text=git_text, fetch=lambda sha, into: fetched.append(sha))
+                str(tool), work / "head", work / "base", work, shas, git_text=git_text, fetch=fetch,
+                own_tool=own_tool and (lambda sha: own_tool(sha, work)))
             calls = (work / "calls").read_text() if (work / "calls").exists() else ""
+            if (work / "compared").exists():
+                calls += "compared " + (work / "compared").read_text().replace("\n", " ")
             return shas, code, text, calls, fetched
 
     def test_only_new_notes_that_carry_landed_are_found(self):
@@ -385,6 +504,32 @@ exit {diff_exit}
         _, code, text, _, _ = self.check(1)
         self.assertEqual(code, 1)
         self.assertIn(f"r61.toml (landed {self.SHA})", text)
+
+    def test_old_trees_this_tool_refuses_are_exported_by_their_own_commits_tools(self):
+        built = []
+
+        def own_tool(sha, work):
+            built.append(sha)
+            tool = work / f"own-{sha}"
+            # Says which commit's tool exported which tree.
+            tool.write_text(f"""#!/bin/bash
+echo "{{\\"by\\": \\"{sha} tool, $(cat "$2/marker") tree\\"}}" > "$3"
+""")
+            tool.chmod(0o755)
+            return str(tool)
+
+        _, code, text, calls, _ = self.check(0, refuse_landed=True, own_tool=own_tool)
+        self.assertEqual(code, 0, text)
+        self.assertEqual(built, [self.SHA, "aaaa"])
+        # The diff compares the first parent, exported by its own tool, with the merge, exported by its own.
+        self.assertIn('compared {"by": "aaaa tool, aaaa tree"} {"by": "%s tool, %s tree"}' % (self.SHA, self.SHA),
+                      calls)
+        self.assertIn(f"--landed {self.SHA}", calls)
+        # With no tool to build, a refused tree fails the check, naming why.
+        _, code, text, calls, _ = self.check(0, refuse_landed=True)
+        self.assertEqual(code, 1)
+        self.assertIn("sunrise-stage surface: trait T has no marks", text)
+        self.assertNotIn("surface-diff", calls)
 
     def test_a_landed_that_is_not_a_full_sha_is_not_returned(self):
         with tempfile.TemporaryDirectory() as directory:

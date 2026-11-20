@@ -122,6 +122,20 @@ fn a_label_hides_behind_a_wall_unless_it_is_see_through() {
         assert!(!world.is_empty() && through.is_empty());
         let empty = pixels(game, &[], &[]);
         assert_ne!(pixels(game, &world, &[]), empty, "visible without a wall");
+        // An alpha under 26 draws no text (its fragments are discarded); 26 does. `exact_light`
+        // has no effect without `see_through`.
+        let faded = |game: &mut super::Game<'_>, alpha| {
+            let options = NameTagOptions::new(false, false, 0xF0).with_faded_alpha(alpha);
+            let copy = labels(game, [0.5, 70.0, 0.5], &text, options).1[0].clone();
+            pixels(game, &copy, &[])
+        };
+        assert_eq!(faded(game, 25), empty);
+        assert_ne!(faded(game, 26), empty);
+        let plain = NameTagOptions::new(false, true, 0x00);
+        assert_eq!(
+            bytes(&labels(game, [0.5, 70.0, 0.5], &text, plain.with_exact_light()).1[0]),
+            bytes(&labels(game, [0.5, 70.0, 0.5], &text, plain).1[0]),
+        );
         let wall = wall(game);
         let only_wall = pixels(game, &wall, &[]);
         let behind = [wall.clone(), world].concat();
@@ -229,6 +243,7 @@ fn a_see_through_label_is_lit_at_least_2_in_the_world_and_unlit_over_it() {
             brightness(&pixels(game, &exact[0], &[])),
             brightness(&pixels(game, &world, &[])),
         );
+        // A smoke check of the rendering; the vertex light assertions above pin the contract.
         assert!(dim < lit, "{dim} < {lit}");
         // `with_faded_alpha`: the faded text at alpha 0x20 whichever copy it is, on the same
         // backdrop, and fainter on screen than at the default 0x7F.

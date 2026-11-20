@@ -229,7 +229,7 @@ fn hidden_faces_skip_quads_by_cull_side_and_keep_those_without() {
     assert_eq!(hide(0b11_1111), 1);
 }
 #[test]
-fn translucent_quads_bake_their_shade_into_the_colour_and_discard_alpha_below_a_tenth() {
+fn translucent_quads_bake_their_shade_into_the_colour() {
     let mut glass = face();
     glass.quad.render_type = Some(RenderType::Translucent);
     glass.layer = 7;

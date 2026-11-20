@@ -315,6 +315,7 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           path: dist
+          pattern: '!cargo-timings-*'
           merge-multiple: true
       - name: The signatures, checked as launchers check them
         env:
