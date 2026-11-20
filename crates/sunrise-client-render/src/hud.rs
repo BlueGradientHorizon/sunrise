@@ -26,20 +26,30 @@ pub(crate) mod pack_text;
 pub mod pictures;
 pub(crate) mod sprite_modifiers;
 
-/// GUI sprite ids a draw asked for that the atlas has never had, each warned about once.
+/// GUI sprite ids a draw asked for that the atlas lacks, each warned about once.
 static MISSING_GUI_SPRITES: std::sync::Mutex<BTreeSet<String>> =
     std::sync::Mutex::new(BTreeSet::new());
 
-/// A draw named a GUI sprite the atlas never had: a panic in debug builds, else one warning per id.
+#[cfg(test)]
+thread_local! {
+    static GUI_SPRITE_MISSES: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// The GUI sprite ids this thread's draws missed since the last call, for tests that a screen names only real sprites.
+#[cfg(test)]
+pub(crate) fn take_gui_sprite_misses() -> Vec<String> {
+    GUI_SPRITE_MISSES.with(|misses| std::mem::take(&mut *misses.borrow_mut()))
+}
+
+/// A draw named a GUI sprite the atlas lacks (a wrong name, a pack's filter, a mod's id): one warning per id.
 fn missing_gui_sprite(id: &str) {
-    if cfg!(debug_assertions) {
-        panic!("no GUI sprite {id:?} in the atlas: a wrong sprite name");
-    }
+    #[cfg(test)]
+    GUI_SPRITE_MISSES.with(|misses| misses.borrow_mut().push(id.to_owned()));
     let mut warned = MISSING_GUI_SPRITES
         .lock()
         .unwrap_or_else(|e| e.into_inner());
     if warned.insert(id.to_owned()) {
-        log::warn!("no GUI sprite {id:?} in the atlas; drawing nothing for it");
+        log::warn!("no GUI sprite {id:?} in the atlas; drawing the missing texture");
     }
 }
 
@@ -1216,14 +1226,17 @@ impl HudAtlas {
                 .flatten(),
         }
     }
-    /// [`HudAtlas::gui_rect`] for a draw, where a miss can only be a wrong name, never a pack's choice.
+    /// [`HudAtlas::gui_rect`] for a draw: an id the atlas lacks draws the missing texture, as vanilla's atlas does.
     pub fn gui_draw_rect(&self, id: &str) -> Option<&Rect> {
-        let rect = self.gui_rect(id);
-        // An atlas built with no resources has no GUI list to tell a wrong name by.
-        if rect.is_none() && !self.gui.is_empty() {
-            missing_gui_sprite(id);
+        if let Some(rect) = self.gui_rect(id) {
+            return Some(rect);
         }
-        rect
+        // An atlas built with no resources has no GUI list, so nothing to miss against.
+        if self.gui.is_empty() {
+            return None;
+        }
+        missing_gui_sprite(id);
+        self.sprites.get(MISSING_SPRITE)
     }
     /// The rect of a texture by its exact name: the packed sprite, else a registered atlas's
     /// sprite. The raw lookup of the camera draw; a GUI id goes through [`HudAtlas::gui_lookup`].

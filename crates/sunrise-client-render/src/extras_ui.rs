@@ -711,6 +711,7 @@ mod tests {
         use crate::graphics_style::{drew_sprite, widget_atlas};
         let section = with_section();
         let atlas = widget_atlas();
+        crate::hud::take_gui_sprite_misses();
         let mut s = Settings::default();
         let mut shell = Shell::<ExtrasScreen>::default();
         shell.set_search("test.section.switch");
@@ -744,5 +745,6 @@ mod tests {
         );
         assert!(*section.on.lock().unwrap());
         assert_eq!(frame(&mut shell, &s), (false, true), "on: the ticked box");
+        assert_eq!(crate::hud::take_gui_sprite_misses(), Vec::<String>::new());
     }
 }

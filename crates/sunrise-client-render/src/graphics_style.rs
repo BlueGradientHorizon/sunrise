@@ -279,7 +279,17 @@ pub fn cost_color(cost: Cost) -> u32 {
 #[cfg(test)]
 pub(crate) fn widget_atlas() -> HudAtlas {
     let root = tempfile::tempdir().unwrap();
-    let assets = root.path().join("assets/minecraft");
+    write_widget_resources(root.path());
+    HudAtlas::build(&sunrise_assets::resource_source::ResourceSource::directory(
+        root.path().to_owned(),
+    ))
+    .unwrap()
+}
+
+/// Writes [`widget_atlas`]'s resources under `root`, as the game's own resources lay them out.
+#[cfg(test)]
+pub(crate) fn write_widget_resources(root: &std::path::Path) {
+    let assets = root.join("assets/minecraft");
     std::fs::create_dir_all(assets.join("atlases")).unwrap();
     std::fs::write(
         assets.join("atlases/gui.json"),
@@ -313,33 +323,46 @@ pub(crate) fn widget_atlas() -> HudAtlas {
         let mut writer = encoder.write_header().unwrap();
         writer.write_image_data(&pixels).unwrap();
     }
-    HudAtlas::build(&sunrise_assets::resource_source::ResourceSource::directory(
-        root.path().to_owned(),
-    ))
-    .unwrap()
 }
 
-/// Whether `batch` drew a quad over the whole of vanilla's GUI sprite `id`.
+/// Whether `batch` drew the whole of `r`'s texture, stretched over `at` when given.
+#[cfg(test)]
+pub(crate) fn drew_rect(batch: &HudBatch, r: &crate::hud::Rect, at: Option<[f32; 4]>) -> bool {
+    let corner = |pos: Option<[f32; 2]>, uv: [f32; 2]| {
+        batch
+            .vertices
+            .iter()
+            .any(|v| v.uv == uv && pos.is_none_or(|p| v.pos == p))
+    };
+    let (top_left, bottom_right) = match at {
+        Some([x, y, w, h]) => (Some([x, y]), Some([x + w, y + h])),
+        None => (None, None),
+    };
+    corner(top_left, [r.u0, r.v0]) && corner(bottom_right, [r.u1, r.v1])
+}
+
+/// Whether `batch` drew the whole of vanilla's GUI sprite `id` somewhere.
 #[cfg(test)]
 pub(crate) fn drew_sprite(batch: &HudBatch, atlas: &HudAtlas, id: &str) -> bool {
     let r = atlas
         .gui_rect(id)
         .unwrap_or_else(|| panic!("{id} is in the atlas"));
-    let has = |uv: [f32; 2]| batch.vertices.iter().any(|v| v.uv == uv);
-    has([r.u0, r.v0]) && has([r.u1, r.v1])
+    drew_rect(batch, r, None)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hud::take_gui_sprite_misses;
 
     /// Every painter draws the vanilla sprite its state names, so none comes out blank (#3715).
     #[test]
     fn each_widget_draws_vanilla_s_sprite_for_its_state() {
         let atlas = widget_atlas();
+        take_gui_sprite_misses();
         let rect = [10.0, 20.0, 100.0, 20.0];
         let label = Text::empty();
-        let draws: [(&str, fn(&mut HudBatch, &HudAtlas)); 11] = [
+        let draws: [(&str, fn(&mut HudBatch, &HudAtlas)); 9] = [
             ("widget/checkbox", |b, a| {
                 checkbox(b, a, 100.0, 0.0, false, (false, true))
             }),
@@ -385,12 +408,6 @@ mod tests {
             ("widget/text_field_highlighted", |b, a| {
                 well(b, a, [10.0, 20.0, 100.0, 20.0], true)
             }),
-            ("widget/scroller_background", |b, a| {
-                scroller(b, a, [0.0, 0.0, 6.0, 200.0], [0.0, 0.0, 6.0, 40.0])
-            }),
-            ("widget/scroller", |b, a| {
-                scroller(b, a, [0.0, 0.0, 6.0, 200.0], [0.0, 0.0, 6.0, 40.0])
-            }),
         ];
         for (id, draw) in draws {
             let mut batch = HudBatch::scratch([640, 480]);
@@ -403,24 +420,91 @@ mod tests {
             drew_sprite(&batch, &atlas, "widget/button"),
             "the cycler's button drawn"
         );
+        // The track and the thumb each on its own rectangle, so swapped sprites fail.
+        let (track, thumb) = ([0.0, 0.0, 6.0, 200.0], [0.0, 40.0, 6.0, 40.0]);
+        let mut batch = HudBatch::scratch([640, 480]);
+        scroller(&mut batch, &atlas, track, thumb);
+        let at = |id: &str, rect| drew_rect(&batch, atlas.gui_rect(id).unwrap(), Some(rect));
+        assert!(
+            at("widget/scroller_background", track),
+            "the track's sprite on the track"
+        );
+        assert!(
+            at("widget/scroller", thumb),
+            "the scroller's sprite on the thumb"
+        );
+        assert_eq!(take_gui_sprite_misses(), Vec::<String>::new());
     }
 
-    /// A sprite named by its file path, as #2522 named them, fails the draw instead of leaving it blank.
+    /// A wrong sprite name, as #2522's file paths were, draws the missing texture and is reported.
     #[test]
-    #[should_panic(expected = "no GUI sprite \"gui/sprites/widget/checkbox\"")]
-    fn a_wrong_sprite_name_fails_the_draw() {
+    fn a_wrong_sprite_name_draws_the_missing_texture_and_is_reported() {
         let atlas = widget_atlas();
+        take_gui_sprite_misses();
         let mut batch = HudBatch::scratch([640, 480]);
-        ui::nine_slice(
-            &mut batch,
-            &atlas,
-            "gui/sprites/widget/checkbox",
-            0.0,
-            0.0,
-            17.0,
-            17.0,
-            WHITE,
-        );
+        let id = "gui/sprites/widget/checkbox";
+        ui::nine_slice(&mut batch, &atlas, id, 0.0, 0.0, 17.0, 17.0, WHITE);
+        assert_eq!(take_gui_sprite_misses(), [id]);
+        let missing = &atlas.sprites[crate::hud::MISSING_SPRITE];
+        assert!(drew_rect(&batch, missing, Some([0.0, 0.0, 17.0, 17.0])));
+    }
+
+    /// The settings screens name only sprites the game's own 26.3 resources have.
+    #[test]
+    #[ignore = "daily"]
+    fn the_settings_screens_name_only_sprites_the_game_has() {
+        use crate::settings_shell::{Hosted, Shell};
+        let root = std::env::var_os("SUNRISE_TEST_RESOURCES")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../.local/sunrise-client/26.3")
+            });
+        let atlas = HudAtlas::build(&sunrise_assets::resource_source::ResourceSource::directory(
+            root,
+        ))
+        .unwrap();
+        let s = crate::settings::Settings::default();
+        take_gui_sprite_misses();
+        fn frame(
+            shell: &mut dyn Hosted,
+            s: &crate::settings::Settings,
+            atlas: &HudAtlas,
+            in_world: bool,
+        ) {
+            let mut batch = HudBatch::scratch([1708, 960]);
+            shell.draw_test_frame(
+                s,
+                &mut batch,
+                atlas,
+                (0.0, 0.0),
+                in_world,
+                None,
+                &mut |_, _| {},
+            );
+            crate::widgets::end_frame(1);
+        }
+        for in_world in [false, true] {
+            frame(
+                &mut Shell::<crate::extras_ui::ExtrasScreen>::default(),
+                &s,
+                &atlas,
+                in_world,
+            );
+            frame(
+                &mut Shell::<crate::graphics_ui::GraphicsScreen>::default(),
+                &s,
+                &atlas,
+                in_world,
+            );
+            frame(
+                &mut Shell::<crate::controller_ui::ControllerScreen>::default(),
+                &s,
+                &atlas,
+                in_world,
+            );
+        }
+        assert_eq!(take_gui_sprite_misses(), Vec::<String>::new());
     }
 
     fn atlas() -> HudAtlas {
