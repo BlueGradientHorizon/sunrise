@@ -1,7 +1,7 @@
 //! NeoForge 26.3's stock resource handlers and `ResourceHandlerUtil`: wrappers a mod composes its
 //! own [`ResourceHandler`]s with, and the queries and moves every transfer mod writes. Each write
 //! runs in the caller's transaction `tx`; to simulate one, abort it.
-use crate::content::resource::{Ends, in_turn, move_once};
+use crate::content::resource::{Ends, MAX_TRANSFER_STEP, in_turn, move_once};
 use crate::{
     Capability, ComponentId, FluidKey, FluidResource, HostTransaction, ItemKey, ItemResource,
     Overanswered, ResourceHandler, ServerHost, Tag, Transaction,
@@ -102,9 +102,13 @@ impl<R> ResourceHandler<R> for CombinedResourceHandler<R> {
         resource: &R,
         amount: u32,
     ) -> u32 {
-        in_turn(amount, &self.handlers, |(handler, _), left| {
-            handler.insert(host, tx, resource, left)
-        })
+        in_turn(
+            host,
+            tx,
+            amount,
+            &self.handlers,
+            |host, tx, (handler, _), left| handler.insert(host, tx, resource, left),
+        )
     }
     fn extract(
         &self,
@@ -113,9 +117,13 @@ impl<R> ResourceHandler<R> for CombinedResourceHandler<R> {
         resource: &R,
         amount: u32,
     ) -> u32 {
-        in_turn(amount, &self.handlers, |(handler, _), left| {
-            handler.extract(host, tx, resource, left)
-        })
+        in_turn(
+            host,
+            tx,
+            amount,
+            &self.handlers,
+            |host, tx, (handler, _), left| handler.extract(host, tx, resource, left),
+        )
     }
 }
 
@@ -496,15 +504,21 @@ impl<R> dyn ResourceHandler<R> {
         let indices = [true, false]
             .into_iter()
             .flat_map(|holding| (0..size).map(move |index| (holding, index)));
-        in_turn(amount, indices, |(holding, index), left| {
-            let held = self.amount(host, index) > 0
-                && self.resource(host, index).as_ref() == Some(resource);
-            if held == holding {
-                self.insert_at(host, tx, index, resource, left)
-            } else {
-                0
-            }
-        })
+        in_turn(
+            host,
+            tx,
+            amount,
+            indices,
+            |host, tx, &(holding, index), left| {
+                let held = self.amount(host, index) > 0
+                    && self.resource(host, index).as_ref() == Some(resource);
+                if held == holding {
+                    self.insert_at(host, tx, index, resource, left)
+                } else {
+                    0
+                }
+            },
+        )
     }
 
     /// Takes up to `amount` of the first resource `filter` accepts out, from wherever this
@@ -618,7 +632,7 @@ fn move_first_by<R>(
         let Some(resource) = from.resource(host, index).filter(|r| filter(r)) else {
             continue;
         };
-        let want = max.min(from.amount(host, index));
+        let want = max.min(from.amount(host, index)).min(MAX_TRANSFER_STEP);
         if want == 0 {
             continue;
         }

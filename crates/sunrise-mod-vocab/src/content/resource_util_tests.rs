@@ -301,15 +301,6 @@ fn a_part_answering_more_than_asked_shows_through_every_total() {
     let stacking =
         host.transaction(|host, tx| Ok::<_, ()>(indices.insert_stacking(host, tx, &HYDROGEN, 20)));
     assert_eq!(stacking, Ok(21));
-
-    // A move out of an endless source asks `u32::MAX`: the saturated total used to read as all
-    // of it going in, and the lying move committed.
-    let from = capability(InfiniteResourceHandler::new(HYDROGEN), "test:creative");
-    let to = capability(tank_then_liar(host), "test:liar");
-    let moved = host.transaction(|host, tx| {
-        crate::move_resources(host, &from, &to, |_: &Chemical| true, u32::MAX, tx)
-    });
-    assert_eq!(moved, Ok(0));
 }
 
 /// A host with `ids` registered, stacking to 64, and their resources.
@@ -430,4 +421,45 @@ fn an_overanswer_after_an_honest_part_undoes_the_whole_move() {
     );
     assert_eq!(counts(&fake, A), [5]);
     assert_eq!(counts(&fake, B), [62]);
+}
+
+#[test]
+fn a_maximum_transfer_propagates_nested_overanswers_and_aborts_the_tank() {
+    let (mut fake, r) = items_host(&["minecraft:stone"]);
+    let stone = &r[0];
+    chest(&mut fake, B, &[Some((stone, 62))]);
+    let honest = items_at(&mut fake, B).handler;
+    let host: &mut dyn ServerHost = &mut fake;
+    let inner = CombinedResourceHandler::new(host, vec![honest, Box::new(Liar)]);
+    let outer = CombinedResourceHandler::new(
+        host,
+        vec![
+            Box::new(inner),
+            Box::new(InfiniteResourceHandler::new(stone.clone())),
+        ],
+    );
+    let from = capability(InfiniteResourceHandler::new(stone.clone()), "test:creative");
+    let to = capability(outer, "test:liar");
+
+    // A direct maximum request cannot return an out-of-range amount. It must undo the
+    // honest tank's write even if the enclosing transaction commits the zero answer.
+    let refused = host.transaction(|host, tx| Ok::<_, ()>(to.insert(host, tx, stone, u32::MAX)));
+    assert_eq!(refused, Ok(0));
+    assert_eq!(counts(&fake, B), [62]);
+    assert_eq!(fake.journal.closed(), [(2, false), (1, true)]);
+
+    // A move reserves an out-of-range answer, so neither the outer Combined nor the later
+    // infinite sink can mask the inner Combined's failure.
+    let host: &mut dyn ServerHost = &mut fake;
+    let moved = host
+        .transaction(|host, tx| crate::move_resources(host, &from, &to, |_| true, u32::MAX, tx));
+    assert_eq!(
+        moved,
+        Err(Overanswered {
+            owner: "test:liar".into()
+        })
+    );
+    assert_eq!(counts(&fake, B), [62]);
+    assert_eq!(fake.journal.closed()[2..], [(4, false), (3, false)]);
+    assert_eq!(fake.journal.depth(), 0);
 }

@@ -507,12 +507,20 @@ pub trait ResourceHandler<R> {
     fn resource(&self, host: &mut dyn ServerHost, index: usize) -> Option<R>;
     /// How much of it.
     fn amount(&self, host: &mut dyn ServerHost, index: usize) -> u32;
+    /// The amount as a signed int, capped at `i32::MAX` (`getAmountAsInt`).
+    fn amount_int(&self, host: &mut dyn ServerHost, index: usize) -> i32 {
+        self.amount(host, index).min(i32::MAX as u32) as i32
+    }
     /// How much of `resource` index `index` holds when it holds that, whatever it holds now
     /// (`getCapacityAsLong`). Capacity is not free space or permission to insert: validity,
     /// current contents and access rules can still refuse it.
     fn capacity(&self, host: &mut dyn ServerHost, index: usize, resource: &R) -> u32;
+    /// The capacity as a signed int, capped at `i32::MAX` (`getCapacityAsInt`).
+    fn capacity_int(&self, host: &mut dyn ServerHost, index: usize, resource: &R) -> i32 {
+        self.capacity(host, index, resource).min(i32::MAX as u32) as i32
+    }
     /// Whether `resource` may go in index `index` at all (`isValid`). The default uses capacity;
-    /// a handler with separate acceptance rules overrides this and enforces them in `insert`.
+    /// a handler with separate acceptance rules overrides this and enforces them in `insert_at`.
     fn is_valid(&self, host: &mut dyn ServerHost, index: usize, resource: &R) -> bool {
         self.capacity(host, index, resource) > 0
     }
@@ -535,9 +543,10 @@ pub trait ResourceHandler<R> {
         resource: &R,
         amount: u32,
     ) -> u32;
-    /// Puts up to `amount` of `resource` in wherever it goes (NeoForge's `insert` without an
-    /// index): by default index by index from 0. How much went in; an index answering more than
-    /// it was asked makes it answer more than `amount`, or 0 when asked `u32::MAX`.
+    /// Puts up to `amount` of `resource` in wherever it goes: by default index by index from 0.
+    /// Prefer this to `insert_at` unless targeting a specific index. If a part overanswers, the
+    /// default returns more than `amount` so the caller can abort. At `u32::MAX`, it aborts its
+    /// own nested transaction and returns 0 instead, since no greater `u32` exists.
     fn insert(
         &self,
         host: &mut dyn ServerHost,
@@ -545,13 +554,14 @@ pub trait ResourceHandler<R> {
         resource: &R,
         amount: u32,
     ) -> u32 {
-        in_turn(amount, 0..self.size(host), |index, left| {
-            self.insert_at(host, tx, index, resource, left)
+        let size = self.size(host);
+        in_turn(host, tx, amount, 0..size, |host, tx, index, left| {
+            self.insert_at(host, tx, *index, resource, left)
         })
     }
-    /// Takes up to `amount` of `resource` out from wherever it is (`extract` without an index):
-    /// by default index by index from 0. How much came out; an index answering more than it was
-    /// asked makes it answer more than `amount`, or 0 when asked `u32::MAX`.
+    /// Takes up to `amount` of `resource` out from wherever it is: by default index by index
+    /// from 0. Prefer this to `extract_at` unless targeting a specific index. Overanswers are
+    /// handled as in [`Self::insert`].
     fn extract(
         &self,
         host: &mut dyn ServerHost,
@@ -559,35 +569,67 @@ pub trait ResourceHandler<R> {
         resource: &R,
         amount: u32,
     ) -> u32 {
-        in_turn(amount, 0..self.size(host), |index, left| {
-            self.extract_at(host, tx, index, resource, left)
+        let size = self.size(host);
+        in_turn(host, tx, amount, 0..size, |host, tx, index, left| {
+            self.extract_at(host, tx, *index, resource, left)
         })
     }
 }
 
-/// Asks each of `parts` in turn, through `ask`, for what is left of `amount`, until it is all
-/// placed: the total. What adds up `insert`, `extract` and the handlers built of others.
-/// A part answering more than it was asked is a lie the total must not hide: the total is then
-/// one more than `amount`, which a move refuses as [`Overanswered`], or, asked `u32::MAX`, 0,
-/// with which a move undoes its step.
+/// Leave one representable answer above every request sent to a composed handler.
+pub(crate) const MAX_TRANSFER_STEP: u32 = u32::MAX - 1;
+
+/// Aggregates indexed or composed transfers. A smaller request has an out-of-range answer for
+/// failure, so it needs no extra transaction. Only the outermost maximum request needs a guard:
+/// no child ever receives that request, so a child's overanswer propagates to this guard.
 pub(crate) fn in_turn<P>(
+    host: &mut dyn ServerHost,
+    tx: &Transaction,
     amount: u32,
     parts: impl IntoIterator<Item = P>,
-    mut ask: impl FnMut(P, u32) -> u32,
+    ask: impl FnMut(&mut dyn ServerHost, &Transaction, &P, u32) -> u32,
 ) -> u32 {
+    let run =
+        |host: &mut dyn ServerHost, tx: &Transaction| try_in_turn(host, tx, amount, parts, ask);
+    if let Some(overanswer) = amount.checked_add(1) {
+        run(host, tx).unwrap_or(overanswer)
+    } else if host.transaction_depth(tx).is_some() {
+        host.transaction(run).unwrap_or(0)
+    } else {
+        0
+    }
+}
+
+/// Asks each part for what remains; a maximum request may need two calls to its first part.
+/// The caller owns the transaction and must abort on `Err`.
+pub(crate) fn try_in_turn<P>(
+    host: &mut dyn ServerHost,
+    tx: &Transaction,
+    amount: u32,
+    parts: impl IntoIterator<Item = P>,
+    mut ask: impl FnMut(&mut dyn ServerHost, &Transaction, &P, u32) -> u32,
+) -> Result<u32, ()> {
     let mut done = 0;
     for part in parts {
         let left = amount - done;
         if left == 0 {
             break;
         }
-        let answer = ask(part, left);
-        if answer > left {
-            return amount.checked_add(1).unwrap_or(0);
+        let requested = left.min(MAX_TRANSFER_STEP);
+        let answer = ask(host, tx, &part, requested);
+        if answer > requested {
+            return Err(());
         }
         done += answer;
+        if left > requested && answer == requested {
+            let last = ask(host, tx, &part, 1);
+            if last > 1 {
+                return Err(());
+            }
+            done += last;
+        }
     }
-    done
+    Ok(done)
 }
 
 /// A handler answered more than it was asked (`move_resources`): a mod bug, warned once naming
@@ -622,7 +664,9 @@ pub fn move_resources<R>(
             let Some(resource) = from.resource(host, index).filter(|r| filter(r)) else {
                 break;
             };
-            let want = (max - moved).min(from.amount(host, index));
+            let want = (max - moved)
+                .min(from.amount(host, index))
+                .min(MAX_TRANSFER_STEP);
             let went = move_once(
                 host,
                 Ends {
