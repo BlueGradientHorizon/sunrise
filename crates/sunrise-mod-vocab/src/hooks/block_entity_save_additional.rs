@@ -5,6 +5,10 @@ pub trait Hooks {
     /// (`BlockEntity.saveAdditional`). Edits affect only the output; the entity,
     /// its inventory, identity, position, and engine-managed attachments and
     /// shapes are not changed. Parts of the entity's type run in dispatch order.
+    /// For a type without a declared container, `tag` holds the persisted `Items`,
+    /// modelled stacks included, and the listener may replace or remove that field:
+    /// its edit is what is saved. A declared container's slots are engine-owned
+    /// inventory, serialized by the engine after the listeners run.
     /// `event.pos` and `event.level` are the instance's own `worldPosition` and level, read-only and
     /// filled by the engine, so a listener can find its live state by dimension and position, including
     /// during unload or a removed block's loot roll. Every call has a level: the hook is not asked
@@ -31,7 +35,7 @@ pub trait Hooks {
         key = "id",
         target = "sunrise_client::game::native_hooks::block_entity_save_additional::GameLevel<'_>::native_block_entity_save_additional",
         neoforge = "none (vanilla BlockEntity.saveAdditional; NeoForge adds no event for this moment)",
-        version = 2
+        version = 3
     )]
     fn block_entity_save_additional();
 }
