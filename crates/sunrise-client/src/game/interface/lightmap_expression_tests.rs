@@ -104,7 +104,15 @@ fn a_packs_lightmap_draws_its_expression_uniform() {
     if run_fresh_cases(
         NAME,
         CASE,
-        &["pack", "fullbright", "sky", "outline", "globals", "post", "particles"],
+        &[
+            "pack",
+            "fullbright",
+            "sky",
+            "outline",
+            "globals",
+            "post",
+            "particles",
+        ],
     ) {
         return;
     }
