@@ -1000,12 +1000,26 @@ impl Codec<Option<Hashed>> for HashedSlot {
         }
         let item = r.varint()?;
         let count = r.varint()?;
+        // HashedPatchMap.STREAM_CODEC reads a map (last value wins) and a set.
         let n = r.count(256)?;
-        let added = (0..n)
-            .map(|_| Ok((r.varint()?, r.i32()?)))
-            .collect::<Result<_>>()?;
+        let mut added = Vec::with_capacity(n);
+        for _ in 0..n {
+            let id = r.varint()?;
+            let hash = r.i32()?;
+            if let Some((_, previous)) = added.iter_mut().find(|(key, _)| *key == id) {
+                *previous = hash;
+            } else {
+                added.push((id, hash));
+            }
+        }
         let n = r.count(256)?;
-        let removed = (0..n).map(|_| r.varint()).collect::<Result<_>>()?;
+        let mut removed = Vec::with_capacity(n);
+        for _ in 0..n {
+            let id = r.varint()?;
+            if !removed.contains(&id) {
+                removed.push(id);
+            }
+        }
         Ok(Some(Hashed {
             item,
             count,
@@ -1267,6 +1281,37 @@ impl crate::retained::OwnedHeap for HashedSlot {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hashed_slot_decodes_a_map_and_a_set() {
+        let packet = [
+            1, 20, 4, 3, // present, item id, count, three added entries
+            5, 0, 0, 0, 17, // 5 -> 17 (overwritten)
+            6, 0, 0, 0, 99, // 6 -> 99
+            5, 255, 255, 255, 255, // 5 -> -1
+            3, 9, 10, 9, // three removal entries, two unique
+        ];
+        let mut reader = Reader::new(&packet);
+        assert_eq!(
+            HashedSlot::read(&mut reader).unwrap(),
+            Some(Hashed {
+                item: 20,
+                count: 4,
+                added: vec![(5, -1), (6, 99)],
+                removed: vec![9, 10],
+            })
+        );
+        assert_eq!(reader.remaining(), 0);
+        // The count bounds apply to wire entries, not to the deduplicated length.
+        for packet in [&[1, 20, 4, 0x81, 2][..], &[1, 20, 4, 0, 0x81, 2]] {
+            assert_eq!(
+                HashedSlot::read(&mut Reader::new(packet))
+                    .unwrap_err()
+                    .to_string(),
+                "257 elements is more than allowed 256"
+            );
+        }
+    }
     use crate::text::literal;
 
     fn round<T: PartialEq + std::fmt::Debug, C: Codec<T>>(v: T) {

@@ -171,24 +171,24 @@ impl Game<'_> {
         let Some(host) = self.lan.as_mut() else {
             return false;
         };
-        let closed = host
-            .play
-            .get_mut(&conn)
-            .and_then(|p| {
-                p.mount_window
-                    .take_if(|m| window.is_none_or(|w| m.window == w))
+        let Some(mount) = host.play.get_mut(&conn).and_then(|p| {
+            p.mount_window
+                .take_if(|m| window.is_none_or(|w| m.window == w))
+        }) else {
+            return false;
+        };
+        if let Some(gi) = host.hub.guests.connection_index(conn)
+            && let Some(carried) = host.hub.guests.update(gi, |g| {
+                g.close_menu_cursor(mount.window);
+                g.carried.take()
             })
-            .is_some();
-        if closed
-            && let Some(gi) = host.hub.guests.iter().position(|g| g.conn == conn)
-            && let Some(carried) = host.hub.guests.update(gi, |g| g.carried.take())
         {
             self.lan_place_back(gi, vec![carried]);
         }
-        if closed && window.is_some() {
+        if window.is_some() {
             self.player_menu_closing(conn);
         }
-        closed
+        true
     }
 
     /// `AbstractMountInventoryMenu.stillValid`: the mount is alive and the

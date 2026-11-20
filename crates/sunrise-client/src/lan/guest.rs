@@ -431,8 +431,10 @@ pub struct Guest {
     pub sent_effects: Vec<SentEffect>,
     /// What the client believes the inventory menu holds (for change detection).
     pub menu_sent: Vec<Option<ItemStack>>,
-    /// `remoteCarried` for the active menu. Sunrise shares the carried stack between menus.
-    pub(super) carried_sent: Option<ItemStack>,
+    /// `AbstractContainerMenu.remoteCarried` for the always-present inventory menu.
+    pub(super) inventory_carried_sent: Option<ItemStack>,
+    /// `remoteCarried` for the open window, including menus run by Game rather than Hub.
+    pub(super) open_carried_sent: Option<(i32, Option<ItemStack>)>,
     pub menu_state: i32,
     /// `lastSentHealth`, `lastSentFood` and `lastFoodSaturationZero`.
     pub sent_health: Option<(f32, i32, bool)>,
@@ -568,7 +570,29 @@ impl Guest {
     pub fn next_menu_window(&mut self) -> i32 {
         self.next_window = self.next_window % 100 + 1;
         self.menu_generation = menu_generation();
+        self.open_carried_sent = Some((self.next_window, None));
         self.next_window
+    }
+
+    /// Discard the closing menu's `remoteCarried`; the inventory menu keeps its own.
+    pub fn close_menu_cursor(&mut self, window: i32) {
+        if self
+            .open_carried_sent
+            .as_ref()
+            .is_some_and(|(id, _)| *id == window)
+        {
+            self.open_carried_sent = None;
+        }
+    }
+
+    pub(super) fn acknowledge_menu_cursor(&mut self, window: i32, carried: Option<ItemStack>) {
+        if window == 0 {
+            self.inventory_carried_sent = carried;
+        } else if let Some((id, sent)) = &mut self.open_carried_sent
+            && *id == window
+        {
+            *sent = carried;
+        }
     }
 
     pub fn new(j: Joined, entity_id: i32, position: [f64; 3], view_distance: i32) -> Self {
@@ -821,7 +845,8 @@ impl Guest {
             modified_effect_particles: None,
             sent_effects: Vec::new(),
             menu_sent: vec![None; 46],
-            carried_sent: None,
+            inventory_carried_sent: None,
+            open_carried_sent: None,
             menu_state: 0,
             sent_health: None,
             sent_health_data: false,

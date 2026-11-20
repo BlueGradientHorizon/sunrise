@@ -604,7 +604,7 @@ impl Hub {
     }
 
     /// `AbstractContainerMenu.sendAllDataToRemote`: the complete slot snapshot also sets
-    /// what the client knows of the cursor, regardless of which code owns the menu.
+    /// what the client knows of that menu's cursor, not any other menu's.
     pub fn send_menu_snapshot(
         &mut self,
         i: usize,
@@ -621,7 +621,7 @@ impl Hub {
             carried: self.stack(&carried),
         });
         self.guests.update(i, |g| {
-            g.carried_sent = carried;
+            g.acknowledge_menu_cursor(container, carried);
             g.send(&packet);
         });
     }
@@ -648,6 +648,7 @@ impl Hub {
     fn close_container_at(&mut self, i: usize) {
         let closed = self.guests.update(i, |g| {
             let menu = g.menu.take()?;
+            g.close_menu_cursor(menu.window);
             g.send(&C::ContainerClose(play::ContainerClose {
                 container: menu.window,
             }));
@@ -673,9 +674,9 @@ impl Hub {
                 if !g.menu.as_ref().is_some_and(|m| m.window == window) {
                     return None;
                 }
-                g.menu
-                    .take()?
-                    .native_closed(g.uuid, g.menu_generation, &mut g.native_menu)
+                let menu = g.menu.take()?;
+                g.close_menu_cursor(menu.window);
+                menu.native_closed(g.uuid, g.menu_generation, &mut g.native_menu)
             })
             .flatten();
         self.native_menu_events.extend(closed);
@@ -685,48 +686,41 @@ impl Hub {
     fn hashed_matches(&self, item: &Option<Stack>, predicted: &Option<Hashed>) -> bool {
         match (item, predicted) {
             (None, None) => true,
-            (Some(item), Some(predicted)) => {
-                if item.item != predicted.item || item.count != predicted.count {
-                    return false;
-                }
-                let current = Hashed::create(
-                    item,
-                    &SyncedNames {
-                        builtin: &self.sync.builtin,
-                        dynamic: &self.sync.dynamic,
-                    },
-                );
-                // The protocol carries a map of added components and a set of removed ones.
-                current.added.len() == predicted.added.len()
-                    && current
-                        .added
-                        .iter()
-                        .all(|entry| predicted.added.contains(entry))
-                    && current.removed.len() == predicted.removed.len()
-                    && current
-                        .removed
-                        .iter()
-                        .all(|id| predicted.removed.contains(id))
-            }
+            (Some(item), Some(predicted)) => predicted.matches(
+                item,
+                &SyncedNames {
+                    builtin: &self.sync.builtin,
+                    dynamic: &self.sync.dynamic,
+                },
+            ),
             _ => false,
         }
     }
 
     /// `AbstractContainerMenu.synchronizeCarriedToRemote`: send only the cursor change.
     /// For a click, compare with the client's hashed prediction instead of the old snapshot.
-    pub fn sync_carried(&mut self, i: usize, prediction: Option<&Option<Hashed>>) {
+    pub fn sync_carried(&mut self, i: usize, prediction: Option<&play::ContainerClick>) {
         let guest = &self.guests[i];
-        if prediction.is_none() && guest.carried == guest.carried_sent {
-            return;
+        let (window, sent) = guest
+            .open_carried_sent
+            .as_ref()
+            .map_or((0, &guest.inventory_carried_sent), |(window, sent)| {
+                (*window, sent)
+            });
+        match prediction {
+            // SetCursorItem has no container id: it always updates the active menu.
+            Some(p) if p.container != window => return,
+            None if guest.carried == *sent => return,
+            _ => {}
         }
         let carried = guest.carried.clone();
         let item = self.stack(&carried);
-        let agreed = prediction.is_some_and(|p| self.hashed_matches(&item, p));
+        let agreed = prediction.is_some_and(|p| self.hashed_matches(&item, &p.carried));
         self.guests.update(i, |g| {
             if !agreed {
                 g.send(&C::SetCursorItem(play::SetCursorItem { item }));
             }
-            g.carried_sent = carried;
+            g.acknowledge_menu_cursor(window, carried);
         });
     }
 
@@ -1114,7 +1108,8 @@ impl Hub {
             None => !changed.contains(&slot),
         });
         if agreed {
-            self.guests.update(i, |g| g.carried_sent = carried);
+            self.guests
+                .update(i, |g| g.acknowledge_menu_cursor(p.container, carried));
         }
         agreed
     }
@@ -1207,7 +1202,7 @@ impl Hub {
                 }));
             });
         }
-        self.sync_carried(i, Some(&p.carried));
+        self.sync_carried(i, Some(p));
         // What the client now believes equals the server's state.
         let items: Vec<_> = (0..total).map(|s| self.view_slot(i, world, s)).collect();
         self.guests.update(i, |g| {

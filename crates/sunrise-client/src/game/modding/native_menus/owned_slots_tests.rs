@@ -343,6 +343,10 @@ fn a_cursor_cleared_outside_a_click_is_sent_once_on_the_next_broadcast() {
         assert!(sent(&rx).is_empty(), "nothing before the broadcast");
 
         let hub = &mut game.lan.as_mut().unwrap().hub;
+        // A repair of window 0 does not tell the open window about the clear.
+        hub.send_inventory(0);
+        assert!(matches!(&sent(&rx)[..], [C::ContainerSetContent(content)]
+            if content.container == 0 && content.carried.is_none()));
         hub.sync_containers(&game.world);
         let packets = sent(&rx);
         assert!(

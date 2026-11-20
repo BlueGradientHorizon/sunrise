@@ -1943,7 +1943,10 @@ impl Game<'_> {
                 .table
                 .take_if(|(w, ..)| window.is_none_or(|window| *w == window))
             {
-                Some((_, _, menu, _)) => (1..10).filter_map(|s| menu.slot(s).cloned()).collect(),
+                Some((window, _, menu, _)) => {
+                    host.hub.guests.update(gi, |g| g.close_menu_cursor(window));
+                    (1..10).filter_map(|s| menu.slot(s).cloned()).collect()
+                }
                 None => return false,
             }
         };

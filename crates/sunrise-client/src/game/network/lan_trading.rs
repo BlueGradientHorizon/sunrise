@@ -594,14 +594,14 @@ impl Game<'_> {
         if !self.lan_merchant_op(conn, window, false, |menu, env| menu.merchant_close(env)) {
             return false;
         }
-        let Some(mut gm) = self
-            .lan
-            .as_mut()
-            .and_then(|host| host.play.get_mut(&conn))
-            .and_then(|p| p.merchant.take())
-        else {
+        let Some(host) = self.lan.as_mut() else {
             return false;
         };
+        let Some(mut gm) = host.play.get_mut(&conn).and_then(|p| p.merchant.take()) else {
+            return false;
+        };
+        host.hub
+            .update_guest(conn, |g| g.close_menu_cursor(gm.window));
         self.merchant_closed(&mut gm.merchant);
         if window.is_some() {
             self.player_menu_closing(conn);

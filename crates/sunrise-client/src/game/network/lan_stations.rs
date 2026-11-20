@@ -1113,15 +1113,19 @@ impl Game<'_> {
     /// window is open.
     pub(super) fn lan_station_closed(&mut self, conn: u32, window: Option<i32>) -> bool {
         // A lectern's menu keeps nothing of its own (the book is the block entity's).
-        let lectern = self
-            .lan
-            .as_mut()
-            .and_then(|host| host.play.get_mut(&conn))
-            .and_then(|p| p.lectern.take_if(|l| window.is_none_or(|w| l.window == w)))
-            .is_some();
-        if lectern {
+        let Some(host) = self.lan.as_mut() else {
+            return false;
+        };
+        let lectern = host
+            .play
+            .get_mut(&conn)
+            .and_then(|p| p.lectern.take_if(|l| window.is_none_or(|w| l.window == w)));
+        if let Some(lectern) = lectern {
             // AbstractContainerMenu.removed: the carried stack goes back.
-            if let Some(gi) = self.guest_index(conn) {
+            if let Some(gi) = host.hub.guests.connection_index(conn) {
+                host.hub
+                    .guests
+                    .update(gi, |g| g.close_menu_cursor(lectern.window));
                 self.guest_carried_back(gi);
             }
             if window.is_some() {
@@ -1137,7 +1141,13 @@ impl Game<'_> {
         else {
             return false;
         };
-        let Some(gi) = self.guest_index(conn) else {
+        let Some(gi) = self.lan.as_mut().and_then(|host| {
+            let gi = host.hub.guests.connection_index(conn)?;
+            host.hub
+                .guests
+                .update(gi, |g| g.close_menu_cursor(gs.window));
+            Some(gi)
+        }) else {
             return true;
         };
         let inputs = station_inputs(&gs);

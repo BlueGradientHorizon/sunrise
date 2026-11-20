@@ -1,0 +1,1 @@
+sunrise-client game::native_menus::owned_slots_tests::a_cursor_cleared_outside_a_click_is_sent_once_on_the_next_broadcast lib daily resources
