@@ -95,6 +95,10 @@ update_mirror() {
       [ "${made%%-*}" -lt "$cutoff" ] 2>/dev/null && git -C "$mirror" update-ref -d "$ref"
     done
     left=$((UPKEEP_BUDGET - SECONDS))
+    if [ "$left" -le 0 ]; then
+      echo "$step: the history mirror was not repacked this time."
+      return
+    fi
     exec 8> "$mirror.repack.lock" && flock -x -w "$((left < 60 ? left : 60))" 8 || {
       exec 8>&-
       echo "$step: the history mirror was not repacked this time."
