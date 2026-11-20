@@ -4,16 +4,20 @@
 use super::api_values::{TryIntoApi, TryIntoEngine, block_state};
 use super::{Dim, Game, boats::Boat};
 use mod_api::{
-    BlockKey, BlockState, FeatureFlags, FluidState, LevelHost, LevelReadError, LevelRef, LightLayer,
+    __private::game::Fields, BlockEntityRef, BlockKey, BlockState, Compound, FeatureFlags,
+    FluidState, LevelHost, LevelReadError, LevelRef, LightLayer,
 };
 use std::cell::RefCell;
 use sunrise_client::{
+    items::Items,
     motion::{FrictionLevel, read_friction},
     world::World,
 };
 use sunrise_core::position::BlockPos;
 use sunrise_world::{
-    fluid::FluidState as EngineFluidState, native_load_context::LoopSide, registry::BlockStateId,
+    fluid::FluidState as EngineFluidState,
+    native_load_context::LoopSide,
+    registry::{BlockRegistry, BlockStateId},
 };
 
 /// This side's level data for one tick, built once from the game's tables and lent to the motion,
@@ -27,7 +31,8 @@ pub(crate) struct GameSide<'a> {
     pub(in crate::game) biomes: &'a sunrise_client::biome::Biomes,
     pub(in crate::game) behaviours: &'a sunrise_world::level::Behaviours,
     pub(in crate::game) features: &'a std::sync::Arc<[String]>,
-    pub(in crate::game) items: Option<&'a sunrise_client::items::Items>,
+    pub(in crate::game) items: &'a Items,
+    pub(in crate::game) tag_items: Option<&'a Items>,
 }
 
 impl sunrise_client::motion::SideLevel for GameSide<'_> {
@@ -47,15 +52,29 @@ impl sunrise_client::motion::SideLevel for GameSide<'_> {
         self.features
     }
 
-    fn tag_items(&self) -> Option<&sunrise_client::items::Items> {
-        self.items
+    fn tag_items(&self) -> Option<&Items> {
+        self.tag_items
     }
 
-    fn block_entity(&self, world: &World, pos: BlockPos) -> Option<mod_api::BlockEntityRef> {
+    fn block_entity(&self, world: &World, pos: BlockPos) -> Option<BlockEntityRef> {
         super::native_block_entity_refs::world_block_entity(
             world,
             self.level?,
             [pos.x, pos.y, pos.z],
+        )
+    }
+
+    fn block_entity_data(
+        &self,
+        world: &World,
+        registry: &BlockRegistry,
+        entity: BlockEntityRef,
+    ) -> Option<Compound> {
+        if self.level != Some(entity.fields().level) {
+            return None;
+        }
+        super::native_block_entity_refs::world_block_entity_data(
+            world, registry, self.items, entity,
         )
     }
 }
@@ -70,12 +89,21 @@ impl sunrise_client::motion::SideLevel for Game<'_> {
         game_side!(self).features
     }
 
-    fn tag_items(&self) -> Option<&sunrise_client::items::Items> {
-        game_side!(self).items
+    fn tag_items(&self) -> Option<&Items> {
+        game_side!(self).tag_items
     }
 
-    fn block_entity(&self, world: &World, pos: BlockPos) -> Option<mod_api::BlockEntityRef> {
+    fn block_entity(&self, world: &World, pos: BlockPos) -> Option<BlockEntityRef> {
         game_side!(self).block_entity(world, pos)
+    }
+
+    fn block_entity_data(
+        &self,
+        world: &World,
+        registry: &BlockRegistry,
+        entity: BlockEntityRef,
+    ) -> Option<Compound> {
+        game_side!(self).block_entity_data(world, registry, entity)
     }
 }
 
@@ -195,10 +223,16 @@ impl LevelHost for FrictionView<'_> {
         super::native_world_read::block_in_tag(block, tag)
     }
 
-    fn block_entity(&self, [x, y, z]: [i32; 3]) -> Option<mod_api::BlockEntityRef> {
+    fn block_entity(&self, [x, y, z]: [i32; 3]) -> Option<BlockEntityRef> {
         self.0
             .side
             .block_entity(self.0.world, BlockPos::new(x, y, z))
+    }
+
+    fn block_entity_data(&self, entity: BlockEntityRef) -> Option<Compound> {
+        self.0
+            .side
+            .block_entity_data(self.0.world, self.0.registry, entity)
     }
 
     fn tags(&self) -> &dyn mod_api::Tags {
@@ -708,6 +742,105 @@ mod tests {
             );
         });
     }
+    #[test]
+    #[ignore = "daily"]
+    fn a_server_friction_part_reads_its_block_entitys_saved_material() {
+        use super::super::native_entity_refs::tests::{
+            fixture_root, run_fresh_cases, with_game_at,
+        };
+        use mod_api::{
+            Block, BlockEntityEvent, BlockEntityPart, BlockPart, BlockUpdateFlags, BlocksEvent,
+            Compound, FrictionEvent, Hooks, LevelSide, ModEntry, Mods, Registrar,
+            RegistrationContext, Tag,
+        };
+        use std::sync::Arc;
+        use sunrise_client::chunk::Chunk;
+
+        if run_fresh_cases(
+            "game::native_surface::tests::a_server_friction_part_reads_its_block_entitys_saved_material",
+            "SUNRISE_FRICTION_BLOCK_ENTITY_CHILD",
+            &["server"],
+        ) {
+            return;
+        }
+
+        const PANEL: &str = "friction_data_test:panel";
+        struct Panel;
+        struct PanelEntity;
+        #[mod_api::__subscriptions]
+        impl Hooks for Panel {
+            fn register(&self, registrar: &mut dyn Registrar, _: &RegistrationContext) {
+                let panel = registrar.block_key(PANEL);
+                registrar.block_part(panel, Panel);
+                let kind = registrar
+                    .block_entity_type("panel")
+                    .blocks(&[PANEL])
+                    .build();
+                registrar.block_entity_part(&kind, PanelEntity).unwrap();
+            }
+            fn blocks(&self, _: &RegistrationContext, event: &mut BlocksEvent<'_>) {
+                event.blocks.push(Block::new(PANEL, "minecraft:stone"));
+            }
+        }
+        #[mod_api::sunrise_part]
+        impl BlockPart for PanelEntity {}
+        #[mod_api::sunrise_part]
+        impl BlockEntityPart for PanelEntity {
+            fn block_entity(
+                &self,
+                _: LevelSide<'_>,
+                _: &mut BlockEntityEvent<'_>,
+            ) -> Option<Compound> {
+                Some(Compound::from([(
+                    "Material".into(),
+                    Tag::String("minecraft:blue_ice".into()),
+                )]))
+            }
+        }
+        #[mod_api::sunrise_part]
+        impl BlockPart for Panel {
+            fn friction(&self, side: LevelSide<'_>, event: &mut FrictionEvent<'_>) {
+                let LevelSide::Server(level) = side else {
+                    return;
+                };
+                let pos = [event.pos.x, event.pos.y, event.pos.z];
+                let entity = level
+                    .block_entity(pos)
+                    .expect("the panel has a block entity");
+                let Some(data) = level.block_entity_data(entity) else {
+                    return;
+                };
+                let Some(Tag::String(material)) = data.get(&"Material".into()) else {
+                    panic!("the saved panel has a material");
+                };
+                let state = level.block_state_id(&material.to_string_lossy()).unwrap();
+                event.friction = level.friction(pos, state, None).unwrap();
+            }
+        }
+
+        let mods: Mods = vec![ModEntry::new("friction_data_test", Box::new(Panel))].into();
+        mod_platform::__private::install(mods.clone());
+        crate::game::api_values::install_parts(&mods).unwrap();
+        let root = crate::game::mods::content_root(&fixture_root(), &Default::default()).unwrap();
+        crate::entry::install_client_hooks();
+        with_game_at(root.prepared().to_path_buf(), |game| {
+            game.options.dedicated = Some(Vec::new());
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            let level = game.level(game.dim.id()).unwrap();
+            let state = game.pack.assets.registry.default_state(PANEL).unwrap();
+            let pos = [3, 64, 3];
+            let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
+            let state_api = state.try_into_api().unwrap();
+            assert_eq!(
+                game.level_set_block(level, pos, state, BlockUpdateFlags::NONE),
+                Ok(true)
+            );
+            assert_eq!(level.friction(game, pos, state_api, None), Ok(Some(0.989)));
+        });
+    }
+
     #[test]
     #[ignore = "daily"]
     fn the_friction_view_reads_tags_and_resident_block_entities_of_its_side() {
