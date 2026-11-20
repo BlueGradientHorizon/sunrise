@@ -64,5 +64,8 @@ and a label past the quads left are refused by name (`DrawError`) and draw nothi
 
 For a HUD that shows session information, read `ClientHost::client_session()`, and the local `PlayerRef`'s
 `block_breaking` and `ambient_mood`. Values that may be missing (a session, an external display name) are
-`Option`s, and every counter stays on the client. The [hook notes](../../reference/hook-notes.md#client-session-and-local-player-status)
+`Option`s, and every counter stays on the client. `client_server()` borrows the current name,
+redacted address and save folder from the host; use `.map(str::to_owned)` on a field only if
+you need to retain it. `client_language()` returns an `Arc<str>` snapshot of the applied code,
+so it can be held across language changes. The [hook notes](../../reference/hook-notes.md#client-session-and-local-player-status)
 give their exact availability and timing.

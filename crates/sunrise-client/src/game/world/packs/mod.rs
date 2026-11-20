@@ -630,7 +630,7 @@ impl Game<'_> {
             .unwrap_or_else(std::sync::PoisonError::into_inner) =
             std::mem::take(&mut self.gui.atlas.blinks);
         // Read with the language in use when the reload started: one picked since then wins.
-        let code = lang::code();
+        let code = lang::code_snapshot();
         lang::set(if language.code == code {
             language
         } else {

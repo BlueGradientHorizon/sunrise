@@ -77,8 +77,11 @@ function permission; blocks and carts use game-master permission. `execute as`,
 `positioned`; the console executes in the Overworld at its spawn corner.
 
 Two reads work in a command and elsewhere on the server. `player.profile(host)` returns
-the player's `GameProfile`: UUID, name and login properties such as the signed `textures`
-skin (empty for an offline-mode player). `host.advancement(&id)` returns a loaded
+the player's `GameProfile<'_>`: UUID, borrowed name and login properties such as the signed
+`textures` skin. Iterate `profile.properties()` in login order; each row lends its `name`,
+`value` and optional `signature`. The iterator is empty for an offline-mode player, and a
+stale player returns no profile. Copy individual strings only to keep them after the host
+borrow. `host.advancement(&id)` returns a loaded
 `AdvancementInfo`: its parent, display (title, description, icon stack with its components, frame and
 flags), criterion names and requirements, from the set the last `/reload` built. Feedback through
 `host.commands().feedback` honours the underlying source's silence and track-output.

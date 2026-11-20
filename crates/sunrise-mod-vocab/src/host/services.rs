@@ -44,8 +44,8 @@ pub trait ServicesClientHost {
 /// The client_session service, reached through its host.
 pub trait ClientSession {
     /// Side: client.
-    /// The connected server, not a stale reconnect target. None outside a
-    /// logged-in client world. External display names are not retained; memory
+    /// The connected server's borrowed text, not a stale reconnect target. None outside
+    /// a logged-in client world. External display names are not retained; memory
     /// connections have no address. Friend-invite secrets are redacted.
     fn client_server(&self) -> Option<ClientServer<'_>> {
         crate::world::phase::unprovided(
@@ -55,8 +55,10 @@ pub trait ClientSession {
         )
     }
     /// Side: client.
-    /// The applied language code, not a pending options selection. None outside
-    /// a logged-in client world. Read is_paused for the applied pause state.
+    /// A shared snapshot of the applied language code, not a pending options selection.
+    /// None outside a logged-in client world. The snapshot can outlive the host borrow
+    /// and does not change when a different language is applied. Read `ClientHost::is_paused`
+    /// for the applied pause state.
     fn client_language(&self) -> Option<Arc<str>> {
         crate::world::phase::unprovided(
             "ClientSession::client_language",

@@ -14,6 +14,7 @@ name = "mod_vocab"
 [dependencies]
 sunrise-mod-runtime = { path = "../sunrise-mod-runtime" }
 sunrise-core = { path = "../sunrise-core" }
+sunrise-protocol = { path = "../sunrise-protocol" }
 sunrise-mod-api-macros = { path = "../sunrise-mod-api-macros" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1.0.151", features = ["raw_value"] }
@@ -25,7 +26,6 @@ glam = "0.30"
 sunrise-mod-api-gen = { path = "../sunrise-mod-api-gen" }
 
 [dev-dependencies]
-sunrise-protocol = { path = "../sunrise-protocol" }
 # Shared API docs deliberately exercise the mod-facing facade, as mods do.
 sunrise-mod-api = { path = "../sunrise-mod-api" }
 
