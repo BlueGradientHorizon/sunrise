@@ -208,7 +208,8 @@ impl Drop for RestoreControllers {
 ///
 /// Set a test's world up through the fakes' fields, run the code under test with
 /// `&mut host` as its `&mut dyn ServerHost`, then read the fakes back. A host method no fake
-/// answers panics, naming the method, as a test double's would. The host has no client
+/// answers panics, naming the method, as a test double's would. The fake does not lend a
+/// level random stream, so [`LevelRef::with_random`] returns `None`. The host has no client
 /// backend, so client handle writes refuse.
 #[derive(Clone, Debug, Default)]
 #[non_exhaustive]
@@ -689,6 +690,9 @@ crate::impl_backend_areas!(
 );
 
 impl BackendMut for FakeHost {}
+impl crate::prelude::LevelTickingBackendMut for FakeHost {
+    fn with_level_random(&mut self, _: LevelRef, _: crate::RandomDraw<'_>) {}
+}
 impl crate::prelude::ItemsBackendMut for FakeHost {
     fn container_insert(
         &mut self,
@@ -997,6 +1001,7 @@ crate::impl_backend_mut_areas!(
         fluids_energy,
         items,
         level_effects,
+        level_ticking,
         player_messages
     )
 );

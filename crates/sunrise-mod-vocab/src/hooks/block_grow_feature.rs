@@ -5,7 +5,8 @@ pub trait Hooks {
     /// configured `feature`, `None` when vanilla has none to place (a lone dark
     /// oak sapling). Set `cancel`, or `feature` to `None`, to keep the block;
     /// set `feature` to another key to grow that one. Server-side.
-    /// Mods can use `level.random()` to access the growth random source.
+    /// Draw from the level's live stream with
+    /// `host.with_random(|rng| rng.next_int_bound(bound))`.
     #[hook(
         side = "server",
         contract = "cancel",

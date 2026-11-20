@@ -1,6 +1,13 @@
 use crate::testing::FakeHost;
 
 #[test]
+fn fake_level_declines_to_lend_a_random_stream() {
+    let mut host = FakeHost::new();
+    let level = host.level.level();
+    assert_eq!(level.with_random(&mut host, |_| true), None);
+}
+
+#[test]
 fn player_level_and_dimension_reads() {
     use crate::host::entities::EntitiesHost;
     use crate::host::players::PlayersHost;

@@ -1,7 +1,8 @@
-# Gated Host methods (#[access]) whose return type has no refusal-shaped Result, one `area::method` per line.
-# A wrong-phase call to one refuses by unwinding (docs/modding/src/how-to/native-mods.md, "Refused calls").
-# The list only shrinks: sunrise-mod-api-gen refuses a gated method that is neither Result-shaped nor here, and a
-# line whose method has gained a refusal; tools/ci/check_unwinding_methods.py refuses a line added since the base.
+# Gated Host methods (#[access]) that refuse a wrong-phase call by unwinding, one `area::method` per line.
+# See docs/modding/src/how-to/native-mods.md, "Refused calls".
+# The list only shrinks: sunrise-mod-api-gen rejects a method that has no typed refusal or optional callback
+# and is not listed here, and a line whose method has gained a refusal. tools/ci/check_unwinding_methods.py
+# rejects a line added since the base.
 advancements::advancement
 block_entities::block_entity
 block_entities::block_entity_data
@@ -625,8 +626,6 @@ level_ticking::level_block_random_tick
 level_ticking::level_block_tick
 level_ticking::level_entity_ticking
 level_ticking::level_in_place
-level_ticking::level_random
-level_ticking::level_set_random
 level_ticking::level_should_tick_blocks_at
 level_time::level_clock_marker_time
 level_time::level_clock_time

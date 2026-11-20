@@ -9,6 +9,7 @@ use std::sync::Arc;
 use sunrise_client::parallel::ListenSnapshot;
 use sunrise_client::parallel::TickThread;
 use sunrise_core::nbt::{Compound, JavaString, Tag};
+use sunrise_core::random::{LegacyRandom, RandomSource as EngineRandom};
 use sunrise_items::items::{ItemStack as EngineStack, Items};
 #[path = "api_values/aggregates.rs"]
 pub(in crate::game) mod aggregates;
@@ -17,18 +18,61 @@ pub(in crate::game) mod block_edit;
 #[path = "api_values/block_state.rs"]
 pub(in crate::game) mod block_state;
 
-/// The engine's generator as the API's owned source: the same state and cached gaussian, so it
-/// draws on as the engine's would.
-pub(crate) fn random_to_api(
-    random: &sunrise_core::random::LegacyRandom,
-) -> mod_api::LegacyRandomSource {
-    <(u64, Option<f64>)>::from(random).into()
+struct LiveLevelRandom<'a>(&'a mut LegacyRandom);
+
+impl mod_api::RandomSource for LiveLevelRandom<'_> {
+    fn next_int(&mut self) -> i32 {
+        self.0.next_int()
+    }
+    fn next_int_bound(&mut self, bound: i32) -> i32 {
+        self.0.next_int_bound(bound).unwrap_or(0)
+    }
+    fn next_long(&mut self) -> i64 {
+        self.0.next_long()
+    }
+    fn next_boolean(&mut self) -> bool {
+        self.0.next_boolean()
+    }
+    fn next_float(&mut self) -> f32 {
+        self.0.next_float()
+    }
+    fn next_double(&mut self) -> f64 {
+        self.0.next_double()
+    }
+    fn next_gaussian(&mut self) -> f64 {
+        self.0.next_gaussian()
+    }
 }
-/// The API's owned source as the engine's generator, state and cached gaussian kept.
-pub(crate) fn random_to_engine(
-    source: &mod_api::LegacyRandomSource,
-) -> sunrise_core::random::LegacyRandom {
-    <(u64, Option<f64>)>::from(source).into()
+
+/// Lend the actual stream, restoring its state if the draw unwinds. The caller can journal
+/// the returned pre-draw state when the draw finishes normally.
+pub(super) fn with_live_level_random(
+    random: &mut LegacyRandom,
+    draw: mod_api::RandomDraw<'_>,
+) -> LegacyRandom {
+    struct RestoreOnUnwind<'a> {
+        random: &'a mut LegacyRandom,
+        before: Option<&'a LegacyRandom>,
+    }
+
+    impl Drop for RestoreOnUnwind<'_> {
+        fn drop(&mut self) {
+            if let Some(before) = self.before {
+                *self.random = before.clone();
+            }
+        }
+    }
+
+    let before = random.clone();
+    {
+        let mut guard = RestoreOnUnwind {
+            random,
+            before: Some(&before),
+        };
+        draw.run(&mut LiveLevelRandom(guard.random));
+        guard.before = None;
+    }
+    before
 }
 
 pub(crate) fn block_jump_factor(

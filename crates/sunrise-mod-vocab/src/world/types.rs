@@ -336,17 +336,26 @@ impl LevelRef {
         crate::content::registry_keys::dimension_id(self.dimension)
             .expect("the game's table made the key")
     }
-    /// Draw from the level's own random stream (vanilla's `Level.random`), in vanilla's order:
-    /// `draw` gets the stream and the level keeps it after. None where `random` is None.
+    /// Borrow the named server level's live random stream (`Level.getRandom`) for `draw`
+    /// only: `level.with_random(host, |rng| rng.next_int_bound(bound))`. The closure cannot
+    /// keep or reseed the stream. Draws advance that level's stream in vanilla's order,
+    /// even when the level is parked; this never switches or loads levels.
+    ///
+    /// Returns `None` without calling `draw` if the host lacks server authority, the
+    /// handle is stale, the level is not resident, or world access is unavailable.
+    ///
+    /// If `draw` unwinds, the seed and cached Gaussian revert to their state before this
+    /// call. A later panic does not undo a completed, unjournaled draw. In a transaction,
+    /// abort restores each level's stream to its first snapshot in that frame; a child
+    /// commit keeps its draws and passes any first snapshots the parent doesn't yet have
+    /// to the parent for rollback.
     pub fn with_random<T>(
         self,
         host: &mut dyn ServerHost,
         draw: impl FnOnce(&mut dyn RandomSource) -> T,
     ) -> Option<T> {
-        let mut random = self.random(host)?;
-        let drawn = draw(&mut random);
-        self.set_random(host, random);
-        Some(drawn)
+        let backend = crate::backend::backend_mut_of(host)?;
+        crate::world::random::with_random_draw(draw, |draw| backend.with_level_random(self, draw))
     }
     /// The open of the world the handle belongs to.
     pub fn epoch(self) -> WorldEpoch {
@@ -1590,7 +1599,7 @@ pub trait LevelHost {
     }
 }
 
-/// Access vanilla's `Level.random`, so draws come in vanilla's order.
+/// Restricted access to the hook's own level and its live `Level.getRandom` stream.
 pub trait LevelRandomHost: LevelHost {
     /// Vanilla comparator container signal, 0 to 15, through the engine comparator path.
     /// Generates unopened container loot once before reading, as vanilla getItem does;
@@ -1605,16 +1614,13 @@ pub trait LevelRandomHost: LevelHost {
     fn attachments(&mut self) -> &mut dyn AttachmentStore {
         unimplemented!("LevelRandomHost::attachments")
     }
-    /// A copy of the level's random stream through `native_level_random`, or None on a
-    /// non-authoritative level. Draw with `with_random`, which stores it back.
-    fn random(&mut self) -> Option<LegacyRandomSource> {
-        unimplemented!("LevelRandomHost::random")
-    }
-    /// Replace the level's random stream with `random`, one `random` gave and the mod drew from.
-    /// False on a non-authoritative level.
-    fn set_random(&mut self, _random: LegacyRandomSource) -> bool {
-        unimplemented!("LevelRandomHost::set_random")
-    }
+    /// Lend the level's live random stream to `draw` for this call by using
+    /// [`RandomDraw::run`]. A host that cannot lend the stream declines by not running it,
+    /// as the default implementation does. Preserve completed draws on normal return and
+    /// restore the seed and cached Gaussian if the draw unwinds.
+    ///
+    /// Listeners request a draw with `host.with_random(|rng| rng.next_int_bound(bound))`.
+    fn lend_random(&mut self, _draw: RandomDraw<'_>) {}
 }
 
 /// What a hit's listener may do beyond reading and drawing the level's random: play level
@@ -1623,8 +1629,8 @@ pub trait LevelRandomHost: LevelHost {
 /// and `living_use_totem`. It writes no block and schedules no tick.
 ///
 /// A sound is queued at the call, and its seed is drawn then from the level's sound-seed
-/// stream, never from [`LevelRandomHost::random`]. An entity's random is the entity's own
-/// stream (`Entity.getRandom`), advanced in listener order, so the hit's continuation sees
+/// stream, never from the level's [draw stream](LevelRandomHost::lend_random). An entity's
+/// own stream (`Entity.getRandom`) advances in listener order, so the hit's continuation sees
 /// the draws. A hit lends its attacker where the game applies a melee hit (the attacking player or mob,
 /// for player → mob, mob → mob and mob → player) and no entity at any other damage site
 /// (environment, projectiles, explosions, potions and the like); any other entity, a stale
