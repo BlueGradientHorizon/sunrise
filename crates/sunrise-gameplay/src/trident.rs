@@ -1,9 +1,5 @@
 //! `ThrownTrident`: the thrown trident's state, its NBT and the flight rules that need no level.
-use sunrise_client::{
-    arrows::{Pickup, back_off},
-    items::ItemStack,
-    projectiles::ProjectileWorld,
-};
+use sunrise_client::{arrows::Pickup, items::ItemStack};
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     random::RandomSource,
@@ -297,59 +293,6 @@ impl ThrownTrident {
             self.velocity.z * 0.95 + v.z / len * accel,
         );
     }
-    /// `ThrownTrident.tick` on a server's client: it flies on by itself
-    /// between the server's updates (`AbstractArrow.tick`: gravity and drag,
-    /// a block holds it), and Loyalty pulls it back to its owner; only the
-    /// server decides what it hits.
-    pub fn remote_tick(&mut self, w: &impl ProjectileWorld, owner_eye: Option<Vec3>) {
-        self.previous = self.position;
-        self.shake -= i32::from(self.shake > 0);
-        if self.in_ground_time > 4 {
-            self.dealt_damage = true;
-        }
-        if self.loyalty > 0
-            && (self.dealt_damage || self.no_physics)
-            && let Some(eye) = owner_eye
-        {
-            self.no_physics = true;
-            self.in_ground = false;
-            self.loyalty_pull(eye);
-        }
-        // AbstractArrow.tick releases a changed block only on the server;
-        // clients release from the non-SELF move after a piston push.
-        if self.in_ground && !self.no_physics {
-            self.in_ground_time += 1;
-            return;
-        }
-        self.in_ground_time = 0;
-        let m = self.velocity;
-        let (x, z) = if self.no_physics {
-            (-m.x, -m.z)
-        } else {
-            (m.x, m.z)
-        };
-        // Projectile.updateRotation's targets: Mth.atan2 times the folded 180F / (float)PI, the pitch over
-        // Vec3.horizontalDistance.
-        self.yaw = sunrise_core::geometry::trig::atan2_degrees(x, z);
-        self.pitch = sunrise_core::geometry::trig::atan2_degrees(m.y, m.horizontal_distance());
-        let to = self.position.add_vector(m);
-        if !self.no_physics
-            && let Some((at, _, _)) = w.clip(self.position, to)
-        {
-            // AbstractArrow.onHitBlock's back-off, as the server's tick does it.
-            self.position = back_off(at, m);
-            self.velocity = Vec3::ZERO;
-            self.in_ground = true;
-            self.shake = 7;
-            return;
-        }
-        self.position = to;
-        // A trident's water inertia (0.99) equals the air drag.
-        self.velocity = self.velocity.scale(0.99);
-        if !self.no_physics && !self.no_gravity {
-            self.velocity.y -= 0.05;
-        }
-    }
 }
 pub const HALF: f64 = 0.25;
 /// `Breeze.PROJECTILE_DEFLECTION`: `ProjectileDeflection.REVERSE` at power
@@ -395,21 +338,7 @@ sunrise_mod_runtime::impl_attachment_lifetime!(ThrownTrident);
 #[cfg(test)]
 mod tests {
     use super::{ThrownTrident, breeze_deflect};
-    use sunrise_client::{mobs::Who, projectiles::ProjectileWorld};
-    use sunrise_core::geometry::{Aabb, Vec3};
-
-    struct Air;
-    impl ProjectileWorld for Air {
-        fn clip(&self, _: Vec3, _: Vec3) -> Option<(Vec3, [i32; 3], [i32; 3])> {
-            None
-        }
-        fn in_water(&self, _: Aabb) -> bool {
-            false
-        }
-        fn targets(&self) -> &[(Who, Aabb)] {
-            &[]
-        }
-    }
+    use sunrise_core::geometry::Vec3;
 
     /// A trident summoned at rest still reads pitch 0 after its first tick
     /// and -17.999998 after the second, when it starts falling; one summoned
@@ -627,16 +556,6 @@ mod tests {
         let (velocity, yaw) = breeze_deflect(Vec3::new(4.0, -2.0, 1.0), 10.0, 0.25);
         assert_eq!(velocity, Vec3::new(-2.0, 1.0, -0.5));
         assert_eq!(yaw, 185.0);
-    }
-
-    #[test]
-    fn remote_trident_waits_for_a_non_self_move_to_leave_its_block() {
-        let mut trident = ThrownTrident::remote(1, Vec3::new(0.5, 100.0, 0.5), 0.0, 0.0);
-        trident.in_ground = true;
-        trident.velocity = Vec3::new(1.0, -2.0, 3.0);
-        trident.remote_tick(&Air, None);
-        assert!(trident.in_ground);
-        assert_eq!(trident.velocity, Vec3::new(1.0, -2.0, 3.0));
     }
 
     #[test]

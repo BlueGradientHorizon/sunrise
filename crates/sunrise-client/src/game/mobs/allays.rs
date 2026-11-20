@@ -9,7 +9,7 @@ use sunrise_client::{
     items::ItemStack,
     mobs::{Species, allay},
 };
-use sunrise_gameplay::allays::{AllayLevel, AllayPlayer};
+use sunrise_gameplay::allays::{AllayLevel, AllayPlayer, SightView};
 
 impl Game<'_> {
     /// `Allay.mobInteract`'s `level().playSound(player, this, sound, NEUTRAL,
@@ -184,7 +184,7 @@ impl AllayLevel for Game<'_> {
                 spectator: false,
             })
     }
-    fn dimension_id(&self) -> &str {
+    fn dimension_id(&self) -> &'static str {
         self.dim.id()
     }
     fn play_mob_bound_sound(
@@ -198,12 +198,13 @@ impl AllayLevel for Game<'_> {
     ) {
         Game::play_mob_bound_sound(self, index, event, source, volume, pitch, except_actor);
     }
-    fn line_of_sight(
-        &self,
-        from_eye: sunrise_core::geometry::Vec3,
-        to: sunrise_core::geometry::Vec3,
-    ) -> bool {
-        self.mob_world_base(&[]).line_of_sight(from_eye, to)
+    fn with_sight_view<R>(&self, scan: impl FnOnce(SightView<'_>) -> R) -> R {
+        let w = self.mob_world_base(&[]);
+        scan(SightView {
+            mobs: &self.mobs,
+            dropped: &self.dropped,
+            line_of_sight: &|from_eye, to| w.line_of_sight(from_eye, to),
+        })
     }
     fn trigger_block(&mut self, uuid: [i32; 4], name: &str, pos: [i32; 3], stack: &ItemStack) {
         self.for_each_player(|g| {
