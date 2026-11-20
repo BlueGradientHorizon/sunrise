@@ -63,9 +63,10 @@ fn guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons() {
         let _serving = crate::game::integrated::tests::install_serving(server, false);
         server.world_root = root.to_owned();
         let (tx, rx) = std::sync::mpsc::channel();
-        server.lan.as_mut().unwrap().hub.update_guest(12, |guest| {
+        let host = server.lan.as_mut().unwrap();
+        host.play.entry(12).or_default();
+        host.hub.update_guest(12, |guest| {
             guest.sender = PlayerSender::new(tx, Arc::default());
-            guest.carried = Some(ItemStack::new("minecraft:stick", 3));
         });
         server.reload_datapacks(true, &[]).unwrap();
         server
@@ -96,10 +97,14 @@ fn guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons() {
                 input,
             })
         };
+        // Opening the station returns anything already on the cursor to inventory.
+        server.lan.as_mut().unwrap().hub.update_guest(12, |guest| {
+            guest.carried = Some(ItemStack::new("minecraft:stick", 3));
+        });
         server.lan_guest_packet(12, click(0, 0));
         with_client_game(|client| {
             let (mut peer, _writer) = super::super::tests::connect_menu_test(client);
-            let deliver = |client: &mut Game<'_>| {
+            let deliver = |client: &mut Game<'_>, expect_closed: bool| {
                 let mut recipes = None;
                 for out in rx.try_iter() {
                     let bodies = match out {
@@ -117,6 +122,9 @@ fn guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons() {
                             | C::ContainerSetContent(_)
                             | C::ContainerSetData(_)) => client.handle_packet(packet).unwrap(),
                             C::UpdateRecipes(packet) => {
+                                if expect_closed {
+                                    assert!(client.station.is_none(), "close before new recipes");
+                                }
                                 recipes = Some(packet.clone());
                                 client.handle_packet(C::UpdateRecipes(packet)).unwrap();
                             }
@@ -126,7 +134,11 @@ fn guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons() {
                 }
                 recipes
             };
-            let packet = deliver(client).expect("server recipe packet");
+            let packet = deliver(client, false).expect("server recipe packet");
+            let input = client.station.as_ref().unwrap().inputs[0]
+                .as_ref()
+                .expect("the guest placed its stack");
+            assert_eq!((input.item.as_ref(), input.count), ("minecraft:stick", 3));
             assert!(
                 client.remote.as_ref().unwrap().tags.is_none(),
                 "no native tag view"
@@ -156,7 +168,7 @@ fn guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons() {
                     matches!(&packet, S::ContainerButtonClick(p) if p.container == window && p.button == button)
                 );
                 server.lan_guest_packet(12, packet);
-                deliver(client);
+                deliver(client, false);
             };
             press(client, server, 1); // The packet's item matches, but the actual component does not.
             assert!(client.station.as_ref().unwrap().result.is_none());
@@ -176,7 +188,7 @@ fn guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons() {
                 "minecraft:emerald"
             );
             server.lan_guest_packet(12, click(1, 1)); // Quick-move all three cuts into inventory.
-            deliver(client);
+            deliver(client, false);
             assert_eq!(
                 server.lan.as_ref().unwrap().hub.guests[0]
                     .inventory
@@ -192,7 +204,7 @@ fn guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons() {
                 guest.carried = Some(ItemStack::new("minecraft:stick", 1))
             });
             server.lan_guest_packet(12, click(0, 0));
-            deliver(client);
+            deliver(client, false);
             press(client, server, 2);
             // Other servers can replace UpdateRecipes before the screen closes. Supply a single
             // different row without changing the input; the cached old indices cannot survive.
@@ -222,7 +234,7 @@ fn guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons() {
                 r#"{"entries":{"fixture:b_plain":10}}"#,
             );
             server.reload_datapacks(true, &[]).unwrap();
-            deliver(client).expect("new server recipe generation");
+            deliver(client, true).expect("new server recipe generation");
             assert!(client.station.is_none());
             server.lan_guest_packet(
                 12,
