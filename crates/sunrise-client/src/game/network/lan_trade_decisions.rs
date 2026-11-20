@@ -206,52 +206,37 @@ impl Game<'_> {
             .any(|l| !l.trades.guests.is_empty())
     }
 
-    /// Ask the listeners about the trade just made and keep their answer as the live offer, with
-    /// the existing offer clamps. Inside a take, an answer that cannot become a live offer (a stack
-    /// that is not valid, a non-finite price multiplier) leaves the offer as it was and refuses the
-    /// take; outside one the hook's ordinary output rules apply.
+    /// Collect a post-take offer, preserving the distinction between a bad price and a bad stack.
     pub(super) fn merchant_trade_answer(&mut self, id: u32, kind: &str, offer: &mut MerchantOffer) {
-        use super::api_values::{ItemBoundary, TryIntoApi, TryIntoEngine};
-        if !mod_api::__private::listened(mod_api::HookId::TradeWithVillager) {
-            return;
-        }
-        if !self.merchant_take_active() {
-            self.native_trade_with_villager(id, kind, offer);
-        } else if self
-            .transactions
-            .last()
-            .is_some_and(|level| level.trades.refused.is_some())
+        use super::api_values::{OfferWriteError, TryIntoApi, checked_merchant_offer};
+        if !mod_api::__private::listened(mod_api::HookId::TradeWithVillager)
+            || self
+                .transactions
+                .last()
+                .is_some_and(|level| level.trades.refused.is_some())
         {
             return;
-        } else {
-            let refused = match offer.try_into_api() {
-                Ok(mut answer) => {
-                    mod_api::dispatch_trade_with_villager(self, id, kind, &mut answer);
-                    match self
-                        .boundary_items()
-                        .ok_or(mod_api::StackWriteError::Unavailable)
-                        .and_then(|items| answer.try_into_engine(items))
-                    {
-                        Ok(live) => {
-                            *offer = live;
-                            None
-                        }
-                        Err(_) => Some(InvalidReason::Numeric),
-                    }
-                }
-                Err(_) => Some(InvalidReason::Plan),
-            };
-            if let Some(refused) = refused {
-                log::warn!("trade_with_villager: the offer answer was refused ({refused:?})");
-                if let Some(level) = self.transactions.last_mut() {
-                    level.trades.refused = Some(refused);
-                }
-                return;
-            }
         }
-        offer.uses = offer.uses.max(0);
-        offer.max_uses = offer.max_uses.max(1);
-        offer.xp = offer.xp.max(0);
+        let result = offer
+            .try_into_api()
+            .map_err(|_| InvalidReason::Plan)
+            .and_then(|mut answer| {
+                mod_api::dispatch_trade_with_villager(self, id, kind, &mut answer);
+                checked_merchant_offer(&answer, self.items()).map_err(|reason| {
+                    log::warn!("trade_with_villager: invalid offer answer: {reason:?}");
+                    match reason {
+                        OfferWriteError::NonFinitePrice => InvalidReason::Numeric,
+                        OfferWriteError::Stack(_) => InvalidReason::Plan,
+                    }
+                })
+            });
+        match result {
+            Ok(live) => *offer = live,
+            Err(reason) if self.merchant_take_active() => {
+                self.transactions.last_mut().unwrap().trades.refused = Some(reason);
+            }
+            Err(_) => {}
+        }
     }
 
     pub(super) fn merchant_drops(
