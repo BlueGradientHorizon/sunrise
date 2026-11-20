@@ -1,12 +1,15 @@
 //! A command's options, read once by the code that uses them: whatever the command does not read
 //! is refused by name in [`Options::finish`], so a mistyped option or a stray word is never
-//! silently ignored.
+//! silently ignored. Each argument has one role, fixed before anything is read: the argument after
+//! an option that takes a value is that value, whatever it looks like, and never an option itself.
 
 /// The arguments of one command (after its name), with what has been read from them so far.
 pub struct Options<'a> {
     command: &'a str,
     args: &'a [String],
     read: Vec<bool>,
+    /// The arguments that are the value of the option before them.
+    is_value: Vec<bool>,
     /// Where a bare `--` begins what the command hands on untouched (`run`'s game arguments).
     end: usize,
     /// Whether the command asked for what follows that `--`.
@@ -17,12 +20,25 @@ pub struct Options<'a> {
 
 impl<'a> Options<'a> {
     /// `command` is the name the refusal uses (`registry list`); its first word names the usage.
-    pub fn new(command: &'a str, args: &'a [String]) -> Self {
+    /// `valued` names the options that take a value, which [`Options::value`] and
+    /// [`Options::values`] then read.
+    pub fn new(command: &'a str, args: &'a [String], valued: &[&str]) -> Self {
+        let end = args.iter().position(|a| a == "--").unwrap_or(args.len());
+        let mut is_value = vec![false; args.len()];
+        let mut i = 0;
+        while i + 1 < end {
+            if valued.contains(&args[i].as_str()) {
+                is_value[i + 1] = true;
+                i += 1;
+            }
+            i += 1;
+        }
         Self {
             command,
             args,
             read: vec![false; args.len()],
-            end: args.iter().position(|a| a == "--").unwrap_or(args.len()),
+            is_value,
+            end,
             rest_read: false,
             usage: None,
         }
@@ -58,12 +74,11 @@ impl<'a> Options<'a> {
         Ok(out)
     }
 
-    /// The arguments that are not options, in order. Read the options first: a value is
-    /// positional until its option has taken it.
+    /// The arguments that are neither options nor their values, in order.
     pub fn positional(&mut self) -> Vec<&'a str> {
         let mut out = Vec::new();
         for i in 0..self.end {
-            if !self.read[i] && !is_option(&self.args[i]) {
+            if !self.read[i] && !self.is_value[i] && !is_option(&self.args[i]) {
                 self.read[i] = true;
                 out.push(self.args[i].as_str());
             }
@@ -74,7 +89,8 @@ impl<'a> Options<'a> {
     /// The one argument that is not an option, if it is given; a second one is refused by name.
     /// Read the options first: a mistyped option is named before the value it left behind.
     pub fn at_most_one(&mut self) -> Result<Option<&'a str>, String> {
-        let mistyped = (0..self.end).find(|&i| !self.read[i] && is_option(&self.args[i]));
+        let mistyped =
+            (0..self.end).find(|&i| !self.read[i] && !self.is_value[i] && is_option(&self.args[i]));
         match self.positional()[..] {
             [] => Ok(None),
             [one] => Ok(Some(one)),
@@ -107,7 +123,7 @@ impl<'a> Options<'a> {
 
     fn take<'s>(&'s mut self, name: &'s str) -> impl Iterator<Item = usize> + 's {
         (0..self.end).filter(move |&i| {
-            let hit = self.args[i] == name;
+            let hit = !self.is_value[i] && self.args[i] == name;
             self.read[i] |= hit;
             hit
         })
@@ -145,7 +161,7 @@ mod tests {
     #[test]
     fn what_no_one_read_is_refused_by_name_with_the_usage() {
         let args = argv("--game g --typo extra");
-        let mut options = Options::new("run", &args);
+        let mut options = Options::new("run", &args, &["--game", "--name", "--jars"]);
         assert_eq!(options.value("--game").unwrap(), Some("g"));
         let error = options.finish().unwrap_err();
         assert!(error.contains("--typo"), "{error}");
@@ -156,27 +172,41 @@ mod tests {
     fn a_stray_word_a_second_file_and_an_unwanted_tail_are_refused_by_name() {
         // `update nightly` without `--sunrise` would otherwise repin to the current Nightly.
         let args = argv("nightly-2026-11-20");
-        let error = Options::new("update", &args).finish().unwrap_err();
+        let error = Options::new("update", &args, &[]).finish().unwrap_err();
         assert!(error.contains("nightly-2026-11-20"), "{error}");
 
         let args = argv("a.smod b.smod");
-        let error = Options::new("fits", &args).at_most_one().unwrap_err();
+        let error = Options::new("fits", &args, &["--build"])
+            .at_most_one()
+            .unwrap_err();
         assert!(
             error.contains("b.smod") && !error.contains("a.smod"),
             "{error}"
         );
 
         let args = argv("block -- break");
-        let mut options = Options::new("hooks", &args);
+        let mut options = Options::new("hooks", &args, &[]);
         assert_eq!(options.positional(), ["block"]);
         let error = options.finish().unwrap_err();
-        assert!(error.contains("does not take --"), "{error}");
+        assert_eq!(error.lines().next(), Some("hooks does not take --"));
+    }
+
+    #[test]
+    fn an_options_value_is_never_also_an_option_whichever_is_read_first() {
+        let args = argv("--signature --native --key --kind");
+        let mut options = Options::new("check", &args, &["--signature", "--key", "--kind"]);
+        assert!(!options.switch("--native"));
+        assert_eq!(options.value("--kind").unwrap(), None);
+        assert_eq!(options.value("--signature").unwrap(), Some("--native"));
+        assert_eq!(options.value("--key").unwrap(), Some("--kind"));
+        assert!(options.positional().is_empty());
+        options.finish().unwrap();
     }
 
     #[test]
     fn values_may_begin_with_a_dash_and_stop_at_a_bare_double_dash() {
         let args = argv("--name -Garden pos --jars j -- --typo --game");
-        let mut options = Options::new("run", &args);
+        let mut options = Options::new("run", &args, &["--game", "--name", "--jars"]);
         assert_eq!(options.value("--name").unwrap(), Some("-Garden"));
         assert_eq!(options.value("--jars").unwrap(), Some("j"));
         assert_eq!(options.positional(), ["pos"]);
@@ -187,13 +217,15 @@ mod tests {
     #[test]
     fn repeated_options_are_all_read_and_a_missing_value_is_refused() {
         let args = argv("--build a --build b --all");
-        let mut options = Options::new("fits", &args);
+        let mut options = Options::new("fits", &args, &["--build"]);
         assert_eq!(options.values("--build").unwrap(), ["a", "b"]);
         assert!(options.switch("--all"));
         options.finish().unwrap();
 
         let last = argv("--build");
-        let error = Options::new("fits", &last).value("--build").unwrap_err();
+        let error = Options::new("fits", &last, &["--build"])
+            .value("--build")
+            .unwrap_err();
         assert!(error.contains("--build"), "{error}");
     }
 }

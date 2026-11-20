@@ -11,7 +11,7 @@
 //! - `inject add <at> --kind <kind> [--call <callee>] [--nth N] [--with <fn>]`: pin an inject.
 //! - `internals sync [--repo <path>]`: sync declarations for native or wasm mods.
 //! - `internals add <path>… [--kind <kind>]`: declare internals from the prebuilt catalog.
-//! - `build [--wasm [--catalog <points.json>] [--with <mod>]…] [--update-lock]`: the `.smod` in `target/sunrise-mod/`, with the mod's `assets/`
+//! - `build [--update-lock | --wasm [--catalog <points.json>] [--with <mod>]…]`: the `.smod` in `target/sunrise-mod/`, with the mod's `assets/`
 //!   and `data/`; a native mod is then compiled too (`dev.rs`); with `--wasm`, a Rust mod built to `mod.wasm` first (`wasm.rs`).
 //! - `publish`: build, then write the registry entry, the staged file and the pull request text (`publish.rs`).
 //! - `wasm-std <out.wasm>`: the standard library member the game ships for wasm mods.
@@ -180,9 +180,9 @@ struct BuildArgs<'a> {
     with: Vec<&'a str>,
 }
 
-/// `build [--wasm] [--update-lock]`, and the CI-only `--catalog <points.json>` and `--with <library.wasm>…`.
+/// `build [--update-lock | --wasm]`, and with `--wasm` the CI-only `--catalog <points.json>` and `--with <library.wasm>…`.
 fn build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
-    let mut options = Options::new("build", args);
+    let mut options = Options::new("build", args, &["--catalog", "--with"]);
     let parsed = BuildArgs {
         wasm: options.switch("--wasm"),
         update_lock: options.switch("--update-lock"),
@@ -208,7 +208,7 @@ fn build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
     Ok(parsed)
 }
 
-/// `build [--wasm] [--update-lock]`: the package in `target/sunrise-mod/`, after a wasm mod's
+/// `build [--update-lock | --wasm]`: the package in `target/sunrise-mod/`, after a wasm mod's
 /// `mod.wasm` (with `--wasm`) or a native mod's compile. Also the first step of `publish`.
 fn build_command(
     entry: mod_surface::child::ChildEntry,
@@ -409,7 +409,7 @@ fn pin(sunrise: Option<&str>) -> Result<String, String> {
 
 /// `update [--sunrise <build>] [--accept <inject id>]…`: the build and the accepted injects.
 fn update_args(args: &[String]) -> Result<(Option<&str>, Vec<&str>), String> {
-    let mut options = Options::new("update", args);
+    let mut options = Options::new("update", args, &["--sunrise", "--accept"]);
     let parsed = (options.value("--sunrise")?, options.values("--accept")?);
     options.finish()?;
     Ok(parsed)
@@ -699,7 +699,7 @@ struct CheckFile<'a> {
 /// `check`'s two forms, told apart by whether a file is named, wherever it stands; an option of
 /// the other form is refused by name.
 fn check_args(args: &[String]) -> Result<Check<'_>, String> {
-    let mut options = Options::new("check", args);
+    let mut options = Options::new("check", args, &["--kind", "--key", "--signature"]);
     let flags = sdk_cmds::CheckFlags {
         uses: options.switch("--uses"),
         wasm: options.switch("--wasm"),
@@ -815,7 +815,7 @@ struct RunArgs<'a> {
 }
 
 fn run_args(args: &[String]) -> Result<RunArgs<'_>, String> {
-    let mut options = Options::new("run", args);
+    let mut options = Options::new("run", args, &["--game", "--resources", "--jars"]);
     let parsed = RunArgs {
         game: options.value("--game")?,
         resources: options.value("--resources")?,
@@ -1472,6 +1472,12 @@ mod tests {
             ),
             (run_args(&argv("--gme g")).map(drop).unwrap_err(), "--gme"),
             (
+                update_args(&argv("nightly-2026-11-20"))
+                    .map(drop)
+                    .unwrap_err(),
+                "nightly-2026-11-20",
+            ),
+            (
                 update_args(&argv("--sunrise nightly --acept a"))
                     .map(drop)
                     .unwrap_err(),
@@ -1513,6 +1519,17 @@ mod tests {
             json: true,
         };
         assert_eq!(check_args(&argv("--json mod.smod")), Ok(Check::File(file)));
+        // A value that reads like the other form's option is still the value.
+        assert_eq!(
+            check_args(&argv("mod.smod --key KEY --signature --native")),
+            Ok(Check::File(CheckFile {
+                file: "mod.smod",
+                kind: None,
+                key: Some("KEY"),
+                signature: Some("--native"),
+                json: false,
+            }))
+        );
         assert_eq!(
             check_args(&argv("--uses --native")),
             Ok(Check::Folder(sdk_cmds::CheckFlags {

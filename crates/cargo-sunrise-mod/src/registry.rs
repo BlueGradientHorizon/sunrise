@@ -1,4 +1,4 @@
-//! `cargo sunrise-mod registry build|review|check|list`: the registry repository's CI
+//! `cargo sunrise-mod registry build|review|check|list|release|page`: the registry repository's CI
 //! (`sunrise-org/sunrise-mods`, docs/modding/src/reference/registry-index.md). Network-free: the
 //! workflow downloads the files and publishes what this writes.
 use crate::options::Options;
@@ -19,7 +19,7 @@ const USAGE: &str = "usage: cargo sunrise-mod registry build <checkout> --files 
        cargo sunrise-mod registry review <base checkout> <head checkout> --author <login> [--files <dir>] [--json]
        cargo sunrise-mod registry check <base checkout> <head checkout> --files <dir> [--json]
        cargo sunrise-mod registry list <checkout>
-       cargo sunrise-mod registry release <checkout> <id> <file> --tag <tag> --published <YYYY-MM-DD> [--notes <file>] [--signature <file>] [--game <version>]
+       cargo sunrise-mod registry release <checkout> <id> <file> --tag <tag> --published <YYYY-MM-DD> [--notes <file>] [--signature <file>] [--name <asset>] [--game <version>]
        cargo sunrise-mod registry page <checkout> <id> <sunrise-registry.toml>";
 
 fn lines(errors: Vec<String>) -> String {
@@ -28,7 +28,24 @@ fn lines(errors: Vec<String>) -> String {
 
 pub fn main(args: &[String]) -> Result<(), String> {
     let command = format!("registry {}", args.first().map_or("", String::as_str));
-    let mut options = Options::new(&command, args.get(1..).unwrap_or_default()).usage(USAGE);
+    // Every subcommand's value options: one a subcommand does not read is refused by `finish`.
+    const VALUED: &[&str] = &[
+        "--files",
+        "--out",
+        "--generated",
+        "--release",
+        "--site",
+        "--counts",
+        "--author",
+        "--tag",
+        "--published",
+        "--notes",
+        "--signature",
+        "--name",
+        "--game",
+    ];
+    let mut options =
+        Options::new(&command, args.get(1..).unwrap_or_default(), VALUED).usage(USAGE);
     match args.first().map(String::as_str) {
         Some("build") => {
             let (files, out) = (options.value("--files")?, options.value("--out")?);

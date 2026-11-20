@@ -19,7 +19,7 @@ const COMMANDS: &[Command] = &[
     Command {
         name: "build",
         everyday: true,
-        usage: "build [--wasm [--catalog <points.json>] [--with <mod>]…] [--update-lock]",
+        usage: "build [--update-lock | --wasm [--catalog <points.json>] [--with <mod>]…]",
         summary: "Packs the mod into target/sunrise-mod/<id>.smod; a native mod is compiled too, and --wasm builds a wasm mod's mod.wasm first.",
     },
     Command {

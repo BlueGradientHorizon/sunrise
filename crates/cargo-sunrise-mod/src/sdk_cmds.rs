@@ -146,7 +146,7 @@ fn first_line(doc: &str) -> &str {
 
 /// `hooks <text> [--all]`: the search words and whether `--all` was given.
 fn hooks_args(args: &[String]) -> Result<(String, bool), String> {
-    let mut options = Options::new("hooks", args);
+    let mut options = Options::new("hooks", args, &[]);
     let all = options.switch("--all");
     let text = options.positional().join(" ");
     options.finish()?;
@@ -363,7 +363,7 @@ enum Answer {
 
 /// `fits`'s package and builds, as given.
 fn fits_args(args: &[String]) -> Result<(Option<&Path>, Vec<&str>), String> {
-    let mut options = Options::new("fits", args);
+    let mut options = Options::new("fits", args, &["--build"]);
     let builds = options.values("--build")?;
     let package = options.at_most_one()?.map(Path::new);
     options.finish()?;
@@ -1106,6 +1106,7 @@ mod tests {
         );
         for (error, option) in [
             (hooks_args(&argv("spawn --al")).unwrap_err(), "--al"),
+            (hooks_args(&argv("block -- break")).unwrap_err(), "--"),
             (
                 fits_args(&argv("--bild a")).map(drop).unwrap_err(),
                 "--bild",

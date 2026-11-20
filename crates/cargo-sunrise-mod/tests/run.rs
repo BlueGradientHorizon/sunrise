@@ -35,6 +35,15 @@ fn run_of_a_native_mod_without_resources_says_how_to_make_them_before_building()
     let error = String::from_utf8(refused.stderr).unwrap();
     assert!(error.contains("--resources <folder>"), "{error}");
     assert!(error.contains("sunrise-prepare --prepare"), "{error}");
+    // A native mod runs on its pinned SDK's game: `--game` is refused, not dropped.
+    let refused = Command::new(env!("CARGO_BIN_EXE_cargo-sunrise-mod"))
+        .current_dir(&project)
+        .args(["run", "--game", "some-game", "--resources", "."])
+        .output()
+        .unwrap();
+    assert!(!refused.status.success(), "{refused:?}");
+    let error = String::from_utf8(refused.stderr).unwrap();
+    assert!(error.contains("--game"), "{error}");
     assert!(
         !project.join("target").exists(),
         "run must stop before building"
@@ -89,6 +98,20 @@ fn content_run_keeps_the_previous_package_on_jar_refusal_and_starts_with_the_sta
             .output()
             .unwrap()
     };
+
+    // The tool reads `--resources` for a native mod only: for this one it is refused, not dropped.
+    let refused = Command::new(env!("CARGO_BIN_EXE_cargo-sunrise-mod"))
+        .current_dir(&project)
+        .arg("run")
+        .arg("--game")
+        .arg(&game)
+        .args(["--resources", "."])
+        .output()
+        .unwrap();
+    assert!(!refused.status.success(), "{refused:?}");
+    let error = String::from_utf8(refused.stderr).unwrap();
+    assert!(error.contains("--resources"), "{error}");
+    assert!(!project.join("launched").exists());
 
     let refused = run();
     assert!(!refused.status.success(), "{refused:?}");
