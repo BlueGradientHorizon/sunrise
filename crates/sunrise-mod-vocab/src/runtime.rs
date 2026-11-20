@@ -173,6 +173,7 @@ thread_local! {
 /// Checkpoint for an owning action around isolated dispatch. A trapped native
 /// listener or wasm proxy resets its outputs, but the owner must also abort
 /// any tentative Host writes. Unrelated threads do not affect the checkpoint.
+// hidden: the game's own decide/fire/apply actions read it; it is not a mod-facing call.
 #[doc(hidden)]
 pub fn isolated_failures() -> u64 {
     ISOLATED_FAILURES.get()

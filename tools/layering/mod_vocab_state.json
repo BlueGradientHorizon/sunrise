@@ -214,6 +214,11 @@
     "category": "dispatch table",
     "reason": "Thread-wide count of all listeners entered, bumped by the dispatch loop; scoped engine leases (pending children) compare it so a lease never outlives one listener."
   },
+  "runtime.rs::ISOLATED_FAILURES": {
+    "type": "std::cell::Cell<u64>",
+    "category": "dispatch table",
+    "reason": "Thread-wide count of listeners poisoned by a trap, bumped only by the dispatch loop's poison path; an owning decide/fire/apply action on the same thread compares it around its dispatch to abort its tentative Host writes."
+  },
   "world/phase_refusal.rs::report::LOGGED": {
     "type": "OnceLock<Mutex<HashSet<(&'staticstr,&'staticstr)>>>",
     "category": "reentrancy guard",
