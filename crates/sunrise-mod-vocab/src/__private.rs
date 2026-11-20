@@ -737,8 +737,10 @@ pub mod ingredient_parser;
 pub mod points;
 
 /// Side- and override-filtered ordinary dependency rows, in their original direction.
-/// Host-only: this is not the author-facing package inventory or a Wire value.
+/// Host-only: this is not the author-facing package inventory.
+// no wire: the host keeps this resolved graph for package and Part admission; it never crosses.
 #[derive(Clone, Debug, Default)]
+#[non_exhaustive]
 pub struct EffectiveDependencies(
     std::collections::BTreeMap<String, std::collections::BTreeMap<String, crate::DependencyKind>>,
 );
