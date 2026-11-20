@@ -11,12 +11,12 @@ pub trait PlayerSessionBackend {
     /// players keep their address; an acting player with no known connection
     /// has an empty address. None for a stale or unavailable player.
     #[access(WorldOnly)]
-    fn player_address(&self, player: PlayerRef) -> Option<String>;
+    fn player_address(&self, player: PlayerRef) -> Option<&str>;
     /// Side: server.
     /// The stable name of a connected or acting player. None for a stale or
     /// unavailable player; displaced online players retain their identity.
     #[access(WorldOnly)]
-    fn player_name(&self, player: PlayerRef) -> Option<String>;
+    fn player_name(&self, player: PlayerRef) -> Option<&str>;
     /// Side: server.
     /// `ServerPlayer.getGameProfile`: the UUID, name and login properties (skin
     /// `textures` included) of a connected or acting player. An offline-mode
@@ -49,7 +49,7 @@ pub trait PlayerSessionBackend {
     /// empty when it sent none. Displaced connected players keep theirs; an acting player with
     /// no known connection has an empty one. None for a stale or unavailable player.
     #[access(WorldOnly)]
-    fn player_client_brand(&self, player: PlayerRef) -> Option<String>;
+    fn player_client_brand(&self, player: PlayerRef) -> Option<&str>;
     /// Side: server.
     /// The plugin channels the player's client announced in `minecraft:register`, less those
     /// it withdrew in `minecraft:unregister`, during configuration and play, in announcement
@@ -90,7 +90,7 @@ pub trait PlayerSessionBackend {
     /// The name `player_set_nickname` set for that player, `None` when there is none. Refuses
     /// with `PlayerWorldRefusal`: `Client`, and `Stale` for a stale or offline player.
     #[access(WorldOnly)]
-    fn player_nickname(&self, player: PlayerRef) -> Result<Option<String>, PlayerWorldRefusal>;
+    fn player_nickname(&self, player: PlayerRef) -> Result<Option<&str>, PlayerWorldRefusal>;
 }
 /// The handles' writes of the `player_session` area, implemented by the game and reached through [`BackendMut`].
 // hidden: a handle's backend, reached through `Backend`; mods call the handle, never this trait

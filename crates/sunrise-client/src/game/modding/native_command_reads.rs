@@ -47,7 +47,7 @@ impl Game<'_> {
                     .collect()
             })
             .unwrap_or_default();
-        Some(GameProfile::new(player.uuid(), name, properties))
+        Some(GameProfile::new(player.uuid(), name.to_owned(), properties))
     }
 
     /// `ServerAdvancementManager.get(id)` over the loaded tree, read once on first use and

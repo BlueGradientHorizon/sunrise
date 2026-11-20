@@ -645,8 +645,8 @@ impl crate::prelude::PlayerModesBackend for FakeHost {
     }
 }
 impl crate::prelude::PlayerSessionBackend for FakeHost {
-    fn player_name(&self, player: PlayerRef) -> Option<String> {
-        Some(self.players.get(player.uuid())?.name.clone())
+    fn player_name(&self, player: PlayerRef) -> Option<&str> {
+        Some(&self.players.get(player.uuid())?.name)
     }
 }
 impl crate::prelude::PlayerWorldBackend for FakeHost {

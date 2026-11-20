@@ -2224,7 +2224,7 @@ impl Game<'_> {
                             "join",
                             &g.name,
                             g.uuid,
-                            serde_json::json!({ "address": g.address.ip().to_string() }),
+                            serde_json::json!({ "address": g.ip_address() }),
                         );
                         let [x, y, z] = g.position;
                         super::dedicated::log(
@@ -2232,7 +2232,7 @@ impl Game<'_> {
                             &format!(
                                 "{}[/{}] logged in with entity id {} at ({}, {}, {})",
                                 g.name,
-                                g.address,
+                                g.address(),
                                 g.entity_id,
                                 sunrise_core::java_number::double_to_string(x),
                                 sunrise_core::java_number::double_to_string(y),

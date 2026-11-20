@@ -114,7 +114,7 @@ fn up(value: Probe, context: &mut dyn IPayloadContext) -> Result<(), String> {
                         "listed owner {owner:?} differs from client {expected:?}"
                     ));
                 }
-                let name = owner
+                let name: &str = owner
                     .name(host)
                     .ok_or("connected owner's account name missing")?;
                 let found = host.players().player_by_name(&name.to_uppercase());

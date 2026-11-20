@@ -1495,7 +1495,7 @@ impl Game<'_> {
                 .guests
                 .iter()
                 .find(|g| g.participates_online() && g.name.eq_ignore_ascii_case(target))
-                .map(|g| g.address.ip().to_string())
+                .map(|g| g.ip_address().to_owned())
         }
     }
 
@@ -1505,7 +1505,7 @@ impl Game<'_> {
             h.hub
                 .guests
                 .iter()
-                .filter(|g| g.participates_online() && g.address.ip().to_string() == ip)
+                .filter(|g| g.participates_online() && g.ip_address() == ip)
                 .map(|g| g.uuid)
                 .collect()
         })
@@ -1949,7 +1949,7 @@ impl Game<'_> {
                         h.hub
                             .guests
                             .iter()
-                            .filter(|g| g.address.ip().to_string() == ip)
+                            .filter(|g| g.ip_address() == ip)
                             .map(|g| (g.uuid, g.name.clone()))
                             .collect()
                     })
@@ -2518,7 +2518,7 @@ mod tests {
                 .as_mut()
                 .unwrap()
                 .hub
-                .update_guest(12, |guest| guest.address = "0.0.0.0:1".parse().unwrap())
+                .update_guest(12, |guest| guest.set_address("0.0.0.0:1".parse().unwrap()))
                 .unwrap();
             assert_eq!(game.ip_ban_players("0.0.0.0"), [12]);
             assert_eq!(game.ip_ban_players("127.0.0.1"), [13]);
