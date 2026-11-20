@@ -1,7 +1,8 @@
 //! An item or a standalone model drawn in a screen in 3D under a caller's turn
 //! (`DrawContext::model_3d`): what a symmetry wand's screen shows its wand and its mirror with.
-//! The item goes through the slot's own drawing, under a pose with the turn in it; the model
-//! is projected as a scene's blocks are, with a depth of its own.
+//! The item is the slot's own item (`item_render::gui::draw_posed`) under a pose with the turn in
+//! it; the model is projected as a scene's blocks are. Both have a depth of their own
+//! (`HudBatch::depth_glint_since`).
 use super::Game;
 use super::native_scene::{SceneQuad, face_shade, project_quads, shaded};
 use glam::{Mat4, Vec3};
@@ -170,7 +171,10 @@ mod tests {
             .unwrap();
             let mut batch = HudBatch::scratch([320, 240]);
             let (vertices, blends) = (batch.vertices.len(), batch.blends.len());
-            let view = Gui3dView::new([40.0, 30.0], 1.0e38, mod_api::IDENTITY_TRANSFORM);
+            // Twice 3e38 pixels a block is not a number: the pose overflows.
+            let mut turn = mod_api::IDENTITY_TRANSFORM;
+            turn[0] = 2.0;
+            let view = Gui3dView::new([40.0, 30.0], 3.0e38, turn);
             assert_eq!(
                 game.native_model_3d(&mut batch, Gui3dSubject::Item(stack), view),
                 Err(Gui3dError::NotFinite)

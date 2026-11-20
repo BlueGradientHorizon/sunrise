@@ -236,11 +236,12 @@ pub trait DrawContext {
     ///   `view.transform`, lit with the GUI light that model asks for: flat items side lit,
     ///   block-like items front lit); its count, damage bar and cooldown are not drawn.
     /// - A model is drawn full bright and shaded by face, as the blocks of a scene are.
-    /// - A model has a depth of its own, so it never intersects what the screen drew before or
-    ///   after it, and later drawing covers it in call order. An item is painted as a slot paints
-    ///   one: its faces sorted far to near, with no depth of their own, so an item turned out of
-    ///   its slot's frame may cover or be covered by faces it crosses. There is no z input. Both
-    ///   are cut by the clips opened with [`DrawContext::push_clip`], as `fill` is.
+    /// - Both subjects have a depth of their own, so a draw never intersects what the screen
+    ///   drew before or after it, and later drawing covers it in call order. An item's faces meet
+    ///   each other by depth, as a model's do, and its enchantment glint follows them; the
+    ///   OptiFine CIT glint layers of a stack are not drawn on this path yet (sunrise#3555). There
+    ///   is no z input. Both are cut by the clips opened with [`DrawContext::push_clip`], as
+    ///   `fill` is.
     ///
     /// A client's call from a drawing hook (`screen_draw`, `gui_render_post`); on a server it is
     /// refused. Per call it draws the subject's baked quads, the cached model a slot's item

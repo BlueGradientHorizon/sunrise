@@ -5,7 +5,7 @@
 //! drawn far to near, and clipped to the item's 16x16 slot unless the model
 //! is oversized in the GUI (`GuiItemAtlas` draws each item into a scissored
 //! 16x16 slot; oversized items get a picture-in-picture of their bounds).
-use super::{Foil, Glint, ItemQuad, ItemRenderState, ItemRenderer, SpecialHost};
+use super::{Foil, Glint, GlintFrame, ItemQuad, ItemRenderState, ItemRenderer, SpecialHost};
 use crate::cit::Rule;
 use crate::cit_glint::StackGlint;
 use crate::hud::cit_glint::{GlintTextures, layer_uv, vertex_color};
@@ -330,6 +330,13 @@ fn draw_now(
 ) {
     let pose = Mat4::from_translation(Vec3::new(x + 8.0, y + 8.0, 0.0))
         * Mat4::from_scale(Vec3::new(16.0, -16.0, 16.0));
+    let mut quads: Vec<ItemQuad> = Vec::new();
+    state.submit(renderer, sprites, host, pose, &mut quads);
+    let lights = if state.uses_block_light() {
+        items_3d_lights()
+    } else {
+        items_flat_lights()
+    };
     let rect = if state.oversized_in_gui {
         [
             f32::NEG_INFINITY,
@@ -349,84 +356,6 @@ fn draw_now(
         ],
         None => rect,
     };
-    draw_under(
-        state,
-        renderer,
-        sprites,
-        host,
-        batch,
-        pose,
-        rect,
-        time,
-        glint_speed,
-        glint_alpha,
-    );
-}
-
-/// An item drawn under the caller's `pose` (GUI pixels, the slot's `translate(x + 8, y + 8)`
-/// and `scale(16, -16, 16)` with a turn of the caller's in between), lit, culled and sorted far
-/// to near as in a slot but cut by no slot: the item may turn out of its 16x16 box.
-#[allow(clippy::too_many_arguments)]
-pub fn draw_posed(
-    state: &ItemRenderState,
-    renderer: &ItemRenderer,
-    sprites: &HashMap<String, Rect>,
-    host: &dyn SpecialHost,
-    batch: &mut HudBatch,
-    pose: Mat4,
-    time: f32,
-    glint_speed: f32,
-    glint_alpha: f32,
-) -> bool {
-    if state.is_empty() {
-        return true;
-    }
-    let everywhere = [
-        f32::NEG_INFINITY,
-        f32::NEG_INFINITY,
-        f32::INFINITY,
-        f32::INFINITY,
-    ];
-    draw_under(
-        state,
-        renderer,
-        sprites,
-        host,
-        batch,
-        pose,
-        everywhere,
-        time,
-        glint_speed,
-        glint_alpha,
-    )
-}
-
-/// Submits `state` under `pose`, lights it as a slot does and draws it clipped to `rect`. False,
-/// with nothing drawn, when a corner is not finite.
-#[allow(clippy::too_many_arguments)]
-fn draw_under(
-    state: &ItemRenderState,
-    renderer: &ItemRenderer,
-    sprites: &HashMap<String, Rect>,
-    host: &dyn SpecialHost,
-    batch: &mut HudBatch,
-    pose: Mat4,
-    rect: [f32; 4],
-    time: f32,
-    glint_speed: f32,
-    glint_alpha: f32,
-) -> bool {
-    let mut quads: Vec<ItemQuad> = Vec::new();
-    state.submit(renderer, sprites, host, pose, &mut quads);
-    // A turn that overflows a corner draws nothing.
-    if !quads.iter().all(|q| q.pos.iter().all(|p| p.is_finite())) {
-        return false;
-    }
-    let lights = if state.uses_block_light() {
-        items_3d_lights()
-    } else {
-        items_flat_lights()
-    };
     let glint = sprites
         .contains_key("misc/enchanted_glint_item")
         .then_some(Glint {
@@ -444,6 +373,93 @@ fn draw_under(
         millis: time * 1000.0,
     });
     draw_quads_with(&quads, lights, batch, rect, glint.as_ref(), cit);
+}
+
+/// What an item's drawing reads of the game besides the item itself: the renderer, the atlas'
+/// sprites and the host of the special models.
+pub struct GuiItemEnv<'a> {
+    pub renderer: &'a ItemRenderer,
+    pub sprites: &'a HashMap<String, Rect>,
+    pub host: &'a dyn SpecialHost,
+}
+
+/// An item drawn under the caller's `pose` (GUI pixels, the slot's `translate(x + 8, y + 8)`
+/// and `scale(16, -16, 16)` with a turn of the caller's in between), lit and culled as in a
+/// slot but cut by no slot, and with a depth of its own like a GUI model
+/// ([`HudBatch::depth_glint_since`]): its faces meet each other by depth, whatever the turn, and
+/// never intersect what the screen drew before or after. The OptiFine CIT glint layers are not
+/// drawn. False, with nothing drawn, when a corner is not finite.
+pub fn draw_posed(
+    state: &ItemRenderState,
+    env: &GuiItemEnv,
+    batch: &mut HudBatch,
+    pose: Mat4,
+    frame: GlintFrame,
+) -> bool {
+    if state.is_empty() {
+        return true;
+    }
+    let mut quads: Vec<ItemQuad> = Vec::new();
+    state.submit(env.renderer, env.sprites, env.host, pose, &mut quads);
+    if !quads.iter().all(|q| q.pos.iter().all(|p| p.is_finite())) {
+        return false;
+    }
+    let lights = if state.uses_block_light() {
+        items_3d_lights()
+    } else {
+        items_flat_lights()
+    };
+    batch.glint_alpha = frame.alpha;
+    let glint = frame.glint(8.0);
+    let start = batch.vertices.len();
+    // The foil's faces follow the item's own, as `depth_glint_since` takes them.
+    let mut foil = Vec::new();
+    let (mut lo, mut hi) = ([f32::INFINITY; 2], [f32::NEG_INFINITY; 2]);
+    for face in depth::sort(&quads) {
+        let q = &quads[face.quad];
+        let color = lit_color(q, lights);
+        // A whole quad goes out as one; a face the sort split goes out as a fan of triangles.
+        let fan: Vec<[_; 4]> = if let Ok(quad) = <[_; 4]>::try_from(&face.corners[..]) {
+            vec![quad]
+        } else {
+            (1..face.corners.len().saturating_sub(1))
+                .map(|i| {
+                    let c = face.corners[i + 1];
+                    [face.corners[0], face.corners[i], c, c]
+                })
+                .collect()
+        };
+        for corners in fan {
+            for c in corners {
+                for axis in 0..2 {
+                    lo[axis] = lo[axis].min(c.pos[axis]);
+                    hi[axis] = hi[axis].max(c.pos[axis]);
+                }
+            }
+            batch.quad_3d(
+                corners.map(|c| c.pos.to_array()),
+                corners.map(|c| c.uv),
+                color,
+            );
+            if q.foil != Foil::None && glint.is_some() {
+                foil.push(corners);
+            }
+        }
+    }
+    let glint_start = batch.vertices.len();
+    if let Some(glint) = &glint {
+        for corners in foil {
+            batch.quad_3d_glint(
+                corners.map(|c| c.pos.to_array()),
+                corners.map(|c| c.uv),
+                corners.map(|c| glint.uv(c.glint_uv)),
+                false,
+            );
+        }
+    }
+    if batch.vertices.len() > start {
+        batch.depth_glint_since(start, glint_start, [lo[0], lo[1], hi[0], hi[1]]);
+    }
     true
 }
 
