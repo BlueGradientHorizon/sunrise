@@ -13,6 +13,7 @@ so that player data exists. The saved world is kept in datafix/worlds/VERSION in
 import argparse
 import hashlib
 import json
+import os
 import queue
 import re
 import shutil
@@ -20,6 +21,7 @@ import socket
 import struct
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.request
@@ -73,9 +75,13 @@ def fetch(path, url, sha1, what):
     data = urllib.request.urlopen(url).read()
     if hashlib.sha1(data).hexdigest() != sha1:
         sys.exit(f'{what}: checksum mismatch')
-    partial = path.with_name(path.name + '.part')
-    partial.write_bytes(data)
-    partial.replace(path)
+    partial = tempfile.NamedTemporaryFile(dir=path.parent, suffix='.part', delete=False)
+    try:
+        with partial:
+            partial.write(data)
+        os.replace(partial.name, path)
+    finally:
+        Path(partial.name).unlink(missing_ok=True)
 
 
 def version_meta(version):

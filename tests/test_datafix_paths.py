@@ -187,6 +187,25 @@ class DatafixPaths(unittest.TestCase):
         self.assertEqual(len(fetched), 3)
         self.assertEqual(sorted(p.name for p in folder.iterdir()), ['server.jar', 'version.json'])
 
+    def test_failed_download_replace_keeps_destination_and_removes_temp(self):
+        worlds, _ = self.consumers()
+        path = self.checkout / 'version.json'
+        path.write_bytes(b'old')
+        body = b'new'
+
+        def fail_replace(source, destination):
+            self.assertEqual(Path(source).parent, path.parent)
+            self.assertEqual(Path(source).read_bytes(), body)
+            self.assertEqual(destination, path)
+            raise OSError('replace failed')
+
+        with (mock.patch.object(worlds.urllib.request, 'urlopen', return_value=io.BytesIO(body)),
+              mock.patch.object(worlds.os, 'replace', side_effect=fail_replace),
+              self.assertRaisesRegex(OSError, 'replace failed')):
+            worlds.fetch(path, 'https://invalid.test/meta', hashlib.sha1(body).hexdigest(), 'version metadata')
+        self.assertEqual(path.read_bytes(), b'old')
+        self.assertFalse(list(path.parent.glob('*.part')))
+
     def test_download_and_lock_destinations_are_private(self):
         worlds, parity = self.consumers()
         payload = io.BytesIO()
