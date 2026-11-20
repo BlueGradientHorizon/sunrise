@@ -344,18 +344,22 @@ mod tests {
     }
 
     #[test]
-    fn travel_replay_can_read_known_shape_answers_but_never_asks_a_part() {
-        let parts = parts();
+    fn travel_replay_reads_cached_shape_answers_without_filling_a_miss() {
+        let parts = ModParts::new(Arc::new(loop_context()));
         let context = entity(7);
         let block = BlockStateId(1);
         let at = BlockPos::new(1, 64, 1);
         let beside = BlockPos::new(2, 64, 1);
-        COLLISION_ANSWER.with_borrow_mut(|answer| {
-            *answer = Some(Box::new(|_| Some(vec![[0.0, 0.0, 0.0, 1.0, 0.5, 1.0]])));
-        });
-        assert!(parts.shape(block, at, &context, &mut || &[]).is_some());
-        COLLISION_ANSWER.with_borrow_mut(|answer| *answer = None);
-        assert!(parts.shape(block, beside, &context, &mut || &[]).is_none());
+        let half_block = CheckedShape::new(&[[0.0, 0.0, 0.0, 1.0, 0.5, 1.0]])
+            .unwrap()
+            .into_shape();
+        parts.cache.borrow_mut().extend([
+            (
+                AnswerKey::new(block, at, &context, 7, None, None),
+                Some(half_block),
+            ),
+            (AnswerKey::new(block, beside, &context, 7, None, None), None),
+        ]);
 
         let cached = parts.cached_shape(block, at, &context, &mut || &[]);
         let shape = cached.unwrap().unwrap();
@@ -369,7 +373,7 @@ mod tests {
                 .cached_shape(block, at, &entity(8), &mut || &[])
                 .is_none()
         );
-        assert_eq!(COLLISION_ASKS.get(), 2);
+        assert_eq!(parts.cache.borrow().len(), 2);
     }
 
     #[test]
