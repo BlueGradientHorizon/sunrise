@@ -50,43 +50,51 @@ impl Game<'_> {
     /// it is a player. Places tie only for those that never boarded through `addPassenger` (a
     /// load keeps its list order), players ahead.
     pub(in crate::game) fn seated_passengers(&self, vehicle: u32) -> Vec<(i64, u32, bool)> {
+        let mut seats: Vec<(i64, u32, bool)> = self.passengers_unsorted(vehicle).collect();
+        seats.sort_by_key(|&(place, ..)| place);
+        seats
+    }
+    /// `Entity.isVehicle`: [`Self::seated_passengers`] is not empty, asked without collecting or
+    /// sorting them.
+    pub(in crate::game) fn has_seated_passengers(&self, vehicle: u32) -> bool {
+        self.passengers_unsorted(vehicle).next().is_some()
+    }
+    /// The passengers of [`Self::seated_passengers`] as they are found: the guests, the player
+    /// riding through `riding`, the mobs (removed ones left out), then the general entities.
+    fn passengers_unsorted(&self, vehicle: u32) -> impl Iterator<Item = (i64, u32, bool)> + '_ {
         let acting = self.lan_acting.filter(|_| self.player.is_some());
-        let mut acting_listed = false;
-        let mut seats: Vec<(i64, u32, bool)> = self
-            .lan
-            .iter()
-            .flat_map(|h| h.hub.guests.iter())
-            .filter(|g| g.placed && g.dimension == self.dim.id())
-            .filter(|g| {
+        let placed =
+            |g: &&sunrise_client::lan::guest::Guest| g.placed && g.dimension == self.dim.id();
+        let guests = move || {
+            self.lan
+                .iter()
+                .flat_map(|h| h.hub.guests.iter())
+                .filter(placed)
+        };
+        let acting_listed = acting.is_some() && guests().any(|g| acting == Some(g.conn));
+        let riders = guests()
+            .filter(move |g| {
                 let rides = if acting == Some(g.conn) {
-                    acting_listed = true;
                     self.riding
                 } else {
                     g.vehicle
                 };
                 rides == Some(vehicle)
             })
-            .map(|g| (g.vehicle_order, g.entity_id as u32, true))
-            .collect();
+            .map(|g| (g.vehicle_order, g.entity_id as u32, true));
         // Through `riding`: an acting guest the placed list lacks (no place kept, first), or this game's own player.
-        if let Some((me, place)) = self.riding_player()
-            && !acting_listed
-            && self.player.is_some()
-            && self.riding == Some(vehicle)
-        {
-            seats.push((place, me, true));
-        }
-        seats.extend(
-            self.mob_objects()
-                .filter(|m| m.extra.mount == Some(vehicle) && !m.removed)
-                .map(|m| (m.extra.vehicle_order, m.id, false)),
-        );
-        seats.extend(
-            self.general_passengers(vehicle)
-                .map(|row| (row.vehicle_order, row.id, false)),
-        );
-        seats.sort_by_key(|&(place, ..)| place);
-        seats
+        let me = self
+            .riding_player()
+            .filter(|_| !acting_listed && self.player.is_some() && self.riding == Some(vehicle))
+            .map(|(me, place)| (place, me, true));
+        let mobs = self
+            .mob_objects()
+            .filter(move |m| m.extra.mount == Some(vehicle) && !m.removed)
+            .map(|m| (m.extra.vehicle_order, m.id, false));
+        let general = self
+            .general_passengers(vehicle)
+            .map(|row| (row.vehicle_order, row.id, false));
+        riders.chain(me).chain(mobs).chain(general)
     }
     /// `Entity.addPassenger`: the place of `rider` getting on `vehicle`. On a server a player
     /// goes ahead of a first passenger that is no player; everything else goes last.

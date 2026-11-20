@@ -134,8 +134,9 @@ const INT_NAMES: [&str; 21] = [
 
 /// The `bool` built-ins (the same probes: Iris kept these only in `bool`), with the player
 /// booleans only custom uniforms read (spec 3.4: `is_alive`, `is_child`, `is_glowing`,
-/// `is_in_lava`, `is_in_water`, `is_ridden`, `is_riding`, `is_wet`). Every other built-in is a
-/// float there, kept only in `float`.
+/// `is_in_lava`, `is_in_water`, `is_ridden`, `is_riding`, `is_wet`). Those eight were not
+/// probed: they are bool like the six that were, by inference (decision D-2,
+/// `docs/cleanroom/decisions.md`). Every other built-in is a float there, kept only in `float`.
 const BOOL_NAMES: [&str; 24] = [
     "feetInWater",
     "firstPersonCamera",

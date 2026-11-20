@@ -1187,8 +1187,11 @@ pub fn index(name: &str) -> Option<usize> {
     NAMES.iter().position(|n| *n == name)
 }
 
-/// The player booleans of [`NAMES`] that only custom uniforms read (spec 3.4: Iris gives
-/// the other six to programs too): a program that declares one reads 0.
+/// The player booleans of [`NAMES`] that only custom uniforms read: spec 3.4 says `[IR]` also
+/// exposes six of the fourteen as uniforms, and its uniform table (5.2) lists only those six.
+/// A program that declares one gets no built-in value for it: it reads 0, unless the pack
+/// defines a custom uniform of that name, which binds instead. Recorded as decision D-2
+/// (`docs/cleanroom/decisions.md`).
 const EXPRESSION_ONLY: [&str; 8] = [
     "is_alive",
     "is_child",
@@ -2667,8 +2670,8 @@ pub(super) mod initial_history_tests {
         }
     }
 
-    /// Programs read only the six player booleans Iris gives them (spec 3.4): a program that
-    /// declares one of the other eight finds no value to bind.
+    /// Programs read only the six player booleans of the uniform table (spec 3.4, 5.2; D-2): a
+    /// program that declares one of the other eight gets no built-in index for it.
     #[test]
     fn programs_read_only_six_player_booleans() {
         for name in [

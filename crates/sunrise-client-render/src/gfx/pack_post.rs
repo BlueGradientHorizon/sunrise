@@ -97,6 +97,9 @@ mod translucent_color_tests;
 #[cfg(test)]
 mod noise_resolution_tests;
 
+#[cfg(test)]
+mod player_boolean_tests;
+
 /// The texture behind a pack sampler name.
 #[derive(Clone, Copy, PartialEq)]
 enum Source {
