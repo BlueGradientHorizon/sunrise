@@ -414,7 +414,9 @@ echo "{\\"by\\": \\"$(cat "$2/marker")\\"}" > "$3"
             def unpack(commit, into, paths=()):
                 (into / "marker").write_text(commit)
 
-            git = lambda *a: MERGE if a[0] == "cat-file" else ""  # noqa: E731
+            def git(*args):
+                return MERGE if args[0] == "cat-file" else ""
+
             code, out, _ = self.run_main(tool=str(head_tool), base_commit=lambda *a: (sha, ""), unpack=unpack,
                                          git=git, base_tool=base_tool, landed_notes=lambda head, base: {sha: ["n.toml"]})
             self.assertEqual(code, 0, out)
