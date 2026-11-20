@@ -227,6 +227,28 @@ pub trait DrawContext {
     fn entity(&mut self, entity: &GuiEntity, view: GuiEntityView) -> Result<(), GuiEntityError> {
         Err(GuiEntityError::Unavailable)
     }
+    /// Draws an item or a resolved standalone model in 3D at `view.at`, `view.size` GUI pixels a
+    /// block, under the 3x4 `view.transform` the caller gives (any rotation, roll included), as
+    /// Create's symmetry wand screen draws its wand and its mirror. Orthographic, in the frame
+    /// `x` right, `y` up, `z` towards the viewer.
+    ///
+    /// - An item is drawn as a slot draws it (its model's `gui` display transform, then
+    ///   `view.transform`, lit with the GUI light that model asks for: flat items side lit,
+    ///   block-like items front lit); its count, damage bar and cooldown are not drawn.
+    /// - A model is drawn full bright and shaded by face, as the blocks of a scene are.
+    /// - Both subjects have a depth of their own, so a draw never intersects what the screen
+    ///   drew before or after it, and later drawing covers it in call order. An item's faces meet
+    ///   each other by depth, as a model's do, and its enchantment glint follows them; the
+    ///   OptiFine CIT glint layers of a stack are not drawn on this path yet (sunrise#3555). There
+    ///   is no z input. Both are cut by the clips opened with [`DrawContext::push_clip`], as
+    ///   `fill` is.
+    ///
+    /// A client's call from a drawing hook (`screen_draw`, `gui_render_post`); on a server it is
+    /// refused. Per call it draws the subject's baked quads, the cached model a slot's item
+    /// uses, with nothing on the tick path.
+    fn model_3d(&mut self, subject: Gui3dSubject, view: Gui3dView) -> Result<(), Gui3dError> {
+        Err(Gui3dError::Unavailable)
+    }
     /// `Screen.renderMenuBackground`: draws the tiled menu background (32x32) across `rect`
     /// (`[x, y, w, h]` in GUI pixels). If `in_world` is true, uses the dark translucent
     /// texture (`gui/inworld_menu_background`); otherwise uses the opaque dirt-like

@@ -2397,7 +2397,8 @@ impl HudBatch {
             });
         }
     }
-    /// Keep per-vertex depth for an orthographic GUI model, with +z toward the viewer.
+    /// Keep per-vertex depth for an orthographic GUI model, with +z toward the viewer. `clip` is
+    /// an explicit scissor in GUI pixels, cut to whole device pixels as it always was.
     pub fn depth_since(&mut self, start: usize, clip: [f32; 4]) {
         self.depth_glint_since(start, self.vertices.len(), clip);
     }
@@ -2405,6 +2406,32 @@ impl HudBatch {
     /// ([`Self::quad_3d_glint`]) follow its own from `glint`: both share the
     /// depth buffer, and the glint is drawn over the model in the same pass.
     pub fn depth_glint_since(&mut self, start: usize, glint: usize, clip: [f32; 4]) {
+        let [x0, y0, x1, y1] = clip.map(|v| (v * self.scale).max(0.0) as u32);
+        self.depth_pass_since(
+            start,
+            glint,
+            [x0, y0, x1.saturating_sub(x0), y1.saturating_sub(y0)],
+        );
+    }
+    /// [`Self::depth_glint_since`] for the screen bounds of the geometry itself (`lo` to `hi`, in
+    /// GUI pixels): the scissor takes every device pixel the bounds touch, so the min edges round
+    /// down and the max edges up.
+    pub fn depth_glint_over(&mut self, start: usize, glint: usize, lo: [f32; 2], hi: [f32; 2]) {
+        let [x0, y0] = lo.map(|v| (v * self.scale).max(0.0).floor() as u32);
+        let [x1, y1] = hi.map(|v| (v * self.scale).max(0.0).ceil() as u32);
+        self.depth_pass_since(
+            start,
+            glint,
+            [x0, y0, x1.saturating_sub(x0), y1.saturating_sub(y0)],
+        );
+    }
+    /// [`Self::depth_since`] for the screen bounds of the geometry itself: see
+    /// [`Self::depth_glint_over`].
+    pub fn depth_over(&mut self, start: usize, lo: [f32; 2], hi: [f32; 2]) {
+        self.depth_glint_over(start, self.vertices.len(), lo, hi);
+    }
+    /// The depth runs of `start..` with the scissor `clip` in device pixels (`[x, y, w, h]`).
+    fn depth_pass_since(&mut self, start: usize, glint: usize, clip: [u32; 4]) {
         let glint = glint.clamp(start, self.vertices.len());
         let vertices = &mut self.vertices[start..];
         if vertices.is_empty() {
@@ -2421,8 +2448,6 @@ impl HudBatch {
         for v in vertices {
             v.depth = (max - v.depth) / (max - min).max(f32::EPSILON);
         }
-        let [x0, y0, x1, y1] = clip.map(|v| (v * self.scale).max(0.0) as u32);
-        let clip = [x0, y0, x1.saturating_sub(x0), y1.saturating_sub(y0)];
         // Separate previews clear depth independently, even if their scissors match.
         if glint > start {
             self.blends
@@ -6397,6 +6422,37 @@ texture=wide",
                 .iter()
                 .all(|v| v.depth.is_finite() && (0.0..=1.0).contains(&v.depth))
         );
+    }
+
+    /// The scissor of a geometry's own bounds takes every device pixel they touch: bounds
+    /// reaching x = 10.75 take the pixel centred at 10.5, and the min edges round down. An
+    /// explicit clip keeps its whole pixels: one ending at x = 10.25 gains no column.
+    #[test]
+    fn a_depth_scissor_over_geometry_rounds_outward_and_an_explicit_clip_does_not() {
+        let quad = |batch: &mut HudBatch| {
+            let start = batch.vertices.len();
+            batch.quad_3d(
+                [
+                    [1.25, 2.0, 0.0],
+                    [1.25, 6.5, 0.0],
+                    [10.75, 6.5, 1.0],
+                    [10.75, 2.0, 1.0],
+                ],
+                [[0.0; 2]; 4],
+                u32::MAX,
+            );
+            start
+        };
+        let mut batch = HudBatch::scratch([640, 480]);
+        batch.scale = 1.0;
+        let start = quad(&mut batch);
+        batch.depth_over(start, [1.25, 2.0], [10.75, 6.5]);
+        assert_eq!(batch.runs(), vec![(0..6, Blend::Depth([1, 2, 10, 5]))]);
+        let mut batch = HudBatch::scratch([640, 480]);
+        batch.scale = 1.0;
+        let start = quad(&mut batch);
+        batch.depth_since(start, [1.25, 2.0, 10.25, 6.5]);
+        assert_eq!(batch.runs(), vec![(0..6, Blend::Depth([1, 2, 9, 4]))]);
     }
 
     #[test]
