@@ -312,10 +312,6 @@ class MainTests(unittest.TestCase):
         find_base.assert_not_called()
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 @unittest.skipUnless(shutil.which("bash"), "needs bash for the stub tool")
 class LandedTests(unittest.TestCase):
     SHA = "6" * 40
@@ -361,7 +357,16 @@ exit {diff_exit}
         _, code, text, _, _ = self.check(1)
         self.assertEqual(code, 1)
         self.assertIn(f"r61.toml (landed {self.SHA})", text)
-        self.assertIn("names point:a, which did not change", text)
+
+    def test_a_landed_that_is_not_a_full_sha_is_not_returned(self):
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            for side in ("head", "base"):
+                (work / side / surface_report.NOTES).mkdir(parents=True)
+            for name, value in (("a", "--upload-pack=x"), ("b", "6597e08"), ("c", "G" * 40)):
+                (work / "head" / surface_report.NOTES / f"{name}.toml").write_text(
+                    f'ids = ["x"]\nwhy = "w"\nlanded = "{value}"\n')
+            self.assertEqual(surface_report.landed_notes(work / "head", work / "base"), {})
 
     def test_a_commit_that_is_not_a_two_parent_merge_fails(self):
         _, code, text, calls, _ = self.check(
@@ -369,3 +374,7 @@ exit {diff_exit}
         self.assertEqual(code, 1)
         self.assertIn("not a merge commit with two parents", text)
         self.assertNotIn("surface-diff", calls)
+
+
+if __name__ == "__main__":
+    unittest.main()

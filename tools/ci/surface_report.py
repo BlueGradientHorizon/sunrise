@@ -27,6 +27,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -182,8 +183,10 @@ def landed_notes(head: Path, base: Path) -> dict[str, list[str]]:
             sha = tomllib.loads(path.read_text()).get("landed")
         except (tomllib.TOMLDecodeError, UnicodeDecodeError):
             continue
-        if isinstance(sha, str):
-            found.setdefault(sha.lower(), []).append(path.name)
+        # Exactly what the reader accepts, lowercased: the sha reaches git and a folder name. Anything else is
+        # the reader's to refuse in the pull request's own comparison.
+        if isinstance(sha, str) and re.fullmatch(r"[0-9a-f]{40}", sha := sha.lower()):
+            found.setdefault(sha, []).append(path.name)
     return found
 
 

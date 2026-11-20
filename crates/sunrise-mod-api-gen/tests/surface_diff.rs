@@ -180,6 +180,48 @@ fn a_new_note_naming_an_unchanged_id_fails_and_an_old_or_edited_one_is_ignored()
 
 #[test]
 #[ignore = "daily"]
+fn a_landed_note_is_checked_only_against_its_own_merge() {
+    let dir = folder();
+    let sha = "6597e0855f562498319f093afcf2ed1ea8d717cb";
+    let own = ["--notes", "changes", "--base-notes", "base"];
+    let landed = [own[0], own[1], own[2], own[3], "--landed", sha];
+    // Changed in that merge: attached with `--landed`, and left out of the pull request's own diff.
+    note(
+        dir.path(),
+        "changes",
+        "late.toml",
+        &format!("ids = [\"fn:spawn\"]\nwhy = \"Late.\"\nlanded = \"{sha}\"\n"),
+    );
+    let (code, out, err) = run(dir.path(), &own);
+    assert_eq!(code, 0, "{err}");
+    assert!(!out.contains("Late."), "{out}");
+    let (code, out, err) = run(dir.path(), &landed);
+    assert_eq!(code, 0, "{err}");
+    assert!(out.contains("Late."), "{out}");
+    // An id that did not change in that merge is stale; another merge's notes are not read.
+    note(
+        dir.path(),
+        "changes",
+        "late.toml",
+        &format!("ids = [\"fn:keep\"]\nwhy = \"Late.\"\nlanded = \"{sha}\"\n"),
+    );
+    let (code, _, err) = run(dir.path(), &landed);
+    assert_eq!(code, 1);
+    assert!(
+        err.contains("change note late.toml names fn:keep, which did not change"),
+        "{err}"
+    );
+    let other = "1".repeat(40);
+    let (code, out, _) = run(
+        dir.path(),
+        &[own[0], own[1], own[2], own[3], "--landed", &other],
+    );
+    assert_eq!(code, 0);
+    assert!(!out.contains("Late."), "{out}");
+}
+
+#[test]
+#[ignore = "daily"]
 fn sdk_note_scope_ignores_engine_ids_but_checks_api_ids() {
     let dir = folder();
     note(
