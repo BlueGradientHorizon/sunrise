@@ -22,14 +22,23 @@ struct Priorities(HashMap<String, i32>);
 impl Priorities {
     /// Apply one layer, or refuse it as a whole naming `source`: a root that is not an object,
     /// a `replace` that is not a boolean, an `entries` that is not an object of signed 32-bit
-    /// integers. A layer whose load conditions fail changes nothing, however it is written.
+    /// integers, or invalid load conditions. A layer with a valid false condition changes nothing.
     fn layer(&mut self, source: &str, bytes: &[u8], conditions: &LoadConditions) -> Result<()> {
         let refused = |reason: String| format!("recipe priorities of {source} refused: {reason}");
         let file: Value = serde_json::from_slice(bytes).map_err(|e| refused(e.to_string()))?;
         if !file.is_object() {
             return Err(refused("the root must be an object".into()).into());
         }
-        if !conditions.allows_file(&file, "recipe_priorities.json") {
+        if file
+            .get("neoforge:conditions")
+            .is_some_and(|value| !value.is_array())
+        {
+            return Err(refused("neoforge:conditions must be an array".into()).into());
+        }
+        if !conditions
+            .allows_file_isolated(&file, source)
+            .map_err(refused)?
+        {
             return Ok(());
         }
         let layer = Layer::deserialize(&file).map_err(|e| refused(e.to_string()))?;

@@ -79,11 +79,14 @@ fn layers_conditions_unknown_ids_and_integer_boundaries() {
         br#"{"entries":{"test:a":3,"test:absent":17,"test:min":-2147483648}}"#,
     )
     .unwrap();
-    let files = vec![("recipe_priorities".into(), vec![
-        br#"{"entries":{"test:a":5,"test:b":-2}}"#.to_vec(),
-        br#"{"replace":true,"neoforge:conditions":[{"type":"neoforge:not","value":{"type":"neoforge:true"}}]}"#.to_vec(),
-        br#"{"entries":{"test:b":2147483647}}"#.to_vec(),
-    ])];
+    let files = vec![(
+        "recipe_priorities".into(),
+        vec![
+            br#"{"entries":{"test:a":5,"test:b":-2}}"#.to_vec(),
+            br#"{"replace":true,"neoforge:conditions":[{"type":"neoforge:never"}]}"#.to_vec(),
+            br#"{"entries":{"test:b":2147483647}}"#.to_vec(),
+        ],
+    )];
     let priorities = Priorities::load(&root.0, &PackOverlay::new(&files)).unwrap();
     assert_eq!(priorities.get("test:a"), 5);
     assert_eq!(priorities.get("test:b"), i32::MAX);
@@ -134,10 +137,41 @@ fn an_invalid_layer_is_refused_whole_naming_its_pack() {
         "recipe_priorities".into(),
         vec![layer(
             "off",
-            r#"{"replace":"yes","neoforge:conditions":[{"type":"neoforge:not","value":{"type":"neoforge:true"}}]}"#,
+            r#"{"replace":"yes","neoforge:conditions":[{"type":"neoforge:never"}]}"#,
         )],
     )];
     assert!(Priorities::load(&root.0, &PackOverlay::new(&files)).is_ok());
+}
+
+#[test]
+fn invalid_load_conditions_refuse_a_replacing_layer_without_clearing_priorities() {
+    let conditions = LoadConditions::vanilla();
+    let mut priorities = Priorities::default();
+    let path = "data/neoforge/recipe_priorities.json";
+    priorities
+        .layer(
+            "lower: data/neoforge/recipe_priorities.json",
+            br#"{"entries":{"test:a":5}}"#,
+            &conditions,
+        )
+        .unwrap();
+    for cases in [
+        json!(true),
+        json!([false]),
+        json!([{"type":"test:unknown"}]),
+    ] {
+        let bytes = serde_json::to_vec(&json!({
+            "replace": true,
+            "neoforge:conditions": cases,
+            "entries": {"test:b": 12}
+        }))
+        .unwrap();
+        let source = format!("higher: {path}");
+        let error = priorities.layer(&source, &bytes, &conditions).unwrap_err();
+        assert!(error.to_string().contains(&source), "{error}");
+        assert_eq!(priorities.get("test:a"), 5);
+        assert_eq!(priorities.get("test:b"), 0);
+    }
 }
 
 struct Crusher;
