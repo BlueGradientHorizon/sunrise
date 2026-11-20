@@ -5,7 +5,7 @@ pub trait Hooks {
     /// `INFO`, `WARN` or `ERROR`, `thread` names the logging thread, and `message` is the text
     /// without its timestamp, thread or level prefix. Lines from every logging thread are
     /// delivered in order on the server thread at the start of the next server tick. The
-    /// tap starts on the first tick with a listener; without one, no log is captured and no
+    /// tap starts on the first tick with an enabled listener; without one, no log is captured and no
     /// queue is allocated or locked in the idle path. A listener's own log calls are not tapped.
     /// The queue keeps the oldest 4096 lines and discards later ones until it drains. `dropped`
     /// reports the number discarded on the first line of that batch and is zero on all other
@@ -17,6 +17,7 @@ pub trait Hooks {
     #[hook(
         side = "server",
         contract = "listen",
+        event_per_listener = true,
         version = 2,
         neoforge = "none (NeoForge has no log event; mods add a Log4j appender)",
         paper = "none (plugins add a Log4j appender)"
