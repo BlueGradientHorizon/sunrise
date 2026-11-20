@@ -51,12 +51,14 @@ impl PlacementContext {
 /// Vanilla's `BlockPlaceContext.getPlayer()` and the placer's eyes at the time of the click.
 /// The engine reads the acting or locally predicted player's eyes before borrowing the level.
 #[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
 pub struct PlacementPlacer {
     player: PlayerRef,
     eye_position: [f64; 3],
 }
 
 impl PlacementPlacer {
+    // hidden: only the engine constructs the snapshot of the acting player.
     #[doc(hidden)]
     pub fn new(player: PlayerRef, eye_position: [f64; 3]) -> Self {
         Self {
