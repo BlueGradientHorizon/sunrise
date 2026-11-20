@@ -150,11 +150,17 @@ impl Game<'_> {
     }
 
     /// The enabled feature flags as this side knows them: a client's are the server's, sent at
-    /// join; a server's are its world's `enabled_features`.
-    pub(super) fn enabled_feature_ids(&self) -> &Arc<[String]> {
-        self.remote
-            .as_ref()
-            .map_or(&self.level.enabled_features, |remote| &remote.features)
+    /// join; a server's are its world's `enabled_features`, where an empty list is vanilla's
+    /// default (`FeatureFlags.DEFAULT_FLAGS`, which `WorldDataConfiguration` omits from level.dat),
+    /// so it reads as `minecraft:vanilla` on both sides.
+    pub(in crate::game) fn enabled_feature_ids(&self) -> &Arc<[String]> {
+        static VANILLA: std::sync::LazyLock<Arc<[String]>> =
+            std::sync::LazyLock::new(|| ["minecraft:vanilla".to_owned()].into());
+        match &self.remote {
+            Some(remote) => &remote.features,
+            None if self.level.enabled_features.is_empty() => &VANILLA,
+            None => &self.level.enabled_features,
+        }
     }
     /// Dimension shape of a loaded server level, including parked levels.
     pub(super) fn level_dimension_shape(&self, level: LevelRef) -> Option<LevelDimensionShape> {
