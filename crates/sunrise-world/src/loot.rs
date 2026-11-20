@@ -2269,11 +2269,12 @@ mod namespace_tests {
         let enabled = crate::conditions::LoadConditions::new(["package_id"]);
         let off = PackOverlay {
             files: &files,
-            ..PackOverlay::NONE
+            ..PackOverlay::default()
         };
         let on = PackOverlay {
             files: &files,
             conditions: &enabled,
+            ..PackOverlay::default()
         };
         let absent = shared_tables(&root, &off).unwrap();
         assert!(!absent.contains_key("demo:base"));

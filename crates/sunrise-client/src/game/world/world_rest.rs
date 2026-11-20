@@ -32,6 +32,7 @@ pub(super) fn load_world_rest(
     let overlay = &sunrise_world::loot::PackOverlay {
         conditions,
         files: &files,
+        ..sunrise_world::loot::PackOverlay::default()
     };
     progress.set(6);
     // Independent tables load together, within the worker budget the settings

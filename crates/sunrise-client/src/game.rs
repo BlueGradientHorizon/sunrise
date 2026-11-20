@@ -89,6 +89,7 @@ fn pack_files(world_tables: &Option<WorldTables>) -> sunrise_world::loot::PackOv
         Some(t) => sunrise_world::loot::PackOverlay {
             conditions: &t.conditions,
             files: &t.files,
+            ..sunrise_world::loot::PackOverlay::default()
         },
         None => sunrise_world::loot::PackOverlay::NONE,
     }

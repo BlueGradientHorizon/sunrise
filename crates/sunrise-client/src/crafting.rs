@@ -2478,8 +2478,8 @@ mod tests {
         let load = crate::test_resources::server_load();
         let conditions = sunrise_world::conditions::LoadConditions::new([]);
         let overlay = PackOverlay {
-            files: &[],
             conditions: &conditions,
+            ..PackOverlay::default()
         };
         let recipes = Recipes::load(root.path(), &items, &overlay, &load).unwrap();
         assert!(recipes.crafting.is_empty() && recipes.by_type.is_empty());

@@ -256,6 +256,7 @@ impl Game<'_> {
         let overlay = sunrise_world::loot::PackOverlay {
             conditions: &conditions,
             files: &files,
+            ..sunrise_world::loot::PackOverlay::default()
         };
         let mut data_map_types = Vec::new();
         self.native_data_map_types(&mut data_map_types);
@@ -281,12 +282,14 @@ impl Game<'_> {
         let tag_files = sunrise_world::loot::PackOverlay {
             conditions: &conditions,
             files: &files,
+            ..sunrise_world::loot::PackOverlay::default()
         };
         // The other tables read from here on see this load's bound tags (`neoforge:tag_empty`).
         let conditions = conditions.with_tags(items.bound_tags());
         let overlay = sunrise_world::loot::PackOverlay {
             conditions: &conditions,
             files: &files,
+            ..sunrise_world::loot::PackOverlay::default()
         };
         let packed_registry_definitions =
             if let Some(tables) = self.world_tables.as_ref().filter(|_| reload) {
@@ -636,6 +639,7 @@ impl Game<'_> {
             let overlay = sunrise_world::loot::PackOverlay {
                 conditions: &tables.conditions,
                 files: &tables.files,
+                ..sunrise_world::loot::PackOverlay::default()
             };
             lan::sync::install_server_sources(
                 &self.options.resources,

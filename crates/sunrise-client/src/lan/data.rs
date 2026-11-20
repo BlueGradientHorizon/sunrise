@@ -1353,6 +1353,7 @@ mod tests {
             &sunrise_world::loot::PackOverlay {
                 files: &files,
                 conditions: &conditions,
+                ..sunrise_world::loot::PackOverlay::default()
             },
             &BTreeMap::new(),
             &Default::default(),
@@ -1400,6 +1401,7 @@ mod tests {
                 &sunrise_world::loot::PackOverlay {
                     files: &files,
                     conditions: &conditions,
+                    ..sunrise_world::loot::PackOverlay::default()
                 },
                 &BTreeMap::new(),
                 &Default::default(),
@@ -2423,6 +2425,7 @@ mod transient_dialog_tests {
             &sunrise_world::loot::PackOverlay {
                 files: &files,
                 conditions: &conditions,
+                ..sunrise_world::loot::PackOverlay::default()
             },
             &BTreeMap::new(),
             &Default::default(),
