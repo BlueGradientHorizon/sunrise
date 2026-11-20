@@ -201,7 +201,8 @@ mod tests {
             );
             let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             let (vehicle, rider) = (90, 91);
-            game.mobs.push(Mob::new(vehicle, pig.clone(), Vec3::ZERO, 0.0));
+            game.mobs
+                .push(Mob::new(vehicle, pig.clone(), Vec3::ZERO, 0.0));
             let order = game.boarding_order(vehicle, 12, true);
             let dimension = game.dim.id().to_owned();
             game.lan
@@ -242,10 +243,16 @@ mod tests {
                 sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 8.5))
                     .unwrap(),
             );
-            let ghast = game.res.mob_types().get("minecraft:happy_ghast").unwrap().clone();
+            let ghast = game
+                .res
+                .mob_types()
+                .get("minecraft:happy_ghast")
+                .unwrap()
+                .clone();
             let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             let (vehicle, rider) = (90, 91);
-            game.mobs.push(Mob::new(vehicle, ghast, Vec3::new(8.5, 64.0, 8.5), 0.0));
+            game.mobs
+                .push(Mob::new(vehicle, ghast, Vec3::new(8.5, 64.0, 8.5), 0.0));
             let order = game.boarding_order(vehicle, 12, true);
             let dimension = game.dim.id().to_owned();
             game.lan
@@ -265,7 +272,11 @@ mod tests {
             game.start_riding(vehicle);
             game.position_rider();
             let at = game.player.as_ref().unwrap().position;
-            assert_eq!((at.x, at.z), (8.5, 8.5 - 1.7), "the third seat, not the first");
+            assert_eq!(
+                (at.x, at.z),
+                (8.5, 8.5 - 1.7),
+                "the third seat, not the first"
+            );
         });
     }
 

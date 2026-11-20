@@ -685,10 +685,10 @@ impl Game<'_> {
         };
         if m.species() == Species::HappyGhast {
             // The attachment of the player's place in `getPassengers`, in the ghast's own dimensions.
-            let seat = self.remote.as_ref().map_or_else(
-                || self.own_passenger_index(m.id),
-                |r| r.passenger_index,
-            );
+            let seat = self
+                .remote
+                .as_ref()
+                .map_or_else(|| self.own_passenger_index(m.id), |r| r.passenger_index);
             at = seat_of(
                 m,
                 sunrise_client::mobs::riders::passenger_attachment_at(m, seat),

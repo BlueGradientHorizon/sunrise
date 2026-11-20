@@ -197,7 +197,11 @@ fn a_mob_that_boards_a_happy_ghast_after_its_player_takes_the_next_seat() {
         .expect("the pig");
     assert_eq!(pig.extra.mount, Some(id), "the pig rides the ghast");
     let ghast = game.mobs.iter().find(|m| m.id == id).unwrap().position;
-    assert_eq!(pig.position.x, ghast.x - 1.7, "the left seat, not the player's");
+    assert_eq!(
+        pig.position.x,
+        ghast.x - 1.7,
+        "the left seat, not the player's"
+    );
     assert_eq!(pig.position.z, ghast.z);
 }
 
@@ -223,7 +227,11 @@ fn a_click_on_a_full_happy_ghast_seats_no_fifth_rider() {
     scene(&mut game);
     let id = ghast(&mut game);
     ride_pigs(&mut game, 4);
-    let index = game.mobs.iter().position(|m| m.id == id).expect("the ghast");
+    let index = game
+        .mobs
+        .iter()
+        .position(|m| m.id == id)
+        .expect("the ghast");
     game.mobs[index]
         .extra
         .set_body(Some("minecraft:white_harness".into()));
@@ -259,7 +267,11 @@ fn a_mob_on_a_ghastling_sits_at_the_scaled_seat() {
     assert!(game.run_command(&format!("ride {PIG} mount {GHAST}")));
     game.position_riders();
     let ghast = game.mobs.iter().find(|m| m.id == id).unwrap().position;
-    let pig = game.mobs.iter().find(|m| m.species() == Species::Pig).expect("the pig");
+    let pig = game
+        .mobs
+        .iter()
+        .find(|m| m.species() == Species::Pig)
+        .expect("the pig");
     assert_eq!(pig.position.x, ghast.x - 1.7 * f64::from(0.2375_f32));
     assert_eq!(pig.position.z, ghast.z);
 }
