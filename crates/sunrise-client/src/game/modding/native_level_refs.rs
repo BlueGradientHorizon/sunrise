@@ -1002,7 +1002,10 @@ fn horizontal_in_bounds(pos: [i32; 3]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::super::api_values::TryIntoApi;
-    use super::super::{Dim, native_entity_refs::tests::with_game};
+    use super::super::{
+        Dim,
+        native_entity_refs::tests::{run_fresh_cases, with_game},
+    };
     use mod_api::{ChunkRef, LevelRef, LightLayer, WorldEpoch};
     use sunrise_core::position::BlockPos;
 
@@ -1821,10 +1824,42 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn paused_forced_loads_are_queued_and_stopped_generation_refuses_adds() {
+        if run_fresh_cases(
+            concat!(
+                "game::native_level_refs::tests::",
+                "paused_forced_loads_are_queued_and_stopped_generation_refuses_adds"
+            ),
+            "SUNRISE_FORCED_STREAMING_CHILD",
+            &["forced_streaming"],
+        ) {
+            return;
+        }
+
         with_game(|game| {
+            use std::sync::Arc;
+            use sunrise_client::{chunk::Chunk, world::World};
+
             game.options.headless = true;
             game.streaming.mesh = false;
             game.streaming.radius = 0;
+
+            // A remote streamer can use a column from a packet; it cannot
+            // generate a missing column or wait for its lighting and neighbours.
+            let mut remote_world = World::new(game.world.air, 0);
+            let streamer = &mut game.streaming;
+            streamer.remote = true;
+            assert!(!streamer.set_forced_loaded(&mut remote_world, 4, 4, true));
+            assert!(!streamer.commanded().contains(&(4, 4)));
+            assert!(!streamer.forced.contains(&(4, 4)));
+            remote_world
+                .chunks
+                .insert((4, 4), Arc::new(Chunk::empty(4, 4)));
+            assert!(streamer.set_forced_loaded(&mut remote_world, 4, 4, true));
+            assert!(streamer.commanded().contains(&(4, 4)));
+            assert!(streamer.forced.contains(&(4, 4)));
+            assert!(streamer.set_forced(4, 4, false));
+            streamer.remote = false;
+
             let level = game.level(game.dim.id()).unwrap();
             let queued = game.level_chunk_ref(level, [40, -7]).unwrap();
             assert!(!game.chunk_loaded(queued));

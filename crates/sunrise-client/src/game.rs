@@ -861,10 +861,7 @@ fn equipment_modifier_applies(group: &str, slot: &str) -> bool {
 /// A chunk whose ticking future can complete (`ChunkMap.prepareTickingChunk`):
 /// lit, with its neighbours loaded, as `postprocess_chunks` waits for.
 fn ticking_chunk(world: &World, x: i32, z: i32) -> bool {
-    let Some(center) = world.chunks.get(&(x, z)) else {
-        return false;
-    };
-    center.lit && world.chunks.surrounded((x, z))
+    world.chunks.is_ticking_ready((x, z))
 }
 /// `TicketStorage.canTicketExpire` for a `PORTAL` ticket: its chunk's holder is
 /// ready for saving once the futures of its level are done, the chunk lit and

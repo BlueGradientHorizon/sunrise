@@ -15,10 +15,7 @@ use crate::{
 };
 use std::{
     collections::{BinaryHeap, HashSet, VecDeque},
-    sync::{
-        Arc, Condvar, Mutex, MutexGuard, RwLock, TryLockError,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::{Arc, Condvar, Mutex, MutexGuard, RwLock, TryLockError, atomic::Ordering},
 };
 use sunrise_core::biome::BiomeZoom;
 use sunrise_threads::jobs::{Class, PerWorker, Rank, Registration, Source};
@@ -489,24 +486,6 @@ fn commit_unloads(world: &mut World, keys: &[(i32, i32)]) -> Vec<Arc<Chunk>> {
     keys.iter()
         .filter_map(|&key| world.unload_chunk(key))
         .collect()
-}
-
-/// A locally streamed forced column is ready once it can tick: lit with
-/// its 3×3 neighbourhood resident (vanilla's ticking-chunk future).
-fn forced_ready(world: &World, x: i32, z: i32) -> bool {
-    world.chunks.get(&(x, z)).is_some_and(|chunk| chunk.lit) && world.chunks.surrounded((x, z))
-}
-
-fn wait_for_forced_column(
-    world: &mut World,
-    x: i32,
-    z: i32,
-    aborted: &AtomicBool,
-    mut pump: impl FnMut(&mut World),
-) {
-    while !aborted.load(Ordering::Relaxed) && !forced_ready(world, x, z) {
-        pump(world);
-    }
 }
 
 /// An update paused before removing its out-of-range live chunks.
@@ -2736,10 +2715,9 @@ impl Streaming {
     /// `ServerLevel.setChunkForced`: load a newly forced local column to
     /// ticking readiness before returning. `ChunkMap.prepareTickingChunk`
     /// waits for the lit column and its 3×3 so saved ticks can resume (#3341).
-    /// While paused, record the ticket for when streaming starts. Remote
-    /// streamers can only accept resident columns. Refuse adds after generation
-    /// stops. If it stops during the wait, return true and keep the saved ticket
-    /// so the chunk loads at next startup. Repeated adds and removals do not wait.
+    /// While paused, record the ticket to take effect when its level starts
+    /// streaming. Remote streamers can only accept resident columns. Refuse adds
+    /// after generation stops. Repeated adds and removals do not wait.
     pub fn set_forced_loaded(&mut self, world: &mut World, x: i32, z: i32, forced: bool) -> bool {
         if !forced {
             return self.set_forced(x, z, false);
@@ -2757,8 +2735,7 @@ impl Streaming {
         if !self.set_forced(x, z, true) {
             return false;
         }
-        let shared = self.shared.clone();
-        wait_for_forced_column(world, x, z, &shared.aborted, |world| {
+        while !world.chunks.is_ticking_ready((x, z)) {
             // Pump the existing generation queue. Keep unloads for the
             // normal owner update, which saves entities and notifies mods.
             let mut plan = self.plan_update(world);
@@ -2767,10 +2744,10 @@ impl Streaming {
             let (meshes, unloaded) = self.finish_update(world, plan);
             debug_assert!(unloaded.is_empty());
             self.free(meshes);
-            if !shared.aborted.load(Ordering::Relaxed) && !forced_ready(world, x, z) {
+            if !world.chunks.is_ticking_ready((x, z)) {
                 self.wait(std::time::Duration::from_millis(5));
             }
-        });
+        }
         true
     }
 
@@ -3719,11 +3696,11 @@ mod tests {
     #[test]
     fn forced_column_is_loaded_once_it_can_tick() {
         let mut world = World::new(sunrise_world::registry::BlockStateId(0), 0);
-        assert!(!forced_ready(&world, 4, 4));
-        world.chunks.insert((4, 4), Arc::new(Chunk::empty(4, 4)));
-        assert!(!forced_ready(&world, 4, 4));
-        Arc::make_mut(world.chunks.get_mut(&(4, 4)).unwrap()).lit = true;
-        assert!(!forced_ready(&world, 4, 4));
+        assert!(!world.chunks.is_ticking_ready((4, 4)));
+        let mut center = Chunk::empty(4, 4);
+        center.lit = true;
+        world.chunks.insert((4, 4), Arc::new(center));
+        assert!(!world.chunks.is_ticking_ready((4, 4)));
         for dz in -1..=1 {
             for dx in -1..=1 {
                 if (dx, dz) != (0, 0) {
@@ -3733,20 +3710,9 @@ mod tests {
                 }
             }
         }
-        assert!(forced_ready(&world, 4, 4));
-    }
-
-    #[test]
-    fn forced_column_wait_ends_when_generation_aborts() {
-        let mut world = World::new(sunrise_world::registry::BlockStateId(0), 0);
-        let aborted = AtomicBool::new(false);
-        wait_for_forced_column(&mut world, 4, 4, &aborted, |_| {
-            // Stop on the first pump, leaving the column missing. A second
-            // pump fails the test immediately instead of hanging the runner.
-            assert!(!aborted.swap(true, Ordering::Relaxed), "pumped after abort");
-        });
-        assert!(aborted.load(Ordering::Relaxed));
-        assert!(!world.chunks.contains_key(&(4, 4)));
+        assert!(world.chunks.is_ticking_ready((4, 4)));
+        Arc::make_mut(world.chunks.get_mut(&(4, 4)).unwrap()).lit = false;
+        assert!(!world.chunks.is_ticking_ready((4, 4)));
     }
 
     #[test]
