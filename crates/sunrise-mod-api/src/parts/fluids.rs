@@ -10,6 +10,7 @@ pub mod tests {
     #[cfg(test)]
     use super::*;
     use crate::parts::tests::*;
+    use crate::resource_util::move_resources;
     use crate::*;
 
     #[test]
@@ -267,7 +268,9 @@ pub mod tests {
             let host: &mut dyn ServerHost = self;
             let source = here().capability(host, &FLUIDS, from, from_side).unwrap();
             let target = here().capability(host, &FLUIDS, to, to_side).unwrap();
-            host.transaction(|host, tx| move_resources(host, &source, &target, |_| true, max, tx))
+            host.transaction(|host, tx| {
+                move_resources(host, &source, &target, |_| true, max, Some(tx))
+            })
         }
     }
     #[cfg(test)]
@@ -413,6 +416,9 @@ pub mod tests {
                 self.tanks = tanks;
             }
         }
+        fn transaction_depth(&self, tx: &Transaction) -> Option<u32> {
+            self.journal.depth_of(tx)
+        }
     }
 
     #[cfg(test)]
@@ -548,8 +554,8 @@ pub mod tests {
             // first move through the liar fails, and its error aborts the transaction, so
             // every tank holds what it held.
             let moved = host.transaction(|host, tx| {
-                let first = move_resources(host, &other, &tank, |_| true, 300, tx)?;
-                let second = move_resources(host, &source, &tank, |_| true, 300, tx)?;
+                let first = move_resources(host, &other, &tank, |_| true, 300, Some(tx))?;
+                let second = move_resources(host, &source, &tank, |_| true, 300, Some(tx))?;
                 Ok(first + second)
             });
             let owner = "doubler".to_owned();

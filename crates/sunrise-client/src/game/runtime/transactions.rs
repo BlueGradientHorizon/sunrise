@@ -2687,7 +2687,7 @@ mod tests {
 mod mod_capability_tests {
     use super::super::native_entity_refs::tests::with_game;
     use mod_api::ServerHost;
-    use mod_api::{BlockSide, HostTransaction, ResourceHandler, move_resources};
+    use mod_api::{BlockSide, HostTransaction, ResourceHandler, resource_util::move_resources};
     use mod_platform::__private::part_tests::{CHEMICALS, ChemTank, Chemical};
     use std::sync::Arc;
     use sunrise_client::chunk::Chunk;
@@ -2753,14 +2753,14 @@ mod mod_capability_tests {
             };
 
             let moved = host.transaction(|host, tx| {
-                move_resources(host, &tank, &vat, |c| *c == hydrogen, 250, tx).map_err(drop)
+                move_resources(host, &tank, &vat, |c| *c == hydrogen, 250, Some(tx)).map_err(drop)
             });
             assert_eq!(moved, Ok(250));
             assert_eq!(amounts(host), (350, 250));
             assert_eq!(vat.resource(host, 0), Some(hydrogen.clone()));
 
             let aborted = host.transaction(|host, tx| {
-                let moved = move_resources(host, &tank, &vat, |_| true, 100, tx);
+                let moved = move_resources(host, &tank, &vat, |_| true, 100, Some(tx));
                 assert_eq!(moved.ok(), Some(100));
                 assert_eq!(amounts(host), (250, 350));
                 Err::<(), ()>(())

@@ -589,12 +589,11 @@ pub(crate) fn in_turn<P>(
     parts: impl IntoIterator<Item = P>,
     ask: impl FnMut(&mut dyn ServerHost, &Transaction, &P, u32) -> u32,
 ) -> u32 {
-    let run =
-        |host: &mut dyn ServerHost, tx: &Transaction| try_in_turn(host, tx, amount, parts, ask);
     if let Some(overanswer) = amount.checked_add(1) {
-        run(host, tx).unwrap_or(overanswer)
+        try_in_turn(host, tx, amount, parts, ask).unwrap_or(overanswer)
     } else if host.transaction_depth(tx).is_some() {
-        host.transaction(run).unwrap_or(0)
+        host.transaction(|host, tx| try_in_turn(host, tx, amount, parts, ask))
+            .unwrap_or(0)
     } else {
         0
     }
@@ -641,50 +640,6 @@ pub(crate) fn try_in_turn<P>(
 pub struct Overanswered {
     /// The mod whose handler answered, or "the game".
     pub owner: String,
-}
-
-/// Moves up to `max` of what `filter` accepts out of `from` into wherever `to` takes it, index by
-/// index from 0 (NeoForge's `ResourceHandlerUtil.move`), in transaction `tx`: how much moved.
-/// Each move is all or nothing, in a transaction of its own: what `to` won't take stays in
-/// `from`, and a move `to` takes only part of is tried again with that part (a cauldron gives
-/// whole thirds). A handler answering more than it was asked has its move undone and ends the
-/// moving with [`Overanswered`].
-pub fn move_resources<R>(
-    host: &mut dyn ServerHost,
-    from: &Capability<dyn ResourceHandler<R>>,
-    to: &Capability<dyn ResourceHandler<R>>,
-    filter: impl Fn(&R) -> bool,
-    max: u32,
-    tx: &Transaction,
-) -> Result<u32, Overanswered> {
-    let _ = tx;
-    let mut moved = 0;
-    for index in 0..from.size(host) {
-        while moved < max {
-            let Some(resource) = from.resource(host, index).filter(|r| filter(r)) else {
-                break;
-            };
-            let want = (max - moved)
-                .min(from.amount(host, index))
-                .min(MAX_TRANSFER_STEP);
-            let went = move_once(
-                host,
-                Ends {
-                    from,
-                    to,
-                    at: &index,
-                },
-                want,
-                |host, tx, want| from.extract_at(host, tx, index, &resource, want),
-                |host, tx, out| to.insert(host, tx, &resource, out),
-            )?;
-            if went == 0 {
-                break;
-            }
-            moved += went;
-        }
-    }
-    Ok(moved)
 }
 
 /// The two ends of a move and where it is, for warnings.

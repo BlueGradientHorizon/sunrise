@@ -543,7 +543,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_cauldron_move_the_target_takes_part_of_gives_the_whole_levels_that_fit() {
         use super::super::super::native_entity_refs::tests::with_game;
-        use mod_api::{BlockUpdateFlags, FLUIDS, move_resources};
+        use mod_api::{BlockUpdateFlags, FLUIDS, resource_util::move_resources};
         use sunrise_client::chunk::Chunk;
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
@@ -568,8 +568,9 @@ mod tests {
             let host: &mut dyn ServerHost = game;
             let source = level.capability(host, &FLUIDS, from, None).unwrap();
             let target = level.capability(host, &FLUIDS, to, None).unwrap();
-            let moved = host
-                .transaction(|host, tx| move_resources(host, &source, &target, |_| true, 1000, tx));
+            let moved = host.transaction(|host, tx| {
+                move_resources(host, &source, &target, |_| true, 1000, Some(tx))
+            });
             assert_eq!(moved, Ok(667));
             assert_eq!(game.world.block(from[0], from[1], from[2]), one);
             assert_eq!(game.world.block(to[0], to[1], to[2]), full);
@@ -1002,7 +1003,7 @@ mod tests {
         }
         use mod_api::{
             BlockUpdateFlags, FLUIDS, FluidResource, Hooks, ModEntry, Mods, Registrar,
-            move_resources,
+            resource_util::move_resources,
         };
         use sunrise_client::{
             chunk::Chunk,
@@ -1141,7 +1142,7 @@ mod tests {
                         &target,
                         |_| true,
                         300,
-                        tx
+                        Some(tx)
                     )),
                     Ok(300)
                 );
@@ -1246,7 +1247,7 @@ mod tests {
                         &target,
                         |_| true,
                         500,
-                        tx
+                        Some(tx)
                     )),
                     Ok(0)
                 );
@@ -1297,7 +1298,7 @@ mod tests {
                         &target,
                         |resource| resource == &water,
                         200,
-                        tx
+                        Some(tx)
                     )),
                     Ok(200)
                 );

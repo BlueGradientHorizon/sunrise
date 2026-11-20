@@ -1061,8 +1061,15 @@ fn timing_storage_against_items_across_barrel_cells() {
                     moves += 1;
                     let abort = moves.is_multiple_of(10);
                     let result = (game as &mut dyn ServerHost).transaction(|host, tx| {
-                        let n = mod_api::move_resources(host, &below, &above, |_| true, 8, tx)
-                            .map_err(|_| 0u32)?;
+                        let n = mod_api::resource_util::move_resources(
+                            host,
+                            &below,
+                            &above,
+                            |_| true,
+                            8,
+                            Some(tx),
+                        )
+                        .map_err(|_| 0u32)?;
                         if abort && n > 0 { Err(n) } else { Ok(n) }
                     });
                     moved += result.unwrap_or(0);

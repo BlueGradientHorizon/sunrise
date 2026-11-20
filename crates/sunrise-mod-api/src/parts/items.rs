@@ -83,6 +83,7 @@ pub mod tests {
 
     use super::*;
     use crate::parts::tests::*;
+    use crate::resource_util::move_resources;
 
     #[test]
     pub(crate) fn item_keys_validate_forward_references_and_reused_slots() {
@@ -595,8 +596,7 @@ pub mod tests {
             stack("minecraft:stick", 60, 0)
         );
         let host: &mut dyn ServerHost = &mut player;
-        let went =
-            host.transaction(|host, tx| Ok::<_, ()>(items.insert(host, tx, &sticks, 10)));
+        let went = host.transaction(|host, tx| Ok::<_, ()>(items.insert(host, tx, &sticks, 10)));
         assert_eq!(went, Ok(10));
         assert_eq!(
             player_of(&player).slots[&5],
@@ -1190,8 +1190,10 @@ pub mod tests {
             let host: &mut dyn ServerHost = world;
             let from = here().capability(host, &ITEMS, FROM, None).unwrap();
             let to = here().capability(host, &ITEMS, INTO, None).unwrap();
-            host.transaction(|host, tx| move_resources(host, &from, &to, only_sticks, max, tx))
-                .unwrap()
+            host.transaction(|host, tx| {
+                move_resources(host, &from, &to, only_sticks, max, Some(tx))
+            })
+            .unwrap()
         };
         // Up to 7 sticks: all of the first slot's, two of the third's; the apples stay.
         assert_eq!(moved(&mut world, 7), 7);
@@ -1223,7 +1225,7 @@ pub mod tests {
                 Some("doubler"),
             );
         let moved =
-            host.transaction(|host, tx| move_resources(host, &from, &liar, |_| true, 64, tx));
+            host.transaction(|host, tx| move_resources(host, &from, &liar, |_| true, 64, Some(tx)));
         let owner = "doubler".to_owned();
         assert_eq!(
             moved,
@@ -1501,8 +1503,8 @@ pub mod tests {
         assert!(shelf_.slots[1].is_none());
         let handler = here().capability(&mut shelf_, &ITEMS, SHELF, None).unwrap();
         assert_eq!(handler.capacity(&mut shelf_, 1, &resource), 64);
-        let moved =
-            shelf_.transaction(|host, tx| Ok::<_, ()>(handler.insert_at(host, tx, 1, &resource, 128)));
+        let moved = shelf_
+            .transaction(|host, tx| Ok::<_, ()>(handler.insert_at(host, tx, 1, &resource, 128)));
         assert_eq!(moved, Ok(1));
         assert_eq!(shelf_.slots[1], Some(stack("minecraft:bread", 1, 0)));
     }

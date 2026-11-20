@@ -47,7 +47,8 @@ fn attached_items_are_undone_by_an_abort_and_saved_by_their_codec() {
             host.transaction(|host, tx| Err::<(), _>(slots.insert_at(host, tx, 4, &dirt, 10)));
         assert_eq!(aborted, Err(10));
         assert_eq!(ITEMS.has(host, CHUNK), Ok(false));
-        let went = host.transaction(|host, tx| Ok::<_, ()>(slots.insert_at(host, tx, 4, &dirt, 10)));
+        let went =
+            host.transaction(|host, tx| Ok::<_, ()>(slots.insert_at(host, tx, 4, &dirt, 10)));
         assert_eq!(went, Ok(10));
         assert_eq!(slots.amount(host, 4), 10);
         // What the save writes reads back to the same index.

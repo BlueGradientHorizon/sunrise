@@ -1,13 +1,10 @@
-//! NeoForge 26.3's stock resource handlers and `ResourceHandlerUtil`: wrappers a mod composes its
-//! own [`ResourceHandler`]s with, and the queries and moves every transfer mod writes. Each write
-//! runs in the caller's transaction `tx`; to simulate one, abort it.
-use crate::content::resource::{Ends, MAX_TRANSFER_STEP, in_turn, move_once};
-use crate::{
-    Capability, ComponentId, FluidKey, FluidResource, HostTransaction, ItemKey, ItemResource,
-    Overanswered, ResourceHandler, ServerHost, Tag, Transaction,
-};
+//! Stock resource handlers and transfer helpers, following NeoForge's `ResourceHandlerUtil`.
+//! Writes and probes take an optional enclosing transaction. With `None`, the helper opens its
+//! own transaction (a root if the host has none open); with `Some(tx)`, the caller can abort the
+//! encompassing operation. Probes always roll back.
+use crate::content::resource::{Ends, MAX_TRANSFER_STEP, in_turn, move_once, try_in_turn};
+use crate::{Capability, HostTransaction, Overanswered, ResourceHandler, ServerHost, Transaction};
 use std::ops::Range;
-use sunrise_core::nbt::JavaString;
 
 /// Several handlers as one (`CombinedResourceHandler`): their indices one after another, the
 /// first handler's from 0. An insert or extract without an index asks each handler in turn, so
@@ -383,206 +380,269 @@ impl<R> ResourceHandler<R> for VoidingResourceHandler {
     }
 }
 
-/// A resource with a registry identity and data components, as NeoForge's `RegisteredResource`
-/// and `DataComponentHolderResource`: what code written once for items and fluids reads.
-pub trait KeyedResource {
-    /// Its registry's key type.
-    type Key;
-    /// Its registered key; none for one the registry no longer has (a fluid saved by a removed
-    /// mod).
-    fn key(&self) -> Option<Self::Key>;
-    /// Its own value of component `id`, as saved; none where it keeps the default.
-    fn component(&self, id: &ComponentId) -> Option<Tag>;
+/// The first index holding `resource` (`indexOf`).
+pub fn index_of<R: PartialEq>(
+    host: &mut dyn ServerHost,
+    handler: &dyn ResourceHandler<R>,
+    resource: &R,
+) -> Option<usize> {
+    (0..handler.size(host)).find(|&index| {
+        handler.amount(host, index) > 0 && handler.resource(host, index).as_ref() == Some(resource)
+    })
 }
 
-impl KeyedResource for ItemResource {
-    type Key = ItemKey;
-    fn key(&self) -> Option<ItemKey> {
-        Some(self.item())
-    }
-    fn component(&self, id: &ComponentId) -> Option<Tag> {
-        ItemResource::component(self, id)
-    }
+/// Whether an index holds `resource` (`contains`).
+pub fn contains<R: PartialEq>(
+    host: &mut dyn ServerHost,
+    handler: &dyn ResourceHandler<R>,
+    resource: &R,
+) -> bool {
+    index_of(host, handler, resource).is_some()
 }
 
-impl KeyedResource for FluidResource {
-    type Key = FluidKey;
-    fn key(&self) -> Option<FluidKey> {
-        self.fluid().key()
-    }
-    fn component(&self, id: &ComponentId) -> Option<Tag> {
-        self.0
-            .components
-            .as_deref()?
-            .as_nbt()
-            .get(&JavaString::from(id.as_str()))
-            .cloned()
-    }
+/// Whether all indices hold nothing (`isEmpty`); a handler with no indices is empty.
+pub fn is_empty<R>(host: &mut dyn ServerHost, handler: &dyn ResourceHandler<R>) -> bool {
+    (0..handler.size(host)).all(|index| handler.amount(host, index) == 0)
 }
 
-/// `ResourceHandlerUtil`'s queries and writes, on any handler (a [`Capability`] reaches them
-/// through its handler): `cap.is_full(host)`. A mod's own handler value calls them as
-/// `(&tank as &dyn ResourceHandler<_>).is_full(host)`.
-impl<R> dyn ResourceHandler<R> {
-    /// The first index holding `resource` (`indexOf`).
-    pub fn index_of(&self, host: &mut dyn ServerHost, resource: &R) -> Option<usize>
-    where
-        R: PartialEq,
-    {
-        (0..self.size(host)).find(|&index| {
-            self.amount(host, index) > 0 && self.resource(host, index).as_ref() == Some(resource)
+/// Whether all indices hold a resource up to its capacity (`isFull`); true for no indices.
+pub fn is_full<R>(host: &mut dyn ServerHost, handler: &dyn ResourceHandler<R>) -> bool {
+    (0..handler.size(host)).all(|index| {
+        handler.resource(host, index).is_some_and(|resource| {
+            let amount = handler.amount(host, index);
+            amount > 0 && amount >= handler.capacity(host, index, &resource)
         })
-    }
-
-    /// Whether an index holds `resource` (`contains`).
-    pub fn contains(&self, host: &mut dyn ServerHost, resource: &R) -> bool
-    where
-        R: PartialEq,
-    {
-        self.index_of(host, resource).is_some()
-    }
-
-    /// Whether every index holds nothing (`isEmpty`); a handler of no indices is.
-    pub fn is_empty(&self, host: &mut dyn ServerHost) -> bool {
-        (0..self.size(host)).all(|index| self.amount(host, index) == 0)
-    }
-
-    /// Whether every index holds a resource up to its capacity for it (`isFull`).
-    pub fn is_full(&self, host: &mut dyn ServerHost) -> bool {
-        (0..self.size(host)).all(|index| {
-            self.resource(host, index).is_some_and(|resource| {
-                let amount = self.amount(host, index);
-                amount > 0 && amount >= self.capacity(host, index, &resource)
-            })
-        })
-    }
-
-    /// Whether `resource` may go in some index (`ResourceHandlerUtil.isValid`).
-    pub fn accepts(&self, host: &mut dyn ServerHost, resource: &R) -> bool {
-        (0..self.size(host)).any(|index| self.is_valid(host, index, resource))
-    }
-
-    /// A comparator's signal reading this handler (`getRedstoneSignalFromResourceHandler`),
-    /// vanilla's container formula: each index's fill, amount over capacity, averaged over the
-    /// indices and mapped onto 0..=15, 0 only when all are empty and 15 when all are full.
-    pub fn comparator_signal(&self, host: &mut dyn ServerHost) -> u8 {
-        let size = self.size(host);
-        if size == 0 {
-            return 0;
-        }
-        let mut fill = 0f32;
-        for index in 0..size {
-            let Some(resource) = self.resource(host, index) else {
-                continue;
-            };
-            let amount = self.amount(host, index);
-            let capacity = self.capacity(host, index, &resource);
-            if amount > 0 && capacity > 0 {
-                fill += amount as f32 / capacity as f32;
-            }
-        }
-        // Capped at full before scaling: an oversized amount (a mod's, up to `u32::MAX` over a
-        // capacity of 1) would otherwise overflow it.
-        let fill = (fill / size as f32).min(1.0);
-        // `Mth.lerpDiscrete(fill, 0, 15)`.
-        (fill * 14.0).floor() as u8 + u8::from(fill > 0.0)
-    }
-
-    /// Puts up to `amount` of `resource` in, topping up indices that hold it before empty ones
-    /// (`insertStacking`), in `tx`: how much went in.
-    pub fn insert_stacking(
-        &self,
-        host: &mut dyn ServerHost,
-        tx: &Transaction,
-        resource: &R,
-        amount: u32,
-    ) -> u32
-    where
-        R: PartialEq,
-    {
-        let size = self.size(host);
-        let indices = [true, false]
-            .into_iter()
-            .flat_map(|holding| (0..size).map(move |index| (holding, index)));
-        in_turn(
-            host,
-            tx,
-            amount,
-            indices,
-            |host, tx, &(holding, index), left| {
-                let held = self.amount(host, index) > 0
-                    && self.resource(host, index).as_ref() == Some(resource);
-                if held == holding {
-                    self.insert_at(host, tx, index, resource, left)
-                } else {
-                    0
-                }
-            },
-        )
-    }
-
-    /// Takes up to `amount` of the first resource `filter` accepts out, from wherever this
-    /// handler holds it (`extractFirst`), in `tx`: what came out and how much, none when nothing
-    /// did.
-    pub fn extract_first(
-        &self,
-        host: &mut dyn ServerHost,
-        tx: &Transaction,
-        filter: impl Fn(&R) -> bool,
-        amount: u32,
-    ) -> Option<(R, u32)> {
-        for index in 0..self.size(host) {
-            if self.amount(host, index) == 0 {
-                continue;
-            }
-            let Some(resource) = self.resource(host, index).filter(|r| filter(r)) else {
-                continue;
-            };
-            let came = self.extract(host, tx, &resource, amount);
-            if came > 0 {
-                return Some((resource, came));
-            }
-        }
-        None
-    }
-
-    /// The first resource `filter` accepts that one of can be taken out
-    /// (`findExtractableResource`), tried in a transaction nested in `tx` and aborted, so
-    /// nothing changes.
-    pub fn find_extractable(
-        &self,
-        host: &mut dyn ServerHost,
-        tx: &Transaction,
-        filter: impl Fn(&R) -> bool,
-    ) -> Option<R> {
-        let _ = tx;
-        for index in 0..self.size(host) {
-            if self.amount(host, index) == 0 {
-                continue;
-            }
-            let Some(resource) = self.resource(host, index).filter(|r| filter(r)) else {
-                continue;
-            };
-            let probe: Result<(), u32> =
-                host.transaction(|host, tx| Err(self.extract_at(host, tx, index, &resource, 1)));
-            if probe.is_err_and(|came| came > 0) {
-                return Some(resource);
-            }
-        }
-        None
-    }
+    })
 }
 
-/// As [`move_resources`](crate::move_resources), but moving only the first resource `filter`
-/// accepts that `to` takes any of (`moveFirst`), in `tx`: what moved and how much, none when
-/// nothing did.
-pub fn move_first<R>(
+/// Whether any index accepts `resource` (`ResourceHandlerUtil.isValid`), regardless of space.
+pub fn is_valid<R>(
+    host: &mut dyn ServerHost,
+    handler: &dyn ResourceHandler<R>,
+    resource: &R,
+) -> bool {
+    (0..handler.size(host)).any(|index| handler.is_valid(host, index, resource))
+}
+
+/// Vanilla's container comparator signal: average the fill of all indices, counting an empty
+/// index as zero and an overfilled index as full, then map onto 0..=15.
+pub fn comparator_signal<R>(host: &mut dyn ServerHost, handler: &dyn ResourceHandler<R>) -> u8 {
+    let size = handler.size(host);
+    if size == 0 {
+        return 0;
+    }
+    let mut fill = 0f32;
+    for index in 0..size {
+        let Some(resource) = handler.resource(host, index) else {
+            continue;
+        };
+        let amount = handler.amount(host, index);
+        let capacity = handler.capacity(host, index, &resource);
+        if amount > 0 && capacity > 0 {
+            fill += (amount as f32 / capacity as f32).min(1.0);
+        }
+    }
+    let fill = fill / size as f32;
+    // `Mth.lerpDiscrete(fill, 0, 15)`.
+    (fill * 14.0).floor() as u8 + u8::from(fill > 0.0)
+}
+
+/// Inserts up to `amount` of `resource`, topping up matching indices before empty ones.
+/// An overanswer rolls back the insertion and returns more than `amount`, or 0 at `u32::MAX`.
+/// `None` opens a transaction of its own.
+pub fn insert_stacking<R: PartialEq>(
+    host: &mut dyn ServerHost,
+    handler: &dyn ResourceHandler<R>,
+    resource: &R,
+    amount: u32,
+    tx: Option<&Transaction>,
+) -> u32 {
+    if !can_open(host, tx) || amount == 0 {
+        return 0;
+    }
+    host.transaction(|host, tx| try_insert_stacking(host, handler, resource, amount, tx))
+        .unwrap_or(amount.checked_add(1).unwrap_or(0))
+}
+
+fn try_insert_stacking<R: PartialEq>(
+    host: &mut dyn ServerHost,
+    handler: &dyn ResourceHandler<R>,
+    resource: &R,
+    amount: u32,
+    tx: &Transaction,
+) -> Result<u32, ()> {
+    let size = handler.size(host);
+    let indices = [true, false]
+        .into_iter()
+        .flat_map(|holding| (0..size).map(move |index| (holding, index)));
+    try_in_turn(
+        host,
+        tx,
+        amount,
+        indices,
+        |host, tx, &(holding, index), left| {
+            let matches = if holding {
+                handler.amount(host, index) > 0
+                    && handler.resource(host, index).as_ref() == Some(resource)
+            } else {
+                handler.amount(host, index) == 0
+            };
+            if matches {
+                handler.insert_at(host, tx, index, resource, left)
+            } else {
+                0
+            }
+        },
+    )
+}
+
+/// Takes up to `amount` of the first extractable resource `filter` accepts. An overanswer
+/// aborts the extraction. `None` opens a transaction of its own.
+pub fn extract_first<R>(
+    host: &mut dyn ServerHost,
+    handler: &dyn ResourceHandler<R>,
+    filter: impl Fn(&R) -> bool,
+    amount: u32,
+    tx: Option<&Transaction>,
+) -> Option<(R, u32)> {
+    if !can_open(host, tx) || amount == 0 {
+        return None;
+    }
+    host.transaction(|host, tx| {
+        let resource = probe_extractable(host, handler, filter).ok_or(())?;
+        let taken = try_in_turn(host, tx, amount, [()], |host, tx, &(), remaining| {
+            handler.extract(host, tx, &resource, remaining)
+        })?;
+        if taken == 0 {
+            Err(())
+        } else {
+            Ok((resource, taken))
+        }
+    })
+    .ok()
+}
+
+/// The first resource `filter` accepts that can be extracted. Probes with the slot's whole
+/// int amount in a transaction that always rolls back. `None` opens a transaction of its own.
+pub fn find_extractable_resource<R>(
+    host: &mut dyn ServerHost,
+    handler: &dyn ResourceHandler<R>,
+    filter: impl Fn(&R) -> bool,
+    tx: Option<&Transaction>,
+) -> Option<R> {
+    if !can_open(host, tx) {
+        return None;
+    }
+    probe_extractable(host, handler, filter)
+}
+
+fn probe_extractable<R>(
+    host: &mut dyn ServerHost,
+    handler: &dyn ResourceHandler<R>,
+    filter: impl Fn(&R) -> bool,
+) -> Option<R> {
+    let probe: Result<std::convert::Infallible, _> = host.transaction(|host, tx| {
+        Err((0..handler.size(host)).find_map(|index| {
+            let amount = u32::try_from(handler.amount_int(host, index)).ok()?;
+            let resource = handler
+                .resource(host, index)
+                .filter(|r| amount != 0 && filter(r))?;
+            let answer = handler.extract_at(host, tx, index, &resource, amount);
+            (answer > 0 && answer <= amount).then_some(resource)
+        }))
+    });
+    probe.err().flatten()
+}
+
+/// Validates an optional enclosing transaction before opening any new journal. A stale token
+/// must not give the helper permission to write in an unrelated transaction.
+fn can_open(host: &dyn ServerHost, tx: Option<&Transaction>) -> bool {
+    tx.is_none_or(|tx| host.transaction_depth(tx).is_some())
+}
+
+/// Moves up to `max` of the resources `filter` accepts, in index order. Each step is atomic;
+/// a partial insertion is retried at the accepted amount. Propagate [`Overanswered`] out of an
+/// enclosing transaction to abort the entire move. With `None` the helper does this itself.
+pub fn move_resources<R>(
     host: &mut dyn ServerHost,
     from: &Capability<dyn ResourceHandler<R>>,
     to: &Capability<dyn ResourceHandler<R>>,
     filter: impl Fn(&R) -> bool,
     max: u32,
-    tx: &Transaction,
+    tx: Option<&Transaction>,
+) -> Result<u32, Overanswered> {
+    move_resources_by(
+        host,
+        from,
+        to,
+        filter,
+        max,
+        tx,
+        |host, tx, resource, out| to.insert(host, tx, resource, out),
+    )
+}
+
+/// As [`move_resources`], topping up matching destination indices before filling empty ones.
+pub fn move_resources_stacking<R: PartialEq>(
+    host: &mut dyn ServerHost,
+    from: &Capability<dyn ResourceHandler<R>>,
+    to: &Capability<dyn ResourceHandler<R>>,
+    filter: impl Fn(&R) -> bool,
+    max: u32,
+    tx: Option<&Transaction>,
+) -> Result<u32, Overanswered> {
+    move_resources_by(
+        host,
+        from,
+        to,
+        filter,
+        max,
+        tx,
+        |host, tx, resource, out| {
+            try_insert_stacking(host, &**to, resource, out, tx).unwrap_or(out + 1)
+        },
+    )
+}
+
+fn move_resources_by<R>(
+    host: &mut dyn ServerHost,
+    from: &Capability<dyn ResourceHandler<R>>,
+    to: &Capability<dyn ResourceHandler<R>>,
+    filter: impl Fn(&R) -> bool,
+    max: u32,
+    tx: Option<&Transaction>,
+    insert: impl Fn(&mut dyn ServerHost, &Transaction, &R, u32) -> u32,
+) -> Result<u32, Overanswered> {
+    with_move_transaction(host, tx, |host| {
+        let mut moved = 0;
+        for index in 0..from.size(host) {
+            if moved == max {
+                break;
+            }
+            while moved < max {
+                let Some(resource) = from.resource(host, index).filter(|r| filter(r)) else {
+                    break;
+                };
+                let went = move_slot(host, from, to, index, &resource, max - moved, &insert)?;
+                if went == 0 {
+                    break;
+                }
+                moved += went;
+            }
+        }
+        Ok(moved)
+    })
+}
+
+/// As [`move_resources`], but only moves the first matching resource the destination accepts.
+/// Once selected, that same resource can also be moved from later source indices.
+pub fn move_first<R: PartialEq>(
+    host: &mut dyn ServerHost,
+    from: &Capability<dyn ResourceHandler<R>>,
+    to: &Capability<dyn ResourceHandler<R>>,
+    filter: impl Fn(&R) -> bool,
+    max: u32,
+    tx: Option<&Transaction>,
 ) -> Result<Option<(R, u32)>, Overanswered> {
     move_first_by(
         host,
@@ -595,15 +655,14 @@ pub fn move_first<R>(
     )
 }
 
-/// As [`move_first`], inserting with `insert_stacking` (`moveFirstStacking`): into `to`'s
-/// indices that hold the resource before its empty ones.
+/// As [`move_first`], topping up matching destination indices before filling empty ones.
 pub fn move_first_stacking<R: PartialEq>(
     host: &mut dyn ServerHost,
     from: &Capability<dyn ResourceHandler<R>>,
     to: &Capability<dyn ResourceHandler<R>>,
     filter: impl Fn(&R) -> bool,
     max: u32,
-    tx: &Transaction,
+    tx: Option<&Transaction>,
 ) -> Result<Option<(R, u32)>, Overanswered> {
     move_first_by(
         host,
@@ -612,46 +671,92 @@ pub fn move_first_stacking<R: PartialEq>(
         filter,
         max,
         tx,
-        |host, tx, resource, out| to.insert_stacking(host, tx, resource, out),
+        |host, tx, resource, out| {
+            try_insert_stacking(host, &**to, resource, out, tx).unwrap_or(out + 1)
+        },
     )
 }
 
-/// The first index of `from` whose resource `filter` accepts and `insert` puts any of in `to`,
-/// moved as one step of `move_resources`.
-fn move_first_by<R>(
+fn move_first_by<R: PartialEq>(
     host: &mut dyn ServerHost,
     from: &Capability<dyn ResourceHandler<R>>,
     to: &Capability<dyn ResourceHandler<R>>,
     filter: impl Fn(&R) -> bool,
     max: u32,
-    tx: &Transaction,
+    tx: Option<&Transaction>,
     insert: impl Fn(&mut dyn ServerHost, &Transaction, &R, u32) -> u32,
 ) -> Result<Option<(R, u32)>, Overanswered> {
-    let _ = tx;
-    for index in 0..from.size(host) {
-        let Some(resource) = from.resource(host, index).filter(|r| filter(r)) else {
-            continue;
-        };
-        let want = max.min(from.amount(host, index)).min(MAX_TRANSFER_STEP);
-        if want == 0 {
-            continue;
+    with_move_transaction(host, tx, |host| {
+        let mut selected = None;
+        let mut moved = 0;
+        for index in 0..from.size(host) {
+            if moved == max {
+                break;
+            }
+            let Some(resource) = from.resource(host, index) else {
+                continue;
+            };
+            if !selected
+                .as_ref()
+                .map_or_else(|| filter(&resource), |r| r == &resource)
+            {
+                continue;
+            }
+            let went = move_slot(host, from, to, index, &resource, max - moved, &insert)?;
+            if went == 0 {
+                continue;
+            }
+            moved += went;
+            // Only the representational limit, not partial acceptance, needs a second call
+            // to this index: the selected resource's one remaining unit still fits in `max`.
+            if went == MAX_TRANSFER_STEP && moved < max {
+                moved += move_slot(host, from, to, index, &resource, max - moved, &insert)?;
+            }
+            selected = Some(resource);
         }
-        let went = move_once(
-            host,
-            Ends {
-                from,
-                to,
-                at: &index,
-            },
-            want,
-            |host, tx, want| from.extract_at(host, tx, index, &resource, want),
-            |host, tx, out| insert(host, tx, &resource, out),
-        )?;
-        if went > 0 {
-            return Ok(Some((resource, went)));
-        }
+        Ok(selected.map(|r| (r, moved)))
+    })
+}
+
+fn with_move_transaction<T: Default>(
+    host: &mut dyn ServerHost,
+    tx: Option<&Transaction>,
+    run: impl FnOnce(&mut dyn ServerHost) -> Result<T, Overanswered>,
+) -> Result<T, Overanswered> {
+    if !can_open(host, tx) {
+        return Ok(T::default());
     }
-    Ok(None)
+    if tx.is_some() {
+        run(host)
+    } else {
+        host.transaction(|host, _| run(host))
+    }
+}
+
+fn move_slot<R>(
+    host: &mut dyn ServerHost,
+    from: &Capability<dyn ResourceHandler<R>>,
+    to: &Capability<dyn ResourceHandler<R>>,
+    index: usize,
+    resource: &R,
+    max: u32,
+    insert: &impl Fn(&mut dyn ServerHost, &Transaction, &R, u32) -> u32,
+) -> Result<u32, Overanswered> {
+    let want = max.min(from.amount(host, index)).min(MAX_TRANSFER_STEP);
+    if want == 0 {
+        return Ok(0);
+    }
+    move_once(
+        host,
+        Ends {
+            from,
+            to,
+            at: &index,
+        },
+        want,
+        |host, tx, want| from.extract_at(host, tx, index, resource, want),
+        |host, tx, out| insert(host, tx, resource, out),
+    )
 }
 
 #[cfg(test)]

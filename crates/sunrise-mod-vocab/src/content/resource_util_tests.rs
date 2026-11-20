@@ -1,5 +1,6 @@
 use super::*;
 use crate::testing::FakeHost;
+use crate::{ItemResource, Tag};
 use std::{cell::RefCell, rc::Rc};
 
 /// A mod's own resource, which the game knows nothing of.
@@ -139,9 +140,8 @@ fn insert_stacking_tops_up_a_holding_index_before_an_empty_one() {
     let handler: &dyn ResourceHandler<Chemical> = &tanks;
     let mut fake = FakeHost::new();
     let host: &mut dyn ServerHost = &mut fake;
-    let went =
-        host.transaction(|host, tx| Ok::<_, ()>(handler.insert_stacking(host, tx, &HYDROGEN, 95)));
-    assert_eq!(went, Ok(95));
+    let went = insert_stacking(host, handler, &HYDROGEN, 95, None);
+    assert_eq!(went, 95);
     // The default `insert` would have filled index 0 first.
     assert_eq!(
         tanks.held(),
@@ -153,9 +153,7 @@ fn insert_stacking_tops_up_a_holding_index_before_an_empty_one() {
 fn the_comparator_reads_0_when_empty_15_when_full_and_vanillas_steps_between() {
     let mut fake = FakeHost::new();
     let host: &mut dyn ServerHost = &mut fake;
-    let signal = |host: &mut dyn ServerHost, held| {
-        (&Tanks::new(held) as &dyn ResourceHandler<Chemical>).comparator_signal(host)
-    };
+    let signal = |host: &mut dyn ServerHost, held| comparator_signal(host, &Tanks::new(held));
     assert_eq!(signal(&mut *host, vec![None, None]), 0);
     assert_eq!(
         signal(
@@ -168,6 +166,11 @@ fn the_comparator_reads_0_when_empty_15_when_full_and_vanillas_steps_between() {
     assert_eq!(signal(&mut *host, vec![Some((HYDROGEN, 1)), None]), 1);
     // Half full: floor(0.5 * 14) + 1.
     assert_eq!(signal(&mut *host, vec![Some((HYDROGEN, 100)), None]), 8);
+    // An overfilled slot counts as full, not as filling the other slot.
+    assert_eq!(
+        signal(host, vec![Some((HYDROGEN, u32::MAX)), Some((HYDROGEN, 50))]),
+        11
+    );
 }
 
 /// A handler of `size` indices each holding `u32::MAX` of hydrogen in a capacity of 1: amounts
@@ -214,7 +217,7 @@ fn oversized_amounts_and_sizes_cap_instead_of_overflowing() {
     let mut fake = FakeHost::new();
     let host: &mut dyn ServerHost = &mut fake;
     let full = &Oversized(1) as &dyn ResourceHandler<Chemical>;
-    assert_eq!(full.comparator_signal(host), 15);
+    assert_eq!(comparator_signal(host, full), 15);
     let combined = CombinedResourceHandler::new(
         host,
         vec![
@@ -298,9 +301,7 @@ fn a_part_answering_more_than_asked_shows_through_every_total() {
         ],
     );
     let indices = &indices as &dyn ResourceHandler<Chemical>;
-    let stacking =
-        host.transaction(|host, tx| Ok::<_, ()>(indices.insert_stacking(host, tx, &HYDROGEN, 20)));
-    assert_eq!(stacking, Ok(21));
+    assert_eq!(insert_stacking(host, indices, &HYDROGEN, 20, None), 21);
 }
 
 /// A host with `ids` registered, stacking to 64, and their resources.
@@ -354,47 +355,119 @@ const B: [i32; 3] = [1, 64, 0];
 fn move_first_moves_one_resource_and_an_abort_puts_it_back() {
     let (mut fake, r) = items_host(&["minecraft:stone", "minecraft:dirt"]);
     let (stone, dirt) = (&r[0], &r[1]);
-    chest(&mut fake, A, &[Some((dirt, 3)), Some((stone, 5))]);
+    chest(
+        &mut fake,
+        A,
+        &[Some((stone, 5)), Some((dirt, 3)), Some((stone, 7))],
+    );
     chest(&mut fake, B, &[None, Some((stone, 10))]);
     let (from, to) = (items_at(&mut fake, A), items_at(&mut fake, B));
-    let only_stone = |r: &ItemResource| r == stone;
 
     // Aborted: both chests as they were.
     let host: &mut dyn ServerHost = &mut fake;
-    let aborted: Result<(), _> =
-        host.transaction(|host, tx| Err(move_first_stacking(host, &from, &to, only_stone, 64, tx)));
-    assert_eq!(aborted, Err(Ok(Some((stone.clone(), 5)))));
-    assert_eq!(counts(&fake, A), [3, 5]);
+    let aborted: Result<(), _> = host.transaction(|host, tx| {
+        Err(move_first_stacking(
+            host,
+            &from,
+            &to,
+            |_| true,
+            64,
+            Some(tx),
+        ))
+    });
+    assert_eq!(aborted, Err(Ok(Some((stone.clone(), 12)))));
+    assert_eq!(counts(&fake, A), [5, 3, 7]);
     assert_eq!(counts(&fake, B), [0, 10]);
 
     // Committed, stacking: onto the 10 stone, not into the empty slot.
     let host: &mut dyn ServerHost = &mut fake;
-    let moved =
-        host.transaction(|host, tx| move_first_stacking(host, &from, &to, only_stone, 64, tx));
-    assert_eq!(moved, Ok(Some((stone.clone(), 5))));
-    assert_eq!(counts(&fake, A), [3, 0]);
-    assert_eq!(counts(&fake, B), [0, 15]);
+    let moved = move_first_stacking(host, &from, &to, |_| true, 64, None);
+    assert_eq!(moved, Ok(Some((stone.clone(), 12))));
+    assert_eq!(counts(&fake, A), [0, 3, 0]);
+    assert_eq!(counts(&fake, B), [0, 22]);
 
     // `move_first` moves the first resource that goes, the dirt, and only it.
     let host: &mut dyn ServerHost = &mut fake;
-    let moved = host.transaction(|host, tx| move_first(host, &from, &to, |_| true, 2, tx));
+    let moved = host.transaction(|host, tx| move_first(host, &from, &to, |_| true, 2, Some(tx)));
     assert_eq!(moved, Ok(Some((dirt.clone(), 2))));
-    assert_eq!(counts(&fake, A), [1, 0]);
-    assert_eq!(counts(&fake, B), [2, 15]);
+    assert_eq!(counts(&fake, A), [0, 1, 0]);
+    assert_eq!(counts(&fake, B), [2, 22]);
 }
 
 #[test]
-fn find_extractable_probes_without_taking_anything() {
+fn find_extractable_probes_the_whole_int_amount_and_rolls_back() {
+    struct WholeSlot(Capability<dyn ResourceHandler<ItemResource>>);
+
+    impl ResourceHandler<ItemResource> for WholeSlot {
+        fn size(&self, host: &mut dyn ServerHost) -> usize {
+            self.0.size(host)
+        }
+        fn resource(&self, host: &mut dyn ServerHost, index: usize) -> Option<ItemResource> {
+            self.0.resource(host, index)
+        }
+        fn amount(&self, host: &mut dyn ServerHost, index: usize) -> u32 {
+            self.0.amount(host, index)
+        }
+        fn capacity(&self, host: &mut dyn ServerHost, index: usize, item: &ItemResource) -> u32 {
+            self.0.capacity(host, index, item)
+        }
+        fn insert_at(
+            &self,
+            host: &mut dyn ServerHost,
+            tx: &Transaction,
+            index: usize,
+            item: &ItemResource,
+            amount: u32,
+        ) -> u32 {
+            self.0.insert_at(host, tx, index, item, amount)
+        }
+        fn extract_at(
+            &self,
+            host: &mut dyn ServerHost,
+            tx: &Transaction,
+            index: usize,
+            item: &ItemResource,
+            amount: u32,
+        ) -> u32 {
+            if amount != self.0.amount(host, index) {
+                return 0;
+            }
+            self.0.extract_at(host, tx, index, item, amount)
+        }
+    }
+
     let (mut fake, r) = items_host(&["minecraft:stone", "minecraft:dirt"]);
     let (stone, dirt) = (&r[0], &r[1]);
     chest(&mut fake, A, &[Some((dirt, 3)), Some((stone, 5))]);
-    let items = items_at(&mut fake, A);
+    let items = WholeSlot(items_at(&mut fake, A));
     let host: &mut dyn ServerHost = &mut fake;
     let found = host.transaction(|host, tx| {
-        Ok::<_, ()>(items.find_extractable(host, tx, |r: &ItemResource| r == stone))
+        Ok::<_, ()>(find_extractable_resource(
+            host,
+            &items,
+            |r| r == stone,
+            Some(tx),
+        ))
     });
     assert_eq!(found, Ok(Some(stone.clone())));
     assert_eq!(counts(&fake, A), [3, 5]);
+    assert_eq!(fake.journal.closed(), [(2, false), (1, true)]);
+}
+
+#[test]
+fn extract_first_only_takes_the_selected_resource_and_commits_its_root() {
+    let (mut fake, r) = items_host(&["minecraft:stone", "minecraft:dirt"]);
+    let (stone, dirt) = (&r[0], &r[1]);
+    chest(
+        &mut fake,
+        A,
+        &[Some((dirt, 3)), Some((stone, 5)), Some((stone, 7))],
+    );
+    let items = items_at(&mut fake, A);
+    let taken = extract_first(&mut fake, &*items, |r| r == stone, 8, None);
+    assert_eq!(taken, Some((stone.clone(), 8)));
+    assert_eq!(counts(&fake, A), [3, 0, 4]);
+    assert_eq!(fake.journal.closed(), [(2, false), (1, true)]);
 }
 
 #[test]
@@ -412,7 +485,7 @@ fn an_overanswer_after_an_honest_part_undoes_the_whole_move() {
     );
     // B takes 2; the liar, asked for 3, answers 4.
     let moved =
-        host.transaction(|host, tx| crate::move_resources(host, &from, &to, |_| true, 5, tx));
+        host.transaction(|host, tx| move_resources(host, &from, &to, |_| true, 5, Some(tx)));
     assert_eq!(
         moved,
         Err(Overanswered {
@@ -451,8 +524,7 @@ fn a_maximum_transfer_propagates_nested_overanswers_and_aborts_the_tank() {
     // A move reserves an out-of-range answer, so neither the outer Combined nor the later
     // infinite sink can mask the inner Combined's failure.
     let host: &mut dyn ServerHost = &mut fake;
-    let moved = host
-        .transaction(|host, tx| crate::move_resources(host, &from, &to, |_| true, u32::MAX, tx));
+    let moved = move_resources(host, &from, &to, |_| true, u32::MAX, None);
     assert_eq!(
         moved,
         Err(Overanswered {
@@ -460,6 +532,25 @@ fn a_maximum_transfer_propagates_nested_overanswers_and_aborts_the_tank() {
         })
     );
     assert_eq!(counts(&fake, B), [62]);
-    assert_eq!(fake.journal.closed()[2..], [(4, false), (3, false)]);
+    assert_eq!(fake.journal.closed()[2..], [(2, false), (1, false)]);
     assert_eq!(fake.journal.depth(), 0);
+}
+
+#[test]
+fn reserving_an_overanswer_does_not_reduce_the_total_maximum_transfer() {
+    let host = &mut FakeHost::new();
+    let from = capability(InfiniteResourceHandler::new(HYDROGEN), "test:source");
+    let to = capability(
+        CombinedResourceHandler::new(host, vec![Box::new(InfiniteResourceHandler::new(HYDROGEN))]),
+        "test:sink",
+    );
+    assert_eq!(
+        move_resources(host, &from, &to, |_| true, u32::MAX, None),
+        Ok(u32::MAX)
+    );
+    assert_eq!(
+        move_first(host, &from, &to, |_| true, u32::MAX, None),
+        Ok(Some((HYDROGEN, u32::MAX)))
+    );
+    assert_eq!(host.journal.depth(), 0);
 }

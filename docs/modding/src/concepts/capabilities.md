@@ -60,7 +60,7 @@ registration-time coverage; the item provider's dynamic slot callback is never i
 and accepts an empty slot or a stack with the same item and components. Missing entries are
 unrestricted. In world insertion, a `BlockEntityPart::can_place_item` answer replaces this rule
 when it returns `Some`. The default `ITEMS` handler's `capacity` remains a limit, not a promise of
-admission; `insert` applies the rule. See [Block entity containers](../how-to/content-mods.md#block-entity-containers)
+admission; `insert_at` applies the rule. See [Block entity containers](../how-to/content-mods.md#block-entity-containers)
 for the distinction from menu slots.
 The three block-storage declarations accept mod blocks only, not `minecraft` blocks; use
 `block_capability` to expose storage on a vanilla block. The first enabled declaration for a block
@@ -104,36 +104,39 @@ Each method receives the host; the handler holds no borrow of the game.
 |---|---|
 | `size` | Number of indices, numbered from 0. |
 | `resource` | Resource at an index, or `None`. |
-| `amount` | Amount held at an index. |
-| `capacity` | `u32` limit for a specified resource, independent of the index's current contents. This is neither free space nor permission to insert. |
-| `is_valid` | Whether the resource is allowed at an index. The default checks for nonzero capacity; override it for separate acceptance rules and enforce those rules in `insert`. |
-| `insert` / `extract` | Insert or extract up to the requested amount at an index, using a `&Transaction`; return the amount moved. Insertion can refuse even with nonzero capacity. |
+| `amount` / `amount_int` | Amount held at an index; `amount_int` caps it at `i32::MAX`. |
+| `capacity` / `capacity_int` | Limit for a specified resource, independent of the index's current contents. `capacity_int` caps it at `i32::MAX`. Neither gives free space or permission to insert. |
+| `is_valid` | Whether the resource is allowed at an index. The default checks for nonzero capacity; override it for separate acceptance rules and enforce those rules in `insert_at`. |
+| `insert_at` / `extract_at` | Move up to the requested amount at one index, using a `&Transaction`. Return the actual amount moved. Insertion can refuse even with nonzero capacity. |
+| `insert` / `extract` | Let the handler choose where to move the resource. The default visits indices in order. Prefer these unless you need to target a specific index. |
 
 Keep handler state in transaction-managed storage such as block entity slots, saved compounds or
 attachments. Your handler can look up and call a neighbour's capability through the host.
 
-Use `move_resources(host, &from, &to, filter, max, tx)` to transfer matching resources, up to `max`,
-from source indices in order into any destination index that accepts them. Each transfer uses a nested
-transaction: rejected items stay in the source, and partial acceptance is retried with the accepted
-amount. The result is `Result<u32, Overanswered>`. If a handler reports more than requested, its transfer
-is undone and `Overanswered` identifies the provider in `owner`. Propagate the error from your
-`host.transaction` closure to abort the whole operation.
+Use `resource_util::move_resources(host, &from, &to, filter, max, Some(tx))` to transfer matching
+resources, up to `max`, in source index order. Each transfer uses a nested transaction: rejected
+items stay in the source, and partial acceptance is retried at the accepted amount. On an overanswer,
+the step is undone and `Overanswered` names the provider. Propagate the error from your
+`host.transaction` closure to abort the whole move, or pass `None` to let the helper open and
+manage the transaction.
 
-`move_first` and `move_first_stacking` (NeoForge's `moveFirst` and `moveFirstStacking`) move only
-the first resource that goes, and return which and how much.
+`move_resources_stacking` tops up matching destination indices before filling empty ones.
+`move_first` and `move_first_stacking` move only the first resource the destination accepts,
+including more of the same resource from later source indices, and return which and how much.
 
-NeoForge's stock handlers are ready to compose: `CombinedResourceHandler` (several handlers'
-indices one after another), `RangedResourceHandler` (indices `start..end` of one),
-`EmptyResourceHandler`, `InfiniteResourceHandler` (a creative tank) and `VoidingResourceHandler`
-(a trash can). To pass calls through to another handler (`DelegatingResourceHandler`), implement
-`ResourceHandler` on a struct holding it and forward each method; `RangedResourceHandler`'s API
-docs show one. `ResourceHandlerUtil`'s queries are methods on any handler, a `Capability`
-included: `index_of`, `contains`, `is_empty`, `is_full`, `accepts` (`isValid`),
-`comparator_signal` (vanilla's container formula, 0 to 15), `insert_stacking` (indices holding
-the resource before empty ones), `extract_first` and `find_extractable`. A handler that can be
-written whole, as a menu slot can, overrides `set` (`IndexModifier`); others refuse it.
-`KeyedResource` reads the registry key and own components of an `ItemResource` or a
-`FluidResource` alike.
+The other functions in `mod_api::resource_util` take a handler directly. `index_of`, `contains`,
+`is_empty`, `is_full` and `is_valid` query the whole handler; `comparator_signal` averages the fill
+of its indices, treating overfilled ones as full. `insert_stacking` tops up matching indices before
+filling empty ones, and `extract_first` takes the first extractable resource matching a filter.
+`find_extractable_resource` probes each candidate with its full int amount and rolls back the probe.
+Writes and probes take `Some(tx)` to join an enclosing transaction or `None` to open their own.
+
+Compose handlers from the same module: `CombinedResourceHandler` assigns indices in order and fixes
+its size at construction; `RangedResourceHandler::of` and `of_single_index` return `None` for
+out-of-bounds selections, including empty ranges. Use the `EmptyResourceHandler` value to refuse
+everything, `InfiniteResourceHandler` for an endless supply of one resource, or `VoidingResourceHandler`
+to discard what comes in. To delegate to another handler unchanged, forward its trait methods as in
+`RangedResourceHandler`'s API example.
 
 There is no `simulate` parameter. To try an operation without keeping its changes, run it in a
 transaction and return `Err` to abort. See [Transactions](transactions.md).

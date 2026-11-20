@@ -813,7 +813,7 @@ pub(super) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_bucket_fills_and_empties_whole_through_its_place_and_splits_off_its_stack() {
-        use mod_api::{BlockUpdateFlags, FLUIDS, ITEM_FLUIDS, move_resources};
+        use mod_api::{BlockUpdateFlags, FLUIDS, ITEM_FLUIDS, resource_util::move_resources};
         use sunrise_client::chunk::Chunk;
         with_game(|game| {
             open_to_lan(game);
@@ -854,7 +854,9 @@ pub(super) mod tests {
                     true => (&block, &bucket),
                     false => (&bucket, &block),
                 };
-                host.transaction(|host, tx| move_resources(host, from, to, |_| true, 1000, tx))
+                host.transaction(|host, tx| {
+                    move_resources(host, from, to, |_| true, 1000, Some(tx))
+                })
             };
             let inventory =
                 |game: &super::Game<'_>| game.lan.as_ref().unwrap().hub.guests[0].inventory.clone();
@@ -958,8 +960,8 @@ pub(super) mod tests {
                     .try_into_api()
                     .unwrap(),
             );
-            let wrote =
-                host.transaction(|host, tx| Ok::<_, ()>(items.insert_at(host, tx, 39, &pumpkin, 64)));
+            let wrote = host
+                .transaction(|host, tx| Ok::<_, ()>(items.insert_at(host, tx, 39, &pumpkin, 64)));
             assert_eq!(wrote, Ok(1));
         });
     }
@@ -1709,9 +1711,10 @@ pub(super) mod tests {
             assert_eq!(items.amount(host, 4), 0, "the abort put it back");
 
             // A committed one wears it and hands it back out.
-            let _ = host.transaction(|host, tx| Ok::<_, ()>(items.insert_at(host, tx, 0, &sword, 1)));
             let _ =
-                host.transaction(|host, tx| Ok::<_, ()>(items.insert_at(host, tx, 4, &chestplate, 1)));
+                host.transaction(|host, tx| Ok::<_, ()>(items.insert_at(host, tx, 0, &sword, 1)));
+            let _ = host
+                .transaction(|host, tx| Ok::<_, ()>(items.insert_at(host, tx, 4, &chestplate, 1)));
             assert_eq!(items.amount(host, 0), 1);
             assert_eq!(items.amount(host, 4), 1);
             let _ = host
@@ -3544,8 +3547,9 @@ pub(super) mod tests {
                     .unwrap()
                     .capability(host, &ENTITY_ITEMS, ())
                     .unwrap();
-                let _ = host
-                    .transaction(|host, tx| Ok::<_, ()>(items.insert_at(host, tx, 4, &chestplate, 1)));
+                let _ = host.transaction(|host, tx| {
+                    Ok::<_, ()>(items.insert_at(host, tx, 4, &chestplate, 1))
+                });
             }
             let through_setter = game.living(game.entity(41).unwrap()).unwrap();
             assert!(game.living_set_equipment(
@@ -3602,7 +3606,7 @@ pub(super) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_scratch_stack_lives_in_its_transaction_and_keeps_its_item() {
-        use mod_api::{FLUIDS, ITEM_FLUIDS, move_resources};
+        use mod_api::{FLUIDS, ITEM_FLUIDS, resource_util::move_resources};
         with_game(|game| {
             let level = with_cauldron(game);
             let cauldron = game.world.block(2, 64, 0);
@@ -3627,7 +3631,7 @@ pub(super) mod tests {
                 // Filling it would make it a water bucket, another item: refused.
                 let block = level.capability(host, &FLUIDS, [2, 64, 0], None).unwrap();
                 let held = place.capability(host, &ITEM_FLUIDS).unwrap();
-                let filled = move_resources(host, &block, &held, |_| true, 1000, tx);
+                let filled = move_resources(host, &block, &held, |_| true, 1000, Some(tx));
                 assert_eq!(filled, Ok(0));
                 Ok::<_, ()>(host.scratch_take(tx, &place))
             });
@@ -3731,7 +3735,7 @@ pub(super) mod tests {
     #[test]
     #[ignore = "daily"]
     fn one_by_one_shows_one_bucket_of_sixteen_and_fills_one() {
-        use mod_api::{FLUIDS, ITEM_FLUIDS, move_resources};
+        use mod_api::{FLUIDS, ITEM_FLUIDS, resource_util::move_resources};
         with_game(|game| {
             let level = with_cauldron(game);
             let mut player = guest(1);
@@ -3745,8 +3749,9 @@ pub(super) mod tests {
             assert_eq!(one.amount(host), 1);
             let block = level.capability(host, &FLUIDS, [2, 64, 0], None).unwrap();
             let bucket = one.capability(host, &ITEM_FLUIDS).unwrap();
-            let moved = host
-                .transaction(|host, tx| move_resources(host, &block, &bucket, |_| true, 1000, tx));
+            let moved = host.transaction(|host, tx| {
+                move_resources(host, &block, &bucket, |_| true, 1000, Some(tx))
+            });
             assert_eq!(moved, Ok(1000));
             let held = game.lan.as_ref().unwrap().hub.guests[0].inventory.clone();
             assert_eq!(held[0], Some(ItemStack::new("minecraft:bucket", 15)));

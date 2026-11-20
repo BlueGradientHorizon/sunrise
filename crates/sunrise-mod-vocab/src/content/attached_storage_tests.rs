@@ -134,17 +134,21 @@ fn extraction_takes_part_and_none_of_another_resource() {
         let dirt = item("minecraft:dirt");
         let cobble = item("minecraft:cobblestone");
         let slots = AttachedItems::new(&ITEMS, CHUNK, 9, 64, |_| true).unwrap();
-        let went = host.transaction(|host, tx| Ok::<_, ()>(slots.insert_at(host, tx, 4, &dirt, 30)));
+        let went =
+            host.transaction(|host, tx| Ok::<_, ()>(slots.insert_at(host, tx, 4, &dirt, 30)));
         assert_eq!(went, Ok(30));
         let none =
             host.transaction(|host, tx| Ok::<_, ()>(slots.extract_at(host, tx, 4, &cobble, 30)));
         assert_eq!(none, Ok(0), "none of another resource");
-        let came = host.transaction(|host, tx| Ok::<_, ()>(slots.extract_at(host, tx, 4, &dirt, 12)));
+        let came =
+            host.transaction(|host, tx| Ok::<_, ()>(slots.extract_at(host, tx, 4, &dirt, 12)));
         assert_eq!(came, Ok(12));
         assert_eq!(slots.amount(&mut host, 4), 18);
-        let rest = host.transaction(|host, tx| Ok::<_, ()>(slots.extract_at(host, tx, 4, &dirt, 50)));
+        let rest =
+            host.transaction(|host, tx| Ok::<_, ()>(slots.extract_at(host, tx, 4, &dirt, 50)));
         assert_eq!(rest, Ok(18), "at most what remains");
-        let empty = host.transaction(|host, tx| Ok::<_, ()>(slots.extract_at(host, tx, 4, &dirt, 1)));
+        let empty =
+            host.transaction(|host, tx| Ok::<_, ()>(slots.extract_at(host, tx, 4, &dirt, 1)));
         assert_eq!(empty, Ok(0));
         assert_eq!(slots.amount(&mut host, 4), 0);
     });
@@ -176,7 +180,8 @@ fn capacity_stays_physical_while_validity_refuses_inserts_only() {
         assert_eq!(went, Ok(64), "at most the item's stack size per index");
         // A cobblestone another (permissive) handler's write stored reads out through this one.
         let anything = AttachedItems::new(&VALID_ITEMS, CHUNK, 4, 500, |_| true).unwrap();
-        let _ = host.transaction(|host, tx| Ok::<_, ()>(anything.insert_at(host, tx, 3, &cobble, 7)));
+        let _ =
+            host.transaction(|host, tx| Ok::<_, ()>(anything.insert_at(host, tx, 3, &cobble, 7)));
         let came =
             host.transaction(|host, tx| Ok::<_, ()>(only_dirt.extract_at(host, tx, 3, &cobble, 7)));
         assert_eq!(came, Ok(7), "extraction is independent of validity");

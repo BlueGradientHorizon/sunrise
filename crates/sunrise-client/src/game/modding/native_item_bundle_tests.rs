@@ -234,7 +234,9 @@ fn mod_registered_bundle_items_uses_weight_and_front_extraction() {
                 Some(bundle)
             );
             assert_eq!(
-                game.transaction(|host, tx| Ok::<_, ()>(handler.extract_at(host, tx, 0, &pearl, 3))),
+                game.transaction(|host, tx| Ok::<_, ()>(
+                    handler.extract_at(host, tx, 0, &pearl, 3)
+                )),
                 Ok(3)
             );
             assert_eq!(handler.amount(game, 0), 13);
@@ -253,7 +255,9 @@ fn mod_registered_bundle_items_uses_weight_and_front_extraction() {
             assert_eq!(handler.resource(game, 0), Some(pearl.clone()));
             assert_eq!(handler.amount(game, 0), 14);
             assert_eq!(
-                game.transaction(|host, tx| Ok::<_, ()>(handler.extract_at(host, tx, 0, &pearl, 64))),
+                game.transaction(|host, tx| Ok::<_, ()>(
+                    handler.extract_at(host, tx, 0, &pearl, 64)
+                )),
                 Ok(14)
             );
             assert_eq!(handler.resource(game, 0), Some(arrow));

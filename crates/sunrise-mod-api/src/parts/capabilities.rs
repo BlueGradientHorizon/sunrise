@@ -331,13 +331,15 @@ pub mod tests {
                 .and_then(|backend| backend.container_stack(on(CHEST, None), 0))
                 .is_none()
         );
-        let went = host.transaction(|host, tx| Ok::<_, ()>(pipe.insert_at(host, tx, 0, &stick_, 1)));
+        let went =
+            host.transaction(|host, tx| Ok::<_, ()>(pipe.insert_at(host, tx, 0, &stick_, 1)));
         assert_eq!(went, Ok(1));
         assert_eq!(
             backend_of(&*host).and_then(|backend| backend.container_stack(on(CHEST, None), 0)),
             Some(stick())
         );
-        let went = host.transaction(|host, tx| Ok::<_, ()>(pipe.insert_at(host, tx, 0, &stick_, 1)));
+        let went =
+            host.transaction(|host, tx| Ok::<_, ()>(pipe.insert_at(host, tx, 0, &stick_, 1)));
         assert_eq!(went, Ok(0));
         // No block entity with slots: no answer. A mod's own capability has no game answer.
         assert!(here().capability(host, &ITEMS, [5, 64, 0], None).is_none());
