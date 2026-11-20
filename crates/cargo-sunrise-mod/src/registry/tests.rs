@@ -175,6 +175,7 @@ fn a_stable_native_version_must_pin_the_named_release_commit() {
     fit::sdk(
         &sdk_data,
         RELEASE_PIN,
+        mod_surface::SCHEMA,
         "api",
         sunrise_mod_package::manifest::API,
         serde_json::json!({}),

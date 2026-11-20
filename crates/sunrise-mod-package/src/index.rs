@@ -42,6 +42,9 @@ pub struct Index {
     /// The current game Nightly, separate from a project's unreviewed source.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub nightly_build: Option<NightlyBuild>,
+    /// Builds for which compatibility could not be judged because of an unsupported SDK schema.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unjudged: Vec<UnjudgedBuild>,
     /// Curated lists of existing mods. Collections have no file or version of their own.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub collections: Vec<Collection>,
@@ -68,6 +71,13 @@ pub struct NightlyBuild {
     pub commit: String,
     /// The build's date, `YYYY-MM-DD` (UTC).
     pub date: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UnjudgedBuild {
+    /// The stable release tag or `nightly`.
+    pub build: String,
+    pub reason: String,
 }
 
 fn stable_tag(tag: &str) -> Option<(&str, u64)> {

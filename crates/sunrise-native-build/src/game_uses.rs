@@ -2,7 +2,10 @@
 use std::path::Path;
 use sunrise_mod_package::internals::{self, ListedInternal};
 use sunrise_mod_package::mod_surface::uses::{Change, Entry, Misfit};
-use sunrise_mod_package::{Manifest, build_data};
+use sunrise_mod_package::{
+    Manifest,
+    build_data::{self, ReadError},
+};
 use sunrise_platform::mod_build::api_gen::{self, functions::FunctionIndex};
 
 /// What every such entry's id starts with; no surface item's id does.
@@ -55,19 +58,25 @@ fn document<T: serde::de::DeserializeOwned>(
     dir: &Path,
     file: &str,
     build: &str,
-) -> Result<T, String> {
+) -> Result<T, ReadError> {
     let path = dir.join(file);
-    let text = std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let (described, body) =
-        build_data::read::<T>(file, &text).map_err(|e| format!("{}: {e}", path.display()))?;
+    let invalid = |reason| ReadError::Invalid(format!("{}: {reason}", path.display()));
+    let text = std::fs::read_to_string(&path).map_err(|e| invalid(e.to_string()))?;
+    let document = build_data::read::<T>(file, &text);
+    let described = match &document {
+        Ok((described, _))
+        | Err(ReadError::Schema {
+            build: described, ..
+        }) => described,
+        Err(error) => return Err(invalid(error.to_string())),
+    };
     if described.commit != build {
-        return Err(format!(
-            "{}: it describes game build {}, not {build}",
-            path.display(),
+        return Err(invalid(format!(
+            "it describes game build {}, not {build}",
             described.commit
-        ));
+        )));
     }
-    Ok(body)
+    document.map(|(_, body)| body)
 }
 
 /// Each piece of game code `manifest` declares, by id, as it is in `build`, whose build data is in `dir`. A function is fingerprinted by signature and body, since a replacement or a call written for an old body could meet a different one; a type by its signature; a loop by what the game publishes of it, its two functions and its slot trait.
@@ -77,7 +86,8 @@ pub fn entries(manifest: &Manifest, dir: &Path, build: &str) -> Result<Vec<(Stri
         .as_ref()
         .is_some_and(|n| !n.r#loop.is_empty());
     Ok(
-        Data::read_for(dir, build, loops || !manifest.internals.is_empty(), loops)?
+        Data::read_for(dir, build, loops || !manifest.internals.is_empty(), loops)
+            .map_err(|error| error.to_string())?
             .entries(manifest),
     )
 }
@@ -91,11 +101,11 @@ pub struct Data {
 
 impl Data {
     /// Read all build-data files, including those not used by any currently listed mod.
-    pub fn read(dir: &Path, build: &str) -> Result<Self, String> {
+    pub fn read(dir: &Path, build: &str) -> Result<Self, ReadError> {
         Self::read_for(dir, build, true, true)
     }
 
-    fn read_for(dir: &Path, build: &str, internals: bool, loops: bool) -> Result<Self, String> {
+    fn read_for(dir: &Path, build: &str, internals: bool, loops: bool) -> Result<Self, ReadError> {
         #[derive(serde::Deserialize)]
         struct Loops {
             loops: Vec<api_gen::loops::PublishedLoop>,
@@ -104,31 +114,39 @@ impl Data {
         struct Internals {
             internals: Vec<ListedInternal>,
         }
-        let index = document(dir, api_gen::functions::FILE, build)?;
+        let index = document(dir, api_gen::functions::FILE, build);
         let internals = if internals {
-            document::<Internals>(dir, build_data::INTERNALS, build)?.internals
+            document::<Internals>(dir, build_data::INTERNALS, build).map(|doc| doc.internals)
         } else {
-            Vec::new()
+            Ok(Vec::new())
         };
         let loops = if loops {
-            let published = document::<Loops>(dir, api_gen::loops::FILE, build)?.loops;
-            if let Some(l) = published.iter().find(|l| !l.entry.contains("::")) {
-                return Err(format!(
-                    "{}: the loop `{}` has the entry `{}`, which is not a function's path",
-                    dir.join(api_gen::loops::FILE).display(),
-                    l.name,
-                    l.entry
-                ));
-            }
-            published
+            document::<Loops>(dir, api_gen::loops::FILE, build).and_then(|doc| {
+                if let Some(l) = doc.loops.iter().find(|l| !l.entry.contains("::")) {
+                    return Err(ReadError::Invalid(format!(
+                        "{}: the loop `{}` has the entry `{}`, which is not a function's path",
+                        dir.join(api_gen::loops::FILE).display(),
+                        l.name,
+                        l.entry
+                    )));
+                }
+                Ok(doc.loops)
+            })
         } else {
-            Vec::new()
+            Ok(Vec::new())
         };
-        Ok(Self {
-            index,
-            internals,
-            loops,
-        })
+        // A schema we do not read does not hide missing files, corrupt data, or a wrong build.
+        match (index, internals, loops) {
+            (Ok(index), Ok(internals), Ok(loops)) => Ok(Self {
+                index,
+                internals,
+                loops,
+            }),
+            (Err(e @ ReadError::Invalid(_)), _, _)
+            | (_, Err(e @ ReadError::Invalid(_)), _)
+            | (_, _, Err(e @ ReadError::Invalid(_))) => Err(e),
+            (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => Err(e),
+        }
     }
 
     /// The game code this mod declares, as this build has it.

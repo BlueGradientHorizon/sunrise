@@ -1075,6 +1075,7 @@ pub fn candidate(checkout: &Checkout, src: &Sources) -> Result<Index, Vec<String
         projects,
         releases: src.releases.map(<[_]>::to_vec),
         nightly_build: None,
+        unjudged: Vec::new(),
         collections,
         revoked: checkout.revoked.clone(),
         left_out: Vec::new(),

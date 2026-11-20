@@ -7,13 +7,20 @@ use sunrise_mod_package::{build_data, index::sha256, manifest::API, sdk};
 const DAY: &str = "2026-11-20";
 const TARGET: &str = "sunrise_client::game::example";
 
-pub(super) fn sdk(root: &Path, commit: &str, api: &str, content_api: &str, functions: Value) {
+pub(super) fn sdk(
+    root: &Path,
+    commit: &str,
+    surface_schema: u32,
+    api: &str,
+    content_api: &str,
+    functions: Value,
+) {
     let dir = root.join(commit);
     fs::create_dir_all(&dir).unwrap();
     fs::write(
         dir.join("surface.json"),
         json!({
-            "schema": mod_surface::SCHEMA, "hash": api,
+            "schema": surface_schema, "hash": api,
             "functions": [{"id": "fn:example", "hash": api, "signature": "fn example()"}]
         })
         .to_string(),
@@ -84,7 +91,6 @@ fn registry_judges_earlier_releases_on_the_line_and_the_current_nightly() {
     for (commit, signature, span, api, content_api) in [
         (&*older, "sig", original, "api", API),
         (RELEASE_PIN, "sig", original, "api", API),
-        (&*other_line, "sig", original, "api", API),
         (&*nightly, "sig", "fn example() {}", "api", API),
         (
             &*changed_signature,
@@ -99,6 +105,7 @@ fn registry_judges_earlier_releases_on_the_line_and_the_current_nightly() {
         sdk(
             &data,
             commit,
+            mod_surface::SCHEMA,
             api,
             content_api,
             json!({TARGET: {
@@ -259,31 +266,165 @@ fn registry_judges_earlier_releases_on_the_line_and_the_current_nightly() {
 }
 
 #[test]
-fn a_missing_sdk_file_names_the_release_even_if_no_mod_uses_the_data() {
+fn versions_without_sunrise_do_not_need_sdk_data() {
     let r = Registry::new();
-    let path = r.0.path().join("releases.json");
+    r.add("legacy", "1.0.0", "26.3", "");
+    let root = r.0.path();
+    let releases = root.join("releases.json");
     fs::write(
-        &path,
+        &releases,
+        json!([{"tag": RELEASE_TAG, "commit": RELEASE_PIN}]).to_string(),
+    )
+    .unwrap();
+    let nightly = root.join("nightly.json");
+    fs::write(
+        &nightly,
+        json!({"date": DAY, "commit": "b".repeat(40)}).to_string(),
+    )
+    .unwrap();
+    let index = r
+        .build(&[
+            "--releases",
+            releases.to_str().unwrap(),
+            "--nightly-build",
+            nightly.to_str().unwrap(),
+        ])
+        .unwrap();
+    assert!(
+        index.project("legacy").unwrap().versions[0]
+            .verdicts
+            .is_empty()
+    );
+    assert!(index.unjudged.is_empty());
+}
+
+#[test]
+fn an_unsupported_nightly_schema_leaves_stable_verdicts_and_lists_nightly_as_unjudged() {
+    for unsupported_surface in [true, false] {
+        let r = Registry::new();
+        let root = r.0.path();
+        r.add("coords", "1.0.0", "26.3", "");
+        r.edit("coords", |t| format!("{t}sunrise='{RELEASE_TAG}'\n"));
+        let releases = root.join("releases.json");
+        fs::write(
+            &releases,
+            json!([{"tag": RELEASE_TAG, "commit": RELEASE_PIN}]).to_string(),
+        )
+        .unwrap();
+        let nightly = "b".repeat(40);
+        let nightly_file = root.join("nightly-build.json");
+        fs::write(
+            &nightly_file,
+            json!({"date": DAY, "commit": nightly}).to_string(),
+        )
+        .unwrap();
+        let dir = root.join("sdk");
+        sdk(
+            &dir,
+            RELEASE_PIN,
+            mod_surface::SCHEMA,
+            "api",
+            API,
+            json!({}),
+        );
+        let surface_schema = if unsupported_surface {
+            mod_surface::SCHEMA - 1
+        } else {
+            mod_surface::SCHEMA
+        };
+        sdk(&dir, &nightly, surface_schema, "api", API, json!({}));
+        let (file, schema) = if unsupported_surface {
+            ("surface.json", surface_schema)
+        } else {
+            let schema = build_data::SCHEMA + 1;
+            fs::write(
+                dir.join(&nightly)
+                    .join("build-data")
+                    .join(build_data::FUNCTIONS),
+                json!({"schema": schema, "build": {"commit": nightly}}).to_string(),
+            )
+            .unwrap();
+            (build_data::FUNCTIONS, schema)
+        };
+        let index = r
+            .build(&[
+                "--releases",
+                releases.to_str().unwrap(),
+                "--nightly-build",
+                nightly_file.to_str().unwrap(),
+                "--sdk-data",
+                dir.to_str().unwrap(),
+            ])
+            .unwrap();
+        let version = &index.project("coords").unwrap().versions[0];
+        assert_eq!(
+            serde_json::to_value(&version.verdicts).unwrap(),
+            json!({(RELEASE_TAG): {"verdict": "made-for", "targets": []}})
+        );
+        let [unjudged] = index.unjudged.as_slice() else {
+            panic!("expected one unjudged build, got {:?}", index.unjudged);
+        };
+        assert_eq!(unjudged.build, "nightly");
+        assert!(unjudged.reason.contains(file), "{}", unjudged.reason);
+        assert!(
+            unjudged.reason.contains(&format!("schema {schema}")),
+            "{}",
+            unjudged.reason
+        );
+    }
+}
+
+#[test]
+fn missing_or_inconsistent_sdk_files_still_fail_by_build_name() {
+    let r = Registry::new();
+    r.add("coords", "1.0.0", "26.3", "");
+    r.edit("coords", |t| format!("{t}sunrise='{RELEASE_TAG}'\n"));
+    let releases = r.0.path().join("releases.json");
+    fs::write(
+        &releases,
         json!([{"tag": RELEASE_TAG, "commit": RELEASE_PIN}]).to_string(),
     )
     .unwrap();
     let dir = r.0.path().join("sdk");
-    sdk(&dir, RELEASE_PIN, "api", API, json!({}));
-    fs::remove_file(
+    sdk(
+        &dir,
+        RELEASE_PIN,
+        mod_surface::SCHEMA - 1,
+        "api",
+        API,
+        json!({}),
+    );
+    let flags = [
+        "--releases",
+        releases.to_str().unwrap(),
+        "--sdk-data",
+        dir.to_str().unwrap(),
+    ];
+    let assert_error = |file: &str| {
+        let err = r.build(&flags).unwrap_err();
+        for word in [RELEASE_TAG, RELEASE_PIN, file] {
+            assert!(err.contains(word), "{err}");
+        }
+        err
+    };
+
+    // A surface schema mismatch must not hide a wrong commit in a build-data document.
+    let wrong = "b".repeat(40);
+    fs::write(
         dir.join(RELEASE_PIN)
             .join("build-data")
-            .join(build_data::LOOPS),
+            .join(build_data::INTERNALS),
+        json!({"schema": build_data::SCHEMA + 1, "build": {"commit": wrong}}).to_string(),
     )
     .unwrap();
-    let err = r
-        .build(&[
-            "--releases",
-            path.to_str().unwrap(),
-            "--sdk-data",
-            dir.to_str().unwrap(),
-        ])
-        .unwrap_err();
-    for word in [RELEASE_TAG, RELEASE_PIN, build_data::LOOPS] {
-        assert!(err.contains(word), "{err}");
-    }
+    assert!(assert_error(build_data::INTERNALS).contains(&wrong));
+
+    let surface = dir.join(RELEASE_PIN).join("surface.json");
+    // Keep the size and schema, but invalidate the hash in sdk.json.
+    let text = fs::read_to_string(&surface).unwrap().replace("api", "bad");
+    fs::write(&surface, text).unwrap();
+    assert!(assert_error("surface.json").contains("checksum"));
+
+    fs::remove_file(surface).unwrap();
+    assert_error("surface.json");
 }

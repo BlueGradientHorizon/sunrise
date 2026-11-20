@@ -1,33 +1,38 @@
 //! Publish fit from workflow-supplied SDK files. This route never fetches a build or runs a mod.
 use crate::sdk_cmds::{PackageSubject, Subject, compare_fit, compare_game, package_subject};
 use crate::sdk_fetch::{BUILD_DATA, SURFACE};
-use mod_surface::{Surface, uses::Fit};
+use mod_surface::{ReadError, Surface, uses::Fit};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 use sunrise_mod_package::{
-    index::{BuildVerdict, FitVerdict, Index, Kind},
+    build_data,
+    index::{BuildVerdict, FitVerdict, Index, Kind, UnjudgedBuild},
     sdk,
 };
 use sunrise_native_build::game_uses;
 
 struct Build {
     sdk: sdk::Index,
-    surface: Surface,
+    surface: Result<Surface, String>,
     surface_bytes: Vec<u8>,
 }
 
 impl Build {
     fn read(directory: &Path, commit: &str) -> Result<Self, String> {
-        let path = directory.join(sdk::INDEX);
-        let bytes = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-        let sdk =
-            sdk::Index::read(&bytes, commit).map_err(|e| format!("{}: {e}", path.display()))?;
-        let path = directory.join(SURFACE);
-        let surface_bytes = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let read = |name| {
+            let path = directory.join(name);
+            std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))
+        };
+        let bytes = read(sdk::INDEX)?;
+        let sdk = sdk::Index::read(&bytes, commit).map_err(|e| e.to_string())?;
+        let surface_bytes = read(SURFACE)?;
         sdk.verify(SURFACE, surface_bytes.as_slice())
             .map_err(|e| e.to_string())?;
-        let surface =
-            Surface::read(&surface_bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+        let surface = match Surface::read(&surface_bytes) {
+            Err(e @ ReadError::Schema(_)) => Err(format!("{SURFACE}: {e}")),
+            Err(e) => return Err(e.to_string()),
+            Ok(surface) => Ok(surface),
+        };
         Ok(Self {
             sdk,
             surface,
@@ -43,14 +48,41 @@ pub(super) fn publish(
     sdk_data: Option<&Path>,
 ) -> Result<(), String> {
     let releases = index.releases.as_deref().unwrap_or_default();
+    if releases.is_empty() && index.nightly_build.is_none() {
+        return Ok(());
+    }
+    let mut versions = Vec::new();
+    let mut lines = BTreeSet::new();
+    for project in &mut index.projects {
+        let is_native = match project.kind {
+            Kind::NativeMod => true,
+            Kind::Mod => false,
+            _ => continue, // other kinds' independent compatibility rules aren't judged here
+        };
+        for version in &mut project.versions {
+            let Some(tag) = &version.sunrise else {
+                continue;
+            };
+            let made_for = releases.iter().find(|r| r.tag == *tag).ok_or_else(|| {
+                format!(
+                    "{} {}: use --releases with Sunrise release {tag:?} to compute fit",
+                    project.id, version.version
+                )
+            })?;
+            lines.insert(made_for.line.as_str());
+            versions.push((version, made_for, is_native));
+        }
+    }
     let mut targets = BTreeMap::<&str, Vec<(&str, Option<&str>)>>::new();
-    for release in releases {
+    for release in releases.iter().filter(|r| lines.contains(r.line.as_str())) {
         targets
             .entry(&release.commit)
             .or_default()
             .push((&release.tag, Some(&release.line)));
     }
-    if let Some(nightly) = &index.nightly_build {
+    if let Some(nightly) = &index.nightly_build
+        && !versions.is_empty()
+    {
         targets
             .entry(&nightly.commit)
             .or_default()
@@ -65,81 +97,93 @@ pub(super) fn publish(
             first_keys[0].0
         )
     })?;
+    // Older uses lists can read hook versions from their pinned surface, even if that surface
+    // cannot be read as a verdict target. Keep those bytes, not every build's game-code tables.
     let mut builds = BTreeMap::new();
     for (&commit, keys) in &targets {
-        let name = keys[0].0;
         let build = Build::read(&sdk_data.join(commit), commit)
-            .map_err(|error| format!("Sunrise {name} ({commit}): {error}"))?;
+            .map_err(|error| format!("Sunrise {} ({commit}): {error}", keys[0].0))?;
         builds.insert(commit, build);
     }
+
     let mut packages = HashMap::new();
     for (commit, keys) in targets {
         let build = &builds[commit];
-        let data = game_uses::Data::read(&sdk_data.join(commit).join(BUILD_DATA), commit)
-            .map_err(|error| format!("Sunrise {} ({commit}): {error}", keys[0].0))?;
-        for project in &mut index.projects {
-            let is_native = match project.kind {
-                Kind::NativeMod => true,
-                Kind::Mod => false,
-                _ => continue, // other kinds' independent compatibility rules aren't judged here
-            };
-            for version in &mut project.versions {
-                let Some(tag) = &version.sunrise else {
-                    continue;
-                };
-                let made_for = releases.iter().find(|r| r.tag == *tag).ok_or_else(|| {
-                    format!(
-                        "{} {}: use --releases with Sunrise release {tag:?} to compute fit",
-                        project.id, version.version
-                    )
-                })?;
-                let mut applicable = keys
-                    .iter()
-                    .filter(|(_, line)| line.is_none_or(|line| line == made_for.line))
-                    .peekable();
-                if applicable.peek().is_none() {
-                    continue;
-                }
-                let pinned = commit == made_for.commit;
-                let fit = if version.game != build.sdk.build.game {
-                    breaks("minecraft")
-                } else if is_native {
-                    // Assembly has already verified the package. An unreadable uses list is not
-                    // evidence of fit, just as a package without a list is not.
-                    let (subject, baseline) = packages
-                        .entry(version.file.sha256.clone())
-                        .or_insert_with(|| {
-                            (
-                                package_subject(&files.join(&version.file.sha256)).ok(),
-                                None,
-                            )
-                        });
-                    let known = |pin: &str| {
-                        builds
-                            .get(pin)
-                            .map(|b| b.surface_bytes.as_slice())
-                            .ok_or_else(|| format!("no SDK data for {pin}"))
-                    };
-                    native(subject, baseline, build, &data, pinned, known)
-                } else if version.api != build.sdk.content_api {
-                    breaks("content-api")
-                } else if pinned {
-                    FitVerdict::MadeFor
-                } else {
-                    FitVerdict::Fits
-                };
-                let mut targets: Vec<_> = version
-                    .native_binaries
-                    .iter()
-                    .filter(|b| b.build == commit)
-                    .map(|b| b.target.clone())
-                    .collect();
-                targets.sort();
-                let row = BuildVerdict { fit, targets };
-                version
-                    .verdicts
-                    .extend(applicable.map(|(key, _)| ((*key).to_owned(), row.clone())));
+        let data = match game_uses::Data::read(&sdk_data.join(commit).join(BUILD_DATA), commit) {
+            Err(e @ build_data::ReadError::Schema { .. }) => Err(e.to_string()),
+            Err(e) => return Err(format!("Sunrise {} ({commit}): {e}", keys[0].0)),
+            Ok(data) => Ok(data),
+        };
+        let inputs = build
+            .surface
+            .as_ref()
+            .map_err(String::as_str)
+            .and_then(|surface| {
+                data.as_ref()
+                    .map_err(String::as_str)
+                    .map(|data| (surface, data))
+            });
+        let (surface, data) = match inputs {
+            Ok(inputs) => inputs,
+            Err(reason) => {
+                let names: Vec<_> = keys.iter().map(|&(name, _)| name).collect();
+                eprintln!("warning: Sunrise {} ({commit}): {reason}", names.join(", "));
+                index
+                    .unjudged
+                    .extend(names.into_iter().map(|name| UnjudgedBuild {
+                        build: name.to_owned(),
+                        reason: reason.to_owned(),
+                    }));
+                continue;
             }
+        };
+        for (version, made_for, is_native) in &mut versions {
+            let mut applicable = keys
+                .iter()
+                .filter(|(_, line)| line.is_none_or(|line| line == made_for.line))
+                .peekable();
+            if applicable.peek().is_none() {
+                continue;
+            }
+            let pinned = commit == made_for.commit;
+            let fit = if version.game != build.sdk.build.game {
+                breaks("minecraft")
+            } else if *is_native {
+                // Assembly has already verified the package. An unreadable uses list is not
+                // evidence of fit, just as a package without a list is not.
+                let (subject, baseline) = packages
+                    .entry(version.file.sha256.clone())
+                    .or_insert_with(|| {
+                        (
+                            package_subject(&files.join(&version.file.sha256)).ok(),
+                            None,
+                        )
+                    });
+                let known = |pin: &str| {
+                    builds
+                        .get(pin)
+                        .map(|b| b.surface_bytes.as_slice())
+                        .ok_or_else(|| format!("no SDK data for {pin}"))
+                };
+                native(subject, baseline, &build.sdk, surface, data, pinned, known)
+            } else if version.api != build.sdk.content_api {
+                breaks("content-api")
+            } else if pinned {
+                FitVerdict::MadeFor
+            } else {
+                FitVerdict::Fits
+            };
+            let mut targets: Vec<_> = version
+                .native_binaries
+                .iter()
+                .filter(|b| b.build == commit)
+                .map(|b| b.target.clone())
+                .collect();
+            targets.sort();
+            let row = BuildVerdict { fit, targets };
+            version
+                .verdicts
+                .extend(applicable.map(|(key, _)| ((*key).to_owned(), row.clone())));
         }
     }
     Ok(())
@@ -148,7 +192,8 @@ pub(super) fn publish(
 fn native<'a>(
     subject: &mut Option<PackageSubject>,
     baseline: &mut Option<Result<(), String>>,
-    build: &Build,
+    sdk: &sdk::Index,
+    surface: &Surface,
     data: &game_uses::Data,
     pinned: bool,
     baseline_surface: impl FnOnce(&str) -> Result<&'a [u8], String>,
@@ -156,7 +201,7 @@ fn native<'a>(
     let Some(subject) = subject else {
         return exact("package manifest could not be read");
     };
-    if subject.content_api != build.sdk.content_api {
+    if subject.content_api != sdk.content_api {
         return breaks("content-api");
     }
     if pinned {
@@ -169,10 +214,10 @@ fn native<'a>(
         Ok(Subject::NotApplicable { reason, .. }) => return exact(reason),
         Err(_) => return exact("no readable uses list"),
     };
-    let game = compare_game(manifest, table, &build.sdk.mixins.rev, || {
+    let game = compare_game(manifest, table, &sdk.mixins.rev, || {
         Ok(data.entries(manifest))
     });
-    let comparison = compare_fit(table, &build.surface, game, baseline, baseline_surface);
+    let comparison = compare_fit(table, surface, game, baseline, baseline_surface);
     let game = comparison.compared;
     let (mut changed, exact_reason) = match comparison.report.verdict {
         Fit::DoesNotFit(items) => (items, None),
