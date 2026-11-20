@@ -100,8 +100,11 @@ jobs:
         with:
           fetch-depth: 0
       - id: mode
-        # A dry run never publishes; a run off main and nightly/26.3 is always one, whatever its input says.
-        run: echo "dry_run=${{ inputs.dry_run || !contains(fromJSON('["refs/heads/main", "refs/heads/nightly/26.3"]'), github.ref) }}" >> "$GITHUB_OUTPUT"
+        # A dry run never publishes; only release_train.py's exact check of repository, event, ref and kind lets a run publish.
+        env:
+          KIND: ${{ inputs.kind }}
+          DRY_INPUT: ${{ inputs.dry_run }}
+        run: python3 tools/release_train.py authorize --publish-kind "$KIND" --dry-run "$DRY_INPUT"
       - id: decide
         shell: bash
         env:
@@ -138,12 +141,10 @@ jobs:
           EXCEPTION: ${{ inputs.exception }}
         run: |
           # On nightly/26.3 once an owner created it, its own workflow copy; on main before. A failed lookup stops.
-          found=0; git ls-remote --exit-code "https://github.com/$GITHUB_REPOSITORY" refs/heads/nightly/26.3 > /dev/null || found=$?
-          case $found in
-            0) ref=nightly/26.3 ;;
-            2) ref=main ;;
-            *) echo "::error::could not look nightly/26.3 up (git ls-remote exited $found)"; exit 1 ;;
-          esac
+          refs=$(git ls-remote "https://github.com/$GITHUB_REPOSITORY" refs/heads/nightly/26.3) \
+            || { echo "::error::could not look nightly/26.3 up"; exit 1; }
+          # The returned name, exactly: a pattern also matches a longer ref ending in it.
+          ref=main; if awk '$2 == "refs/heads/nightly/26.3" { found = 1 } END { exit !found }' <<< "$refs"; then ref=nightly/26.3; fi
           gh workflow run nightly-build.yml --repo "$GITHUB_REPOSITORY" --ref "$ref" -f base="$HEAD_SHA" -f urgent="$URGENT" \
             -f exception="$EXCEPTION"
           echo "### Started \`nightly build\` on $ref for ${HEAD_SHA:0:9}" >> "$GITHUB_STEP_SUMMARY"

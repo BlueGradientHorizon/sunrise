@@ -169,8 +169,7 @@ with no `--sunrise` resolves to it through `SUNRISE_SDK_BASE`. It is an ordinary
 The SDK publishes on its own legs (`sdk`, `machine-sample`, `fn-replace-check`: the summary's `sdk_green`) until a runner with prepared data exists (umceko, 2026-11-16). A red linkage probe fails its `sdk / build linux` or `sdk / build windows` job and blocks publication.
 
 Only a run on `main` with `dry_run` false moves the tag, files issues or publishes; a real run on `release/26.3`
-publishes only its SDK and moves `release-green/26.3` ([Release branches](#release-branches)); any other run prints
-what it would do. On Sunrise a Nightly ships a commit of main with its dyna-checks gate green and its SDK, `sdk-<sha>`, published
+publishes only its SDK ([Release branches](#release-branches)); any other run prints what it would do. On Sunrise a Nightly ships a commit of main with its dyna-checks gate green and its SDK, `sdk-<sha>`, published
 first on the same commit: a game build without its SDK is never published (owner, 2026-11-17).
 A [snapshot](#snapshot) (`release.yml -f kind=snapshot`) needs only dyna-checks' gate on its commit of main.
 
@@ -416,22 +415,31 @@ Until an owner creates them, everything above runs as it did: the Nightly follow
 | `nightly/26.3` | fast-forwarded by the [daily run](#daily-run) to each fully green commit of main (job `nightly-branch`, the `sunrise-sunny` App's token); only ever forward | the Nightly: its head, under the `nightly` tag and channel as before |
 | `release/26.3` | cut by an owner from a green daily's commit; later commits by pull request (a fix, or a Nightly merged in) | `26.3-<semver>`, by hand, and the `sdk-<sha>` of its own daily runs |
 
-Only these three refs publish or sign: `PUBLISHES` in `tools/release_train.py` says which kind each may publish
-(`tests/test_release_branches.py` holds every workflow's ref list to it). A run on any other ref, a feature branch
-included, is a dry run: it signs with a throwaway key and publishes nothing.
+Only these three refs publish or sign: `PUBLISHES` in `tools/release_train.py` says which kind each may publish.
+Every workflow asks `release_train.py authorize` before it takes a key, an environment or a write: it compares the
+repository, the event (a dispatch), the full ref and the dry-run input exactly, since Actions' own comparisons ignore
+case. A run on any other ref, a case variant, a tag or a pull request's ref is a dry run: it signs with a throwaway key
+and publishes nothing.
+
+A daily run's evidence is the run itself, never a tag: its job `green <full sha>` succeeds only on a writing run whose
+resolve and summary succeeded, every leg (parity included) passed and the SDK is published. `release_train.daily_passed`
+looks for that job in a completed, uncancelled real `daily.yml` dispatch on `main` or `release/26.3`.
 
 **A stable release** (`nightly-build.yml` with `kind=stable`, `nightly.py pick --kind stable`):
 
-1. builds only the head of `release/26.3`, and only when that commit has a completed green real daily run: the commit
-   `daily-green` points to (the branch cut from it), or the one `release-green/26.3` points to. A real daily run on
-   the branch (`gh workflow run daily.yml --ref release/26.3 -f dry_run=false`) moves that tag when every leg passed,
-   after publishing the commit's SDK; it moves no `daily-green`, files no issue and starts no Nightly. A dry run only warns
-   when that run is missing, as it does for a missing SDK;
+1. builds only the full SHA approved in the release-candidate check (`-f base=<sha>`), which must be the head of
+   `release/26.3` (a missing branch is refused) and have a real daily run that passed every leg on exactly it: main's
+   for the commit the branch was cut at, or the branch's own (`gh workflow run daily.yml --ref release/26.3
+   -f dry_run=false`, which publishes the commit's SDK and moves no `daily-green`, files no issue and starts no
+   Nightly). A dry run only warns when that run is missing, as it does for a missing SDK;
 2. needs `sdk-<sha>` of that commit published first, as a Nightly does;
 3. is held by `RELEASES_PAUSED` and by an open `release-blocker` at the pick, and by a blocker again before publishing;
-4. is tagged `<target>-<semver>`: `release_version` when given, else the patch after the newest stable tag on the
-   target, `26.3-0.1.0` first. That tag is not semver as a whole, so `release_train.stable_version` reads it as the
-   target and a semver, and orders by the semver within a target;
+4. is tagged `<target>-<release_version>`, which a real run must name: newer than every stable tag on the target,
+   and `0.1.0` for the first. That tag is not semver as a whole, so `release_train.stable_version` reads it as the
+   target and a semver (ASCII digits only), and orders by the semver within a target. Right before publishing, a
+   publish-only retry too, `nightly.py reserve-stable-tag` checks the approved head, its daily run and the version
+   again, then creates the tag at that commit in one write (refused when the tag names another commit), and
+   `gh release create --verify-tag` publishes on exactly that tag;
 5. carries a Nightly's assets, with `SHA256SUMS.sig` and `SHA256SUMS.v2.sig` both signed for exactly its tag
    (`horizon release 26.3-0.1.0`, checked as `signed_digest` checks a release) with the `release` environment's key,
    and publishes a full release, not a pre-release, with `--latest=false`: the site's launcher download reads
@@ -441,8 +449,8 @@ No launcher lists a `26.3-<semver>` release yet (they take `v`-tags and the Nigh
 download for now.
 
 ```sh
-gh workflow run "nightly build" --ref release/26.3 -f kind=stable -f dry_run=true   # check first
-gh workflow run "nightly build" --ref release/26.3 -f kind=stable                    # 26.3-0.1.0, then the next patch
+gh workflow run "nightly build" --ref release/26.3 -f kind=stable -f dry_run=true -f base=<sha>   # check first
+gh workflow run "nightly build" --ref release/26.3 -f kind=stable -f base=<approved sha> -f release_version=0.1.0
 ```
 
 ## Prebuilt SDK retention design (#3011)

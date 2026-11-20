@@ -453,11 +453,12 @@ def pick_snapshot() -> None:
 
 
 def pick_stable() -> None:
-    """A stable release (docs/release-flow.md "Release branches"): the head of the release branch, whose real daily
-    run passed every leg (release_train.release_head), with its SDK published first, built alone and published as
-    `<target>-<semver>`: RELEASE_VERSION when given, else the patch after the newest release on the target
-    (26.3-0.1.0 first). RELEASES_PAUSED and an open release-blocker hold it, as they hold the Nightly; a dry run only
-    warns. A dry run takes NIGHTLY_BASE (the daily-green commit) while the branch does not exist yet."""
+    """A stable release (docs/release-flow.md "Release branches"): NIGHTLY_BASE, the full SHA approved in the
+    release-candidate check, which must be the release branch's head with a real daily run that passed every leg on
+    it (release_train.release_head), with its SDK published first, built alone and published as
+    `<target>-<RELEASE_VERSION>`, which a real run must name (26.3-0.1.0 first; a dry run defaults to the next patch).
+    RELEASES_PAUSED and an open release-blocker hold it, as they hold the Nightly; a dry run only warns, and takes any
+    NIGHTLY_BASE while the branch does not exist yet. The publish job checks it all again (reserve_stable_tag)."""
     require_ref("stable")
     git("fetch", "--quiet", "origin", "+refs/heads/main:refs/remotes/origin/main")
     repo, dry_run = os.environ.get("GITHUB_REPOSITORY", ""), os.environ.get("DRY_RUN") == "true"
@@ -475,10 +476,15 @@ def pick_stable() -> None:
                            "only after its SDK, on the same commit.")
         print(f"::warning::{sha} has no published SDK: a real release of it would stop here; this dry run carries no "
               "sdk.json")
-    tags = [line.split("\t")[1].removeprefix("refs/tags/")
-            for line in git("ls-remote", "--tags", "--refs", "origin").splitlines() if line]
-    tag = train.next_stable_tag(tags, version=os.environ.get("RELEASE_VERSION", "").strip())
-    older = [t for t in tags if (found := train.stable_version(t)) and found[0] == train.TARGET]
+    version = os.environ.get("RELEASE_VERSION", "").strip()
+    if not dry_run and not version:
+        stop(repo, "", "the release stopped: a real stable release names its version (`release_version`, 0.1.0 first), "
+                       "as approved in the release-candidate check.")
+    tags = remote_tags()
+    wanted = f"{train.TARGET}-{version}"
+    own = wanted if version and tags.get(wanted) == sha else ""
+    tag = train.next_stable_tag(tags, version=version, own=own)
+    older = [t for t in tags if t != tag and (found := train.stable_version(t)) and found[0] == train.TARGET]
     previous = max(older, key=train.stable_key, default=None)
     today = dt.datetime.now(dt.timezone.utc).date().isoformat()
     parts = [f"Sunrise {tag}: the stable release for Minecraft {train.TARGET}, commit {sha} of "
@@ -498,6 +504,47 @@ def pick_stable() -> None:
     output(build="true", sha=sha, short=sha[:7], source=train.RELEASE_BRANCH, date=today, version=tag, nightly="",
            source_tag="", tag=tag, sdk=str(sdk).lower())
     print(f"build: {tag} {sha}")
+
+
+def remote_tags() -> dict[str, str]:
+    """Every tag on origin and the commit it names (annotated tags peeled)."""
+    refs = {}
+    for line in git("ls-remote", "--tags", "origin").splitlines():
+        sha, name = line.split("\t")
+        name = name.removeprefix("refs/tags/")
+        if name.endswith("^{}"):
+            refs[name[:-3]] = sha
+        else:
+            refs.setdefault(name, sha)
+    return refs
+
+
+def reserve_stable_tag(sha: str, tag: str) -> None:
+    """Right before a stable release is created, a publish-only retry too: the approved commit is still the release
+    branch's head with its passed daily run (release_head), `tag` still comes next on its target, and the tag is
+    created at that commit in one write, which GitHub refuses when the tag exists. A tag found at another commit is
+    refused, never reused; one already at this commit (an earlier attempt's) is kept."""
+    train.require_ref(os.environ.get("GITHUB_REF", ""), "stable")
+    found = train.stable_version(tag)
+    if not found or found[0] != train.TARGET:
+        raise SystemExit(f"::error::refused: {tag} is not a stable tag on {train.TARGET}")
+    if train.release_head(sha) != sha:
+        raise SystemExit(f"::error::refused: {sha} is no longer the approved release head")
+    tags = remote_tags()
+    there = tags.get(tag)
+    if there and there != sha:
+        raise SystemExit(f"::error::refused: the tag {tag} already names {there}, not {sha}")
+    train.next_stable_tag(tags, version=tag.split("-", 1)[1], own=tag if there else "")
+    if there:
+        print(f"`{tag}` already names {sha[:9]}")
+        return
+    created = subprocess.run(["gh", "api", f"repos/{os.environ['GITHUB_REPOSITORY']}/git/refs", "-f",
+                              f"ref=refs/tags/{tag}", "-f", f"sha={sha}"], capture_output=True, text=True)
+    if created.returncode:
+        # Made by someone else since the lookup: only the same commit is acceptable.
+        if train.origin_commit(f"refs/tags/{tag}") != sha:
+            raise SystemExit(f"::error::refused: could not create {tag} at {sha}: {created.stderr.strip()}")
+    print(f"tagged {sha[:9]} `{tag}`")
 
 
 def rotate() -> None:
@@ -714,6 +761,9 @@ def main() -> None:
     picker.add_argument("--kind", choices=["nightly", "snapshot", "stable"], default="nightly")
     sub.add_parser("rotate")
     sub.add_parser("require-sdk").add_argument("sha")
+    reserve = sub.add_parser("reserve-stable-tag")
+    reserve.add_argument("sha")
+    reserve.add_argument("tag")
     sub.add_parser("sdk-archives")
     sub.add_parser("sdk-assets")
     index = sub.add_parser("sdk-index")
@@ -750,6 +800,8 @@ def main() -> None:
             pick(args.force)
     elif args.cmd == "require-sdk":
         require_sdk(args.sha)
+    elif args.cmd == "reserve-stable-tag":
+        reserve_stable_tag(args.sha, args.tag)
     elif args.cmd == "sdk-archives":
         print("\n".join(SDK_ARCHIVES))
     elif args.cmd == "sdk-assets":

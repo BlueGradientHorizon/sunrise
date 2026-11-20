@@ -19,10 +19,10 @@ cap, pause or release-blocker: a snapshot is for testing main, never for players
 
 Release branches (docs/release-flow.md "Release branches"): once an owner creates `nightly/<target>`, the daily
 fast-forwards it to each fully green commit and a Nightly builds its head instead of `daily-green`. A stable release,
-`<target>-<semver>` (26.3-0.1.0 first), builds the head of `release/<target>`, which must have a green real daily run:
-the commit `daily-green` points to (the branch cut from it) or the one `release-green/<target>` points to (a daily run
-on the branch). Only main and those two branches publish (PUBLISHES); `--ref` (a real run's GITHUB_REF) refuses a kind
-its ref may not publish.
+`<target>-<semver>` (26.3-0.1.0 first), builds the approved head of `release/<target>`, which must have a completed
+real daily run that passed every leg on exactly that commit, on main or the branch (daily_passed). Only main and
+those two branches publish (PUBLISHES): `authorize` decides it exactly for a workflow, and `--ref` (a real run's
+GITHUB_REF) refuses a kind its ref may not publish.
 
 A kind releases when a pull request merged into main since its last published release changed one of its
 player-facing paths (GAME_PATHS), once BATCH of them are waiting and the newest merged at least
@@ -544,18 +544,20 @@ def daily_green_commit():
 TARGET = "26.3"
 NIGHTLY_BRANCH = f"nightly/{TARGET}"
 RELEASE_BRANCH = f"release/{TARGET}"
-# Moved by a real, fully green daily run on the release branch: what a release of any later commit there needs.
-RELEASE_GREEN = f"release-green/{TARGET}"
 # What a real run on each ref may publish. Any other ref is a dry run: it signs with a throwaway key.
 PUBLISHES = {
     "refs/heads/main": {"daily", "nightly", "snapshot", "sdk"},
     f"refs/heads/{NIGHTLY_BRANCH}": {"nightly"},
     f"refs/heads/{RELEASE_BRANCH}": {"daily", "stable", "sdk"},
 }
+# The only repository and event a publishing run comes from: every real run is a dispatch (the schedule dispatches).
+PUBLISHING_REPOSITORY = "sunrise-org/sunrise"
+PUBLISHING_EVENT = "workflow_dispatch"
 
 
 def publishes(ref, kind):
-    """Whether a real run on `ref` (GITHUB_REF) may publish `kind` (PUBLISHES)."""
+    """Whether a real run on `ref` (GITHUB_REF, compared exactly: Actions' own comparisons ignore case) may publish
+    `kind` (PUBLISHES)."""
     return kind in PUBLISHES.get(ref, ())
 
 
@@ -567,14 +569,49 @@ def require_ref(ref, kind):
                          "any other ref is a dry run")
 
 
+def authorized(kind, dry_run, ref, repository, event):
+    """Whether this run publishes `kind`: only when its dry_run input is exactly "false" and its repository, event
+    and full ref match exactly. Anything else, a case variant, a tag, a pull request's ref or an unset value, is a
+    dry run. Workflows take credentials and write only on this answer (`authorize`), never on their own expressions."""
+    return (dry_run == "false" and repository == PUBLISHING_REPOSITORY and event == PUBLISHING_EVENT
+            and publishes(ref, kind))
+
+
 def nightly_branch_head():
     """The head of the nightly branch on origin, or "" until an owner creates it (then the Nightly follows
     `daily-green`, as before the branches)."""
     return origin_commit(f"refs/heads/{NIGHTLY_BRANCH}")
 
 
+DAILY_WORKFLOW = ".github/workflows/daily.yml"
+DAILY_BRANCHES = ("main", RELEASE_BRANCH)
+DAILY_EVIDENCE_DAYS = 30
+
+
+def daily_passed(sha, now=None):
+    """The URL of a completed real daily run that passed every leg on exactly `sha`, or "". Only the run counts, never
+    a tag: daily.yml, dispatched in this repository on main or the release branch, not a dry run (its title has no
+    "(dry run)"), not cancelled, whose latest attempt's `green <sha>` job succeeded. That job runs only when resolve
+    and the summary succeeded on a writing run, every leg (parity included) was green and the SDK was published."""
+    since = ((now or dt.datetime.now(dt.timezone.utc)) - dt.timedelta(days=DAILY_EVIDENCE_DAYS)).date().isoformat()
+    pages = gh_json("api", "--paginate", f"repos/{REPO}/actions/workflows/daily.yml/runs?event={PUBLISHING_EVENT}"
+                    f"&status=completed&created=%3E%3D{since}&per_page=100")
+    for entry in (entry for page in pages for entry in page["workflow_runs"]):
+        of_sha = entry["display_title"] == f"daily {sha}" or entry["head_sha"] == sha
+        real = (entry["path"] == DAILY_WORKFLOW and entry["repository"]["full_name"] == REPO
+                and entry["event"] == PUBLISHING_EVENT and entry["head_branch"] in DAILY_BRANCHES
+                and entry["conclusion"] != "cancelled" and not entry["display_title"].endswith("(dry run)"))
+        if not (of_sha and real):
+            continue
+        jobs = gh_json("api", "--paginate", f"repos/{REPO}/actions/runs/{entry['id']}/jobs?filter=latest&per_page=100")
+        if any(job["name"] == f"green {sha}" and job["status"] == "completed" and job["conclusion"] == "success"
+               for page in jobs for job in page["jobs"]):
+            return entry["html_url"]
+    return ""
+
+
 # A stable tag `<target>-<semver>` (26.3-0.1.0) is not semver as a whole: read as two parts, ordered by the semver.
-STABLE_TAG = re.compile(r"(\d+\.\d+(?:\.\d+)?)-(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)")
+STABLE_TAG = re.compile(r"([0-9]+\.[0-9]+(?:\.[0-9]+)?)-(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", re.ASCII)
 FIRST_STABLE = (0, 1, 0)
 
 
@@ -590,10 +627,11 @@ def stable_key(tag):
     return tuple(int(part) for part in target.split(".")), version
 
 
-def next_stable_tag(tags, target=TARGET, version=""):
+def next_stable_tag(tags, target=TARGET, version="", own=""):
     """The tag of the next stable release on `target`: `version` (MAJOR.MINOR.PATCH) when given, which must be newer
-    than every release on it, else the patch after the newest, or 0.1.0 for the first."""
-    taken = [found[1] for found in map(stable_version, tags) if found and found[0] == target]
+    than every release on it (0.1.0 for the first), else the patch after the newest, or 0.1.0. `own` is this release's
+    tag when it already names the approved commit (a retry), which it need not be newer than."""
+    taken = [found[1] for tag in tags if tag != own and (found := stable_version(tag)) and found[0] == target]
     newest = max(taken, default=None)
     if version:
         wanted = stable_version(f"{target}-{version}")
@@ -601,32 +639,40 @@ def next_stable_tag(tags, target=TARGET, version=""):
             raise SystemExit(f"::error::refused: a stable version is MAJOR.MINOR.PATCH, like 0.1.0, not {version!r}")
         if newest and wanted[1] <= newest:
             raise SystemExit(f"::error::refused: {target}-{version} is not newer than {target}-{'.'.join(map(str, newest))}")
+        if not newest and wanted[1] != FIRST_STABLE:
+            raise SystemExit(f"::error::refused: the first stable release on {target} is {target}-0.1.0, not {target}-{version}")
         return f"{target}-{version}"
     major, minor, patch = (newest[0], newest[1], newest[2] + 1) if newest else FIRST_STABLE
     return f"{target}-{major}.{minor}.{patch}"
 
 
 def release_head(head="", dry_run=False):
-    """The commit a stable release builds, or exits naming the check it failed: the release branch's head (or `head`,
-    which must be that head while the branch exists), which must have a completed green real daily run: the commit
-    `daily-green` points to (main's, the branch cut from it) or `release-green/<target>` (the branch's own daily).
-    A dry run only warns when that run is missing, so the build can be tried before the daily ends."""
+    """The commit a stable release builds, or exits naming the check it failed. A real release takes the full SHA
+    approved in the release-candidate check, which must be the head of the release branch (refused while the branch
+    is missing) and have a real daily run that passed every leg on exactly it (daily_passed). A dry run takes the
+    branch's head or any `head`, and only warns when that run is missing, so the build can be tried first."""
+    if not dry_run and not re.fullmatch(r"[0-9a-f]{40}", head or ""):
+        raise SystemExit("::error::refused: a real stable release names the full 40-character commit approved in the "
+                         f"release-candidate check (`base`), not {head or 'nothing'}")
     branch = origin_commit(f"refs/heads/{RELEASE_BRANCH}")
-    if not head and not branch:
-        raise SystemExit(f"::error::refused: {RELEASE_BRANCH} does not exist yet; an owner cuts it from a published "
-                         "Nightly's commit")
+    if not branch and (not dry_run or not head):
+        raise SystemExit(f"::error::refused: {RELEASE_BRANCH} does not exist; an owner cuts it from a green daily's "
+                         "commit")
     sha = run("git", "rev-parse", "--verify", "--quiet", f"{head or branch}^{{commit}}", check=False).strip()
     if not sha:
         raise SystemExit(f"::error::refused: {head or branch} is not a commit of this repository")
     if branch and sha != branch:
         raise SystemExit(f"::error::refused: {sha} is not the head of {RELEASE_BRANCH} ({branch}); a release builds "
                          "only that head")
-    if sha not in (daily_green_commit(), origin_commit(f"refs/tags/{RELEASE_GREEN}")):
-        problem = (f"{sha} is neither the commit `{DAILY_GREEN}` nor `{RELEASE_GREEN}` points to; a stable release "
-                   "ships only a commit whose real daily run passed every leg")
+    evidence = daily_passed(sha)
+    if not evidence:
+        problem = (f"{sha} has no completed real daily run that passed every leg on it (main or {RELEASE_BRANCH}); "
+                   "a stable release ships only such a commit")
         if not dry_run:
             raise SystemExit(f"::error::refused: {problem}")
         print(f"::warning::a real release would stop here: {problem}", file=sys.stderr)
+    else:
+        print(f"{sha[:9]} passed its daily run: {evidence}", file=sys.stderr)
     return sha
 
 
@@ -698,6 +744,10 @@ def channel_head(channel, head, exception=""):
         raise SystemExit(f"::error::refused: {sha} is not {pointer} ({green or 'none yet'}); "
                          "a Nightly ships only the commit of a fully green daily run, or one the owner granted a "
                          "one-time exception (the `exception` input)")
+    # The branch is only a pointer: its head must have its own passed daily run.
+    if branch and sha == branch and not daily_passed(sha):
+        raise SystemExit(f"::error::refused: {sha}, the head of {NIGHTLY_BRANCH}, has no completed real daily run "
+                         "that passed every leg on it")
     if exception and channel == "nightly":
         grant = f"{sha[:9]} is allowed by a one-time exception instead of a green daily run: {exception}"
         print("::warning::" + grant.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A"), file=sys.stderr)
@@ -750,7 +800,7 @@ def write_outputs(values):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=["decide", "notes", "gate"])
+    parser.add_argument("command", choices=["decide", "notes", "gate", "authorize"])
     parser.add_argument("--kind", choices=["game"], default="game")
     parser.add_argument("--head", help="the commit to release (default: the newest commit on main whose checks passed)")
     parser.add_argument("--daily", action="store_true",
@@ -760,6 +810,9 @@ def main():
     parser.add_argument("--exception", default="",
                         help="decide --channel nightly: the owner's one-time grant for a commit that is not daily-green")
     parser.add_argument("--ref", help="decide: a real run's GITHUB_REF, which must publish the channel (PUBLISHES)")
+    parser.add_argument("--publish-kind", choices=["daily", "nightly", "snapshot", "stable", "sdk"],
+                        help="authorize: what the run would publish")
+    parser.add_argument("--dry-run", default="true", help="authorize: the run's dry_run input; only \"false\" may publish")
     parser.add_argument("--tag", help="notes: the release's tag")
     parser.add_argument("--force", action="store_true", help="release even without player-facing changes, before merges settle or while paused")
     parser.add_argument("--out", type=Path, help="notes: write title.txt and body.md here")
@@ -769,6 +822,13 @@ def main():
     args = parser.parse_args()
     now = dt.datetime.fromisoformat(args.now) if args.now else dt.datetime.now(dt.timezone.utc)
 
+    if args.command == "authorize":
+        allowed = authorized(args.publish_kind, args.dry_run, os.environ.get("GITHUB_REF", ""),
+                             os.environ.get("GITHUB_REPOSITORY", ""), os.environ.get("GITHUB_EVENT_NAME", ""))
+        print(f"{args.publish_kind}: {'publishes' if allowed else 'dry run'} (dry_run={args.dry_run!r}, "
+              f"ref {os.environ.get('GITHUB_REF', '')!r}, event {os.environ.get('GITHUB_EVENT_NAME', '')!r})")
+        write_outputs({"publish": str(allowed).lower(), "dry_run": str(not allowed).lower()})
+        return 0
     if args.ref and args.channel:
         require_ref(args.ref, args.channel)
     if args.command == "gate":

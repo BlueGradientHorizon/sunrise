@@ -129,8 +129,11 @@ jobs:
       # gh comes from the room's runner image on Dyna (tools/ci/nightly.py runs it): say so plainly when it is missing.
       - run: gh --version
       - id: mode
-        # A dry run never publishes; a hand-started run off main and the release branches is always one.
-        run: echo "dry_run=${{ github.event_name == 'workflow_dispatch' && (inputs.dry_run || !contains(fromJSON('["refs/heads/main", "refs/heads/nightly/26.3", "refs/heads/release/26.3"]'), github.ref)) }}" >> "$GITHUB_OUTPUT"
+        # A dry run never publishes; only release_train.py's exact check of repository, event, ref and kind lets a run publish.
+        env:
+          KIND: ${{ inputs.kind }}
+          DRY_INPUT: ${{ inputs.dry_run }}
+        run: python3 tools/release_train.py authorize --publish-kind "$KIND" --dry-run "$DRY_INPUT"
       - id: pick
         env:
           GH_TOKEN: ${{ github.token }}
@@ -342,6 +345,7 @@ jobs:
     permissions:
       contents: write
       issues: read          # the open release-blocker issues (gate)
+      actions: read         # a stable release's daily run, checked again before its tag (reserve-stable-tag)
     outputs:
       release_id: ${{ steps.identity.outputs.id }}
     steps:
@@ -477,9 +481,11 @@ jobs:
           set -euo pipefail
           python3 tools/ci/nightly.py require-sdk "$SHA"
           [[ "${SHA:0:7}" == "$SHORT" ]] || { echo "::error::the build's commit isn't the one signed"; exit 1; }
+          # The approved head, its daily run and the version again, then the tag at that commit in one write.
+          python3 tools/ci/nightly.py reserve-stable-tag "$SHA" "$TAG"
           files=(); while read -r _ name; do files+=("dist/${name#\*}"); done < dist/SHA256SUMS
           # A full release, never GitHub's latest: the site's launcher download and older servers read the latest.
-          gh release create "$TAG" --latest=false --target "$SHA" --title "Sunrise $TAG" --notes-file dist/nightly-notes.md \
+          gh release create "$TAG" --verify-tag --latest=false --title "Sunrise $TAG" --notes-file dist/nightly-notes.md \
             "${files[@]}" dist/SHA256SUMS dist/SHA256SUMS.sig dist/SHA256SUMS.v2.sig dist/smoke-test.json
       - name: Record the release identity for the later musl attachment
         id: identity
@@ -587,7 +593,8 @@ jobs:
     # Wait for the parallel build too, since it checks out the same temporary ref.
     # Derive it independently of pick's outputs: pick may fail after pushing it.
     needs: [pick, build, sign, publish, musl-build]
-    if: always() && github.event_name == 'workflow_dispatch' && (inputs.dry_run || !contains(fromJSON('["refs/heads/main", "refs/heads/nightly/26.3", "refs/heads/release/26.3"]'), github.ref))
+    # Every dispatch: a real run has no such ref to remove, and the step's lookup says so.
+    if: always() && github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

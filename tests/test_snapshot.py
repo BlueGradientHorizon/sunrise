@@ -26,9 +26,8 @@ class ReleaseSnapshotTests(unittest.TestCase):
 
     def test_only_main_without_dry_run_publishes(self):
         mode = self.jobs["decide"]["steps"][1]
-        self.assertEqual(mode["run"],
-                         """echo "dry_run=${{ inputs.dry_run || !contains(fromJSON('["refs/heads/main", """
-                         """"refs/heads/nightly/26.3"]'), github.ref) }}" >> "$GITHUB_OUTPUT\"""")
+        self.assertEqual(mode["run"], 'python3 tools/release_train.py authorize --publish-kind "$KIND" --dry-run "$DRY_INPUT"')
+        self.assertEqual(mode["env"], {"KIND": "${{ inputs.kind }}", "DRY_INPUT": "${{ inputs.dry_run }}"})
         self.assertEqual(self.workflow["on"]["workflow_dispatch"]["inputs"]["dry_run"]["default"], "true")
         publish = self.snapshot["snapshot-sdk-publish"]
         self.assertEqual(publish["with"]["publish"], "${{ needs.decide.outputs.dry_run != 'true' }}")

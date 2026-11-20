@@ -66,6 +66,8 @@ jobs:
       skip: ${{ steps.commit.outputs.skip }}
       dry_run: ${{ steps.commit.outputs.dry_run }}
       parity_required: ${{ steps.commit.outputs.parity_required }}
+      # main or release/26.3 on a writing run (exact, from authorize), else empty: what the promotion jobs check.
+      branch: ${{ steps.commit.outputs.branch }}
       self_hosted: ${{ steps.route.outputs.self_hosted }}
     steps:
       - uses: actions/checkout@v4
@@ -84,17 +86,22 @@ jobs:
           SAME_REPO: true
           EVENT: ${{ github.event_name }}
         run: bash tools/ci/dyna_ci_route.sh >> "$GITHUB_OUTPUT"
+      # Only main and release/26.3 write, decided exactly (release_train.py authorize): any other run is a dry run.
+      - id: auth
+        env:
+          DRY_INPUT: ${{ inputs.dry_run }}
+        run: python3 tools/release_train.py authorize --publish-kind daily --dry-run "$DRY_INPUT"
       - id: commit
         env:
           GH_TOKEN: ${{ github.token }}
           COMMIT: ${{ inputs.commit || github.sha }}
-          # Only main and release/26.3 write: a run on any other ref is a dry run whatever its input says.
-          DRY_RUN: ${{ inputs.dry_run || !contains(fromJSON('["refs/heads/main", "refs/heads/release/26.3"]'), github.ref) }}
+          DRY_RUN: ${{ steps.auth.outputs.dry_run }}
           SCHEDULED: ${{ inputs.scheduled }}
         run: |
           # A branch, tag or short SHA becomes the full SHA here; every later job and the run's summary job name use it.
           sha=$(git rev-parse --verify --quiet "$COMMIT^{commit}") || { echo "::error::$COMMIT is not a commit of this repository"; exit 1; }
           # A writing run tags, files issues and signs and publishes the SDK and the Nightly: only its branch's commits.
+          branch=
           if [ "$DRY_RUN" != true ]; then
             branch=${GITHUB_REF#refs/heads/}
             git fetch -q --no-tags origin "+refs/heads/$branch:refs/remotes/origin/$branch"
@@ -110,14 +117,14 @@ jobs:
               echo "### $sha already has a completed daily run: $done" >> "$GITHUB_STEP_SUMMARY"
             fi
           fi
-          # Every writing run, whichever commit it takes, runs parity: a writing run can move daily-green or
-          # release-green/26.3 and start a Nightly or a release, so none may skip it. Only a dry run has no parity leg.
+          # Every writing run, whichever commit it takes, runs parity: a writing run can move daily-green and be a
+          # Nightly's or a stable release's evidence, so none may skip it. Only a dry run has no parity leg.
           parity_required=false
           if [ "$DRY_RUN" = false ] && { [ "$GITHUB_REF" = refs/heads/main ] || [ "$GITHUB_REF" = refs/heads/release/26.3 ]; }; then
             parity_required=true
           fi
-          printf 'commit=%s\nskip=%s\ndry_run=%s\nparity_required=%s\n' \
-            "$sha" "$skip" "$DRY_RUN" "$parity_required" >> "$GITHUB_OUTPUT"
+          printf 'commit=%s\nskip=%s\ndry_run=%s\nparity_required=%s\nbranch=%s\n' \
+            "$sha" "$skip" "$DRY_RUN" "$parity_required" "$branch" >> "$GITHUB_OUTPUT"
 
   shards:
     needs: resolve
@@ -294,23 +301,42 @@ jobs:
           RESULT: ${{ needs.sdk-publish.result }}
         run: python3 tools/ci/daily_summary.py --after sdk-publish "$RESULT"
 
+  # The run's own evidence of a passed daily (release_train.daily_passed): a writing run, every leg green, the SDK out.
+  green:
+    name: green ${{ needs.resolve.outputs.commit }}
+    needs: [resolve, summary, parity, sdk, sdk-publish]
+    if: >-
+      !cancelled() && needs.resolve.result == 'success' && needs.resolve.outputs.dry_run == 'false' &&
+      needs.summary.result == 'success' && needs.summary.outputs.green == 'true' && needs.parity.result == 'success' &&
+      (needs.sdk-publish.result == 'success' ||
+      (needs.sdk-publish.result == 'skipped' && needs.sdk.result == 'success' && needs.sdk.outputs.needed == 'false'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - env:
+          COMMIT: ${{ needs.resolve.outputs.commit }}
+        run: echo "### $COMMIT passed every leg of this real daily run, and its SDK is published" >> "$GITHUB_STEP_SUMMARY"
+
   # nightly/26.3 fast-forwarded to the green commit with the sunrise-sunny App's token, which its ruleset lets update it.
   nightly-branch:
-    needs: [resolve, summary, sdk-publish]
-    if: always() && github.ref == 'refs/heads/main' && needs.summary.outputs.green == 'true' && needs.resolve.outputs.dry_run == 'false' && (needs.sdk-publish.result == 'success' || needs.sdk-publish.result == 'skipped')
+    needs: [resolve, green]
+    if: needs.green.result == 'success' && needs.resolve.outputs.branch == 'main'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions: {}
     steps:
       - id: branch
         run: |
-          found=0; git ls-remote --exit-code "https://github.com/$GITHUB_REPOSITORY" refs/heads/nightly/26.3 > /dev/null || found=$?
-          case $found in
-            0) echo "exists=true" >> "$GITHUB_OUTPUT" ;;
-            2) echo "exists=false" >> "$GITHUB_OUTPUT"
-               echo "### nightly/26.3 does not exist: the Nightly follows daily-green" >> "$GITHUB_STEP_SUMMARY" ;;
-            *) echo "::error::could not look nightly/26.3 up (git ls-remote exited $found)"; exit 1 ;;
-          esac
+          refs=$(git ls-remote "https://github.com/$GITHUB_REPOSITORY" refs/heads/nightly/26.3) \
+            || { echo "::error::could not look nightly/26.3 up"; exit 1; }
+          # The returned name, exactly: a pattern also matches a longer ref ending in it.
+          if awk '$2 == "refs/heads/nightly/26.3" { found = 1 } END { exit !found }' <<< "$refs"; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "### nightly/26.3 does not exist: the Nightly follows daily-green" >> "$GITHUB_STEP_SUMMARY"
+          fi
       - uses: actions/create-github-app-token@v2
         if: steps.branch.outputs.exists == 'true'
         id: app
@@ -331,9 +357,8 @@ jobs:
   # The nightly: the daily-green commit, published through the release train (release.yml, kind nightly), after its
   # SDK and the nightly branch.
   nightly:
-    needs: [resolve, summary, sdk-publish, nightly-branch]
-    # After the SDK, which a Nightly carries the index of: published now, or already (its leg skipped the build).
-    if: always() && github.ref == 'refs/heads/main' && needs.nightly-branch.result == 'success' && needs.summary.outputs.green == 'true' && needs.resolve.outputs.dry_run == 'false' && (needs.sdk-publish.result == 'success' || needs.sdk-publish.result == 'skipped')
+    needs: [resolve, green, nightly-branch]
+    if: needs.green.result == 'success' && needs.resolve.outputs.branch == 'main' && needs.nightly-branch.result == 'success'
     # GitHub checks what every called job asks for at startup, skipped ones too (tests/test_ci_call_permissions.py).
     permissions:
       # Only because release.yml holds the snapshot's SDK publish (sdk-publish.yml), which asks for it and never
@@ -348,24 +373,3 @@ jobs:
       commit: ${{ needs.resolve.outputs.commit }}
       dry_run: false
       daily: true
-
-  # A green real run on release/26.3: release-green/26.3 moves to its commit, after its SDK, which a release needs too.
-  release-green:
-    needs: [resolve, summary, sdk-publish]
-    if: always() && github.ref == 'refs/heads/release/26.3' && needs.summary.outputs.green == 'true' && needs.resolve.outputs.dry_run == 'false' && (needs.sdk-publish.result == 'success' || needs.sdk-publish.result == 'skipped')
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: write  # the release-green/26.3 tag
-    steps:
-      - env:
-          GH_TOKEN: ${{ github.token }}
-          COMMIT: ${{ needs.resolve.outputs.commit }}
-        run: |
-          found=0; git ls-remote --exit-code "https://github.com/$GITHUB_REPOSITORY" refs/tags/release-green/26.3 > /dev/null || found=$?
-          case $found in
-            0) gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/release-green/26.3" -f sha="$COMMIT" -F force=true > /dev/null ;;
-            2) gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref=refs/tags/release-green/26.3 -f sha="$COMMIT" > /dev/null ;;
-            *) echo "::error::could not look release-green/26.3 up (git ls-remote exited $found)"; exit 1 ;;
-          esac
-          echo "### release-green/26.3 moved to ${COMMIT:0:9}: a release can be cut from it" >> "$GITHUB_STEP_SUMMARY"

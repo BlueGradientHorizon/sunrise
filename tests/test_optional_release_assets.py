@@ -142,14 +142,15 @@ gh() {
   done
 }
 """
-            published = subprocess.run([BASH, "-e", "-c", stubs + run_step('gh release create "$TAG" --latest=false')],
+            published = subprocess.run([BASH, "-e", "-c", stubs + run_step('gh release create "$TAG" --verify-tag --latest=false')],
                                        cwd=root, env=env, text=True, capture_output=True)
             self.assertEqual(published.returncode, 0, published.stderr)
             files = {Path(name).name for name in (root / "published").read_text().splitlines()}
             self.assertEqual(files, present | {"SHA256SUMS", "SHA256SUMS.sig", "SHA256SUMS.v2.sig", "smoke-test.json",
                                                "nightly-notes.md"}, "the Nightly's asset set")
             command = (root / "command").read_text()
-            self.assertIn(f"release create {tag} --latest=false", command)
+            self.assertIn(f"release create {tag} --verify-tag --latest=false", command)
+            self.assertNotIn("--target", command)
             self.assertNotIn("--prerelease", command)
 
     def test_a_snapshot_is_signed_for_its_channel_and_published_under_its_own_tag(self):
