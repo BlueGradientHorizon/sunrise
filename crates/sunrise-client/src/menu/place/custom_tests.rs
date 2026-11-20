@@ -13,6 +13,7 @@ fn kind() -> Kind {
         player_inventory: true,
         data_slots: 0,
         results: vec![8, 9],
+        inputs: Vec::new(),
         crafting: None,
         links: None,
     })))

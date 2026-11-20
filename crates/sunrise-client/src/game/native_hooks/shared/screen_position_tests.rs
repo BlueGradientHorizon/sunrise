@@ -336,6 +336,7 @@ fn a_mod_menu_opened_without_a_block_gets_its_types_screen() {
             9,
             0,
             Vec::new(),
+            Vec::new(),
             None,
             None,
             true,

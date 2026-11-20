@@ -94,6 +94,9 @@ impl Game<'_> {
         replace: MenuReplace,
     ) -> Option<i32> {
         let conn = self.native_conn(uuid)?;
+        if self.merchant_click_in_progress(conn) {
+            return None;
+        }
         self.close_for_open(conn, replace);
         let gi = self.guest_index(conn)?;
         // The first contents show the player's own inventory and cursor, in their turn too.
@@ -163,10 +166,11 @@ impl Game<'_> {
             .as_ref()
             .and_then(|host| host.hub.registry_id("minecraft:menu", &id))
             .ok_or(OpenMenuError::NotModMenu)?;
-        // The mods may stop the menu, as for a block's.
-        if !self
-            .guest_may_open(conn, &id, pos)
-            .ok_or(OpenMenuError::PlayerUnavailable)?
+        // A merchant take cannot replace its active menu speculatively.
+        if self.merchant_click_in_progress(conn)
+            || !self
+                .guest_may_open(conn, &id, pos)
+                .ok_or(OpenMenuError::PlayerUnavailable)?
         {
             return Ok(None);
         }
@@ -1334,6 +1338,7 @@ mod tests {
                 "status_package".into(),
                 9,
                 0,
+                Vec::new(),
                 Vec::new(),
                 None,
                 None,

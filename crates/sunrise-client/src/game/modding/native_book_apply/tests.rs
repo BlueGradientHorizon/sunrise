@@ -19,6 +19,7 @@ fn open_mod_menu(game: &mut Game<'_>) -> ((i32, i32, i32), MenuSnapshot, sync::S
         player_inventory: true,
         data_slots: 0,
         results: vec![2],
+        inputs: Vec::new(),
         crafting: None,
         links: None,
     }));

@@ -40,6 +40,8 @@ pub struct ModMenuType {
     pub player_inventory: bool,
     pub data_slots: usize,
     pub results: Vec<usize>,
+    /// Validated container indices marked as machine inputs in the client layout.
+    pub inputs: Vec<usize>,
     /// its crafting grid, if it has one (`crafting`).
     pub crafting: Option<ModCrafting>,
     /// its linked slots, if it has any (`links`).
@@ -92,12 +94,13 @@ impl ModCrafting {
 static MOD_MENU_TYPES: std::sync::OnceLock<Vec<ModMenuType>> = std::sync::OnceLock::new();
 
 /// One menu type as [`register_mod_menu_types`] takes it: `(id, owner, slots, data
-/// slots, results, crafting, links, player inventory)`.
+/// slots, results, inputs, crafting, links, player inventory)`.
 pub type ModMenuTypeEntry = (
     String,
     String,
     usize,
     usize,
+    Vec<usize>,
     Vec<usize>,
     Option<ModCrafting>,
     Option<ModLinks>,
@@ -108,7 +111,7 @@ fn menu_types(menus: impl IntoIterator<Item = ModMenuTypeEntry>) -> Vec<ModMenuT
     menus
         .into_iter()
         .map(
-            |(id, owner, slots, data_slots, results, crafting, links, player_inventory)| {
+            |(id, owner, slots, data_slots, results, inputs, crafting, links, player_inventory)| {
                 ModMenuType {
                     id: Box::leak(id.into_boxed_str()),
                     owner: Box::leak(owner.into_boxed_str()),
@@ -116,6 +119,7 @@ fn menu_types(menus: impl IntoIterator<Item = ModMenuTypeEntry>) -> Vec<ModMenuT
                     player_inventory,
                     data_slots,
                     results,
+                    inputs,
                     crafting,
                     links,
                 }

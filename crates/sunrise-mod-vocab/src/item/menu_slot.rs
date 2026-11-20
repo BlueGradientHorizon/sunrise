@@ -84,7 +84,7 @@ impl MenuRef {
 pub enum MenuSlotKind {
     /// The player inventory index, independent of menu order.
     Player(u32),
-    /// Storage declared by the layout, including linked storage.
+    /// General storage, including linked storage not marked as an input.
     Storage,
     /// A crafting input grid.
     CraftingGrid,
@@ -95,4 +95,7 @@ pub enum MenuSlotKind {
     /// A role the client layout cannot classify.
     #[default]
     Other,
+    /// A machine input in the client layout, including fuel. This does not
+    /// imply any particular acceptance or transfer rules.
+    Input,
 }

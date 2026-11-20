@@ -67,6 +67,7 @@ fn a_mod_menu_part_decides_whether_its_menu_stays_open() {
         player_inventory: true,
         data_slots: 0,
         results: Vec::new(),
+        inputs: Vec::new(),
         crafting: None,
         links: None,
     }));
@@ -292,6 +293,7 @@ fn a_blockless_mod_menu_closes_when_its_part_answers_false() {
                 "test".into(),
                 9,
                 0,
+                Vec::new(),
                 Vec::new(),
                 None,
                 None,

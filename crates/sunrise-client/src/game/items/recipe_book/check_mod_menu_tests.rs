@@ -10,6 +10,7 @@ fn a_remote_non_grid_menu_can_request_a_recipe_check_only_in_an_eligible_screen(
         9,
         0,
         Vec::new(),
+        Vec::new(),
         None,
         None,
         true,

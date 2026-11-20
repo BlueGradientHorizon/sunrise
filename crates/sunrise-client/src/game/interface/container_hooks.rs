@@ -682,6 +682,7 @@ mod tests {
             player_inventory: true,
             data_slots: 0,
             results: vec![200],
+            inputs: Vec::new(),
             links: None,
             crafting: None,
         };
