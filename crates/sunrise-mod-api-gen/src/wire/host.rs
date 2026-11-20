@@ -10,11 +10,6 @@ fn snake(owner: &str) -> String {
     owner.rsplit("::").next().unwrap().to_snake_case()
 }
 
-/// The backend area a level view's tables also answer, so a level frame serves its calls with no host.
-const LEVEL_TABLES: &str = "BlockStatesBackend";
-/// The frame accessor that lends [`LEVEL_TABLES`] from the host's backend or the level view.
-const LEVEL_TABLES_ACCESSOR: &str = "block_states_backend";
-
 fn serves(supers: &[(&str, Vec<String>)], child: &str, parent: &str) -> bool {
     let mut stack = vec![child];
     let mut visited = std::collections::HashSet::new();
@@ -200,11 +195,17 @@ fn frame(surface: &mut super::Surface<'_>) -> Result<String, String> {
         }
     }
     check_one_source_per_chain(surface, &chains)?;
-    // The block-state reads come from the host's backend, or in a level frame from the tables the
-    // level view's own `block_states()` reads through: the same value a native listener gets.
-    methods.push_str(&format!(
-        "pub unsafe fn {LEVEL_TABLES_ACCESSOR}(&self) -> Result<&'static dyn mod_api::prelude::{LEVEL_TABLES}, ServeError> {{ match self.backend() {{ Ok(backend) => Ok(backend), Err(_) => Ok(self.level_host()?.block_states().backend()) }} }}"
-    ));
+    // A table-backed area's reads (`#[table_backend]`) come from the host's backend, or in a level
+    // frame from the tables the level view's method named for the area (`block_states()` for
+    // `block_states`) hands out through its service's `backend()`: the value a native listener gets.
+    for (stem, backend) in &surface.table_areas {
+        writeln!(
+            methods,
+            "pub unsafe fn {}(&self) -> Result<&'static dyn mod_api::prelude::{backend}, ServeError> {{ match self.backend() {{ Ok(backend) => Ok(backend), Err(_) => Ok(self.level_host()?.{stem}().backend()) }} }}",
+            snake(backend)
+        )
+        .unwrap();
+    }
     Ok(format!(
         "#[derive(Default)] pub struct Frame {{ {fields} }}\n// SAFETY: pointers are used only by unsafe serve during the synchronous call that lent them.\nunsafe impl Send for Frame {{}}\nimpl Frame {{ {methods} }}"
     ))
@@ -823,12 +824,12 @@ impl Cx {
                 "unsafe {{ (&*cx).held.get(held_id).map_err(|_| ServeError::Stale)?.downcast_ref::<OwnerThread<std::sync::Arc<dyn {}>>>().ok_or(ServeError::Stale)?.get()?.clone() }}",
                 trait_path(m.owner)
             )
-        } else if m
-            .via
-            .as_deref()
-            .is_some_and(|via| via.ends_with(LEVEL_TABLES))
-        {
-            format!("unsafe {{ (&*cx).frame()?.{LEVEL_TABLES_ACCESSOR}()? }}")
+        } else if let Some((_, backend)) = surface.table_areas.iter().find(|(_, backend)| {
+            m.via
+                .as_deref()
+                .is_some_and(|via| via.ends_with(backend.as_str()))
+        }) {
+            format!("unsafe {{ (&*cx).frame()?.{}()? }}", snake(backend))
         } else if m.owner == "ConfigFiles" {
             "unsafe { (&*cx).frame()?.config_files(file_root)? }".to_string()
         } else {
