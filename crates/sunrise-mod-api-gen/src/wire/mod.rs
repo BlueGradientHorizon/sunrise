@@ -249,6 +249,8 @@ pub(super) struct Surface<'a> {
     pub(super) parts: Vec<(&'static str, String)>,
     /// The error types a gated method refuses a wrong-phase call with (`AccessRefusal` impls).
     pub(super) access_refusals: std::collections::BTreeSet<String>,
+    /// The areas a level view's tables also answer, as (file stem, backend trait): `#[table_backend]`.
+    pub(super) table_areas: Vec<(String, String)>,
 }
 
 /// The line on a method's doc that keeps it off wasm, and says why.
@@ -476,6 +478,7 @@ pub(super) fn surface_reading_index<'a>(
         excused,
         parts,
         access_refusals: crate::host::refusal_errors(root)?,
+        table_areas: crate::host::table_areas(root)?,
     })
 }
 
