@@ -140,8 +140,9 @@ impl StateFacts {
     pub fn has_class(&self, name: &str) -> bool {
         self.classes.iter().any(|c| &**c == name)
     }
-    /// A pane-shaped block: `IronBarsBlock`, which glass panes, stained glass panes and iron
-    /// bars share, and which a mod block declared on that template belongs to.
+    /// A pane-shaped block: one of the `IronBarsBlock` class, which glass panes, stained glass
+    /// panes and iron bars share, and a mod block declared on that template belongs to. Whatever
+    /// reads connected textures treats them alike.
     pub fn is_pane(&self) -> bool {
         self.has_class("IronBarsBlock")
     }
@@ -676,5 +677,79 @@ impl GameplayStateSource for decode::Entry<'_> {
             "fall" => self.sound.fall.id.as_deref().unwrap_or(""),
             _ => "",
         }
+    }
+}
+
+#[cfg(test)]
+mod pane_tests {
+    use super::*;
+
+    fn state(name: &str, classes: &[&str]) -> StateFacts {
+        let text = |s: &str| -> Arc<str> { s.into() };
+        StateFacts {
+            name: text(name),
+            emission: 0,
+            dynamic_light: false,
+            dampening: 0,
+            skylight_down: false,
+            shape_occlusion: false,
+            can_occlude: false,
+            solid_render: false,
+            hardness: 0.0,
+            requires_tool: false,
+            replaceable: false,
+            random_ticks: false,
+            block_entity: false,
+            render_shape: RenderShape::Model,
+            destroy_overlay: true,
+            full_collision: false,
+            friction: 0.6,
+            explosion_resistance: 0.0,
+            item: text("minecraft:air"),
+            pick_item: text("minecraft:air"),
+            sounds: Sounds {
+                volume: 1.0,
+                pitch: 1.0,
+                break_sound: text(""),
+                step: text(""),
+                place: text(""),
+                hit: text(""),
+                fall: text(""),
+            },
+            fluid: Fluid::None,
+            fluid_level: 0,
+            fluid_falling: false,
+            waterlogged: false,
+            random_offset: false,
+            offset_limits: None,
+            outline_offset: false,
+            legacy_solid: false,
+            sturdy_full: 0,
+            classes: classes.iter().map(|c| text(c)).collect(),
+            outline: Arc::from([]),
+            outline_edges: Arc::from([]),
+            map_color: 0,
+        }
+    }
+
+    #[test]
+    fn a_pane_is_a_block_of_the_iron_bars_class_whatever_its_name() {
+        let pane = ["IronBarsBlock", "Block"];
+        for name in [
+            "minecraft:glass_pane",
+            "minecraft:iron_bars",
+            "mymod:crystal_lattice",
+        ] {
+            assert!(state(name, &pane).is_pane(), "{name}");
+        }
+        // A stained pane's class chain starts at its own subclass.
+        assert!(
+            state(
+                "minecraft:red_stained_glass_pane",
+                &["StainedGlassPaneBlock", "IronBarsBlock"]
+            )
+            .is_pane()
+        );
+        assert!(!state("mymod:fake_glass_pane", &["Block"]).is_pane());
     }
 }
