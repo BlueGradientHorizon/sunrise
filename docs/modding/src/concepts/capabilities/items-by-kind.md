@@ -9,8 +9,11 @@ A block's `ItemStorage` answers by kind, with `u64` amounts:
 - `amount(host, resource)` and `space_for(host, resource)`: how much of one kind it holds, and the planning bound
   for that kind. The default handler decides offer-dependent admission on the actual insert, not in `space_for`.
 - `insert(host, tx, resource, amount)` and `extract(...)`: writes in the caller's transaction, never more than asked.
-- `page(host, cursor, page)`: one page of what it holds. The cursor is a plain value the caller keeps (0 for the
-  start); the answer is the cursor to ask for next, or `None` at the end. A listing that changes between pages can skip a kind or return it twice.
+- `visit_entries(host, &mut visitor)`: calls `visitor(&kind, amount)` for each occupied entry, in provider order.
+  For a container, this is the order of the slots on the queried side; each slot has its own amount, even when
+  several hold the same kind. Return `ControlFlow::Continue(())` to keep reading or `ControlFlow::Break(())` to
+  finish successfully without reading another entry. Clone a kind you want to keep, and wait for the visit to
+  succeed before writing.
 
 **Who answers it.** The game answers `STORAGE` for every container or composter port `ITEMS` reaches. Its own containers are asked in
 one pass over the slots the side reaches, by the rules hoppers follow, so a chest, a hopper, a composter and a furnace give the same
@@ -23,12 +26,11 @@ holds: register it `before_game` if the block also has slots.
 `transfer(host, from, to, resource, max, tx)` moves one kind: all or nothing, a partial take
 retried, and `StorageError::Overanswered` when a handler answers more than it was asked.
 It queries the source amount and destination space before extracting and inserting.
-A partial move can require additional calls. `transfer_matching(host, from, to, filter, max, tx)` moves up to `max` items accepted by
-the filter, listing the source a page at a time.
-
-**Limits the host keeps.** A `StoragePage` holds at most `MAX_STORAGE_PAGE` (256) entries whatever limit a caller asks,
-and a limit of 0 is refused with `StorageError::ZeroPage`. A handler cannot push past its page. Totals and cursors that do not fit in 64 bits are refused with
-`StorageError::Overflow`, never wrapped.
+A partial move can require additional calls. `transfer_matching(host, from, to, filter, max, tx)` moves up to `max`
+items accepted by the filter. It ends each visit before attempting a transfer. If nothing moves, it tries the next
+matching entry; if anything moves, it starts again at the first entry because the source's entries may have shifted.
+It does not read the source when `max` is zero. Totals and entry counts that do not fit in 64 bits return
+`StorageError::Overflow` rather than wrapping.
 
 **Cost.** A bulk store can use a by-kind index to avoid scanning slots. The game's adapter answers in one pass over the slots
 (O(slots)), with no work per item moved, so a question about a chest costs the same whether it moves one item or a

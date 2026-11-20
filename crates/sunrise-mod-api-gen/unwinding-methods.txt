@@ -422,7 +422,6 @@ items::container_insert
 items::container_insert_kind
 items::container_kind_amount
 items::container_kind_space
-items::container_listing
 items::container_set_stack_limit
 items::container_size
 items::container_stack

@@ -1,0 +1,16 @@
+ids = [
+    "trait:ItemStorage",
+    "method:ItemStorage::page",
+    "method:ItemStorage::visit_entries",
+    "type:StoragePage",
+    "handle:StoragePage::new",
+    "handle:StoragePage::limit",
+    "handle:StoragePage::room",
+    "handle:StoragePage::push",
+    "handle:StoragePage::entries",
+    "handle:StoragePage::clear",
+    "type:StorageError",
+    "type:StorageError.ZeroPage",
+]
+why = "Storage no longer batches reads into guest-sized pages. It visits occupied entries in provider order so readers can stop early, and matching transfers finish each read before writing."
+migrate = "Replace StoragePage::new and the page(host, cursor, &mut page) loop with storage.visit_entries(host, &mut |kind, amount| { /* use &ItemResource and u64 here */ std::ops::ControlFlow::Continue(()) })?. Return ControlFlow::Break(()) instead to finish successfully without reading another entry. Clone kind to retain it and wait for Ok(()) before writing. For providers, replace ItemStorage::page with visit_entries(&self, host: &mut dyn ServerHost, visitor: &mut dyn FnMut(&ItemResource, u64) -> std::ops::ControlFlow<()>) -> Result<(), StorageError>. Call visitor(kind, amount) on each occupied entry in the same order (including duplicate kinds), stop reading on Break and return Ok(()). Delete cursor, page capacity, MAX_STORAGE_PAGE and StorageError::ZeroPage handling. StorageError no longer implements Wire; keep it local or map it to your own payload type. Calls to transfer_matching are unchanged."

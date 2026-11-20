@@ -4,7 +4,7 @@ use mod_api::{
     BlockEntityItemError as Error, Host, HostTransaction, ITEMS, ItemResource, ServerHost,
     Transaction,
 };
-use std::sync::Arc;
+use std::{ops::ControlFlow, sync::Arc};
 use sunrise_client::containers::{BlockEntity, ModBlockEntity, ModContainer};
 use sunrise_client::items::ItemStack;
 use sunrise_core::nbt::Tag;
@@ -788,9 +788,17 @@ fn storage_asks_a_game_container_by_kind_and_rolls_back_with_its_transaction() {
                 [64, 36, 5],
                 "slots back as they were, in their order"
             );
-            let mut page = mod_api::StoragePage::new(64).unwrap();
-            assert_eq!(storage.page(game, 0, &mut page), Ok(None));
-            assert_eq!(page.entries().len(), 3);
+            let mut visited = Vec::new();
+            storage
+                .visit_entries(game, &mut |kind, amount| {
+                    visited.push((kind.clone(), amount));
+                    ControlFlow::Continue(())
+                })
+                .unwrap();
+            assert_eq!(
+                visited,
+                [(stone.clone(), 64), (stone.clone(), 36), (dirt, 5)]
+            );
             // A furnace's top takes only into its input, and its bottom gives only its result.
             let furnace = game
                 .pack
@@ -961,13 +969,12 @@ fn an_aborted_bulk_transfer_conserves_every_item() {
             };
             let (before_a, before_b) = (slots_at(game, a), slots_at(game, b));
             let before = total(game);
-            let aborted: Result<u64, mod_api::StorageError> = (game as &mut dyn ServerHost)
-                .transaction(|host, tx| {
-                    let moved =
-                        mod_api::transfer_matching(host, &from, &to, |_| true, u64::MAX, tx)?;
-                    assert!(moved > 0);
-                    Err(mod_api::StorageError::ZeroPage)
-                });
+            let aborted: Result<(), ()> = (game as &mut dyn ServerHost).transaction(|host, tx| {
+                let moved = mod_api::transfer_matching(host, &from, &to, |_| true, u64::MAX, tx)
+                    .expect("test transfer succeeds");
+                assert!(moved > 0);
+                Err(())
+            });
             assert!(aborted.is_err());
             assert_eq!((slots_at(game, a), slots_at(game, b)), (before_a, before_b));
             let moved = (game as &mut dyn ServerHost)
@@ -1136,7 +1143,6 @@ fn timing_storage_against_items_across_barrel_cells() {
                 })
                 .collect();
             let mut awake = vec![true; pipes.len()];
-            let mut page = mod_api::StoragePage::new(mod_api::MAX_STORAGE_PAGE).unwrap();
             let mut moves = 0u32;
             let mut run_storage = |game: &mut super::Game<'_>| {
                 let mut moved = 0;
@@ -1144,8 +1150,13 @@ fn timing_storage_against_items_across_barrel_cells() {
                     if !awake[cell] {
                         continue;
                     }
-                    from.page(game, 0, &mut page).unwrap();
-                    let Some((kind, _)) = page.entries().first().cloned() else {
+                    let mut first = None;
+                    from.visit_entries(game, &mut |kind, _| {
+                        first = Some(kind.clone());
+                        ControlFlow::Break(())
+                    })
+                    .unwrap();
+                    let Some(kind) = first else {
                         awake[cell] = false;
                         continue;
                     };
