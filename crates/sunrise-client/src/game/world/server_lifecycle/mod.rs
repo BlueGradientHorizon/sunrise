@@ -4,32 +4,7 @@ use super::Game;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use sunrise_client::Result;
 
-/// What a crash save decided about the players a panic interrupted.
-#[derive(Default)]
-pub(in crate::game) struct CrashSave {
-    /// An interrupted player is still swapped into the game as the acting player: the game's
-    /// own stats and advancements are theirs, half-done, and are not written.
-    acting: bool,
-    /// `level.dat` is written without a new player file: the single-player owner was
-    /// interrupted, or the hub is lost.
-    pub(in crate::game) keep_owner_file: bool,
-    hub_lost: bool,
-    /// The connections of the interrupted players: the player-data, stats and advancement
-    /// saves skip them. They stay online, so each still gets its logout.
-    excluded: std::collections::BTreeSet<u32>,
-}
-
-impl CrashSave {
-    /// The game's own stats and advancements belong to an interrupted player.
-    pub(in crate::game) fn holds_interrupted(&self, acting: Option<u32>) -> bool {
-        self.acting && acting.is_some()
-    }
-
-    /// Whether the player on `conn` is interrupted: their files are not written.
-    pub(in crate::game) fn excludes(&self, conn: u32) -> bool {
-        self.excluded.contains(&conn)
-    }
-}
+pub(in crate::game) use sunrise_gameplay::crash_save::CrashSave;
 
 impl Game<'_> {
     /// `MinecraftServer.runServer`'s finally: once startup begins, every exit
@@ -161,11 +136,9 @@ impl Game<'_> {
         conns.extend(self.lan_acting);
         conns.sort_unstable();
         conns.dedup();
-        self.crash_save.acting |= self.lan_acting.is_some();
+        self.crash_save.note_acting(self.lan_acting.is_some());
         let Some(host) = self.lan.as_mut() else {
-            if (crashed || !conns.is_empty()) && !self.crash_save.hub_lost {
-                self.crash_save.hub_lost = true;
-                self.crash_save.keep_owner_file = true;
+            if (crashed || !conns.is_empty()) && self.crash_save.lose_hub() {
                 warn(
                     "The panic interrupted the network tick: players are not saved, only the world",
                 );
@@ -186,7 +159,7 @@ impl Game<'_> {
                 self.crash_save.keep_owner_file = true;
             }
             if let Some(name) = name
-                && self.crash_save.excluded.insert(conn)
+                && self.crash_save.exclude(conn)
             {
                 warn(&format!(
                     "The panic interrupted a player's turn ({name}): that player keeps the last saved file"
