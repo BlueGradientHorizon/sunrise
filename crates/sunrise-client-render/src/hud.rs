@@ -3372,7 +3372,7 @@ impl HudRenderer {
             pack_text::PackText::new(device, self.format, &self.atlas_view, shader, self.coverage)
         });
     }
-    /// The GUI text's expression uniforms, when a pack's text shader draws it.
+    /// The GUI text's Polytone blocks, when a pack's text shader draws it.
     pub(crate) fn text_expression_blocks(
         &mut self,
     ) -> Option<&mut crate::gfx::expression_blocks::ExpressionBlocks> {

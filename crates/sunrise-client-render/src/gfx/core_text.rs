@@ -91,37 +91,6 @@ impl super::Renderer {
         }
     }
 
-    /// The text pipelines' expression uniforms: the world's and the see-through text's, then the
-    /// GUI's, of those whose stages read any.
-    fn text_blocks(
-        &mut self,
-    ) -> impl Iterator<Item = &mut super::expression_blocks::ExpressionBlocks> {
-        let world = (self.core_text.iter_mut()).flat_map(|core| core.expression_blocks());
-        (world.chain(self.hud.text_expression_blocks())).filter(|blocks| blocks.has_uniforms())
-    }
-
-    /// Whether a pack's text shader reads expression uniforms: the game then makes the frame's
-    /// expression context for them too. Fullbright doesn't change it.
-    pub fn reads_text_expressions(&mut self) -> bool {
-        self.text_blocks().next().is_some()
-    }
-
-    /// Evaluates the text pipelines' expression uniforms from `frame`; each pipeline uploads its
-    /// values as it prepares its draw.
-    pub fn evaluate_text_expressions(&mut self, frame: &crate::environment::Frame) {
-        for blocks in self.text_blocks() {
-            blocks.evaluate(frame);
-        }
-    }
-
-    /// The text's expression uniforms are 0 where no world runs (a menu or a loading screen):
-    /// a frame of [`super::Frame::title`].
-    pub(super) fn zero_text_expressions(&mut self) {
-        for blocks in self.text_blocks() {
-            blocks.zero();
-        }
-    }
-
     pub(super) fn bind_world_text(
         &self,
         pass: &mut wgpu::RenderPass<'_>,
@@ -155,13 +124,13 @@ impl super::Renderer {
 pub(super) struct Part {
     pub(super) pipeline: wgpu::RenderPipeline,
     pub(super) group: wgpu::BindGroup,
-    /// The packs' expression uniforms its stages read (`shader_modifiers`), in the shared buffer
-    /// after vanilla's blocks.
+    /// The Polytone blocks its stages read (`PolyGlobals` and the packs' expression uniforms,
+    /// `shader_modifiers`), in the shared buffer after vanilla's blocks.
     extra: super::expression_blocks::ExpressionBlocks,
 }
 
 /// The pack's world text pipelines over one uniform buffer: vanilla's four blocks once, then the
-/// world text's expression uniforms, then the see-through text's.
+/// world text's Polytone blocks, then the see-through text's.
 pub(super) struct CoreText {
     pub(super) polygon_offset: Option<Part>,
     pub(super) see_through: Option<Part>,
@@ -215,7 +184,7 @@ impl CoreText {
                 depth(false, wgpu::CompareFunction::Always, Default::default()),
             ),
         ];
-        // Vanilla's blocks first, then each pipeline's expression uniforms after the last's.
+        // Vanilla's blocks first, then each pipeline's Polytone blocks after the last's.
         let mut base = 1024;
         let extras = specs.each_ref().map(|(_, program, _)| {
             program.map(|(core, expressions)| {
@@ -355,7 +324,7 @@ impl CoreText {
     }
 
     /// Vanilla's blocks (`data`, as `core_lines::uniforms` lays them out) once into the shared
-    /// buffer, then each pipeline's expression uniforms' values.
+    /// buffer, then each pipeline's Polytone blocks.
     pub(super) fn prepare(
         &self,
         uploads: &mut super::upload::Uploads,
@@ -371,7 +340,7 @@ impl CoreText {
         }
     }
 
-    /// The world's and the see-through text's expression uniforms.
+    /// The world's and the see-through text's Polytone blocks.
     pub(super) fn expression_blocks(
         &mut self,
     ) -> impl Iterator<Item = &mut super::expression_blocks::ExpressionBlocks> {

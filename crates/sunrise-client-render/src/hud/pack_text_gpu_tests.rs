@@ -78,6 +78,48 @@ fn a_pack_gui_text_reads_its_expression_uniform() {
     assert_eq!(drawn(&mut gpu), [[51, 255, 0, 255]; 8]);
 }
 
+/// The GUI text reads Polytone's `PolyGlobals` from the built-in `polytone_globals.glsl` as the
+/// game gives them (the player's block height, 64, in blue) beside `Tint` (51 in red): zeros when
+/// none are given, and zeros for both once a frame where no world runs zeroes them.
+#[test]
+#[ignore = "daily"]
+fn a_pack_gui_text_reads_poly_globals() {
+    let _gpu = crate::gfx::test_gpu::lock();
+    let Some(mut gpu) = Gpu::new() else {
+        eprintln!("skipped: no adapter");
+        return;
+    };
+    let fsh = "#version 330\n#moj_import <polytone_globals.glsl>\n\
+               layout(std140) uniform Tint {\n    float value;\n};\n\
+               layout(location = 0) out vec4 fragColor;\n\
+               void main() {\n    \
+               fragColor = vec4(value, 1.0, float(PolyPlayerBlockPos.y) / 255.0, 1.0);\n}\n";
+    set_pack_text(&mut gpu, fsh, r#"{"Tint": "0.1 + 0.1"}"#);
+    let globals = sunrise_polytone::globals::Globals {
+        player: [3.5, 64.2, 7.0],
+        ..Default::default()
+    }
+    .std140();
+    let given = |gpu: &mut Gpu, globals| {
+        let blocks = gpu
+            .hud
+            .text_expression_blocks()
+            .expect("the pack's GUI text");
+        assert!(blocks.reads_globals());
+        blocks.evaluate(&Default::default());
+        blocks.set_globals(globals);
+    };
+    given(&mut gpu, Some(&globals));
+    assert_eq!(drawn(&mut gpu), [[51, 255, 64, 255]; 8]);
+    // No globals given: the block reads zeros.
+    given(&mut gpu, None);
+    assert_eq!(drawn(&mut gpu), [[51, 255, 0, 255]; 8]);
+    // A title or loading frame (`Renderer::zero_text_blocks`).
+    given(&mut gpu, Some(&globals));
+    gpu.hud.text_expression_blocks().unwrap().zero();
+    assert_eq!(drawn(&mut gpu), [[0, 255, 0, 255]; 8]);
+}
+
 /// A GUI text program whose fragment stage alone samples the atlas (`Sampler0`) is bound to it
 /// there and draws its texel: the atlas's first, opaque white.
 #[test]

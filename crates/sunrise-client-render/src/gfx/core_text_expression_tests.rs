@@ -80,6 +80,60 @@ fn a_pack_world_and_see_through_text_read_their_expression_uniforms() {
     assert_eq!(draw(&text, true), [153, 255, 0, 255]);
 }
 
+/// Polytone's `PolyGlobals`, imported from the built-in `polytone_globals.glsl` beside the
+/// expression uniforms: the world and the see-through text each read the block's bytes as the
+/// game gives them (the player's block height, 64, in blue), zeros when none are given, and zeros
+/// for the block and the uniforms alike once a frame where no world runs zeroes them.
+#[test]
+#[ignore = "daily"]
+fn a_pack_world_and_see_through_text_read_poly_globals() {
+    let _gpu = crate::gfx::test_gpu::lock();
+    let Some((_, device, queue)) = crate::gfx::test_gpu::optional_device() else {
+        eprintln!("skipped: no adapter");
+        return;
+    };
+    let fsh = FSH
+        .replace(
+            "#version 330\n",
+            "#version 330\n#moj_import <polytone_globals.glsl>\n",
+        )
+        .replace("0.0, 1.0);", "float(PolyPlayerBlockPos.y) / 255.0, 1.0);");
+    let shaders = text_shaders(VSH, &fsh, MODIFIERS);
+    let mut text = core_text(&device, &queue, &shaders, [0; 4]).expect("the pipelines");
+    let reads: Vec<bool> = text
+        .expression_blocks()
+        .map(|b| b.reads_globals())
+        .collect();
+    assert_eq!(reads, [true, true]);
+    let globals = sunrise_polytone::globals::Globals {
+        player: [3.5, 64.2, 7.0],
+        ..Default::default()
+    }
+    .std140();
+    let given = |text: &mut CoreText, globals| {
+        for blocks in text.expression_blocks() {
+            blocks.evaluate(&Default::default());
+            blocks.set_globals(globals);
+        }
+    };
+    let draw =
+        |text: &CoreText, see_through| super::tests::draw(&device, &queue, text, see_through, 0);
+    given(&mut text, Some(&globals));
+    assert_eq!(draw(&text, false), [51, 255, 64, 255]);
+    assert_eq!(draw(&text, true), [153, 255, 64, 255]);
+    // No globals given: the block reads zeros.
+    given(&mut text, None);
+    assert_eq!(draw(&text, false), [51, 255, 0, 255]);
+    assert_eq!(draw(&text, true), [153, 255, 0, 255]);
+    // A title or loading frame (`Renderer::zero_text_blocks`).
+    given(&mut text, Some(&globals));
+    for blocks in text.expression_blocks() {
+        blocks.zero();
+    }
+    assert_eq!(draw(&text, false), [0, 255, 0, 255]);
+    assert_eq!(draw(&text, true), [0, 255, 0, 255]);
+}
+
 /// Each world text pipeline is refused on its own: a see-through program reading 13 expression
 /// blocks in its fragment stage, past the device's 12 uniform blocks a stage
 /// (`max_uniform_buffers_per_shader_stage`'s default), leaves the see-through text native while

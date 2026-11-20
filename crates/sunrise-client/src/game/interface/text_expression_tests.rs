@@ -1,10 +1,10 @@
 //! A pack's text shader reading Polytone expression uniforms (`shader_modifiers/core/text.json`)
-//! through a game's frames: the atlas loads the GUI's, the world's and the see-through text's
-//! programs with their uniforms, the renderer the game builds takes them, and each drawn frame
-//! shows the values the frame evaluated (fullbright changes nothing), or zeros where no world
-//! runs (the title screen, a loading screen). Each case runs in a process of its own (one event
-//! loop, its own game resources).
-use super::lightmap_expression_tests::corner_of as corner;
+//! and `PolyGlobals` through a game's frames: the atlas loads the GUI's, the world's and the
+//! see-through text's programs with their uniforms, the renderer the game builds takes them, and
+//! each drawn frame shows the values the frame evaluated and gave (fullbright changes nothing),
+//! or zeros where no world runs (the title screen, a loading screen). Each case runs in a process
+//! of its own (one event loop, its own game resources).
+use super::lightmap_expression_tests::{corner_of as corner, frame};
 use super::native_entity_refs::tests::{run_fresh_cases, with_client_game};
 use crate::game::native_hooks::particle_count_tests::frame_scene;
 use sunrise_assets::resource_source::{Resource, ResourceSource};
@@ -15,22 +15,27 @@ const CASE: &str = "SUNRISE_TEXT_EXPRESSION_CASE";
 /// A pack whose text covers the whole frame with one triangle of each glyph's (a vertex's index
 /// picks its corner) in red: the GUI text's `Gui` (0.1 + 0.1: 51 in a byte), the world text's
 /// `World` (0.3 * 2: 153), the see-through text's `Fade` (0.25 * 4: 255), each read by that
-/// program only, by the shader's own defines, beside a full green that shows the text drew. The
-/// world text's also writes vanilla's `ColorModulator` in blue: white (255) in the blocks the
-/// frame shares with the GPU particles.
+/// program only, by the shader's own defines. Every program writes 128 plus the player's block
+/// height from Polytone's `PolyGlobals` (the built-in `polytone_globals.glsl`) in green: 192 where
+/// the scene stands the player (64), 128 where the block is zeros, which still shows the text
+/// drew. The world text's also writes vanilla's `ColorModulator` in blue: white (255) in the
+/// blocks the frame shares with the GPU particles.
 fn pack() -> ResourceSource {
     let vsh = "#version 330\nlayout(location = 0) in vec3 Position;\nvoid main() {\n    \
                int corner = gl_VertexID % 3;\n    \
                vec2 uv = vec2((corner << 1) & 2, corner & 2);\n    \
                gl_Position = vec4(uv * 2.0 - 1.0 + 0.0 * Position.xy, 0.5, 1.0);\n}\n";
-    let fsh = "#version 330\n#ifdef IS_GUI\nlayout(std140) uniform Gui {\n    float value;\n};\n\
+    let fsh = "#version 330\n#moj_import <polytone_globals.glsl>\n\
+               #ifdef IS_GUI\nlayout(std140) uniform Gui {\n    float value;\n};\n\
                #else\n#ifdef IS_SEE_THROUGH\nlayout(std140) uniform Fade {\n    float value;\n};\n\
                #else\nlayout(std140) uniform World {\n    float value;\n};\n\
                layout(std140) uniform DynamicTransforms {\n    mat4 ModelViewMat;\n    \
                mat4 TextureMat;\n    vec4 ColorModulator;\n    vec3 ModelOffset;\n};\n\
                #define BLUE ColorModulator.b\n#endif\n#endif\n#ifndef BLUE\n#define BLUE 0.0\n#endif\n\
                layout(location = 0) out vec4 fragColor;\n\
-               void main() {\n    fragColor = vec4(value, 1.0, BLUE, 1.0);\n}\n";
+               void main() {\n    \
+               float green = (128.0 + float(PolyPlayerBlockPos.y)) / 255.0;\n    \
+               fragColor = vec4(value, green, BLUE, 1.0);\n}\n";
     let files = [
         ("assets/minecraft/shaders/core/text.vsh", vsh),
         ("assets/minecraft/shaders/core/text.fsh", fsh),
@@ -45,11 +50,6 @@ fn pack() -> ResourceSource {
             .map(|(path, text)| (path.to_owned(), Resource::bytes(text.as_bytes().to_vec())))
             .collect(),
     )
-}
-
-/// A game frame.
-fn frame(game: &mut super::Game<'_>) -> sunrise_client::Result<bool> {
-    game.render_with(|renderer, frame| renderer.render(frame))
 }
 
 #[test]
@@ -76,7 +76,7 @@ fn a_packs_text_draws_its_expression_uniforms() {
             assert_eq!(values, [value]);
         }
         let _event_loop = frame_scene(game);
-        assert!(game.reads_pack_expressions());
+        assert!(game.reads_pack_expressions() && game.reads_poly_globals());
         if loading {
             return the_loading_screen_draws_zeros(game);
         }
@@ -99,24 +99,26 @@ fn a_packs_text_draws_its_expression_uniforms() {
         game.ui.hide_gui = true;
         assert_eq!(
             corner(game, frame),
-            [153, 255, 255],
+            [153, 192, 255],
             "fullbright {fullbright}"
         );
         game.ui.hide_gui = false;
         game.debug = true;
-        assert_eq!(corner(game, frame), [51, 255, 0], "fullbright {fullbright}");
-        // The title screen: no world runs, the GUI text's value is 0.
+        assert_eq!(corner(game, frame), [51, 192, 0], "fullbright {fullbright}");
+        // The title screen: no world runs, the GUI text's value and `PolyGlobals` are 0.
         game.title = Some(game.new_title(std::path::PathBuf::from("saves")));
         assert!(!game.reads_pack_expressions(), "none to evaluate");
-        assert_eq!(corner(game, frame), [0, 255, 0]);
+        assert!(!game.reads_poly_globals(), "none to give");
+        assert_eq!(corner(game, frame), [0, 128, 0]);
     });
 }
 
 /// A loading screen's frame (`loading_frame`, as the level loading and file fixer screens draw)
-/// after a world frame evaluated the GUI text's value: its text draws 0.
+/// after a world frame evaluated the GUI text's value and gave its `PolyGlobals`: its text draws
+/// 0 for both.
 fn the_loading_screen_draws_zeros(game: &mut super::Game<'_>) {
     game.debug = true;
-    assert_eq!(corner(game, frame), [51, 255, 0]);
+    assert_eq!(corner(game, frame), [51, 192, 0]);
     let renderer = game.renderer.as_ref().unwrap();
     let size = [renderer.config.width, renderer.config.height];
     let mut hud = sunrise_client::hud::HudBatch::new(size, game.settings.gui_scale_inputs());
@@ -125,5 +127,5 @@ fn the_loading_screen_draws_zeros(game: &mut super::Game<'_>) {
         let frame = super::loading_frame(&hud);
         game.renderer.as_mut().unwrap().render(&frame)
     };
-    assert_eq!(corner(game, loading), [0, 255, 0]);
+    assert_eq!(corner(game, loading), [0, 128, 0]);
 }

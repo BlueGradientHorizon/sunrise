@@ -272,14 +272,17 @@ impl UnzipOrDefault
 }
 
 /// The packs' core shader `id` (`minecraft:core/<name>`, one shader for both stages: the sky,
-/// the stars and the block outline) with the blocks its file of `modifiers` names, and its
+/// the stars, the block outline, and the text for the GUI's, the world's and the see-through
+/// text) for the program `label` names in the log, with its `defines` (the text's `IS_GUI`,
+/// none, `IS_SEE_THROUGH`), `PolyGlobals` and the blocks its file of `modifiers` names, and its
 /// expression uniforms resolved for the blocks its stages read; none when no pack replaces it,
-/// it doesn't translate, or a block refuses it (named in the log).
+/// it doesn't translate, or a block refuses it (named in the log with the program).
 fn load_with_expressions(
     root: &ResourceSource,
     defaults: &ResourceSource,
     modifiers: &crate::polytone_post::ShaderModifiers,
     id: &str,
+    (label, defines): (&str, &[&str]),
     glue: &Glue,
 ) -> Option<(
     Arc<CoreProgram>,
@@ -289,49 +292,20 @@ fn load_with_expressions(
     let names = modifiers.names(&[id]);
     let globals = sunrise_polytone::globals::BLOCK;
     let provided = |block: &str| block == globals || names.iter().any(|n| n == block);
-    let program = load_pair(root, defaults, (name, name), &[], glue, &provided)?;
-    match modifiers.resolve((id, id), &program, &[globals]) {
-        Ok(expressions) => Some((program, expressions)),
-        Err(e) => {
-            log::warn!("the resource pack's {name} shader is not used: {e}");
-            None
-        }
-    }
-}
-
-/// The packs' text shader (`core/text`, one shader for the GUI's, the world's and the
-/// see-through text) for the program `label` names (`GUI`, `world`, `see-through`) with its
-/// `defines` (`IS_GUI`, none, `IS_SEE_THROUGH`) and the blocks its file of `modifiers` names, and
-/// its expression uniforms resolved for the blocks its stages read; none when no pack replaces
-/// it, it doesn't translate, or a block refuses it (named in the log with the program). Only
-/// those blocks: a text shader reading `PolyGlobals` is refused.
-fn load_text(
-    root: &ResourceSource,
-    defaults: &ResourceSource,
-    modifiers: &crate::polytone_post::ShaderModifiers,
-    (label, defines): (&str, &[&str]),
-    glue: &Glue,
-) -> Option<(
-    Arc<CoreProgram>,
-    Vec<crate::polytone_post::ExpressionUniform>,
-)> {
-    let id = crate::gfx::expression_blocks::TEXT[0];
-    let names = modifiers.names(&[id]);
-    let provided = |block: &str| names.iter().any(|n| n == block);
-    let translated = translate_pair(root, defaults, ("text", "text"), defines, glue, &provided)?;
+    let translated = translate_pair(root, defaults, (name, name), defines, glue, &provided)?;
     let resolved = translated.map_err(|e| e.to_string()).and_then(|program| {
-        let expressions = modifiers.resolve((id, id), &program, &[]);
+        let expressions = modifiers.resolve((id, id), &program, &[globals]);
         expressions
             .map(|e| (Arc::new(program), e))
             .map_err(|e| e.to_string())
     });
     match resolved {
         Ok(loaded) => {
-            log::info!("the resource pack's {label} text shader translated");
+            log::info!("the resource pack's {label} shader translated");
             Some(loaded)
         }
         Err(e) => {
-            log::warn!("the resource pack's {label} text shader is not used: {e}");
+            log::warn!("the resource pack's {label} shader is not used: {e}");
             None
         }
     }
@@ -365,32 +339,36 @@ pub(super) fn load_shaders(
     // The packs' expression uniforms (`shader_modifiers`), read once, with their config entries.
     let configs = crate::packs::polytone_configs(&crate::packs::Source::Opened(root.clone()));
     let modifiers = crate::polytone_post::ShaderModifiers::read(root, configs);
-    let blocks = crate::gfx::expression_blocks::LINES;
     let lines = load_with_expressions(
         root,
         defaults,
         &modifiers,
-        blocks[0],
+        crate::gfx::expression_blocks::LINES[0],
+        ("rendertype_lines", &[]),
         &crate::gfx::core_lines::GLUE,
     );
     (atlas.lines_shader, atlas.lines_expressions) = lines.unzip_or_default();
-    let sky =
-        |id| load_with_expressions(root, defaults, &modifiers, id, &crate::gfx::core_sky::GLUE);
+    let sky = |id, label| {
+        let glue = &crate::gfx::core_sky::GLUE;
+        load_with_expressions(root, defaults, &modifiers, id, (label, &[]), glue)
+    };
     (atlas.sky_shader, atlas.sky_expressions) =
-        sky(crate::gfx::expression_blocks::SKY[0]).unzip_or_default();
+        sky(crate::gfx::expression_blocks::SKY[0], "sky").unzip_or_default();
     (atlas.stars_shader, atlas.stars_expressions) =
-        sky(crate::gfx::expression_blocks::STARS[0]).unzip_or_default();
+        sky(crate::gfx::expression_blocks::STARS[0], "stars").unzip_or_default();
     let lightmap = load_lightmap(root, defaults, &modifiers);
     atlas.lightmap_shader = lightmap.as_ref().map(|(program, _)| program.clone());
     atlas.lightmap_expressions = lightmap.map(|(_, e)| e).unwrap_or_default();
     atlas.clouds_shader = load_clouds(root, defaults);
     // The GUI's, the world's and the see-through text: one shader, three programs.
-    let text =
-        |program: (&str, &[&str]), glue| load_text(root, defaults, &modifiers, program, glue);
-    let gui = text(("GUI", &["IS_GUI"]), &GLUE);
-    let world = text(("world", &[]), &crate::gfx::core_text::WORLD_GLUE);
+    let text = |program: (&str, &[&str]), glue| {
+        let id = crate::gfx::expression_blocks::TEXT[0];
+        load_with_expressions(root, defaults, &modifiers, id, program, glue)
+    };
+    let gui = text(("GUI text", &["IS_GUI"]), &GLUE);
+    let world = text(("world text", &[]), &crate::gfx::core_text::WORLD_GLUE);
     let see_through = text(
-        ("see-through", &["IS_SEE_THROUGH"]),
+        ("see-through text", &["IS_SEE_THROUGH"]),
         &crate::gfx::core_text::SEE_THROUGH_GLUE,
     );
     let shaders = &mut atlas.text_shaders;
@@ -405,7 +383,8 @@ pub(super) struct PackText {
     pipeline: Pipeline,
     group: wgpu::BindGroup,
     uniform: wgpu::Buffer,
-    /// The packs' expression uniforms its stages read (`shader_modifiers`).
+    /// The Polytone blocks its stages read: `PolyGlobals` and the packs' expression uniforms
+    /// (`shader_modifiers`).
     pub(super) extra: crate::gfx::expression_blocks::ExpressionBlocks,
 }
 
@@ -429,7 +408,7 @@ impl PackText {
         let vertex = module("Resource pack text (vertex)", &program.vertex);
         let fragment = module("Resource pack text (fragment)", &program.fragment);
         // Each block and sampler bound only to the stages that read it: vanilla's four blocks,
-        // then the expression uniforms; every sampler a pack names reads the atlas.
+        // then `PolyGlobals` and the expression uniforms; every sampler a pack names reads the atlas.
         let blocks = crate::gfx::expression_blocks::vanilla_blocks(program);
         let extra =
             crate::gfx::expression_blocks::ExpressionBlocks::new(program, expressions, 1024);

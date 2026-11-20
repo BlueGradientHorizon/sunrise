@@ -55,10 +55,10 @@ impl Renderer {
             self.follow_translucent_layout();
             self.follow_packed_layout();
         }
-        // No world runs on a title or loading frame: the text's expression uniforms are 0 there,
-        // whatever the game last evaluated.
+        // No world runs on a title or loading frame: the text's expression uniforms and
+        // `PolyGlobals` are 0 there, whatever the game last gave them.
         if frame.title {
-            self.zero_text_expressions();
+            self.zero_text_blocks();
         }
         let released = self.arena.trim();
         self.graveyard.add(released);

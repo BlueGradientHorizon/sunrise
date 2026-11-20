@@ -94,8 +94,7 @@ A pack's `assets/<ns>/polytone/shader_modifiers/<shader>.json` (`minecraft/.../c
 `minecraft:core/lightmap`) maps uniform block names to expressions (wiki "Expression Uniforms on Any Shader"). The
 packs' lightmap (`core/lightmap` with `core/screenquad`), sky (`core/sky`), stars (`core/stars`), block outline
 (`core/rendertype_lines`) and text (`core/text`: the GUI's, the world's and the see-through text, each pipeline
-with its own blocks) take them, each from its own shaders' files (`gfx/expression_blocks.rs`). A text shader that
-reads Polytone's `PolyGlobals` block is refused at load (no file gives it), and that text draws natively:
+with its own blocks) take them, each from its own shaders' files (`gfx/expression_blocks.rs`):
 
 - A block one of its stages reads, declared `uniform Name { float value; };`, holds its expression's value each
   frame. The sky, stars, outline and text each use a single modifier file (the text's for all three of its
@@ -116,13 +115,14 @@ reads Polytone's `PolyGlobals` block is refused at load (no file gives it), and 
   it is parsed. A file over any of these, or whose path names no shader, is refused whole, named by its path in the
   log.
 - Where no world runs (the title screen and its menus, a loading screen, the file fixer, the saving screen), the
-  text's expression uniforms are 0: the game evaluates none of them, and the frame writes zeros.
+  text's expression uniforms and `PolyGlobals` are 0: the game gives the text none of them, and the frame writes
+  zeros.
 - The programs are resolved once when the pack's shaders load. Each frame evaluates them for the installed pack
   pipelines; each pipeline uploads 16 bytes per expression uniform when it prepares a draw.
 - Polytone's `PolyGlobals` block (wiki "Extra Shader Uniforms": the projection and model-view matrices, the sun's
   angle, the day time, the frame's ticks, and the player's block and position) is given to each of these shaders
-  but the text's (refused above) and to every post effect's pass that reads it, with the same values, in the same std140 layout
-  (`sunrise-polytone` `globals.rs`). A pack declaring the block itself reads the same values as in Java with
+  and to every post effect's pass that reads it, with the same values, in the same std140 layout (`sunrise-polytone`
+  `globals.rs`). A pack declaring the block itself reads the same values as in Java with
   Polytone 26.3: on a core sky shader and a post chain, its pixels are within the spread a control pack without
   the block shows between the two. It is bound only to the stages
   that read it, before the expression uniforms, and counts against the same limit.
@@ -137,9 +137,10 @@ reads Polytone's `PolyGlobals` block is refused at load (no file gives it), and 
   matched. A pack's own file is read instead of the built-in, and one that can't be read refuses the shader by its
   path.
 - The game builds the block only when something reads it, at most once a frame: when an installed pack core shader
-  reads it (the lightmap's not under fullbright, which keeps the light texture white), or when a post effect that
-  runs has a pass reading it. Each reading core pipeline writes its 176 bytes to the GPU when it uploads its blocks
-  for its draw; a post pass writes them when it draws (zeros on a frame without them, as on the title screen).
+  reads it (the lightmap's not under fullbright, which keeps the light texture white; the text's only where a world
+  runs), or when a post effect that runs has a pass reading it. Each reading core pipeline writes its 176 bytes to
+  the GPU when it uploads its blocks for its draw; a post pass writes them when it draws (zeros on a frame without
+  them, as on the title screen).
 - The block is the game's, on the core and post shaders alike: a shader declaring it other than that layout (each
   member of its type at its offset; a leading part of the block is fine), a `shader_modifiers` file giving it, a
   post chain's expression uniform of that name, or a pass's `uniforms` giving it, is refused, named in the log. A
@@ -151,7 +152,7 @@ reads Polytone's `PolyGlobals` block is refused at load (no file gives it), and 
 | Gap | Size | Where |
 | --- | --- | --- |
 | GUI scaling `tile`, `stretch` | small | `ui.rs` |
-| Core shaders but the text (GUI, world, see-through), the block outline, the sky, the stars and the lightmap | large | [#13218](https://github.com/horizon-rust/horizon/issues/13218) |
+| Core shaders but the text (GUI, world, see-through), the block outline, the sky, the stars, the lightmap and the clouds | large | [#13218](https://github.com/horizon-rust/horizon/issues/13218) |
 
 ## Testing a pack
 

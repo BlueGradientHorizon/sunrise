@@ -186,9 +186,12 @@ fn the_sky_draws_its_expression_uniform() {
 
 /// A frame's screenshot: the colour of the pixel two in from the top left corner.
 fn corner(game: &mut super::Game<'_>) -> [u8; 3] {
-    corner_of(game, |game| {
-        game.render_with(|renderer, frame| renderer.render(frame))
-    })
+    corner_of(game, frame)
+}
+
+/// A game frame.
+pub(super) fn frame(game: &mut super::Game<'_>) -> sunrise_client::Result<bool> {
+    game.render_with(|renderer, frame| renderer.render(frame))
 }
 
 /// The colour of the pixel two in from the top left corner of the frame `draw` draws (a game

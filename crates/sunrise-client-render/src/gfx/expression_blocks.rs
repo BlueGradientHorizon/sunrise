@@ -5,8 +5,7 @@
 //! loaded (`polytone_post::ShaderModifiers::resolve`), each a block of one float holding its
 //! program's value this frame. The lightmap, sky, stars and block outline pipelines lay theirs out
 //! with this, and the GUI's, the world's and the see-through text pipelines too, through
-//! [`bindings`] and [`sampler_bindings`] (the text's refuse `PolyGlobals`, so theirs hold only
-//! expression uniforms); any other pack core shader pipeline can.
+//! [`bindings`] and [`sampler_bindings`]; any other pack core shader pipeline can.
 
 use crate::core_shader::CoreProgram;
 use crate::polytone_post::ExpressionUniform;
@@ -270,8 +269,10 @@ impl ExpressionBlocks {
         self.offset(self.uniforms.len())
     }
 
-    /// Each value 0, as a frame where no world runs gives them (a menu, a loading screen).
+    /// Each value and `PolyGlobals` 0, as a frame where no world runs gives them (a menu, a
+    /// loading screen).
     pub(crate) fn zero(&mut self) {
+        self.set_globals(None);
         for (_, value) in &mut self.uniforms {
             *value = 0.0;
         }
@@ -357,35 +358,43 @@ impl ExpressionBlocks {
 /// The packs' core shader pipelines' Polytone blocks, for the game to give their values.
 impl super::Renderer {
     /// The installed pack pipelines with their Polytone blocks: the block outline's, the sky's and
-    /// the stars', and the lightmap's except under fullbright (which keeps the texture white).
-    /// Evaluation does not depend on which pipelines draw this frame.
-    fn polytone_blocks(&mut self) -> impl Iterator<Item = &mut ExpressionBlocks> {
+    /// the stars', the lightmap's except under fullbright (which keeps the texture white), and
+    /// the text's (the world's, the see-through and the GUI's) only where a world runs (`world`;
+    /// a frame where none runs writes zeros, [`Self::zero_text_blocks`]). Evaluation does not
+    /// depend on which pipelines draw this frame.
+    fn polytone_blocks(&mut self, world: bool) -> impl Iterator<Item = &mut ExpressionBlocks> {
         let fullbright = self.fullbright;
         let lightmap = (self.core_lightmap.as_mut())
             .filter(|_| !fullbright)
             .map(|core| &mut core.extra);
         let lines = self.core_lines.as_mut().map(|core| &mut core.extra);
         let sky = (self.core_sky.iter_mut()).flat_map(|core| core.expression_blocks());
-        lightmap.into_iter().chain(lines).chain(sky)
+        let text = (self.core_text.as_mut().filter(|_| world).into_iter())
+            .flat_map(|core| core.expression_blocks())
+            .chain(self.hud.text_expression_blocks().filter(|_| world));
+        (lightmap.into_iter().chain(lines).chain(sky)).chain(text)
     }
 
-    /// Whether the game needs an expression context for the installed pack pipelines this frame.
-    pub fn reads_pack_expressions(&mut self) -> bool {
-        self.polytone_blocks().any(|blocks| blocks.has_uniforms())
+    /// Whether the game needs an expression context for the installed pack pipelines this frame
+    /// (`world`: whether a world runs).
+    pub fn reads_pack_expressions(&mut self, world: bool) -> bool {
+        self.polytone_blocks(world)
+            .any(|blocks| blocks.has_uniforms())
     }
 
-    /// Evaluates the installed pack pipelines' expression uniforms from `frame`. The values
-    /// are uploaded separately as each pipeline prepares its draw.
-    pub fn evaluate_pack_expressions(&mut self, frame: &crate::environment::Frame) {
-        for blocks in self.polytone_blocks() {
+    /// Evaluates the installed pack pipelines' expression uniforms from `frame` (`world`: whether
+    /// a world runs). The values are uploaded separately as each pipeline prepares its draw.
+    pub fn evaluate_pack_expressions(&mut self, frame: &crate::environment::Frame, world: bool) {
+        for blocks in self.polytone_blocks(world) {
             blocks.evaluate(frame);
         }
     }
 
-    /// Whether an installed pack core shader reads `PolyGlobals`: only then does the game make them
-    /// for it ([`Self::set_poly_globals`]).
-    pub fn reads_poly_globals(&mut self) -> bool {
-        self.polytone_blocks().any(|blocks| blocks.reads_globals())
+    /// Whether an installed pack core shader reads `PolyGlobals` (`world`: whether a world runs):
+    /// only then does the game make them for it ([`Self::set_poly_globals`]).
+    pub fn reads_poly_globals(&mut self, world: bool) -> bool {
+        self.polytone_blocks(world)
+            .any(|blocks| blocks.reads_globals())
     }
 
     /// Whether the last frame's post effects were given `PolyGlobals`, which they ask for only
@@ -395,10 +404,20 @@ impl super::Renderer {
     }
 
     /// The frame's `PolyGlobals` (`polytone_post::PolyGlobals::bytes`) for the installed pack core
-    /// shaders that read them, which their next uploads write; none gives zeros.
-    pub fn set_poly_globals(&mut self, globals: Option<&PolyGlobalsBytes>) {
-        for blocks in self.polytone_blocks() {
+    /// shaders that read them (`world`: whether a world runs), which their next uploads write;
+    /// none gives zeros.
+    pub fn set_poly_globals(&mut self, globals: Option<&PolyGlobalsBytes>, world: bool) {
+        for blocks in self.polytone_blocks(world) {
             blocks.set_globals(globals);
+        }
+    }
+
+    /// The text's Polytone blocks are 0 where no world runs (a menu or a loading screen): a frame
+    /// of [`super::Frame::title`], whatever the game last gave them.
+    pub(super) fn zero_text_blocks(&mut self) {
+        let text = (self.core_text.iter_mut()).flat_map(|core| core.expression_blocks());
+        for blocks in text.chain(self.hud.text_expression_blocks()) {
+            blocks.zero();
         }
     }
 }
