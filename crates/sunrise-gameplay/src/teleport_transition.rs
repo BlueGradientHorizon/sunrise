@@ -51,12 +51,113 @@ pub fn passenger_rotation(before: [f32; 2], after: [f32; 2], rider: [f32; 2]) ->
     [axis(0), absolute_pitch(axis(1)).unwrap_or(rider[1])]
 }
 
-/// The angles a command turned a vehicle to, with the angles it had before:
-/// what `Entity.calculatePassengerTransition` needs for the riders.
+/// An entity's position and angles.
 #[derive(Clone, Copy)]
-pub struct PlacedRotation {
-    pub before: [f32; 2],
-    pub after: [f32; 2],
+pub struct Pose {
+    pub position: Vec3,
+    pub rotation: [f32; 2],
+}
+
+/// A `TeleportTransition` with no motion of its own: `position` is absolute or, on a `relative` axis, a shift; a `delta` axis keeps its motion; `rotation` is unclamped.
+#[derive(Clone, Copy)]
+pub struct Transition {
+    pub position: Vec3,
+    pub relative: [bool; 3],
+    pub delta: [bool; 3],
+    pub rotation: Option<[f32; 2]>,
+}
+
+impl Transition {
+    /// `TeleportCommand.performTeleport`: a relative axis carries `to - from` and keeps its motion.
+    pub fn of_command(
+        from: Pose,
+        to: Vec3,
+        relative: [bool; 3],
+        rotation: Option<[f32; 2]>,
+    ) -> Self {
+        let axis = |k: usize, to: f64, from: f64| if relative[k] { to - from } else { to };
+        Self {
+            position: Vec3::new(
+                axis(0, to.x, from.position.x),
+                axis(1, to.y, from.position.y),
+                axis(2, to.z, from.position.z),
+            ),
+            relative,
+            delta: relative,
+            rotation,
+        }
+    }
+
+    /// A transition to an absolute `to` whose motion is kept (a portal's) or stopped (`/tp`'s).
+    pub fn to_level(to: Vec3, motion: TeleportMotion, rotation: Option<[f32; 2]>) -> Self {
+        Self {
+            position: to,
+            relative: [false; 3],
+            delta: [matches!(motion, TeleportMotion::Keep); 3],
+            rotation,
+        }
+    }
+
+    /// `Entity.calculatePassengerTransition`: the transition of `rider` on a
+    /// vehicle standing at `vehicle` that is given `self`.
+    pub fn for_passenger(self, vehicle: Pose, rider: Pose) -> Self {
+        let offset = |k: usize, rider: f64, vehicle: f64| {
+            if self.relative[k] {
+                0.0
+            } else {
+                rider - vehicle
+            }
+        };
+        Self {
+            position: Vec3::new(
+                self.position.x + offset(0, rider.position.x, vehicle.position.x),
+                self.position.y + offset(1, rider.position.y, vehicle.position.y),
+                self.position.z + offset(2, rider.position.z, vehicle.position.z),
+            ),
+            relative: self.relative,
+            delta: self.delta,
+            rotation: self.rotation.map(|[yaw, pitch]| {
+                [
+                    yaw + (rider.rotation[0] - vehicle.rotation[0]),
+                    pitch + (rider.rotation[1] - vehicle.rotation[1]),
+                ]
+            }),
+        }
+    }
+
+    /// `PositionMoveRotation.calculateAbsolute` of the position.
+    pub fn position_for(self, current: Vec3) -> Vec3 {
+        let axis = |k: usize, shift: f64, current: f64| {
+            if self.relative[k] {
+                current + shift
+            } else {
+                shift
+            }
+        };
+        Vec3::new(
+            axis(0, self.position.x, current.x),
+            axis(1, self.position.y, current.y),
+            axis(2, self.position.z, current.z),
+        )
+    }
+
+    /// The transition carries no motion: a relative axis keeps its own, the others stop.
+    pub fn velocity_for(self, current: Vec3) -> Vec3 {
+        Vec3::new(
+            if self.delta[0] { current.x } else { 0.0 },
+            if self.delta[1] { current.y } else { 0.0 },
+            if self.delta[2] { current.z } else { 0.0 },
+        )
+    }
+
+    /// The angles after the transition, through `Entity.setXRot`'s clamp; NaN leaves the entity's own.
+    pub fn rotation_for(self, current: [f32; 2]) -> Option<[f32; 2]> {
+        let [yaw, pitch] = self.rotation?;
+        Some([
+            if yaw.is_finite() { yaw } else { current[0] },
+            absolute_pitch(pitch).unwrap_or(current[1]),
+        ])
+    }
 }
 
 /// What a teleport's `TeleportTransition` does with the entity's motion.
