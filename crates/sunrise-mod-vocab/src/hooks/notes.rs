@@ -2762,9 +2762,8 @@ registration path.
   the template's `Block.useItemOn`: `Success` predicts a client swing, `SuccessServer` and `Consume`
   consume without a client swing, `Pass`/`Fail` let the item try its `useOn`, and `TryWithEmptyHand`
   tries the block's `useWithoutItem` on the main hand only. `None` leaves the template in charge.
-  This is the block's behaviour, not NeoForge's separate `UseItemOnBlockEvent` broadcast interceptor.
-  The earlier `right_click_block` event still decides whether the block is used at all. Dispatch
-  visits only the clicked state's parts.
+  This is the block's behaviour, not the `UseItemOnBlockEvent` interceptor. `right_click_block`
+  still decides whether to use the block. Only the clicked state's parts run.
 
 - Global interaction interception on both sides: `Hooks::use_item_on_block(host, event)` is NeoForge's
   `UseItemOnBlockEvent`. `event.phase` is `UsePhase::Block` just before the block's item method/Part,
