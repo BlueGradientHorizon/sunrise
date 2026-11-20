@@ -4,7 +4,7 @@
 mod tests;
 
 use crate::{
-    FileToIdConverter, Identifier, ReloadApply, ReloadResourceError,
+    FileToIdConverter, Identifier, ReloadResourceError,
     world::reload::{Boundary, ReloadFiles},
     world::reload_order::ReloadOrderError,
 };
@@ -81,14 +81,14 @@ pub trait ServerReloadListener: Send + Sync + 'static {
     fn prepare(
         &self,
         context: &ServerReloadContext,
-    ) -> Result<Box<dyn ReloadApply>, ReloadResourceError>;
+    ) -> Result<Box<dyn FnOnce() + Send + 'static>, ReloadResourceError>;
 }
 impl ServerReloadListener for Boundary {
     fn prepare(
         &self,
         _: &ServerReloadContext,
-    ) -> Result<Box<dyn ReloadApply>, ReloadResourceError> {
-        Ok(<dyn ReloadApply>::new(|| {}))
+    ) -> Result<Box<dyn FnOnce() + Send + 'static>, ReloadResourceError> {
+        Ok(Box::new(|| {}))
     }
 }
 

@@ -53,34 +53,6 @@ impl std::error::Error for ReloadResourceError {
     }
 }
 
-/// Infallible publication, run once, only after every listener prepared successfully: what a
-/// listener's `prepare` hands back. A later server table refusal leaves the old engine
-/// generation in place, but cannot undo this callback's own effects. One per listener per reload, never per tick;
-/// `<dyn ReloadApply>::new(move || ...)` makes one from a closure.
-pub trait ReloadApply: Send + Sync {
-    /// Publish the prepared state.
-    fn apply(&self);
-}
-impl dyn ReloadApply {
-    /// Capture newly parsed state without publishing it yet.
-    // The closure runs once, so it may move the parsed state into the live one.
-    #[allow(clippy::new_ret_no_self)]
-    pub fn new(apply: impl FnOnce() + Send + 'static) -> Box<dyn ReloadApply> {
-        Box::new(Once(std::sync::Mutex::new(Some(Box::new(apply)))))
-    }
-}
-/// A closure run on the first `apply`.
-type Publish = Box<dyn FnOnce() + Send>;
-struct Once(std::sync::Mutex<Option<Publish>>);
-impl ReloadApply for Once {
-    fn apply(&self) {
-        let publish = self.0.lock().unwrap_or_else(|e| e.into_inner()).take();
-        if let Some(publish) = publish {
-            publish();
-        }
-    }
-}
-
 /// The stateless boundary listener each side's anchors are built from; each
 /// side's file implements its listener trait for it.
 pub(crate) struct Boundary;
@@ -318,7 +290,7 @@ pub enum PreparedStep<V = ()> {
     /// A mod listener's prepared step.
     Mod {
         /// Applies the prepared result.
-        apply: Box<dyn ReloadApply>,
+        apply: Box<dyn FnOnce() + Send + 'static>,
         /// The owning mod's id, or `None` for the game's own.
         owner: Option<&'static str>,
         /// The listener's name.
@@ -340,7 +312,7 @@ pub fn prepare_listeners<L: ?Sized, C, V>(
     phase: &'static str,
     vanilla: impl Fn(&RegisteredListener<L>) -> Option<V>,
     context_of: impl Fn(&Identifier, &FileToIdConverter) -> C,
-    prepare_of: impl Fn(&L, &C) -> Result<Box<dyn ReloadApply>, ReloadResourceError>,
+    prepare_of: impl Fn(&L, &C) -> Result<Box<dyn FnOnce() + Send + 'static>, ReloadResourceError>,
 ) -> Result<Vec<PreparedStep<V>>, ReloadStageError> {
     let mut prepared = Vec::new();
     for listener in ordered {
@@ -381,7 +353,7 @@ pub fn apply_listeners<V>(
         match step {
             PreparedStep::Mod { apply, owner, id } => {
                 let _mark = ReloadMark::enter(owner, &id, phase);
-                apply.apply();
+                apply();
             }
             PreparedStep::Vanilla(step) => vanilla(step),
         }

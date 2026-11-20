@@ -1,7 +1,7 @@
 use super::*;
 use mod_api::{
     ClientReloadContext, ClientReloadListener, ClientReloadListeners, FileToIdConverter,
-    Identifier, ReloadApply, ReloadResourceError,
+    Identifier, ReloadResourceError,
 };
 use std::{path::PathBuf, sync::Arc};
 
@@ -21,7 +21,7 @@ impl ClientReloadListener for HatListener {
     fn prepare(
         &self,
         context: &ClientReloadContext,
-    ) -> Result<Box<dyn ReloadApply>, ReloadResourceError> {
+    ) -> Result<Box<dyn FnOnce() + Send + 'static>, ReloadResourceError> {
         let seen: Vec<String> = context
             .list()
             .filter_map(|id| {
@@ -32,7 +32,7 @@ impl ClientReloadListener for HatListener {
             .collect();
         self.seen.lock().unwrap().extend(seen);
         let applied = self.applied.clone();
-        Ok(<dyn ReloadApply>::new(move || {
+        Ok(Box::new(move || {
             applied.lock().unwrap().push("hats".into());
         }))
     }
@@ -128,7 +128,7 @@ fn a_listener_error_keeps_every_previous_state() {
         fn prepare(
             &self,
             _: &ClientReloadContext,
-        ) -> Result<Box<dyn ReloadApply>, ReloadResourceError> {
+        ) -> Result<Box<dyn FnOnce() + Send + 'static>, ReloadResourceError> {
             Err(ReloadResourceError::new(id("test_mod:broken"), NotAHat))
         }
     }
@@ -200,14 +200,14 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
         fn prepare(
             &self,
             context: &ClientReloadContext,
-        ) -> Result<Box<dyn ReloadApply>, ReloadResourceError> {
+        ) -> Result<Box<dyn FnOnce() + Send + 'static>, ReloadResourceError> {
             let seen = context
                 .list()
                 .filter(|id| id.namespace() == "minecraft")
                 .count();
             let applied = self.applied.clone();
             let count = self.count.clone();
-            Ok(<dyn ReloadApply>::new(move || {
+            Ok(Box::new(move || {
                 count.fetch_max(seen, Ordering::SeqCst);
                 applied.store(true, Ordering::SeqCst);
             }))
@@ -349,7 +349,7 @@ fn client_reload_reads_real_assets_with_pack_overrides() {
         fn prepare(
             &self,
             context: &ClientReloadContext,
-        ) -> Result<Box<dyn ReloadApply>, ReloadResourceError> {
+        ) -> Result<Box<dyn FnOnce() + Send + 'static>, ReloadResourceError> {
             if self.reject.load(Ordering::Relaxed) {
                 return Err(ReloadResourceError::new(
                     id("client_test:top"),
@@ -362,9 +362,7 @@ fn client_reload_reads_real_assets_with_pack_overrides() {
                 .map(|bytes| String::from_utf8_lossy(bytes).into_owned())
                 .unwrap_or_default();
             let live = self.live.clone();
-            Ok(<dyn ReloadApply>::new(move || {
-                live.lock().unwrap().push(value)
-            }))
+            Ok(Box::new(move || live.lock().unwrap().push(value)))
         }
     }
     #[mod_api::__subscriptions]
@@ -404,13 +402,13 @@ fn client_reload_reads_real_assets_with_pack_overrides() {
         fn prepare(
             &self,
             context: &ClientReloadContext,
-        ) -> Result<Box<dyn ReloadApply>, ReloadResourceError> {
+        ) -> Result<Box<dyn FnOnce() + Send + 'static>, ReloadResourceError> {
             let count = context
                 .list()
                 .filter(|id| id.namespace() == "minecraft")
                 .count();
             let seen = self.0.clone();
-            Ok(<dyn ReloadApply>::new(move || {
+            Ok(Box::new(move || {
                 seen.fetch_max(count, Ordering::SeqCst);
             }))
         }
@@ -818,7 +816,7 @@ fn refused_client_context_keeps_pack_and_listeners() {
         let applied = Arc::new(AtomicBool::new(false));
         let flag = applied.clone();
         staged.client_applies.push(PreparedStep::Mod {
-            apply: <dyn ReloadApply>::new(move || {
+            apply: Box::new(move || {
                 flag.store(true, Ordering::SeqCst);
             }),
             owner: None,

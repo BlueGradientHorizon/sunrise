@@ -1974,7 +1974,7 @@ trailing `/`, or empty, `.` or `..` components. Converter fields and reload-view
 
 The prepare context is the pack view only, as vanilla's `ResourceManager`. Like vanilla's
 `SimplePreparableReloadListener`, `ServerReloadListener::prepare` parses and validates without
-changing live state and returns `<dyn ReloadApply>::new(move || { /* publish parsed state */ })`.
+changing live state and returns `Box::new(move || { /* publish parsed state */ })`.
 All listeners prepare before **any** apply runs. Do not read another listener's new published
 state in prepare: dependencies order both phases but do not remove this barrier. Publication
 cannot fail. As vanilla's `SimpleJsonResourceReloadListener.scanDirectory`, a listener that
@@ -1995,7 +1995,7 @@ listeners run after vanilla by default, in registration order; an explicit depen
 `get_graph` and `get_last_vanilla_listener` give the registered names, the dependency edges and
 the vanilla anchor's name, by value (NeoForge's give the objects; a mod keeps its own listener's
 `Arc`, and its name is the one it registered it under). `prepare` returns
-`Box<dyn ReloadApply>`; `<dyn ReloadApply>::new(move || ...)` makes one from a closure. Sunrise does not expose NeoForge's condition
+`Box<dyn FnOnce() + Send + 'static>`; `Box::new(move || ...)` makes one from a closure. Sunrise does not expose NeoForge's condition
 context here.
 
 `event.listeners.add_retained_listener(&key, converter, listener)` also keeps the listener
@@ -2013,13 +2013,13 @@ for a key whose id or type does not match a registration, `listener` gives `None
 use std::sync::{Arc, RwLock};
 use mod_api::{
     self, AddServerReloadListenersEvent, FileToIdConverter, Host, Hooks, Identifier,
-    ReloadApply, ServerReloadContext, ReloadResourceError, ServerReloadListener,
+    ServerReloadContext, ReloadResourceError, ServerReloadListener,
 };
 
 #[derive(Default)]
 struct MachineData(Arc<RwLock<serde_json::Value>>);
 impl ServerReloadListener for MachineData {
-    fn prepare(&self, context: &ServerReloadContext) -> Result<Box<dyn ReloadApply>, ReloadResourceError> {
+    fn prepare(&self, context: &ServerReloadContext) -> Result<Box<dyn FnOnce() + Send + 'static>, ReloadResourceError> {
         let id = Identifier::parse("my_mod:press").unwrap();
         let next = match context.read(&id) {
             Some(bytes) => serde_json::from_slice(bytes)
@@ -2027,7 +2027,7 @@ impl ServerReloadListener for MachineData {
             None => serde_json::Value::Null,
         };
         let live = self.0.clone();
-        Ok(<dyn ReloadApply>::new(move || *live.write().unwrap() = next))
+        Ok(Box::new(move || *live.write().unwrap() = next))
     }
 }
 #[derive(Default)]
@@ -2091,13 +2091,13 @@ own live state.
 use std::sync::{Arc, RwLock};
 use mod_api::{
     self, AddClientReloadListenersEvent, ClientHost, ClientReloadContext, ClientReloadListener,
-    FileToIdConverter, Hooks, Identifier, ReloadApply, ReloadResourceError,
+    FileToIdConverter, Hooks, Identifier, ReloadResourceError,
 };
 
 #[derive(Default)]
 struct Theme(Arc<RwLock<serde_json::Value>>);
 impl ClientReloadListener for Theme {
-    fn prepare(&self, context: &ClientReloadContext) -> Result<Box<dyn ReloadApply>, ReloadResourceError> {
+    fn prepare(&self, context: &ClientReloadContext) -> Result<Box<dyn FnOnce() + Send + 'static>, ReloadResourceError> {
         let id = Identifier::parse("my_mod:theme").unwrap();
         let next = match context.read(&id) {
             Some(bytes) => serde_json::from_slice(bytes)
@@ -2105,7 +2105,7 @@ impl ClientReloadListener for Theme {
             None => serde_json::Value::Null,
         };
         let live = self.0.clone();
-        Ok(<dyn ReloadApply>::new(move || *live.write().unwrap() = next))
+        Ok(Box::new(move || *live.write().unwrap() = next))
     }
 }
 #[derive(Default)]
