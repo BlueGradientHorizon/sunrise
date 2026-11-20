@@ -1,5 +1,5 @@
 //! Immutable component codec values shared by item templates and protocol codecs.
-use sunrise_core::nbt::{JavaString, Tag, discard_tag, with_tree_stack};
+use sunrise_core::nbt::{Compound, JavaString, Tag, discard_tag, with_tree_stack};
 pub mod source;
 pub mod types;
 pub use source::from_component_tag;
@@ -385,25 +385,29 @@ impl Template {
         if self.count != 1 {
             fields.push(("count".into(), Tag::Int(self.count)));
         }
-        let patch = collect_projected(
-            effective_patch(&self.patch)
-                .filter(|(name, _)| projection == Projection::Presentation || is_persistent(name))
-                .map(|(name, value)| {
-                    Ok(match value {
-                        Some(value) => (
-                            name.as_str().into(),
-                            value
-                                .tag(children)
-                                .map_err(|error| format!("{name}: {error}"))?,
-                        ),
-                        None => (
-                            format!("!{name}").as_str().into(),
-                            Tag::Compound(Default::default()),
-                        ),
-                    })
-                }),
-            Tag::Compound,
-        )?;
+        let mut patch = Compound::new();
+        for (name, value) in effective_patch(&self.patch) {
+            if projection != Projection::Presentation && !is_persistent(name) {
+                continue;
+            }
+            let (key, projected) = match value {
+                Some(value) => match value.tag(children) {
+                    Ok(tag) => (name.as_str().into(), tag),
+                    Err(error) => {
+                        discard_tag(Tag::Compound(patch));
+                        return Err(format!("{name}: {error}"));
+                    }
+                },
+                None => (
+                    format!("!{name}").as_str().into(),
+                    Tag::Compound(Compound::new()),
+                ),
+            };
+            // A directly constructed set key may collide with a !-prefixed removal.
+            if let Some(replaced) = patch.insert(key, projected) {
+                discard_tag(replaced);
+            }
+        }
         if !patch.is_empty() {
             fields.push(("components".into(), Tag::Compound(patch)));
         }
@@ -472,6 +476,11 @@ mod tests {
                         (Value::string("z"), inline()),
                     ]),
                     Value::Template(Box::new(stone(vec![custom_data(), invalid_damage()]))),
+                    Value::Template(Box::new(stone(vec![
+                        ("!minecraft:custom_data".into(), Some(deep())),
+                        ("minecraft:custom_data".into(), None),
+                        invalid_damage(),
+                    ]))),
                     Value::Container(vec![
                         Some(stone(vec![custom_data()])),
                         Some(stone(vec![invalid_damage()])),
