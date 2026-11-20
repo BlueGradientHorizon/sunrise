@@ -361,7 +361,7 @@ def verdicts(jobs, reports, results, legs, parity_report, all_legs):
         if not known(job["name"], all_legs) and not never_started(job):
             unfinished.append((job["name"], job["conclusion"], [], "did not report: a job the summary does not know"))
     names = {job["name"] for job in jobs}
-    if "shards" not in helpers and "shards" not in unstarted:
+    if "shards" in all_legs and "shards" not in helpers and "shards" not in unstarted:
         for expected in expected_shards():
             if expected not in names:
                 unfinished.append((expected, "missing", [], "did not report: the daily matrix has this shard, but "
@@ -686,6 +686,12 @@ def main(call=api, run_git=git, query=graphql):
     parity_not_applicable = (not writes and results.get("resolve", {}).get("outputs", {}).get("parity_required") == "false"
                              and results.get(PARITY, {}).get("result") == "skipped")
     legs = tuple(leg for leg in all_legs if leg != PARITY or not parity_not_applicable)
+    if selected := results.get("resolve", {}).get("outputs", {}).get("legs"):
+        # A break-glass run (daily.yml `break_glass`) ran only these legs: the others, and their skipped jobs, are no
+        # part of its verdict. It runs on release/26.3 only, which never writes.
+        chosen = set(json.loads(selected))
+        all_legs = legs = tuple(leg for leg in legs if leg in chosen)
+        jobs = [job for job in jobs if job["name"].partition(" / ")[0] not in set(daily_legs(needs)) - chosen]
     tests, unfinished, passed, green_legs, green = verdicts(jobs, reports, results, legs, parity_report, all_legs)
     open_issues = {issue["title"]: issue["number"]
                    for issue in pages(call, f"issues?state=open&labels={LABEL}")

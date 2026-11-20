@@ -478,6 +478,44 @@ gh workflow run "nightly build" --ref release/26.3 -f kind=stable -f dry_run=tru
 gh workflow run "nightly build" --ref release/26.3 -f kind=stable -f base=<approved sha> -f release_version=0.1.0
 ```
 
+## Break-glass patch releases
+
+A stable patch release whose cherry-picks need only part of the daily (agreed by umceko and ari, 2026-11-20). It
+waives the full daily on the release commit and nothing else:
+
+- **Two people approve it in GitHub.** `nightly-build.yml` binds one job to each environment in
+  `BREAK_GLASS_ENVIRONMENTS` (`tools/release_train.py`), and each environment has one required reviewer, umceko on one
+  and ari on the other (GitHub lets any one reviewer of an environment approve, so two people take two
+  environments). The `break-glass` job then reads the run's recorded approvals and refuses unless both environments
+  were approved by two different people; an environment left without reviewers records no approval, so it refuses
+  too. Nothing builds until it passes. No input or variable stands in for an approval.
+- **The changed paths choose the daily legs.** `release_train.break_glass_legs` maps each path that differs between
+  the parent release's tag and the release commit to daily legs, by the rows of `BREAK_GLASS_LEGS`. The SDK legs
+  sdk-publish waits for always run, since a release ships only after its `sdk-<sha>`. A path no row matches means the
+  full daily: the break-glass daily refuses to start and the release refuses to build. The release build's own smoke
+  test boots the game headless on the commit, as for every release.
+- **The gate always applies.** dyna-checks runs on pushes to `release/26.3`, and the release needs `lint`, `verify` and
+  `verify-static` passed on a push of exactly its commit.
+- **Never for** a minor or major release (only a patch of the newest stable release on the target), a release whose
+  `surface.json` differs from the parent release's, or a parent release whose newest full daily run did not pass every
+  leg. The surface rule is the stable mod API check every stable release runs (`nightly.py stable-mod-api`, above):
+  a patch's surface diff must be identical, and break-glass takes only a patch. A break-glass daily run never counts
+  as a full one.
+- **Recorded and followed up.** The release notes and the run's summary say it was a break-glass release, why (the
+  `break_glass` input) and who approved it with their comments. Once it is published, `full-daily` dispatches the full
+  daily on the release branch for its commit. Until that run passes, the next patch can't take this path.
+
+`pick` checks the rules of `release_train.break_glass_problems`, and `nightly.py reserve-stable-tag` checks them again
+right before the tag is made.
+
+```sh
+# 1. The legs the cherry-picks select, on the release branch's head: publishes its SDK, writes nothing else.
+gh workflow run daily.yml --ref release/26.3 -f dry_run=false -f break_glass=true
+# 2. The release, once that run passed: it waits for both approvals before it builds.
+gh workflow run "nightly build" --ref release/26.3 -f kind=stable -f base=<sha> -f release_version=0.1.1 \
+  -f break_glass="<why>"
+```
+
 ## Prebuilt SDK retention design (#3011)
 
 **Proposed for review, not enabled.** This is an availability policy, not an implementation or an instruction to

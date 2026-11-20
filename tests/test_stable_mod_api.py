@@ -91,7 +91,7 @@ class StableModApiTests(unittest.TestCase):
                 original = "Existing notes.\n"
                 self.notes.write_text(original)
                 with mock.patch.object(nightly.train, "gh_json", return_value=pages), \
-                        mock.patch.object(nightly, "remote_tags", return_value=tags), \
+                        mock.patch.object(nightly.train, "origin_tags", return_value=tags), \
                         mock.patch.object(nightly, "require_stable_lineage") as lineage, \
                         mock.patch.object(nightly, "released_assets", side_effect=verified), \
                         mock.patch.object(nightly.subprocess, "run", side_effect=compare) as diff:
@@ -119,7 +119,7 @@ class StableModApiTests(unittest.TestCase):
         old = sdk_assets(OLD, SURFACE, "1", {"target": function()})
         new = sdk_assets(HEAD, BREAKING, "2", {"target": function(source="new body")})
         with mock.patch.object(nightly.train, "gh_json", return_value=[[release(PREVIOUS)]]), \
-                mock.patch.object(nightly, "remote_tags", return_value={PREVIOUS: OLD}), \
+                mock.patch.object(nightly.train, "origin_tags", return_value={PREVIOUS: OLD}), \
                 mock.patch.object(nightly, "require_stable_lineage") as lineage, \
                 mock.patch.object(nightly, "released_assets", side_effect=[old, new]) as inputs, \
                 mock.patch.object(nightly.subprocess, "run") as diff:
@@ -132,7 +132,7 @@ class StableModApiTests(unittest.TestCase):
 
     def test_previous_stable_missing_a_tag_stops_the_comparison(self):
         with mock.patch.object(nightly.train, "gh_json", return_value=[[release(PREVIOUS)]]), \
-                mock.patch.object(nightly, "remote_tags", return_value={}):
+                mock.patch.object(nightly.train, "origin_tags", return_value={}):
             with self.assertRaisesRegex(SystemExit, f"cannot resolve the previous stable tag {PREVIOUS}"):
                 nightly.stable_mod_api(HEAD, "26.3-0.1.11", self.notes)
 

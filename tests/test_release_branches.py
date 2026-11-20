@@ -441,13 +441,13 @@ class PickStableTests(unittest.TestCase):
         os.chdir(folder)
         try:
             with mock.patch.dict(os.environ, values), mock.patch.object(nightly, "git", return_value=""), \
-                    mock.patch.object(nightly, "remote_tags", return_value=tags), \
+                    mock.patch.object(nightly.train, "origin_tags", return_value=tags), \
                     mock.patch.object(nightly.train, "release_head", return_value=self.SHA) as head, \
                     mock.patch.object(nightly.train, "open_blockers", return_value=list(blockers)), \
                     mock.patch.object(nightly.train, "known_issues", return_value=[]), \
                     mock.patch.object(nightly, "sdk_ready", return_value=True):
                 nightly.pick_stable()
-            head.assert_called_once_with(values["NIGHTLY_BASE"], values["DRY_RUN"] == "true")
+            head.assert_called_once_with(values["NIGHTLY_BASE"], values["DRY_RUN"] == "true", daily=True)
             return dict(line.split("=", 1) for line in out.read_text().splitlines()), Path("nightly-notes.md").read_text()
         finally:
             os.chdir(back)
@@ -504,13 +504,13 @@ class ReserveStableTagTests(unittest.TestCase):
             calls.append(command)
             return subprocess.CompletedProcess(command, created, "", "Reference already exists" if created else "")
         with mock.patch.dict(os.environ, {"GITHUB_REF": ref, "GITHUB_REPOSITORY": REPO}), \
-                mock.patch.object(nightly, "remote_tags", return_value=tags), \
+                mock.patch.object(nightly.train, "origin_tags", return_value=tags), \
                 mock.patch.object(nightly.train, "release_head", return_value=head or self.SHA) as release_head, \
                 mock.patch.object(nightly.train, "origin_commit", return_value=after), \
                 mock.patch.object(nightly.subprocess, "run", side_effect=run), \
                 mock.patch("sys.stdout", new_callable=io.StringIO):
             nightly.reserve_stable_tag(self.SHA, tag)
-        release_head.assert_called_once_with(self.SHA)
+        release_head.assert_called_once_with(self.SHA, daily=True)
         return calls
 
     def test_the_tag_is_created_at_the_approved_commit_in_one_write(self):

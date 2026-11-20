@@ -482,7 +482,9 @@ def pick_stable() -> None:
         if not dry_run:
             stop(repo, "", f"the release stopped: held by {', '.join(held)}.")
         print(f"::warning::held by {', '.join(held)}: a real release would stop here")
-    sha = train.release_head(os.environ.get("NIGHTLY_BASE", "").strip(), dry_run)
+    # A break-glass patch release (docs/release-flow.md "Break-glass patch releases"): why, in the dispatcher's words.
+    reason = " ".join(os.environ.get("BREAK_GLASS", "").split())
+    sha = train.release_head(os.environ.get("NIGHTLY_BASE", "").strip(), dry_run, daily=not reason)
     sdk = repo != "sunrise-org/sunrise" or sdk_ready(sha)
     if not sdk:
         if not dry_run:
@@ -494,12 +496,20 @@ def pick_stable() -> None:
     if not dry_run and not version:
         stop(repo, "", "the release stopped: a real stable release names its version (`release_version`, 0.1.0 first), "
                        "as approved in the release-candidate check.")
-    tags = remote_tags()
+    tags = train.origin_tags()
     wanted = f"{train.TARGET}-{version}"
     own = wanted if version and tags.get(wanted) == sha else ""
     tag = train.next_stable_tag(tags, version=version, own=own)
     older = [t for t in tags if t != tag and (found := train.stable_version(t)) and found[0] == train.TARGET]
     previous = max(older, key=train.stable_key, default=None)
+    legs = []
+    if reason:
+        problems, _, legs = train.break_glass_problems(sha, tag, tags)
+        if problems:
+            text = "the break-glass release stopped: " + "; ".join(problems) + "."
+            if not dry_run:
+                stop(repo, "", text)
+            print(f"::warning::{text}")
     today = dt.datetime.now(dt.timezone.utc).date().isoformat()
     parts = [f"Sunrise {tag}: the stable release for Minecraft {train.TARGET}, commit {sha} of "
              f"`{train.RELEASE_BRANCH}`. sunrise-source.tar.gz is its tree; native mods built for it pin that commit, "
@@ -512,25 +522,20 @@ def pick_stable() -> None:
         parts.append(f"The first stable release for Minecraft {train.TARGET}: what the Nightly of this commit holds.")
     if issues := train.known_issues():
         parts.append("### Known issues\n" + "\n".join(issues))
+    if reason:
+        parts.append(f"### Break-glass release\nThis patch release passed the daily legs its changes select "
+                     f"({', '.join(legs)}) and dyna-checks' gate on its commit instead of the full daily, which runs on "
+                     f"it after publishing. Why: {reason}\n\n{BREAK_GLASS_APPROVALS}")
     parts.append(train.DISCLAIMER)
     with open("nightly-notes.md", "w") as f:
         f.write("\n\n".join(parts) + "\n")
     output(build="true", sha=sha, short=sha[:7], source=train.RELEASE_BRANCH, date=today, version=tag, nightly="",
-           source_tag="", tag=tag, sdk=str(sdk).lower())
+           source_tag="", tag=tag, sdk=str(sdk).lower(), break_glass=str(bool(reason)).lower())
     print(f"build: {tag} {sha}")
 
 
-def remote_tags() -> dict[str, str]:
-    """Every tag on origin and the commit it names (annotated tags peeled)."""
-    refs = {}
-    for line in git("ls-remote", "--tags", "origin").splitlines():
-        sha, name = line.split("\t")
-        name = name.removeprefix("refs/tags/")
-        if name.endswith("^{}"):
-            refs[name[:-3]] = sha
-        else:
-            refs.setdefault(name, sha)
-    return refs
+# Where the publish job puts the break-glass approvals (the break-glass job's `note`) in a release's notes.
+BREAK_GLASS_APPROVALS = "<!-- break-glass approvals -->"
 
 
 # The build-data header shared with sunrise_mod_surface::build_data.
@@ -634,7 +639,7 @@ def stable_mod_api(sha: str, tag: str, notes: Path) -> None:
             out.write("\n### Changed mixin targets\n\nNo earlier stable release to compare.\n")
         return
     old_version, old_tag = previous
-    old_sha = remote_tags().get(old_tag)
+    old_sha = train.origin_tags().get(old_tag)
     if not old_sha:
         raise SystemExit(f"::error::refused: {tag} cannot resolve the previous stable tag {old_tag}")
     same_line = old_version[0] == version[0]
@@ -673,9 +678,16 @@ def reserve_stable_tag(sha: str, tag: str) -> None:
     found = train.stable_version(tag)
     if not found or found[0] != train.TARGET:
         raise SystemExit(f"::error::refused: {tag} is not a stable tag on {train.TARGET}")
-    if train.release_head(sha) != sha:
+    break_glass = os.environ.get("BREAK_GLASS") == "true"
+    if train.release_head(sha, daily=not break_glass) != sha:
         raise SystemExit(f"::error::refused: {sha} is no longer the approved release head")
-    tags = remote_tags()
+    tags = train.origin_tags()
+    if break_glass:
+        # Its surface is held to the parent release's by the stable-mod-api step before this: a patch's verdict
+        # must be identical, and break_glass_problems takes only a patch.
+        problems, _, _ = train.break_glass_problems(sha, tag, tags)
+        if problems:
+            raise SystemExit("::error::refused: " + "; ".join(problems))
     there = tags.get(tag)
     if there and there != sha:
         raise SystemExit(f"::error::refused: the tag {tag} already names {there}, not {sha}")
