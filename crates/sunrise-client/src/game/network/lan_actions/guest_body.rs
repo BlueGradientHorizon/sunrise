@@ -93,7 +93,7 @@ impl Game<'_> {
         let fell = host
             .hub
             .guest(conn)
-            .and_then(|g| g.moves.last().map(|m| m.0[1]))
+            .and_then(|g| g.moves.last().map(|m| m.delta[1]))
             .unwrap_or(0.0);
         self.guest_glide_tick(conn, fell);
         let Some((moves, from_ground)) = self.lan.as_mut().and_then(|host| {
@@ -112,7 +112,7 @@ impl Game<'_> {
         let g = self.lan.as_ref().unwrap().hub.guest(conn).unwrap();
         // Each move the player sent put it somewhere (`handleMovePlayer`'s `setPos`).
         let (id, end) = (g.entity_id as u32, g.position);
-        self.entity_section_walked(id, end, moves.iter().map(|m| m.0));
+        self.entity_section_walked(id, end, moves.iter().map(|m| m.delta));
         let g = self.lan.as_ref().unwrap().hub.guest(conn).unwrap();
         if g.spectator() {
             // ServerPlayer.doTick runs the player's whole tick for a spectator
@@ -188,30 +188,28 @@ impl Game<'_> {
             if w.player.flying && !riding {
                 w.player.fall_distance = 0.0;
             }
-            let travelled: Vec<[f64; 3]> = moves.iter().map(|m| m.0).collect();
             // The tick's whole movement, for the delta movement a glide's wall
             // hit reads (`handleMovePlayer` gives the server copy the client's
             // own movement).
-            let tick_movement = travelled.iter().fold(Vec3::ZERO, |sum, d| {
-                sum.add_vector(Vec3::new(d[0], d[1], d[2]))
+            let vector = |[x, y, z]: [f64; 3]| Vec3::new(x, y, z);
+            let tick_movement = moves.iter().fold(Vec3::ZERO, |sum, accepted| {
+                sum.add_vector(vector(accepted.delta))
             });
-            // Entity.move's movementThisTick: each move, from where the
-            // tick's first one started.
+            // Entity.move's movementThisTick, using the actual accepted endpoints.
             let end = w.player.position;
-            let start = travelled
-                .iter()
-                .fold(end, |p, d| p.subtract(Vec3::new(d[0], d[1], d[2])));
+            let start = moves.first().map_or(end, |first| {
+                vector(first.position).subtract(vector(first.delta))
+            });
             w.player.history.clear();
             let mut from = start;
-            for d in &travelled {
-                let delta = Vec3::new(d[0], d[1], d[2]);
-                let to = from.add_vector(delta);
+            for accepted in &moves {
+                let to = vector(accepted.position);
                 w.player
                     .history
                     .add(sunrise_world::entity_move::MovementRecord {
                         from,
                         to,
-                        original: Some(delta),
+                        original: Some(vector(accepted.delta)),
                     });
                 from = to;
             }
@@ -219,20 +217,21 @@ impl Game<'_> {
             // Where the first move that went up ended, if one did, and whether the player
             // was alive then: the hazards below may kill it later in this tick.
             let mut rose = None;
-            let mut at = start;
-            for (moved, on_ground) in moves {
-                let movement = Vec3::new(moved[0], moved[1], moved[2]);
-                at = at.add_vector(movement);
+            let mut latest = end;
+            let mut replay = moves.iter().peekable();
+            while let Some(accepted) = replay.next() {
+                let movement = vector(accepted.delta);
+                let at = vector(accepted.position);
+                w.player.position = at;
+                w.player.shift_key_down = accepted.sneaking;
                 let landed = (|| -> sunrise_client::Result<_> {
-                    w.set_on_ground_with_movement(on_ground, false, movement)?;
+                    w.set_on_ground_with_movement(accepted.on_ground, false, movement)?;
                     let pos = w.legacy_on_position()?;
                     let state = w.block_state(pos)?;
-                    w.check_guest_fall_damage(moved[1], on_ground, state, pos)
+                    w.check_guest_fall_damage(movement.y, accepted.on_ground, state, pos)
                 })();
                 let Ok(landed) = landed else { break };
                 if let Some(trample) = landed {
-                    // The hook sees the current input, not the previous body tick's flag.
-                    w.player.shift_key_down = sneaking;
                     let mut collected = std::mem::take(&mut w.player.events);
                     game.trample_farmland(id, true, trample);
                     let Some(player) = game.player.as_mut().filter(|p| p.entity_id as u32 == id)
@@ -249,14 +248,20 @@ impl Game<'_> {
                 }
                 // handlePlayerPositionChange: an upward move resets the fall distance
                 // after the landing, and its advancement reads the post-landing health.
-                if moved[1] > 0.0 {
+                if movement.y > 0.0 {
                     w.player.fall_distance = 0.0;
                     rose.get_or_insert((at, !w.player.health.dead_or_dying()));
+                }
+                // Preserve a lift on the final accepted move, but do not overwrite a
+                // position set after that report or rewind if the drain stopped early.
+                if replay.peek().is_none() && at == end {
+                    latest = w.player.position;
                 }
                 if w.check_movement_statistics(movement).is_err() {
                     break;
                 }
             }
+            w.player.position = latest;
             // A ServerPlayer travels on the server too
             // (MoveSimulationType.AUTHORITATIVE_SIDE_AND_SERVER), so every tick
             // on a ladder or vine LivingEntity.handleOnClimbable resets its fall
@@ -339,8 +344,8 @@ impl Game<'_> {
             }
             // ServerGamePacketListenerImpl.handleMovePlayer:
             // Player.checkMovementStatistics for each move.
-            for d in travelled {
-                game.movement_stats(Vec3::new(d[0], d[1], d[2]));
+            for accepted in moves {
+                game.movement_stats(vector(accepted.delta));
             }
             // LivingEntity.baseTick: a new block position runs the worn
             // enchantments' location_changed effects (frost walker).

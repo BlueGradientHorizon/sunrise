@@ -97,8 +97,9 @@ mod tests {
     use crate::game::native_item_places::tests::{guest, open_to_lan};
     use mod_api::*;
     use std::sync::{Arc, Mutex};
-    use sunrise_client::{chunk::Chunk, motion::PlayerMotion};
+    use sunrise_client::{chunk::Chunk, lan::guest::InboxItem, motion::PlayerMotion};
     use sunrise_core::geometry::Vec3;
+    use sunrise_protocol::packets::{Empty, play, play::Serverbound as S};
 
     const FIELD: [i32; 3] = [1, 63, 1];
     const LANDING_Y: f64 = 63.9375;
@@ -228,6 +229,10 @@ mod tests {
     }
 
     fn land(body: Body, choice: Choice) -> Vec<Moment> {
+        land_with_later_packet(body, choice, None)
+    }
+
+    fn land_with_later_packet(body: Body, choice: Choice, later: Option<S>) -> Vec<Moment> {
         crate::entry::install_client_hooks();
         let player = matches!(body, Body::Guest { .. });
         let cancelled = choice == Choice::Cancel
@@ -282,15 +287,47 @@ mod tests {
                     // Otherwise ServerPlayer.isInvulnerableTo refuses fall damage.
                     player.load_timeout = 0;
                     player.sneaking = sneaking;
-                    player.position = [1.5, LANDING_Y, 1.5];
-                    player.moves.push(([0.0, -0.25, 0.0], true));
+                    let start = [1.5, LANDING_Y + 0.25, 1.5];
+                    player.place(start);
+                    player.first_good = start;
                     let mut body =
-                        PlayerMotion::new(game.motion, Vec3::new(1.5, LANDING_Y, 1.5)).unwrap();
+                        PlayerMotion::new(game.motion, Vec3::new(start[0], start[1], start[2]))
+                            .unwrap();
                     body.fall_distance = 6.0;
                     player.motion = Some(Box::new(body));
                     let health = player.health;
+                    player.inbox.push_back(InboxItem::Packet(
+                        S::MovePlayerPos(play::MovePlayerPos {
+                            x: 1.5,
+                            y: LANDING_Y,
+                            z: 1.5,
+                            flags: 1,
+                        }),
+                        None,
+                    ));
+                    player
+                        .inbox
+                        .push_back(InboxItem::Packet(S::ClientTickEnd(Empty), None));
+                    if let Some(packet) = later.clone() {
+                        player.inbox.push_back(InboxItem::Packet(packet, None));
+                        player
+                            .inbox
+                            .push_back(InboxItem::Packet(S::ClientTickEnd(Empty), None));
+                    }
                     game.lan.as_mut().unwrap().hub.guests.push(player);
-                    game.entity_section_joined(LANDING, [1.5, LANDING_Y, 1.5]);
+                    game.entity_section_joined(LANDING, start);
+                    game.tick_lan_packets();
+                    let guest = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
+                    assert_eq!(
+                        guest.moves.len(),
+                        1 + usize::from(matches!(later, Some(S::MovePlayerPos(_))))
+                    );
+                    if matches!(later, Some(S::PlayerInput(_))) {
+                        assert!(
+                            !guest.sneaking,
+                            "the release must be applied before the drain"
+                        );
+                    }
                     health
                 } else {
                     let mob_kind = if matches!(body, Body::Cat { .. }) {
@@ -357,7 +394,15 @@ mod tests {
                 if cancelled {
                     assert_eq!(game.world.block(x, y + 1, z), wheat);
                 }
-                assert_eq!(landing_y, y_after);
+                let final_y = match later {
+                    Some(S::MovePlayerPos(m)) => {
+                        let guest = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
+                        assert_eq!(guest.position, [m.x, m.y, m.z]);
+                        m.y
+                    }
+                    _ => y_after,
+                };
+                assert_eq!(landing_y, final_y);
                 assert_eq!(game.mob_object(OTHER).unwrap().position.y, y_after);
                 assert_eq!(game.mob_object(OUTSIDE).unwrap().position.y, LANDING_Y);
                 assert_eq!(
@@ -437,6 +482,26 @@ mod tests {
     fn a_sneaking_player_keeps_the_farmland_and_a_walking_one_tramples_it() {
         land(Body::Guest { sneaking: true }, Choice::AvoidSneak);
         land(WALKING, Choice::AvoidSneak);
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_guest_landing_uses_its_own_move_in_a_batch() {
+        land_with_later_packet(
+            Body::Guest { sneaking: true },
+            Choice::AvoidSneak,
+            Some(S::PlayerInput(play::PlayerInput { flags: 0 })),
+        );
+        land_with_later_packet(
+            WALKING,
+            Choice::Allow,
+            Some(S::MovePlayerPos(play::MovePlayerPos {
+                x: 0.5,
+                y: LANDING_Y,
+                z: 1.5,
+                flags: 0,
+            })),
+        );
     }
 
     #[test]
