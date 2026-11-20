@@ -1847,9 +1847,6 @@ fn check_block(file: &Block) -> Result<(), String> {
     if p.explosion_resistance.is_some_and(|r| r < 0.0) {
         return Err("explosion_resistance is 0 or more".into());
     }
-    if p.friction.is_some_and(|f| !(0.0..=2.0).contains(&f)) {
-        return Err("friction is 0 to 2".into());
-    }
     if p.light.is_some_and(|l| l > 15) {
         return Err("light is 0 to 15".into());
     }

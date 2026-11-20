@@ -317,7 +317,7 @@ Status: each registry lands in its own PR (layer plan M5, seam): the settings st
 `SunriseSettings` and every row but `Slider`; #14110: `Slider` and `tooltip`; `Title` and `Pause` next), the HUD
 hook (#14081), `seat()` (#14096), the title screen buttons (#2535).
 
-**One shape for all three.** As with `Hooks` above:
+**One shape for all four.** As with `Hooks` above:
 
 - The trait and its `register` are in `sunrise-hooks` (engine; no dependencies, so it names no type from above).
   `sunrise-platform` re-exports them as `sunrise_platform::{settings, pages, hud, title}`. They take plain data
