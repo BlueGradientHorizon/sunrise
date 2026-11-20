@@ -180,6 +180,7 @@ fn a_click_on_a_harnessed_ghast_keeps_the_players_view() {
 /// `Entity.addPassenger`: the player is the first passenger, so the pig that
 /// boards after it sits in the next seat.
 #[test]
+#[ignore = "daily"]
 fn a_mob_that_boards_a_happy_ghast_after_its_player_takes_the_next_seat() {
     let mut resources = None;
     let Some(mut game) = super::tests::server_game(&mut resources) else {

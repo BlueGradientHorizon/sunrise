@@ -55,10 +55,13 @@ impl Game<'_> {
             })
             .map(|g| (g.vehicle_order, g.entity_id as u32, true))
             .collect();
-        // An acting player absent from the placed list has no place kept: it still rides
-        // through `riding`, at the front.
-        if let Some(me) = self.lan_acting_entity
-            && self.lan_acting_uuid.is_some()
+        // A player riding through `riding` with no place kept (the unlisted acting guest, or this game's own) goes first.
+        let me = match (self.lan_acting_entity, self.lan_acting) {
+            (Some(id), _) if self.lan_acting_uuid.is_some() => Some(id),
+            (_, None) => self.player.as_ref().map(|p| p.entity_id as u32),
+            _ => None,
+        };
+        if let Some(me) = me
             && !acting_listed
             && self.player.is_some()
             && self.riding == Some(vehicle)
