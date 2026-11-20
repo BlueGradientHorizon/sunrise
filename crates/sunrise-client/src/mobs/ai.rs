@@ -1439,7 +1439,7 @@ fn ai_and_finish_tick(
         if m.species() == Species::TraderLlama {
             super::caravan::trader_llama_tick(m, w);
         }
-    } else if let Err(phase) = ai_step(m, w, level, events, pause_trample) {
+    } else if let Some(phase) = ai_step(m, w, level, events, pause_trample) {
         return TickProgress::Paused(Pause::Trample(MobTrample {
             phase,
             was_on_fire,
@@ -1469,7 +1469,7 @@ pub(super) fn resume_after_trample(
             travel.resume(m, w, level, events);
             hurt_teleports(m, w, events);
             finish_ai_step(m, w, level, events);
-            Ok(())
+            None
         }
         TramplePhase::Goal(goal) => {
             let paused = {
@@ -1477,16 +1477,18 @@ pub(super) fn resume_after_trample(
                 goals.resume_after_trample(mob, &mut Cx { w, level, events }, goal)
             };
             if let Some(goal) = paused {
-                Err(TramplePhase::Goal(goal))
+                Some(TramplePhase::Goal(goal))
             } else {
                 finish_server_ai_step(m, w, level, events);
-                ai_step_after_goals(m, w, level, events, true).map_err(TramplePhase::Travel)
+                ai_step_after_goals(m, w, level, events, true)
+                    .err()
+                    .map(TramplePhase::Travel)
             }
         }
     };
     match progress {
-        Ok(()) => TickProgress::Complete(finish_tick(m, w, level, paused.was_on_fire, events)),
-        Err(phase) => TickProgress::Paused(Pause::Trample(MobTrample { phase, ..paused })),
+        None => TickProgress::Complete(finish_tick(m, w, level, paused.was_on_fire, events)),
+        Some(phase) => TickProgress::Paused(Pause::Trample(MobTrample { phase, ..paused })),
     }
 }
 
@@ -2703,7 +2705,7 @@ fn ai_step(
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
     pause_trample: bool,
-) -> Result<(), TramplePhase> {
+) -> Option<TramplePhase> {
     if m.species() == Species::Parrot {
         super::parrot::ai_step(m, w, level.random(), events);
     }
@@ -2751,14 +2753,16 @@ fn ai_step(
     }
     if m.alive() && !immobile {
         if let Some(paused) = server_ai_until_trample(m, w, level, events, pause_trample) {
-            return Err(TramplePhase::Goal(paused));
+            return Some(TramplePhase::Goal(paused));
         }
     } else {
         m.ai.jumping = false;
         m.ai.xxa = 0.0;
         m.ai.zza = 0.0;
     }
-    ai_step_after_goals(m, w, level, events, pause_trample).map_err(TramplePhase::Travel)
+    ai_step_after_goals(m, w, level, events, pause_trample)
+        .err()
+        .map(TramplePhase::Travel)
 }
 
 fn ai_step_after_goals(
