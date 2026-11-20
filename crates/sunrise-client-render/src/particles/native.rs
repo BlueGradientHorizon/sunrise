@@ -683,18 +683,17 @@ pub(super) mod tests {
             [0.0; 3],
             glam::Quat::IDENTITY,
         );
-        assert!(corners.iter().all(|c| c[1].abs() < 1.0e-6), "{corners:?}");
-        let s = corners[0][0].hypot(corners[0][2]) / std::f32::consts::SQRT_2;
-        let (sin, cos) = 0.5f32.sin_cos();
-        for (cx, cy) in [(s, s), (-s, s), (-s, -s), (s, -s)] {
-            let want = [cx * cos - cy * sin, -(cx * sin + cy * cos)];
-            assert!(
-                corners
-                    .iter()
-                    .any(|c| (c[0] - want[0]).abs() < 1.0e-5 && (c[2] - want[1]).abs() < 1.0e-5),
-                "{want:?} not in {corners:?}"
-            );
-        }
+        // The quad's corners in the vertex order, turned by the normalised quaternion and then
+        // by `Quaternionf.rotationZ(0.5)` in f32, the order and types vanilla's JOML uses.
+        let roll = crate::camera::joml::Quat::rotation_z(0.5);
+        let rotation = glam::Quat::from_xyzw(-flat, 0.0, 0.0, flat).normalize()
+            * glam::Quat::from_xyzw(roll.x, roll.y, roll.z, roll.w);
+        let expected: Vec<[f32; 3]> = [(1.0, -1.0), (1.0, 1.0), (-1.0, 1.0), (-1.0, -1.0)]
+            .map(|(x, y)| (rotation * glam::Vec3::new(x, y, 0.0)).to_array())
+            .to_vec();
+        assert_eq!(corners, expected);
+        // Lying flat: every corner is level with the centre.
+        assert!(corners.iter().all(|c| c[1] == 0.0), "{corners:?}");
     }
     #[test]
     fn a_providers_around_y_facing_ignores_the_cameras_pitch() {
