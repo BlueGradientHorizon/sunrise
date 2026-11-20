@@ -98,6 +98,9 @@ impl Game<'_> {
             |game| {
                 game.journal_merchant_take(conn);
                 handled.set(game.lan_merchant_click_plain(conn, p));
+                if Scope::refused() {
+                    return Reply::Failed;
+                }
                 match game
                     .transactions
                     .last_mut()

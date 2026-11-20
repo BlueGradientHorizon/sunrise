@@ -554,6 +554,9 @@ impl Game<'_> {
     }
     /// What closing `level` does, with the closing phase already set.
     fn close_level(&mut self, mut level: Level, commit: bool) {
+        let commit = commit
+            && !(level.packets.is_some()
+                && sunrise_client::lan::conn::transaction_packets::Scope::refused());
         if let Some(scope) = level.packets.take()
             && commit
             && let Some(packets) = scope.finish()

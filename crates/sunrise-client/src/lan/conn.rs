@@ -531,6 +531,9 @@ impl PlayerSender {
             self.close();
             return;
         }
+        self.publish_reserved(body);
+    }
+    fn publish_reserved(&self, body: Body) {
         if HOLDING.get() {
             self.held().push(body);
         } else {
