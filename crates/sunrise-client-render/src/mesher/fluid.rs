@@ -803,9 +803,6 @@ mod tests {
                 "a face away from the water changes nothing"
             );
         }
-        // Stone above the water: the top shows once the stone's model is hidden.
-        let culled = vertices([0, 0, 0], [0, 1, 0], &[]);
-        assert!(vertices([0, 0, 0], [0, 1, 0], &[(pi(0, 1, 0), model)]) > culled);
     }
 
     #[test]

@@ -40,7 +40,7 @@ impl Lease {
         Self::charge_in(&super::mod_geometry::IN_FLIGHT, bytes)
     }
     fn charge_in(shared: &'static AtomicUsize, bytes: usize) -> Option<Self> {
-        super::mod_geometry::reserve_in_flight(shared, bytes).then_some(Self { shared, bytes })
+        super::mod_geometry::reserve_in_flight(shared, bytes).then(|| Self { shared, bytes })
     }
 }
 
