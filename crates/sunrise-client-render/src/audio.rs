@@ -3369,6 +3369,19 @@ mod tests {
     }
 
     #[test]
+    fn a_mono_output_plays_a_sound_with_effects_unpanned() {
+        let mut m = Mixer::default();
+        let mut c = channel(vec![0.5; 4], None, [0.0, 0.0, -3.0], true);
+        let mut effects = mod_api::SoundEffects::NONE;
+        effects.gain = 0.5;
+        c.fx.target = effects;
+        m.channels.insert(1, c);
+        let mut data = [0.0; 2];
+        mix(&mut m, &mut data, 1, 48_000);
+        assert_eq!(data, [0.25; 2]);
+    }
+
+    #[test]
     fn changing_a_sounds_effects_glides_without_a_click() {
         // A steady tone whose gain and cutoff jump between buffers: the output never moves more
         // in one frame than the tone itself can (its largest step is 0.3 * TAU * 440 / 48000).

@@ -62,7 +62,7 @@ impl Params {
     fn of(effects: &SoundEffects, rate: f32, held: &Self) -> Self {
         let warp = |hz: f32| (std::f32::consts::PI * hz.min(rate * 0.49) / rate).tan();
         let (lowpass_mix, lowpass_g) = if effects.lowpass < OPEN_CUTOFF {
-            (1.0, warp(effects.lowpass.max(1.0)))
+            (1.0, warp(effects.lowpass))
         } else {
             (0.0, held.lowpass_g)
         };
