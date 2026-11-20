@@ -2218,6 +2218,7 @@ mod tests {
                 save_policy: mod_api::GeneralSavePolicy::Save,
                 summonable: true,
                 pickable: false,
+                piston_push_reaction: mod_api::PushReaction::PushPull,
                 tracking_chunks: 8,
                 update_interval: 3,
                 payload_version: 1,

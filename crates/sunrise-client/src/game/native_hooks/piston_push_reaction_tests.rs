@@ -42,7 +42,7 @@ impl BlockPart for ReactionPart {
                 _ => unreachable!(),
             });
         }
-        self.reaction.clone().or_else(|| {
+        self.reaction.or_else(|| {
             Some(if event.state.ordinal() == 0 {
                 PushReaction::Immoveable
             } else {
@@ -399,7 +399,7 @@ struct PayloadPart {
 #[mod_api::sunrise_part]
 impl BlockPart for PayloadPart {
     fn piston_push_reaction(&self, _: &mut PistonPushReactionEvent) -> Option<PushReaction> {
-        Some(self.reaction.clone())
+        Some(self.reaction)
     }
     fn piston_carries_block_entity(
         &self,
@@ -428,7 +428,7 @@ impl Hooks for PayloadUser {
             r.block_part(
                 key,
                 PayloadPart {
-                    reaction: self.reaction.clone(),
+                    reaction: self.reaction,
                     carry: self.carry,
                     asks: self.asks.clone(),
                 },

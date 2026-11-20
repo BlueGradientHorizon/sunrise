@@ -117,12 +117,13 @@ pub enum OffsetType {
     Xyz,
 }
 
-/// PushReaction in a load-time content declaration.
-#[derive(Clone, Debug, PartialEq)]
+/// Vanilla's piston reaction for a block state or an entity.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 // exhaustive: these variants are the closed content declaration vocabulary.
 #[derive(sunrise_mod_api_macros::Wire)]
 pub enum PushReaction {
-    /// Declaration option.
+    /// Vanilla's default: pistons can push and pull.
+    #[default]
     PushPull,
     /// Declaration option.
     Push,
@@ -130,7 +131,7 @@ pub enum PushReaction {
     Popped,
     /// Declaration option.
     Immoveable,
-    /// Declaration option.
+    /// Do not push this entity.
     IgnoreEntity,
 }
 

@@ -1,0 +1,1 @@
+sunrise-client game::native_entity_kind::tests::piston_reaction_and_hanging_class_follow_server_and_client_entities lib daily resources

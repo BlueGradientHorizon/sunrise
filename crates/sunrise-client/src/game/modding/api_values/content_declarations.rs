@@ -1,5 +1,5 @@
 //! Content declaration conversion. Admission retains the content loader's validation.
-use super::TryIntoEngine;
+use super::{TryIntoApi, TryIntoEngine};
 #[path = "arm_pose.rs"]
 mod arm_pose;
 use sunrise_mod_package::content as engine;
@@ -16,6 +16,22 @@ pub(in crate::game) fn push_reaction(
         mod_api::PushReaction::Popped => (Content::Popped, World::Popped),
         mod_api::PushReaction::Immoveable => (Content::Immoveable, World::Immoveable),
         mod_api::PushReaction::IgnoreEntity => (Content::IgnoreEntity, World::IgnoreEntity),
+    }
+}
+
+impl TryIntoApi for sunrise_world::level::PushReaction {
+    type Api = mod_api::PushReaction;
+    type Error = std::convert::Infallible;
+
+    fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
+        use mod_api::PushReaction as Api;
+        Ok(match self {
+            Self::PushPull => Api::PushPull,
+            Self::Push => Api::Push,
+            Self::Popped => Api::Popped,
+            Self::Immoveable => Api::Immoveable,
+            Self::IgnoreEntity => Api::IgnoreEntity,
+        })
     }
 }
 

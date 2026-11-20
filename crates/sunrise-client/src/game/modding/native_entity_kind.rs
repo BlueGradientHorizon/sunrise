@@ -1,9 +1,14 @@
 //! Entity-type key reads share the completed registry and never format a type name.
 use super::{Game, commands::Target};
-use mod_api::EntityTypeKey;
+use mod_api::{EntityRef, EntityTypeKey, LevelReadError, PushReaction};
+
 impl Game<'_> {
     pub(super) fn native_entity_kind_key(&self, target: Target) -> Option<EntityTypeKey> {
-        let name = match target {
+        mod_api::__private::resolved_entity_type_key(self.native_entity_kind_name(target)?)
+    }
+
+    fn native_entity_kind_name(&self, target: Target) -> Option<&str> {
+        Some(match target {
             Target::Player | Target::Guest(_) => "minecraft:player",
             Target::Mob(id) => &self.mobs.iter().find(|mob| mob.id == id)?.kind.id,
             Target::Item(_) => "minecraft:item",
@@ -43,7 +48,135 @@ impl Game<'_> {
             Target::Cloud(_) => "minecraft:area_effect_cloud",
             Target::Hook(_) => "minecraft:fishing_bobber",
             Target::Knot(_) => "minecraft:leash_knot",
+        })
+    }
+
+    /// `Entity.getPistonPushReaction`; only the armor stand's override depends on instance state.
+    pub(super) fn entity_piston_push_reaction(
+        &self,
+        entity: EntityRef,
+    ) -> Result<Option<PushReaction>, LevelReadError> {
+        use super::api_values::TryIntoApi;
+        use super::entity::Entity;
+        use super::general::general_type_catalog;
+
+        let target = self.native_entity_read_target(entity);
+        if let Some(Target::Stand(id)) = target {
+            let stand = self.armor_stands.iter().find(|stand| stand.id == id);
+            return Ok(stand.map(|stand| stand.get_piston_push_reaction().try_into_api().unwrap()));
+        }
+        if let Some(Target::General(id)) = target {
+            return Ok(self
+                .resident_entities
+                .general
+                .row(id)
+                .map(|row| general_type_catalog().piston_push_reaction(row.type_slot)));
+        }
+        if let Some(row) = self.native_client_general(entity) {
+            return Ok(Some(
+                general_type_catalog().piston_push_reaction(row.type_slot),
+            ));
+        }
+        Ok(self
+            .native_kind_for_physical_read(entity, target)
+            .map(|kind| match kind {
+                "minecraft:marker"
+                | "minecraft:interaction"
+                | "minecraft:block_display"
+                | "minecraft:item_display"
+                | "minecraft:text_display"
+                | "minecraft:area_effect_cloud"
+                | "minecraft:ominous_item_spawner" => PushReaction::IgnoreEntity,
+                _ => PushReaction::PushPull,
+            }))
+    }
+
+    pub(super) fn entity_is_hanging(
+        &self,
+        entity: EntityRef,
+    ) -> Result<Option<bool>, LevelReadError> {
+        Ok(self
+            .native_kind_for_physical_read(entity, self.native_entity_read_target(entity))
+            .map(|kind| {
+                matches!(
+                    kind,
+                    "minecraft:painting" | "minecraft:item_frame" | "minecraft:glow_item_frame"
+                )
+            }))
+    }
+
+    fn native_kind_for_physical_read(
+        &self,
+        entity: EntityRef,
+        target: Option<Target>,
+    ) -> Option<&str> {
+        match target {
+            Some(target) => self.native_entity_kind_name(target),
+            None => self
+                .native_client_tracked(entity)
+                .map(|(kind, _)| kind)
+                .or_else(|| {
+                    (self.native_lifecycle.epoch() == Some(entity.epoch())).then_some(())?;
+                    self.mob_in_other_level(entity.id())
+                        .map(|(_, mob)| mob.kind.id.as_str())
+                }),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::game::native_entity_refs::tests::{with_client_game, with_game};
+    use sunrise_client::entities::ArmorStand;
+    use sunrise_client::mobs::Mob;
+    use sunrise_core::geometry::Vec3;
+
+    #[test]
+    #[ignore = "daily"]
+    fn piston_reaction_and_hanging_class_follow_server_and_client_entities() {
+        use mod_api::PushReaction::{IgnoreEntity, PushPull};
+
+        let read = |game: &Game<'_>, id| {
+            let entity = game.entity(id).unwrap();
+            (
+                entity.piston_push_reaction(game).unwrap().unwrap(),
+                entity.is_hanging(game).unwrap().unwrap(),
+            )
         };
-        mod_api::__private::resolved_entity_type_key(name)
+        with_game(|game| {
+            game.build_registries();
+            let pig_ty = game.res.mob_types().get("minecraft:pig").unwrap().clone();
+            game.mobs.push(Mob::new(10, pig_ty, Vec3::ZERO, 0.0));
+            let mut stand = ArmorStand::new(11, Vec3::ZERO, 0.0);
+            stand.marker = true;
+            game.armor_stands.push(stand);
+            assert!(game.as_console(|game| {
+                game.run_command("summon minecraft:item_frame 0 64 0 {Facing:2b,Fixed:1b}")
+            }));
+            assert_eq!(read(game, 10), (PushPull, false));
+            assert_eq!(read(game, 11), (IgnoreEntity, false));
+            assert_eq!(read(game, game.item_frames[0].id), (PushPull, true));
+        });
+        with_client_game(|game| {
+            let (client, _server) = sunrise_protocol::connection::Pipe::pair();
+            game.connect_local(client, "reaction").unwrap();
+            game.remote.as_mut().unwrap().logged_in = true;
+            game.spawn_entity(10, "minecraft:pig", [0.0; 3], [0.0; 3]);
+            game.spawn_entity(11, "minecraft:armor_stand", [0.0; 3], [0.0; 3]);
+            game.spawn_entity(12, "minecraft:item_frame", [0.0; 3], [0.0; 3]);
+            game.spawn_entity(13, "minecraft:leash_knot", [0.0; 3], [0.0; 3]);
+            game.armor_stands.push(ArmorStand::new(11, Vec3::ZERO, 0.0));
+            assert_eq!(read(game, 11), (PushPull, false));
+            game.armor_stands.update(0, |stand| stand.marker = true);
+            assert_eq!(read(game, 10), (PushPull, false));
+            assert_eq!(read(game, 11), (IgnoreEntity, false));
+            assert_eq!(read(game, 12), (PushPull, true));
+            assert_eq!(read(game, 13), (PushPull, false));
+
+            let stale = EntityRef::new(mod_api::WorldEpoch::new(0), 11);
+            assert_eq!(stale.piston_push_reaction(game), Ok(None));
+            assert_eq!(stale.is_hanging(game), Ok(None));
+        });
     }
 }
