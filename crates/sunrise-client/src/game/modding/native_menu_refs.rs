@@ -698,7 +698,7 @@ mod tests {
     use super::super::{lan::LanSettings, native_entity_refs::tests::with_game};
     use super::*;
     use std::sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicI32, AtomicUsize},
     };
     use sunrise_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
@@ -706,7 +706,11 @@ mod tests {
 
     const PANEL: &str = "test:panel";
 
-    struct Panel(usize);
+    #[derive(Clone)]
+    struct Panel {
+        slots: usize,
+        opening: Arc<Mutex<Option<(MenuRef, usize)>>>,
+    }
     #[mod_api::sunrise_part]
     impl mod_api::MenuPart for Panel {
         fn screen(
@@ -715,7 +719,7 @@ mod tests {
             _: &mut mod_api::ScreenEvent<'_>,
         ) -> Option<mod_api::Screen> {
             Some(mod_api::Screen {
-                slots: vec![Some(mod_api::ScreenSlot::default()); self.0],
+                slots: vec![Some(mod_api::ScreenSlot::default()); self.slots],
                 ..Default::default()
             })
         }
@@ -723,13 +727,34 @@ mod tests {
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for Panel {
         fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-            r.menu_part(PANEL, Panel(self.0));
+            r.menu_part(PANEL, self.clone());
+        }
+
+        fn screen_opening(
+            &self,
+            host: &dyn mod_api::ClientHost,
+            event: &mut mod_api::ScreenOpeningEvent<'_>,
+        ) -> Option<mod_api::ScreenOpening> {
+            if event.current.id == "playing" && event.new.menu == Some(PANEL) {
+                let menu = host.local_player()?.container_menu(host)?;
+                let count = menu.slot_count(host)?;
+                assert!(menu.slot_boxes(host).is_none());
+                *self.opening.lock().unwrap() = Some((menu, count));
+            }
+            None
         }
     }
 
-    fn with_panel(slots: usize, test: impl FnOnce(&mut Game<'_>)) {
-        let mods: mod_api::Mods =
-            vec![mod_api::ModEntry::new("test", Box::new(Panel(slots)))].into();
+    fn with_panel(
+        slots: usize,
+        test: impl FnOnce(&mut Game<'_>, &Mutex<Option<(MenuRef, usize)>>),
+    ) {
+        let opening = Arc::new(Mutex::new(None));
+        let panel = Panel {
+            slots,
+            opening: opening.clone(),
+        };
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new("test", Box::new(panel))].into();
         mod_platform::testing::with_mods(mods.clone(), || {
             mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
             sunrise_client::containers::with_mod_menu_types(
@@ -746,15 +771,18 @@ mod tests {
                 )],
                 || {
                     super::super::native_entity_refs::tests::with_client_game(|game| {
-                        let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
-                        game.connect_local(pipe, "Panel").unwrap();
+                        let _server =
+                            super::super::native_client_session::tests::logged_client(game);
                         Arc::make_mut(&mut game.remote.as_mut().unwrap().builtin)
                             .registries
                             .insert(
                                 "minecraft:menu".into(),
                                 sunrise_protocol::registry::Ids::from_names(vec![PANEL.into()]),
                             );
-                        test(game);
+                        let _phase = mod_api::__private::PhaseOwner::scope(
+                            mod_api::__private::ModPhase::World,
+                        );
+                        test(game, &opening);
                     })
                 },
             );
@@ -775,7 +803,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn inventory_boxes_follow_menu_indices_and_the_input_layout() {
-        with_panel(0, |game| {
+        with_panel(0, |game, opening| {
             game.screen = super::super::Screen::Inventory;
             let batch = super::super::HudBatch::new([800, 600], game.settings.gui_scale_inputs());
             let boxes = game
@@ -790,7 +818,16 @@ mod tests {
                 );
             }
             assert!(game.inventory_menu_slot_boxes(1, PANEL, &batch).is_none());
+            game.screen = super::super::Screen::Playing;
             open_panel(game);
+            let menu = game
+                .player_container_menu(game.local_player().unwrap())
+                .unwrap();
+            assert_eq!(
+                *opening.lock().unwrap(),
+                Some((menu, 0)),
+                "the same live handle and count are available during screen_opening"
+            );
             assert!(
                 game.inventory_menu_slot_boxes(1, "unsupported", &batch)
                     .is_none()
@@ -805,7 +842,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn number_key_swaps_predict_with_the_undisplayed_hotbar() {
-        with_panel(1, |game| {
+        with_panel(1, |game, _| {
             open_panel(game);
             assert_eq!(game.slots(), [300]);
             let held = ItemStack::new("minecraft:stone", 5);
