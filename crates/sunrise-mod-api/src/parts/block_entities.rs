@@ -1025,7 +1025,7 @@ impl PartRegistrar {
     ) -> Result<(), crate::PartStateRefusal> {
         let key = (declaration.namespace, declaration.name);
         declaration
-            .check(self.mod_wasm)
+            .check()
             .and_then(|()| match self.part_states.get(&key) {
                 Some(&declared) if declared != declaration.data_name => {
                     Err(crate::PartStateRefusal::Incompatible { declared })

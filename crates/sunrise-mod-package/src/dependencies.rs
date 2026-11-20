@@ -204,10 +204,10 @@ pub fn resolve(mods: &[Mod<'_>]) -> Result<Resolution, Error> {
 
 /// Physical library order, independent of manifest validation/dispatch overrides.
 ///
-/// Only library requirements enter this projection. Pass known content targets
-/// with `code = false`, or omit their rows if the caller operates only on code.
-/// Version ranges and dispatch order are logical rules; actual imports and ABI
-/// validation remain the compiler/linker's responsibility.
+/// Only library requirements enter this projection. A supplied code dependency
+/// needs an API package; content targets (`code = false`) are skipped. Version
+/// ranges and dispatch order are logical rules; Cargo and the native linker
+/// still enforce actual imports and ABI requirements.
 pub fn resolve_links(mods: &[Mod<'_>]) -> Result<Resolution, Error> {
     resolve_all(mods, &[], &Overrides::default(), true)
 }
@@ -223,7 +223,7 @@ pub fn resolve_with_rules(
 }
 
 /// Resolve one applicable installed manifest snapshot with one shared policy for
-/// native, wasm and content packages. Indices in the result refer to `manifests`.
+/// native and content packages. Indices in the result refer to `manifests`.
 pub fn resolve_manifests(
     manifests: &[&crate::Manifest],
     running: Side,
@@ -237,7 +237,7 @@ pub fn resolve_manifests(
         .iter()
         .zip(&declared)
         .map(|(manifest, dependencies)| {
-            let code = manifest.native.is_some() || manifest.wasm.is_some();
+            let code = manifest.native.is_some();
             Mod {
                 id: &manifest.id,
                 version: &manifest.version,
