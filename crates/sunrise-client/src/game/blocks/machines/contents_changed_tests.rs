@@ -710,27 +710,58 @@ fn a_panicking_root_commit_notice_leaves_the_phase_none() {
             let pos = [0, 64, 0];
             place(game, level, pos, "minecraft:chest");
             let items = level.capability(game, &ITEMS, pos, None).unwrap();
-            let sticks = ItemResource::of(
-                &mod_api::ItemStack::new(
-                    mod_api::__private::item_key("minecraft:stick").unwrap(),
-                    1,
-                )
-                .unwrap(),
+            let stick = mod_api::ItemStack::new(
+                mod_api::__private::item_key("minecraft:stick").unwrap(),
+                1,
+            )
+            .unwrap();
+            let sticks = ItemResource::of(&stick);
+
+            // The raw write must save even though an earlier notice for a different
+            // chunk panics during commit. No chest notice can dirty this chunk for it.
+            let chunk = (1, 0);
+            let depot_pos = [16, 64, 0];
+            game.world
+                .chunks
+                .insert(chunk, Arc::new(Chunk::empty(chunk.0, chunk.1)));
+            place(game, level, depot_pos, DEPOT);
+            let depot = game.block_entity(level, depot_pos).unwrap();
+            let state = game.world.block(depot_pos[0], depot_pos[1], depot_pos[2]);
+            game.world.block_entities.set_mod_containers(
+                [(
+                    state.0,
+                    Arc::new(sunrise_client::containers::ModContainer {
+                        slots: 1,
+                        ..Default::default()
+                    }),
+                )]
+                .into_iter()
+                .collect(),
             );
+            game.world.modified.clear();
             let host: &mut dyn ServerHost = game;
             let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 host.transaction(|host, tx| {
                     assert_eq!(items.insert_at(host, tx, 0, &sticks, 1), 1);
+                    assert_eq!(
+                        depot.set_item_slot(host, tx, 0, Some(stick.clone())),
+                        Ok(true)
+                    );
                     Ok::<_, ()>(())
                 })
             }));
-            assert!(caught.is_err());
+            assert_eq!(
+                caught.unwrap_err().downcast_ref::<&str>(),
+                Some(&"contents notice panic probe")
+            );
             assert_eq!(host.transaction_lifecycle(), TransactionLifecycle::None);
+            assert_eq!(depot.item_slot(host, 0), Ok(Some(stick)));
             let next = host.transaction(|host, _| {
                 assert_eq!(host.transaction_lifecycle(), TransactionLifecycle::Open);
                 Ok::<_, ()>(())
             });
             assert_eq!(next, Ok(()));
+            assert!(game.world.modified.contains(&chunk));
         },
     );
 }

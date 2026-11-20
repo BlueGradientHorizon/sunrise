@@ -249,8 +249,8 @@ impl Game<'_> {
         Ok(true)
     }
 
-    /// Sizes a mod block entity's menu data explicitly, using the same write
-    /// target, journal and Changed notice as scalar data-slot writes.
+    /// Sizes a mod block entity's transient menu data using the same silent
+    /// write and journal as scalar data-slot writes.
     pub(super) fn block_entity_set_data_slots(
         &mut self,
         entity: BlockEntityRef,
@@ -370,12 +370,13 @@ impl Game<'_> {
             self.edit_mod_block_entity(key, |block_entity| {
                 *block_entity.item_slot_mut(index).unwrap() = stack;
             });
-            return Ok(true);
+        } else {
+            self.write_mod_block_entity(key, |block_entity| {
+                block_entity.items.resize(slots, None);
+                *block_entity.item_slot_mut(index).unwrap() = stack;
+            });
         }
-        self.write_mod_block_entity(key, |block_entity| {
-            block_entity.items.resize(slots, None);
-            *block_entity.item_slot_mut(index).unwrap() = stack;
-        });
+        self.journal_chunk_save((key.0 >> 4, key.2 >> 4));
         Ok(true)
     }
 

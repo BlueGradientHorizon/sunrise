@@ -235,6 +235,9 @@ pub(super) struct Level {
     /// attachment map in it: an abort puts them back, so a chunk only a tentative write marked
     /// is clean again.
     chunk_marks: HashMap<(i32, i32), sunrise_client::world::ChunkMark>,
+    /// Chunks whose committed storage writes must be saved, in first-write order and in the
+    /// levels written.
+    save_chunks: indexmap::IndexSet<(super::Dim, (i32, i32))>,
     /// New map data and its reserved IDs. Neither enters the saved map table until root commit.
     pub(super) new_maps: BTreeMap<i32, MapData>,
     /// What the root commit does, in order.
@@ -724,6 +727,7 @@ impl Game<'_> {
                 for (chunk, mark) in level.chunk_marks {
                     outer.chunk_marks.entry(chunk).or_insert(mark);
                 }
+                outer.save_chunks.extend(level.save_chunks);
                 outer.new_maps.append(&mut level.new_maps);
                 outer.after.extend(level.after);
                 // The nearest enclosing transaction of this level takes its entities back; a
@@ -1262,6 +1266,13 @@ impl Game<'_> {
                 .or_insert(old);
         }
     }
+    /// Mark a written chunk unsaved at root commit, without issuing any notice.
+    pub(super) fn journal_chunk_save(&mut self, chunk: (i32, i32)) {
+        let dim = self.dim;
+        if let Some(level) = self.transactions.last_mut() {
+            level.save_chunks.insert((dim, chunk));
+        }
+    }
     /// Queue a reusable interaction effect for the outermost successful commit.
     pub(super) fn defer_effect(&mut self, effect: DeferredEffect) {
         self.after_commit(After::Effect(effect));
@@ -1418,6 +1429,17 @@ impl Game<'_> {
         }
     }
     fn root_commit(&mut self, level: Level) {
+        // Storage is final. Publish save marks before any callback can unwind or start a save.
+        for (dim, chunk) in level.save_chunks {
+            let world = if dim == self.dim {
+                Some(&mut self.world)
+            } else {
+                self.levels.parked_mut(dim).map(|level| &mut level.world)
+            };
+            if let Some(world) = world {
+                world.modified.insert(chunk);
+            }
+        }
         // A deferred listener may read a new map or create one of its own.
         for (id, data) in level.new_maps {
             self.publish_map(id, data);
