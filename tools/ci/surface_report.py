@@ -104,7 +104,10 @@ def fetch_commit(sha: str, depth: int, git_text=git) -> None:
 def unpack(sha: str, into: Path, paths=("Cargo.toml", "crates", "tools/layering")) -> None:
     fetch_commit(sha, 1)
     archive = subprocess.Popen(["git", "archive", sha, *paths], cwd=ROOT, stdout=subprocess.PIPE)
-    subprocess.run(["tar", "-x", "-C", str(into)], stdin=archive.stdout, check=True)
+    # `-m`: files take the time of this extraction, not the commit's. Cargo decides a unit is fresh by source
+    # mtime, and the surface-base target is shared by trees of different commits, so an older commit's tree must
+    # not look unchanged beside a newer one's build of the same paths.
+    subprocess.run(["tar", "-x", "-m", "-C", str(into)], stdin=archive.stdout, check=True)
     if archive.wait() != 0:
         raise subprocess.CalledProcessError(archive.returncode, "git archive")
 
