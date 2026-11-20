@@ -229,8 +229,8 @@ and `is_loaded(pos)` (`Level.isLoaded`: inside the build height and in a loaded 
 `is_raining_at(pos)` (`Level.isRainingAt`, false where `pos` is not loaded) and `enabled_features()`
 (`LevelReader.enabledFeatures`, a shared `FeatureFlags` with the world's effective flags). An omitted
 flag list in the save means `minecraft:vanilla`, not an empty set. These queries do not allocate.
-None of them loads a chunk. The raw light query supplies defaults (including full sky in a
-missing column), so check `is_loaded` first when you need a resident block. `LevelHost` also answers
+None of them loads a chunk. Light can be available outside the build height or where no chunk is
+resident, so check `is_loaded` first when you need a resident block. `LevelHost` also answers
 tag and fluid questions without a `Host`: `block_in_tag(block_key, tag)`, `fluid_state(pos)`
 (`getFluidState`, `None` where the block read is),
 `state_fluid_state(state)` and `fluid_in_tag(fluid_name, tag)`. Fluid reads return `FluidState` with a
@@ -250,16 +250,13 @@ positions. `canSupportRigidBlock` is `(pos, Up, Rigid)`. `canSupportCenter` is `
 except that vanilla also refuses `Down` on blocks tagged `minecraft:unstable_bottom_center`.
 
 `can_see_sky(pos)` tests the published sky light for 15, not the heightmap or block light. It
-returns false everywhere in a dimension without skylight. In vanilla, sky light can be stored in
-padding sections above and below build height. Above the highest stored section, or in a column
-with no stored sections, there is full sky. A missing section below a stored one repeats the
-bottom row of the next stored section above it. An unloaded column beside non-air sections can
-have retained light in that band: the server reads its last light there and the client has no
-full sky there.
+returns false everywhere in a dimension without skylight. Padding sections one section above and
+below build height can carry stored light. Where sky light is not stored, it repeats the bottom row
+of the nearest stored sky layer above, or returns 15 if there is none. Missing block light is zero.
+An unloaded column can still retain light where a loaded neighbour supports its light sections.
 
-**Known gap ([#2761](https://github.com/sunrise-org/sunrise/issues/2761)):** In skylit dimensions,
-Sunrise reads the resident column's allocated sections, with full sky above them and in every
-missing column, and darkness below them, instead of tracking vanilla's padding and unloaded border.
+Sunrise does not yet compute new light for the padding sections ([#3494](https://github.com/sunrise-org/sunrise/issues/3494))
+or refresh unloaded borders when a block edit changes whether a section is empty ([#3495](https://github.com/sunrise-org/sunrise/issues/3495)).
 
 Both reads return `None` in callbacks without the corresponding view. A `LevelRef` must still
 name an open server level or the current client level. Neither read loads chunks or opens loot
