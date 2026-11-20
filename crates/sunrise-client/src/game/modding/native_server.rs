@@ -170,23 +170,24 @@ fn usage_nodes(
 /// only optional arguments follow it, at the lowest level of those executable usages.
 /// A command vanilla has (`vanilla`
 /// answers) or a usage that doesn't parse is left out, with why.
+#[cfg(test)]
 pub(super) fn command_tree(
     commands: &[mod_api::Command],
     vanilla: impl Fn(&str) -> bool,
     custom: &CommandArguments,
 ) -> (Value, HashMap<String, u8>, Vec<String>) {
-    command_tree_for(commands, vanilla, custom, false)
+    command_tree_for(commands, vanilla, custom, false, None)
 }
 
-/// [`command_tree`] for the client's own commands: an argument type that declares a suggestion
-/// provider is refused by name, because that provider answers on the server alone and a client
-/// tree has no server behind it. Every other argument kind builds exactly as on the server.
+/// Build the display tree for the client's own commands. An argument type that declares a
+/// suggestion provider is refused by name because a client command has no server to answer it.
+/// Every other argument kind builds exactly as on the server.
 pub(super) fn client_command_tree(
     commands: &[mod_api::Command],
     vanilla: impl Fn(&str) -> bool,
     custom: &CommandArguments,
 ) -> (Value, HashMap<String, u8>, Vec<String>) {
-    command_tree_for(commands, vanilla, custom, true)
+    command_tree_for(commands, vanilla, custom, true, None)
 }
 
 /// Whether `argument` declares a suggestion provider, read once per tree. A panic is logged and
@@ -206,16 +207,20 @@ fn declares_provider(kind: &str, argument: &Arc<dyn mod_api::CommandArgumentType
     }
 }
 
+// Executable paths (including argument names) mapped to the input registration slot.
+type CommandExecutorSlots = HashMap<Vec<String>, usize>;
+
 fn command_tree_for(
     commands: &[mod_api::Command],
     vanilla: impl Fn(&str) -> bool,
     custom: &CommandArguments,
     client: bool,
+    mut executors: Option<&mut CommandExecutorSlots>,
 ) -> (Value, HashMap<String, u8>, Vec<String>) {
     let mut root: Map<String, Value> = Map::new();
     let mut levels: HashMap<String, u8> = HashMap::new();
     let mut problems = Vec::new();
-    for command in commands {
+    for (slot, command) in commands.iter().enumerate() {
         let nodes = match usage_nodes(&command.usage, custom, client) {
             Ok(n) => n,
             Err(e) => {
@@ -256,6 +261,7 @@ fn command_tree_for(
             ));
             continue;
         }
+        let execution_level = u64::from(command.level.min(4));
         let mut children = &mut root;
         for (i, (name, node, _)) in nodes.iter().enumerate() {
             let runnable = nodes.get(i + 1).is_none_or(|n| n.2);
@@ -265,13 +271,22 @@ fn command_tree_for(
                 n["level"] = 4.into();
                 n
             });
-            if runnable {
-                entry["executable"] = true.into();
-                let level = entry["execution_level"]
+            // Permission and identity belong to the same usage. Keep the first
+            // accepted registration at this level; only a lower one replaces it.
+            if runnable
+                && entry["execution_level"]
                     .as_u64()
-                    .unwrap_or(4)
-                    .min(command.level.into());
-                entry["execution_level"] = level.into();
+                    .is_none_or(|old| execution_level < old)
+            {
+                entry["executable"] = true.into();
+                entry["execution_level"] = execution_level.into();
+                if let Some(executors) = executors.as_deref_mut() {
+                    let path = nodes[..=i]
+                        .iter()
+                        .map(|(name, _, _)| name.clone())
+                        .collect();
+                    executors.insert(path, slot);
+                }
             }
             let level = entry["level"]
                 .as_u64()
@@ -323,12 +338,24 @@ fn finish(children: &mut Value) {
     }
 }
 
-/// Add the already validated native report tree to the server's dispatcher.
+/// Add a validated native report for descriptor-only consumers.
 pub(super) fn register_dispatcher(
     dispatcher: &mut Dispatcher,
     tree: &Value,
     handler: &'static str,
     arguments: &CommandArguments,
+) {
+    register_command_nodes(dispatcher, tree, handler, arguments, None);
+}
+
+/// Add the report's nodes with the same grammar on both sides. The authoritative
+/// server also associates each runnable node ID with its registration path.
+fn register_command_nodes(
+    dispatcher: &mut Dispatcher,
+    tree: &Value,
+    handler: &'static str,
+    arguments: &CommandArguments,
+    executors: Option<&CommandExecutorSlots>,
 ) {
     fn add(
         dispatcher: &mut Dispatcher,
@@ -336,8 +363,11 @@ pub(super) fn register_dispatcher(
         children: &Map<String, Value>,
         handler: &'static str,
         arguments: &CommandArguments,
+        path: &mut Vec<String>,
+        on_executable: &mut impl FnMut(&[String], usize),
     ) {
         for (name, node) in children {
+            path.push(name.clone());
             let id = if node["type"] == "literal" {
                 dispatcher.literal(parent, name)
             } else {
@@ -356,14 +386,40 @@ pub(super) fn register_dispatcher(
                         .as_u64()
                         .expect("runnable usage level") as u8,
                 );
+                on_executable(path, id);
             }
             if let Some(children) = node["children"].as_object() {
-                add(dispatcher, id, children, handler, arguments);
+                add(
+                    dispatcher,
+                    id,
+                    children,
+                    handler,
+                    arguments,
+                    path,
+                    on_executable,
+                );
             }
+            path.pop();
         }
     }
+    let mut bindings = HashMap::new();
     if let Some(children) = tree["children"].as_object() {
-        add(dispatcher, 0, children, handler, arguments);
+        add(
+            dispatcher,
+            0,
+            children,
+            handler,
+            arguments,
+            &mut Vec::new(),
+            &mut |path: &[String], id| {
+                if let Some(executors) = executors {
+                    bindings.insert(id, executors[path]);
+                }
+            },
+        );
+    }
+    if executors.is_some() {
+        dispatcher.replace_executor_bindings(bindings);
     }
 }
 
@@ -2101,6 +2157,14 @@ impl Game<'_> {
     /// The shared command-node executor, also reached by functions and `execute`.
     pub(super) fn run_native_command(&mut self, context: Context) -> super::commands::R<i32> {
         use super::commands::err;
+        // Argument resolution uses node IDs from the parse. Never use them against a
+        // replacement tree, even if the new tree has the same command at the same ID.
+        if !context
+            .executor
+            .is_some_and(|key| self.ui.dispatcher.0.owns_executor(key))
+        {
+            return Err(err("command.unknown.command", &[]));
+        }
         let command = self.resolve_native_command(context)?;
         let origin = self.native_command_origin(self.ui.registries.permission)?;
         let mut ran = false;
@@ -4144,31 +4208,48 @@ mod tests {
                 mod_api::Command::op("foo [value:integer]", 4),
                 mod_api::Command::op("foo", 2),
             ];
-            if reverse {
+            let (prefix_slot, argument_slot) = if reverse {
                 commands.reverse();
-            }
-            let (tree, _, problems) = tree(&commands);
-            assert!(problems.is_empty(), "{problems:?}");
+                (0, 1)
+            } else {
+                (1, 0)
+            };
+            commands.extend([
+                mod_api::Command::op("foo", 2), // The first accepted level-2 registration wins.
+                mod_api::Command::new("foo [value:word]"), // Rejected: parser conflict.
+            ]);
+            let arguments = HashMap::new();
+            let mut executors = HashMap::new();
+            let (tree, _, problems) = command_tree_for(
+                &commands,
+                |_| false,
+                &arguments,
+                false,
+                Some(&mut executors),
+            );
+            assert_eq!(problems.len(), 1, "{problems:?}");
             let mut dispatcher = Dispatcher::new();
-            register_dispatcher(
+            register_command_nodes(
                 &mut dispatcher,
                 &tree,
                 "native_mod_command",
-                &HashMap::new(),
+                &arguments,
+                Some(&executors),
             );
             for permission in 0..=4 {
                 let registries = sunrise_client::command::Registries {
                     permission,
                     ..Default::default()
                 };
-                assert_eq!(
-                    dispatcher.parse("foo", &registries).executable().is_ok(),
-                    permission >= 2
-                );
-                assert_eq!(
-                    dispatcher.parse("foo 7", &registries).executable().is_ok(),
-                    permission == 4
-                );
+                for (input, level, slot) in [("foo", 2, prefix_slot), ("foo 7", 4, argument_slot)] {
+                    let parsed = dispatcher.parse(input, &registries);
+                    if permission >= level {
+                        let (context, _) = parsed.executable().unwrap();
+                        assert_eq!(context.executor.unwrap().slot(), slot);
+                    } else {
+                        assert!(parsed.executable().is_err());
+                    }
+                }
             }
         }
     }

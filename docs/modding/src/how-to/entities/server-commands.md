@@ -11,8 +11,9 @@ The server asks for commands when it builds the session command tree: at world o
 functions compile, and again on every `/reload` and data pack change. No player or network hub
 needs to exist yet. Register the complete current set on each call. Plain function lines and
 substituted macro lines are checked against this session tree; commands no longer registered
-are refused when functions next load. Starting the hub reuses the session registration rather
-than asking again.
+are refused when functions next load. Starting the hub reuses the session's accepted command
+grammar rather than asking again. That grammar is for client display and completion; execution
+uses the server's current command tree.
 
 Literal words use lowercase letters, digits, `_` and `-`. Only the first word may
 additionally begin with one `/`: register `/set <x:word>` and type `//set stone` in chat.
