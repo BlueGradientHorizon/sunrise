@@ -85,7 +85,7 @@ impl Game<'_> {
     /// hazards (drowning, lava, fire blocks, suffocation, the void), and
     /// regeneration and the food tick (ServerPlayer.doTick). Their hurt
     /// sounds are heard at the guest.
-    pub(super) fn guest_server_tick(&mut self, conn: u32, body: bool) {
+    pub(in crate::game) fn guest_server_tick(&mut self, conn: u32, body: bool) {
         // The last move's fall stands in for the server's delta movement.
         let Some(host) = self.lan.as_mut() else {
             return;
@@ -223,20 +223,35 @@ impl Game<'_> {
             for (moved, on_ground) in moves {
                 let movement = Vec3::new(moved[0], moved[1], moved[2]);
                 at = at.add_vector(movement);
-                let landed = (|| -> sunrise_client::Result<()> {
+                let landed = (|| -> sunrise_client::Result<_> {
                     w.set_on_ground_with_movement(on_ground, false, movement)?;
                     let pos = w.legacy_on_position()?;
                     let state = w.block_state(pos)?;
-                    w.check_fall_damage(moved[1], on_ground, state, pos)?;
-                    // handlePlayerPositionChange: a move that goes up ends the fall
-                    // (`resetFallDistance`), after that move's own fall check.
-                    if moved[1] > 0.0 {
-                        w.player.fall_distance = 0.0;
-                        rose.get_or_insert((at, !w.player.health.dead_or_dying()));
-                    }
-                    w.check_movement_statistics(movement)
+                    w.check_guest_fall_damage(moved[1], on_ground, state, pos)
                 })();
-                if landed.is_err() {
+                let Ok(landed) = landed else { break };
+                if let Some(trample) = landed {
+                    let mut collected = std::mem::take(&mut w.player.events);
+                    game.trample_farmland(id, true, trample);
+                    let Some(player) = game.player.as_mut().filter(|p| p.entity_id as u32 == id)
+                    else {
+                        return (collected, None);
+                    };
+                    collected.append(&mut player.events);
+                    player.events = collected;
+                    side = game_side!(game);
+                    w = motion_world!(game, side, player);
+                    if w.finish_trample_fall(trample).is_err() {
+                        break;
+                    }
+                }
+                // handlePlayerPositionChange: an upward move resets the fall distance
+                // after the landing, and its advancement reads the post-landing health.
+                if moved[1] > 0.0 {
+                    w.player.fall_distance = 0.0;
+                    rose.get_or_insert((at, !w.player.health.dead_or_dying()));
+                }
+                if w.check_movement_statistics(movement).is_err() {
                     break;
                 }
             }
@@ -499,17 +514,6 @@ impl Game<'_> {
                     );
                 }
                 // Farmland a mod listens to: asked and applied as the landing guest.
-                MotionEvent::Fall(sunrise_client::landing::FallEvent::Trample {
-                    position,
-                    state,
-                    base,
-                    distance,
-                }) => {
-                    self.as_guest(conn, |game| {
-                        let id = game.native_acting_entity();
-                        game.trample_farmland(id, true, position, state, base, distance);
-                    });
-                }
                 MotionEvent::Fall(event) => {
                     let player = self
                         .lan

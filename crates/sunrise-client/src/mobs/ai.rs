@@ -1093,8 +1093,7 @@ pub enum TickProgress {
     Paused(Pause),
 }
 
-/// Where a tick paused: the fox's inline consumption, or the air update
-/// `living_breathe` is asked about.
+/// A point where the tick needs the owning game before it can continue.
 #[derive(Debug)]
 pub enum Pause {
     Consumption {
@@ -1107,6 +1106,31 @@ pub enum Pause {
         /// `Entity.computeSpeed`, read before the tick moved the mob.
         known_speed: Vec3,
     },
+    Trample(MobTrample),
+}
+
+#[derive(Debug)]
+enum TramplePhase {
+    Goal(super::goals::GoalTrample),
+    Travel(super::living::TravelTrample),
+}
+
+/// A suspended mob's landing and the exact remainder of its tick.
+#[derive(Debug)]
+pub struct MobTrample {
+    phase: TramplePhase,
+    was_on_fire: bool,
+    join: crate::join_seq::JoinSeq,
+    pub mob: u32,
+}
+
+impl MobTrample {
+    pub fn decision(&self) -> sunrise_world::block_landing::FarmlandTrample {
+        match &self.phase {
+            TramplePhase::Goal(goal) => goal.movement.decision(),
+            TramplePhase::Travel(travel) => travel.decision(),
+        }
+    }
 }
 
 /// A mob's air update, decided and waiting for its owner to ask the mods:
@@ -1161,7 +1185,7 @@ pub fn tick(
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
 ) -> bool {
-    let mut progress = tick_until_consumption(m, w, level, events);
+    let mut progress = tick_until_pause(m, w, level, events, false);
     loop {
         progress = match progress {
             TickProgress::Complete(kept) => return kept,
@@ -1170,11 +1194,14 @@ pub fn tick(
                 was_on_fire,
             }) => {
                 super::fox::apply_consumption(&decision, w, m, level, events);
-                TickProgress::Complete(resume_after_consumption(m, w, level, was_on_fire, events))
+                resume_after_consumption(m, w, level, was_on_fire, events, false)
             }
             TickProgress::Paused(Pause::Breathing { air, known_speed }) => {
                 let breath = Some(air.step.vanilla);
-                resume_after_breathing(m, w, level, events, air, known_speed, breath)
+                resume_after_breathing(m, w, level, events, air, known_speed, breath, false)
+            }
+            TickProgress::Paused(Pause::Trample(_)) => {
+                unreachable!("hostless travel cannot pause")
             }
         };
     }
@@ -1187,6 +1214,16 @@ pub fn tick_until_consumption(
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
+) -> TickProgress {
+    tick_until_pause(m, w, level, events, true)
+}
+
+fn tick_until_pause(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+    pause_trample: bool,
 ) -> TickProgress {
     if m.removed {
         return TickProgress::Complete(false);
@@ -1231,7 +1268,7 @@ pub fn tick_until_consumption(
     }
     match base_tick(m, w, level, events) {
         BaseTick::Done(was_on_fire) => {
-            after_base_tick(m, w, level, events, was_on_fire, known_speed)
+            after_base_tick(m, w, level, events, was_on_fire, known_speed, pause_trample)
         }
         BaseTick::Air(air) => TickProgress::Paused(Pause::Breathing { air, known_speed }),
     }
@@ -1248,6 +1285,7 @@ pub fn resume_after_breathing(
     air: AirPause,
     known_speed: Vec3,
     breath: Option<Breath>,
+    pause_trample: bool,
 ) -> TickProgress {
     if m.removed {
         return TickProgress::Complete(false);
@@ -1256,7 +1294,7 @@ pub fn resume_after_breathing(
         finish_air(m, w, level, events, air.step, air.damage, breath);
     }
     let was_on_fire = base_tick_after_air(m, w, level, events, air.contact);
-    after_base_tick(m, w, level, events, was_on_fire, known_speed)
+    after_base_tick(m, w, level, events, was_on_fire, known_speed, pause_trample)
 }
 
 /// The tick after `Entity.baseTick`, up to the fox's consumption boundary.
@@ -1267,6 +1305,7 @@ fn after_base_tick(
     events: &mut Vec<MobEvent>,
     was_on_fire: bool,
     known_speed: Vec3,
+    pause_trample: bool,
 ) -> TickProgress {
     if m.impulse_grace_time > 0 {
         m.impulse_grace_time -= 1;
@@ -1312,7 +1351,7 @@ fn after_base_tick(
             was_on_fire,
         });
     }
-    TickProgress::Complete(ai_and_finish_tick(m, w, level, was_on_fire, events))
+    ai_and_finish_tick(m, w, level, was_on_fire, events, pause_trample)
 }
 
 /// Resume a fox after its item effect, before the living AI/movement step.
@@ -1322,12 +1361,13 @@ pub fn resume_after_consumption(
     level: &mut DamageLevel<'_>,
     was_on_fire: bool,
     events: &mut Vec<MobEvent>,
-) -> bool {
+    pause_trample: bool,
+) -> TickProgress {
     if m.removed {
-        return false;
+        return TickProgress::Complete(false);
     }
     super::fox::before_living_ai_step(m, w);
-    ai_and_finish_tick(m, w, level, was_on_fire, events)
+    ai_and_finish_tick(m, w, level, was_on_fire, events, pause_trample)
 }
 
 fn ai_and_finish_tick(
@@ -1336,7 +1376,8 @@ fn ai_and_finish_tick(
     level: &mut DamageLevel<'_>,
     was_on_fire: bool,
     events: &mut Vec<MobEvent>,
-) -> bool {
+    pause_trample: bool,
+) -> TickProgress {
     if m.no_ai {
         update_fall_flying(m, w, events);
         reset_effect_fall_distance(m);
@@ -1398,13 +1439,55 @@ fn ai_and_finish_tick(
         if m.species() == Species::TraderLlama {
             super::caravan::trader_llama_tick(m, w);
         }
-    } else {
-        ai_step(m, w, level, events);
+    } else if let Err(phase) = ai_step(m, w, level, events, pause_trample) {
+        return TickProgress::Paused(Pause::Trample(MobTrample {
+            phase,
+            was_on_fire,
+            join: m.join,
+            mob: m.id,
+        }));
     }
     if m.no_ai && m.species() == Species::Fox {
         super::fox::finish_ai_step(m, w, events);
     }
-    finish_tick(m, w, level, was_on_fire, events)
+    TickProgress::Complete(finish_tick(m, w, level, was_on_fire, events))
+}
+
+/// Resume the exact move, then the remainder of `LivingEntity.aiStep` and the tick.
+pub(super) fn resume_after_trample(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    paused: MobTrample,
+    events: &mut Vec<MobEvent>,
+) -> TickProgress {
+    if m.removed || m.join != paused.join {
+        return TickProgress::Complete(!m.removed);
+    }
+    let progress = match paused.phase {
+        TramplePhase::Travel(travel) => {
+            travel.resume(m, w, level, events);
+            hurt_teleports(m, w, events);
+            finish_ai_step(m, w, level, events);
+            Ok(())
+        }
+        TramplePhase::Goal(goal) => {
+            let paused = {
+                let BorrowedGoalSelectors { mob, goals, .. } = &mut BorrowedGoalSelectors::new(m);
+                goals.resume_after_trample(mob, &mut Cx { w, level, events }, goal)
+            };
+            if let Some(goal) = paused {
+                Err(TramplePhase::Goal(goal))
+            } else {
+                finish_server_ai_step(m, w, level, events);
+                ai_step_after_goals(m, w, level, events, true).map_err(TramplePhase::Travel)
+            }
+        }
+    };
+    match progress {
+        Ok(()) => TickProgress::Complete(finish_tick(m, w, level, paused.was_on_fire, events)),
+        Err(phase) => TickProgress::Paused(Pause::Trample(MobTrample { phase, ..paused })),
+    }
 }
 
 /// Resume the living tick after species AI (and the block walk and freezing
@@ -2614,7 +2697,13 @@ fn reset_effect_fall_distance(m: &mut Mob) {
 }
 
 /// LivingEntity.aiStep (and Mob/AgeableMob/Animal additions).
-fn ai_step(m: &mut Mob, w: &MobWorld, level: &mut DamageLevel<'_>, events: &mut Vec<MobEvent>) {
+fn ai_step(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+    pause_trample: bool,
+) -> Result<(), TramplePhase> {
     if m.species() == Species::Parrot {
         super::parrot::ai_step(m, w, level.random(), events);
     }
@@ -2661,12 +2750,24 @@ fn ai_step(m: &mut Mob, w: &MobWorld, level: &mut DamageLevel<'_>, events: &mut 
         super::piglin::before_goals(m, w, level.random(), events);
     }
     if m.alive() && !immobile {
-        server_ai_step(m, w, level, events);
+        if let Some(paused) = server_ai_until_trample(m, w, level, events, pause_trample) {
+            return Err(TramplePhase::Goal(paused));
+        }
     } else {
         m.ai.jumping = false;
         m.ai.xxa = 0.0;
         m.ai.zza = 0.0;
     }
+    ai_step_after_goals(m, w, level, events, pause_trample).map_err(TramplePhase::Travel)
+}
+
+fn ai_step_after_goals(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+    pause_trample: bool,
+) -> Result<(), super::living::TravelTrample> {
     m.handle_jumping(w);
     let input = Vec3::new(
         f64::from(m.ai.xxa),
@@ -2681,10 +2782,20 @@ fn ai_step(m: &mut Mob, w: &MobWorld, level: &mut DamageLevel<'_>, events: &mut 
         m.velocity = Vec3::ZERO;
     } else if !(m.species() == Species::Mannequin && m.extra.immovable) {
         // Mannequin.isEffectiveAi: an immovable one never travels.
-        m.travel(w, level, input, events);
+        m.travel_until_trample(w, level, input, events, pause_trample)?;
         // A fall's hurt (checkFallDamage) teleports at once.
         hurt_teleports(m, w, events);
     }
+    finish_ai_step(m, w, level, events);
+    Ok(())
+}
+
+fn finish_ai_step(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+) {
     // LivingEntity.aiStep: applyEffectsFromBlocks follows travel, then
     // the freezing, before pushEntities and the water's hurt.
     m.apply_effects_from_blocks(w, events);
@@ -3137,6 +3248,7 @@ mod selector_restore_tests {
     }
 }
 
+#[cfg(test)]
 /// Mob.serverAiStep
 pub(super) fn server_ai_step(
     m: &mut Mob,
@@ -3144,6 +3256,17 @@ pub(super) fn server_ai_step(
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
 ) {
+    server_ai_until_trample(m, w, level, events, false);
+}
+
+/// Mob.serverAiStep through the running goals, one of which may move the mob.
+fn server_ai_until_trample(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+    pause_trample: bool,
+) -> Option<super::goals::GoalTrample> {
     // A Java `int`: past `i32::MAX` it wraps, as there.
     m.ai.no_action_time = m.ai.no_action_time.wrapping_add(1);
     // A happy ghast set up for its age (ageBoundaryReached runs at once).
@@ -3153,11 +3276,14 @@ pub(super) fn server_ai_step(
     // A saddled mount follows its rider instead of its goals.
     if super::equine::controlled(m) {
         super::equine::ridden_step(m, w.loop_context);
-        return;
+        return None;
     }
     super::riders::drive(m, w);
     let tick_count = i64::from(m.age);
     let id_based = tick_count + i64::from(m.id);
+    // Of the built-in goals, only the dolphin's rider-follow goal calls
+    // `Entity.move` directly. Dynamic goals cannot install that native goal.
+    let pause_goals = pause_trample && m.species() == Species::Dolphin;
     {
         let BorrowedGoalSelectors {
             mob,
@@ -3165,14 +3291,32 @@ pub(super) fn server_ai_step(
             goals,
         } = &mut BorrowedGoalSelectors::new(m);
         let mut cx = Cx { w, level, events };
-        if id_based % 2 != 0 && tick_count > 1 {
-            targets.tick_running(mob, &mut cx, false);
-            goals.tick_running(mob, &mut cx, false);
-        } else {
+        let force = !(id_based % 2 != 0 && tick_count > 1);
+        if force {
             targets.tick(mob, &mut cx);
+        } else {
+            targets.tick_running(mob, &mut cx, false);
+        }
+        if pause_goals {
+            if let Some(paused) = goals.tick_until_trample(mob, &mut cx, force) {
+                return Some(paused);
+            }
+        } else if force {
             goals.tick(mob, &mut cx);
+        } else {
+            goals.tick_running(mob, &mut cx, false);
         }
     }
+    finish_server_ai_step(m, w, level, events);
+    None
+}
+
+fn finish_server_ai_step(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    events: &mut Vec<MobEvent>,
+) {
     // A creaking looked at stands still: its navigation, move, look and jump
     // controls wait (CreakingPathNavigation and the Creaking*Control).
     let frozen = super::creaking::is_creaking(m) && !super::creaking::can_move(m);
@@ -3969,31 +4113,32 @@ pub fn forgive_dead_player(m: &mut Mob) {
     }
 }
 /// Species-specific travel (fish, squid, dolphins swim with their own rules).
-pub fn custom_travel(
+pub(super) fn custom_travel(
     m: &mut Mob,
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
     input: Vec3,
     events: &mut Vec<MobEvent>,
-) -> bool {
+    pause: bool,
+) -> Result<bool, super::living::TravelTrample> {
     if m.species() == Species::Drowned {
-        return undead::drowned_travel(m, w, level, input, events);
+        return undead::drowned_travel(m, w, level, input, events, pause);
     }
     if m.species() == Species::Turtle {
-        return super::turtle::travel(m, w, level, input, events);
+        return super::turtle::travel(m, w, level, input, events, pause);
     }
     if m.species() == Species::Frog {
-        return super::frog::travel(m, w, level, input, events);
+        return super::frog::travel(m, w, level, input, events, pause);
     }
     match family(m.species()) {
-        Family::Aquatic => aquatic::travel(m, w, level, input, events),
-        Family::Guardian => super::guardian::travel(m, w, level, input, events),
+        Family::Aquatic => aquatic::travel(m, w, level, input, events, pause),
+        Family::Guardian => super::guardian::travel(m, w, level, input, events, pause),
         // Shulkers never move on their own.
-        Family::Shulker => true,
-        Family::Allay => super::allay::travel(m, w, level, input, events),
-        Family::Vex => super::vex::travel(m, w),
-        Family::Nautilus => super::nautilus::travel(m, w, level, input, events),
-        _ => false,
+        Family::Shulker => Ok(true),
+        Family::Allay => super::allay::travel(m, w, level, input, events, pause),
+        Family::Vex => Ok(super::vex::travel(m, w)),
+        Family::Nautilus => super::nautilus::travel(m, w, level, input, events, pause),
+        _ => Ok(false),
     }
 }
 

@@ -1973,16 +1973,6 @@ pub enum MobEvent {
         source: Option<u32>,
         state: sunrise_world::registry::BlockStateId,
     },
-    /// A mob landed on farmland that vanilla's chance and checks decided to trample while a
-    /// mod listens to `farmland_trample`: the game asks it and applies the answer, the
-    /// landing having left the farmland alone. `base` is the block it would become.
-    FarmlandTrample {
-        mob: u32,
-        pos: [i32; 3],
-        state: sunrise_world::registry::BlockStateId,
-        base: sunrise_world::registry::BlockStateId,
-        distance: f64,
-    },
     AttackPlayer(f32, [f64; 3]),
     /// `Bee.doHurtTarget`: a sting that lands leaves its stinger and poisons.
     Sting {

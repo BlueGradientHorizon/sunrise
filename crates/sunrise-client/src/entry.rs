@@ -251,7 +251,6 @@ pub(crate) fn install_client_hooks() {
             mod_api::dispatch_living_heal(&context, entity, amount, cancel);
         },
         living_breathe_heard: || mod_api::__private::listened(mod_api::HookId::LivingBreathe),
-        farmland_trample_heard: || mod_api::__private::listened(mod_api::HookId::FarmlandTrample),
         has_mods: || !mod_api::__private::mods().is_empty(),
         player_name_format: |context, username, displayname| {
             use game::api_values::{TryIntoApi, TryIntoEngine};

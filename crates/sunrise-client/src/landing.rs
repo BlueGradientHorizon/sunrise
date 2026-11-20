@@ -15,8 +15,9 @@ use sunrise_world::native_load_context::LoopContext;
 use sunrise_world::{
     block_entity_push::BlockPushWorld,
     block_landing::{
-        BlockLandingRegistry, BlockLandingWorld, DamageSourceOwner, FallDefinition, LandingDamage,
-        LandingDefinition, LandingEntityKind, LandingEvent, LandingSound,
+        BlockLandingRegistry, BlockLandingWorld, DamageSourceOwner, FallDefinition,
+        FarmlandTrample, LandingDamage, LandingDefinition, LandingEntityKind, LandingEvent,
+        LandingSound,
     },
     entity_obstruction::EntityIdentity,
     fall_damage::FallDamageWorld,
@@ -172,15 +173,6 @@ pub enum FallEvent {
         state: BlockStateId,
     },
     Broadcast(u8),
-    /// A landing on farmland that vanilla's chance and checks decided to trample, while a mod
-    /// listens to `farmland_trample`: the game asks it and applies the answer, the rule having
-    /// left the farmland alone. `base` is the block it would become.
-    Trample {
-        position: BlockPos,
-        state: BlockStateId,
-        base: BlockStateId,
-        distance: f64,
-    },
     Write {
         position: BlockPos,
         /// The block it replaced, so a mod that cancels the change
@@ -267,7 +259,6 @@ impl FallEvent {
             ),
             Self::BlockFallSound { .. } => "block-fall-sound".into(),
             Self::Broadcast(event) => format!("broadcast {event}"),
-            Self::Trample { position, .. } => format!("trample {}", p(position)),
             Self::Write {
                 position,
                 state,
@@ -401,6 +392,54 @@ impl MotionWorld<'_, '_, '_> {
         BlockLandingWorld::cause_fall_damage(self, distance, multiplier, LandingDamage::Fall)
     }
 }
+impl MotionWorld<'_, '_, '_> {
+    pub(crate) fn block_fall(
+        &mut self,
+        state: BlockStateId,
+        position: BlockPos,
+        distance: f64,
+        pause: bool,
+    ) -> Result<Option<FarmlandTrample>> {
+        let previous = self.player.block_landing.take();
+        if crate::block_contact::fall_listens(state) {
+            self.player.block_landing = Some((state, position, distance));
+        }
+        let result = self.resources.landing.fall_on_until_trample(
+            self,
+            state,
+            position,
+            LandingEntityKind::Player,
+            distance,
+            pause,
+        );
+        let pending = self.player.block_landing.take();
+        self.player.block_landing = previous;
+        match result {
+            Ok(None) => {
+                if let Some((state, position, distance)) = pending {
+                    // Some landing rules never call causeFallDamage.
+                    self.mod_block_fall(state, position, distance, 0.0);
+                }
+                Ok(None)
+            }
+            Ok(Some(trample)) => Ok(Some(trample)),
+            Err(err) => Err(err.to_string().into()),
+        }
+    }
+
+    /// Finish `Block.fallOn` and `LivingEntity.checkFallDamage` after the game's
+    /// push and write. A refusal leaves the original fall still to finish.
+    pub fn finish_trample_fall(&mut self, trample: FarmlandTrample) -> Result<()> {
+        let previous = self.player.block_landing.take();
+        if crate::block_contact::fall_listens(trample.state) {
+            self.player.block_landing = Some((trample.state, trample.position, trample.distance));
+        }
+        let result = trample.finish_fall(self);
+        self.player.block_landing = previous;
+        result.map_err(|err| err.to_string())?;
+        sunrise_world::living_landing::finish_living_landing(self, trample.state)
+    }
+}
 impl FallDamageWorld for MotionWorld<'_, '_, '_> {
     type Error = Box<dyn std::error::Error>;
     type State = BlockStateId;
@@ -414,25 +453,8 @@ impl FallDamageWorld for MotionWorld<'_, '_, '_> {
         self.player.fall_distance = value;
     }
     fn fall_on(&mut self, state: BlockStateId, position: BlockPos, distance: f64) -> Result<()> {
-        let previous = self.player.block_landing.take();
-        if crate::block_contact::fall_listens(state) {
-            self.player.block_landing = Some((state, position, distance));
-        }
-        // Keep template landing rules (hay, honey, slime, etc.) in control.
-        let result = self
-            .resources
-            .landing
-            .fall_on(self, state, position, LandingEntityKind::Player, distance)
-            .map_err(|e| e.to_string().into());
-        let pending = self.player.block_landing.take();
-        self.player.block_landing = previous;
-        if result.is_ok()
-            && let Some((state, position, distance)) = pending
-        {
-            // Some landing rules never call causeFallDamage.
-            self.mod_block_fall(state, position, distance, 0.0);
-        }
-        result
+        self.block_fall(state, position, distance, false)
+            .map(|_| ())
     }
 
     fn position(&self) -> Vec3 {
@@ -548,24 +570,6 @@ impl BlockLandingWorld for MotionWorld<'_, '_, '_> {
     }
     fn entity_dimensions(&self) -> (f32, f32) {
         (self.player.dimensions.width, self.player.dimensions.height)
-    }
-    fn defer_farmland_trample(
-        &mut self,
-        position: BlockPos,
-        state: BlockStateId,
-        base: BlockStateId,
-        distance: f64,
-    ) -> bool {
-        if !crate::native_client_hooks::farmland_trample_heard() {
-            return false;
-        }
-        self.fall_event(FallEvent::Trample {
-            position,
-            state,
-            base,
-            distance,
-        });
-        true
     }
     fn suppressing_bounce(&mut self) -> Result<bool> {
         Ok(self.player.shift_key_down)

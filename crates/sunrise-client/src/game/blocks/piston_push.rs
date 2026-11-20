@@ -828,16 +828,16 @@ impl Game<'_> {
         }
     }
 
-    /// `Block.pushEntitiesUp(old, new, level, pos)` for the block now at `pos`
-    /// (`FarmlandBlock.turnToBaseBlock`, `PathBlock.turnToBaseBlock`): every body
+    /// `Block.pushEntitiesUp(old, new, level, pos)` before the block at `pos`
+    /// changes (`FarmlandBlock.turnToBaseBlock`): every body
     /// touching the collision that the new state adds over `old` is lifted
     /// onto it with `teleportRelative`, no collision scan.
     pub(super) fn push_entities_up(
         &mut self,
         pos: BlockPos,
         old: sunrise_world::registry::BlockStateId,
+        new: sunrise_world::registry::BlockStateId,
     ) {
-        let new = self.world.block(pos.x, pos.y, pos.z);
         if new == old {
             return;
         }
@@ -864,15 +864,36 @@ impl Game<'_> {
         let Some(bounds) = added.bounds() else {
             return;
         };
-        let steps = self.push_step_heights();
         for target in self.push_targets() {
-            let Some(body) = self.push_body(target, Some(pos), &steps) else {
+            // This is teleportRelative, not a piston: neither the step height
+            // nor the entity's piston reaction governs the lift.
+            let body = match target {
+                MoveWho::Player => self
+                    .player
+                    .as_ref()
+                    .filter(|p| !p.spectator)
+                    .map(|p| p.bounds()),
+                MoveWho::Guest(conn) if Some(conn) != self.lan_acting => self
+                    .lan
+                    .as_ref()
+                    .and_then(|host| host.hub.guest(conn))
+                    .filter(|guest| !guest.spectator())
+                    .map(|guest| {
+                        guest.dimensions().bounds(Vec3::new(
+                            guest.position[0],
+                            guest.position[1],
+                            guest.position[2],
+                        ))
+                    }),
+                MoveWho::Guest(_) => None,
+                MoveWho::Entity(handle) => with_entity!(self, handle, entity => {
+                    (!entity.is_removed()).then(|| Entity::bounds(entity))
+                }),
+            };
+            let Some(body) = body.filter(|body| body.intersects(bounds)) else {
                 continue;
             };
-            if !body.bounds.intersects(bounds) {
-                continue;
-            }
-            let dy = added.collide(Axis::Y, body.bounds.move_by(Vec3::new(0.0, 1.0, 0.0)), -1.0);
+            let dy = added.collide(Axis::Y, body.move_by(Vec3::new(0.0, 1.0, 0.0)), -1.0);
             // `teleportRelative`, a position assignment the design excludes
             // from `entity_move` (#2414): a pending gate, never armed.
             self.apply_push(&mut MoveGate::new(), target, Vec3::new(0.0, 1.0 + dy, 0.0));
