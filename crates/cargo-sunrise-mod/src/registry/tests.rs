@@ -172,7 +172,13 @@ fn a_stable_native_version_must_pin_the_named_release_commit() {
     write_release(RELEASE_TAG, &RELEASE_PIN.to_ascii_uppercase());
     assert_eq!(r.run("check", &["base", "head"], &flag), Ok(()));
     let sdk_data = r.0.path().join("sdk");
-    fit::sdk(&sdk_data, RELEASE_PIN, "api", serde_json::json!({}));
+    fit::sdk(
+        &sdk_data,
+        RELEASE_PIN,
+        "api",
+        sunrise_mod_package::manifest::API,
+        serde_json::json!({}),
+    );
     let build_flags = [flag[0], flag[1], "--sdk-data", sdk_data.to_str().unwrap()];
     let mut index = r.build(&build_flags).unwrap();
     let release = &index.releases.as_ref().unwrap()[0];

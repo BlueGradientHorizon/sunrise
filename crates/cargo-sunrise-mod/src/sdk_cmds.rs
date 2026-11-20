@@ -242,9 +242,21 @@ pub(crate) enum Subject {
     },
 }
 
-/// The table of the `.smod` at `path`.
-pub(crate) fn package_subject(path: &Path) -> Result<Subject, String> {
+pub(crate) struct PackageSubject {
+    pub content_api: String,
+    pub uses: Result<Subject, String>,
+}
+
+/// The manifest API requirement is known even when the optional uses list cannot be read.
+pub(crate) fn package_subject(path: &Path) -> Result<PackageSubject, String> {
     let package = Package::read(path)?;
+    Ok(PackageSubject {
+        content_api: package.manifest.api.clone(),
+        uses: package_uses(path, package),
+    })
+}
+
+fn package_uses(path: &Path, package: Package) -> Result<Subject, String> {
     let manifest = Package::entry(path, MANIFEST, MAX_MANIFEST)?
         .ok_or_else(|| format!("{}: no {MANIFEST}", path.display()))?;
     let manifest = String::from_utf8(manifest).map_err(|e| format!("{MANIFEST}: {e}"))?;
@@ -374,7 +386,7 @@ fn fits_lines(entry: ChildEntry, args: &[String]) -> Result<Answer, String> {
     }
     let project = Path::new(".");
     let subject = match package {
-        Some(path) => package_subject(path)?,
+        Some(path) => package_subject(path)?.uses?,
         None => folder_subject(entry, project)?,
     };
     let (name, mut table, manifest) = match subject {
@@ -409,12 +421,12 @@ fn fits_lines(entry: ChildEntry, args: &[String]) -> Result<Answer, String> {
                 .map_err(|e| format!("{}: {e}", made_for.surface.display()))
         });
         let mut answer = report.verdict;
-        if !compared.breaks.is_empty() || !compared.bodies.is_empty() {
+        if !compared.misfits.is_empty() {
             let mut misfits = match answer {
                 Fit::DoesNotFit(misfits) => misfits,
                 Fit::Fits | Fit::Unversioned(_) => Vec::new(),
             };
-            misfits.extend(compared.take_misfits());
+            misfits.append(&mut compared.misfits);
             misfits.sort();
             answer = Fit::DoesNotFit(misfits);
         }
@@ -576,7 +588,7 @@ pub(crate) fn compare_game(
         }
     }
     compared
-        .breaks
+        .misfits
         .extend(game_uses::tool(manifest, mixins_rev));
     (compared, uncompared)
 }
@@ -651,13 +663,11 @@ pub(crate) fn update_report(
     );
     // The game code the mod declares, by the new build's build data.
     let made = uses_table::table(&uses, root, &old)?;
-    let (mut compared, uncompared) = game_fit(root, &parsed, &made, &new)?;
-    let mut misfits: Vec<_> = compared.take_misfits().collect();
-    misfits.sort();
-    for misfit in &misfits {
+    let (compared, uncompared) = game_fit(root, &parsed, &made, &new)?;
+    for misfit in &compared.misfits {
         println!("{misfit}");
     }
-    let mut settled = misfits.is_empty();
+    let mut settled = compared.misfits.is_empty();
     if let Some(why) = uncompared {
         settled = false;
         println!("The game code it declares could not be compared: {why}");
@@ -917,7 +927,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("greeter.smod");
         std::fs::write(&path, Package::write_files(&manifest, &files).unwrap()).unwrap();
-        package_subject(&path).unwrap()
+        package_subject(&path).unwrap().uses.unwrap()
     }
 
     #[test]

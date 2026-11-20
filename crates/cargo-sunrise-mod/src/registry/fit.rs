@@ -1,5 +1,5 @@
 //! Publish fit from workflow-supplied SDK files. This route never fetches a build or runs a mod.
-use crate::sdk_cmds::{Subject, compare_fit, compare_game, package_subject};
+use crate::sdk_cmds::{PackageSubject, Subject, compare_fit, compare_game, package_subject};
 use crate::sdk_fetch::{BUILD_DATA, SURFACE};
 use mod_surface::{Surface, uses::Fit};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -78,6 +78,11 @@ pub(super) fn publish(
         let data = game_uses::Data::read(&sdk_data.join(commit).join(BUILD_DATA), commit)
             .map_err(|error| format!("Sunrise {} ({commit}): {error}", keys[0].0))?;
         for project in &mut index.projects {
+            let is_native = match project.kind {
+                Kind::NativeMod => true,
+                Kind::Mod => false,
+                _ => continue, // other kinds' independent compatibility rules aren't judged here
+            };
             for version in &mut project.versions {
                 let Some(tag) = &version.sunrise else {
                     continue;
@@ -95,13 +100,10 @@ pub(super) fn publish(
                 if applicable.peek().is_none() {
                     continue;
                 }
-                let fit = if commit == made_for.commit {
-                    FitVerdict::MadeFor
-                } else if version.game != build.sdk.build.game {
-                    FitVerdict::Breaks {
-                        changed: vec!["minecraft".into()],
-                    }
-                } else if project.kind == Kind::NativeMod {
+                let pinned = commit == made_for.commit;
+                let fit = if version.game != build.sdk.build.game {
+                    breaks("minecraft")
+                } else if is_native {
                     // Assembly has already verified the package. An unreadable uses list is not
                     // evidence of fit, just as a package without a list is not.
                     let (subject, baseline) = packages
@@ -118,11 +120,11 @@ pub(super) fn publish(
                             .map(|b| b.surface_bytes.as_slice())
                             .ok_or_else(|| format!("no SDK data for {pin}"))
                     };
-                    native(subject, baseline, build, &data, known)
-                } else if project.kind == Kind::Mod && version.api != build.sdk.content_api {
-                    FitVerdict::Breaks {
-                        changed: vec!["content-api".into()],
-                    }
+                    native(subject, baseline, build, &data, pinned, known)
+                } else if version.api != build.sdk.content_api {
+                    breaks("content-api")
+                } else if pinned {
+                    FitVerdict::MadeFor
                 } else {
                     FitVerdict::Fits
                 };
@@ -144,18 +146,28 @@ pub(super) fn publish(
 }
 
 fn native<'a>(
-    subject: &mut Option<Subject>,
+    subject: &mut Option<PackageSubject>,
     baseline: &mut Option<Result<(), String>>,
     build: &Build,
     data: &game_uses::Data,
+    pinned: bool,
     baseline_surface: impl FnOnce(&str) -> Result<&'a [u8], String>,
 ) -> FitVerdict {
-    let (manifest, table) = match subject {
-        Some(Subject::Table {
+    let Some(subject) = subject else {
+        return exact("package manifest could not be read");
+    };
+    if subject.content_api != build.sdk.content_api {
+        return breaks("content-api");
+    }
+    if pinned {
+        return FitVerdict::MadeFor;
+    }
+    let (manifest, table) = match &mut subject.uses {
+        Ok(Subject::Table {
             manifest, table, ..
         }) => (manifest, table),
-        Some(Subject::NotApplicable { reason, .. }) => return exact(reason),
-        None => return exact("no readable uses list"),
+        Ok(Subject::NotApplicable { reason, .. }) => return exact(reason),
+        Err(_) => return exact("no readable uses list"),
     };
     let game = compare_game(manifest, table, &build.sdk.mixins.rev, || {
         Ok(data.entries(manifest))
@@ -170,7 +182,9 @@ fn native<'a>(
         ),
         Fit::Fits => (Vec::new(), None),
     };
-    changed.extend(game.breaks);
+    // Current SDKs provide a whole-function span hash, not a body-only fingerprint. Every
+    // game-code mismatch is a break; none can prove that the declaration was unchanged.
+    changed.extend(game.misfits);
     if !changed.is_empty() {
         return FitVerdict::Breaks {
             changed: changed
@@ -182,24 +196,21 @@ fn native<'a>(
                 .collect(),
         };
     }
+    if let Some(reason) = comparison.report.deferred {
+        return FitVerdict::Exact { reason };
+    }
     if let Some(why) = exact_reason {
         return exact(why);
     }
     if game.unrecorded || !game.unjudged.is_empty() {
         return exact("game code could not be fully compared");
     }
-    if game.bodies.is_empty() {
-        FitVerdict::Fits
-    } else {
-        FitVerdict::Rebuild {
-            review: game
-                .bodies
-                .into_iter()
-                .flat_map(|change| change.functions)
-                .collect::<BTreeSet<_>>()
-                .into_iter()
-                .collect(),
-        }
+    FitVerdict::Fits
+}
+
+fn breaks(item: &str) -> FitVerdict {
+    FitVerdict::Breaks {
+        changed: vec![item.to_owned()],
     }
 }
 

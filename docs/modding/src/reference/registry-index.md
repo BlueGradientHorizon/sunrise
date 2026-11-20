@@ -62,7 +62,7 @@ entry leaves out.
 | `side`, `capabilities` | A mod's, read from its manifest during validation. |
 | `game` | The Minecraft version it is for. |
 | `sunrise` | Optional version-level stable release tag the package was made for, e.g. `26.3-0.1.0`. |
-| `verdicts` | Optional version-level [fit decisions](#fit-on-stable-and-nightly), keyed by stable release tag or `nightly`. Only versions with `sunrise` get these decisions. |
+| `verdicts` | Optional version-level [fit decisions](#fit-on-stable-and-nightly), keyed by stable release tag or `nightly`. Only content and native mods with `sunrise` get these decisions. |
 | `dependencies` | A mod or native mod's [manifest dependencies](../concepts/dependencies.md): `{ id, version, optional, side }`, sorted by `id`. `version` is a SemVer range rendered as text. `optional` is omitted unless true; `side` is omitted unless limited to `client` or `server`. The publisher omits this field when a mod has no dependencies. An explicit `[]` asserts that the manifest has none. Never add this field to `mods/<id>.toml`. |
 | `requires` | A modpack's exact pins: `{ id, version, sha256 }`, each a version in this index with that hash. These are not mod dependencies. |
 | `file` | A plain name with the kind's extension (`.smod`, `.spack`, `.zip`, `.sshader`), an `https://` URL (the registry's release `https://github.com/sunrise-org/sunrise-mods/releases/download/<id>-<version>/<name>`, or an asset of the project's own repository, `https://github.com/<owner>/<repo>/releases/download/<tag>/<name>`: the launcher accepts exactly these shapes), the size (at most 64 MiB), the lowercase hex SHA-256, and the `.minisig` text when the project has a key. |
@@ -91,28 +91,31 @@ game; registry-built native binaries are not used.
 
 ## Fit on Stable and Nightly
 
-`registry build` judges a version that declares `sunrise` against every listed release on that release's line,
-including earlier ones, and against the current Nightly if supplied. Each decision is an object with `verdict` and
+`registry build` judges content and native mods that declare `sunrise` against every listed release on that
+release's line, including earlier ones, and against the current Nightly if supplied. Other kinds, including shader
+packs, have independent requirements and do not get verdicts. Each decision is an object with `verdict` and
 `targets`, the sorted Rust target triples with `native_binaries` for that exact build's commit:
 
-- `made-for`: the target commit is the one the version was made for.
-- `fits`: the target uses the same Minecraft version and everything the package uses is unchanged. For native
-  mods, the comparison in [`cargo sunrise-mod fits`](sdk/04-fit.md) checks the API and declared game code.
-  For content mods, the target's content API must also match.
-- `rebuild`: only the bodies of declared game functions changed, not their signatures. `review` lists their
-  paths so the author can check whether a patch overrides a game fix. This does not hide the version from Stable.
-- `breaks`: an API item or a declared signature or type changed, a used item disappeared, or a build requirement
+- `made-for`: the target commit is the one the version was made for and its build requirements match.
+- `fits`: the target uses the same Minecraft version and manifest API, and everything the package uses is unchanged.
+  For native mods, the comparison in [`cargo sunrise-mod fits`](sdk/04-fit.md) checks the API and declared game code.
+- `rebuild`: reserved for a registry finding that only the bodies of declared game functions changed. `review`
+  lists their paths so the author can check whether a patch overrides a game fix. Current SDKs cannot establish this
+  from their whole-function span hashes, so this writer does not emit it. The launcher's own check also still leaves
+  a native mod with changed function bodies out of its source build.
+- `breaks`: an API item or a declared game fingerprint changed, a used item disappeared, or a build requirement
   no longer matches. `changed` names up to five items, including `minecraft` or `content-api` for those requirements.
-  A changed legacy fingerprint that does not distinguish signature and body also counts as `breaks`.
 - `exact`: compatibility could not be judged, for example because the package has `[[native.module]]` or
-  `[[native.bridge]]` rows, or no uses list. The `reason` says why. On another build Stable lists it only when a
+  `[[native.bridge]]` rows, no uses list, or a comparison deferred to compilation. The `reason` says why. On another build Stable lists it only when a
   prebuilt binary exists for that build.
 
-The workflow passes `--sdk-data <dir>` alongside `--releases <file>`. Each supplied release's commit needs a
-subdirectory `<dir>/<commit>/` holding its verified `sdk.json`, `surface.json`, and the unpacked
-`build-data/{functions,internals,loops}.json`. `--nightly-build <file>` takes JSON `{ "commit": "<40 hex>", "date": "YYYY-MM-DD" }`
-and needs the same files for that commit. A missing file names the release and fails the build; the tool does not
-fetch SDK data. These options do not replace `--nightly`, which supplies per-project source metadata.
+The workflow must authenticate `sdk.json` with the release signature and verify `build-data.tar.xz` against that
+index before unpacking it. It passes `--sdk-data <dir>` alongside `--releases <file>`. Each supplied release's
+`<dir>/<commit>/` holds `sdk.json`, `surface.json`, and the unpacked `build-data/{functions,internals,loops}.json`.
+`--nightly-build <file>` takes JSON `{ "commit": "<40 hex>", "date": "YYYY-MM-DD" }` and needs the same files for
+that commit. `registry build` checks `surface.json` against the supplied index and the commit in each build-data
+file. It does not authenticate the index or the unpacked files, or fetch SDK data. Missing files fail the build and
+name the release. These options do not replace `--nightly`, which supplies per-project source metadata.
 
 ## A native mod's list of what it uses
 

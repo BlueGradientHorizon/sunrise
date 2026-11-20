@@ -209,35 +209,12 @@ impl Data {
 /// How a build's [`entries`] stand against a list's record of them.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Compared {
-    /// What is gone or differs in more than just its body, in item ID order.
-    pub breaks: Vec<Misfit>,
-    /// Game functions whose bodies changed with their signatures and declarations unchanged.
-    pub bodies: Vec<BodyChange>,
+    /// What is gone or not as recorded, in id order.
+    pub misfits: Vec<Misfit>,
     /// Whether the list has no record of something the mod declares that the build can fingerprint: packing the mod again writes it.
     pub unrecorded: bool,
     /// The ids the build cannot fingerprint ([`Now::Unjudged`]).
     pub unjudged: Vec<String>,
-}
-
-/// A game-code item whose only differences were function bodies.
-#[derive(Debug, PartialEq, Eq)]
-pub struct BodyChange {
-    pub id: String,
-    pub functions: Vec<String>,
-}
-
-impl Compared {
-    /// The standalone build check still requires even a body change to be reviewed by the author.
-    pub fn take_misfits(&mut self) -> impl Iterator<Item = Misfit> + use<> {
-        std::mem::take(&mut self.breaks).into_iter().chain(
-            std::mem::take(&mut self.bodies)
-                .into_iter()
-                .map(|change| Misfit {
-                    id: change.id,
-                    change: Change::Changed,
-                }),
-        )
-    }
 }
 
 /// `now`, a build's [`entries`], against the list's `recorded` entries.
@@ -255,155 +232,10 @@ pub fn compare(recorded: &[&Entry], now: Vec<(String, Now)>) -> Compared {
                 compared.unrecorded = true;
                 continue;
             }
-            (Some(made), Now::Is(now)) => {
-                if made.hash == now {
-                    continue;
-                }
-                if let Some(functions) = only_bodies(&id, &made.hash, &now) {
-                    compared.bodies.push(BodyChange { id, functions });
-                    continue;
-                }
-                Change::Changed
-            }
+            (Some(made), Now::Is(now)) if made.hash != now => Change::Changed,
+            (Some(_), Now::Is(_)) => continue,
         };
-        compared.breaks.push(Misfit { id, change });
+        compared.misfits.push(Misfit { id, change });
     }
     compared
-}
-
-/// Interpret the existing uses.json fingerprints. An older or incomplete fingerprint may not
-/// record the signature and body separately; a difference then cannot prove a body-only change.
-fn only_bodies(id: &str, old: &str, new: &str) -> Option<Vec<String>> {
-    // After matching complete signatures, report whether the bodies differ.
-    fn body(old: &str, new: &str) -> Option<bool> {
-        let (old_sig, old_body) = old.split_once(':')?;
-        let (new_sig, new_body) = new.split_once(':')?;
-        (old_sig == new_sig
-            && !old_sig.is_empty()
-            && !old_body.is_empty()
-            && !new_body.is_empty()
-            && !old_body.contains(':')
-            && !new_body.contains(':'))
-        .then_some(old_body != new_body)
-    }
-    if let Some(path) = id.strip_prefix("game:fn:") {
-        return body(old, new)?.then(|| vec![path.to_owned()]);
-    }
-    if let Some(internal) = id.strip_prefix("game:internal:") {
-        let (_, path) = internal.split_once(':')?;
-        let (old_kind, old) = old.split_once(':')?;
-        let (kind, new) = new.split_once(':')?;
-        let (old_decl, old) = old.split_once(':')?;
-        let (decl, new) = new.split_once(':')?;
-        return (matches!(kind, "fn" | "method")
-            && old_kind == kind
-            && old_decl == decl
-            && body(old, new)?)
-        .then(|| vec![path.to_owned()]);
-    }
-    if id.starts_with("game:loop:") {
-        let old: Vec<_> = old.split('|').collect();
-        let new: Vec<_> = new.split('|').collect();
-        let [
-            old_entry,
-            old_generic,
-            old_slot,
-            old_side,
-            old_outer,
-            old_inner,
-            old_trait,
-        ] = old.as_slice()
-        else {
-            return None;
-        };
-        let [entry, generic, slot, side, outer, inner, slot_trait] = new.as_slice() else {
-            return None;
-        };
-        if [old_entry, old_generic, old_slot, old_side, old_trait]
-            != [entry, generic, slot, side, slot_trait]
-        {
-            return None;
-        }
-        let outer_changed = body(old_outer, outer)?;
-        let inner_changed = body(old_inner, inner)?;
-        let (owner, _) = entry.rsplit_once("::")?;
-        let mut paths = Vec::new();
-        if outer_changed {
-            paths.push((*entry).to_owned());
-        }
-        if inner_changed {
-            paths.push(format!("{owner}::{generic}"));
-        }
-        return (!paths.is_empty()).then_some(paths);
-    }
-    None
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn body_review_requires_every_signature_and_declaration_to_match() {
-        let internal = "game:internal:any:client::run";
-        let loop_item = "game:loop:run";
-        let matched = "client::run|run_with|Slot|client|entry:old|generic:old|trait";
-        let changed = "client::run|run_with|Slot|client|entry:new|generic:new|trait";
-        for (id, old, new, review) in [
-            (
-                internal,
-                "fn:decl:sig:old",
-                "fn:decl:sig:new",
-                &["client::run"][..],
-            ),
-            (
-                loop_item,
-                matched,
-                changed,
-                &["client::run", "client::run_with"][..],
-            ),
-            (
-                internal,
-                "fn:old-decl:sig:old",
-                "fn:new-decl:sig:new",
-                &[][..],
-            ),
-            (
-                loop_item,
-                matched,
-                "client::run|run_with|Slot|client|entry:new|other-sig:new|trait",
-                &[][..],
-            ),
-            // The old recipe had no executable fingerprints for a loop or called internal.
-            (internal, "fn:decl", "fn:decl:sig:new", &[][..]),
-            (
-                loop_item,
-                "client::run|run_with|Slot|client",
-                changed,
-                &[][..],
-            ),
-        ] {
-            let old = Entry::plain(id.into(), old.into());
-            let compared = compare(&[&old], vec![(id.into(), Now::Is(new.into()))]);
-            if review.is_empty() {
-                assert!(compared.bodies.is_empty(), "{compared:?}");
-                assert_eq!(
-                    compared.breaks,
-                    [Misfit {
-                        id: id.into(),
-                        change: Change::Changed
-                    }]
-                );
-            } else {
-                assert!(compared.breaks.is_empty(), "{compared:?}");
-                assert_eq!(
-                    compared.bodies,
-                    [BodyChange {
-                        id: id.into(),
-                        functions: review.iter().map(|p| (*p).to_owned()).collect()
-                    }]
-                );
-            }
-        }
-    }
 }
