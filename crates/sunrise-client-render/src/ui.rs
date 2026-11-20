@@ -346,25 +346,41 @@ pub fn scrolling_text_around_at(
     color: u32,
 ) {
     scrolling_text_with_offset(
-        batch, atlas, text, center_x, left, right, top, bottom, y, now_ms, color, None,
+        batch,
+        atlas,
+        text,
+        LabelPlacement {
+            center_x,
+            y,
+            clip: [left, top, right, bottom],
+            offset: None,
+        },
+        now_ms,
+        color,
     );
 }
 
-#[allow(clippy::too_many_arguments)]
+struct LabelPlacement {
+    center_x: f32,
+    y: f32,
+    clip: [f32; 4],
+    offset: Option<[f32; 2]>,
+}
+
 fn scrolling_text_with_offset(
     batch: &mut HudBatch,
     atlas: &HudAtlas,
     text: &Text,
-    center_x: f32,
-    left: f32,
-    right: f32,
-    top: f32,
-    bottom: f32,
-    y: f32,
+    placement: LabelPlacement,
     now_ms: i64,
     color: u32,
-    offset: Option<[f32; 2]>,
 ) {
+    let LabelPlacement {
+        center_x,
+        y,
+        clip: [left, top, right, bottom],
+        offset,
+    } = placement;
     let text = text.resolved();
     let width = atlas.font.width_text(&text);
     let room = right - left;
@@ -619,15 +635,14 @@ fn button_with_room(
         batch,
         atlas,
         label,
-        x + (w / 2.0).floor(),
-        x + 2.0 + room,
-        x + w - 2.0,
-        y,
-        y + h,
-        y + ((h - 8.0) / 2.0).floor(),
+        LabelPlacement {
+            center_x: x + (w / 2.0).floor(),
+            y: y + ((h - 8.0) / 2.0).floor(),
+            clip: [x + 2.0 + room, y, x + w - 2.0, y + h],
+            offset,
+        },
         crate::hud_overlays::now_ms(),
         color,
-        offset,
     );
 }
 /// AbstractSliderButton: track, 8px handle at `value` (0..1) and the label.
@@ -2070,20 +2085,23 @@ mod tests {
             &mut batch,
             &atlas,
             &Text::literal("MMMMMMMMMMMM"),
-            17.0,
-            10.0,
-            24.0,
-            20.0,
-            40.0,
-            24.0,
+            LabelPlacement {
+                center_x: 17.0,
+                y: 24.0,
+                clip: [10.0, 20.0, 24.0, 40.0],
+                offset: Some([5.0, 10.0]),
+            },
             0,
             u32::MAX,
-            Some([5.0, 10.0]),
         );
         // Twelve missing glyphs advance 72 px. At time zero the 58 px overrun is fully
         // scrolled, so glyph 10 starts at x = 10 - 58 + 5 + 9*6, y = 24 + 10.
-        // The 5×8 glyph boxes extend past both horizontal edges and the bottom edge.
-        assert!(batch.vertices.iter().any(|v| v.pos == [11.0, 34.0]));
+        // Its 5×1 top stroke is fully visible; other quads extend past the clip.
+        assert!(
+            quads(&batch)
+                .iter()
+                .any(|(rect, _)| *rect == [11.0, 34.0, 16.0, 35.0])
+        );
         assert!(
             batch.vertices.iter().all(|v| {
                 (10.0..=24.0).contains(&v.pos[0]) && (20.0..=40.0).contains(&v.pos[1])
