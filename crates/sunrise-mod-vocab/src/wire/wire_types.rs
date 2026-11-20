@@ -462,7 +462,7 @@ impl Wire for sunrise_core::nbt::JavaString {
         out.put_u16s(self.units());
     }
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
-        input.nested(|input| input.take_u16s().map(Self::from))
+        input.nested(|input| input.take_u16s().map(Iterator::collect))
     }
 }
 
@@ -870,7 +870,7 @@ mod java_string_tests {
             for end in 0..expected.bytes().len() {
                 let cut = &expected.bytes()[..end];
                 assert_eq!(
-                    Reader::decode::<JavaString>(cut).map(|k| k.units()),
+                    Reader::decode::<JavaString>(cut).map(JavaString::into_units),
                     Reader::decode::<Vec<u16>>(cut)
                 );
             }
@@ -882,7 +882,7 @@ mod java_string_tests {
         let mut huge = Writer::new();
         huge.put(&u32::MAX);
         assert_eq!(
-            Reader::decode::<JavaString>(huge.bytes()).map(|k| k.units()),
+            Reader::decode::<JavaString>(huge.bytes()).map(JavaString::into_units),
             Reader::decode::<Vec<u16>>(huge.bytes())
         );
         let key = JavaString::from(vec![7; 10]);
@@ -891,7 +891,7 @@ mod java_string_tests {
             a.limit(limit);
             b.limit(limit);
             a.put(&key);
-            b.put(key.units());
+            b.put(&key.units().to_vec());
             assert_eq!(a.error(), b.error(), "limit {limit}");
             if a.error().is_none() {
                 assert_eq!(a.bytes(), b.bytes());
