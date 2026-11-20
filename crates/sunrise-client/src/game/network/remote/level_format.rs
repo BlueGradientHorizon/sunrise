@@ -68,7 +68,7 @@ impl crate::game::Game<'_> {
     /// type again (a respawn, a travel back) reuses them as kept, without cloning the JSON, and a
     /// pack reload, which makes new stacks, builds only the frame's again, in the same entry.
     pub(in crate::game) fn build_level_environments(&mut self) {
-        let stacks = self.pack.environments.clone();
+        let stacks = self.pack.environments.as_ref();
         let Some(r) = self.remote.as_mut() else {
             return;
         };
@@ -82,22 +82,22 @@ impl crate::game::Game<'_> {
             .get_mut(name)
             .filter(|e| e.json == *json)
         {
-            if !same_stacks(e.stacks.as_ref(), stacks.as_ref()) {
-                e.pack = pack_environment(name, json, stacks.as_ref());
-                e.stacks = stacks.as_ref().map(Arc::downgrade);
+            if !same_stacks(e.stacks.as_ref(), stacks) {
+                e.pack = pack_environment(name, json, stacks);
+                e.stacks = stacks.map(Arc::downgrade);
             }
             r.level_environment = e.own.clone();
             r.level_pack_environment = e.pack.clone();
             return;
         }
         let own = Environment::with_type(self.res.environment_of(name), json).map(Arc::new);
-        let pack = pack_environment(name, json, stacks.as_ref());
+        let pack = pack_environment(name, json, stacks);
         r.level_environments.insert(
             name.clone(),
             LevelEnvironments {
                 json: json.clone(),
                 own: own.clone(),
-                stacks: stacks.as_ref().map(Arc::downgrade),
+                stacks: stacks.map(Arc::downgrade),
                 pack: pack.clone(),
             },
         );
@@ -120,7 +120,6 @@ pub(super) struct LevelEnvironments {
     pack: Option<Arc<Environment>>,
 }
 
-/// Whether `built` are the packs' current stacks `now`.
 /// The frame's environment of the synchronized type `name` with `json`: the type over the packs'
 /// stack of that type, or `None` without pack modifiers or for a type with no pack stack.
 fn pack_environment(
@@ -137,6 +136,7 @@ fn pack_environment(
     Environment::with_type(base, json).map(Arc::new)
 }
 
+/// Whether `built` are the packs' current stacks `now`.
 fn same_stacks(
     built: Option<&Weak<[Environment; 3]>>,
     now: Option<&Arc<[Environment; 3]>>,
@@ -173,14 +173,14 @@ impl Remote {
         // longer taken for the Overworld.
         let mut facts = None;
         let synced_type = self.registries.dimension_json(spawn.dimension_type);
-        if let Some((name, json)) = synced_type.clone() {
+        if let Some((name, json)) = &synced_type {
             let cached = self
                 .facts_cache
                 .get(&spawn.dimension)
-                .filter(|(old_name, old, _)| *old_name == name && *old == json)
+                .filter(|(old_name, old, _)| old_name == name && old == json)
                 .map(|(_, _, facts)| facts.clone());
             facts = cached.or_else(|| {
-                let base = DimensionFacts::base_for_type(&name);
+                let base = DimensionFacts::base_for_type(name);
                 let facts = (|| {
                     for field in ["coordinate_scale", "ambient_light"] {
                         if json.get(field).is_some()
@@ -194,7 +194,7 @@ impl Remote {
                     {
                         return Err("invalid monster_spawn_block_light_limit".into());
                     }
-                    DimensionFacts::patched(base, &name, &json)
+                    DimensionFacts::patched(base, name, json)
                 })()
                 .map_err(|why| log::warn!("the server's dimension type {name} is refused ({why})"))
                 .unwrap_or_else(|_| base.clone());

@@ -255,7 +255,7 @@ fn a_joined_levels_synced_cloud_height_reaches_the_frame_under_its_own_pack_laye
         assert_eq!(drawn(game).cloud_height, 260.0);
 
         // The pack is dropped: the reload builds the frame's environment again, the server's
-        // 250 without the modifier; gameplay's, which no pack layers, is kept.
+        // 250 without the modifier; gameplay's, which has no pack layers, is kept.
         reload(game, &[]);
         assert!(game.pack.environments.is_none());
         assert_eq!(drawn(game).cloud_height, 250.0);
