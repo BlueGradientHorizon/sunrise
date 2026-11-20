@@ -65,14 +65,16 @@ stack submitted during a frame. Rendering is not a source of combat state; see
 At client startup, implement `Hooks::register_layer_definitions` and call
 `event.register("mymod:golem#main", create_golem_layer)`, where `create_golem_layer`
 returns a `LayerDefinition` built from a `MeshDefinition` and the texture size.
-A closure works too; capture owned data so the supplier is `Send + Sync + 'static`.
-Use a `<namespace>:<path>#<layer>` ID outside the `minecraft` namespace.
+The supplier is `Fn() -> LayerDefinition + Send + Sync + 'static`: capture owned
+inputs, not the event or its registration context. Use a `<namespace>:<path>#<layer>`
+ID outside the `minecraft` namespace.
 
 The game calls each accepted supplier once when it freezes the layer table, in
-registration order. For duplicate IDs, only the first valid registration is
-used. Call `ClientHost::bake_layer("mymod:golem#main")` during renderer setup,
-then keep the resulting `ModelPart` tree for posing and drawing. Baking again
-and reloading resources reuse the definition without calling the supplier.
+registration order. A duplicate ID does not run its supplier. The frozen table
+retains the definitions, not the suppliers. Call
+`ClientHost::bake_layer("mymod:golem#main")` during renderer setup, then keep the
+resulting `ModelPart` tree for posing and drawing. Baking again and reloading
+resources reuse the definition.
 
 ## Worn humanoid equipment
 
@@ -158,9 +160,13 @@ event.register(
 );
 ```
 
-The callback is `Send + Sync + 'static`; capture owned data. It returns
-`Result<(), StandaloneModelBakeError>` and receives a scoped `StandaloneModelBakeContext`.
-Its quarter-turn counts are negative turns, modulo four, applied X then Y then Z
+The baker is `Send + Sync + 'static` and may run on a resource worker. Capture
+owned inputs, not the event or its registration context. The
+`StandaloneModelBakeContext` is borrowed only for that invocation and gives no
+`Host`. Return `Ok(())` to publish an assembly if every append succeeded or
+`Err(StandaloneModelBakeError::Rejected(reason))` to leave it out.
+
+The quarter-turn counts are negative turns, modulo four, applied X then Y then Z
 about the block centre, exactly as in blockstate baking. UV locking uses the inverse
 face transformation during baking; rotating a draw pose is not equivalent. For a Y
 quarter-turn a north wall becomes east but stays upright either way; a north-pointing
@@ -177,10 +183,10 @@ the whole model and logs the registering mod. Ignoring an append error still dis
 Result IDs and plain file IDs require a nonempty namespace and path, which need not equal
 the registering mod's ID. A successfully baked plain file wins over any baker for that ID;
 otherwise the first successful baker in registration order wins. Register once at
-startup; the same callbacks run against current files at each resource load. Resolve result
-IDs in `model_baking_completed`; reload invalidates old handles, while failed reloads
+startup; eligible bakers run against current files at each resource load. Registration
+does not expose earlier entries for editing. Resolve result IDs in
+`model_baking_completed`; successful reloads invalidate old handles, while failed reloads
 retain them. The result is baked quads, not a mod-defined baked object.
-
 
 ## Colour, hidden faces and translucency of copies
 

@@ -1,11 +1,17 @@
 # Baked models and their keys
 
-Every successful resource load bakes each block state's models and the standalone models once,
-into one store for that load. That store belongs to the game and never changes while it is
-published: the mesher, block entity drawing and a mod all read the same baked results. A mod
-holds keys into it and read-only copies of the geometry and metadata it lists, never the models
-themselves. The [design](https://github.com/sunrise-org/sunrise/blob/main/docs/design/mod-api/baked-models.md)
+Each successful resource load publishes one store of baked block-state and standalone models.
+That store belongs to the game and never changes while it is published: the mesher, block entity
+drawing and a mod all read the same baked results. A mod holds keys into it and read-only copies
+of the geometry and metadata it lists, never the models themselves. The
+[design](https://github.com/sunrise-org/sunrise/blob/main/docs/design/mod-api/baked-models.md)
 covers it; block-entity model data and editing a baking result are separate changes.
+
+[Register standalone files and bakers](model-drawing.md#standalone-model-bakers) once at
+client startup. During a resource load a baker appends its declared model files through a
+borrowed `StandaloneModelBakeContext`; it cannot edit a model another listener registered.
+Only a completed assembly enters the store. Read its published quads by the result ID,
+just as for a directly registered file.
 
 ## Keys
 

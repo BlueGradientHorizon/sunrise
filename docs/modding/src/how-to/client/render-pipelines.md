@@ -38,6 +38,11 @@ indexings (`a + b + c + ...`), is refused by name: split a long sum over several
 
 ## 2. Register the pipeline
 
+Call `event.register(pipeline)` in `register_render_pipelines` at client startup.
+The event adds declarations in order and does not expose earlier registrations.
+Resource reloads rebuild the registered pipelines from the current shader files;
+they do not call the registration hook again.
+
 ```rust,ignore
 fn register_render_pipelines(
     &self,
