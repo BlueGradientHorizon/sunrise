@@ -2,8 +2,10 @@ import contextlib
 import io
 from pathlib import Path
 import struct
+import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 from tools import check_imports
 
@@ -33,11 +35,16 @@ def elf(interpreter, libraries, runpath=None):
 
 
 class LinuxImportsTests(unittest.TestCase):
-    def check_binary(self, interpreter, libraries, *, runpath=None, **options):
+    def check_binary(self, interpreter, libraries, *, runpath=None, report="", **options):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "program"
             path.write_bytes(elf(interpreter, libraries, runpath))
-            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            # The fake ELF has program headers but no section metadata for readelf.
+            if runpath:
+                report += f"\n 0x000000000000001d (RUNPATH) Library runpath: [{runpath}]\n"
+            result = subprocess.CompletedProcess([], 0, stdout=report, stderr="")
+            with (contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()),
+                  mock.patch.object(check_imports.subprocess, "run", return_value=result)):
                 return check_imports.check(path, **options)
 
     def test_musl_desktop(self):
@@ -54,6 +61,24 @@ class LinuxImportsTests(unittest.TestCase):
         for library in ("libc.so.6", "libpthread.so.0", "libm.so.6", "libcustom.so"):
             with self.subTest(library=library):
                 self.assertFalse(self.check_binary("/lib/ld-musl-x86_64.so.1", [library], musl=True))
+
+    def test_musl_rejects_both_runpath_tags(self):
+        for tag, label, value in (("000f", "RPATH", "$ORIGIN/lib"), ("001d", "RUNPATH", "")):
+            with self.subTest(label=label):
+                report = f"\n 0x000000000000{tag} ({label}) Library path: [{value}]\n"
+                self.assertFalse(self.check_binary(check_imports.MUSL_LOADER, [], musl=True, report=report))
+
+    def test_musl_rejects_any_glibc_version_requirement(self):
+        for name in ("GCC_3.0", "GLIBC_2.2.5", "GLIBC_PRIVATE", "GLIBC_ABI_DT_RELR"):
+            with self.subTest(name=name):
+                report = f"""
+Version needs section '.gnu.version_r' contains 1 entry:
+  Addr: 0x0000000000000748  Offset: 0x00000748  Link: 7 (.dynstr)
+  000000: Version: 1  File: libgcc_s.so.1  Cnt: 1
+  0x0010:   Name: {name}  Flags: none  Version: 2
+"""
+                self.assertEqual(self.check_binary(check_imports.MUSL_LOADER, ["libgcc_s.so.1"],
+                                                   musl=True, report=report), name == "GCC_3.0")
 
     def test_glibc_policy_still_rejects_musl(self):
         self.assertTrue(self.check_binary("/lib64/ld-linux-x86-64.so.2", ["libc.so.6", "libasound.so.2"]))
