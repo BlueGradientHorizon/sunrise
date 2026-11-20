@@ -1,5 +1,6 @@
 //! Portable vanilla play packet builders. Protocol is deliberately a test-only dependency.
-use crate::{Identifier, PayloadWriter, ServerboundPlayPacket};
+use crate::{Identifier, ServerboundPlayPacket};
+use sunrise_core::vanilla_bytes::Writer;
 
 /// A value cannot be represented by the named packet field.
 #[derive(Clone, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
@@ -86,7 +87,7 @@ fn finite(
         })
     }
 }
-fn position(packet: &str, pos: [i32; 3], w: &mut PayloadWriter) -> Result<(), PacketBuildError> {
+fn position(packet: &str, pos: [i32; 3], w: &mut Writer) -> Result<(), PacketBuildError> {
     let [x, y, z] = pos;
     if !(-33_554_432..=33_554_431).contains(&x)
         || !(-33_554_432..=33_554_431).contains(&z)
@@ -99,13 +100,16 @@ fn position(packet: &str, pos: [i32; 3], w: &mut PayloadWriter) -> Result<(), Pa
 }
 fn build(
     packet: &str,
-    write: impl FnOnce(&mut PayloadWriter) -> Result<(), PacketBuildError>,
+    write: impl FnOnce(&mut Writer) -> Result<(), PacketBuildError>,
 ) -> Result<ServerboundPlayPacket, PacketBuildError> {
-    let mut w = PayloadWriter::new(8192);
+    let mut w = Writer::new();
     write(&mut w)?;
-    let body = w.finish().map_err(|_| range(packet, "body"))?;
+    // Every field is fixed-size or bounded before writing (including sign lines).
+    if w.data.len() > 8192 {
+        return Err(range(packet, "body"));
+    }
     let id = Identifier::from_parts("minecraft", packet).map_err(|_| range(packet, "id"))?;
-    Ok(ServerboundPlayPacket::new(id, body))
+    Ok(ServerboundPlayPacket::new(id, w.data))
 }
 fn flags(ground: bool, collision: bool) -> u8 {
     u8::from(ground) | (u8::from(collision) << 1)
@@ -113,7 +117,7 @@ fn flags(ground: bool, collision: bool) -> u8 {
 
 // Vec3.LP_STREAM_CODEC, also implemented by sunrise-protocol::buf::LpVec3.
 // Inputs have already been checked for finiteness. The vanilla codec clamps large values.
-fn lp_vec3(pos: [f64; 3], w: &mut PayloadWriter) {
+fn lp_vec3(pos: [f64; 3], w: &mut Writer) {
     let [x, y, z] = pos.map(|v| v.clamp(-1.717_986_918_3e10, 1.717_986_918_3e10));
     let length = x.abs().max(y.abs()).max(z.abs());
     if length < 3.051_944_088_384_301e-5 {
@@ -289,7 +293,8 @@ impl ServerboundPlayPacket {
         build(p, |w| {
             position(p, pos, w)?;
             for line in &lines {
-                w.str_within(line, 384 * 3);
+                // The validated 384 UTF-16 units imply at most 384 * 3 UTF-8 bytes.
+                w.string(line);
             }
             w.var_int(i32::from(front));
             Ok(())

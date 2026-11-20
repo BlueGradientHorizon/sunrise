@@ -3,7 +3,7 @@
 //! composed from, mirroring `StreamCodec.composite`.
 use crate::{Error, Result};
 use std::marker::PhantomData;
-use sunrise_core::{nbt, nbt::Tag};
+use sunrise_core::{nbt, nbt::Tag, vanilla_bytes::Writer};
 
 /// Vanilla's default NBT quota for network tags (NbtAccounter.defaultQuota).
 pub const NBT_QUOTA: usize = nbt::Limits::network().max_bytes;
@@ -247,8 +247,6 @@ pub fn java_utf8(mut bytes: &[u8]) -> String {
         }
     }
 }
-
-use sunrise_core::vanilla_bytes::Writer;
 
 /// A wire encoding for values of type `T` (vanilla's StreamCodec).
 pub trait Codec<T> {
@@ -703,7 +701,10 @@ mod tests {
             [0x80, 0x80, 0x80, 0x80, 0x08]
         );
         for v in [0, 1, 127, 128, 16383, 16384, 2097151, 2097152, i32::MAX, -1] {
-            assert_eq!(varint_size(v), round::<i32, VarInt>(v).len());
+            assert_eq!(
+                sunrise_core::vanilla_bytes::varint_size(v),
+                round::<i32, VarInt>(v).len()
+            );
         }
         assert!(Reader::new(&[0xff; 6]).varint().is_err());
     }
