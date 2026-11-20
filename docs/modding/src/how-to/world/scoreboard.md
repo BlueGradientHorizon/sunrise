@@ -79,13 +79,32 @@ player's `Entity` are one member, and a `Name` joins whether or not that player 
 holder that is not on the server is `TeamError::UnknownHolder`, not a stale handle.
 
 `team.visit_members(host, &mut visit)` visits holder keys in the team's native Java hash set
-order, which vanilla leaves unspecified. The callback receives each name as a borrowed
-`&str`, including offline names; copy it only if you need it after the callback. Return
-`core::ops::ControlFlow::Break(())` to stop or `Continue(())` to keep going. The call returns
-`Ok(Break(()))` on an early stop or `Ok(Continue(()))` on completion, including an empty
-team. `TeamMembersReadError::Stale` means the team was removed or the handle is from an
-earlier open; `TeamMembersReadError::Unavailable` means the server scoreboard isn't
-readable from this side or phase. Neither error calls the visitor.
+order, which vanilla leaves unspecified. The visitor can make shared reads on the same host.
+It receives a borrowed `&str`, not a `ScoreHolder::Name(String)`, and sees offline holders too.
+The name is borrowed only for that callback. Return `core::ops::ControlFlow::Break(())` to stop
+or `Continue(())` to keep going. The call returns `Ok(Break(()))` on an early stop or
+`Ok(Continue(()))` on completion, including an empty team. `Err(TeamMembersReadError::Stale)`
+means the team was removed or the handle is from an earlier open;
+`Err(TeamMembersReadError::Unavailable)` means the server scoreboard isn't readable from this
+side or phase. Neither error calls the visitor.
+
+Compare names as `&str` without copying them. If you need to write, copy just the names
+needed for the write, then use `ScoreHolder::Name` after the visit:
+
+```rust,ignore
+use core::ops::ControlFlow::Continue;
+
+let mut to_remove = Vec::new();
+let _ = team.visit_members(host, &mut |name| {
+    if name.starts_with("#round-") {
+        to_remove.push(name.to_owned());
+    }
+    Continue(())
+})?;
+for name in to_remove {
+    team.leave(host, ScoreHolder::Name(name));
+}
+```
 
 Writes are the board's, so they are synced, saved and rolled back by an abort exactly as an
 objective's are.

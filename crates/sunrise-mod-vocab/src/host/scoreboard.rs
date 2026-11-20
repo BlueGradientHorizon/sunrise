@@ -160,13 +160,19 @@ pub trait ScoreboardBackend {
     fn team_collision_rule(&self, team: TeamRef) -> Option<CollisionRule>;
     /// Side: server.
     /// Visit `PlayerTeam.getPlayers` in the team's native Java hash set order, which
-    /// vanilla leaves unspecified. Each holder key is a name borrowed for the call,
-    /// including names that do not resolve to an online player.
+    /// vanilla leaves unspecified. The visitor gets each holder key as a borrowed
+    /// `&str`, valid only during that callback, including names that do not resolve
+    /// to an online player. No result list is built and no names are copied.
     ///
-    /// Return `ControlFlow::Break(())` to stop and get `Ok(ControlFlow::Break(()))`.
-    /// Completion, including an empty team, returns `Ok(ControlFlow::Continue(()))`.
-    /// A stale team or unavailable server world access returns a
-    /// [`TeamMembersReadError`] without calling the visitor.
+    /// The visitor can make shared reads on the same host. Return `ControlFlow::Continue(())`
+    /// to keep visiting or `ControlFlow::Break(())` to stop. The visit returns
+    /// `Ok(ControlFlow::Break(()))` if stopped or `Ok(ControlFlow::Continue(()))` on
+    /// completion, including an empty team. [`TeamMembersReadError::Stale`] and
+    /// [`TeamMembersReadError::Unavailable`] are refusals: neither calls the visitor.
+    ///
+    /// To retain a name, make an owned copy in the visitor. For a scoreboard write,
+    /// collect the names you need, then use `ScoreHolder::Name(name)` with the mutable
+    /// host after the visit.
     #[access(WorldOnly)]
     fn team_visit_members(
         &self,

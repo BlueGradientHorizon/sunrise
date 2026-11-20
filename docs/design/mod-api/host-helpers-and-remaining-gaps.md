@@ -17,14 +17,29 @@ currently stores only the remainder item id, not a template's count or component
 returns `None`, while a known block with no item returns `Some("minecraft:air")`.
 Both reads are available on either side.
 
-`level.visit_entities_in(host, min, max, &mut visit)` also works on the client's displayed level:
-it visits readable tracked entities (including players) and the window's own non-spectator player.
-A level the client does not display, a read before login, or a NaN or infinite bound returns
-`Err(LevelReadError::Unavailable)` before any visit. A minimum above its maximum is the same box
-with the two swapped, as in vanilla's `AABB`. The walk resolves matches as it goes without a list
-and stops when the visitor returns `ControlFlow::Break(())`.
-`host.experience_orbs(dimension, min, max)` takes its box the same way, with an empty list
-for a bound that is not finite.
+Entity, player and team visits are scoped shared reads. `Continue(())` advances and
+`Break(())` stops; the result is `Ok(Continue(()))` on completion (including empty),
+`Ok(Break(()))` on early stop, or a typed refusal before any callback. Visitors can
+make reentrant shared reads on the same host. Entity visitors and ray predicates run
+outside residency guards. For mutable work the caller collects the handles or copies
+the borrowed team names it needs, then uses the mutable host after the visit.
+
+`level.visit_entities_in(host, min, max, &mut visit)` resolves matches as it goes and
+works on the active server level or the client's displayed level. It does not build a
+list. Inverted bounds are swapped per axis, as in vanilla's `AABB`; non-finite bounds
+are refused. `level.visit_all_entities(host, &mut visit)` uses the active server level's
+lookup admission order instead. Outside the block-entity item-tick view, it preflights
+all eligible members before invoking the visitor so a missing member cannot expose a
+partial walk. `Break(())` does not skip that preflight. The item-tick view skips members
+it cannot resolve. `level.visit_online_players` also works on parked server levels;
+`team.visit_members` borrows each holder key as `&str` instead of cloning the names.
+
+For one entity ray hit, `level.ray_trace_nearest_entity` calls the predicate on every
+geometric hit in spatial traversal order. It selects the smallest accepted squared
+distance, keeping the first visited hit on an exact tie. `ray_trace_entities` keeps
+the ordered all-hit result for callers that need to process hits nearest first.
+`host.experience_orbs(dimension, min, max)` still returns a list, empty for a bound
+that is not finite.
 
 For engine contributors, every area method declares its load access once with `#[access(...)]`.
 `Metadata` admits registry facts during setup and reload; `WorldOnly`, `ClientSetup` and

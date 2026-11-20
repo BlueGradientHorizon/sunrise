@@ -216,7 +216,9 @@ impl<T: Wire> ToClient<T> {
 
     /// Send `value` to the players visited by [`LevelRef::visit_online_players`], like
     /// NeoForge's `PacketDistributor.sendToPlayersInDimension`. Returns how many sends were
-    /// accepted; a stale or unavailable level has no recipients, so it is `Ok(0)`.
+    /// accepted. Encoding runs first; after a successful encode, an empty visit or a
+    /// stale or unavailable level returns `Ok(0)`. Recipients are collected with a
+    /// shared host read before taking mutable host access to queue the sends.
     ///
     /// Encoding and per-player refusals follow [`send_to_all`](Self::send_to_all).
     pub fn send_in_level(
@@ -242,7 +244,9 @@ impl<T: Wire> ToClient<T> {
     /// Send `value` to the players in `level`, other than `except`, whose squared distance from
     /// `pos` is below `radius` squared, like NeoForge's `PacketDistributor.sendToPlayersNear`
     /// (vanilla's `PlayerList.broadcast`). A player on the radius itself is not reached. Returns
-    /// how many sends were accepted, or `Ok(0)` for a stale or unavailable level.
+    /// how many sends were accepted. After a successful encode, no matches or a stale
+    /// or unavailable level returns `Ok(0)`. The distance checks are shared reads during
+    /// the player visit; sends start after the visit has finished.
     ///
     /// Encoding and per-player refusals follow [`send_to_all`](Self::send_to_all).
     pub fn send_near(

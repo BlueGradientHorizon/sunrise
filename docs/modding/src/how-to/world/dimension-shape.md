@@ -179,11 +179,34 @@ position, not the position above it used by Pre.
 level without building a list, even if the level is parked. In the active level the local
 or acting player comes first, then the placed guests in server order; a parked level has
 only its placed guests. Fake players and players displaced by a nested guest turn are skipped.
-The callback takes a `PlayerRef`, which you can read through the same host. Return
+The callback takes a `PlayerRef` and can make shared reads through the same host. Return
 `core::ops::ControlFlow::Break(())` to stop or `Continue(())` to keep going. The call returns
 `Ok(Break(()))` if you stopped it or `Ok(Continue(()))` if it finished, including when
 the level had no players. A stale level gives `Err(LevelReadError::Stale)`; a client or
 unavailable world access gives `Err(LevelReadError::Unavailable)`. Neither calls the visitor.
+
+If you need mutable host access, collect only the handles that will receive the effect.
+For example, select players above a world y-coordinate (`min_y: f64`) with a shared
+read, then send each a message. This example is from a context that can propagate
+both visit and send errors:
+
+```rust,ignore
+use core::ops::ControlFlow::Continue;
+
+let mut recipients = Vec::new();
+let _ = level.visit_online_players(host, &mut |player| {
+    if player.entity().position(host).is_some_and(|pos| pos[1] > min_y) {
+        recipients.push(player);
+    }
+    Continue(())
+})?;
+for player in recipients {
+    let _ = player.tell(host, message.clone())?;
+}
+```
+
+For typed payloads, `ToClient::send_in_level` and `ToClient::send_near` already handle
+collecting recipients before sending.
 
 Obtain a chunk with `host.chunk(level, pos)`, then call `chunk.watchers(host)` to ask which
 players were sent it and have it inside their view distance; fake players watch nothing.

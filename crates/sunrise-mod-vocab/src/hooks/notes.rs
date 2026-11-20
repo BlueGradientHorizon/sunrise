@@ -792,8 +792,9 @@ handle, an entity the client doesn't track and a level it doesn't show:
   Partial ticks are not clamped. A missing effect reads 0. The client keeps no other entity's effects, so they read `None`.
 - `host.fishing_hook(entity)` gives a `FishingHookRef` for a cast hook (`FishingHook`); `hook.entity()` goes back.
   `player_owner(host)` is the player who cast it, `hooked_in(host)` what it holds (None when nothing, or when that is
-  gone) and `open_water(host)` is `isOpenWaterFishing`. `item_fished` exposes mutable catch drops, cancel and absolute rod damage, names a hook by id, and `LevelRef::visit_entities_in`
-  finds them. Discarding one takes it out. It is not a `ProjectileRef`, and selectors do not find it yet.
+  gone) and `open_water(host)` is `isOpenWaterFishing`. `item_fished` exposes mutable catch drops, cancel and absolute
+  rod damage, and names a hook by id. A server box query with `LevelRef::visit_entities_in` can find fishing hooks.
+  Discarding one takes it out. It is not a `ProjectileRef`, and selectors do not find it yet.
 - `host.projectile(entity)` gives a `ProjectileRef` for a projectile in the level's projectile list (arrows, a mob's
   trident, thrown items, fireballs, wind charges, skulls, shulker bullets, mods' thrown types), a trident a player
   threw or a firework rocket; `projectile.entity()` goes back. A player's trident and a rocket have an owner and a
@@ -822,7 +823,8 @@ handle, an entity the client doesn't track and a level it doesn't show:
   `Entity.getOnPos`: the supporting block of an entity on the ground (the solid block under its box nearest it),
   else the block under its feet. `pick(host, distance)` clips `Entity.pick`'s ray from the eyes along the view
   against block outlines, no fluids, and returns the `ClipHit` (its `miss` set for a miss); entities are
-  `ray_trace_entities`' job. `is_multipart(host)` and `parts(host)` are `Entity.isMultipartEntity` and `getParts`:
+  clipped by `LevelRef::ray_trace_nearest_entity` or `ray_trace_entities`, not `pick`.
+  `is_multipart(host)` and `parts(host)` are `Entity.isMultipartEntity` and `getParts`:
   the ender dragon's eight `EnderDragonPart`s (not the Parts of this API), head, neck, body, three tail segments and
   two wings, each an `EntityRef` of its own entity id, resolved as any handle is. A part's `kind` is the dragon's, its position, rotation (none: zero), velocity (zero)
   and `bounding_box` are its own, `level` is the dragon's, and it is no living entity, mob or dragon handle; it
@@ -950,7 +952,13 @@ handle, an entity the client doesn't track and a level it doesn't show:
   a stale handle or a client.
 - `level.block_shape(host, state, pos, kind)` reads a supplied state's block-local outline or collision boxes with an empty context, without changing the world's state; pass `level.block_state(host, pos)` for the stored state.
   `None` for a client, unknown state, stale handle or closed level; parked levels can be read.
-- `level.visit_entities_in(host, min, max, &mut visit)` visits readable entities whose boxes intersect the given box in the active server level or the client's displayed level. Return `ControlFlow::Break(())` to stop; see the method documentation for order and tick-time visibility.
+- `level.visit_entities_in(host, min, max, &mut visit)` visits readable entities whose boxes intersect the given box
+  in the active server level or the client's displayed level. The visitor can read them through the same host.
+  `ControlFlow::Break(())` stops the visit; `Continue(())` keeps it going. An empty query completes successfully,
+  whereas a stale or unavailable level returns `LevelReadError` before the visitor runs.
+- `level.visit_all_entities(host, &mut visit)` visits the active server level's lookup in admission order, with no
+  box filter. Outside the block-entity item-tick view, it checks that every eligible member resolves before calling
+  the visitor, even if the visitor would stop on the first one. The item-tick view skips members it cannot resolve.
 - `level.pop_resource(host, pos, stack)` drops a stack as a broken block does (`Block.popResource`), `spawn_item(host, x, y, z,
   stack, pickup_delay)` and `spawn_item_with_motion` spawn a plain item entity and give its handle, with the pickup delay
   vanilla's `ItemEntity.setPickupDelay` sets at construction (10 a block's drop, 40 a player's throw, 32767 never), and

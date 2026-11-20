@@ -10,14 +10,23 @@ pub trait LevelEntitiesBackend {
     /// Visit members of the server level's entity lookup (`ServerLevel.getAllEntities`),
     /// including spectators and entities outside any spatial query. Dragon parts are not
     /// lookup members. Vehicles being removed are skipped.
-    /// The visitor can read the supplied handle through the host. Return
-    /// `ControlFlow::Break(())` to stop and get `Ok(ControlFlow::Break(()))` from the walk.
-    /// Completion, including an empty walk, returns `Ok(ControlFlow::Continue(()))`.
     ///
-    /// A stale level returns `LevelReadError::Stale`. A call outside server world access,
-    /// a parked level, or an unavailable member returns `LevelReadError::Unavailable`
-    /// before any visit. In the block-entity item-tick view, unavailable members are
-    /// skipped instead.
+    /// The visitor can make shared reads on the same host, including another visit.
+    /// No residency guard is held while it runs. Return `ControlFlow::Break(())` to stop;
+    /// the visit returns `Ok(ControlFlow::Break(()))`. Returning `Continue(())` for every
+    /// member gives `Ok(ControlFlow::Continue(()))`, including when there are no members.
+    ///
+    /// This does not build a result list. Outside the block-entity item-tick view, it
+    /// first checks that **every** eligible lookup member resolves. An unavailable
+    /// member returns [`LevelReadError::Unavailable`] before the first callback, even
+    /// if the callback would have stopped on the first member. The item-tick view
+    /// instead skips members it cannot resolve.
+    ///
+    /// A stale level returns [`LevelReadError::Stale`]. A parked level or a call
+    /// outside server world access returns [`LevelReadError::Unavailable`]. Neither
+    /// calls the visitor. If you need to write through the host, collect the handles
+    /// you need and use them after the visit.
+    ///
     /// Order is lookup admission order, preserved across temporary extraction;
     /// removal and re-admission moves an entity to the end. An entity spawned
     /// during play is admitted as it spawns, even when its id comes later. A
@@ -33,9 +42,6 @@ pub trait LevelEntitiesBackend {
     /// `entity_entering_section`. Entities kept outside the residency families
     /// (lingering potion clouds, lightning bolts, eyes of ender) are not
     /// members.
-    /// The walk does not build a result buffer. Outside the item-tick view it checks
-    /// that all eligible members resolve before invoking the visitor, even if it would
-    /// stop on the first member.
     #[access(WorldOnly)]
     fn level_visit_all_entities(
         &self,
@@ -45,15 +51,20 @@ pub trait LevelEntitiesBackend {
     /// Side: both.
     /// Visit readable entities whose bounding boxes intersect this box (`Level.getEntities`).
     /// Face-only contact does not intersect. Inverted bounds are swapped on each axis,
-    /// as in vanilla's `AABB`. The visitor can read each handle through the same host.
-    /// Return `ControlFlow::Break(())` to stop; the walk returns `Ok(ControlFlow::Break(()))`.
-    /// Full completion, including an empty box, returns `Ok(ControlFlow::Continue(()))`.
-    /// No result list is built and an early stop does not walk later matches.
+    /// as in vanilla's `AABB`.
     ///
-    /// A stale level returns `LevelReadError::Stale`. Non-finite bounds, an inactive
+    /// The visitor can make shared reads on the same host, including another visit.
+    /// No residency guard is held while it runs. Return `ControlFlow::Continue(())`
+    /// to keep visiting; `ControlFlow::Break(())` stops before checking any later match.
+    /// The result is `Ok(ControlFlow::Continue(()))` on completion (including an empty
+    /// query) or `Ok(ControlFlow::Break(()))` on an early stop. No result list is built.
+    /// Collect the handles you need only if you need them after the visit, for example
+    /// to write through the host.
+    ///
+    /// A stale level returns [`LevelReadError::Stale`]. Non-finite bounds, a parked
     /// server level, a client that has not logged in or is not displaying this level,
-    /// or unavailable world access return `LevelReadError::Unavailable`. A refused
-    /// walk does not call the visitor.
+    /// or unavailable world access return [`LevelReadError::Unavailable`]. A refused
+    /// visit does not call the visitor.
     ///
     /// The walk uses entity-list order, then item frames and paintings in join order
     /// (frames first on ties), then the dragon's body. On the server, block, item and text
@@ -82,11 +93,13 @@ pub trait LevelEntitiesBackend {
     /// resolvable player is visited once under their own UUID. Fake players and
     /// players displaced by a nested guest turn are skipped.
     ///
-    /// The visitor can read the player through the same host. Return
-    /// `ControlFlow::Break(())` to stop and get `Ok(ControlFlow::Break(()))`.
-    /// Completion, including an empty level, returns `Ok(ControlFlow::Continue(()))`.
-    /// A stale level returns `LevelReadError::Stale`; a client or unavailable world
-    /// access returns `LevelReadError::Unavailable`. A refusal never calls the visitor.
+    /// The visitor can make shared reads on the same host. Return `ControlFlow::Continue(())`
+    /// to keep visiting or `ControlFlow::Break(())` to stop. The visit returns
+    /// `Ok(ControlFlow::Break(()))` if stopped or `Ok(ControlFlow::Continue(()))` on
+    /// completion, including a level with no players. A stale level returns
+    /// [`LevelReadError::Stale`]; a client or unavailable world access returns
+    /// [`LevelReadError::Unavailable`]. Neither error calls the visitor. Collect
+    /// the players you need up front if you need mutable host access afterwards.
     #[access(WorldOnly)]
     fn level_visit_online_players(
         &self,
@@ -97,10 +110,15 @@ pub trait LevelEntitiesBackend {
     /// Every entity the segment from `from` to `to` passes through, nearest first: the test
     /// `ProjectileUtil.getEntityHitResult` makes on each candidate, each entity's box grown by
     /// `margin` on every side and clipped against the segment. A ray that starts inside a box
-    /// does not hit that entity, as in vanilla. `exclude` (the shooter) is skipped. Vanilla's
-    /// filter (`canHitEntity`, `isPickable`) is the caller's: take the first hit it accepts.
-    /// Candidates are those `visit_entities_in` finds, so the same kinds are left out. None
-    /// for a negative or non-finite margin, a non-finite point, or a refused spatial walk.
+    /// does not hit that entity, as in vanilla. `exclude` (the shooter) is skipped. Hits
+    /// at equal returned distances keep spatial traversal order. Candidates are those
+    /// [`LevelRef::visit_entities_in`] finds, so the same kinds are left out. Returns
+    /// an empty list on a valid miss and `None` for invalid ray geometry or a refused
+    /// spatial query.
+    ///
+    /// Use this when you need every hit or must process hits in nearest-first order.
+    /// If you just need the nearest hit matching a filter (such as `canHitEntity` or
+    /// `isPickable`), use [`LevelRef::ray_trace_nearest_entity`] instead.
     #[access(WorldOnly)]
     fn level_ray_trace_entities(
         &self,
@@ -112,18 +130,20 @@ pub trait LevelEntitiesBackend {
     ) -> Option<Vec<EntityRayHit>>;
     /// Side: both.
     /// The nearest accepted hit on the segment from `from` to `to`, without collecting hits.
-    /// Uses the candidates of `visit_entities_in` in the segment's bounds padded by `margin`.
-    /// Each candidate's box is grown by `margin` before clipping. A ray starting inside a
-    /// grown box does not hit it, and `exclude` (for example, the shooter) is skipped.
+    /// Uses the candidates of [`LevelRef::visit_entities_in`] in the segment's bounds padded
+    /// by `margin`. Each candidate's box is grown by `margin` before clipping. A ray starting
+    /// inside a grown box does not hit it, and `exclude` (for example, the shooter) is skipped.
     ///
     /// `accept` runs once per geometric hit in spatial traversal order, not distance order.
-    /// It can read the hit entity through the same host. Among the hits it accepts, the
-    /// smallest squared distance from `from` wins; an exact tie keeps the first visited hit.
+    /// It can make shared reads on the same host; no residency guard is held. Among the hits
+    /// for which it returns `true`, the smallest squared distance from `from` wins. An exact
+    /// tie in squared distance keeps the first visited hit. Use [`LevelRef::ray_trace_entities`]
+    /// if you need an ordered list or your filter depends on testing nearer hits first.
     ///
-    /// Returns `Ok(None)` when no hit is accepted. A stale level returns
-    /// `LevelReadError::Stale`. A negative or non-finite margin, non-finite endpoints or
-    /// padded bounds, an inactive or undisplayed level, or unavailable world access return
-    /// `LevelReadError::Unavailable`. A refused query does not call `accept`.
+    /// Returns `Ok(Some(hit))` on a match or `Ok(None)` when no hit is accepted. A stale
+    /// level returns [`LevelReadError::Stale`]. A negative or non-finite margin, non-finite
+    /// endpoints or padded bounds, a parked or undisplayed level, or unavailable world
+    /// access return [`LevelReadError::Unavailable`]. A refusal does not call `accept`.
     #[access(WorldOnly)]
     fn level_ray_trace_nearest_entity(
         &self,

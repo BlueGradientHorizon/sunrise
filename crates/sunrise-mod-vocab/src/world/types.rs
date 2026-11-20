@@ -1128,8 +1128,8 @@ pub struct MapState {
     pub colors: Vec<u8>,
 }
 
-/// One entity a level ray passes through (`LevelRef::ray_trace_entities`): what
-/// `ProjectileUtil.getEntityHitResult` tests for each candidate.
+/// One entity a level ray passes through, as tested by `ProjectileUtil.getEntityHitResult`.
+/// Returned by [`LevelRef::ray_trace_entities`] and [`LevelRef::ray_trace_nearest_entity`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 // exhaustive: the game builds it with a literal; mods only read it
 #[derive(sunrise_mod_api_macros::Wire)]

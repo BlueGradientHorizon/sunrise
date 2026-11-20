@@ -51,20 +51,38 @@ the saved entity rejoins.
 `level.visit_entities_in(host, min, max, &mut visit)` visits readable `EntityRef`s
 whose boxes intersect the given box. Face-only contact does not intersect, and
 inverted bounds are swapped on each axis. Ordinary entities come first, then item
-frames and paintings in join order and the dragon's body. The server then visits
+frames and paintings in join order (frames first on ties), then the dragon's body. The server then visits
 displays, markers, interactions, fishing hooks and placed non-spectator guests.
 On a client the walk sees the server-tracked entities, including tracked players,
 and visits the window's own player after the dragon's body unless spectating.
 Intersecting dragon parts come last on both sides.
 
-The visitor can read the handle through the same host. Return
-`ControlFlow::Continue(())` to keep walking or `ControlFlow::Break(())` to stop
-without checking later matches. The call returns `Ok(Continue(()))` on completion,
-including an empty query, or `Ok(Break(()))` if stopped. It returns
-`Err(LevelReadError::Stale)` for a stale level or `Err(LevelReadError::Unavailable)`
-for a non-finite bound, a parked or undisplayed level, or unavailable world access.
-A refused call does not run the visitor. Collect in the visitor only if you need
-a list after the call.
+The visitor can read the entity or run another shared query through the same host:
+no residency guard is held during the callback. Return `ControlFlow::Continue(())`
+to keep walking or `ControlFlow::Break(())` to stop before checking later matches.
+For example, find the first entity of a type without building a list:
+
+```rust,ignore
+use core::ops::ControlFlow::{Break, Continue};
+
+let mut first = None;
+let _ = level.visit_entities_in(host, min, max, &mut |entity| {
+    if entity.kind(host) == Some(wanted_kind) {
+        first = Some(entity);
+        Break(())
+    } else {
+        Continue(())
+    }
+})?;
+```
+
+The call returns `Ok(Continue(()))` on completion, including a valid empty query,
+or `Ok(Break(()))` if the visitor stopped it. `Err(LevelReadError::Stale)` means
+the level is stale; `Err(LevelReadError::Unavailable)` means the bounds are not
+finite, the level is parked or undisplayed, or world access is unavailable.
+Neither refusal runs the visitor. If you need to mutate multiple entities, push
+just the handles you need into your own list and use the mutable host after the
+visit returns.
 
 ## Finding the nearest entity hit
 
@@ -74,14 +92,17 @@ grows their boxes by `margin`, and clips them to the segment. It skips `exclude`
 (such as the shooter) and boxes the ray starts inside.
 
 The predicate runs once per geometric hit, in spatial traversal order rather than
-nearest-first order, and can read `hit.entity` through the same host. Return `true`
-to consider a hit. The smallest squared distance from `from` wins; exact ties keep
-the first visited hit. The query doesn't allocate a hit list. It returns `Ok(None)`
-if nothing is accepted, `Err(LevelReadError::Stale)` for a stale level, and
-`Err(LevelReadError::Unavailable)` for invalid ray geometry or unavailable world access.
+nearest-first order, even if a nearer hit has already been accepted. It can read
+`hit.entity` through the same host. Return `true` to consider a hit. The smallest
+squared distance from `from` wins; exact squared-distance ties keep the first
+visited hit. The query doesn't allocate a hit list. It returns `Ok(Some(hit))` on
+success and `Ok(None)` if nothing is accepted. A stale level returns
+`Err(LevelReadError::Stale)`; invalid ray geometry or unavailable world access
+returns `Err(LevelReadError::Unavailable)`. Neither refusal runs the predicate.
 
 Keep using `level.ray_trace_entities(host, from, to, margin, exclude)` when you need
-all hits or need to process hits in nearest-first order.
+all hits or depend on processing them nearest first. That call returns `Some` with
+an empty list on a valid miss and `None` if refused.
 
 ## Walking every entity in a level
 
@@ -96,23 +117,11 @@ Return `ControlFlow::Continue(())` to visit the next entity or
 on completion (including an empty level), or `Ok(ControlFlow::Break(()))` if the
 visitor stopped it. A stale handle returns `LevelReadError::Stale`. A remote client,
 a parked level, or an unavailable lookup member returns `LevelReadError::Unavailable`
-before the visitor runs. The block-entity item-tick view skips unavailable members
-instead. Outside that view, the walk checks all members' availability first, even
-if the visitor would stop on the first one.
-
-```rust,ignore
-use core::ops::ControlFlow;
-
-let mut first = None;
-let _ = level.visit_all_entities(host, &mut |entity| {
-    if let Some(position) = entity.position(host) {
-        first = Some((entity, position));
-        ControlFlow::Break(())
-    } else {
-        ControlFlow::Continue(())
-    }
-})?;
-```
+before the visitor runs. Outside the block-entity item-tick view, the walk checks
+that every eligible lookup member resolves before calling the visitor. This preserves
+the all-or-nothing read even if the visitor would stop at the first entity. An early
+stop saves the rest of the second pass, not the preflight. The item-tick view instead
+skips members it cannot resolve as it visits.
 
 The walk preserves lookup admission order across storage families, including
 removal and re-admission at the end. An entity spawned during play, such as a

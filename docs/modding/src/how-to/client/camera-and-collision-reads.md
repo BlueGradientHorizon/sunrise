@@ -148,7 +148,9 @@ again within the same client level, the old handle reads again. A login, a recon
 into another level replaces the client level: the old handle stays stale for good, and the mod calls
 `host.level` again once the server reopens the level. A respawn in the same level drops the viewed
 levels too, but keeps the client level, so the old handle reads again after the reopen. Writes,
-server-only reads, the other level reads and the entity reads (`visit_entities_in`) refuse a viewed level.
+server-only reads and the other level reads refuse viewed levels. In particular,
+`visit_entities_in` and `ray_trace_nearest_entity` return `Err(LevelReadError::Unavailable)`
+for a current handle to an open viewed level; they do not query the displayed level instead.
 
 ## Crosshair reads
 
@@ -169,6 +171,23 @@ behind a targeted entity.
 `ClientHost::view_hit()` and `raycast(distance)` cast their own ray along the view, up
 to 1024 blocks, and hit blocks in loaded chunks only: far terrain is never hit. Both
 return `None` on a miss.
+
+To query the displayed level independently of the committed crosshair pick, use
+[`visit_entities_in`](../world/spawning.md#visiting-entities-in-a-box) for a box, or
+`ray_trace_nearest_entity` for one entity hit. The latter clips only entity boxes,
+not blocks, and uses the segment and exclusions you supply, not vanilla's pick policy.
+For example, filter the ray using a shared read from the same client host:
+
+```rust,ignore
+let hit = level.ray_trace_nearest_entity(host, from, to, margin, exclude, &mut |hit| {
+    hit.entity.kind(host) == Some(wanted_kind)
+})?;
+```
+
+`Ok(None)` means no hit passed the predicate, not that the read was refused. The
+predicate sees all geometric hits in spatial traversal order; on an exact
+squared-distance tie the first visited wins. See [entity rays](../world/spawning.md#finding-the-nearest-entity-hit)
+for the geometry and when to keep the ordered all-hit query.
 
 A client `EntityRef` supports `bounding_box(host)`, `eye_height(host)` and
 `eye_position(host)`. For the local player these use the current predicted body and pose;
