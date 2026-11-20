@@ -146,8 +146,11 @@ impl mod_api::LoopContext for CraftingRemainderView<'_> {
     fn is_in_tag(&self, item: mod_api::ItemKey, tag: mod_api::TagKey) -> Option<bool> {
         self.context.is_in_tag(item, tag)
     }
-    fn items_in_tag(&self, tag: mod_api::TagKey) -> Option<&[mod_api::ItemKey]> {
-        self.context.items_in_tag(tag)
+    fn item_count(&self, tag: mod_api::TagKey) -> Option<usize> {
+        self.context.item_count(tag)
+    }
+    fn item_at(&self, tag: mod_api::TagKey, index: usize) -> Option<mod_api::ItemKey> {
+        self.context.item_at(tag, index)
     }
     fn mod_recipe_property_contains(&self, set: &str, item: mod_api::ItemKey) -> bool {
         self.context.mod_recipe_property_contains(set, item)
