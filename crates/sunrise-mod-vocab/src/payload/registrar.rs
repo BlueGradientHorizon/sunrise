@@ -92,8 +92,7 @@ impl PayloadRegistrar<'_> {
     /// on it with `PlayerRef::send_payload` (vanilla's 1,048,576-byte limit)
     /// and `server`, when given, receives what a client sends on it (vanilla's
     /// 32,767-byte limit), on the main thread. Several mods may declare one raw
-    /// channel; each receives it once, in mod load order. A handler that fails or
-    /// stays busy past its deadline loses only its own delivery (logged, its
+    /// channel; each receives it once, in mod load order. A handler that fails loses only its own delivery (logged, its
     /// staged work rolled back): the player stays connected and the other mods'
     /// copies still run. `minecraft:` and `sunrise:` ids, and an id a typed
     /// payload uses, refuse load.
