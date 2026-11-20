@@ -333,11 +333,11 @@ pub trait BlockEntityDrawContext {
     fn game_time(&self) -> i64 {
         unimplemented!("BlockEntityDrawContext::draw_game_time")
     }
-    /// The frame on this client's animation clock, in ticks with the partial tick: what
-    /// turns `spin` parts. It counts the ticks this client's level has run (vanilla's
-    /// `TextureManager.tick` count): pausing and `/tick freeze` hold it, and the server's
-    /// time updates never set it back, unlike `game_time`. Each client counts from its
-    /// own start, so it means nothing on the server or to another client.
+    /// The frame on this client's animation clock, in ticks: what turns `spin` parts.
+    /// It counts the ticks this client's level has run plus a phase that holds on pause
+    /// or `/tick freeze` and resumes without a jump. `/tick step` advances it by whole
+    /// ticks. The server's time updates never set it back, unlike `game_time`. Each
+    /// client counts from its own start, so it means nothing on the server or to another client.
     fn animation_time(&self) -> f64 {
         unimplemented!("BlockEntityDrawContext::draw_animation_time")
     }

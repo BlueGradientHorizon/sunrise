@@ -365,11 +365,12 @@ return the styled advance rounded up, as vanilla `Font.width` does. Use half tha
 to centre a line. Kept text retains its glyphs, including obfuscated glyph choices,
 until it is drawn again. Resource reload invalidates kept geometry.
 
-Spinning parts use the client's animation clock: level-running texture ticks plus the
-level's partial tick, not the camera's partial tick or the server's day time. Pausing
-holds that clock; `/tick freeze` holds the level partial at 1 and stops texture ticks.
-Camera motion during a freeze does not spin a part backwards. Server time updates do
-not reset animation. Held-arm, hand, mob and scene draws use this same level partial.
+Spinning parts use the client's animation clock: level-running texture ticks plus an
+animation phase, not the camera's partial tick or the server's day time. Pausing and
+`/tick freeze` hold the animation where it was and resume without a jump; `/tick step`
+advances it by whole ticks. The world's own render interpolation still uses 1 while
+frozen. Camera motion and server time updates do not reset animation. Held-arm, hand,
+mob and scene draws share this animation clock.
 
 Directional shading on `quad` and `cube` follows `spin`, but light stays fixed by default.
 To use the level's sky and block light, call `BlockEntityDrawContext::level_light` in a world

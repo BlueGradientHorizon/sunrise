@@ -311,6 +311,9 @@ pub struct FixedStep {
     manager: ServerTickRateManager,
     now: std::time::Duration,
     pause: bool,
+    animation_phase: f64,
+    /// Offset from the live residual; `None` means the animation must rebase before resuming.
+    animation_offset: Option<f64>,
     sprint_checked: bool,
     sprint_report: Option<SprintReport>,
     tick_times: [i64; SAMPLES],
@@ -344,6 +347,8 @@ impl FixedStep {
             manager: ServerTickRateManager::default(),
             now: std::time::Duration::ZERO,
             pause: false,
+            animation_phase: 0.0,
+            animation_offset: Some(0.0),
             sprint_checked: false,
             sprint_report: None,
             tick_times: [0; SAMPLES],
@@ -417,6 +422,28 @@ impl FixedStep {
     pub fn reset(&mut self) {
         self.timer = Timer::new(20.0, self.now_ms());
         self.timer.update_pause_state(self.pause);
+        self.animation_offset = None;
+    }
+    /// Sample mod animation time after the frame's packets and client ticks. Freeze holds the
+    /// last drawn phase even during single steps, which advance only the whole tick count.
+    pub fn update_animation_phase(&mut self) {
+        if self.frozen() {
+            self.animation_offset = None;
+        } else if !self.pause {
+            let live = f64::from(self.window_fraction());
+            if let Some(offset) = self.animation_offset {
+                self.animation_phase = live + offset;
+            } else {
+                // The live residual kept running while the level was frozen. Rebase instead
+                // of copying it, so the first resumed frame doesn't snap or repace world ticks.
+                self.animation_offset = Some(self.animation_phase - live);
+            }
+        }
+    }
+    /// Add to the number of ticks the level has run to get this frame's mod animation time.
+    /// This is not a world or camera partial tick and need not be between zero and one.
+    pub fn animation_phase(&self) -> f64 {
+        self.animation_phase
     }
     /// The partial tick for interpolation (`getGameTimeDeltaPartialTick(false)`).
     pub fn fraction(&self) -> f64 {
@@ -609,6 +636,45 @@ mod tests {
         t.update_pause_state(false);
         assert_eq!(t.game_time_delta_partial_tick(false), 0.5);
     }
+    #[test]
+    fn animation_phase_holds_and_rebases_without_changing_world_pacing() {
+        let mut clock = FixedStep::new(false);
+        let frame = |clock: &mut FixedStep, ms, target, running_ticks| {
+            let mut ran = 0;
+            for _ in 0..clock.advance(std::time::Duration::from_millis(ms), target) {
+                ran += u32::from(clock.world_runs());
+            }
+            assert_eq!(ran, running_ticks);
+            clock.update_animation_phase();
+            clock.end_frame(false);
+        };
+
+        frame(&mut clock, 25, 50.0, 0);
+        assert_eq!(clock.animation_phase(), 0.5);
+
+        // A freeze arrives before ticks, after the previous frame showed half a tick.
+        clock.set_frozen(true);
+        frame(&mut clock, 25, 50.0, 0);
+        assert_eq!(clock.animation_phase(), 0.5);
+        assert_eq!(clock.fraction(), 1.0);
+        assert_eq!(clock.camera_fraction(), 0.0);
+
+        assert!(clock.start_step(1));
+        frame(&mut clock, 50, 50.0, 1);
+        assert_eq!(clock.animation_phase(), 0.5);
+
+        clock.set_frozen(false);
+        frame(&mut clock, 25, 100.0, 0);
+        assert_eq!(clock.animation_phase(), 0.5);
+        assert_eq!(clock.camera_fraction(), 0.25);
+
+        frame(&mut clock, 25, 100.0, 0);
+        assert_eq!(clock.animation_phase(), 0.75);
+        frame(&mut clock, 50, 100.0, 1);
+        // The whole tick count grew by one as the live residual wrapped.
+        assert_eq!(clock.animation_phase(), 0.25);
+    }
+
     #[test]
     fn frozen_step_runs_exactly_the_requested_ticks() {
         let mut m = ServerTickRateManager::default();
