@@ -24,7 +24,7 @@ impl Build {
             std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))
         };
         let bytes = read(sdk::INDEX)?;
-        let sdk = sdk::Index::read(&bytes, commit).map_err(|e| e.to_string())?;
+        let sdk = sdk::Index::read_for_fit(&bytes, commit).map_err(|e| e.to_string())?;
         let surface_bytes = read(SURFACE)?;
         sdk.verify(SURFACE, surface_bytes.as_slice())
             .map_err(|e| e.to_string())?;

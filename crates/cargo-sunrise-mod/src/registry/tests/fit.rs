@@ -299,6 +299,48 @@ fn versions_without_sunrise_do_not_need_sdk_data() {
 }
 
 #[test]
+fn a_build_with_another_compiled_package_format_still_gets_verdicts() {
+    let r = Registry::new();
+    r.add("coords", "1.0.0", "26.3", "");
+    r.edit("coords", |t| format!("{t}sunrise='{RELEASE_TAG}'\n"));
+    let root = r.0.path();
+    let releases = root.join("releases.json");
+    fs::write(
+        &releases,
+        json!([{"tag": RELEASE_TAG, "commit": RELEASE_PIN}]).to_string(),
+    )
+    .unwrap();
+    let dir = root.join("sdk");
+    sdk(
+        &dir,
+        RELEASE_PIN,
+        mod_surface::SCHEMA,
+        "api",
+        API,
+        json!({}),
+    );
+    let sdk_path = dir.join(RELEASE_PIN).join(sdk::INDEX);
+    let mut sdk: Value = serde_json::from_slice(&fs::read(&sdk_path).unwrap()).unwrap();
+    sdk["package_format"] = json!(sdk::PACKAGE_FORMAT + 1);
+    fs::write(&sdk_path, sdk.to_string()).unwrap();
+
+    let index = r
+        .build(&[
+            "--releases",
+            releases.to_str().unwrap(),
+            "--sdk-data",
+            dir.to_str().unwrap(),
+        ])
+        .unwrap();
+    let version = &index.project("coords").unwrap().versions[0];
+    assert_eq!(
+        serde_json::to_value(&version.verdicts).unwrap(),
+        json!({(RELEASE_TAG): {"verdict": "made-for", "targets": []}})
+    );
+    assert!(index.unjudged.is_empty());
+}
+
+#[test]
 fn an_unsupported_nightly_schema_leaves_stable_verdicts_and_lists_nightly_as_unjudged() {
     for unsupported_surface in [true, false] {
         let r = Registry::new();

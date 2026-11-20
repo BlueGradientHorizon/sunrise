@@ -31,7 +31,7 @@ fn index(files: &[(&str, &[u8])]) -> Index {
             date: "2026-11-13".into(),
             nightly: None,
         },
-        package_format: PACKAGE_FORMAT,
+        package_format: u64::from(PACKAGE_FORMAT),
         toolchain: Toolchain {
             rust: "1.99.1".into(),
         },

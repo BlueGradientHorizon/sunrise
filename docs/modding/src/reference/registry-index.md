@@ -118,7 +118,8 @@ under `<dir>/<commit>/`. If no content or native mod version declares `sunrise`,
 which supplies per-project source metadata.
 
 `registry build` verifies `surface.json` against the supplied index and checks the commit in each build-data file.
-It does not authenticate the index or the unpacked files, or fetch SDK data. Missing or malformed files, a
+It does not authenticate the index or the unpacked files, fetch SDK data, or require the SDK's compiled
+`package_format` to match: fit checks never open the compiled packages. Missing or malformed files, a
 surface checksum mismatch, or a file naming the wrong commit fail the build and name the release. An unsupported
 surface or build-data schema instead produces one warning per build commit. No version gets a verdict for that
 build; the index lists each affected stable tag or `nightly` in `unjudged` with the reason, and publishes the
