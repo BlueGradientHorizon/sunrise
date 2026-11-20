@@ -1,27 +1,87 @@
-//! A guest's result take is one action, including every trade of a quick move. This collect
-//! hook has no veto or stale answer: its validated offer replaces the live offer and stands.
+//! A subscribed guest's merchant result click is one savepoint. Each take has its own
+//! frozen menu plan, collect and apply; a later refusal aborts every earlier iteration.
 use super::{
     Game,
     decided_action::Epoch,
+    lan_trading::{MerchantRun, opaque_villager},
+    stacked_on_other::Pickup,
+    trading::MadeMaps,
     transactions::{
         After,
-        decision::{InvalidReason, MenuId, Reply},
+        decision::{Identity, OwnerStamp, Reply, Side},
     },
 };
-use std::{cell::Cell, collections::HashMap, sync::OnceLock};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use sunrise_client::{
     advancements::Advancement,
+    items::ItemStack,
     lan::conn::transaction_packets::{Packets, Scope},
-    merchant::MerchantOffer,
+    menu::{Input, Menu, RuleAnswers, StackedOutcome, StoredRules},
+    merchant::Event,
 };
 use sunrise_protocol::packets::play;
 
-/// The take's own menu identity. The guest's hub menu id stays free for the pickup decision
-/// (`item_stacked_on_other`) the same click may make inside the take; a second take opened from
-/// inside this one finds this id busy.
-fn take_route() -> MenuId {
-    static ID: OnceLock<MenuId> = OnceLock::new();
-    *ID.get_or_init(MenuId::fresh)
+/// The live owner's generation covers its slots, offer list, selection, and packet snapshot.
+/// The hub owns cursor and player slots separately. A quick move reads the whole destination
+/// range; one pickup must not overwrite unrelated player-slot writes made by its listener.
+struct TakeReads {
+    conn: u32,
+    window: i32,
+    mob: u32,
+    stamp: OwnerStamp,
+    hub_generation: u64,
+    carried: Option<ItemStack>,
+    creative: bool,
+    inventory: Option<Vec<Option<ItemStack>>>,
+    hotbar: Option<(usize, Option<ItemStack>)>,
+    offhand: Option<Option<ItemStack>>,
+    map_id: Option<i32>,
+}
+
+impl TakeReads {
+    fn fresh(&self, game: &Game<'_>) -> bool {
+        let Some(host) = game.lan.as_ref() else {
+            return false;
+        };
+        let Some(guest) = host.hub.guest(self.conn) else {
+            return false;
+        };
+        host.menus
+            .get(&self.conn)
+            .is_some_and(|m| m.merchant.stamp() == self.stamp)
+            && host
+                .play
+                .get(&self.conn)
+                .and_then(|p| p.merchant.as_ref())
+                .is_some_and(|gm| gm.window == self.window && gm.merchant.mob == Some(self.mob))
+            && game
+                .mobs
+                .iter()
+                .any(|m| m.id == self.mob && m.alive() && !m.removed)
+            && guest.menu_generation == self.hub_generation
+            && guest.carried == self.carried
+            && guest.creative() == self.creative
+            && self
+                .inventory
+                .as_deref()
+                .is_none_or(|kept| kept == &guest.inventory[..36])
+            && self
+                .hotbar
+                .as_ref()
+                .is_none_or(|(slot, kept)| &guest.inventory[*slot] == kept)
+            && self
+                .offhand
+                .as_ref()
+                .is_none_or(|kept| &guest.offhand == kept)
+            && self.map_id.is_none_or(|id| game.peek_map_id() == id)
+    }
+}
+
+struct TakePlan {
+    menu: Menu,
+    made: MadeMaps,
+    player_slots: Vec<(usize, Option<ItemStack>)>,
+    offhand: Option<Option<ItemStack>>,
 }
 
 // Keep typed snapshots in closures so no storage's private representation escapes its owner.
@@ -31,8 +91,9 @@ pub(in crate::game) struct Journal {
     guests: HashMap<u32, Restore>,
     mobs: HashMap<u32, Restore>,
     sequences: Option<sunrise_client::random_sequences::RandomSequences>,
-    /// Why the listener's answer was refused; the take then ends as an invalid action.
-    refused: Option<InvalidReason>,
+    active: Option<u32>,
+    pub(in crate::game) correct_on_abort: std::collections::BTreeSet<(u32, i32)>,
+    pub(in crate::game) refused_clicks: std::collections::BTreeSet<(u32, i32)>,
 }
 impl Journal {
     pub(in crate::game) fn merge(&mut self, child: Self) {
@@ -45,9 +106,7 @@ impl Journal {
         if self.sequences.is_none() {
             self.sequences = child.sequences;
         }
-        if self.refused.is_none() {
-            self.refused = child.refused;
-        }
+        self.correct_on_abort.extend(child.correct_on_abort);
     }
     pub(in crate::game) fn rollback(self, game: &mut Game<'_>) {
         for restore in self.guests.into_values() {
@@ -67,64 +126,339 @@ pub(in crate::game) enum Effect {
     Orb([f64; 3], u32),
     Drops(u32, Vec<sunrise_client::items::ItemStack>),
     Reward(u128, Advancement),
+    Notice(u128, String, u32),
 }
 
 impl Game<'_> {
     pub(super) fn lan_merchant_click(&mut self, conn: u32, p: &play::ContainerClick) -> bool {
-        if !mod_api::__private::listened(mod_api::HookId::TradeWithVillager)
-            || p.slot != 2
-            || !matches!(p.input, 0 | 1 | 2 | 4)
-        {
+        let input = match (p.slot, p.input) {
+            (2, 0) => Input::Pickup,
+            (2, 1) => Input::QuickMove,
+            (2, 2) => Input::Swap,
+            (2, 4) => Input::Throw,
+            _ => return self.lan_merchant_click_plain(conn, p),
+        };
+        if self.merchant_click_in_progress(conn) {
+            return true;
+        }
+        if !mod_api::__private::listened(mod_api::HookId::TradeWithVillager) {
             return self.lan_merchant_click_plain(conn, p);
         }
-        let open = self
-            .lan
-            .as_ref()
-            .and_then(|h| h.play.get(&conn))
-            .and_then(|p| p.merchant.as_ref())
-            .is_some_and(|m| m.window == p.container && m.merchant.mob.is_some());
-        let Some(actor) = open.then(|| self.guest_actor(conn)).flatten() else {
+        let Some(mob) = self.lan.as_ref().and_then(|host| {
+            let gm = host.play.get(&conn)?.merchant.as_ref()?;
+            (gm.window == p.container)
+                .then_some(gm.merchant.mob)
+                .flatten()
+        }) else {
             return self.lan_merchant_click_plain(conn, p);
         };
-        let handled = Cell::new(true);
-        let applied = self.decided_action(
-            "trade_with_villager",
-            take_route(),
-            actor,
-            Epoch::Off,
-            |_| true,
-            |game| {
-                game.journal_merchant_take(conn);
-                handled.set(game.lan_merchant_click_plain(conn, p));
-                if Scope::refused() {
-                    return Reply::Failed;
-                }
-                match game
-                    .transactions
-                    .last_mut()
-                    .and_then(|level| level.trades.refused.take())
-                {
-                    Some(reason) => Reply::Invalid(reason),
-                    None => Reply::Allow,
-                }
-            },
-            |_| {},
-        );
-        if !applied {
-            // The client predicted a take. The restored menu, including the offer answer,
-            // goes back even on listener failure, with the same handled result.
-            self.resend_merchant_take(conn);
+        if self.mobs.iter().find(|m| m.id == mob).is_some_and(|m| {
+            opaque_villager(
+                &self.stations().professions,
+                m.species(),
+                &m.extra.profession,
+            )
+        }) {
+            return self.lan_merchant_click_plain(conn, p);
         }
-        handled.get()
-    }
-
-    fn journal_merchant_take(&mut self, conn: u32) {
+        let Some(actor) = self.guest_actor(conn) else {
+            self.resend_merchant_take(conn, p.container);
+            return true;
+        };
+        let identity = Identity {
+            side: Side::Server,
+            world: actor.epoch(),
+            actor,
+            target: mod_api::EntityRef::new(actor.epoch(), mob),
+        };
+        let route = self
+            .lan
+            .as_mut()
+            .unwrap()
+            .menus
+            .entry(conn)
+            .or_default()
+            .merchant
+            .id();
+        let seal = self.transaction_open();
         self.journal_guest_merchant(conn);
-        if let Some(level) = self.transactions.last_mut()
-            && level.packets.is_none()
-        {
+        let level = self.transactions.last_mut().unwrap();
+        level.trades.active = Some(conn);
+        level.trades.correct_on_abort.insert((conn, p.container));
+        if level.packets.is_none() {
             level.packets = Some(Scope::begin());
         }
+        // The coordinator contains listener unwinds; this guard also closes the click if a
+        // lower menu rule panics during planning or a provisional guest turn unwinds.
+        let accepted = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.run_merchant_take(conn, p, input, identity, route)
+        }))
+        .unwrap_or(false);
+        if Scope::refused() {
+            log::warn!(
+                "trade_with_villager: merchant packet batch exceeded its retained-byte budget"
+            );
+        }
+        self.transaction_close(&seal, accepted && !Scope::refused());
+        true
+    }
+
+    pub(super) fn merchant_click_in_progress(&self, conn: u32) -> bool {
+        self.transactions
+            .iter()
+            .any(|level| level.trades.active == Some(conn))
+    }
+
+    fn run_merchant_take(
+        &mut self,
+        conn: u32,
+        p: &play::ContainerClick,
+        input: Input,
+        identity: Identity,
+        route: super::transactions::decision::MenuId,
+    ) -> bool {
+        let mob = identity.target.id();
+        let button = i32::from(p.button);
+        let mut stacked = None::<StackedOutcome>;
+        let mut rules = None;
+        if input == Input::Pickup && Self::stacked_listened() {
+            let host = self.lan.as_ref().unwrap();
+            let gm = host.play[&conn].merchant.as_ref().unwrap();
+            let answers = Rc::new(RuleAnswers::default());
+            let mut seen = None;
+            self.read_merchant_menu(conn, gm, MerchantRun::Plain, |menu, env| {
+                seen = menu.stacked_click(env, 2, button, input);
+                if seen.is_some() {
+                    super::stacked_on_other::plan_click(menu, env, 2, button, &answers);
+                }
+            });
+            if let Some(frozen) = seen {
+                let stamp = host.menus[&conn].merchant.stamp();
+                let hub_generation = host.hub.guest(conn).expect("planned guest").menu_generation;
+                let same = frozen.clone();
+                if self.stacked_pickup(
+                    route,
+                    frozen,
+                    |game| {
+                        let host = game.lan.as_ref()?;
+                        let guest = host.hub.guest(conn)?;
+                        let gm = host.play.get(&conn)?.merchant.as_ref()?;
+                        (host.menus.get(&conn)?.merchant.stamp() == stamp
+                            && gm.window == p.container
+                            && gm.merchant.mob == Some(mob)
+                            && guest.menu_generation == hub_generation
+                            && gm.slots[2] == same.clicked
+                            && guest.carried == same.carried)
+                            .then(|| same.clone())
+                    },
+                    |_, answer| stacked = answer.cloned(),
+                ) == Pickup::Refused
+                {
+                    return false;
+                }
+                rules = Some(answers);
+            }
+        }
+
+        let mut previous = None;
+        let mut throw_amount = 1;
+        let mut edited = false;
+        let mut traded = false;
+        let mut refresh = false;
+        loop {
+            let Some(host) = self.lan.as_ref() else {
+                return false;
+            };
+            let Some(guest) = host.hub.guest(conn) else {
+                return false;
+            };
+            let Some(gm) = host.play.get(&conn).and_then(|p| p.merchant.as_ref()) else {
+                return false;
+            };
+            let Some(owner) = host.menus.get(&conn) else {
+                return false;
+            };
+            let mut reads = TakeReads {
+                conn,
+                window: p.container,
+                mob,
+                stamp: owner.merchant.stamp(),
+                hub_generation: guest.menu_generation,
+                carried: guest.carried.clone(),
+                creative: guest.creative(),
+                inventory: (input == Input::QuickMove).then(|| guest.inventory[..36].to_vec()),
+                hotbar: (input == Input::Swap && (0..9).contains(&button))
+                    .then(|| (button as usize, guest.inventory[button as usize].clone())),
+                offhand: (input == Input::Swap && button == 40).then(|| guest.offhand.clone()),
+                map_id: None,
+            };
+            if input == Input::Throw && button != 0 && previous.is_none() {
+                throw_amount = gm.slots[2].as_ref().map_or(0, |stack| stack.count);
+            }
+            let stored = rules.as_ref().map(|answers| StoredRules(answers));
+            let run = stored.as_ref().map_or(MerchantRun::Plain, |stored| {
+                MerchantRun::Decided(stored, stacked.as_ref())
+            });
+            let mut moved = None;
+            let map_id = self.peek_map_id();
+            let Some((menu, made)) = self.read_merchant_menu(conn, gm, run, |menu, env| {
+                moved =
+                    menu.merchant_result_step(env, button, input, previous.as_ref(), throw_amount);
+            }) else {
+                return false;
+            };
+            if !made.is_empty() {
+                reads.map_id = Some(map_id);
+            }
+            let session = menu.merchant.as_ref().expect("planned merchant");
+            refresh |= session
+                .events
+                .iter()
+                .any(|event| matches!(event, Event::OffersRefreshed));
+            let trade = session.events.iter().find_map(|event| match event {
+                Event::Traded(index, offer) => Some((*index, offer.clone())),
+                _ => None,
+            });
+            let player_slots = (0..36)
+                .filter_map(|slot| {
+                    (menu.player_item(slot) != guest.inventory[slot].as_ref())
+                        .then(|| (slot, menu.player_item(slot).cloned()))
+                })
+                .collect();
+            let offhand = (menu.player_item(40) != guest.offhand.as_ref())
+                .then(|| menu.player_item(40).cloned());
+            let plan = TakePlan {
+                menu,
+                made,
+                player_slots,
+                offhand,
+            };
+            if !reads.fresh(self) {
+                return false;
+            }
+            let Some((index, offer)) = trade else {
+                // Untaken/handled cases can still have a cursor change, but no trade hook.
+                self.apply_merchant_take(&reads, plan);
+                break;
+            };
+            let plan = RefCell::new(Some(plan));
+            let mut changed = false;
+            let accepted = self.decided_action_on(
+                "trade_with_villager",
+                route,
+                identity,
+                Epoch::Off,
+                |game| reads.fresh(game),
+                |game| {
+                    let mut slot = plan.borrow_mut();
+                    let plan = slot.as_mut().expect("frozen trade");
+                    let crafted = std::mem::take(&mut plan.menu.crafted_counts);
+                    if !crafted.is_empty() {
+                        game.as_guest(conn, |g| {
+                            for (item, count) in crafted {
+                                g.award_stat("crafted", &item, count);
+                            }
+                        });
+                    }
+                    let kind = game
+                        .mobs
+                        .iter()
+                        .find(|m| m.id == mob)
+                        .map(super::native_hooks::mob_kind);
+                    let Some(kind) = kind else {
+                        return Reply::Failed;
+                    };
+                    let mut answer = (*offer).clone();
+                    let Some(outcome) = game.as_guest(conn, |g| {
+                        g.record_merchant_trade(Some(mob), &offer.result);
+                        g.native_trade_with_villager(mob, &kind, &mut answer)
+                    }) else {
+                        return Reply::Failed;
+                    };
+                    match outcome {
+                        Ok(true) => {
+                            let session = plan.menu.merchant.as_mut().expect("planned session");
+                            // A level-up may recalculate all prices after the Traded snapshot.
+                            // Preserve it when the listener did not edit this special price.
+                            if answer.special_price_diff == offer.special_price_diff {
+                                answer.special_price_diff =
+                                    session.offers[index].special_price_diff;
+                            }
+                            session.offers[index] = answer;
+                            changed = true;
+                            plan.menu.merchant_update_result(game.items());
+                            Reply::Allow
+                        }
+                        Ok(false) => Reply::Allow,
+                        Err(reason) => Reply::Invalid(reason),
+                    }
+                },
+                |game| game.apply_merchant_take(&reads, plan.take().expect("one frozen take")),
+            );
+            if !accepted || Scope::refused() {
+                return false;
+            }
+            traded = true;
+            edited |= changed;
+            if moved.is_none() {
+                break;
+            }
+            previous = moved;
+        }
+        if traded && let Some(guest) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) {
+            self.after_commit(After::Trade(Box::new(Effect::Notice(
+                guest.uuid,
+                guest.name.clone(),
+                mob,
+            ))));
+        }
+        self.send_merchant_take(conn, p.container, refresh || edited);
+        true
+    }
+
+    /// Install only the writes calculated by the plan; listener writes outside its read set stand.
+    fn apply_merchant_take(&mut self, reads: &TakeReads, mut plan: TakePlan) {
+        let conn = reads.conn;
+        let mob = reads.mob;
+        self.journal_guest_merchant(conn);
+        // The crafted stats run in fire for a take and are already consumed in that case.
+        let crafted = std::mem::take(&mut plan.menu.crafted_counts);
+        if !crafted.is_empty() {
+            self.as_guest(conn, |g| {
+                for (item, count) in crafted {
+                    g.award_stat("crafted", &item, count);
+                }
+            });
+        }
+        self.register_exploration_maps(plan.made);
+        let (session, _) = self.merchant_apply(
+            plan.menu.merchant.take().expect("planned merchant"),
+            Some(mob),
+        );
+        let host = self.lan.as_mut().expect("validated merchant host");
+        let gi = host
+            .hub
+            .guests
+            .connection_index(conn)
+            .expect("validated guest");
+        host.hub.guests.update(gi, |guest| {
+            for (slot, item) in plan.player_slots {
+                guest.inventory[slot] = item;
+            }
+            if let Some(offhand) = plan.offhand {
+                guest.offhand = offhand;
+            }
+            guest.carried = plan.menu.carried.take();
+        });
+        host.menus.get_mut(&conn).unwrap().merchant.restore(());
+        let gm = host
+            .play
+            .get_mut(&conn)
+            .and_then(|p| p.merchant.as_mut())
+            .expect("validated merchant window");
+        gm.slots = std::array::from_fn(|slot| plan.menu.slot(slot).cloned());
+        gm.merchant.session = session;
+        self.merchant_drops(conn, std::mem::take(&mut plan.menu.dropped));
     }
 
     /// Any write to an open merchant menu, including a MerchantRef edit to another guest,
@@ -159,6 +493,7 @@ impl Game<'_> {
             conn,
             Box::new(move |game| {
                 if let Some(host) = game.lan.as_mut() {
+                    host.menus.entry(conn).or_default().merchant.restore(());
                     let play = host.play.entry(conn).or_default();
                     play.merchant = Some(merchant);
                     play.stats = stats;
@@ -227,16 +562,25 @@ impl Game<'_> {
         }
     }
 
-    fn resend_merchant_take(&mut self, conn: u32) {
-        let Some(mut gm) = self
-            .lan
-            .as_mut()
-            .and_then(|h| h.play.get_mut(&conn))
-            .and_then(|p| p.merchant.take())
-        else {
+    pub(in crate::game) fn resend_merchant_take(&mut self, conn: u32, window: i32) {
+        self.send_merchant_take(conn, window, true);
+    }
+
+    fn send_merchant_take(&mut self, conn: u32, window: i32, offers: bool) {
+        let Some(host) = self.lan.as_mut() else {
             return;
         };
-        self.lan_send_offers(conn, &mut gm, true);
+        let Some(open) = host.play.get_mut(&conn).map(|p| &mut p.merchant) else {
+            return;
+        };
+        if !open.as_ref().is_some_and(|gm| gm.window == window) {
+            return;
+        }
+        let mut gm = open.take().expect("matching window");
+        host.menus.entry(conn).or_default().merchant.restore(());
+        if offers {
+            self.lan_send_offers(conn, &mut gm, true);
+        }
         self.lan_send_merchant_content(conn, &mut gm);
         if let Some(host) = self.lan.as_mut() {
             host.play.entry(conn).or_default().merchant = Some(gm);
@@ -245,39 +589,6 @@ impl Game<'_> {
 
     pub(super) fn merchant_take_active(&self) -> bool {
         self.transactions.iter().any(|l| l.packets.is_some())
-    }
-
-    /// Collect a post-take offer, preserving the distinction between a bad price and a bad stack.
-    pub(super) fn merchant_trade_answer(&mut self, id: u32, kind: &str, offer: &mut MerchantOffer) {
-        use super::api_values::{OfferWriteError, TryIntoApi, checked_merchant_offer};
-        if !mod_api::__private::listened(mod_api::HookId::TradeWithVillager)
-            || self
-                .transactions
-                .last()
-                .is_some_and(|level| level.trades.refused.is_some())
-        {
-            return;
-        }
-        let result = offer
-            .try_into_api()
-            .map_err(|_| InvalidReason::Plan)
-            .and_then(|mut answer| {
-                mod_api::dispatch_trade_with_villager(self, id, kind, &mut answer);
-                checked_merchant_offer(&answer, self.items()).map_err(|reason| {
-                    log::warn!("trade_with_villager: invalid offer answer: {reason:?}");
-                    match reason {
-                        OfferWriteError::NonFinitePrice => InvalidReason::Numeric,
-                        OfferWriteError::Stack(_) => InvalidReason::Plan,
-                    }
-                })
-            });
-        match result {
-            Ok(live) => *offer = live,
-            Err(reason) if self.merchant_take_active() => {
-                self.transactions.last_mut().unwrap().trades.refused = Some(reason);
-            }
-            Err(_) => {}
-        }
     }
 
     pub(super) fn merchant_drops(
@@ -334,6 +645,7 @@ impl Game<'_> {
     pub(in crate::game) fn commit_merchant_effect(&mut self, effect: Effect) {
         match effect {
             Effect::Packets(packets) => packets.publish(),
+            Effect::Notice(uuid, name, mob) => self.native_player_trade(uuid, &name, mob),
             Effect::Orb(at, value) => self.add_orb(at, value),
             Effect::Drops(conn, stacks) => {
                 if let Some(gi) = self

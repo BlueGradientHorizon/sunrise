@@ -687,8 +687,12 @@ pub(super) fn emit<'a>(
             Contract::Replace => "None",
             _ => "",
         };
-        // Reuse the exact host and drawing conversions for generated game-side calls.
-        if in_game && !declaration_only {
+        // A call site that dispatches directly owns its conversion. Emit the game-side adapter
+        // only for placeholders and call sites that delegate to it.
+        if in_game
+            && !declaration_only
+            && (fill || super::has_call(&method.block, &format!("fire_{name}")))
+        {
             // A scoped read hook can run against either the game or a borrowed
             // tick view. Its native receiver carries the selected host.
             let scoped_read_host = target.contains("::NativeHookHost<");

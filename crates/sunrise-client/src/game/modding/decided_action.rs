@@ -111,14 +111,36 @@ impl Game<'_> {
         fire: impl FnOnce(&mut Game<'_>) -> Reply,
         perform: impl FnOnce(&mut Game<'_>) + 'p,
     ) -> bool {
+        self.decided_action_on(
+            name,
+            route,
+            Identity {
+                side: Side::Server,
+                world: actor.epoch(),
+                actor,
+                target: actor,
+            },
+            epoch,
+            fresh,
+            fire,
+            perform,
+        )
+    }
+
+    /// Run a decision whose action target is distinct from its acting player.
+    #[allow(clippy::too_many_arguments)]
+    pub(in crate::game) fn decided_action_on<'p>(
+        &mut self,
+        name: &'static str,
+        route: MenuId,
+        identity: Identity,
+        epoch: Epoch,
+        fresh: impl Fn(&Game<'_>) -> bool + 'p,
+        fire: impl FnOnce(&mut Game<'_>) -> Reply,
+        perform: impl FnOnce(&mut Game<'_>) + 'p,
+    ) -> bool {
         #[cfg(test)]
         DECIDED.set(DECIDED.get() + 1);
-        let identity = Identity {
-            side: Side::Server,
-            world: actor.epoch(),
-            actor,
-            target: actor,
-        };
         let target = Action {
             id: route,
             shared: Rc::new(Shared {

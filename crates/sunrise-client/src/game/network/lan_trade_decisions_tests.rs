@@ -5,11 +5,13 @@ use mod_api::{
     ServerHost, TradeWithVillagerEvent,
 };
 use std::cell::{Cell, RefCell};
+use std::sync::{Arc, mpsc};
+use sunrise_client::lan::{Out, PlayerSender};
 use sunrise_client::{
     items::ItemStack,
     merchant::{Session, Trader},
 };
-use sunrise_protocol::packets::play::ContainerClick;
+use sunrise_protocol::packets::play::{Clientbound, ContainerClick};
 
 #[derive(Clone, Default)]
 struct Script {
@@ -19,17 +21,23 @@ struct Script {
     /// An answer whose result stack is not a valid one for the game.
     invalid_stack: bool,
     edit_other_merchant_and_board: bool,
+    skip_inventory: bool,
+    raise_second_price: bool,
+    change_shift_destination: bool,
+    refuse_stacked: bool,
 }
 thread_local! {
     static SCRIPT: RefCell<Script> = RefCell::new(Script::default());
     static CALLS: Cell<usize> = const { Cell::new(0) };
     static STACKED: Cell<usize> = const { Cell::new(0) };
+    static USES: RefCell<Vec<i32>> = const { RefCell::new(Vec::new()) };
     static IN_ACTION: RefCell<Vec<bool>> = const { RefCell::new(Vec::new()) };
 }
 fn script(value: Script) {
     SCRIPT.with(|s| *s.borrow_mut() = value);
     CALLS.set(0);
     STACKED.set(0);
+    USES.with(|uses| uses.borrow_mut().clear());
     IN_ACTION.with(|a| a.borrow_mut().clear());
     super::decided_action::DECIDED.set(0);
 }
@@ -57,6 +65,10 @@ impl Hooks for Both {
     }
     fn item_stacked_on_other(&self, _: HostSide, _: &mut ItemStackedOnOtherEvent<'_>) -> Flow {
         STACKED.set(STACKED.get() + 1);
+        assert!(
+            !SCRIPT.with(|s| s.borrow().refuse_stacked),
+            "stacked listener failed"
+        );
         Flow::Continue
     }
 }
@@ -66,17 +78,23 @@ fn trade(host: &mut dyn ServerHost, event: &mut TradeWithVillagerEvent<'_>) {
         CALLS.set(call);
         IN_ACTION.with(|a| a.borrow_mut().push(host.transaction_current().is_some()));
         assert_eq!(event.merchant, 40);
+        USES.with(|uses| uses.borrow_mut().push(event.offer.uses));
+        let s = SCRIPT.with(|s| s.borrow().clone());
         let key = mod_api::__private::item_key("minecraft:dirt").unwrap();
         let dirt = mod_api::ItemStack::new(key, 1).unwrap();
         let place = ItemPlace::PlayerSlot {
             player: 12,
-            slot: 20,
+            slot: if s.change_shift_destination { 8 } else { 20 },
         };
         let tx = host
             .transaction_current()
             .expect("trade listener is inside the action");
-        assert_eq!(place.insert(host, &tx, &ItemResource::of(&dirt), 2), 2);
-        let s = SCRIPT.with(|s| s.borrow().clone());
+        if !s.skip_inventory {
+            assert_eq!(place.insert(host, &tx, &ItemResource::of(&dirt), 2), 2);
+        }
+        if s.raise_second_price && call == 2 {
+            event.offer.special_price_diff = 1;
+        }
         if s.answer {
             event.offer.uses = 6;
             event.offer.max_uses = 19;
@@ -174,7 +192,7 @@ fn open(game: &mut Game<'_>, payment: u32) -> ContainerClick {
 #[test]
 #[ignore = "daily"]
 fn refusal_restores_crafted_score_and_another_merchants_offers() {
-    use mod_api::{ObjectiveRenderType, ScoreboardServerHost};
+    use mod_api::{ObjectiveRenderType, prelude::ScoreboardServerHost};
     with_mod(|| {
         with_guests(|game| {
             let click = open(game, 2);
@@ -212,7 +230,7 @@ fn refusal_restores_crafted_score_and_another_merchants_offers() {
             assert!(game.score.board.objective("temporary").is_none());
             assert!(game.score.board.score(&player, "crafted").is_none());
             let other = game.mobs[1].extra.trade.as_ref().unwrap();
-            assert_eq!(other.offers[0].uses, 0);
+            assert_eq!(other.offers[0].uses, 1);
         })
     });
 }
@@ -223,8 +241,7 @@ fn exploration_trade_maps_share_nested_reservations() {
     use super::maps::MapData;
     with_guests(|game| {
         let start = game.peek_map_id();
-        let dimension = game.dimension_id().to_owned();
-        let make = || MapData::fresh(0.0, 0.0, 0, &dimension);
+        let make = || MapData::fresh(0.0, 0.0, 0, "minecraft:overworld");
         for commit in [false, true] {
             let outer = game.transaction_open();
             assert_eq!(game.new_map_id(make()), start);
@@ -245,6 +262,48 @@ fn exploration_trade_maps_share_nested_reservations() {
             }
         }
     });
+}
+
+fn record_packets(game: &mut Game<'_>) -> mpsc::Receiver<Out> {
+    let (tx, rx) = mpsc::channel();
+    game.lan
+        .as_mut()
+        .unwrap()
+        .hub
+        .update_guest(12, |guest| {
+            guest.sender = PlayerSender::new(tx, Arc::default());
+        })
+        .unwrap();
+    rx
+}
+
+fn packets(rx: &mpsc::Receiver<Out>) -> Vec<Clientbound> {
+    rx.try_iter()
+        .flat_map(|out| match out {
+            Out::Packet(body) => vec![body],
+            Out::Packets(bodies) => bodies,
+            _ => Vec::new(),
+        })
+        .map(|body| {
+            let mut r = sunrise_protocol::buf::Reader::new(&body);
+            Clientbound::decode(r.varint().unwrap(), r.rest()).unwrap()
+        })
+        .collect()
+}
+
+fn corrected(rx: &mpsc::Receiver<Out>, window: i32, payment: u32) {
+    let received = packets(rx);
+    let [
+        Clientbound::MerchantOffers(offers),
+        Clientbound::ContainerSetContent(content),
+    ] = received.as_slice()
+    else {
+        panic!("expected just the authoritative offers and contents");
+    };
+    assert_eq!((offers.container, content.container), (window, window));
+    assert_eq!(offers.offers[0].uses, 0);
+    assert_eq!(content.items[0].as_ref().unwrap().count as u32, payment);
+    assert!(content.carried.is_none());
 }
 
 fn count(stack: Option<&ItemStack>) -> u32 {
@@ -358,14 +417,18 @@ fn a_second_trade_panic_undoes_the_entire_shift_click() {
             click.input = 1;
             script(Script {
                 panic_on: Some(2),
+                skip_inventory: true,
                 ..Script::default()
             });
             assert!(game.lan_merchant_click(12, &click));
             assert_eq!(CALLS.get(), 2);
-            assert_eq!(super::decided_action::DECIDED.get(), 1);
+            assert_eq!(super::decided_action::DECIDED.get(), 2);
             unchanged(game, 3);
             assert!(game.transactions.is_empty());
-            script(Script::default());
+            script(Script {
+                skip_inventory: true,
+                ..Script::default()
+            });
             assert!(game.lan_merchant_click(12, &click));
             assert_eq!((CALLS.get(), result(game), stat(game)), (3, 3, 3));
         })
@@ -379,11 +442,14 @@ fn an_outer_abort_undoes_an_accepted_trade() {
         with_guests(|game| {
             let click = open(game, 2);
             script(Script::default());
+            let rx = record_packets(game);
             let seal = game.transaction_open();
             assert!(game.lan_merchant_click(12, &click));
             assert_eq!((result(game), dirt(game), stat(game)), (1, 2, 1));
             assert!(game.orbs.is_empty(), "orb creation waits for root commit");
+            assert!(packets(&rx).is_empty());
             game.transaction_close(&seal, false);
+            corrected(&rx, click.container, 2);
             unchanged(game, 2);
         })
     });
@@ -449,6 +515,7 @@ fn a_trade_refused_inside_the_stacked_pickup_undoes_the_whole_take() {
     with_both(|| {
         with_guests(|game| {
             let click = open(game, 2);
+            let rx = record_packets(game);
             script(Script {
                 panic_on: Some(1),
                 ..Script::default()
@@ -456,6 +523,15 @@ fn a_trade_refused_inside_the_stacked_pickup_undoes_the_whole_take() {
             assert!(game.lan_merchant_click(12, &click));
             assert_eq!((CALLS.get(), STACKED.get()), (1, 1));
             unchanged(game, 2);
+            corrected(&rx, click.container, 2);
+            script(Script {
+                refuse_stacked: true,
+                ..Script::default()
+            });
+            assert!(game.lan_merchant_click(12, &click));
+            assert_eq!((CALLS.get(), STACKED.get()), (0, 1));
+            unchanged(game, 2);
+            corrected(&rx, click.container, 2);
             assert!(game.transactions.is_empty());
         })
     });
@@ -477,4 +553,78 @@ fn an_invalid_result_stack_refuses_the_whole_take() {
             assert!(game.transactions.is_empty());
         })
     });
+}
+
+#[test]
+#[ignore = "daily"]
+fn shift_click_reads_each_use_and_applies_the_second_price_before_the_next_trade() {
+    with_mod(|| {
+        with_guests(|game| {
+            let mut click = open(game, 3);
+            click.input = 1;
+            script(Script {
+                skip_inventory: true,
+                raise_second_price: true,
+                ..Script::default()
+            });
+            assert!(game.lan_merchant_click(12, &click));
+            assert_eq!(USES.with(|uses| uses.borrow().clone()), [1, 2]);
+            assert_eq!((result(game), stat(game)), (2, 2));
+            let gm = game.lan.as_ref().unwrap().play[&12]
+                .merchant
+                .as_ref()
+                .unwrap();
+            assert_eq!(gm.slots[0].as_ref().unwrap().count, 1);
+            assert!(gm.slots[2].is_none());
+        })
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn stale_shift_destination_refuses_the_plan_without_recomputing() {
+    with_mod(|| {
+        with_guests(|game| {
+            let mut click = open(game, 3);
+            click.input = 1;
+            let rx = record_packets(game);
+            script(Script {
+                change_shift_destination: true,
+                ..Script::default()
+            });
+            assert!(game.lan_merchant_click(12, &click));
+            assert_eq!(CALLS.get(), 1);
+            unchanged(game, 3);
+            assert!(game.lan.as_ref().unwrap().hub.guest(12).unwrap().inventory[8].is_none());
+            corrected(&rx, click.container, 3);
+        })
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn observing_a_trade_keeps_the_plain_packet_sequence() {
+    let trace = |mods: Mods| {
+        let mut bodies = None;
+        mod_platform::testing::with_mods(mods, || {
+            with_guests(|game| {
+                let click = open(game, 2);
+                let rx = record_packets(game);
+                script(Script {
+                    skip_inventory: true,
+                    ..Script::default()
+                });
+                assert!(game.lan_merchant_click(12, &click));
+                let trace = packets(&rx);
+                assert!(matches!(
+                    trace.as_slice(),
+                    [Clientbound::ContainerSetContent(_)]
+                ));
+                bodies = Some(trace.into_iter().map(|p| p.encode()).collect::<Vec<_>>());
+            })
+        });
+        bodies.unwrap()
+    };
+    let observed: Mods = vec![ModEntry::new("trade-observer", Box::new(Mod))].into();
+    assert_eq!(trace(Mods::default()), trace(observed));
 }

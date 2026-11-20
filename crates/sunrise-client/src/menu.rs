@@ -2826,6 +2826,11 @@ impl Menu {
 impl Menu {
     /// `MerchantContainer.updateSellItem`.
     pub fn merchant_update(&mut self, env: &Env) {
+        self.merchant_update_result(env.items);
+    }
+
+    /// Update a detached menu after an accepted edit of its live offer.
+    pub fn merchant_update_result(&mut self, items: &Items) {
         self.touch();
         let Some(m) = self.state.merchant.as_mut() else {
             return;
@@ -2843,7 +2848,7 @@ impl Menu {
         }
         if !m.offers.is_empty() {
             let (active, result) =
-                crate::merchant::sell_item(&m.offers, env.items, a, b, Some(m.selection_hint));
+                crate::merchant::sell_item(&m.offers, items, a, b, Some(m.selection_hint));
             m.active = active;
             m.future_xp = if result.is_some() {
                 active.map_or(0, |i| m.offers[i].xp)

@@ -39,7 +39,7 @@ fn uuid_words(uuid: u128) -> [i32; 4] {
 
 /// A villager whose profession the world's table cannot resolve (its mod is
 /// gone): its trades skip the result processing and its screen closes.
-fn opaque_villager(
+pub(super) fn opaque_villager(
     professions: &sunrise_client::mobs::villager::ResolvedProfessions,
     species: sunrise_client::mobs::Species,
     profession: &sunrise_client::mobs::villager::ProfessionState,
@@ -48,11 +48,9 @@ fn opaque_villager(
         && professions.state_index(profession).is_none()
 }
 
-/// How a merchant menu op runs: as it is, only looking (the menu as a click finds it, kept
-/// nowhere), or as a decision asks (the slot rules its plan kept and the mods' answer).
-enum MerchantRun<'a> {
+/// A plain merchant menu op, or a pickup with frozen slot rules and a stacked answer.
+pub(super) enum MerchantRun<'a> {
     Plain,
-    Probe(&'a mut dyn FnMut(&mut Menu, &Env)),
     Decided(
         &'a dyn sunrise_client::menu::SlotRules,
         Option<&'a sunrise_client::menu::StackedOutcome>,
@@ -138,6 +136,7 @@ impl Game<'_> {
         self.lan_send_offers(conn, &mut gm, true);
         self.lan_send_merchant_content(conn, &mut gm);
         if let Some(host) = self.lan.as_mut() {
+            host.menus.entry(conn).or_default().merchant.restore(());
             host.play.entry(conn).or_default().merchant = Some(gm);
         }
         self.player_menu_opening(conn);
@@ -288,104 +287,25 @@ impl Game<'_> {
         run: MerchantRun<'_>,
         op: impl FnOnce(&mut Menu, &Env),
     ) -> bool {
-        if !matches!(&run, MerchantRun::Probe(_)) {
-            self.journal_guest_merchant(conn);
-        }
-        let Some(mut gm) = self
-            .lan
-            .as_mut()
-            .and_then(|host| host.play.get_mut(&conn))
-            .and_then(|p| p.merchant.take())
-        else {
-            return false;
-        };
-        if window.is_some_and(|w| w != gm.window) {
-            if let Some(host) = self.lan.as_mut() {
-                host.play.entry(conn).or_default().merchant = Some(gm);
-            }
-            return false;
-        }
-        let Some(gi) = self
-            .lan
-            .as_ref()
-            .and_then(|host| host.hub.guests.iter().position(|g| g.conn == conn))
-        else {
-            return false;
-        };
-        let mut session = gm.merchant.session.clone();
-        self.merchant_sync_in(&mut session, gm.merchant.mob);
-        let next_map = self.peek_map_id();
-        let tag = |t: &str| self.structure_tag(t);
-        let maps = super::trading::GameMaps {
-            terrain: self.end.locator(),
-            structure_tag: &tag,
-            made: Default::default(),
-            next_id: std::cell::Cell::new(next_map),
-        };
-        let trade_env = merchant::TradeEnv {
-            trades: &self.stations().trades,
-            enchantments: &self.stations().enchantments,
-            maps: Some(&maps),
-        };
         let Some(host) = self.lan.as_ref() else {
             return false;
         };
-        let g = &host.hub.guests[gi];
-        let (player_uuid, player_entity_id) = (g.uuid, g.entity_id);
-        let env = Env {
-            crafting_remainder: Some(self),
-            player: Some(player_uuid),
-            player_entity_id: Some(player_entity_id),
-            loop_context: &self.loop_context,
-            items: self.items(),
-            recipes: self.recipes(),
-            brewing: &self.stations().brewing,
-            banners: &self.stations().banners,
-            station_recipes: &self.stations().recipes,
-            enchantments: &self.stations().enchantments,
-            names: &self.pack.names,
-            trade: Some(&trade_env),
-            maps: None,
-            limited_crafting: host.hub.limited_crafting,
-            can_equip: None,
-            known_recipes: Some(&g.recipe_book),
-            slot_rules: Some(self),
-            stacked: None,
+        let Some(gi) = host.hub.guests.connection_index(conn) else {
+            return false;
         };
-        let mut menu = Menu::new(Kind::Merchant);
-        menu.set_registry_id(Some("minecraft:merchant"));
-        if let Some(host) = self.lan.as_ref() {
-            let g = &host.hub.guests[gi];
-            for i in 0..36 {
-                menu.set_player_item(i, g.inventory[i].clone());
-            }
-            menu.set_player_item(40, g.offhand.clone());
-            menu.selected = g.selected;
-            menu.creative = g.creative();
-            menu.carried = g.carried.clone();
-        }
-        for (i, s) in gm.slots.iter().enumerate() {
-            menu.set_slot(&env, i, s.clone());
-        }
-        menu.merchant = Some(session);
-        let env = match &run {
-            MerchantRun::Decided(rules, stacked) => Env {
-                slot_rules: Some(*rules),
-                stacked: *stacked,
-                ..env
-            },
-            _ => env,
+        let Some(gm) = host.play.get(&conn).and_then(|p| p.merchant.as_ref()) else {
+            return false;
         };
-        if let MerchantRun::Probe(probe) = run {
-            // Only look: the menu as the click finds it, and nothing of it kept.
-            probe(&mut menu, &env);
-            if let Some(host) = self.lan.as_mut() {
-                host.play.entry(conn).or_default().merchant = Some(gm);
-            }
-            return true;
+        if window.is_some_and(|window| window != gm.window) {
+            return false;
         }
-        op(&mut menu, &env);
-        let made = maps.made.take();
+        let Some((mut menu, made)) = self.read_merchant_menu(conn, gm, run, op) else {
+            return false;
+        };
+        self.journal_guest_merchant(conn);
+        let host = self.lan.as_mut().expect("open merchant");
+        host.menus.entry(conn).or_default().merchant.restore(());
+        let mut gm = host.play.get_mut(&conn).unwrap().merchant.take().unwrap();
         let session = menu.merchant.take().expect("attached");
         let dropped = std::mem::take(&mut menu.dropped);
         let crafted_counts = std::mem::take(&mut menu.crafted_counts);
@@ -449,8 +369,7 @@ impl Game<'_> {
         }
         gm.merchant.session = session;
         self.merchant_drops(conn, dropped);
-        if refresh_offers || offers_refreshed || (self.merchant_take_active() && !traded.is_empty())
-        {
+        if refresh_offers || offers_refreshed {
             self.lan_send_offers(conn, &mut gm, true);
         }
         self.lan_send_merchant_content(conn, &mut gm);
@@ -459,6 +378,77 @@ impl Game<'_> {
         }
         true
     }
+    /// Execute only on a detached menu. The caller decides if and when to publish it.
+    pub(super) fn read_merchant_menu(
+        &self,
+        conn: u32,
+        gm: &GuestMerchant,
+        run: MerchantRun<'_>,
+        op: impl FnOnce(&mut Menu, &Env),
+    ) -> Option<(Menu, super::trading::MadeMaps)> {
+        let mut session = gm.merchant.session.clone();
+        self.merchant_sync_in(&mut session, gm.merchant.mob);
+        let next_map = self.peek_map_id();
+        let tag = |t: &str| self.structure_tag(t);
+        let maps = super::trading::GameMaps {
+            terrain: self.end.locator(),
+            structure_tag: &tag,
+            made: Default::default(),
+            next_id: std::cell::Cell::new(next_map),
+        };
+        let trade_env = merchant::TradeEnv {
+            trades: &self.stations().trades,
+            enchantments: &self.stations().enchantments,
+            maps: Some(&maps),
+        };
+        let host = self.lan.as_ref()?;
+        let g = host.hub.guest(conn)?;
+        let (player_uuid, player_entity_id) = (g.uuid, g.entity_id);
+        let env = Env {
+            crafting_remainder: Some(self),
+            player: Some(player_uuid),
+            player_entity_id: Some(player_entity_id),
+            loop_context: &self.loop_context,
+            items: self.items(),
+            recipes: self.recipes(),
+            brewing: &self.stations().brewing,
+            banners: &self.stations().banners,
+            station_recipes: &self.stations().recipes,
+            enchantments: &self.stations().enchantments,
+            names: &self.pack.names,
+            trade: Some(&trade_env),
+            maps: None,
+            limited_crafting: host.hub.limited_crafting,
+            can_equip: None,
+            known_recipes: Some(&g.recipe_book),
+            slot_rules: Some(self),
+            stacked: None,
+        };
+        let mut menu = Menu::new(Kind::Merchant);
+        menu.set_registry_id(Some("minecraft:merchant"));
+        for i in 0..36 {
+            menu.set_player_item(i, g.inventory[i].clone());
+        }
+        menu.set_player_item(40, g.offhand.clone());
+        menu.selected = g.selected;
+        menu.creative = g.creative();
+        menu.carried = g.carried.clone();
+        for (i, s) in gm.slots.iter().enumerate() {
+            menu.set_slot(&env, i, s.clone());
+        }
+        menu.merchant = Some(session);
+        let env = match &run {
+            MerchantRun::Decided(rules, stacked) => Env {
+                slot_rules: Some(*rules),
+                stacked: *stacked,
+                ..env
+            },
+            _ => env,
+        };
+        op(&mut menu, &env);
+        Some((menu, maps.made.take()))
+    }
+
     /// Close an open merchant whose profession became unresolved, returning inputs.
     pub(super) fn close_opaque_merchant(&mut self, id: u32) {
         if self
@@ -511,21 +501,21 @@ impl Game<'_> {
         // Plan: what the click finds in the menu as the guest's trade state makes it, and what
         // the slot rules say to it, on copies; nothing is kept.
         let answers = std::rc::Rc::new(sunrise_client::menu::RuleAnswers::default());
-        let mut found = None;
-        let mut probe = |menu: &mut Menu, env: &Env| {
-            found = menu.stacked_click(env, slot, button, input);
-            if found.is_some() {
-                super::stacked_on_other::plan_click(menu, env, slot, button, &answers);
-            }
-        };
-        let open = self.lan_merchant_op_with(
-            conn,
-            Some(p.container),
-            false,
-            MerchantRun::Probe(&mut probe),
-            |_, _| {},
-        );
-        let Some(frozen) = found.filter(|_| open) else {
+        let open = self
+            .lan
+            .as_ref()
+            .and_then(|host| host.play.get(&conn)?.merchant.as_ref())
+            .filter(|gm| gm.window == p.container);
+        let Some(frozen) = open.and_then(|gm| {
+            let mut found = None;
+            self.read_merchant_menu(conn, gm, MerchantRun::Plain, |menu, env| {
+                found = menu.stacked_click(env, slot, button, input);
+                if found.is_some() {
+                    super::stacked_on_other::plan_click(menu, env, slot, button, &answers);
+                }
+            })?;
+            found
+        }) else {
             return self.lan_merchant_op(conn, Some(p.container), false, op);
         };
         let route = match self.lan.as_mut() {
@@ -742,6 +732,9 @@ impl Game<'_> {
         conn: u32,
         edit: impl FnOnce(&mut merchant::Session),
     ) -> bool {
+        if self.merchant_click_in_progress(conn) {
+            return false;
+        }
         let done = self.lan_merchant_op(conn, None, false, |menu, env| {
             let Some(session) = menu.merchant.as_mut() else {
                 return;

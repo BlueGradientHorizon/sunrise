@@ -213,7 +213,7 @@ pub(super) struct Level {
     pub(super) new_maps: BTreeMap<i32, MapData>,
     /// What the root commit does, in order.
     after: Vec<After>,
-    /// Internal decide/fire/apply state. No menu route uses this yet.
+    /// Internal decide/fire/apply state for menu actions.
     actions: decision::Journal,
     /// Merchant takes keep their session, mob, statistics and criterion progress together.
     pub(in crate::game) trades: super::lan_trade_decisions::Journal,
@@ -565,6 +565,10 @@ impl Game<'_> {
                 super::lan_trade_decisions::Effect::Packets(packets),
             )));
         }
+        let mut merchant_corrections = std::mem::take(&mut level.trades.refused_clicks);
+        if !commit {
+            merchant_corrections.append(&mut level.trades.correct_on_abort);
+        }
         let departed = std::mem::take(&mut level.departed);
         if let Some(scope) = &mut self.block_entity_tick_items {
             scope.close_transaction(commit);
@@ -697,6 +701,15 @@ impl Game<'_> {
             }
         }
         self.close_departures(departed);
+        // Rejected client predictions need the final restored menu, whether the enclosing
+        // transaction commits or aborts. Do not stage a correction using tentative state.
+        if let Some(outer) = self.transactions.last_mut() {
+            outer.trades.refused_clicks.extend(merchant_corrections);
+        } else {
+            for (conn, window) in merchant_corrections {
+                self.resend_merchant_take(conn, window);
+            }
+        }
     }
     /// Closes every transaction left open, as aborted. Run before each tick, as a backstop:
     /// `host.transaction` is the only way in, and its drop guard closes each one it opens, so
