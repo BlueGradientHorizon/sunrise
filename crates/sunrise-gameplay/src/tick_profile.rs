@@ -64,7 +64,8 @@ pub fn wanted(user: u8) -> bool {
 #[cfg(test)]
 pub fn spans_test_lock() -> std::sync::MutexGuard<'static, ()> {
     static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    LOCK.lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 /// Sample (or stop sampling) the mob ticks this thread runs next, for the report.
