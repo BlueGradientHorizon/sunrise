@@ -61,7 +61,15 @@ impl Hooks for Edit {
         let b = &previous.tab("test:b").unwrap().display_items;
         match event.permissions {
             CreativeTabPermissions::Normal => assert!(b.is_empty()),
-            CreativeTabPermissions::Operator => assert_eq!(b, &[stack("minecraft:sand", 1)]),
+            CreativeTabPermissions::Operator => {
+                assert_eq!(b, &[stack("minecraft:sand", 1)]);
+                let published = host.built_creative_tabs().unwrap().unwrap();
+                assert_eq!(published.permissions, CreativeTabPermissions::Normal);
+                assert_eq!(
+                    published.tab("test:b").unwrap().display_items,
+                    [stack("minecraft:sand", 1)]
+                );
+            }
         }
         let other = match event.permissions {
             CreativeTabPermissions::Normal => CreativeTabPermissions::Operator,
@@ -352,15 +360,14 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
             assert_eq!(reader.built_creative_tabs(), Ok(None));
             assert!(seen.lock().unwrap().events.is_empty());
         }
-        let normal = ItemsHost::creative_tabs(game, CreativeTabPermissions::Normal).unwrap();
+        game.build_creative(CreativeTabPermissions::Normal).unwrap();
         let built_events = seen.lock().unwrap().events.len();
-        {
-            // After the build, a plain read gives that same snapshot without building again.
-            let reader: &dyn mod_api::Host = game;
-            let built = reader.built_creative_tabs().unwrap().unwrap();
-            assert!(Arc::ptr_eq(&normal, &built));
-            assert_eq!(seen.lock().unwrap().events.len(), built_events);
-        }
+        let reader: &dyn mod_api::Host = game;
+        let normal = reader.built_creative_tabs().unwrap().unwrap();
+        assert_eq!(normal.permissions, CreativeTabPermissions::Normal);
+        let cached = ItemsHost::creative_tabs(game, CreativeTabPermissions::Normal).unwrap();
+        assert!(Arc::ptr_eq(&normal, &cached));
+        assert_eq!(seen.lock().unwrap().events.len(), built_events);
         assert_eq!(game.stock_sort_order()[0].item.as_ref(), "minecraft:torch");
         let a = normal.tab("test:a").unwrap();
         assert_eq!(
@@ -486,6 +493,15 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
             let old = check(game, LogicalSide::Client);
             replace_client_definition(game, 4);
             check_replacement(game, &old);
+            game.native_lifecycle.begin_close();
+            game.native_lifecycle_world_closed();
+            assert!(game.native_lifecycle.epoch().is_none());
+            assert!(game.creative_contents.published.is_some());
+            let host: &dyn mod_api::Host = game;
+            assert_eq!(
+                host.built_creative_tabs(),
+                Err(CreativeTabReadError::Unavailable)
+            );
         });
     });
 }

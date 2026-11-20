@@ -246,7 +246,7 @@ impl Game<'_> {
     pub(in crate::game) fn built_creative_tabs(
         &self,
     ) -> Result<Option<Arc<CreativeModeTabs>>, CreativeTabReadError> {
-        if current_phase() != ModPhase::World {
+        if current_phase() != ModPhase::World || self.native_lifecycle.epoch().is_none() {
             return Err(CreativeTabReadError::Unavailable);
         }
         Ok(self.creative_contents.published.as_ref().map(|published| {

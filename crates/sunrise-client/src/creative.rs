@@ -454,7 +454,7 @@ impl Creative {
                 .and_then(|s| crate::item_data::parse_stack(s).ok().flatten());
             headers.push(Tab {
                 id: recipe.id.clone(),
-                title: tab["title"].as_str().unwrap_or("").to_owned(),
+                title: recipe.title.clone(),
                 icon: icon.map_or_else(|| "minecraft:stone".to_owned(), |s| s.item.to_string()),
                 items: Vec::new(),
                 top: tab["row"] == "TOP",
