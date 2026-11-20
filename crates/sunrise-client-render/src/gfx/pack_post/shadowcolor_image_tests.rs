@@ -100,6 +100,50 @@ fn a_compute_program_stores_into_the_shadowcolor_buffers() {
 }
 
 #[test]
+fn a_compute_stage_attached_to_a_pass_is_enough_to_make_its_shadowcolor_buffer() {
+    let _gpu = crate::gfx::test_gpu::lock();
+    let Some(gpu) = Fixture::new() else { return };
+    // composite.csh runs before composite.fsh, in its pass, and is the only program that uses
+    // shadowcolor1 (R32F): it loads shadowcolorimg1 (cleared to 0.2), stores twice that back and
+    // into colorimg0. composite.fsh draws colortex1 only. final samples only shadowcolor0, which
+    // makes the shadow pass.
+    let composite = format!(
+        "{COMPUTE}layout(r32f) uniform image2D shadowcolorimg1;\n\
+         layout(rgba8) writeonly uniform image2D colorimg0;\n\
+         void main() {{\n    ivec2 p = ivec2(gl_GlobalInvocationID.xy);\n\
+             float v = imageLoad(shadowcolorimg1, p).r * 2.0;\n\
+             imageStore(shadowcolorimg1, p, vec4(v));\n\
+             imageStore(colorimg0, p, vec4(v, v, v, 1.0));\n}}\n"
+    );
+    let mut post = gpu.build(pack_of(
+        &[
+            ("composite.csh", &composite),
+            ("composite.vsh", VERTEX),
+            (
+                "composite.fsh",
+                "#version 120\n/* RENDERTARGETS: 1 */\nvoid main() { gl_FragData[0] = vec4(1.0); }\n",
+            ),
+            ("final.vsh", VERTEX),
+            (
+                "final.fsh",
+                "#version 330 compatibility\nconst int shadowMapResolution = 8;\n\
+                 /* const int shadowcolor1Format = R32F; */\n\
+                 const vec4 shadowcolor1ClearColor = vec4(0.2, 0.0, 0.0, 1.0);\n\
+                 uniform sampler2D colortex0;\nuniform sampler2D shadowcolor0;\n\
+                 void main() {\n    ivec2 p = ivec2(gl_FragCoord.xy);\n\
+                     gl_FragColor = p.x % 2 == 0 ? texelFetch(colortex0, p, 0) : texelFetch(shadowcolor0, p, 0);\n}\n",
+            ),
+        ],
+        &Default::default(),
+    ));
+    // Without shadowcolor1 the image would bind a sampled-only stand-in as storage, which wgpu
+    // refuses. shadowcolor1 is cleared each frame, so both frames read 0.2 and store 0.4.
+    for f in frames(&gpu, &mut post) {
+        assert_eq!(f, [[102, 102, 102, 255], [255; 4]]);
+    }
+}
+
+#[test]
 fn a_fragment_program_stores_into_a_shadowcolor_buffer() {
     let _gpu = crate::gfx::test_gpu::lock();
     // A composite program with no output draws into the sink; its only effect is the image.

@@ -3146,14 +3146,17 @@ impl PackPost {
             .chain(&hand_water)
         };
         let shadow_targets = shadow_formats.map(|f| {
-            let colors = every_pass().fold(0u16, |m, p| {
+            // `shadow_storage` covers compute stages attached to a pass, which `every_pass`
+            // leaves out: one may be the only program binding shadowcolorimgN.
+            let colors = (every_pass().fold(0u16, |m, p| {
                 let own = if p.group.shadow() {
                     p.reads | p.written | p.flip
                 } else {
                     0
                 };
                 m | own | p.shadow_reads
-            }) & shadow_colors;
+            }) | shadow_storage)
+                & shadow_colors;
             let depth1 = every_pass()
                 .flat_map(|p| &p.samplers)
                 .any(|s| matches!(s.source, Source::ShadowDepth(1, _)));
