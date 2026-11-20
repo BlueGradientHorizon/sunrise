@@ -4,8 +4,8 @@
 //! registers the process's renderers and changes the game's stick into a special model.
 use crate::game::Game;
 use mod_api::{
-    ClientHost, ItemStack, SpecialModelFactory, SpecialModelPart, SpecialModelPolicy,
-    SpecialModelRenderer,
+    ClientHost, SpecialModelCollector, SpecialModelContext, SpecialModelFactory,
+    SpecialModelGeometry, SpecialModelRenderer, SpecialModelStack, SpecialModelTints,
 };
 use std::{
     collections::BTreeMap,
@@ -18,16 +18,22 @@ use sunrise_client::item_render::ItemRenderState;
 static ASKED: Mutex<Vec<u32>> = Mutex::new(Vec::new());
 
 /// Draws a stick for every stack.
-struct Stick;
+struct Stick(SpecialModelGeometry);
 impl SpecialModelRenderer for Stick {
-    fn extract(
+    type Argument = u32;
+
+    fn extract_argument(&self, _: &dyn ClientHost, stack: &SpecialModelStack<'_>) -> u32 {
+        stack.count()
+    }
+
+    fn submit(
         &self,
-        _: &dyn ClientHost,
-        stack: &ItemStack,
-        _: &mod_api::SpecialModelContext,
-    ) -> Result<Vec<SpecialModelPart>, String> {
-        ASKED.lock().unwrap().push(stack.count());
-        Ok(vec![SpecialModelPart::new("minecraft:item/stick")])
+        count: &u32,
+        _: &SpecialModelContext,
+        collector: &mut SpecialModelCollector<'_>,
+    ) -> Result<(), String> {
+        ASKED.lock().unwrap().push(*count);
+        collector.submit_geometry(&self.0, SpecialModelTints::Untinted)
     }
 }
 
@@ -46,9 +52,9 @@ pub(in crate::game) fn asked(count: u32) -> usize {
 pub(in crate::game) fn install_special_stick(game: &mut Game<'_>) {
     let factories = BTreeMap::from([(
         "test:stick".into(),
-        (
-            SpecialModelPolicy::Stack,
-            SpecialModelFactory::new(|_| Ok(()), |(), _| Ok(Stick)),
+        SpecialModelFactory::new(
+            |_| Ok(()),
+            |(), bake| bake.bake_model("minecraft:item/stick").map(Stick),
         ),
     )]);
     let definition = game.pack.item_renderer.decode_definition(

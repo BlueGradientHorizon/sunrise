@@ -1,7 +1,6 @@
 # Design: resource-backed special item renderers
 
-> The native contract below still applies. WebAssembly mods were removed; the parts about guests are history.
-> The native contract is in “Settled on the build”; the original proposal below it is historical.
+> The current native contract is in “Settled on the build.” The original proposal below it is historical.
 > See [special item renderers](../../modding/src/how-to/client/special-item-renderers.md) for the current native API.
 
 Provisional answer to [#876](https://github.com/arismoko/horizon/issues/876):
@@ -27,10 +26,9 @@ says otherwise, this section wins; "ours" marks what Sunrise adds.
   id and the item, the item draws the missing model, the rest of the reload goes
   on, and the item's previous model is not kept. "A failed reload keeps the
   previous holder" applies only to a whole-reload failure of ours.
-- **Data.** The renderer reads what it needs from the whole stack; nothing
-  declares inputs, and no cap applies to the stack beyond the reference's.
-  Extraction is cached by the stack's equality, so an unchanged stack is
-  extracted once across frames and nothing is copied per frame for it.
+- **Data.** On each draw, the renderer reads its inputs from a borrowed stack, including
+  effective components, without constructing an owned patch. It passes a typed argument to
+  `submit`, which appends baked geometry or nested items through a scoped collector.
 - **`base`** supplies only render properties (lighting, particle, display
   transforms), which the engine applies; the renderer never sees them.
 - **Extents.** None: the reference doesn't check declared extents or cull by
@@ -38,10 +36,11 @@ says otherwise, this section wins; "ours" marks what Sunrise adds.
   drawn parts' own quads.
 - **Threads.** The node's `config` decodes, and models bake, on the reload's
   worker threads; extraction and drawing run on the client's main thread.
-- **Failures.** The reference doesn't catch a throw. Ours is stricter in the safe
-  direction: a renderer that errors or panics is refused with one log line
-  naming the id, and the item draws the missing model; a decode or bake failure
-  loses only that item. The callback gets a `ClientHost` (every hook gets a host).
+- **Failures.** A draw error, panic or invalid submission rolls back the entire special layer,
+  logs the offending type and disables it until resource reload. Unreadable input or a nested
+  refusal rolls back the layer without disabling its renderer. The outermost refused layer
+  draws the missing model, leaving siblings intact. A decode or bake failure loses only the
+  enclosing item definition. The extraction callback gets a `ClientHost`.
 - **Out of scope.** The block side is a separate reference registration that runs
   on every reload, not part of #876.
 - **Matrix rows 5 and 7** each need their own test; a test that the callback never
@@ -49,15 +48,13 @@ says otherwise, this section wins; "ours" marks what Sunrise adds.
 - **When it runs.** Preparation (the renderer's callback) and draws run on the
   client's frame, outside any action transaction: never inside a tick's lifted
   pass, so nothing a lifted pass rolls back was published by them.
-- **Leases.** A part's quads are CPU vertices submitted every frame, not prepared
-  GPU models, so an item render state's own reference to its baked models is the
-  only lease, and there is no retirement step: an old state draws its models after
-  a reload, and they are released once, when the last state holding them drops.
+- **Leases.** The bake context issues geometry leases for the current resource load. Once
+  submitted, the item render state retains its baked models independently, so a state can
+  finish drawing after a reload without a separate retirement step.
 - **Cost.** With no renderer registered, or none for a drawn model's type, a built-in
-  scene costs nothing more, down to its allocation count (row 13). An unchanged stack
-  costs a hash, one lookup and an `Arc` clone per draw; the measurements are in
-  [special item renderers](../../performance/special-item-renderers.md).
-- **Colour.** A part's tint is packed vanilla-space ARGB, as an item model's
+  scene costs nothing more, down to its allocation count (row 13). The direct-submission
+  benchmark is described in [special item renderers](../../performance/special-item-renderers.md).
+- **Colour.** A geometry submission's tint is packed vanilla-space ARGB, as an item model's
   `tints` are, decoded once by the frame. A value above 1 has no input until a
   typed HDR tint exists (the limit `WorldQuad::color` has); it is not part of #876.
 
@@ -245,4 +242,4 @@ Future implementation tests use original assets, not third-party model files.
   test representative original scenes, and enlarge only extension limits with
   measured evidence; preserve vanilla capacity throughout.
 
-Renderer answers depend only on stack and configuration. Host-state changes do not invalidate a continuously drawn unchanged stack. Answers drop after all views stop drawing the stack or resources reload.
+The earlier answer-cache design was replaced by typed extraction and scoped submission on each draw.

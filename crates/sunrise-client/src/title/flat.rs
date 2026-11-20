@@ -1099,7 +1099,7 @@ mod tests {
         FlatSettings, Page, Preset, State, click, focus_row, layer_item, list_area,
         selection_after_removal,
     };
-    use crate::item_render::ItemRenderer;
+    use crate::item_render::{ItemRenderer, LayerTints};
     use std::path::Path;
 
     /// Vanilla keeps the deleted row's position selected: the layer that slid
@@ -1161,7 +1161,12 @@ mod tests {
         let tinted: Vec<i32> = super::layer_state(&renderer, "minecraft:grass_block")
             .layers
             .iter()
-            .flat_map(|layer| layer.tints.clone())
+            .flat_map(|layer| match &layer.tints {
+                LayerTints::Owned(tints) => tints.iter().copied(),
+                LayerTints::Special(_) => {
+                    panic!("expected ordinary grass model tints")
+                }
+            })
             .collect();
         assert!(
             !tinted.is_empty() && !tinted.contains(&-65281),

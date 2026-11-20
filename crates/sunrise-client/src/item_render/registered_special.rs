@@ -1,18 +1,22 @@
 //! Baking special model nodes at load and writing their layers atomically at draw time.
 use super::{
-    ItemRenderer, LayerGeometry, LayerRender, LayerTints, corners, glam_matrix, sprite_name,
+    ItemDrawEnv, ItemRenderer, LayerGeometry, LayerRender, LayerTints, corners, glam_matrix,
+    sprite_name,
 };
 use glam::{Mat4, Vec3};
 use mod_api::{
-    SpecialModelBakeContext, SpecialModelConfig, SpecialModelFactory, SpecialModelGeometry,
-    SpecialModelPolicy, SpecialModelQuad, SpecialModelRenderer,
+    __private::{BakedSpecialModelRenderer, SpecialModelSubmission},
+    ItemDisplayContext, ItemStack, SpecialModelBakeContext, SpecialModelCollector,
+    SpecialModelConfig, SpecialModelFactory, SpecialModelGeometry, SpecialModelQuad,
+    SpecialModelStack, SpecialModelTints,
 };
 use std::{
     collections::BTreeMap,
     ops::ControlFlow,
+    panic::{AssertUnwindSafe, catch_unwind},
     sync::{
         Arc, Mutex, OnceLock, PoisonError,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicBool, Ordering},
     },
 };
 use sunrise_assets::{
@@ -20,14 +24,14 @@ use sunrise_assets::{
     bake::{ModelQuad, facing},
     item_bake::{BakedItemModel, MISSING_SPRITE, SpriteLookup, bake_resolved},
     item_model::{
-        ClientItem, Context, DisplayContext, FoilType, ItemEnv, LayerTransform, PreparedParts,
-        RegisteredSpecialModel, SpecialContent, SpecialPart, StackView, identifier,
+        ClientItem, Context, FoilType, LayerTransform, RegisteredSpecialModel, StackView,
+        identifier,
     },
     math::Mat4 as AssetMatrix,
     model::Material,
 };
 
-pub type SpecialModelFactories = BTreeMap<String, (SpecialModelPolicy, SpecialModelFactory)>;
+pub type SpecialModelFactories = BTreeMap<String, SpecialModelFactory>;
 
 pub(super) static FACTORIES: OnceLock<SpecialModelFactories> = OnceLock::new();
 
@@ -46,27 +50,26 @@ pub fn install_special_model_factories(mut factories: SpecialModelFactories) -> 
 
 /// One baked `minecraft:special` node. Every resource load owns its own instances and failures.
 pub struct BakedSpecialModel {
-    /// A unique answer-cache key, even when a node's storage is reused after a reload.
-    pub node: usize,
     pub kind: Box<str>,
-    pub policy: SpecialModelPolicy,
-    pub renderer: Arc<dyn SpecialModelRenderer>,
+    renderer: BakedSpecialModelRenderer,
     base: SpecialLayerBase,
     /// A draw failure disables this type in this resource load only.
-    pub failed: Arc<AtomicBool>,
+    failed: Arc<AtomicBool>,
 }
 
 /// The item geometry and extents retained by an API lease from this bake context.
 pub struct BakedSpecialGeometry {
     pub model: Arc<BakedItemModel>,
     pub extents: Arc<Vec<Vec3>>,
+    generation: Arc<()>,
 }
 
 impl BakedSpecialGeometry {
-    fn lease(model: BakedItemModel) -> SpecialModelGeometry {
+    fn lease(model: BakedItemModel, generation: &Arc<()>) -> SpecialModelGeometry {
         SpecialModelGeometry::new(Self {
             extents: Arc::new(corners(&model)),
             model: Arc::new(model),
+            generation: Arc::clone(generation),
         })
     }
 }
@@ -81,7 +84,10 @@ impl SpecialModelBakeContext for SpecialBaker<'_> {
             .resolve_required(model)
             .map_err(|error| error.to_string())?;
         let model = bake_resolved(&model, &self.0.sprites).map_err(|error| error.to_string())?;
-        Ok(BakedSpecialGeometry::lease(model))
+        Ok(BakedSpecialGeometry::lease(
+            model,
+            &self.0.special_generation,
+        ))
     }
 
     fn bake_geometry(&self, quads: &[SpecialModelQuad]) -> Result<SpecialModelGeometry, String> {
@@ -135,7 +141,10 @@ impl SpecialModelBakeContext for SpecialBaker<'_> {
             },
             transforms: Default::default(),
         };
-        Ok(BakedSpecialGeometry::lease(model))
+        Ok(BakedSpecialGeometry::lease(
+            model,
+            &self.0.special_generation,
+        ))
     }
 }
 
@@ -147,10 +156,8 @@ impl ItemRenderer {
         text: &str,
         factories: Option<&SpecialModelFactories>,
     ) -> Result<ClientItem, DecodeError> {
-        static NEXT_NODE: AtomicUsize = AtomicUsize::new(0);
         ClientItem::from_json_with_specials(text, &|kind, base, fields| {
-            let Some((policy, factory)) = factories.and_then(|factories| factories.get(kind))
-            else {
+            let Some(factory) = factories.and_then(|factories| factories.get(kind)) else {
                 return Ok(None);
             };
             let renderer = factory
@@ -164,9 +171,7 @@ impl ItemRenderer {
                 .unwrap_or_else(PoisonError::into_inner);
             let failed = failures.entry(kind.to_owned()).or_default().clone();
             Ok(Some(RegisteredSpecialModel(Arc::new(BakedSpecialModel {
-                node: NEXT_NODE.fetch_add(1, Ordering::Relaxed),
                 kind: kind.into(),
-                policy: *policy,
                 renderer,
                 base: SpecialLayerBase {
                     model: base,
@@ -177,67 +182,35 @@ impl ItemRenderer {
         })
     }
 
-    /// Bake an answer's named geometry once. An unavailable model refuses the answer.
-    pub fn prepare_parts(
-        &self,
-        model: &BakedSpecialModel,
-        parts: &[SpecialPart],
-    ) -> Option<PreparedParts> {
-        let parts = parts
-            .iter()
-            .map(|part| {
-                let content = match &part.content {
-                    SpecialContent::Model(id) => {
-                        if !self.library.resolves(id) {
-                            warn_unknown_part_once(id);
-                            return None;
-                        }
-                        let baked = self.bake(id);
-                        PreparedContent::Model {
-                            geometry: BakedSpecialGeometry {
-                                extents: self.quad_extents(id, &baked),
-                                model: baked,
-                            },
-                            tints: part.tints.as_slice().into(),
-                        }
-                    }
-                    SpecialContent::Stack { stack, display } => PreparedContent::Stack {
-                        stack: stack.clone(),
-                        display: *display,
-                    },
-                };
-                Some(PreparedPart {
-                    content,
-                    pose: part.pose,
-                })
-            })
-            .collect::<Option<Vec<_>>>()?;
-        Some(PreparedParts(Arc::new(PreparedSpecial {
-            base: model.base.clone(),
-            parts,
-        })))
-    }
-
-    /// Submit the prepared answer through the same destination as ordinary item layers.
+    /// Append one registered layer, with no committed writes until its callback succeeds.
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn push_parts(
+    pub(super) fn append_registered_special(
         &self,
         layers: &mut Vec<LayerRender>,
-        prepared: &PreparedParts,
+        model: &RegisteredSpecialModel,
         (foil, outer_transform, display_transform): (FoilType, AssetMatrix, LayerTransform),
         ctx: &Context<'_>,
-        env: &dyn ItemEnv,
+        env: &dyn ItemDrawEnv,
         ancestor: &StackAncestor<'_>,
         remaining: &mut usize,
     ) -> ControlFlow<()> {
-        let Some(prepared) = prepared.0.downcast_ref::<PreparedSpecial>() else {
+        let Some(model) = model.0.downcast_ref::<BakedSpecialModel>() else {
             return ControlFlow::Break(());
         };
+        if model.failed.load(Ordering::Relaxed) {
+            return ControlFlow::Break(());
+        }
+        let Some(input) = env.special_model_input(model, ancestor.stack, ctx) else {
+            return ControlFlow::Break(());
+        };
+        let components = self.models.components_view(ancestor.stack);
+        let read_component = |id: &str| components.get(id).map(crate::scoreboard::json_to_tag);
+        let stack = SpecialModelStack::new(input.item, input.count, &read_component);
         let mut writer = LayerWriter {
             checkpoint: layers.len(),
             layers,
             renderer: self,
-            base: &prepared.base,
+            base: &model.base,
             ctx,
             env,
             ancestor,
@@ -245,52 +218,52 @@ impl ItemRenderer {
             foil,
             outer_transform,
             display_transform,
-            local_pose: AssetMatrix::IDENTITY,
-            refused: false,
+            failure: None,
             committed: false,
         };
-        for part in &prepared.parts {
-            writer.local_pose = part.pose;
-            match &part.content {
-                PreparedContent::Model { geometry, tints } => {
-                    writer.submit_geometry(geometry, tints)
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            let mut pose = PoseWriter {
+                layer: &mut writer,
+                local_pose: AssetMatrix::IDENTITY,
+            };
+            model.renderer.submit(
+                input.host,
+                &stack,
+                &input.context,
+                &mut SpecialModelCollector::new(&mut pose),
+            )
+        }));
+        match result {
+            // A panic is a fault even when the renderer had already met a nested refusal.
+            Err(_) => writer.failure = Some(SubmissionFailure::Fault("it panicked".into())),
+            Ok(Err(error)) if writer.failure.is_none() => {
+                writer.failure = Some(SubmissionFailure::Fault(error));
+            }
+            _ => {}
+        }
+        match writer.failure.as_ref() {
+            Some(SubmissionFailure::Fault(error)) => {
+                if !model.failed.swap(true, Ordering::Relaxed) {
+                    log::warn!(
+                        "Sunrise: the special model renderer of {} failed ({error}); its models draw the missing model until resources reload",
+                        model.kind
+                    );
                 }
-                // The answer is atomic even when the caller does not look at this return value.
-                PreparedContent::Stack { stack, display } => {
-                    let _ = writer.submit_stack(stack, *display);
-                }
+                ControlFlow::Break(())
+            }
+            Some(SubmissionFailure::Nested) => ControlFlow::Break(()),
+            None => {
+                writer.committed = true;
+                ControlFlow::Continue(())
             }
         }
-        writer.commit()
     }
 }
 
-/// The base draw properties shared by all answers for one baked node.
-#[derive(Clone)]
+/// The base draw properties shared by all submissions for one baked node.
 struct SpecialLayerBase {
     model: Arc<BakedItemModel>,
     particle: Arc<str>,
-}
-
-/// A special model renderer's answer as [`ItemRenderer::prepare_parts`] baked it.
-struct PreparedSpecial {
-    base: SpecialLayerBase,
-    parts: Vec<PreparedPart>,
-}
-struct PreparedPart {
-    content: PreparedContent,
-    pose: AssetMatrix,
-}
-enum PreparedContent {
-    Model {
-        geometry: BakedSpecialGeometry,
-        tints: Arc<[i32]>,
-    },
-    /// A stack, resolved when the item is drawn, so what it draws moves with its own models.
-    Stack {
-        stack: StackView,
-        display: DisplayContext,
-    },
 }
 
 /// The active stack path, borrowed from the resolvers and their callers, with no stack copies.
@@ -299,97 +272,27 @@ pub(super) struct StackAncestor<'a> {
     pub(super) parent: Option<&'a StackAncestor<'a>>,
 }
 
-/// A single special layer's writes directly into the item state. A refusal is sticky, and
-/// dropping without committing rolls the whole layer back, including on an unwind.
+enum SubmissionFailure {
+    Nested,
+    Fault(String),
+}
+
+/// Writes one special layer into the item state. Dropping without a commit rolls back every
+/// write, including the geometry of any children already submitted.
 struct LayerWriter<'out, 'draw> {
     layers: &'out mut Vec<LayerRender>,
     checkpoint: usize,
     renderer: &'draw ItemRenderer,
     base: &'draw SpecialLayerBase,
     ctx: &'draw Context<'draw>,
-    env: &'draw dyn ItemEnv,
+    env: &'draw dyn ItemDrawEnv,
     ancestor: &'draw StackAncestor<'draw>,
     remaining: &'out mut usize,
     foil: FoilType,
     outer_transform: AssetMatrix,
     display_transform: LayerTransform,
-    local_pose: AssetMatrix,
-    refused: bool,
+    failure: Option<SubmissionFailure>,
     committed: bool,
-}
-
-impl LayerWriter<'_, '_> {
-    fn matrix(&self) -> Mat4 {
-        // Under the display transform's half-block offset: poses are about the model's corner.
-        glam_matrix(&self.base.model.layer_matrix(
-            self.display_transform,
-            self.ctx.display,
-            &self.outer_transform.mul(&self.local_pose),
-        ))
-    }
-
-    fn submit_geometry(&mut self, geometry: &BakedSpecialGeometry, tints: &Arc<[i32]>) {
-        if !self.refused {
-            let matrix = self.matrix();
-            self.layers.push(LayerRender {
-                geometry: LayerGeometry::Quads(geometry.model.clone()),
-                tints: LayerTints::Shared(tints.clone()),
-                foil: self.foil,
-                matrix,
-                uses_block_light: self.base.model.uses_block_light,
-                particle: self.base.particle.clone(),
-                extents: geometry.extents.clone(),
-                display: self.ctx.display,
-            });
-        }
-    }
-
-    fn submit_stack(&mut self, stack: &StackView, display: DisplayContext) -> ControlFlow<()> {
-        if self.refused {
-            return ControlFlow::Break(());
-        }
-        if *self.remaining == 0
-            || std::iter::successors(Some(self.ancestor), |entry| entry.parent)
-                .any(|entry| entry.stack == stack)
-        {
-            warn_refused_nesting_once(&stack.item);
-            self.refused = true;
-            return ControlFlow::Break(());
-        }
-        *self.remaining -= 1;
-        let ancestor = StackAncestor {
-            stack,
-            parent: Some(self.ancestor),
-        };
-        let ctx = Context {
-            display,
-            ..*self.ctx
-        };
-        let start = self.layers.len();
-        if self
-            .renderer
-            .append_render_layers(self.layers, &ancestor, &ctx, self.env, None, self.remaining)
-            .is_break()
-        {
-            self.refused = true;
-            return ControlFlow::Break(());
-        }
-        // Compose after resolving the child: preserve parent * (child * grandchild) order
-        // as well as the child's own display, foil and tint state.
-        let matrix = self.matrix();
-        for layer in &mut self.layers[start..] {
-            layer.matrix = matrix * layer.matrix;
-        }
-        ControlFlow::Continue(())
-    }
-
-    fn commit(mut self) -> ControlFlow<()> {
-        if self.refused {
-            return ControlFlow::Break(());
-        }
-        self.committed = true;
-        ControlFlow::Continue(())
-    }
 }
 
 impl Drop for LayerWriter<'_, '_> {
@@ -400,20 +303,146 @@ impl Drop for LayerWriter<'_, '_> {
     }
 }
 
-/// Says once per model id that a mod's special model renderer drew a model the packs don't have.
-fn warn_unknown_part_once(model: &str) {
-    static SEEN: Mutex<std::collections::BTreeSet<String>> =
-        Mutex::new(std::collections::BTreeSet::new());
-    let mut seen = SEEN.lock().unwrap_or_else(PoisonError::into_inner);
-    if !seen.contains(model) {
-        seen.insert(model.to_owned());
-        drop(seen);
-        log::warn!(
-            "Sunrise: a special model renderer drew the model {model}, which no pack has; the special layer draws the missing model"
-        );
+/// The same layer writer borrowed under one pose. Child scopes can't mutate their parent's pose.
+struct PoseWriter<'scope, 'out, 'draw> {
+    layer: &'scope mut LayerWriter<'out, 'draw>,
+    local_pose: AssetMatrix,
+}
+
+impl PoseWriter<'_, '_, '_> {
+    fn matrix(&self) -> Mat4 {
+        // Under the display transform's half-block offset: poses are about the model's corner.
+        let layer = &self.layer;
+        glam_matrix(&layer.base.model.layer_matrix(
+            layer.display_transform,
+            layer.ctx.display,
+            &layer.outer_transform.mul(&self.local_pose),
+        ))
     }
 }
-/// Says once per item that a special model renderer's stack part was refused as a cycle or past
+
+impl SpecialModelSubmission for PoseWriter<'_, '_, '_> {
+    fn with_pose(
+        &mut self,
+        [a, b, c, d, e, f, g, h, i, j, k, l]: [f32; 12],
+        draw: &mut dyn FnMut(&mut SpecialModelCollector<'_>) -> Result<(), String>,
+    ) -> Result<(), String> {
+        if self.layer.failure.is_some() {
+            return Err("the special layer was already refused".into());
+        }
+        let pose =
+            AssetMatrix::from_row_major([a, b, c, d, e, f, g, h, i, j, k, l, 0.0, 0.0, 0.0, 1.0]);
+        let local_pose = self.local_pose.mul(&pose);
+        if !local_pose.is_finite() {
+            let error = "the composed special model pose is not finite";
+            self.layer.failure = Some(SubmissionFailure::Fault(error.into()));
+            return Err(error.into());
+        }
+        let mut child = PoseWriter {
+            layer: &mut *self.layer,
+            local_pose,
+        };
+        let result = draw(&mut SpecialModelCollector::new(&mut child));
+        if let Err(error) = &result
+            && self.layer.failure.is_none()
+        {
+            self.layer.failure = Some(SubmissionFailure::Fault(error.clone()));
+        }
+        result
+    }
+
+    fn submit_geometry(
+        &mut self,
+        geometry: &SpecialModelGeometry,
+        tints: SpecialModelTints,
+    ) -> Result<(), String> {
+        if self.layer.failure.is_some() {
+            return Err("the special layer was already refused".into());
+        }
+        let Some(geometry) = geometry
+            .downcast_ref::<BakedSpecialGeometry>()
+            .filter(|geometry| {
+                Arc::ptr_eq(
+                    &geometry.generation,
+                    &self.layer.renderer.special_generation,
+                )
+            })
+        else {
+            let error = "the special model geometry was not baked for this resource generation";
+            self.layer.failure = Some(SubmissionFailure::Fault(error.into()));
+            return Err(error.into());
+        };
+        let matrix = self.matrix();
+        self.layer.layers.push(LayerRender {
+            geometry: LayerGeometry::Quads(geometry.model.clone()),
+            tints: LayerTints::Special(tints),
+            foil: self.layer.foil,
+            matrix,
+            uses_block_light: self.layer.base.model.uses_block_light,
+            particle: self.layer.base.particle.clone(),
+            extents: geometry.extents.clone(),
+            display: self.layer.ctx.display,
+        });
+        Ok(())
+    }
+
+    fn submit_stack(
+        &mut self,
+        stack: &ItemStack,
+        display: ItemDisplayContext,
+    ) -> Result<(), String> {
+        let layer = &mut *self.layer;
+        if layer.failure.is_some() {
+            return Err("the special layer was already refused".into());
+        }
+        let Some((stack, display)) = layer.env.special_model_stack(stack, display) else {
+            layer.failure = Some(SubmissionFailure::Nested);
+            return Err("the nested special model stack or display context is unreadable".into());
+        };
+        if *layer.remaining == 0
+            || std::iter::successors(Some(layer.ancestor), |entry| entry.parent)
+                .any(|entry| *entry.stack == stack)
+        {
+            warn_refused_nesting_once(&stack.item);
+            layer.failure = Some(SubmissionFailure::Nested);
+            return Err("the nested special model stack is a cycle or past the budget".into());
+        }
+        *layer.remaining -= 1;
+        let ancestor = StackAncestor {
+            stack: &stack,
+            parent: Some(layer.ancestor),
+        };
+        let ctx = Context {
+            display,
+            ..*layer.ctx
+        };
+        let start = layer.layers.len();
+        if layer
+            .renderer
+            .append_render_layers(
+                layer.layers,
+                &ancestor,
+                &ctx,
+                layer.env,
+                None,
+                layer.remaining,
+            )
+            .is_break()
+        {
+            layer.failure = Some(SubmissionFailure::Nested);
+            return Err("the nested special model refused its draw".into());
+        }
+        // Compose after resolving the child: preserve parent * (child * grandchild) order
+        // as well as the child's own display, foil and tint state.
+        let matrix = self.matrix();
+        for layer in &mut self.layer.layers[start..] {
+            layer.matrix = matrix * layer.matrix;
+        }
+        Ok(())
+    }
+}
+
+/// Says once per item that a special model renderer's nested stack was refused as a cycle or past
 /// the budget.
 fn warn_refused_nesting_once(item: &str) {
     static SEEN: Mutex<std::collections::BTreeSet<String>> =
@@ -423,7 +452,7 @@ fn warn_refused_nesting_once(item: &str) {
         seen.insert(item.to_owned());
         drop(seen);
         log::warn!(
-            "Sunrise: a special model renderer's stack part of {item} is a cycle or past the nesting budget; the special layer draws the missing model"
+            "Sunrise: a special model renderer's nested stack of {item} is a cycle or past the nesting budget; the special layer draws the missing model"
         );
     }
 }

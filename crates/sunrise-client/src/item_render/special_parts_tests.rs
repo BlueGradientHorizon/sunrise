@@ -1,150 +1,253 @@
-//! A special model of a type a mod registered draws the resource models its renderer answers
-//! (`ItemEnv::special_model_parts`), with the `base` model's display transforms, particle and GUI
-//! light, in every display context and after a reload. Original assets: one cube A, two cubes B.
+//! A registered renderer submits its baked geometry with the base model's display transforms,
+//! particle and GUI light, in every display context and after a reload.
 use super::*;
 use mod_api::{
-    __private::parts_installation::item_key, ClientHost, ItemDisplayContext, ItemStack,
-    SpecialModelContext, SpecialModelFactory, SpecialModelPart, SpecialModelPolicy,
-    SpecialModelQuad, SpecialModelRenderer, SpecialPartContent, testing::FakeHost,
+    __private::parts_installation::item_key, Component, ItemStack, SpecialModelBakeContext,
+    SpecialModelCollector, SpecialModelFactory, SpecialModelGeometry, SpecialModelQuad,
+    SpecialModelRenderer, SpecialModelStack, testing::FakeHost,
 };
 use std::fs;
-use sunrise_assets::{
-    item_model::{PreparedParts, RegisteredSpecialModel, SpecialContent, SpecialPart},
-    math::Mat4 as AssetMatrix,
-    resource_source::{Resource, ResourceRoot},
-};
+use sunrise_assets::resource_source::{Resource, ResourceRoot};
 
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Pan {
+struct PanConfig {
     handle: u8,
 }
 
-impl SpecialModelRenderer for Pan {
-    fn extract(
-        &self,
-        _: &dyn ClientHost,
-        input_stack: &ItemStack,
-        _: &SpecialModelContext,
-    ) -> Result<Vec<SpecialModelPart>, String> {
-        let stack_part = |key, count| {
-            SpecialModelPart::stack(
-                ItemStack::new(item_key(key), count).unwrap(),
-                ItemDisplayContext::Gui,
-            )
-        };
-        let part = |model| {
-            SpecialModelPart::new(model)
-                .translated([f32::from(self.handle) / 8.0, 0.0, 0.0])
-                .with_tints(vec![0xFFCC_2211])
-        };
-        let a = || part("spt:item/a");
-        let b = || part("spt:item/b");
-        let parts = match input_stack.count() {
-            1 => vec![a()],
-            3 => vec![a(), part("spt:item/nope")],
-            4 => return Err("the test renderer refuses this stack".into()),
-            5 => vec![
-                a().with_transform([2.0, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0]),
-            ],
-            6 | 7 => {
-                vec![a().with_tints(vec![[WHITE, GREY][input_stack.count() as usize - 6] as u32])]
-            }
-            // The tinted, foiled cube nested beside B; then the pan itself, a cycle.
-            8 => vec![stack_part(2, 1).translated([0.25, 0.0, 0.0]), b()],
-            9 => vec![stack_part(0, 9).translated([0.25, 0.0, 0.0])],
-            // A to B to A with a valid sibling model: the cycle refuses every answer above it.
-            10 => vec![b(), stack_part(0, 11)],
-            11 => vec![a(), stack_part(0, 10)],
-            // Both layers submit quads before the cycle, with more after it in the recipe.
-            12 => vec![b(), stack_part(0, 13), b()],
-            13 => vec![a(), stack_part(3, 12), a()],
-            14 => vec![b(), stack_part(0, 4)],
-            // 64 cubes, 65, and the same below a first level: draws expand 1 + 64 and 1 + 63.
-            20 | 21 => (0..44 + input_stack.count())
-                .map(|_| stack_part(1, 1))
-                .collect(),
-            22 => vec![b(), stack_part(0, 20)],
-            23 => vec![b(), stack_part(0, 24)],
-            24 => (0..63).map(|_| stack_part(1, 1)).collect(),
-            _ => vec![b()],
-        };
-        Ok(parts)
+struct Pan {
+    handle: u8,
+    a: SpecialModelGeometry,
+    b: SpecialModelGeometry,
+    palette: Arc<[u32]>,
+}
+
+impl Pan {
+    fn bake(config: PanConfig, bake: &dyn SpecialModelBakeContext) -> Result<Self, String> {
+        Ok(Self {
+            handle: config.handle,
+            a: bake.bake_model("spt:item/a")?,
+            b: bake.bake_model("spt:item/b")?,
+            palette: Arc::new([0xFFCC_2211]),
+        })
     }
 }
 
-/// Bridge the fixture's two synthetic items to the recipe consumer, without booting a game.
-struct PanEnv<'r>(&'r ItemRenderer, FakeHost);
-impl ItemDrawEnv for PanEnv<'_> {}
-impl ItemEnv for PanEnv<'_> {
-    fn special_model_parts(
+struct PanTint;
+impl Component for PanTint {
+    type Value = i32;
+
+    fn id(&self) -> &str {
+        "spt:tint"
+    }
+
+    fn decode(&self, value: &Tag) -> Option<i32> {
+        match value {
+            Tag::Int(value) => Some(*value),
+            _ => None,
+        }
+    }
+
+    fn encode(&self, value: i32) -> Tag {
+        Tag::Int(value)
+    }
+}
+
+const fn translated(x: f32) -> [f32; 12] {
+    [1.0, 0.0, 0.0, x, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+}
+const DOUBLED: [f32; 12] = [2.0, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0];
+
+impl SpecialModelRenderer for Pan {
+    type Argument = (u32, Option<i32>);
+
+    fn extract_argument(
         &self,
-        model: &RegisteredSpecialModel,
-        input_stack: &StackView,
-        _: &Context,
-    ) -> Option<PreparedParts> {
-        let model = model.0.downcast_ref::<BakedSpecialModel>().unwrap();
-        assert_eq!(model.kind.as_ref(), "spt:pan");
-        let api_stack = ItemStack::new(item_key(0), input_stack.count as u32).unwrap();
-        let parts: Vec<_> = model
-            .renderer
-            .extract(&self.1, &api_stack, &SpecialModelContext::STACK)
-            .ok()?
-            .into_iter()
-            .map(|part| {
-                let [a, b, c, d, e, f, g, h, i, j, k, l] = part.transform;
-                let content = match part.content {
-                    SpecialPartContent::Model(model) => SpecialContent::Model(model),
-                    SpecialPartContent::Stack {
-                        stack: inner,
-                        display: ItemDisplayContext::Gui,
-                    } => {
-                        let (item, glint) = match inner.item() {
-                            key if key == item_key(0) => ("spt:pan", false),
-                            key if key == item_key(1) => ("spt:cube", false),
-                            key if key == item_key(2) => ("spt:grey_cube", true),
-                            key if key == item_key(3) => ("spt:composite", false),
-                            _ => unreachable!("the pan fixture only gives known items"),
-                        };
-                        let mut stack = stack(item, inner.count() as i32);
-                        if glint {
-                            stack.patch.insert(
-                                "minecraft:enchantment_glint_override".into(),
-                                Some(serde_json::json!(true)),
-                            );
-                        }
-                        SpecialContent::Stack {
-                            stack,
-                            display: DisplayContext::Gui,
-                        }
-                    }
-                    _ => unreachable!("the pan fixture only gives known recipes"),
-                };
-                SpecialPart {
-                    content,
-                    pose: AssetMatrix::from_row_major([
-                        a, b, c, d, e, f, g, h, i, j, k, l, 0.0, 0.0, 0.0, 1.0,
-                    ]),
-                    tints: part.tints.into_iter().map(|argb| argb as i32).collect(),
-                }
+        _: &dyn ClientHost,
+        stack: &SpecialModelStack<'_>,
+    ) -> Self::Argument {
+        (stack.count(), stack.get(&PanTint))
+    }
+
+    fn submit(
+        &self,
+        &(count, tint): &Self::Argument,
+        context: &SpecialModelContext,
+        collector: &mut SpecialModelCollector<'_>,
+    ) -> Result<(), String> {
+        let stack = |collector: &mut SpecialModelCollector<'_>, key, count| {
+            collector.submit_stack(
+                &ItemStack::new(item_key(key), count).unwrap(),
+                ItemDisplayContext::Gui,
+            )
+        };
+        let geometry = |collector: &mut SpecialModelCollector<'_>, model: &SpecialModelGeometry| {
+            collector.with_pose(translated(f32::from(self.handle) / 8.0), |pose| {
+                pose.submit_geometry(model, SpecialModelTints::Indexed(Arc::clone(&self.palette)))
             })
-            .collect();
-        self.0.prepare_parts(model, &parts)
+        };
+        match count {
+            1 => geometry(collector, &self.a),
+            3 => {
+                geometry(collector, &self.a)?;
+                stack(collector, u32::MAX, 1)
+            }
+            4 => {
+                geometry(collector, &self.a)?;
+                Err("the test renderer refuses this stack".into())
+            }
+            5 => collector.with_pose(DOUBLED, |pose| {
+                pose.submit_geometry(&self.a, SpecialModelTints::Untinted)
+            }),
+            6 | 7 => collector.submit_geometry(
+                &self.a,
+                SpecialModelTints::Uniform([WHITE, GREY][count as usize - 6] as u32),
+            ),
+            // A tinted, foiled cube beside B; then the pan itself, a cycle.
+            8 => {
+                collector.with_pose(translated(0.25), |pose| stack(pose, 2, 1))?;
+                geometry(collector, &self.b)
+            }
+            9 => collector.with_pose(translated(0.25), |pose| stack(pose, 0, 9)),
+            // A to B to A with geometry staged at both levels.
+            10 => {
+                geometry(collector, &self.b)?;
+                stack(collector, 0, 11)
+            }
+            11 => {
+                geometry(collector, &self.a)?;
+                stack(collector, 0, 10)
+            }
+            // Ignore the nested refusal on purpose: neither layer may commit.
+            12 | 13 => {
+                let (model, inner, count) = if count == 12 {
+                    (&self.b, 0, 13)
+                } else {
+                    (&self.a, 3, 12)
+                };
+                geometry(collector, model)?;
+                let _ = stack(collector, inner, count);
+                let _ = geometry(collector, model);
+                Ok(())
+            }
+            14 => {
+                geometry(collector, &self.b)?;
+                stack(collector, 4, 4)
+            }
+            15 => {
+                geometry(collector, &self.a)?;
+                panic!("the pan fell")
+            }
+            16 => {
+                geometry(collector, &self.a)?;
+                // Both input transforms are finite; their composed pose is not.
+                let _ = collector.with_pose(DOUBLED, |pose| {
+                    pose.with_pose(translated(f32::MAX), |_| Ok(()))
+                });
+                Ok(())
+            }
+            20 | 21 | 24 => {
+                let cubes = if count == 24 { 63 } else { 44 + count };
+                for _ in 0..cubes {
+                    stack(collector, 1, 1)?;
+                }
+                Ok(())
+            }
+            22 | 23 => {
+                geometry(collector, &self.b)?;
+                stack(collector, 0, if count == 22 { 20 } else { 24 })
+            }
+            25 => {
+                collector.with_pose(translated(0.25), |pose| {
+                    pose.with_pose(DOUBLED, |pose| {
+                        pose.submit_geometry(&self.a, SpecialModelTints::Untinted)
+                    })
+                })?;
+                collector.submit_geometry(&self.a, SpecialModelTints::Untinted)
+            }
+            30 => {
+                let lease = if context.display == ItemDisplayContext::Ground
+                    && context.game_time == Some(41)
+                {
+                    &self.b
+                } else {
+                    &self.a
+                };
+                let tints = tint.map_or(SpecialModelTints::Untinted, |tint| {
+                    SpecialModelTints::Uniform(tint as u32)
+                });
+                collector.submit_geometry(lease, tints)
+            }
+            _ => geometry(collector, &self.b),
+        }
+    }
+}
+
+/// Bridge the fixture's synthetic items to the same collector as the game uses.
+struct PanEnv(FakeHost);
+impl ItemEnv for PanEnv {}
+impl ItemDrawEnv for PanEnv {
+    fn special_model_input(
+        &self,
+        _: &BakedSpecialModel,
+        stack: &StackView,
+        context: &Context<'_>,
+    ) -> Option<SpecialModelInput<'_>> {
+        let item = match stack.item.as_str() {
+            "spt:pan" => 0,
+            "spt:composite" => 3,
+            "spt:fault" | "spt:alias" => 4,
+            _ => return None,
+        };
+        let display = ItemDisplayContext::ALL
+            .into_iter()
+            .find(|value| value.name() == context.display.name())?;
+        Some(SpecialModelInput {
+            host: &self.0,
+            item: item_key(item),
+            count: NonZeroU32::new(stack.count.try_into().ok()?)?,
+            context: SpecialModelContext::new(
+                display,
+                context.level.map(|level| level.game_time),
+                0.25,
+            ),
+        })
+    }
+
+    fn special_model_stack(
+        &self,
+        inner: &ItemStack,
+        display: ItemDisplayContext,
+    ) -> Option<(StackView, DisplayContext)> {
+        assert_eq!(display, ItemDisplayContext::Gui);
+        let (item, glint) = match inner.item() {
+            key if key == item_key(0) => ("spt:pan", false),
+            key if key == item_key(1) => ("spt:cube", false),
+            key if key == item_key(2) => ("spt:grey_cube", true),
+            key if key == item_key(3) => ("spt:composite", false),
+            key if key == item_key(4) => ("spt:fault", false),
+            _ => return None,
+        };
+        let mut stack = stack(item, inner.count() as i32);
+        if glint {
+            stack.patch.insert(
+                "minecraft:enchantment_glint_override".into(),
+                Some(serde_json::json!(true)),
+            );
+        }
+        Some((stack, DisplayContext::Gui))
     }
 }
 
 fn pan_factories(on_bake: impl Fn(u8) + Send + Sync + 'static) -> SpecialModelFactories {
     BTreeMap::from([(
         "spt:pan".into(),
-        (
-            SpecialModelPolicy::Stack,
-            SpecialModelFactory::new(
-                |config| config.decode::<Pan>(),
-                move |pan, _| {
-                    on_bake(pan.handle);
-                    Ok(pan)
-                },
-            ),
+        SpecialModelFactory::new(
+            |config| config.decode::<PanConfig>(),
+            move |config, bake| {
+                on_bake(config.handle);
+                Pan::bake(config, bake)
+            },
         ),
     )])
 }
@@ -268,6 +371,83 @@ fn stack(item: &str, count: i32) -> StackView {
     stack
 }
 
+#[test]
+fn each_special_draw_reads_effective_components_and_current_context() {
+    let root = tempfile::tempdir().unwrap();
+    let mut renderer = renderer(root.path(), 2, 2, &pan_factories(|_| {}));
+    Arc::make_mut(&mut renderer.models.prototypes).insert(
+        "spt:pan".into(),
+        BTreeMap::from([("spt:tint".into(), serde_json::json!(GREY))]),
+    );
+    let env = PanEnv(FakeHost::new());
+    let mut pan = stack("spt:pan", 30);
+    let level = |game_time| LevelState {
+        game_time,
+        ..Default::default()
+    };
+    let draw = |pan: &StackView, display, time| {
+        let state = renderer.resolve(pan, display, None, Some(&level(time)), 0, &env);
+        quads(&renderer, &state)
+            .into_iter()
+            .map(|quad| quad.color)
+            .collect::<Vec<_>>()
+    };
+
+    // Same stack, same view, and no intervening frame: both time and display matter.
+    assert_eq!(
+        draw(&pan, DisplayContext::Ground, 41),
+        vec![GREY as u32; 12]
+    );
+    assert_eq!(draw(&pan, DisplayContext::Ground, 42), vec![GREY as u32; 6]);
+    assert_eq!(draw(&pan, DisplayContext::Gui, 41), vec![GREY as u32; 6]);
+    pan.patch.insert(
+        "spt:tint".into(),
+        Some(serde_json::json!(0xFFAA_1100_u32 as i32)),
+    );
+    assert_eq!(draw(&pan, DisplayContext::Gui, 41), vec![0xFFAA_1100; 6]);
+    pan.patch.insert("spt:tint".into(), None);
+    assert_eq!(draw(&pan, DisplayContext::Gui, 41), vec![u32::MAX; 6]);
+}
+
+#[test]
+fn a_fault_rolls_back_and_disables_the_type_only_in_its_resource_generation() {
+    let root = tempfile::tempdir().unwrap();
+    write(
+        root.path(),
+        "assets/spt/items/alias.json",
+        r#"{"model":{"type":"minecraft:special","base":"spt:item/base","model":{"type":"spt:pan","handle":1}}}"#,
+    );
+    let factories = pan_factories(|_| {});
+    let env = PanEnv(FakeHost::new());
+    let draw = |renderer: &ItemRenderer, stack: &StackView| {
+        renderer.resolve(stack, DisplayContext::None, None, None, 0, &env)
+    };
+    let is_missing = |renderer: &ItemRenderer, stack: &StackView| {
+        let state = draw(renderer, stack);
+        matches!(state.layers.as_slice(), [LayerRender { geometry: LayerGeometry::Quads(model), .. }]
+            if Arc::ptr_eq(model, &renderer.bake(MISSING_MODEL)))
+    };
+    let working = stack("spt:alias", 1);
+    let mut unreadable = stack("spt:unreadable", 1);
+    unreadable.patch.insert(
+        "minecraft:item_model".into(),
+        Some(serde_json::json!("spt:pan")),
+    );
+    for count in [4, 15, 16] {
+        let generation = renderer(root.path(), 2, 2, &factories);
+        assert!(is_missing(&generation, &unreadable));
+        assert_eq!(quads(&generation, &draw(&generation, &working)).len(), 6);
+        // Err after a write, panic after a write, and a non-finite composed pose.
+        assert!(is_missing(&generation, &stack("spt:pan", count)));
+        assert!(
+            is_missing(&generation, &working),
+            "the sibling node of the same type was not disabled"
+        );
+    }
+    let reloaded = renderer(root.path(), 2, 2, &factories);
+    assert_eq!(quads(&reloaded, &draw(&reloaded, &working)).len(), 6);
+}
+
 fn sprites() -> HashMap<String, Rect> {
     let rect = Rect {
         u0: 0.0,
@@ -300,6 +480,8 @@ fn an_invalid_winning_registered_model_does_not_load_a_lower_pack() {
     );
     let files = BTreeMap::from([
         (item_path.clone(), winner.clone()),
+        ("assets/spt/models/item/a.json".to_owned(), Resource::bytes(b"{}".to_vec())),
+        ("assets/spt/models/item/b.json".to_owned(), Resource::bytes(b"{}".to_vec())),
         ("assets/spt/items/other.json".to_owned(), lower.clone()),
         ("assets/spt/items/decode-panic.json".to_owned(), Resource::bytes(
             br#"{"model":{"type":"special","base":"spt:item/base","model":{"type":"spt:decode-panic"}}}"#.to_vec(),
@@ -325,22 +507,16 @@ fn an_invalid_winning_registered_model_does_not_load_a_lower_pack() {
     factories.extend([
         (
             "spt:decode-panic".into(),
-            (
-                SpecialModelPolicy::Stack,
-                SpecialModelFactory::new(
-                    |_| -> Result<Pan, String> { panic!("decoder panicked") },
-                    |pan, _| Ok(pan),
-                ),
+            SpecialModelFactory::new(
+                |_| -> Result<Pan, String> { panic!("decoder panicked") },
+                |pan, _| Ok(pan),
             ),
         ),
         (
             "spt:bake-panic".into(),
-            (
-                SpecialModelPolicy::Stack,
-                SpecialModelFactory::new(
-                    |_| Ok(()),
-                    |(), _| -> Result<Pan, String> { panic!("baker panicked") },
-                ),
+            SpecialModelFactory::new(
+                |_| Ok(()),
+                |(), _| -> Result<Pan, String> { panic!("baker panicked") },
             ),
         ),
     ]);
@@ -373,7 +549,7 @@ fn a_generation_bakes_typed_config_once_and_draws_use_the_baked_instance() {
         move |handle| calls.lock().unwrap().push(handle)
     });
     let draw = |renderer: &ItemRenderer| {
-        let env = PanEnv(renderer, FakeHost::new());
+        let env = PanEnv(FakeHost::new());
         let state = renderer.resolve(
             &stack("spt:pan", 1),
             DisplayContext::None,
@@ -439,16 +615,16 @@ fn special_geometry_leases_resolve_pack_sprites_and_reject_invalid_quads() {
                     _ => return Err(format!("did not reject invalid {message}")),
                 }
             }
-            *leases.lock().unwrap() = Some((resource, custom));
-            Ok(pan)
+            *leases.lock().unwrap() = Some((resource, custom.clone()));
+            Ok(Pan {
+                b: custom,
+                ..Pan::bake(pan, context)?
+            })
         }
     };
     let factories = BTreeMap::from([(
         "spt:pan".into(),
-        (
-            SpecialModelPolicy::Stack,
-            SpecialModelFactory::new(|config| config.decode::<Pan>(), bake),
-        ),
+        SpecialModelFactory::new(|config| config.decode::<PanConfig>(), bake),
     )]);
     let renderer = renderer(temp.path(), 2, 2, &factories);
     assert!(renderer.models.definitions.contains_key("spt:pan"));
@@ -468,6 +644,32 @@ fn special_geometry_leases_resolve_pack_sprites_and_reject_invalid_quads() {
     assert!(quad.material.force_translucent);
     assert_eq!(quad.tint_index, 2);
     assert_eq!(quad.light_emission, 12);
+
+    let mut stack = stack("spt:pan", 2);
+    stack.patch.insert(
+        "minecraft:enchantment_glint_override".into(),
+        Some(serde_json::json!(true)),
+    );
+    let state = renderer.resolve(
+        &stack,
+        DisplayContext::Gui,
+        None,
+        None,
+        0,
+        &PanEnv(FakeHost::new()),
+    );
+    let quads = quads(&renderer, &state);
+    let [quad] = quads.as_slice() else {
+        panic!("expected the submitted custom quad");
+    };
+    assert_eq!(quad.light_emission, 12);
+    assert_eq!(
+        quad.color,
+        u32::MAX,
+        "the indexed palette has no entry for tint 2"
+    );
+    assert_eq!(quad.foil, Foil::Standard);
+    assert!(quad.translucent);
 }
 
 #[test]
@@ -490,9 +692,15 @@ fn a_registered_special_model_draws_its_renderers_resource_models() {
         ]}}}}"#
         ),
     );
-    let factories = pan_factories(|_| {});
+    write(
+        &root,
+        "assets/spt/items/fault.json",
+        r#"{"model":{"type":"minecraft:special","base":"spt:item/base","model":{"type":"spt:fault","handle":2}}}"#,
+    );
+    let mut factories = pan_factories(|_| {});
+    factories.insert("spt:fault".into(), factories["spt:pan"].clone());
     let renderer = renderer(&root, 2, 2, &factories);
-    let env = PanEnv(&renderer, FakeHost::new());
+    let env = PanEnv(FakeHost::new());
     let resolve = |item: &str, count, display| {
         renderer.resolve(&stack(item, count), display, None, None, 0, &env)
     };
@@ -550,13 +758,23 @@ fn a_registered_special_model_draws_its_renderers_resource_models() {
     assert_eq!(x(1), (-0.25, 0.0));
     assert_eq!(x(5), (-0.5, 0.0));
 
-    // A part naming a model no pack has, or a refused draw, draws the missing model; a plain
-    // cube item still draws its 6 quads.
+    let scoped = resolve("spt:pan", 25, DisplayContext::None);
+    let [child, sibling] = scoped.layers.as_slice() else {
+        panic!("expected geometry inside and outside the nested pose");
+    };
+    assert_eq!(child.matrix.transform_point3(Vec3::ZERO).x, -0.25);
+    assert_eq!(
+        child.matrix.transform_point3(Vec3::new(0.25, 0.0, 0.0)).x,
+        0.25
+    );
+    assert_eq!(sibling.matrix.transform_point3(Vec3::ZERO).x, -0.5);
+
+    // An unreadable nested stack discards the geometry already submitted, without poisoning
+    // the parent. The next valid stack of that type still draws.
     let missing = renderer.bake(MISSING_MODEL);
     let is_missing_layer = |layer: &LayerRender| matches!(&layer.geometry, LayerGeometry::Quads(baked) if Arc::ptr_eq(baked, &missing));
     let is_missing = |state: &ItemRenderState| matches!(state.layers.as_slice(), [layer] if is_missing_layer(layer));
     assert!(is_missing(&resolve("spt:pan", 3, DisplayContext::Gui)));
-    assert!(is_missing(&resolve("spt:pan", 4, DisplayContext::Gui)));
     // A stack part draws the inner item through the resolver, under its own display context and
     // tints and foil, not the part's: the cube's six glinting grey quads beside B's twelve
     // tinted ones. A stack part that names the stack being drawn is a cycle, refused whole.
@@ -582,13 +800,15 @@ fn a_registered_special_model_draws_its_renderers_resource_models() {
     assert!(is_missing_layer(replacement));
     assert!(matches!(&before.geometry, LayerGeometry::Quads(baked) if baked.quads.len() == 6));
     assert!(matches!(&after.geometry, LayerGeometry::Quads(baked) if baked.quads.len() == 12));
-    assert_eq!(before.tints.as_slice(), &[GREY]);
-    assert_eq!(after.tints.as_slice(), &[WHITE]);
+    assert_eq!(before.tints.at(0), GREY as u32);
+    assert_eq!(after.tints.at(0), WHITE as u32);
     assert_eq!(
         quads(&renderer, &resolve("spt:pan", 1, DisplayContext::Gui)).len(),
         6
     );
     assert!(is_missing(&resolve("spt:pan", 14, DisplayContext::Gui)));
+    // The nested callback's own type is disabled, not the parent that submitted it.
+    assert!(is_missing(&resolve("spt:fault", 1, DisplayContext::Gui)));
     let quads_of = |count| quads(&renderer, &resolve("spt:pan", count, DisplayContext::Gui)).len();
     assert_eq!(quads_of(20), 64 * 6);
     assert!(is_missing(&resolve("spt:pan", 21, DisplayContext::Gui)));
@@ -628,7 +848,7 @@ fn a_registered_special_model_draws_its_renderers_resource_models() {
         None,
         None,
         0,
-        &PanEnv(&reloaded, FakeHost::new()),
+        &PanEnv(FakeHost::new()),
     );
     assert_eq!(quads(&reloaded, &state).len(), 18);
     fs::remove_dir_all(root).unwrap();
@@ -655,7 +875,7 @@ fn an_old_state_draws_across_a_reload_and_releases_its_models_once() {
             None,
             None,
             0,
-            &PanEnv(renderer, FakeHost::new()),
+            &PanEnv(FakeHost::new()),
         )
     };
     let (old, also_old) = (resolve(&before), resolve(&before));
@@ -688,7 +908,7 @@ fn a_parts_tint_reaches_the_vertices_as_a_vanilla_tint_does() {
         std::env::temp_dir().join(format!("sunrise-special-parts-tint-{}", std::process::id()));
     let factories = pan_factories(|_| {});
     let renderer = renderer(&root, 2, 2, &factories);
-    let env = PanEnv(&renderer, FakeHost::new());
+    let env = PanEnv(FakeHost::new());
     let colours = |item: &str, count| {
         let state = renderer.resolve(
             &stack(item, count),

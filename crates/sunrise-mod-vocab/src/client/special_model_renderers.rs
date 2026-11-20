@@ -3,12 +3,13 @@
 //! vanilla's `SpecialModelRenderer`).
 //!
 //! A factory decodes and bakes each `minecraft:special` model node that names its type. The
-//! resulting renderer answers which resource models or item stacks to draw, each posed and
-//! tinted, with the node's `base` display transforms, particle and GUI light.
-use crate::{ClientHost, ItemDisplayContext, ItemStack};
+//! resulting renderer extracts its own argument and submits geometry or nested item stacks,
+//! with the node's `base` display transforms, particle and GUI light.
+use crate::{ClientHost, Component, ItemDisplayContext, ItemKey, ItemStack};
 use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
-use std::{any::Any, collections::BTreeMap, sync::Arc};
+use std::{any::Any, collections::BTreeMap, num::NonZeroU32, sync::Arc};
+use sunrise_core::nbt::Tag;
 
 // no wire: a borrowed view of one resource definition, used only during decode.
 /// The inline fields of the special model's `model` object, excluding the dispatch key `type`.
@@ -43,7 +44,7 @@ pub struct SpecialModelFactory(Arc<BakeSpecialModel>);
 type BakeSpecialModel = dyn for<'a> Fn(
         SpecialModelConfig<'a>,
         &dyn SpecialModelBakeContext,
-    ) -> Result<Arc<dyn SpecialModelRenderer>, String>
+    ) -> Result<BakedSpecialModelRenderer, String>
     + Send
     + Sync;
 
@@ -58,7 +59,12 @@ impl SpecialModelFactory {
         Self(Arc::new(move |config, context| {
             let config = decode(config).map_err(|error| format!("decode: {error}"))?;
             let renderer = bake(config, context).map_err(|error| format!("bake: {error}"))?;
-            Ok(Arc::new(renderer) as Arc<dyn SpecialModelRenderer>)
+            Ok(BakedSpecialModelRenderer(Box::new(
+                move |host, stack, context, collector| {
+                    let argument = renderer.extract_argument(host, stack);
+                    renderer.submit(&argument, context, collector)
+                },
+            )))
         }))
     }
 
@@ -68,7 +74,7 @@ impl SpecialModelFactory {
         &self,
         config: SpecialModelConfig<'_>,
         context: &dyn SpecialModelBakeContext,
-    ) -> Result<Arc<dyn SpecialModelRenderer>, String> {
+    ) -> Result<BakedSpecialModelRenderer, String> {
         (self.0)(config, context)
     }
 }
@@ -97,7 +103,7 @@ pub struct SpecialModelQuad {
     pub uv: [[f32; 2]; 4],
     /// The sprite's resource ID in an item or block atlas.
     pub sprite: String,
-    /// Index into the submitting part's tints, if any.
+    /// Index into the submission's indexed palette, if any.
     pub tint_index: Option<u32>,
     /// Block light floor, from 0 to 15.
     pub light_emission: u8,
@@ -138,108 +144,71 @@ impl SpecialModelGeometry {
     }
 }
 
-/// What a [`SpecialModelPart`] draws.
+// no wire: a borrowed view of the stack being drawn and its effective component reader.
+/// The stack that selected a special model layer, read without copying its component patch.
+#[derive(Clone, Copy)]
 #[non_exhaustive]
-#[derive(Clone, Debug, PartialEq, sunrise_mod_api_macros::Wire)]
-pub enum SpecialPartContent {
-    /// A resource model: the id (`mymod:item/skillet_pan`) of a model file of the packs.
-    Model(String),
-    /// An item stack, resolved through the item model resolver as any held or displayed item is:
-    /// the item's own models, tints and foil, drawn as `display` says. The part's transform
-    /// places the item's centre, and its `tints` are not used.
-    Stack {
-        /// The stack drawn.
-        stack: ItemStack,
-        /// The display context the item is resolved and drawn with (`Fixed` as in an item frame,
-        /// `Ground`, `Gui`): its own display transform applies.
-        display: ItemDisplayContext,
-    },
+pub struct SpecialModelStack<'a> {
+    item: ItemKey,
+    count: NonZeroU32,
+    component: &'a dyn Fn(&str) -> Option<Tag>,
 }
 
-/// The most nested stack parts one draw of an item may expand, all its renderers' and the
-/// stacks' own together: a draw that would expand more, or that meets a stack already being
-/// expanded above it, is refused whole.
+impl<'a> SpecialModelStack<'a> {
+    #[doc(hidden)]
+    /// Borrow the engine's view of the effective stack components.
+    pub fn new(
+        item: ItemKey,
+        count: NonZeroU32,
+        component: &'a dyn Fn(&str) -> Option<Tag>,
+    ) -> Self {
+        Self {
+            item,
+            count,
+            component,
+        }
+    }
+
+    /// The stack's item key.
+    pub fn item(&self) -> ItemKey {
+        self.item
+    }
+
+    /// The number of items in the drawn stack.
+    pub fn count(&self) -> u32 {
+        self.count.get()
+    }
+
+    /// Read one effective component with its typed descriptor. The patch overrides the item's
+    /// defaults, including explicit removals. Returns `None` if absent or not decodable.
+    pub fn get<C: Component>(&self, component: &C) -> Option<C::Value> {
+        component.decode(&(self.component)(component.id())?)
+    }
+}
+
+// no wire: a process-local palette for submitting baked geometry.
+/// Colors to apply to submitted geometry.
+#[derive(Clone, Debug, Default)]
+#[non_exhaustive]
+pub enum SpecialModelTints {
+    /// No tint; all quads draw white before lighting.
+    #[default]
+    Untinted,
+    /// Apply the same ARGB to every quad.
+    Uniform(u32),
+    /// ARGB by quad tint index. A missing or out-of-range index draws white before lighting.
+    /// Keep a shared palette on the renderer or its argument to reuse it without copying.
+    Indexed(Arc<[u32]>),
+}
+
+/// The most nested stacks one item draw may expand, counting all special layers and their
+/// descendants. A cycle or an exhausted budget refuses the enclosing special layer.
 pub const MAX_NESTED_STACK_PARTS: usize = 64;
 
-/// One thing a special model renderer draws: a resource model or an item stack.
-#[non_exhaustive]
-#[derive(Clone, Debug, PartialEq, sunrise_mod_api_macros::Wire)]
-pub struct SpecialModelPart {
-    /// What is drawn.
-    pub content: SpecialPartContent,
-    /// Where it is drawn: a row-major 3×4 affine transform in the special model's space, in
-    /// blocks with the origin at the model's corner (a model element's coordinates over 16).
-    pub transform: [f32; 12],
-    /// ARGB per tint index, as an item model's `tints`: a quad with a tint index past them, or
-    /// none, draws white.
-    pub tints: Vec<u32>,
-}
-
-impl SpecialModelPart {
-    /// The identity transform.
-    pub const IDENTITY: [f32; 12] = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0];
-
-    /// `model` where the special model is, untinted.
-    pub fn new(model: impl Into<String>) -> Self {
-        Self {
-            content: SpecialPartContent::Model(model.into()),
-            transform: Self::IDENTITY,
-            tints: Vec::new(),
-        }
-    }
-
-    /// `stack` drawn as `display` says, centred where the special model is.
-    pub fn stack(stack: ItemStack, display: ItemDisplayContext) -> Self {
-        Self {
-            content: SpecialPartContent::Stack { stack, display },
-            transform: Self::IDENTITY,
-            tints: Vec::new(),
-        }
-    }
-
-    /// The part drawn under `transform` (row-major 3×4 affine).
-    pub fn with_transform(mut self, transform: [f32; 12]) -> Self {
-        self.transform = transform;
-        self
-    }
-
-    /// The part moved by `by`, in blocks, after its transform.
-    pub fn translated(mut self, by: [f32; 3]) -> Self {
-        self.transform[3] += by[0];
-        self.transform[7] += by[1];
-        self.transform[11] += by[2];
-        self
-    }
-
-    /// The part tinted per tint index (ARGB).
-    pub fn with_tints(mut self, tints: Vec<u32>) -> Self {
-        self.tints = tints;
-        self
-    }
-}
-
-/// When a special model renderer is asked again: what its answer depends on.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
-pub enum SpecialModelPolicy {
-    /// The answer is a pure function of the stack and the baked renderer: asked once for an
-    /// unchanged stack however many frames and display contexts draw it, and given the neutral
-    /// [`SpecialModelContext::STACK`]. A deliberate difference from vanilla, which extracts
-    /// every frame.
-    Stack,
-    /// Asked in every frame the item is drawn, for each display context and game time it is
-    /// drawn with, as vanilla's `ItemModel.update` is: for an answer that moves with time. There
-    /// is no cap on animated items: the renderer costs one `extract` per drawn item per frame,
-    /// for each display context it is drawn in.
-    Frame,
-}
-
-/// What a [`SpecialModelPolicy::Frame`] renderer is told besides the stack, as `ItemModel.update`
-/// reads it: where the item is drawn and when.
+// no wire: timing and display state for a single local draw callback.
+/// Where the item is drawn and when.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
 pub struct SpecialModelContext {
     /// Where the item is drawn (a hand, a screen, the ground, a frame, the head).
     pub display: ItemDisplayContext,
@@ -252,7 +221,6 @@ pub struct SpecialModelContext {
 
 impl SpecialModelContext {
     /// The context of one drawn item; only the game builds one, mods read it.
-    // hidden: the game's constructor for a received struct, not a mod authoring surface.
     #[doc(hidden)]
     pub const fn new(
         display: ItemDisplayContext,
@@ -265,58 +233,145 @@ impl SpecialModelContext {
             partial_tick,
         }
     }
-    /// What a [`SpecialModelPolicy::Stack`] renderer is always given: no display context, no
-    /// time.
-    pub const STACK: Self = Self {
-        display: ItemDisplayContext::None,
-        game_time: None,
-        partial_tick: 0.0,
-    };
 }
 
-/// The most parts one answer of a special model renderer may have: more refuse it.
-pub const MAX_SPECIAL_MODEL_PARTS: usize = 256;
+// no wire: a scoped borrow of the current item layer's submission destination.
+/// Submits a special model layer. Only a successful draw commits its submissions.
+#[non_exhaustive]
+pub struct SpecialModelCollector<'a>(&'a mut dyn SpecialModelSubmission);
 
-/// A mod's baked special model renderer: vanilla's `SpecialModelRenderer`. One instance is
-/// baked for each model node; nodes of the same type can have different typed configuration.
-/// The renderer's [`SpecialModelPolicy`] is chosen when it is registered. Under `Stack`, answers
-/// depend only on stack and configuration: host-state changes do not invalidate a continuously
-/// drawn unchanged stack, and answers drop after all views stop drawing the stack or resources
-/// reload. Under `Frame` an answer is kept for one frame of one view only.
-pub trait SpecialModelRenderer: Send + Sync + 'static {
-    /// `extractArgument` and `submit` in one: the parts to draw for `stack`, in order. Use the
-    /// fields retained by your bake function for this model node. Asked on the client's main
-    /// thread when an item of such a model is drawn. Under
-    /// [`SpecialModelPolicy::Stack`], when its stack differs from the last one this model was
-    /// asked about: an unchanged stack is asked once, however many frames draw it, every display
-    /// context draws the same answer, and `context` is [`SpecialModelContext::STACK`]. Under
-    /// [`SpecialModelPolicy::Frame`], once per frame for each display context and game time the
-    /// item is drawn with, `context` saying which. The `base` model's display transforms apply
-    /// to the parts either way. Diverges: vanilla's renderer submits geometry; Sunrise's answers
-    /// resource models, so geometry stays in the packs.
-    ///
-    /// An `Err`, a panic, more than [`MAX_SPECIAL_MODEL_PARTS`] parts or a non-finite
-    /// transform refuses the entire answer. The error is logged once with the type, and
-    /// renderers of this type are asked no more in this resource load. A part naming a model
-    /// no pack has refuses the answer too, logged once for the model. A refusal in a nested
-    /// stack also discards all parts of the enclosing special layer. Only that outermost
-    /// layer draws the missing model; unrelated layers of the item are drawn as usual.
-    fn extract(
+impl<'a> SpecialModelCollector<'a> {
+    #[doc(hidden)]
+    /// Borrow an engine submission destination for this scope.
+    pub fn new(sink: &'a mut dyn SpecialModelSubmission) -> Self {
+        Self(sink)
+    }
+
+    /// Submit within a child pose, without changing the outer pose. `transform` is a finite
+    /// row-major 3×4 affine in block units; the current pose multiplies it on the left. The
+    /// model space starts at the model's corner (element coordinates divided by 16).
+    pub fn with_pose(
+        &mut self,
+        transform: [f32; 12],
+        draw: impl FnOnce(&mut SpecialModelCollector<'_>) -> Result<(), String>,
+    ) -> Result<(), String> {
+        let mut draw = Some(draw);
+        self.0.with_pose(transform, &mut |collector| {
+            draw.take().ok_or("pose callback already used")?(collector)
+        })
+    }
+
+    /// Submit a geometry lease from this resource load under the current pose and tints.
+    /// The enclosing layer supplies the display transform, particle, GUI light and foil;
+    /// world drawing supplies packed light, overlay and outline as for other item geometry.
+    pub fn submit_geometry(
+        &mut self,
+        geometry: &SpecialModelGeometry,
+        tints: SpecialModelTints,
+    ) -> Result<(), String> {
+        self.0.submit_geometry(geometry, tints)
+    }
+
+    /// Draw another stack under the current pose, with its own display transform, tints and
+    /// foil. A nested refusal (including unreadable stacks, cycles and the shared expansion
+    /// budget) discards this whole layer even if the returned error is ignored.
+    pub fn submit_stack(
+        &mut self,
+        stack: &ItemStack,
+        display: ItemDisplayContext,
+    ) -> Result<(), String> {
+        self.0.submit_stack(stack, display)
+    }
+}
+
+// no wire: engine-side submission operations for the current layer and pose.
+/// Engine backend for a scoped [`SpecialModelCollector`].
+pub trait SpecialModelSubmission {
+    /// Compose a pose and invoke the callback in that scope exactly once if accepted.
+    fn with_pose(
+        &mut self,
+        transform: [f32; 12],
+        draw: &mut dyn FnMut(&mut SpecialModelCollector<'_>) -> Result<(), String>,
+    ) -> Result<(), String>;
+
+    /// Append baked item geometry.
+    fn submit_geometry(
+        &mut self,
+        geometry: &SpecialModelGeometry,
+        tints: SpecialModelTints,
+    ) -> Result<(), String>;
+
+    /// Expand another item stack in the same draw.
+    fn submit_stack(
+        &mut self,
+        stack: &ItemStack,
+        display: ItemDisplayContext,
+    ) -> Result<(), String>;
+}
+
+// no wire: an erased process-local renderer callback, with its argument kept typed inside it.
+/// Engine draw entry for a renderer baked by [`SpecialModelFactory`].
+#[non_exhaustive]
+pub struct BakedSpecialModelRenderer(Box<SubmitBakedModel>);
+
+type SubmitBakedModel = dyn Fn(
+        &dyn ClientHost,
+        &SpecialModelStack<'_>,
+        &SpecialModelContext,
+        &mut SpecialModelCollector<'_>,
+    ) -> Result<(), String>
+    + Send
+    + Sync;
+
+impl BakedSpecialModelRenderer {
+    /// Extract the typed draw argument and use it to submit the layer.
+    pub fn submit(
         &self,
         host: &dyn ClientHost,
-        stack: &ItemStack,
+        stack: &SpecialModelStack<'_>,
         context: &SpecialModelContext,
-    ) -> Result<Vec<SpecialModelPart>, String>;
+        collector: &mut SpecialModelCollector<'_>,
+    ) -> Result<(), String> {
+        (self.0)(host, stack, context, collector)
+    }
+}
+
+// no wire: baked in-process renderer; the draw argument is not a serialized recipe.
+/// A mod's baked special model renderer: vanilla's `SpecialModelRenderer`. One instance is
+/// baked per model node. Both callbacks run for each draw on the client, without a recipe cache.
+pub trait SpecialModelRenderer: Send + Sync + 'static {
+    /// The typed value passed from extraction to submission during the same draw.
+    type Argument;
+
+    /// Read the stack and host state needed by [`Self::submit`]. Read only the components you
+    /// need; the game does not build an owned stack or clone the component patch for this call.
+    fn extract_argument(
+        &self,
+        host: &dyn ClientHost,
+        stack: &SpecialModelStack<'_>,
+    ) -> Self::Argument;
+
+    /// Submit this draw's geometry in order. Returning `Err`, panicking in either callback or
+    /// making an invalid geometry/pose submission discards the layer and disables this type
+    /// until resources reload. Unreadable input or a nested refusal discards the enclosing layer
+    /// without disabling its renderer. Only the outermost refused layer draws a missing model;
+    /// unrelated layers still draw normally.
+    fn submit(
+        &self,
+        argument: &Self::Argument,
+        context: &SpecialModelContext,
+        collector: &mut SpecialModelCollector<'_>,
+    ) -> Result<(), String>;
 }
 
 /// The special model renderer registry `register_special_model_renderer` hands out: NeoForge's
 /// `RegisterSpecialModelRendererEvent`.
 pub trait SpecialModelRenderers {
     /// `register(location, codec)`: `factory` decodes and bakes every special model node of
-    /// type `kind` (`mymod:skillet`), including replacements for builtins. Each baked renderer
-    /// is asked as `policy` says. Last registration wins, as in NeoForge; the game logs both
-    /// mods' ids. An id that is not `<namespace>:<path>` is logged and left out.
-    fn register(&mut self, kind: String, policy: SpecialModelPolicy, factory: SpecialModelFactory);
+    /// type `kind` (`mymod:skillet`), including replacements for builtins. Last registration
+    /// wins, as in NeoForge; the game logs both mods' ids. An id that is not
+    /// `<namespace>:<path>` is logged and left out.
+    fn register(&mut self, kind: String, factory: SpecialModelFactory);
 }
 
 // no wire: a report the game logs at registration; it holds `&'static` mod ids.
@@ -332,25 +387,20 @@ pub struct ReplacedSpecialModelRenderer {
     pub later: Option<&'static str>,
 }
 
-type PolicyFactory = (SpecialModelPolicy, SpecialModelFactory);
-
 // no wire: process-local listener or callback storage; trait objects are invoked through host dispatch, not serialized.
 /// The game's [`SpecialModelRenderers`]: the registrations by type.
 #[derive(Default)]
 // exhaustive: its fields are private; the game builds it
 pub struct SpecialModelRendererRegistry {
-    factories: BTreeMap<String, (Option<&'static str>, PolicyFactory)>,
+    factories: BTreeMap<String, (Option<&'static str>, SpecialModelFactory)>,
     replaced: Vec<ReplacedSpecialModelRenderer>,
     initial: Vec<(String, Option<&'static str>)>,
 }
 
 impl SpecialModelRenderers for SpecialModelRendererRegistry {
-    fn register(&mut self, kind: String, policy: SpecialModelPolicy, factory: SpecialModelFactory) {
+    fn register(&mut self, kind: String, factory: SpecialModelFactory) {
         let later = crate::content::crash::current_native_mod();
-        if let Some((earlier, ..)) = self
-            .factories
-            .insert(kind.clone(), (later, (policy, factory)))
-        {
+        if let Some((earlier, _)) = self.factories.insert(kind.clone(), (later, factory)) {
             self.replaced.push(ReplacedSpecialModelRenderer {
                 kind,
                 earlier,
@@ -371,12 +421,12 @@ impl SpecialModelRendererRegistry {
             .map(|(kind, owner)| (kind.as_str(), *owner))
     }
 
-    /// Each type's policy and factory, the last registration of a type winning, and the
+    /// Each type's factory, the last registration of a type winning, and the
     /// registrations that replaced an earlier one.
     pub fn into_renderers(
         self,
     ) -> (
-        BTreeMap<String, PolicyFactory>,
+        BTreeMap<String, SpecialModelFactory>,
         Vec<ReplacedSpecialModelRenderer>,
     ) {
         let factories = self
@@ -394,13 +444,17 @@ mod tests {
 
     struct Nothing;
     impl SpecialModelRenderer for Nothing {
-        fn extract(
+        type Argument = ();
+
+        fn extract_argument(&self, _: &dyn ClientHost, _: &SpecialModelStack<'_>) {}
+
+        fn submit(
             &self,
-            _: &dyn ClientHost,
-            _: &ItemStack,
+            _: &(),
             _: &SpecialModelContext,
-        ) -> Result<Vec<SpecialModelPart>, String> {
-            Ok(Vec::new())
+            _: &mut SpecialModelCollector<'_>,
+        ) -> Result<(), String> {
+            Ok(())
         }
     }
 
@@ -411,36 +465,17 @@ mod tests {
         let factory = || SpecialModelFactory::new(|_| Ok(()), |(), _| Ok(Nothing));
         let last = factory();
         let mut registry = SpecialModelRendererRegistry::default();
-        registry.register("a:pan".into(), SpecialModelPolicy::Stack, factory());
-        registry.register("a:pan".into(), SpecialModelPolicy::Frame, last.clone());
-        registry.register(
-            "minecraft:shield".into(),
-            SpecialModelPolicy::Stack,
-            factory(),
-        );
+        registry.register("a:pan".into(), factory());
+        registry.register("a:pan".into(), last.clone());
+        registry.register("minecraft:shield".into(), factory());
         assert_eq!(
             registry.initial_owners().collect::<Vec<_>>(),
             vec![("a:pan", None), ("minecraft:shield", None)]
         );
         let (renderers, replaced) = registry.into_renderers();
         assert_eq!(renderers.len(), 2);
-        assert_eq!(renderers["a:pan"].0, SpecialModelPolicy::Frame);
-        assert!(Arc::ptr_eq(&renderers["a:pan"].1.0, &last.0));
+        assert!(Arc::ptr_eq(&renderers["a:pan"].0, &last.0));
         assert_eq!(replaced.len(), 1);
         assert_eq!(replaced[0].kind, "a:pan");
-    }
-
-    /// A part's helpers move and tint it without turning it.
-    #[test]
-    fn a_part_moves_after_its_transform() {
-        let part = SpecialModelPart::new("a:item/b")
-            .with_transform([2.0, 0.0, 0.0, 1.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 2.0, 0.0])
-            .translated([0.5, 0.25, 0.0])
-            .with_tints(vec![0xFF00_FF00]);
-        assert_eq!(
-            part.transform,
-            [2.0, 0.0, 0.0, 1.5, 0.0, 2.0, 0.0, 0.25, 0.0, 0.0, 2.0, 0.0]
-        );
-        assert_eq!(part.tints, [0xFF00_FF00]);
     }
 }

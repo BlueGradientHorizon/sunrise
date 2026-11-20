@@ -1219,18 +1219,6 @@ pub trait ItemEnv {
         _layers: &mut Vec<ModelChoice>,
     ) {
     }
-    /// Prepare a registered model's answer for the stack that selected the node, in `ctx`.
-    /// `model` is the renderer baked for this node at load. `None` when the renderer refused
-    /// or failed: the outermost special layer draws the missing model. Nothing draws for an
-    /// empty answer.
-    fn special_model_parts(
-        &self,
-        _model: &RegisteredSpecialModel,
-        _stack: &StackView,
-        _ctx: &Context,
-    ) -> Option<PreparedParts> {
-        None
-    }
     /// `PotionContents.getColorOr` for the potion/effects part: the mixed
     /// effect colour, or `None` when the contents have no visible effects.
     fn potion_effect_color(&self, _potion_contents: &Value) -> Option<i32> {
@@ -1301,44 +1289,6 @@ pub enum LayerContent {
         /// What `extractArgument` reads from the stack.
         argument: Value,
     },
-}
-/// A special model renderer's answer as the item renderer prepared it to draw, its models baked
-/// once (`item_render::registered_special::PreparedSpecial` in the client), so a draw looks
-/// nothing up by name. Kept as long as the answer is; equal only to itself.
-#[derive(Clone)]
-pub struct PreparedParts(pub Arc<dyn std::any::Any + Send + Sync>);
-impl std::fmt::Debug for PreparedParts {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("PreparedParts")
-    }
-}
-impl PartialEq for PreparedParts {
-    fn eq(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
-    }
-}
-/// What one part of a mod's special model renderer draws.
-#[derive(Clone, Debug, PartialEq)]
-pub enum SpecialContent {
-    /// A resource model (`mymod:item/skillet_pan`), drawn as the model resource itself.
-    Model(String),
-    /// An item stack, resolved through the item model resolver as `display` says: the item's own
-    /// models, tints and foil. The part's pose places the item's centre.
-    Stack {
-        stack: StackView,
-        display: DisplayContext,
-    },
-}
-/// One thing a mod's special model renderer draws.
-#[derive(Clone, Debug, PartialEq)]
-pub struct SpecialPart {
-    pub content: SpecialContent,
-    /// Where it is drawn, in the special model's space (blocks, as the base model's elements
-    /// over 16).
-    pub pose: Mat4,
-    /// ARGB per tint index of a model, as an item model's `tints`; a quad whose index is past
-    /// them draws white. A stack carries its own.
-    pub tints: Vec<i32>,
 }
 /// Whose display transform a layer is drawn under: the layer owns the choice, not the model it
 /// draws.

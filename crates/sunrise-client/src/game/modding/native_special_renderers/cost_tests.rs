@@ -4,9 +4,16 @@
 //! measurement by hand: it registers the process's renderers.
 use crate::game::Game;
 use mod_api::{
-    ClientHost, SpecialModelFactory, SpecialModelPart, SpecialModelPolicy, SpecialModelRenderer,
+    ClientHost, SpecialModelCollector, SpecialModelContext, SpecialModelFactory,
+    SpecialModelGeometry, SpecialModelRenderer, SpecialModelStack, SpecialModelTints,
 };
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 use sunrise_assets::item_model::DisplayContext;
 use sunrise_client::{
     item_render::{ItemRenderState, install_special_model_factories},
@@ -66,19 +73,26 @@ fn frame(game: &Game<'_>, stacks: &[ItemStack], out: &mut Vec<Vertex>) -> (usize
 
 /// Never asked: no drawn item's model is of its type.
 struct Unmatched;
+static UNMATCHED_ASKED: AtomicBool = AtomicBool::new(false);
 impl SpecialModelRenderer for Unmatched {
-    fn extract(
+    type Argument = ();
+
+    fn extract_argument(&self, _: &dyn ClientHost, _: &SpecialModelStack<'_>) {
+        UNMATCHED_ASKED.store(true, Ordering::Relaxed);
+    }
+
+    fn submit(
         &self,
-        _: &dyn ClientHost,
-        _: &mod_api::ItemStack,
-        _: &mod_api::SpecialModelContext,
-    ) -> Result<Vec<SpecialModelPart>, String> {
-        panic!("a renderer no drawn model names was asked")
+        _: &(),
+        _: &SpecialModelContext,
+        _: &mut SpecialModelCollector<'_>,
+    ) -> Result<(), String> {
+        Ok(())
     }
 }
 
 /// Row 13: with no special renderer registered, a built-in scene drawn for 10 frames draws the
-/// same vertices every frame, keeps no answer, starts each frame with no allocation, and
+/// same vertices every frame, starts each frame with no allocation, and
 /// allocates as many times each frame as the frame before. Vanilla's resolver allocates for
 /// its own layers, so the scene can't be 0 as a whole; nothing the extension adds grows from
 /// frame to frame. A renderer registered for a type no drawn model names changes none of it,
@@ -106,7 +120,6 @@ fn built_in_scenes_cost_nothing_more_without_a_listener_isolated() {
             let (started, drawn) = frame(game, &stacks, &mut out);
             assert_eq!(started, 0, "the frame's start allocated");
             assert_eq!(bytemuck::cast_slice::<Vertex, u8>(&out), first);
-            assert_eq!(super::kept_answers(), 0);
             counts.push(drawn);
         }
         assert!(
@@ -119,37 +132,35 @@ fn built_in_scenes_cost_nothing_more_without_a_listener_isolated() {
     crate::game::native_entity_refs::tests::with_game(|game| unregistered = Some(scene(game)));
     assert!(install_special_model_factories(BTreeMap::from([(
         "test:unmatched".into(),
-        (
-            SpecialModelPolicy::Stack,
-            SpecialModelFactory::new(|_| Ok(()), |(), _| Ok(Unmatched))
-        ),
+        SpecialModelFactory::new(|_| Ok(()), |(), _| Ok(Unmatched)),
     )])));
     crate::game::native_entity_refs::tests::with_game(|game| {
         assert_eq!(scene(game), unregistered.unwrap());
     });
+    assert!(!UNMATCHED_ASKED.load(Ordering::Relaxed));
 }
 
 /// Draws one stone cube for every stack.
-struct Stone;
+struct Stone(SpecialModelGeometry);
 impl SpecialModelRenderer for Stone {
-    fn extract(
+    type Argument = ();
+
+    fn extract_argument(&self, _: &dyn ClientHost, _: &SpecialModelStack<'_>) {}
+
+    fn submit(
         &self,
-        _: &dyn ClientHost,
-        _: &mod_api::ItemStack,
-        _: &mod_api::SpecialModelContext,
-    ) -> Result<Vec<SpecialModelPart>, String> {
-        Ok(vec![SpecialModelPart::new("minecraft:block/stone")])
+        _: &(),
+        _: &SpecialModelContext,
+        collector: &mut SpecialModelCollector<'_>,
+    ) -> Result<(), String> {
+        collector.submit_geometry(&self.0, SpecialModelTints::Untinted)
     }
 }
 
-/// Nanoseconds per resolve and submit of the stone cube, drawn three ways: stone's own
-/// `minecraft:model`; a registered special drawing the same cube with its answer kept (an
-/// unchanged stack, frame after frame); and a first extraction (the answers dropped before every
-/// draw, so the renderer is asked, its answer checked, prepared and kept). Prints median, p95 and
-/// p99 of 10,000 samples after 1,000 to warm up. It registers the process's renderers, so it
-/// runs alone, by hand, with an optimized build:
-/// `SUNRISE_TEST_RESOURCES=... cargo test --profile fast -p sunrise-client --lib -- --ignored
-/// --nocapture special_item_draw_cost`.
+/// Nanoseconds per resolve and submit of the stone cube: stone's own `minecraft:model` versus a
+/// registered special renderer submitting the same geometry directly. Prints median, p95 and p99
+/// after warm-up. Run by hand with an optimized build and `SUNRISE_TEST_RESOURCES`:
+/// `cargo test --profile fast -p sunrise-client --lib -- --ignored --nocapture special_item_draw_cost`.
 #[test]
 #[ignore = "measurement; needs SUNRISE_TEST_RESOURCES"]
 fn special_item_draw_cost() {
@@ -157,9 +168,9 @@ fn special_item_draw_cost() {
     const SAMPLES: usize = 10_000;
     let factories = BTreeMap::from([(
         "test:stone".into(),
-        (
-            SpecialModelPolicy::Stack,
-            SpecialModelFactory::new(|_| Ok(()), |(), _| Ok(Stone)),
+        SpecialModelFactory::new(
+            |_| Ok(()),
+            |(), bake| bake.bake_model("minecraft:block/stone").map(Stone),
         ),
     )]);
     crate::game::native_entity_refs::tests::with_game(|game| {
@@ -185,10 +196,9 @@ fn special_item_draw_cost() {
         };
         draw(game, &dirt, &mut out);
         assert_eq!(out.len(), cube_vertices, "the special draws another shape");
-        let mut measure = |what: &str, game: &Game<'_>, before: &dyn Fn(&Game<'_>), stack| {
+        let mut measure = |what: &str, stack: &ItemStack| {
             let mut times = Vec::with_capacity(SAMPLES);
             for sample in 0..WARM + SAMPLES {
-                before(game);
                 out.clear();
                 let start = std::time::Instant::now();
                 std::hint::black_box(draw(game, stack, &mut out));
@@ -205,22 +215,7 @@ fn special_item_draw_cost() {
                 times[SAMPLES * 99 / 100]
             );
         };
-        measure("built_in_model", game, &|_| {}, &stone);
-        measure(
-            "special_kept",
-            game,
-            &|game| game.begin_frame_draws(),
-            &dirt,
-        );
-        // Two frame starts drop every answer the last frame drew.
-        measure(
-            "special_first_extraction",
-            game,
-            &|game| {
-                game.begin_frame_draws();
-                game.begin_frame_draws();
-            },
-            &dirt,
-        );
+        measure("built_in_model", &stone);
+        measure("special_direct_submission", &dirt);
     });
 }

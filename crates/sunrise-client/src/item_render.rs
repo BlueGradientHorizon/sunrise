@@ -27,6 +27,7 @@ use crate::{
     mesher::{CULL_BACK, Vertex},
 };
 use glam::{Mat3, Mat4, Vec3};
+use mod_api::{ClientHost, ItemDisplayContext, ItemKey, SpecialModelContext, SpecialModelTints};
 pub use registered_special::{
     BakedSpecialGeometry, BakedSpecialModel, SpecialModelFactories, install_special_model_factories,
 };
@@ -34,6 +35,7 @@ use registered_special::{FACTORIES, StackAncestor};
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, HashMap},
+    num::NonZeroU32,
     ops::ControlFlow,
     panic::{AssertUnwindSafe, catch_unwind},
     sync::{Arc, Mutex, atomic::AtomicBool},
@@ -166,7 +168,36 @@ impl ItemSink for Vec<ItemQuad> {
 }
 
 /// Client drawing services in addition to the asset resolver's host services.
-pub trait ItemDrawEnv: ItemEnv {}
+pub trait ItemDrawEnv: ItemEnv {
+    /// The host and validated input for a registered special draw. Unavailable input refuses
+    /// this layer only, not the renderer.
+    fn special_model_input(
+        &self,
+        _model: &BakedSpecialModel,
+        _stack: &StackView,
+        _context: &Context<'_>,
+    ) -> Option<SpecialModelInput<'_>> {
+        None
+    }
+
+    /// Resolve a mod-submitted stack and its display context at the engine boundary.
+    fn special_model_stack(
+        &self,
+        _stack: &mod_api::ItemStack,
+        _display: ItemDisplayContext,
+    ) -> Option<(StackView, DisplayContext)> {
+        None
+    }
+}
+
+/// The game services and stack identity the special renderer reads during this draw.
+pub struct SpecialModelInput<'a> {
+    pub host: &'a dyn ClientHost,
+    pub item: ItemKey,
+    pub count: NonZeroU32,
+    pub context: SpecialModelContext,
+}
+
 impl ItemDrawEnv for sunrise_assets::item_model::NoEnv {}
 
 /// Data special renderers read from the game (registries, skins).
@@ -200,17 +231,24 @@ pub enum LayerGeometry {
         argument: Value,
     },
 }
-/// Tints computed for an ordinary layer, or a palette shared by special submissions.
+/// Tints computed for an ordinary layer, or the palette supplied by a special renderer.
 #[derive(Clone, Debug)]
 pub enum LayerTints {
     Owned(Vec<i32>),
-    Shared(Arc<[i32]>),
+    Special(SpecialModelTints),
 }
 impl LayerTints {
-    fn as_slice(&self) -> &[i32] {
+    fn at(&self, index: i32) -> u32 {
         match self {
-            Self::Owned(tints) => tints,
-            Self::Shared(tints) => tints,
+            // `getLayerColorSafe`: an untinted quad or a missing palette entry draws white.
+            Self::Owned(tints) => tints
+                .get(index as usize)
+                .map_or(u32::MAX, |&tint| argb(tint)),
+            Self::Special(SpecialModelTints::Uniform(tint)) => *tint,
+            Self::Special(SpecialModelTints::Indexed(tints)) => {
+                tints.get(index as usize).copied().unwrap_or(u32::MAX)
+            }
+            Self::Special(_) => u32::MAX,
         }
     }
 }
@@ -372,7 +410,7 @@ impl ItemRenderState {
             let LayerGeometry::Quads(baked) = &layer.geometry else {
                 return false;
             };
-            if layer.foil != FoilType::None {
+            if layer.foil != FoilType::None || matches!(&layer.tints, LayerTints::Special(_)) {
                 return false;
             }
             let Some(stored) = skin.models.item(baked, skin.frame) else {
@@ -405,19 +443,10 @@ impl ItemRenderState {
                 else {
                     continue;
                 };
-                let color = if run.tint_index >= 0 {
-                    layer
-                        .tints
-                        .as_slice()
-                        .get(run.tint_index as usize)
-                        .copied()
-                        .unwrap_or(-1)
-                } else {
-                    -1
-                };
-                let color = self.held_tint.map_or(argb(color), |tint| {
-                    crate::hud_layout::multiply(argb(color), tint)
-                });
+                let color = layer.tints.at(run.tint_index);
+                let color = self
+                    .held_tint
+                    .map_or(color, |tint| crate::hud_layout::multiply(color, tint));
                 let colors = AXES.map(|d| shaded(color, normals.face(d), lights));
                 let frame = &mut *skin.frame;
                 frame.jobs.push(SkinJob {
@@ -546,18 +575,7 @@ fn submit_quads(
         let Some(r) = rect else {
             continue;
         };
-        // `getLayerColorSafe`: an untinted quad, or a tint index past the
-        // tints, draws white.
-        let color = if q.tint_index >= 0 {
-            layer
-                .tints
-                .as_slice()
-                .get(q.tint_index as usize)
-                .copied()
-                .unwrap_or(-1)
-        } else {
-            -1
-        };
+        let color = layer.tints.at(q.tint_index);
         let pos = q.positions.map(|p| m.transform_point3(Vec3::from(p)));
         let uv =
             q.uv.map(|[u, v]| [r.u0 + (r.u1 - r.u0) * u, r.v0 + (r.v1 - r.v0) * v]);
@@ -597,7 +615,7 @@ fn submit_quads(
                     q.uv.map(|[u, v]| [r.u0 + (r.u1 - r.u0) * u, r.v0 + (r.v1 - r.v0) * v])
                 }),
             normal: normals.face(q.facing),
-            color: argb(color),
+            color,
             foil,
             light_emission: q.light_emission,
             cull_back: true,
@@ -726,6 +744,7 @@ pub struct ItemRenderer {
     baked: Mutex<HashMap<String, Arc<BakedItemModel>>>,
     extents: Mutex<HashMap<String, Arc<Vec<Vec3>>>>,
     special_failures: Mutex<HashMap<String, Arc<AtomicBool>>>,
+    special_generation: Arc<()>,
     /// GUI items already drawn: the HUD vertices of a static item at a GUI position
     /// (`gui::draw`), which are the same every frame it stays there.
     pub(crate) gui_drawn: Mutex<HashMap<gui::DrawnKey, Arc<[crate::hud::HudVertex]>>>,
@@ -925,6 +944,7 @@ impl ItemRenderer {
             baked: Mutex::default(),
             extents: Mutex::default(),
             special_failures: Mutex::default(),
+            special_generation: Arc::new(()),
             gui_drawn: Mutex::default(),
             parts,
             skull_textures,
@@ -1114,33 +1134,31 @@ impl ItemRenderer {
                     (LayerGeometry::Special { model, argument }, baked, extents)
                 }
                 LayerContent::RegisteredSpecial { model } => {
-                    if let Some(prepared) = env.special_model_parts(&model, layer_stack, ctx) {
-                        // What a mod drew may change with every draw, so no GUI item is kept.
-                        flags.animated = true;
-                        // Vanilla's bundle model can produce a layer for its selected stack.
-                        let selected = StackAncestor {
-                            stack: layer_stack,
-                            parent: Some(ancestor),
-                        };
-                        let source = if std::ptr::eq(stack, layer_stack) {
-                            ancestor
-                        } else {
-                            &selected
-                        };
-                        if self
-                            .push_parts(
-                                layers,
-                                &prepared,
-                                (layer.foil, layer.transform, layer.display_transform),
-                                ctx,
-                                env,
-                                source,
-                                remaining,
-                            )
-                            .is_continue()
-                        {
-                            return ControlFlow::Continue(());
-                        }
+                    // Every draw can give a different result; never keep a static GUI image.
+                    flags.animated = true;
+                    // Vanilla's bundle model can produce a layer for its selected stack.
+                    let selected = StackAncestor {
+                        stack: layer_stack,
+                        parent: Some(ancestor),
+                    };
+                    let source = if std::ptr::eq(stack, layer_stack) {
+                        ancestor
+                    } else {
+                        &selected
+                    };
+                    if self
+                        .append_registered_special(
+                            layers,
+                            &model,
+                            (layer.foil, layer.transform, layer.display_transform),
+                            ctx,
+                            env,
+                            source,
+                            remaining,
+                        )
+                        .is_continue()
+                    {
+                        return ControlFlow::Continue(());
                     }
                     if ancestor.parent.is_some() {
                         return ControlFlow::Break(());
