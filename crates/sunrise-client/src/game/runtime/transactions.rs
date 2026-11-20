@@ -1017,13 +1017,12 @@ impl Game<'_> {
         effect: Option<&'static str>,
         mutate: impl FnOnce(&mut Mob) -> R,
     ) -> Option<R> {
-        let before = self.snapshot_mob_modifiers(id);
         self.journal_mob_health(id);
         let mob = self
             .mobs
             .iter_mut()
             .find(|mob| mob.id == id && !mob.removed)?;
-        if !self.transactions.is_empty() {
+        let invalidation = if !self.transactions.is_empty() {
             self.transactions.writes = self.transactions.writes.wrapping_add(1);
             let level = self.transactions.last_mut().expect("open transaction");
             level
@@ -1042,14 +1041,18 @@ impl Game<'_> {
             };
             if let Some(modifiers) = modifiers {
                 level.effect_modifiers.push((id, modifiers));
+                super::living_attributes::modifier_invalidation_undo(&self.motion.attributes, mob)
+            } else {
+                None
             }
-        }
+        } else {
+            None
+        };
         let result = mutate(mob);
-        // An effect may invalidate the live map and lose its equipment rows and
-        // detection cache; undo those changes through the existing modifier journal.
-        if let Some(before) = before
-            && let Some(after) = self.snapshot_mob_modifiers(id)
-            && let Some(changes) = before.diff(&after)
+        // The ordered effect journal owns the seed; only the discarded live
+        // equipment rows and detection state go to the general modifier journal.
+        if let Some(changes) = invalidation
+            && mob.extra.live.is_invalidated()
         {
             self.transactions.journal_modifier_changes(id, changes);
         }

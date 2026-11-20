@@ -318,6 +318,25 @@ impl ModifierChanges {
 }
 
 impl ModifierSnapshot {
+    fn from_map(map: &Live, worn: Option<Box<Equipment>>) -> Self {
+        let rows = map
+            .instances()
+            .flat_map(|(_, key, value)| {
+                value.modifiers().iter().map(move |modifier| {
+                    let id = modifier.id();
+                    (
+                        (key.name().to_owned(), id.to_owned()),
+                        ModifierState {
+                            modifier: modifier.clone(),
+                            permanent: value.permanent_modifiers().iter().any(|m| m.id() == id),
+                        },
+                    )
+                })
+            })
+            .collect();
+        Self { worn, rows }
+    }
+
     /// Keep only the rows and detection cache a single step actually changed.
     pub fn diff(&self, after: &Self) -> Option<ModifierChanges> {
         let mut changes = ModifierChanges {
@@ -435,6 +454,11 @@ impl LivingAttributes {
     pub fn invalidate(&mut self) {
         self.map.take();
         self.worn = None;
+    }
+
+    /// Neither the modifier map nor the equipment detection state is cached.
+    pub fn is_invalidated(&self) -> bool {
+        self.map.get().is_none() && self.worn.is_none()
     }
 
     /// The map, if it is built.
@@ -677,25 +701,26 @@ impl LivingAttributes {
             seeded = self.build(catalog, entity, seed())?;
             &seeded
         };
-        let rows = map
-            .instances()
-            .flat_map(|(_, key, value)| {
-                value.modifiers().iter().map(move |modifier| {
-                    let id = modifier.id();
-                    (
-                        (key.name().to_owned(), id.to_owned()),
-                        ModifierState {
-                            modifier: modifier.clone(),
-                            permanent: value.permanent_modifiers().iter().any(|m| m.id() == id),
-                        },
-                    )
-                })
-            })
-            .collect();
-        Ok(ModifierSnapshot {
-            worn: self.worn.clone(),
-            rows,
-        })
+        Ok(ModifierSnapshot::from_map(map, self.worn.clone()))
+    }
+
+    /// What invalidation alone will discard: the live overlay over the current
+    /// seed and the equipment detection state, never changes to the seed itself.
+    pub fn modifier_invalidation_undo(
+        &self,
+        catalog: &Arc<Catalog>,
+        entity: &str,
+        seed: impl FnOnce() -> Vec<Tag>,
+    ) -> Result<Option<ModifierChanges>> {
+        let Some(map) = self.built() else {
+            return Ok(self.worn.clone().map(|worn| ModifierChanges {
+                worn_before: Some(Some(worn)),
+                ..ModifierChanges::default()
+            }));
+        };
+        let seeded = self.build(catalog, entity, seed())?;
+        Ok(ModifierSnapshot::from_map(map, self.worn.clone())
+            .diff(&ModifierSnapshot::from_map(&seeded, None)))
     }
 
     /// Restores the recorded live rows, not the current answers to item queries.

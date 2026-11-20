@@ -388,6 +388,13 @@ fn a_refused_trade_restores_modifier_order_after_reapplying_the_same_effect() {
                 0.25,
                 Op::AddMultipliedTotal,
             );
+            let other = game.living(game.entity(41).unwrap()).unwrap();
+            assert!(game.living_set_equipment(
+                other,
+                mod_api::EquipmentSlot::Head,
+                Some(ItemStack::new("minecraft:diamond_helmet", 1)),
+            ));
+            assert_eq!(other.attribute_value(game, "minecraft:armor"), Some(3.0));
             let expected = ["minecraft:effect.speed", "test:survivor"];
             for ids in speed_modifier_ids(game) {
                 assert_eq!(ids, expected);
@@ -403,6 +410,7 @@ fn a_refused_trade_restores_modifier_order_after_reapplying_the_same_effect() {
             for ids in speed_modifier_ids(game) {
                 assert_eq!(ids, expected);
             }
+            assert_eq!(other.attribute_value(game, "minecraft:armor"), Some(3.0));
         });
     });
 }
