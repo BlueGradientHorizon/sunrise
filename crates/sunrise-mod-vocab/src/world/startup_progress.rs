@@ -1,6 +1,5 @@
 //! Mod lines and progress bars on the startup loading screen: NeoForge's
 //! `StartupNotificationManager` (`addModMessage`, `addProgressBar`, `popBar`) and `ProgressMeter`.
-use crate::wire::Wire;
 use std::sync::{Arc, OnceLock};
 
 /// A startup progress operation was refused.

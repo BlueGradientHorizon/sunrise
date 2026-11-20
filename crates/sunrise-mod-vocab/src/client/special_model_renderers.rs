@@ -6,7 +6,6 @@
 //! (`mymod:skillet`). Its geometry is resource models: from the stack, the renderer answers which
 //! models draw, each posed and tinted, and the game draws them as it draws any item model, with
 //! the special model's `base` display transforms, particle and GUI light.
-use crate::wire::Wire;
 use crate::{ClientHost, ItemDisplayContext, ItemStack, Tag};
 use std::{collections::BTreeMap, sync::Arc};
 

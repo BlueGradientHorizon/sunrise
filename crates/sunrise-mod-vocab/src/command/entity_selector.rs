@@ -2,7 +2,6 @@
 //! beside vanilla's `@p @a @r @s @e @n`, in every entity and player argument (NeoForge's
 //! `EntitySelectorManager` and `IEntitySelectorType`).
 
-use crate::wire::Wire;
 use crate::{CommandSource, EntityRef, ServerHost};
 
 /// How a registered selector token orders its candidates before its limit, as `sort=` does.

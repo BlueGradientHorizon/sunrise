@@ -1,5 +1,4 @@
 //! Static, unsynced loot function and condition map-codec registries.
-use crate::wire::Wire;
 use crate::{Identifier, LootContext, LootStack, RandomSource, Tags};
 #[path = "loot_types/owned.rs"]
 pub(crate) mod owned;

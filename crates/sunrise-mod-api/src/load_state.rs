@@ -84,9 +84,6 @@ pub fn install_packages(native: &[PackageInfo], content: &[PackageInfo]) {
     );
 }
 
-/// Install the host's ordered package inventory in a guest at initialization.
-// hidden: the guest runtime installs this once before dispatching hooks.
-
 static REGISTRATION_DATA: OnceLock<RegistrationData> = OnceLock::new();
 
 #[cfg(any(test, feature = "testing"))]

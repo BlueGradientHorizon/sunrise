@@ -3,7 +3,6 @@
 //! Register a serializer once; data files under `loot_modifiers/` select its
 //! prepared instances. A top-level roll runs them after its table functions and
 //! stack splitter. Nested tables and raw sub-rolls never invoke this pass.
-use crate::wire::Wire;
 use crate::{DataLoadContext, Identifier, LootContext, LootStack, RandomSource};
 use serde_json::Value;
 use std::sync::Arc;

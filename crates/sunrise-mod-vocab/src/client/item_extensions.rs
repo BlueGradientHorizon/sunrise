@@ -1,5 +1,4 @@
 //! Item-owned client behaviour for worn equipment. Registered anew at resource load.
-use crate::wire::Wire;
 use crate::{ClientHost, ItemKey, ItemStack, ModelPart};
 use std::sync::Arc;
 

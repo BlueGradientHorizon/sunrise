@@ -3,7 +3,6 @@
 //! `AudioStream`), on a pool of their own that never takes one of vanilla's streaming slots.
 use super::types::SoundSource;
 use crate::EntityRef;
-use crate::wire::Wire;
 use std::sync::Arc;
 
 /// The most streams one mod holds open at once ([`AudioRefusal::ModStreamLimit`]).
