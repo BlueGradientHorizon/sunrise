@@ -1,13 +1,13 @@
 # Resource packs: what works
 
-Java Edition resource packs load in Horizon: put the folder or `.zip` in `resourcepacks/`, pick it on the Resource Packs
+Java Edition resource packs load in Sunrise: put the folder or `.zip` in `resourcepacks/`, pick it on the Resource Packs
 screen (the same screen as vanilla's) or in game, and every loader reloads from it. This page lists everything a
-26.3 resource pack can change and whether Horizon honours it, with the proof.
+26.3 resource pack can change and whether Sunrise honours it, with the proof.
 
 ## How it works
 
 `packs.rs` finds the packs (`FolderRepositorySource`: folders and zips, plus the built-in Programmer Art and High
-Contrast, which only the asset index holds: preparation copies them, `horizon-prepare packs` repairs older resources),
+Contrast, which only the asset index holds: preparation copies them, `sunrise-prepare packs` repairs older resources),
 reads `pack.mcmeta` (format range, overlays, filters) and resolves one shared resource view over the
 prepared vanilla resources, later packs winning. Folders and open zip files use the same lookup and listing
 interface; archive entries stay in their archives. Files vanilla reads as a resource *stack* (language files,
@@ -26,7 +26,7 @@ of them.
 
 ## The table
 
-**Works**: Horizon reads it from the pack and draws or plays it like vanilla. **Partly**: some of it.
+**Works**: Sunrise reads it from the pack and draws or plays it like vanilla. **Partly**: some of it.
 **No**: ignored (the vanilla version stays). Proof: a parity harness in `tools/` (compares with the pinned 26.3
 client), a unit test, or the loader reading the resolved resources (vanilla's files go through the same loader, and the
 harness named checks that loader against vanilla).
@@ -35,18 +35,18 @@ harness named checks that loader against vanilla).
 | --- | --- | --- | --- |
 | Pack metadata: description, icon, `min_format`/`max_format`, old `supported_formats`, compatibility warning | `pack.mcmeta`, `pack.png` | works | `test_pack_screen_parity`, `test_pack_selection_parity` |
 | Overlays per format | `pack.mcmeta` `overlays` | works | `test_resource_pack_parity` (an overlay for 26.3 applied, an older one not) |
-| Filters | `pack.mcmeta` `filter` | works | `test_resource_pack_parity` (`horizon-client-core/src/pattern.rs` regex subset) |
+| Filters | `pack.mcmeta` `filter` | works | `test_resource_pack_parity` (`sunrise-client-core/src/pattern.rs` regex subset) |
 | Folder and zip packs, order, built-in packs | `resourcepacks/` | works | `test_resource_pack_parity`, `test_pack_selection_parity` |
-| Server resource packs: the prompt, the server list's Server Resource Packs setting, download (250 MiB, SHA-1, `downloads/` keeps 20), download toasts, a progress screen while the packs reload, applied on top of the player's packs, removed on leaving | the server's `resource_pack_push`/`_pop` | works | `tools/server_pack_e2e.py` (against vanilla's server and Horizon's), unit tests in `server_packs.rs`; `test_server_resource_pack_parity` for Horizon's server |
+| Server resource packs: the prompt, the server list's Server Resource Packs setting, download (250 MiB, SHA-1, `downloads/` keeps 20), download toasts, a progress screen while the packs reload, applied on top of the player's packs, removed on leaving | the server's `resource_pack_push`/`_pop` | works | `tools/server_pack_e2e.py` (against vanilla's server and Sunrise's), unit tests in `server_packs.rs`; `test_server_resource_pack_parity` for Sunrise's server |
 | Other namespaces | `assets/<namespace>/` | works | `test_resource_pack_parity` |
 | Block states: variants, multipart, weights, rotations, uvlock | `blockstates/` | works | `test_blockstate_model_parity`, `test_model_choice_parity`, `test_blockstate_transform_parity` |
 | Block models: parents, elements, rotations, faces, cullface, tint, shade, light emission, ambient occlusion | `models/block/` | works | `test_model_resolution_parity`, `test_model_baking_parity`, `test_section_mesh_parity` |
 | Item definitions and item models (all model types, display transforms, tints) | `items/`, `models/item/` | works | `test_item_model_parity` |
-| Custom entity models (OptiFine/EMF): a `.jem` reshapes a mob's model layer, with its animations and texture, or a block entity's model (chests, shulker boxes, banners, heads, bells, books, conduits, decorated pots) with its texture but no animations yet; Entity Model Features' files win over OptiFine's | `optifine/cem/`, `emf/cem/` | partly | `mobs::cem`, `mobs::cem_anim`, `block_entity_cem` and `block_entity_render` unit tests, `horizon-optifine` `cem::files` (which file wins); trapped and ender chests read only their own files and copper chests keep vanilla's model; no sign, hanging sign or bed models, no per-bone textures, no random models, no textures under `optifine/` (vanilla's own entity models are code in 26.3, which `test_entity_model_parity` checks) |
-| Random entity textures (OptiFine/ETF): numbered variants and their rules (biome, height, name, profession, colour, baby, health, moon, time, weather, size, blocks), chosen per entity from its UUID and rechecked once a second | `optifine/random/`, `optifine/mob/`, `mcpatcher/mob/`, `etf/random/`, `textures/entity/` with a `.properties` | partly | `horizon-optifine` `random` and `random_textures` tests, `mobs::random_textures` tests; no `nbt.*` or ETF's extra conditions (teams, items...), no block entities |
-| Connected textures (OptiFine/Continuity): every method (`ctm`, `ctm_compact` with `ctm.N`, `horizontal`, `vertical`, `horizontal+vertical`, `vertical+horizontal`, `top`, `random`, `repeat`, `fixed`, `overlay`, `overlay_ctm`/`_random`/`_repeat`/`_fixed`, and Continuity's `overlay_horizontal`/`_vertical`/`_h+v`/`_v+h`), `matchTiles`/`matchBlocks` and the file-name forms, `tiles` (ranges, names, paths, `<skip>`, `<default>`), `weight`, `faces`, `biomes`, `heights` (and the old `minHeight`/`maxHeight`), `connect`, `connectTiles`/`connectBlocks`, `innerSeams`, `weights`, `randomLoops`, `symmetry`, `linked`, `width`/`height`, `tintIndex`/`tintBlock`, `layer`; Continuity's `orient`, `prioritize`, `optifineOnly` and its stacked-pane culling; tiles a rule picked matched again by another; panes drawn with OptiFine's unmirrored UVs | `optifine/ctm/**/*.properties` (and `mcpatcher/ctm/`) in any namespace, with their tiles | partly | `horizon-optifine` `ctm` and `ctm::connect` tests (the tile tables read off OptiFine's template images), `connected` and `mesher::quarter_tests` tests; `name=` rules are not loaded (the client meshing chunks never receives block entities' custom names, so they could never match); `random` picks from its own fixed hash, so random tiles land in other places than in OptiFine (same weights); tiles glow with their `_e` overlays, sharing the emissive row's table and limits (block overlays come first) |
-| Emissive textures (OptiFine/ETF): `<texture>_e.png` (or the pack's `suffix.emissive`) drawn full bright over mobs, their layers and armour, armour stands, the elytra, the dragon, thrown tridents, block entities, placed blocks and connected-texture tiles | `<texture>_e.png` beside its texture (also random variants' and blink frames'); the suffix from `optifine/emissive.properties`, `etf/emissive.properties` or `textures/emissive.properties` | partly | `horizon-optifine` `emissive` tests, `mobs::render::emissive_tests`, `block_entity_render` and `native_emissive` tests; at most 96 block overlays (native mods keep 32 more), cutout; none on translucent faces, nor on blocks whose texture is pixel-identical to another's (they share a layer); not over items, armour trims, other projectiles, minecarts or end crystals |
-| Blinking textures (ETF): `<texture>_blink.png` and `_blink2.png`, `blinkLength`/`blinkFrequency` | `textures/entity/`, random variants' folders | works | `horizon-optifine` `blink` tests, `mobs::render` blink test; sleeping villagers keep their eyes shut |
+| Custom entity models (OptiFine/EMF): a `.jem` reshapes a mob's model layer, with its animations and texture, or a block entity's model (chests, shulker boxes, banners, heads, bells, books, conduits, decorated pots) with its texture but no animations yet; Entity Model Features' files win over OptiFine's | `optifine/cem/`, `emf/cem/` | partly | `mobs::cem`, `mobs::cem_anim`, `block_entity_cem` and `block_entity_render` unit tests, `sunrise-optifine` `cem::files` (which file wins); trapped and ender chests read only their own files and copper chests keep vanilla's model; no sign, hanging sign or bed models, no per-bone textures, no random models, no textures under `optifine/` (vanilla's own entity models are code in 26.3, which `test_entity_model_parity` checks) |
+| Random entity textures (OptiFine/ETF): numbered variants and their rules (biome, height, name, profession, colour, baby, health, moon, time, weather, size, blocks), chosen per entity from its UUID and rechecked once a second | `optifine/random/`, `optifine/mob/`, `mcpatcher/mob/`, `etf/random/`, `textures/entity/` with a `.properties` | partly | `sunrise-optifine` `random` and `random_textures` tests, `mobs::random_textures` tests; no `nbt.*` or ETF's extra conditions (teams, items...), no block entities |
+| Connected textures (OptiFine/Continuity): every method (`ctm`, `ctm_compact` with `ctm.N`, `horizontal`, `vertical`, `horizontal+vertical`, `vertical+horizontal`, `top`, `random`, `repeat`, `fixed`, `overlay`, `overlay_ctm`/`_random`/`_repeat`/`_fixed`, and Continuity's `overlay_horizontal`/`_vertical`/`_h+v`/`_v+h`), `matchTiles`/`matchBlocks` and the file-name forms, `tiles` (ranges, names, paths, `<skip>`, `<default>`), `weight`, `faces`, `biomes`, `heights` (and the old `minHeight`/`maxHeight`), `connect`, `connectTiles`/`connectBlocks`, `innerSeams`, `weights`, `randomLoops`, `symmetry`, `linked`, `width`/`height`, `tintIndex`/`tintBlock`, `layer`; Continuity's `orient`, `prioritize`, `optifineOnly` and its stacked-pane culling; tiles a rule picked matched again by another; panes drawn with OptiFine's unmirrored UVs | `optifine/ctm/**/*.properties` (and `mcpatcher/ctm/`) in any namespace, with their tiles | partly | `sunrise-optifine` `ctm` and `sunrise-connected` tests (the tile tables read off OptiFine's template images), `connected` and `mesher::quarter_tests` tests; `name=` rules are not loaded (the client meshing chunks never receives block entities' custom names, so they could never match); `random` picks from its own fixed hash, so random tiles land in other places than in OptiFine (same weights); tiles glow with their `_e` overlays, sharing the emissive row's table and limits (block overlays come first) |
+| Emissive textures (OptiFine/ETF): `<texture>_e.png` (or the pack's `suffix.emissive`) drawn full bright over mobs, their layers and armour, armour stands, the elytra, the dragon, thrown tridents, block entities, placed blocks and connected-texture tiles | `<texture>_e.png` beside its texture (also random variants' and blink frames'); the suffix from `optifine/emissive.properties`, `etf/emissive.properties` or `textures/emissive.properties` | partly | `sunrise-optifine` `emissive` tests, `mobs::render::emissive_tests`, `block_entity_render` and `native_emissive` tests; at most 96 block overlays (native mods keep 32 more), cutout; none on translucent faces, nor on blocks whose texture is pixel-identical to another's (they share a layer); not over items, armour trims, other projectiles, minecarts or end crystals |
+| Blinking textures (ETF): `<texture>_blink.png` and `_blink2.png`, `blinkLength`/`blinkFrequency` | `textures/entity/`, random variants' folders | works | `sunrise-optifine` `blink` tests, `mobs::render` blink test; sleeping villagers keep their eyes shut |
 | Textures, any resolution (16x to 512x) | `textures/` | works | atlases stitched from the overlay; Faithful 32x, Default HD 128x and FPBR checked |
 | Texture animation: frames, frame time, frame size | `*.png.mcmeta` `animation` | works | `test_sprite_animation_parity` |
 | Texture animation: `interpolate` | `*.png.mcmeta` `animation` | works | `sprites.rs` blends each frame towards the next (`interpolated_animations_blend_towards_the_next_frame`) |
@@ -72,7 +72,7 @@ harness named checks that loader against vanilla).
 | Armour trims on items | `atlases/items.json`, `textures/trims/items/` | works | `paletted_permutations` (`atlas_sources.rs` tests) |
 | Armour trims on worn armour | `textures/trims/entity/`, `textures/palettes/`, `palette` metadata | works | `trims.rs` (`PalettedTextureManager`), drawn by `game/armor_stands.rs` and the mob renderer |
 | Particles | `particles/`, `textures/particle/` | works | `test_particle_providers_parity` |
-| Sky: sun, moon phases, stars, end sky, clouds, rain and snow | `atlases/celestials.json`, `textures/environment/` | works | `test_environment_render_parity`, `test_cloud_render_parity`, `test_weather_render_parity` |
+| Sky: sun, moon phases, stars, end sky, clouds, rain and snow | `atlases/celestials.json`, `textures/environment/` | works | `test_environment_render_parity`, `test_cloud_render_parity`, `test_weather_render_parity`; a `clouds.png` vanilla reads past (taller than wide, with a cell in its first or last column: `NativeImage.getPixel` throws) fails the load as vanilla's does, dropping every selected pack (`clouds::load`, `packs::clouds_reload_tests`) |
 | Title panorama | `textures/gui/title/background/` | works | `gfx/panorama.rs` loads it from the overlay |
 | Screen overlays: vignette, pumpkin, powder snow, nausea, underwater, world border | `textures/misc/` | works | `test_world_border_render_parity`, `test_hud_parity`; loaded from the overlay |
 | Enchantment glint | `textures/misc/enchanted_glint_*` | works | `item_render/gui.rs`, `hud/cit_glint.rs`, `entity.wgsl` |
@@ -80,13 +80,41 @@ harness named checks that loader against vanilla).
 | Paintings, mob effect icons | `atlases/paintings.json`, `textures/mob_effect/` | works | loaded from the overlay |
 | Locator bar styles | `waypoint_style/` | works | `locator_bar.rs` loads `waypoint_style/*.json` (`WaypointStyleManager`); `game/locator_bar.rs` draws the bar |
 | Post effects (spectating a creeper, spider or enderman; glowing outlines) | `post_effect/`, `shaders/post/` | works | `post_chain.rs` reads `post_effect/*.json` and `post_glsl.rs` translates the `shaders/post/*.vsh`/`.fsh` with naga, with depth inputs, persistent targets and `TextureInput` |
-| Core shaders | `shaders/core/`, `shaders/include/` | partly | `core/text` draws the GUI's text (HUDs moved by its vertex shader, text effects), `core/rendertype_lines` the block outline (both strokes of a high contrast one; hitboxes, chunk borders and other debug lines still draw natively), and `core/sky` and `core/stars` the overworld's sky disc and stars, translated by naga (`horizon-client-render` `core_shader.rs`, `hud/pack_text.rs`, `gfx/core_lines.rs`, `gfx/core_sky.rs`); the other core shaders aren't run (#13218) |
+| Core shaders | `shaders/core/`, `shaders/include/` | partly | `core/text` draws the GUI's text (HUDs moved by its vertex shader, text effects), `core/rendertype_lines` the block outline (both strokes of a high contrast one; hitboxes, chunk borders and other debug lines still draw natively), `core/sky` and `core/stars` the overworld's sky disc and stars, `core/lightmap` (with `core/screenquad`) the 16x16 light texture from `LightmapInfo`, and `core/clouds` the clouds from the faces `CloudRenderer.buildMesh` encodes (`CloudFaces`, read as a storage buffer) and `CloudInfo` (natively under Improved Transparency, a shader pack, or HDR output's cloud marks); each of these but the text and the clouds takes the packs' Polytone expression uniforms on its own shaders (`polytone/shader_modifiers`, `polytone_post.rs`, `gfx/expression_blocks.rs`), translated by naga (`sunrise-client-render` `core_shader.rs`, `hud/pack_text.rs`, `gfx/core_lines.rs`, `gfx/core_sky.rs`, `gfx/core_lightmap.rs`, `gfx/core_clouds.rs`); the other core shaders aren't run (#13218) |
 | OptiFine / CIT Resewn custom item textures (`type=item`: `texture`, `model`, `texture.<name>`, `model.<name>`; `type=armor`: `texture`, `texture.<layer>` with the pre-1.21.2 layer names such as `diamond_layer_1`, `leather_layer_2_overlay`; `type=elytra`: `texture`; `type=enchantment` layers on GUI items; `useGlint=false` in `cit.properties`, which removes vanilla's glint from items) | `optifine/cit/`, `mcpatcher/cit/`, `citresewn/cit/` | partly | `item_render/cit.rs`, `cit_armor.rs`, `cit_glint.rs` and `hud/cit_glint.rs` tests; enchantment layers on held, dropped, framed and worn items, and `anim/` glints, come later; special renderers (heads, shields, banners) keep their vanilla look; only players and armour stands wear CIT armour and elytra, other mobs keep vanilla's; worn trims are unchanged; armour textures above 1024x512 (16 times vanilla's 64x32) draw vanilla |
 | GPU warn list, regional compliance | `gpu_warnlist.json`, `regional_compliancies.json` | n/a | OpenGL driver warnings and play-time notices for some regions; not used |
 
 Summary: 50 rows; 42 work, 7 partly (OptiFine/EMF entity models, random entity textures, connected textures,
 emissive textures, CIT, GUI sprite scaling, core shaders), 1 doesn't apply. Every vanilla loader in the list above
 reads the pack; what is left is the GUI scaling types and the core shaders, plus the OptiFine-format extras.
+
+### Polytone expression uniforms on core shaders
+
+A pack's `assets/<ns>/polytone/shader_modifiers/<shader>.json` (`minecraft/.../core/lightmap.json` is the shader
+`minecraft:core/lightmap`) maps uniform block names to expressions (wiki "Expression Uniforms on Any Shader"). The
+packs' lightmap (`core/lightmap` with `core/screenquad`), sky (`core/sky`), stars (`core/stars`) and block outline
+(`core/rendertype_lines`) take them, each from its own shaders' files (`gfx/expression_blocks.rs`); the GUI's text
+doesn't yet:
+
+- A block one of its stages reads, declared `uniform Name { float value; };`, holds its expression's value each
+  frame. The sky, stars and outline each use a single modifier file. Only the lightmap uses two files: for a block
+  read by both stages or defined in both files, it looks in the fragment shader's (`core/lightmap`) first, then in
+  the vertex shader's (`core/screenquad`). Otherwise, it uses the file for the stage that reads the block. A block
+  no stage reads is not bound, and a stage that only declares it doesn't decide its shape. If a block a stage reads
+  is not one float, or has no expression, the affected pipeline uses its built-in shader.
+- Each block, vanilla's and `LightmapInfo` included, of each of these pipelines is bound only to the stages that read it, and counts against
+  the device's limit of uniform blocks per stage (`max_uniform_buffers_per_shader_stage`, 12 by default) for those
+  stages only: a shader over it in either stage is refused.
+- The expression context is the frame's, as the packs' post chains and particles see it: the weather, the game and
+  day time, the dimension and its sky, the player's place and motion, the camera's light, biome and climate, and
+  the packs' config entries (`polytone/config_entries`). Fullbright skips only the lightmap's expressions.
+- Limits: a file is read up to 64 KiB, with at most 16 uniforms, each a GLSL identifier of at most 64 characters
+  not starting `gl_`. An expression has at most 1024 tokens; its tree is at most 64 levels high and its parse
+  nests at most 16 levels deep (a statement, its expression, each bracket and each unary operator), both checked as
+  it is parsed. A file over any of these, or whose path names no shader, is refused whole, named by its path in the
+  log.
+- The programs are resolved once when the pack's shaders load. Each frame evaluates them for the installed pack
+  pipelines; each pipeline uploads 16 bytes per expression uniform when it prepares a draw.
 
 ## Gaps and their work
 
@@ -98,5 +126,5 @@ reads the pack; what is left is the GUI scaling types and the core shaders, plus
 ## Testing a pack
 
 `tools/test_resource_pack_parity.py` builds small packs (folder and zip, overlays, a filter, textures, languages,
-sounds, fonts, atlases), and a Java oracle answers what vanilla's loaders read from them; Horizon's loaders must
+sounds, fonts, atlases), and a Java oracle answers what vanilla's loaders read from them; Sunrise's loaders must
 give the same answers. Never commit third-party packs: build test packs in the harness or the test.

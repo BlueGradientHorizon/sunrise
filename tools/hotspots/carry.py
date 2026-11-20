@@ -11,9 +11,9 @@ Kinds:
 - ignored-test: rows of tools/ci/ignored-tests-known-failures.txt go to tools/ci/ignored-tests/<topic>.txt, same
   row format; the topic is --topic or the PR's branch name (from `gh`). A changed or removed row is changed or
   removed where it lives now.
-- part-table: a name the PR added to a list of the old crates/horizon-mod-vocab/src/exports/part_table.rs goes to
+- part-table: a name the PR added to a list of the old crates/sunrise-mod-vocab/src/exports/part_table.rs goes to
   the fragment of the parts file that defines it on the PR's head (exports/parts_<file>.rs, found as
-  tools/refactors/split_part_table.py found them), in the same scope, visibility and `#[cfg]`, as a `pub use` line
+  the Parts source parser finds them), in the same scope, visibility and `#[cfg]`, as a `pub use` line
   of its own. A name this tree already exports in that scope with the same cfg, visibility and source is skipped.
   A name it cannot attribute, one exported there differently, or one the PR removed or renamed stops it before
   writing anything, printing the name and its line.
@@ -37,7 +37,6 @@ import sys
 import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "refactors"))
 import check_stand_ins  # noqa: E402
 import split_part_table as part_table  # noqa: E402
 

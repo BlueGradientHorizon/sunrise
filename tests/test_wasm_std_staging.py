@@ -40,7 +40,7 @@ class WasmStdStagingTests(unittest.TestCase):
         alpine = (ROOT / "tools/ci/build-musl.sh").read_text()
         target = re.search(r"^target=(\S+)$", alpine, re.M)[1]
         musl_bin = re.search(r'^bin="([^"]+)"$', alpine, re.M)[1].replace("$target", target)
-        self.assertRegex(alpine, r'package\s+\\\s*"\$bin/horizon-client"')
+        self.assertRegex(alpine, r'package\s+\\\s*"\$bin/sunrise-client"')
         for matrix in job["strategy"]["matrix"]["include"]:
             with self.subTest(target=matrix["name"]):
                 env = {"BIN": resolve(job["env"]["BIN"], matrix, {})}
@@ -50,8 +50,8 @@ class WasmStdStagingTests(unittest.TestCase):
                 else:
                     self.assertEqual(destination, env["BIN"])
                     package = next(step for step in job["steps"] if step.get("name") == "Package")
-                    self.assertIn('package "$BIN/horizon-client${{ matrix.exe }}"', package["run"])
+                    self.assertIn('package "$BIN/sunrise-client${{ matrix.exe }}"', package["run"])
                 if matrix.get("server_asset"):
                     server = next(step for step in job["steps"] if step.get("if") == "matrix.server_asset")
-                    self.assertIn('package-server "$BIN/horizon-client"', server["run"])
+                    self.assertIn('package-server "$BIN/sunrise-client"', server["run"])
                     self.assertEqual(destination, env["BIN"])

@@ -2,16 +2,19 @@
 # Function replacement end to end (fn-replace): native mods' `[[native.mixin]]` rows (and API-only mods) built by the
 # launcher's normal native build against a PREBUILT game, with no game rebuild, then run on a
 # dedicated server.
-#   [FNR_MODS="alpha beta"] [FNR_MOD_ROOT=DIR] [FNR_ROUTE=prebuilt|prebuilt-api] tools/ci/fn_replace_check.sh LAUNCHER SDK SCRATCH [RESOURCES]
-# FNR_WASM_LAYOUT_PACKAGE=valid.hmod FNR_WASM_STD=std.wasm adds a wasm point-layout refusal check
+#   [FNR_MODS="alpha beta"] [FNR_MOD_ROOT=DIR] [FNR_ROUTE=prebuilt|prebuilt-api] tools/ci/fn_replace_check.sh LAUNCHER SDK_BASE SCRATCH [RESOURCES]
+# FNR_WASM_MISMATCH_PACKAGE=valid.smod FNR_WASM_STD=std.wasm adds a wasm refusal check for a changed point import
 # to the with-RESOURCES server run (not the build/link-only CI mode):
 # its exported layout fingerprint is changed to zero, and its integrity hash is updated.
-# SDK is a folder from `tools/prebuilt_game.py build --server` at this checkout's HEAD. With
-# RESOURCES (a prepared `horizon-client/26.3` folder), the server starts, takes `/tick` commands
+# SDK_BASE is a folder holding one `sdk-<commit>/` release folder (the SDK's archives, `sdk.json`, `SHA256SUMS` and its
+# signature) of this checkout's HEAD: the launcher reads its SDK from there (SUNRISE_SDK_BASE), checking the signature
+# as it does a release's. The daily run signs its own SDK with a throwaway key and passes the public key in
+# SUNRISE_SDK_TRUSTED_KEY, which only a launcher built with debug_assertions trusts (sunrise_release_sign::sdk_keys_for);
+# a published release needs no key. With RESOURCES (a prepared `sunrise-client/26.3` folder), the server starts, takes `/tick` commands
 # and stops; every mixin helper prints a line starting `fnr:`.
 set -euo pipefail
 launcher=$(realpath "$1")
-sdk=$(realpath "$2")
+sdk_base=$(realpath "$2")
 scratch=$3
 resources=${4:-}
 if [ -n "$resources" ]; then resources=$(realpath "$resources"); fi
@@ -19,12 +22,10 @@ side=${FNR_SIDE:-server}
 case "$side" in server|client) ;; *) echo "FNR_SIDE must be server or client" >&2; exit 2;; esac
 root=$(git rev-parse --show-toplevel)
 # The game revision is the SDK's: its source is what a patched function is copied out of.
-revision=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['commit'])" "$2/horizon-prebuilt.json")
-mixins=$(sed -n 's/^pub const REV: &str = "\(.*\)";$/\1/p' "$root/crates/horizon-mod-package/src/mixins_tool.rs")
-# The launcher's cache folder name: the package layout is numbered in one place.
-format=$(tr -d '[:space:]' < "$root/crates/horizon-mod-package/src/sdk/package-format")
-case $format in ''|*[!0-9]*) echo "crates/horizon-mod-package/src/sdk/package-format must hold one number, not '$format'" >&2; exit 2;; esac
-archive=horizon-prebuilt-v$format-
+release=$(find "$sdk_base" -mindepth 1 -maxdepth 1 -type d -name 'sdk-*')
+test "$(echo "$release" | wc -l)" = 1 && test -n "$release" || { echo "$sdk_base must hold exactly one sdk-<commit> folder" >&2; exit 2; }
+revision=${release##*/sdk-}
+mixins=$(sed -n 's/^pub const REV: &str = "\(.*\)";$/\1/p' "$root/crates/sunrise-mod-package/src/mixins_tool.rs")
 
 # FNR_KEEP=1 keeps the launcher's folder (toolchain, horizon-mixins, source): a warm build.
 # FNR_MIXINS_FROM_SOURCE=1 builds horizon-mixins from its pinned source, dropping a kept tool: the
@@ -36,62 +37,50 @@ data=$scratch/launcher
 
 # The pinned source a patched function is copied out of, from this checkout.
 source=$data/native/source/$revision
-rm -rf "$source" "$data/native/prebuilt"
+rm -rf "$source"
 mkdir -p "$source"
 git -C "$root" archive "$revision" | tar -x -C "$source"
 find "$source" -type l -delete
 printf '%s' "$revision" > "$source/.horizon-revision"
 
-# The prebuilt game, where the launcher keeps a downloaded one.
-host=$(rustc -vV | sed -n 's/^host: //p')
-mkdir -p "$data/native/prebuilt"
-sdk_suffix=
-if [ "$side" = server ]; then sdk_suffix=-server; fi
-# Laid out as the launcher unpacks one: the identity's `runtime` and `api` slices in folders of
-# their own, every other file in `engine`, hard-linked where it can.
-python3 - "$sdk" "$data/native/prebuilt/$revision-$archive$host$sdk_suffix" <<'LAYOUT'
-import json, os, shutil, sys
-from pathlib import Path
-sdk, build = Path(sys.argv[1]), Path(sys.argv[2])
-slices = json.loads((sdk / "horizon-prebuilt.json").read_text())["slices"]
-placed = {name: kind for kind in ("runtime", "api") for name in slices[kind]}
-for path in sdk.rglob("*"):
-    if path.is_file():
-        name = path.relative_to(sdk).as_posix()
-        to = build / placed.get(name, "engine") / name
-        to.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            os.link(path, to)
-        except OSError:
-            shutil.copy2(path, to)
-LAYOUT
-
 base=$data/versions/ci
-mkdir -p "$base/.local/horizon-client/26.3"
+mkdir -p "$base/.local/sunrise-client/26.3"
 touch "$base/.installed"
-echo '{}' > "$base/.local/horizon-client/26.3/horizon-resources.json"
+echo '{}' > "$base/.local/sunrise-client/26.3/sunrise-resources.json"
 version=$data/versions/native-ci
 mkdir -p "$version"
 touch "$version/.installed"
 # On Windows the launcher picks the build target from the installed game's PE machine; any x64
 # executable stands in for it, and the launcher itself is one.
-case $launcher in *.exe) cp "$launcher" "$version/horizon-client.exe" ;; esac
-printf '{"base": "ci", "horizon": "%s", "target": "%s"}\n' "$revision" "$side" > "$version/native-mods.json"
+case $launcher in *.exe) cp "$launcher" "$version/sunrise-client.exe" ;; esac
+printf '{"base": "ci", "sunrise": "%s", "target": "%s"}\n' "$revision" "$side" > "$version/native-mods.json"
 
 mods=$scratch/mods/fnr
 mkdir -p "$mods"
 for mod in ${FNR_MODS:-alpha beta}; do
   cp -r "${FNR_MOD_ROOT:-$root/tools/ci/fn-replace-check}/$mod" "$mods/fnr_$mod"
-  sed -i "s/^horizon = \"HEAD\"$/horizon = \"$revision\"/; s/^mixins = \"MIXINS\"$/mixins = \"$mixins\"/" "$mods/fnr_$mod/horizon-mod.toml"
+  sed -i "s/^sunrise = \"HEAD\"$/sunrise = \"$revision\"/; s/^mixins = \"MIXINS\"$/mixins = \"$mixins\"/" "$mods/fnr_$mod/sunrise-mod.toml"
 done
-# The game library: libhorizon_mod_host.so / .dylib, or horizon_mod_host.dll on Windows.
-game_library() { ls "$sdk"/deps/*horizon_mod_host.so "$sdk"/deps/*horizon_mod_host.dylib "$sdk"/deps/*horizon_mod_host.dll 2>/dev/null | head -1; }
-game_hash=$(sha256sum "$(game_library)" | cut -d' ' -f1)
+# The game library (libsunrise_mod_host.so / .dylib, or sunrise_mod_host.dll on Windows): its SHA-256 in the SDK's
+# runtime archive for this side, which the unpacked copy must still match once the mods are built.
+game_hash=$(python3 - "$release" "$side" <<'PYGAME'
+import hashlib, sys, tarfile
+from pathlib import Path
+release, side = Path(sys.argv[1]), sys.argv[2]
+archives = [a for a in release.glob("runtime-*.tar.xz") if a.name.endswith("-server.tar.xz") == (side == "server")]
+assert len(archives) == 1, f"one runtime archive for the {side} side, found {[a.name for a in archives]}"
+with tarfile.open(archives[0], "r:xz") as tar:
+    names = [m for m in tar.getmembers() if m.isfile() and Path(m.name).name.endswith(("sunrise_mod_host.so", "sunrise_mod_host.dylib", "sunrise_mod_host.dll"))]
+    assert len(names) == 1, f"one game library, found {[m.name for m in names]}"
+    print(hashlib.sha256(tar.extractfile(names[0]).read()).hexdigest())
+PYGAME
+)
+game_library() { find "$data/native/prebuilt/$revision"-* -type f \( -name '*sunrise_mod_host.so' -o -name '*sunrise_mod_host.dylib' -o -name '*sunrise_mod_host.dll' \) | head -1; }
 
-env_vars=(HORIZON_HOME="$scratch/home" HORIZON_LAUNCHER_HOME="$data" XDG_DATA_HOME="$scratch/data"
-  XDG_CONFIG_HOME="$scratch/config" HORIZON_LAUNCHER_NO_SELF_UPDATE=1 HORIZON_NO_AUDIO=1
-  HORIZON_LAUNCHER_TRASH="$scratch/trash" HORIZON_LAUNCHER_CLIPBOARD="$scratch/clipboard"
-  HORIZON_LAUNCHER_DESKTOP="$scratch/desktop" HORIZON_NATIVE_CARGO_TIMINGS=1)
+env_vars=(SUNRISE_HOME="$scratch/home" SUNRISE_LAUNCHER_HOME="$data" XDG_DATA_HOME="$scratch/data"
+  XDG_CONFIG_HOME="$scratch/config" SUNRISE_LAUNCHER_NO_SELF_UPDATE=1 SUNRISE_NO_AUDIO=1
+  SUNRISE_LAUNCHER_TRASH="$scratch/trash" SUNRISE_LAUNCHER_CLIPBOARD="$scratch/clipboard"
+  SUNRISE_LAUNCHER_DESKTOP="$scratch/desktop" SUNRISE_NATIVE_CARGO_TIMINGS=1 SUNRISE_SDK_BASE="$sdk_base")
 started=$(date +%s.%N)
 output_args=()
 if [ -n "${FNR_MIXINS_FROM_SOURCE:-}" ]; then
@@ -107,23 +96,39 @@ test -z "${built:-}" || exit "$built"
 # The launcher's plan for this build, an instance's or a server folder's export alike: the prebuilt game.
 grep -F 'Prebuilt game: only the mods compile' "$scratch/native-build.err"
 if [ "$side" = client ]; then
-  binary=$(find "$data/versions" -type f -name horizon-client | head -1)
+  binary=$(find "$data/versions" -type f -name sunrise-client | head -1)
   test -n "$binary"
   cp -a "$(dirname "$binary")" "$scratch/engine"
-  cp "$scratch/engine/horizon-client" "$scratch/engine/horizon-engine"
+  cp "$scratch/engine/sunrise-client" "$scratch/engine/sunrise-engine"
 fi
 echo "native build: $(python3 -c "print(round($(date +%s.%N) - $started, 1))") s"
-test -x "$scratch/engine/horizon-engine" || test -x "$scratch/engine/horizon-engine.exe"
+test -x "$scratch/engine/sunrise-engine" || test -x "$scratch/engine/sunrise-engine.exe"
 python3 - "$scratch/engine" <<'PYMARK'
 import pathlib, sys
 engine = pathlib.Path(sys.argv[1])
-binary = next(p for p in (engine / "horizon-engine", engine / "horizon-engine.exe") if p.is_file())
-assert b"horizon-private-holder-v2;" in binary.read_bytes(), f"holder capability missing from {binary}"
+binary = next(p for p in (engine / "sunrise-engine", engine / "sunrise-engine.exe") if p.is_file())
+assert b"sunrise-private-holder-v2;" in binary.read_bytes(), f"holder capability missing from {binary}"
 PYMARK
+if [[ " ${FNR_MODS:-alpha beta} " == *" shared_tip "* ]]; then
+  # The library the mods' registry crates are linked from is exported beside them, as a library
+  # they load, not a mod: no row of the libraries record names it (#1379).
+  python3 - "$scratch/engine" <<'PYSHARED'
+import json, pathlib, sys
+engine = pathlib.Path(sys.argv[1])
+names = ("libsunrise_registry_shared.so", "libsunrise_registry_shared.dylib", "sunrise_registry_shared.dll")
+found = [name for name in names if (engine / name).is_file()]
+assert len(found) == 1, f"one shared registry library in {engine}, found {found}"
+rows = json.loads((engine / "native-mods.json").read_text())["libraries"]
+assert all(row["file"] != found[0] for row in rows), f"{found[0]} is recorded as a mod library: {rows}"
+mods = {row["mod"] for row in rows if row["kind"] == "mod"}
+assert {"fnr_shared_left", "fnr_shared_right", "fnr_shared_tip"} <= mods, rows
+print(f"shared registry library {found[0]} exported, not recorded as a mod")
+PYSHARED
+fi
 if [ "$side" = server ]; then
   # The server folder's export: the launcher says where the engine is, and installs no instance build.
-  grep -F "Built the server engine: $scratch/engine/horizon-engine" "$scratch/native-build.out"
-  test -z "$(find "$data/versions" -type f -name 'horizon-client*' ! -path "$version/*")"
+  grep -F "Built the server engine: $scratch/engine/sunrise-engine" "$scratch/native-build.out"
+  test -z "$(find "$data/versions" -type f -name 'sunrise-client*' ! -path "$version/*")"
 fi
 log=$data/native/build.log
 # Where the build's time went: each command's time and the whole prebuilt compile.
@@ -147,7 +152,7 @@ for unit in sorted(units, key=lambda u: -u.get("duration", 0)):
 PY
 fi
 # Only a `[[native.*]]` row patches a function; a mod of hooks alone must not say it did.
-if grep -qs '^\[\[native\.' "$mods"/*/horizon-mod.toml; then
+if grep -qs '^\[\[native\.' "$mods"/*/sunrise-mod.toml; then
   grep -F 'Function replacement:' "$log"
 elif grep -sF 'Function replacement:' "$log"; then
   echo "a set with no [[native.*]] row logged a function replacement"; exit 1
@@ -158,28 +163,31 @@ grep -F '"route": "prebuilt' "$data"/versions/*/native-mods.json > /dev/null || 
 if [ -n "${FNR_ROUTE:-}" ]; then grep -F "Native mods route: $FNR_ROUTE." "$log"; fi
 # The API route plays the package's own executable: it carries the holder marker in its own bytes.
 if [ "${FNR_ROUTE:-}" = prebuilt-api ]; then
-  marker=$(sed -n 's/^pub static CAPABILITY: \[u8; [0-9]*\] = \*b"\([^"]*\)";$/\1/p' "$root/crates/horizon-mod-package/src/holder.rs")
+  marker=$(sed -n 's/^pub static CAPABILITY: \[u8; [0-9]*\] = \*b"\([^"]*\)";$/\1/p' "$root/crates/sunrise-mod-package/src/holder.rs")
   test -n "$marker"
-  played=$(ls "$scratch/engine/horizon-engine" "$scratch/engine/horizon-engine.exe" 2>/dev/null | head -1)
+  # Whichever of the two exists: `ls` of the missing one exits 2, which pipefail would make the step's exit.
+  for played in "$scratch/engine/sunrise-engine" "$scratch/engine/sunrise-engine.exe"; do
+    [ -f "$played" ] && break
+  done
   grep -qaF "$marker" "$played" || { echo "$played does not carry the holder marker $marker"; exit 1; }
   echo "holder marker $marker found in $played"
 fi
-test ! -d "$data/native/stage/crates/horizon-client" || { echo "the game was staged for a source build"; exit 1; }
+test ! -d "$data/native/stage/crates/sunrise-client" || { echo "the game was staged for a source build"; exit 1; }
 test "$(sha256sum "$(game_library)" | cut -d' ' -f1)" = "$game_hash"
 
 if [ -n "$resources" ]; then
   run=$scratch/run
   mkdir -p "$run"
   echo eula=true > "$run/eula.txt"
-  layout_mod=
-  if [ -n "${FNR_WASM_LAYOUT_PACKAGE:-}" ]; then
-    cp "${FNR_WASM_STD:?set FNR_WASM_STD to the matching horizon-wasm-std.wasm}" "$scratch/engine/horizon-wasm-std.wasm"
-    layout_mod=$(python3 "$root/tools/ci/mismatch_wasm_layout.py" "$FNR_WASM_LAYOUT_PACKAGE" "$run/horizon-mods/layout-refused.hmod")
-    printf 'mod.%s:true\n' "$layout_mod" > "$run/horizon-mods.txt"
+  import_mod=
+  if [ -n "${FNR_WASM_MISMATCH_PACKAGE:-}" ]; then
+    cp "${FNR_WASM_STD:?set FNR_WASM_STD to the matching sunrise-wasm-std.wasm}" "$scratch/engine/sunrise-wasm-std.wasm"
+    import_mod=$(python3 "$root/tools/ci/mismatch_wasm_import.py" "$FNR_WASM_MISMATCH_PACKAGE" "$run/sunrise-mods/import-refused.smod")
+    printf 'mod.%s:true\n' "$import_mod" > "$run/sunrise-mods.txt"
   fi
   # Compile a changed copy of one mod, then swap only its library into the first build.
   # Its public probe adds compiled code without changing the hooks the check asserts below.
-  executable_hash=$(sha256sum "$scratch/engine/horizon-engine" | cut -d' ' -f1)
+  executable_hash=$(sha256sum "$scratch/engine/sunrise-engine" | cut -d' ' -f1)
   swap_mods=$scratch/swap-mods
   cp -a "$mods" "$swap_mods"
   python3 - "$scratch/engine/native-mods.json" "$swap_mods" <<'PYCHANGE'
@@ -187,12 +195,12 @@ import json, pathlib, sys, tomllib
 record = json.loads(pathlib.Path(sys.argv[1]).read_text())
 mod_id = next(r["mod"] for r in record["libraries"] if r["kind"] == "mod")
 for folder in pathlib.Path(sys.argv[2]).iterdir():
-    manifest = folder / "horizon-mod.toml"
+    manifest = folder / "sunrise-mod.toml"
     if manifest.is_file() and tomllib.loads(manifest.read_text())["id"] == mod_id:
         cargo = tomllib.loads((folder / "Cargo.toml").read_text())
         source = folder / cargo.get("lib", {}).get("path", "src/lib.rs")
         with source.open("a") as stream:
-            stream.write("\n#[inline(never)] pub fn __horizon_library_swap_probe() -> u64 { 0x4041 }\n")
+            stream.write("\n#[inline(never)] pub fn __sunrise_library_swap_probe() -> u64 { 0x4041 }\n")
         break
 else:
     raise SystemExit(f"no source for swap mod {mod_id}")
@@ -227,7 +235,7 @@ for root in map(pathlib.Path, sys.argv[2:]):
             raise SystemExit(0)
 raise SystemExit("no changed library with the expected identity was built")
 PYLIB
-  test "$(sha256sum "$scratch/engine/horizon-engine" | cut -d' ' -f1)" = "$executable_hash"
+  test "$(sha256sum "$scratch/engine/sunrise-engine" | cut -d' ' -f1)" = "$executable_hash"
   # The start below loads the swapped library: the loader hashes every library against the record
   # before loading any, and the record now holds only the new bytes, so a start that passes the
   # checks ran the rebuilt library, with the executable unchanged.
@@ -245,11 +253,11 @@ fill 0 100 0 9 100 9 minecraft:hopper[facing=east]{Items:[{Slot:0b,id:"minecraft
     hoppers+=$'\nfill 0 100 12 9 100 12 fnr_loop_second:counter'
   fi
   (sleep 30; echo "$hoppers"; sleep 5; echo "tick rate 40"; sleep 3; echo "tick rate 13"; sleep 3; echo "tick query"; sleep 3; echo "stop"; sleep 20) |
-    (cd "$run" && env "${env_vars[@]}" timeout 180 "$scratch/engine/horizon-engine" --resources "$(realpath "$resources")" \
+    (cd "$run" && env "${env_vars[@]}" timeout 180 "$scratch/engine/sunrise-engine" --resources "$(realpath "$resources")" \
       --dedicated --nogui) > "$scratch/server.log" 2>&1 || true
   grep -F 'fnr:' "$scratch/server.log"
-  if [ -n "$layout_mod" ]; then
-    grep -F "wasm mod $layout_mod refused: built for another version of the mod points API (mod layout 0, game layout " "$scratch/server.log"
+  if [ -n "$import_mod" ]; then
+    grep -F "wasm mod $import_mod refused: uses point:Points::" "$scratch/server.log"
   fi
   if [[ " ${FNR_MODS:-alpha beta} " == *" alpha "* ]]; then
     grep -F 'OVERWRITE by fnr_alpha' "$scratch/server.log"
@@ -290,10 +298,18 @@ fill 0 100 0 9 100 9 minecraft:hopper[facing=east]{Items:[{Slot:0b,id:"minecraft
     grep -F 'fnr: api_only server_started, sin 0.479' "$scratch/server.log"
     grep -F 'fnr: api_only listener at tick_block_entities' "$scratch/server.log"
   fi
+  if [[ " ${FNR_MODS:-alpha beta} " == *" wasmtime "* ]]; then
+    # The mod's own engine ran a module in the game's one wasmtime.
+    grep -F 'fnr: wasmtime add 2+3=5' "$scratch/server.log"
+  fi
+  if [[ " ${FNR_MODS:-alpha beta} " == *" shared_tip "* ]]; then
+    # A mod depending on two mods that use the same crates.io crate linked, and runs (#1379).
+    grep -F 'fnr: shared_tip left 1 right 2 own 3' "$scratch/server.log"
+  fi
   if [[ " ${FNR_MODS:-alpha beta} " == *" fdshape "* ]]; then
     grep -F 'fnr: native_server_started dedicated=true' "$scratch/server.log"
   fi
-  test "$(sha256sum "$scratch/engine/horizon-engine" | cut -d' ' -f1)" = "$executable_hash"
+  test "$(sha256sum "$scratch/engine/sunrise-engine" | cut -d' ' -f1)" = "$executable_hash"
   corrupt_mod=$(python3 - "$scratch/engine" <<'PYLIB'
 import json, pathlib, sys
 folder = pathlib.Path(sys.argv[1])
@@ -304,11 +320,11 @@ print(row["mod"])
 PYLIB
 )
   corrupt_status=0
-  (cd "$run" && env "${env_vars[@]}" timeout 30 "$scratch/engine/horizon-engine" --resources "$(realpath "$resources")" --dedicated --nogui) > "$scratch/corrupt.log" 2>&1 || corrupt_status=$?
+  (cd "$run" && env "${env_vars[@]}" timeout 30 "$scratch/engine/sunrise-engine" --resources "$(realpath "$resources")" --dedicated --nogui) > "$scratch/corrupt.log" 2>&1 || corrupt_status=$?
   if (( corrupt_status == 0 || corrupt_status >= 124 )); then
     echo "corrupted native library was accepted"; exit 1
   fi
-  grep -E "^Horizon: refusing native startup: mod ${corrupt_mod}: library [^/]+ hash mismatch " "$scratch/corrupt.log"
+  grep -E "^Sunrise: refusing native startup: mod ${corrupt_mod}: library [^/]+ hash mismatch " "$scratch/corrupt.log"
   if grep -F 'fnr:' "$scratch/corrupt.log"; then
     echo "mod code ran before library hashes passed"; exit 1
   fi
