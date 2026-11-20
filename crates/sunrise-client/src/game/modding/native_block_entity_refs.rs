@@ -1,6 +1,6 @@
 //! Block entity handles: storage writes join the journal; explicit world notifications happen
 //! immediately and survive abort. Raw mod storage writes and restores synthesize no notice.
-use super::{Game, transactions::After};
+use super::Game;
 use mod_api::__private::game::*;
 use mod_api::{
     BlockEntityDataError, BlockEntityError, BlockEntityItemError, BlockEntityRef,
@@ -387,7 +387,7 @@ impl Game<'_> {
                 *block_entity.item_slot_mut(index).unwrap() = stack;
             });
         }
-        self.after_commit(After::MarkChunkUnsaved((key.0 >> 4, key.2 >> 4)));
+        self.journal_chunk_save((key.0 >> 4, key.2 >> 4));
         Ok(true)
     }
 
