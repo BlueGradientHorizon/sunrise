@@ -242,7 +242,16 @@ fn signed_publish_stages_the_exact_prebuilt_package_with_the_checkout_key() {
     fs::write(&built, &signed).unwrap();
     let mut args = args.to_vec();
     args.extend(["--key", key, "--signature", signature.to_str().unwrap()]);
+    // Same id and version, but a dependency added to the source after signing: the staged
+    // package does not require it, so publish reports no unmet dependency for it.
+    let source = fs::read_to_string(root.join("sunrise-mod.toml")).unwrap();
+    fs::write(
+        root.join("sunrise-mod.toml"),
+        format!("{source}\n[dependencies]\nunlisted_after_signing = '^1'\n"),
+    )
+    .unwrap();
     let output = success(run(root, &args));
+    assert!(!output.contains("unlisted_after_signing"), "{output}");
     assert!(output.contains("--key ") && output.contains("--signature "));
     #[cfg(unix)]
     {
