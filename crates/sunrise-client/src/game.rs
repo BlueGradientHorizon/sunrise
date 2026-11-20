@@ -1261,6 +1261,9 @@ struct Game<'a> {
     /// reads see ready tables, and is not this marker: a final save before the
     /// prepared `Level` is installed would replace the world with placeholder state.
     world_adopted: bool,
+    /// An early shutdown must not replace on-disk tickets while the server is
+    /// still publishing levels or activating their tickets.
+    startup_ticket_restore_pending: bool,
     audio: Audio,
     /// The side, registries and mod settings of this game's resource generation, which
     /// its menus lend to the hooks they fire inside a loop; rebuilt by `refresh_loop_context`.
@@ -6639,14 +6642,10 @@ impl Game<'_> {
         self.inventory = inventory;
         self.bind_chunk_disk_worker(&save, dim);
         self.save = self.with_profession_save_snapshot(save);
-        // MinecraftServer.prepareLevels: the saved tickets come back.
-        self.tickets = if self.options.execution_role.is_client() {
-            Default::default()
-        } else {
-            sunrise_client::ticket_levels::ChunkTickets::with_saved_portal(
-                self.save.load_portal_tickets(),
-            )
-        };
+        // MinecraftServer.prepareLevels restores the saved tickets after the
+        // built-in levels have been published.
+        self.tickets = Default::default();
+        self.startup_ticket_restore_pending = self.options.execution_role.is_logical_server();
         // The ride the player's file names, once the vehicle is in the world.
         self.pending_vehicle = level.root_vehicle;
         self.level = level;
@@ -6740,6 +6739,7 @@ impl Game<'_> {
         self.session_lock = None;
         self.clear_world_parts();
         self.world_adopted = false;
+        self.startup_ticket_restore_pending = false;
         self.world_icon = None;
         sunrise_client::crash::clear_detail("World");
         self.debug_charts.reset();
@@ -11034,6 +11034,7 @@ impl<'a> Game<'a> {
             player_autosaves: Default::default(),
             session_lock: None,
             world_adopted: false,
+            startup_ticket_restore_pending: false,
             audio,
             loop_context: Arc::new(res.core.item_data.context().loop_context(loop_side, [])),
             tick: sunrise_client::parallel::TickThread::mint(),

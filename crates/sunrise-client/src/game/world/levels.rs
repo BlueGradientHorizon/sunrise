@@ -46,6 +46,8 @@ use sunrise_client::{
 };
 use sunrise_world::level::{LevelEvent, Ticks};
 
+const BUILTIN_LEVEL_ORDER: [Dim; 3] = [Dim::Overworld, Dim::Nether, Dim::End];
+
 /// A borrowed counting view: no resident-table scans and no allocation for gauges.
 pub(super) struct EntityCountView<'a> {
     pub(super) fixed: [(&'static str, usize); 19],
@@ -726,7 +728,7 @@ impl Levels {
 
 impl Game<'_> {
     /// A new level for `dim`, opened from the save (`MinecraftServer.createLevels`).
-    pub(super) fn open_level(&self, dim: Dim) -> Result<Parked> {
+    fn open_level(&self, dim: Dim) -> Result<Parked> {
         // A level a mod opened has the seed and generator it asked for.
         let (generate, seed) = match self.runtime_terrain(dim) {
             Some((generate, seed)) => (Some(generate), seed),
@@ -758,7 +760,6 @@ impl Game<'_> {
         world.shape = self.level_shapes.get(dim.id());
         world.fast_lava = self.dimension_type_of(dim).fast_lava;
         world.infiniburn = Some(self.resolve_level_infiniburn(self.dimension_type_of(dim)));
-        let tickets = ChunkTickets::with_saved_portal(save.load_portal_tickets());
         Ok(Parked {
             world,
             streaming,
@@ -766,7 +767,7 @@ impl Game<'_> {
             save,
             block_ticks: Ticks::new(seed as i32),
             tick_chunks: Default::default(),
-            tickets,
+            tickets: Default::default(),
             random_tick_sections: Default::default(),
             level_events: Vec::new(),
             portal_states: HashMap::new(),
@@ -835,16 +836,20 @@ impl Game<'_> {
             None
         };
         self.native_level_opened(Dim::Overworld);
-        for dim in [Dim::Nether, Dim::End] {
+        for dim in BUILTIN_LEVEL_ORDER.into_iter().skip(1) {
             if dim == starting_dim
                 && let Some(level) = starting_level.take()
             {
                 self.levels.parked.insert(dim, level);
                 self.enter_level(dim)?;
-                self.native_level_opened(dim);
             } else {
-                self.enter_level(dim)?;
+                let mut level = self.open_level(dim)?;
+                let left = self.replace_level(dim, &mut level);
+                self.levels.parked.insert(left, level);
+                self.apply_settings();
+                self.read_raids();
             }
+            self.native_level_opened(dim);
         }
         // Switching back to the owner's level is separate from publishing the
         // built-ins. A saved custom starting level, if any, is published here.
@@ -859,29 +864,53 @@ impl Game<'_> {
         Ok(())
     }
 
-    /// `MinecraftServer.prepareLevels`: before the first tick, the chunks the
-    /// built-in levels' restored tickets hold (portal, `/forceload`, and mod
-    /// tickets) are loaded (`ChunkLoadCounter`). The first tick finds them ticking
-    /// and unpacks their saved block and fluid ticks at the game time they
-    /// were saved at (`startTickingChunk`), not at whichever tick they finish
-    /// streaming in.
+    /// `MinecraftServer.prepareLevels`: after all built-ins are published,
+    /// activate their saved tickets, then wait for the chunks they hold
+    /// (`ChunkLoadCounter`). The first tick finds them ticking and unpacks
+    /// their saved block and fluid ticks at the saved game time
+    /// (`startTickingChunk`), not at whichever tick they finish streaming in.
     pub(super) fn prepare_levels(&mut self) -> Result<()> {
         if self.options.execution_role.is_client() {
             return Ok(());
         }
-        let deadline = Instant::now() + Duration::from_secs(600);
-        self.wait_for_ticket_chunks(deadline);
         let back = self.dim;
-        for dim in [Dim::Overworld, Dim::Nether, Dim::End] {
-            if dim != back && self.levels.parked.contains_key(&dim) {
-                self.enter_level(dim)?;
-                self.wait_for_ticket_chunks(deadline);
-            }
+        let dims = BUILTIN_LEVEL_ORDER
+            .into_iter()
+            .chain(matches!(back, Dim::Extra(_)).then_some(back));
+        for dim in dims.clone() {
+            self.enter_level(dim)?;
+            Self::load_saved_level_tickets(&self.save, &mut self.streaming, &mut self.tickets);
+            self.validate_mod_chunk_tickets(dim);
         }
-        if self.dim != back {
-            self.enter_level(back)?;
+        self.startup_ticket_restore_pending = false;
+        let deadline = Instant::now() + Duration::from_secs(600);
+        for dim in dims {
+            self.enter_level(dim)?;
+            self.wait_for_ticket_chunks(deadline);
         }
-        Ok(())
+        self.enter_level(back)
+    }
+
+    /// `TicketStorage.activateAllDeactivatedTickets`: restore portal and
+    /// command tickets, and stage mod tickets for their controllers to validate.
+    fn load_saved_level_tickets(
+        save: &SaveDir,
+        streaming: &mut Streaming,
+        tickets: &mut ChunkTickets,
+    ) {
+        tickets.restore_portal(save.load_portal_tickets());
+        streaming.load_forced(
+            save.load_forced_chunks(),
+            save.load_mod_tickets(|id| mod_api::TicketController::from_id(id).map(|c| c.slot())),
+        );
+    }
+
+    /// A level that opens after startup restores its saved command and portal
+    /// tickets at once. Mod tickets still wait for validation after `level_load`.
+    pub(super) fn open_runtime_level(&self, dim: Dim) -> Result<Parked> {
+        let mut level = self.open_level(dim)?;
+        Self::load_saved_level_tickets(&level.save, &mut level.streaming, &mut level.tickets);
+        Ok(level)
     }
 
     /// Stream the level in place until each chunk its tickets make block
@@ -1034,7 +1063,7 @@ impl Game<'_> {
         if target != self.dim {
             let (mut p, opened) = match self.levels.parked.remove(&target) {
                 Some(p) => (p, false),
-                None => (self.open_level(target)?, true),
+                None => (self.open_runtime_level(target)?, true),
             };
             let left = self.replace_level(target, &mut p);
             self.levels.parked.insert(left, p);
@@ -1044,6 +1073,7 @@ impl Game<'_> {
                 // ServerLevel's constructor reads the level's raids.
                 self.read_raids();
                 self.native_level_opened(target);
+                self.validate_mod_chunk_tickets(target);
             }
         }
         if let Some(h) = self.lan.as_mut() {
@@ -1656,7 +1686,6 @@ impl Game<'_> {
         self.bind_dimension_attachments(dim);
         self.levels.heard_open.push(dim);
         self.native_level_load(dim.id());
-        self.validate_mod_chunk_tickets(dim);
     }
 
     /// The mods hear `dim`'s level close (`LevelEvent.Unload`), once for
@@ -2010,23 +2039,48 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn built_in_levels_restore_saved_tickets_before_the_first_tick() {
-        use mod_api::{Hooks, ModEntry, Registrar, RegistrationContext, TicketController};
+        use mod_api::{
+            Hooks, ModEntry, Registrar, RegistrationContext, ServerHost, TicketController,
+            ValidateTicketsEvent,
+        };
+        use std::sync::atomic::{AtomicBool, Ordering};
         use sunrise_client::mod_chunk_tickets::{ModTicket, ModTickets, TicketOwner};
         use sunrise_client::save::dimension_dir;
 
-        struct Quarry;
+        const OWNER: [i32; 3] = [2, 64, 3];
+        struct Quarry(Arc<AtomicBool>);
         #[mod_api::__subscriptions]
         impl Hooks for Quarry {
             fn register(&self, registrar: &mut dyn Registrar, _: &RegistrationContext) {
-                registrar.register_ticket_controller("quarry", false);
+                registrar.register_ticket_controller("quarry", true);
+            }
+
+            fn validate_tickets(
+                &self,
+                host: &mut dyn ServerHost,
+                e: &mut ValidateTicketsEvent<'_>,
+            ) {
+                if e.dimension == "minecraft:the_nether"
+                    && host.level("minecraft:the_end").is_some()
+                {
+                    self.0.store(true, Ordering::Relaxed);
+                } else {
+                    e.validation.remove_block_tickets(OWNER);
+                }
             }
         }
 
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let home = tempfile::tempdir().unwrap();
         let world = home.path().join("world");
-        let mods = vec![ModEntry::new("startup_tickets", Box::new(Quarry))].into();
+        let saw_end = Arc::new(AtomicBool::new(false));
+        let mods = vec![ModEntry::new(
+            "startup_tickets",
+            Box::new(Quarry(saw_end.clone())),
+        )]
+        .into();
         mod_platform::testing::with_mods(mods, || {
+            let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
             {
                 let mut resources = None;
                 let mut game = open_game(&mut resources, &root, home.path(), &world);
@@ -2038,16 +2092,16 @@ mod tests {
             let controller = TicketController::from_id("startup_tickets:quarry").unwrap();
             let ticket = ModTicket {
                 controller: controller.slot(),
-                owner: TicketOwner::Block([2, 64, 3]),
+                owner: TicketOwner::Block(OWNER),
                 chunk: (12, -13),
                 natural_spawning: false,
             };
-            SaveDir::new(dimension_dir(&world, nether.id()), nether.shape(), None)
+            SaveDir::new(dimension_dir(&world, end.id()), end.shape(), None)
                 .save_chunk_tickets(&[commanded_chunk].into(), &[])
                 .unwrap();
             let mut tickets = ModTickets::default();
             tickets.insert(ticket.clone());
-            SaveDir::new(dimension_dir(&world, end.id()), end.shape(), None)
+            SaveDir::new(dimension_dir(&world, nether.id()), nether.shape(), None)
                 .save_mod_tickets(&tickets, |slot| {
                     TicketController::from_slot(slot).map(TicketController::id)
                 })
@@ -2055,32 +2109,41 @@ mod tests {
 
             let mut resources = None;
             let mut game = open_game(&mut resources, &root, home.path(), &world);
+            assert!(!saw_end.load(Ordering::Relaxed), "validation has not run");
+            assert!(game.levels.parked[&end].streaming.commanded().is_empty());
+            // An early final save can run after the world is adopted but
+            // before ticket activation. The originals on disk must survive.
+            game.save_parked_levels(false).unwrap();
             game.prepare_levels().unwrap();
+            assert!(
+                saw_end.load(Ordering::Relaxed),
+                "Nether validator sees the End"
+            );
             assert_eq!(game.dim, Dim::Overworld);
-            let nether = game
-                .levels
-                .parked
-                .get(&nether)
-                .expect("Nether open at startup");
-            assert!(nether.streaming.commanded().contains(&commanded_chunk));
-            assert!(crate::game::ticking_chunk(
-                &nether.world,
-                commanded_chunk.0,
-                commanded_chunk.1
-            ));
-            let end = game.levels.parked.get(&end).expect("End open at startup");
+            let nether_level = &game.levels.parked[&nether];
             assert_eq!(
-                end.streaming
+                nether_level
+                    .streaming
                     .mod_tickets()
                     .of_controller(controller.slot())
                     .next(),
                 Some(&ticket)
             );
-            assert!(crate::game::ticking_chunk(
-                &end.world,
-                ticket.chunk.0,
-                ticket.chunk.1
-            ));
+            let end_level = &game.levels.parked[&end];
+            assert!(end_level.streaming.commanded().contains(&commanded_chunk));
+            let ticking = |game: &Game<'_>, dim, (x, z)| {
+                let world = if dim == game.dim {
+                    &game.world
+                } else {
+                    &game.levels.parked[&dim].world
+                };
+                crate::game::ticking_chunk(world, x, z)
+            };
+            assert!(ticking(&game, nether, ticket.chunk));
+            assert!(ticking(&game, end, commanded_chunk));
+            game.tick_server(false).unwrap();
+            assert!(ticking(&game, nether, ticket.chunk));
+            assert!(ticking(&game, end, commanded_chunk));
         });
     }
 
