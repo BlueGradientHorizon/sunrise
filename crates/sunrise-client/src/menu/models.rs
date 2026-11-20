@@ -173,6 +173,18 @@ pub struct GrindstoneTake {
     pub new_top: Option<ItemStack>,
     pub new_bottom: Option<ItemStack>,
 }
+
+impl GrindstoneTake {
+    /// `GrindstoneMenu.getExperienceAmount`, before the server rolls Level.random.
+    pub fn vanilla_amount(&self, env: &Env<'_>) -> i32 {
+        crate::stations::grindstone_xp_base(
+            env.enchantments,
+            self.top.as_ref(),
+            self.bottom.as_ref(),
+        )
+    }
+}
+
 /// An anvil craft as `AnvilCraftEvent` reports it: the inputs and the result
 /// taken, before the crafting changed anything.
 #[derive(Clone, Debug, PartialEq)]

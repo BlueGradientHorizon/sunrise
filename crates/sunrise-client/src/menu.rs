@@ -1311,15 +1311,17 @@ impl Menu {
             return None;
         }
         if take.xp < 0 {
-            self.state.ground = Some(crate::stations::grindstone_xp_base(
-                env.enchantments,
-                take.top.as_ref(),
-                take.bottom.as_ref(),
-            ));
+            self.state.ground = Some(take.vanilla_amount(env));
         }
+        let xp = (take.xp >= 0).then_some(take.xp);
+        self.grindstone_take_inputs(env, take);
+        xp
+    }
+
+    /// Replace the inputs and run `slotsChanged`, after the server has awarded experience.
+    pub fn grindstone_take_inputs(&mut self, env: &Env, take: GrindstoneTake) {
         self.put(env, 0, take.new_top);
         self.put(env, 1, take.new_bottom);
-        (take.xp >= 0).then_some(take.xp)
     }
 
     /// `AnvilMenu.setItemName` (`ServerboundRenameItemPacket`): false when

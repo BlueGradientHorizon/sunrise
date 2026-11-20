@@ -435,3 +435,106 @@ fn a_refused_quick_move_take_puts_the_moved_result_back() {
         });
     });
 }
+
+#[test]
+#[ignore = "daily"]
+fn an_outer_abort_undoes_an_accepted_grindstone_take() {
+    use std::sync::{Arc, mpsc};
+    use sunrise_client::lan::PlayerSender;
+    use sunrise_core::{
+        geometry::Vec3,
+        random::{LegacyRandom, RandomSource},
+    };
+
+    with_mod(|| {
+        with_guests(|game| {
+            let (window, original) = placed(game);
+            // Five XP splits into 3, 1, 1. The 3-XP piece merges into this resident orb.
+            game.add_orb([1.5, 64.5, 1.5], 3);
+            let orb = &mut game.orbs[0];
+            *game.world.random = LegacyRandom::new(23);
+            let mut expected_random = (*game.world.random).clone();
+            orb.id = 40 + expected_random.next_int_bound(40).unwrap() as u32;
+            orb.position = Vec3::new(1.5, 64.5, 1.5);
+            orb.age = 42;
+            let join = orb.join;
+            let (tx, rx) = mpsc::channel();
+            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.sender = PlayerSender::new(tx, Arc::default());
+            });
+            let events = game.lan_events.len();
+            script(Script::default());
+
+            for commit in [false, true] {
+                let outer = game.transaction_open();
+                click(game, window, 2, 0);
+                assert_eq!(slot(game, 0), None);
+                assert_eq!(
+                    game.lan.as_ref().unwrap().hub.guests[0].carried,
+                    Some(ItemStack::new("minecraft:dirt", 1))
+                );
+                assert_eq!(game.orbs[game.orbs.locate(join).unwrap()].count, 2);
+                assert!(
+                    rx.try_recv().is_err(),
+                    "published station content before commit"
+                );
+                assert_eq!(
+                    game.lan_events.len(),
+                    events,
+                    "published level event before commit"
+                );
+                game.transaction_close(&outer, commit);
+                if !commit {
+                    assert_eq!(slot(game, 0), Some(original.clone()));
+                    assert_eq!(slot(game, 2), Some(ItemStack::new("minecraft:dirt", 1)));
+                    assert_eq!(game.lan.as_ref().unwrap().hub.guests[0].carried, None);
+                    assert_eq!(game.orbs.len(), 1);
+                    let orb = &game.orbs[game.orbs.locate(join).unwrap()];
+                    assert_eq!((orb.count, orb.age), (1, 42));
+                    assert_eq!(
+                        (*game.world.random).clone().next_int(),
+                        LegacyRandom::new(23).next_int()
+                    );
+                    assert!(rx.try_recv().is_err(), "published station content on abort");
+                    assert_eq!(
+                        game.lan_events.len(),
+                        events,
+                        "published level event on abort"
+                    );
+                } else {
+                    assert_eq!(
+                        game.orbs
+                            .iter()
+                            .map(|orb| orb.value as u32 * orb.count)
+                            .sum::<u32>(),
+                        8
+                    );
+                    assert!(
+                        rx.try_recv().is_ok(),
+                        "did not publish station content on commit"
+                    );
+                    assert_eq!(game.lan_events.len(), events + 1);
+                }
+            }
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_refused_throw_take_does_not_drop_the_result() {
+    with_mod(|| {
+        with_guests(|game| {
+            let (window, original) = placed(game);
+            script(Script {
+                take_bad_xp: true,
+                ..Script::default()
+            });
+            game.lan_guest_packet(12, container_click(window, 2, 0, 4));
+            assert_eq!(TAKE_XP.get(), Some(5), "the throw reached onTake");
+            assert!(game.dropped.is_empty());
+            assert_eq!(slot(game, 2), Some(ItemStack::new("minecraft:dirt", 1)));
+            assert_eq!(slot(game, 0), Some(original));
+        });
+    });
+}

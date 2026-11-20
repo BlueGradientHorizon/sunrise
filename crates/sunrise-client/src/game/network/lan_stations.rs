@@ -10,7 +10,10 @@ use super::{
 };
 use crate::game::{
     decided_action::Epoch,
-    transactions::decision::{InvalidReason, Reply},
+    transactions::{
+        After,
+        decision::{InvalidReason, Reply},
+    },
 };
 use std::cell::{Cell, RefCell};
 use sunrise_client::{
@@ -148,11 +151,18 @@ impl Game<'_> {
         click: Option<super::lan_pickup::Click>,
         op: impl FnOnce(&mut Menu, &sunrise_client::menu::Env),
     ) -> bool {
-        let Some(mut gs) = self
+        let Some((owner, mut gs)) = self
             .lan
             .as_mut()
             .and_then(|host| host.menus.get_mut(&conn))
-            .and_then(|p| p.station.take_if(|s| window.is_none_or(|w| s.window == w)))
+            .and_then(|p| {
+                let owner = p.station.id();
+                Some((
+                    owner,
+                    p.station
+                        .take_if(|s| window.is_none_or(|w| s.window == w))?,
+                ))
+            })
         else {
             return false;
         };
@@ -166,6 +176,8 @@ impl Game<'_> {
                     .as_ref()
                     .is_some_and(|h| h.hub.guests[gi].spectator())
             });
+        let mut click_seal = None;
+        let mut commit_click = true;
         if let Some(gi) = guest {
             // createResult runs when the inputs change (or a rename): a click
             // elsewhere must not hand the hooks their own result again.
@@ -190,20 +202,17 @@ impl Game<'_> {
             // A take the mods listen to is one action with its click: the click, the hook and the
             // take's own effects share one transaction, so a refusal puts the guest's inventory,
             // cursor and drops back with the menu as it was (`before`).
-            let mut grind = None;
-            if gs.menu.grind_hook
-                && mod_api::__private::listened(mod_api::HookId::GrindstoneTake)
-                && let Some(actor) = self.guest_actor(conn)
-                && let Some((route, stamp)) = self.guest_station(conn)
+            let take_listened =
+                gs.menu.grind_hook && mod_api::__private::listened(mod_api::HookId::GrindstoneTake);
+            let grind = take_listened
+                .then(|| Some((self.guest_actor(conn)?, self.guest_station(conn)?)))
+                .flatten();
+            if gs.kind == StationKind::Grindstone
+                && (take_listened || !self.transactions.is_empty())
             {
-                grind = Some((
-                    actor,
-                    route,
-                    stamp,
-                    self.transaction_open(),
-                    (*gs.menu).clone(),
-                ));
+                click_seal = Some(self.transaction_open());
                 self.journal_guest_click(conn);
+                self.journal_station_click(conn, owner, &gs);
             }
             self.guest_menu_op_decided(gi, &mut gs.menu, click, None, |menu, env| {
                 undo = hook.then(|| menu.anvil_undo());
@@ -245,7 +254,7 @@ impl Game<'_> {
                 .map(|host| (host.hub.guests[gi].uuid, host.hub.guests[gi].entity_id))
                 .unwrap_or((0, 0));
             let pos = gs.pos;
-            if let Some((actor, route, stamp, seal, before)) = grind {
+            if let Some((actor, (route, stamp))) = grind {
                 if let Some(take) = taken {
                     let block = self.world.block(pos[0], pos[1], pos[2]);
                     let read = gs.menu.grindstone_read();
@@ -295,28 +304,21 @@ impl Game<'_> {
                                 let Some(take) = answer.take() else {
                                     return;
                                 };
-                                let env = game.menu_env();
-                                let mut menu = menu.borrow_mut();
-                                let xp = menu.grindstone_taken(&env, take, false);
-                                if let Some(amount) = menu.ground.take() {
+                                if take.xp < 0 {
+                                    let amount = take.vanilla_amount(&game.menu_env());
                                     game.grindstone_taken(pos, amount);
+                                } else {
+                                    game.grindstone_award(pos, take.xp.unsigned_abs());
                                 }
-                                if let Some(xp) = xp {
-                                    game.grindstone_award(pos, xp.unsigned_abs());
-                                }
+                                menu.borrow_mut()
+                                    .grindstone_take_inputs(&game.menu_env(), take);
                             },
                         )
                     };
                     // A listener's cancel keeps the click (the result is still taken) and skips
                     // the rest of onTake; any other refusal undoes the click as well.
                     cancelled |= !applied;
-                    let kept = applied || listener_cancelled.get();
-                    self.transaction_close(&seal, kept);
-                    if !kept {
-                        *gs.menu = before;
-                    }
-                } else {
-                    self.transaction_close(&seal, true);
+                    commit_click = applied || listener_cancelled.get();
                 }
             } else if let Some(mut take) = taken {
                 let mut cancel = false;
@@ -467,10 +469,22 @@ impl Game<'_> {
                 self.lan_enchant_offers(gi, &mut gs);
             }
         }
-        if let Some(host) = self.lan.as_mut() {
-            *host.menus.entry(conn).or_default().station = Some(gs);
+        let window = gs.window;
+        let grindstone = gs.kind == StationKind::Grindstone;
+        if let Some(menus) = self.lan.as_mut().and_then(|host| host.menus.get_mut(&conn))
+            && menus.station.id() == owner
+            && menus.station.is_none()
+        {
+            *menus.station = Some(gs);
         }
-        self.lan_send_station(conn);
+        if let Some(seal) = click_seal {
+            self.transaction_close(&seal, commit_click);
+        }
+        if grindstone {
+            self.after_commit(After::StationContent(conn, owner, window));
+        } else {
+            self.lan_send_station(conn);
+        }
         true
     }
 
@@ -976,7 +990,7 @@ impl Game<'_> {
 
     /// The whole station menu and its changed data slots for the client
     /// (`sendAllDataToRemote` / `broadcastChanges`).
-    fn lan_send_station(&mut self, conn: u32) {
+    pub(super) fn lan_send_station(&mut self, conn: u32) {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
