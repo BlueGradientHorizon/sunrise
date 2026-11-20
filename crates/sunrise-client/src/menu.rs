@@ -4191,24 +4191,30 @@ pub(crate) mod tests {
         };
         assert!(!trapdoor_ladder(&before));
         assert!(trapdoor_ladder(&after));
-        // A block's friction reads it too; an answer that is NaN or outside 0..=2 keeps the
-        // block's own.
+        // A block's friction reads it too; an answer that is NaN keeps the block's own
+        // and a finite one is used as given.
         let friction = |context: &LoopContext, kind: &str| {
-            let mut friction = 0.6;
-            crate::motion::native_friction(
-                context,
-                1,
-                kind,
+            use sunrise_world::registry::BlockStateId;
+            let world = crate::world::World::new(BlockStateId(0), 0);
+            crate::motion::read_friction(
+                crate::motion::FrictionLevel {
+                    context,
+                    world: &world,
+                    registry: crate::test_fixtures::air_registry(),
+                    side: crate::motion::dry_side(),
+                    coefficient: &|_| Some(0.6),
+                },
+                Some((1, kind)),
                 sunrise_core::position::BlockPos::new(0, 0, 0),
-                sunrise_world::registry::BlockStateId(0),
-                &mut friction,
-            );
-            friction
+                BlockStateId(0),
+                0.6,
+            )
+            .unwrap()
         };
         assert_eq!(friction(&before, "minecraft:player"), 0.6);
         assert_eq!(friction(&after, "minecraft:player"), 0.98);
         assert_eq!(friction(&after, "minecraft:cow"), 0.6);
-        assert_eq!(friction(&after, "minecraft:item"), 0.6);
+        assert_eq!(friction(&after, "minecraft:item"), 3.0);
         // The edge backoff and the fluid current read it too.
         let movement = |context: &LoopContext| {
             let (mut staying, mut flow) = (false, [0.25, 0.0, 0.0]);
@@ -4288,19 +4294,10 @@ pub(crate) mod tests {
             (4.0, 2.0, false, true, [1.0, 3.0, 3.0], true)
         );
         assert_eq!(JUMPS.get(), 2);
-        // Heal, breathe and drown read it as well.
+        // Heal and drown read it as well.
         let health = |context: &LoopContext| {
             let (mut amount, mut cancel) = (2.0, false);
             crate::hunger::native_living_heal(context, 1, &mut amount, &mut cancel);
-            let (mut can_breathe, mut consume, mut refill) = (true, 1, 4);
-            crate::breathing::native_living_breathe(
-                context,
-                1,
-                "minecraft:zombie",
-                &mut can_breathe,
-                &mut consume,
-                &mut refill,
-            );
             let (mut drowning, mut damage, mut cancel_drown) = (false, 2.0, false);
             crate::breathing::native_living_drown(
                 context,
@@ -4311,18 +4308,10 @@ pub(crate) mod tests {
                 &mut 8,
                 &mut cancel_drown,
             );
-            (amount, cancel, can_breathe, consume, drowning, damage)
+            (amount, cancel, drowning, damage)
         };
-        assert_eq!(health(&before), (2.0, false, true, 1, false, 2.0));
-        assert_eq!(health(&after), (3.0, true, false, 5, true, 3.0));
-        // A listener that lets a cod breathe: on land for 300 ticks it keeps
-        // full air and takes no damage.
-        let mut air = 300;
-        for _ in 0..300 {
-            let hurt = crate::breathing::own_air(&after, 1, "minecraft:cod", &mut air, false, 300);
-            assert_eq!(hurt, None);
-        }
-        assert_eq!(air, 300);
+        assert_eq!(health(&before), (2.0, false, false, 2.0));
+        assert_eq!(health(&after), (3.0, true, true, 3.0));
         // A listener that sets `bubble_count` to 0: a drowning player takes the
         // damage and shows no bubbles (`drown_bubbles` sends nothing for 0).
         let gasp = crate::breathing::Breath {
@@ -4349,12 +4338,17 @@ pub(crate) mod tests {
             ),
             (0, true)
         );
-        let mut air = -19;
-        let hurt = crate::breathing::own_air(&after, 4, "minecraft:salmon", &mut air, false, 300);
-        assert_eq!((hurt, air), (Some(3.0), 0));
-        let mut air = -19;
-        let hurt = crate::breathing::own_air(&after, 4, "minecraft:dolphin", &mut air, false, 4800);
-        assert_eq!((hurt, air), (Some(3.0), 0));
+        // Water animals out of water: the mods' damage comes back and the air is zero.
+        let out_of_water = |kind: &str, max: i32| {
+            let mut air = -19;
+            let step = crate::breathing::AirStep::own(air, max, false);
+            let hurt = step
+                .finish(&after, 4, kind, &mut air, step.vanilla)
+                .and_then(|drowning| drowning.damage);
+            (hurt, air)
+        };
+        assert_eq!(out_of_water("minecraft:salmon", 300), (Some(3.0), 0));
+        assert_eq!(out_of_water("minecraft:dolphin", 4800), (Some(3.0), 0));
         // A server's block menu: the game's `stillValid` answer arrives first and
         // the parts on its mod menu type may change it; a vanilla menu type never
         // asks them, and a menu whose block entity is gone closes without asking.
@@ -4441,6 +4435,37 @@ pub(crate) mod tests {
             false
         ));
         assert_eq!(asked(), 2);
+        // A mod menu with no backing block (`Slots::Native`) is asked too, with no position even
+        // though its opener supplied a screen position, and the part's answer decides.
+        let blockless = |context: &LoopContext| {
+            let world = crate::world::World::new(sunrise_world::registry::BlockStateId(0), 0);
+            let guest = crate::lan::menu::tests::guest();
+            let menu = crate::lan::menu::Menu {
+                window: 1,
+                kind: 2,
+                pos: Some(far),
+                slots: crate::lan::menu::Slots::Native,
+                size: 27,
+                state: 0,
+                sent: Vec::new(),
+                drag: None,
+                sent_data: Vec::new(),
+                hidden: Vec::new(),
+                mod_type: Some(mod_type),
+                registry_id: "test:rules".into(),
+                craft: None,
+                links: Vec::new(),
+                asks_still_valid: crate::lan::menu::asks_still_valid(Some(mod_type), "test:rules"),
+            };
+            menu.still_valid(context, &world, &guest)
+        };
+        assert!(blockless(&after));
+        assert!(!blockless(&before));
+        assert_eq!(asked(), 4);
+        assert_eq!(
+            crate::native_client_hooks::test_hooks::STILL_VALID_POS.get(),
+            None
+        );
         std::fs::remove_dir_all(&settings).unwrap();
     }
 

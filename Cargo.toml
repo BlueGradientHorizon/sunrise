@@ -3,6 +3,7 @@ exclude = ["crates/sunrise-telemetry-server", "crates/sunrise-mod-registry", "th
 members = [
     "crates/sunrise-guest-stack",
     "crates/sunrise-mod-vocab",
+    "crates/sunrise-mod-marks",
     "crates/sunrise-wasmtime",
     "crates/sunrise-game-discovery",
     "crates/sunrise-telemetry",
@@ -75,6 +76,7 @@ members = [
     "crates/cargo-sunrise-mod",
     "crates/sunrise-port-pack",
     "crates/sunrise-shaders",
+    "crates/sunrise-connected",
     "crates/sunrise-optifine",
     "crates/sunrise-polytone",
     "crates/sunrise-shader-api",

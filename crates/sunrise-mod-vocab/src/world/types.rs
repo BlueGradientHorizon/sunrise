@@ -1095,13 +1095,15 @@ pub struct ClipHit {
 }
 
 /// The world's respawn data (`LevelData.RespawnData`): where a player without a spawn point of
-/// their own appears, and facing which way. Sunrise keeps it in the Overworld.
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// their own appears, and facing which way.
+#[derive(Clone, Debug, PartialEq)]
 // exhaustive: the game builds it with a literal; mods only read it
 #[derive(sunrise_mod_api_macros::Wire)]
 pub struct RespawnData {
-    /// The spawn block.
-    pub pos: [i32; 3],
+    /// The spawn block in the level `/setworldspawn` ran in (`RespawnData.globalPos`). Players
+    /// go to the Overworld instead while the world has no such level
+    /// (`MinecraftServer.findRespawnDimension`).
+    pub position: GlobalPos,
     /// The yaw in degrees, -180 to 180 (`Mth.wrapDegrees`).
     pub yaw: f32,
     /// The pitch in degrees, -90 to 90.
@@ -1369,6 +1371,17 @@ impl TriState {
 /// }
 /// ```
 pub trait LevelHost {
+    /// The block-state facts service, as `host.block_states()` gives it on a game host: the
+    /// same tables and the same answers, so a part can ask a neighbour's `weathering_age`
+    /// inside `random_tick`. Read-only and allocation-free per read. A level view with no
+    /// tables answers every fact with `None` (or `BlockStateError::Unavailable`).
+    ///
+    /// Computed in the mod: on wasm the reads are the same calls `host.block_states()` makes,
+    /// answered by this level view's tables.
+    #[sunrise_mod_api_macros::computed_in_mod]
+    fn block_states(&self) -> crate::BlockStates<'_> {
+        crate::BlockStates::unavailable()
+    }
     /// `BlockState.isFaceSturdy`, through the same engine read as `LevelRef::block_face_sturdy`.
     /// `canSupportRigidBlock` is `(pos, Up, Rigid)`. `canSupportCenter` is `(pos, face, Center)`
     /// except that vanilla also refuses `Down` on blocks tagged `minecraft:unstable_bottom_center`.
@@ -1447,6 +1460,17 @@ pub trait LevelHost {
     fn block_state(&self, _pos: [i32; 3]) -> Option<BlockState> {
         None
     }
+    /// Read a state's contextual friction in this view, as `LevelRef::friction` does.
+    /// The queried state need not occupy `pos`. None if the view cannot answer, the
+    /// state is unknown or recursion was refused.
+    fn friction(
+        &self,
+        _pos: [i32; 3],
+        _state: BlockState,
+        _entity: Option<(u32, &str)>,
+    ) -> Option<f32> {
+        None
+    }
     /// The block `state` is a state of (`BlockState.getBlock()`): `mymod:shaft`. None for an
     /// unknown state.
     fn state_block(&self, _state: BlockState) -> Option<&str> {
@@ -1477,8 +1501,8 @@ pub trait LevelHost {
     fn block_in_tag(&self, _block: BlockKey, _tag: &str) -> Option<bool> {
         unimplemented!("LevelHost::block_in_tag")
     }
-    /// The merged-tag service for this level's owning-thread context.
-    /// Not on wasm: a frame resource; its methods are the imports.
+    /// The merged-tag service for this level's owning-thread context: a frame resource, whose
+    /// methods are the imports.
     fn tags(&self) -> &dyn Tags {
         unimplemented!("LevelHost::tags")
     }
@@ -1714,7 +1738,8 @@ pub trait LevelWriteHost: LevelTicksHost + LevelRandomHost {
         unimplemented!("LevelWriteHost::play_sound")
     }
     /// `ServerLevel.sendParticles` through `native_send_particles`.
-    /// Item particles require `options.item_stack`; invalid stacks return false.
+    /// Item particles require `options.item_stack`; invalid stacks return false, and so does an
+    /// item crumb whose colour has a component outside 0 to 1.
     fn send_particles(
         &mut self,
         _options: &ParticleOptions,

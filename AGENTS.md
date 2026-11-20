@@ -29,7 +29,7 @@ Feature → files → harness for the most-changed areas: [docs/architecture.md]
   nightly, published by the daily run when every leg is green ([docs/release-flow.md](docs/release-flow.md#daily-run)).
 - **CI tiers** ([CONTRIBUTING.md](CONTRIBUTING.md#ci-tiers)): every PR push runs `format` and `verify-static`; rollups,
   syncs and main pushes add `lint`, `verify` (unit tests only) and `launcher`; the ignored-test shards, the wasm
-  fixture, `fn-replace-check`, the SDK build and its linkage probe and the machine-sample build run once a day (`daily.yml`). A new test that needs prepared
+  fixture, `fn-replace-check`, the SDK build and its linkage probe, the machine-sample build and the modding book's quickstart run once a day (`daily.yml`). A new test that needs prepared
   resources, boots the game, starts a child process, uses the network or a compiled wasm fixture, or takes 2 s or
   more is `#[ignore]`d with a row in `tools/ci/ignored-tests/`; say in the PR when you could not run it. A daily red
   becomes an issue listing the suspect PRs, fixed by an ordinary PR. `tools/ci/move_to_daily.py` moves an existing
@@ -145,6 +145,7 @@ Game workspace (root `Cargo.toml`); `crates/sunrise-telemetry-server` is a separ
 | `sunrise-mod-package`, `cargo-sunrise-mod` | Content mods (`.smod`: manifest, content fence, no code), the registry index and `.spack`, and `cargo sunrise-mod` (`new`, `build`, `run`, `check`, `publish`, `registry`, `native-build`) ([docs/modding/](docs/modding/src/introduction.md)). Code mods are native, built by the launcher ([docs/modding/src/how-to/native-mods.md](docs/modding/src/how-to/native-mods.md)) |
 | `sunrise-native-build` | Native mods compiled against a signed prebuilt SDK: the launcher's build, and `cargo sunrise-mod native-build`'s JSON contract that every `sdk-<build id>` ships ([docs/modding/src/reference/sdk/08-native-build.md](docs/modding/src/reference/sdk/08-native-build.md)) |
 | `sunrise-port-pack` | Porting Java modpacks ([docs/modpacks.md](docs/modpacks.md)) |
+| `sunrise-connected` | Connected textures whatever file declares them: the neighbour geometry, the format-neutral `Rule` (OptiFine's and mods' both fill it) and its `table` method. Read by `sunrise-client-render`'s `connected.rs` and the mesher, and by `sunrise-optifine`; a mod's files are `assets/<mod>/sunrise/connected/` ([docs/modding/src/how-to/client/connected-textures.md](docs/modding/src/how-to/client/connected-textures.md)) |
 | `sunrise-optifine` | OptiFine-format pack files below every feature that reads them: `.properties`, the name/range/block matchers, paths and `optifine/` folders, and custom entity models (`cem/`: `.jem`/`.jpm` parsing and baking) |
 | `sunrise-polytone` | Polytone-format pack files (`assets/*/polytone/`), read clean-room from the public wiki: targets, biome and dimension modifiers and their environment attribute layers |
 | `sunrise-shader-api` | Sunrise's own WGSL shader packs ([docs/api/shaders.md](docs/api/shaders.md)): `sunrise-shaders.toml`, the `.sshader` package; shared by the game, the launcher and the registry |

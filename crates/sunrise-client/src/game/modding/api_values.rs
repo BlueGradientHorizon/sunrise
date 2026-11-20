@@ -380,41 +380,10 @@ pub(in crate::game) fn mod_tint_values(
     Ok(Some(crate::mesher::ModTintValues { states, metadata }))
 }
 
-fn block_metadata_table()
+pub(super) fn block_metadata_table()
 -> Result<&'static sunrise_mod_runtime::block_definitions::Blocks, mod_api::BlockStateError> {
     mod_api::__private::block_definitions().ok_or(mod_api::BlockStateError::Unavailable)
 }
-impl super::Game<'_> {
-    pub(in crate::game) fn block_metadata_name(
-        &self,
-        block: mod_api::BlockKey,
-    ) -> Result<&str, mod_api::BlockStateError> {
-        mod_api::BlockMetadata::name(block_metadata_table()?, block)
-    }
-    pub(in crate::game) fn block_metadata_property(
-        &self,
-        state: mod_api::BlockStateRecord,
-        name: &str,
-    ) -> Result<Option<&str>, mod_api::BlockStateError> {
-        mod_api::BlockMetadata::property(block_metadata_table()?, state, name)
-    }
-    pub(in crate::game) fn block_metadata_with(
-        &self,
-        state: mod_api::BlockStateRecord,
-        name: &str,
-        value: &str,
-    ) -> Result<mod_api::BlockStateRecord, mod_api::BlockStateError> {
-        mod_api::BlockMetadata::with(block_metadata_table()?, state, name, value)
-    }
-    pub(in crate::game) fn block_metadata_of(
-        &self,
-        block: mod_api::BlockKey,
-        properties: &[mod_api::StateConstraint],
-    ) -> Result<mod_api::BlockStateRecord, mod_api::BlockStateError> {
-        mod_api::BlockMetadata::of(block_metadata_table()?, block, properties)
-    }
-}
-
 /// Normalize an existing game write's answer without changing its implementation.
 /// Generated API forwarders add the checked-input refusal around successful native answers.
 pub(in crate::game) trait IntoWriteResult {
@@ -1858,35 +1827,48 @@ impl super::Game<'_> {
 
     pub(in crate::game) fn api_menu_button(
         &mut self,
+        menu: &str,
+        block: Option<&str>,
         context: &mod_api::item::menu::MenuButtonContext,
-        entity: &mut crate::containers::ModBlockEntity,
+        entity: Option<&mut crate::containers::ModBlockEntity>,
         carried: &mut Option<EngineStack>,
     ) {
         if !mod_api::__private::has_part_hook(mod_api::HookId::MenuButton) {
             return;
         }
-        let (Ok(mut api), Ok(mut cursor)) = (entity.try_into_api(), carried.try_into_api()) else {
+        let mut api_entity = match entity.as_deref().map(TryIntoApi::try_into_api).transpose() {
+            Ok(entity) => entity,
+            Err(_) => return,
+        };
+        let Ok(mut cursor) = carried.try_into_api() else {
             return;
         };
-        let revision = api.revision();
+        let revision = api_entity.as_ref().map(|entity| entity.revision());
         let original = cursor.clone();
-        self.native_menu_button(context, &mut api, &mut cursor);
-        let cursor = if cursor == original {
-            Ok(None)
-        } else {
-            cursor
-                .try_into_engine(self.items())
-                .map(Some)
-                .map_err(|_| BlockEntitySnapshotError::InvalidStack)
-        };
-        if let Ok(Some(cursor)) = finish_block_entity_writeback(
-            entity,
-            &api,
-            revision,
-            self.items(),
-            "menu_button",
-            cursor,
-        ) {
+        self.native_menu_button(menu, block, context, api_entity.as_mut(), &mut cursor);
+        // The outer Option means whether the callback changed the cursor; the inner one is its
+        // new value. `Some(None)` is an explicit consume, while `None` leaves it untouched.
+        let cursor: Result<Option<Option<EngineStack>>, BlockEntitySnapshotError> =
+            if cursor == original {
+                Ok(None)
+            } else {
+                cursor
+                    .try_into_engine(self.items())
+                    .map(Some)
+                    .map_err(|_| BlockEntitySnapshotError::InvalidStack)
+            };
+        if let (Some(entity), Some(api), Some(revision)) = (entity, api_entity.as_ref(), revision) {
+            if let Ok(Some(cursor)) = finish_block_entity_writeback(
+                entity,
+                api,
+                revision,
+                self.items(),
+                "menu_button",
+                cursor,
+            ) {
+                *carried = cursor;
+            }
+        } else if let Ok(Some(cursor)) = cursor {
             *carried = cursor;
         }
     }

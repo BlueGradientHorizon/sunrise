@@ -203,9 +203,6 @@ These read the local player as the client sees it. They take no mod-controlled n
   (`isUsingItem`, `getUsedItemHand`, `getTicksUsingItem`, `getUseItemRemainingTicks`).
   `ticks_used + ticks_remaining` is the use duration. It is `None` when no item is in use or no world
   is open.
-- `ClientHost::hover_name(&stack)` is `ItemStack.getHoverName()` as plain text: the custom name, else
-  a written book's non-blank title, else the item's name in the client's language, without rarity
-  colour or italics. An invalid stack reads an empty string.
 - `ClientHost::creative_search_items()` returns the built creative search tab's display order,
   for ranking stacks in inventory sorters. It requests the catalog with the local player's permission
   and Operator Items Tab option. A cache miss can fire the creative build hook, so this read needs a

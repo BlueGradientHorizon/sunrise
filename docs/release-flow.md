@@ -108,8 +108,9 @@ commit on main. In order:
    it: no daily tests, no `daily-green`, no batch rules, no daily cap, no pause, no release-blocker.
 2. `snapshot-sdk` builds the commit's prebuilt SDK on every OS (`prebuilt-game-build.yml`; skipped when
    `sdk-<sha>` already exists). A build it makes runs the SDK's own checks too, as the daily run's does: the native
-   linkage probe on the Linux and Windows client legs and the API-source check on Linux; an `sdk-<sha>` that already
-   exists is reused as it is, and neither check runs again. `snapshot-sdk-publish` signs and publishes it as `sdk-<sha>` from this run's
+   linkage probe on the Linux and Windows client legs, and the API-source check and the source stage
+   (`tools/ci/test_stage_catalog.py`) on Linux; an `sdk-<sha>` that already exists is reused as it is, and no check
+   runs again. `snapshot-sdk-publish` signs and publishes it as `sdk-<sha>` from this run's
    artifacts through `sdk-publish.yml`, the one workflow that publishes an SDK (the daily run and `prebuilt-game.yml` call it too).
 3. `snapshot` starts `nightly build` with `kind=snapshot` and that commit. It re-checks the gate and the SDK, builds
    the commit alone (no picked pull requests, no build branch, no nightly-state), as `SUNRISE_VERSION`
@@ -137,7 +138,8 @@ the ignored-tests data shards (`ignored-tests.yml`), the wasm fixture and guest 
 `fn-replace-check.yml`, the game's Windows runtime-lease tests (`windows-runtime-leases.yml`), every
 `cargo-sunrise-mod` binstall archive built from the commit and published nowhere (`cargo-sunrise-mod-build.yml`; a pull
 request's check builds only the Linux x86_64 archive, and only a `cargo-sunrise-mod-v*` tag's push publishes, from
-`cargo-sunrise-mod.yml`), the wasm std member's names built on Linux and on Windows (`wasm-std-names.yml`), the machine sample built against the commit's mod API (`machine-sample.yml`) and the
+`cargo-sunrise-mod.yml`), the wasm std member's names built on Linux and on Windows (`wasm-std-names.yml`), the machine sample built against the commit's mod API (`machine-sample.yml`), the modding book's start pages
+(`book-quickstart.yml`, below) and the
 prebuilt SDK of the commit
 (`prebuilt-game-build.yml`; each leg packs its slices after the checks, including the [native linkage probe](native-dylib-probe.md)
 on the Linux and Windows client builds. `sdk-publish` signs and publishes the slices as the mod SDK's
@@ -154,6 +156,15 @@ summary (`tools/ci/daily_summary.py`) reads each leg's result and its sanitised 
   first run where it passes closes it. A leg that failed without a test name gets one issue per leg. A red machine
   sample is no break: its one issue, `Daily: update the machine sample for the mod API change`, asks for the sample
   to follow the API change and its pin to move.
+
+The book's quickstart leg runs `tools/book_quickstart.py`: every `sh` block of `docs/modding/src/start/`, in a fresh home on a
+runner with no launcher on its PATH, since the mod tools never need one. The install page's download runs against the real published
+release, as a reader's does. The mod pages then run with `cargo-sunrise-mod` built from the commit as a debug-assertions build and
+against this run's own SDK, not the previous Nightly's, so a red quickstart cannot block the Nightly that would clear it. The SDK
+folder is laid out by `tools/ci/assemble_sdk_folder.sh`, which `fn-replace-check.yml` uses too (its `sdk-<sha>` folder, signed with a
+throwaway key that only a debug-assertions build trusts through `SUNRISE_SDK_TRUSTED_KEY`), plus `nightly/sdk.json` so a `new`
+with no `--sunrise` resolves to it through `SUNRISE_SDK_BASE`. It is an ordinary leg, outside `sdk_green`. A hand dispatch of
+`book-quickstart.yml` checks the published release instead.
 
 The SDK publishes on its own legs (`sdk`, `machine-sample`, `fn-replace-check`: the summary's `sdk_green`) until a runner with prepared data exists (umceko, 2026-11-16). A red linkage probe fails its `sdk / build linux` or `sdk / build windows` job and blocks publication.
 

@@ -1,7 +1,7 @@
-"""One real positive stage proof, run before documentation checks in verify: the staging pass over a clean
-checkout writes the SDK's build data, each file with the header naming HEAD's commit.
+"""One real positive stage proof, run by the SDK's Linux leg (prebuilt-game-build.yml) in the daily run: the staging
+pass over a clean checkout writes the SDK's build data, each file with the header naming HEAD's commit.
 
-Kept outside tests/ discovery so the later offline suite cannot stage twice.
+Kept outside tests/ discovery: it takes minutes, and the offline suite must not stage.
 """
 import importlib.util
 import json

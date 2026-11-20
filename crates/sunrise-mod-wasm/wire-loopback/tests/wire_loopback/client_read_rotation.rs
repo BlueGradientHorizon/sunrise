@@ -1,6 +1,8 @@
 use super::*;
-use mod_api::prelude::{ClientSession, ClientViewClientHost, ItemsClientHost, ServicesClientHost};
-use mod_api::{Hand, ItemStack, ItemUse, LocalRotationError};
+use mod_api::prelude::{
+    ClientSession, ClientViewClientHost, ItemsClientHost, ItemsHost, ServicesClientHost,
+};
+use mod_api::{Hand, ItemStack, ItemUse, LocalRotationError, Text, TextFormError};
 use std::cell::Cell;
 
 struct Client {
@@ -8,16 +10,18 @@ struct Client {
     look: Cell<(f32, f32)>,
 }
 impl mod_api::Host for Client {}
-mod_api::impl_host_areas!(Client);
+mod_api::impl_host_areas!(Client, except(items));
 // These are boundary reply fixtures, not an implementation of the game's name resolver.
-impl ItemsClientHost for Client {
-    fn hover_name(&self, stack: &ItemStack) -> String {
-        match stack.count() {
-            1 => "Stone".into(),
-            2 => "Named stone".into(),
-            _ => String::new(),
-        }
+impl ItemsHost for Client {
+    fn hover_name(&self, stack: &ItemStack) -> Result<Text, TextFormError> {
+        Ok(match stack.count() {
+            1 => Text::translate("item.minecraft.stone", Vec::new()),
+            2 => Text::literal("Named stone"),
+            _ => Text::literal(""),
+        })
     }
+}
+impl ItemsClientHost for Client {
     fn creative_search_items(&mut self) -> Vec<ItemStack> {
         let item = REGISTERED_ITEM.get().unwrap();
         vec![
@@ -73,9 +77,13 @@ fn client_reads_and_rotation_keep_literal_values_across_the_host_call() {
         unsafe { boundary::serve(id, &mut *cx.borrow_mut(), bytes, &mut out) }.unwrap();
         out.into_bytes()
     })));
-    for (count, expected) in [(1, "Stone"), (2, "Named stone"), (3, "")] {
+    for (count, expected) in [
+        (1, Text::translate("item.minecraft.stone", Vec::new())),
+        (2, Text::literal("Named stone")),
+        (3, Text::literal("")),
+    ] {
         let stack = ItemStack::new(REGISTERED_ITEM.get().unwrap(), count).unwrap();
-        assert_eq!(guest::Guest.hover_name(&stack), expected);
+        assert_eq!(guest::Guest.hover_name(&stack), Ok(expected));
     }
     let order: Vec<u32> = guest::Guest
         .creative_search_items()
