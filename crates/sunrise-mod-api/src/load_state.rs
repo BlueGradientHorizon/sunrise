@@ -559,6 +559,44 @@ mod tests {
     }
 
     #[test]
+    fn refused_component_listener_discards_only_its_appends() {
+        crate::__private::initialize().unwrap();
+
+        struct Component(&'static str, bool);
+        #[crate::__subscriptions]
+        impl Hooks for Component {
+            fn component_types(
+                &self,
+                _: &RegistrationContext,
+                event: &mut ComponentTypesEvent<'_>,
+            ) {
+                event.register(self.0.into());
+                if self.1 {
+                    check_access("level", LoadAccess::WorldOnly);
+                }
+            }
+        }
+
+        let _phase = PhaseOwner::new(ModPhase::Registration);
+        let mods = vec![
+            ModEntry::new("z_first", Box::new(Component("z_first:component", false))),
+            ModEntry::new(
+                "a_refused",
+                Box::new(Component("a_refused:component", true)),
+            ),
+            ModEntry::new("m_last", Box::new(Component("m_last:component", false))),
+        ];
+        let mut types = vec!["game:seeded".to_owned()];
+        crate::testing::with_dispatch(mods.into(), || {
+            dispatch_component_types(&RegistrationContext::new(), &mut types);
+        });
+        assert_eq!(
+            types,
+            ["game:seeded", "z_first:component", "m_last:component"]
+        );
+    }
+
+    #[test]
     fn registration_hooks_read_one_snapshot_and_refuse_bad_reads() {
         crate::__private::initialize().unwrap();
         use crate::*;

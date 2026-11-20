@@ -49,7 +49,13 @@ route from `client_setup` remain outside this change.
 
 Registration runs once: `register`, `component_types`, `blocks`, `items` and `standalone_models`
 receive no `Host` and read startup facts through `RegistrationContext`.
-`register` also receives `&mut dyn Registrar` for writing declarations. The context's `mods()`, `registry(name)` and `setting(mod_id, key)` read
+`register` also receives `&mut dyn Registrar` for writing declarations. In `component_types`, call
+`ComponentTypesEvent::register` with each owned, namespaced ID, for example
+`event.register("mymod:charge".into())`. This appends a declaration without exposing earlier entries.
+The game checks IDs and duplicates before freezing the component registry. If the phase gate refuses a
+listener, the game discards only that listener's additions.
+
+The context's `mods()`, `registry(name)` and `setting(mod_id, key)` read
 one view captured before the first of them runs, so every registration step sees the same values
 whatever the dispatch order: the loaded packages, the built-in registries as `registries.json`
 lists them (not what mods declare during registration) and the settings on disk when the snapshot is captured. A
