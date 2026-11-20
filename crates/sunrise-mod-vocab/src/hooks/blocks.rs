@@ -2,20 +2,12 @@
 // catalog-order: 0152
 
 pub trait Hooks {
-    /// Blocks this mod adds, declared in code rather than one file each
-    /// (NeoForge's `DeferredRegister.Blocks` drained by `RegisterEvent`):
-    /// pass a `mod_api::Block` per block to `event.register`, the same declaration
-    /// a content mod's `data/<id>/sunrise/block/<path>.json` holds (a
-    /// vanilla `template`, `properties`, `state_properties`, `shapes`...),
-    /// with its id in a namespace owned by your mod's manifest. It has a block
-    /// item, as a file's does, unless `item` is false (`Block::with_item(false)`).
-    /// They join the content mods' blocks: the one whose
-    /// id is that namespace when it is on (your models, textures, loot and
-    /// recipes are its files), else one of their own, with the template's
-    /// look. Ids, saves and the check that a joining client has the same
-    /// blocks are the files' (docs/modding/src/how-to/content-mods.md). Asked once at start, on every
-    /// side, before any resource loads. Invalid IDs and unowned namespaces return a
-    /// typed error and refuse startup, even if the caller ignores the error.
+    /// Declare blocks in code once at startup on each side, before resources load.
+    /// Pass each `mod_api::Block` to `event.register`. The declaration belongs to the
+    /// submitting package and works like `data/<id>/sunrise/block/<path>.json` in a
+    /// content mod, including a block item unless disabled with `Block::with_item(false)`.
+    /// `register` returns a typed `DeclarationError` for invalid IDs or fields.
+    /// The game records the refusal and stops startup even if you ignore the error.
     #[notes = r#"## Villager farming
 
 Farmers recognize mod blocks made from farmland and `CropBlock` templates, including declarations from

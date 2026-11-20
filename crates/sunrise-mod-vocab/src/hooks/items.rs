@@ -2,16 +2,12 @@
 // catalog-order: 0153
 
 pub trait Hooks {
-    /// Items this mod adds, declared in code (NeoForge's
-    /// `DeferredRegister.Items`), as `blocks` declares blocks: pass a
-    /// `mod_api::Item` per item to `event.register`, a content mod's
-    /// `data/<id>/sunrise/item/<path>.json` (a vanilla `template`,
-    /// `max_stack_size`, `rarity`, `components`, `crafting_remainder`). A
-    /// block's item comes with its block (`item: true`), not from here.
-    /// IDs must use a namespace owned by the mod's manifest (bare paths use its
-    /// mod ID). Invalid IDs and unowned namespaces return a typed error and refuse
-    /// startup, even if the caller ignores the error.
-    /// Asked once at start, on every side.
+    /// Declare items in code once at startup on each side, before resources load.
+    /// Pass each `mod_api::Item` to `event.register`. The declaration belongs to the
+    /// submitting package and works like `data/<id>/sunrise/item/<path>.json` in a
+    /// content mod. A block's item is declared with its block, not here.
+    /// `register` returns a typed `DeclarationError` for invalid IDs or fields.
+    /// The game records the refusal and stops startup even if you ignore the error.
     #[hook(
         side = "both",
         contract = "collect",

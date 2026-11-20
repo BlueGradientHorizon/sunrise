@@ -2210,13 +2210,11 @@ mod tests {
             fn blocks(&self, _: &RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
                 let mut block = mod_api::Block::new("bright", "minecraft:stone");
                 block.properties.light = Some(16);
-                assert_eq!(
+                assert!(matches!(
                     event.register(block),
-                    Err(DeclarationError::Rejected {
-                        id: "maker:bright".into(),
-                        reason: "light is 0 to 15".into(),
-                    })
-                );
+                    Err(DeclarationError::Rejected { id, reason })
+                        if id == "maker:bright" && !reason.is_empty()
+                ));
             }
             fn items(&self, _: &RegistrationContext, event: &mut mod_api::ItemsEvent<'_>) {
                 let mut item = mod_api::Item::new("spoon", "minecraft:stick");

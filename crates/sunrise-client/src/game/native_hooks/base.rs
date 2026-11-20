@@ -880,20 +880,10 @@ impl Game<'_> {
     ) {
         Self::fire_component_types(context, types);
     }
-    /// Blocks this mod adds, declared in code rather than one file each
-    /// (NeoForge's `DeferredRegister.Blocks` drained by `RegisterEvent`):
-    /// push a `mod_api::Block` per block, the same declaration
-    /// a content mod's `data/<id>/sunrise/block/<path>.json` holds (a
-    /// vanilla `template`, `properties`, `state_properties`, `shapes`...),
-    /// with its id in your mod's namespace. It has a block item, as a file's
-    /// does, unless `item` is false (`Block::with_item(false)`). They join the content mods' blocks: the one whose
-    /// id is that namespace when it is on (your models, textures, loot and
-    /// recipes are its files), else one of their own, with the template's
-    /// look. Ids, saves and the check that a joining client has the same
-    /// blocks are the files' (docs/modding/src/how-to/content-mods.md). Asked once at start, on every
-    /// side, before any resource loads: push the same ones every time, from
-    /// nothing but your code. Declarations that don't pass the files' checks
-    /// are logged and that namespace's are left out.
+    /// Collect blocks from native mods once at startup on each side, before resources load.
+    /// Each declaration belongs to the submitting package and joins the content declarations
+    /// used by saves and the join check. The event's `register` call returns a typed error for
+    /// invalid IDs or fields. Refusals stop startup even if the caller ignores the error.
     pub(in crate::game) fn native_blocks(
         context: &mod_api::RegistrationContext,
         blocks: &mut dyn FnMut(
@@ -902,13 +892,9 @@ impl Game<'_> {
     ) {
         Self::fire_blocks(context, blocks);
     }
-    /// Items this mod adds, declared in code (NeoForge's
-    /// `DeferredRegister.Items`), as `native_blocks` declares blocks: a
-    /// `mod_api::Item` per item, a content mod's
-    /// `data/<id>/sunrise/item/<path>.json` (a vanilla `template`,
-    /// `max_stack_size`, `rarity`, `components`, `crafting_remainder`). A
-    /// block's item comes with its block (`item: true`), not from here.
-    /// Asked once at start, on every side.
+    /// Collect items from native mods at the same startup cutoff as `native_blocks`,
+    /// with the same ownership and refusal rules. A block's item is declared with its block,
+    /// not here.
     pub(in crate::game) fn native_items(
         context: &mod_api::RegistrationContext,
         items: &mut dyn FnMut(

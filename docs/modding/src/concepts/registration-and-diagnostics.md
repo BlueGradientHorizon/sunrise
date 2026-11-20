@@ -1,10 +1,9 @@
 # Registration and diagnostics
 
 Declare keys, Parts, and crash-report callbacks in `Hooks::register`; submit blocks and items
-with `event.register(declaration)` in `Hooks::blocks` and `Hooks::items`. Like NeoForge's
-`RegisterEvent`, these hooks collect declarations once before the world opens. NeoForge's
-`DeferredRegister` rejects new entries after `RegisterEvent` fires; Sunrise's registrar and
-collect events are borrowed, so a mod cannot keep them for a later hook.
+with `event.register(declaration)` in `Hooks::blocks` and `Hooks::items`. Sunrise collects these
+declarations once at startup, before resources load. The registrar and events are borrowed for
+their respective hooks and cannot be kept to submit a declaration after the hook returns.
 
 If you expose registration to scripts, require the matching registration hook before
 queuing a declaration. `mod_api::registration_open()` can reject calls outside the phase,
@@ -12,13 +11,12 @@ but it does not tell you which hook is running. A late call (for example, from
 `player_logged_in`) must not enter the queue: return `DeclarationError::RegistrationClosed`
 and log the submitting mod and requested ID in the binding. The phase query itself does not log.
 
-`BlocksEvent::register` and `ItemsEvent::register` return `DeclarationError` for a malformed ID,
-a namespace your manifest does not own, or invalid fields in the declaration. The game records
-the refusal even if you ignore the error. Checks that need other declarations or loaded
-resources run after collection: for example, a submitted item may conflict with another
-declaration's generated block item. Startup refuses
-invalid batches and reports the mod, kind, ID, and reason on one line per refusal in the startup error
-and log, following NeoForge's `ModLoadingIssue` model.
+The submitting package owns its block and item declarations. `BlocksEvent::register` and
+`ItemsEvent::register` return a typed `DeclarationError` for invalid IDs or fields. Checks that
+need other declarations or loaded resources run after collection: for example, a submitted item
+may conflict with another declaration's generated block item. A refusal is fatal at startup,
+even if the caller ignores the error. The startup error and log identify the submitting mod,
+declaration kind, ID, and reason.
 
 If your `Hooks::register` bootstrap cannot complete, call `cx.refuse("reason")` and return.
 The registration error path reports the refusal without panicking or exiting from the hook.
