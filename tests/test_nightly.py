@@ -371,11 +371,19 @@ class AttachTests(unittest.TestCase):
         self.assertIn(conflicting, release.assets)
         self.assertFalse([call for call in release.calls if "DELETE" in call])
 
-    def test_an_upload_github_never_completed_is_replaced(self):
-        release = FakeRelease(assets=[self.asset(self.files[0], b"part", state="starter")])
+    def test_only_an_empty_starter_placeholder_is_replaced(self):
+        release = FakeRelease(assets=[self.asset(self.files[0], b"", state="starter")])
         self.attach(release)
         self.assertIn(("api", "--method", "DELETE", "repos/o/r/releases/assets/50"), release.calls)
         self.assertEqual(release.uploads(), [path.name for path in self.files])
+        for data, state in ((b"part", "starter"), (b"", "open")):
+            with self.subTest(state=state, size=len(data)):
+                kept = self.asset(self.files[0], data, state=state)
+                release = FakeRelease(assets=[kept])
+                with self.assertRaises(SystemExit):
+                    self.attach(release)
+                self.assertEqual(release.uploads(), [])
+                self.assertEqual(release.assets, [kept])
 
     def test_an_asset_without_a_digest_is_compared_by_its_bytes(self):
         same = dict(self.asset(self.files[0]), digest=None)

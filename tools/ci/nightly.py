@@ -619,7 +619,8 @@ def upload_asset(upload_url: str, path: Path) -> dict:
 def attach(release_id: str, tag: str, sha: str, files: list[Path]) -> None:
     """Uploads `files` in order. GitHub has no all-or-nothing upload of several assets, so a failure can leave the
     first ones attached: a rerun keeps each already there with the same bytes, refuses one with other bytes without
-    replacing it, and deletes only an upload GitHub never completed, which nobody can download."""
+    replacing it, and deletes only an empty `starter` placeholder, an upload GitHub never began storing. Any other
+    asset of that name that is not `uploaded` is refused and left in place."""
     repo = os.environ["GITHUB_REPOSITORY"]
     release = bound_release(repo, release_id, tag, sha)
     upload_url = release["upload_url"].split("{", 1)[0]
@@ -631,8 +632,11 @@ def attach(release_id: str, tag: str, sha: str, files: list[Path]) -> None:
                 sys.exit(f"{path.name} is already on release {release_id} with other bytes; left as it is")
             print(f"{path.name}: already attached with these bytes")
             continue
+        if asset and (asset["state"] != "starter" or asset["size"]):
+            sys.exit(f"{path.name} is on release {release_id} as {asset['state']} with {asset['size']} bytes; "
+                     "left as it is")
         if asset:
-            print(f"{path.name}: removing an upload that never completed ({asset['state']})")
+            print(f"{path.name}: removing an empty upload placeholder")
             gh("api", "--method", "DELETE", f"repos/{repo}/releases/assets/{asset['id']}")
         uploaded = upload_asset(upload_url, path)
         if uploaded["state"] != "uploaded" or uploaded["size"] != path.stat().st_size:

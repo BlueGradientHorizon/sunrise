@@ -269,7 +269,8 @@ with `SHA256SUMS-musl.sig` for the channel and `SHA256SUMS-musl.v2.sig` for its 
 and then the archive without replacing the launcher's `SHA256SUMS` or its signatures. It writes to the release
 `publish` made, addressed by its id, and only while its tag still names the build's commit. GitHub uploads each file
 on its own, so a failed upload can leave the first files attached: a rerun keeps a file already there with the same
-bytes and stops at one with other bytes, replacing nothing. Build, signing or upload
+bytes and stops at one with other bytes, or one GitHub holds unfinished, replacing nothing; only an empty
+placeholder of an upload that never began is removed. Build, signing or upload
 failures file a `bug` issue without editing the published release or replacing assets. Dry runs build, sign with a
 throwaway key and verify without publishing assets or filing issues.
 
