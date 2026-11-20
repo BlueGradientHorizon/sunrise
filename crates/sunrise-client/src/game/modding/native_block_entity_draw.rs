@@ -300,8 +300,8 @@ pub struct BlockEntityDraw {
     partial: f32,
     /// The level's game time, for animations.
     game_time: i64,
-    /// The client's animation clock, in ticks with the partial tick (`spin`):
-    /// the ticks its level ran (`TextureManager.tick`'s count), never set back.
+    /// The client's mod animation clock for `spin`: whole level-running ticks plus a separate
+    /// animation phase.
     animation: f64,
     /// The light the helpers draw with: the block's own
     /// (`LevelRenderer.getLightCoords`), 16 times sky light in bits 0..8 and
@@ -3053,12 +3053,13 @@ mod tests {
             assert_eq!(game.animation_time(), 2.5);
 
             game.clock.set_frozen(false);
-            frame(game, 25, 100.0, false);
+            frame(game, 50, 50.0, false);
+            assert_eq!(game.texture_ticks, 3);
             assert_eq!(game.animation_time(), 2.5);
             frame(game, 25, 100.0, false);
             assert_eq!(game.animation_time(), 2.75);
-            frame(game, 50, 100.0, false);
-            assert_eq!(game.animation_time(), 3.25);
+            frame(game, 75, 100.0, false);
+            assert_eq!(game.animation_time(), 3.5);
         });
     }
 
