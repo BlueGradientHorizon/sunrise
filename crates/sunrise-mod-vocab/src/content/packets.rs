@@ -21,6 +21,7 @@ use crate::Identifier;
 /// ```compile_fail
 /// mod_vocab::ServerboundPlayPacket::chat_session_update();
 /// ```
+// no wire: the local submission envelope carries an already-encoded vanilla body.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct ServerboundPlayPacket {
@@ -38,6 +39,7 @@ impl ServerboundPlayPacket {
 }
 
 /// Why the client could not submit a play packet.
+// no wire: returned locally by the client packet service.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum SendPacketError {
@@ -82,6 +84,7 @@ pub enum SendPacketError {
 }
 
 /// Opaque identity of one connection's packet hold.
+// no wire: only the issuing connection's local hold table resolves this ID.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 // exhaustive: the private field prevents mods constructing or destructuring the id
 pub struct HoldId(pub(crate) u64);
@@ -95,6 +98,7 @@ impl HoldId {
 }
 
 /// Why a hold operation was refused.
+// no wire: returned locally by packet-hold operations.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum HoldError {
@@ -125,6 +129,7 @@ impl crate::NoBackend for HoldError {
 }
 
 /// Why a client mod's `disconnect` was refused.
+// no wire: returned locally by the client disconnect operation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum DisconnectError {

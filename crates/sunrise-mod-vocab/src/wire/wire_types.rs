@@ -731,9 +731,13 @@ mod depth_tests {
 
 // Compound is defined in sunrise-core and cannot carry the vocabulary's Wire
 // derive there. Encode the public map (length, then key/value pairs in traversal
-// order), not the private hash table's storage.
+// order), not the private hash table's storage. The typed decoder charges for
+// compound storage, not BTreeMap nodes.
 impl Wire for sunrise_core::nbt::Compound {
-    layout_via!(std::collections::BTreeMap<sunrise_core::nbt::JavaString, crate::Tag>);
+    layout_via!(
+        std::collections::BTreeMap<sunrise_core::nbt::JavaString, crate::Tag>,
+        "nbt-compound:u32-le-length:v1"
+    );
     const MIN: usize = 4;
     fn put(&self, out: &mut Writer) {
         out.payload_nested(|out| {

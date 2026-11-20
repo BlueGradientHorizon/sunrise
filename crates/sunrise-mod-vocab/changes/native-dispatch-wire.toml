@@ -47,6 +47,7 @@ ids = [
   "type:ComputeFovEvent",
   "type:Config",
   "type:ConfigFile",
+  "type:ConfigKind",
   "type:ConnectsToEvent",
   "type:ContentsChangedEvent",
   "type:CreateFluidSourceEvent",

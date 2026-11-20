@@ -18,6 +18,7 @@ pub(crate) struct ControllerInfo {
 /// one, resolved once there, and it is `Copy`: keep it from `register`, for example in a
 /// `OnceLock`. Another mod's controller does not work. Use its namespaced `id()` when
 /// you need to store a controller name; its slot is local to this game's registry.
+// no wire: the handle resolves only in the registry that issued it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 // exhaustive: its fields are private, so mods cannot build or destructure it
 pub struct TicketController {

@@ -74,8 +74,8 @@ allocates, and give a different validation contract its own versioned identity.
 
 A type's layout describes the fields, enum cases and child types that Wire reads and writes.
 The derive declares the layout from the Rust fields. Layouts do not include Rust type paths.
-They feed the SDK's surface digests and `Wire::describe`, which provides the fingerprint used
-in typed payload negotiation. `payload_schema::<T>()` computes that fingerprint; it is not
+The SDK inventories layouts from source declarations. `Wire::describe` fingerprints a compiled
+type for typed-payload negotiation. `payload_schema::<T>()` computes that fingerprint; it is not
 written into the payload body. A different byte format or validation contract needs a
 different negotiated fingerprint, even if the two formats have some bytes in common.
 

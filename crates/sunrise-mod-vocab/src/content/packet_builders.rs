@@ -3,6 +3,7 @@ use crate::{Identifier, ServerboundPlayPacket};
 use sunrise_core::vanilla_bytes::Writer;
 
 /// A value cannot be represented by the named packet field.
+// no wire: reported locally while building a vanilla packet.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum PacketBuildError {
