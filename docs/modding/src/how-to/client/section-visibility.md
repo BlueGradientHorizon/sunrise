@@ -59,7 +59,7 @@ other listeners are asked as before, and every loaded section is asked again wit
 stays in a neighbour's border or in a queued mesh.
 
 The answers the game keeps for the border (4096 bytes per section that changes anything) and the frozen plans the
-workers read (5832 bytes each, until their job ends) count against the same 128 MiB of in-flight bytes as section
+workers read (8000 bytes each, until their job ends) count against the same 128 MiB of in-flight bytes as section
 geometry. A section that finds no room waits, answered, until bytes come free. A section of air, when no
 mod draws section geometry, is not asked: it
 has no cell to hide.
