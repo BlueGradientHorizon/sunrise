@@ -4,7 +4,7 @@
 //! normal shape; and with none installed anywhere, a query pays one relaxed load.
 use crate::{collision_context::CollisionContext, registry::BlockStateId};
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     rc::Rc,
     sync::atomic::{AtomicUsize, Ordering},
 };
@@ -22,6 +22,18 @@ pub trait PartShapes {
         context: &CollisionContext<'_>,
         standable: &mut dyn FnMut() -> &'static [&'static str],
     ) -> Option<VoxelShape>;
+
+    /// An already answered query, without calling a Part. The outer `None` means
+    /// no recorded answer; `Some(None)` means the Part kept the normal shape.
+    fn cached_shape(
+        &self,
+        _state: BlockStateId,
+        _position: BlockPos,
+        _context: &CollisionContext<'_>,
+        _standable: &mut dyn FnMut() -> &'static [&'static str],
+    ) -> Option<Option<VoxelShape>> {
+        None
+    }
 }
 
 /// How many [`in_parts`] scopes are open on any thread.
@@ -41,12 +53,51 @@ impl InParts {
         Self(PARTS.with_borrow_mut(|slot| slot.replace(parts)))
     }
 
-    /// Use the block's own shapes for an observational query without calling
-    /// the installed parts. This leaves the other threads' parts in place.
-    pub fn suspend() -> Option<Self> {
-        let parts = PARTS.with_borrow_mut(Option::take)?;
-        OPEN.fetch_add(1, Ordering::Relaxed);
-        Some(Self(Some(parts)))
+    /// Replay the installed Parts' cached answers without asking any Part again.
+    pub fn replay() -> Option<ReplayParts> {
+        let live = PARTS.with_borrow(Clone::clone)?;
+        let parts = Rc::new(CachedParts {
+            live,
+            missing: Cell::new(false),
+        });
+        let scope = Self::enter(Rc::clone(&parts) as Rc<dyn PartShapes>);
+        Some(ReplayParts {
+            _scope: scope,
+            parts,
+        })
+    }
+}
+
+pub struct ReplayParts {
+    _scope: InParts,
+    parts: Rc<CachedParts>,
+}
+
+impl ReplayParts {
+    pub fn complete(&self) -> bool {
+        !self.parts.missing.get()
+    }
+}
+
+struct CachedParts {
+    live: Rc<dyn PartShapes>,
+    missing: Cell<bool>,
+}
+
+impl PartShapes for CachedParts {
+    fn shape(
+        &self,
+        state: BlockStateId,
+        position: BlockPos,
+        context: &CollisionContext<'_>,
+        standable: &mut dyn FnMut() -> &'static [&'static str],
+    ) -> Option<VoxelShape> {
+        self.live
+            .cached_shape(state, position, context, standable)
+            .unwrap_or_else(|| {
+                self.missing.set(true);
+                None
+            })
     }
 }
 

@@ -1,5 +1,7 @@
 sunrise-client game::lan_actions::guest_body::tests::travel::a_player_travel_replacement_commits_displacement_and_corrects_velocity lib daily resources
 sunrise-client game::lan_actions::guest_body::tests::travel::a_player_travel_veto_holds_new_reports_not_previously_accepted_ones lib daily resources
+sunrise-client game::lan_actions::guest_body::tests::travel::a_tiny_travel_edit_and_move_veto_leave_the_player_outcome_unchanged lib daily resources
+sunrise-client game::lan_actions::guest_body::tests::travel::an_unanswered_replay_leaves_the_next_report_to_the_move_validator lib daily resources
 sunrise-client game::lan_actions::guest_body::tests::travel::an_unchanged_player_travel_outcome_keeps_vanilla_reports_and_packets lib daily resources
 sunrise-client game::lan_actions::guest_body::tests::travel::another_travel_replacement_waits_for_the_first_correction_acknowledgement lib daily resources
 sunrise-client game::lan_actions::guest_body::tests::travel::collision_can_absorb_a_velocity_edit_without_sending_a_correction lib daily resources

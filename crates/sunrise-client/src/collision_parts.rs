@@ -67,6 +67,30 @@ struct AnswerKey {
     held_item: Option<usize>,
 }
 
+impl AnswerKey {
+    fn new(
+        state: BlockStateId,
+        position: BlockPos,
+        context: &CollisionContext<'_>,
+        entity: u32,
+        held_item: Option<&Arc<str>>,
+        standable: Option<&'static [&'static str]>,
+    ) -> Self {
+        Self {
+            state,
+            position: [position.x, position.y, position.z],
+            entity,
+            bottom: context.bottom().map(f64::to_bits),
+            kind: context.entity_kind(),
+            standable,
+            descending: context.is_descending(),
+            placement: context.is_placement(),
+            always_collide_with_fluid: context.always_collide_with_fluid(),
+            held_item: held_item.map(|item| Arc::as_ptr(item).cast::<u8>() as usize),
+        }
+    }
+}
+
 /// The parts of one level's tick: answers collision queries from the mods, remembering each
 /// answer for the rest of the tick. One value serves every tick: [`Self::begin_tick`] empties the
 /// answers and keeps their storage and the shared names.
@@ -164,20 +188,14 @@ impl PartShapes for ModParts {
         let entity = entity_of(context);
         let held_item = context.held_item().map(|item| self.shared_item(item));
         let standable = context.living_entity().is_some().then(standable);
-        let key = AnswerKey {
+        let key = AnswerKey::new(
             state,
-            position: [position.x, position.y, position.z],
+            position,
+            context,
             entity,
-            bottom: context.bottom().map(f64::to_bits),
-            kind: context.entity_kind(),
+            held_item.as_ref(),
             standable,
-            descending: context.is_descending(),
-            placement: context.is_placement(),
-            always_collide_with_fluid: context.always_collide_with_fluid(),
-            held_item: held_item
-                .as_ref()
-                .map(|item| Arc::as_ptr(item).cast::<u8>() as usize),
-        };
+        );
         if let Some(answer) = self.cache.borrow().get(&key) {
             return answer.clone();
         }
@@ -203,6 +221,29 @@ impl PartShapes for ModParts {
         });
         self.cache.borrow_mut().insert(key, answer.clone());
         answer
+    }
+
+    fn cached_shape(
+        &self,
+        state: BlockStateId,
+        position: BlockPos,
+        context: &CollisionContext<'_>,
+        standable: &mut dyn FnMut() -> &'static [&'static str],
+    ) -> Option<Option<VoxelShape>> {
+        let items = self.items.borrow();
+        let held_item = match context.held_item() {
+            Some(item) => Some(items.get(item)?),
+            None => None,
+        };
+        let key = AnswerKey::new(
+            state,
+            position,
+            context,
+            entity_of(context),
+            held_item,
+            context.living_entity().is_some().then(standable),
+        );
+        self.cache.borrow().get(&key).cloned()
     }
 }
 
@@ -300,6 +341,35 @@ mod tests {
         parts.begin_tick(&Arc::new(loop_context()));
         ask(&parts, 7, [1, 64, 1]);
         assert_eq!(COLLISION_ASKS.get(), 5);
+    }
+
+    #[test]
+    fn travel_replay_can_read_known_shape_answers_but_never_asks_a_part() {
+        let parts = parts();
+        let context = entity(7);
+        let block = BlockStateId(1);
+        let at = BlockPos::new(1, 64, 1);
+        let beside = BlockPos::new(2, 64, 1);
+        COLLISION_ANSWER.with_borrow_mut(|answer| {
+            *answer = Some(Box::new(|_| Some(vec![[0.0, 0.0, 0.0, 1.0, 0.5, 1.0]])));
+        });
+        assert!(parts.shape(block, at, &context, &mut || &[]).is_some());
+        COLLISION_ANSWER.with_borrow_mut(|answer| *answer = None);
+        assert!(parts.shape(block, beside, &context, &mut || &[]).is_none());
+
+        let cached = parts.cached_shape(block, at, &context, &mut || &[]);
+        let shape = cached.unwrap().unwrap();
+        assert_eq!(shape.max(sunrise_core::geometry::Axis::Y), 0.5);
+        assert!(matches!(
+            parts.cached_shape(block, beside, &context, &mut || &[]),
+            Some(None)
+        ));
+        assert!(
+            parts
+                .cached_shape(block, at, &entity(8), &mut || &[])
+                .is_none()
+        );
+        assert_eq!(COLLISION_ASKS.get(), 2);
     }
 
     #[test]

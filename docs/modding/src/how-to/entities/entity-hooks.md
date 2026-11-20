@@ -97,10 +97,10 @@ For a player, a veto holds the position accepted at the server's travel boundary
 it does not rewind reports already accepted before that tick. While the veto
 stands, the server corrects new reports that would move the player away. A
 replacement uses the existing position or velocity correction only for a
-bitwise difference in final position or velocity compared with vanilla's
-unedited prediction, which is what the client computes. A new travel tick does
-not replace a position correction still awaiting acknowledgement; the ordinary
-resend rule still applies. The client never calls this hook.
+bitwise difference in final position or velocity compared with unedited server
+travel. If a movement rule could not be replayed, the normal move validator
+handles later reports. A new travel tick does not replace a position correction
+or its velocity while awaiting acknowledgement. The client never calls this hook.
 
 ## Teleport hooks
 

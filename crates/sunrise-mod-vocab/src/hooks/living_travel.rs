@@ -27,9 +27,10 @@ pub trait Hooks {
     /// reports it already accepted are not rewound. While the veto stands,
     /// the server corrects new movement reports to its accepted position.
     /// A replacement uses existing corrections only for a bitwise difference
-    /// in final position or velocity compared with vanilla's unedited prediction,
-    /// which is what the client computes. A position correction still awaiting
-    /// acknowledgement is not replaced. The hook never runs on the client.
+    /// in final position or velocity compared with unedited server travel.
+    /// If a movement rule could not be replayed, the normal move validator handles later reports.
+    /// Travel does not replace a position correction or its velocity while awaiting acknowledgement.
+    /// The hook never runs on the client.
     /// Beyond NeoForge: there is no counterpart.
     #[hook(
         side = "server",

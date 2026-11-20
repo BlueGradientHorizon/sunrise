@@ -2,7 +2,7 @@
 use super::*;
 use crate::game::native_entity_refs::tests::with_game;
 use crate::game::native_item_places::tests::guest as online_guest;
-use mod_api::{Flow, Hooks, LivingTravelEvent, LoopContext, PlayerStaysOnGroundSurfaceEvent};
+use mod_api::{EntityMoveEvent, Flow, Hooks, LivingTravelEvent, LoopContext, MoveCause};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use sunrise_client::{
     chunk::Chunk,
@@ -241,6 +241,10 @@ fn another_travel_replacement_waits_for_the_first_correction_acknowledgement() {
             let first = correction(&rx);
             assert_eq!(first.position, NEXT);
 
+            let epoch = guest(game).teleport_counter;
+            let hub = &mut game.lan.as_mut().unwrap().hub;
+            assert!(!hub.apply_server_travel(1, epoch, ServerTravel::Replace { position: None }));
+
             for _ in 0..2 {
                 game.lan.as_mut().unwrap().hub.ticks += 1;
                 game.guest_server_tick(1, true);
@@ -267,32 +271,18 @@ fn another_travel_replacement_waits_for_the_first_correction_acknowledgement() {
 #[test]
 #[ignore = "daily"]
 fn collision_can_absorb_a_velocity_edit_without_sending_a_correction() {
-    #[derive(Default)]
-    struct Calls {
-        travel: AtomicUsize,
-        edge: AtomicUsize,
-    }
-    struct IntoWall(Arc<Calls>);
+    struct IntoWall(Arc<AtomicUsize>);
 
     #[mod_api::__subscriptions]
     impl Hooks for IntoWall {
         fn living_travel(&self, _: &dyn LoopContext, event: &mut LivingTravelEvent<'_>) -> Flow {
-            self.0.travel.fetch_add(1, Ordering::Relaxed);
+            self.0.fetch_add(1, Ordering::Relaxed);
             *event.velocity = [-0.5, 0.0, 0.0];
             Flow::Continue
         }
-
-        fn player_stays_on_ground_surface(
-            &self,
-            _: &dyn LoopContext,
-            _: &mut PlayerStaysOnGroundSurfaceEvent,
-        ) {
-            self.0.edge.fetch_add(1, Ordering::Relaxed);
-        }
     }
 
-    crate::entry::install_client_hooks();
-    let calls = Arc::new(Calls::default());
+    let calls = Arc::new(AtomicUsize::new(0));
     let mods = vec![mod_api::ModEntry::new(
         "wall-travel-test",
         Box::new(IntoWall(calls.clone())),
@@ -329,8 +319,7 @@ fn collision_can_absorb_a_velocity_edit_without_sending_a_correction() {
                     .map(f64::to_bits),
                 [0.0, -0.08 * f64::from(0.98_f32), 0.0].map(f64::to_bits)
             );
-            assert_eq!(calls.travel.load(Ordering::Relaxed), 1);
-            assert_eq!(calls.edge.load(Ordering::Relaxed), 1);
+            assert_eq!(calls.load(Ordering::Relaxed), 1);
             assert!(!packets(&rx).into_iter().any(|(id, body)| matches!(
                 C::decode(id, &body).unwrap(),
                 C::PlayerPosition(_) | C::SetEntityMotion(_)
@@ -363,4 +352,109 @@ fn an_unchanged_player_travel_outcome_keeps_vanilla_reports_and_packets() {
             });
         }
     }
+}
+
+struct MoveListener {
+    travel: Reply,
+    veto: bool,
+    moves: Arc<AtomicUsize>,
+}
+
+#[mod_api::__subscriptions]
+impl Hooks for MoveListener {
+    fn living_travel(&self, context: &dyn LoopContext, event: &mut LivingTravelEvent<'_>) -> Flow {
+        self.travel.living_travel(context, event)
+    }
+
+    fn entity_move(&self, _: &dyn LoopContext, event: &mut EntityMoveEvent<'_>) -> Flow {
+        if event.kind == "minecraft:player" && event.cause == MoveCause::SelfMovement {
+            self.moves.fetch_add(1, Ordering::Relaxed);
+            if self.veto {
+                return Flow::Cancel;
+            }
+        }
+        Flow::Continue
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_tiny_travel_edit_and_move_veto_leave_the_player_outcome_unchanged() {
+    for travel in [Reply::Continue, Reply::TinyInput] {
+        let moves = Arc::new(AtomicUsize::new(0));
+        let mods = vec![mod_api::ModEntry::new(
+            "travel-veto-test",
+            Box::new(MoveListener {
+                travel,
+                veto: true,
+                moves: moves.clone(),
+            }),
+        )];
+        mod_platform::testing::with_mods(mods.into(), || {
+            with_player(false, |game, rx| {
+                game.lan.as_mut().unwrap().hub.update_guest(1, |g| {
+                    g.motion.as_mut().unwrap().velocity.x = 0.5;
+                });
+                game.guest_server_tick(1, true);
+                let g = guest(game);
+                let body = g.motion.as_ref().unwrap();
+                assert_eq!(
+                    body.position.components().map(f64::to_bits),
+                    START.map(f64::to_bits)
+                );
+                assert_eq!(g.position.map(f64::to_bits), START.map(f64::to_bits));
+                assert_eq!(
+                    body.velocity.components().map(f64::to_bits),
+                    [0.5 * f64::from(0.91_f32), -0.08 * f64::from(0.98_f32), 0.0].map(f64::to_bits)
+                );
+                assert_eq!(moves.load(Ordering::Relaxed), 1);
+                assert!(!packets(&rx).into_iter().any(|(id, body)| matches!(
+                    C::decode(id, &body).unwrap(),
+                    C::PlayerPosition(_) | C::SetEntityMotion(_)
+                )));
+            });
+        });
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn an_unanswered_replay_leaves_the_next_report_to_the_move_validator() {
+    let moves = Arc::new(AtomicUsize::new(0));
+    let mods = vec![mod_api::ModEntry::new(
+        "travel-replay-test",
+        Box::new(MoveListener {
+            travel: Reply::Velocity,
+            veto: false,
+            moves: moves.clone(),
+        }),
+    )];
+    mod_platform::testing::with_mods(mods.into(), || {
+        with_player(false, |game, rx| {
+            let stone = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:stone")
+                .unwrap();
+            game.world.set(4, 64, 5, stone).unwrap();
+            game.guest_server_tick(1, true);
+            assert_eq!(moves.load(Ordering::Relaxed), 1);
+            assert_eq!(
+                guest(game).position,
+                NEXT,
+                "keep the accepted server travel"
+            );
+            assert!(!packets(&rx).into_iter().any(|(id, body)| matches!(
+                C::decode(id, &body).unwrap(),
+                C::PlayerPosition(_) | C::SetEntityMotion(_)
+            )));
+
+            // The ordinary move validator refuses a report inside the wall,
+            // sending the live server position, not the start of travel.
+            report(game, [4.5, 64.0, 5.0]);
+            assert_eq!(correction(&rx).position, NEXT);
+            assert_eq!(guest(game).position, NEXT);
+        });
+    });
 }

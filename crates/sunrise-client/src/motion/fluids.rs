@@ -321,26 +321,38 @@ impl MotionWorld<'_, '_, '_> {
         result.map_err(|e| e.to_string().into())
     }
     /// `ClipContext.Fluid.WATER` in a fall-reset ray: the water's shape.
-    pub(super) fn water_clip(
-        &mut self,
-        from: Vec3,
-        to: Vec3,
-        p: BlockPos,
-        prediction: Option<&mut FluidShapeCache>,
-    ) -> Result<bool> {
+    pub(super) fn water_clip(&mut self, from: Vec3, to: Vec3, p: BlockPos) -> Result<bool> {
         let fluid = self.fluid_at(p);
         if !is_tagged(fluid.kind(), WATER) {
             return Ok(false);
         }
-        let shape = if let Some(cache) = prediction {
-            cache.shape(self, fluid, p)?
+        let cache = &self.resources.fluids.shapes;
+        let shape = if self.player.travel_probe {
+            let mut scratch = match self
+                .player
+                .travel_rules
+                .as_mut()
+                .unwrap()
+                .fluid_shapes
+                .take()
+            {
+                Some(shapes) => shapes,
+                None => cache
+                    .lock()
+                    .map_err(|_| "fluid shape cache poisoned")?
+                    .clone(),
+            };
+            let shape = scratch.shape(self, fluid, p);
+            self.player.travel_rules.as_mut().unwrap().fluid_shapes = Some(scratch);
+            shape?
         } else {
-            self.resources
-                .fluids
-                .shapes
-                .lock()
-                .map_err(|_| "fluid shape cache poisoned")?
-                .shape(self, fluid, p)?
+            let mut cache = cache.lock().map_err(|_| "fluid shape cache poisoned")?;
+            if let Some(rules) = &mut self.player.travel_rules {
+                // Keep the cache as the unedited branch would first see it.
+                // Neither branch may seed the other branch's first query.
+                rules.fluid_shapes.get_or_insert_with(|| cache.clone());
+            }
+            cache.shape(self, fluid, p)?
         };
         Ok(shape.clip(from, to, p).is_some())
     }

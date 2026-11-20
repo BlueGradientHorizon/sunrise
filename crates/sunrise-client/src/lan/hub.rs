@@ -2186,26 +2186,35 @@ impl Hub {
         if self.guests[i].travel_vetoed != veto {
             self.guests.update(i, |g| g.travel_vetoed = veto);
         }
-        let ServerTravel::Replace { position } = decision else {
-            return false;
-        };
         let g = &self.guests[i];
-        let Some(velocity) = g
-            .motion
-            .as_ref()
-            .filter(|_| eligible)
-            .map(|b| b.velocity.components())
-        else {
+        // The in-flight target and its velocity belong to the ordinary
+        // acknowledgement and resend path. No travel result publishes over it.
+        if !eligible || g.awaiting_teleport.is_some() {
+            return false;
+        }
+        let position = match decision {
+            ServerTravel::Validate {
+                position: Some((position, on_ground)),
+            } => {
+                let position = position.components();
+                let carried = g.on_collider;
+                self.guests.update(i, |g| {
+                    g.on_ground = on_ground;
+                    g.moved = true;
+                    g.known_movement = [0, 1, 2].map(|axis| position[axis] - g.position[axis]);
+                    g.accept_move(position);
+                });
+                self.keep_carried_at(i, carried, position);
+                return false;
+            }
+            ServerTravel::Replace { position } => position,
+            _ => return false,
+        };
+        let Some(velocity) = g.motion.as_ref().map(|b| b.velocity.components()) else {
             return false;
         };
         if let Some((position, on_ground)) = position {
             let position = position.components();
-            // The in-flight target and its velocity belong to the ordinary
-            // acknowledgement and resend path. A later travel tick can
-            // publish a new target once the connection is ready for it.
-            if g.awaiting_teleport.is_some() {
-                return false;
-            }
             let carried = g.on_collider;
             self.guests.update(i, |g| {
                 g.on_ground = on_ground;

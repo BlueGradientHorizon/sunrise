@@ -3,7 +3,9 @@
 //! `living_travel` hook (#2414, PR 2) fires at this family's branch selection.
 use super::{MotionEvent, MotionWorld, Result, fall_flying_movement};
 use sunrise_core::{geometry::Vec3, position::BlockPos};
-use sunrise_world::{living_air, move_gate::MoveGate};
+use sunrise_world::{living_air, move_gate::MoveGate, part_collision::InParts};
+
+pub(super) mod rules;
 
 /// How the server's own travel changes the movement the client may report.
 #[derive(Clone, Copy)]
@@ -12,6 +14,8 @@ pub enum ServerTravel {
     Continue,
     /// Reject new position reports until the next server travel decision.
     Veto,
+    /// Keep the accepted live position; let the usual move validator handle later reports.
+    Validate { position: Option<(Vec3, bool)> },
     /// Correct the velocity alone, or also commit a changed position and its ground flag.
     Replace { position: Option<(Vec3, bool)> },
 }
@@ -74,25 +78,43 @@ impl MotionWorld<'_, '_, '_> {
             return Ok(ServerTravel::Veto);
         }
 
-        // Neither an input nor a velocity write proves that travel changed:
-        // collision can absorb either. Only a server copy with changed input
-        // or velocity needs the callback-free prediction. The accepted travel
-        // below is the only live move.
-        let unedited = if self.player.server_copy
-            && (!same_vector(velocity, requested_velocity)
-                || (!same_vector(input, requested_input) && !matches!(branch, TravelBranch::Glide)))
-        {
-            Some(self.predict_travel(branch, requested_input))
-        } else {
-            None
+        // In air and fluids both inputs go through getInputVector. Inputs
+        // in its dead zone are identical; gliding doesn't read input at all.
+        let same_input = || {
+            matches!(branch, TravelBranch::Glide)
+                || same_vector(input, requested_input)
+                || (input.length_squared() < living_air::MIN_INPUT_LENGTH_SQUARED
+                    && requested_input.length_squared() < living_air::MIN_INPUT_LENGTH_SQUARED)
         };
-        self.player.velocity = velocity;
-        self.apply_player_travel(branch, input)?;
-        // A prediction error must not suppress the live move, or send a
-        // correction without evidence that its outcome changed.
-        let Some(Ok((position, velocity))) = unedited else {
+        if !self.player.server_copy || (same_vector(velocity, requested_velocity) && same_input()) {
+            self.player.velocity = velocity;
+            self.apply_player_travel(branch, input)?;
             return Ok(ServerTravel::Continue);
-        };
+        }
+
+        // Run the accepted move once, keeping the answers from that run for
+        // the scratch comparison. Never ask a listener about a new input.
+        let mut unedited = self.player.clone();
+        self.player.travel_rules = Some(Box::default());
+        self.player.velocity = velocity;
+        let live = self.apply_player_travel(branch, input);
+        let rules = self.player.travel_rules.take();
+        live?;
+
+        unedited.travel_probe = true;
+        unedited.travel_rules = rules;
+        let start = unedited.position;
+        let parts = InParts::replay();
+        let result = self.replay_travel(branch, requested_input, &mut unedited);
+        if result.is_err()
+            || unedited.travel_rules.as_ref().unwrap().missing
+            || parts.is_some_and(|parts| !parts.complete())
+        {
+            let position = (!same_vector(self.player.position, start))
+                .then_some((self.player.position, self.player.ground.on_ground));
+            return Ok(ServerTravel::Validate { position });
+        }
+        let (position, velocity) = (unedited.position, unedited.velocity);
         let position = (!same_vector(self.player.position, position))
             .then_some((self.player.position, self.player.ground.on_ground));
         Ok(
@@ -104,12 +126,14 @@ impl MotionWorld<'_, '_, '_> {
         )
     }
 
-    fn predict_travel(&mut self, branch: TravelBranch, input: Vec3) -> Result<(Vec3, Vec3)> {
-        let _parts = sunrise_world::part_collision::InParts::suspend();
-        let mut body = self.player.clone();
-        body.travel_probe = true;
+    fn replay_travel(
+        &mut self,
+        branch: TravelBranch,
+        input: Vec3,
+        body: &mut super::PlayerMotion,
+    ) -> Result<()> {
         MotionWorld {
-            player: &mut body,
+            player: body,
             scene: self.scene,
             entities: self.entities,
             assets: self.assets,
@@ -122,8 +146,7 @@ impl MotionWorld<'_, '_, '_> {
             damage_hooks: &crate::health::DamageHooks::NONE,
             block_registries: self.block_registries,
         }
-        .apply_player_travel(branch, input)?;
-        Ok((body.position, body.velocity))
+        .apply_player_travel(branch, input)
     }
 
     fn apply_player_travel(&mut self, branch: TravelBranch, input: Vec3) -> Result<()> {
@@ -246,8 +269,12 @@ impl MotionWorld<'_, '_, '_> {
     }
 }
 
-fn same_vector(left: Vec3, right: Vec3) -> bool {
-    left.components().map(f64::to_bits) == right.components().map(f64::to_bits)
+pub(super) fn vector_bits(vector: Vec3) -> [u64; 3] {
+    vector.components().map(f64::to_bits)
+}
+
+fn same_vector(a: Vec3, b: Vec3) -> bool {
+    vector_bits(a) == vector_bits(b)
 }
 
 #[cfg(test)]
