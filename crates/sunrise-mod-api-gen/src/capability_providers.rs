@@ -209,6 +209,14 @@ pub fn generate(
     included: &[(&str, &str)],
 ) -> Result<(String, Vec<std::path::PathBuf>), String> {
     let index = &mut crate::index::game(root, included);
+    generate_with_index(index)
+}
+
+/// [`generate`] for a game index the caller already built (`wire::generate` reads one surface
+/// from it): the provider keys are read from that index instead of parsing the crates again.
+pub fn generate_with_index(
+    index: &mut Index<'_>,
+) -> Result<(String, Vec<std::path::PathBuf>), String> {
     let declarations = key_declarations(index)?;
     let mut shapes = Vec::new();
     for (_, shape) in &declarations {
