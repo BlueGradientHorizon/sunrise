@@ -114,12 +114,21 @@ impl Game<'_> {
             .then(|| self.remote_player_name(mob.id))
             .flatten()
             .map(|name| PlayerRender { name, local: false });
-        let pre = self.mod_render_pre(mob, who, listened, alpha as f32, camera, packed, out);
-        let Some(hidden) = pre else {
+        let mut frame_draw = FrameDraw::default();
+        if !self.mod_render_pre(
+            mob,
+            who,
+            listened,
+            alpha as f32,
+            camera,
+            packed,
+            &mut frame_draw,
+            out,
+        ) {
             // What the mods drew in its place is culled as the entity's own would be.
             self.cull_entity_vertices(out, entity_start);
             return;
-        };
+        }
         // A mod's renderer for the type (`register_entity_renderers`) draws in place of its
         // model and vanilla layers; the mods' layers and post hooks still follow.
         let modded =
@@ -159,12 +168,8 @@ impl Game<'_> {
         let layers = sunrise_client::mobs::render::layers_shown(mob);
         let added = if layers { self.mod_layers(mob) } else { None };
         let mut skinned = None;
-        let mut frame_draw = FrameDraw {
-            hidden,
-            capture_model: !modded
-                && (added.is_some() || (listened && self.mob_render_post_listened(who.is_some()))),
-            ..Default::default()
-        };
+        frame_draw.capture_model = !modded
+            && (added.is_some() || (listened && self.mob_render_post_listened(who.is_some())));
         if posable {
             let mut models = self.skin_models.borrow_mut();
             let mut frame = self.skin_frame.borrow_mut();

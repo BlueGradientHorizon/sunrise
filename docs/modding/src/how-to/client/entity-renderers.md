@@ -144,7 +144,8 @@ tip-over aren't applied for it: the pose stack starts at the feet, not turned, s
 `render_living_pre` (a cancel skips the renderer), the layers mods added to the type
 ([entity layers](entity-layers.md)), `render_living_post`, and the frame's later passes (name tag,
 leash, flames, shadow), in the order the type's own model has ([model drawing](model-drawing.md)).
-When the replacement succeeds, the layers and Post receive `model: None`.
+Pre still lends the selected vanilla or pack body, in bind pose. Its visibility edits only apply
+if that model draws. When the replacement succeeds, the layers and Post receive `model: None`.
 
 ## Register it
 

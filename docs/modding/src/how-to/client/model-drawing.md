@@ -333,7 +333,8 @@ mod listens to the four, and with none builds nothing for them.
 
 A registered layer and both Post hooks borrow the same `Option<&dyn FrameModel>` for their
 callback. It is the selected body's own pose after animation, including custom resource-pack models
-and the posed body beneath a layers-only draw. It works for nonhumanoids too. `None` means there
+and the posed body beneath a layers-only draw. Its visibility includes the draw's Pre edits. It
+works for nonhumanoids too. `None` means there
 was no body pose, for example when a registered replacement renderer drew instead.
 
 Use `model.part("head")` for the first exact name match, or `model.root()` and the `first_child`
@@ -346,15 +347,24 @@ mean that part submitted its own cubes.
 
 ## Hide parts before drawing
 
-`render_player_pre` can hide single parts of the vanilla player model instead of replacing all of
-it: `hidden.hide(HumanoidPart::Head)`, as a mod drawing its own outer skin layer does.
-`render_living_pre` hides parts of any mob's vanilla model the same way, by their names in the model:
-`hidden.hide_named("nose")` leaves a villager's nose out, as a level of detail for a far crowd
-does. A frame holds at most `MAX_HIDDEN_PARTS` (8) names of at most `MAX_PART_NAME` (24) bytes;
-`hide_named` says `HideError::Full` or `HideError::BadName` past that. An unknown name refuses the draw at first use, reporting the mob type and part name.
-Typed humanoid parts have separate storage, so all twelve fit alongside the eight names.
+`render_player_pre` and `render_living_pre` borrow the selected body as `event.model`, a
+`&mut dyn FrameModelEdit`. It has the same hierarchy lookups as [the final model](#read-the-final-body-model),
+but lends the bind pose, before animation and Skin Customization. Player Pre and Living Pre edit
+the same model for this draw, in that order.
 
-- Hiding happens after Skin Customization, for this frame only.
+Find a part by name (or follow the hierarchy) and pass its index to `hide`:
+
+```rust,ignore
+if let Some(index) = event.model.part("nose").map(|part| part.index) {
+    event.model.hide(index);
+}
+```
+
+This hides a villager's nose without replacing the model. Use `"head"` for the player's head or
+`part.model_name()` when starting from a `HumanoidPart`. A missing name returns `None`; an invalid
+index makes `hide` return `false` without changing anything. Neither refuses the draw.
+
+- The visibility edits apply after animation and Skin Customization, for this draw only.
 - A hidden part takes its children with it: the hat goes with the head, a sleeve with its arm.
 - The body loses the part, and so do the layers drawn on the body's own model, as vanilla's
   `getParentModel()` layers do: a villager's type, profession and level, a spider's eyes. The

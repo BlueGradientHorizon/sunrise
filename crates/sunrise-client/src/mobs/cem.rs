@@ -35,7 +35,7 @@ use sunrise_optifine::cem::{
 /// The CEM models of the enabled packs, by model layer (`zombie#main`).
 #[derive(Default)]
 pub struct CemModels {
-    layers: HashMap<String, CemLayer>,
+    layers: HashMap<String, Arc<CemLayer>>,
 }
 
 /// A model layer as a `.jem` reshapes it, or as a pack's pre-1.21.5 mob texture needs it.
@@ -168,7 +168,7 @@ impl CemModels {
             } else if key == layer_key(name) {
                 own.insert(key.clone(), (name, path));
             }
-            layers.insert(key, layer);
+            layers.insert(key, Arc::new(layer));
         }
         let own: HashMap<String, (&str, &str, &EntityModel)> = own
             .into_iter()
@@ -183,6 +183,10 @@ impl CemModels {
     }
 
     pub fn layer(&self, key: &str) -> Option<&CemLayer> {
+        self.layer_ref(key).map(Arc::as_ref)
+    }
+
+    pub(super) fn layer_ref(&self, key: &str) -> Option<&Arc<CemLayer>> {
         self.layers.get(key)
     }
 }
@@ -682,9 +686,10 @@ impl CemLayer {
         if let Some(scale) = legacy_uv_scale {
             old_layout(&mut out, scale);
         }
+        let model = Arc::new(out);
         Self {
-            frame_model: Arc::new(BakedFrameModel::bake(&out)),
-            model: Arc::new(out),
+            frame_model: Arc::new(BakedFrameModel::bake(&model)),
+            model,
             animation,
             texture: jem.texture.as_deref().and_then(atlas_name),
             anchors,
@@ -755,7 +760,7 @@ impl Legacy {
         root: &ResourceSource,
         vanilla: &HashMap<&str, (&Arc<Part>, &str)>,
         own: &HashMap<String, (&str, &str, &EntityModel)>,
-        layers: &mut HashMap<String, CemLayer>,
+        layers: &mut HashMap<String, Arc<CemLayer>>,
     ) {
         // `root` holds vanilla's files too, which never had the old names.
         let legacy: Vec<_> = self
@@ -786,9 +791,10 @@ impl Legacy {
                 _ => {
                     let mut tree = (**part).clone();
                     old_layout(&mut tree, self.taller);
+                    let model = Arc::new(tree);
                     CemLayer {
-                        frame_model: Arc::new(BakedFrameModel::bake(&tree)),
-                        model: Arc::new(tree),
+                        frame_model: Arc::new(BakedFrameModel::bake(&model)),
+                        model,
                         animation: None,
                         texture: None,
                         anchors: Vec::new(),
@@ -797,7 +803,7 @@ impl Legacy {
                 }
             };
             layer.legacy = legacy.clone();
-            layers.insert(key, layer);
+            layers.insert(key, Arc::new(layer));
         }
     }
 }

@@ -820,10 +820,19 @@ impl Game<'_> {
             local: true,
         };
         let listened = self.mob_render_listened();
-        let pre = self.mod_render_pre(m, Some(who), listened, alpha as f32, camera, packed, out);
-        let Some(hidden) = pre else {
+        let mut frame_draw = FrameDraw::default();
+        if !self.mod_render_pre(
+            m,
+            Some(who),
+            listened,
+            alpha as f32,
+            camera,
+            packed,
+            &mut frame_draw,
+            out,
+        ) {
             return;
-        };
+        }
         // AvatarRenderer.shouldRenderLayers: a spectator draws no layers.
         let show_layers = sunrise_client::mobs::render::layers_shown(m);
         let layers = if show_layers {
@@ -831,11 +840,8 @@ impl Game<'_> {
         } else {
             None
         };
-        let mut frame_draw = FrameDraw {
-            hidden,
-            capture_model: layers.is_some() || (listened && self.mob_render_post_listened(true)),
-            ..Default::default()
-        };
+        frame_draw.capture_model =
+            layers.is_some() || (listened && self.mob_render_post_listened(true));
         // A spectator still draws its own model in third person: the poses'
         // visibility (set by player_model_visibility) hides body parts, and
         // translucent_body marks the body OIT for the ghostly look. Only first

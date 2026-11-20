@@ -1,0 +1,42 @@
+ids = [
+    "hook:render_living_pre",
+    "hook:render_living_pre.hidden",
+    "hook:render_living_pre.model",
+    "type:RenderLivingPreEvent.hidden",
+    "type:RenderLivingPreEvent.model",
+    "hook:render_player_pre",
+    "hook:render_player_pre.hidden",
+    "hook:render_player_pre.model",
+    "type:RenderPlayerPreEvent.hidden",
+    "type:RenderPlayerPreEvent.model",
+    "type:HiddenParts",
+    "handle:HiddenParts::hide",
+    "handle:HiddenParts::hide_named",
+    "handle:HiddenParts::contains",
+    "handle:HiddenParts::contains_named",
+    "handle:HiddenParts::is_empty",
+    "handle:HiddenParts::names",
+    "type:HideError",
+    "type:HideError.Full",
+    "type:HideError.BadName",
+    "type:HumanoidPart",
+    "trait:FrameModelEdit",
+    "method:FrameModelEdit::hide",
+]
+why = "Player Pre and Living Pre now share the selected body in bind pose, so listeners can inspect its hierarchy and hide any actual part for this draw. There is no list of names to encode, no size limit, and no draw refusal for a missing part."
+migrate = """
+Rebuild for render_living_pre version 3 and render_player_pre version 2. Use event.model
+instead of event.hidden; helpers now take &mut dyn FrameModelEdit. Replace
+hidden.hide_named(name) with `if let Some(index) = event.model.part(name).map(|p| p.index) {
+    event.model.hide(index);
+}`. For hidden.hide(part) or hidden.contains(part), use part.model_name() as the name.
+Replace hidden.contains_named(name) with `event.model.part(name).is_some_and(|p| !p.visible)`
+to check effective visibility (including hidden parents). Instead of hidden.names() or
+hidden.is_empty(), follow model.root() and the first_child/next_sibling links with
+model.part_at(index) to inspect the subtree you care about. If you need the exact list of
+edits your own listener made, keep it yourself; the model reports effective visibility.
+Do not construct a HiddenParts or match HideError; MAX_HIDDEN_PARTS and MAX_PART_NAME are
+removed. A name lookup returns None when absent; hide returns false for an invalid index.
+Do not retain indices across draws. HumanoidPart still selects parts in process, but no
+longer implements Wire; select by name from your own format when you need saved data.
+"""

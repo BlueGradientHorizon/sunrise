@@ -3,32 +3,46 @@
 use super::{Atlas, body, cem_key, cem_texture};
 use crate::fast_hash::FxHashMap;
 use crate::mobs::{Mob, MobData, MobType, Part, anim, cem};
-use mod_api::{FrameModel, FrameModelPart};
+use mod_api::{FrameModel, FrameModelEdit, FrameModelPart};
 use std::{borrow::Cow, sync::Arc};
 
-/// The exact body selected for one draw, borrowing the mob and an owned pack snapshot.
-/// A caller can keep this selection across Pre without holding the pack's read lock.
+/// The exact body selected for one draw, with an owned pack snapshot rather than a read lock.
+/// The same selection supplies the Pre bind pose and all the vanilla draws that follow it.
 pub(super) struct FrameBody<'a> {
     model_key: Cow<'static, str>,
-    pub(super) model: &'a Arc<Part>,
-    pub(super) custom: Option<&'a cem::CemLayer>,
-    pub(super) texture: Cow<'a, str>,
+    vanilla: &'a Arc<Part>,
+    pub(super) cem: Arc<cem::CemModels>,
+    pub(super) custom: Option<Arc<cem::CemLayer>>,
+    texture: Cow<'a, str>,
 }
 
 impl<'a> FrameBody<'a> {
-    pub(super) fn select(mob: &'a Mob, cem: &'a cem::CemModels, atlas: Atlas<'_>) -> Self {
+    pub(super) fn select(mob: &'a Mob, data: &MobData) -> Self {
+        let cem = data
+            .cem
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
         let (model_key, texture) = body(mob);
-        let custom = cem.layer(cem_key(&model_key));
-        let model = custom
-            .map(|layer| &layer.model)
-            .unwrap_or_else(|| mob.kind.layer(&model_key).unwrap_or(&mob.kind.model));
-        let texture = cem_texture(custom, &texture, atlas).map_or(texture, Cow::Borrowed);
+        let vanilla = mob.kind.layer(&model_key).unwrap_or(&mob.kind.model);
+        let custom = cem.layer_ref(cem_key(&model_key)).cloned();
         Self {
             model_key,
-            model,
+            vanilla,
+            cem,
             custom,
             texture,
         }
+    }
+
+    pub(super) fn model(&self) -> &Arc<Part> {
+        self.custom
+            .as_ref()
+            .map_or(self.vanilla, |layer| &layer.model)
+    }
+
+    pub(super) fn texture(&self, atlas: Atlas<'_>) -> &str {
+        cem_texture(self.custom.as_deref(), &self.texture, atlas).unwrap_or(&self.texture)
     }
 
     /// Both names of the body, so overlays on it don't take the `.jem` texture.
@@ -36,10 +50,11 @@ impl<'a> FrameBody<'a> {
         [&self.model_key, cem_key(&self.model_key)]
     }
 
-    pub(super) fn layout(&self, data: &'a MobData) -> Option<&'a Arc<BakedFrameModel>> {
-        self.custom
-            .map(|layer| &layer.frame_model)
-            .or_else(|| data.frame_models.get(self.model))
+    pub(super) fn layout<'b>(&'b self, data: &'b MobData) -> Option<&'b Arc<BakedFrameModel>> {
+        match &self.custom {
+            Some(layer) => Some(&layer.frame_model),
+            None => data.frame_models.get(self.vanilla),
+        }
     }
 }
 
@@ -50,12 +65,16 @@ pub struct BakedFrameNode {
     pub parent: Option<usize>,
     pub first_child: Option<usize>,
     pub next_sibling: Option<usize>,
+    bind_pose: [f32; 9],
 }
 
 /// A final model tree flattened in preorder, with root at index zero.
 pub struct BakedFrameModel {
     nodes: Vec<BakedFrameNode>,
     by_name: FxHashMap<Arc<str>, usize>,
+    // The immutable tree lives at these addresses for the lifetime of the drawing model.
+    // Used for identity only; it is never dereferenced through this table.
+    by_part: FxHashMap<usize, usize>,
 }
 
 impl BakedFrameModel {
@@ -63,6 +82,7 @@ impl BakedFrameModel {
         let mut layout = Self {
             nodes: Vec::new(),
             by_name: FxHashMap::default(),
+            by_part: FxHashMap::default(),
         };
         layout.append(root, None);
         layout
@@ -73,12 +93,14 @@ impl BakedFrameModel {
         let name: Arc<str> = part.name.as_str().into();
         // Like ModelPart.createPartLookup, the first visit to a name wins.
         self.by_name.entry(name.clone()).or_insert(index);
+        self.by_part.insert(part as *const Part as usize, index);
         self.nodes.push(BakedFrameNode {
             name,
             anim_key: anim::key(&part.name),
             parent,
             first_child: None,
             next_sibling: None,
+            bind_pose: part.pose,
         });
         let mut previous: Option<usize> = None;
         for child in &part.children {
@@ -100,6 +122,10 @@ impl BakedFrameModel {
     /// The first depth-first match for this exact name, including the root.
     pub fn find(&self, name: &str) -> Option<usize> {
         self.by_name.get(name).copied()
+    }
+
+    pub(in crate::mobs) fn index_of(&self, part: &Part) -> Option<usize> {
+        self.by_part.get(&(part as *const Part as usize)).copied()
     }
 }
 
@@ -133,23 +159,25 @@ impl BakedFrameModels {
     }
 }
 
-/// The exact body poses kept alive for layer and Post callbacks. Dropping this returns the
-/// poses to the render thread's pool. The shared layout also outlives the pack snapshot.
+/// The body poses lent to Pre, layers and Post. Dropping this returns the poses to the render
+/// thread's pool. The shared layout also outlives the pack snapshot.
 pub struct FrameModelPose {
     pub(super) layout: Arc<BakedFrameModel>,
     pub(super) poses: anim::PooledPoses,
+    pub(super) bind: bool,
 }
 
 impl FrameModelPose {
     fn view<'a>(&'a self, index: usize, node: &'a BakedFrameNode) -> FrameModelPart<'a> {
-        let mut ancestor = self.poses.has_hidden_parts().then_some(node);
+        let mut ancestor = self.poses.has_hidden_parts().then_some(index);
         let mut visible = true;
-        while let Some(current) = ancestor {
-            if self.poses.is_hidden_by_key(current.anim_key) {
+        while let Some(i) = ancestor {
+            let current = &self.layout.nodes[i];
+            if self.poses.is_hidden_at(i, current.anim_key) {
                 visible = false;
                 break;
             }
-            ancestor = current.parent.map(|i| &self.layout.nodes[i]);
+            ancestor = current.parent;
         }
         FrameModelPart {
             index,
@@ -157,10 +185,13 @@ impl FrameModelPose {
             parent: node.parent,
             first_child: node.first_child,
             next_sibling: node.next_sibling,
-            local_pose: self
-                .poses
-                .pose_by_key(node.anim_key)
-                .expect("poses were reset from the baked model's tree"),
+            local_pose: if self.bind {
+                &node.bind_pose
+            } else {
+                self.poses
+                    .pose_by_key(node.anim_key)
+                    .expect("poses were reset from the baked model's tree")
+            },
             visible,
         }
     }
@@ -177,5 +208,11 @@ impl FrameModel for FrameModelPose {
 
     fn part_at(&self, index: usize) -> Option<FrameModelPart<'_>> {
         Some(self.view(index, self.layout.nodes.get(index)?))
+    }
+}
+
+impl FrameModelEdit for FrameModelPose {
+    fn hide(&mut self, index: usize) -> bool {
+        self.poses.hide_frame_part(index)
     }
 }

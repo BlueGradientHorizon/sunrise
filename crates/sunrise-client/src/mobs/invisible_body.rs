@@ -19,7 +19,7 @@ pub fn render_seen_invisible(
     light: u32,
     data: &dyn RenderDataSource,
     extra: &[(&Part, [f32; 4], u32, u32, bool)],
-    frame: &mut FrameDraw,
+    frame: &mut FrameDraw<'_>,
     out: &mut Vec<Vertex>,
 ) {
     // `IllusionerRenderer.isBodyVisible` is true always: an invisible illusioner
@@ -28,12 +28,11 @@ pub fn render_seen_invisible(
         render_with_frame(m, alpha, camera, atlas, light, data, extra, frame, out);
         return;
     }
-    frame.model = None;
     let tint = (body_color(m, alpha) & 0x00FF_FFFF) | 0x2600_0000;
     render_visible(
         m,
         alpha,
-        base_transform(m, alpha, camera),
+        [base_transform(m, alpha, camera)],
         atlas,
         light,
         data,

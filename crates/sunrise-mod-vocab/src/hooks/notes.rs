@@ -1056,6 +1056,8 @@ steers a mob through the engine's own controls, each a momentary wish the mob's 
 once a frame for every mob and player in view, before its model (NeoForge's `RenderLivingEvent.Pre`). Set `canceled` and nothing
 more of it draws this frame: model, layers, name tag, shadow, flames, leash, outline and `render_living_post`.
 
+- `model` lends the selected body's hierarchy and bind pose. Look up a part with `part(name)` and
+  call `hide(part.index)` to hide that subtree after animation, for this draw only.
 - `entity` (`MobRender`) is the frame's `LivingEntityRenderState`: the id, kind, custom name and `baby`, the partial tick,
   `age` (ticks lived plus the partial tick), `body_yaw`, `head_yaw` (from the body) and `pitch` in degrees, the walk cycle
   (`walk_position`, `walk_speed`: a vanilla quadruped's legs swing `cos(walk_position * 0.6662) * 1.4 * walk_speed` radians), `hurt_time`,

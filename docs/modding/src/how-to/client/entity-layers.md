@@ -37,7 +37,8 @@ impl EntityRenderLayer for Halo {
 The pose stack starts in the entity's frame: at its feet, turned with its body, +z the way it faces,
 +x its left, +y up, in blocks, as `render_living_pre` draws. `entity.yaw` is the body's turn and
 `entity.pitch` the head's. Use `model.part(name)` to [read a part's final local pose](model-drawing.md#read-the-final-body-model)
-when attaching to a body part. The model is borrowed only for `submit`. `draw` also has the partial
+when attaching to a body part. This includes the final visibility after Pre edits. The model is
+borrowed only for `submit`. `draw` also has the partial
 tick, game time and entity light. Every entity of a target shares the one layer, so keep
 per-entity values out of it. A layer has no `Host`; one that needs the world reads it in a hook and
 keeps what it read.

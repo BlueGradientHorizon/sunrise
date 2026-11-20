@@ -1475,16 +1475,46 @@ pub fn render_with(
 }
 /// Inputs and captured output for one render of a living model.
 #[derive(Default)]
-pub struct FrameDraw {
-    /// Parts to omit from the body and the layers on its own model.
-    pub hidden: mod_api::HiddenParts,
+pub struct FrameDraw<'a> {
+    prepared: Option<(FrameBody<'a>, FrameModelPose)>,
     /// Whether the post hooks or mod layers need the final model.
     pub capture_model: bool,
-    /// The baked model and original body poses from the draw, when requested.
-    pub model: Option<FrameModelPose>,
+    model: Option<FrameModelPose>,
 }
 
-impl FrameDraw {
+impl<'a> FrameDraw<'a> {
+    /// Track the final pose only if a layer or Post hook will read it.
+    pub fn new(capture_model: bool) -> Self {
+        Self {
+            capture_model,
+            ..Self::default()
+        }
+    }
+
+    /// Select this mob's body for Pre, lending its tree and unanimated bind pose. Call only for
+    /// draws with a Pre listener, and pass this same draw state on to the renderer. Unbaked
+    /// models (e.g. standalone probes without client resources) have no view to lend.
+    pub fn prepare(
+        &mut self,
+        mob: &'a Mob,
+        data: &MobData,
+    ) -> Option<&mut dyn mod_api::FrameModelEdit> {
+        let body = FrameBody::select(mob, data);
+        let layout = body.layout(data)?.clone();
+        let mut poses = Poses::pooled();
+        poses.reset(body.model());
+        poses.prepare_frame_visibility(layout.clone());
+        let (_, model) = self.prepared.insert((
+            body,
+            FrameModelPose {
+                layout,
+                poses,
+                bind: true,
+            },
+        ));
+        Some(model)
+    }
+
     /// Borrow the captured body model for layer and Post callbacks.
     pub fn model(&self) -> Option<&dyn mod_api::FrameModel> {
         self.model
@@ -1493,9 +1523,9 @@ impl FrameDraw {
     }
 }
 
-/// [`render_with`], applying `frame.hidden` to the body after Skin Customization
-/// and to the layers on its own model, but not to armour or the other layers.
-/// `frame.capture_model` keeps the pose the draw used for post hooks and mod layers.
+/// [`render_with`], applying Pre edits to the body after Skin Customization and to the
+/// layers on its own model, but not to armour or other layers. `frame.capture_model`
+/// keeps the pose the draw used for Post hooks and mod layers.
 #[allow(clippy::too_many_arguments)]
 pub fn render_with_frame(
     m: &Mob,
@@ -1505,32 +1535,37 @@ pub fn render_with_frame(
     light: u32,
     data: &dyn RenderDataSource,
     extra: &[(&Part, [f32; 4], u32, u32, bool)],
-    frame: &mut FrameDraw,
+    frame: &mut FrameDraw<'_>,
     out: &mut Vec<Vertex>,
 ) {
-    frame.model = None;
     let paint = Some(body_color(m, alpha));
     // The invisibility effect hides the model (a drinking wandering trader);
     // an illusioner shows its four mirror images instead.
     if m.is_invisible() {
         if m.species() == Species::Illusioner {
             let age = m.age as f32 + alpha;
-            for (i, off) in super::illusioner::offsets(m, alpha).iter().enumerate() {
-                let w = super::illusioner::wobble(i, age);
-                let shifted =
-                    camera - glam::DVec3::new(off[0] + w[0], off[1] + w[1], off[2] + w[2]);
-                let base = base_transform(m, alpha, shifted);
-                render_visible(
-                    m, alpha, base, atlas, light, data, extra, paint, frame, out, None,
-                );
-            }
+            let bases = super::illusioner::offsets(m, alpha)
+                .into_iter()
+                .enumerate()
+                .map(|(i, off)| {
+                    let w = super::illusioner::wobble(i, age);
+                    let shifted =
+                        camera - glam::DVec3::new(off[0] + w[0], off[1] + w[1], off[2] + w[2]);
+                    base_transform(m, alpha, shifted)
+                });
+            render_visible(
+                m, alpha, bases, atlas, light, data, extra, paint, frame, out, None,
+            );
+        } else {
+            frame.model = None;
+            frame.prepared = None;
         }
         return;
     }
     render_visible(
         m,
         alpha,
-        base_transform(m, alpha, camera),
+        [base_transform(m, alpha, camera)],
         atlas,
         light,
         data,
@@ -1552,7 +1587,7 @@ pub fn render_skinned(
     atlas: Atlas,
     light: u32,
     data: &dyn RenderDataSource,
-    frame: &mut FrameDraw,
+    frame: &mut FrameDraw<'_>,
     out: &mut Vec<Vertex>,
     skin: &mut super::skin::Skin,
 ) {
@@ -1560,11 +1595,10 @@ pub fn render_skinned(
         render_with_frame(m, alpha, camera, atlas, light, data, &[], frame, out);
         return;
     }
-    frame.model = None;
     render_visible(
         m,
         alpha,
-        base_transform(m, alpha, camera),
+        [base_transform(m, alpha, camera)],
         atlas,
         light,
         data,
@@ -1817,8 +1851,8 @@ fn shoulder_parrot_texture(variant: i32) -> String {
 /// `render_with` without the body, for an avatar the viewer can't see:
 /// `LivingEntityRenderer.submit` gets no render type for an invisible body
 /// (`isBodyVisible`, `isInvisibleTo`), but its layers still draw
-/// (`HumanoidArmorLayer`: the armour in `extra`). This ignores `frame.hidden`;
-/// if requested, the captured pose is the one under the layers of the unseen body.
+/// (`HumanoidArmorLayer`: the armour in `extra`). The captured model, if requested,
+/// includes Pre's edits even when the body wasn't submitted.
 #[allow(clippy::too_many_arguments)]
 pub fn render_layers(
     m: &Mob,
@@ -1828,13 +1862,22 @@ pub fn render_layers(
     light: u32,
     data: &dyn RenderDataSource,
     extra: &[(&Part, [f32; 4], u32, u32, bool)],
-    frame: &mut FrameDraw,
+    frame: &mut FrameDraw<'_>,
     out: &mut Vec<Vertex>,
 ) {
-    frame.model = None;
     let base = base_transform(m, alpha, camera);
     render_visible(
-        m, alpha, base, atlas, light, data, extra, None, frame, out, None,
+        m,
+        alpha,
+        [base],
+        atlas,
+        light,
+        data,
+        extra,
+        None,
+        frame,
+        out,
+        None,
     );
 }
 /// A mob drawn under `origin` instead of at its position (the spinning mob
@@ -1852,7 +1895,7 @@ pub fn render_posed(
     render_visible(
         m,
         alpha,
-        base,
+        [base],
         atlas,
         light,
         data,
@@ -1974,70 +2017,70 @@ fn posed_body(
     let anchors = custom.map_or(Vec::new(), |c| c.anchors.clone());
     (model, poses, anchors)
 }
-// Validate every old Pre name before editing the overlay. Return the borrowed name
-// so a repeated refusal never allocates an error string.
-fn hide_parts<'a>(poses: &mut Poses, hidden: &'a mod_api::HiddenParts) -> Result<(), &'a str> {
-    let mut keys = [0; mod_api::MAX_HIDDEN_PARTS + mod_api::HumanoidPart::ALL.len()];
-    let mut count = 0;
-    for (i, name) in hidden.names().enumerate() {
-        let key = anim::key(name);
-        if poses.pose_by_key(key).is_none() {
-            return Err(name);
+#[allow(clippy::too_many_arguments)]
+fn render_visible(
+    m: &Mob,
+    alpha: f32,
+    bases: impl IntoIterator<Item = glam::Mat4>,
+    atlas: Atlas,
+    light: u32,
+    data: &dyn RenderDataSource,
+    extra: &[(&Part, [f32; 4], u32, u32, bool)],
+    // `submit`'s `tintedColor` to draw the body in, or `None` for its layers only.
+    paint: Option<u32>,
+    frame: &mut FrameDraw<'_>,
+    out: &mut Vec<Vertex>,
+    mut skin: Option<&mut super::skin::Skin>,
+) {
+    frame.model = None;
+    let (body, mut poses, layout) = match frame.prepared.take() {
+        Some((body, prepared)) => (body, prepared.poses, Some(prepared.layout)),
+        None => {
+            let body = FrameBody::select(m, data.mob_data());
+            let mut poses = Poses::pooled();
+            poses.reset(body.model());
+            (body, poses, None)
         }
-        keys[i] = key;
-        count = i + 1;
-    }
-    for &key in &keys[..count] {
-        poses.set_frame_hidden(key, true);
-    }
-    Ok(())
-}
-
-#[derive(Default)]
-struct HiddenPartReports {
-    names: std::collections::HashMap<String, std::collections::HashSet<String>>,
-    count: usize,
-}
-
-impl HiddenPartReports {
-    // Mods can change their eight hidden names between frames. Never evict an entry (which
-    // would report it again); after this process-wide budget, suppress new diagnostics too.
-    const LIMIT: usize = 4096;
-
-    fn first(&mut self, kind: &str, name: &str) -> bool {
-        if self.count >= Self::LIMIT
-            || self
-                .names
-                .get(kind)
-                .is_some_and(|names| names.contains(name))
-        {
-            return false;
+    };
+    let texture = body.texture(atlas);
+    for (i, base) in bases.into_iter().enumerate() {
+        if i != 0 {
+            // Each illusioner mirror runs vanilla setup and CEM from bind pose, with the same
+            // overrides from the entity's single Pre call.
+            poses.reset_animation(body.model());
         }
-        self.names
-            .entry(kind.to_owned())
-            .or_default()
-            .insert(name.to_owned());
-        self.count += 1;
-        true
+        poses.apply_frame_visibility(false);
+        render_selected(
+            m,
+            alpha,
+            base,
+            atlas,
+            light,
+            data,
+            extra,
+            paint,
+            &body,
+            texture,
+            &mut poses,
+            out,
+            skin.as_deref_mut(),
+        );
     }
-}
-
-fn report_unknown_hidden_part(kind: &str, name: &str) {
-    // Shared by every renderer, including mirror views and different render threads.
-    static REPORTS: std::sync::Mutex<Option<HiddenPartReports>> = std::sync::Mutex::new(None);
-    let mut reports = REPORTS
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    if reports
-        .get_or_insert_with(HiddenPartReports::default)
-        .first(kind, name)
+    if frame.capture_model
+        && let Some(layout) = layout.or_else(|| body.layout(data.mob_data()).cloned())
     {
-        eprintln!("mob {kind}: unknown hidden part {name}");
+        // Leave the last mirror's actual draw pose, not a temporary independent-layer pose.
+        poses.apply_frame_visibility(true);
+        frame.model = Some(FrameModelPose {
+            layout,
+            poses,
+            bind: false,
+        });
     }
 }
 
 #[allow(clippy::too_many_arguments)]
-fn render_visible(
+fn render_selected(
     m: &Mob,
     alpha: f32,
     base: glam::Mat4,
@@ -2045,26 +2088,20 @@ fn render_visible(
     light: u32,
     data: &dyn RenderDataSource,
     extra: &[(&Part, [f32; 4], u32, u32, bool)],
-    // `submit`'s `tintedColor` to draw the body in, or `None` for its layers only.
     paint: Option<u32>,
-    frame: &mut FrameDraw,
+    body: &FrameBody<'_>,
+    texture: &str,
+    poses: &mut Poses,
     out: &mut Vec<Vertex>,
-    skin: Option<&mut super::skin::Skin>,
+    mut skin: Option<&mut super::skin::Skin>,
 ) {
     // The armour is a layer: none for a spectator.
     let equipment = data.equipment_layers(m);
     let extra = if layers_shown(m) { extra } else { &[] };
     let overlay = u32::from(red_overlay(m));
     let s = anim::state(m, alpha).observed(m, data.humanoid_setup());
-    // Use one pack snapshot for the body and all its layers, without a CEM read guard
-    // across model selection or callbacks.
-    let cem = data
-        .mob_data()
-        .cem
-        .read()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .clone();
-    let body = FrameBody::select(m, &cem, atlas);
+    let cem = &body.cem;
+    let body_model = body.model();
     // OptiFine random textures and ETF blinking: the sprite a texture draws with instead, when
     // the atlas has it: the variant the mob wears, then its blink frame while it blinks (or
     // sleeps). The texture keeps its name for everything else.
@@ -2110,11 +2147,13 @@ fn render_visible(
         }
         atlas(emissive.overlay(drawn)?)
     };
-    let mut poses = Poses::pooled();
-    poses.reset(body.model);
-    anim::setup(m, &s, &mut poses, &data.mob_data().animations);
-    if let Some(animation) = body.custom.and_then(|layer| layer.animation.as_ref()) {
-        animation.run(m, &s, &mut poses);
+    anim::setup(m, &s, poses, &data.mob_data().animations);
+    if let Some(animation) = body
+        .custom
+        .as_deref()
+        .and_then(|layer| layer.animation.as_ref())
+    {
+        animation.run(m, &s, poses);
     }
     let mut all_layers = layers(m, s.age);
     all_layers.extend(equipment);
@@ -2139,7 +2178,6 @@ fn render_visible(
     // order: only plain draws of models it can pose (no custom models,
     // translucent body or energy swirl, which the CPU path changes after
     // drawing), and with improved transparency off the tagged layers too.
-    let mut skin = skin;
     let posable = match skin.as_deref_mut() {
         Some(skin) => {
             body.custom.is_none()
@@ -2147,7 +2185,7 @@ fn render_visible(
                 && m.species() != Species::SulfurCube
                 && !translucent_body(m)
                 && energy_swirl(m, s.age).is_none()
-                && skin.supports(body.model)
+                && skin.supports(body_model)
                 && all_layers.iter().all(|layer| {
                     // With improved transparency off, a translucent layer's tag
                     // is the only difference from a plain draw.
@@ -2166,20 +2204,10 @@ fn render_visible(
     if !posable {
         skin = None;
     }
-    // Pre's edits affect the body and the layers using `getParentModel`, not the
-    // independent models, even when those copy the body's animated transforms.
-    if paint.is_some()
-        && !frame.hidden.is_empty()
-        && let Err(name) = hide_parts(&mut poses, &frame.hidden)
-    {
-        report_unknown_hidden_part(&m.kind.id, name);
-        return;
-    }
     let draw_body = |poses: &mut Poses, out: &mut Vec<Vertex>, skin: &mut Option<_>| {
         poses.apply_frame_visibility(true);
         // A player or mannequin whose skin has no atlas sprite (an evicted or
         // never stored download) draws with its default skin, not invisibly.
-        let texture = body.texture.as_ref();
         let drawn = sprite(texture).or_else(|| Some((texture, atlas(texture)?)));
         let uv = drawn.map(|(_, uv)| uv).or_else(|| {
             if avatar(m) {
@@ -2192,7 +2220,7 @@ fn render_visible(
             let start = out.len();
             put(
                 skin,
-                body.model,
+                body_model,
                 base,
                 poses,
                 uv,
@@ -2205,7 +2233,7 @@ fn render_visible(
             if let Some(glow) = drawn.and_then(|(name, _)| emissive_uv(name)) {
                 put(
                     skin,
-                    body.model,
+                    body_model,
                     base,
                     poses,
                     glow,
@@ -2225,14 +2253,14 @@ fn render_visible(
     // The translucent shell writes depth: draw the opaque core before it.
     let shell_last = m.species() == Species::SulfurCube;
     if !shell_last {
-        draw_body(&mut poses, out, &mut skin);
+        draw_body(poses, out, &mut skin);
     }
     // The worn armour's layers (and their emissive overlays, full bright).
     if !extra.is_empty() {
         poses.apply_frame_visibility(false);
         for (part, uv, color, layer_overlay, glows) in extra {
             let light = if *glows { FULL_BRIGHT } else { light };
-            draw(part, base, &poses, *uv, *color, light, *layer_overlay, out);
+            draw(part, base, poses, *uv, *color, light, *layer_overlay, out);
         }
     }
     // Refill one pooled pose map for layers that run their own setupAnim.
@@ -2287,7 +2315,7 @@ fn render_visible(
         let on_parent = layer.equipment_model.is_none()
             && custom.is_none()
             && body.custom.is_none()
-            && std::sync::Arc::ptr_eq(&part, body.model);
+            && std::sync::Arc::ptr_eq(&part, body_model);
         let uses_body_pose = layer.equipment_model.is_some() || on_parent;
         let draw_poses = if uses_body_pose {
             poses.apply_frame_visibility(on_parent && type_hat_shown);
@@ -2405,18 +2433,7 @@ fn render_visible(
         }
     }
     if shell_last {
-        draw_body(&mut poses, out, &mut skin);
-    }
-    if frame.capture_model
-        && let Some(layout) = body.layout(data.mob_data())
-    {
-        // Each mirror that draws replaces the capture, leaving the last body pose
-        // for layers and Post even if the last draw was an independent layer.
-        poses.apply_frame_visibility(true);
-        frame.model = Some(FrameModelPose {
-            layout: layout.clone(),
-            poses,
-        });
+        draw_body(poses, out, &mut skin);
     }
 }
 /// `EnergySwirlLayer`'s model, texture and `xOffset(t)` for a charged creeper
@@ -2821,29 +2838,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn unknown_hidden_parts_report_once_per_kind_and_name() {
-        let mut reports = HiddenPartReports::default();
-        assert!(reports.first("minecraft:cow", "nose"));
-        for _ in 0..10 {
-            assert!(!reports.first("minecraft:cow", "nose"));
-        }
-        assert!(reports.first("minecraft:pig", "nose"));
-        assert!(reports.first("minecraft:cow", "hat_rim"));
-        assert!(!reports.first("minecraft:pig", "nose"));
-        assert!(!reports.first("minecraft:cow", "hat_rim"));
-        assert_eq!(reports.count, 3);
-
-        for i in 3..HiddenPartReports::LIMIT {
-            assert!(reports.first("minecraft:cow", &format!("part_{i}")));
-        }
-        assert!(!reports.first("minecraft:cow", "over_budget"));
-        assert!(!reports.first("minecraft:sheep", "nose"));
-        assert!(!reports.first("minecraft:cow", "nose"));
-        assert_eq!(reports.count, HiddenPartReports::LIMIT);
-        assert_eq!(reports.names.len(), 2);
-    }
-
-    #[test]
     fn profession_texture_preserves_nested_namespaces() {
         assert_eq!(
             villager_client::profession_texture("entity/villager", "minecraft:farmer"),
@@ -2913,19 +2907,10 @@ mod tests {
         let atlas = |_: &str| Some([0.0, 0.0, 1.0, 1.0]);
         let armour = mob.kind.model.clone();
         let extra = [(&*armour, [0.0, 0.0, 1.0, 1.0], 0xFFFF_FFFF, 0, false)];
-        let hide = |parts: &[mod_api::HumanoidPart]| {
-            let mut hidden = mod_api::HiddenParts::default();
-            parts.iter().for_each(|part| hidden.hide(*part));
-            hidden
-        };
-        let draw_parts = |hidden: mod_api::HiddenParts,
-                          extra: &[(&Part, [f32; 4], u32, u32, bool)]| {
+        let draw_parts = |names: &[&str], extra: &[(&Part, [f32; 4], u32, u32, bool)]| {
             let mut out = Vec::new();
-            let mut frame = FrameDraw {
-                hidden,
-                capture_model: true,
-                ..Default::default()
-            };
+            let mut frame = FrameDraw::new(true);
+            hide_in_draw(&mut frame, &mob, &data, names);
             render_with_frame(
                 &mob,
                 0.5,
@@ -2939,26 +2924,24 @@ mod tests {
             );
             (out.len(), frame.model.expect("the body model"))
         };
-        let draw =
-            |hidden, extra: &[(&Part, [f32; 4], u32, u32, bool)]| draw_parts(hidden, extra).0;
-        let whole = draw(hide(&[]), &[]);
+        let draw = |names: &[&str], extra: &[(&Part, [f32; 4], u32, u32, bool)]| {
+            draw_parts(names, extra).0
+        };
+        let whole = draw(&[], &[]);
         let one_face = 4;
+        assert_eq!(draw(&["right_arm"], &[]), whole - one_face);
         assert_eq!(
-            draw(hide(&[mod_api::HumanoidPart::RightArm]), &[]),
-            whole - one_face
-        );
-        assert_eq!(
-            draw(hide(&[mod_api::HumanoidPart::Head]), &[]),
+            draw(&["head"], &[]),
             whole - 2 * one_face,
             "the head's child, the hat, goes with it"
         );
         assert_eq!(
-            draw(hide(&[]), &extra),
+            draw(&[], &extra),
             2 * whole,
             "the armour layer copies every part"
         );
         assert_eq!(
-            draw(hide(&[mod_api::HumanoidPart::RightArm]), &extra),
+            draw(&["right_arm"], &extra),
             2 * whole - one_face,
             "only the body loses the arm"
         );
@@ -2966,8 +2949,8 @@ mod tests {
         // The final pose stays in place when a pre hook hides a part, and visibility
         // propagates to all its children even though only the head was marked hidden.
         use mod_api::FrameModel;
-        let (_, shown) = draw_parts(hide(&[]), &[]);
-        let (_, headless) = draw_parts(hide(&[mod_api::HumanoidPart::Head]), &[]);
+        let (_, shown) = draw_parts(&[], &[]);
+        let (_, headless) = draw_parts(&["head"], &[]);
         for name in ["head", "hat", "body", "right_arm"] {
             let original = shown.part(name).unwrap();
             let edited = headless.part(name).unwrap();

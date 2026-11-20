@@ -12,7 +12,7 @@ pub use mod_api::game::{MobRender, PlayerRender};
 
 use super::{Game, native_block_entity_draw::BlockEntityDraw};
 use glam::{DVec3, Mat4};
-use mod_api::{EntityRenderState, FrameModel, HiddenParts, HookId};
+use mod_api::{EntityRenderState, FrameModel, HookId};
 use std::cell::RefCell;
 use sunrise_client::{
     block_entity_render::diffuse_lights,
@@ -26,6 +26,8 @@ use sunrise_client::{
 #[derive(Default)]
 struct EntityFrame {
     listened: bool,
+    living_pre: bool,
+    player_pre: bool,
     living_post: bool,
     player_post: bool,
     canceled: FxHashSet<u32>,
@@ -42,12 +44,12 @@ pub(in crate::game) fn begin_entity_frame() {
     use mod_api::__private::listened;
     let living_post = listened(HookId::RenderLivingPost);
     let player_post = listened(HookId::RenderPlayerPost);
-    let any = living_post
-        || player_post
-        || listened(HookId::RenderLivingPre)
-        || listened(HookId::RenderPlayerPre);
+    let living_pre = listened(HookId::RenderLivingPre);
+    let player_pre = listened(HookId::RenderPlayerPre);
     FRAME.with_borrow_mut(|frame| {
-        frame.listened = any;
+        frame.listened = living_pre || player_pre || living_post || player_post;
+        frame.living_pre = living_pre;
+        frame.player_pre = player_pre;
         frame.living_post = living_post;
         frame.player_post = player_post;
         frame.canceled.clear();
@@ -171,48 +173,60 @@ impl Game<'_> {
     /// The mods' pre hooks for `mob`, before any of its model is drawn, lit by `light` (packed as
     /// the entity pass packs it): `render_player_pre` for a player (`who`: its name, and whether
     /// it is this window's own), then `render_living_pre`, each from a draw posed at the feet and
-    /// turned with the body, whose geometry is kept. None when one canceled: the entity draws
-    /// nothing more this frame and its post hooks aren't asked, but for a player whose living pre
-    /// alone canceled, whose `render_player_post` is asked here without a model. Else the parts
-    /// of the vanilla model the hooks hid. `listened` is the frame's [`Game::mob_render_listened`].
+    /// turned with the body, whose geometry is kept. Both borrow the same selected model before
+    /// animation. False means nothing more should draw; when only Living Pre cancels a player,
+    /// Player Post is called here without a model. `listened` is the frame's
+    /// [`Game::mob_render_listened`].
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn mod_render_pre(
+    pub(super) fn mod_render_pre<'m>(
         &self,
-        mob: &Mob,
+        mob: &'m Mob,
         who: Option<PlayerRender<'_>>,
         listened: bool,
         partial: f32,
         camera: DVec3,
         light: u32,
+        frame_draw: &mut render::FrameDraw<'m>,
         out: &mut Vec<Vertex>,
-    ) -> Option<HiddenParts> {
-        let mut hidden = HiddenParts::default();
+    ) -> bool {
         if !listened {
-            return Some(hidden);
+            return true;
         }
+        let (living_pre, player_pre, player_post) =
+            FRAME.with_borrow(|frame| (frame.living_pre, frame.player_pre, frame.player_post));
+        let player_pre = who.as_ref().filter(|_| player_pre);
+        if !living_pre && player_pre.is_none() {
+            return true;
+        }
+        let Some(model) = frame_draw.prepare(mob, self.res.mob_data()) else {
+            return true;
+        };
         let local = who.as_ref().is_some_and(|who| who.local);
         let mut canceled = false;
-        if let Some(who) = &who {
+        if let Some(who) = player_pre {
             self.mod_entity_draw(mob, local, partial, camera, light, out, |render, draw| {
-                self.native_render_player_pre(render, who, draw, &mut hidden, &mut canceled);
+                self.native_render_player_pre(render, who, draw, &mut *model, &mut canceled);
             });
         }
-        if !canceled {
+        if !canceled && living_pre {
             self.mod_entity_draw(mob, local, partial, camera, light, out, |render, draw| {
-                self.native_render_living_pre(render, draw, &mut hidden, &mut canceled);
+                self.native_render_living_pre(render, draw, &mut *model, &mut canceled);
             });
-            if canceled && let Some(who) = &who {
+            if canceled
+                && player_post
+                && let Some(who) = &who
+            {
                 self.mod_entity_draw(mob, local, partial, camera, light, out, |render, draw| {
                     self.native_render_player_post(render, who, None, draw);
                 });
             }
         }
         if !canceled {
-            return Some(hidden);
+            return true;
         }
         let id = render_id(mob.id, local, self.own_entity_id());
         FRAME.with_borrow_mut(|frame| frame.canceled.insert(id));
-        None
+        false
     }
     /// The renderer a mod registered for `mob`'s type (`register_entity_renderers`), drawn in place
     /// of its model and its vanilla layers, from a draw at its feet, not turned: true when it

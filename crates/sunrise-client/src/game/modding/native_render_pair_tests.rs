@@ -43,6 +43,12 @@ impl Hooks for Pair {
     ) -> mod_api::Flow {
         let mut heard = self.0.lock().unwrap();
         heard.events.push(format!("player_pre {}", event.who.local));
+        if event.who.local {
+            let head = event.model.part("head").unwrap();
+            assert!(head.visible, "a new draw doesn't inherit the previous edit");
+            let index = head.index;
+            assert!(event.model.hide(index));
+        }
         event.cancelled = heard.cancel_player.contains(&event.who.local);
         mod_api::Flow::Continue
     }
@@ -53,6 +59,12 @@ impl Hooks for Pair {
     ) -> mod_api::Flow {
         let mut heard = self.0.lock().unwrap();
         heard.events.push(format!("living_pre {}", event.entity.id));
+        if event.entity.id == 4321 {
+            assert!(
+                !event.model.part("head").unwrap().visible,
+                "Living Pre sees the Player Pre edit"
+            );
+        }
         marker(event.draw);
         event.cancelled = heard.cancel_living.contains(&event.entity.id);
         mod_api::Flow::Continue
@@ -78,6 +90,14 @@ impl Hooks for Pair {
             event.who.local,
             event.model.is_some()
         ));
+        if event.who.local
+            && let Some(model) = event.model
+        {
+            assert!(
+                !model.part("head").unwrap().visible,
+                "Player Post sees the final visibility"
+            );
+        }
     }
 }
 

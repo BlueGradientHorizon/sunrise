@@ -170,73 +170,105 @@ fn frame_model_lends_the_drawn_pose_without_changing_geometry() {
 }
 
 #[test]
-fn named_hidden_parts_leave_the_body_and_its_overlays_but_not_armour() {
-    let cow = quadruped_fixture();
-    let cube = pose_test_cube;
-    let (_, data) = humanoid_zombie();
+fn pre_lends_the_bind_pose_and_edits_more_than_eight_parts_for_one_draw() {
+    use std::f32::consts::FRAC_PI_2;
+
+    let mut cow = quadruped_fixture();
+    let mut kind = (*cow.kind).clone();
+    let mut head = pose_test_cube(0.0);
+    head["children"] = serde_json::json!({"jaw": pose_test_cube(0.0)});
+    let mut children = serde_json::Map::new();
+    children.insert("head".into(), head);
+    for i in 0..10 {
+        let mut part = pose_test_cube(0.0);
+        if i >= 8 {
+            part["children"] = serde_json::json!({"tip": pose_test_cube(i as f32)});
+        }
+        children.insert(format!("named_part_{i}"), part);
+    }
+    kind.model = std::sync::Arc::new(Part::parse(
+        "root",
+        &serde_json::json!({"children": children}),
+    ));
+    cow.kind = std::sync::Arc::new(kind);
+    cow.head_pitch = 90.0;
+    cow.previous_head_pitch = 90.0;
+    let (_, mut data) = humanoid_zombie();
+    data.frame_models = BakedFrameModels::bake([cow.kind.as_ref()]);
     let atlas = |_: &str| Some([0.0, 0.0, 1.0, 1.0]);
-    // `render_living_pre` hides a part of any model by its name, on the CPU and on the GPU
-    // (#2957): a leg's one face goes; an unknown name is refused.
-    let mut leg = mod_api::HiddenParts::default();
-    leg.hide_named("right_hind_leg").unwrap();
-    let mut absent = mod_api::HiddenParts::default();
-    absent.hide_named("nose").unwrap();
-    let cpu = |mob: &Mob, hidden| {
+    let draw = |frame: &mut FrameDraw<'_>| {
         let mut out = Vec::new();
         render_with_frame(
-            mob,
+            &cow,
             0.5,
             glam::DVec3::ZERO,
             &atlas,
             0xf0f0,
             &data,
             &[],
-            &mut FrameDraw {
-                hidden,
-                ..Default::default()
-            },
+            frame,
             &mut out,
         );
         out.len()
     };
-    let whole = cpu(&cow, Default::default());
-    assert_eq!(
-        cpu(&cow, leg),
-        whole - 4,
-        "the leg's face leaves the CPU draw"
+
+    let mut frame = FrameDraw::new(true);
+    let pre = frame.prepare(&cow, &data).unwrap();
+    let head = pre.part("head").unwrap();
+    let (head_index, jaw_index) = (head.index, head.first_child.unwrap());
+    assert_eq!(head.pose().x_rot, 0.0, "Pre sees bind pose, not setupAnim");
+    assert!(pre.part("missing").is_none());
+    assert!(pre.part_at(usize::MAX).is_none());
+    assert!(!pre.hide(usize::MAX));
+    assert!(pre.part_at(jaw_index).unwrap().visible);
+    let first_tip = pre.part("tip").unwrap().index;
+    let second_tip = pre.part("named_part_9").unwrap().first_child.unwrap();
+    assert_ne!(first_tip, second_tip);
+    assert_eq!(pre.part_at(second_tip).unwrap().pose().x, 9.0);
+    assert!(pre.hide(first_tip));
+    assert!(
+        pre.part_at(second_tip).unwrap().visible,
+        "indices distinguish duplicate names"
     );
-    let mut poses = Poses::pooled();
-    let name = hide_parts(&mut poses, &absent).unwrap_err();
-    assert_eq!(name, "nose");
-    assert_eq!(cpu(&cow, absent), 0, "unknown names refuse the draw");
-    let gpu = |mob: &Mob, hidden| {
-        let mut models = super::super::skin::SkinModels::default();
-        let mut frame = crate::gfx::entity_skin::SkinFrame::default();
-        let mut skin = super::super::skin::Skin::new(&mut models, &mut frame);
-        render_skinned(
-            mob,
-            0.5,
-            glam::DVec3::ZERO,
-            &atlas,
-            0xf0f0,
-            &data,
-            &mut FrameDraw {
-                hidden,
-                ..Default::default()
-            },
-            &mut Vec::new(),
-            &mut skin,
-        );
-        frame.jobs.iter().map(|job| job.count).sum::<u32>()
-    };
-    let whole = gpu(&cow, Default::default());
-    assert!(whole > 0, "the cow takes the GPU path");
-    assert_eq!(
-        gpu(&cow, leg),
-        whole - 4,
-        "the leg's face leaves the GPU draw"
+    for i in 0..9 {
+        let index = pre.part(&format!("named_part_{i}")).unwrap().index;
+        assert!(pre.hide(index));
+        assert!(!pre.part_at(index).unwrap().visible);
+    }
+    assert!(pre.hide(head_index));
+    assert!(
+        !pre.part_at(jaw_index).unwrap().visible,
+        "the parent is hidden"
     );
-    // Villager hat_rim is a child of hat; overlays and armour retain the full tree.
+    assert_eq!(draw(&mut frame), 8, "only named_part_9 and its tip remain");
+    let post = frame.model().unwrap();
+    assert_eq!(post.part("head").unwrap().pose().x_rot, FRAC_PI_2);
+    assert!(!post.part_at(jaw_index).unwrap().visible);
+    drop(frame);
+
+    let mut fresh = FrameDraw::new(true);
+    let pre = fresh.prepare(&cow, &data).unwrap();
+    assert!(pre.part_at(jaw_index).unwrap().visible);
+    assert_eq!(
+        draw(&mut fresh),
+        56,
+        "the ten named parts, two tips, head and jaw all draw"
+    );
+    assert!(fresh.model().unwrap().part_at(jaw_index).unwrap().visible);
+}
+
+fn hide_in_draw<'m>(frame: &mut FrameDraw<'m>, mob: &'m Mob, data: &MobData, names: &[&str]) {
+    let model = frame.prepare(mob, data).unwrap();
+    for name in names {
+        let index = model.part(name).unwrap().index;
+        assert!(model.hide(index));
+    }
+}
+
+#[test]
+fn named_hidden_parts_leave_the_body_and_its_overlays_but_not_armour() {
+    let cow = quadruped_fixture();
+    let cube = pose_test_cube;
     let mut hat = cube(0.0);
     hat["children"] = serde_json::json!({"hat_rim": cube(0.0)});
     let mut head = cube(0.0);
@@ -253,69 +285,6 @@ fn named_hidden_parts_leave_the_body_and_its_overlays_but_not_armour() {
         sunrise_core::geometry::Vec3::ZERO,
         0.0,
     );
-    let mut hidden = mod_api::HiddenParts::default();
-    hidden.hide_named("hat_rim").unwrap();
-    hidden.hide_named("nose").unwrap();
-    assert_eq!(
-        cpu(&villager, hidden),
-        cpu(&villager, Default::default()) - 8
-    );
-    assert_eq!(
-        gpu(&villager, hidden),
-        gpu(&villager, Default::default()) - 8
-    );
-    let armour = [(
-        &*villager.kind.model,
-        [0.0, 0.0, 1.0, 1.0],
-        0xf0f0,
-        0,
-        false,
-    )];
-    for gpu_path in [false, true] {
-        let draw_armoured = |hidden, extra: &[(&Part, [f32; 4], u32, u32, bool)]| {
-            let mut out = Vec::new();
-            let mut models = super::super::skin::SkinModels::default();
-            let mut frame = crate::gfx::entity_skin::SkinFrame::default();
-            let mut skin = super::super::skin::Skin::new(&mut models, &mut frame);
-            render_visible(
-                &villager,
-                0.5,
-                glam::Mat4::IDENTITY,
-                &atlas,
-                0xf0f0,
-                &data,
-                extra,
-                Some(body_color(&villager, 0.5)),
-                &mut FrameDraw {
-                    hidden,
-                    ..Default::default()
-                },
-                &mut out,
-                gpu_path.then_some(&mut skin),
-            );
-            out.len() as u32 + frame.jobs.iter().map(|job| job.count).sum::<u32>()
-        };
-        let bare = draw_armoured(Default::default(), &[]);
-        let armoured = draw_armoured(Default::default(), &armour);
-        assert!(armoured > bare);
-        assert_eq!(
-            draw_armoured(hidden, &armour),
-            armoured - 8,
-            "armour retains every part on CPU and GPU"
-        );
-    }
-    let mut parent = mod_api::HiddenParts::default();
-    parent.hide_named("hat").unwrap();
-    assert_eq!(
-        cpu(&villager, parent),
-        cpu(&villager, Default::default()) - 8
-    );
-    assert_eq!(
-        gpu(&villager, parent),
-        gpu(&villager, Default::default()) - 8
-    );
-    // VillagerProfessionLayer draws the type, profession and level on `getParentModel()`:
-    // a part hidden on the body leaves them too.
     let mut kind = (*villager.kind).clone();
     kind.layers
         .insert("villager#main".into(), kind.model.clone());
@@ -325,18 +294,82 @@ fn named_hidden_parts_leave_the_body_and_its_overlays_but_not_armour() {
         sunrise_core::geometry::Vec3::ZERO,
         0.0,
     );
+    let (_, mut data) = humanoid_zombie();
+    data.frame_models = BakedFrameModels::bake([&*cow.kind, &*villager.kind, &*layered.kind]);
+    let atlas = |_: &str| Some([0.0, 0.0, 1.0, 1.0]);
+    let draw =
+        |mob: &Mob, names: &[&str], gpu: bool, extra: &[(&Part, [f32; 4], u32, u32, bool)]| {
+            let mut out = Vec::new();
+            let mut models = super::super::skin::SkinModels::default();
+            let mut skin_frame = crate::gfx::entity_skin::SkinFrame::default();
+            let mut skin = super::super::skin::Skin::new(&mut models, &mut skin_frame);
+            let mut frame = FrameDraw::default();
+            hide_in_draw(&mut frame, mob, &data, names);
+            render_visible(
+                mob,
+                0.5,
+                [glam::Mat4::IDENTITY],
+                &atlas,
+                0xf0f0,
+                &data,
+                extra,
+                Some(body_color(mob, 0.5)),
+                &mut frame,
+                &mut out,
+                gpu.then_some(&mut skin),
+            );
+            (
+                out.len() as u32,
+                skin_frame.jobs.iter().map(|job| job.count).sum::<u32>(),
+            )
+        };
+    let armour = [(
+        &*villager.kind.model,
+        [0.0, 0.0, 1.0, 1.0],
+        0xf0f0,
+        0,
+        false,
+    )];
+    let cpu = |mob: &Mob, names: &[&str]| draw(mob, names, false, &[]).0;
+    let gpu = |mob: &Mob, names: &[&str]| {
+        let (cpu, gpu) = draw(mob, names, true, &[]);
+        assert_eq!(cpu, 0, "the whole body takes the GPU path");
+        gpu
+    };
+    for route in [&cpu as &dyn Fn(&Mob, &[&str]) -> u32, &gpu] {
+        let whole = route(&cow, &[]);
+        assert!(whole > 0);
+        assert_eq!(route(&cow, &["right_hind_leg"]), whole - 4);
+        let whole = route(&villager, &[]);
+        assert_eq!(route(&villager, &["hat_rim", "nose"]), whole - 8);
+        assert_eq!(
+            route(&villager, &["hat"]),
+            whole - 8,
+            "the hat rim goes with it"
+        );
+    }
+    for gpu_path in [false, true] {
+        let draw_armoured = |names: &[&str], extra: &[(&Part, [f32; 4], u32, u32, bool)]| {
+            let (cpu, gpu) = draw(&villager, names, gpu_path, extra);
+            cpu + gpu
+        };
+        let bare = draw_armoured(&[], &[]);
+        let armoured = draw_armoured(&[], &armour);
+        assert!(armoured > bare);
+        assert_eq!(
+            draw_armoured(&["hat_rim", "nose"], &armour),
+            armoured - 8,
+            "armour retains every part on CPU and GPU"
+        );
+    }
+    // VillagerProfessionLayer draws the type, profession and level on `getParentModel()`:
+    // a part hidden on the body leaves them too.
     let table = super::super::villager::ResolvedProfessions::vanilla();
     super::villager_client::install(&table, &Default::default());
     layered.extra.profession = super::super::villager::ProfessionState::Vanilla(5);
     assert_eq!(layers(&layered, 0.0).len(), 3, "type, profession and level");
-    let mut nose = mod_api::HiddenParts::default();
-    nose.hide_named("nose").unwrap();
-    assert_eq!(
-        cpu(&layered, nose),
-        cpu(&layered, Default::default()) - 16,
-        "the nose leaves the body and every layer on it"
-    );
-    assert_eq!(gpu(&layered, nose), gpu(&layered, Default::default()) - 16,);
+    assert_eq!(cpu(&layered, &["nose"]), cpu(&layered, &[]) - 16);
+    assert_eq!(gpu(&layered, &["nose"]), gpu(&layered, &[]) - 16);
     // A full profession hat makes the type overlay use the no-hat poses.
     // Its head (including nose) is absent even before the mod hides the nose;
     // the body, profession and level each lose one four-vertex polygon.
@@ -360,8 +393,8 @@ fn named_hidden_parts_leave_the_body_and_its_overlays_but_not_armour() {
         false,
         layered.extra.variant
     ));
-    assert_eq!(cpu(&layered, nose), cpu(&layered, Default::default()) - 12);
-    assert_eq!(gpu(&layered, nose), gpu(&layered, Default::default()) - 12);
+    assert_eq!(cpu(&layered, &["nose"]), cpu(&layered, &[]) - 12);
+    assert_eq!(gpu(&layered, &["nose"]), gpu(&layered, &[]) - 12);
     super::villager_client::install(&table, &Default::default());
 }
 
