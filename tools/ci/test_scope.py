@@ -68,7 +68,7 @@ READERS = {
     # The shared guest-stack tests read the sources that use its constants, and the jobs they wait on.
     "sunrise-guest-stack": ["crates/sunrise-client/src", "crates/sunrise-threads/src"],
     "sunrise-mod-api": MOD_API_GEN,
-    "sunrise-mod-api-gen": MOD_API_GEN,
+    "sunrise-mod-api-gen": [*MOD_API_GEN, "crates/sunrise-mod-vocab/extension-tag-inputs.json"],
     "sunrise-mod-api-gen-tests": MOD_API_GEN,
     "sunrise-mod-package": [
         "Cargo.lock", "docs/developer-install.md", "tools/mixins/narrow-reference-rule.patch",
