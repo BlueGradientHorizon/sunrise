@@ -199,6 +199,11 @@ impl Hooks for Mod {
         r.menu_part(DEPOT_MENU, Part);
         r.menu_part(STATUS_MENU, Part);
     }
+}
+
+struct ClickMod;
+#[mod_api::__subscriptions]
+impl Hooks for ClickMod {
     fn menu_clicked(
         &self,
         host: &mut dyn ServerHost,
@@ -243,7 +248,8 @@ fn inventory(game: &crate::game::Game<'_>, slot: usize) -> u32 {
 #[test]
 #[ignore = "daily"]
 fn a_click_on_a_mod_menu_tells_the_mods_inside_an_action_and_a_failure_undoes_it() {
-    with_mod(|| {
+    let mods: Mods = vec![ModEntry::new("clickmod", Box::new(ClickMod))].into();
+    mod_platform::testing::with_mods(mods, || {
         with_guests(|game| {
             let window = open_native_menu(game);
             let click = |game: &mut crate::game::Game<'_>| {

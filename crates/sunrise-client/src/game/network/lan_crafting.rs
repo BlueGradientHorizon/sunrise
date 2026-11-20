@@ -481,59 +481,58 @@ impl Game<'_> {
             return false;
         };
         let guest = &host.hub.guests[gi];
-        let Some(open) = guest
-            .menu
-            .as_ref()
-            .filter(|m| m.window == p.container && m.owned_slots().is_some() && !guest.spectator())
-        else {
+        let Some((open, layout)) = guest.menu.as_ref().and_then(|m| {
+            let layout = m.mod_type.filter(|t| t.owned_slots.is_some())?;
+            (m.window == p.container && !guest.spectator()).then_some((m, layout))
+        }) else {
             return false;
         };
-        let layout = open.mod_type.unwrap();
         let generation = guest.menu_generation;
         let items = guest.native_menu.clone();
         let mut menu = host
             .menus
             .entry(conn)
             .or_default()
-            .owned_drag
+            .owned_menu
             .take()
             .filter(|(g, _)| *g == generation)
             .map_or_else(|| Box::new(Menu::new(Kind::Mod(layout))), |(_, menu)| menu);
         for &slot in &open.hidden {
             menu.hide_slot(slot);
         }
-        let live = |g: &sunrise_client::lan::Guest| {
+        let live = |g: &Guest| {
             g.menu_generation == generation
                 && g.menu.as_ref().is_some_and(|m| m.window == p.container)
         };
         let click = super::lan_pickup::click_of(p);
         let prepare = |menu: &mut Menu, env: &Env| menu.load_container(env, &items);
-        self.guest_menu_op_settled(
+        self.guest_menu_action(
             gi,
             &mut menu,
             Some(click),
             Some(&prepare),
-            |menu, env| {
-                prepare(menu, env);
-                menu.click(env, click.0, click.1, click.2)
-            },
-            |game, menu, result| {
-                if result.is_ok()
-                    && let Some(host) = game.lan.as_mut()
-                    && host.hub.guest(conn).is_some_and(live)
-                {
-                    host.hub.guests.update(gi, |g| {
+            |game, menu, rules, stacked| {
+                let gi = game.guest_index(conn)?;
+                game.lan.as_ref()?.hub.guest(conn).filter(|g| live(g))?;
+                let result = game.guest_menu_edit(gi, menu, rules, stacked, |menu, env| {
+                    prepare(menu, env);
+                    menu.click(env, click.0, click.1, click.2)
+                })?;
+                if result.is_ok() {
+                    game.lan.as_mut()?.hub.guests.update(gi, |g| {
                         g.native_menu = (0..layout.slots).map(|s| menu.slot(s).cloned()).collect();
                     });
                 }
+                // Publish drops only after removing them from the owned storage. A listener
+                // can close the window while the item entity is being spawned.
+                game.publish_guest_menu_effects(conn, GuestMenuEffects::take(menu));
+                Some(())
             },
         );
         if let Some(host) = self.lan.as_mut()
             && host.hub.guest(conn).is_some_and(live)
         {
-            if menu.quick_crafting() {
-                host.menus.entry(conn).or_default().owned_drag = Some((generation, menu));
-            }
+            host.menus.entry(conn).or_default().owned_menu = Some((generation, menu));
             host.hub.inventory_clicked(conn, p, &self.world, &[]);
         }
         true

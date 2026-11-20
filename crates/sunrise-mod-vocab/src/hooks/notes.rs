@@ -1292,8 +1292,7 @@ stock client shows as a chest (`generic_9x1` to `generic_9x6`); nothing is insta
   `host.menu(uuid, window)` is the open one's `MenuRef` (None for another window or player): its slots are [menu slots](../concepts/capabilities/menu-slots.md), written in a transaction, and the tick's container sync sends each changed one (`ContainerSetSlot`). Change its items that way, not by opening it again.
 - A display menu's default click moves nothing. `menu_clicked` v3 runs before the default for mod menus and
   can replace it: return `Flow::Cancel` after applying the click through the server Host. The client predicts
-  the ordinary click and is corrected when the server does something else. `slot` counts the menu's own slots
-  first, then the player's inventory below it: `native_menu_inventory_slot(size, slot)` gives the inventory slot.
+  the default and is corrected by the server. `native_menu_inventory_slot(size, slot)` maps player slots.
 - `menu_closed` v2 names the player and window and passes any opening hand and detached owned slot values.
 - A trade on these menus leaves the offered stacks in their owners' inventories until both sides are settled. Then,
   in one `host.transaction`, each offered inventory index is checked to still hold exactly what was offered, taken

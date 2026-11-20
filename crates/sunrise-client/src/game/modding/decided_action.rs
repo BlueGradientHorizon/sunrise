@@ -230,7 +230,7 @@ impl Game<'_> {
                     click.container,
                     i32::from(click.slot),
                     i32::from(click.button),
-                    i32::from(click.input),
+                    click.input,
                     &mut handled,
                 );
                 Reply::Allow

@@ -273,9 +273,13 @@ impl Game<'_> {
         let display = menu.slots == Slots::Native && menu.owned_slots().is_none();
         let handled = self.menu_clicked_decided(conn, uuid, click);
         let Some(host) = self.lan.as_mut().filter(|host| {
-            host.hub
-                .guest(conn)
-                .is_some_and(|guest| guest.menu_generation == generation)
+            host.hub.guest(conn).is_some_and(|guest| {
+                guest.menu_generation == generation
+                    && guest
+                        .menu
+                        .as_ref()
+                        .is_some_and(|menu| menu.window == click.container)
+            })
         }) else {
             return true;
         };
@@ -289,7 +293,7 @@ impl Game<'_> {
                 click.container,
                 i32::from(click.slot),
                 i32::from(click.button),
-                i32::from(click.input),
+                click.input,
             )
     }
 
@@ -434,7 +438,7 @@ impl Game<'_> {
             .as_mut()
             .and_then(|host| host.menus.get_mut(&conn))
             .and_then(|p| {
-                p.owned_drag = None;
+                p.owned_menu = None;
                 p.menu_heard.take()
             });
         if let Some(old) = heard {
@@ -1688,6 +1692,7 @@ mod tests {
                     None,
                     None,
                     player_inventory,
+                    None,
                 )],
                 || {
                     with_game(|game| {
@@ -1704,16 +1709,10 @@ mod tests {
                             }
                         });
                         let player = game.player(123).unwrap();
+                        let mut request = ModMenuOpen::new(key, mod_api::Text::literal("Panel"));
+                        request.replace = MenuReplace::CloseFirst;
                         let window = player
-                            .open_mod_menu(
-                                game,
-                                key,
-                                mod_api::Text::literal("Panel"),
-                                vec![],
-                                vec![],
-                                None,
-                                MenuReplace::CloseFirst,
-                            )
+                            .open_mod_menu(game, request)
                             .unwrap()
                             .unwrap();
                         let host: &mut dyn ServerHost = game;
