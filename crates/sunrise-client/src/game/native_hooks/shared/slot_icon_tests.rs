@@ -105,8 +105,8 @@ impl mod_api::Hooks for IconMod {
     }
     fn blocks(&self, _: &mod_api::RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
         event
-            .blocks
-            .push(mod_api::Block::new("icon_open:machine", "minecraft:barrel").with_item(false));
+            .register(mod_api::Block::new("icon_open:machine", "minecraft:barrel").with_item(false))
+            .unwrap();
     }
 }
 struct Diagnostics(Mutex<Vec<String>>);

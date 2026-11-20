@@ -61,7 +61,10 @@ cargo sunrise-mod registry build 'target/sunrise-mod/publish' --files 'target/su
 
 1. Create a release of your repository and attach `<id>-<version>.smod` to it. Its address is the artifact URL.
 2. Fork [sunrise-org/sunrise-mods](https://github.com/sunrise-org/sunrise-mods) and copy in `mods/<id>.toml`.
-   For a first listing, copy in `icons/<id>.png` too. Do not commit the package or `files/`.
+   For a first listing, copy in `icons/<id>.png` too, and at least one screenshot: save a PNG or JPEG (320×180 to
+   3840×2160, at most 1 MiB) as `screenshots/<id>/<name>.png` (or `.jpg`) in your fork and list it in the entry:
+   `screenshots = ["screenshots/<id>/<name>.png"]`. A new project without one is refused. A `mod` or `native-mod`
+   in the `library` category needs none. Do not commit the package or `files/`.
 3. Commit with `git commit -s`: every commit needs a `Signed-off-by:` line.
 4. Open the pull request with the text of `PULL_REQUEST.md`, after pasting the artifact URL into it.
 
@@ -82,7 +85,9 @@ Raise `version` in `sunrise-mod.toml`, then run `publish --registry <your checko
 folder separate from the checkout. For a signed project, [build and sign first](#signing). `publish` adds the new
 version row to the entry from the checkout, leaving all existing fields and rows in place. The printed local check
 reads only the new file, so you do not need to download the old files or copy over the icon and screenshots.
-Repeat steps 2 to 4.
+A new version of a listing that has no screenshots needs one too: add the file under `screenshots/<id>/` and list it
+in the entry's `screenshots` in the same pull request, or the check refuses it (a `mod` or `native-mod` in the
+`library` category is exempt, and a listing that gains no version stays valid as it is). Repeat steps 2 to 4.
 
 `--registry <checkout>` also checks a first listing's id against the checkout's collection ids; without it, the
 registry's CI checks the id when the pull request opens.

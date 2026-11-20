@@ -854,3 +854,28 @@ fn native_binary_build_limits() {
         );
     }
 }
+
+#[test]
+fn the_screenshot_rule_covers_new_projects_new_versions_and_exempts_libraries() {
+    let base: Entry = toml::from_str(&hud_entry()).unwrap();
+    assert!(screenshot_required(None, &base));
+    assert!(!screenshot_required(Some(&base), &base));
+    let mut update = base.clone();
+    let mut next = update.versions[0].clone();
+    next.version = "0.2.0".into();
+    update.versions.insert(0, next);
+    assert!(screenshot_required(Some(&base), &update));
+    // Only a mod or native-mod in the `library` category is exempt.
+    for kind in [Kind::Mod, Kind::NativeMod] {
+        update.kind = kind;
+        assert!(screenshot_required(None, &update));
+        assert!(screenshot_required(Some(&base), &update));
+        update.categories.push("library".into());
+        assert!(!screenshot_required(None, &update));
+        assert!(!screenshot_required(Some(&base), &update));
+        update.categories.pop();
+    }
+    update.categories = vec!["library".into()];
+    update.kind = Kind::Modpack;
+    assert!(screenshot_required(None, &update));
+}

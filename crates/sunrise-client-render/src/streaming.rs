@@ -1469,6 +1469,7 @@ impl Streaming {
         for ([bx, by, bz], state) in writes.blocks {
             let _ = world.set(bx, by, bz, sunrise_world::registry::BlockStateId(state));
         }
+        self.publish_proto_light_support(world, (x, z));
         // After the blocks: the write of a block with a block entity made a
         // default one, which the generated one replaces.
         for (pos, entity) in writes.block_entities {
@@ -1516,6 +1517,7 @@ impl Streaming {
         // neighbours were decorated around it, so generating it again would
         // not give it back.
         if !self.ranges().chunk_kept(key.0, key.1, self.decorates) {
+            world.set_proto_light_support(key, SectionMask::EMPTY);
             if chunk.fresh {
                 self.dropped_new.insert(key);
                 return Some(chunk);
@@ -1543,11 +1545,23 @@ impl Streaming {
         let new = self.dropped_new.remove(&key) || chunk.generated;
         world.loaded_chunks.push((key.0, key.1, new));
         chunk.dynamic_pending = self.light_tables.holds_dynamic(&chunk);
+        let status = self
+            .light_tables
+            .publish_section_status(&mut chunk, world.shape);
         if loaded {
-            self.light_tables
-                .publish_section_status(&mut chunk, world.shape);
+            for dz in -1..=1 {
+                for dx in -1..=1 {
+                    let neighbour = (key.0 + dx, key.1 + dz);
+                    if neighbour != key && !world.chunks.contains_key(&neighbour) {
+                        let support = self.proto_light_support(world, neighbour);
+                        if !support.is_empty() {
+                            world.set_proto_light_support(neighbour, support);
+                        }
+                    }
+                }
+            }
         }
-        world.install_light_column(chunk);
+        world.install_light_column_initialized(chunk, status);
         if loaded {
             self.lit.insert(key);
             for sy in 0..world.layout().sections() as i32 {
@@ -1652,6 +1666,35 @@ impl Streaming {
             return None;
         }
         (self.non_air_sections)(self.protos.get(&(x, z))?.as_ref()?)
+    }
+
+    fn proto_light_support(&self, world: &World, key: (i32, i32)) -> SectionMask {
+        let mut support = SectionMask::EMPTY;
+        if let Some(sections) = self.proto_sections(key.0, key.1) {
+            let first = world.layout().min_y() >> 4;
+            for s in sections
+                .iter()
+                .filter(|s| world.shape.has_section(first + *s as i32))
+            {
+                for padded in s..=s + 2 {
+                    support.insert(padded);
+                }
+            }
+        }
+        support
+    }
+
+    fn publish_proto_light_support(&self, world: &mut World, key: (i32, i32)) {
+        if (-1..=1).any(|dz| {
+            (-1..=1).any(|dx| {
+                world
+                    .chunks
+                    .get(&(key.0 + dx, key.1 + dz))
+                    .is_some_and(|c| c.light_loaded)
+            })
+        }) {
+            world.set_proto_light_support(key, self.proto_light_support(world, key));
+        }
     }
     /// `ChunkMap.getLatestStatus` for the loading screen's chunk map: the
     /// furthest step this column has reached, `None` before it is asked for.
@@ -1850,6 +1893,7 @@ impl Streaming {
                         self.protos.insert((x, z), Some(proto));
                         if decorated || !self.decorates {
                             self.decorated.insert((x, z));
+                            self.publish_proto_light_support(world, (x, z));
                         }
                     }
                 }
@@ -1995,6 +2039,7 @@ impl Streaming {
                 } else {
                     self.protos.remove(&key);
                     self.light_views.remove(&key);
+                    world.set_proto_light_support(key, SectionMask::EMPTY);
                 }
             }
             proto_saves = self.checkout_protos(written);
@@ -2132,6 +2177,7 @@ impl Streaming {
             // updates the entry). Without it, scheduling at render distance 32
             // took most of the thread that runs it while the world loaded.
             let waiting: std::cell::RefCell<FxHashMap<(i32, i32), bool>> = Default::default();
+            let mut initialized = Vec::new();
             while let Some(std::cmp::Reverse((_, x, z))) = wanted.pop() {
                 if self.decorating >= workers * 2 {
                     break;
@@ -2159,6 +2205,7 @@ impl Streaming {
                 let has_final = keys.iter().any(|k| world.chunks.contains_key(k));
                 if has_final && !self.saves_beside_final {
                     self.decorated.insert((x, z));
+                    initialized.push((x, z));
                     waiting.borrow_mut().insert((x, z), false);
                     continue;
                 }
@@ -2187,6 +2234,9 @@ impl Streaming {
                 self.decorating_finals
                     .extend(finals.iter().map(|(i, _)| keys[*i]));
                 self.submit(Some((x, z)), 1, Job::Decorate(x, z, region, finals));
+            }
+            for key in initialized {
+                self.publish_proto_light_support(world, key);
             }
         }
         hz_laps.lap("st_decorate");
@@ -2514,7 +2564,7 @@ impl Streaming {
         for (x, sy, z) in changed.sections() {
             world.modified.insert((x, z));
             if let Some(log) = &mut world.light_log {
-                log.entry((x, z)).or_default().insert(sy as usize);
+                log.entry((x, z)).or_default().insert(sy as usize + 1);
             }
         }
         changed.dirty_sections(|section| {

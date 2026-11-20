@@ -84,10 +84,10 @@ impl Hooks for User {
             .state_properties
             .insert("locked".into(), BlockStateProperty::Boolean);
         block.default_state.insert("locked".into(), "false".into());
-        event.blocks.push(block);
+        event.register(block).unwrap();
         let mut fixed = Block::new("test:fixed", "minecraft:stone");
         fixed.properties.push_reaction = Some(PushReaction::Immoveable);
-        event.blocks.push(fixed);
+        event.register(fixed).unwrap();
     }
 }
 struct Level {

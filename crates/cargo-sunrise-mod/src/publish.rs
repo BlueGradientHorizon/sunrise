@@ -208,6 +208,30 @@ fn draft(
     }
 }
 
+fn checklist(before: &[Entry], entry: &Entry, checkout: Option<&Path>) -> Vec<String> {
+    let mut remaining = entry.check_fields();
+    remaining.extend(
+        page::check_required(
+            &entry.id,
+            &entry.description,
+            &entry.categories,
+            entry.icon.as_deref(),
+            &entry.screenshots,
+        )
+        .into_iter()
+        .map(|p| format!("{}: {p}", entry.id)),
+    );
+    // A draft made without --registry has an empty screenshot list, so the rule never reads a file.
+    remaining.extend(registry::check_screenshot_rule(
+        before,
+        std::slice::from_ref(entry),
+        checkout.unwrap_or_else(|| Path::new(".")),
+    ));
+    // A category that is still the TODO is already listed as such.
+    remaining.retain(|r| !r.contains("is not a category") || !r.contains(TODO));
+    remaining
+}
+
 fn pull_request(entry: &Entry, v: &EntryVersion, size: u64, first: bool) -> (String, String) {
     let id = &entry.id;
     let title = if first {
@@ -417,6 +441,7 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
         signature,
         changelog: o.changelog.clone(),
     };
+    let before = existing.clone();
     let entry = match existing {
         Some(mut entry) => {
             entry.versions.insert(0, version.clone());
@@ -444,20 +469,7 @@ pub fn run(entry_point: mod_surface::child::ChildEntry, args: &[String]) -> Resu
     }
     write(out.join("PULL_REQUEST.md"), body.as_bytes())?;
 
-    let mut remaining = entry.check_fields();
-    remaining.extend(
-        page::check_required(
-            &entry.id,
-            &entry.description,
-            &entry.categories,
-            entry.icon.as_deref(),
-            &entry.screenshots,
-        )
-        .into_iter()
-        .map(|p| format!("{}: {p}", entry.id)),
-    );
-    // A category that is still the TODO is already listed as such.
-    remaining.retain(|r| !r.contains("is not a category") || !r.contains(TODO));
+    let remaining = checklist(before.as_slice(), &entry, o.registry.as_deref());
     println!(
         "{} {} ({}, {} bytes, SHA-256 {})",
         entry.id,
@@ -533,6 +545,40 @@ mod tests {
             signature: None,
             changelog: String::new(),
         }
+    }
+
+    #[test]
+    fn the_checklist_requires_a_screenshot_file_in_the_checkout() {
+        let o = Options {
+            owners: vec!["ada".into()],
+            categories: vec!["decoration".into()],
+            ..Options::default()
+        };
+        let mut entry = draft(&manifest(), Kind::Mod, &o, true, row("0.2.0"));
+        let needs = |problems: Vec<String>| {
+            problems
+                .iter()
+                .any(|p| p.contains("needs at least one screenshot"))
+        };
+        assert!(needs(checklist(&[], &entry, None)));
+
+        let checkout = tempfile::tempdir().unwrap();
+        let path = "screenshots/glowing_blocks/one.png";
+        entry.screenshots = vec![path.into()];
+        let mut update = entry.clone();
+        update.versions.insert(0, row("0.3.0"));
+        let remaining = || checklist(std::slice::from_ref(&entry), &update, Some(checkout.path()));
+        assert!(needs(remaining()));
+
+        let image = checkout.path().join(path);
+        fs::create_dir_all(image.parent().unwrap()).unwrap();
+        // A 320x180 PNG header is sufficient for the registry's dimension check.
+        fs::write(
+            image,
+            b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR\0\0\x01\x40\0\0\0\xb4\x08\x06\0\0\0",
+        )
+        .unwrap();
+        assert!(!needs(remaining()));
     }
 
     #[test]
