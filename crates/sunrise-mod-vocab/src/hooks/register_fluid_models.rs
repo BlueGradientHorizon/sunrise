@@ -11,8 +11,10 @@ pub trait Hooks {
         side = "client",
         contract = "collect",
         out = "models",
+        registration_append = "register",
         context = "registration",
-        neoforge = "RegisterFluidModelsEvent"
+        neoforge = "RegisterFluidModelsEvent",
+        version = 2
     )]
     fn register_fluid_models();
 }

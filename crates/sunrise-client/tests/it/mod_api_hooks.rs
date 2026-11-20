@@ -164,7 +164,7 @@ mod skull_models {
             _context: &RegistrationContext,
             event: &mut CreateSkullModelsEvent<'_>,
         ) {
-            event.models.push(SkullModel {
+            event.register(SkullModel {
                 kind: format!("{}:goblin", self.0),
                 layer: format!("{}:goblin_head#main", self.0),
                 texture: format!("{}:entity/goblin", self.0),

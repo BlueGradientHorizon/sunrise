@@ -30,7 +30,7 @@ fn register_entity_spectator_shaders(
     _context: &RegistrationContext,
     event: &mut RegisterEntitySpectatorShadersEvent<'_>,
 ) {
-    event.shaders.push(EntitySpectatorShader {
+    event.register(EntitySpectatorShader {
         entity: "example:wisp".into(),
         shader: "example:wisp_vision".into(),
     });
@@ -40,8 +40,10 @@ fn register_entity_spectator_shaders(
         side = "client",
         contract = "collect",
         out = "shaders",
+        registration_append = "register",
         context = "registration",
-        neoforge = "RegisterEntitySpectatorShadersEvent"
+        neoforge = "RegisterEntitySpectatorShadersEvent",
+        version = 2
     )]
     fn register_entity_spectator_shaders();
 }

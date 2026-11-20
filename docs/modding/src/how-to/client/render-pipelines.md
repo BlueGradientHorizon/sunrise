@@ -44,7 +44,7 @@ fn register_render_pipelines(
     _context: &RegistrationContext,
     event: &mut RegisterRenderPipelinesEvent<'_>,
 ) {
-    event.pipelines.push(RenderPipeline::new(
+    event.register(RenderPipeline::new(
         Identifier::parse("example:glow").unwrap(), // the pipeline's id
         Identifier::parse("example:glow").unwrap(), // assets/example/shaders/pipeline/glow.wgsl
         PipelineBlend::Additive,
@@ -66,7 +66,7 @@ A pipeline is required unless you register it with `.optional()`, as NeoForge's 
 and `registerOptionalPipeline` are:
 
 ```rust,ignore
-event.pipelines.push(
+event.register(
     RenderPipeline::new(id, fragment, PipelineBlend::Translucent, WorldDepth::Tested).optional(),
 );
 ```
@@ -152,7 +152,7 @@ draws itself is drawn with the next stage the game reaches.
 A pipeline can sample one texture (vanilla's `Sampler0`). Name it when you register the pipeline:
 
 ```rust,ignore
-event.pipelines.push(
+event.register(
     RenderPipeline::new(id.clone(), id, PipelineBlend::Additive, WorldDepth::Tested)
         .textured(PipelineTexture::Sprite(Identifier::parse("example:block/charge").unwrap())),
 );

@@ -23,7 +23,7 @@ fn register_render_pipelines(
     _context: &RegistrationContext,
     event: &mut RegisterRenderPipelinesEvent<'_>,
 ) {
-    event.pipelines.push(RenderPipeline::new(
+    event.register(RenderPipeline::new(
         Identifier::parse("example:glow").unwrap(),
         Identifier::parse("example:glow").unwrap(),
         PipelineBlend::Additive,
@@ -73,9 +73,11 @@ game reaches."#]
         side = "client",
         contract = "collect",
         out = "pipelines",
+        registration_append = "register",
         collect_validator = "crate::client::render_pipeline::validate_render_pipelines",
         context = "registration",
-        neoforge = "RegisterRenderPipelinesEvent"
+        neoforge = "RegisterRenderPipelinesEvent",
+        version = 2
     )]
     fn register_render_pipelines();
 }

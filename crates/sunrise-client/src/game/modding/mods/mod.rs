@@ -3084,7 +3084,7 @@ mod tests {
                 let mut model = FluidModel::default();
                 model.fluid = "reload_fluid:oil".into();
                 model.still = Some(format!("reload_fluid:block/oil_{generation}"));
-                event.models.push(model);
+                event.register(model);
             }
         }
         let generation = Arc::new(AtomicUsize::new(0));
@@ -3147,7 +3147,7 @@ mod tests {
                 model.fluid = "registration_test:oil".into();
                 model.flowing = Some("registration_test:block/oil_flow".into());
                 model.overlay = Some("registration_test:block/oil_overlay".into());
-                event.models.push(model);
+                event.register(model);
             }
         }
         with_mods(

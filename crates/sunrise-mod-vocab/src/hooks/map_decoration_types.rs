@@ -29,8 +29,10 @@ client through the item's component, not through that packet."#]
         side = "both",
         contract = "collect",
         out = "types",
+        registration_append = "register",
         context = "registration",
-        neoforge = "RegisterEvent"
+        neoforge = "RegisterEvent",
+        version = 2
     )]
     fn map_decoration_types();
 }

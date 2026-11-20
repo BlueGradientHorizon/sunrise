@@ -30,8 +30,10 @@ already at a sprite's name wins over the sprite."#]
         side = "client",
         contract = "collect",
         out = "atlases",
+        registration_append = "register",
         context = "registration",
-        neoforge = "RegisterTextureAtlasesEvent"
+        neoforge = "RegisterTextureAtlasesEvent",
+        version = 2
     )]
     fn register_texture_atlases();
 }

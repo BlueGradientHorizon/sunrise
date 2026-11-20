@@ -50,8 +50,10 @@ it is a skull is not covered yet."#]
         side = "client",
         contract = "collect",
         out = "models",
+        registration_append = "register",
         context = "registration",
-        neoforge = "EntityRenderersEvent.CreateSkullModels"
+        neoforge = "EntityRenderersEvent.CreateSkullModels",
+        version = 2
     )]
     fn create_skull_models();
 }
