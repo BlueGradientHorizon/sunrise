@@ -28,12 +28,40 @@ fn ender_chest_slots_are_read_and_written() {
                 a.set_ender_chest_slot(game, 0, Some(pearls.clone())),
                 Ok(())
             );
-            assert_eq!(a.ender_chest(game), Some(vec![(0, pearls.clone())]));
-            assert_eq!(b.ender_chest(game), Some(vec![(26, book.clone())]));
+            assert_eq!(
+                a.with_ender_chest(game, |view| view
+                    .iter()
+                    .map(|(slot, stack)| Some((slot, stack.project()?)))
+                    .collect::<Option<Vec<_>>>())
+                    .flatten(),
+                Some(vec![(0, pearls.clone())])
+            );
+            assert_eq!(
+                b.with_ender_chest(game, |view| view
+                    .iter()
+                    .map(|(slot, stack)| Some((slot, stack.project()?)))
+                    .collect::<Option<Vec<_>>>())
+                    .flatten(),
+                Some(vec![(26, book.clone())])
+            );
         })
         .unwrap();
-        assert_eq!(b.ender_chest(game), Some(vec![(26, book.clone())]));
-        assert_eq!(a.ender_chest(game), Some(vec![(0, pearls)]));
+        assert_eq!(
+            b.with_ender_chest(game, |view| view
+                .iter()
+                .map(|(slot, stack)| Some((slot, stack.project()?)))
+                .collect::<Option<Vec<_>>>())
+                .flatten(),
+            Some(vec![(26, book.clone())])
+        );
+        assert_eq!(
+            a.with_ender_chest(game, |view| view
+                .iter()
+                .map(|(slot, stack)| Some((slot, stack.project()?)))
+                .collect::<Option<Vec<_>>>())
+                .flatten(),
+            Some(vec![(0, pearls)])
+        );
         assert_eq!(b.set_ender_chest_slot(game, 26, None), Ok(()));
         assert_eq!(b.ender_chest(game), Some(Vec::new()));
     });

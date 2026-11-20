@@ -1094,7 +1094,12 @@ mod tests {
                         .try_into_api()
                         .unwrap();
                     assert_eq!(
-                        opener.inventory_slots(host),
+                        opener
+                            .with_inventory(host, |view| view
+                                .iter()
+                                .map(|(slot, stack)| Some((slot, stack.project()?)))
+                                .collect::<Option<Vec<_>>>())
+                            .flatten(),
                         Some((0..36).map(|slot| (slot, stone.clone())).collect()),
                         "the listener sees the opener's full inventory after cursor reinsertion"
                     );

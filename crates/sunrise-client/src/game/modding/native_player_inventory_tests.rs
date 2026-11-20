@@ -56,7 +56,11 @@ fn inventory_slots_are_read_and_written_by_vanillas_numbers() {
             assert_ne!(g.menu_slot(menu), g.menu_sent[menu], "menu slot {menu}");
         }
         assert_eq!(
-            b.inventory_slots(game),
+            b.with_inventory(game, |view| view
+                .iter()
+                .map(|(slot, stack)| Some((slot, stack.project()?)))
+                .collect::<Option<Vec<_>>>())
+                .flatten(),
             Some(vec![(8, blade.clone()), (36, boots), (40, shield)])
         );
         assert_eq!(
@@ -67,13 +71,24 @@ fn inventory_slots_are_read_and_written_by_vanillas_numbers() {
         // In another player's turn the first one is displaced, and still reached.
         game.as_guest(12, |game| {
             assert_eq!(a.set_inventory_slot(game, 39, Some(blade.clone())), Ok(()));
-            assert_eq!(a.inventory_slots(game), Some(vec![(39, blade.clone())]));
+            assert_eq!(
+                a.with_inventory(game, |view| view
+                    .iter()
+                    .map(|(slot, stack)| Some((slot, stack.project()?)))
+                    .collect::<Option<Vec<_>>>())
+                    .flatten(),
+                Some(vec![(39, blade.clone())])
+            );
             assert_eq!(b.set_inventory_slot(game, 8, None), Ok(()));
         })
         .unwrap();
         assert_eq!(guest(game, 13).inventory[8], None);
         assert_eq!(
-            a.inventory_slots(game),
+            a.with_inventory(game, |view| view
+                .iter()
+                .map(|(slot, stack)| Some((slot, stack.project()?)))
+                .collect::<Option<Vec<_>>>())
+                .flatten(),
             Some(vec![(39, blade)]),
             "39 is the head"
         );
@@ -193,12 +208,26 @@ fn inventory_write_aborts() {
         let new = stack(game, r#"{id:"minecraft:iron_boots",count:1}"#);
         let old = stack(game, r#"{id:"minecraft:stone",count:64}"#);
         player.set_inventory_slot(game, 36, Some(old)).unwrap();
-        let before = player.inventory_slots(game);
+        let before = player
+            .with_inventory(game, |view| {
+                view.iter()
+                    .map(|(slot, stack)| Some((slot, stack.project()?)))
+                    .collect::<Option<Vec<_>>>()
+            })
+            .flatten();
         let _: Result<(), ()> = game.transaction(|host, _| {
             player.set_inventory_slot(host, 36, Some(new)).unwrap();
             Err(())
         });
-        assert_eq!(player.inventory_slots(game), before);
+        assert_eq!(
+            player
+                .with_inventory(game, |view| view
+                    .iter()
+                    .map(|(slot, stack)| Some((slot, stack.project()?)))
+                    .collect::<Option<Vec<_>>>())
+                .flatten(),
+            before
+        );
     });
 }
 
@@ -210,12 +239,26 @@ fn ender_write_aborts() {
         let new = stack(game, r#"{id:"minecraft:iron_boots",count:1}"#);
         let old = stack(game, r#"{id:"minecraft:stone",count:64}"#);
         player.set_ender_chest_slot(game, 0, Some(old)).unwrap();
-        let before = player.ender_chest(game);
+        let before = player
+            .with_ender_chest(game, |view| {
+                view.iter()
+                    .map(|(slot, stack)| Some((slot, stack.project()?)))
+                    .collect::<Option<Vec<_>>>()
+            })
+            .flatten();
         let _: Result<(), ()> = game.transaction(|host, _| {
             player.set_ender_chest_slot(host, 0, Some(new)).unwrap();
             Err(())
         });
-        assert_eq!(player.ender_chest(game), before);
+        assert_eq!(
+            player
+                .with_ender_chest(game, |view| view
+                    .iter()
+                    .map(|(slot, stack)| Some((slot, stack.project()?)))
+                    .collect::<Option<Vec<_>>>())
+                .flatten(),
+            before
+        );
     });
 }
 
@@ -251,7 +294,15 @@ fn give_write_aborts() {
         let drops = game.dropped.len();
         let _: Result<(), ()> = game.transaction(|host, _| {
             player.give_stack(host, new.clone()).unwrap();
-            assert_eq!(player.inventory_slots(host), Some(vec![(0, new.clone())]));
+            assert_eq!(
+                player
+                    .with_inventory(host, |view| view
+                        .iter()
+                        .map(|(slot, stack)| Some((slot, stack.project()?)))
+                        .collect::<Option<Vec<_>>>())
+                    .flatten(),
+                Some(vec![(0, new.clone())])
+            );
             Err(())
         });
         assert_eq!(player.inventory_slots(game), Some(Vec::new()));
@@ -261,13 +312,27 @@ fn give_write_aborts() {
                 .set_inventory_slot(game, slot, Some(old.clone()))
                 .unwrap();
         }
-        let before = player.inventory_slots(game);
+        let before = player
+            .with_inventory(game, |view| {
+                view.iter()
+                    .map(|(slot, stack)| Some((slot, stack.project()?)))
+                    .collect::<Option<Vec<_>>>()
+            })
+            .flatten();
         let drops = game.dropped.len();
         let _: Result<(), ()> = game.transaction(|host, _| {
             player.give_stack(host, new).unwrap();
             Err(())
         });
-        assert_eq!(player.inventory_slots(game), before);
+        assert_eq!(
+            player
+                .with_inventory(game, |view| view
+                    .iter()
+                    .map(|(slot, stack)| Some((slot, stack.project()?)))
+                    .collect::<Option<Vec<_>>>())
+                .flatten(),
+            before
+        );
         assert_eq!(game.dropped.len(), drops);
     });
 }
@@ -294,16 +359,38 @@ fn equipment_effects_wait_for_root() {
             player
                 .set_inventory_slot(host, 36, Some(new.clone()))
                 .unwrap();
-            let outer = player.inventory_slots(host);
+            let outer = player
+                .with_inventory(host, |view| {
+                    view.iter()
+                        .map(|(slot, stack)| Some((slot, stack.project()?)))
+                        .collect::<Option<Vec<_>>>()
+                })
+                .flatten();
             let aborted: Result<(), ()> = host.transaction(|host, _| {
                 player.set_inventory_slot(host, 39, Some(inner)).unwrap();
                 Err(())
             });
             assert_eq!(aborted, Err(()));
-            assert_eq!(player.inventory_slots(host), outer);
+            assert_eq!(
+                player
+                    .with_inventory(host, |view| view
+                        .iter()
+                        .map(|(slot, stack)| Some((slot, stack.project()?)))
+                        .collect::<Option<Vec<_>>>())
+                    .flatten(),
+                outer
+            );
             Ok(())
         });
-        assert_eq!(player.inventory_slots(game), Some(vec![(36, new)]));
+        assert_eq!(
+            player
+                .with_inventory(game, |view| view
+                    .iter()
+                    .map(|(slot, stack)| Some((slot, stack.project()?)))
+                    .collect::<Option<Vec<_>>>())
+                .flatten(),
+            Some(vec![(36, new)])
+        );
         assert_eq!(game.audio.capture.as_ref().unwrap().len(), 1);
     });
 }

@@ -116,7 +116,13 @@ fn client_player_reads_answer_from_the_local_players_copy() {
         game.inventory[3] = Some(stack.clone());
         game.inventory[8] = Some(sunrise_client::items::ItemStack::new("minecraft:stone", 12));
         assert_eq!(
-            player.inventory(game),
+            player
+                .with_inventory(game, |view| view
+                    .iter()
+                    .take_while(|(slot, _)| *slot < 36)
+                    .map(|(_, stack)| stack.project())
+                    .collect::<Option<Vec<_>>>())
+                .flatten(),
             Some(
                 vec![
                     stack,

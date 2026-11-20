@@ -2682,7 +2682,13 @@ pub(super) mod tests {
                 .unwrap();
             let player = game.player(12).unwrap();
             assert_eq!(
-                player.inventory(game),
+                player
+                    .with_inventory(game, |view| view
+                        .iter()
+                        .take_while(|(slot, _)| *slot < 36)
+                        .map(|(_, stack)| stack.project())
+                        .collect::<Option<Vec<_>>>())
+                    .flatten(),
                 Some(vec![crate::game::api_values::test_snapshot(
                     &ItemStack::new("minecraft:stone", 1)
                 )])
