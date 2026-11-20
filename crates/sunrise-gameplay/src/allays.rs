@@ -1,8 +1,10 @@
 //! Allays on the logical side: the allay's tick, its liked player and its delivery, on `MobLevel`.
 use crate::mob_level::MobLevel;
 use sunrise_client::{
+    entities::ItemEntity,
     items::ItemStack,
-    mobs::{Species, allay},
+    join_seq::JoinList,
+    mobs::{Mob, Species, allay},
 };
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 
@@ -11,6 +13,13 @@ pub struct AllayPlayer {
     pub position: Vec3,
     pub eye: [f64; 3],
     pub spectator: bool,
+}
+
+/// One read-only view of the level for a whole sensor scan: mobs, dropped items and `LivingEntity.hasLineOfSight`.
+pub struct SightView<'a> {
+    pub mobs: &'a JoinList<Mob>,
+    pub dropped: &'a JoinList<ItemEntity>,
+    pub line_of_sight: &'a dyn Fn(Vec3, Vec3) -> bool,
 }
 
 /// What the allay tick calls beyond `MobLevel`.
@@ -22,7 +31,7 @@ pub trait AllayLevel: MobLevel {
     /// The guest in the level with this UUID who is not a spectator (`lan_present`).
     fn guest_player(&self, uuid: [i32; 4]) -> Option<AllayPlayer>;
     /// The level's dimension id.
-    fn dimension_id(&self) -> &str;
+    fn dimension_id(&self) -> &'static str;
     /// `LevelSound` bound to mob `index`, as `Level.playSound(null, mob, ...)`.
     fn play_mob_bound_sound(
         &mut self,
@@ -33,8 +42,8 @@ pub trait AllayLevel: MobLevel {
         pitch: f32,
         except_actor: bool,
     );
-    /// `LivingEntity.hasLineOfSight`: eye to eye within 128 blocks.
-    fn line_of_sight(&self, from_eye: Vec3, to: Vec3) -> bool;
+    /// Runs `scan` on one `SightView` of the level.
+    fn with_sight_view<R>(&self, scan: impl FnOnce(SightView<'_>) -> R) -> R;
     /// The mod and advancement trigger for each player in the level with this UUID who is not a spectator.
     fn trigger_block(&mut self, uuid: [i32; 4], name: &str, pos: [i32; 3], stack: &ItemStack);
     /// `new ItemEntity(level, x, y, z, stack, dx, dy, dz)`.
@@ -70,12 +79,9 @@ pub fn tick_allays(level: &mut impl AllayLevel) {
         // `Mob.aiStep`'s looting loop asks for no AI: `canPickUpLoot` and mob_griefing gate it.
         let wants = loots && level.entity_grief(id, griefing);
         let p = level.parts();
-        let room = |stack: &ItemStack| {
-            p.mobs[i].extra.allay.as_ref().map_or(0, |st| {
-                st.room(stack, p.mobs[i].kind.inventory_stack_limit(stack))
-            })
-        };
         let reach = allay::pickup_reach(p.mobs[i].bounds());
+        let eye = Vec3::new(pos.x, p.mobs[i].eye_y(), pos.z);
+        let b = p.mobs[i].bounds();
         // Without AI only the looting loop runs: it takes an equal drop already in `getPickupReach`.
         let wanted = if !wants {
             None
@@ -83,34 +89,31 @@ pub fn tick_allays(level: &mut impl AllayLevel) {
             p.dropped.iter().position(|e| {
                 e.pickup_delay == 0
                     && allay::considers_item_equal(&held, &e.stack)
-                    && room(&e.stack) > 0
+                    && room(&p.mobs[i], &e.stack) > 0
                     && reach.contains(e.position)
             })
         } else {
-            let eye = Vec3::new(pos.x, p.mobs[i].eye_y(), pos.z);
             // The sensor looks in the allay's box grown by (32, 16, 32).
-            let b = p.mobs[i].bounds();
             let (low, high) = (b.min_position().y - 16.0, b.max_position().y + 16.0);
-            let candidates: Vec<(usize, f64, Vec3)> = p
-                .dropped
-                .iter()
-                .enumerate()
-                .filter(|(_, e)| {
-                    e.pickup_delay == 0
-                        && allay::considers_item_equal(&held, &e.stack)
-                        && room(&e.stack) > 0
-                })
-                .map(|(j, e)| (j, e.position.distance_squared(pos), e.position))
-                .filter(|(_, d, _)| *d < 32.0 * 32.0)
-                .filter(|(_, _, at)| at.y <= high && at.y + 0.25 >= low)
-                // ItemEntity's eye height is 0.2125.
-                .map(|(j, d, at)| (j, d, Vec3::new(at.x, at.y + 0.2125, at.z)))
-                .collect();
-            candidates
-                .into_iter()
-                .filter(|(_, _, at)| level.line_of_sight(eye, *at))
-                .min_by(|a, b| a.1.total_cmp(&b.1))
-                .map(|(j, _, _)| j)
+            level.with_sight_view(|v| {
+                v.dropped
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, e)| {
+                        e.pickup_delay == 0
+                            && allay::considers_item_equal(&held, &e.stack)
+                            && room(&v.mobs[i], &e.stack) > 0
+                    })
+                    .map(|(j, e)| (j, e.position.distance_squared(pos), e.position))
+                    .filter(|(_, d, _)| *d < 32.0 * 32.0)
+                    .filter(|(_, _, at)| at.y <= high && at.y + 0.25 >= low)
+                    // ItemEntity's eye height is 0.2125.
+                    .filter(|(_, _, at)| {
+                        (v.line_of_sight)(eye, Vec3::new(at.x, at.y + 0.2125, at.z))
+                    })
+                    .min_by(|a, b| a.1.total_cmp(&b.1))
+                    .map(|(j, _, _)| j)
+            })
         };
         let Some(j) = wanted else {
             level.parts().mobs[i].extra.point = None;
@@ -179,6 +182,14 @@ fn allay_liked_player(level: &mut impl AllayLevel, i: usize) -> Option<Vec3> {
         .map(|(_, eye)| Vec3::new(eye[0], eye[1], eye[2]))
 }
 
+/// How many of `stack` the allay's inventory still takes.
+fn room(m: &Mob, stack: &ItemStack) -> u32 {
+    m.extra
+        .allay
+        .as_ref()
+        .map_or(0, |st| st.room(stack, m.kind.inventory_stack_limit(stack)))
+}
+
 /// `GoAndGiveItemsToTarget` / `AllayAi.throwItem`: within 3 blocks of the deposit, one item a tick,
 /// each restarting the three-second pause before it picks anything up again.
 fn allay_deliver(level: &mut impl AllayLevel, i: usize) {
@@ -186,9 +197,9 @@ fn allay_deliver(level: &mut impl AllayLevel, i: usize) {
         return;
     }
     // AllayAi.getItemDepositPosition: the liked note block, else the player.
-    let dimension = level.dimension_id().to_owned();
+    let dimension = level.dimension_id();
     let p = level.parts();
-    let noteblock = allay::noteblock_deposit(&mut p.mobs[i], &dimension, |at| {
+    let noteblock = allay::noteblock_deposit(&mut p.mobs[i], dimension, |at| {
         &*p.facts.get(p.world.block(at[0], at[1], at[2])).name == "minecraft:note_block"
     });
     let player = allay_liked_player(level, i);
