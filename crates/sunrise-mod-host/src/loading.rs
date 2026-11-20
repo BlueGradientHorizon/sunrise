@@ -13,8 +13,8 @@ fn resolve_startup(
     side: Side,
     game_dir: &Path,
 ) -> Result<Resolution, String> {
-    // The native dynamic loader, compiled native inventory and wasm linker already
-    // enforce physical requirements. Only logical requirements reach this resolver.
+    // The native dynamic loader and compiled package inventory already enforce
+    // native physical requirements. Only logical requirements reach this resolver.
     let overrides = Overrides::read(&game_dir.join(mod_list::DIR))?;
     resolve_manifests(manifests, side, &overrides).map_err(|error| error.to_string())
 }
@@ -261,7 +261,7 @@ mod tests {
         .unwrap();
         fs::write(package.join("src/lib.rs"), "").unwrap();
         fs::write(package.join("sunrise-mod.toml"), format!(
-            "id='addon'\nname='Addon'\nversion='1.0.0'\napi='0.2'\ncapabilities=['registries']\n[dependencies]\ndata='^1'\n[native]\ngame='26.3'\nsunrise='{}'\nmixins='{}'\n",
+            "id='addon'\nname='Addon'\nversion='1.0.0'\napi='0.2'\nside='both'\ncapabilities=['registries']\n[dependencies]\ndata='^1'\n[native]\ngame='26.3'\nsunrise='{}'\nmixins='{}'\n",
             "a".repeat(40), "b".repeat(40),
         )).unwrap();
         let executable = root.0.join("sunrise-client");
