@@ -1,7 +1,6 @@
 package dev.sunriselab.parity;
 
 import com.google.gson.Gson;
-import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -15,11 +14,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import net.minecraft.ReportedException;
+import net.minecraft.nbt.NbtOps;
+import net.minecraft.nbt.TagParser;
+import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.contents.TranslatableContents;
 import net.minecraft.resources.RegistryDataLoader;
 import net.minecraft.resources.RegistryOps;
 import net.minecraft.server.RegistryLayer;
 import net.minecraft.server.dialog.Dialog;
+import net.minecraft.server.dialog.NoticeDialog;
+import net.minecraft.server.dialog.body.ItemBody;
+import net.minecraft.server.dialog.input.TextInput;
 import net.minecraft.server.packs.PackLocationInfo;
 import net.minecraft.server.packs.PackType;
 import net.minecraft.server.packs.PathPackResources;
@@ -35,18 +41,35 @@ import net.minecraft.tags.TagLoader;
  * being the codec's own message. A pack ({"name", "files": {path: json}}) is
  * written over the vanilla pack and loaded by RegistryDataLoader as a world is
  * opened; its line is {"name", "accept", "error"}, the error being the
- * "registry/id: message" lines of the load report.
+ * "registry/id: message" lines of the load report. Packet cases exercise the
+ * same direct codec over NbtOps, and selected JSON cases also encode and read
+ * the NBT again before reporting their decoded values.
  */
 public final class VanillaDialogCodecOracle {
     public static void main(String[] args) throws Exception {
         ParityData.init();
         var ops = RegistryOps.create(JsonOps.INSTANCE, ParityData.lookup);
+        var nbtOps = RegistryOps.create(NbtOps.INSTANCE, ParityData.lookup);
         JsonObject corpus = JsonParser.parseString(Files.readString(Path.of(args[0]))).getAsJsonObject();
         Path scratch = Files.createTempDirectory("dialog-packs");
         try (PrintWriter out = new PrintWriter(Files.newBufferedWriter(Path.of(args[1]), StandardCharsets.UTF_8))) {
             for (JsonElement entry : corpus.getAsJsonArray("cases")) {
                 JsonObject one = entry.getAsJsonObject();
                 var result = Dialog.DIRECT_CODEC.parse(ops, one.get("dialog"));
+                JsonObject line = new JsonObject();
+                line.addProperty("name", one.get("name").getAsString());
+                line.addProperty("accept", result.result().isPresent());
+                if (result.result().isEmpty()) line.addProperty("error", result.error().orElseThrow().message());
+                if (one.has("observe")) {
+                    var encoded = Dialog.DIRECT_CODEC.encodeStart(nbtOps, result.getOrThrow()).getOrThrow();
+                    var decoded = Dialog.DIRECT_CODEC.parse(nbtOps, encoded).getOrThrow();
+                    line.add("round_trip", observe(decoded, one.get("observe").getAsString()));
+                }
+                out.println(new Gson().toJson(line));
+            }
+            for (JsonElement entry : corpus.getAsJsonArray("packets")) {
+                JsonObject one = entry.getAsJsonObject();
+                var result = Dialog.DIRECT_CODEC.parse(nbtOps, TagParser.parseCompoundFully(one.get("snbt").getAsString()));
                 JsonObject line = new JsonObject();
                 line.addProperty("name", one.get("name").getAsString());
                 line.addProperty("accept", result.result().isPresent());
@@ -90,5 +113,40 @@ public final class VanillaDialogCodecOracle {
                 out.println(new Gson().toJson(line));
             }
         }
+    }
+
+    private static JsonObject observe(Dialog dialog, String what) {
+        JsonObject out = new JsonObject();
+        switch (what) {
+            case "button" -> {
+                var button = ((NoticeDialog) dialog).action();
+                var label = button.button().label();
+                out.addProperty("label", label.getContents() instanceof TranslatableContents t ? t.getKey() : label.getString());
+                out.addProperty("width", button.button().width());
+                out.addProperty("has_action", button.action().isPresent());
+            }
+            case "item" -> {
+                var stack = ((ItemBody) dialog.common().body().getFirst()).item();
+                out.addProperty("id", stack.item().unwrapKey().orElseThrow().identifier().toString());
+                out.addProperty("count", stack.count());
+            }
+            case "named_holder" -> {
+                var click = (ClickEvent.ShowDialog) dialog.common().title().getStyle().getClickEvent();
+                out.addProperty("id", click.dialog().unwrapKey().orElseThrow().identifier().toString());
+            }
+            case "inline_button" -> {
+                var click = (ClickEvent.ShowDialog) dialog.common().title().getStyle().getClickEvent();
+                return observe(click.dialog().value(), "button");
+            }
+            case "multiline" -> {
+                var options = ((TextInput) dialog.common().inputs().getFirst().control()).multiline().orElseThrow();
+                out.addProperty("max_lines", options.maxLines().orElseThrow());
+                // Client InputControlHandlers.TextInputHandler.addControl uses the explicit
+                // height first, otherwise fitting 9 pixels per line plus 8, up to 512.
+                out.addProperty("height", options.height().orElseGet(() -> Math.min(9 * options.maxLines().orElse(4) + 8, 512)));
+            }
+            default -> throw new IllegalArgumentException(what);
+        }
+        return out;
     }
 }

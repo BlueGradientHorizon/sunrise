@@ -643,10 +643,15 @@ mod tests {
                 ("columns", Tag::Int(n)),
             ])
         };
+        let parse = |n| {
+            Dialog::parse(&packet_dialog(n), &Default::default(), &|_| false, &|_| {
+                false
+            })
+        };
         for invalid in [-1, 0] {
-            assert!(Dialog::parse(&packet_dialog(invalid)).is_none());
+            assert!(parse(invalid).is_none());
         }
-        let dialog = Dialog::parse(&packet_dialog(i32::MAX)).unwrap();
+        let dialog = parse(i32::MAX).unwrap();
         let font = Font::load(
             &sunrise_assets::resource_source::ResourceSource::default(),
             &std::collections::HashMap::new(),

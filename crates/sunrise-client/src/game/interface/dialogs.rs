@@ -10,7 +10,7 @@ use sunrise_client::{
     Result,
     clipboard::EditShortcut,
     confirm_screen::Confirm,
-    dialog::{AfterAction, Body, Click, Control, Dialog, InputValue, Kind},
+    dialog::{AfterAction, Body, Click, Control, Dialog, InputValue, Kind, Reference},
     dialog_screen::{BOX, Layout, Part, WARNING_SPRITES, text_height, waiting_button},
     font::Font,
     hud::{HudBatch, rgba},
@@ -174,33 +174,54 @@ impl Game<'_> {
             })
     }
 
+    pub(super) fn decode_dialog(&self, tag: &Tag) -> Option<Dialog> {
+        let remote = self.remote.as_ref();
+        let items = remote.and_then(|remote| remote.builtin.get("minecraft:item"));
+        Dialog::parse(
+            tag,
+            &self.ui.registries,
+            &|id| {
+                items.map_or_else(
+                    || self.res.item_defaults().entries().contains_key(id),
+                    |items| items.id(id).is_some(),
+                )
+            },
+            &|reference| {
+                let Some(dynamic) = remote.map(|remote| &remote.registries) else {
+                    return false;
+                };
+                match reference {
+                    Reference::Id(id) => {
+                        dynamic
+                            .registries
+                            .get("minecraft:dialog")
+                            .is_some_and(|entries| {
+                                entries
+                                    .iter()
+                                    .any(|(name, value)| name == id && value.is_some())
+                            })
+                    }
+                    Reference::Tag(id) => dynamic.tag("minecraft:dialog", id).is_some(),
+                }
+            },
+        )
+    }
+
     /// `showDialog`: the dialog replaces an open one (and a waiting screen);
     /// under the warning screen, it is what Back returns to.
     pub(super) fn show_dialog(&mut self, tag: &Tag) {
-        let Some(mut dialog) = Dialog::parse(tag) else {
+        let Some(mut dialog) = self.decode_dialog(tag) else {
             log::warn!("Sunrise: failed to show dialog for data {tag:?}");
             return;
         };
         if let Kind::DialogList { dialogs, .. } = &dialog.kind {
             let entries = self.remote.as_ref().map(|r| {
                 let list = r.registries.registries.get("minecraft:dialog");
-                let by_id = |id: &str| {
-                    let name = if id.contains(':') {
-                        id.to_owned()
-                    } else {
-                        format!("minecraft:{id}")
-                    };
-                    list?.iter().find(|(n, _)| *n == name)?.1.clone()
-                };
+                let by_id = |id: &str| list?.iter().find(|(n, _)| n == id)?.1.clone();
                 let by_tag = |name: &str| {
-                    let name = if name.contains(':') {
-                        name.to_owned()
-                    } else {
-                        format!("minecraft:{name}")
-                    };
                     let ids = r
                         .registries
-                        .tag("minecraft:dialog", &name)
+                        .tag("minecraft:dialog", name)
                         .into_iter()
                         .flatten();
                     ids.filter_map(|&i| list?.get(usize::try_from(i).ok()?)?.1.clone())
@@ -208,7 +229,7 @@ impl Game<'_> {
                 };
                 Dialog::list_entries(dialogs, &by_tag, &by_id)
             });
-            dialog.set_list(&entries.unwrap_or_default());
+            dialog.set_list(&entries.unwrap_or_default(), |tag| self.decode_dialog(tag));
         }
         self.open_dialog(dialog);
     }
@@ -394,11 +415,10 @@ impl Game<'_> {
         match dialog {
             Tag::String(id) => {
                 let id = id.to_string_lossy();
-                let name = if id.contains(':') {
-                    id.clone()
-                } else {
-                    format!("minecraft:{id}")
+                let Ok(name) = sunrise_core::identifier::Identifier::parse(&id) else {
+                    return;
                 };
+                let name = name.to_string();
                 let found = self.remote.as_ref().and_then(|r| {
                     let entries = r.registries.registries.get("minecraft:dialog")?;
                     entries.iter().find(|(n, _)| *n == name)?.1.clone()
@@ -1297,11 +1317,16 @@ mod pause_tests {
 
     fn dialog(pause: bool) -> Dialog {
         let s = |value: &str| Tag::String(value.into());
-        Dialog::parse(&Tag::compound([
-            ("type", s("notice")),
-            ("title", s("Hi")),
-            ("pause", Tag::Byte(i8::from(pause))),
-        ]))
+        Dialog::parse(
+            &Tag::compound([
+                ("type", s("notice")),
+                ("title", s("Hi")),
+                ("pause", Tag::Byte(i8::from(pause))),
+            ]),
+            &Default::default(),
+            &|_| false,
+            &|_| false,
+        )
         .unwrap()
     }
 

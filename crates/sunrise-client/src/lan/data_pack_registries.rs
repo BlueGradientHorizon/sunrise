@@ -1,5 +1,5 @@
 //! Winning definitions for the synchronized registries that read world packs.
-use super::{PACK_REGISTRIES, condition_filter, json_to_nbt, synchronized_entries};
+use super::{PACK_REGISTRIES, condition_filter, json_to_nbt, synchronized_entries, walk};
 use crate::dialog::Reference;
 use serde_json::Value;
 use std::{
@@ -212,43 +212,27 @@ impl PackRegistryDefinitions {
         }
         // RegistryDataLoader.validateRegistry: every dialog a winner names is bound.
         let dialogs = definitions.entries.get("minecraft:dialog");
+        let root = resources.join("data/minecraft");
+        let mut prepared = synchronized_entries(&root, resources, "minecraft:dialog", overlay);
+        prepared.retain(|(key, ..)| !dialogs.is_some_and(|d| d.contains_key(key)));
+        condition_filter::filter(&mut prepared, false, overlay.conditions, "dialog");
         let held: BTreeSet<String> = dialogs
             .into_iter()
             .flatten()
             .filter(|(_, entry)| entry.is_some())
             .map(|((namespace, path), _)| format!("{namespace}:{path}"))
             .chain(
-                synchronized_entries(
-                    &resources.join("data/minecraft"),
-                    resources,
-                    "minecraft:dialog",
-                    overlay,
-                )
-                .into_iter()
-                .filter(|(key, ..)| !dialogs.is_some_and(|d| d.contains_key(key)))
-                .map(|((namespace, path), ..)| format!("{namespace}:{path}")),
-            )
-            .collect();
-        let tags: BTreeSet<String> = overlay
-            .tag_kind("dialog")
-            .map(|(id, _)| id)
-            .chain(
-                sunrise_world::json_folder::read(&resources.join("data/minecraft/tags/dialog"))
+                prepared
                     .into_iter()
-                    .flat_map(|folder| {
-                        folder
-                            .files
-                            .iter()
-                            .map(|file| format!("minecraft:{}", file.name))
-                            .collect::<Vec<_>>()
-                    }),
+                    .map(|((namespace, path), ..)| format!("{namespace}:{path}")),
             )
             .collect();
-        let (mut unbound, mut unbound_tags) = (BTreeSet::new(), BTreeSet::new());
+        let (tags, mut unbound) = bind_dialog_tags(&root, overlay, |id| held.contains(id));
+        let mut unbound_tags = BTreeSet::new();
         for reference in dialog_references.into_iter().flatten() {
             match reference {
                 Reference::Id(id) if !held.contains(&id) => unbound.insert(id),
-                Reference::Tag(tag) if !tags.contains(&tag) => unbound_tags.insert(tag),
+                Reference::Tag(tag) if !tags.contains_key(&tag) => unbound_tags.insert(tag),
                 _ => false,
             };
         }
@@ -347,6 +331,144 @@ impl PackRegistryDefinitions {
     }
 }
 
+/// Bind the dialog tag stack both at world admission and when producing tag
+/// packets (including reloads over the frozen registry). TagLoader's writable
+/// lookup reserves a holder for each missing required value; these names are
+/// reported by the registry freeze, even if no dialog uses the tag.
+pub(super) fn bind_dialog_tags(
+    root: &Path,
+    overlay: &PackOverlay<'_>,
+    held: impl Fn(&str) -> bool,
+) -> (BTreeMap<String, Vec<String>>, BTreeSet<String>) {
+    struct Member {
+        id: String,
+        tag: bool,
+        required: bool,
+        remove: bool,
+    }
+
+    fn resolve(
+        name: &str,
+        files: &BTreeMap<String, Vec<Member>>,
+        bound: &mut BTreeMap<String, Option<Vec<String>>>,
+        active: &mut BTreeSet<String>,
+        held: &dyn Fn(&str) -> bool,
+        unbound: &mut BTreeSet<String>,
+    ) -> Option<Vec<String>> {
+        if let Some(out) = bound.get(name) {
+            return out.clone();
+        }
+        let entries = files.get(name)?;
+        if !active.insert(name.to_owned()) {
+            return None;
+        }
+        let mut failed = false;
+        let mut out = Vec::new();
+        for entry in entries {
+            let members = if entry.tag {
+                resolve(&entry.id, files, bound, active, held, unbound)
+            } else if held(&entry.id) {
+                Some(vec![entry.id.clone()])
+            } else {
+                if entry.required && !entry.remove {
+                    unbound.insert(entry.id.clone());
+                }
+                None
+            };
+            if let Some(members) = members {
+                for id in members {
+                    if entry.remove {
+                        out.retain(|member| *member != id);
+                    } else if !out.contains(&id) {
+                        out.push(id);
+                    }
+                }
+            } else {
+                failed |= entry.required && !entry.remove;
+            }
+        }
+        active.remove(name);
+        let out = (!failed).then_some(out);
+        bound.insert(name.to_owned(), out.clone());
+        out
+    }
+
+    let mut files = BTreeMap::<String, Vec<Member>>::new();
+    let mut add_file = |id: &str, value: Value| {
+        let Ok(id) = Identifier::parse(id) else {
+            return;
+        };
+        let entries = files.entry(id.to_string()).or_default();
+        let parse = || {
+            let flag = |value: Option<&Value>, default| match value {
+                None | Some(Value::Null) => Some(default),
+                Some(value) => value.as_bool(),
+            };
+            let replace = flag(value.get("replace"), false)?;
+            let parse_member = |value: &Value, remove: bool| {
+                let id = sunrise_world::tag_layers::entry_id(value)?;
+                let (tag, id) = id.strip_prefix('#').map_or((false, id), |id| (true, id));
+                Some(Member {
+                    id: Identifier::parse(id).ok()?.to_string(),
+                    tag,
+                    required: flag(value.get("required"), true)?,
+                    remove: remove || flag(value.get("remove"), false)?,
+                })
+            };
+            let mut parsed = value
+                .get("values")?
+                .as_array()?
+                .iter()
+                .map(|value| parse_member(value, false))
+                .collect::<Option<Vec<_>>>()?;
+            if let Some(remove) = value.get("remove").filter(|v| !v.is_null()) {
+                for value in remove.as_array()? {
+                    parsed.push(parse_member(value, true)?);
+                }
+            }
+            Some((replace, parsed))
+        };
+        // TagLoader creates a builder after reading JSON, but only a decoded
+        // TagFile adds entries to it. A syntactically unreadable file has no builder.
+        if let Some((replace, parsed)) = parse() {
+            if replace {
+                entries.clear();
+            }
+            entries.extend(parsed);
+        }
+    };
+    let mut prepared = BTreeMap::new();
+    walk(&root.join("tags/dialog"), &mut prepared, false);
+    for (id, value) in prepared {
+        add_file(&id, value);
+    }
+    for (id, packs) in overlay.tag_kind("dialog") {
+        for bytes in packs {
+            if let Ok(value) = serde_json::from_slice(bytes) {
+                add_file(&id, value);
+            }
+        }
+    }
+    let (mut bound, mut unbound) = (BTreeMap::new(), BTreeSet::new());
+    for name in files.keys() {
+        resolve(
+            name,
+            &files,
+            &mut bound,
+            &mut BTreeSet::new(),
+            &held,
+            &mut unbound,
+        );
+    }
+    (
+        bound
+            .into_iter()
+            .filter_map(|(name, members)| Some((name, members?)))
+            .collect(),
+        unbound,
+    )
+}
+
 fn check_network_nbt(tag: &Tag) -> Result<(), String> {
     sunrise_protocol::buf::check_network_nbt(tag).map_err(|error| format!("network {error}"))
 }
@@ -358,114 +480,13 @@ fn decode_dialog(
     text_registries: &crate::command::Registries,
     defaults: &ItemDefaults,
 ) -> Result<(Definition, Vec<crate::dialog::Reference>), String> {
-    let decode_text = |field: &str, value: &Value| {
-        crate::text_grammar::build(value, text_registries, false)
-            .ok_or_else(|| format!("{field}: invalid JSON text component"))
-    };
-    let string = |value: &str| Tag::String(value.into());
-    use crate::dialog::{AfterAction, Dialog, Kind};
-    // RegistryDataLoader refuses the load on one bad entry, so a transient
-    // component inside a dialog joins the other collected registry errors.
+    // Transient components are excluded from persisted world definitions.
     sunrise_world::item_defaults::validate_dialog(&value)?;
-    let source = json_to_nbt(&value);
-    let (dialog, references) = Dialog::decode_pack(&value, text_registries, &|id| {
-        defaults.entries().contains_key(id)
-    })
-    .map_err(|field| format!("invalid dialog field {field}"))?;
-    let mut fields = Compound::from([(
-        "title".into(),
-        json_to_nbt(&decode_text("title", &value["title"])?),
-    )]);
-    if dialog.external_title.is_some() && !value["external_title"].is_null() {
-        fields.insert(
-            "external_title".into(),
-            json_to_nbt(&decode_text("external_title", &value["external_title"])?),
-        );
-    }
-    for (name, enabled) in [
-        ("pause", dialog.pause),
-        ("can_close_with_escape", dialog.can_close_with_escape),
-    ] {
-        if !enabled {
-            fields.insert(name.into(), Tag::Byte(0));
-        }
-    }
-    match dialog.after_action {
-        AfterAction::Close => {}
-        action => {
-            fields.insert(
-                "after_action".into(),
-                string(if matches!(action, AfterAction::None) {
-                    "none"
-                } else {
-                    "wait_for_response"
-                }),
-            );
-        }
-    }
-    // Nested codecs remain #3067. Keep only the fields the dialog reader consumed.
-    let (kind, children, exit, columns, width): (_, &[&str], _, _, _) = match dialog.kind {
-        Kind::Notice(_) => ("notice", &["action"], false, None, None),
-        Kind::Confirmation { .. } => ("confirmation", &["yes", "no"], false, None, None),
-        Kind::MultiAction { exit, columns, .. } => (
-            "multi_action",
-            &["actions"],
-            exit.is_some(),
-            Some(columns),
-            None,
-        ),
-        Kind::ServerLinks {
-            exit,
-            columns,
-            button_width,
-        } => (
-            "server_links",
-            &[],
-            exit.is_some(),
-            Some(columns),
-            Some(button_width),
-        ),
-        Kind::DialogList {
-            dialogs,
-            exit,
-            columns,
-            button_width,
-            ..
-        } => {
-            fields.insert("dialogs".into(), dialogs);
-            (
-                "dialog_list",
-                &[],
-                exit.is_some(),
-                Some(columns),
-                Some(button_width),
-            )
-        }
-    };
-    fields.insert("type".into(), string(&format!("minecraft:{kind}")));
-    for (name, value) in [
-        (
-            "columns",
-            columns.map(|n| n.get() as i32).filter(|n| *n != 2),
-        ),
-        ("button_width", width.filter(|n| *n != 150)),
-    ] {
-        if let Some(value) = value {
-            fields.insert(name.into(), Tag::Int(value));
-        }
-    }
-    let keys = children
-        .iter()
-        .copied()
-        .chain((!dialog.body.is_empty()).then_some("body"))
-        .chain((!dialog.inputs.is_empty()).then_some("inputs"))
-        .chain(exit.then_some("exit_action"));
-    for name in keys {
-        if let Some(value) = source.get(name) {
-            fields.insert(name.into(), value.clone());
-        }
-    }
-    let encoded = Tag::Compound(fields);
+    let (encoded, references) =
+        crate::dialog::Dialog::decode_pack(&value, text_registries, &|id| {
+            defaults.entries().contains_key(id)
+        })
+        .map_err(|field| format!("invalid dialog field {field}"))?;
     check_network_nbt(&encoded)?;
     Ok((Definition::Encoded(encoded), references))
 }
@@ -754,7 +775,9 @@ mod tests {
 
     /// What world open makes of `files` over a resource root holding the three
     /// vanilla dialogs and their tags (`stage` is the load the world open runs).
-    fn load_dialogs(files: &[(String, Vec<Vec<u8>>)]) -> Result<(), String> {
+    fn load_dialogs(
+        files: &[(String, Vec<Vec<u8>>)],
+    ) -> Result<Vec<((String, String), Tag, bool)>, String> {
         let root = tempfile::tempdir().unwrap();
         std::fs::write(
             root.path().join("items.json"),
@@ -780,15 +803,22 @@ mod tests {
             .unwrap();
         }
         let defaults = sunrise_world::item_defaults::read(root.path()).unwrap();
-        PackRegistryDefinitions::stage(
+        let reg = crate::command::Registries {
+            items: defaults.entries().keys().cloned().collect(),
+            ..Default::default()
+        };
+        let (registry, result) = PackRegistryDefinitions::stage(
             root.path(),
             &defaults,
             &PackOverlay::new(files),
             &BTreeMap::new(),
-            &Default::default(),
+            &reg,
             |_| true,
-        )
-        .1
+        );
+        result?;
+        let mut entries = Vec::new();
+        registry.append_encoded("minecraft:dialog", &mut entries);
+        Ok(entries)
     }
 
     /// Cases the dialog fixture leaves to the typed component codec: a persistent
@@ -814,24 +844,159 @@ mod tests {
         "text_show_item/in_body",
     ];
 
-    /// `tools/fixtures/dialog_codec_cases.json` holds what real 26.3 answered
+    const DIALOG_FIXTURE: &str = include_str!("../../tests/fixtures/dialog_codec_cases.json");
+
+    #[test]
+    fn dialog_packets_refuse_bad_components_and_unbound_values() {
+        use crate::dialog::Dialog;
+        let fixture: Value = serde_json::from_str(DIALOG_FIXTURE).unwrap();
+        let reg = crate::command::Registries {
+            items: vec!["minecraft:stone".into()],
+            ..Default::default()
+        };
+        for case in fixture["packets"].as_array().unwrap() {
+            let (tag, _) = sunrise_core::nbt::parse_snbt(case["snbt"].as_str().unwrap()).unwrap();
+            let decoded = Dialog::parse(&tag, &reg, &|id| id == "minecraft:stone", &|_| false);
+            assert_eq!(
+                decoded.is_some(),
+                case["accept"].as_bool().unwrap(),
+                "{}",
+                case["name"]
+            );
+        }
+    }
+
+    #[test]
+    fn admitted_dialogs_emit_the_decoded_values_over_nbt() {
+        use crate::dialog::{Body, Control, Dialog, Reference};
+        use crate::text::ClickEvent;
+        use sunrise_core::nbt::{read_network, write_network};
+        let fixture: Value = serde_json::from_str(DIALOG_FIXTURE).unwrap();
+        let reg = crate::command::Registries {
+            items: vec!["minecraft:stone".into()],
+            ..Default::default()
+        };
+        let parse = |tag: &Tag| {
+            Dialog::parse(
+                tag,
+                &reg,
+                &|id| id == "minecraft:stone",
+                &|reference| matches!(reference, Reference::Id(id) if id == "minecraft:quick_actions"),
+            )
+        };
+        let mut stacks = Vec::new();
+        for case in fixture["cases"].as_array().unwrap() {
+            let Some(observe) = case["observe"].as_str() else {
+                continue;
+            };
+            let name = case["name"].as_str().unwrap();
+            let files = [(
+                "dialog/test:case".into(),
+                vec![serde_json::to_vec(&case["dialog"]).unwrap()],
+            )];
+            let entries = load_dialogs(&files).unwrap_or_else(|error| panic!("{name}: {error}"));
+            let (_, emitted, from_pack) = &entries[0];
+            assert!(from_pack);
+            let bytes = write_network(emitted, Default::default()).unwrap();
+            let (tag, used) = read_network(&bytes, Default::default()).unwrap();
+            assert_eq!(used, bytes.len());
+            let mut dialog =
+                parse(&tag).unwrap_or_else(|| panic!("{name}: refused emitted dialog"));
+            if observe == "inline_button" {
+                let Some(ClickEvent::ShowDialog(inner)) = dialog
+                    .title
+                    .spans
+                    .iter()
+                    .find_map(|span| span.click_event())
+                else {
+                    panic!("{name}: inline holder was lost");
+                };
+                dialog =
+                    parse(inner).unwrap_or_else(|| panic!("{name}: refused emitted inline dialog"));
+            }
+            let actual = match observe {
+                "button" | "inline_button" => {
+                    let button = dialog.buttons()[0];
+                    let label = button
+                        .label
+                        .source_component()
+                        .and_then(|component| component.get("translate"))
+                        .and_then(Value::as_str)
+                        .map_or_else(|| button.label.plain(), str::to_owned);
+                    json!({"label": label, "width": button.width, "has_action": button.action.is_some()})
+                }
+                "named_holder" => {
+                    let Some(Tag::String(id)) = tag
+                        .get("title")
+                        .and_then(|title| title.get("click_event"))
+                        .and_then(|click| click.get("dialog"))
+                    else {
+                        panic!("{name}: missing emitted holder")
+                    };
+                    json!({"id": id.to_string_lossy()})
+                }
+                "item" => {
+                    let Body::Item { item, .. } = &dialog.body[0] else {
+                        panic!("{name}: expected item body")
+                    };
+                    // The exact stack reader the renderer uses. Status reads the same id.
+                    let stack = sunrise_items::item_nbt::item_from_nbt(item).unwrap();
+                    let id = stack.item.as_ref().to_owned();
+                    let count = stack.count;
+                    assert_eq!(
+                        emitted
+                            .get("body")
+                            .and_then(|body| match body {
+                                Tag::List(items) => items.first(),
+                                _ => None,
+                            })
+                            .and_then(|body| body.get("item"))
+                            .and_then(|stack| stack.get("count")),
+                        Some(&Tag::Int(count as i32))
+                    );
+                    assert_eq!(dialog.json(&[])["body"][0], id);
+                    stacks.push((id.clone(), count));
+                    json!({"id": id, "count": count})
+                }
+                "multiline" => {
+                    let Control::Text {
+                        multiline: Some((max_lines, height)),
+                        ..
+                    } = &dialog.inputs[0].control
+                    else {
+                        panic!("{name}: expected multiline control")
+                    };
+                    json!({"max_lines": max_lines, "height": crate::dialog_screen::text_height(Some((*max_lines, *height))) as i32})
+                }
+                _ => panic!("{name}: unknown observation {observe}"),
+            };
+            assert_eq!(actual, case["round_trip"], "{name}");
+        }
+        assert_eq!(stacks.len(), 2);
+        assert_eq!(stacks[0], stacks[1]);
+    }
+
+    /// The dialog codec fixture holds what real 26.3 answered
     /// (`Dialog.DIRECT_CODEC` for each case, `RegistryDataLoader` for each pack),
     /// recorded by `tools/test_dialog_codec_parity.py`.
     #[test]
     fn dialog_admission_answers_as_the_real_codecs_do() {
-        let fixture: Value = serde_json::from_str(include_str!(
-            "../../../../tools/fixtures/dialog_codec_cases.json"
-        ))
-        .unwrap();
+        let fixture: Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/dialog_codec_cases.json"))
+                .unwrap();
         let mut wrong = Vec::new();
         for case in fixture["cases"].as_array().unwrap() {
             let name = case["name"].as_str().unwrap();
             let accept = case["accept"].as_bool().unwrap();
             // Cross-entry references are the packs' cases below.
             if COMPONENT_PATCH_CASES.contains(&name)
-                || name.contains("unknown_id")
-                || name.contains("unknown_tag")
-                || name.ends_with("second_unknown")
+                || [
+                    "action/show_dialog_unknown_id",
+                    "list/dialog_list_unknown_id",
+                    "list/dialog_list_unknown_tag",
+                    "list/dialog_list_second_unknown",
+                ]
+                .contains(&name)
             {
                 continue;
             }
@@ -849,7 +1014,7 @@ mod tests {
                         format!("rejects ({})", case["vanilla_error"].as_str().unwrap())
                     },
                     match result {
-                        Ok(()) => "accepts".to_owned(),
+                        Ok(_) => "accepts".to_owned(),
                         Err(error) => format!("rejects ({error})"),
                     },
                 ));
@@ -857,17 +1022,6 @@ mod tests {
         }
         for case in fixture["packs"].as_array().unwrap() {
             let name = case["name"].as_str().unwrap();
-            // Tag members and click events inside text name dialogs too; those
-            // belong to tag admission and to the text decoder.
-            if [
-                "pack/tag_unknown_member",
-                "pack/show_dialog_in_text_missing",
-                "pack/show_dialog_in_text_inline_bad",
-            ]
-            .contains(&name)
-            {
-                continue;
-            }
             let files: Vec<(String, Vec<Vec<u8>>)> = case["files"]
                 .as_object()
                 .unwrap()
