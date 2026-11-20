@@ -22,6 +22,29 @@ notify no neighbors and send whole changed chunks.
 same block with different properties have distinct entries. Only distinct numeric
 states are converted to API values, not each block in the returned columns.
 
+## Query terrain before loading chunks
+
+`ServerHost::terrain_surface(dimension, columns)` reads the level's generator, not resident
+chunks. It returns one optional `TerrainColumn` per input pair `(x, z)`, in input order.
+At most `MAX_TERRAIN_COLUMNS` (4,096) columns are accepted per call. The call has world-only
+load access and works identically for native and wasm mods.
+
+- `height` is one above the highest solid block, skipping fluids, like OceanFloor. The scan
+  starts at the level top, so the Nether returns its bedrock roof, not a floor.
+- `block` is that surface's `BlockKey`; `water` is one above the highest fluid over it,
+  or absent on dry land. `biome` names the biome in the world's table, including data pack biomes.
+- Void columns and worlds without their own generator return `None`. Custom generators that
+  do not provide a noise surface also have no answer.
+- No chunk is created, loaded or held. Features (trees, ores, lakes and decorations) and slope
+  rules are not included: even an undecorated chunk may have a different top block. A teleport
+  mod can sample candidate columns, then hold only its chosen chunk and verify the decorated blocks.
+- A client, a dimension other than the level being ticked, or an over-limit request returns
+  error text before reading anything. Results depend on generator inputs, not loaded chunks or
+  query order. The game makes one noise sample per column on the server tick, and logs the
+  column count for calls exceeding the configured slow-call threshold.
+
+Mods only receive `TerrainColumn`; it is non-exhaustive and constructed by the game.
+
 #### Upgrading saved block entities and entities
 
 Data a mod reads from an older source (a schematic, a structure file, an old world's region) carries the

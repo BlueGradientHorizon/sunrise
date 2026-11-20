@@ -62,9 +62,24 @@ secondary_use)`: the fake acts in survival with a fresh standing body (eye heigh
 hand, and no other inventory or equipment. Its supplied rotation is used for item rays. Secondary use holds
 semantic sneak without changing that standing eye height. No second player is created.
 
+A scoped fake starts with an empty attack charge, so an attack deals only part of the weapon's damage. Set
+`full_attack_charge` to start the action fully charged with the setup's stack in hand; the attack then runs as a
+player's charged blow (crits, sweep, knockback and enchantments included), and the fake's own charge comes back
+afterwards:
+
+```rust,ignore
+let mut setup = PlayerActionSetup::new(Some(sword), eye, yaw, pitch, false);
+setup.full_attack_charge = true;
+let result = player.perform_action_scoped(host, PlayerAction::Attack { target }, setup)?;
+```
+
 The `ScopedActionResult` contains `outcome` (the same `ActionOutcome`), `held` (the nonempty main-hand remainder)
 and `other` (other nonempty inventory stacks, then offhand, carried stack and armor). These stacks are returned
-to the caller, not kept by the fake. The fake's persistent body, inventory, game mode, look, secondary-use state
+to the caller, not kept by the fake. `unrepresentable` counts the stacks the action produced that the API can't
+represent, such as a saved item this game build doesn't have: they are never destroyed or replaced, but go back
+into the world where the fake stood, as item entities with the default pickup delay, and appear in neither
+`held` nor `other`. Such an item entity joins the level as any drop does: an `entity_join_level` listener that
+keeps it out discards it, and it is then not counted. The fake's persistent body, inventory, game mode, look, secondary-use state
 and action timers are restored even on refusal; world changes and the usual interaction/Parts hooks remain.
 The ordinary fake safety rules apply: no screens, sleep, rides, dimension travel, online participation,
 statistics, advancement credit or network connection. Neither action method can run inside another player turn

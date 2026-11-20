@@ -26,7 +26,7 @@ def listing(*lines):
     return ns.read_reviewers("".join((f"{IDS[l.lower()]} {l}" if l.lower() in IDS else l) + "\n" for l in lines))
 
 
-def pr(n, head="h", state="open", files=("crates/horizon-world/src/lib.rs",), base="main"):
+def pr(n, head="h", state="open", files=("crates/sunrise-world/src/lib.rs",), base="main"):
     return ns.PullRequest(n, state, f"{head}{n}", f"Fix {n}", f"dev{n}", base, list(files))
 
 
@@ -42,7 +42,7 @@ def run(state, text, login="kacpherek", *prs):
 class CommandTests(unittest.TestCase):
     """command(), as nightly-command.yml runs it: the comment in the environment, the answer posted back."""
 
-    def run_command(self, body, author=ns.OWNER):
+    def run_command(self, body, author="ludovic111"):
         answers = []
         env = {"GITHUB_REPOSITORY": "horizon-rust/horizon", "ISSUE": "1", "AUTHOR": author,
                "AUTHOR_ID": str(IDS.get(author.lower(), 9999)), "BODY": body, "COMMENT_URL": "", "GH_TOKEN": "token"}
@@ -73,7 +73,7 @@ class NoReviewNeededTests(unittest.TestCase):
     def test_a_guarded_file_is_still_refused(self):
         for text in ("/nightly add 1", "/nightly dry-run 1"):
             with self.assertRaisesRegex(ns.Refused, "only the council merges"):
-                run({}, text, "kacpherek", pr(1, files=["crates/horizon-world/src/lib.rs", ".github/CODEOWNERS"]))
+                run({}, text, "kacpherek", pr(1, files=["crates/sunrise-world/src/lib.rs", ".github/CODEOWNERS"]))
 
     def test_the_other_guards_stay(self):
         with self.assertRaisesRegex(ns.Refused, "not main"):
@@ -199,7 +199,7 @@ class AllowTests(unittest.TestCase):
         """Fails until tools/ci/resolve_reviewer_ids.py has filled in the IDs: until then no reviewer has access."""
         reviewers = ns.read_reviewers((ROOT / ns.REVIEWERS).read_text())
         self.assertEqual(reviewers.skipped, [])
-        self.assertEqual(reviewers.logins, {"kacpherek", "rdbtcvs", "online5277", "levzzz5154"})
+        self.assertEqual(reviewers.logins, set())
         self.assertFalse(reviewers.paused)
         source = (ROOT / "tools/ci/nightly_set.py").read_text()
         self.assertRegex(source, r"(?m)^OWNER_ID: int \| None = [1-9][0-9]*$")
@@ -214,12 +214,11 @@ class WorkflowIdTests(unittest.TestCase):
 
 class RefusalTests(unittest.TestCase):
     def test_what_codeowners_guards_is_refused(self):
-        for path in (".github/workflows/x.yml", "tools/ci/nightly.py", "crates/horizon-release-sign/src/lib.rs",
-                     "crates/horizon-server/src/update.rs", "launcher/src/backend.rs", "launcher/links.json",
-                     "launcher/src/signed.rs", "tools/release_train.py"):
+        for path in (".github/workflows/x.yml", "tools/ci/nightly.py", "crates/sunrise-release-sign/src/lib.rs",
+                     "crates/sunrise-server/src/update.rs", "tools/release_train.py"):
             self.assertTrue(ns.guarded(path, PATTERNS), path)
-        for path in ("crates/horizon-client/src/game.rs", "launcher/src/main.rs", "tools/ci.py", "docs/x.md",
-                     "crates/horizon-server/src/main.rs"):
+        for path in ("crates/sunrise-client/src/game.rs", "tools/ci.py", "docs/x.md",
+                     "crates/sunrise-server/src/main.rs"):
             self.assertFalse(ns.guarded(path, PATTERNS), path)
         self.assertTrue(ns.guarded("tools/ci/x.py", ns.guarded_patterns("")))  # even without CODEOWNERS
 

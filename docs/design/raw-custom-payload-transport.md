@@ -10,7 +10,7 @@ no NeoForge implementation source was read by this implementation's author.
 Replace the legacy envelope transport, its broadcast hooks, old send methods, brand gate,
 30,000-byte envelope bound and 32-message counters outright. Application packets
 use their declared namespaced custom-payload channel and exact opaque body bytes.
-There is no Horizon application envelope and no second path for typed payloads.
+There is no Sunrise application envelope and no second path for typed payloads.
 Attachment synchronization rides this transport as an engine declaration (#813 step 4a;
 see the typed-payload design note).
 
@@ -37,13 +37,18 @@ incompatible matching declaration is ignored. A vanilla
 peer is admitted when all local requirements are optional; sending an absent
 optional payload returns UnsupportedPeer without a packet. There is no per-tick mod
 work for empty registries. Configuration still exchanges a constant-size protocol
-mark (and an empty Offer) for Horizon-branded peers, even with empty or all-optional
-registries. On `horizon:payloads`, Query is bytes `[0, 1]`; Offer begins `[1, 1]`
+mark (and an Offer, which carries the engine's optional declarations even with no mods) for
+Sunrise-branded peers, even with empty or all-optional mod registries. On `sunrise:payloads`, Query is bytes `[0, 1]`; Offer begins `[1, 1]`
 then the manifest record count. The second byte is raw transport revision 1,
 independent of application versions. A wrong revision or an absent marked response
-from a Horizon-branded peer refuses admission with a named raw-protocol cause.
-Servers send the Query before known packs so a compatible empty peer's Offer cannot
-be overtaken by that barrier. Non-Horizon vanilla peers remain eligible for optional
+from a Sunrise-branded peer refuses admission with a named raw-protocol cause.
+A server whose mods declare payloads sends the Query before known packs; otherwise it
+sends the Query only once the peer names itself Sunrise, so a vanilla client is sent
+nothing on `sunrise:payloads`. That Query, or the server's Offer to a client's own Query,
+follows the known-packs request, so if a Sunrise peer's Offer has not arrived by its
+known-packs reply, the server pings it there and reads on until the Offer or the pong: a
+pong with no Offer before it is the missing marked response. A vanilla peer is never
+pinged. Non-Sunrise vanilla peers remain eligible for optional
 admission; a brand is capability negotiation, not authentication of a build.
 
 A connection owns its negotiated table, protocol and incarnation epoch. Application
@@ -85,8 +90,30 @@ Preserve order with ordinary gameplay ingress. Default handlers run on the logic
 receiving main thread. IPayloadContext supplies player, reply, disconnect and
 enqueueWork. Root transaction commit publishes sends; abort publishes none. Replies
 cannot execute inline across the connection and are received on a subsequent turn.
-Single-player and split-screen use their real connect_local sessions, not direct
+Single-player uses its real connect_local session, not direct
 callback shortcuts.
+
+`IPayloadHandler::handle` returns `Result<(), PayloadHandleError>`, with explicit
+`Failed(String)` for application and execution failures. Native panics and disabled
+owners remain failures. `PayloadWork::run` retains its `Result<(), String>` contract.
+Guest-group contention instead returns `Busy { payload, holder }` before the handler
+starts, returning the same owned body and a resolved `PayloadBusy` snapshot (shared
+owner/export/thread names and elapsed held milliseconds).
+
+The connection transport must requeue busy input at its head, preserving both
+payload and ordinary gameplay ordering, the original ingress lease and accounting,
+and the original payload deadline. Existing queue byte budgets bound retained
+memory. The deadline is 60 seconds, exceeding the largest guest execution budget;
+retries never renew it. Deadline expiry reports the held mod/export/thread/duration.
+Disconnect and protocol/epoch replacement cancel pending retries. Nested cross-group
+calls refuse immediately rather than waiting. This is the caller's contract, not
+queueing performed by the handler itself; it adds no detached retry worker.
+
+Busy retries retain the existing 16 MiB physical ingress reservations across work
+and main-thread moves. One connection-owned receiving turn spans MAIN root
+publication or rollback. Pooled server receivers retry on their existing tick;
+dedicated client and configuration receivers use timed condition-variable wakes,
+so progress requires neither another network frame nor a detached worker.
 
 ## Acceptance and the amendment to #813
 
@@ -96,7 +123,7 @@ Backpressure, bounded flood memory and progress for more than 32 legal messages.
 Its registered-body limit wording must distinguish discard limits from the actual
 connection framing bounds above.
 
-Exercise integrated single-player, split-screen, two remote players, LAN and
+Exercise integrated single-player, two remote players, LAN and
 dedicated paths. Check sender attribution, ordering, next-turn replies, rollback,
 epoch invalidation, optional vanilla admission, required mismatch, duplicate load
 refusal, generic-send bypass and named decode failures. Native and wasm must both
@@ -109,7 +136,7 @@ The `wasm-mods` fixture job runs
 by exact name and requires one passing test. It loads this run's compiled fixture,
 negotiates payloads over TCP with the actual LAN connection, and holds known packs
 and the serving Game thread while requiring two transformed, guest-counted replies.
-This keeps dispatch in CONFIGURATION on `horizon-lan-conn`, before the Play I/O pool:
+This keeps dispatch in CONFIGURATION on `sunrise-lan-conn`, before the Play I/O pool:
 the existing guest-entry `check_current()` rejects a default-stack connection thread
 instead of producing the expected replies. Its isolated child uses fresh game and
 launcher homes and a scratch game directory/current working directory.

@@ -1,13 +1,13 @@
 name: nightly build
 # A snapshot's run is named `snapshot build <commit>`: release_train.nightly_building tells the kinds apart by it.
 run-name: ${{ inputs.kind == 'snapshot' && format('snapshot build {0}', inputs.base) || format('nightly build{0}', inputs.request && format(' (request {0})', inputs.request) || '') }}
-# The Nightly, the only build Horizon ships since 2026-10-28 (docs/release-flow.md "Nightly"; Ludovic). When the batch
+# The Nightly, the only build Sunrise ships since 2026-10-28 (docs/release-flow.md "Nightly"; Ludovic). When the batch
 # train decides (release.yml, with the commit as `base`; the daily run calls it when every leg is green), and when a
 # trusted reviewer asks (`/nightly 2640 2642`, nightly-command.yml), it builds main plus the pull requests the
 # reviewers picked, merged in order (tools/ci/nightly_set.py), or main alone with none picked. Main is its newest
 # commit where checks passed (or the `base` input), on the fork the commit `daily-green` points to, and no
 # Nightly is published while a release-blocker is open. It publishes the result as the `nightly` pre-release, which every launcher and
-# `horizon-server update` install. The previous nightly stays a week as nightly-<date>.
+# `sunrise-server update` install. The previous nightly stays a week as nightly-<date>.
 #
 # Why the signing key never meets the pull requests' code:
 # - `pick` merges the picked heads onto main with `git merge-tree --write-tree`: git objects only, no working tree,
@@ -16,18 +16,17 @@ run-name: ${{ inputs.kind == 'snapshot' && format('snapshot build {0}', inputs.b
 #   pushes the merge as nightly/build-<date>-<n> and saves the set on the nightly-state branch.
 # - This file, game-build.yml and every script below run from main's copy: every dispatch names --ref main, and
 #   `uses: ./…` takes the caller's commit. A picked pull request's own .github/ is never read.
-# - `build` (game-build.yml, `trusted: false`) never reaches a release's tools: its macOS jobs run on the runner
-#   that already runs pull requests' parity jobs, never the release runner; its Rust cache has its own key and is
-#   never saved; and releases don't read the machine's shared sccache.
+# - `build` (game-build.yml, `trusted: false`) never reaches a release's tools: its legs build on fresh Blacksmith
+#   (or GitHub) machines; its Rust cache has its own key and is never saved; and releases don't read the machine's
+#   shared sccache.
 # - `build` (game-build.yml) checks out and compiles the merge with no secrets: its token reads contents only and
-#   isn't kept in the checkout; the macOS programs are signed ad hoc (Developer ID needs the runner's keychain,
-#   which stays locked for nightlies).
+#   isn't kept in the checkout; the macOS programs are signed ad hoc (`developer_id: false`: no Developer ID).
 # - `sign` is the only job with RELEASE_SIGNING_KEY. It checks out nothing but main's tools/ci/sign_release.sh, which
 #   runs the runner's sha256sum and OpenSSL over the archives: it hashes them, never runs them. The signed message
 #   names the channel ("horizon release nightly"), so a nightly's signature can't pass for a release's.
-# - `publish` verifies the signature with main's horizon-release-sign, checks the smoke test, and only then moves
+# - `publish` verifies the signature with main's sunrise-release-sign, checks the smoke test, and only then moves
 #   the tag. Like sign, it never executes what build produced.
-# - The source ships with the build: `pick` writes horizon-source.tar.gz with `git archive` (git objects again, nothing
+# - The source ships with the build: `pick` writes sunrise-source.tar.gz with `git archive` (git objects again, nothing
 #   run), `sign` signs it with the builds, and `publish` attaches it and tags the commit nightly-source/<date>-<short>
 #   for good (the dated release and the build branch go after 7 days; native mods pin the commit: docs/native-mods.md).
 #   gh workflow run "nightly build"                     # now (skips when the pick is the same commit as last night's)
@@ -70,7 +69,11 @@ on:
         type: string
         default: ''
       base:
-        description: The commit of main to build on (default main's newest with green checks; on the fork the daily-green commit, and only it)
+        description: The commit of main to build on (default main's newest with green checks; on Sunrise the `daily-green` commit with its dyna-checks gate green)
+        type: string
+        default: ''
+      exception:
+        description: The owner's one-time grant to publish a `base` (its full SHA) that is not daily-green (who, when, why); empty otherwise
         type: string
         default: ''
       urgent:
@@ -87,13 +90,18 @@ concurrency:
   cancel-in-progress: false
 jobs:
   pick:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # The whole build waits for this job: on Dyna's small runner while the repository's switch is on, as the daily's
+    # `resolve`, so it never queues behind GitHub's runners (the Nightly of 2026-11-16 waited there from 15:34).
+    # Signing and publishing below stay on GitHub's runners.
+    runs-on: ${{ vars.DYNA_CI_SELF_HOSTED == 'true' && 'dyna-small' || 'ubuntu-latest' }}
+    # Room for building sunrise-release-sign, which checks the SDK's signature below, and for a real run's wait on its
+    # commit's gate, run again when the next push cancelled it (GATE_RERUN, tools/release_train.py gate_again).
+    timeout-minutes: 170
     permissions:
       contents: write       # nightly/build-<date>-<n> and the nightly-state branch (main is protected)
       issues: write         # says in the thread when the picked pull requests conflict
       pull-requests: write
-      actions: read         # main's newest green checks and parity-main runs (the base)
+      actions: write        # main's newest green checks (the base), and running a cancelled gate again
     outputs:
       build: ${{ steps.pick.outputs.build }}
       sha: ${{ steps.pick.outputs.sha }}
@@ -110,6 +118,8 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      # gh comes from the room's runner image on Dyna (tools/ci/nightly.py runs it): say so plainly when it is missing.
+      - run: gh --version
       - id: mode
         # A dry run never publishes; a hand-started run off main is always one.
         run: echo "dry_run=${{ github.event_name == 'workflow_dispatch' && (inputs.dry_run || github.ref != 'refs/heads/main') }}" >> "$GITHUB_OUTPUT"
@@ -118,9 +128,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           FORCE: ${{ (inputs.force || steps.mode.outputs.dry_run == 'true') && 'yes' || '' }}
           DRY_RUN: ${{ steps.mode.outputs.dry_run }}
+          # A real run (a hand `-f base=<sha>` too) runs its commit's gate again if the next push cancelled it.
+          GATE_RERUN: ${{ steps.mode.outputs.dry_run != 'true' && '1' || '' }}
           NIGHTLY_ISSUE: ${{ inputs.issue }}
           NIGHTLY_PRS: ${{ inputs.prs }}
           NIGHTLY_BASE: ${{ inputs.base }}
+          NIGHTLY_EXCEPTION: ${{ inputs.exception }}
           NIGHTLY_URGENT: ${{ inputs.urgent }}
           KIND: ${{ inputs.kind }}
         run: |
@@ -136,16 +149,31 @@ jobs:
         shell: bash
         run: |
           { echo "### nightly/build-* branches"; python3 tools/ci/nightly.py prune-builds --days 7; } | tee -a "$GITHUB_STEP_SUMMARY"
-      - name: The source of the build (horizon-source.tar.gz)
+      - name: The source of the build (sunrise-source.tar.gz)
         if: steps.pick.outputs.build == 'true'
         env:
           SHA: ${{ steps.pick.outputs.sha }}
-        run: git archive --format=tar.gz --prefix="horizon-${SHA:0:7}/" -o horizon-source.tar.gz "$SHA"
+        run: git archive --format=tar.gz --prefix="sunrise-${SHA:0:7}/" -o sunrise-source.tar.gz "$SHA"
       - uses: actions/upload-artifact@v7
         if: steps.pick.outputs.build == 'true'
         with:
-          name: horizon-source
-          path: horizon-source.tar.gz
+          name: sunrise-source
+          path: sunrise-source.tar.gz
+          if-no-files-found: error
+          retention-days: 3
+      - name: The release file a launcher reads first (sunrise-release.json, docs/api/release-file.md)
+        # From the built commit through `git show`: like the source archive, git objects only, nothing run.
+        if: steps.pick.outputs.build == 'true'
+        env:
+          SHA: ${{ steps.pick.outputs.sha }}
+          DATE: ${{ steps.pick.outputs.date }}
+          KIND: ${{ inputs.kind }}
+        run: python3 tools/release_file.py write --channel "$KIND" --date "$DATE" --commit "$SHA" sunrise-release.json
+      - uses: actions/upload-artifact@v7
+        if: steps.pick.outputs.build == 'true'
+        with:
+          name: sunrise-release
+          path: sunrise-release.json
           if-no-files-found: error
           retention-days: 3
       - uses: actions/upload-artifact@v7
@@ -155,16 +183,29 @@ jobs:
           retention-days: 3
       # The fork's Nightly is exactly an SDK's build, and carries that SDK's index in its signed sums, so a game's build
       # id and SDK come from the game release itself (checked against sdk-<sha>'s SHA256SUMS here).
+      # The check runs sunrise-release-sign with cargo, which Dyna's small runner doesn't carry: rustup as dyna-ci's
+      # lint installs it, then the pinned Rust (tools/ci/rustup_install.sh).
+      - name: The pinned Rust, for sunrise-release-sign
+        if: steps.pick.outputs.build == 'true' && github.repository == 'sunrise-org/sunrise' && steps.pick.outputs.sdk != 'false'
+        run: |
+          set -euo pipefail
+          if ! command -v rustup > /dev/null; then
+            home=${CARGO_HOME:-$HOME/.cargo}
+            [ -x "$home/bin/rustup" ] || curl --proto '=https' --tlsv1.2 -fsSL https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile minimal
+            export PATH="$home/bin:$PATH"
+            echo "$home/bin" >> "$GITHUB_PATH"
+          fi
+          bash tools/ci/rustup_install.sh --profile minimal
       - name: The SDK index the Nightly carries (sdk.json of sdk-<sha>)
-        if: steps.pick.outputs.build == 'true' && github.repository == 'arismoko/horizon' && steps.pick.outputs.sdk != 'false'
+        if: steps.pick.outputs.build == 'true' && github.repository == 'sunrise-org/sunrise' && steps.pick.outputs.sdk != 'false'
         env:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ steps.pick.outputs.sha }}
         run: python3 tools/ci/nightly.py sdk-index "$SHA" sdk.json
       - uses: actions/upload-artifact@v7
-        if: steps.pick.outputs.build == 'true' && github.repository == 'arismoko/horizon' && steps.pick.outputs.sdk != 'false'
+        if: steps.pick.outputs.build == 'true' && github.repository == 'sunrise-org/sunrise' && steps.pick.outputs.sdk != 'false'
         with:
-          name: horizon-sdk-index
+          name: sunrise-sdk-index
           path: sdk.json
           if-no-files-found: error
           retention-days: 3
@@ -179,10 +220,29 @@ jobs:
       nightly: ${{ needs.pick.outputs.nightly }}
       kind: ${{ inputs.kind }}
       developer_id: false
-      trusted: false  # it can hold unreviewed pull requests: their own cache key, never saved, not the release runner
+      trusted: false  # it can hold unreviewed pull requests: their own cache key, never saved
+
+  # Whether every required leg built, from the `build-complete` marker game-build.yml's legs job uploads. build's
+  # result is `failure` or `cancelled` whenever an optional leg failed, timed out or got no runner, and a reusable
+  # workflow that ends that way passes back no outputs, so this is an ordinary job's output instead.
+  complete:
+    needs: build
+    if: ${{ !cancelled() && needs.build.result != 'skipped' }}
+    runs-on: ${{ vars.DYNA_CI_SELF_HOSTED == 'true' && 'dyna-small' || 'ubuntu-latest' }}
+    timeout-minutes: 5
+    outputs:
+      complete: ${{ steps.marker.outcome == 'success' }}
+    steps:
+      - uses: actions/download-artifact@v8
+        id: marker
+        continue-on-error: true
+        with:
+          name: build-complete
+          path: ${{ runner.temp }}/build-complete
 
   sign:
-    needs: [pick, build]
+    needs: [pick, build, complete]
+    if: ${{ !cancelled() && needs.complete.outputs.complete == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # The key's only job: main's sign_release.sh hashes the archives and signs with the runner's OpenSSL.
@@ -196,7 +256,7 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           path: dist
-          pattern: horizon-*
+          pattern: sunrise-*
           merge-multiple: true
       - name: Sign the checksums for the nightly channel (SHA256SUMS.sig) and for this build (SHA256SUMS.v2.sig)
         # SHA256SUMS.sig is for launchers from before v2 (signed for "nightly"); SHA256SUMS.v2.sig is signed for
@@ -211,22 +271,22 @@ jobs:
           ALSO_FOR: ${{ inputs.kind }}-${{ needs.pick.outputs.date }}-${{ needs.pick.outputs.short }}
         run: |
           # Windows ARM64's build may fail without holding the Nightly (game-build.yml): then it is left out.
-          arm64=(); if [[ -f dist/horizon-windows-arm64.zip ]]; then arm64=(dist/horizon-windows-arm64.zip)
-          else echo "::warning::horizon-windows-arm64.zip is missing: SHA256SUMS goes out without it"; fi
-          musl=(); if [[ -f dist/horizon-linux-musl-x86_64.tar.gz ]]; then musl=(dist/horizon-linux-musl-x86_64.tar.gz)
-          else echo "::warning::horizon-linux-musl-x86_64.tar.gz is missing: SHA256SUMS goes out without it"; fi
-          macos_x64=(dist/horizon-macos-x64.zip)
-          if [[ "$KIND" == snapshot && ! -f dist/horizon-macos-x64.zip ]]; then
-            macos_x64=()
-            echo "::warning::horizon-macos-x64.zip is missing: the snapshot goes out without it"
-          fi
-          # The fork's Nightly carries its SDK's index (the pick job fetched it); upstream's has no SDK.
-          # A snapshot's dry run of a commit whose SDK is not published yet has none (nightly.py pick_snapshot warns).
-          sdk=(); if [[ "$GITHUB_REPOSITORY" == arismoko/horizon && ( "$KIND" == nightly || -f dist/sdk.json ) ]]; then sdk=(dist/sdk.json); fi
-          bash tools/ci/sign_release.sh "$KIND" dist/horizon-linux-x86_64.tar.gz dist/horizon-windows-x64.zip \
+          arm64=(); if [[ -f dist/sunrise-windows-arm64.zip ]]; then arm64=(dist/sunrise-windows-arm64.zip)
+          else echo "::warning::sunrise-windows-arm64.zip is missing: SHA256SUMS goes out without it"; fi
+          musl=(); if [[ -f dist/sunrise-linux-musl-x86_64.tar.gz ]]; then musl=(dist/sunrise-linux-musl-x86_64.tar.gz)
+          else echo "::warning::sunrise-linux-musl-x86_64.tar.gz is missing: SHA256SUMS goes out without it"; fi
+          macos=()
+          for archive in dist/sunrise-macos-arm64.zip dist/sunrise-macos-x64.zip; do
+            if [[ -f "$archive" ]]; then macos+=("$archive")
+            elif [[ "$GITHUB_REPOSITORY" == sunrise-org/sunrise || ( "$KIND" == snapshot && "$archive" == dist/sunrise-macos-x64.zip ) ]]; then
+              echo "::warning::$archive is missing: SHA256SUMS goes out without it"
+            else echo "::error::Required archive $archive is missing"; exit 1; fi
+          done
+          sdk=(); if [[ -f dist/sdk.json ]]; then sdk=(dist/sdk.json); fi
+          bash tools/ci/sign_release.sh "$KIND" dist/sunrise-linux-x86_64.tar.gz dist/sunrise-windows-x64.zip \
             ${arm64[@]+"${arm64[@]}"} ${musl[@]+"${musl[@]}"} ${sdk[@]+"${sdk[@]}"} \
-            dist/horizon-macos-arm64.zip ${macos_x64[@]+"${macos_x64[@]}"} dist/horizon-server-linux-x86_64.tar.gz \
-            dist/horizon-source.tar.gz
+            ${macos[@]+"${macos[@]}"} dist/sunrise-server-linux-x86_64.tar.gz \
+            dist/sunrise-source.tar.gz dist/sunrise-release.json
       - uses: actions/upload-artifact@v7
         with:
           name: signature
@@ -241,7 +301,8 @@ jobs:
           retention-days: 3
 
   publish:
-    needs: [pick, build, sign]
+    needs: [pick, build, complete, sign]
+    if: ${{ !cancelled() && needs.complete.outputs.complete == 'true' && needs.sign.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -263,9 +324,9 @@ jobs:
           KIND: ${{ inputs.kind }}
         run: |
           key=(); [[ -n "$EPHEMERAL" ]] && key=(--key "$(cat dist/ephemeral.pub)")
-          cargo run --locked --quiet -p horizon-release-sign -- verify --repository "$GITHUB_REPOSITORY" --tag "$KIND" --publishing "${key[@]}" dist
+          cargo run --locked --quiet -p sunrise-release-sign -- verify --repository "$GITHUB_REPOSITORY" --tag "$KIND" --publishing "${key[@]}" dist
           # The version's own signature, which current launchers require: the title below names the same version.
-          cargo run --locked --quiet -p horizon-release-sign -- verify --repository "$GITHUB_REPOSITORY" --tag "${KIND}-${DATE}-${SHORT}" \
+          cargo run --locked --quiet -p sunrise-release-sign -- verify --repository "$GITHUB_REPOSITORY" --tag "${KIND}-${DATE}-${SHORT}" \
             --signature SHA256SUMS.v2.sig --publishing "${key[@]}" dist
       - name: Ready to publish (the smoke test drew a world, no release-blocker is open)
         # Right before publishing, as for a release: an issue labelled while the builds ran still holds it. A dry run
@@ -279,7 +340,7 @@ jobs:
           if ! python3 tools/release_train.py gate --kind game --smoke dist/smoke-test.json ${BLOCKERS:+--blockers}; then
             # The fork uses a dry run as release-readiness evidence: a missing/failed smoke
             # report must fail it, not produce a misleading green workflow.
-            [[ "$DRY_RUN" == true && "$GITHUB_REPOSITORY" != arismoko/horizon ]] || { echo "::error::Nothing published"; exit 1; }
+            [[ "$DRY_RUN" == true && "$GITHUB_REPOSITORY" != sunrise-org/sunrise ]] || { echo "::error::Nothing published"; exit 1; }
             echo "::warning::A real run would publish nothing"
           fi
       - name: Publish as the `nightly` pre-release
@@ -292,6 +353,7 @@ jobs:
           SOURCE_TAG: ${{ needs.pick.outputs.source_tag }}
         run: |
           set -euo pipefail
+          # Never a Nightly without its SDK (sdk-<sha>, published first): refused here before anything rotates.
           python3 tools/ci/nightly.py require-sdk "$SHA"
           python3 tools/ci/nightly.py rotate
           signature=(); [[ -f dist/SHA256SUMS.sig ]] && signature=(dist/SHA256SUMS.sig)
@@ -300,31 +362,45 @@ jobs:
           [[ "${SHA:0:7}" == "$SHORT" ]] || { echo "::error::the build's commit isn't the one signed"; exit 1; }
           # The ARM64 archive only when its build succeeded (the sign job left it out of SHA256SUMS otherwise).
           arm64=()
-          if [[ -f dist/horizon-windows-arm64.zip ]]; then
-            arm64=("dist/horizon-windows-arm64.zip#Game files the launcher installs (Nightly): Windows ARM64 (horizon-windows-arm64.zip)")
+          if [[ -f dist/sunrise-windows-arm64.zip ]]; then
+            arm64=("dist/sunrise-windows-arm64.zip#Game files the launcher installs (Nightly): Windows ARM64 (sunrise-windows-arm64.zip)")
           else
-            echo "::warning::horizon-windows-arm64.zip is missing: the Nightly goes out without it (ARM64 launchers install the x64 build)"
+            echo "::warning::sunrise-windows-arm64.zip is missing: the Nightly goes out without it (ARM64 launchers install the x64 build)"
           fi
-          sdk=(); if [[ "$GITHUB_REPOSITORY" == arismoko/horizon ]]; then sdk=("dist/sdk.json#The mod SDK of this build (sdk.json; its files are the release sdk-$SHA)"); fi
+          sdk=(); if [[ -f dist/sdk.json ]]; then sdk=("dist/sdk.json#The mod SDK of this build (sdk.json; its files are the release sdk-$SHA)"); fi
           musl=()
-          if [[ -f dist/horizon-linux-musl-x86_64.tar.gz ]]; then
-            musl=("dist/horizon-linux-musl-x86_64.tar.gz#Game files for musl Linux (horizon-linux-musl-x86_64.tar.gz)")
+          if [[ -f dist/sunrise-linux-musl-x86_64.tar.gz ]]; then
+            musl=("dist/sunrise-linux-musl-x86_64.tar.gz#Game files for musl Linux (sunrise-linux-musl-x86_64.tar.gz)")
           else
-            echo "::warning::horizon-linux-musl-x86_64.tar.gz is missing: the Nightly goes out without it"
+            echo "::warning::sunrise-linux-musl-x86_64.tar.gz is missing: the Nightly goes out without it"
           fi
           # A pre-release, never GitHub's latest: the latest stays the last vX.Y.Z, which launchers and servers from
           # before the Nightly-only switch keep (they don't read Nightlies).
           python3 tools/ci/nightly.py require-sdk "$SHA"
+          macos=()
+          for archive in dist/sunrise-macos-arm64.zip dist/sunrise-macos-x64.zip; do
+            if [[ -f "$archive" ]]; then macos+=("$archive"); fi
+          done
+          # Every optional build that is missing (the sign job left it out), named in the notes players read.
+          missing=()
+          for platform in "Windows ARM64:sunrise-windows-arm64.zip" "musl Linux:sunrise-linux-musl-x86_64.tar.gz" \
+              "macOS on Apple silicon:sunrise-macos-arm64.zip" "macOS on Intel:sunrise-macos-x64.zip"; do
+            [[ -f "dist/${platform#*:}" ]] || missing+=("$platform")
+          done
+          if (( ${#missing[@]} )); then
+            printf '\n## Not in this Nightly\n\nThese builds failed or did not finish, so this Nightly has no archive for them:\n\n'
+            for platform in "${missing[@]}"; do printf -- '- %s (`%s`)\n' "${platform%%:*}" "${platform#*:}"; done
+          fi >> dist/nightly-notes.md
           gh release create nightly --prerelease --latest=false --target "$SHA" \
             --title "Nightly $DATE · ${SHA:0:7}" --notes-file dist/nightly-notes.md \
-            "dist/horizon-linux-x86_64.tar.gz#Game files the launcher installs (Nightly): Linux (horizon-linux-x86_64.tar.gz)" \
+            "dist/sunrise-linux-x86_64.tar.gz#Game files the launcher installs (Nightly): Linux (sunrise-linux-x86_64.tar.gz)" \
             ${musl[@]+"${musl[@]}"} \
-            "dist/horizon-windows-x64.zip#Game files the launcher installs (Nightly): Windows (horizon-windows-x64.zip)" \
+            "dist/sunrise-windows-x64.zip#Game files the launcher installs (Nightly): Windows (sunrise-windows-x64.zip)" \
             ${arm64[@]+"${arm64[@]}"} ${sdk[@]+"${sdk[@]}"} \
-            "dist/horizon-macos-arm64.zip#Game files the launcher installs (Nightly): macOS on Apple Silicon (horizon-macos-arm64.zip)" \
-            "dist/horizon-macos-x64.zip#Game files the launcher installs (Nightly): macOS on Intel (horizon-macos-x64.zip)" \
-            "dist/horizon-server-linux-x86_64.tar.gz#Nightly dedicated server for Linux (horizon-server-linux-x86_64.tar.gz)" \
-            "dist/horizon-source.tar.gz#Source of this Nightly, commit ${SHA:0:7} (horizon-source.tar.gz; kept for good as the tag $SOURCE_TAG)" \
+            ${macos[@]+"${macos[@]}"} \
+            "dist/sunrise-server-linux-x86_64.tar.gz#Nightly dedicated server for Linux (sunrise-server-linux-x86_64.tar.gz)" \
+            "dist/sunrise-source.tar.gz#Source of this Nightly, commit ${SHA:0:7} (sunrise-source.tar.gz; kept for good as the tag $SOURCE_TAG)" \
+            "dist/sunrise-release.json#What this build is, for launchers (sunrise-release.json)" \
             dist/SHA256SUMS "${signature[@]}" dist/smoke-test.json
           python3 tools/ci/nightly.py keep-source "$SHA" "$DATE"
           python3 tools/ci/nightly.py prune --days 7
@@ -343,8 +419,8 @@ jobs:
           [[ "${SHA:0:7}" == "$SHORT" && "$TAG" == "snapshot-$DATE-$SHORT" ]] || { echo "::error::the build's commit isn't the one signed"; exit 1; }
           # Archive presence records what was actually built, not an unsupported platform promise.
           printf '\n## Platform build results\n\n' >> dist/nightly-notes.md
-          for archive in horizon-linux-x86_64.tar.gz horizon-server-linux-x86_64.tar.gz horizon-windows-x64.zip \
-              horizon-macos-arm64.zip horizon-linux-musl-x86_64.tar.gz horizon-windows-arm64.zip horizon-macos-x64.zip; do
+          for archive in sunrise-linux-x86_64.tar.gz sunrise-server-linux-x86_64.tar.gz sunrise-windows-x64.zip \
+              sunrise-macos-arm64.zip sunrise-linux-musl-x86_64.tar.gz sunrise-windows-arm64.zip sunrise-macos-x64.zip; do
             if [[ -f "dist/$archive" ]]; then
               printf -- '- Built: `%s`.\n' "$archive"
             else
@@ -382,6 +458,17 @@ jobs:
           # Earlier attempts of this same run have no remaining consumers either.
           for ((attempt=1; attempt<=GITHUB_RUN_ATTEMPT; attempt++)); do
             ref="nightly/dry-run-${GITHUB_RUN_ID}-${attempt}"
+            # DELETE returns 422 for a ref never created (for example, pick refused the base).
+            status=$(curl --silent --show-error \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header 'Accept: application/vnd.github+json' \
+              --output "$RUNNER_TEMP/dry-ref-cleanup.json" --write-out '%{http_code}' \
+              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/ref/heads/$ref")
+            case "$status" in
+              404) echo "Temporary ref $ref already absent"; continue ;;
+              200) ;;
+              *) echo "Temporary ref lookup failed: HTTP $status"; exit 1 ;;
+            esac
             status=$(curl --silent --show-error --request DELETE \
               --header "Authorization: Bearer $GH_TOKEN" \
               --header 'Accept: application/vnd.github+json' \
@@ -397,8 +484,8 @@ jobs:
     # Tells the thread that asked for this build how it ended. A conflict `pick` already explained there.
     needs: [pick, build, sign, publish]
     if: always() && inputs.issue != '' && needs.pick.result == 'success'
-    # One comment, no checkout and no secret: one of our small runners (label horizon-light, docs/ci-runners.md).
-    runs-on: ${{ (vars.DYNA_CI_SELF_HOSTED == 'true' && vars.NIGHTLY_BOOKKEEPING_RUNNER && fromJSON(vars.NIGHTLY_BOOKKEEPING_RUNNER)) || (vars.SELF_HOSTED_CI != 'off' && fromJSON('["self-hosted", "linux", "horizon-light"]')) || 'ubuntu-latest' }}
+    # One comment, no checkout and no secret: one of our small runners (label sunrise-light, docs/ci-runners.md).
+    runs-on: ${{ (vars.DYNA_CI_SELF_HOSTED == 'true' && vars.NIGHTLY_BOOKKEEPING_RUNNER && fromJSON(vars.NIGHTLY_BOOKKEEPING_RUNNER)) || (vars.SELF_HOSTED_CI != 'off' && fromJSON('["self-hosted", "linux", "sunrise-light"]')) || 'ubuntu-latest' }}
     timeout-minutes: 5
     permissions:
       issues: write

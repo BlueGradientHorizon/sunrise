@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """The wire_loopback test root gains no module line and no test.
 
-crates/horizon-mod-wasm/wire-loopback/build.rs declares one module per file of its tests/wire_loopback/, so
+crates/sunrise-mod-wasm/wire-loopback/build.rs declares one module per file of its tests/wire_loopback/, so
 the root may not name one of them with a hand-written `#[path = "wire_loopback/..."]` line, and its number of
 `#[test]` attributes may not exceed the number at the branch's merge base. Independent pull requests that each
-appended to the root kept conflicting; a file of their own does not. The target's old place in horizon-mod-wasm's
+appended to the root kept conflicting; a file of their own does not. The target's old place in sunrise-mod-wasm's
 tests/ may not come back: nothing compiles a file there, so a test carried to it would vanish silently. The guest's one
 `Hooks` object is assembled by build.rs from the folder's files: a feature writes its hook methods in
 `impl <Feature>Hooks { pub(super) fn <hook>(&self, ..) }` (inherent, on a unit struct of its own file) and never hand-writes `impl Hooks for Mod`
-or a second `__horizon_mod_hooks`. `register` is the one method several files may define; they run
+or a second `__sunrise_mod_hooks`. `register` is the one method several files may define; they run
 in file-name order. Without
 --base the test count is not checked (main's pushes have nothing to compare with).
 
@@ -28,16 +28,16 @@ _spec = importlib.util.spec_from_file_location("merge_base", ROOT / "tools" / "m
 merge_base = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(merge_base)
 
-ROOT_FILE = "crates/horizon-mod-wasm/wire-loopback/tests/wire_loopback.rs"
-FOLDER = "crates/horizon-mod-wasm/wire-loopback/tests/wire_loopback/"
+ROOT_FILE = "crates/sunrise-mod-wasm/wire-loopback/tests/wire_loopback.rs"
+FOLDER = "crates/sunrise-mod-wasm/wire-loopback/tests/wire_loopback/"
 ADVICE = f"add {FOLDER}<topic>.rs; it is discovered"
-RETIRED = ("crates/horizon-mod-wasm/tests/wire_loopback.rs", "crates/horizon-mod-wasm/tests/wire_loopback")
+RETIRED = ("crates/sunrise-mod-wasm/tests/wire_loopback.rs", "crates/sunrise-mod-wasm/tests/wire_loopback")
 MODULE_LINE = re.compile(r'#\[path\s*=\s*"wire_loopback/')
 HOOKS_ADVICE = (f"put the hook methods in `impl <Feature>Hooks {{ pub(super) fn <hook>(&self, ..) }}` (a unit struct of that file) in "
                 f"{FOLDER}<topic>.rs; build.rs assembles the one Hooks object (`register` is the one method several "
                 "files may define; they run in file-name order)")
 IMPL_HOOKS = re.compile(r"^\s*impl(?:<[^>]*>)?\s+(?:[\w:]*::)?Hooks\s+for\s+(\w+)", re.M)
-HAND_EXPORT = re.compile(r"__horizon_mod_hooks")
+HAND_EXPORT = re.compile(r"__sunrise_mod_hooks")
 TEST = re.compile(r"^\s*#\[test\]", re.M)
 
 
@@ -59,7 +59,7 @@ def hook_problems(name, text, is_root):
         match = IMPL_HOOKS.match(line)
         if match and (match.group(1) == "Mod" or match.group(1).endswith("Hooks")):
             found.append(f"{name}:{number}: hand-written `impl Hooks for {match.group(1)}`; {HOOKS_ADVICE}")
-        if HAND_EXPORT.search(line) and not (is_root and "fn __horizon_mod_hooks() -> Box<dyn Hooks>" in line):
+        if HAND_EXPORT.search(line) and not (is_root and "fn __sunrise_mod_hooks() -> Box<dyn Hooks>" in line):
             found.append(f"{name}:{number}: hand-written hooks export; {HOOKS_ADVICE}")
     return found
 
@@ -95,7 +95,7 @@ def main(argv=None):
             return 1
         fork_point = merge_base.git("merge-base", base, "HEAD").strip()
         # The root's path at the merge base: its own, or the one it was renamed from since.
-        renames = merge_base.git("diff", "--name-status", "-M", "--diff-filter=R", fork_point, "HEAD")
+        renames = merge_base.git("diff", "--name-status", "-M", "-l0", "--diff-filter=R", fork_point, "HEAD")
         old = next((line.split("\t")[1] for line in renames.splitlines() if line.split("\t")[-1] == ROOT_FILE),
                    ROOT_FILE)
         shown = subprocess.run(["git", "show", f"{fork_point}:{old}"], capture_output=True, encoding="utf-8", cwd=ROOT)

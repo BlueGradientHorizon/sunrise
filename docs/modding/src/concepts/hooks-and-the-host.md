@@ -23,6 +23,23 @@ What a hook's return value means depends on its kind:
 
 A hook with no receiver gets no `Host`.
 
+## Player tick hooks
+
+`player_tick_pre` and `player_tick_post` bracket the player's body tick on both
+logical sides. On the server, neither hook fires for a spectator whose bounds
+touch an unloaded chunk: that player's body tick is skipped. Connection and
+level upkeep and outgoing state updates still run. The server resolves whether
+the body runs before the pre hook; a listener changing the player's position
+does not change that decision for the current tick.
+
+## Entity tick hooks
+
+`entity_tick_pre` and `entity_tick_post` version 3 observe additional entity families, including
+server players, named projectiles, displays and other entities the server keeps without simulation.
+Whether a call represents one entity or a family depends on the tick route and the types named in
+registration. Keep cancellations within the current Pre call. The player connection body remains
+separate from the server-side entity tick, and the local client avatar is not observed by these hooks.
+
 ## Explosion membership
 
 `explosion_detonate` version 2 exposes mutable `blocks` and `entities` lists
@@ -38,6 +55,32 @@ earlier separate passes, while frames and other decorations run last in storage
 order. Block positions are shuffled before destruction. An empty entity list
 spares direct entity effects, not indirect consequences of destroying support
 blocks. With no subscriber the game does not build a target list.
+
+## Liquid containers
+
+A `BlockPart` can implement `can_place_liquid` to let its block accept fluid without inheriting a
+waterloggable template. Return `Some(true)` to accept as a container, `Some(false)` to refuse as a
+container, or `None` to keep the template's rule. A bucket can still replace a replaceable block or
+try the neighbouring cell. The read-only query hears both sides of bucket use, and server
+spreading and dispensers. A player's bucket lends that player as `user`; the fluid utility lends
+its optional player. Spreading and dispensers don't lend a user.
+
+`place_liquid` is the server write: return `Some(true)` after storing the fluid and scheduling any
+needed tick, `Some(false)` if it was not placed, or `None` to pass to the next part, then the template.
+The first `Some` wins. Buckets supply a source state; spreading supplies the arriving state. Live
+structure templates restore the displaced fluid or a neighbouring source, without calling
+`can_place_liquid`. A normal bucket still empties if the container returns false; a validated
+fluid-container operation fails instead.
+
+Player buckets and the fluid utility journal each part's writes separately: a false answer or
+fallthrough discards its writes before the next part or the template can see them. Root commit
+applies only the final state at each changed position, not the intermediate states. If any committed
+write there requested a neighbour, client or immediate update, that request survives; shape
+updates, drops and other effects are suppressed only if all writes there suppressed them. Aborted
+writes do not contribute. Dispensers, spreading and live structure restores use a direct host;
+parts on these paths must not write before returning `None` or false. If a mod transaction is open,
+these paths skip the part and log the refusal, leaving the template's answer. Both hosts calculate
+`container_signal` from stored slots without generating deferred loot.
 
 ## Saving and game events
 
@@ -55,7 +98,7 @@ To emit a vibration-producing game event, use `level.game_event(host, event, at,
 its own crate:
 
 ```rust,ignore
-#[mod_api::horizon_mod]
+#[mod_api::sunrise_mod]
 impl Hooks for Protection {
     // Runs before mods at the default priority, 0; higher runs first.
     #[listener(priority = 100)]
@@ -64,7 +107,7 @@ impl Hooks for Protection {
     }
 }
 
-#[mod_api::horizon_mod]
+#[mod_api::sunrise_mod]
 impl Hooks for Override {
     // Receives cancelled events and may clear cancellation.
     #[listener(priority = -100, receive_cancelled)]
@@ -94,7 +137,7 @@ Each hook method takes its host, where it has one, and one event:
 ```rust,ignore
 fn living_incoming_damage(
     &self,
-    _level: &mut dyn LevelRandomHost,
+    _level: &mut dyn HitHost,
     event: &mut LivingIncomingDamageEvent<'_>,
 ) -> Flow {
     if event.kind == "minecraft:pig" {
@@ -104,6 +147,12 @@ fn living_incoming_damage(
     Flow::Continue
 }
 ```
+
+For incoming damage, `event.weapon` is the direct entity's weapon, including a projectile's
+saved firing weapon. `event.causing_weapon` is instead the causing living entity's current
+main-hand weapon (`DamageSource.getEntity().getWeaponItem()`): an off-hand crossbow shot can
+name the saved crossbow in `weapon` and the shooter's main-hand sword in `causing_weapon`.
+An absent, unknown or non-living cause has no `causing_weapon`.
 
 The event is a generated struct named after the catalog hook, in CamelCase plus `Event`, with
 the hook point's arguments as public fields: values as values and borrowed ones as references (`event.kind`). A
@@ -125,8 +174,51 @@ the same mod: for example, `LevelRef::set_block` fires `block_changed`. Mods kee
 state with interior mutability so these calls can share the instance safely. Data-load
 hooks can run on any loading thread; item default changes must be identical on every side.
 
+## Which thread runs a hook
+
+Most hooks run on the thread that ticks their side: the server thread for a server hook, the window's thread for a
+client hook. Single player has both in one process, so one mod instance is called from two threads. Some hooks and
+Part methods run elsewhere, and each one's own documentation says where:
+
+- **Worldgen workers.** While chunks generate, the methods of a structure type, feature type, biome source or chunk
+  generator that place or sample the world, and the hooks fired while a feature generates, run on the worldgen
+  worker threads, several chunks at once. Feature placement also runs on the server thread when the game places a
+  feature there: a sapling growing, a command, `LevelRef::place_feature`. A query asked once at start, such as
+  `BiomeSource::possible_biomes`, is not a worker call. They get a `WorldgenHost` or no host at all, never a `Host`.
+- **Meshing workers.** `add_section_geometry` itself runs once at client start, to register renderers; each
+  renderer's `SectionGeometry::add` then runs on the renderer's meshing workers every time a section is meshed. A
+  block tint source is asked there too, and also outside meshing, for example for terrain particles and blocks a
+  piston moves. Both get no host.
+- **Chunk workers.** `chunk_data_load` and `chunk_data_save` run where a chunk's record is decoded or encoded, with a
+  restricted host.
+- **Loading threads.** Data-load hooks run on whichever thread loads the data.
+
+What follows for a mod's state:
+
+- A `thread_local!` holds one value per thread, not per game or per world. A value written on the server thread is
+  not there on a worldgen worker, and the window's thread has its own. Keep shared state in the mod's own fields
+  behind a lock or an atomic, or on the object it belongs to as an [attachment](attachments.md).
+- Do not hold a lock across a host call. A write through the host can fire another hook of the same mod on the same
+  thread (`LevelRef::set_block` fires `block_changed`), and that hook then waits for the lock its caller holds.
+  Copy what you need out, release the lock, then call the host.
+- A worker's call can run at the same moment as a tick hook. Data a worker reads belongs in an immutable value
+  swapped as a whole, or behind a read-write lock. A lock makes the access safe, not the result right: worldgen
+  must give the same chunk for the same seed whatever the order of calls, and a section geometry renderer or tint
+  source must answer from its arguments and immutable data fixed at registration, as their own documentation requires. Mutable state does not belong in them.
+
 `Hooks` contains global hooks. Scoped hooks belong to `BlockPart`, `BlockEntityPart`,
 `ItemPart`, `MenuPart` or `FluidPart` and run for the registered object.
+
+## Item tooltip context
+
+The item's `tooltip` hook (`Item.appendHoverText`) receives `event.context`, a
+borrowed `TooltipAppendContext`. Component `TooltipAppender::append` callbacks
+receive the same context: local player identity, `advanced` (F3+H), `creative`
+(creative-tab slot), `nested` (a loaded crossbow projectile), and `tick_rate`.
+The rate follows vanilla 26.3's `Item.TooltipContext.tickRate()`: the current
+client level's tick-rate manager, or 20 when no level is present. It is not
+measured TPS or the frame rate. The item hook still does not fire for nested
+projectiles or hidden tooltips; adding context does not change line ordering.
 
 ## Level hosts
 
@@ -139,10 +231,10 @@ for an unknown state; `min_y()` and `height()` read the level's build range. It 
 and `is_loaded(pos)` (`Level.isLoaded`: inside the build height and in a loaded chunk),
 `is_raining_at(pos)` (`Level.isRainingAt`, false where `pos` is not loaded) and `enabled_features()`
 (`LevelReader.enabledFeatures`, a borrowed `FeatureFlags<'_>`). These queries do not allocate.
-None of them loads a chunk. Light above the build height reads as full sky and below it as
-none, and a chunk that isn't loaded reads as the game's query does (full sky, no block light),
-so check `is_loaded` first. It also answers tag and fluid questions without a `Host`: `block_in_tag(block_key, tag)`,
-`fluid_state(pos)` (`getFluidState`, `None` where the block read is),
+None of them loads a chunk. The raw light query supplies defaults (including full sky in a
+missing column), so check `is_loaded` first when you need a resident block. `LevelHost` also answers
+tag and fluid questions without a `Host`: `block_in_tag(block_key, tag)`, `fluid_state(pos)`
+(`getFluidState`, `None` where the block read is),
 `state_fluid_state(state)` and `fluid_in_tag(fluid_name, tag)`. Fluid reads return `FluidState` with a
 `FluidKey`, amount, falling flag and engine-derived source flag; `is_empty()` and `is_source()` report
 those states without a registry lookup. `block_state_id(name)` parses a block and properties, and `block_state_default(block)` gives a block's default state, as on `Host`; both return `None` for invalid input or unavailable context. Tag reads are `None` when authoritative tags are unavailable, including on a client before its server's tags are applied. For item membership and member lists, use `Host::tags()`: resolve a `TagKey` with `Tags::key`, then call `Tags::is_in_tag`, `Tags::items` or `Tags::fluids`. Membership reads return `None` on clients until server-sent tags are applied, which `tags_updated` announces; they never substitute local resource-pack tags.
@@ -153,12 +245,112 @@ load or reload, and `ClientPacketReceived { integrated_server }` for a client's 
 integrated client, whose server already updated the shared static data. Installing client tags
 announces the bound defaults; it does not rebind those defaults.
 
+`block_face_sturdy(pos, face, support)` reads `BlockState.isFaceSturdy` through the same engine
+query as the level handle. It uses the server level's or current client level's local shapes,
+including dynamic and published shapes, and returns `None` for unloaded or out-of-height
+positions. `canSupportRigidBlock` is `(pos, Up, Rigid)`. `canSupportCenter` is `(pos, face, Center)`,
+except that vanilla also refuses `Down` on blocks tagged `minecraft:unstable_bottom_center`.
+
+`can_see_sky(pos)` tests the published sky light for 15, not the heightmap or block light. It
+returns false everywhere in a dimension without skylight. In vanilla, sky light can be stored in
+padding sections above and below build height. Above the highest stored section, or in a column
+with no stored sections, there is full sky. A missing section below a stored one repeats the
+bottom row of the next stored section above it. An unloaded column beside non-air sections can
+have retained light in that band: the server reads its last light there and the client has no
+full sky there.
+
+**Known gap ([#2761](https://github.com/sunrise-org/sunrise/issues/2761)):** In skylit dimensions,
+Sunrise reads the resident column's allocated sections, with full sky above them and in every
+missing column, and darkness below them, instead of tracking vanilla's padding and unloaded border.
+
+Both reads return `None` in callbacks without the corresponding view. A `LevelRef` must still
+name an open server level or the current client level. Neither read loads chunks or opens loot
+containers. Both require the owning game thread, not a worker-thread hook body.
+
+`block_entity(pos)` reads this level's block entity without loading a chunk; it returns `None` when absent, unloaded or out for its tick. On a client it returns only the local block entity handle. `container_size(at)` and `container_stack(at, slot)` are the same side-local capability snapshots as `ItemsHost` supplies; neither generates unopened loot, and both refuse clients and unloaded positions. `BlockEntityPartState::state_in(level, entity)` and `state_existing_in` read the same attachment snapshots as their `Host` equivalents, without inserting a default, generating loot or loading chunks. Unloaded or stale holders fail; clients have no server Part state. All are owning-game-thread reads, never available in worker hook bodies.
+
+`LevelRandomHost::container_signal(pos)` is the engine comparator container read. Unlike the immutable slot snapshot, it generates unopened loot once, as vanilla's `getItem` does, then calculates 0 to 15 using each stack's maximum size. It returns `None` on clients and unloaded positions, never loads a chunk, and runs only on the owning game thread. `analog_output` version 2 receives this mutable host so the loot generation and random draws happen in vanilla order; it permits no other world edit.
+
+Redstone and shape reads on `LevelHost`, for placement and survival: `signal(pos, direction)`
+(`SignalGetter.getSignal`), `direct_signal`, `direct_signal_to`, `best_neighbor_signal(pos)`,
+`has_neighbor_signal(pos)` (what a lamp's or a door's placement reads) and `collision_shape(pos)` (the block's
+collision boxes at `pos`, block-local, a block entity's published shape included, empty for no collision, `None`
+for an unloaded position). The signal reads are the game's own, `block_signal` and `should_check_weak_power`
+listeners included, and are the same ones `LevelRef` and the tick hooks give. `state_for_placement` and
+`can_survive` receive a level that answers them, so a block can place or survive by what powers it or what shape
+sits beside it. The levels of `state_for_placement`, `can_survive` and the level tick and shape-update hooks answer all of them;
+the levels other callbacks get (a damage hit's, a part's read view) may return `None` for any of them, signal reads
+and `collision_shape` alike.
+A signal read never asks `state_for_placement` or `can_survive`, so it cannot re-enter the hook it was read in.
+On a client (its placement prediction and its own shape updates ask `state_for_placement`, `can_survive`,
+`may_place_on` and `can_sustain_plant` too) these reads answer from the client's loaded copy of the level, and the
+reads above that refuse clients return `None`, as do `block_in_tag` and `fluid_in_tag`. `tags()` still returns a
+service: `Tags::key` can resolve a key, but membership (`is_in_tag`) and member lists (`items`, `fluids`, `blocks`)
+return `None` in this view. `BlockEntityPartState::state_in` gives its default there. Never answer from those as if
+they were the server's: a client's own shape update that refuses a block removes it on that client.
+`LevelTicksHost`'s signal reads moved here and now return `Option`.
+
+Before a block's placement state is selected, `ItemPart::placement_context` replaces the item's
+`BlockItem.updatePlacementContext` rewrite: `Some(Some(context))` rewrites the target and click,
+`Some(None)` refuses, and `None` runs vanilla (including scaffolding's column walk). The placing
+item cannot change, click and view values must be finite, and the target must be within bounds.
+Replaceability is checked before the rewrite, not again on its answer. `BlockPart::state_for_placement`
+then selects the candidate, which may be a registered state of another block. The game uses that
+candidate for survival, obstruction, and the written-block check that gates item data and placed-by
+callbacks. The held item does not change, and its double-height pre-clear still runs if applicable.
+Selecting a different block does not run that block's `getStateForPlacement`. If that block places a
+companion, the mod must check its footprint: `setPlacedBy` can overwrite the companion cell without
+rechecking it, and failing to write the companion does not refund the item. Sunrise additionally
+requires creative-operator permission when a mod selects a game-master block. At the final `BlockItem.canPlace`
+check, `ItemPart::must_survive` decides whether placement must pass `can_survive`: `Some(false)`
+skips it, `Some(true)` requires it, and `None` keeps vanilla (scaffolding false, other block items
+true). Standing/wall items retain their own unconditional candidate-survival checks. Entity
+obstruction is still checked. Both hooks run on both sides with
+a read-only `LevelSide`, dispatched by item id. These events have no stack yet: they decide from
+the item and level, not held components. Player and dispenser placement offer the resolved decision
+once to `entity_place`; a veto stops all writes, including a double-height item's pre-clear, and
+keeps the stack. If a listener changes the placement inputs, it is refused rather than retargeted.
+The veto's placement neighbour and the post-placement notice use the resolved face,
+and the notice uses the resolved click location. Neither changes the sides of the block placement or
+survival hooks.
+
+`level.state_for_placement(host, block, &context)` takes `&mut dyn ServerHost` and queries only
+the level in play. It runs the block's `Block.getStateForPlacement`, including its
+`state_for_placement` parts, without resolving the click again or placing anything. The caller
+owns the `ServerHost`; the Part still sees only its restricted `LevelHost` through `LevelSide`.
+The context's item is a registry key, not a stack or its components. The method returns
+`Result<Option<BlockState>, LevelReadError>`. `Ok(Some(state))` gives the candidate before item
+placement's additional survival, obstruction and permission checks. `Ok(None)` means there is no
+candidate or a placement input was refused. A stale handle or closed level returns `Err(LevelReadError::Stale)`; a parked level,
+an unavailable host or load phase, or a state the API cannot represent returns
+`Err(LevelReadError::Unavailable)`. A camouflage block can use this read to store a held block's
+placement state, such as a stair's facing or a log's axis.
+
+A neighbour's `BlockPart::fence_gate_in_wall` answers whether a fence gate sits at wall height
+beside that state. It runs on both sides at placement and shape updates, with a read-only `LevelSide`:
+`Some(true)` counts as a wall, `Some(false)` does not, and `None` keeps the `minecraft:walls` tag
+check. It changes only the gate's `in_wall`, not wall connections or pathfinding.
+
+`BlockPart::is_possible_to_respawn_in` answers the forced respawn column's space check on the
+server, with a read-only host. If no bed or anchor rule handles the spawn, the server asks for
+both the saved point and the block above. This includes a bed or anchor at which spawn cannot be
+set. `Some(true)` accepts that state, `Some(false)` rejects it, and `None` keeps vanilla's predicate.
+It does not select a bed or anchor's stand-up position; `respawn_position` handles those.
+
 `LevelHost` has no random access: a draw from a read-only hook inside a level write would shift the level's random sequence away from vanilla's order. A hook that may draw is given a `LevelRandomHost`.
 `LevelRandomHost` provides vanilla's `Level.random` so
 mod draws come in vanilla's order. `LevelTicksHost` adds scheduling through
 `schedule_block_tick` and `schedule_fluid_tick`, while
 `LevelWriteHost` adds random access, `set_block`, `set_block_property`, `play_sound` and
 `send_particles` and `level_event` (`levelEvent`, queued in order with the write's own events).
+A damage hit's listeners (`living_incoming_damage`, `living_damage_pre`, `living_damage_post`,
+`living_shield_block`, `living_use_totem`) are given a `HitHost`: a `LevelRandomHost` that also plays level
+sounds and draws from an entity's own random, and writes no block. `host.play_sound_at(sound, at, source,
+volume, pitch)` is `Level.playSound(null, x, y, z, ...)` and `host.play_sound_from(entity, ...)` is
+`Level.playSound(null, entity, ...)`: every player in range hears it, and a cancelled hit still plays what was
+queued. The seed is drawn at the call from the level's sound-seed stream, not from the level's random.
+`entity.next_float(host)`, `next_double`, `next_bool` and `next_int(host, bound)` draw from the entity's actual
+random stream, in listener order. A hit lends its attacker where the game applies a melee hit (the attacking player or mob, for player → mob, mob → mob and mob → player) and no entity at any other damage site (environment, projectiles, explosions, potions and the like); the attacking mob's own random is the one its AI draws from, and a hit built inside a mob's own tick lends none. Any other entity, a stale handle, a client and an out-of-range `bound` answer `None` (`false` for a sound).
 Outside a write, a `LevelRef` plays level events, and their global form for every player on the server
 ([Playing level events](../how-to/world/level-events.md)).
 `set_block(pos, state, flags)` is `Level.setBlock` on a whole state, as `LevelRef::set_block` takes it: it
@@ -174,9 +366,21 @@ the tick queue; mods do not pass it back to these helpers.
 
 Frame drawing through `DrawContext`, `BlockEntityDrawContext` and `WorldDrawContext` stays
 in `mod_api`. Raw GPU access is native-only, unstable and outside that API, in
-`mod_render::render` (`horizon-mod-render`). Replace its frame functions with native HEAD mixins compiled against the prebuilt game.
+`mod_render::render` (`sunrise-mod-render`). Replace its frame functions with native HEAD mixins compiled against the prebuilt game.
 `render_needs` collects requests; `world_drawn` runs before the hand and HUD, and
 `hand_drawn` runs after the hand, on the render thread. Use API draw contexts for API-typed drawing.
+
+## After a hook that can change the world
+
+A listener of a hook that gets a mutable host may remove, move or change objects. After such a hook
+returns without cancelling, the game does not use the list position or the state it worked out before
+the hook. It finds the object again by its entity id, checks the facts the action was decided on, and
+abandons the action if the object is gone or a fact changed; it never works the action out again. The
+hook still fires at its usual moment, and the check runs straight after it returns, before anything
+moves. Stack checks are shallow: they compare the item id and the count, not components. Each hook's
+doc names what it checks (`armor_stand_manipulate`, `entity_mount`, `cauldron_level_changed`,
+`hanging_break`, `player_shear_entity`, `living_change_target`). The effect writes on a living handle
+treat a mob that is marked removed but still listed as absent: they return false and change nothing.
 
 ## Hooks and injections
 

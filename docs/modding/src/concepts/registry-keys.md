@@ -16,17 +16,34 @@ Keys identify entries for the running mod load, not persistent data. Persist can
 and property strings rather than registration slots or state ordinals. Reload preserves key identity;
 world numeric mappings and tag membership are separate reloadable data.
 
+## Item registry numbers
+
+`ItemKey::registry_id(host)` returns `Option<u32>` on either side and on both targets.
+This is the number the game uses for dropped-item scatter seeds, not the key's opaque slot.
+It returns `None` before registry completion or for an unresolved item. It reads this side's
+prepared registry, with mod items numbered after vanilla in content-plan order. A connected
+client still uses its local prepared numbering: these numbers are not synced by the server.
+
+Use `host.registry_protocol_id(registry, name)` when reading or writing a raw packet.
+That answer is tied to a connection and may be unavailable without one, even when
+`ItemKey::registry_id(host)` can return the local rendering number.
+
+Numbers are stable only within that game session. Save and send identifiers, never numbers.
+Add the stack's damage separately when reproducing vanilla's nonempty stack scatter seed.
+
 ## Entity-type reads
 
 `EntityRef::kind(host)` and the handles that delegate to it return
 `Option<EntityTypeKey>`, using the existing entity-type registry. The key is a
 copyable scalar on native and wasm; compare it with a retained key instead of
 allocating and comparing a type-name string on every read. A stale or missing
-entity still returns `None`. There is no separate equipment-only type read.
+entity still returns `None`. A native general row returns its declared type.
+There is no separate equipment-only type read.
 
 After the registry is available, resolve the type keys your Part needs once and
-retain them. `host.entity_type_keys()` enumerates that registry; `key.id(host)`
-explicitly requests its canonical namespaced name. Name resolution returns an
+retain them. `host.entity_type_keys()` enumerates built-in and content types in
+registry order, then native general types by declaring mod and type id.
+`key.id(host)` explicitly requests its canonical namespaced name. Name resolution returns an
 owned diagnostic string and can allocate. Persist the name, never the scalar slot.
 For example, retain the zombie key at setup, then compare
 `entity.kind(host) == Some(zombie_key)` in a predicate.
@@ -200,7 +217,7 @@ Use API-owned values rather than importing engine or package-loader types.
 | `Suggestion` | Construct with `Suggestion::new((start, end), text)`. Offsets are bytes; `tooltip` and `int_value` are writable. |
 | `Block`, `Item` | Registration declarations. Component patches are `(String, Option<Tag>)` entries; `None` removes a component. Content-file admission checks apply. |
 | `BlockEntityTypeDecl` | Declaration snapshot produced by `r.block_entity_type(...).build()`. |
-| `GuiDraw` | GUI commands; `DrawContext::gui_paint` returns a typed text-conversion result. Handle refusal before drawing. HUD hooks reject invalid writeback as a whole. |
+| `GuiDraw` | GUI commands; `DrawContext::gui_paint` returns a `GuiPaintError` naming the op it could not draw (text conversion, an item slot, a texture or sprite), and draws nothing of that buffer. HUD hooks reject invalid writeback as a whole. |
 
 `ServerHost::game_rule(id)` reads the one server-wide rule store without a
 `LevelRef`, including in `server_about_to_start` and `server_starting`.
@@ -327,10 +344,14 @@ error, never silently clamped. This is the same boundary on native and wasm. Con
 returns the remainder or `None`. There is no empty-stack sentinel. Component descriptors
 read and write an optional owned NBT patch; a plain stack has no patch allocation.
 
-`host.tags()` and a restricted level host's `tags()` expose the same `Tags` service. Resolve
-a validated identifier once with `tags.key(&identifier)` and retain its `TagKey`. The runtime
-owns tag-name slots for the process; reload replaces membership, not names or key identity.
-`tags.is_in_tag(item_key, tag_key)` tests merged item membership. `tags.items(tag_key)`
+Resolve and retain a `TagKey` during `Hooks::register` with `r.tag_key("minecraft:logs")`,
+for example when building a Part or a recipe kind. This works in native and WebAssembly mods.
+A bare name uses the `minecraft` namespace; an invalid name refuses the mod at load.
+`host.tags()` and a restricted level host's `tags()` expose the same `Tags` service. Later,
+`tags.key(&identifier)` resolves the same key from a validated identifier. Naming a tag does
+not require it to have any members. Item, block and fluid tags share one name table; the
+membership method chooses the registry. Reload replaces membership, not key identity.
+`tags.is_in_tag(item_key, tag_key)` tests merged item membership. `tags.items(tag_key)`,
 `tags.blocks(tag_key)` and `tags.fluids(tag_key)` return registered keys in vanilla's member order. Unknown tags
 return false or empty lists. Clients read the tags sent by their server. Membership reads return `None` before
 authoritative tags are applied or if the relevant registry mapping is unavailable. Key resolution itself can be

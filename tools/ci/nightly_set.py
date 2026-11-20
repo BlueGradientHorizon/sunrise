@@ -36,10 +36,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-OWNER = "ludovic111"  # for messages only: who is Ludovic is decided by OWNER_ID
-# ludovic111's numeric GitHub ID (`gh api users/ludovic111 --jq .id`). None fails closed: nobody is the owner until
+OWNER = "UMCEKO"  # for messages only: who the owner is is decided by OWNER_ID
+# UMCEKO's numeric GitHub ID (`gh api users/UMCEKO --jq .id`). None fails closed: nobody is the owner until
 # tools/ci/resolve_reviewer_ids.py has filled it in.
-OWNER_ID: int | None = 136255825
+OWNER_ID: int | None = 11256132
 REVIEWERS = ".github/trusted-reviewers.txt"
 # The council (GOVERNANCE.md, section 11 step 2): every member has the owner's powers here (`/nightly clear` and
 # `remove` that stick, commands while the reviewers are paused, no triage limit). Same `<id> <login>` lines as the
@@ -47,8 +47,7 @@ REVIEWERS = ".github/trusted-reviewers.txt"
 COUNCIL = ".github/council.txt"
 CODEOWNERS = ".github/CODEOWNERS"
 # What CODEOWNERS guards today, refused even if the file moved: what builds, signs and checks releases.
-ALWAYS_GUARDED = ["/.github/", "/tools/ci/", "/crates/horizon-release-sign/", "/crates/horizon-server/src/update.rs",
-                  "/launcher/src/backend.rs", "/launcher/links.json"]
+ALWAYS_GUARDED = ["/.github/", "/tools/ci/", "/crates/sunrise-release-sign/", "/crates/sunrise-server/src/update.rs"]
 STATE_BRANCH = "nightly-state"
 BUILD_PREFIX = "nightly/build-"
 MAX_PRS = 30
