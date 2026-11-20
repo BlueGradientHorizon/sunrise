@@ -8554,7 +8554,7 @@ impl Game<'_> {
     /// Run a selected block method on a dry level (or both for a preview).
     /// ItemOn returns None for TryWithEmptyHand, with no dry changes, so the
     /// clicking client can ask the fallback Part at that boundary.
-    fn remote_block_template(
+    pub(super) fn remote_block_template(
         &mut self,
         hit: &super::Hit,
         state: BlockStateId,
