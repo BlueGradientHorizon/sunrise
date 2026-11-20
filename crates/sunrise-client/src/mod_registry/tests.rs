@@ -332,6 +332,49 @@ fn an_install_refuses_a_claim_through_a_symlinked_directory_before_download() {
     fs::remove_dir_all(home).unwrap();
 }
 
+#[cfg(unix)]
+#[test]
+fn an_install_accepts_a_mods_directory_linked_outside_the_home() {
+    let bytes = ruby("1.0");
+    let index = registry("1.0", &bytes, "file:///ruby.smod");
+    let home = scratch("linked-mods-home");
+    let shared_mods = scratch("linked-mods-destination");
+    std::os::unix::fs::symlink(&shared_mods, home.join("sunrise-mods")).unwrap();
+
+    install(&index, &home, "ruby", &serve(bytes.clone())).unwrap();
+    assert_eq!(fs::read(shared_mods.join("ruby.smod")).unwrap(), bytes);
+    let list = Installed::load(&home).unwrap();
+    assert_eq!(list.entries[0]["file"], "sunrise-mods/ruby.smod");
+    assert!(!home.join(".mod-browser.pending.json").try_exists().unwrap());
+    fs::remove_dir_all(home).unwrap();
+    fs::remove_dir_all(shared_mods).unwrap();
+}
+
+#[test]
+fn an_install_ignores_a_missing_unicode_name_in_an_unrelated_folder() {
+    let bytes = ruby("1.0");
+    let index = registry("1.0", &bytes, "file:///ruby.smod");
+    let home = scratch("missing-pack-claim");
+    fs::create_dir(home.join("resourcepacks")).unwrap();
+    let pack = serde_json::json!({"source": "modrinth", "project": "pack", "file": "resourcepacks/déjà.zip"});
+    Installed {
+        entries: vec![pack.clone()],
+    }
+    .save(&home)
+    .unwrap();
+
+    install(&index, &home, "ruby", &serve(bytes.clone())).unwrap();
+    assert_eq!(
+        fs::read(home.join("sunrise-mods/ruby.smod")).unwrap(),
+        bytes
+    );
+    let list = Installed::load(&home).unwrap();
+    assert_eq!(list.entries[0], pack);
+    assert_eq!(list.entries[1]["project"], "ruby");
+    assert!(!home.join("resourcepacks/déjà.zip").try_exists().unwrap());
+    fs::remove_dir_all(home).unwrap();
+}
+
 #[test]
 fn an_unreadable_manifest_is_not_treated_as_an_empty_installation() {
     let bytes = ruby("1.0");

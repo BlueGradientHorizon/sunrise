@@ -207,7 +207,7 @@ impl Installed {
     /// Checks that `file` can be used under this home and no other entry can claim it.
     /// Hold the home lock while checking and using the result.
     pub fn check_file_claim(&self, home: &Path, file: &str, id: &str) -> Result<(), String> {
-        let target = FileClaim::read(home, file).map_err(|e| format!("{file}: {e}"))?;
+        let target = FileClaim::target(home, file).map_err(|e| format!("{file}: {e}"))?;
         for entry in &self.entries {
             if owned_by(entry, id) {
                 continue;
@@ -216,7 +216,7 @@ impl Installed {
                 continue;
             };
             let title = entry["title"].as_str().unwrap_or("another mod");
-            let claim = FileClaim::read(home, other).map_err(|e| {
+            let claim = FileClaim::other(home, other).map_err(|e| {
                 format!("cannot compare {file} with {title}'s file claim {other:?}: {e}")
             })?;
             if target.conflicts_with(&claim) {
@@ -425,16 +425,20 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn a_symlinked_directory_cannot_claim_the_same_archive() {
-        let dir = tempfile::tempdir().unwrap();
-        let home = dir.path();
-        fs::create_dir(home.join("sunrise-mods")).unwrap();
-        fs::write(home.join(content_file("ruby")), b"old").unwrap();
-        std::os::unix::fs::symlink("sunrise-mods", home.join("alias")).unwrap();
-        assert_alias_refused(home, "alias/ruby.smod", true);
-        assert_eq!(
-            fs::read_link(home.join("alias")).unwrap(),
-            Path::new("sunrise-mods")
-        );
+        for target_exists in [true, false] {
+            let dir = tempfile::tempdir().unwrap();
+            let home = dir.path();
+            fs::create_dir(home.join("sunrise-mods")).unwrap();
+            if target_exists {
+                fs::write(home.join(content_file("ruby")), b"old").unwrap();
+            }
+            std::os::unix::fs::symlink("sunrise-mods", home.join("alias")).unwrap();
+            assert_alias_refused(home, "alias/ruby.smod", target_exists);
+            assert_eq!(
+                fs::read_link(home.join("alias")).unwrap(),
+                Path::new("sunrise-mods")
+            );
+        }
     }
 
     #[test]
@@ -446,11 +450,9 @@ mod tests {
             ("sunrise-mods/ruby.smod.", true),
             ("sunrise-mods/ruby.smod ", true),
             ("sunrise-mods/CON.txt", true),
-            ("sunrise-mods/rubý.smod", false),
-            ("sunrise-mods/RUBY~1.SMO", false),
+            ("sunrise-mods/rubý.smod", true),
+            ("sunrise-mods/RUBY~1.SMO", true),
             ("sunrise-mods/ruby.smod/other.smod", false),
-            ("../sunrise-mods/ruby.smod", true),
-            ("/sunrise-mods/ruby.smod", true),
         ] {
             let dir = tempfile::tempdir().unwrap();
             let home = dir.path();
@@ -476,20 +478,28 @@ mod tests {
     }
 
     #[test]
-    fn publication_accepts_a_distinct_claim_with_dot_components() {
+    fn publication_accepts_unrelated_claims() {
         let dir = tempfile::tempdir().unwrap();
         let home = dir.path();
         let _guard = lock_home(home).unwrap();
         fs::create_dir(home.join("sunrise-mods")).unwrap();
         let download = home.join("download.part");
         fs::write(&download, b"new").unwrap();
-        let other = serde_json::json!({ "file": "./sunrise-mods/../sunrise-mods/gem.smod" });
+        fs::create_dir(home.join("resourcepacks")).unwrap();
+        let unrelated = [
+            serde_json::json!({ "file": "./sunrise-mods/../sunrise-mods/gem.smod" }),
+            serde_json::json!({ "file": "resourcepacks/déjà.zip" }),
+            serde_json::json!({ "file": "resourcepacks/missing.zip. " }),
+        ];
         let mut list = Installed {
-            entries: vec![other.clone()],
+            entries: unrelated.to_vec(),
         };
         let row = serde_json::json!({ "source": "sunrise", "project": "ruby", "file": content_file("ruby") });
         list.publish(home, "ruby", &download, row.clone()).unwrap();
-        assert_eq!(Installed::read(home).unwrap().entries, [other, row]);
+        assert_eq!(
+            Installed::read(home).unwrap().entries,
+            [unrelated.to_vec(), vec![row]].concat()
+        );
         assert_eq!(fs::read(home.join(content_file("ruby"))).unwrap(), b"new");
         assert!(!home.join(PENDING).exists());
     }
