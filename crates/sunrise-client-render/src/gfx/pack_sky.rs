@@ -334,8 +334,16 @@ impl PackSky {
     /// fan while the sun is near the horizon, the sun and the moon, the stars and, with the
     /// camera low, the void. `tilt` is the pack's `sunPathRotation` (degrees): the sun, moon
     /// and stars turn with it (7.1). In the End under the dragon fight's fog, only the End's fan,
-    /// in the fog colour (`fogColor`), as stage SKY.
-    pub fn prepare(&self, queue: &wgpu::Queue, frame: &super::Frame, tilt: f32) -> Vec<Part> {
+    /// in the fog colour (`fogColor`), as stage SKY. A part the pack's `switches` turn off is left
+    /// out: `sky` the disc, the sunset fan, the void and the End's fan; `stars`, `sun` and `moon`
+    /// their own. The End's flash, in the sun's place there, stays.
+    pub fn prepare(
+        &self,
+        queue: &wgpu::Queue,
+        frame: &super::Frame,
+        tilt: f32,
+        switches: sunrise_shaders::SkySwitches,
+    ) -> Vec<Part> {
         let turn = super::pack_uniforms::tilt_matrix(tilt);
         let sun_angle = frame.sky.sun_angle.to_radians();
         // The fan turns to the other sunrise in the afternoon (terrain.wgsl's sunrise_weight).
@@ -390,19 +398,29 @@ impl PackSky {
             range,
         };
         if end_fan {
-            return vec![part("SKY", false, fan)];
+            return switches
+                .sky
+                .then(|| part("SKY", false, fan))
+                .into_iter()
+                .collect();
         }
-        let mut parts = vec![part("SKY", false, sky)];
-        if frame.sky.sunrise_color[3] > 0.001 {
+        let mut parts = Vec::new();
+        if switches.sky {
+            parts.push(part("SKY", false, sky));
+        }
+        if switches.sky && frame.sky.sunrise_color[3] > 0.001 {
             parts.push(part("SUNSET", false, sunset));
         }
-        for (i, stage) in ["SUN", "MOON"].into_iter().enumerate().take(quads.len()) {
-            parts.push(part(stage, true, i as u32 * 6..i as u32 * 6 + 6));
+        let bodies = [("SUN", switches.sun), ("MOON", switches.moon)];
+        for (i, (stage, on)) in bodies.into_iter().enumerate().take(quads.len()) {
+            if on || frame.end_sky {
+                parts.push(part(stage, true, i as u32 * 6..i as u32 * 6 + 6));
+            }
         }
-        if frame.stars.is_some() {
+        if switches.stars && frame.stars.is_some() {
             parts.push(part("STARS", false, stars));
         }
-        if frame.dark_disc {
+        if switches.sky && frame.dark_disc {
             parts.push(part("VOID", false, void));
         }
         parts
