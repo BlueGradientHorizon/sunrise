@@ -3613,6 +3613,40 @@ pub fn write_world_gen_settings(dir: &Path, seed: i64, options: WorldGen) -> Res
     write_world_gen_settings_with(dir, seed, options, None, None, None)
 }
 include!("save/preset_generation.rs");
+const VANILLA_FEATURE_FLAGS: [&str; 1] = ["minecraft:vanilla"];
+/// The effective feature flags stored by a level. Fresh and defaulted saves have vanilla's set.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FeatureFlagIds(Arc<[String]>);
+
+impl Default for FeatureFlagIds {
+    fn default() -> Self {
+        static VANILLA: std::sync::LazyLock<Arc<[String]>> =
+            std::sync::LazyLock::new(|| VANILLA_FEATURE_FLAGS.map(str::to_owned).into());
+        Self(Arc::clone(&VANILLA))
+    }
+}
+
+impl FeatureFlagIds {
+    /// Share the flag ids with views of this level without copying them.
+    pub fn as_arc(&self) -> &Arc<[String]> {
+        &self.0
+    }
+}
+
+impl std::ops::Deref for FeatureFlagIds {
+    type Target = [String];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T: Into<Arc<[String]>>> From<T> for FeatureFlagIds {
+    fn from(ids: T) -> Self {
+        Self(ids.into())
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Level {
     pub name: String,
@@ -3689,10 +3723,9 @@ pub struct Level {
     /// `DataPackConfig` (Create World's Data Packs and Experiments): the
     /// enabled and disabled pack ids. Unset keeps vanilla's defaults.
     pub data_packs: Option<(Vec<String>, Vec<String>)>,
-    /// `WorldDataConfiguration`'s `enabled_features`: the feature flag ids
-    /// the world enables, `minecraft:vanilla` included. Empty is vanilla's
-    /// default, which the level.dat omits.
-    pub enabled_features: std::sync::Arc<[String]>,
+    /// `WorldDataConfiguration`'s `enabled_features`: the effective feature flag ids.
+    /// An omitted `level.dat` tag decodes as vanilla's default, `minecraft:vanilla`.
+    pub enabled_features: FeatureFlagIds,
     /// The code mods (`fml.LoadingModList` beside `Data`), then the content mods (`sunrise.ContentModList`), the world was saved with; `None` without either list or when both are empty.
     pub saved_mods: Option<Vec<level_mods::ModRecord>>,
     /// Game rule values by name without namespace (`keep_inventory`, ...).
@@ -3732,6 +3765,7 @@ pub struct Level {
     /// that file, not their own.
     pub singleplayer_file: bool,
 }
+
 impl Level {
     /// `PrimaryLevelData.setDifficulty`: the level data holds the world's
     /// difficulty, so the game and the file follow each other and a world
@@ -3880,10 +3914,15 @@ impl Level {
             level.difficulty_locked = n(d.get("locked")) != 0;
         }
         level.allow_commands = Some(n(data.get("allowCommands")) != 0);
-        // WorldDataConfiguration.MAP_CODEC's `enabled_features`, flat in the
-        // Data compound and omitted when the flags are vanilla's default.
-        if let Some(Tag::List(flags)) = data.get("enabled_features") {
-            level.enabled_features = flags.iter().filter_map(|f| text(Some(f))).collect();
+        // WorldDataConfiguration.MAP_CODEC's lenient optional field uses the default
+        // for both absent and malformed input. A valid empty list is not the default.
+        if let Some(Tag::List(flags)) = data.get("enabled_features")
+            && let Some(flags) = flags
+                .iter()
+                .map(|flag| text(Some(flag)))
+                .collect::<Option<Arc<[_]>>>()
+        {
+            level.enabled_features = flags.into();
         }
         level.saved_mods = level_mods::saved(&root);
         if let Some(packs) = data.get("DataPacks") {
@@ -4591,11 +4630,10 @@ impl Level {
                 map.insert("allowCommands".into(), Tag::Byte(i8::from(allow)));
             }
             map.entry("WasModded".into()).or_insert(Tag::Byte(0));
-            // lenientOptionalFieldOf("enabled_features", DEFAULT_FLAGS): the
-            // tag is left out when the set is vanilla's default, so a
-            // `["minecraft:vanilla"]`-only list does not reach the file.
-            let vanilla_only = *self.enabled_features == ["minecraft:vanilla"];
-            if !self.enabled_features.is_empty() && !vanilla_only {
+            // WorldDataConfiguration omits the default, even when the retained Data had a tag.
+            if *self.enabled_features == VANILLA_FEATURE_FLAGS {
+                map.remove(&JavaString::from("enabled_features"));
+            } else {
                 map.insert(
                     "enabled_features".into(),
                     Tag::List(self.enabled_features.iter().map(|s| string(s)).collect()),
@@ -9421,11 +9459,9 @@ mod tests {
         );
     }
 
-    /// `WorldDataConfiguration.MAP_CODEC`'s `lenientOptionalFieldOf
-    /// ("enabled_features", DEFAULT_FLAGS)`: a picked experiment's list
-    /// round-trips, a vanilla-only selection leaves the tag out.
+    /// A world with an experiment writes and reads its full feature set.
     #[test]
-    fn enabled_features_round_trip_and_omit_the_vanilla_default() {
+    fn experimental_feature_flags_round_trip() {
         let dir = gen_world("enabled-features");
         let mut level = Level {
             name: "Features".into(),
@@ -9439,29 +9475,80 @@ mod tests {
         level.write(&dir, &Default::default()).unwrap();
         let back = Level::read(&dir).unwrap();
         assert_eq!(back.enabled_features, level.enabled_features);
-        // The tag is in the file.
-        let raw = crate::save::read_level_dat(&dir).unwrap();
-        if let Tag::Compound(data) = &raw {
-            let data = data.get(&JavaString::from("Data")).unwrap();
-            assert!(matches!(data.get("enabled_features"), Some(Tag::List(_))));
-        }
-        // A vanilla-only selection writes no tag, and reads back as the
-        // same vanilla-only list. A fresh folder: write_internal keeps an
-        // older file's fields.
-        let dir2 = gen_world("enabled-features-vanilla");
-        level.enabled_features = ["minecraft:vanilla".into()].into();
-        level.write(&dir2, &Default::default()).unwrap();
-        let raw = crate::save::read_level_dat(&dir2).unwrap();
-        if let Tag::Compound(data) = &raw {
-            let data = data.get(&JavaString::from("Data")).unwrap();
-            assert!(data.get("enabled_features").is_none());
-        }
-        let back = Level::read(&dir2).unwrap();
-        // The read side keeps its own convention: empty is the vanilla
-        // default the file omitted.
-        assert!(back.enabled_features.is_empty());
+        let raw = read_level_dat(&dir).unwrap();
+        assert!(matches!(
+            raw.get("Data").unwrap().get("enabled_features"),
+            Some(Tag::List(_)),
+        ));
         let _ = fs::remove_dir_all(dir);
-        let _ = fs::remove_dir_all(dir2);
+    }
+
+    #[test]
+    fn omitted_feature_flags_decode_as_vanilla_and_stay_omitted() {
+        let dir = gen_world("omitted-feature-flags");
+        let output = gen_world("resaved-feature-flags");
+        let mut level = Level::default();
+        assert_eq!(*level.enabled_features, ["minecraft:vanilla"]);
+        level.write(&dir, &Default::default()).unwrap();
+        let raw = read_level_dat(&dir).unwrap();
+        assert!(raw.get("Data").unwrap().get("enabled_features").is_none());
+
+        let mut read = Level::read(&dir).unwrap();
+        assert_eq!(*read.enabled_features, ["minecraft:vanilla"]);
+        // The encoder must drop even a tag retained from an older file.
+        let mut experimental = Level {
+            enabled_features: [
+                "minecraft:vanilla".into(),
+                "minecraft:minecart_improvements".into(),
+            ]
+            .into(),
+            ..Level::default()
+        };
+        experimental.write(&output, &Default::default()).unwrap();
+        read.write(&output, &Default::default()).unwrap();
+        let raw = read_level_dat(&output).unwrap();
+        assert!(raw.get("Data").unwrap().get("enabled_features").is_none());
+        let _ = fs::remove_dir_all(dir);
+        let _ = fs::remove_dir_all(output);
+    }
+
+    /// `WorldDataConfiguration.MAP_CODEC` preserves a valid empty set, but defaults an
+    /// invalid tag instead of interpreting a failed list decode as an empty set.
+    #[test]
+    fn explicit_empty_and_malformed_feature_flags_have_distinct_save_outcomes() {
+        for (case, input, expected_flags, expected_tag) in [
+            ("empty", Tag::List(vec![]), &[][..], Some(Tag::List(vec![]))),
+            (
+                "non-string",
+                Tag::List(vec![Tag::Int(7)]),
+                &["minecraft:vanilla"][..],
+                None,
+            ),
+            ("non-list", Tag::Int(7), &["minecraft:vanilla"][..], None),
+        ] {
+            let dir = gen_world(&format!("feature-flags-{case}"));
+            write_dat(
+                &dir.join("level.dat"),
+                Tag::compound([(
+                    "Data",
+                    Tag::compound([
+                        ("DataVersion", Tag::Int(DATA_VERSION)),
+                        ("enabled_features", input),
+                    ]),
+                )]),
+            )
+            .unwrap();
+            let mut level = Level::read(&dir).unwrap();
+            assert_eq!(&*level.enabled_features, expected_flags, "{case}");
+            level.write_without_player(&dir).unwrap();
+            let raw = read_level_dat(&dir).unwrap();
+            assert_eq!(
+                raw.get("Data").unwrap().get("enabled_features"),
+                expected_tag.as_ref(),
+                "{case}"
+            );
+            let _ = fs::remove_dir_all(dir);
+        }
     }
 
     fn gen_world(name: &str) -> PathBuf {

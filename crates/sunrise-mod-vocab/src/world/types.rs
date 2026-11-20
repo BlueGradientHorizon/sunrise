@@ -499,19 +499,19 @@ pub enum LightLayer {
     Sky,
 }
 
-/// The feature flags a world enables (`FeatureFlagSet`, `LevelReader.enabledFeatures`), each
-/// as its id (`minecraft:vanilla`, `minecraft:redstone_experiments`), shared with the world.
-/// A world that names none enables `minecraft:vanilla` alone, as vanilla's default does.
+/// The effective feature flags a world enables (`FeatureFlagSet`, `LevelReader.enabledFeatures`),
+/// each as its id (`minecraft:vanilla`, `minecraft:redstone_experiments`), shared with the world.
 /// Getting and reading it allocates nothing.
-// no wire: encodes the effective iter() list, which synthesizes minecraft:vanilla for empty backing storage; a structural derive would encode zero flags.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
 // exhaustive: its fields are private, so mods cannot build or destructure it
-pub struct FeatureFlags(pub(crate) Arc<[String]>);
+pub struct FeatureFlags {
+    flags: Arc<[String]>,
+}
 
 impl FeatureFlags {
-    /// The flags of a world's `enabled_features` list; an empty list is vanilla's default.
-    pub fn new(ids: Arc<[String]>) -> Self {
-        Self(ids)
+    /// Wrap the world's effective flag ids as-is. An empty set contains no flags.
+    pub fn new(flags: Arc<[String]>) -> Self {
+        Self { flags }
     }
     /// `FeatureFlagSet.contains`: whether the flag `flag` (`minecraft:redstone_experiments`, or
     /// `redstone_experiments`) is enabled.
@@ -522,23 +522,20 @@ impl FeatureFlags {
     }
     /// The enabled flag ids.
     pub fn iter(&self) -> impl Iterator<Item = &str> {
-        let ids = &self.0;
-        ids.iter()
-            .map(String::as_str)
-            .chain(ids.is_empty().then_some("minecraft:vanilla"))
+        self.flags.iter().map(String::as_str)
     }
 }
 
-/// The flags as their IDs.
+/// Copy the world's effective flag ids into an owned list.
 impl From<&FeatureFlags> for Vec<String> {
     fn from(flags: &FeatureFlags) -> Self {
-        flags.0.to_vec()
+        flags.flags.to_vec()
     }
 }
 
 impl From<Vec<String>> for FeatureFlags {
     fn from(ids: Vec<String>) -> Self {
-        Self(ids.into())
+        Self::new(ids.into())
     }
 }
 

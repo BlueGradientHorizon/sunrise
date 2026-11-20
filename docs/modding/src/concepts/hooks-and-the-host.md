@@ -227,7 +227,8 @@ for an unknown state; `min_y()` and `height()` read the level's build range. It 
 `raw_brightness(pos, sky_darken)` (`getRawBrightness`, which `CropBlock.randomTick` asks with 0)
 and `is_loaded(pos)` (`Level.isLoaded`: inside the build height and in a loaded chunk),
 `is_raining_at(pos)` (`Level.isRainingAt`, false where `pos` is not loaded) and `enabled_features()`
-(`LevelReader.enabledFeatures`, a borrowed `FeatureFlags<'_>`). These queries do not allocate.
+(`LevelReader.enabledFeatures`, a shared `FeatureFlags` with the world's effective flags). An omitted
+flag list in the save means `minecraft:vanilla`, not an empty set. These queries do not allocate.
 None of them loads a chunk. The raw light query supplies defaults (including full sky in a
 missing column), so check `is_loaded` first when you need a resident block. `LevelHost` also answers
 tag and fluid questions without a `Host`: `block_in_tag(block_key, tag)`, `fluid_state(pos)`
