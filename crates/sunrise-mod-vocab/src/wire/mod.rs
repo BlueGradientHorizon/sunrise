@@ -323,7 +323,7 @@ impl Writer {
         }
         true
     }
-    /// Refuse bounded encoding before invoking an unmetered conversion.
+    // hidden: generated Wire codecs check this before unmetered conversion.
     #[doc(hidden)]
     pub fn ordinary_only(&mut self) -> bool {
         if self.payload.is_some() {
@@ -545,7 +545,7 @@ impl<'a> Reader<'a> {
             None => Ok(()),
         }
     }
-    /// Refuse bounded decoding before invoking an unmetered conversion.
+    // hidden: generated Wire codecs check this before unmetered conversion.
     #[doc(hidden)]
     pub fn ordinary_only(&self) -> Result<(), WireError> {
         if self.budget.is_some() {
