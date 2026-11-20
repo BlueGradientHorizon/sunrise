@@ -69,7 +69,6 @@ impl SpecialModelRenderer for Unmatched {
         &self,
         _: &dyn ClientHost,
         _: &mod_api::ItemStack,
-        _: &sunrise_core::nbt::Tag,
         _: &mod_api::SpecialModelContext,
     ) -> Result<Vec<SpecialModelPart>, String> {
         panic!("a renderer no drawn model names was asked")
@@ -136,7 +135,6 @@ impl SpecialModelRenderer for Stone {
         &self,
         _: &dyn ClientHost,
         _: &mod_api::ItemStack,
-        _: &sunrise_core::nbt::Tag,
         _: &mod_api::SpecialModelContext,
     ) -> Result<Vec<SpecialModelPart>, String> {
         Ok(vec![SpecialModelPart::new("minecraft:block/stone")])

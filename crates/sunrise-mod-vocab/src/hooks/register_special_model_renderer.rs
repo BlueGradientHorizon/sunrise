@@ -24,7 +24,6 @@ impl SpecialModelRenderer for Skillet {
         &self,
         _host: &dyn ClientHost,
         stack: &ItemStack,
-        _config: &Tag,
         _context: &SpecialModelContext,
     ) -> Result<Vec<SpecialModelPart>, String> {
         let mut parts = vec![SpecialModelPart::new("example:item/skillet_pan")];

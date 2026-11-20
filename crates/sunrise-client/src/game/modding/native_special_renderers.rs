@@ -106,7 +106,7 @@ pub(in crate::game) fn parts(
             .map_err(|e| warn_unreadable_once(kind, &stack.item, || format!("{e:?}")))
             .ok()?;
         let parts = guarded(kind, resolved, || {
-            resolved.inner.extract(host, &api_stack, config, context)
+            resolved.inner.extract(host, &api_stack, context)
         })?;
         Some(prepare(&parts))
     })
@@ -429,7 +429,6 @@ mod tests {
             &self,
             _: &dyn ClientHost,
             _: &mod_api::ItemStack,
-            _: &Tag,
             _: &SpecialModelContext,
         ) -> Result<Vec<SpecialModelPart>, String> {
             unreachable!("the tests answer through `guarded`'s closure")

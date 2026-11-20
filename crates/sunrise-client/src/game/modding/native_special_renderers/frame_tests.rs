@@ -18,7 +18,6 @@ impl SpecialModelRenderer for Stick {
         &self,
         _: &dyn ClientHost,
         stack: &ItemStack,
-        _: &sunrise_core::nbt::Tag,
         _: &mod_api::SpecialModelContext,
     ) -> Result<Vec<SpecialModelPart>, String> {
         ASKED.lock().unwrap().push(stack.count());

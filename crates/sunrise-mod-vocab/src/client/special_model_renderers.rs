@@ -6,7 +6,7 @@
 //! (`mymod:skillet`). Its geometry is resource models: from the stack, the renderer answers which
 //! models draw, each posed and tinted, and the game draws them as it draws any item model, with
 //! the special model's `base` display transforms, particle and GUI light.
-use crate::{ClientHost, ItemDisplayContext, ItemStack, Tag};
+use crate::{ClientHost, ItemDisplayContext, ItemStack};
 use std::{collections::BTreeMap, sync::Arc};
 
 /// What a [`SpecialModelPart`] draws.
@@ -175,7 +175,6 @@ pub trait SpecialModelRenderer: Send + Sync + 'static {
         &self,
         host: &dyn ClientHost,
         stack: &ItemStack,
-        config: &Tag,
         context: &SpecialModelContext,
     ) -> Result<Vec<SpecialModelPart>, String>;
 }
@@ -287,7 +286,6 @@ mod tests {
             &self,
             _: &dyn ClientHost,
             _: &ItemStack,
-            _: &Tag,
             _: &SpecialModelContext,
         ) -> Result<Vec<SpecialModelPart>, String> {
             Ok(Vec::new())
