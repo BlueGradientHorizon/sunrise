@@ -586,27 +586,44 @@ def nightly_branch_head():
 DAILY_WORKFLOW = ".github/workflows/daily.yml"
 DAILY_BRANCHES = ("main", RELEASE_BRANCH)
 DAILY_EVIDENCE_DAYS = 30
+FULL_SHA = re.compile(r"[0-9a-f]{40}", re.ASCII)
+RUN_ATTEMPT = re.compile(r"[1-9][0-9]*/[1-9][0-9]*", re.ASCII)
 
 
-def daily_passed(sha, now=None):
-    """The URL of a completed real daily run that passed every leg on exactly `sha`, or "". Only the run counts, never
-    a tag: daily.yml, dispatched in this repository on main or the release branch, not a dry run (its title has no
-    "(dry run)"), not cancelled, whose latest attempt's `green <sha>` job succeeded. That job runs only when resolve
-    and the summary succeeded on a writing run, every leg (parity included) was green and the SDK was published."""
+def daily_run_green(entry, sha, running=False):
+    """The run's URL when it is a real success (or `running`: in progress) at head_sha `sha` with its own attempt's green job."""
+    finished = entry["status"] == "completed" and entry["conclusion"] == "success"
+    underway = running and entry["status"] == "in_progress" and entry["conclusion"] is None
+    real = (entry["path"] == DAILY_WORKFLOW and entry["repository"]["full_name"] == REPO
+            and entry["event"] == PUBLISHING_EVENT and entry["head_branch"] in DAILY_BRANCHES
+            and entry["head_sha"] == sha and not entry["display_title"].endswith("(dry run)"))
+    if not (real and (finished or underway)):
+        return ""
+    attempt = entry["run_attempt"]
+    jobs = gh_json("api", "--paginate", f"repos/{REPO}/actions/runs/{entry['id']}/attempts/{attempt}/jobs?per_page=100")
+    if any(job["name"] == f"green {sha}" and job["status"] == "completed" and job["conclusion"] == "success"
+           and job["run_id"] == entry["id"] and job["run_attempt"] == attempt
+           for page in jobs for job in page["jobs"]):
+        return entry["html_url"]
+    return ""
+
+
+def daily_passed(sha, now=None, this_run=""):
+    """The URL of a real, successful daily run at head_sha `sha` whose own attempt's `green` job passed, or ""; `this_run` ("<id>/<attempt>") may still be running."""
+    if not FULL_SHA.fullmatch(sha or ""):
+        return ""
+    if this_run:
+        if not RUN_ATTEMPT.fullmatch(this_run):
+            raise SystemExit(f"::error::refused: a daily run is named <run id>/<attempt>, not {this_run!r}")
+        run_id, attempt = this_run.split("/")
+        entry = gh_json("api", f"repos/{REPO}/actions/runs/{run_id}/attempts/{attempt}")
+        return daily_run_green(entry, sha, running=True) if entry and str(entry["run_attempt"]) == attempt else ""
     since = ((now or dt.datetime.now(dt.timezone.utc)) - dt.timedelta(days=DAILY_EVIDENCE_DAYS)).date().isoformat()
     pages = gh_json("api", "--paginate", f"repos/{REPO}/actions/workflows/daily.yml/runs?event={PUBLISHING_EVENT}"
                     f"&status=completed&created=%3E%3D{since}&per_page=100")
     for entry in (entry for page in pages for entry in page["workflow_runs"]):
-        of_sha = entry["display_title"] == f"daily {sha}" or entry["head_sha"] == sha
-        real = (entry["path"] == DAILY_WORKFLOW and entry["repository"]["full_name"] == REPO
-                and entry["event"] == PUBLISHING_EVENT and entry["head_branch"] in DAILY_BRANCHES
-                and entry["conclusion"] != "cancelled" and not entry["display_title"].endswith("(dry run)"))
-        if not (of_sha and real):
-            continue
-        jobs = gh_json("api", "--paginate", f"repos/{REPO}/actions/runs/{entry['id']}/jobs?filter=latest&per_page=100")
-        if any(job["name"] == f"green {sha}" and job["status"] == "completed" and job["conclusion"] == "success"
-               for page in jobs for job in page["jobs"]):
-            return entry["html_url"]
+        if url := daily_run_green(entry, sha):
+            return url
     return ""
 
 
@@ -720,7 +737,7 @@ def gate_again(sha):
         time.sleep(GATE_POLL)
 
 
-def channel_head(channel, head, exception=""):
+def channel_head(channel, head, exception="", daily_run=""):
     """The commit a fork channel builds, or exits naming the check it failed. A nightly builds only the nightly
     branch's head once it exists, before that the commit
     `daily-green` points to (its default), unless `exception` names the owner's one-time grant for another commit
@@ -744,8 +761,8 @@ def channel_head(channel, head, exception=""):
         raise SystemExit(f"::error::refused: {sha} is not {pointer} ({green or 'none yet'}); "
                          "a Nightly ships only the commit of a fully green daily run, or one the owner granted a "
                          "one-time exception (the `exception` input)")
-    # The branch is only a pointer: its head must have its own passed daily run.
-    if branch and sha == branch and not daily_passed(sha):
+    # The branch is only a pointer: its head needs its own passed daily run, or the one promoting it (`daily_run`).
+    if branch and sha == branch and not daily_passed(sha, this_run=daily_run):
         raise SystemExit(f"::error::refused: {sha}, the head of {NIGHTLY_BRANCH}, has no completed real daily run "
                          "that passed every leg on it")
     if exception and channel == "nightly":
@@ -810,6 +827,8 @@ def main():
     parser.add_argument("--exception", default="",
                         help="decide --channel nightly: the owner's one-time grant for a commit that is not daily-green")
     parser.add_argument("--ref", help="decide: a real run's GITHUB_REF, which must publish the channel (PUBLISHES)")
+    parser.add_argument("--daily-run", default="",
+                        help="decide --channel nightly: the daily run promoting its own commit, <run id>/<attempt>")
     parser.add_argument("--publish-kind", choices=["daily", "nightly", "snapshot", "stable", "sdk"],
                         help="authorize: what the run would publish")
     parser.add_argument("--dry-run", default="true", help="authorize: the run's dry_run input; only \"false\" may publish")
@@ -845,7 +864,7 @@ def main():
     # The legacy, unchannelled game decision now uses the daily tag instead of a retired push workflow.
     needs_daily = args.kind == "game" and args.command == "decide" and not args.channel and not args.force
     daily_head = daily_green_commit() if needs_daily else ""
-    head = channel_head(args.channel, args.head, args.exception.strip()) if args.channel else args.head or (
+    head = channel_head(args.channel, args.head, args.exception.strip(), args.daily_run.strip()) if args.channel else args.head or (
         daily_head if needs_daily else green_main_head())
     if not head:
         result = {"release": False, "reason": "no fully green daily run yet" if needs_daily else "main's latest checks did not pass"}

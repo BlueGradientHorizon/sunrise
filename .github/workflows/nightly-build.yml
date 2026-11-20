@@ -79,6 +79,10 @@ on:
         description: The owner's one-time grant to publish a `base` (its full SHA) that is not daily-green (who, when, why); empty otherwise
         type: string
         default: ''
+      daily_run:
+        description: Set by the daily run that promotes its own commit, <run id>/<attempt>; empty otherwise
+        type: string
+        default: ''
       urgent:
         description: Past the day's cap of 12 builds (the train, for a release-now pull request or a forced run)
         type: boolean
@@ -120,7 +124,9 @@ jobs:
       nightly: ${{ steps.pick.outputs.nightly }}
       source_tag: ${{ steps.pick.outputs.source_tag }}
       tag: ${{ inputs.kind == 'nightly' && 'nightly' || steps.pick.outputs.tag }}
-      dry_run: ${{ steps.mode.outputs.dry_run }}
+      # Exactly authorize's `publish`; every signing and publishing gate reads it, so a missing output signs and writes nothing.
+      publish: ${{ steps.mode.outputs.publish }}
+      dry_run: ${{ steps.mode.outputs.publish == 'true' && 'false' || 'true' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -137,10 +143,11 @@ jobs:
       - id: pick
         env:
           GH_TOKEN: ${{ github.token }}
-          FORCE: ${{ (inputs.force || steps.mode.outputs.dry_run == 'true') && 'yes' || '' }}
-          DRY_RUN: ${{ steps.mode.outputs.dry_run }}
+          FORCE: ${{ (inputs.force || steps.mode.outputs.publish != 'true') && 'yes' || '' }}
+          DRY_RUN: ${{ steps.mode.outputs.publish == 'true' && 'false' || 'true' }}
+          NIGHTLY_DAILY_RUN: ${{ inputs.daily_run }}
           # A real run (a hand `-f base=<sha>` too) runs its commit's gate again if the next push cancelled it.
-          GATE_RERUN: ${{ steps.mode.outputs.dry_run != 'true' && '1' || '' }}
+          GATE_RERUN: ${{ steps.mode.outputs.publish == 'true' && '1' || '' }}
           NIGHTLY_ISSUE: ${{ inputs.issue }}
           NIGHTLY_PRS: ${{ inputs.prs }}
           NIGHTLY_BASE: ${{ inputs.base }}
@@ -156,7 +163,7 @@ jobs:
       - name: Old nightly/build-* branches deleted (real runs only)
         # Ludovic, 2026-10-27: older than 7 days, but never the newest build or one a published nightly points to;
         # nothing but nightly/build-* (nightly.py stale_builds, tests/test_nightly.py).
-        if: steps.mode.outputs.dry_run != 'true' && inputs.kind == 'nightly'
+        if: steps.mode.outputs.publish == 'true' && inputs.kind == 'nightly'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -283,7 +290,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # Main's sign_release.sh hashes the archives and signs with the runner's OpenSSL.
-    environment: ${{ needs.pick.outputs.dry_run != 'true' && 'release' || '' }}
+    environment: ${{ needs.pick.outputs.publish == 'true' && 'release' || '' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -300,9 +307,9 @@ jobs:
         # nightly-<date>-<commit>, the version the release title names, which current launchers and servers
         # require (docs/security.md, "Nightly signatures"). The publish step titles the release from the same values.
         env:
-          RELEASE_SIGNING_KEY: ${{ needs.pick.outputs.dry_run != 'true' && secrets.RELEASE_SIGNING_KEY || '' }}
-          RELEASE_SIGNING_KEY_NEXT: ${{ needs.pick.outputs.dry_run != 'true' && secrets.RELEASE_SIGNING_KEY_NEXT || '' }}
-          EPHEMERAL: ${{ needs.pick.outputs.dry_run == 'true' && 'yes' || '' }}
+          RELEASE_SIGNING_KEY: ${{ needs.pick.outputs.publish == 'true' && secrets.RELEASE_SIGNING_KEY || '' }}
+          RELEASE_SIGNING_KEY_NEXT: ${{ needs.pick.outputs.publish == 'true' && secrets.RELEASE_SIGNING_KEY_NEXT || '' }}
+          EPHEMERAL: ${{ needs.pick.outputs.publish != 'true' && 'yes' || '' }}
           # The channel (nightly or snapshot) and the build's version on it: sign_release.sh refuses a mismatch.
           KIND: ${{ inputs.kind }}
           # A stable release signs both files for its own tag (horizon release 26.3-0.1.0), as signed_digest checks.
@@ -331,7 +338,7 @@ jobs:
           if-no-files-found: error
           retention-days: 3
       - uses: actions/upload-artifact@v7
-        if: needs.pick.outputs.dry_run == 'true'
+        if: needs.pick.outputs.publish != 'true'
         with:
           name: ephemeral.pub
           path: dist/ephemeral.pub
@@ -359,7 +366,7 @@ jobs:
           merge-multiple: true
       - name: The signatures, checked as launchers check them
         env:
-          EPHEMERAL: ${{ needs.pick.outputs.dry_run == 'true' && 'yes' || '' }}
+          EPHEMERAL: ${{ needs.pick.outputs.publish != 'true' && 'yes' || '' }}
           DATE: ${{ needs.pick.outputs.date }}
           SHORT: ${{ needs.pick.outputs.short }}
           KIND: ${{ inputs.kind }}
@@ -387,7 +394,7 @@ jobs:
             echo "::warning::A real run would publish nothing"
           fi
       - name: Publish as the `nightly` pre-release
-        if: needs.pick.outputs.dry_run != 'true' && inputs.kind == 'nightly'
+        if: needs.pick.outputs.publish == 'true' && inputs.kind == 'nightly'
         env:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ needs.pick.outputs.sha }}
@@ -441,7 +448,7 @@ jobs:
           python3 tools/ci/nightly.py keep-source "$SHA" "$DATE"
           python3 tools/ci/nightly.py prune --days 7
       - name: Publish as the snapshot-<date>-<short> pre-release
-        if: needs.pick.outputs.dry_run != 'true' && inputs.kind == 'snapshot'
+        if: needs.pick.outputs.publish == 'true' && inputs.kind == 'snapshot'
         env:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ needs.pick.outputs.sha }}
@@ -471,7 +478,7 @@ jobs:
             "${files[@]}" dist/SHA256SUMS dist/SHA256SUMS.sig dist/SHA256SUMS.v2.sig dist/smoke-test.json
           python3 tools/ci/nightly.py prune-snapshots --days 7
       - name: Publish as the stable release <target>-<semver>
-        if: needs.pick.outputs.dry_run != 'true' && inputs.kind == 'stable'
+        if: needs.pick.outputs.publish == 'true' && inputs.kind == 'stable'
         env:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ needs.pick.outputs.sha }}
@@ -489,7 +496,7 @@ jobs:
             "${files[@]}" dist/SHA256SUMS dist/SHA256SUMS.sig dist/SHA256SUMS.v2.sig dist/smoke-test.json
       - name: Record the release identity for the later musl attachment
         id: identity
-        if: needs.pick.outputs.dry_run != 'true'
+        if: needs.pick.outputs.publish == 'true'
         # The release just made, found by its tag and kept only if it holds this run's SHA256SUMS. A failed lookup
         # must not fail publication: without the id, the attach job refuses to upload.
         continue-on-error: true
@@ -499,7 +506,7 @@ jobs:
           SHA: ${{ needs.pick.outputs.sha }}
         run: python3 tools/ci/nightly.py release-identity "$TAG" "$SHA" dist/SHA256SUMS
       - name: Dry run, the nightly that would be published
-        if: needs.pick.outputs.dry_run == 'true'
+        if: needs.pick.outputs.publish != 'true'
         run: |
           echo "Would publish ${{ needs.pick.outputs.tag }} at ${{ needs.pick.outputs.sha }} (${{ needs.pick.outputs.source }})"
           ls -l dist
@@ -510,7 +517,7 @@ jobs:
     if: ${{ !cancelled() && needs.publish.result == 'success' && needs.musl-build.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment: ${{ needs.pick.outputs.dry_run != 'true' && 'release' || '' }}
+    environment: ${{ needs.pick.outputs.publish == 'true' && 'release' || '' }}
     permissions:
       contents: write
     outputs:
@@ -532,9 +539,9 @@ jobs:
           path: musl
       - name: Sign the isolated musl checksums for the channel and build
         env:
-          RELEASE_SIGNING_KEY: ${{ needs.pick.outputs.dry_run != 'true' && secrets.RELEASE_SIGNING_KEY || '' }}
-          RELEASE_SIGNING_KEY_NEXT: ${{ needs.pick.outputs.dry_run != 'true' && secrets.RELEASE_SIGNING_KEY_NEXT || '' }}
-          EPHEMERAL: ${{ needs.pick.outputs.dry_run == 'true' && 'yes' || '' }}
+          RELEASE_SIGNING_KEY: ${{ needs.pick.outputs.publish == 'true' && secrets.RELEASE_SIGNING_KEY || '' }}
+          RELEASE_SIGNING_KEY_NEXT: ${{ needs.pick.outputs.publish == 'true' && secrets.RELEASE_SIGNING_KEY_NEXT || '' }}
+          EPHEMERAL: ${{ needs.pick.outputs.publish != 'true' && 'yes' || '' }}
         run: bash tools/ci/sign_release.sh "$SIGN_FOR" "musl/$ARCHIVE"
       - name: Verify both musl signatures before naming the release assets
         id: verify

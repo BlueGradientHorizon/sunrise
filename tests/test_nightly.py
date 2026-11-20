@@ -507,7 +507,7 @@ class PruneBuildsTests(unittest.TestCase):
     def test_the_workflow_prunes_on_real_runs_only(self):
         build = (WORKFLOWS / "nightly-build.yml").read_text()
         step = build.split("Old nightly/build-* branches deleted", 1)[1].split("- uses:", 1)[0]
-        self.assertIn("if: steps.mode.outputs.dry_run != 'true'", step)
+        self.assertIn("if: steps.mode.outputs.publish == 'true'", step)
         self.assertIn("prune-builds --days 7", step)
         self.assertIn("GITHUB_STEP_SUMMARY", step)
 
@@ -548,7 +548,7 @@ class SdkPairTests(unittest.TestCase):
                     mock.patch.object(nightly, "git", return_value=NOW), \
                     mock.patch.object(nightly, "sdk_ready", side_effect=AssertionError("build_set checks the SDK")):
                 self.assertEqual(nightly.green_base("sunrise-org/sunrise", "").sha, "a" * 40)
-                gate.assert_called_once_with("nightly", explicit, "")
+                gate.assert_called_once_with("nightly", explicit, "", "")
         with mock.patch.object(nightly.train, "channel_head", side_effect=SystemExit("gate failed")):
             with self.assertRaisesRegex(SystemExit, "gate failed"):
                 nightly.green_base("sunrise-org/sunrise", "")

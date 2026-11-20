@@ -391,13 +391,13 @@ class ReleaseTrainTests(unittest.TestCase):
                 mock.patch.object(train, "channel_head", side_effect=SystemExit("stop")) as head:
             with self.assertRaises(SystemExit):
                 train.main()
-        head.assert_called_once_with("nightly", None, "")
+        head.assert_called_once_with("nightly", None, "", "")
         from tools.ci import nightly
         with mock.patch.dict(nightly.os.environ, {"NIGHTLY_BASE": "", "NIGHTLY_EXCEPTION": "  "}), \
                 mock.patch.object(nightly.train, "channel_head", side_effect=SystemExit("stop")) as head:
             with self.assertRaises(SystemExit):
                 nightly.green_base("sunrise-org/sunrise", "")
-        head.assert_called_once_with("nightly", "", "")
+        head.assert_called_once_with("nightly", "", "", "")
 
     def test_a_publishing_run_runs_a_cancelled_gate_again_and_waits_for_it(self):
         sha = "a" * 40
@@ -437,11 +437,11 @@ class ReleaseTrainTests(unittest.TestCase):
         import yaml
         decide = yaml.safe_load((train.ROOT / ".github/workflows/release.yml").read_text())["jobs"]["decide"]
         self.assertEqual(decide["permissions"]["actions"], "write")
-        self.assertEqual(decide["steps"][-1]["env"]["GATE_RERUN"], "${{ steps.mode.outputs.dry_run == 'false' && '1' || '' }}")
+        self.assertEqual(decide["steps"][-1]["env"]["GATE_RERUN"], "${{ steps.mode.outputs.publish == 'true' && '1' || '' }}")
         pick = yaml.safe_load((train.ROOT / ".github/workflows/nightly-build.yml").read_text())["jobs"]["pick"]
         self.assertEqual(pick["permissions"]["actions"], "write")
         step = next(step for step in pick["steps"] if step.get("id") == "pick")
-        self.assertEqual(step["env"]["GATE_RERUN"], "${{ steps.mode.outputs.dry_run != 'true' && '1' || '' }}")
+        self.assertEqual(step["env"]["GATE_RERUN"], "${{ steps.mode.outputs.publish == 'true' && '1' || '' }}")
 
     def test_a_snapshot_is_tagged_by_kind_date_and_commit(self):
         sha = "0c02067" + "a" * 33

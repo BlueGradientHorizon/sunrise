@@ -30,7 +30,7 @@ class ReleaseSnapshotTests(unittest.TestCase):
         self.assertEqual(mode["env"], {"KIND": "${{ inputs.kind }}", "DRY_INPUT": "${{ inputs.dry_run }}"})
         self.assertEqual(self.workflow["on"]["workflow_dispatch"]["inputs"]["dry_run"]["default"], "true")
         publish = self.snapshot["snapshot-sdk-publish"]
-        self.assertEqual(publish["with"]["publish"], "${{ needs.decide.outputs.dry_run != 'true' }}")
+        self.assertEqual(publish["with"]["publish"], "${{ needs.decide.outputs.publish == 'true' }}")
         self.assertEqual(publish["uses"], "./.github/workflows/sdk-publish.yml")
         # The game is built by `nightly build`, which publishes only when its own dry_run is false: it gets ours.
         run = self.snapshot["snapshot"]["steps"][0]["run"]
@@ -53,7 +53,7 @@ class ReleaseSnapshotTests(unittest.TestCase):
         self.assertEqual(self.snapshot["snapshot-sdk"]["with"], {"commit": "${{ needs.decide.outputs.head }}"})
         self.assertEqual(self.snapshot["snapshot-sdk-publish"]["with"],
                          {"commit": "${{ needs.decide.outputs.head }}",
-                          "publish": "${{ needs.decide.outputs.dry_run != 'true' }}"})
+                          "publish": "${{ needs.decide.outputs.publish == 'true' }}"})
         game = self.snapshot["snapshot"]
         self.assertEqual(game["needs"], ["decide", "snapshot-sdk", "snapshot-sdk-publish"])
         self.assertIn("needs.snapshot-sdk.result == 'success'", game["if"])
@@ -74,7 +74,7 @@ class NightlyBuildSnapshotTests(unittest.TestCase):
         snapshot_step = self.steps["Publish as the snapshot-<date>-<short> pre-release"]
         self.assertIn("inputs.kind == 'nightly'", nightly_step["if"])
         self.assertIn("inputs.kind == 'snapshot'", snapshot_step["if"])
-        self.assertIn("needs.pick.outputs.dry_run != 'true'", snapshot_step["if"])
+        self.assertIn("needs.pick.outputs.publish == 'true'", snapshot_step["if"])
         run = snapshot_step["run"]
         self.assertIn('gh release create "$TAG"', run)
         for never in ("rotate", "keep-source", "daily-green", "release create nightly", "prune --days", "release edit"):

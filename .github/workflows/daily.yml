@@ -102,14 +102,14 @@ jobs:
           sha=$(git rev-parse --verify --quiet "$COMMIT^{commit}") || { echo "::error::$COMMIT is not a commit of this repository"; exit 1; }
           # A writing run tags, files issues and signs and publishes the SDK and the Nightly: only its branch's commits.
           branch=
-          if [ "$DRY_RUN" != true ]; then
+          if [ "$DRY_RUN" = false ]; then
             branch=${GITHUB_REF#refs/heads/}
             git fetch -q --no-tags origin "+refs/heads/$branch:refs/remotes/origin/$branch"
             git merge-base --is-ancestor "$sha" "refs/remotes/origin/$branch" \
               || { echo "::error::$sha is not on $branch: a writing daily run takes only its branch's commits"; exit 1; }
           fi
           skip=false
-          if [ "$SCHEDULED" = true ] && [ "$DRY_RUN" != true ]; then
+          if [ "$SCHEDULED" = true ] && [ "$DRY_RUN" = false ]; then
             # A completed real daily run of this commit: its summary job is named `summary <full sha>`.
             done=$(python3 tools/ci/daily_summary.py --seen "$sha")
             if [ -n "$done" ]; then
@@ -373,3 +373,5 @@ jobs:
       commit: ${{ needs.resolve.outputs.commit }}
       dry_run: false
       daily: true
+      # This run is the evidence: its green job passed, though the run itself ends after this call.
+      daily_run: ${{ github.run_id }}/${{ github.run_attempt }}

@@ -931,7 +931,7 @@ class DailyWorkflowTests(unittest.TestCase):
         self.assertEqual(jobs["schedule-dispatch"]["runs-on"], "ubuntu-latest")
         self.assertIn("--ref main -f dry_run=false -f scheduled=true", jobs["schedule-dispatch"]["steps"][0]["run"])
         resolve = jobs["resolve"]["steps"][-1]
-        self.assertIn('if [ "$SCHEDULED" = true ] && [ "$DRY_RUN" != true ]', resolve["run"],
+        self.assertIn('if [ "$SCHEDULED" = true ] && [ "$DRY_RUN" = false ]', resolve["run"],
                       "only the schedule stops on a commit already tested; a hand dispatch retries")
         self.assertEqual(self.workflow["on"]["workflow_dispatch"]["inputs"]["scheduled"]["default"], "false")
         self.assertEqual(jobs["resolve"]["if"], "github.event_name == 'workflow_dispatch'")

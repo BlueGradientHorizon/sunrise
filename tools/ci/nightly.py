@@ -373,7 +373,8 @@ def green_base(repo: str, issue: str) -> Ref:
     """NIGHTLY_BASE, else a green main commit (the dyna-checks gate on Sunrise, the green daily tag elsewhere)."""
     explicit = os.environ.get("NIGHTLY_BASE", "").strip()
     if repo == "sunrise-org/sunrise":
-        sha = train.channel_head("nightly", explicit, os.environ.get("NIGHTLY_EXCEPTION", "").strip())
+        sha = train.channel_head("nightly", explicit, os.environ.get("NIGHTLY_EXCEPTION", "").strip(),
+                                 os.environ.get("NIGHTLY_DAILY_RUN", "").strip())
     else:
         sha = explicit or train.daily_green_commit()
         if not sha:

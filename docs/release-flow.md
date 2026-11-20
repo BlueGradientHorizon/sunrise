@@ -423,7 +423,11 @@ and publishes nothing.
 
 A daily run's evidence is the run itself, never a tag: its job `green <full sha>` succeeds only on a writing run whose
 resolve and summary succeeded, every leg (parity included) passed and the SDK is published. `release_train.daily_passed`
-looks for that job in a completed, uncancelled real `daily.yml` dispatch on `main` or `release/26.3`.
+looks for that job in a real `daily.yml` dispatch on `main` or `release/26.3` that concluded `success` with `head_sha` equal
+to the commit (a title never stands in for it), reading the jobs of that run id and attempt. The daily promoting its own
+commit to `nightly/26.3` has not completed yet: it passes its own `<run id>/<attempt>` down (`release.yml`, `nightly-build.yml`
+`daily_run`), and that one in-progress run counts through its green job. Every signing and publishing gate reads
+`authorize`'s `publish == 'true'`, so a missing output signs and writes nothing.
 
 **A stable release** (`nightly-build.yml` with `kind=stable`, `nightly.py pick --kind stable`):
 
