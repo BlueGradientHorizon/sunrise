@@ -2963,7 +2963,7 @@ impl Game<'_> {
         }
         // EnderDragon.aiStep queries living entities, not only players.
         if let Some(d) = self.dragon.as_ref() {
-            let frame = sunrise_client::mobs::dragon_contacts::Frame {
+            let frame = sunrise_gameplay::dragon_contacts::Frame {
                 dragon_id: d.id,
                 origin: d.position,
                 center: (bc, bz),
@@ -2996,7 +2996,7 @@ impl Game<'_> {
                         self.combat.attack(),
                     );
                     let mut credit = plan.lend(&mut self.last_hurt_by_player);
-                    if sunrise_client::mobs::dragon_contacts::contact_part(
+                    if sunrise_gameplay::dragon_contacts::contact_part(
                         crate::game::entity::damage_level_of!(
                             self,
                             &sunrise_client::health::NO_ATTACK,

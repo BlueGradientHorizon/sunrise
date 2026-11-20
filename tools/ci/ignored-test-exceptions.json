@@ -368,10 +368,10 @@
     "rationale": "Existing separately supplied input SUNRISE_SEND_BENCH in tools/ci/ignored-tests/sync-38-resources.txt; its dedicated workflow/harness must supply this input, which ordinary prepared resources do not contain. performance measurement; requires SUNRISE_SEND_BENCH=1 on an idle machine"
   },
   {
-    "package": "sunrise-client-lib",
+    "package": "sunrise-gameplay",
     "target": "lib",
-    "test": "mobs::dragon_contacts::parity::contact_transcript",
-    "path": "crates/sunrise-client/src/mobs/dragon_contacts.rs",
+    "test": "dragon_contacts::parity::contact_transcript",
+    "path": "crates/sunrise-gameplay/src/dragon_contacts.rs",
     "reason": "writes the vanilla parity transcript",
     "rationale": "Existing parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_dragon_contacts_parity.py supplies its independent oracle/private fixture and drives it separately, not as a prepared-resource daily test."
   },
