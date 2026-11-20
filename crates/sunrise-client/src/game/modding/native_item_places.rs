@@ -3049,7 +3049,7 @@ pub(super) mod tests {
         fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: &ItemResource) -> u32 {
             64
         }
-        fn insert(
+        fn insert_at(
             &self,
             _: &mut dyn ServerHost,
             _: &mod_api::Transaction,
@@ -3075,7 +3075,7 @@ pub(super) mod tests {
                 }
             }
         }
-        fn extract(
+        fn extract_at(
             &self,
             _: &mut dyn ServerHost,
             _: &mod_api::Transaction,
@@ -3199,7 +3199,7 @@ pub(super) mod tests {
             fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: &ItemResource) -> u32 {
                 64
             }
-            fn insert(
+            fn insert_at(
                 &self,
                 _: &mut dyn ServerHost,
                 _: &mod_api::Transaction,
@@ -3209,7 +3209,7 @@ pub(super) mod tests {
             ) -> u32 {
                 amount
             }
-            fn extract(
+            fn extract_at(
                 &self,
                 _: &mut dyn ServerHost,
                 _: &mod_api::Transaction,

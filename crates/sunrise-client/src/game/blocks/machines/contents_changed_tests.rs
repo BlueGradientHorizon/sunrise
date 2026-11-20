@@ -630,7 +630,7 @@ fn a_mod_reads_the_open_transaction_its_depth_and_the_root_commits_phase() {
                     assert_eq!(host.transaction_depth(inner), Some(1));
                     assert_eq!(host.transaction_current().as_ref(), Some(inner));
                     let current = host.transaction_current().unwrap();
-                    assert_eq!(items.insert(host, &current, 0, &sticks, 4), 4);
+                    assert_eq!(items.insert_at(host, &current, 0, &sticks, 4), 4);
                     Ok::<_, ()>(())
                 })?;
                 assert_eq!(items.amount(host, 0), 4);
