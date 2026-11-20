@@ -318,8 +318,13 @@ mod tests {
             assert!(entity.kind(host).is_some());
             let _health = event.entity.health(host);
             let _alive = event.entity.alive(host);
-            let _equipment = event.entity.equipment(host, mod_api::EquipmentSlot::Head);
-            let _hand = event.entity.hand_item(host, mod_api::Hand::Main);
+            let _equipment =
+                event
+                    .entity
+                    .with_equipment(host, mod_api::EquipmentSlot::Head, |_| ());
+            let _hand = event
+                .entity
+                .with_hand_item(host, mod_api::Hand::Main, |_| ());
             self.0.fetch_add(1, Ordering::Relaxed);
             event.can_equip = event.slot == "feet";
         }

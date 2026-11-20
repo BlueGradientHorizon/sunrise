@@ -1353,7 +1353,10 @@ mod tests {
                 .hurt_and_break(game, EquipmentSlot::MainHand, 1)
                 .unwrap();
             assert_eq!(broken.damage(), max);
-            assert!(mob.equipment(game, EquipmentSlot::MainHand).is_none());
+            assert!(
+                mob.with_equipment(game, EquipmentSlot::MainHand, |_| ())
+                    .is_none()
+            );
         });
     }
 
@@ -2267,11 +2270,15 @@ mod tests {
             assert_eq!(game.inventory[3], Some(sword.clone()));
             assert_eq!(game.offhand, Some(shield.clone()));
             assert_eq!(
-                player.hand_item(game, Hand::Main),
+                player
+                    .with_hand_item(game, Hand::Main, |stack| stack.project())
+                    .flatten(),
                 Some(sword.try_into_api().unwrap())
             );
             assert_eq!(
-                player.hand_item(game, Hand::Off),
+                player
+                    .with_hand_item(game, Hand::Off, |stack| stack.project())
+                    .flatten(),
                 Some(shield.try_into_api().unwrap())
             );
             assert!(player.set_hand_item(game, Hand::Off, None).unwrap());
@@ -2445,7 +2452,9 @@ mod tests {
             );
             assert!(game.living_set_equipment(zombie, EquipmentSlot::Head, Some(helmet.clone())));
             assert_eq!(
-                zombie.equipment(game, EquipmentSlot::Head),
+                zombie
+                    .with_equipment(game, EquipmentSlot::Head, |stack| stack.project())
+                    .flatten(),
                 Some(helmet.try_into_api().unwrap())
             );
             assert_eq!(

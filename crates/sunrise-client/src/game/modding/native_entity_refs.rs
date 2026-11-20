@@ -2783,10 +2783,10 @@ pub(super) mod tests {
                 let living = game.living(entity).unwrap();
                 assert_eq!(
                     living
-                        .equipment(game, EquipmentSlot::MainHand)
-                        .unwrap()
-                        .item()
-                        .id(game),
+                        .with_equipment(game, EquipmentSlot::MainHand, |stack| stack
+                            .item()
+                            .id(game))
+                        .unwrap(),
                     "minecraft:stone"
                 );
                 assert_eq!(game.player.as_ref().unwrap().health.health(), 20.0);
@@ -2859,10 +2859,8 @@ pub(super) mod tests {
             let living = game.living(other).unwrap();
             assert_eq!(
                 living
-                    .equipment(game, EquipmentSlot::MainHand)
-                    .unwrap()
-                    .item()
-                    .id(game),
+                    .with_equipment(game, EquipmentSlot::MainHand, |stack| stack.item().id(game))
+                    .unwrap(),
                 "minecraft:stone"
             );
             let player = game.player(13).unwrap();

@@ -83,8 +83,34 @@ BATCHES = {
         ),
     },
     "living": {
+        GAME + "blocks/dispenser/decision_tests.rs": (
+            Edit(
+                ".equipment(host, mod_api::EquipmentSlot::Head)",
+                ".with_equipment(host, mod_api::EquipmentSlot::Head, |_| ())",
+            ),
+        ),
         GAME + "items/consume.rs": (
             stack_snapshot("next.hand_item(host, Hand::Main)", suffix=",\n"),
+            Edit(
+                "next_living.hand_item(host, Hand::Main).unwrap().count(), 7",
+                "next_living.with_hand_item(host, Hand::Main, |stack| stack.count()), Some(7)",
+            ),
+            Edit(
+                "first.hand_item(host, Hand::Main).unwrap().count(), 6",
+                "first.with_hand_item(host, Hand::Main, |stack| stack.count()), Some(6)",
+            ),
+        ),
+        GAME + "items/equip_answers.rs": (
+            Edit(
+                "event.entity.equipment(host, mod_api::EquipmentSlot::Head)",
+                "event.entity.with_equipment(host, mod_api::EquipmentSlot::Head, |_| ())",
+            ),
+            Edit("event.entity.hand_item(host, mod_api::Hand::Main)",
+                 "event.entity.with_hand_item(host, mod_api::Hand::Main, |_| ())"),
+        ),
+        GAME + "items/player_destroy_item_tests.rs": (
+            stack_snapshot("living.hand_item(host_ref, hand)"),
+            stack_snapshot("living.hand_item(host, Hand::Main)", suffix=".unwrap()", count=2),
         ),
         GAME + "mobs/creatures/death_loot_context_tests.rs": (
             stack_snapshot("living.hand_item(host, mod_api::Hand::Main)", suffix=",\n"),
@@ -93,6 +119,24 @@ BATCHES = {
             stack_snapshot("player.hand_item(game, Hand::Main)", suffix=",\n"),
             stack_snapshot("player.hand_item(game, Hand::Off)", suffix=",\n"),
             stack_snapshot("zombie.equipment(game, EquipmentSlot::Head)", suffix=",\n"),
+            Edit("mob.equipment(game, EquipmentSlot::MainHand).is_none()",
+                 "mob.with_equipment(game, EquipmentSlot::MainHand, |_| ()).is_none()"),
+        ),
+        MODDING + "native_entity_refs.rs": (
+            Edit(
+                ".equipment(game, EquipmentSlot::MainHand)\n                        .unwrap()\n                        .item()\n                        .id(game)",
+                ".with_equipment(game, EquipmentSlot::MainHand, |stack| stack.item().id(game))\n                        .unwrap()",
+            ),
+            Edit(
+                ".equipment(game, EquipmentSlot::MainHand)\n                    .unwrap()\n                    .item()\n                    .id(game)",
+                ".with_equipment(game, EquipmentSlot::MainHand, |stack| stack.item().id(game))\n                    .unwrap()",
+            ),
+        ),
+        GAME + "network/remote/client_handles_tests.rs": (
+            Edit("living.equipment(game, EquipmentSlot::Head)",
+                 "living.with_equipment(game, EquipmentSlot::Head, |_| ())"),
+            Edit("living.hand_item(game, Hand::Off)",
+                 "living.with_hand_item(game, Hand::Off, |_| ())"),
         ),
     },
     "item-entity": {

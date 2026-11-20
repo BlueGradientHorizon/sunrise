@@ -204,7 +204,9 @@ impl mod_api::Hooks for ChangeKillerHand {
             .unwrap();
         let living = host.living(entity).unwrap();
         assert_eq!(
-            living.hand_item(host, mod_api::Hand::Main),
+            living
+                .with_hand_item(host, mod_api::Hand::Main, |stack| stack.project())
+                .flatten(),
             Some(self.0.clone()),
             "loot sees the complete stack installed during living_death"
         );

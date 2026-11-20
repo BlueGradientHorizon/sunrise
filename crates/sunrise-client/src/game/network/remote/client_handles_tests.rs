@@ -292,8 +292,11 @@ fn client_handle_reads_answer_from_the_clients_copy() {
             ),
             ("minecraft:stone", 3)
         );
-        assert_eq!(living.equipment(game, EquipmentSlot::Head), None);
-        assert_eq!(living.hand_item(game, Hand::Off), None);
+        assert_eq!(
+            living.with_equipment(game, EquipmentSlot::Head, |_| ()),
+            None
+        );
+        assert_eq!(living.with_hand_item(game, Hand::Off, |_| ()), None);
 
         // Blocks of the chunks the client holds; nothing loads another.
         game.world
