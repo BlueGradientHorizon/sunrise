@@ -11,7 +11,7 @@ then upload the package and open the pull request yourself.
 Set `version` in `sunrise-mod.toml` to a SemVer without `+build` metadata, at most 64 characters after
 padding missing parts (for example, `1.2` becomes `1.2.0`). The registry uses that version in the release name.
 
-In your mod's folder (content, native or wasm; add `--wasm` for a wasm mod, as for `build`):
+In your mod's folder:
 
 ```sh
 cargo sunrise-mod publish --summary "One line about the mod." --owner your-github-login --categories utility
@@ -30,9 +30,10 @@ registry. The submission goes into `target/sunrise-mod/publish/` (change it with
 
 What the manifest cannot say comes from flags: `--summary` (at most 160 characters), `--owner <login>` (repeat it for
 several; the GitHub accounts allowed to publish updates), `--categories a,b` (1 to 3 from [your kind's
-list](../reference/registry-index.md#submitting-a-project)), `--tags a,b` and `--changelog <text>`. Anything still
-missing is written as a value that starts with `TODO(publish)`, and the command lists what remains. The registry
-refuses an entry that holds one, so edit `mods/<id>.toml` (or the manifest, then run `publish` again) until the list is empty.
+list](../reference/registry-index.md#submitting-a-project)), `--tags a,b` and `--changelog <text>`. An entry or page
+field still missing is written as a value that starts with `TODO(publish)`, and the command lists what remains. The
+registry refuses an entry that holds one, so edit `mods/<id>.toml` (or the manifest, then run `publish` again) until the
+list is empty.
 
 Save `icon.png` beside `sunrise-mod.toml` as a square PNG, 64 to 512 pixels per side and at most 256 KiB, so it fits
 both the package and the registry.
@@ -61,7 +62,10 @@ cargo sunrise-mod registry build 'target/sunrise-mod/publish' --files 'target/su
 
 1. Create a release of your repository and attach `<id>-<version>.smod` to it. Its address is the artifact URL.
 2. Fork [sunrise-org/sunrise-mods](https://github.com/sunrise-org/sunrise-mods) and copy in `mods/<id>.toml`.
-   For a first listing, copy in `icons/<id>.png` too. Do not commit the package or `files/`.
+   For a first listing, copy in `icons/<id>.png` too, and at least one screenshot: save a PNG or JPEG (320×180 to
+   3840×2160, at most 1 MiB) as `screenshots/<id>/<name>.png` (or `.jpg`) in your fork and list it in the entry:
+   `screenshots = ["screenshots/<id>/<name>.png"]`. A new project without one is refused. A `mod` or `native-mod`
+   in the `library` category needs none. Do not commit the package or `files/`.
 3. Commit with `git commit -s`: every commit needs a `Signed-off-by:` line.
 4. Open the pull request with the text of `PULL_REQUEST.md`, after pasting the artifact URL into it.
 
@@ -82,10 +86,17 @@ Raise `version` in `sunrise-mod.toml`, then run `publish --registry <your checko
 folder separate from the checkout. For a signed project, [build and sign first](#signing). `publish` adds the new
 version row to the entry from the checkout, leaving all existing fields and rows in place. The printed local check
 reads only the new file, so you do not need to download the old files or copy over the icon and screenshots.
-Repeat steps 2 to 4.
+A new version of a listing that has no screenshots needs one too: add the file under `screenshots/<id>/` and list it
+in the entry's `screenshots` in the same pull request, or the check refuses it (a `mod` or `native-mod` in the
+`library` category is exempt, and a listing that gains no version stays valid as it is). Repeat steps 2 to 4.
 
-`--registry <checkout>` also checks a first listing's id against the checkout's collection ids; without it, the
-registry's CI checks the id when the pull request opens.
+`--registry <checkout>` also checks a first listing's id against the checkout's collection ids, and lists among what
+remains each required dependency of the package that no listed mod version for the same game satisfies, with the
+versions the checkout does list; a version taken down in `revoked.toml` does not count. These lines are printed only,
+not written into the entry. The dependencies are read from the package itself, so after changing `[dependencies]` in
+`sunrise-mod.toml`, build again (and sign the new file, for a signed project) before running `publish`. Without
+`--registry`, the registry's CI checks both when the pull request opens; it also checks sides and what the dependencies
+themselves require.
 
 Published versions never change and are never removed: a version already in the entry is refused by name, and a file
 that must go is taken down by the registry's maintainers in `revoked.toml`.
@@ -96,8 +107,7 @@ Authors may sign with an Ed25519 key in [minisign](https://jedisct1.github.io/mi
 holds the public key, every version of the project must be signed with it, and an update signed with another key is
 refused. `cargo sunrise-mod` verifies a signature but does not make keys or signatures: use `minisign`.
 
-Build and sign before calling `publish`, including on the first listing. For example, for a mod with ID `my_mod`
-(add `--wasm` to `build` for a wasm mod):
+Build and sign before calling `publish`, including on the first listing. For example, for a mod with ID `my_mod`:
 
 ```sh
 cargo sunrise-mod build

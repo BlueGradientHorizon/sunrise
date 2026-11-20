@@ -1139,7 +1139,7 @@ impl Game<'_> {
     pub(super) fn lan_status(&self) -> serde_json::Value {
         use serde_json::json;
         match &self.lan {
-            Some(h) if !self.serving() || self.published_port().is_some() => json!({
+            Some(h) if self.open_to_others() => json!({
                 "open": true,
                 // The owner's profile name.
                 "host": self.options.player_name(),
@@ -1211,11 +1211,7 @@ impl Game<'_> {
             &self.res.core.item_data,
             &self.pack_files(),
         )?;
-        let features = if self.level.enabled_features.is_empty() {
-            vec!["minecraft:vanilla".to_owned()]
-        } else {
-            self.level.enabled_features.to_vec()
-        };
+        let features = self.enabled_feature_ids().to_vec();
         // A world whose packs change biomes sends its own biome registry.
         let packed = self.world_biomes.clone().filter(|b| b.has_packs());
         if packed.is_some()
@@ -1481,7 +1477,7 @@ impl Game<'_> {
         others: &[u32],
         remove: bool,
     ) -> Option<(sunrise_core::nbt::Tag, [i32; 4])> {
-        vehicle?;
+        let vehicle = vehicle?;
         let back = self.dim;
         let theirs = super::Dim::from_id(dim);
         if theirs != back
@@ -1490,26 +1486,23 @@ impl Game<'_> {
             log::error!("could not open {}: {e}", theirs.id());
             return None;
         }
-        let found = if self.dim == theirs {
-            self.parent_vehicle_tag(vehicle, others)
+        let saved = if self.dim == theirs {
+            self.snapshot_parent_vehicle(vehicle, others, remove)
         } else {
             None
         };
-        if remove && let Some((_, root, _)) = &found {
-            self.remove_vehicle_tree(*root);
-        }
         if self.dim != back
             && let Err(e) = self.enter_level(back)
         {
             log::error!("could not reopen {}: {e}", back.id());
         }
-        found.map(|(tag, _, attach)| (tag, attach))
+        saved
     }
-    /// `PlayerList.remove` of a guest out of the hub: its file takes the
-    /// vehicle it alone rides (`saveParentVehicle`'s RootVehicle, kept in
-    /// `saved` as a file not yet ridden again), the vehicle tree leaves the
-    /// world, and the guest stops riding (`unRide`). A guest the crash save excludes keeps
-    /// the vehicle in the world: its file is not written, so nothing would hold it.
+    /// `PlayerList.remove` of a guest out of the hub: the vehicle it alone rides
+    /// leaves the world, and the guest stops riding (`unRide`). The file takes
+    /// a persistent tree as `RootVehicle` (`saved` holds it until the next ride).
+    /// A guest the crash save excludes keeps the vehicle in the world: its file
+    /// is not written, so nothing would hold it.
     pub(super) fn take_parent_vehicle(&mut self, guest: &mut sunrise_client::lan::guest::Guest) {
         // An interrupted player's file is not written, so the vehicle stays in the world.
         if self.crash_save.excludes(guest.conn) {
@@ -2082,7 +2075,9 @@ impl Game<'_> {
             }
             match event {
                 HostEvent::InputCredits(credits) => drop(credits),
-                HostEvent::RawPayload(delivery) => self.receive_raw_delivery(delivery),
+                HostEvent::RawPayload(delivery) => {
+                    self.run_payload(delivery.endpoint, delivery.incoming);
+                }
                 event @ (HostEvent::Chat { .. } | HostEvent::Warn(_) | HostEvent::Error(_)) => {
                     self.lan_log_event(event);
                 }
@@ -3236,12 +3231,6 @@ impl Game<'_> {
             EquipmentSlot::Body => 65,
             EquipmentSlot::Saddle => 68,
         };
-        // The mods hear a server player's break (a creative player's gear takes no wear).
-        if !self.creative
-            && let (Some(uuid), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone())
-        {
-            self.native_player_destroy_item(uuid, &name, &stack.item, equipment_slot_name(slot));
-        }
         let Some(at) = self
             .player
             .as_ref()
@@ -3585,22 +3574,6 @@ pub(super) fn living_flags(using: Option<(usize, u32)>, spinning: bool) -> i8 {
         | if spinning { 4 } else { 0 }
 }
 
-/// The name a mod hears for an equipment slot (the armor stand hook's names, plus
-/// the two slots a mount's gear uses).
-fn equipment_slot_name(slot: sunrise_core::equipment_slot::EquipmentSlot) -> &'static str {
-    use sunrise_core::equipment_slot::EquipmentSlot;
-    match slot {
-        EquipmentSlot::MainHand => "mainhand",
-        EquipmentSlot::OffHand => "offhand",
-        EquipmentSlot::Head => "head",
-        EquipmentSlot::Chest => "chest",
-        EquipmentSlot::Legs => "legs",
-        EquipmentSlot::Feet => "feet",
-        EquipmentSlot::Body => "body",
-        EquipmentSlot::Saddle => "saddle",
-    }
-}
-
 #[cfg(test)]
 use level_event_targets::level_event_except;
 
@@ -3661,8 +3634,7 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::{
-        EventTimings, Hub, LanHost, LanSettings, OFFHAND_SLOT, equipment_slot_name, living_flags,
-        mob_freeze_meta,
+        EventTimings, Hub, LanHost, LanSettings, OFFHAND_SLOT, living_flags, mob_freeze_meta,
     };
 
     impl LanHost {
@@ -4545,21 +4517,6 @@ mod tests {
         assert_eq!(super::level_event_except(2001, actor, true), None);
     }
 
-    /// The names a mod matches on for a broken item's slot (a contract).
-    #[test]
-    fn a_broken_items_slot_is_named_for_mods() {
-        use sunrise_core::equipment_slot::EquipmentSlot::*;
-        let named: Vec<_> = [MainHand, OffHand, Head, Chest, Legs, Feet, Body, Saddle]
-            .map(equipment_slot_name)
-            .to_vec();
-        assert_eq!(
-            named,
-            [
-                "mainhand", "offhand", "head", "chest", "legs", "feet", "body", "saddle"
-            ]
-        );
-    }
-
     /// `server_chat`'s replies reach the sender alone, as system chat, whether
     /// or not the message goes out; a canceled message reaches nobody.
     #[test]
@@ -5103,6 +5060,7 @@ mod sources_tests {
             overlay_key(&PackOverlay {
                 conditions: &sunrise_world::conditions::LoadConditions::vanilla(),
                 files,
+                ..PackOverlay::default()
             })
         };
         assert_eq!(key(&files), key(&files.clone()));
