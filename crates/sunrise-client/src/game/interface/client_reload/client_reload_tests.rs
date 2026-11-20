@@ -114,7 +114,9 @@ fn stage_reads_the_merged_assets_and_apply_publishes_after_all_prepares() {
 }
 
 #[test]
-fn a_listener_error_keeps_every_previous_state() {
+fn a_listener_error_retains_its_cause_and_discards_pending_applies() {
+    use std::error::Error as _;
+
     struct Failing;
     #[derive(Debug)]
     struct NotAHat;
@@ -133,9 +135,20 @@ fn a_listener_error_keeps_every_previous_state() {
         }
     }
     let root = root_with_asset("failing", b"{}");
+    let applied = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let listener = Arc::new(HatListener {
+        seen: std::sync::Mutex::new(Vec::new()),
+        applied: applied.clone(),
+    });
     let mut listeners = <mod_api::ClientListenerRegistry as mod_api::__private::game::ClientReloadListenersOrder>::new();
     listeners
+        .add_listener(id("test_mod:hats"), hats(), listener.clone())
+        .unwrap();
+    listeners
         .add_listener(id("test_mod:failing"), hats(), Arc::new(Failing))
+        .unwrap();
+    listeners
+        .add_dependency(id("test_mod:hats"), id("test_mod:failing"))
         .unwrap();
     let Err(error) = stage_client_reload(
         &sunrise_assets::resource_source::ResourceSource::directory(root.to_path_buf()),
@@ -148,6 +161,18 @@ fn a_listener_error_keeps_every_previous_state() {
         error.to_string(),
         "reload listener test_mod:failing: test_mod:broken: not a hat"
     );
+    let resource_error = error
+        .source()
+        .unwrap()
+        .downcast_ref::<ReloadResourceError>()
+        .unwrap();
+    assert_eq!(resource_error.resource(), &id("test_mod:broken"));
+    assert!(resource_error.source().unwrap().is::<NotAHat>());
+    assert_eq!(
+        listener.seen.lock().unwrap().as_slice(),
+        ["test_mod:top={}"]
+    );
+    assert!(applied.lock().unwrap().is_empty());
     std::fs::remove_dir_all(root).unwrap();
 }
 

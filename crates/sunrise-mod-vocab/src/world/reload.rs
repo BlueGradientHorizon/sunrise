@@ -8,8 +8,9 @@ use crate::{
 };
 use std::{collections::BTreeMap, sync::Arc};
 
-/// An error loading a resource, including the resource that caused it.
-// no wire: transfers resource id and rendered error message, not the boxed native error object.
+/// An error loading a resource, with its ID and the original cause available
+/// through [`Self::resource`] and [`std::error::Error::source`].
+// no wire: retains the native error and its source chain in this process.
 #[derive(Debug)]
 // exhaustive: its fields are private, so mods cannot build or destructure it
 pub struct ReloadResourceError {
@@ -27,19 +28,10 @@ impl ReloadResourceError {
             source: Box::new(source),
         }
     }
-}
-/// The error as its resource ID and message.
-impl From<&ReloadResourceError> for (Identifier, String) {
-    fn from(error: &ReloadResourceError) -> Self {
-        (error.resource.clone(), error.source.to_string())
-    }
-}
-impl From<(Identifier, String)> for ReloadResourceError {
-    fn from((resource, message): (Identifier, String)) -> Self {
-        Self {
-            resource,
-            source: message.into(),
-        }
+
+    /// The converted ID of the resource that failed to load.
+    pub fn resource(&self) -> &Identifier {
+        &self.resource
     }
 }
 impl std::fmt::Display for ReloadResourceError {
@@ -265,12 +257,11 @@ impl<L: ?Sized + 'static> ReloadCore<L> {
     }
 }
 
-/// A failed reload: accepted originals were unavailable, listener ordering
-/// failed, or a listener's `prepare` returned an error. Both sides share this
-/// form, so the reload paths report listeners alike.
+/// A failed reload: staging its inputs failed, listeners could not be ordered,
+/// or a listener's `prepare` returned an error. Both sides report listeners alike.
+// no wire: local staging preserves the typed ordering and listener errors.
 #[derive(Debug)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
 pub enum ReloadStageError {
     /// The next resource generation or its enabled-package inventory could not be built.
     DataSource(String),
@@ -392,8 +383,8 @@ pub fn apply_listeners<V>(
 /// sides' contexts; each side keeps its own context type so a wrong-side read
 /// does not compile.
 // exhaustive: its fields are private, so mods cannot build or destructure it
-#[derive(sunrise_mod_api_macros::Wire)]
-pub struct ReloadFiles(pub(crate) BTreeMap<Identifier, Vec<u8>>);
+// no wire: owns the local bytes the prepare context lends to a listener.
+pub struct ReloadFiles(BTreeMap<Identifier, Vec<u8>>);
 impl ReloadFiles {
     pub(crate) fn new(files: BTreeMap<Identifier, Vec<u8>>) -> Self {
         Self(files)

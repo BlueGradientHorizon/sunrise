@@ -45,11 +45,11 @@ impl VanillaClientListeners {
 
 /// Selected client asset files for one converter, with resource-pack overrides
 /// resolved. Keys have their directory and extension removed. This cannot read
-/// data files or filesystem paths. Its fields are private so the view can grow.
+/// data files or filesystem paths. IDs and bytes are borrowed from this view.
 // exhaustive: its fields are private, so mods cannot build or destructure it
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: a local prepare view of the winning client asset files.
 pub struct ClientReloadContext {
-    pub(crate) files: ReloadFiles,
+    files: ReloadFiles,
 }
 impl ClientReloadContext {
     pub(crate) fn new(files: ReloadFiles) -> Self {
@@ -78,9 +78,10 @@ pub trait ClientReloadListener: Send + Sync + 'static {
     /// As vanilla's `SimpleJsonResourceReloadListener.scanDirectory`, a
     /// listener that parses its files logs and skips one that won't parse,
     /// carrying the rest through; returning `Err` aborts the whole reload and
-    /// keeps every listener's previous assets. A panic in `prepare` or the
-    /// returned apply is not recovered: it stops the game, and the crash report
-    /// names the listener and the mod that registered it.
+    /// keeps every listener's previous assets. Attach the original error to the
+    /// file's ID with [`ReloadResourceError::new`] to preserve its cause.
+    /// A panic in `prepare` or the returned apply stops the game; the crash
+    /// report names the listener and the mod that registered it.
     fn prepare(
         &self,
         context: &ClientReloadContext,
