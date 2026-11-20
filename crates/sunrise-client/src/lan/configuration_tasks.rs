@@ -1,11 +1,11 @@
-//! Main-thread configuration task state shared with one connection worker.
+//! Server-thread task queues and progress shared with each connection worker.
 use super::config_payloads::ConfigSender;
 use crate::raw_payloads::{Endpoint, Transport, connection::Epoch};
 use mod_api::{
     ConfigurationConnection, ConfigurationTask, ConfigurationTaskError, Identifier, PayloadId,
 };
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     sync::{
         Arc, Mutex,
         atomic::{AtomicU64, Ordering},
@@ -26,20 +26,61 @@ pub(super) fn next_connection() -> Option<ConfigurationConnection> {
         .ok()
         .map(mod_api::__private::configuration_connection)
 }
+struct Entry {
+    session: Arc<Session>,
+    queue: Vec<ConfigurationTask>,
+}
+
 #[derive(Default)]
 pub struct Tasks {
-    sessions: BTreeMap<u64, Arc<Session>>,
+    sessions: BTreeMap<u64, Entry>,
 }
 impl Tasks {
     pub fn insert(&mut self, request: &ConfigurationRequest) {
         self.sessions.insert(
             mod_api::__private::configuration_connection_id(request.connection),
-            request.session.clone(),
+            Entry {
+                session: request.session.clone(),
+                queue: Vec::new(),
+            },
         );
+    }
+    /// Validate registered types once, then publish the count to the worker.
+    pub fn register(&mut self, connection: ConfigurationConnection, tasks: Vec<ConfigurationTask>) {
+        let Some(entry) = self
+            .sessions
+            .get_mut(&mod_api::__private::configuration_connection_id(connection))
+        else {
+            return;
+        };
+        {
+            let mut ids = BTreeSet::new();
+            if tasks.iter().any(|task| {
+                task.id.namespace().is_empty() || task.id.path().is_empty() || !ids.insert(&task.id)
+            }) {
+                entry
+                    .session
+                    .fail("Invalid or duplicate configuration task type");
+                return;
+            }
+        }
+        entry.queue = tasks;
+        entry.session.register(entry.queue.len());
     }
     pub fn get(&self, connection: ConfigurationConnection) -> Option<&Arc<Session>> {
         self.sessions
             .get(&mod_api::__private::configuration_connection_id(connection))
+            .map(|entry| &entry.session)
+    }
+    pub fn task_type(
+        &self,
+        connection: ConfigurationConnection,
+        ordinal: usize,
+    ) -> Option<&Identifier> {
+        let entry = self
+            .sessions
+            .get(&mod_api::__private::configuration_connection_id(connection))?;
+        entry.queue.get(ordinal).map(|task| &task.id)
     }
     /// Visit the next session without retaining a borrow across a hook callback.
     pub fn next_running(
@@ -48,7 +89,7 @@ impl Tasks {
     ) -> Option<(ConfigurationConnection, Arc<Session>)> {
         use std::ops::Bound::{Excluded, Unbounded};
         if after.is_none() {
-            self.sessions.retain(|_, session| !session.closed());
+            self.sessions.retain(|_, entry| !entry.session.closed());
         }
         let lower = after.map_or(Unbounded, |connection| {
             Excluded(mod_api::__private::configuration_connection_id(connection))
@@ -56,19 +97,18 @@ impl Tasks {
         self.sessions
             .range((lower, Unbounded))
             .next()
-            .map(|(&id, session)| {
+            .map(|(&id, entry)| {
                 (
                     mod_api::__private::configuration_connection(id),
-                    session.clone(),
+                    entry.session.clone(),
                 )
             })
     }
 }
 #[derive(Default)]
 struct State {
-    tasks: Vec<Identifier>,
+    task_count: Option<usize>,
     at: usize,
-    registered: bool,
     started: bool,
     finished: bool,
     failure: Option<String>,
@@ -76,11 +116,10 @@ struct State {
 }
 impl State {
     fn active(&self) -> bool {
-        self.registered && self.started && !self.finished && !self.closed && self.failure.is_none()
+        self.started && !self.finished && !self.closed && self.failure.is_none()
     }
 }
 pub struct Turn {
-    pub task_type: Identifier,
     pub ordinal: usize,
     pub start: bool,
 }
@@ -115,24 +154,16 @@ impl Session {
             sender,
         })
     }
-    pub fn register(&self, tasks: Vec<ConfigurationTask>) {
-        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        let mut ids = std::collections::BTreeSet::new();
-        if tasks.iter().any(|task| {
-            task.id.namespace().is_empty()
-                || task.id.path().is_empty()
-                || !ids.insert(task.id.clone())
-        }) {
-            state.failure = Some("Invalid or duplicate configuration task type".into());
-            return;
-        }
-        state.tasks = tasks.into_iter().map(|task| task.id).collect();
-        state.registered = true;
+    fn register(&self, task_count: usize) {
+        self.state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .task_count = Some(task_count);
     }
     pub fn turn(&self) -> Option<Turn> {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        if state.closed || state.failure.is_some() || !state.registered || self.transport().closed()
-        {
+        let task_count = state.task_count?;
+        if state.closed || state.failure.is_some() || self.transport().closed() {
             return None;
         }
         if state.finished {
@@ -140,11 +171,12 @@ impl Session {
             state.started = false;
             state.finished = false;
         }
-        let task_type = state.tasks.get(state.at)?.clone();
+        if state.at >= task_count {
+            return None;
+        }
         let start = !state.started;
         state.started = true;
         Some(Turn {
-            task_type,
             ordinal: state.at,
             start,
         })
@@ -201,7 +233,7 @@ impl Session {
         if let Some(error) = &state.failure {
             return Some(Err(error.clone()));
         }
-        (state.registered && state.at == state.tasks.len()).then_some(Ok(()))
+        (state.task_count == Some(state.at)).then_some(Ok(()))
     }
     pub fn close(&self) {
         self.state.lock().unwrap_or_else(|e| e.into_inner()).closed = true;
@@ -226,24 +258,22 @@ mod tests {
         let (events, _receiver) = crate::lan::event_channel_with_capacity(1 << 20);
         let mut io = ConfigIo::new(&mut server, transport.clone(), events).unwrap();
         let session = Session::new(io.task_sender(transport).unwrap());
-        let first = Identifier::parse("task_fixture:first").unwrap();
-        let second = Identifier::parse("task_fixture:second").unwrap();
-        session.register(vec![
-            ConfigurationTask::new(first.clone()),
-            ConfigurationTask::new(second.clone()),
-        ]);
+        session.register(2);
         let turn = session.turn().unwrap();
         assert!(turn.start);
+        assert_eq!(turn.ordinal, 0);
         let completion = session.prepare_finish(turn.ordinal, None).unwrap();
         let delayed = session.prepare_finish(turn.ordinal, None).unwrap();
         assert!(!session.finished());
-        assert_eq!(session.turn().unwrap().task_type, first);
+        let tick = session.turn().unwrap();
+        assert!(!tick.start);
+        assert_eq!(tick.ordinal, 0);
 
         completion.publish();
         assert!(session.finished());
         let next = session.turn().unwrap();
         assert!(next.start);
-        assert_eq!(next.task_type, second);
+        assert_eq!(next.ordinal, 1);
         delayed.publish();
         assert!(!session.finished());
         assert!(matches!(

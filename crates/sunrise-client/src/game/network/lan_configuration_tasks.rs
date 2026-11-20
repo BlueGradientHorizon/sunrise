@@ -75,7 +75,12 @@ impl Game<'_> {
                     );
                     None
                 }) {
-                    request.session.register(tasks);
+                    self.lan
+                        .as_mut()?
+                        .hub
+                        .lan
+                        .configuration_tasks
+                        .register(request.connection, tasks);
                 }
             }
             let mut after = None;
@@ -89,6 +94,17 @@ impl Game<'_> {
             {
                 after = Some(connection);
                 while let Some(turn) = session.turn() {
+                    let Some(task_type) = self
+                        .lan
+                        .as_ref()?
+                        .hub
+                        .lan
+                        .configuration_tasks
+                        .task_type(connection, turn.ordinal)
+                        .cloned()
+                    else {
+                        break;
+                    };
                     self.configuration_callback(&session, |game| {
                         let mut outcome = ConfigurationTaskOutcome::Pending;
                         let context = configuration_task_context(
@@ -96,9 +112,9 @@ impl Game<'_> {
                             &mut outcome,
                         );
                         if turn.start {
-                            game.native_configuration_task_start(context, &turn.task_type);
+                            game.native_configuration_task_start(context, &task_type);
                         } else {
-                            game.native_configuration_task_tick(context, &turn.task_type);
+                            game.native_configuration_task_tick(context, &task_type);
                         }
                         Some((turn.ordinal, outcome))
                     });
