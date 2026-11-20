@@ -552,8 +552,9 @@ def check_root(game: dict, ours: dict, root: str, game_tree: str, consumer_tree:
     its other crates turn on features of packages a root reaches (`sunrise-client` asks `digest` for `mac` and
     `crypto-common` for `getrandom`; rustls and ring do the same under wasmtime), which the API source does not have
     and a wasm mod could not build. It must still resolve nothing, and turn on no feature, that the game does not.
-    So a package a root reaches only through another crate is not held to the game's features; a registry
-    dependency an API crate names itself is, because `build` writes it with exactly the game's (`requested_features`).
+    So a package a root reaches only through another crate need not have exactly the game's features (fewer, never
+    more); a registry dependency an API crate names itself has exactly them, because `build` writes it so
+    (`requested_features`).
     The root itself, and `wasmtime` where the root reaches it, are exact: a mod's local check sees the surface the
     launcher binds."""
 
