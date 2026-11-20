@@ -214,17 +214,13 @@ pub fn travel(
     level: &mut DamageLevel<'_>,
     input: Vec3,
     events: &mut Vec<MobEvent>,
-) -> bool {
-    if !m.fluids.in_water {
-        return false;
-    }
+) {
     m.move_relative(0.1, input);
     m.do_move(w, level, events, &mut MoveGate::new());
     m.velocity = m.velocity.scale(0.9);
     if !m.extra.flag2 && m.ai.target.is_none() {
         m.velocity.y -= 0.005;
     }
-    true
 }
 /// `Guardian.aiStep`'s `clientSideTailAnimation` and
 /// `clientSideSpikesAnimation` (the server's and a client's).

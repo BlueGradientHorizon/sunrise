@@ -7,4 +7,5 @@ pub(super) enum TravelMode {
     Lava,
     Glide,
     Flying,
+    VelocityOnly,
 }

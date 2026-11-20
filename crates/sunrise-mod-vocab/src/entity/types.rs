@@ -1530,11 +1530,8 @@ impl MoveCause {
     ];
 }
 
-/// Which `LivingEntity.travel` branch a living body is about to run (the
-/// `living_travel` hook of #2308/#2414): water, lava, the glide, the flying
-/// branch, or ordinary air travel. The game resolves it before the branch
-/// selection runs and hands it to the listener as data: replacing the
-/// travel's input or velocity does not change which branch runs.
+/// The `LivingEntity.travel` branch a living body is about to run. Replacing
+/// the travel input or velocity does not change the branch.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum TravelMode {
@@ -1546,8 +1543,10 @@ pub enum TravelMode {
     Lava,
     /// `LivingEntity.travelFallFlying`: gliding.
     Glide,
-    /// The flying branch (`Player` abilities flying, a flying mob kind).
+    /// The flying branch (`Player` abilities flying or a mob's flight).
     Flying,
+    /// Move using the existing velocity alone, as squid do in and out of water.
+    VelocityOnly,
 }
 
 /// Check each replaced vector against its own budget, without applying mod-output

@@ -505,10 +505,9 @@ pub fn travel(
     level: &mut DamageLevel<'_>,
     input: Vec3,
     events: &mut Vec<MobEvent>,
-) -> bool {
+) {
     let speed = m.ai.speed;
     m.travel_flying_speeds(w, level, input, events, 0.02, 0.02, speed);
-    true
 }
 /// `Allay.aiStep` / `tick`: pause the Brain's memory clocks, not passive work.
 pub fn ai_step(m: &mut Mob, w: &MobWorld) {

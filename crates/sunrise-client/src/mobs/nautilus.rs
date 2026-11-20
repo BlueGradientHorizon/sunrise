@@ -173,15 +173,11 @@ pub fn travel(
     level: &mut DamageLevel<'_>,
     input: Vec3,
     events: &mut Vec<MobEvent>,
-) -> bool {
-    if !m.fluids.in_water {
-        return false;
-    }
+) {
     let speed = m.ai.speed;
     m.move_relative(speed, input);
     m.do_move(w, level, events, &mut MoveGate::new());
     m.velocity = Vec3::new(m.velocity.x * 0.9, m.velocity.y * 0.9, m.velocity.z * 0.9);
-    true
 }
 /// `tickRidden` and `getRiddenInput`: turn half way to the rider, swim along
 /// their look, faster in water (`getRiddenSpeed`), and dash on the jump.

@@ -2,7 +2,45 @@
 //! air, fluid, glide and flying branches, split out of `living.rs` (no
 //! behaviour change). The `living_travel` hook (#2414, PR 2) fires at this
 //! family's entry.
+use super::super::{Species, allay, aquatic, frog, guardian, nautilus, turtle, undead, vex};
 use super::{DamageLevel, Fluid, Mob, MobEvent, MobWorld, MoveGate, Vec3};
+use sunrise_world::travel::TravelMode;
+
+enum TravelRoute {
+    Air,
+    AirEndingGlide,
+    Fluid { water: bool },
+    Glide,
+    Flying,
+    Allay,
+    Vex,
+    Squid,
+    Fish,
+    Drowned,
+    Frog,
+    Guardian,
+    Nautilus,
+    Turtle,
+}
+
+impl TravelRoute {
+    fn mode(&self) -> TravelMode {
+        match self {
+            Self::Air | Self::AirEndingGlide => TravelMode::Air,
+            Self::Fluid { water: true } => TravelMode::Water,
+            Self::Fluid { water: false } => TravelMode::Lava,
+            Self::Glide => TravelMode::Glide,
+            Self::Flying | Self::Allay | Self::Vex => TravelMode::Flying,
+            Self::Squid => TravelMode::VelocityOnly,
+            Self::Fish
+            | Self::Drowned
+            | Self::Frog
+            | Self::Guardian
+            | Self::Nautilus
+            | Self::Turtle => TravelMode::Water,
+        }
+    }
+}
 
 impl Mob {
     /// LivingEntity.travel.
@@ -13,16 +51,15 @@ impl Mob {
         mut input: Vec3,
         events: &mut Vec<MobEvent>,
     ) {
-        // The living_travel hook (#2414): one decision at travel's entry,
-        // on the authoritative side, one branch with no listener. A cancel
-        // skips the invocation - this branch family and its nested move
-        // included; nothing the tick already did is undone.
+        let Some(route) = self.travel_route(w) else {
+            return;
+        };
         let mut velocity = self.velocity;
         if !crate::travel_gate::decide(
             w.loop_context,
             self.id,
             &self.kind.id,
-            || self.travel_mode(w),
+            || route.mode(),
             &mut input,
             &mut velocity,
         ) {
@@ -39,70 +76,91 @@ impl Mob {
             self.velocity = self.velocity.multiply(vertical);
             input = input.multiply(vertical);
         }
-        if super::super::ai::custom_travel(self, w, level, input, events) {
-            return;
-        }
-        if self.kind.flags.flying {
-            return self.travel_flying(w, level, input, events);
-        }
-        // shouldTravelInFluid: not where the fluid at its feet holds it up.
-        let (x, y, z) = (
-            self.position.x.floor() as i32,
-            self.position.y.floor() as i32,
-            self.position.z.floor() as i32,
-        );
-        let stands_on_fluid = self.kind.flags.lava_walker && w.fluid(x, y, z) == Fluid::Lava;
-        if self.is_in_liquid() && self.affected_by_fluids() && !stands_on_fluid {
-            self.travel_in_fluid(w, level, input, events);
-        } else if self.extra.fall_flying {
-            self.travel_fall_flying(w, level, input, events);
-        } else {
-            self.travel_in_air(w, level, input, events);
-        }
-    }
-    /// The branch this travel is about to run, as the `living_travel` hook
-    /// of #2414 hears it (its `mode`, built only when a listener asks): the
-    /// same branch the selection in [`travel`] picks, a flying kind first,
-    /// then the fluid it moves through, then the glide.
-    fn travel_mode(&self, w: &MobWorld) -> sunrise_world::travel::TravelMode {
-        use sunrise_world::travel::TravelMode;
-        if self.kind.flags.flying {
-            return TravelMode::Flying;
-        }
-        // shouldTravelInFluid: not where the fluid at its feet holds it up.
-        let (x, y, z) = (
-            self.position.x.floor() as i32,
-            self.position.y.floor() as i32,
-            self.position.z.floor() as i32,
-        );
-        let stands_on_fluid = self.kind.flags.lava_walker && w.fluid(x, y, z) == Fluid::Lava;
-        if self.is_in_liquid() && self.affected_by_fluids() && !stands_on_fluid {
-            // `travel_in_fluid` picks water first.
-            if self.fluids.in_water {
-                TravelMode::Water
-            } else {
-                TravelMode::Lava
+        match route {
+            TravelRoute::Air => self.travel_in_air(w, level, input, events),
+            TravelRoute::AirEndingGlide => {
+                self.travel_in_air(w, level, input, events);
+                self.extra.fall_flying = false;
             }
-        } else if self.extra.fall_flying {
-            TravelMode::Glide
-        } else {
-            TravelMode::Air
+            TravelRoute::Fluid { water } => self.travel_in_fluid(w, level, input, events, water),
+            TravelRoute::Glide => self.travel_fall_flying(w, level, events),
+            TravelRoute::Flying => self.travel_flying(w, level, input, events),
+            TravelRoute::Allay => allay::travel(self, w, level, input, events),
+            TravelRoute::Vex => vex::travel(self, w),
+            // Squid.travel moves by its current velocity alone, even out of water.
+            TravelRoute::Squid => self.do_move(w, level, events, &mut MoveGate::new()),
+            TravelRoute::Fish => aquatic::travel_in_water(self, w, level, input, events),
+            TravelRoute::Drowned => undead::drowned_travel(self, w, level, input, events),
+            TravelRoute::Frog => frog::travel(self, w, level, input, events),
+            TravelRoute::Guardian => guardian::travel(self, w, level, input, events),
+            TravelRoute::Nautilus => nautilus::travel(self, w, level, input, events),
+            TravelRoute::Turtle => turtle::travel(self, w, level, input, events),
         }
     }
+
+    // Decide once, before mod input or velocity can change. Species overrides
+    // take precedence over the generic branches; Shulkers do not travel.
+    fn travel_route(&self, w: &MobWorld) -> Option<TravelRoute> {
+        use Species as S;
+        let water = self.fluids.in_water;
+        Some(match self.species() {
+            S::Shulker => return None,
+            S::Allay => TravelRoute::Allay,
+            S::Vex => TravelRoute::Vex,
+            S::Squid | S::GlowSquid => TravelRoute::Squid,
+            S::Axolotl
+            | S::Cod
+            | S::Salmon
+            | S::TropicalFish
+            | S::Pufferfish
+            | S::Tadpole
+            | S::Dolphin
+                if water =>
+            {
+                TravelRoute::Fish
+            }
+            S::Drowned
+                if water && self.was_eye_in_water && undead::drowned_wants_to_swim(self, w) =>
+            {
+                TravelRoute::Drowned
+            }
+            S::Frog if water => TravelRoute::Frog,
+            S::Guardian | S::ElderGuardian if water => TravelRoute::Guardian,
+            S::Nautilus | S::ZombieNautilus if water => TravelRoute::Nautilus,
+            S::Turtle if water => TravelRoute::Turtle,
+            _ if self.kind.flags.flying => TravelRoute::Flying,
+            _ => {
+                // shouldTravelInFluid: not where the fluid at its feet holds it up.
+                let (x, y, z) = (
+                    self.position.x.floor() as i32,
+                    self.position.y.floor() as i32,
+                    self.position.z.floor() as i32,
+                );
+                let stands_on_fluid =
+                    self.kind.flags.lava_walker && w.fluid(x, y, z) == Fluid::Lava;
+                if self.is_in_liquid() && self.affected_by_fluids() && !stands_on_fluid {
+                    TravelRoute::Fluid { water }
+                } else if self.extra.fall_flying {
+                    if self.on_climbable(w) {
+                        TravelRoute::AirEndingGlide
+                    } else {
+                        TravelRoute::Glide
+                    }
+                } else {
+                    TravelRoute::Air
+                }
+            }
+        })
+    }
+
     /// `LivingEntity.travelFallFlying`: use the mob's existing authoritative move
     /// and damage routes, with the shared `updateFallFlyingMovement` arithmetic.
     fn travel_fall_flying(
         &mut self,
         w: &MobWorld,
         level: &mut DamageLevel<'_>,
-        input: Vec3,
         events: &mut Vec<MobEvent>,
     ) {
-        if self.on_climbable(w) {
-            self.travel_in_air(w, level, input, events);
-            self.extra.fall_flying = false;
-            return;
-        }
         let before = (self.velocity.x * self.velocity.x + self.velocity.z * self.velocity.z).sqrt();
         self.velocity = crate::motion::fall_flying_movement(
             self.velocity,
@@ -256,11 +314,12 @@ impl Mob {
         level: &mut DamageLevel<'_>,
         input: Vec3,
         events: &mut Vec<MobEvent>,
+        water: bool,
     ) {
         let falling = self.velocity.y <= 0.0;
         let old_y = self.position.y;
         let gravity = self.effective_gravity();
-        if self.fluids.in_water {
+        if water {
             let mut slow = if self.extra.sprinting {
                 0.9
             } else {
@@ -344,5 +403,68 @@ impl Mob {
         {
             self.velocity.y += f64::from(0.04_f32);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mod_api::{Flow, Hooks, LivingTravelEvent, LoopContext, TravelMode as Mode};
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    #[ignore = "daily"]
+    fn custom_mob_travel_reports_the_route_it_runs() {
+        struct Observe(Arc<Mutex<Vec<(u32, Mode)>>>);
+        #[mod_api::__subscriptions]
+        impl Hooks for Observe {
+            fn living_travel(
+                &self,
+                _: &dyn LoopContext,
+                event: &mut LivingTravelEvent<'_>,
+            ) -> Flow {
+                self.0.lock().unwrap().push((event.entity, event.mode));
+                Flow::Continue
+            }
+        }
+
+        let heard = Arc::new(Mutex::new(Vec::new()));
+        let mods = vec![mod_api::ModEntry::new(
+            "observe",
+            Box::new(Observe(Arc::clone(&heard))),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            assert!(
+                crate::mobs::world::with_test_world(&[], |w, types| {
+                    let at = Vec3::new(0.5, 80.0, 0.5);
+                    let mut test_level = crate::health::TestLevel::new(0);
+                    for (id, name, dx, vx) in [
+                        (1, "minecraft:allay", 1.0, f64::from(0.91_f32)),
+                        (2, "minecraft:vex", 1.0, f64::from(0.91_f32)),
+                        (3, "minecraft:squid", 1.0, 1.0),
+                        (4, "minecraft:shulker", 0.0, 1.0),
+                    ] {
+                        let mut mob = Mob::new(id, Arc::new(types.types[name].clone()), at, 0.0);
+                        mob.velocity = Vec3::new(1.0, 0.0, 0.0);
+                        mob.travel(w, &mut test_level.level(), Vec3::ZERO, &mut Vec::new());
+                        assert_eq!(mob.position.x, at.x + dx, "{name} displacement");
+                        assert_eq!(mob.velocity.x, vx, "{name} drag");
+                        if name == "minecraft:allay" {
+                            assert_eq!(mob.velocity.y, 0.0, "allay flight does not apply gravity");
+                        }
+                    }
+                }),
+                "prepared resources are required"
+            );
+        });
+        assert_eq!(
+            *heard.lock().unwrap(),
+            vec![
+                (1, Mode::Flying),
+                (2, Mode::Flying),
+                (3, Mode::VelocityOnly)
+            ]
+        );
     }
 }

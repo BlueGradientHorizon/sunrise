@@ -45,6 +45,7 @@ fn mode_of(mode: GameTravelMode) -> TravelMode {
         GameTravelMode::Lava => TravelMode::Lava,
         GameTravelMode::Glide => TravelMode::Glide,
         GameTravelMode::Flying => TravelMode::Flying,
+        GameTravelMode::VelocityOnly => TravelMode::VelocityOnly,
     }
 }
 
