@@ -33,7 +33,9 @@ impl Fixture {
         });
         fs::create_dir_all(&catalog).unwrap();
         if !modules {
-            fs::write(catalog.parent().unwrap().join("build"), "a".repeat(40)).unwrap();
+            crate::sdk_fetch::CacheStamp::new(&"a".repeat(40), &crate::sdk_fetch::keys())
+                .write(catalog.parent().unwrap())
+                .unwrap();
         }
         let build = serde_json::json!({"commit": "a".repeat(40)});
         fs::write(catalog.join("internals.json"), serde_json::json!({"schema": 1, "build": build, "internals": [{
