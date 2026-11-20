@@ -6,14 +6,14 @@
 use crate::game::native_guest_turn_tests::with_guests;
 use mod_api::{
     BlockEntityPart, Flow, Hooks, ITEMS, ItemPlace, ItemResource, MenuButtonEvent,
-    MenuClickedEvent, MenuQuickMoveEvent, ModEntry, Mods, Registrar, ServerHost,
+    MenuClickedEvent, MenuQuickMoveEvent, MenuSlotTakeEvent, ModEntry, Mods, Registrar, ServerHost,
 };
 use std::{
     cell::{Cell, RefCell},
     sync::Arc,
 };
 use sunrise_client::{
-    containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields, ModContainer},
+    containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields, ModContainer, ModMenuType},
     items::ItemStack,
     lan::menu::Slots,
 };
@@ -30,8 +30,10 @@ struct Script {
     /// ...and answer with a stack past the item's maximum in slot 1.
     invalid: bool,
     /// `menu_quick_move`: move 4 of the stack into the second block through its `ITEMS`
-    /// capability, leave 6 in `stack`, and return unhandled.
+    /// capability, leave 6 in `stack`, and return unhandled unless `handle_cross` is set.
     cross: bool,
+    handle_cross: bool,
+    fail_take: bool,
     /// `menu_button`: replace the open menu through the host, returning its cursor to inventory.
     replace_menu: bool,
     /// `menu_button`: propose a cursor edit before replacing the menu, to ensure stale edits lose.
@@ -43,6 +45,7 @@ struct Script {
 thread_local! {
     static SCRIPT: RefCell<Script> = RefCell::new(Script::default());
     static DISPATCHES: Cell<usize> = const { Cell::new(0) };
+    static TAKE: Cell<Option<(u32, u32)>> = const { Cell::new(None) };
     /// `menu_button` calls on the depot.
     static BUTTONS: Cell<usize> = const { Cell::new(0) };
     /// `menu_button` calls that received the depot's actual backing entity.
@@ -55,6 +58,7 @@ thread_local! {
 
 fn script(script: Script) {
     DISPATCHES.set(0);
+    TAKE.set(None);
     super::decided_action::DECIDED.set(0);
     IN_ACTION.with(|a| a.borrow_mut().clear());
     SCRIPT.with(|s| *s.borrow_mut() = script);
@@ -119,10 +123,24 @@ impl BlockEntityPart for Part {
         if s.panic {
             panic!("a listener failed");
         }
-        if s.take {
+        if s.take || s.handle_cross {
             return Flow::Cancel;
         }
         Flow::Continue
+    }
+
+    fn menu_slot_take(&self, host: &mut dyn ServerHost, event: &mut MenuSlotTakeEvent<'_>) {
+        if !SCRIPT.with(|s| s.borrow().handle_cross) {
+            return;
+        }
+        TAKE.set(Some((
+            event.taken.count(),
+            event.left.map_or(0, |left| left.count()),
+        )));
+        if SCRIPT.with(|s| s.borrow().fail_take) {
+            write_dirt(host);
+            panic!("the take listener failed after the cross-block move");
+        }
     }
 }
 #[mod_api::sunrise_part]
@@ -197,8 +215,10 @@ impl Hooks for Mod {
 
 fn with_mod(test: impl FnOnce()) {
     let mods: Mods = vec![ModEntry::new("movemod", Box::new(Mod))].into();
-    crate::game::api_values::install_parts(&mods).unwrap();
-    mod_platform::testing::with_mods(mods, test);
+    mod_platform::testing::with_mods(mods.clone(), || {
+        crate::game::api_values::install_parts(&mods).unwrap();
+        test();
+    });
 }
 
 /// How many decisions were entered since the last `script`.
@@ -387,6 +407,7 @@ fn second_block(game: &mut crate::game::Game<'_>) {
             state.0,
             Arc::new(ModContainer {
                 slots: 9,
+                inputs: vec![0],
                 ..Default::default()
             }),
         )]
@@ -590,6 +611,49 @@ fn an_untaken_quick_move_that_wrote_to_another_block_is_undone_and_routed_once()
 
 #[test]
 #[ignore = "daily"]
+fn a_handled_cross_block_move_commits_only_if_its_take_returns() {
+    with_mod(|| {
+        with_guests(|game| {
+            let kind = Box::leak(Box::new(ModMenuType {
+                id: "minecraft:generic_9x1",
+                slots: 9,
+                data_slots: 0,
+                results: Vec::new(),
+                inputs: Vec::new(),
+                crafting: None,
+                links: None,
+            }));
+            for fail_take in [true, false] {
+                let window = open_depot(game);
+                second_block(game);
+                game.lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(0, |g| g.menu.as_mut().unwrap().mod_type = Some(kind));
+                script(Script {
+                    cross: true,
+                    handle_cross: true,
+                    fail_take,
+                    ..Script::default()
+                });
+                game.lan_guest_packet(12, container_click(window, 0, 1));
+                assert_eq!(DISPATCHES.get(), 1);
+                assert_eq!(TAKE.get(), Some((4, 6)));
+                assert_eq!(
+                    stone_everywhere(game),
+                    if fail_take { (10, 0, 0) } else { (6, 4, 0) }
+                );
+                assert_eq!(inventory(game, 20), 0);
+                assert!(game.transactions.is_empty());
+            }
+        })
+    });
+}
+
+#[test]
+#[ignore = "daily"]
 fn a_replaced_block_entity_makes_an_admitted_quick_move_stale() {
     use super::native_quick_move::Admitted;
     with_guests(|game| {
@@ -664,6 +728,9 @@ fn a_code_opened_menus_button_reaches_a_blocks_menu_button_only_for_its_menu_typ
                 BUTTON_POSITIONS.with(|positions| positions.borrow_mut().clear());
                 let window = open_depot(game);
                 depot_container(game);
+                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                    guest.menu.as_mut().unwrap().registry_id = DEPOT_MENU.into();
+                });
                 button(game, window, 99);
                 assert_eq!(BUTTONS.get(), 0, "a menu rejects unsupported button IDs");
                 button(game, window + 1, 3);

@@ -671,7 +671,8 @@ impl Hub {
         }
     }
 
-    fn view_slot(&self, i: usize, world: &World, slot: usize) -> Option<ItemStack> {
+    /// The live storage value the server presents in this menu slot.
+    pub fn view_slot(&self, i: usize, world: &World, slot: usize) -> Option<ItemStack> {
         let g = &self.guests[i];
         match &g.menu {
             Some(m) if slot < m.size => m.slots.get(world, g, slot),
