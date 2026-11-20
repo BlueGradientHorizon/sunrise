@@ -15,7 +15,10 @@ use crate::{
 };
 use std::{
     collections::{BinaryHeap, HashSet, VecDeque},
-    sync::{Arc, Condvar, Mutex, MutexGuard, RwLock, TryLockError},
+    sync::{
+        Arc, Condvar, Mutex, MutexGuard, RwLock, TryLockError,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 use sunrise_core::biome::BiomeZoom;
 use sunrise_threads::jobs::{Class, PerWorker, Rank, Registration, Source};
@@ -492,6 +495,18 @@ fn commit_unloads(world: &mut World, keys: &[(i32, i32)]) -> Vec<Arc<Chunk>> {
 /// its 3×3 neighbourhood resident (vanilla's ticking-chunk future).
 fn forced_ready(world: &World, x: i32, z: i32) -> bool {
     world.chunks.get(&(x, z)).is_some_and(|chunk| chunk.lit) && world.chunks.surrounded((x, z))
+}
+
+fn wait_for_forced_column(
+    world: &mut World,
+    x: i32,
+    z: i32,
+    aborted: &AtomicBool,
+    mut pump: impl FnMut(&mut World),
+) {
+    while !aborted.load(Ordering::Relaxed) && !forced_ready(world, x, z) {
+        pump(world);
+    }
 }
 
 /// An update paused before removing its out-of-range live chunks.
@@ -2722,18 +2737,14 @@ impl Streaming {
     /// ticking readiness before returning. `ChunkMap.prepareTickingChunk`
     /// waits for the lit column and its 3×3 so saved ticks can resume (#3341).
     /// While paused, record the ticket for when streaming starts. Remote
-    /// streamers can only accept resident columns. After generation stops,
-    /// refuse adds without changing the saved ticket set. Repeated adds and
-    /// removals do not wait for streaming.
+    /// streamers can only accept resident columns. Refuse adds after generation
+    /// stops. If it stops during the wait, return true and keep the saved ticket
+    /// so the chunk loads at next startup. Repeated adds and removals do not wait.
     pub fn set_forced_loaded(&mut self, world: &mut World, x: i32, z: i32, forced: bool) -> bool {
         if !forced {
             return self.set_forced(x, z, false);
         }
-        if self
-            .shared
-            .aborted
-            .load(std::sync::atomic::Ordering::Relaxed)
-        {
+        if self.shared.aborted.load(Ordering::Relaxed) {
             return false;
         }
         if self.remote {
@@ -2746,7 +2757,8 @@ impl Streaming {
         if !self.set_forced(x, z, true) {
             return false;
         }
-        while !forced_ready(world, x, z) {
+        let shared = self.shared.clone();
+        wait_for_forced_column(world, x, z, &shared.aborted, |world| {
             // Pump the existing generation queue. Keep unloads for the
             // normal owner update, which saves entities and notifies mods.
             let mut plan = self.plan_update(world);
@@ -2755,10 +2767,10 @@ impl Streaming {
             let (meshes, unloaded) = self.finish_update(world, plan);
             debug_assert!(unloaded.is_empty());
             self.free(meshes);
-            if !forced_ready(world, x, z) {
+            if !shared.aborted.load(Ordering::Relaxed) && !forced_ready(world, x, z) {
                 self.wait(std::time::Duration::from_millis(5));
             }
-        }
+        });
         true
     }
 
@@ -3722,6 +3734,19 @@ mod tests {
             }
         }
         assert!(forced_ready(&world, 4, 4));
+    }
+
+    #[test]
+    fn forced_column_wait_ends_when_generation_aborts() {
+        let mut world = World::new(sunrise_world::registry::BlockStateId(0), 0);
+        let aborted = AtomicBool::new(false);
+        wait_for_forced_column(&mut world, 4, 4, &aborted, |_| {
+            // Stop on the first pump, leaving the column missing. A second
+            // pump fails the test immediately instead of hanging the runner.
+            assert!(!aborted.swap(true, Ordering::Relaxed), "pumped after abort");
+        });
+        assert!(aborted.load(Ordering::Relaxed));
+        assert!(!world.chunks.contains_key(&(4, 4)));
     }
 
     #[test]
