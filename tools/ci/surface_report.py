@@ -7,7 +7,8 @@ base of that pull request's head and its base branch. Only that one commit is fe
 checkout; a full clone is never fetched shallow), and only its `Cargo.toml`, `crates/` and `tools/layering` are
 unpacked. The engine catalogs are read from source; the workspace
 manifest resolves inherited dependencies for crates with injection points. CI compares points and loops, not
-listed internals. To audit internals too, use --with-internals; --trees BASE HEAD accepts local source trees.
+listed internals. To audit internals too, use --with-internals; --trees BASE HEAD accepts local source trees (a
+whole BASE checkout, so its own `sunrise-stage` can be built when the head's cannot read it).
 
 It passes when the base cannot be found or fetched, saying so in one line. When the head's tool cannot read the
 base tree (the base predates a rule or format this tool holds trees to), the base's own `sunrise-stage` is built
@@ -110,6 +111,11 @@ def base_tool(sha: str, work: Path) -> str:
     tree = work / f"base-tool-{sha[:12]}"
     tree.mkdir()
     unpack(sha, tree, ())
+    return tree_tool(tree)
+
+
+def tree_tool(tree: Path) -> str:
+    """The sunrise-stage of the whole source tree `tree`, built in the test profile into target/surface-base."""
     target = ROOT / "target" / "surface-base"
     built = subprocess.run(["cargo", "build", "--locked", "--profile", "test", "-p", "sunrise-mod-api-gen",
                             "--bin", "sunrise-stage", "--target-dir", str(target)],
@@ -266,7 +272,8 @@ def main(argv=None) -> int:
         work = Path(directory)
         if args.trees:
             base, head = args.trees
-            code, text = report(tool, base, head, work, gate_on, with_internals=args.with_internals)
+            code, text = report(tool, base, head, work, gate_on, with_internals=args.with_internals,
+                                own_base_tool=lambda: tree_tool(base))
         else:
             base = work / "base"
             try:

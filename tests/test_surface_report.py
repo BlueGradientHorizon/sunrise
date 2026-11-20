@@ -143,7 +143,7 @@ echo '{{}}' > "$3"
                                "(sunrise-stage surface: unknown key `access`), nor can the base's own "
                                "(sunrise-stage surface: base.rs: older form).\n")
         self.assertNotIn("surface-diff", calls)
-        # With no base tool to fall back on (a local comparison of two trees), the unreadable base fails too.
+        # With no base tool to fall back on, the unreadable base fails too.
         code, text, _ = self.run_report(base_export=1)
         self.assertEqual(code, 1)
         self.assertTrue(text.startswith("No surface report: the head's sunrise-stage cannot read the base tree"), text)
@@ -338,6 +338,12 @@ class MainTests(unittest.TestCase):
         self.assertEqual(report.call_args.args[1:3], (Path("before"), Path("after")))
         self.assertTrue(report.call_args.kwargs["with_internals"])
         find_base.assert_not_called()
+        # A base the head's tool cannot read falls back to the base tree's own tool, built from that tree.
+        with mock.patch.object(surface_report, "report", return_value=(0, "")) as report, \
+             mock.patch.object(surface_report, "tree_tool", return_value="/before/stage") as tree_tool:
+            self.run_main(argv=["--trees", "before", "after"])
+            self.assertEqual(report.call_args.kwargs["own_base_tool"](), "/before/stage")
+        tree_tool.assert_called_once_with(Path("before"))
 
 
 @unittest.skipUnless(shutil.which("bash"), "needs bash for the stub tool")
