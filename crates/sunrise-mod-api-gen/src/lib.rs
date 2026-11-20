@@ -632,8 +632,6 @@ pub mod surface;
 pub use build::{generate, generate_api_parts, generate_render, write_if_changed};
 pub use counterparts::generate as generate_counterparts;
 pub use notes::generate as generate_hook_notes;
-mod staged;
-pub use staged::{MODS_STAGE, staged_mods};
 
 /// Generate the dispatch test fixture without preventing xtask from filling new placeholders.
 #[doc(hidden)]

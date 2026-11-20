@@ -18,8 +18,8 @@ not change or cannot be read, and, with `gate = true` in tools/ci/surface.toml (
 names.
 
 A new note that carries `landed = "<merge sha>"` is retroactive: it is left out of the comparison above and checked
-against that merge instead. The merge and its first parent are fetched and exported (each by its own commit's tool
-when the head's cannot read it), and `surface-diff --landed` attaches the note and fails when an id did not change there.
+against that merge instead. Both the merge and its first parent must already use the native-only surface schema.
+Each is exported by its own tool to verify its schema; `surface-diff --landed` then fails if an id did not change there.
 The notes that merge brought itself (new against its first parent) count as coverage there, read apart from the late
 ones (`--covered-by`), so the comparison lists as unnoted only what no note covers, then or now. That costs two exports,
 only on a pull request that adds such a note. A merge that does not have two parents, or a tree that cannot be
@@ -190,27 +190,32 @@ def report(tool: str, base: Path, head: Path, work: Path, gate_on: bool, *,
            notes: tuple[Path, Path] | None = None, landed: str | None = None,
            covered: tuple[Path, Path] | None = None) -> tuple[int, str]:
     """Exports both trees at once, diffs them; (exit code, report text). `own_base_tool` gives the base's own
-    sunrise-stage, for a base the head's cannot read, and `own_head_tool` the head tree's, for a head tree that is
-    not this checkout (a landed merge). `notes` is the (new, base) pair of change-note folders when they are not the
+    sunrise-stage, for a base the head's cannot read; landed comparisons always use both trees' own exporters.
+    `notes` is the (new, base) pair of change-note folders when they are not the
     trees' own; `landed` selects the notes of one merge, and `covered` a (new, base) pair whose new notes count as
     coverage only (that merge's own)."""
     catalogs = "--with-internals" if with_internals else "--with-loops"
 
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        # Drain both subprocesses' diagnostics while they run so a full pipe cannot stall an export.
-        exports = {name: pool.submit(export_surface, tool, tree, work / f"{name}.json", catalogs)
-                   for name, tree in (("base", base), ("head", head))}
-    head_export = exports["head"].result()
-    # This checkout's own tree failing is a broken generator, which no other step would catch.
-    if head_export.returncode != 0 and own_head_tool is None:
-        return 1, f"The surface export of this tree failed: {last_line(head_export.stderr)}.\n"
+    exports = {}
+    if landed is None:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            # Drain both subprocesses' diagnostics while they run so a full pipe cannot stall an export.
+            exports = {name: pool.submit(export_surface, tool, tree, work / f"{name}.json", catalogs)
+                       for name, tree in (("base", base), ("head", head))}
+        head_export = exports["head"].result()
+        if head_export.returncode != 0:
+            return 1, f"The surface export of this tree failed: {last_line(head_export.stderr)}.\n"
     note = ""
-    for name, tree, done, own_tool in (("head", head, head_export, own_head_tool),
-                                       ("base", base, exports["base"].result(), own_base_tool)):
-        if done.returncode == 0:
-            continue
-        # An older tree this tool holds to a newer rule or format: that tree's own tool reads it.
-        why = f"the head's sunrise-stage cannot read the {name} tree ({last_line(done.stderr)})"
+    trees = (("base", base, own_base_tool), ("head", head, own_head_tool))
+    for name, tree, own_tool in trees:
+        if landed is None:
+            done = exports[name].result()
+            if done.returncode == 0:
+                continue
+            why = f"the head's sunrise-stage cannot read the {name} tree ({last_line(done.stderr)})"
+        else:
+            # The current tool can sometimes export an old tree, but would silently omit records from its schema.
+            why = f"the landed {name} must be exported in its original schema"
         if own_tool is None:
             return 1, f"No surface report: {why}.\n"
         try:
@@ -224,7 +229,13 @@ def report(tool: str, base: Path, head: Path, work: Path, gate_on: bool, *,
             return 1, f"No surface report: {why}, nor can the {name}'s own ({last_line(own.stderr)}).\n"
         note += f"The {name} was exported by its own sunrise-stage: {why}.\n"
         reset_path = head / SCHEMA_RESET
-        if name == "base" and not with_internals and landed is None and reset_path.is_file():
+        if landed is not None:
+            schema = json.loads(output.read_text())["schema"]
+            if schema < 3:
+                side = "first parent" if name == "base" else "merge"
+                return 1, (f"The {side} uses surface schema {schema}; a landed note requires both trees to use "
+                           "the native-only surface schema (3 or later). Put notes for older merges in changes/history/.\n")
+        elif name == "base" and not with_internals and reset_path.is_file():
             old = json.loads(output.read_text())
             if old.get("schema") == 2:
                 checkpoint, text = audited_checkpoint(reset_path, work, old["hash"], tool)
@@ -314,7 +325,6 @@ def landed_check(tool: str, head: Path, base: Path, work: Path, shas: dict[str, 
         # first parent) are read apart from them, as coverage.
         for tree in ("base", "head"):
             (folder / tree / NOTES).mkdir(parents=True, exist_ok=True)
-        # Both are older trees: each falls back to its own commit's tool when this one refuses it.
         sub_code, sub_text = report(tool, folder / "base", folder / "head", folder, False,
                                     own_base_tool=(lambda: own_tool(parent)) if own_tool else None,
                                     own_head_tool=(lambda: own_tool(sha)) if own_tool else None,

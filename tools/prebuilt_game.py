@@ -75,8 +75,6 @@ API_MAIN = ROOT / "crates/sunrise-client/src/native_main.rs.template"
 RUNTIME = "bin"
 # The required inputs (`sunrise_mod_package::sdk::Inputs`): `members` lists what each slice must hold.
 INPUTS = ROOT / "crates/sunrise-mod-package/src/sdk/inputs.json"
-# The crates an API-only mod may name; their closure is the `api` archive.
-API_ROOTS = ("sunrise-mod-api",)
 # The game libraries outside the API closure, in the runtime archive.
 GAME_LIBRARIES = ("sunrise_mod_host", "sunrise_official")
 # The lowest of the libraries the prebuilt game is split into: every other one links it.
@@ -408,12 +406,12 @@ def copy_artifacts(messages: list[dict], deps: Path, host: Path, target_dir: Pat
     return copied
 
 
-def api_closure(metadata: dict, roots=API_ROOTS) -> set[str]:
-    """The package IDs an API-only mod's build reads: `roots` and their normal dependencies. A proc macro is a leaf,
-    since its own dependencies are inside its library."""
+def api_closure(metadata: dict) -> set[str]:
+    """The package IDs an API-only mod's build reads: sunrise-mod-api and its normal dependencies.
+    A proc macro is a leaf, since its own dependencies are inside its library."""
     packages = {package["id"]: package for package in metadata["packages"]}
     nodes = {node["id"]: node for node in metadata["resolve"]["nodes"]}
-    pending = [package["id"] for package in metadata["packages"] if package["name"] in roots]
+    pending = [package["id"] for package in metadata["packages"] if package["name"] == "sunrise-mod-api"]
     closure = set()
     while pending:
         package_id = pending.pop()
@@ -829,7 +827,7 @@ def smoke(out: Path) -> None:
             build = f"{identity['commit']} {mod} 0.1.0 {release}"
             rows = {"NATIVE_BUILD": build, "MOD_ENTRIES": f'"{mod}" => crate::hooks,',
                     "BUILT_MODS": f'mod_api::__private::native::BuiltMod {{ id: "{mod}", version: "0.1.0", side: mod_api::Side::Both }},',
-                    "MOD_SLOTS": "", "MOD_REDIRECTS": ""}
+                    "MOD_REDIRECTS": ""}
             entry = template
             for marker, value in rows.items():
                 entry = entry.replace(f"/* {marker} */", value)

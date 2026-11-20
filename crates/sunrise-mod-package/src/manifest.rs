@@ -1482,6 +1482,15 @@ capabilities = ["registries"]
     }
 
     #[test]
+    fn unknown_top_level_array_of_tables_is_refused() {
+        let error = Manifest::parse(&format!(
+            "{EXAMPLE}\n[[inject]]\nhook = 'player_logged_in'\n"
+        ))
+        .unwrap_err();
+        assert!(error.contains("unknown field `inject`"), "{error}");
+    }
+
+    #[test]
     fn refuses_bad_ids_and_retired_manifests() {
         let bad_id = EXAMPLE.replace("ruby", "Ruby!");
         assert!(Manifest::parse(&bad_id).unwrap_err().contains("is not"));

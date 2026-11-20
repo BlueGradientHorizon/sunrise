@@ -454,7 +454,7 @@ fi
 cat "$2" "$3" >> {folder}/compared
 """)
             own_tool.write_text("""#!/bin/bash
-echo "{\\"by\\": \\"$(cat "$2/marker")\\"}" > "$3"
+echo "{\\"schema\\": 3, \\"by\\": \\"$(cat "$2/marker")\\"}" > "$3"
 """)
             head_tool.chmod(0o755)
             own_tool.chmod(0o755)
@@ -504,7 +504,7 @@ echo "{\\"by\\": \\"$(cat "$2/marker")\\"}" > "$3"
 class LandedTests(unittest.TestCase):
     SHA = "6" * 40
 
-    def check(self, diff_exit, trees=None, git_text=None, refuse_landed=False, own_tool=None):
+    def check(self, diff_exit, git_text=None, without_own_tool=False, own_tool=None, parent_schema=3):
         with tempfile.TemporaryDirectory() as directory:
             work = Path(directory)
             for side in ("head", "base"):
@@ -516,10 +516,7 @@ class LandedTests(unittest.TestCase):
             tool = work / "sunrise-stage"
             tool.write_text(f"""#!/bin/bash
 echo "$@" >> {work}/calls
-if [ "$1" = surface ]; then
-  case "$2" in */landed-*) [ {int(refuse_landed)} = 0 ] || {{ echo 'sunrise-stage surface: trait T has no marks' >&2; exit 1; }};; esac
-  echo '{{"by": "head"}}' > "$3"; exit 0
-fi
+[ "$1" = surface ] && exit 1 # landed must not ask the current exporter to read a historical tree.
 [ "$1" = surface-catalogs ] && exit 0
 cat "$2" "$3" > {work}/compared
 while [ $# -gt 0 ]; do case "$1" in --notes|--base-notes|--covered-by|--covered-base) ls "$2" > {work}/given${{1#--}};; esac; shift; done
@@ -539,9 +536,18 @@ exit {diff_exit}
                     (into / surface_report.NOTES / "then.toml").write_text('ids = ["loop:b"]\nwhy = "w"\n')
 
             git_text = git_text or (lambda *a: MERGE if a[0] == "cat-file" else "")
+            if own_tool is None and not without_own_tool:
+                exporter = work / "historical-stage"
+                exporter.write_text(f"""#!/bin/bash
+schema=3
+[ "$(cat "$2/marker")" != aaaa ] || schema={parent_schema}
+printf '{{"schema": %s, "hash": "from-historical-stage"}}\\n' "$schema" > "$3"
+""")
+                exporter.chmod(0o755)
+                own_tool = lambda _sha, _work: str(exporter)
             code, text = surface_report.landed_check(
                 str(tool), work / "head", work / "base", work, shas, git_text=git_text, fetch=fetch,
-                own_tool=own_tool and (lambda sha: own_tool(sha, work)))
+                own_tool=(lambda sha: own_tool(sha, work)) if own_tool else None)
             calls = (work / "calls").read_text() if (work / "calls").exists() else ""
             for given in ("notes", "base-notes", "covered-by", "covered-base"):
                 if (work / f"given{given}").exists():
@@ -571,7 +577,15 @@ exit {diff_exit}
         self.assertEqual(code, 1)
         self.assertIn(f"r61.toml (landed {self.SHA})", text)
 
-    def test_old_trees_this_tool_refuses_are_exported_by_their_own_commits_tools(self):
+    def test_a_landed_note_does_not_compare_a_schema_two_first_parent(self):
+        _, code, text, calls, _ = self.check(0, parent_schema=2)
+        self.assertEqual(code, 1)
+        self.assertIn(f"r61.toml (landed {self.SHA})", text)
+        self.assertIn("The first parent uses surface schema 2", text)
+        self.assertNotIn("surface-catalogs", calls)
+        self.assertNotIn("surface-diff", calls)
+
+    def test_old_trees_are_exported_by_their_own_commits_tools(self):
         built = []
 
         def own_tool(sha, work):
@@ -579,22 +593,22 @@ exit {diff_exit}
             tool = work / f"own-{sha}"
             # Says which commit's tool exported which tree.
             tool.write_text(f"""#!/bin/bash
-echo "{{\\"by\\": \\"{sha} tool, $(cat "$2/marker") tree\\"}}" > "$3"
+echo "{{\\"schema\\": 3, \\"by\\": \\"{sha} tool, $(cat "$2/marker") tree\\"}}" > "$3"
 """)
             tool.chmod(0o755)
             return str(tool)
 
-        _, code, text, calls, _ = self.check(0, refuse_landed=True, own_tool=own_tool)
+        _, code, text, calls, _ = self.check(0, own_tool=own_tool)
         self.assertEqual(code, 0, text)
-        self.assertEqual(built, [self.SHA, "aaaa"])
+        self.assertEqual(built, ["aaaa", self.SHA])
         # The diff compares the first parent, exported by its own tool, with the merge, exported by its own.
-        self.assertIn('compared {"by": "aaaa tool, aaaa tree"} {"by": "%s tool, %s tree"}' % (self.SHA, self.SHA),
-                      calls)
+        self.assertIn('compared {"schema": 3, "by": "aaaa tool, aaaa tree"} '
+                      '{"schema": 3, "by": "%s tool, %s tree"}' % (self.SHA, self.SHA), calls)
         self.assertIn(f"--landed {self.SHA}", calls)
-        # With no tool to build, a refused tree fails the check, naming why.
-        _, code, text, calls, _ = self.check(0, refuse_landed=True)
+        # Without the commit's exporter the check cannot verify the historical surface.
+        _, code, text, calls, _ = self.check(0, without_own_tool=True)
         self.assertEqual(code, 1)
-        self.assertIn("sunrise-stage surface: trait T has no marks", text)
+        self.assertIn("the landed base must be exported in its original schema", text)
         self.assertNotIn("surface-diff", calls)
 
     def test_a_landed_that_is_not_a_full_sha_is_not_returned(self):

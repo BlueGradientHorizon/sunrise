@@ -127,7 +127,8 @@ removed ids in `ids` and the replacement names in `migrate`.
 A note can also say that a merge already changed its ids, without a note, with `landed = "<full merge sha>"`. Its ids are
 then checked against that merge's first parent and the merge itself, not against the pull request that adds the note,
 and must have changed there: a wrong `landed` fails the report, naming the note and the id. The merge must have two
-parents. The notes that merge brought itself count as coverage in that comparison, read apart from the late ones; their
+parents, and both the merge and its first parent must use the native-only surface schema (3 or later). Put notes for
+older merges in `changes/history/`. The notes that merge brought itself count as coverage, apart from the late ones; their
 ids are not checked again for staleness, since they were when the merge landed. The pull request's own comparison
 leaves notes with `landed` out, and a note without `landed` is checked as before.
 

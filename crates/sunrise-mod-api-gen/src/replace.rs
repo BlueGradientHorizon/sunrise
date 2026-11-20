@@ -1478,22 +1478,20 @@ fn rewrite(
     Ok(Some(out))
 }
 
-/// The names of a file's replaceable functions, as targets: what the patch generator and tests
-/// compare against.
-pub fn targets(
-    module: &str,
-    file: &syn::File,
-    traits: &BTreeSet<String>,
-    types: &OwnerTypes,
-) -> Vec<String> {
-    let mut found = Vec::new();
-    functions(module, &file.items, traits, types, &mut found);
-    found.iter().map(Found::target).collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn targets(
+        module: &str,
+        file: &syn::File,
+        traits: &BTreeSet<String>,
+        types: &OwnerTypes,
+    ) -> Vec<String> {
+        let mut found = Vec::new();
+        functions(module, &file.items, traits, types, &mut found);
+        found.iter().map(Found::target).collect()
+    }
 
     fn staged(source: &str) -> String {
         let file = syn::parse_file(source).unwrap();
