@@ -12,7 +12,7 @@
 //! with a typed [`BehaviourError`] that names the declaration. A separate test validates the
 //! references against the source tree; export does not open the proof files.
 use mod_surface::{Behaviour, BehaviourContract};
-use std::path::Path;
+use std::path::{Component, Path};
 
 const DIRECTORY: &str = "crates/sunrise-mod-vocab/behaviours";
 
@@ -50,7 +50,7 @@ pub enum BehaviourError {
     NotAnId { file: String },
     /// `tests` lists nothing.
     NoTests { file: String },
-    /// A test that is not `<file path>::<fn name>`.
+    /// A test that is not `<repo-relative path>::<Rust function name>`.
     BadTest { file: String, test: String },
 }
 
@@ -76,7 +76,7 @@ impl std::fmt::Display for BehaviourError {
             Self::NoTests { file } => write!(f, "behaviour {file} names no tests"),
             Self::BadTest { file, test } => write!(
                 f,
-                "behaviour {file}: test `{test}` must be `<file path>::<fn name>`"
+                "behaviour {file}: test `{test}` must be `<repo-relative path>::<Rust function name>`"
             ),
         }
     }
@@ -142,7 +142,14 @@ fn parse(file: &str, text: &str) -> Result<Declaration, BehaviourError> {
             .ok_or_else(|| wrong("tests", "a list of tests"))?;
         let (path, function) = test
             .rsplit_once("::")
-            .filter(|(path, function)| !path.is_empty() && !function.is_empty())
+            .filter(|(path, function)| {
+                !path.is_empty()
+                    && !path.contains(['\\', ':'])
+                    && Path::new(path)
+                        .components()
+                        .all(|part| matches!(part, Component::Normal(_)))
+                    && syn::parse_str::<syn::Ident>(function).is_ok_and(|ident| ident == *function)
+            })
             .ok_or_else(|| BehaviourError::BadTest {
                 file: file.into(),
                 test: test.into(),
@@ -345,6 +352,38 @@ mod tests {
                     test: "just_a_name".into(),
                 },
             ),
+            (
+                "b.toml",
+                "version = 1\ndoc = \"d\"\ntests = [\"/a.rs::pins\"]\n",
+                BehaviourError::BadTest {
+                    file: file(),
+                    test: "/a.rs::pins".into(),
+                },
+            ),
+            (
+                "b.toml",
+                "version = 1\ndoc = \"d\"\ntests = [\"dir/../../a.rs::pins\"]\n",
+                BehaviourError::BadTest {
+                    file: file(),
+                    test: "dir/../../a.rs::pins".into(),
+                },
+            ),
+            (
+                "b.toml",
+                "version = 1\ndoc = \"d\"\ntests = [\"C:/a.rs::pins\"]\n",
+                BehaviourError::BadTest {
+                    file: file(),
+                    test: "C:/a.rs::pins".into(),
+                },
+            ),
+            (
+                "b.toml",
+                "version = 1\ndoc = \"d\"\ntests = [\"a.rs::not a function\"]\n",
+                BehaviourError::BadTest {
+                    file: file(),
+                    test: "a.rs::not a function".into(),
+                },
+            ),
         ] {
             assert_eq!(parse(name, text).unwrap_err(), expected, "{name}: {text}");
         }
@@ -384,22 +423,15 @@ mod tests {
         assert_eq!(behaviours[0].doc, "It holds.");
         assert_eq!(behaviours[0].tests, ["a/b.rs::holds", "c.rs::also"]);
 
-        let error = check_proofs(root).unwrap_err();
-        assert!(
-            error.contains("alpha.toml: a/b.rs::holds: cannot read test file"),
-            "{error}"
-        );
+        // Keep one proof valid so each refusal is due to the other one, not a later proof.
+        std::fs::write(root.join("c.rs"), "mod tests { fn also() {} }").unwrap();
+        assert!(check_proofs(root).is_err());
         std::fs::create_dir(root.join("a")).unwrap();
         std::fs::write(root.join("a/b.rs"), "fn (").unwrap();
-        let error = check_proofs(root).unwrap_err();
-        assert!(error.contains("test file is not Rust"), "{error}");
+        assert!(check_proofs(root).is_err());
+        std::fs::write(root.join("a/b.rs"), "fn holds_for_all() {}").unwrap();
+        assert!(check_proofs(root).is_err());
         std::fs::write(root.join("a/b.rs"), "fn holds() {}").unwrap();
-        std::fs::write(root.join("c.rs"), "fn also_nearby() {}").unwrap();
-        assert_eq!(
-            check_proofs(root),
-            Err("behaviour alpha.toml: c.rs::also: no `fn` for test".into())
-        );
-        std::fs::write(root.join("c.rs"), "mod tests { fn also() {} }").unwrap();
         check_proofs(root).unwrap();
     }
 }

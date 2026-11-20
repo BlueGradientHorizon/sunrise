@@ -1,14 +1,15 @@
 """Generate the package fence and book catalogs from the vocabulary's extension-tag inputs.
 
-List declarations in crates/sunrise-mod-vocab/extension-tag-inputs.json, then run
+Add one JSON file per family in crates/sunrise-mod-vocab/extension-tags/, then run
 python3 tools/ci/surface_extension_tags.py. --check is the verify-static drift guard.
+A family file is an array of declarations or the path to an engine-owned declaration.
 """
 import argparse
 import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-INPUTS = ROOT / "crates/sunrise-mod-vocab/extension-tag-inputs.json"
+DIRECTORY = ROOT / "crates/sunrise-mod-vocab/extension-tags"
 OUTPUT = ROOT / "crates/sunrise-mod-package/src/extension_tags.rs"
 
 
@@ -24,7 +25,7 @@ def catalog(declarations: list[tuple[Path, list[dict[str, str]]]]) -> str:
     seen = set()
     families = {}
     for path, rows in declarations:
-        family = path.name.removesuffix('.extension-tags.json').upper()
+        family = path.stem.upper()
         if not family.isidentifier() or family in families:
             raise ValueError(f'{path}: invalid or duplicate family name')
         families[family] = len(rows)
@@ -58,8 +59,13 @@ def main() -> None:
             'Normal tag merging applies, including `replace: true`. Other reserved files remain refused.\n',
             'Generated `sunrise:class/*` tags cannot be written; attach a part with `block_part_tag` instead.\n\n',
             '| Registry | Tag | Contract |\n| --- | --- | --- |\n']
-    paths = sorted(ROOT / path for path in json.loads(INPUTS.read_text()))
-    declarations = [(path, json.loads(path.read_text())) for path in paths]
+    declarations = []
+    for path in sorted(DIRECTORY.iterdir()):
+        if path.suffix == '.json' and path.is_file():
+            rows = json.loads(path.read_text())
+            if isinstance(rows, str):
+                rows = json.loads((ROOT / rows).read_text())
+            declarations.append((path, rows))
     rust = catalog(declarations)
     for _, rows in declarations:
         for row in rows:
