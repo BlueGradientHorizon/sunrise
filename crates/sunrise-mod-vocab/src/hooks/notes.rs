@@ -687,9 +687,8 @@ handle, an entity the client doesn't track and a level it doesn't show:
 - `level.chunk_ref(host, [x, z])` makes a `ChunkRef` for any chunk of an open level (None past 30 million blocks).
   `chunk.forced(host)` and `level.forced_chunks(host)` query `/forceload` tickets. `chunk.set_forced(host, bool)` adds
   or removes one and returns whether the saved set changed. A successful add waits for the chunk to load, even in a
-  parked level. A paused add loads the chunk when streaming starts; if generation stops during the wait, the ticket
-  is kept for the next startup. Both return true. Adds after generation stops return false; repeated adds and
-  removals do not load chunks.
+  parked level. If streaming is paused, the add records the ticket to take effect when its level starts streaming.
+  Adds after generation stops return false; repeated adds and removals do not load chunks.
 - Ticket controllers (NeoForge's `TicketController`, registered in `RegisterTicketControllersEvent`): a mod registers
   each one once at startup, from `Hooks::register`, with `r.register_ticket_controller("quarry", validates)` and keeps the
   `TicketController` it returns (it is `Copy`; `Hooks` methods take `&self`, so a `OnceLock` holds it). The id is the
@@ -2600,7 +2599,7 @@ registration path.
 
 - Hiding a player (a vanish): `player.hide(host, level)` hides that player, from the next tick, from the players below permission `level` (None shows them again): they leave those players' Tab list and world (their clients stop tracking them, as they do a spectator) and those players don't read them joining or leaving. Players of `level` or more still see them; a player made an operator sees them again. Retain a `PlayerRef` obtained while the player is available: unlike live-player writes, hide can still change that UUID's visibility after disconnect, within the handle's world epoch. It cannot target an arbitrary offline UUID, and a handle from a closed or reopened world refuses the write. The visibility setting is kept by UUID across reconnects until changed or the server stops. It requires `&mut dyn ServerHost` and an available server player list.
 
-- A player's item breaking: `player_destroy_item(player, name, item, slot)` is heard for a server player whose tool, shield, rod or armour piece ran out of durability (`LivingEntity.onEquippedItemBroken`, Bukkit's `PlayerItemBreakEvent`), with the item that broke and the slot it was in (`mainhand`, `offhand`, `head`, `chest`, `legs`, `feet`, `body`, `saddle`); armour has a slot rather than a hand. `ItemPart::damage_item` is the wear, this is only the break. Listen only. The player's state is swapped in. Not heard for a creative player or for the host of a LAN world.
+- A player's item used up or broken: `player_destroy_item(player, player_entity_id, original, hand)` reports the complete stack before use or durability loss, including its count, damage and components. It covers hand use, entity consumption, completed eating/drinking and durability breaks on each logical side, including the local host. `hand` is `Some(Main)` or `Some(Off)` for hands, `None` for armour or inventory ammunition. A partial consumption and creative use preserving the stack are silent. Listen only, after the consumption or break has applied and before a use remainder is installed. The callback receives the typed `HostSide`. `ItemPart::damage_item` decides wear; this notice cannot veto it (NeoForge's `PlayerDestroyItemEvent`).
 
 - A player's damaging melee hit on a living target: `critical_hit(target_kind, vanilla_critical, critical, damage_multiplier)` may force or deny the critical hit and change its multiplier (1.5 for a vanilla crit, else 1.0); the sweep, sound and particles follow the decided result. Not fired for a dragon part or a hit that does no damage.
 

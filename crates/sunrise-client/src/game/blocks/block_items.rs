@@ -584,8 +584,8 @@ mod tests {
             }
             fn blocks(&self, _context: &mod_api::RegistrationContext, event: &mut BlocksEvent<'_>) {
                 event
-                    .blocks
-                    .push(mod_api::Block::new(CRATE, "minecraft:white_banner"));
+                    .register(mod_api::Block::new(CRATE, "minecraft:white_banner"))
+                    .unwrap();
             }
         }
         let mods: Mods = Arc::from([ModEntry::new("item_test", Box::new(TestMod))]);
@@ -706,7 +706,7 @@ mod tests {
                     let mut block = mod_api::Block::new(id, "minecraft:stone");
                     block.item = item;
                     block.pick_item = pick_item.map(Into::into);
-                    event.blocks.push(block);
+                    event.register(block).unwrap();
                 }
             }
         }
