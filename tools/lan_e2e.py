@@ -7407,11 +7407,32 @@ def check_raid_captain_fields(host, guest, out):
             game('command', command='gamemode survival')
 
 
+ARENA_RADIUS = 8
+
+
 def restore_arena(host):
-    """The open stone floor the run starts on, so no check's blocks (a placed stone at the reset spot) stay in the way."""
+    """Loads and refills the run's open stone floor, then checks it; raises Failed before anyone is teleported into a dirty one."""
     x, y, z = (int(v // 1) for v in host.joined_at)
-    host('command', command=f'execute in {OVERWORLD} run fill {x - 8} {y - 1} {z - 8} {x + 8} {y - 1} {z + 8} minecraft:stone')
-    host('command', command=f'execute in {OVERWORLD} run fill {x - 8} {y} {z - 8} {x + 8} {y + 6} {z + 8} minecraft:air')
+    r = ARENA_RADIUS
+    floor = (x - r, y - 1, z - r, x + r, y - 1, z + r)
+    clear = (x - r, y, z - r, x + r, y + 6, z + r)
+    corners = [(x + dx, y, z + dz) for dx in (-r, r) for dz in (-r, r)]
+    box = lambda b: ' '.join(map(str, b))
+    # A no-op forceload (already forced) and a no-op fill (already right) both report failure: only the checks below decide.
+    host('command', command=f'execute in {OVERWORLD} run forceload add {x - r} {z - r} {x + r} {z + r}')
+    try:
+        host.until(lambda: [host('command', command=f'execute in {OVERWORLD} if loaded {c[0]} {c[1]} {c[2]}')['success']
+                            for c in corners], all, ticks=100)
+    except AssertionError as e:
+        raise Failed(f'the arena around {(x, y, z)} did not load, so it was not restored: {e}')
+    host('command', command=f'execute in {OVERWORLD} run fill {box(floor)} minecraft:stone')
+    host('command', command=f'execute in {OVERWORLD} run fill {box(clear)} minecraft:air')
+    want = {'floor': {'minecraft:stone': (2 * r + 1) ** 2}, 'clearance': {}}
+    try:
+        host.until(lambda: {'floor': host.raw('blocks', *floor)['counts'], 'clearance': host.raw('blocks', *clear)['counts']},
+                   lambda seen: seen == want, ticks=40)
+    except AssertionError as e:
+        raise Failed(f'the arena around {(x, y, z)} is not the open stone floor after its fills: {e}')
 
 
 def run(ctl, out, resources, checks):
@@ -7473,8 +7494,6 @@ def run(ctl, out, resources, checks):
                     # of the check alone starts: cases move them, to platforms in the sky and arenas, and
                     # a later case's floor, reach or spawned mobs must not depend on where one ended.
                     x, y, z = host.joined_at
-                    if game is host:
-                        restore_arena(host)
                     x += 3 if game is guest else 0
                     game('command', command=f'execute in {OVERWORLD} run tp @s {x:.2f} {y:.2f} {z:.2f}')
                     if state.get('dimension') != OVERWORLD:
@@ -7482,6 +7501,10 @@ def run(ctl, out, resources, checks):
                         assert state.get('dimension') == OVERWORLD and state.get('player'), \
                             f'{game.name} did not return to the Overworld before {name}: {state}'
                     resets.append((game, (x, y, z)))
+                # With the host back in the Overworld its arena is loaded and restored, then both are placed again.
+                restore_arena(host)
+                for game, (x, y, z) in resets:
+                    game('command', command=f'execute in {OVERWORLD} run tp @s {x:.2f} {y:.2f} {z:.2f}')
                 # Both games have their teleport before one is placed by the other's position: a game
                 # already in the Overworld passes the dimension wait before it arrives.
                 for game, at in resets:
