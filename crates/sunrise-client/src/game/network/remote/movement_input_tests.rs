@@ -1,18 +1,37 @@
-//! Exercise the real local-player caller and the same listener through both ABIs.
+//! Exercise the real local-player movement caller with and without a native listener.
 use super::*;
 use crate::game::native_entity_refs::tests::with_client_game;
 use mod_api::{ClientHost, Hooks, MovementInputEvent};
 use sunrise_client::motion::PlayerMotion;
 use winit::keyboard::KeyCode;
 
-#[path = "../../../../../sunrise-mod-wasm/tests/fixture/src/movement.rs"]
-mod fixture;
-
 struct Native;
 #[mod_api::__subscriptions]
 impl Hooks for Native {
     fn movement_input(&self, _: &dyn ClientHost, event: &mut MovementInputEvent) {
-        fixture::movement_input(event);
+        if event.right_key {
+            event.forward_key = true;
+            event.sprint = false;
+        } else if event.left_key {
+            if !(event.forward_key && event.backward_key) {
+                event.forward = -0.5;
+            }
+            event.strafe = 0.25;
+            event.jump = !event.jump;
+            event.sneak = !event.sneak;
+            event.sprint = true;
+        } else if event.backward_key {
+            event.forward_key = true;
+            event.left_key = true;
+            event.right_key = true;
+            // Direction-key edits must win over these conflicting axis edits.
+            event.forward = 0.25;
+            event.strafe = 0.5;
+            event.sprint = true;
+        } else {
+            event.forward_key = true;
+            event.sprint = true;
+        }
     }
 }
 

@@ -1,4 +1,4 @@
-//! Shared Parts run natively and as compiled wasm guests against real Game storage.
+//! Native Parts exercise tick replies against real Game storage.
 use mod_api::{Hooks, Registrar};
 use std::sync::{
     Arc,
@@ -8,7 +8,7 @@ use sunrise_client::{
     chunk::Chunk,
     containers::{BlockEntity, ModBlockEntity},
 };
-#[path = "../../../../sunrise-mod-wasm/tests/fixture/src/tick_reply.rs"]
+#[path = "block_entity_tick_reply_tests/fixture.rs"]
 mod fixture;
 
 struct Native;
@@ -55,23 +55,21 @@ impl Hooks for Effects {
 }
 
 #[test]
-#[ignore = "needs prepared resources and compiled SUNRISE_WASM_FIXTURE/SUNRISE_WASM_STD"]
-fn native_and_compiled_wasm_tick_reply_matrix() {
-    const NAME: &str =
-        "game::block_entity_tick_reply_tests::native_and_compiled_wasm_tick_reply_matrix";
+#[ignore = "daily"]
+fn native_tick_reply_matrix() {
+    const NAME: &str = "game::block_entity_tick_reply_tests::native_tick_reply_matrix";
     if super::native_entity_refs::tests::run_fresh_cases(
         NAME,
-        "TICK_REPLY_TARGET",
-        &["native", "wasm"],
+        "SUNRISE_TICK_REPLY_CHILD",
+        &["game"],
     ) {
         return;
     }
     sunrise_guest_stack::run_on_guest_stack(|| {
-        let mut entries = if std::env::var("TICK_REPLY_TARGET").unwrap() == "wasm" {
-            wasm_mods()
-        } else {
-            vec![mod_api::ModEntry::new("wasm_fixture", Box::new(Native))]
-        };
+        let mut entries = vec![mod_api::ModEntry::new(
+            "tick_reply_fixture",
+            Box::new(Native),
+        )];
         let effects = Arc::new([AtomicU32::new(0), AtomicU32::new(0)]);
         entries.push(mod_api::ModEntry::new(
             "tick_effects",
@@ -126,7 +124,7 @@ fn native_and_compiled_wasm_tick_reply_matrix() {
                 let item_id = game.dropped[0].id;
                 let entity = |mode| {
                     ModBlockEntity::new(
-                        "wasm_fixture:tick_reply".into(),
+                        "tick_reply_fixture:tick_reply".into(),
                         sunrise_client::containers::ModBlockEntityFields {
                             data: vec![mode, 0, 0, item_id as i32],
                             ..Default::default()
