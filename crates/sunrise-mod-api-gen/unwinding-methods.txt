@@ -978,7 +978,6 @@ player_session::player_permission_level
 player_session::player_persistent_data
 player_session::player_profile
 player_session::player_set_nickname
-player_session::player_set_persistent_data
 player_session::player_text_filtering
 player_sleep::player_counts_for_sleep
 player_sleep::player_set_sleep_ignored

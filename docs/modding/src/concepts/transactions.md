@@ -138,7 +138,7 @@ Reading or writing a minecart's slots unpacks its loot table without a player,
 as vanilla's `getChestVehicleItem` does.
 
 The player `set_inventory_slot`, `set_ender_chest_slot`, `give_stack` and
-`set_persistent_data` writes use the open transaction journal. Aborting restores
+`set_persistent_data_key` writes use the open transaction journal. Aborting restores
 the old values; equipment effects and given-stack overflow wait for root commit.
 
 These writes reach a player in another level than the hook's: their inventory and data

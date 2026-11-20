@@ -119,6 +119,12 @@ or reacquiring the handle. `Ok(false)` means unchanged data or an unsupported op
 not a stale identity. Item and data-vector methods return `BlockEntityItemError` and
 `BlockEntityDataError`, respectively.
 
+`entity.lock(host)` borrows the stored vanilla item predicate while the shared Host
+borrow lasts. An explicit empty predicate is present; no predicate is `None`.
+To change it, `entity.set_lock(host, Some(lock))` still replaces the entire predicate;
+`None` clears it. `entity.data(host)` instead builds an owned save snapshot without
+identity or position metadata.
+
 ## When its chunk unloads
 
 A machine that keeps something outside its saved data (a running job, an open handle, its place in an

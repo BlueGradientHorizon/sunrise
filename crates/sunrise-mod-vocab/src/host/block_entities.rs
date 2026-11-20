@@ -52,14 +52,16 @@ pub trait BlockEntitiesBackend {
     #[access(WorldOnly)]
     fn block_entity_level(&self, entity: BlockEntityRef) -> Option<LevelRef>;
     /// Side: both.
-    /// The data saved without identity or position metadata
-    /// (`BlockEntity.saveWithoutMetadata`).
+    /// An owned snapshot of the data saved without identity or position metadata
+    /// (`BlockEntity.saveWithoutMetadata`). The save payload is assembled on request.
     #[access(WorldOnly)]
     fn block_entity_data(&self, entity: BlockEntityRef) -> Option<Compound>;
     /// Side: both.
-    /// The vanilla lock's item predicate, if present on a loaded block entity.
+    /// Borrows the vanilla lock's item predicate for the lifetime of the Host borrow.
+    /// `None` for an absent lock or an unavailable block entity; a stored empty predicate
+    /// remains present. Use `set_lock` to replace or clear the whole predicate.
     #[access(WorldOnly)]
-    fn block_entity_lock(&self, entity: BlockEntityRef) -> Option<Compound>;
+    fn block_entity_lock(&self, entity: BlockEntityRef) -> Option<&Compound>;
     /// Side: server.
     /// The custom name (`Nameable.getCustomName`) as plain text. None when the block entity
     /// has none or isn't nameable (chests, barrels, furnaces, hoppers, brewing stands,

@@ -223,18 +223,28 @@ fn ender_write_aborts() {
 #[ignore = "daily"]
 fn data_write_aborts() {
     with_guests(|game| {
-        let player = game.players().server_players()[1];
-        let mut data = sunrise_core::nbt::Compound::new();
-        data.insert("old".into(), sunrise_core::nbt::Tag::Int(7));
-        player.set_persistent_data(game, data).unwrap();
-        let before = player.persistent_data(game);
+        use mod_api::{Compound, JavaString, Tag};
+        let players = game.players().server_players();
+        let (missing, player) = (players[0], players[1]);
+        let key = JavaString::from("old");
+        let old = Tag::Int(7);
+        player
+            .set_persistent_data_key(game, &key, Some(&old))
+            .unwrap();
         let _: Result<(), ()> = game.transaction(|host, _| {
-            player
-                .set_persistent_data(host, Default::default())
+            player.set_persistent_data_key(host, &key, None).unwrap();
+            missing
+                .set_persistent_data_key(host, &key, Some(&old))
                 .unwrap();
+            assert_eq!(player.persistent_data(host), Some(&Compound::new()));
+            assert_eq!(missing.persistent_data(host).unwrap().get(&key), Some(&old));
             Err(())
         });
-        assert_eq!(player.persistent_data(game), before);
+        assert_eq!(
+            player.persistent_data(game),
+            Some(&Compound::from([(key, old)]))
+        );
+        assert_eq!(missing.persistent_data(game), None);
     });
 }
 
