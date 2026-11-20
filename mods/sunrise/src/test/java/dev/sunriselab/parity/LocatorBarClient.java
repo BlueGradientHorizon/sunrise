@@ -758,6 +758,7 @@ public final class LocatorBarClient {
             if (state == null) throw new IllegalStateException("No slot or content packet received for window " + window);
             var changed = new it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap<HashedStack>();
             changed.put(slot, hashPrediction(placed));
+            record("menu-click " + window + " " + state);
             send(new ServerboundContainerClickPacket(window, state, slot, (byte) 0, ContainerInput.PICKUP,
                 changed, hashPrediction(carried)));
         }

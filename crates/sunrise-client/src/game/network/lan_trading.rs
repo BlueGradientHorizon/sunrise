@@ -600,8 +600,11 @@ impl Game<'_> {
         let Some(mut gm) = host.play.get_mut(&conn).and_then(|p| p.merchant.take()) else {
             return false;
         };
-        host.hub
-            .update_guest(conn, |g| g.close_menu_cursor(gm.window));
+        if let Some(gi) = host.hub.guests.connection_index(conn)
+            && let Some(carried) = self.close_guest_menu_cursor(gi, gm.window)
+        {
+            self.lan_place_back(gi, vec![carried]);
+        }
         self.merchant_closed(&mut gm.merchant);
         if window.is_some() {
             self.player_menu_closing(conn);

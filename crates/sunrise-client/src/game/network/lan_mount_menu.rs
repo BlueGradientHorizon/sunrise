@@ -178,10 +178,7 @@ impl Game<'_> {
             return false;
         };
         if let Some(gi) = host.hub.guests.connection_index(conn)
-            && let Some(carried) = host.hub.guests.update(gi, |g| {
-                g.close_menu_cursor(mount.window);
-                g.carried.take()
-            })
+            && let Some(carried) = self.close_guest_menu_cursor(gi, mount.window)
         {
             self.lan_place_back(gi, vec![carried]);
         }

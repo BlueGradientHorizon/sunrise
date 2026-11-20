@@ -1122,11 +1122,10 @@ impl Game<'_> {
             .and_then(|p| p.lectern.take_if(|l| window.is_none_or(|w| l.window == w)));
         if let Some(lectern) = lectern {
             // AbstractContainerMenu.removed: the carried stack goes back.
-            if let Some(gi) = host.hub.guests.connection_index(conn) {
-                host.hub
-                    .guests
-                    .update(gi, |g| g.close_menu_cursor(lectern.window));
-                self.guest_carried_back(gi);
+            if let Some(gi) = host.hub.guests.connection_index(conn)
+                && let Some(carried) = self.close_guest_menu_cursor(gi, lectern.window)
+            {
+                self.lan_place_back(gi, vec![carried]);
             }
             if window.is_some() {
                 self.player_menu_closing(conn);
@@ -1141,22 +1140,20 @@ impl Game<'_> {
         else {
             return false;
         };
-        let Some(gi) = self.lan.as_mut().and_then(|host| {
-            let gi = host.hub.guests.connection_index(conn)?;
-            host.hub
-                .guests
-                .update(gi, |g| g.close_menu_cursor(gs.window));
-            Some(gi)
-        }) else {
+        let Some(host) = self.lan.as_mut() else {
             return true;
         };
+        let Some(gi) = host.hub.guests.connection_index(conn) else {
+            return true;
+        };
+        let carried = self.close_guest_menu_cursor(gi, gs.window);
         let inputs = station_inputs(&gs);
         if gs.kind == StationKind::Beacon {
             // BeaconMenu.removed drops the payment (player.drop).
-            self.guest_carried_back(gi);
+            self.lan_place_back(gi, carried.into_iter().collect());
             self.drop_guest_items(gi, inputs);
         } else {
-            self.return_guest_menu_items(gi, inputs, true);
+            self.lan_place_back(gi, carried.into_iter().chain(inputs).collect());
         }
         if window.is_some() {
             self.player_menu_closing(conn);

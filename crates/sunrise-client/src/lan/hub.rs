@@ -871,7 +871,8 @@ impl Hub {
         id
     }
     pub fn stack(&mut self, s: &Option<ItemStack>) -> Option<sunrise_protocol::item::Stack> {
-        let item = s.as_ref()?.item.clone();
+        let source = s.as_ref()?;
+        let item = source.item.clone();
         let id = self.item_id(&item);
         let sync = self.sync.clone();
         // The stacks inside it (a bundle's contents, a crossbow's projectiles)
@@ -885,7 +886,14 @@ impl Hub {
                 .and_then(|i| i.id(name))
                 .unwrap_or(0)
         };
-        stack_to_network(item_id, |registry, name| sync.id(registry, name), s)
+        let mut wire = stack_to_network(item_id, |registry, name| sync.id(registry, name), s)?;
+        super::guest::canonicalize_stack_patch(
+            &mut wire,
+            source,
+            &self.encoder.items,
+            &sync.builtin,
+        );
+        Some(wire)
     }
 
     /// `PlayerList.broadcastAll`: send a packet to every placed player.

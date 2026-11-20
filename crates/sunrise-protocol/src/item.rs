@@ -1302,15 +1302,28 @@ mod tests {
             })
         );
         assert_eq!(reader.remaining(), 0);
-        // The count bounds apply to wire entries, not to the deduplicated length.
-        for packet in [&[1, 20, 4, 0x81, 2][..], &[1, 20, 4, 0, 0x81, 2]] {
-            assert_eq!(
-                HashedSlot::read(&mut Reader::new(packet))
-                    .unwrap_err()
-                    .to_string(),
-                "257 elements is more than allowed 256"
-            );
+    }
+
+    #[test]
+    fn hashed_slot_rejects_over_limit_wire_counts_even_with_duplicate_keys() {
+        let mut added = Writer::new();
+        added.bytes(&[1, 20, 4]); // present, item, count
+        added.varint(257);
+        for _ in 0..257 {
+            added.varint(5);
+            added.i32(17);
         }
+        added.varint(0);
+        assert!(HashedSlot::read(&mut Reader::new(&added.data)).is_err());
+
+        let mut removed = Writer::new();
+        removed.bytes(&[1, 20, 4]);
+        removed.varint(0);
+        removed.varint(257);
+        for _ in 0..257 {
+            removed.varint(9);
+        }
+        assert!(HashedSlot::read(&mut Reader::new(&removed.data)).is_err());
     }
     use crate::text::literal;
 

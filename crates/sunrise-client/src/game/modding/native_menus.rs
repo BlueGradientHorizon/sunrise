@@ -478,6 +478,11 @@ impl Game<'_> {
                 return;
             }
             match host.hub.native_menu_events.remove(0) {
+                NativeMenuEvent::ReturnCarried { conn, item } => {
+                    if let Some(gi) = self.guest_index(conn) {
+                        self.lan_place_back(gi, vec![item]);
+                    }
+                }
                 NativeMenuEvent::Closed {
                     uuid,
                     window,
@@ -1049,6 +1054,7 @@ mod tests {
     fn a_menu_opened_in_a_nested_turn_sends_the_openers_own_inventory_and_cursor() {
         with_game(|game| {
             let rx = watched_guest(game);
+            open(game, 1, "old", MenuReplace::CloseFirst);
             let mut outer = guest(2);
             outer.inventory[3] = Some(ItemStack::new("minecraft:diamond", 7));
             outer.carried = Some(ItemStack::new("minecraft:dirt", 9));
@@ -1072,9 +1078,9 @@ mod tests {
                     _ => None,
                 })
                 .collect();
-            // The cursor's stone back in the inventory, then the menu's first contents.
+            // The previous cursor's stone is back in the inventory of the new menu.
             let windows: Vec<_> = contents.iter().map(|c| c.container).collect();
-            assert_eq!(windows, [0, window]);
+            assert_eq!(windows, [window]);
             for content in &contents {
                 let mut counts: Vec<_> = content.items.iter().flatten().map(|s| s.count).collect();
                 counts.sort_unstable();

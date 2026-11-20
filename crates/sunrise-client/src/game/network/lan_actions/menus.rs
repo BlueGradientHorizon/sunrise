@@ -447,8 +447,10 @@ impl Game<'_> {
             {
                 self.close_guest_vehicle_menu(conn, key);
             }
-            if let Some(host) = self.lan.as_mut() {
-                host.hub.container_closed(conn, window);
+            if let Some(carried) =
+                self.with_own_record(gi, |host, _| host.hub.container_closed(conn, window))
+            {
+                self.lan_place_back(gi, vec![carried]);
             }
         }
         self.lan_merchant_closed(conn, None);
@@ -458,9 +460,6 @@ impl Game<'_> {
         }
         self.lan_station_closed(conn, None);
         self.lan_mount_closed(conn, None);
-        if removal == MenuRemoval::Live {
-            self.guest_carried_back(gi);
-        }
         // `PlayerContainerEvent.Close`, after the menu's `removed`.
         self.player_menu_closing(conn);
     }

@@ -311,6 +311,9 @@ fn opening_an_owned_menu_with_a_result_keeps_the_old_window() {
 #[ignore = "daily"]
 fn a_cursor_cleared_outside_a_click_is_sent_once_on_the_next_broadcast() {
     with_owned_menu(false, |game, rx, key| {
+        game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+            guest.carried = Some(ItemStack::new("minecraft:stick", 2));
+        });
         let (window, menu) = open(game, key);
         sent(&rx);
         let cursor = menu.cursor();
@@ -346,7 +349,7 @@ fn a_cursor_cleared_outside_a_click_is_sent_once_on_the_next_broadcast() {
         // A repair of window 0 does not tell the open window about the clear.
         hub.send_inventory(0);
         assert!(matches!(&sent(&rx)[..], [C::ContainerSetContent(content)]
-            if content.container == 0 && content.carried.is_none()));
+            if content.container == 0 && content.carried.as_ref().map(|item| item.count) == Some(2)));
         hub.sync_containers(&game.world);
         let packets = sent(&rx);
         assert!(

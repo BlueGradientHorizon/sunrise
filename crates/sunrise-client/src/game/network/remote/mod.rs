@@ -715,6 +715,11 @@ pub(super) struct Remote {
     menu_title: Option<sunrise_client::text::Text>,
     menu_title_snapshot: Option<Arc<mod_api::Text>>,
     pub(in crate::game) state_id: i32,
+    /// Window 0's state and carried stack while another menu is active.
+    inventory_state_id: i32,
+    inventory_carried: Option<ItemStack>,
+    inventory_craft_grid: [Option<ItemStack>; 4],
+    inventory_craft_result: Option<ItemStack>,
     use_target: Option<[i32; 3]>,
     /// A mod menu's extra data, kept for the `OpenScreen` of its window that
     /// follows (`sunrise:menu_extra`).
@@ -1307,6 +1312,10 @@ impl Game<'_> {
             menu_title: None,
             menu_title_snapshot: None,
             state_id: 0,
+            inventory_state_id: 0,
+            inventory_carried: None,
+            inventory_craft_grid: Default::default(),
+            inventory_craft_result: None,
             use_target: None,
             menu_extra: None,
             entities: HashMap::new(),
@@ -1560,6 +1569,10 @@ impl Game<'_> {
             menu_title: None,
             menu_title_snapshot: None,
             state_id: 0,
+            inventory_state_id: 0,
+            inventory_carried: None,
+            inventory_craft_grid: Default::default(),
+            inventory_craft_result: None,
             use_target: None,
             menu_extra: None,
             entities: HashMap::new(),
@@ -1938,10 +1951,11 @@ impl Game<'_> {
     /// the server's echo doesn't hand back a bare item.
     fn to_network(&self, s: &Option<ItemStack>) -> Option<Stack> {
         let r = self.remote.as_ref()?;
+        let source = s.as_ref()?;
         // A stack as the server sent it, only its count changed: its own
         // components go back, as a vanilla client keeps them.
-        if let Some((stack, patch)) = s.as_ref().and_then(|s| Some((s, s.wire_patch()?))) {
-            let mut out = Stack::new(self.item_id(&stack.item), stack.count as i32);
+        if let Some(patch) = source.wire_patch() {
+            let mut out = Stack::new(self.item_id(&source.item), source.count as i32);
             let safe = r.registries.custom_components
                 || sunrise_protocol::item::custom::entries().next().is_none()
                 || sunrise_protocol::item::WirePatch::decode(&patch)
@@ -1960,7 +1974,7 @@ impl Game<'_> {
             }
             log::warn!("Cannot send cached custom components to this peer");
         }
-        sunrise_client::lan::guest::stack_to_network(
+        let mut wire = sunrise_client::lan::guest::stack_to_network(
             |name| self.item_id(name),
             // Built-in first, as a hub's `SyncData::id` does: potions are one.
             |registry, name| {
@@ -1976,7 +1990,14 @@ impl Game<'_> {
                     })
             },
             s,
-        )
+        )?;
+        sunrise_client::lan::guest::canonicalize_stack_patch(
+            &mut wire,
+            source,
+            self.items(),
+            &r.builtin,
+        );
+        Some(wire)
     }
 
     /// `HashedStack.create` with the connection's registries (the client's
@@ -2474,10 +2495,14 @@ impl Game<'_> {
         // The replacement player starts with its inventory menu, even if the
         // server switched levels without closing the previous container.
         self.remote_close_local();
+        self.carried = None;
+        self.craft_grid.fill(None);
         self.set_screen(Screen::Playing);
-        let Some(r) = self.remote.as_ref() else {
+        let Some(r) = self.remote.as_mut() else {
             return;
         };
+        r.craft_result = None;
+        r.state_id = 0;
         // handleRespawn keeps the ClientLevel only for the same level key:
         // two levels sharing a dimension type are still two levels.
         let same = keep_world && r.heard_level.as_deref() == Some(spawn.dimension.as_str());
@@ -3338,6 +3363,21 @@ impl Game<'_> {
         let Some(internal) = Self::inventory_screen_slot(&menu, slot) else {
             return;
         };
+        if container == 0
+            && let Some(r) = self.remote.as_mut().filter(|r| r.menu.as_ref().is_some())
+        {
+            match internal {
+                100..=103 => {
+                    r.inventory_craft_grid[internal - 100] = item;
+                    return;
+                }
+                200 => {
+                    r.inventory_craft_result = item;
+                    return;
+                }
+                _ => {}
+            }
+        }
         if internal == 200 {
             // ClientboundContainerSetSlotPacket for the open menu's slot 0: the
             // server's result of its own recipes (a world's data packs' too).
@@ -4869,14 +4909,27 @@ impl Game<'_> {
                     self.selected = p.slot as usize;
                 }
             }
+            // ClientPacketListener.handleContainerContent initializes only the addressed menu.
             C::ContainerSetContent(p) => {
-                self.remote_menu_state(p.container, p.state);
-                for (slot, item) in p.items.iter().enumerate() {
-                    let stack = self.to_stack(item);
-                    self.set_menu_slot(p.container, slot as i32, stack);
+                let open = self
+                    .remote
+                    .as_ref()
+                    .and_then(|r| r.menu.as_ref())
+                    .map_or(0, |m| m.0);
+                if p.container == 0 || p.container == open {
+                    self.remote_menu_state(p.container, p.state);
+                    for (slot, item) in p.items.iter().enumerate() {
+                        let stack = self.to_stack(item);
+                        self.set_menu_slot(p.container, slot as i32, stack);
+                    }
+                    let carried = self.to_stack(&p.carried);
+                    if p.container == open {
+                        self.carried = carried;
+                    } else if let Some(r) = self.remote.as_mut() {
+                        r.inventory_carried = carried;
+                    }
+                    self.remote_synced();
                 }
-                self.carried = self.to_stack(&p.carried);
-                self.remote_synced();
             }
             C::ContainerSetSlot(p) => {
                 self.remote_menu_state(p.container, p.state);
