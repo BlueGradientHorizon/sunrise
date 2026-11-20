@@ -1182,6 +1182,7 @@ fn names(caps: &[Capability]) -> String {
     format!("[{}]", names.join(", "))
 }
 
+pub mod browser_state;
 mod collections;
 pub use collections::{Collection, MAX_COLLECTION_MEMBERS, Member};
 mod dependencies;

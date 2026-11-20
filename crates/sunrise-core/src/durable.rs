@@ -19,12 +19,11 @@ fn parent(path: &Path) -> &Path {
         .unwrap_or_else(|| Path::new("."))
 }
 
-/// The directory of `path` synced, so a rename into it is on the disk
-/// (POSIX; Windows has no directory handle to sync, and its write-through
-/// move is journaled by NTFS).
-fn sync_dir(path: &Path) -> io::Result<()> {
+/// Syncs the directory containing `path`, including any rename into it (Unix).
+/// On Windows [`replace`] instead uses a write-through move.
+pub fn sync_parent(path: &Path) -> io::Result<()> {
     #[cfg(unix)]
-    fs::File::open(path)?.sync_all()?;
+    fs::File::open(parent(path))?.sync_all()?;
     #[cfg(not(unix))]
     let _ = path;
     Ok(())
@@ -65,7 +64,7 @@ pub fn replace(from: &Path, to: &Path) -> io::Result<()> {
     }
     #[cfg(not(windows))]
     fs::rename(from, to)?;
-    sync_dir(parent(to))
+    sync_parent(to)
 }
 
 /// Writes `bytes` to `path` so that, once this returns, the file on disk
@@ -104,7 +103,7 @@ pub fn write_with(path: &Path, write: impl FnOnce(&mut File) -> io::Result<()>) 
 /// already gone.
 pub fn remove(path: &Path) -> io::Result<()> {
     match fs::remove_file(path) {
-        Ok(()) => sync_dir(parent(path)),
+        Ok(()) => sync_parent(path),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(error),
     }
