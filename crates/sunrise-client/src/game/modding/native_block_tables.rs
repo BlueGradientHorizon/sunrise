@@ -98,14 +98,10 @@ impl<'a> BlockTables<'a> {
     /// `FluidState.createLegacyBlock` for `state`, through the one table the engine converts
     /// fluid states with. None for a state no fluid can be in: no world form, an amount above
     /// 8, a zero amount for anything but the empty fluid, or a source that isn't full.
-    pub(in crate::game) fn fluid_legacy_block(
-        &self,
-        state: FluidState,
-    ) -> Option<mod_api::BlockStateId> {
+    /// The host forwarder converts this engine ID through the checked block-state index.
+    pub(in crate::game) fn fluid_legacy_block(&self, state: FluidState) -> Option<BlockStateId> {
         let engine = super::native_block_states::engine_fluid_state(state)?;
-        Some(mod_api::BlockStateId(
-            self.res.behaviours().legacy_block(engine).0,
-        ))
+        Some(self.res.behaviours().legacy_block(engine))
     }
 
     /// Validate fluid constraints against the exported property definition.

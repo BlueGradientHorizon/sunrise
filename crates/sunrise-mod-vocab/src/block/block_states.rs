@@ -248,7 +248,7 @@ impl BlockStatesBackend for NoBlockTables {
     fn fluid_type_properties(&self, _: crate::FluidKey) -> Option<crate::FluidTypeProperties> {
         None
     }
-    fn fluid_legacy_block(&self, _: crate::FluidState) -> Option<crate::BlockStateId> {
+    fn fluid_legacy_block(&self, _: crate::FluidState) -> Option<BlockState> {
         None
     }
     fn fluid_state_validate(
