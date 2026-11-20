@@ -195,7 +195,6 @@ fn projections_follow_one_order() {
         vec![serde_json::to_vec(&json!({"entries":entries})).unwrap()],
     )];
     let overlay = PackOverlay::new(&files);
-    let mut sources = sources;
     ResolvedSources::order_by_priority(&mut sources, &root.0, &overlay).unwrap();
     let resolved =
         ResolvedSources::resolve_collecting(sources, &crate::test_resources::server_load())
