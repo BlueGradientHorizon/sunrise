@@ -61,6 +61,14 @@ impl Hooks for Mod {
         general_renderer::register_renderer(event.renderers);
     }
 
+    fn register_particle_providers(
+        &self,
+        _: &mod_api::RegistrationContext,
+        event: &mut mod_api::RegisterParticleProvidersEvent<'_>,
+    ) {
+        particle_provider::register(event.providers);
+    }
+
     fn tick_target_millis(
         &self,
         host: &dyn mod_api::ClientHost,

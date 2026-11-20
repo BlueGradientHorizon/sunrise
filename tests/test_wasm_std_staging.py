@@ -38,20 +38,16 @@ class WasmStdStagingTests(unittest.TestCase):
         download, = [step for step in job["steps"]
                      if step.get("uses", "").startswith("actions/download-artifact@")
                      and step.get("with", {}).get("name") == "wasm-std"]
-        alpine = (ROOT / "tools/ci/build-musl.sh").read_text()
-        target = re.search(r"^target=(\S+)$", alpine, re.M)[1]
-        musl_bin = re.search(r'^bin="([^"]+)"$', alpine, re.M)[1].replace("$target", target)
-        self.assertRegex(alpine, r'package\s+\\\s*"\$bin/sunrise-client"')
+        package = next(step for step in job["steps"] if step.get("name") == "Package")
+        self.assertNotIn("if", package, "the native packer is shared by every leg")
+        self.assertIn('cargo run --locked -p xtask -- package "$BIN/sunrise-client${{ matrix.exe }}"', package["run"])
         for matrix in job["strategy"]["matrix"]["include"] + jobs["musl"]["strategy"]["matrix"]["include"]:
             with self.subTest(target=matrix["name"]):
                 env = {"BIN": resolve(job["env"]["BIN"], matrix, {})}
                 destination = resolve(download["with"]["path"], matrix, env)
+                self.assertEqual(destination, env["BIN"])
                 if matrix.get("musl"):
-                    self.assertEqual(destination, musl_bin)
-                else:
-                    self.assertEqual(destination, env["BIN"])
-                    package = next(step for step in job["steps"] if step.get("name") == "Package")
-                    self.assertIn('package "$BIN/sunrise-client${{ matrix.exe }}"', package["run"])
+                    self.assertEqual(destination, "target/x86_64-unknown-linux-musl/release")
                 if matrix.get("server_asset"):
                     server = next(step for step in job["steps"] if step.get("if") == "matrix.server_asset")
                     self.assertIn('package-server "$BIN/sunrise-client"', server["run"])
