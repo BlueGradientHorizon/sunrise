@@ -11,6 +11,7 @@ as a Rust `str` map key (`JavaKey::java_hash`), which must agree with `java_stri
 harness name and counts only.
 """
 import argparse
+from itertools import zip_longest
 import os
 import subprocess
 import time
@@ -55,6 +56,11 @@ def parse(output, tag, expected, *, rust=False):
         checked, differed = summary
         if not 0 <= differed <= checked <= sum(expected.values()) or checked == 0:
             raise ValueError(f"invalid Rust S summary: {checked} {differed}")
+        if tag == "E":
+            # Empty, non-surrogate singleton/pair, or one valid surrogate pair.
+            utf8_cases = 1 + 63_488 + 63_488**2 + 1_024**2
+            if checked != utf8_cases:
+                raise ValueError(f"Rust S summary checked {checked:,}; expected {utf8_cases:,}")
     return chunks, summary
 
 
@@ -63,9 +69,11 @@ def first_difference(build, java, probe, dump_args):
     lines([*java, "dump", *dump_args, java_file])
     lines([probe, "dump", *dump_args, rust_file])
     with java_file.open() as j, rust_file.open() as r:
-        for a, b in zip(j, r):
+        for a, b in zip_longest(j, r):
             if a != b:
-                text = f"chunk {' '.join(map(str, dump_args))}\njava {a}rust {b}"
+                java_row = a.rstrip("\n") if a is not None else "<missing>"
+                rust_row = b.rstrip("\n") if b is not None else "<missing>"
+                text = f"chunk {' '.join(map(str, dump_args))}\njava {java_row}\nrust {rust_row}\n"
                 (build / "first_difference.txt").write_text(text)
                 return
     (build / "first_difference.txt").write_text(f"chunk {' '.join(map(str, dump_args))}: dumps agree\n")

@@ -22,5 +22,6 @@ class StringHashOutputTests(unittest.TestCase):
 
         java, _ = parse([first, second], "R", expected)
         rust, counts = parse([first, second, summary], "R", expected, rust=True)
-        self.assertEqual(java, rust)
+        self.assertEqual(java, {0: "0000000000000000", 1: "1111111111111111"})
+        self.assertEqual(rust, {0: "0000000000000000", 1: "1111111111111111"})
         self.assertEqual(counts, (8, 0))
