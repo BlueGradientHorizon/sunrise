@@ -292,8 +292,8 @@ impl MobData {
                 top: s[2].as_f64().unwrap_or(0.0) as f32,
             })
             .collect();
-        let placements = v["placements"]
-            .as_object()
+        let placement_rows = v["placements"].as_object();
+        let placements = placement_rows
             .into_iter()
             .flatten()
             .map(|(k, p)| {
@@ -306,12 +306,20 @@ impl MobData {
                 (k.clone(), placement)
             })
             .collect();
-        let heightmaps = v["placements"]
-            .as_object()
+        let heightmaps = placement_rows
             .into_iter()
             .flatten()
             .filter_map(|(k, p)| Some((k.clone(), p["heightmap"].as_str()?.to_owned())))
             .collect();
+        let vanilla_spawn_placements = placement_rows.and_then(|rows| {
+            let mut registered = std::collections::HashSet::new();
+            for (id, row) in rows {
+                if row["registered"].as_bool()? {
+                    registered.insert(id.clone());
+                }
+            }
+            Some(registered)
+        });
         let animations = v["animations"]
             .as_object()
             .into_iter()
@@ -334,7 +342,7 @@ impl MobData {
             pois: Default::default(),
             species_placements: Default::default(),
             mod_spawns: Default::default(),
-            vanilla_spawn_placements: None,
+            vanilla_spawn_placements,
         }
     }
     /// Without the export, approximate path types from the gameplay facts.
@@ -478,3 +486,49 @@ impl MobData {
 #[cfg(test)]
 #[path = "path_type_tests.rs"]
 mod path_type_tests;
+
+#[cfg(test)]
+mod tests {
+    use super::MobData;
+    use serde_json::json;
+    use std::collections::HashSet;
+
+    #[test]
+    fn vanilla_spawn_placement_membership_requires_complete_metadata() {
+        let mut export = json!({
+            "placements": {
+                "minecraft:shulker": {
+                    "placement": "no_restrictions",
+                    "heightmap": "MOTION_BLOCKING_NO_LEAVES",
+                    "registered": true
+                },
+                "minecraft:player": {
+                    "placement": "no_restrictions",
+                    "heightmap": "MOTION_BLOCKING_NO_LEAVES",
+                    "registered": false
+                }
+            }
+        });
+        assert_eq!(
+            MobData::from_json(&export).vanilla_spawn_placements,
+            Some(HashSet::from(["minecraft:shulker".to_owned()]))
+        );
+
+        export["placements"]["minecraft:player"]["registered"] = json!("false");
+        assert_eq!(MobData::from_json(&export).vanilla_spawn_placements, None);
+
+        export["placements"]["minecraft:player"]
+            .as_object_mut()
+            .unwrap()
+            .remove("registered");
+        assert_eq!(MobData::from_json(&export).vanilla_spawn_placements, None);
+        assert_eq!(
+            MobData::from_json(&json!({})).vanilla_spawn_placements,
+            None
+        );
+        assert_eq!(
+            MobData::from_json(&json!({"placements": {}})).vanilla_spawn_placements,
+            Some(HashSet::new())
+        );
+    }
+}
