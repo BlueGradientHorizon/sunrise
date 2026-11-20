@@ -77,15 +77,8 @@ fn reconcile_locked(home: &Path) -> Result<(), String> {
     if published {
         let mut list = Installed::read(home)?;
         let current = list.position(&pending.id).map(|i| &list.entries[i]);
-        // Don't overwrite a newer package or a different owner's file. Another writer may
-        // have reserialized the old row without changing the package it records.
-        let unchanged = match (current, pending.old.as_ref()) {
-            (None, None) => true,
-            (Some(current), Some(old)) => ["file", "version", "checksum"]
-                .into_iter()
-                .all(|key| current[key] == old[key]),
-            _ => false,
-        };
+        // Compare parsed rows so formatting changes don't matter but metadata edits do.
+        let unchanged = current == pending.old.as_ref();
         if unchanged && list.taken_by(&pending.file, &pending.id).is_none() {
             // The process could have died after renaming but before syncing this directory.
             durable::sync_parent(&target).map_err(|e| format!("{}: {e}", target.display()))?;
@@ -222,7 +215,14 @@ mod tests {
         };
         let old = entry("1", b"old");
         let new = entry("2", b"new");
-        for (bytes, expected) in [(b"new", &new), (b"old", &old), (b"bad", &old)] {
+        let mut edited = old.clone();
+        edited["dependency"] = Value::Bool(true);
+        for (bytes, current, expected) in [
+            (b"new", &old, &new),
+            (b"old", &old, &old),
+            (b"bad", &old, &old),
+            (b"new", &edited, &edited),
+        ] {
             let dir = tempfile::tempdir().unwrap();
             let home = dir.path();
             let guard = lock_home(home).unwrap();
@@ -245,6 +245,13 @@ mod tests {
             assert_eq!(fs::read(&target).unwrap(), b"new");
             fs::remove_dir(&manifest).unwrap();
             fs::rename(&backup, &manifest).unwrap();
+            if current != &old {
+                Installed {
+                    entries: vec![current.clone()],
+                }
+                .save(home)
+                .unwrap();
+            }
             if bytes != b"new" {
                 // Also model a rename that did not reach disk, and bytes neither row expects.
                 durable::write(&target, bytes).unwrap();
