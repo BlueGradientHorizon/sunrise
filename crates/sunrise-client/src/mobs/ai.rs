@@ -1106,7 +1106,8 @@ pub enum Pause {
         /// `Entity.computeSpeed`, read before the tick moved the mob.
         known_speed: Vec3,
     },
-    Trample(MobTrample),
+    /// The caller's trample slot holds the continuation.
+    Trample,
 }
 
 #[derive(Debug)]
@@ -1185,7 +1186,7 @@ pub fn tick(
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
 ) -> bool {
-    let mut progress = tick_until_pause(m, w, level, events, false);
+    let mut progress = tick_until_pause(m, w, level, events, None);
     loop {
         progress = match progress {
             TickProgress::Complete(kept) => return kept,
@@ -1194,28 +1195,30 @@ pub fn tick(
                 was_on_fire,
             }) => {
                 super::fox::apply_consumption(&decision, w, m, level, events);
-                resume_after_consumption(m, w, level, was_on_fire, events, false)
+                resume_after_consumption(m, w, level, was_on_fire, events, None)
             }
             TickProgress::Paused(Pause::Breathing { air, known_speed }) => {
                 let breath = Some(air.step.vanilla);
-                resume_after_breathing(m, w, level, events, air, known_speed, breath, false)
+                resume_after_breathing(m, w, level, events, air, known_speed, breath, None)
             }
-            TickProgress::Paused(Pause::Trample(_)) => {
+            TickProgress::Paused(Pause::Trample) => {
                 unreachable!("hostless travel cannot pause")
             }
         };
     }
 }
 
-/// Stop before a fox's effect draws, or before the air update when a mod listens to
-/// `living_breathe`, so the owner can provide a mutable host.
+/// Stop before a fox's effect draws, a watched `living_breathe` update, or a
+/// decided trample, so the owner can provide a mutable host. Only a trample
+/// writes the caller's continuation slot.
 pub fn tick_until_consumption(
     m: &mut Mob,
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
+    trample: &mut Option<MobTrample>,
 ) -> TickProgress {
-    tick_until_pause(m, w, level, events, true)
+    tick_until_pause(m, w, level, events, Some(trample))
 }
 
 fn tick_until_pause(
@@ -1223,7 +1226,7 @@ fn tick_until_pause(
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
     events: &mut Vec<MobEvent>,
-    pause_trample: bool,
+    trample: Option<&mut Option<MobTrample>>,
 ) -> TickProgress {
     if m.removed {
         return TickProgress::Complete(false);
@@ -1268,7 +1271,7 @@ fn tick_until_pause(
     }
     match base_tick(m, w, level, events) {
         BaseTick::Done(was_on_fire) => {
-            after_base_tick(m, w, level, events, was_on_fire, known_speed, pause_trample)
+            after_base_tick(m, w, level, events, was_on_fire, known_speed, trample)
         }
         BaseTick::Air(air) => TickProgress::Paused(Pause::Breathing { air, known_speed }),
     }
@@ -1285,7 +1288,7 @@ pub fn resume_after_breathing(
     air: AirPause,
     known_speed: Vec3,
     breath: Option<Breath>,
-    pause_trample: bool,
+    trample: Option<&mut Option<MobTrample>>,
 ) -> TickProgress {
     if m.removed {
         return TickProgress::Complete(false);
@@ -1294,7 +1297,7 @@ pub fn resume_after_breathing(
         finish_air(m, w, level, events, air.step, air.damage, breath);
     }
     let was_on_fire = base_tick_after_air(m, w, level, events, air.contact);
-    after_base_tick(m, w, level, events, was_on_fire, known_speed, pause_trample)
+    after_base_tick(m, w, level, events, was_on_fire, known_speed, trample)
 }
 
 /// The tick after `Entity.baseTick`, up to the fox's consumption boundary.
@@ -1305,7 +1308,7 @@ fn after_base_tick(
     events: &mut Vec<MobEvent>,
     was_on_fire: bool,
     known_speed: Vec3,
-    pause_trample: bool,
+    trample: Option<&mut Option<MobTrample>>,
 ) -> TickProgress {
     if m.impulse_grace_time > 0 {
         m.impulse_grace_time -= 1;
@@ -1351,7 +1354,7 @@ fn after_base_tick(
             was_on_fire,
         });
     }
-    ai_and_finish_tick(m, w, level, was_on_fire, events, pause_trample)
+    ai_and_finish_tick(m, w, level, was_on_fire, events, trample)
 }
 
 /// Resume a fox after its item effect, before the living AI/movement step.
@@ -1361,13 +1364,13 @@ pub fn resume_after_consumption(
     level: &mut DamageLevel<'_>,
     was_on_fire: bool,
     events: &mut Vec<MobEvent>,
-    pause_trample: bool,
+    trample: Option<&mut Option<MobTrample>>,
 ) -> TickProgress {
     if m.removed {
         return TickProgress::Complete(false);
     }
     super::fox::before_living_ai_step(m, w);
-    ai_and_finish_tick(m, w, level, was_on_fire, events, pause_trample)
+    ai_and_finish_tick(m, w, level, was_on_fire, events, trample)
 }
 
 fn ai_and_finish_tick(
@@ -1376,7 +1379,7 @@ fn ai_and_finish_tick(
     level: &mut DamageLevel<'_>,
     was_on_fire: bool,
     events: &mut Vec<MobEvent>,
-    pause_trample: bool,
+    trample: Option<&mut Option<MobTrample>>,
 ) -> TickProgress {
     if m.no_ai {
         update_fall_flying(m, w, events);
@@ -1439,13 +1442,14 @@ fn ai_and_finish_tick(
         if m.species() == Species::TraderLlama {
             super::caravan::trader_llama_tick(m, w);
         }
-    } else if let Some(phase) = ai_step(m, w, level, events, pause_trample) {
-        return TickProgress::Paused(Pause::Trample(MobTrample {
+    } else if let Some(phase) = ai_step(m, w, level, events, trample.is_some()) {
+        *trample.expect("only a game-owned tick pauses a trample") = Some(MobTrample {
             phase,
             was_on_fire,
             join: m.join,
             mob: m.id,
-        }));
+        });
+        return TickProgress::Paused(Pause::Trample);
     }
     if m.no_ai && m.species() == Species::Fox {
         super::fox::finish_ai_step(m, w, events);
@@ -1458,9 +1462,10 @@ pub(super) fn resume_after_trample(
     m: &mut Mob,
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
-    paused: MobTrample,
+    trample: &mut Option<MobTrample>,
     events: &mut Vec<MobEvent>,
 ) -> TickProgress {
+    let paused = trample.take().expect("the trample pause was stored");
     if m.removed || m.join != paused.join {
         return TickProgress::Complete(!m.removed);
     }
@@ -1488,7 +1493,10 @@ pub(super) fn resume_after_trample(
     };
     match progress {
         None => TickProgress::Complete(finish_tick(m, w, level, paused.was_on_fire, events)),
-        Some(phase) => TickProgress::Paused(Pause::Trample(MobTrample { phase, ..paused })),
+        Some(phase) => {
+            *trample = Some(MobTrample { phase, ..paused });
+            TickProgress::Paused(Pause::Trample)
+        }
     }
 }
 

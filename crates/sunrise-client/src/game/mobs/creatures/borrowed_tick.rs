@@ -161,6 +161,9 @@ impl Game<'_> {
         let mut hit_sounds: Vec<super::NativeSound> = Vec::new();
         use sunrise_client::mobs::ai::Pause;
         let mut resume = None;
+        // Trample is uncommon. Keep its payload here rather than making every
+        // mob's tick result and resume marker large enough to carry it.
+        let mut trample = None;
         let mut resume_air_answer = None;
         let mut resume_selection = None;
         // An invalid removed vehicle is retried once at this rider's own
@@ -233,6 +236,7 @@ impl Game<'_> {
                                 // tick view must answer a removed handle with nothing.
                                 snapshot[slot].removed = true;
                                 resume = None;
+                                trample = None;
                                 resume_selection = None;
                                 resume_sampled = None;
                                 cursor += 1;
@@ -249,6 +253,7 @@ impl Game<'_> {
                     if blocked.contains(&m.id) {
                         cursor += 1;
                         resume = None;
+                        trample = None;
                         resume_selection = None;
                         resume_sampled = None;
                         continue;
@@ -546,18 +551,17 @@ impl Game<'_> {
                                 known_speed,
                                 resume_air_answer.take(),
                                 &mut events,
+                                &mut trample,
                             )
                         }
-                        Some(Pause::Trample(paused)) => {
-                            sunrise_client::mobs::riders::resume_after_trample(
-                                &mut mobs,
-                                i,
-                                &w,
-                                &mut level,
-                                paused,
-                                &mut events,
-                            )
-                        }
+                        Some(Pause::Trample) => sunrise_client::mobs::riders::resume_after_trample(
+                            &mut mobs,
+                            i,
+                            &w,
+                            &mut level,
+                            &mut trample,
+                            &mut events,
+                        ),
                         Some(Pause::Consumption { was_on_fire, .. }) => {
                             sunrise_client::mobs::riders::resume_after_consumption(
                                 &mut mobs,
@@ -566,6 +570,7 @@ impl Game<'_> {
                                 &mut level,
                                 was_on_fire,
                                 &mut events,
+                                &mut trample,
                             )
                         }
                         None => sunrise_client::mobs::riders::tick_until_consumption(
@@ -574,6 +579,7 @@ impl Game<'_> {
                             &w,
                             &mut level,
                             &mut events,
+                            &mut trample,
                         ),
                     };
                     let progress =
@@ -805,7 +811,7 @@ impl Game<'_> {
             }
             // The lift is a position write made by the owning game, not by
             // the borrowed mob. Give it the live section table as well.
-            let trampling = matches!(pause, Some(Pause::Trample(_)));
+            let trampling = matches!(pause, Some(Pause::Trample));
             let trample_sections = section_table.as_ref().filter(|_| trampling);
             if let Some(sections) = trample_sections {
                 std::mem::swap(
@@ -830,7 +836,8 @@ impl Game<'_> {
                         Pause::Breathing { air, .. } => {
                             air_answer = self.ask_mob_breath(air);
                         }
-                        Pause::Trample(trample) => {
+                        Pause::Trample => {
+                            let trample = trample.as_ref().expect("the trample pause was stored");
                             self.trample_farmland(trample.mob, false, trample.decision());
                         }
                     }

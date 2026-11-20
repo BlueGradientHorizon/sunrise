@@ -593,8 +593,11 @@ pub fn tick_until_consumption(
     w: &MobWorld,
     level: &mut super::DamageLevel<'_>,
     events: &mut Vec<super::MobEvent>,
+    trample: &mut Option<super::ai::MobTrample>,
 ) -> super::ai::TickProgress {
-    tick_with(mobs, index, w, level, events, Mob::tick_until_consumption)
+    tick_with(mobs, index, w, level, events, |m, w, level, events| {
+        m.tick_until_consumption(w, level, events, trample)
+    })
 }
 
 /// Resume the paused living AI step with the current vehicle/navigation owner.
@@ -605,9 +608,11 @@ pub fn resume_after_consumption(
     level: &mut super::DamageLevel<'_>,
     was_on_fire: bool,
     events: &mut Vec<super::MobEvent>,
+    trample: &mut Option<super::ai::MobTrample>,
 ) -> super::ai::TickProgress {
     tick_with(mobs, index, w, level, events, |m, w, level, events| {
-        let progress = super::ai::resume_after_consumption(m, w, level, was_on_fire, events, true);
+        let progress =
+            super::ai::resume_after_consumption(m, w, level, was_on_fire, events, Some(trample));
         if matches!(progress, super::ai::TickProgress::Complete(_)) {
             super::neutral_anger::after_tick(m, w.game_time);
         }
@@ -625,10 +630,19 @@ pub fn resume_after_breathing(
     known_speed: sunrise_core::geometry::Vec3,
     breath: Option<crate::breathing::Breath>,
     events: &mut Vec<super::MobEvent>,
+    trample: &mut Option<super::ai::MobTrample>,
 ) -> super::ai::TickProgress {
     tick_with(mobs, index, w, level, events, |m, w, level, events| {
-        let progress =
-            super::ai::resume_after_breathing(m, w, level, events, air, known_speed, breath, true);
+        let progress = super::ai::resume_after_breathing(
+            m,
+            w,
+            level,
+            events,
+            air,
+            known_speed,
+            breath,
+            Some(trample),
+        );
         if matches!(progress, super::ai::TickProgress::Complete(_)) {
             super::neutral_anger::after_tick(m, w.game_time);
         }
@@ -642,11 +656,11 @@ pub fn resume_after_trample(
     index: usize,
     w: &MobWorld,
     level: &mut super::DamageLevel<'_>,
-    paused: super::ai::MobTrample,
+    trample: &mut Option<super::ai::MobTrample>,
     events: &mut Vec<super::MobEvent>,
 ) -> super::ai::TickProgress {
     tick_with(mobs, index, w, level, events, |m, w, level, events| {
-        let progress = super::ai::resume_after_trample(m, w, level, paused, events);
+        let progress = super::ai::resume_after_trample(m, w, level, trample, events);
         if matches!(progress, super::ai::TickProgress::Complete(_)) {
             super::neutral_anger::after_tick(m, w.game_time);
         }

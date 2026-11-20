@@ -391,6 +391,8 @@ enum TravelTail {
 }
 
 impl TravelTail {
+    // A normal move has a statically known tail; only a resumed trample needs dispatch.
+    #[inline(always)]
     fn finish(
         self,
         mob: &mut Mob,
