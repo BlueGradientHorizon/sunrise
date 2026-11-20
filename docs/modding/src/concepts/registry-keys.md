@@ -347,11 +347,10 @@ read and write an optional owned NBT patch; a plain stack has no patch allocatio
 Resolve and retain a `TagKey` during `Hooks::register` with `r.tag_key("minecraft:logs")`,
 for example when building a Part or a recipe kind. This works in native and WebAssembly mods.
 A bare name uses the `minecraft` namespace; an invalid name refuses the mod at load.
-`host.tags()` and a restricted level host's `tags()` expose the same `Tags` service on both
-native and WebAssembly. Later, `tags.key(&identifier)` resolves the same key from a validated
-identifier. Naming a tag does not require it to have any members. Item, block and fluid tags
-share one name table; the membership method chooses the registry. Reload replaces membership,
-not key identity.
+`host.tags()` and a restricted level host's `tags()` expose the same `Tags` service. Later,
+`tags.key(&identifier)` resolves the same key from a validated identifier. Naming a tag does
+not require it to have any members. Item, block and fluid tags share one name table; the
+membership method chooses the registry. Reload replaces membership, not key identity.
 `tags.is_in_tag(item_key, tag_key)` tests merged item membership. `tags.items(tag_key)`,
 `tags.blocks(tag_key)` and `tags.fluids(tag_key)` return registered keys in vanilla's member order. Unknown tags
 return false or empty lists. Clients read the tags sent by their server. Membership reads return `None` before

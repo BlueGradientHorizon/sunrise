@@ -1,2 +1,0 @@
-ids = ["method:prelude::TagsHost::tags"]
-why = "A wasm part can now read the merged tags through `host.tags()`, as a native part does. It was native-only because a host frame lent no source for the tag imports."
