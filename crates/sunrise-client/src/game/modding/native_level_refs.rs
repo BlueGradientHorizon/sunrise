@@ -413,6 +413,14 @@ impl Game<'_> {
                 .unwrap_or(false)
         }
     }
+    fn mod_ticket_streaming_mut(&mut self, dim: super::Dim) -> Option<&mut Streaming> {
+        if dim == self.dim {
+            Some(&mut self.streaming)
+        } else {
+            self.levels.parked_streaming_of_mut(dim.id())
+        }
+    }
+
     /// The mods validate the chunk tickets `dim`'s level loaded from its save,
     /// controller by controller (`LoadingValidationCallback.validateTickets`),
     /// and the survivors take hold. Tickets a mod added since the load (in
@@ -420,7 +428,10 @@ impl Game<'_> {
     /// without a validator keeps all of its tickets. Nothing is built while no
     /// mod listens.
     pub(super) fn validate_mod_chunk_tickets(&mut self, dim: super::Dim) {
-        let mut loaded = self.streaming.take_loaded_tickets();
+        let Some(streaming) = self.mod_ticket_streaming_mut(dim) else {
+            return;
+        };
+        let mut loaded = streaming.take_loaded_tickets();
         if !loaded.is_empty() && mod_api::__private::listened(mod_api::HookId::ValidateTickets) {
             let mut controllers: Vec<u32> = loaded.iter().map(|t| t.controller).collect();
             controllers.sort_unstable();
@@ -442,8 +453,10 @@ impl Game<'_> {
                 loaded.extend(own.into_iter().filter(|t| !removed.contains(t)));
             }
         }
-        for ticket in loaded {
-            self.streaming.set_mod_forced(ticket, true);
+        if let Some(streaming) = self.mod_ticket_streaming_mut(dim) {
+            for ticket in loaded {
+                streaming.set_mod_forced(ticket, true);
+            }
         }
     }
     /// The chunk ticket of `controller` for `owner` on `chunk`
