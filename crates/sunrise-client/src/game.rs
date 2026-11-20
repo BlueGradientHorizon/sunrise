@@ -77,7 +77,8 @@ macro_rules! game_side {
                 .map_or($s.level.enabled_features.as_arc(), |remote| {
                     &remote.features
                 }),
-            items: if $s.options.execution_role.is_client() {
+            items: $s.res.items(),
+            tag_items: if $s.options.execution_role.is_client() {
                 $s.remote.as_ref().and_then(|remote| remote.tags.as_ref())
             } else {
                 $s.session_lock.is_some().then(|| $s.res.items())

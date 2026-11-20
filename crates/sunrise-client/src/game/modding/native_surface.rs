@@ -4,16 +4,20 @@
 use super::api_values::{TryIntoApi, TryIntoEngine, block_state};
 use super::{Dim, Game, boats::Boat};
 use mod_api::{
-    BlockKey, BlockState, FeatureFlags, FluidState, LevelHost, LevelReadError, LevelRef, LightLayer,
+    __private::game::Fields, BlockEntityRef, BlockKey, BlockState, Compound, FeatureFlags,
+    FluidState, LevelHost, LevelReadError, LevelRef, LightLayer,
 };
 use std::cell::RefCell;
 use sunrise_client::{
+    items::Items,
     motion::{FrictionLevel, read_friction},
     world::World,
 };
 use sunrise_core::position::BlockPos;
 use sunrise_world::{
-    fluid::FluidState as EngineFluidState, native_load_context::LoopSide, registry::BlockStateId,
+    fluid::FluidState as EngineFluidState,
+    native_load_context::LoopSide,
+    registry::{BlockRegistry, BlockStateId},
 };
 
 /// This side's level data for one tick, built once from the game's tables and lent to the motion,
@@ -27,7 +31,8 @@ pub(crate) struct GameSide<'a> {
     pub(in crate::game) biomes: &'a sunrise_client::biome::Biomes,
     pub(in crate::game) behaviours: &'a sunrise_world::level::Behaviours,
     pub(in crate::game) features: &'a std::sync::Arc<[String]>,
-    pub(in crate::game) items: Option<&'a sunrise_client::items::Items>,
+    pub(in crate::game) items: &'a Items,
+    pub(in crate::game) tag_items: Option<&'a Items>,
 }
 
 impl sunrise_client::motion::SideLevel for GameSide<'_> {
@@ -47,15 +52,29 @@ impl sunrise_client::motion::SideLevel for GameSide<'_> {
         self.features
     }
 
-    fn tag_items(&self) -> Option<&sunrise_client::items::Items> {
-        self.items
+    fn tag_items(&self) -> Option<&Items> {
+        self.tag_items
     }
 
-    fn block_entity(&self, world: &World, pos: BlockPos) -> Option<mod_api::BlockEntityRef> {
+    fn block_entity(&self, world: &World, pos: BlockPos) -> Option<BlockEntityRef> {
         super::native_block_entity_refs::world_block_entity(
             world,
             self.level?,
             [pos.x, pos.y, pos.z],
+        )
+    }
+
+    fn block_entity_data(
+        &self,
+        world: &World,
+        registry: &BlockRegistry,
+        entity: BlockEntityRef,
+    ) -> Option<Compound> {
+        if self.level != Some(entity.fields().level) {
+            return None;
+        }
+        super::native_block_entity_refs::world_block_entity_data(
+            world, registry, self.items, entity,
         )
     }
 }
@@ -70,12 +89,21 @@ impl sunrise_client::motion::SideLevel for Game<'_> {
         game_side!(self).features
     }
 
-    fn tag_items(&self) -> Option<&sunrise_client::items::Items> {
-        game_side!(self).items
+    fn tag_items(&self) -> Option<&Items> {
+        game_side!(self).tag_items
     }
 
-    fn block_entity(&self, world: &World, pos: BlockPos) -> Option<mod_api::BlockEntityRef> {
+    fn block_entity(&self, world: &World, pos: BlockPos) -> Option<BlockEntityRef> {
         game_side!(self).block_entity(world, pos)
+    }
+
+    fn block_entity_data(
+        &self,
+        world: &World,
+        registry: &BlockRegistry,
+        entity: BlockEntityRef,
+    ) -> Option<Compound> {
+        game_side!(self).block_entity_data(world, registry, entity)
     }
 }
 
@@ -195,10 +223,16 @@ impl LevelHost for FrictionView<'_> {
         super::native_world_read::block_in_tag(block, tag)
     }
 
-    fn block_entity(&self, [x, y, z]: [i32; 3]) -> Option<mod_api::BlockEntityRef> {
+    fn block_entity(&self, [x, y, z]: [i32; 3]) -> Option<BlockEntityRef> {
         self.0
             .side
             .block_entity(self.0.world, BlockPos::new(x, y, z))
+    }
+
+    fn block_entity_data(&self, entity: BlockEntityRef) -> Option<Compound> {
+        self.0
+            .side
+            .block_entity_data(self.0.world, self.0.registry, entity)
     }
 
     fn tags(&self) -> &dyn mod_api::Tags {
