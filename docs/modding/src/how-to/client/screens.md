@@ -264,14 +264,15 @@ three axes and its mirror under a pose it built itself.
 // 30 degrees about the viewer's axis, as a row-major 3x4 matrix.
 let (s, c) = 30f32.to_radians().sin_cos();
 let turn = [c, -s, 0.0, 0.0, s, c, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0];
-draw.model_3d(Gui3dSubject::Item(wand), Gui3dView::new([60.0, 80.0], 64.0, turn))?;
+draw.model_3d(Gui3dSubject::Item(&wand), Gui3dView::new([60.0, 80.0], 64.0, turn))?;
 draw.model_3d(Gui3dSubject::Model(self.mirror), Gui3dView::new([120.0, 60.0], 40.0, IDENTITY_TRANSFORM))?;
 ```
 
-- `Gui3dSubject::Item(stack)` is the item as a slot draws it, without its count, damage bar or
-  cooldown: its model's `gui` display transform first, then `view.transform`, lit with the GUI
-  light that model asks for. `Gui3dSubject::Model(model)` is a handle from `RenderAssets::model`,
-  its 0 to 1 cube drawn about its centre, full bright and shaded by face as a scene's blocks are.
+- `Gui3dSubject::Item(&stack)` borrows the stack for the call, leaving it available for another
+  draw. The item looks as it does in a slot, without its count, damage bar or cooldown: its model's
+  `gui` display transform comes first, then `view.transform`, with the GUI light the model asks
+  for. `Gui3dSubject::Model(model)` still takes a handle from `RenderAssets::model` by value. Its
+  0 to 1 cube is drawn about its centre, full bright and shaded by face as a scene's blocks are.
 - `Gui3dView { at, size, transform }`: `at` is where the subject's centre goes, in GUI pixels,
   and `size` the pixels per block (an item is a slot's size when `size` is 16). `transform` is a
   row-major 3x4 affine matrix applied about the centre in the frame `x` right, `y` up, `z`
