@@ -162,12 +162,19 @@ fn decode_ascii_blocks(bytes: &[u8]) -> Option<Vec<u16>> {
     decode_units(units, &bytes[ascii..])
 }
 
-/// Every unit takes at least one byte, so `bytes` never holds more units than the room `units` was given:
-/// its capacity is never exceeded, and no zero-fill has to be written over. Inlined into both callers (one
-/// per copy in the speed kit): out of line, the copies' identical loops would be merged by the linker and
-/// land at the same address, and the kit could no longer average over their placements.
+/// Every unit takes at least one byte, so `bytes` never holds more units than the room made for them: the room
+/// is `units`' capacity (the callers reserved `bytes.len()`), brought into use once, and the loops store into
+/// it by index. A `push` per unit tests the capacity, stores the length back and keeps a growth call in the
+/// loop: more instructions and one more branch in every pass, which the speed kit's 1024-unit rows of
+/// non-ASCII text measured at 4% to 12% of the time. Inlined into both callers (one per copy in the speed
+/// kit): out of line, the copies' identical loops would be merged by the linker and land at the same
+/// address, and the kit could no longer average over their placements.
 #[inline(always)]
 fn decode_units(mut units: Vec<u16>, bytes: &[u8]) -> Option<Vec<u16>> {
+    let base = units.len();
+    units.resize(base + bytes.len(), 0);
+    let out = &mut units[base..];
+    let mut o = 0;
     let mut i = 0;
     // One sequence at a time, specialised by its lead byte's class: each branch predicts the string's own mix
     // (a uniform stretch runs one branch to the end), which is where HotSpot's per-byte loop beats a block
@@ -178,7 +185,8 @@ fn decode_units(mut units: Vec<u16>, bytes: &[u8]) -> Option<Vec<u16>> {
         let v = u32::from_le_bytes(*w);
         let lead = v as u8;
         if lead < 0x80 {
-            units.push(u16::from(v as u8));
+            out[o] = u16::from(v as u8);
+            o += 1;
             i += 1;
         } else if lead < 0xe0 {
             // A lead `110xxxxx`, or a stray continuation `10xxxxxx` where a sequence starts: `v & 0xc0e0`
@@ -186,7 +194,8 @@ fn decode_units(mut units: Vec<u16>, bytes: &[u8]) -> Option<Vec<u16>> {
             if v & 0xc0e0 != 0x80c0 {
                 return None;
             }
-            units.push((((v & 0x1f) << 6) | ((v >> 8) & 0x3f)) as u16);
+            out[o] = (((v & 0x1f) << 6) | ((v >> 8) & 0x3f)) as u16;
+            o += 1;
             i += 2;
         } else if lead < 0xf0 {
             // The lead is `1110xxxx` here; both following bytes must be `10xxxxxx`, which is one test of
@@ -194,7 +203,8 @@ fn decode_units(mut units: Vec<u16>, bytes: &[u8]) -> Option<Vec<u16>> {
             if (v >> 8) & 0xc0c0 != 0x8080 {
                 return None;
             }
-            units.push((((v & 0xf) << 12) | (((v >> 8) & 0x3f) << 6) | ((v >> 16) & 0x3f)) as u16);
+            out[o] = (((v & 0xf) << 12) | (((v >> 8) & 0x3f) << 6) | ((v >> 16) & 0x3f)) as u16;
+            o += 1;
             i += 3;
         } else {
             // A lead `1111xxxx`, which no sequence here has.
@@ -205,9 +215,11 @@ fn decode_units(mut units: Vec<u16>, bytes: &[u8]) -> Option<Vec<u16>> {
     while i < bytes.len() {
         let at = |k: usize| bytes.get(i + k).copied().unwrap_or(0);
         let (unit, size) = sequence(bytes[i], at(1), at(2))?;
-        units.push(unit);
+        out[o] = unit;
+        o += 1;
         i += size;
     }
+    units.truncate(base + o);
     Some(units)
 }
 
