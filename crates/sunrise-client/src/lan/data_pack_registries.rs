@@ -676,6 +676,142 @@ mod tests {
         }
     }
 
+    /// What world open makes of `files` over a resource root holding the three
+    /// vanilla dialogs and their tags (`stage` is the load the world open runs).
+    fn load_dialogs(files: &[(String, Vec<Vec<u8>>)]) -> Result<(), String> {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(
+            root.path().join("items.json"),
+            json!({"minecraft:stone": {}, "minecraft:air": {}}).to_string(),
+        )
+        .unwrap();
+        let dialogs = root.path().join("data/minecraft/dialog");
+        let tags = root.path().join("data/minecraft/tags/dialog");
+        std::fs::create_dir_all(&dialogs).unwrap();
+        std::fs::create_dir_all(&tags).unwrap();
+        for name in ["custom_options", "quick_actions", "server_links"] {
+            std::fs::write(
+                dialogs.join(format!("{name}.json")),
+                br#"{"type":"notice","title":"Vanilla"}"#,
+            )
+            .unwrap();
+        }
+        for name in ["pause_screen_additions", "quick_actions"] {
+            std::fs::write(
+                tags.join(format!("{name}.json")),
+                br#"{"values":["minecraft:quick_actions"]}"#,
+            )
+            .unwrap();
+        }
+        let defaults = sunrise_world::item_defaults::read(root.path()).unwrap();
+        PackRegistryDefinitions::stage(
+            root.path(),
+            &defaults,
+            &PackOverlay::new(files),
+            &BTreeMap::new(),
+            &Default::default(),
+            |_| true,
+        )
+        .1
+    }
+
+    /// Cases the dialog fixture leaves to the typed component codec: a persistent
+    /// component patch's keys, values, removal payloads and duplicates.
+    const COMPONENT_PATCH_CASES: &[&str] = &[
+        "body/component/unknown_key",
+        "body/component/unknown_removal",
+        "body/component/wrong_type",
+        "body/component/wrong_type_negative",
+        "body/component/removal_number",
+        "body/component/removal_string",
+        "body/component/removal_list",
+        "body/component/duplicate_after_namespace",
+        "body/component/remove_and_removal_namespace",
+        "body/component/invalid_key_chars",
+        "text_show_item/unknown_key",
+        "text_show_item/wrong_type",
+        "text_show_item/removal_number",
+        "text_show_item/duplicate_after_namespace",
+        "text_show_item/in_button_label",
+        "text_show_item/in_body",
+    ];
+
+    /// `tools/fixtures/dialog_codec_cases.json` holds what real 26.3 answered
+    /// (`Dialog.DIRECT_CODEC` for each case, `RegistryDataLoader` for each pack),
+    /// recorded by `tools/test_dialog_codec_parity.py`.
+    #[test]
+    fn dialog_admission_answers_as_the_real_codecs_do() {
+        use sunrise_world::loot::PackOverlay;
+        let fixture: Value = serde_json::from_str(include_str!(
+            "../../../../tools/fixtures/dialog_codec_cases.json"
+        ))
+        .unwrap();
+        let mut wrong = Vec::new();
+        for case in fixture["cases"].as_array().unwrap() {
+            let name = case["name"].as_str().unwrap();
+            let accept = case["accept"].as_bool().unwrap();
+            if COMPONENT_PATCH_CASES.contains(&name) {
+                continue;
+            }
+            let files = [(
+                "dialog/test:case".to_owned(),
+                vec![serde_json::to_vec(&case["dialog"]).unwrap()],
+            )];
+            let result = load_dialogs(&files);
+            if result.is_ok() != accept {
+                wrong.push(format!(
+                    "{name}: vanilla {}, Sunrise {}",
+                    if accept {
+                        "accepts".to_owned()
+                    } else {
+                        format!("rejects ({})", case["vanilla_error"].as_str().unwrap())
+                    },
+                    match result {
+                        Ok(()) => "accepts".to_owned(),
+                        Err(error) => format!("rejects ({error})"),
+                    },
+                ));
+            }
+        }
+        for case in fixture["packs"].as_array().unwrap() {
+            let name = case["name"].as_str().unwrap();
+            let files: Vec<(String, Vec<Vec<u8>>)> = case["files"]
+                .as_object()
+                .unwrap()
+                .iter()
+                .map(|(path, value)| {
+                    let rest = path.strip_prefix("data/").unwrap();
+                    let (namespace, rest) = rest.split_once('/').unwrap();
+                    let key = match rest.strip_prefix("tags/dialog/") {
+                        Some(tag) => {
+                            format!("tags/{namespace}:dialog/{}", tag.trim_end_matches(".json"))
+                        }
+                        None => format!(
+                            "dialog/{namespace}:{}",
+                            rest.strip_prefix("dialog/")
+                                .unwrap()
+                                .trim_end_matches(".json")
+                        ),
+                    };
+                    (key, vec![serde_json::to_vec(value).unwrap()])
+                })
+                .collect();
+            let result = load_dialogs(&files);
+            let accept = case["accept"].as_bool().unwrap();
+            if result.is_ok() != accept {
+                wrong.push(format!(
+                    "{name}: vanilla accept={accept}, Sunrise {result:?}"
+                ));
+            }
+        }
+        assert!(
+            wrong.is_empty(),
+            "{} cases differ:\n{}",
+            wrong.len(),
+            wrong.join("\n")
+        );
+    }
+
     #[test]
     fn every_bad_winning_definition_is_reported_in_one_error() {
         let mut oversized = enchantment("Oversized");
