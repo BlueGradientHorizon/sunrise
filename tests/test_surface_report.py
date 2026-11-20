@@ -163,16 +163,25 @@ echo '{{}}' > "$3"
             base, head = work / "old", work / "new"
             reset = head / surface_report.SCHEMA_RESET
             reset.parent.mkdir(parents=True)
-            audit = {"checkpoint": "checked", "diff": {
-                "old": "old-hash", "new": "checkpoint-hash",
-                "changes": [{"id": "fn:removed", "class": "breaking", "notes": ["native-only.toml"]}],
-            }}
+            audit = {
+                "checkpoint": "checked",
+                "plain": {"old": "old-hash", "new": "checkpoint-hash"},
+                "diff": {"old": "old-with-catalogs", "new": "checkpoint-with-catalogs",
+                         "changes": [{"id": "fn:removed", "class": "breaking", "notes": ["native-only.toml"]}]},
+            }
             reset.write_text(json.dumps(audit))
 
             def export(command, **_kwargs):
-                tool, _, root, path, _ = command
+                tool, action, root, path, *flags = command
                 if root == str(base) and tool != "old-tool":
                     return subprocess.CompletedProcess(command, 1, "", "unsupported old source")
+                if action == "surface-catalogs":
+                    self.assertEqual(Path(root), work / "schema-reset")
+                    self.assertEqual(json.loads(Path(path).read_text())["hash"], "checkpoint-hash")
+                    self.assertEqual(flags, [])
+                    Path(path).write_text(json.dumps({"schema": 3, "hash": "checkpoint-with-loops"}))
+                    return subprocess.CompletedProcess(command, 0, "", "")
+                self.assertEqual(flags, ["--with-loops"] if root == str(head) else [])
                 schema, digest = {
                     "old": (2, "old-hash"),
                     "new": (3, "some-new-change"),
@@ -190,8 +199,9 @@ echo '{{}}' > "$3"
                 self.assertIn("later change refused", text)
                 unpack.assert_called_once_with("checked", work / "schema-reset")
                 self.assertEqual(compare.call_args.args[1:5], (work / "schema-reset", head, work, True))
+                self.assertEqual(json.loads((work / "base.json").read_text())["hash"], "checkpoint-with-loops")
 
-                audit["diff"]["old"] = "unrelated-base"
+                audit["plain"]["old"] = "unrelated-base"
                 reset.write_text(json.dumps(audit))
                 compare.reset_mock()
                 code, text = surface_report.report("stage", base, head, work, True, own_base_tool=lambda: "old-tool")

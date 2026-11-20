@@ -150,6 +150,40 @@ def last_line(text: str) -> str:
     return lines[-1] if lines else "no message"
 
 
+def export_surface(tool: str, tree: Path, output: Path, *flags: str) -> subprocess.CompletedProcess:
+    return subprocess.run([tool, "surface", str(tree), str(output), *flags], capture_output=True, text=True)
+
+
+def audited_checkpoint(reset_path: Path, work: Path, old_hash: str, tool: str) -> tuple[Path | None, str]:
+    """Verify the one-time transition using both plain SDK exports, before adding any engine catalogs."""
+    reset = json.loads(reset_path.read_text())
+    plain = reset["plain"]
+    if old_hash != plain["old"]:
+        return None, f"The schema-2 base {old_hash} is not the audited schema-reset base.\n"
+    missing = [change["id"] for change in reset["diff"]["changes"]
+               if change["class"] == "breaking" and not change.get("notes")]
+    if missing:
+        return None, f"The schema-reset audit lacks change notes for {', '.join(missing)}.\n"
+    checkpoint = work / "schema-reset"
+    checkpoint.mkdir()
+    output = work / "base.json"
+    commit = reset["checkpoint"]
+    try:
+        unpack(commit, checkpoint)
+        done = export_surface(tool, checkpoint, output)
+        if done.returncode != 0:
+            done = export_surface(base_tool(commit, work), checkpoint, output)
+    except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
+        return None, f"Could not export the schema-reset checkpoint: {error}.\n"
+    if done.returncode != 0:
+        return None, f"Could not export the schema-reset checkpoint: {last_line(done.stderr)}.\n"
+    actual = json.loads(output.read_text())
+    if (actual["schema"], actual["hash"]) != (3, plain["new"]):
+        return None, "The schema-reset checkpoint does not reproduce the audited schema-3 surface.\n"
+    return checkpoint, (f"Audited schema 2 → 3 reset: {plain['old']} → {plain['new']} ({SCHEMA_RESET}).\n"
+                        "Checking all subsequent changes against that checkpoint.\n")
+
+
 def report(tool: str, base: Path, head: Path, work: Path, gate_on: bool, *,
            with_internals: bool = False, own_base_tool: Callable[[], str] | None = None,
            own_head_tool: Callable[[], str] | None = None,
@@ -162,20 +196,15 @@ def report(tool: str, base: Path, head: Path, work: Path, gate_on: bool, *,
     coverage only (that merge's own)."""
     catalogs = "--with-internals" if with_internals else "--with-loops"
 
-    def export(name: str, exporter: str, tree: Path) -> subprocess.CompletedProcess:
-        return subprocess.run([exporter, "surface", str(tree), str(work / f"{name}.json"), catalogs],
-                              capture_output=True, text=True)
-
     with ThreadPoolExecutor(max_workers=2) as pool:
         # Drain both subprocesses' diagnostics while they run so a full pipe cannot stall an export.
-        exports = {name: pool.submit(export, name, tool, tree)
+        exports = {name: pool.submit(export_surface, tool, tree, work / f"{name}.json", catalogs)
                    for name, tree in (("base", base), ("head", head))}
     head_export = exports["head"].result()
     # This checkout's own tree failing is a broken generator, which no other step would catch.
     if head_export.returncode != 0 and own_head_tool is None:
         return 1, f"The surface export of this tree failed: {last_line(head_export.stderr)}.\n"
     note = ""
-    base_from_own = False
     for name, tree, done, own_tool in (("head", head, head_export, own_head_tool),
                                        ("base", base, exports["base"].result(), own_base_tool)):
         if done.returncode == 0:
@@ -188,50 +217,27 @@ def report(tool: str, base: Path, head: Path, work: Path, gate_on: bool, *,
             output = work / f"{name}.json"
             # The plain SDK export is shared across tool versions. Use the current catalog reader
             # for both trees so an older generator does not have to know the current audit options.
-            own = subprocess.run([own_tool(), "surface", str(tree), str(output)], capture_output=True, text=True)
-            if own.returncode != 0:
-                return 1, f"No surface report: {why}, nor can the {name}'s own ({last_line(own.stderr)}).\n"
-            catalogs_command = [tool, "surface-catalogs", str(tree), str(output)]
-            if with_internals:
-                catalogs_command.append("--with-internals")
-            audited = subprocess.run(catalogs_command, capture_output=True, text=True)
+            own = export_surface(own_tool(), tree, output)
         except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
             return 1, f"No surface report: {why}, and the {name}'s own could not be used: {error}.\n"
+        if own.returncode != 0:
+            return 1, f"No surface report: {why}, nor can the {name}'s own ({last_line(own.stderr)}).\n"
+        note += f"The {name} was exported by its own sunrise-stage: {why}.\n"
+        reset_path = head / SCHEMA_RESET
+        if name == "base" and not with_internals and landed is None and reset_path.is_file():
+            old = json.loads(output.read_text())
+            if old.get("schema") == 2:
+                checkpoint, text = audited_checkpoint(reset_path, work, old["hash"], tool)
+                note += text
+                if checkpoint is None:
+                    return 1, note
+                base = tree = checkpoint
+        catalogs_command = [tool, "surface-catalogs", str(tree), str(output)]
+        if with_internals:
+            catalogs_command.append("--with-internals")
+        audited = subprocess.run(catalogs_command, capture_output=True, text=True)
         if audited.returncode != 0:
             return 1, f"No surface report: could not audit the {name} catalogs ({last_line(audited.stderr)}).\n"
-        note += f"The {name} was exported by its own sunrise-stage: {why}.\n"
-        base_from_own |= name == "base"
-    # This is used only at the native-only schema boundary. A normal comparison does not read the audit.
-    if base_from_own and not with_internals and landed is None and (head / SCHEMA_RESET).is_file():
-        reset = json.loads((head / SCHEMA_RESET).read_text())
-        old = json.loads((work / "base.json").read_text())
-        new = json.loads((work / "head.json").read_text())
-        if (old.get("schema"), new.get("schema")) == (2, 3):
-            audit = reset["diff"]
-            if old["hash"] != audit["old"]:
-                return 1, note + f"The schema-2 base {old['hash']} is not the audited schema-reset base.\n"
-            missing = [change["id"] for change in audit["changes"]
-                       if change["class"] == "breaking" and not change.get("notes")]
-            if missing:
-                return 1, note + f"The schema-reset audit lacks change notes for {', '.join(missing)}.\n"
-            # Audit only the transition itself. The rest of the rollup still goes through the real gate.
-            checkpoint = work / "schema-reset"
-            checkpoint.mkdir()
-            try:
-                unpack(reset["checkpoint"], checkpoint)
-                done = export("base", tool, checkpoint)
-                if done.returncode != 0:
-                    done = export("base", base_tool(reset["checkpoint"], work), checkpoint)
-            except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
-                return 1, note + f"Could not export the schema-reset checkpoint: {error}.\n"
-            if done.returncode != 0:
-                return 1, note + f"Could not export the schema-reset checkpoint: {last_line(done.stderr)}.\n"
-            actual = json.loads((work / "base.json").read_text())
-            if (actual["schema"], actual["hash"]) != (3, audit["new"]):
-                return 1, note + "The schema-reset checkpoint does not reproduce the audited schema-3 surface.\n"
-            note += (f"Audited schema 2 → 3 reset: {audit['old']} → {audit['new']} ({SCHEMA_RESET}).\n"
-                     "Checking all subsequent changes against that checkpoint.\n")
-            base = checkpoint
     code, text = compare(tool, base, head, work, gate_on, with_internals=with_internals, notes=notes, landed=landed,
                          covered=covered)
     return code, note + text
