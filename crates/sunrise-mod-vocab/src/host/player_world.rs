@@ -28,10 +28,7 @@ pub trait PlayerWorldBackend {
     fn player_collision_flags(
         &self,
         player: PlayerRef,
-    ) -> Result<Option<CollisionFlags>, LevelReadError> {
-        let _ = player;
-        Err(AccessRefusal::unavailable())
-    }
+    ) -> Result<Option<CollisionFlags>, LevelReadError>;
     /// Side: both.
     /// The dimension and block of the player's last death
     /// (`Player.getLastDeathLocation`).
