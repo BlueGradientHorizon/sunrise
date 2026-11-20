@@ -8,6 +8,7 @@
 //! Messages go through the `log` facade. Sunrise's own still print their plain text on stderr,
 //! as they did before the log existed. Other crates, including native mods and their helper
 //! crates, reach the file through INFO too, with their target prefixed to identify the source.
+//! `SUNRISE_LOG_STDERR` also echoes selected targets to stderr for development.
 use std::collections::{HashMap, VecDeque};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom, Write};
@@ -263,13 +264,20 @@ pub fn open_latest(dir: &Path) -> io::Result<Option<Latest>> {
     Ok(Some(Latest { file, _lock: lock }))
 }
 
+/// What to print to stderr in addition to the file.
+enum Echo {
+    Quiet,
+    Plain(String),
+    Record,
+}
+
 /// What the writer thread is told.
 enum Out {
-    /// Lines for the file, dated, and the message for stderr (Sunrise's own).
+    /// Lines for the file, dated, with their stderr policy.
     Write {
         date: NaiveDate,
         lines: Vec<String>,
-        stderr: Option<String>,
+        stderr: Echo,
     },
     /// Answer once everything before is written.
     Flush(mpsc::SyncSender<()>),
@@ -287,33 +295,35 @@ struct Writer {
 }
 
 impl Writer {
-    fn run(mut self, out: mpsc::Receiver<Out>) {
-        let stderr = io::stderr();
+    fn run(mut self, out: mpsc::Receiver<Out>, mut stderr: impl Write) {
         for msg in out {
             match msg {
                 Out::Write {
                     date,
                     lines,
-                    stderr: message,
+                    stderr: echo,
                 } => {
-                    if let Some(message) = message {
-                        let _ = writeln!(stderr.lock(), "{message}");
+                    if let Echo::Plain(message) = &echo {
+                        let _ = writeln!(stderr, "{message}");
                     }
                     if date != self.date {
                         if let Some(latest) = &mut self.file
                             && let Err(e) = roll(&mut latest.file, &self.dir, self.date)
                         {
-                            let _ = writeln!(
-                                stderr.lock(),
-                                "Sunrise: could not roll over the log: {e}"
-                            );
+                            let _ = writeln!(stderr, "Sunrise: could not roll over the log: {e}");
                         }
                         self.date = date;
                     }
-                    if let Some(latest) = &mut self.file {
+                    let echo_record = matches!(echo, Echo::Record);
+                    if self.file.is_some() || echo_record {
                         let mut text = lines.join("\n");
                         text.push('\n');
-                        let _ = latest.file.write_all(text.as_bytes());
+                        if let Some(latest) = &mut self.file {
+                            let _ = latest.file.write_all(text.as_bytes());
+                        }
+                        if echo_record {
+                            let _ = stderr.write_all(text.as_bytes());
+                        }
                     }
                 }
                 Out::Flush(done) => {
@@ -334,6 +344,7 @@ struct Logger {
     /// What the main thread is called in the log: "Render thread", or "Server thread" for the
     /// dedicated server, as in vanilla.
     main_thread: &'static str,
+    stderr_targets: Vec<String>,
     floods: Mutex<Floods>,
 }
 
@@ -523,6 +534,13 @@ fn ours(target: &str) -> bool {
     target.starts_with("sunrise")
 }
 
+/// A target is the named crate or one of its modules, not just a shared prefix.
+fn target_matches(target: &str, name: &str) -> bool {
+    target
+        .strip_prefix(name)
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with("::"))
+}
+
 /// Crates logged from ERROR only, their warnings being known noise. `calloop` 0.13, winit 0.30's
 /// Wayland event loop, warns once per key press: smithay-client-toolkit re-registers the key
 /// repeat timer on each press and the removed timer's last event still arrives ("Received an
@@ -532,11 +550,7 @@ const ERRORS_ONLY: &[&str] = &["calloop"];
 impl log::Log for Logger {
     fn enabled(&self, meta: &log::Metadata) -> bool {
         let target = meta.target();
-        let floor = if ERRORS_ONLY.iter().any(|name| {
-            target
-                .strip_prefix(name)
-                .is_some_and(|rest| rest.is_empty() || rest.starts_with("::"))
-        }) {
+        let floor = if ERRORS_ONLY.iter().any(|name| target_matches(target, name)) {
             log::Level::Error
         } else {
             log::Level::Info
@@ -548,11 +562,12 @@ impl log::Log for Logger {
         if !self.enabled(record.metadata()) {
             return;
         }
-        let sunrise = ours(record.target());
+        let target = record.target();
+        let sunrise = ours(target);
         let message = if sunrise {
             record.args().to_string()
         } else {
-            format!("[{}] {}", record.target(), record.args())
+            format!("[{target}] {}", record.args())
         };
         let current = std::thread::current();
         let thread = match current.name() {
@@ -582,7 +597,17 @@ impl log::Log for Logger {
             ),
             _ => {}
         }
-        let stderr = sunrise.then(|| message.clone());
+        let stderr = if sunrise {
+            Echo::Plain(message.clone())
+        } else if self
+            .stderr_targets
+            .iter()
+            .any(|name| target_matches(target, name))
+        {
+            Echo::Record
+        } else {
+            Echo::Quiet
+        };
         self.send(thread, level, &message, stderr);
         if gate == Gate::Last {
             self.write(
@@ -604,10 +629,10 @@ impl log::Log for Logger {
 
 impl Logger {
     fn write(&self, thread: &str, level: log::Level, message: &str) {
-        self.send(thread, level, message, None);
+        self.send(thread, level, message, Echo::Quiet);
     }
 
-    fn send(&self, thread: &str, level: log::Level, message: &str, stderr: Option<String>) {
+    fn send(&self, thread: &str, level: log::Level, message: &str, stderr: Echo) {
         let now = Local::now();
         // As log4j writes a multi-line message: the pattern once, the rest as it is.
         let lines: Vec<String> = message
@@ -639,7 +664,7 @@ impl Logger {
         let result = self.out.send(msg);
         drop(queue);
         if let Err(mpsc::SendError(Out::Write {
-            stderr: Some(message),
+            stderr: Echo::Plain(message),
             ..
         })) = result
         {
@@ -679,7 +704,7 @@ pub fn init(home: &Path, main_thread: &'static str) {
         };
         if let Err(e) = std::thread::Builder::new()
             .name("Log writer".into())
-            .spawn(move || writer.run(receive))
+            .spawn(move || writer.run(receive, io::stderr()))
         {
             eprintln!("Sunrise: could not start the log writer: {e}");
         }
@@ -687,6 +712,13 @@ pub fn init(home: &Path, main_thread: &'static str) {
             out,
             recent: Mutex::new(VecDeque::new()),
             main_thread,
+            stderr_targets: std::env::var("SUNRISE_LOG_STDERR")
+                .unwrap_or_default()
+                .split(',')
+                .map(str::trim)
+                .filter(|target| !target.is_empty())
+                .map(str::to_owned)
+                .collect(),
             floods: Mutex::new(Floods::default()),
         }
     });
@@ -853,11 +885,12 @@ mod tests {
             dir: dir.clone(),
             date: Local::now().date_naive(),
         };
-        let handle = std::thread::spawn(move || writer.run(receive));
+        let handle = std::thread::spawn(move || writer.run(receive, io::sink()));
         let logger = Logger {
             out,
             recent: Mutex::new(VecDeque::new()),
             main_thread: "Render thread",
+            stderr_targets: Vec::new(),
             floods: Mutex::new(Floods::default()),
         };
         for (target, level, message) in [
@@ -907,6 +940,7 @@ mod tests {
             out,
             recent: Mutex::new(VecDeque::new()),
             main_thread: "Render thread",
+            stderr_targets: Vec::new(),
             floods: Mutex::new(Floods::default()),
         };
         for target in ["sunrise_client::game", "meridian_core", "wgpu_hal::vulkan"] {
@@ -921,15 +955,87 @@ mod tests {
                 panic!("a diagnostic must write a record")
             };
             if ours(target) {
-                assert_eq!(stderr.as_deref(), Some("diagnostic"));
+                assert!(matches!(stderr, Echo::Plain(message) if message == "diagnostic"));
                 assert!(lines.iter().any(|line| line.ends_with("diagnostic")));
             } else {
-                assert!(stderr.is_none());
+                assert!(matches!(stderr, Echo::Quiet));
                 assert!(
                     lines
                         .iter()
                         .any(|line| line.ends_with(&format!("[{target}] diagnostic")))
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn selected_targets_echo_whole_records_in_the_file_format() {
+        use log::Log;
+        let dir = tempfile::tempdir().unwrap();
+        // With the file open, and when a different game owns it.
+        for with_file in [true, false] {
+            let (out, receive) = mpsc::channel();
+            let logger = Logger {
+                out,
+                recent: Mutex::new(VecDeque::new()),
+                main_thread: "Render thread",
+                stderr_targets: vec!["my_mod".into(), "another_mod".into()],
+                floods: Mutex::new(Floods::default()),
+            };
+            for (target, message) in [
+                ("my_mod", "root record"),
+                ("my_mod::map", "module record\ncontinued here"),
+                ("another_mod", "second selected target"),
+                (
+                    "other",
+                    "other record\n[12:34:56] [Render thread/INFO]: [my_mod] not ours",
+                ),
+                ("my_mod_else", "similar crate name"),
+            ] {
+                untapped(|| {
+                    logger.log(
+                        &log::Record::builder()
+                            .args(format_args!("{message}"))
+                            .level(log::Level::Info)
+                            .target(target)
+                            .build(),
+                    );
+                });
+            }
+            drop(logger);
+            // Keep the byte comparison on one log day, even across midnight.
+            let log_day = day(14);
+            let (fixed, queued) = mpsc::channel();
+            for mut record in receive {
+                let Out::Write { date, .. } = &mut record else {
+                    panic!("a diagnostic must write a record");
+                };
+                *date = log_day;
+                fixed.send(record).unwrap();
+            }
+            drop(fixed);
+            let writer = Writer {
+                file: with_file.then(|| open_latest(dir.path()).unwrap().unwrap()),
+                dir: dir.path().to_owned(),
+                date: log_day,
+            };
+            let mut stderr = Vec::new();
+            writer.run(queued, &mut stderr);
+            let stderr = String::from_utf8(stderr).unwrap();
+            let lines: Vec<_> = stderr.lines().collect();
+            assert_eq!(lines.len(), 4);
+            assert!(lines[0].ends_with("/INFO]: [my_mod] root record"));
+            assert!(lines[1].ends_with("/INFO]: [my_mod::map] module record"));
+            assert_eq!(lines[2], "continued here");
+            assert!(lines[3].ends_with("/INFO]: [another_mod] second selected target"));
+            assert!(stderr.ends_with('\n'));
+            if with_file {
+                let full = fs::read_to_string(dir.path().join("latest.log")).unwrap();
+                assert!(full.starts_with(&stderr));
+                assert!(full.contains(
+                    "[other] other record\n[12:34:56] [Render thread/INFO]: [my_mod] not ours\n"
+                ));
+                assert!(full.contains("[my_mod_else] similar crate name\n"));
             }
         }
     }

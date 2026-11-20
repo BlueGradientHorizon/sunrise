@@ -20,13 +20,13 @@ const COMMANDS: &[Command] = &[
         name: "build",
         everyday: true,
         usage: "build [--update-lock]",
-        summary: "Packs the mod into target/sunrise-mod/<id>.smod; a native mod is compiled first.",
+        summary: "Packs the mod into target/sunrise-mod/<id>.smod; a native mod is compiled first (--update-lock, native only, resolves its Cargo.lock again).",
     },
     Command {
         name: "run",
         everyday: true,
         usage: "run [--game <sunrise-client>] [--resources <folder>] [--jars <dir>] [-- <game args>]",
-        summary: "Builds the mod, then starts the game with it; --game names the game for a content mod, --resources the prepared resources for a native mod (which runs on its pinned SDK's game), and --jars selects a folder of original Java jars named by SHA-512.",
+        summary: "Builds the mod, starts the game, and shows a native mod's own log lines live; --game names the game for a content mod, --resources the prepared resources for a native mod (which runs on its pinned SDK's game), and --jars selects a folder of original Java jars named by SHA-512.",
     },
     Command {
         name: "check",

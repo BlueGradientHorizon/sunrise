@@ -64,11 +64,13 @@ is `/tick query`'s average over 100 ticks.
 | guest in the End (the Nether still parked) | 0.9 ms | 1.1 ms | 1324 MB |
 | both back, the Nether and End closed after 300 idle ticks | 0.8 ms | 0.9 ms | 1335 MB |
 
-- A level costs only while a player is in it: its chunks around that player, their entities, and the
-  tick. With nobody outside the Overworld, `tick_server` runs one pass, as before.
-- A closed level's memory goes back to the allocator, not always to the system.
-- Entering a level the first time opens its region files and streaming (`open_level`). That cost
-  comes once, before the player's chunks load.
+- Startup opens all built-in levels, then activates their saved tickets, including `/forceload`
+  and mod tickets, and waits for the chunks they hold. Opening an unticketed level does not by
+  itself preload chunks; spawn preparation can load chunks separately.
+- A level with players or tickets keeps its chunks and entities and runs its tick. If nothing keeps
+  levels outside the Overworld active, the server ticks only the Overworld.
+- A closed level's memory goes back to the allocator, not always to the system. Entering it again
+  reopens its region files and streaming before loading the player's chunks.
 
 ## Saving
 

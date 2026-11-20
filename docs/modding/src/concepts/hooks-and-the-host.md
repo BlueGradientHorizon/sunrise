@@ -40,6 +40,10 @@ Whether a call represents one entity or a family depends on the tick route and t
 registration. Keep cancellations within the current Pre call. The player connection body remains
 separate from the server-side entity tick, and the local client avatar is not observed by these hooks.
 
+Removing a general entity in Pre skips its tick and Post. A passenger dismounted by that removal can
+still tick as a root if it is eligible, has not ticked, and its join-order slot is still ahead. The pass
+does not revisit an earlier slot. Canceling an entity's Pre without removing it does not skip its passengers.
+
 ## Explosion membership
 
 `explosion_detonate` version 2 exposes mutable `blocks` and `entities` lists
@@ -151,8 +155,10 @@ main-hand weapon (`DamageSource.getEntity().getWeaponItem()`): an off-hand cross
 name the saved crossbow in `weapon` and the shooter's main-hand sword in `causing_weapon`.
 An absent, unknown or non-living cause has no `causing_weapon`.
 
-The event is a generated struct named after the catalog hook, in CamelCase plus `Event`, with
-the hook point's arguments as public fields: values as values and borrowed ones as references (`event.kind`). A
+The event is a generated struct named after the catalog hook, in CamelCase plus `Event`.
+The game constructs it and passes it to the listener. It is `#[non_exhaustive]`: a mod cannot build it
+with a struct literal, and a destructuring pattern must include `..`. Listeners still read and write
+the public fields as the hook allows. The hook point's arguments are values or references (`event.kind`). A
 number or `bool` a mod may change is a plain field, written back once every mod has run, even after a `Cancel`;
 anything else a mod may change, a game struct or a list, is a `&mut` field. A cancellation or replacement is
 the return value; a collection hook's list is a field (`event.lines`). One event goes through every mod, so each
@@ -227,9 +233,10 @@ for an unknown state; `min_y()` and `height()` read the level's build range. It 
 `raw_brightness(pos, sky_darken)` (`getRawBrightness`, which `CropBlock.randomTick` asks with 0)
 and `is_loaded(pos)` (`Level.isLoaded`: inside the build height and in a loaded chunk),
 `is_raining_at(pos)` (`Level.isRainingAt`, false where `pos` is not loaded) and `enabled_features()`
-(`LevelReader.enabledFeatures`, a borrowed `FeatureFlags<'_>`). These queries do not allocate.
-None of them loads a chunk. The raw light query supplies defaults (including full sky in a
-missing column), so check `is_loaded` first when you need a resident block. `LevelHost` also answers
+(`LevelReader.enabledFeatures`, a shared `FeatureFlags` with the world's effective flags). An omitted
+flag list in the save means `minecraft:vanilla`, not an empty set. These queries do not allocate.
+None of them loads a chunk. Light can be available outside the build height or where no chunk is
+resident, so check `is_loaded` first when you need a resident block. `LevelHost` also answers
 tag and fluid questions without a `Host`: `block_in_tag(block_key, tag)`, `fluid_state(pos)`
 (`getFluidState`, `None` where the block read is),
 `state_fluid_state(state)` and `fluid_in_tag(fluid_name, tag)`. Fluid reads return `FluidState` with a
@@ -249,16 +256,13 @@ positions. `canSupportRigidBlock` is `(pos, Up, Rigid)`. `canSupportCenter` is `
 except that vanilla also refuses `Down` on blocks tagged `minecraft:unstable_bottom_center`.
 
 `can_see_sky(pos)` tests the published sky light for 15, not the heightmap or block light. It
-returns false everywhere in a dimension without skylight. In vanilla, sky light can be stored in
-padding sections above and below build height. Above the highest stored section, or in a column
-with no stored sections, there is full sky. A missing section below a stored one repeats the
-bottom row of the next stored section above it. An unloaded column beside non-air sections can
-have retained light in that band: the server reads its last light there and the client has no
-full sky there.
+returns false everywhere in a dimension without skylight. Padding sections one section above and
+below build height can carry stored light. Where sky light is not stored, it repeats the bottom row
+of the nearest stored sky layer above, or returns 15 if there is none. Missing block light is zero.
+An unloaded column can still retain light where a loaded neighbour supports its light sections.
 
-**Known gap ([#2761](https://github.com/sunrise-org/sunrise/issues/2761)):** In skylit dimensions,
-Sunrise reads the resident column's allocated sections, with full sky above them and in every
-missing column, and darkness below them, instead of tracking vanilla's padding and unloaded border.
+Sunrise does not yet compute new light for the padding sections ([#3494](https://github.com/sunrise-org/sunrise/issues/3494))
+or refresh unloaded borders when a block edit changes whether a section is empty ([#3495](https://github.com/sunrise-org/sunrise/issues/3495)).
 
 Both reads return `None` in callbacks without the corresponding view. A `LevelRef` must still
 name an open server level or the current client level. Neither read loads chunks or opens loot
@@ -288,11 +292,15 @@ they were the server's: a client's own shape update that refuses a block removes
 `LevelTicksHost`'s signal reads moved here and now return `Option`.
 
 Before a block's placement state is selected, `ItemPart::placement_context` replaces the item's
-`BlockItem.updatePlacementContext` rewrite: `Some(Some(context))` rewrites the target and click,
-`Some(None)` refuses, and `None` runs vanilla (including scaffolding's column walk). The placing
-item cannot change, click and view values must be finite, and the target must be within bounds.
-Replaceability is checked before the rewrite, not again on its answer. `BlockPart::state_for_placement`
-then selects the candidate, which may be a registered state of another block. The game uses that
+`BlockItem.updatePlacementContext` rewrite. It is keyed by the real pre-use `stack`, including its
+components. `placer` gives the player handle and the eyes at the time of the click via `eye_position()`
+(the acting player on the server, the predicting player on the client). It is `None` for a dispenser.
+`Some(Some(context))` rewrites the target and click, even if the player's original destination is
+occupied. The new destination must be loaded, in bounds and replaceable. The placing item cannot
+change and click and view values must be finite. `Some(None)` refuses. `None` keeps vanilla, which
+checks the original destination before its own rewrite (such as scaffolding's column walk). A
+blocked dispenser still fails before this hook. `BlockPart::state_for_placement` then selects the
+candidate, which may be a registered state of another block. The game uses that
 candidate for survival, obstruction, and the written-block check that gates item data and placed-by
 callbacks. The held item does not change, and its double-height pre-clear still runs if applicable.
 Selecting a different block does not run that block's `getStateForPlacement`. If that block places a
@@ -302,9 +310,8 @@ requires creative-operator permission when a mod selects a game-master block. At
 check, `ItemPart::must_survive` decides whether placement must pass `can_survive`: `Some(false)`
 skips it, `Some(true)` requires it, and `None` keeps vanilla (scaffolding false, other block items
 true). Standing/wall items retain their own unconditional candidate-survival checks. Entity
-obstruction is still checked. Both hooks run on both sides with
-a read-only `LevelSide`, dispatched by item id. These events have no stack yet: they decide from
-the item and level, not held components. Player and dispenser placement offer the resolved decision
+obstruction is still checked. Both hooks run on both sides with a read-only `LevelSide`.
+`must_survive` still takes only the item id. Player and dispenser placement offer the resolved decision
 once to `entity_place`; a veto stops all writes, including a double-height item's pre-clear, and
 keeps the stack. If a listener changes the placement inputs, it is refused rather than retargeted.
 The veto's placement neighbour and the post-placement notice use the resolved face,

@@ -128,6 +128,11 @@ pub struct Hook {
     /// unwinds is switched off for this hook for the session, and the outputs it had written roll
     /// back to what the game requested (#2414 ruling).
     pub isolate: bool,
+    /// An isolated hook's per-listener check of the outputs it wrote: a path to
+    /// `fn(&accepted, ..., &proposed, ...) -> Result<(), &'static str>` taking each set of
+    /// vector/scalar outputs in declaration order and naming the first refused one. A refused
+    /// result, including its cancellation, rolls back; later listeners still run.
+    pub output_validator: Option<String>,
     pub scope: Option<PartScope>,
     pub host: Option<HostAccess>,
     pub context: Option<PhaseContext>,
@@ -143,8 +148,6 @@ pub struct Hook {
     pub call: Vec<(String, String)>,
     /// Admission policy for the mutable stack-list output; placement owns trimming.
     pub stack_count: Option<StackCount>,
-    /// Keep construction and exhaustive patterns of the event inside the vocabulary crate.
-    pub non_exhaustive: bool,
     /// Rebuild a listener event from its original inputs for every subscriber.
     pub event_per_listener: bool,
 }
@@ -271,8 +274,6 @@ struct HookEntry {
     call: Vec<(String, String)>,
     stack_count: Option<StackCount>,
     #[serde(default)]
-    non_exhaustive: bool,
-    #[serde(default)]
     event_per_listener: bool,
     inert: Option<String>,
     neoforge: Option<serde_json::Value>,
@@ -291,6 +292,7 @@ struct ModApiEntry {
     owner: Option<String>,
     collect_validator: Option<String>,
     isolate: Option<bool>,
+    output_validator: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -390,6 +392,14 @@ impl Hook {
                 error: "isolate is for a global cancel hook".into(),
             });
         }
+        if let Some(validator) = &api.output_validator
+            && (!isolate || syn::parse_str::<syn::Path>(validator).is_err())
+        {
+            return Err(CatalogError::InvalidHook {
+                hook: name.clone(),
+                error: "output_validator is a path on an isolated hook".into(),
+            });
+        }
         let counterparts = Counterparts {
             neoforge: counterparts(&name, "neoforge", entry.neoforge)?,
             fabric: counterparts(&name, "fabric", entry.fabric)?,
@@ -408,6 +418,7 @@ impl Hook {
             collect_validator: api.collect_validator,
             inert: entry.inert,
             isolate,
+            output_validator: api.output_validator,
             scope,
             host: entry.host,
             context: entry.context,
@@ -416,7 +427,6 @@ impl Hook {
             cancellable: entry.cancellable,
             call: entry.call,
             stack_count: entry.stack_count,
-            non_exhaustive: entry.non_exhaustive,
             event_per_listener: entry.event_per_listener,
         })
     }
@@ -669,6 +679,7 @@ impl Declared {
                             "owner",
                             "collect_validator",
                             "isolate",
+                            "output_validator",
                         ] {
                             if let Some(value) = entry.remove(key) {
                                 api.insert(key.into(), value);
@@ -852,6 +863,7 @@ impl Hook {
             collect_validator: None,
             inert: None,
             isolate: false,
+            output_validator: None,
             scope: None,
             host: None,
             context: None,
@@ -860,7 +872,6 @@ impl Hook {
             cancellable: None,
             call: Vec::new(),
             stack_count: None,
-            non_exhaustive: false,
             event_per_listener: false,
         }
     }

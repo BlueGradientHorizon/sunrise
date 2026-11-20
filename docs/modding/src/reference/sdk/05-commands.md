@@ -23,7 +23,8 @@ signed sums and each slice as the SDK fetch does, and unpacks them into the tool
 `%LOCALAPPDATA%\sunrise-mod` on Windows; `SUNRISE_MOD_CACHE` names another folder. Deleting the folder clears it.
 The Rust is the one `sdk.json` names: `rustup`'s, installed with `--profile minimal` when missing, or the `rustc` on
 `PATH` when it is exactly that version; otherwise `build` stops and says the version and both ways to get it.
-A mod with crates.io dependencies and no `Cargo.lock` gets one; `build --update-lock` resolves again. The compile
+A mod with crates.io dependencies and no `Cargo.lock` gets one; `build --update-lock` resolves again, and is refused for
+a content mod. The compile
 is [`native-build`'s](08-native-build.md), in process, with registry crates approved (the mod's own `Cargo.toml`),
 for the `client` side. It prints `Built <library>` and the build log's path, and exits non-zero with the error on failure.
 
@@ -31,6 +32,8 @@ for the `client` side. It prints `Built <library>` and the build log's path, and
 --prepare --output <folder>`). It copies the built game program, its libraries, the `native-mods.json` record naming
 the mod's library and the mod's package into `target/sunrise-mod/run/app/`, keeps the game folder and `SUNRISE_HOME`
 in `run/game/` and `run/home/`, and starts the program with `--game-dir`, `--resources` and the arguments after `--`.
+When the pinned game supports `SUNRISE_LOG_STDERR`, `run` shows the native mod's own log records (INFO and above)
+live in the terminal. The full client log is normally in `target/sunrise-mod/run/home/logs/latest.log`.
 For a mod with `[[jar]]` entries, `run` verifies and stages the originals before building. See [Java jars as external
 assets](../../how-to/content-mods.md#java-jars-as-external-assets) for the default store, `--jars <dir>` and the development home requirements.
 

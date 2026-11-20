@@ -98,4 +98,6 @@ shift flag. On the server the existing entity flag is read, including a scoped f
 clients without a joined local player return `None`.
 
 What a machine does beyond a player's action stays in the mod: its own mining progress and catching world drops.
-Scoped actions retain player reach, protection and border checks; eye placement is supplied by the mod.
+Scoped actions retain player reach, protection and border checks. The acting fake's body can obstruct its own block
+placement, just like a connected player's. For scoped placement, choose an eye position that keeps the temporary
+standing body clear of the block's collision shape.
