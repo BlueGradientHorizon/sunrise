@@ -2348,19 +2348,12 @@ impl Hub {
     }
     pub fn send_inventory(&mut self, i: usize) {
         let items: Vec<Option<ItemStack>> = (0..46).map(|s| self.guests[i].menu_slot(s)).collect();
-        let net: Vec<_> = items.iter().map(|s| self.stack(s)).collect();
-        let carried = self.guests[i].carried.clone();
-        let carried = self.stack(&carried);
-        self.guests.update(i, |g| {
+        let state = self.guests.update(i, |g| {
             g.menu_state = (g.menu_state + 1) & 0x7FFF;
-            g.send(&C::ContainerSetContent(play::ContainerSetContent {
-                container: 0,
-                state: g.menu_state,
-                items: net,
-                carried,
-            }));
-            g.menu_sent = items;
-        })
+            g.menu_state
+        });
+        self.send_menu_snapshot(i, 0, state, &items);
+        self.guests.update(i, |g| g.menu_sent = items);
     }
 
     // ---- per tick ------------------------------------------------------
@@ -3653,6 +3646,11 @@ impl Hub {
                 }));
                 g.menu_sent[slot] = now;
             });
+        }
+        // Hub-owned open menus broadcast their cursor after their own slots.
+        // Menus owned by Game also use the guest's cursor, so cover them here.
+        if self.guests[i].menu.is_none() {
+            self.sync_carried(i, None);
         }
     }
 

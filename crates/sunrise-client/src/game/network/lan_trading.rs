@@ -253,19 +253,8 @@ impl Game<'_> {
             let mut items: Vec<Option<ItemStack>> = gm.slots.to_vec();
             let g = &host.hub.guests[gi];
             items.extend((9..36).chain(0..9).map(|i| g.inventory[i].clone()));
-            let carried = g.carried.clone();
-            let net: Vec<_> = items.iter().map(|s| host.hub.stack(s)).collect();
-            let carried = host.hub.stack(&carried);
             gm.state = (gm.state + 1) & 0x7FFF;
-            host.hub.send_to(
-                conn,
-                &C::ContainerSetContent(play::ContainerSetContent {
-                    container: gm.window,
-                    state: gm.state,
-                    items: net,
-                    carried,
-                }),
-            );
+            host.hub.send_menu_snapshot(gi, gm.window, gm.state, &items);
         }
     }
     /// Runs `op` on the guest's merchant menu (their inventory copied in and

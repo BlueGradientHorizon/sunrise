@@ -1515,7 +1515,7 @@ impl Game<'_> {
                 return true;
             };
             agreed = p.state == state
-                && host.hub.click_agreed(
+                && host.hub.accept_click_prediction(
                     gi,
                     p,
                     menu.slot_count(),
@@ -1881,18 +1881,7 @@ impl Game<'_> {
         let mut items: Vec<Option<ItemStack>> = (0..10).map(|s| menu.slot(s).cloned()).collect();
         let g = &host.hub.guests[gi];
         items.extend((9..36).chain(0..9).map(|i| g.inventory[i].clone()));
-        let carried = g.carried.clone();
-        let items = items.iter().map(|s| host.hub.stack(s)).collect();
-        let carried = host.hub.stack(&carried);
-        host.hub.send_to(
-            conn,
-            &C::ContainerSetContent(play::ContainerSetContent {
-                container: window,
-                state,
-                items,
-                carried,
-            }),
-        );
+        host.hub.send_menu_snapshot(gi, window, state, &items);
         host.hub.guests.update(gi, |g| g.inventory_told());
     }
 

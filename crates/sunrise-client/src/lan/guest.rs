@@ -431,6 +431,8 @@ pub struct Guest {
     pub sent_effects: Vec<SentEffect>,
     /// What the client believes the inventory menu holds (for change detection).
     pub menu_sent: Vec<Option<ItemStack>>,
+    /// `remoteCarried` for the active menu. Sunrise shares the carried stack between menus.
+    pub(super) carried_sent: Option<ItemStack>,
     pub menu_state: i32,
     /// `lastSentHealth`, `lastSentFood` and `lastFoodSaturationZero`.
     pub sent_health: Option<(f32, i32, bool)>,
@@ -819,6 +821,7 @@ impl Guest {
             modified_effect_particles: None,
             sent_effects: Vec::new(),
             menu_sent: vec![None; 46],
+            carried_sent: None,
             menu_state: 0,
             sent_health: None,
             sent_health_data: false,
