@@ -6092,8 +6092,6 @@ impl Game<'_> {
         )
     }
 
-    /// `FallingBlockRenderer` for the falling blocks of `run`, drawn with their baked model,
-    /// including non-cubic shapes.
     fn falling_setup(&self) -> FallingSetup<'_> {
         FallingSetup {
             // Packs can move vertices or draw another view; otherwise only depth
@@ -6106,6 +6104,8 @@ impl Game<'_> {
         }
     }
 
+    /// `FallingBlockRenderer` for the falling blocks of `run`, drawn with their baked model,
+    /// including non-cubic shapes.
     fn falling_geometry(
         &self,
         camera: glam::DVec3,

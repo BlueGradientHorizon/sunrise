@@ -724,9 +724,7 @@ impl Game<'_> {
     /// The sprites of the TNT block's six faces (up, down, north, south, west, east), from its
     /// block model; `None` without a model. Once a frame, however many runs of TNT draw.
     pub(super) fn tnt_face_sprites(&self) -> Option<[Option<sunrise_client_render::hud::Rect>; 6]> {
-        let Some(state) = self.pack.assets.registry.default_state("minecraft:tnt") else {
-            return None;
-        };
+        let state = self.pack.assets.registry.default_state("minecraft:tnt")?;
         // Face sprites from the block model: up, down, north, south, west, east.
         let Ok(models) = self
             .pack
