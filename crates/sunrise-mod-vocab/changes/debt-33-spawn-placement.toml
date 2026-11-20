@@ -1,0 +1,3 @@
+ids = ["trait:SpawnPlacementLevel", "trait:SpawnPlacementContext"]
+why = "Native spawn predicates can read the level without loading chunks or writing to it and can draw from the check's live random stream. The darkness test uses that same stream."
+migrate = "Existing placement declarations need no changes. In a native spawn predicate, use `context.level()` for block, tag and light reads and `context.random()` for random draws. Use `context.is_dark_enough_to_spawn()` for the monster darkness test at the checked position. If the predicate keeps vanilla's trial-spawner light bypass, short-circuit the light test when the reason is `SpawnReason::TrialSpawner`."

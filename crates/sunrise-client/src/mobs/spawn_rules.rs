@@ -5,6 +5,7 @@
 //! vanilla's order.
 use super::{Species, data};
 use crate::blocks::{BlockFacts, Fluid};
+use mod_api::{BlockPos, SpawnPlacementContext, SpawnPlacementLevel};
 use sunrise_core::random::{RandomSource, slime_chunk_random};
 use sunrise_world::{dimension_type::DimensionFacts, registry::BlockStateId};
 
@@ -322,6 +323,85 @@ pub fn check_spawn_rules<L: SpawnLevel>(
     };
     l.placement_check(entity, reason, at, vanilla)
 }
+
+struct SpawnLevelView<'a, L>(&'a L);
+
+impl<L: SpawnLevel> SpawnPlacementLevel for SpawnLevelView<'_, L> {
+    fn block_name(&self, pos: BlockPos) -> &str {
+        name(self.0, pos.x, pos.y, pos.z)
+    }
+
+    fn block_in_tag(&self, pos: BlockPos, id: &str) -> bool {
+        tag(self.0, id, pos.x, pos.y, pos.z)
+    }
+
+    fn biome_in_tag(&self, pos: BlockPos, id: &str) -> bool {
+        self.0.biome_tag(id, pos.x, pos.y, pos.z)
+    }
+
+    fn sky_light(&self, pos: BlockPos) -> i32 {
+        self.0.sky_light(pos.x, pos.y, pos.z)
+    }
+
+    fn block_light(&self, pos: BlockPos) -> i32 {
+        self.0.block_light(pos.x, pos.y, pos.z)
+    }
+
+    fn is_bright_enough_to_spawn(&self, pos: BlockPos) -> bool {
+        bright(self.0, pos.x, pos.y, pos.z)
+    }
+}
+
+struct SpawnContext<'a, L, R> {
+    level: SpawnLevelView<'a, L>,
+    rng: &'a mut R,
+    pos: BlockPos,
+}
+
+impl<L: SpawnLevel, R: RandomSource> SpawnPlacementContext for SpawnContext<'_, L, R> {
+    fn level(&self) -> &dyn SpawnPlacementLevel {
+        &self.level
+    }
+
+    fn random(&mut self) -> &mut dyn mod_api::RandomSource {
+        self
+    }
+
+    fn is_dark_enough_to_spawn(&mut self) -> bool {
+        is_dark_enough(self.level.0, self.rng, self.pos.x, self.pos.y, self.pos.z)
+    }
+}
+
+impl<L, R: RandomSource> mod_api::RandomSource for SpawnContext<'_, L, R> {
+    fn next_int(&mut self) -> i32 {
+        self.rng.next_int()
+    }
+
+    fn next_int_bound(&mut self, bound: i32) -> i32 {
+        self.rng.next_int_bound(bound).unwrap_or(0)
+    }
+
+    fn next_long(&mut self) -> i64 {
+        self.rng.next_long()
+    }
+
+    fn next_boolean(&mut self) -> bool {
+        self.rng.next_boolean()
+    }
+
+    fn next_float(&mut self) -> f32 {
+        self.rng.next_float()
+    }
+
+    fn next_double(&mut self) -> f64 {
+        self.rng.next_double()
+    }
+
+    fn next_gaussian(&mut self) -> f64 {
+        self.rng.next_gaussian()
+    }
+}
+
 /// A mod type's spawn predicate (`SpawnPlacements.Data.predicate`): the ground
 /// tag, the biome tag, then the light, which draws last as vanilla's do.
 fn mod_predicate<L: SpawnLevel>(
@@ -334,16 +414,24 @@ fn mod_predicate<L: SpawnLevel>(
     z: i32,
 ) -> bool {
     use mod_api::SpawnLight as Light;
+    let pos = BlockPos::new(x, y, z);
+    let mut context = SpawnContext {
+        level: SpawnLevelView(l),
+        rng: random,
+        pos,
+    };
     rule.spawnable_on
         .as_deref()
-        .is_none_or(|on| tag(l, on, x, y - 1, z))
+        .is_none_or(|on| context.level().block_in_tag(pos.offset(0, -1, 0), on))
         && rule
             .biome_tag
             .as_deref()
-            .is_none_or(|biome| l.biome_tag(biome, x, y, z))
+            .is_none_or(|biome| context.level().biome_in_tag(pos, biome))
         && match rule.light {
-            Light::Dark => ignores_light(reason) || is_dark_enough(l, random, x, y, z),
-            Light::Bright => ignores_light(reason) || bright(l, x, y, z),
+            Light::Dark => ignores_light(reason) || context.is_dark_enough_to_spawn(),
+            Light::Bright => {
+                ignores_light(reason) || context.level().is_bright_enough_to_spawn(pos)
+            }
             _ => true,
         }
 }
@@ -1020,6 +1108,25 @@ mod mod_spawn_rule_tests {
         level.sky = 15;
         level.block = 0;
         assert!(!level.check("ruby:ghoul", Reason::Natural, on_grass));
+    }
+
+    #[test]
+    fn a_predicate_and_its_darkness_check_advance_the_callers_random() {
+        let mut level = Flat::new(&[]);
+        level.sky = 0;
+        let mut rng = LegacyRandom::new(7);
+        let mut context = SpawnContext {
+            level: SpawnLevelView(&level),
+            rng: &mut rng,
+            pos: BlockPos::new(0, 1, 0),
+        };
+
+        // Java's Random(7): the refused bound draws nothing, and the Overworld's
+        // darkness check then draws nextInt(32) and nextInt(8).
+        assert_eq!(context.random().next_int_bound(0), 0);
+        assert_eq!(context.random().next_int(), -1_156_638_823);
+        assert!(context.is_dark_enough_to_spawn());
+        assert_eq!(rng.next_int(), 41_356_089);
     }
 
     /// `mob_spawn_placement_check` still runs after the rule and is told its

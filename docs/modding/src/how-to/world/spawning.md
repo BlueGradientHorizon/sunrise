@@ -25,6 +25,12 @@ r.declare_spawn_placement("ghoul", mod_api::SpawnPlacementRule {
 
 The placement type is `SpawnPlacements.isSpawnPositionOk`'s first check, and the rule stands in for the type's spawn predicate: every field that is set must hold, and a trial spawner ignores `light`. A type with no declaration keeps its template's rules. The game resolves the declarations once at load, so a check reads one table and never walks the mods. A tag is a namespaced name written without `#`; an id outside the mod's namespace, a bad tag or a second declaration of the same type refuses the mods at startup, and a type no content file defines refuses the resource load.
 
+The native predicate interface, `SpawnPlacementContext`, lends a read-only `SpawnPlacementLevel`
+and the check's live `RandomSource` for one call. Level reads never load chunks or write to the
+world. Use namespaced block and biome tags without `#`. The brightness and darkness helpers do not
+check the spawn reason: a predicate that wants vanilla's trial-spawner light bypass skips the light
+test for `SpawnReason::TrialSpawner`. The darkness helper draws from the same stream as `context.random()`.
+
 `mob_spawn_placement_check` is the separate per-check moment: it runs after the rule and is told its answer as `default_result`, so you can override it for one position.
 
 ## Saved display and utility entities

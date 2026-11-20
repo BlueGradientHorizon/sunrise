@@ -990,6 +990,36 @@ pub enum SpawnPlacementType {
     NoRestrictions,
 }
 
+/// A read-only view of the level, lent for one spawn predicate call. None of its
+/// reads load chunks or write to the level.
+pub trait SpawnPlacementLevel {
+    /// The namespaced name of the block at `pos`, such as `minecraft:grass_block`.
+    fn block_name(&self, pos: BlockPos) -> &str;
+    /// Whether the block at `pos` is in `tag`. Use a namespaced tag name without `#`,
+    /// such as `minecraft:animals_spawnable_on`.
+    fn block_in_tag(&self, pos: BlockPos, tag: &str) -> bool;
+    /// Whether the biome at `pos` is in `tag`. Use a namespaced tag name without `#`.
+    fn biome_in_tag(&self, pos: BlockPos, tag: &str) -> bool;
+    /// The sky light at `pos` (`LightLayer.SKY`).
+    fn sky_light(&self, pos: BlockPos) -> i32;
+    /// The block light at `pos` (`LightLayer.BLOCK`).
+    fn block_light(&self, pos: BlockPos) -> i32;
+    /// `Animal.isBrightEnoughToSpawn` at `pos`, without any spawn-reason bypass.
+    fn is_bright_enough_to_spawn(&self, pos: BlockPos) -> bool;
+}
+
+/// The level and live random stream lent for one spawn predicate call. Predicates
+/// decide whether to skip the raw light tests for [`SpawnReason::TrialSpawner`].
+pub trait SpawnPlacementContext {
+    /// The read-only level for this check. Reads never load chunks or write to the level.
+    fn level(&self) -> &dyn SpawnPlacementLevel;
+    /// The caller's live random stream. Draws advance it in the order they are made.
+    fn random(&mut self) -> &mut dyn RandomSource;
+    /// `Monster.isDarkEnoughToSpawn` at the checked position, without any spawn-reason
+    /// bypass. It draws from the same stream as [`Self::random`].
+    fn is_dark_enough_to_spawn(&mut self) -> bool;
+}
+
 /// How bright a spot a mod entity type needs to spawn.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
