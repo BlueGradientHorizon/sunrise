@@ -1,5 +1,9 @@
 use super::*;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use crate::testing::TestReader;
+use std::sync::{
+    Arc,
+    atomic::{AtomicUsize, Ordering},
+};
 use sunrise_core::nbt::{Limits, NamedTag, write_named};
 use sunrise_mod_runtime::attachments::ATTACHMENTS_KEY;
 
@@ -38,10 +42,9 @@ fn read(entries: &Compound) -> i32 {
         .unwrap()
 }
 fn run(job: &ChunkDiskJob) -> Result<Compound, ChunkDiskFailure> {
-    job.run(&OwningWorldgen::new(&|_| None, &|_, _| None, &|_, _, _| {
-        None
-    }))
-    .clone()
+    let reader = TestReader::default();
+    job.run(&OwningWorldgen::new(&reader, &|_, _, _| None))
+        .clone()
 }
 struct Listener {
     calls: Arc<AtomicUsize>,
