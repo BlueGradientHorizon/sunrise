@@ -19,6 +19,7 @@ struct Script {
     place_cancel: bool,
     place_write: bool,
     place_bad_xp: bool,
+    replace_backing: bool,
     take_panic: bool,
     take_write: bool,
     take_cancel: bool,
@@ -29,11 +30,13 @@ thread_local! {
     static SCRIPT: RefCell<Script> = RefCell::new(Script::default());
     static DISPATCHES: Cell<usize> = const { Cell::new(0) };
     static TAKE_XP: Cell<Option<i32>> = const { Cell::new(None) };
+    static REPLACED: Cell<bool> = const { Cell::new(false) };
 }
 
 fn script(script: Script) {
     DISPATCHES.set(0);
     TAKE_XP.set(None);
+    REPLACED.set(false);
     SCRIPT.with(|s| *s.borrow_mut() = script);
 }
 
@@ -56,6 +59,18 @@ fn write_dirt(host: &mut dyn ServerHost) {
     assert_eq!(place.insert(host, &tx, &ItemResource::of(&dirt), 2), 2);
 }
 
+fn replace_backing(host: &mut dyn ServerHost) {
+    let pos = [1, 64, 1];
+    let level = host.level("minecraft:overworld").unwrap();
+    let original = level.block_state(host, pos).unwrap();
+    let air = host.block_states().block_state_id("minecraft:air").unwrap();
+    let flags = mod_api::BlockUpdateFlags::KNOWN_SHAPE;
+    assert_eq!(level.set_block(host, pos, air, flags), Ok(true));
+    assert_eq!(level.set_block(host, pos, original, flags), Ok(true));
+    assert_eq!(level.block_state(host, pos), Some(original));
+    REPLACED.set(true);
+}
+
 struct Mod;
 
 #[mod_api::__subscriptions]
@@ -70,6 +85,9 @@ impl Hooks for Mod {
         DISPATCHES.set(DISPATCHES.get() + 1);
         assert!(host.transaction_current().is_some());
         let s = SCRIPT.with(|s| s.borrow().clone());
+        if s.replace_backing {
+            replace_backing(host);
+        }
         if s.place_write {
             write_dirt(host);
         }
@@ -98,6 +116,9 @@ impl Hooks for Mod {
             panic!("a listener failed");
         }
         let s = SCRIPT.with(|s| s.borrow().clone());
+        if s.replace_backing {
+            replace_backing(host);
+        }
         if s.take_write {
             write_dirt(host);
         }
@@ -277,6 +298,53 @@ fn a_stale_place_is_refused_and_the_listener_write_undone() {
             assert_eq!(count(&slot(game, 2)), 0);
             assert_eq!(inventory(game, 20), 0);
             assert!(game.transactions.is_empty());
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn equal_state_backing_replacement_refuses_place_and_take() {
+    with_mod(|| {
+        with_guests(|game| {
+            let window = open_grindstone(game);
+            let backing = game.world.block(1, 64, 1);
+            let sword = enchanted_sword(game, 200);
+            script(Script {
+                place_output: true,
+                replace_backing: true,
+                ..Script::default()
+            });
+            game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                g.carried = Some(sword.clone());
+            });
+            click(game, window, 0, 0);
+            assert_eq!(DISPATCHES.get(), 1);
+            assert!(REPLACED.get());
+            assert_eq!(game.world.block(1, 64, 1), backing);
+            assert_eq!(slot(game, 0), Some(sword.clone()));
+            assert_eq!(slot(game, 2), None, "a stale place cannot set the result");
+
+            script(Script {
+                place_output: true,
+                ..Script::default()
+            });
+            click(game, window, 0, 0);
+            click(game, window, 0, 0);
+            assert_eq!(slot(game, 2), Some(ItemStack::new("minecraft:dirt", 1)));
+
+            script(Script {
+                replace_backing: true,
+                ..Script::default()
+            });
+            click(game, window, 2, 0);
+            assert_eq!(TAKE_XP.get(), Some(5));
+            assert!(REPLACED.get());
+            assert_eq!(game.world.block(1, 64, 1), backing);
+            assert_eq!(slot(game, 0), Some(sword));
+            assert_eq!(slot(game, 2), Some(ItemStack::new("minecraft:dirt", 1)));
+            assert_eq!(game.lan.as_ref().unwrap().hub.guests[0].carried, None);
+            assert!(game.orbs.is_empty());
         });
     });
 }

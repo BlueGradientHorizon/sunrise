@@ -61,6 +61,9 @@ pub(super) struct OpenTransactions {
     /// The same count for a player's own state only (inventory, cursor, menu storage): what a
     /// decision that must stay open to other writes (a mod's move into another block) reads.
     player_writes: u64,
+    /// Tentative block writes do not advance the world's published revision. This epoch does
+    /// advance on those writes and never rolls back, even when the final state is unchanged.
+    block_writes: u64,
     /// The root commits telling their joins and leaves, outermost first: a listener's command in
     /// another level can commit a transaction there while this level's commit is told.
     committing: Vec<entities::Committing>,
@@ -93,6 +96,9 @@ impl OpenTransactions {
     /// The journaled-write epoch of players' own state.
     pub(in crate::game) fn player_writes(&self) -> u64 {
         self.player_writes
+    }
+    pub(super) fn block_writes(&self) -> u64 {
+        self.block_writes
     }
 }
 
@@ -1081,7 +1087,11 @@ impl Game<'_> {
                 replay_removal: false,
             });
         level.after.push(After::Block(key));
-        self.world.set_stored(pos[0], pos[1], pos[2], state)
+        if !self.world.set_stored(pos[0], pos[1], pos[2], state) {
+            return false;
+        }
+        self.transactions.block_writes = self.transactions.block_writes.wrapping_add(1);
+        true
     }
     /// Hide a replaced block entity from staged reads, without dropping its
     /// contents until the real write. Fluid pickup/pour instead rolls its own

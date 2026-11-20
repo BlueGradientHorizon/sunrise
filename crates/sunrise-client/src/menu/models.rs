@@ -1,5 +1,5 @@
 //! Engine menu records and slot access.
-use super::ItemStack;
+use super::{Env, ItemStack};
 /// Operations on the clicked slot, including its placement and take rules.
 pub trait SlotView {
     /// Run against staged owner state; commit all changes only when accepted.

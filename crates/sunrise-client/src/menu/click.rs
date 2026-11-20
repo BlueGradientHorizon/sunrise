@@ -656,27 +656,3 @@ impl Menu {
         }
     }
 }
-
-/// What a grindstone take reads of its menu: slots 0 to 2 and the cursor, to tell that they are
-/// as the decision found them.
-#[derive(Clone, Debug, PartialEq)]
-// exhaustive: the game builds it with a literal; mods cannot see its fields
-pub struct GrindstoneRead {
-    inputs: [Option<ItemStack>; 2],
-    result: Option<ItemStack>,
-    carried: Option<ItemStack>,
-}
-
-impl Menu {
-    /// The grindstone menu's inputs, result and cursor as they are now.
-    pub fn grindstone_read(&self) -> GrindstoneRead {
-        GrindstoneRead {
-            inputs: [
-                self.state.containers[MAIN][0].clone(),
-                self.state.containers[MAIN][1].clone(),
-            ],
-            result: self.state.containers[RESULT][0].clone(),
-            carried: self.state.carried.clone(),
-        }
-    }
-}

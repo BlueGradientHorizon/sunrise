@@ -204,9 +204,27 @@ impl Game<'_> {
             // cursor and drops back with the menu as it was (`before`).
             let take_listened =
                 gs.menu.grind_hook && mod_api::__private::listened(mod_api::HookId::GrindstoneTake);
-            let grind = take_listened
-                .then(|| Some((self.guest_actor(conn)?, self.guest_station(conn)?)))
+            let place_listened = gs.menu.grind_hook
+                && mod_api::__private::listened(mod_api::HookId::GrindstonePlace);
+            let pos = gs.pos;
+            // Bind the owner and backing before running any part of the click. The grindstone
+            // has no block entity, so use the level's committed and tentative block epochs.
+            let admission = (take_listened || place_listened)
+                .then(|| {
+                    Some((
+                        self.guest_actor(conn)?,
+                        self.guest_station(conn)?,
+                        self.grindstone_backing(pos),
+                    ))
+                })
                 .flatten();
+            let fresh = |game: &Game<'_>| {
+                admission.is_some_and(|(_, (_, stamp), backing)| {
+                    game.guest_station(conn)
+                        .is_some_and(|(_, now)| now == stamp)
+                        && game.grindstone_backing(pos) == backing
+                })
+            };
             if gs.kind == StationKind::Grindstone
                 && (take_listened || !self.transactions.is_empty())
             {
@@ -253,11 +271,9 @@ impl Game<'_> {
                 .as_ref()
                 .map(|host| (host.hub.guests[gi].uuid, host.hub.guests[gi].entity_id))
                 .unwrap_or((0, 0));
-            let pos = gs.pos;
-            if let Some((actor, (route, stamp))) = grind {
-                if let Some(take) = taken {
-                    let block = self.world.block(pos[0], pos[1], pos[2]);
-                    let read = gs.menu.grindstone_read();
+            if let Some(take) = taken {
+                if take_listened && let Some((actor, (route, _), _)) = admission {
+                    let read = gs.menu.mutation_stamp();
                     let answer = RefCell::new(None::<GrindstoneTake>);
                     let listener_cancelled = Cell::new(false);
                     let applied = {
@@ -269,12 +285,7 @@ impl Game<'_> {
                             Epoch::Player,
                             // The station is the one the click ran on, its block is as it was and
                             // nothing the take read has changed.
-                            |game| {
-                                game.guest_station(conn)
-                                    .is_some_and(|(_, now)| now == stamp)
-                                    && game.world.block(pos[0], pos[1], pos[2]) == block
-                                    && menu.borrow().grindstone_read() == read
-                            },
+                            |game| fresh(game) && menu.borrow().mutation_stamp() == read,
                             |game| {
                                 let mut take = take;
                                 let mut cancel = false;
@@ -319,15 +330,13 @@ impl Game<'_> {
                     // the rest of onTake; any other refusal undoes the click as well.
                     cancelled |= !applied;
                     commit_click = applied || listener_cancelled.get();
+                } else if take_listened {
+                    // An unidentifiable actor must not dispatch a listened hook outside an action.
+                    cancelled = true;
+                    commit_click = false;
+                } else {
+                    ground_xp = gs.menu.grindstone_taken(&self.menu_env(), take, false);
                 }
-            } else if let Some(mut take) = taken {
-                let mut cancel = false;
-                cancel |= self
-                    .api_grindstone_take(uuid, entity_id, pos, &mut take, &mut cancel)
-                    .is_err();
-                cancelled |= cancel;
-                let env = self.menu_env();
-                ground_xp = gs.menu.grindstone_taken(&env, take, cancel);
             }
             // A cancelled take runs no createResult: the inputs are untouched.
             let recomputed = !cancelled
@@ -362,15 +371,9 @@ impl Game<'_> {
                     .as_ref()
                     .map(|host| (host.hub.guests[gi].uuid, host.hub.guests[gi].entity_id))
                     .unwrap_or((0, 0));
-                let pos = gs.pos;
                 let place = gs.menu.grindstone_place();
-                if mod_api::__private::listened(mod_api::HookId::GrindstonePlace)
-                    && let Some(actor) = self.guest_actor(conn)
-                    && let Some((route, stamp)) = self.guest_station(conn)
-                {
-                    let block = self.world.block(pos[0], pos[1], pos[2]);
-                    let read: [Option<ItemStack>; 3] =
-                        std::array::from_fn(|s| gs.menu.slot(s).cloned());
+                if place_listened && let Some((actor, (route, _), _)) = admission {
+                    let read = gs.menu.mutation_stamp();
                     let original = place.clone();
                     let answer = RefCell::new(None::<GrindstonePlace>);
                     let applied = {
@@ -380,12 +383,7 @@ impl Game<'_> {
                             route,
                             actor,
                             Epoch::Player,
-                            |game| {
-                                game.guest_station(conn)
-                                    .is_some_and(|(_, now)| now == stamp)
-                                    && game.world.block(pos[0], pos[1], pos[2]) == block
-                                    && (0..3).all(|s| menu.borrow().slot(s) == read[s].as_ref())
-                            },
+                            |game| fresh(game) && menu.borrow().mutation_stamp() == read,
                             |game| {
                                 let mut place = place;
                                 let mut cancel = false;
@@ -421,12 +419,9 @@ impl Game<'_> {
                         gs.menu.grindstone_placed(original, true);
                     }
                 } else {
-                    let mut place = place;
-                    let mut cancel = false;
-                    cancel |= self
-                        .api_grindstone_place(uuid, entity_id, pos, &mut place, &mut cancel)
-                        .is_err();
-                    gs.menu.grindstone_placed(place, cancel);
+                    // Without a subscriber use the vanilla result. A missing listener identity
+                    // on the subscribed route instead refuses it, just like a stale read.
+                    gs.menu.grindstone_placed(place, place_listened);
                 }
             }
             if recomputed && gs.kind == StationKind::Smithing {
@@ -486,6 +481,17 @@ impl Game<'_> {
             self.lan_send_station(conn);
         }
         true
+    }
+
+    fn grindstone_backing(
+        &self,
+        [x, y, z]: [i32; 3],
+    ) -> (u64, u64, sunrise_world::registry::BlockStateId) {
+        (
+            self.world.revision,
+            self.transactions.block_writes(),
+            self.world.block(x, y, z),
+        )
     }
 
     /// How many slots of its own the guest's open station menu has before the
