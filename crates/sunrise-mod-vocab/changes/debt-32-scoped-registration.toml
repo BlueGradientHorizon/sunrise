@@ -15,8 +15,11 @@ ids = [
     "type:RegisterTextureAtlasesEvent", "type:RegisterTextureAtlasesEvent.atlases", "handle:RegisterTextureAtlasesEvent::register",
     "hook:block_entity_type_add_blocks", "hook:block_entity_type_add_blocks.additions", "method:Hooks::block_entity_type_add_blocks",
     "type:BlockEntityTypeAddBlocksEvent", "type:BlockEntityTypeAddBlocksEvent.additions",
+    "hook:register_particle_groups", "hook:register_particle_groups.groups", "method:Hooks::register_particle_groups",
+    "type:RegisterParticleGroupsEvent", "type:RegisterParticleGroupsEvent.groups", "handle:RegisterParticleGroupsEvent::register",
+    "type:ParticleGroup", "type:ParticleGroup.id",
 ]
-why = "Registration appends through scoped event methods instead of exposing staging vectors. Earlier declarations cannot be edited by another listener, and a phase refusal drops only the refused listener's additions. Registration order, validation, reload timing and registry freezing are unchanged."
+why = "Registration appends through scoped event methods instead of exposing staging vectors. Earlier declarations cannot be edited by another listener, and a phase refusal drops only the refused listener's additions. Particle groups bind factories to IDs at registration and construct the in-process group definitions once per engine, not on sprite reload."
 migrate = """
 In Hooks::component_types, replace event.types.push(id) with event.register(id), passing the same owned String.
 In Hooks::create_skull_models, replace event.models.push(model) with event.register(model), passing the same SkullModel.
@@ -28,4 +31,17 @@ In Hooks::register_texture_atlases, replace event.atlases.push(atlas) with event
 For multiple entries, call event.register(entry) once per entry in the same order.
 In Hooks::block_entity_type_add_blocks, replace event.additions.push((kind, block)) with event.modify(kind, &[block]). For one block list shared by matching types, call event.modify_matching(predicate, blocks). Read event.types as before to inspect registered type keys.
 Reading, replacing or removing earlier staged entries has no replacement.
+
+In Hooks::register_particle_groups, replace `event.groups.push(ParticleGroup { id, blend, particles })` with:
+
+```rust
+if let Ok(id) = Identifier::parse(&id) {
+    event.register(id, move || ParticleGroup { blend, particles: particles.clone() });
+}
+```
+
+For a known literal ID use `Identifier::parse("example:glow").unwrap()`. Use an explicit, nonempty
+mod namespace and path. `ParticleGroup` no longer stores its ID or implements Wire. Factories are
+Send + Sync + 'static and may run for multiple engines, so capture owned data and return a fresh
+definition each time. Register each entry in the original order.
 """

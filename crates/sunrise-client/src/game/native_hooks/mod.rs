@@ -26,6 +26,7 @@ use super::{
     native_mob_draw::{MobRender, PlayerRender},
     native_panel_recipes::RecipePage,
 };
+use mod_api::__private::game::ParticleGroupRegistration;
 use mod_api::CommandSource;
 use mod_api::GameMode;
 use mod_api::GameTests;
@@ -50,7 +51,7 @@ use mod_api::{
 };
 use mod_api::{
     BlockKey, DebugEntry, DebugRenderer, EffectKey, GuiLayer, HiddenParts, MapDecorationType,
-    ParticleGroup, PosedParts, SkullModel, TaskId, TextureAtlasRegistration,
+    PosedParts, SkullModel, TaskId, TextureAtlasRegistration,
 };
 pub(crate) use mod_api::{
     BlockRim, ClientPacket, ClientPayload, ColoredLight, ContainerLootFilled, ExplosionStart,
