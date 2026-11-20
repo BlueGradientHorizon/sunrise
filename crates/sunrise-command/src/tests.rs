@@ -1820,10 +1820,11 @@ fn an_ask_server_node_replies_with_the_token_range_when_it_has_no_suggestion_of_
     assert!(ask, "the client asks the server for this node");
     assert!(list.is_empty(), "the identifier itself suggests nothing");
     assert_eq!(range, (6, typed.len()), "the token, never (0, 0)");
-    // The server answers the same way; its dispatcher has no provider to ask, only its mods.
+    // The server's dispatcher has no provider to ask, only its mods; an empty merge is
+    // `Suggestions.empty()`.
     let (range, list) = dispatcher.suggestions(&parse, typed.len(), &registries);
     assert!(list.is_empty());
-    assert_eq!(range, (6, typed.len()));
+    assert_eq!(range, (0, 0), "Suggestions.empty()");
 }
 
 #[test]
