@@ -2,10 +2,14 @@
 use super::{Game, native_guest_turn_tests::with_guests};
 use mod_api::{
     Flow, Hooks, HostSide, ItemPlace, ItemResource, ItemStackedOnOtherEvent, ModEntry, Mods,
-    ServerHost, TradeWithVillagerEvent,
+    PlayerTradeEvent, ServerHost, TradeWithVillagerEvent,
 };
 use std::cell::{Cell, RefCell};
-use std::sync::{Arc, mpsc};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, AtomicUsize, Ordering},
+    mpsc,
+};
 use sunrise_client::lan::{Out, PlayerSender};
 use sunrise_client::{
     items::ItemStack,
@@ -30,6 +34,7 @@ thread_local! {
     static SCRIPT: RefCell<Script> = RefCell::new(Script::default());
     static CALLS: Cell<usize> = const { Cell::new(0) };
     static STACKED: Cell<usize> = const { Cell::new(0) };
+    static COMPLETED: Cell<usize> = const { Cell::new(0) };
     static USES: RefCell<Vec<i32>> = const { RefCell::new(Vec::new()) };
     static IN_ACTION: RefCell<Vec<bool>> = const { RefCell::new(Vec::new()) };
 }
@@ -37,6 +42,7 @@ fn script(value: Script) {
     SCRIPT.with(|s| *s.borrow_mut() = value);
     CALLS.set(0);
     STACKED.set(0);
+    COMPLETED.set(0);
     USES.with(|uses| uses.borrow_mut().clear());
     IN_ACTION.with(|a| a.borrow_mut().clear());
     super::decided_action::DECIDED.set(0);
@@ -50,6 +56,10 @@ impl Hooks for Mod {
         event: &mut TradeWithVillagerEvent<'_>,
     ) {
         trade(host, event);
+    }
+
+    fn player_trade(&self, _: &mut dyn ServerHost, _: &mut PlayerTradeEvent<'_>) {
+        COMPLETED.set(COMPLETED.get() + 1);
     }
 }
 /// The same trade listener, also hearing `item_stacked_on_other`: the result pickup is both.
@@ -356,6 +366,7 @@ fn accepted_trade_keeps_the_collect_answer_and_listener_writes() {
     with_mod(|| {
         with_guests(|game| {
             let click = open(game, 2);
+            let rx = record_packets(game);
             script(Script {
                 answer: true,
                 ..Script::default()
@@ -381,6 +392,21 @@ fn accepted_trade_keeps_the_collect_answer_and_listener_writes() {
                 (6, 19, -7, -4, 11)
             );
             assert_eq!(offer.price_multiplier, 0.25);
+            assert_eq!(COMPLETED.get(), 1);
+            let received = packets(&rx);
+            let [
+                Clientbound::MerchantOffers(offers),
+                Clientbound::ContainerSetContent(content),
+            ] = received.as_slice()
+            else {
+                panic!("an edited offer must refresh before the new contents");
+            };
+            assert_eq!(
+                (offers.container, content.container),
+                (click.container, click.container)
+            );
+            assert_eq!(offers.offers[0].uses, 6);
+            assert_eq!(content.carried.as_ref().unwrap().count, 1);
             assert!(!game.orbs.is_empty());
             assert!(game.transactions.is_empty());
         })
@@ -447,8 +473,10 @@ fn an_outer_abort_undoes_an_accepted_trade() {
             assert!(game.lan_merchant_click(12, &click));
             assert_eq!((result(game), dirt(game), stat(game)), (1, 2, 1));
             assert!(game.orbs.is_empty(), "orb creation waits for root commit");
+            assert_eq!(COMPLETED.get(), 0);
             assert!(packets(&rx).is_empty());
             game.transaction_close(&seal, false);
+            assert_eq!(COMPLETED.get(), 0);
             corrected(&rx, click.container, 2);
             unchanged(game, 2);
         })
@@ -627,4 +655,131 @@ fn observing_a_trade_keeps_the_plain_packet_sequence() {
     };
     let observed: Mods = vec![ModEntry::new("trade-observer", Box::new(Mod))].into();
     assert_eq!(trace(Mods::default()), trace(observed));
+}
+
+struct WasmTrade {
+    module: sunrise_mod_wasm::WasmMod,
+    fail_stacked: bool,
+    wrote: Arc<AtomicBool>,
+    completed: Arc<AtomicUsize>,
+}
+
+#[mod_api::__subscriptions]
+impl Hooks for WasmTrade {
+    fn trade_with_villager(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut TradeWithVillagerEvent<'_>,
+    ) {
+        assert!(
+            !self.fail_stacked,
+            "the failed pickup must not fire a trade"
+        );
+        self.module.trade_with_villager(host, event);
+        self.wrote
+            .store(host.team("wasm_trade").is_some(), Ordering::Relaxed);
+    }
+
+    fn item_stacked_on_other(
+        &self,
+        mut host: HostSide,
+        event: &mut ItemStackedOnOtherEvent<'_>,
+    ) -> Flow {
+        STACKED.set(STACKED.get() + 1);
+        if !self.fail_stacked {
+            return Flow::Continue;
+        }
+        let flow = self.module.item_stacked_on_other(host.reborrow(), event);
+        let HostSide::Server(host) = host else {
+            unreachable!("LAN merchant is server side")
+        };
+        self.wrote
+            .store(host.team("wasm_trade").is_some(), Ordering::Relaxed);
+        flow
+    }
+
+    fn player_trade(&self, _: &mut dyn ServerHost, _: &mut PlayerTradeEvent<'_>) {
+        self.completed.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_wasm_listener_failure_rolls_back_its_host_write_and_the_merchant_click() {
+    use mod_api::wire::Writer;
+    use sunrise_mod_wasm::fixture;
+
+    sunrise_guest_stack::run_on_guest_stack(|| {
+        let mut args = Writer::new();
+        args.put(&"wasm_trade".to_owned());
+        let data = args
+            .bytes()
+            .iter()
+            .map(|byte| format!("\\{byte:02x}"))
+            .collect::<String>();
+        let log = fixture::log_import();
+        let add_team = fixture::wat_host_call("ServerHost", "add_team").unwrap();
+        for reply in [
+            "unreachable",
+            "i64.const 0",
+            "i64.const 8192 i64.const 32 i64.shl i64.const 1 i64.or",
+        ] {
+            let bytes = wat::parse_str(format!(r#"(module
+                (@custom "dylink.0" "\01\04\00\00\00\00")
+                (import "env" "memory" (memory 1))
+                (import "env" "__indirect_function_table" (table 1 funcref))
+                {log}
+                {add_team}
+                (data (i32.const 4096) "{data}")
+                (data (i32.const 8192) "\ff")
+                (func (export "sunrise_in") (param i32) (result i32) i32.const 512)
+                (func (export "sunrise_hook") (param i64) (result i64)
+                    i32.const 4096 i32.const {len} i32.const 16384 i32.const 4096 call $host_call drop
+                    {reply})
+            )"#, len = args.bytes().len())).unwrap();
+            // Plain collect, collect composed with stacked pickup, and stacked failure itself.
+            for (input, fail_stacked) in [(4, false), (0, false), (0, true)] {
+                let wrote = Arc::new(AtomicBool::new(false));
+                let completed = Arc::new(AtomicUsize::new(0));
+                let mods: Mods = vec![ModEntry::new(
+                    "wasm-trade",
+                    Box::new(WasmTrade {
+                        module: fixture::module(&bytes).unwrap(),
+                        fail_stacked,
+                        wrote: Arc::clone(&wrote),
+                        completed: Arc::clone(&completed),
+                    }),
+                )]
+                .into();
+                mod_platform::testing::with_mods(mods, || {
+                    with_guests(|game| {
+                        let mut click = open(game, 2);
+                        click.input = input;
+                        let rx = record_packets(game);
+                        let failures = game.wasm_dispatch_failures.get();
+                        script(Script::default());
+                        assert!(game.lan_merchant_click(12, &click));
+                        assert_eq!(STACKED.get(), usize::from(input == 0), "{reply}");
+                        assert_eq!(game.wasm_dispatch_failures.get(), failures + 1, "{reply}");
+                        assert!(
+                            wrote.load(Ordering::Relaxed),
+                            "the wasm guest made a real Host write before {reply}"
+                        );
+                        assert_eq!(completed.load(Ordering::Relaxed), 0, "{reply}");
+                        assert!(
+                            !game
+                                .score
+                                .board
+                                .teams
+                                .iter()
+                                .any(|team| team.name == "wasm_trade")
+                        );
+                        unchanged(game, 2);
+                        corrected(&rx, click.container, 2);
+                        assert!(game.transactions.is_empty());
+                    })
+                });
+            }
+        }
+    });
 }
