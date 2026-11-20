@@ -23,8 +23,10 @@ pub trait Hooks {
     /// `origin()` `ClientPreload`, the server's has `ServerDataLoad`. A server
     /// loads its recipes once, however many tables and copies read them (its
     /// recipe tables, the stations and the copy synchronised to guests, on a
-    /// dedicated server too), and a `/reload` asks again once; a client that
-    /// only joins a remote server is never told `ServerDataLoad`. The answer
+    /// dedicated server too). Tables and network projections reuse the same
+    /// occurrence's answer, kept separately from the recipe JSON. No field in
+    /// that JSON can supply the hook's answer. A `/reload` asks again once;
+    /// a client that only joins a remote server is never told `ServerDataLoad`. The answer
     /// must be the same every time. With no listener at all, a recipe naming a custom kind
     /// is refused at load with an error naming the file and the kind. An empty list retains the custom
     /// predicate but makes the recipe unplaceable: the loader warns (naming the file and the kind), omits

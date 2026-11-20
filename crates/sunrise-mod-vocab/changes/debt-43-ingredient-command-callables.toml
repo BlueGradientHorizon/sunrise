@@ -1,0 +1,3 @@
+ids = ["hook:ingredient", "hook:ingredient_test"]
+why = "Recipe JSON stays as authored. The loader holds candidate lists separately for each ingredient occurrence, and its recipe tables, stations and network projection reuse those answers. The match-time hook gets the metadata retained from the load-time call, not a compound with the answer embedded in it."
+migrate = "Keep filling IngredientEvent.items from Hooks::ingredient and testing the borrowed metadata in Hooks::ingredient_test. Do not put a candidate list in sunrise:resolved_items in recipe JSON; only the list returned by the hook is used as the answer."

@@ -7,7 +7,7 @@ Set `event.accept` to `false` to reject the stack. It starts as `true`.
 ## Callback contract
 
 - `context` is the loop context of the side performing the match. The hook itself takes no `Host`.
-- The event supplies the ingredient kind, its retained NBT compound and the stack being matched.
+- The event supplies the ingredient kind, the metadata compound retained from the load-time hook and the stack being matched. The load-time candidate answer is separate from that metadata.
 - The callback can run many times during crafting. Give the same answer for the same stack and ingredient.
 - An item absent from a nonempty load-time list fails without this callback. An empty custom list still invokes the predicate: manual crafting can match an accepted stack, although recipe-book placement, property sets and stonecutter selection are unavailable.
 

@@ -118,10 +118,19 @@ fn builtin_kinds_bypass_mod_resolution_and_honor_type_key_priority() {
         r#"{"type":"neoforge:block_tag","tag":"minecraft:logs"}"#,
         r#"{"type":"fixture:wrong","neoforge:ingredient_type":"neoforge:custom_display","base":"minecraft:apple","display":{"type":"minecraft:item","item":"minecraft:diamond"}}"#,
     ] {
-        let mut json: Value = serde_json::from_str(source).unwrap();
-        let original = json.clone();
-        assert!(!Ingredient::resolve(&mut json, &load));
-        assert_eq!(json, original);
+        let file = serde_json::json!({
+            "type": "minecraft:stonecutting",
+            "ingredient": serde_json::from_str::<Value>(source).unwrap(),
+            "result": "minecraft:stone"
+        });
+        // No mod listens to ingredient kinds here; resolving a built-in as
+        // a mod kind would refuse the recipe.
+        let sources = crate::crafting::ResolvedSources::resolve(
+            vec![("fixture:builtin".into(), file.clone())],
+            &load,
+        )
+        .unwrap();
+        assert_eq!(sources.recipes[0].file(), &file);
     }
 }
 

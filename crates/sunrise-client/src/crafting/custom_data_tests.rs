@@ -1,3 +1,4 @@
+use crate::crafting::ResolvedSources;
 use serde_json::{Value, json};
 use sunrise_world::native_load_context::{DataLoadOrigin, LoadContext, LoadInputs};
 
@@ -41,8 +42,24 @@ fn custom_ingredient_tags_reach_hook_and_matching_record() {
             );
             let mut source = json!({"type": "typed:ingredient", "integer": 32768, "long": 2147483648i64,
             "list": [1, 128], "nested": {"enabled": true}});
-            super::Ingredient::resolve(&mut source, &context);
-            let parsed = super::Ingredient::parse(&source, &items).unwrap();
+            let load = |ingredient| {
+                ResolvedSources::resolve(
+                    vec![(
+                        "typed:test".into(),
+                        json!({
+                            "type": "minecraft:stonecutting", "ingredient": ingredient,
+                            "result": "minecraft:emerald"
+                        }),
+                    )],
+                    &context,
+                )
+                .unwrap()
+            };
+            let sources = load(source.clone());
+            let recipe = &sources.recipes[0];
+            let parsed = recipe
+                .parse_ingredient(&recipe.file()["ingredient"], &items)
+                .unwrap();
             let (_, data) = parsed.custom.unwrap();
             assert_custom_tags(&data);
             assert!(!data.contains_key(&"sunrise:resolved_items".into()));
@@ -50,8 +67,13 @@ fn custom_ingredient_tags_reach_hook_and_matching_record() {
             // Refusal leaves the kind unanswered just as an unknown kind does;
             // no hook call should see the malformed metadata.
             source["nested"]["invalid"] = Value::Null;
-            super::Ingredient::resolve(&mut source, &context);
-            assert!(super::Ingredient::parse(&source, &items).is_none());
+            let sources = load(source);
+            let recipe = &sources.recipes[0];
+            assert!(
+                recipe
+                    .parse_ingredient(&recipe.file()["ingredient"], &items)
+                    .is_none()
+            );
         },
     );
 }
@@ -93,10 +115,23 @@ fn custom_ingredient_scalars_reach_hook_with_narrowest_width() {
                 std::sync::Arc::new(LoadInputs::new(Default::default(), Default::default())),
                 [],
             );
-            let mut source = json!({"type": "width:ingredient", "flag": true, "one": 1,
+            let source = json!({"type": "width:ingredient", "flag": true, "one": 1,
             "small": 300, "big": 100000, "half": 0.5, "tenth": 0.1, "whole": 1.0, "exp": 1e3});
-            super::Ingredient::resolve(&mut source, &context);
-            let parsed = super::Ingredient::parse(&source, &items).unwrap();
+            let sources = ResolvedSources::resolve(
+                vec![(
+                    "width:test".into(),
+                    json!({
+                        "type": "minecraft:stonecutting", "ingredient": source,
+                        "result": "minecraft:emerald"
+                    }),
+                )],
+                &context,
+            )
+            .unwrap();
+            let recipe = &sources.recipes[0];
+            let parsed = recipe
+                .parse_ingredient(&recipe.file()["ingredient"], &items)
+                .unwrap();
             assert_eq!(parsed.order, ["minecraft:emerald"]);
         },
     );

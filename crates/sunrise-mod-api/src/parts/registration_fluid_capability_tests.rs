@@ -226,56 +226,49 @@ mod tests {
     /// share its code without touching its answers.
     #[test]
     fn item_ingredients_still_parse_the_same() {
-        let items = ();
-        // Supply the resolved ids directly; this fixture only checks enumeration.
-        let parse = |v: &serde_json::Value, _items: &()| {
+        // Supply the resolved ids independently of the JSON. This fixture
+        // checks that the shared walk passes the original occurrence through.
+        let parse = |v: &serde_json::Value, answered: Option<&serde_json::Value>| {
             crate::__private::ingredient_parser::WalkedIngredient::walk(
                 v,
                 &HashMap::new(),
                 &|_| None,
-                &|v, _| {
-                    let ids = v.get("sunrise:resolved_items")?.as_array()?;
-                    let ids = ids
-                        .iter()
-                        .map(|v| Some(v.as_str()?.to_owned()))
-                        .collect::<Option<_>>()?;
-                    Some((ids, ()))
+                &|occurrence, kind| {
+                    (kind == "mymod:aspect" && std::ptr::eq(occurrence, answered?)).then(|| {
+                        (
+                            vec!["minecraft:oak_planks".into(), "minecraft:stone".into()],
+                            (),
+                        )
+                    })
                 },
                 &|_| None,
             )
         };
         let json = |s: &str| serde_json::from_str::<serde_json::Value>(s).unwrap();
-        let stone = parse(&json(r#""minecraft:stone""#), &items).unwrap();
+        let stone = parse(&json(r#""minecraft:stone""#), None).unwrap();
         assert_eq!(stone.order, ["minecraft:stone"]);
         let union = parse(
             &json(r#"{"type":"neoforge:compound","children":["minecraft:oak_planks","minecraft:stone"]}"#),
-            &items,
+            None,
         )
         .unwrap();
         assert_eq!(union.order, ["minecraft:oak_planks", "minecraft:stone"]);
-        assert!(parse(&json(r#"{"type":"mymod:aspect"}"#), &items).is_none());
-        // A mod's kind nested in a shape brings the list its hook left at
-        // load into the shape's ids, as on main before the shared walk.
-        let aspect = r#"{"type":"mymod:aspect","sunrise:resolved_items":["minecraft:oak_planks","minecraft:stone"]}"#;
-        let union = parse(
-            &json(&format!(
-                r#"{{"type":"neoforge:compound","children":[{aspect},"minecraft:dirt"]}}"#
-            )),
-            &items,
-        )
-        .unwrap();
+        let aspect = r#"{"type":"mymod:aspect"}"#;
+        assert!(parse(&json(aspect), None).is_none());
+        // A mod's kind nested in a shape brings its own answer into the shape's ids.
+        let compound = json(&format!(
+            r#"{{"type":"neoforge:compound","children":[{aspect},"minecraft:dirt"]}}"#
+        ));
+        let union = parse(&compound, Some(&compound["children"][0])).unwrap();
         assert_eq!(
             union.order,
             ["minecraft:oak_planks", "minecraft:stone", "minecraft:dirt"]
         );
-        let both = parse(
-            &json(&format!(
-                r#"{{"type":"neoforge:intersection","children":[{aspect},["minecraft:stone","minecraft:dirt"]]}}"#
-            )),
-            &items,
-        )
-        .unwrap();
+        let intersection = json(&format!(
+            r#"{{"type":"neoforge:intersection","children":[{aspect},["minecraft:stone","minecraft:dirt"]]}}"#
+        ));
+        let both = parse(&intersection, Some(&intersection["children"][0])).unwrap();
         assert_eq!(both.order, ["minecraft:stone"]);
-        assert!(parse(&json(r#"{"type":"minecraft:future_shape"}"#), &items).is_none());
+        assert!(parse(&json(r#"{"type":"minecraft:future_shape"}"#), None).is_none());
     }
 }

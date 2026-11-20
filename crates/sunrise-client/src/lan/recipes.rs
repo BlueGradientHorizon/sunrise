@@ -3,6 +3,7 @@
 //! table slot and brewing stand slot accepts) and the stonecutter's recipes,
 //! read from the data pack's recipe files.
 use super::data::SyncData;
+use crate::{crafting::ResolvedRecipe, items::Items};
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
@@ -74,8 +75,6 @@ pub(super) fn network_recipes(
     damage: sunrise_client_core::registries::RegistryIds,
     packed: Option<&super::data::PackRegistryDefinitions>,
 ) -> crate::Result<(BTreeMap<String, Box<str>>, HashMap<String, i32>)> {
-    // The resolved copy: the load's `ingredient` answers are in place, and
-    // none of them leaves it (`forget_answers` below).
     let items = sunrise_client::items::Items::catalog_with_damage_registry(
         resources,
         overlay,
@@ -98,20 +97,18 @@ pub(super) fn network_recipes(
                 .map(|recipe| recipe.id.as_str())
         })
         .collect();
-    let mut all: BTreeMap<_, _> = sources
+    let accepted_files: BTreeMap<_, _> = sources
         .recipes
         .iter()
         .filter_map(|recipe| {
             let id = sunrise_client::crafting::qualified(&recipe.name);
-            accepted
-                .contains(id.as_str())
-                .then(|| (id, (*recipe.resolved).clone()))
+            accepted.contains(id.as_str()).then_some((id, recipe))
         })
         .collect();
-    all.retain(|_, recipe| normalize_ingredients(recipe, &items));
-    all.values_mut().for_each(|r| {
-        sunrise_client::crafting::Ingredient::forget_answers(r);
-    });
+    let all: BTreeMap<_, _> = accepted_files
+        .into_iter()
+        .filter_map(|(id, recipe)| Some((id, normalize_ingredients(recipe, &items)?)))
+        .collect();
     // RecipeManager.unpackRecipeInfo's group numbers, while the files are
     // still parsed.
     let mut groups = HashMap::new();
@@ -131,10 +128,9 @@ pub(super) fn network_recipes(
     Ok((all, groups))
 }
 
-/// An ingredient object's flat item list: the shape NeoForge's standard
-/// kinds resolve to, or a brewing predicate's `item`. `None`: the object is
-/// a kind the loader does not know, a mod's own.
-fn flat(ing: &Value, items: &sunrise_client::items::Items) -> Option<Value> {
+/// An ingredient object's flat item list: a built-in shape, an occurrence
+/// answered by a mod, or a brewing predicate's `item`.
+fn flat(recipe: &ResolvedRecipe, ing: &Value, items: &Items) -> Option<Value> {
     if !ing.is_object() {
         return None;
     }
@@ -148,66 +144,54 @@ fn flat(ing: &Value, items: &sunrise_client::items::Items) -> Option<Value> {
         // Only an untyped brewing wrapper gives `item` a structural meaning.
         ing.get("item").unwrap_or(ing)
     };
-    let parsed = sunrise_client::crafting::Ingredient::parse(value, items)?;
+    let parsed = recipe.parse_ingredient(value, items)?;
     Some(Value::Array(
-        parsed
-            .order
-            .iter()
-            .map(|i| Value::String(i.clone()))
-            .collect(),
+        parsed.order.into_iter().map(Value::String).collect(),
     ))
 }
 
-/// Replace each of a recipe's ingredient objects with its flat item list,
-/// so `holder_set` writes the items instead of an empty list. `false`: the
-/// recipe keeps an object the loader cannot parse.
-fn normalize_ingredients(r: &mut Value, items: &sunrise_client::items::Items) -> bool {
-    let known = r["type"]
+/// Write flat holder sets into a network-only projection. Every read uses
+/// the frozen document, where occurrence answers are keyed. `None` excludes
+/// a recipe whose ingredients cannot be parsed.
+fn normalize_ingredients(recipe: &ResolvedRecipe, items: &Items) -> Option<Value> {
+    let file = recipe.file();
+    let mut projection = file.clone();
+    if !file["type"]
         .as_str()
-        .is_some_and(|t| t.starts_with("minecraft:"));
-    if !known {
-        return true;
+        .is_some_and(|t| t.starts_with("minecraft:"))
+    {
+        return Some(projection);
     }
-    let mut parsed = true;
-    // Both ingredient maps use the canonical load's role list.
     for key in crate::crafting::INGREDIENT_MAPS {
-        let Some(map) = r.get_mut(key).and_then(Value::as_object_mut) else {
+        let Some(map) = file.get(key).and_then(Value::as_object) else {
             continue;
         };
-        for ing in map.values_mut() {
-            if let Some(replacement) = flat(ing, items) {
-                *ing = replacement;
-            } else if sunrise_client::crafting::Ingredient::parse(ing, items).is_none() {
-                parsed = false;
+        for (symbol, ing) in map {
+            if let Some(replacement) = flat(recipe, ing, items) {
+                projection[key][symbol.as_str()] = replacement;
+            } else {
+                recipe.parse_ingredient(ing, items)?;
             }
         }
     }
-    // The list and single-ingredient keys, the smithing trio, the brewing
-    // pair.
     for key in crate::crafting::INGREDIENT_KEYS {
-        let Some(ing) = r.get_mut(key) else { continue };
-        if let Some(replacement) = flat(ing, items) {
-            *ing = replacement;
-            continue;
-        }
-        if key == "ingredients" {
-            let Some(entries) = ing.as_array_mut() else {
-                parsed = false;
-                continue;
-            };
-            for entry in entries {
-                if let Some(replacement) = flat(entry, items) {
-                    *entry = replacement;
-                } else if sunrise_client::crafting::Ingredient::parse(entry, items).is_none() {
-                    parsed = false;
+        let Some(ing) = file.get(key) else { continue };
+        if let Some(replacement) = flat(recipe, ing, items) {
+            projection[key] = replacement;
+        } else if key == "ingredients" {
+            for (index, entry) in ing.as_array()?.iter().enumerate() {
+                if let Some(replacement) = flat(recipe, entry, items) {
+                    projection[key][index] = replacement;
+                } else {
+                    recipe.parse_ingredient(entry, items)?;
                 }
             }
         } else {
             let value = ing.get("item").unwrap_or(ing);
-            parsed &= sunrise_client::crafting::Ingredient::parse(value, items).is_some();
+            recipe.parse_ingredient(value, items)?;
         }
     }
-    parsed
+    Some(projection)
 }
 
 /// For each item, the packet's matching holder-set entries in button order. Values are
@@ -643,18 +627,18 @@ mod content_tests {
 
     #[test]
     fn built_in_ingredient_network_lists_use_membership_not_display() {
-        let mut recipe = json!({
-            "type": "minecraft:crafting_shapeless",
-            "ingredients": [
-                {"type":"neoforge:components","items":"minecraft:diamond_sword","components":{"minecraft:damage":5}},
-                {"type":"neoforge:custom_display","base":"minecraft:apple","display":{"type":"minecraft:item","item":"minecraft:diamond"}}
-            ],
-            "result": {"id":"minecraft:emerald"}
-        });
-        assert!(normalize_ingredients(
-            &mut recipe,
-            &sunrise_client::items::Items::empty()
-        ));
+        let recipe = ResolvedRecipe::fixture(
+            "fixture:display".into(),
+            Arc::new(json!({
+                "type": "minecraft:crafting_shapeless",
+                "ingredients": [
+                    {"type":"neoforge:components","items":"minecraft:diamond_sword","components":{"minecraft:damage":5}},
+                    {"type":"neoforge:custom_display","base":"minecraft:apple","display":{"type":"minecraft:item","item":"minecraft:diamond"}}
+                ],
+                "result": {"id":"minecraft:emerald"}
+            })),
+        );
+        let recipe = normalize_ingredients(&recipe, &Items::empty()).unwrap();
         assert_eq!(
             recipe["ingredients"],
             json!([["minecraft:diamond_sword"], ["minecraft:apple"]])
@@ -693,10 +677,7 @@ mod content_tests {
     /// reads the recipes afterwards: every parse and the guests' copy read the
     /// answer the pass left. The occurrence under a slot other than
     /// `ingredients` (a banner recipe's `banner`) and the nested one are
-    /// answered too, and an answer a data file carries is dropped. Measured
-    /// in the game before the pass existed, per occurrence: an integrated
-    /// open heard it twice with `ServerDataLoad` and once with `ClientPreload`,
-    /// and a dedicated server three times.
+    /// answered too. Source JSON remains intact but cannot supply an answer.
     #[test]
     fn ingredient_hook_hears_each_occurrence_once_per_load_with_its_origin() {
         let heard = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -732,22 +713,38 @@ mod content_tests {
                 ]
             );
 
-            // Parsing again, and the guests' copy, hear nothing more, and the
-            // forged answer on the banner slot was replaced by the hook's.
-            let file = &resolved.recipes[0].resolved;
-            let banner =
-                sunrise_client::crafting::Ingredient::parse(&file["banner"], &items).unwrap();
+            let loaded = &resolved.recipes[0];
+            let file = loaded.file();
+            assert_eq!(file, &recipe);
+            let banner = loaded.parse_ingredient(&file["banner"], &items).unwrap();
             assert_eq!(banner.order, ["minecraft:emerald"]);
-            for ingredient in file["ingredients"].as_array().unwrap() {
-                sunrise_client::crafting::Ingredient::parse(ingredient, &items).unwrap();
-            }
-            let mut copy = (**file).clone();
-            assert!(normalize_ingredients(&mut copy, &items));
-            assert_eq!(heard.lock().unwrap().len(), 3);
-            // What the pass left is not the file the mods and clients see.
-            assert_eq!(*resolved.recipes[0].file, recipe);
-            sunrise_client::crafting::Ingredient::forget_answers(&mut copy);
-            assert!(!copy.to_string().contains("resolved_items"));
+            // Neither standalone parsing nor an identical JSON value outside
+            // this document can supply the forged or the real answer.
+            assert!(crate::crafting::Ingredient::parse(&file["banner"], &items).is_none());
+            assert!(loaded.parse_ingredient(&recipe["banner"], &items).is_none());
+
+            let root = tempfile::tempdir().unwrap();
+            let tables = crate::crafting::Recipes::from_resolved(
+                root.path(),
+                &items,
+                &sunrise_world::loot::PackOverlay::NONE,
+                &resolved,
+            )
+            .unwrap();
+            assert_eq!(&*tables.by_type["minecraft:crafting"][0].json, &recipe);
+
+            let copy = normalize_ingredients(loaded, &items).unwrap();
+            assert_eq!(
+                copy,
+                json!({
+                    "type": "minecraft:crafting_shapeless",
+                    "ingredients": [["minecraft:emerald", "minecraft:stone"], ["minecraft:emerald"]],
+                    "banner": ["minecraft:emerald"],
+                    "result": {"id": "minecraft:stick", "count": 1}
+                })
+            );
+            assert_eq!(loaded.file(), &recipe);
+            assert_eq!(*heard.lock().unwrap(), once);
 
             heard.lock().unwrap().clear();
             let client =
@@ -859,6 +856,7 @@ mod content_tests {
         for slot in slots {
             recipe[slot] = json!({"type": "mymod:aspect", "aspect": slot});
         }
+        recipe["reagent"] = json!({"item": recipe["reagent"]});
         recipe["key"] = json!({"a": {"type": "mymod:aspect", "aspect": "key"}});
         recipe["shapes"] = json!({"star": {"type": "mymod:aspect", "aspect": "shapes"}});
         mod_platform::testing::with_mods(mods.into(), || {
@@ -868,16 +866,24 @@ mod content_tests {
             )
             .unwrap();
             assert_eq!(heard.lock().unwrap().len(), slots.len() + 2);
-            let file = &resolved.recipes[0].resolved;
+            let loaded = &resolved.recipes[0];
+            let file = loaded.file();
             let parse = |ingredient: &Value| {
-                sunrise_client::crafting::Ingredient::parse(ingredient, &items)
+                loaded
+                    .parse_ingredient(ingredient, &items)
                     .unwrap_or_else(|| panic!("{ingredient} fails to parse"))
             };
             for slot in slots {
-                parse(&file[slot]);
+                let value = &file[slot];
+                parse(value.get("item").unwrap_or(value));
             }
             parse(&file["key"]["a"]);
             parse(&file["shapes"]["star"]);
+            let projected = normalize_ingredients(loaded, &items).unwrap();
+            assert_eq!(projected["reagent"], json!(["minecraft:emerald"]));
+            assert_eq!(projected["key"]["a"], json!(["minecraft:emerald"]));
+            assert_eq!(projected["shapes"]["star"], json!(["minecraft:emerald"]));
+            assert_eq!(heard.lock().unwrap().len(), slots.len() + 2);
         });
     }
 
@@ -1010,7 +1016,18 @@ fn empty_ingredient_network_consumers_exclude_whole_unplaceable_recipes() {
         packets::recipes::UpdateRecipes,
         registry::Ids,
     };
-    let mut catalog = sunrise_client::items::Items::for_tests(Default::default());
+    struct EmptyPlacement;
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for EmptyPlacement {
+        fn ingredient(
+            &self,
+            _: &dyn mod_api::DataLoadContext,
+            _: &mut mod_api::IngredientEvent<'_>,
+        ) {
+        }
+    }
+
+    let mut catalog = Items::for_tests(Default::default());
     catalog
         .item_tag_order
         .insert("fixture:empty".into(), vec![]);
@@ -1028,47 +1045,55 @@ fn empty_ingredient_network_consumers_exclude_whole_unplaceable_recipes() {
         (json!("#fixture:missing"), false),
         (json!("#fixture:empty"), true),
         (
-            json!({"type":"fixture:predicate", "item":"minecraft:stone", "sunrise:resolved_items":[]}),
+            json!({"type":"fixture:predicate", "item":"minecraft:stone"}),
             true,
         ),
     ] {
-        let mut all = BTreeMap::<String, Value>::new();
-        for kind in [
+        let mut files: Vec<_> = [
             "minecraft:stonecutting",
             "minecraft:smelting",
             "minecraft:smithing_transform",
-        ] {
-            let mut recipe = json!({"type":kind, "ingredient":source,
-                "base":"minecraft:stone", "addition":source, "result":{"id":"minecraft:stick"}});
-            assert_eq!(normalize_ingredients(&mut recipe, &catalog), retained);
-            if retained {
-                // This copy is only a network HolderSet. The canonical recipe
-                // map retains predicates; metadata must not become candidates.
-                if source.is_object() {
-                    assert_eq!(recipe["ingredient"], json!([]));
-                }
-                sunrise_client::crafting::Ingredient::forget_answers(&mut recipe);
-                all.insert(kind.into(), recipe);
-            }
-        }
-        all.insert(
+        ]
+        .into_iter()
+        .map(|kind| {
+            (
+                kind.to_owned(),
+                json!({"type":kind, "ingredient":source,
+                "base":"minecraft:stone", "addition":source, "result":{"id":"minecraft:stick"}}),
+            )
+        })
+        .collect();
+        files.push((
             "fixture:placeable".into(),
             json!({
                 "type":"minecraft:stonecutting", "ingredient":"minecraft:stone",
                 "result":{"id":"minecraft:stick"}
             }),
+        ));
+        let sources = mod_platform::testing::with_mods(
+            vec![mod_api::ModEntry::new("fixture", Box::new(EmptyPlacement))].into(),
+            || {
+                crate::crafting::ResolvedSources::resolve(
+                    files,
+                    &crate::test_resources::server_load(),
+                )
+                .unwrap()
+            },
         );
-        use sunrise_client::crafting::{ResolvedRecipe, ResolvedSources};
-        let mut sources = ResolvedSources::default();
-        let all: BTreeMap<String, Box<str>> = all
-            .into_iter()
-            .map(|(name, value)| {
-                let text = value.to_string().into_boxed_str();
-                let value = Arc::new(value);
-                sources
-                    .recipes
-                    .push(ResolvedRecipe::fixture(name.clone(), value));
-                (name, text)
+        let all = sources
+            .recipes
+            .iter()
+            .filter_map(|recipe| {
+                let projected = normalize_ingredients(recipe, &catalog);
+                if recipe.name != "fixture:placeable" {
+                    assert_eq!(projected.is_some(), retained);
+                }
+                let projected = projected?;
+                // `item` on a typed predicate is metadata, not a candidate.
+                if source.is_object() && recipe.name != "fixture:placeable" {
+                    assert_eq!(projected["ingredient"], json!([]));
+                }
+                Some((recipe.name.clone(), projected.to_string().into_boxed_str()))
             })
             .collect();
         let (bytes, buttons) = update_recipes(&all, &sync, &sources);
