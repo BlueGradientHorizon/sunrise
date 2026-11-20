@@ -7,10 +7,11 @@ pub trait Hooks {
     /// components. `hand` is the hand it was in, or None for worn equipment
     /// and ammunition consumed from the inventory. `player` and
     /// `player_entity_id` identify the acting player, including the local host.
-    /// Listen only, after consumption or the break has applied and before a use remainder replaces the used-up stack. Both logical
-    /// sides hear their own actions; a client hears its prediction or completed
-    /// use, not another player's inventory updates. A partial consumption, a
-    /// refused action and creative use that preserves the stack do not fire.
+    /// Listen only, after consumption or the break has applied and before a
+    /// use remainder is installed. A mining break notifies after block drops.
+    /// Both sides hear their own actions; the client does not report a break
+    /// inferred from an equipment status packet. Partial consumption, refused
+    /// actions and creative use that preserves the stack do not fire.
     #[hook(
         side = "both",
         version = 2,

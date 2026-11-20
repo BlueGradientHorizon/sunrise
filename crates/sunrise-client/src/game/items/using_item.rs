@@ -77,9 +77,16 @@ impl Game<'_> {
     /// powder snow bucket leaves an empty bucket in that hand, unless the player
     /// has infinite materials. The client predicts the same as the server does.
     pub(super) fn consume_placed(&mut self, placed: &ItemStack) {
-        self.consume_held();
-        if &*placed.item == "minecraft:powder_snow_bucket" && !self.creative {
-            *self.held_mut() = Some(ItemStack::new("minecraft:bucket", 1));
+        if self.creative {
+            return;
+        }
+        let slot = self.held_slot();
+        let last = self.stack_in(slot).is_some_and(|stack| stack.count == 1);
+        self.consume_player_slot(slot, 1);
+        if &*placed.item == "minecraft:powder_snow_bucket"
+            && (!last || self.stack_in(slot).is_none())
+        {
+            *self.stack_in_mut(slot) = Some(ItemStack::new("minecraft:bucket", 1));
         }
     }
     pub(super) fn tick_using(&mut self) {

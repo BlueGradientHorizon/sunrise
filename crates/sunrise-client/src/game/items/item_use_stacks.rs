@@ -1,12 +1,5 @@
-//! Stack snapshots for block-use criteria and item-destruction notices.
+//! Report destruction only where an item action actually consumes or breaks a stack.
 use super::*;
-use sunrise_client::items::ItemInfo;
-
-#[derive(Default)]
-pub(super) struct ItemUseStacks {
-    pub(super) block_originals: Vec<(Hand, Option<ItemStack>)>,
-    notices: Vec<(Hand, bool)>,
-}
 
 impl Game<'_> {
     /// A slot's hand, or no hand for armour and inventory ammunition.
@@ -20,26 +13,13 @@ impl Game<'_> {
         }
     }
 
-    /// Settle enclosing uses of `hand` whose stack moved elsewhere or was reported:
-    /// an empty hand afterwards is then not an item used up.
-    pub(in crate::game) fn settle_item_use_notices(&mut self, hand: Hand) {
-        for (acting, notified) in &mut self.item_use_stacks.notices {
-            if *acting == hand {
-                *notified = true;
-            }
-        }
-    }
-
-    /// Report an applied destruction and settle enclosing uses of the same hand.
+    /// Report an applied destruction, not a hand edit made by a listener.
     pub(super) fn player_item_destroyed(&mut self, original: &ItemStack, hand: Option<Hand>) {
         if original.count == 0
             || &*original.item == "minecraft:air"
             || !mod_api::__private::listened(mod_api::HookId::PlayerDestroyItem)
         {
             return;
-        }
-        if let Some(hand) = hand {
-            self.settle_item_use_notices(hand);
         }
         let (player, player_entity_id) = self.native_clicker();
         self.native_player_destroy_item(player, player_entity_id, original, hand);
@@ -76,72 +56,5 @@ impl Game<'_> {
         if !self.creative {
             self.consume_player_slot(self.held_slot(), 1);
         }
-    }
-
-    /// Catch direct hand edits by item/entity implementations, including Parts.
-    /// Nested uses and ordinary consume/break helpers share a single notice.
-    pub(super) fn with_item_destroy_notice<R>(
-        &mut self,
-        hand: Hand,
-        action: impl FnOnce(&mut Self) -> R,
-    ) -> R {
-        if !mod_api::__private::listened(mod_api::HookId::PlayerDestroyItem) {
-            return action(self);
-        }
-        let original = self.with_hand(hand, |g| g.held().cloned());
-        let depth = self.item_use_stacks.notices.len();
-        self.item_use_stacks.notices.push((hand, false));
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| action(self)));
-        let notified = self.item_use_stacks.notices[depth].1;
-        self.item_use_stacks.notices.truncate(depth);
-        match result {
-            Ok(value) => {
-                if !notified
-                    && self.with_hand(hand, |g| g.held().is_none_or(|s| s.count == 0))
-                    && let Some(original) = original
-                {
-                    self.player_item_destroyed(&original, Some(hand));
-                }
-                value
-            }
-            Err(payload) => std::panic::resume_unwind(payload),
-        }
-    }
-
-    pub(in crate::game) fn use_hand(&mut self, hit: Option<&Hit>) -> Result<bool> {
-        self.with_item_destroy_notice(self.hand, |g| g.use_hand_inner(hit))
-    }
-
-    pub(super) fn interact_entity(&mut self, target: Option<InteractTarget>) -> Result<bool> {
-        self.with_item_destroy_notice(self.hand, |g| g.interact_entity_inner(target))
-    }
-
-    pub(super) fn remote_use_item(&mut self, hand: Hand) -> bool {
-        self.with_item_destroy_notice(hand, |g| g.remote_use_item_inner(hand))
-    }
-
-    pub(super) fn remote_use_item_on(&mut self, hand: Hand) -> bool {
-        self.with_item_destroy_notice(hand, |g| g.remote_use_item_on_inner(hand))
-    }
-
-    pub(super) fn remote_use_entity(&mut self, hand: Hand) -> bool {
-        self.with_item_destroy_notice(hand, |g| g.remote_use_entity_inner(hand))
-    }
-
-    pub(super) fn complete_using_item(&mut self, slot: usize, stack: &ItemStack, info: &ItemInfo) {
-        let hand = self.item_slot_hand(slot).unwrap_or(self.hand);
-        self.with_item_destroy_notice(hand, |g| g.complete_using_item_inner(slot, stack, info));
-    }
-
-    pub(super) fn remote_use_item_finished(
-        &mut self,
-        slot: usize,
-        stack: &ItemStack,
-        info: &ItemInfo,
-    ) {
-        let hand = self.item_slot_hand(slot).unwrap_or(self.hand);
-        self.with_item_destroy_notice(hand, |g| {
-            g.remote_use_item_finished_inner(slot, stack, info)
-        });
     }
 }

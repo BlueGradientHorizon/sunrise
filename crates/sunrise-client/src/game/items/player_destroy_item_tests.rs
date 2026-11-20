@@ -13,39 +13,89 @@ struct Notice {
     original: mod_api::ItemStack,
     /// What the notified player's hand held while the listener ran.
     in_hand: Option<mod_api::ItemStack>,
+    resolved: bool,
+}
+
+#[derive(Default)]
+struct Observations {
+    notices: Vec<Notice>,
+    mining_order: Vec<&'static str>,
+    replacement: Option<(Hand, ItemStack)>,
+    refuse_use: bool,
 }
 
 #[derive(Clone, Default)]
-struct Observer(
-    Arc<Mutex<Vec<Notice>>>,
-    Arc<Mutex<Option<mod_api::WorldEpoch>>>,
-);
+struct Observer(Arc<Mutex<Observations>>);
 
 #[mod_api::__subscriptions]
 impl Hooks for Observer {
     fn player_destroy_item(&self, host: HostSide<'_>, event: &mut PlayerDestroyItemEvent<'_>) {
         let client = matches!(host, HostSide::Client(_));
-        let living = self.1.lock().unwrap().map(|epoch| {
-            mod_api::LivingRef::new(mod_api::EntityRef::new(
-                epoch,
-                u32::try_from(event.player_entity_id).unwrap(),
-            ))
-        });
+        let id = u32::try_from(event.player_entity_id).unwrap();
+        let host_ref: &dyn mod_api::Host = match &host {
+            HostSide::Server(host) => &**host,
+            HostSide::Client(host) => &**host,
+        };
+        let living = host_ref
+            .entity(id)
+            .and_then(|entity| host_ref.living(entity));
         let in_hand = event
             .hand
             .zip(living)
-            .and_then(|(hand, living)| match host {
-                HostSide::Server(host) => living.hand_item(&*host, hand),
-                HostSide::Client(host) => living.hand_item(&*host, hand),
-            });
-        self.0.lock().unwrap().push(Notice {
+            .and_then(|(hand, living)| living.hand_item(host_ref, hand));
+        let mut seen = self.0.lock().unwrap();
+        seen.mining_order.push("destroy");
+        seen.notices.push(Notice {
             in_hand,
+            resolved: living.is_some(),
             client,
             player: event.player,
             entity: event.player_entity_id,
             hand: event.hand,
             original: event.original.clone(),
         });
+        let replacement = seen.replacement.take();
+        drop(seen);
+        if let (HostSide::Server(host), Some((hand, stack))) = (host, replacement) {
+            assert!(
+                living
+                    .unwrap()
+                    .set_hand_item(host, hand, Some(stack.try_into_api().unwrap()))
+                    .unwrap()
+            );
+        }
+    }
+
+    fn right_click_item(
+        &self,
+        host: HostSide<'_>,
+        event: &mut mod_api::RightClickItemEvent<'_>,
+    ) -> mod_api::Flow {
+        if !self.0.lock().unwrap().refuse_use {
+            return mod_api::Flow::Continue;
+        }
+        let HostSide::Server(host) = host else {
+            panic!("the move/refuse scenario runs on the server");
+        };
+        assert_eq!(event.click.hand, Hand::Main);
+        let entity = host
+            .entity(u32::try_from(event.click.player_entity_id).unwrap())
+            .unwrap();
+        let living = host.living(entity).unwrap();
+        let stack = living.hand_item(host, Hand::Main).unwrap();
+        assert!(living.set_hand_item(host, Hand::Off, Some(stack)).unwrap());
+        assert!(living.set_hand_item(host, Hand::Main, None).unwrap());
+        *event.cancellation_result = mod_api::InteractionResult::Fail;
+        mod_api::Flow::Cancel
+    }
+
+    fn block_drops(
+        &self,
+        _: &dyn mod_api::LevelHost,
+        _: &mut mod_api::BlockDropsEvent<'_>,
+    ) -> mod_api::Flow {
+        self.0.lock().unwrap().mining_order.push("drops");
+        mod_api::Flow::Continue
     }
 }
 
@@ -59,9 +109,9 @@ fn named_stack(item: &str, count: u32) -> ItemStack {
 }
 
 fn take_notice(observer: &Observer, hand: Option<Hand>, item: &str, damage: u32) -> Notice {
-    let mut notices = observer.0.lock().unwrap();
-    assert_eq!(notices.len(), 1, "each exhausted stack is heard once");
-    let notice = notices.pop().unwrap();
+    let mut seen = observer.0.lock().unwrap();
+    assert_eq!(seen.notices.len(), 1, "each exhausted stack is heard once");
+    let notice = seen.notices.pop().unwrap();
     assert_eq!(notice.hand, hand);
     assert_eq!(notice.original.count(), 1);
     assert_eq!(notice.original.damage(), damage);
@@ -89,6 +139,102 @@ fn original_stack_and_hand_reach_used_up_and_broken_item_notices() {
     );
 }
 
+fn refused_use_preserves_the_moved_stack(game: &mut Game<'_>, observer: &Observer) {
+    let book = named_stack("minecraft:knowledge_book", 1);
+    game.inventory[game.selected] = Some(book.clone());
+    game.offhand = None;
+    observer.0.lock().unwrap().refuse_use = true;
+    assert!(!game.use_hand(None).unwrap());
+    observer.0.lock().unwrap().refuse_use = false;
+    assert!(game.held().is_none());
+    assert_eq!(
+        game.offhand.as_ref().unwrap().try_into_api().unwrap(),
+        book.try_into_api().unwrap()
+    );
+    assert!(observer.0.lock().unwrap().notices.is_empty());
+    game.offhand = None;
+}
+
+fn mining_reports_after_the_drop_hook(game: &mut Game<'_>, observer: &Observer) {
+    use sunrise_core::position::ChunkPos;
+    game.block_ticks
+        .add_empty_chunk(ChunkPos::new(0, 0))
+        .unwrap();
+    let pos = [2, 64, 2];
+    let stone = game
+        .pack
+        .assets
+        .registry
+        .default_state("minecraft:stone")
+        .unwrap();
+    game.world.set(pos[0], pos[1], pos[2], stone).unwrap();
+    let mut tool = named_stack("minecraft:iron_pickaxe", 1);
+    tool.damage = 249;
+    game.inventory[game.selected] = Some(tool);
+    observer.0.lock().unwrap().mining_order.clear();
+    assert!(game.player_break_block(pos).unwrap());
+    assert!(game.held().is_none());
+    assert_ne!(game.world.block(pos[0], pos[1], pos[2]), stone);
+    assert!(
+        game.dropped
+            .iter()
+            .any(|item| &*item.stack.item == "minecraft:cobblestone")
+    );
+    assert_eq!(
+        observer.0.lock().unwrap().mining_order,
+        ["drops", "destroy"]
+    );
+    take_notice(observer, Some(Hand::Main), "minecraft:iron_pickaxe", 249);
+}
+
+fn continuations_preserve_listener_hand_writes(game: &mut Game<'_>, observer: &Observer) {
+    // A broken steering stick must not install its fishing rod over the new stack.
+    let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
+    game.mobs
+        .push(sunrise_client::mobs::Mob::new(21, pig, Vec3::ZERO, 0.0));
+    game.riding = Some(21);
+    let mut stick = named_stack("minecraft:carrot_on_a_stick", 1);
+    stick.damage = 24;
+    game.inventory[game.selected] = Some(stick);
+    observer.0.lock().unwrap().replacement =
+        Some((Hand::Main, ItemStack::new("minecraft:apple", 1)));
+    assert!(game.use_steering_stick("minecraft:carrot_on_a_stick"));
+    take_notice(
+        observer,
+        Some(Hand::Main),
+        "minecraft:carrot_on_a_stick",
+        24,
+    );
+    assert_eq!(&*game.held().unwrap().item, "minecraft:apple");
+    game.riding = None;
+
+    // The same applies to a powder snow bucket's pending empty bucket.
+    let powder = named_stack("minecraft:powder_snow_bucket", 1);
+    game.offhand = Some(powder.clone());
+    observer.0.lock().unwrap().replacement =
+        Some((Hand::Off, ItemStack::new("minecraft:stick", 1)));
+    game.with_hand(Hand::Off, |game| game.consume_placed(&powder));
+    take_notice(observer, Some(Hand::Off), "minecraft:powder_snow_bucket", 0);
+    assert_eq!(&*game.offhand.as_ref().unwrap().item, "minecraft:stick");
+
+    // Consuming the last projectile must not charge even a replacement crossbow.
+    let bow = ItemStack::new("minecraft:crossbow", 1);
+    let mut replacement = bow.clone();
+    replacement.damage = 2;
+    let slot = game.selected;
+    game.inventory[slot] = Some(bow.clone());
+    game.offhand = Some(named_stack("minecraft:arrow", 1));
+    observer.0.lock().unwrap().replacement = Some((Hand::Main, replacement));
+    game.tick_crossbow(slot, Game::charge_ticks(&bow), &bow);
+    take_notice(observer, Some(Hand::Off), "minecraft:arrow", 0);
+    assert!(game.offhand.is_none());
+    let kept = game.stack_in(slot).unwrap();
+    assert_eq!(&*kept.item, "minecraft:crossbow");
+    assert_eq!(kept.damage, 2);
+    assert!(kept.data().is_none_or(|data| data.charged.is_empty()));
+    game.using = None;
+}
+
 fn run_isolated() {
     let observer = Observer::default();
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
@@ -104,17 +250,19 @@ fn run_isolated() {
                     game.options.execution_role = execution_role::ExecutionRole::Client;
                     let (local, peer) = Pipe::pair();
                     game.connect_local(local, "DestroyTest").unwrap();
+                    let remote = game.remote.as_mut().unwrap();
+                    remote.logged_in = true;
+                    remote.entity_id = 71;
                     Some(peer)
                 } else {
                     None
                 };
                 game.player =
                     Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
-                game.player.as_mut().unwrap().entity_id = 71;
-                *observer.1.lock().unwrap() = game.native_lifecycle.epoch();
+                const PLAYER: u128 = 0x0000_0001_0000_0002_0000_0003_0000_0004;
+                native_entity_refs::tests::bind_local_player(game, 71, PLAYER);
                 game.set_mode_id(0);
                 game.selected = 0;
-                game.level.player_uuid = Some([1, 2, 3, 4]);
                 game.screen = Screen::Playing;
                 game.world
                     .chunks
@@ -124,29 +272,30 @@ fn run_isolated() {
                     game.with_hand(hand, |game| {
                         *game.held_mut() = Some(named_stack("minecraft:apple", 2));
                         game.consume_held();
-                        assert!(observer.0.lock().unwrap().is_empty());
+                        assert!(observer.0.lock().unwrap().notices.is_empty());
                         game.creative = true;
                         game.consume_held();
                         assert_eq!(game.held().unwrap().count, 1);
-                        assert!(observer.0.lock().unwrap().is_empty());
+                        assert!(observer.0.lock().unwrap().notices.is_empty());
                         game.creative = false;
                         game.consume_held();
                         assert!(game.held().is_none());
                         let notice = take_notice(&observer, Some(hand), "minecraft:apple", 0);
                         assert_eq!(notice.client, client);
-                        assert_eq!(notice.entity, if client { 0 } else { 71 });
+                        assert_eq!(notice.entity, 71);
                         if !client {
-                            assert_eq!(notice.player, 0x0000_0001_0000_0002_0000_0003_0000_0004);
+                            assert_eq!(notice.player, PLAYER);
                         }
                     });
                 }
                 // Actual Item.use: a knowledge book is exhausted even when it has no recipes.
                 game.offhand = Some(named_stack("minecraft:knowledge_book", 1));
                 if client {
-                    game.remote_use_item(Hand::Off);
+                    assert!(!game.remote_use_item(Hand::Off));
                 } else {
-                    game.with_hand(Hand::Off, |g| g.use_hand(None)).unwrap();
+                    assert!(!game.with_hand(Hand::Off, |g| g.use_hand(None)).unwrap());
                 }
+                assert!(game.offhand.is_none());
                 take_notice(&observer, Some(Hand::Off), "minecraft:knowledge_book", 0);
 
                 // Completed use must report the consumed potion, not its glass bottle remainder.
@@ -165,17 +314,30 @@ fn run_isolated() {
                     "minecraft:glass_bottle"
                 );
                 let drunk = take_notice(&observer, Some(Hand::Off), "minecraft:potion", 0);
-                // The notice came before the remainder replaced the used-up stack.
                 assert!(
-                    drunk
-                        .in_hand
-                        .as_ref()
-                        .is_none_or(|held| mod_api::__private::item_key_id(held.item()).unwrap()
-                            != "minecraft:glass_bottle"),
-                    "a listener never sees the glass bottle in the hand"
+                    drunk.resolved,
+                    "the listener resolves the player's living handle"
+                );
+                assert!(
+                    drunk.in_hand.is_none(),
+                    "the potion is gone and the bottle is not installed at dispatch"
                 );
 
-                if !client {
+                if client {
+                    // Equipment status can arrive with a stale stack in its slot. It
+                    // drives effects only, not a notice claiming an exact original.
+                    let stale = named_stack("minecraft:iron_pickaxe", 1);
+                    game.offhand = Some(stale.clone());
+                    use sunrise_protocol::packets::play::{Clientbound, EntityEvent};
+                    game.apply_packet(Clientbound::EntityEvent(EntityEvent { id: 71, event: 48 }))
+                        .unwrap();
+                    assert_eq!(game.offhand.as_ref(), Some(&stale));
+                    assert!(observer.0.lock().unwrap().notices.is_empty());
+                } else {
+                    refused_use_preserves_the_moved_stack(game, &observer);
+                    mining_reports_after_the_drop_hook(game, &observer);
+                    continuations_preserve_listener_hand_writes(game, &observer);
+
                     // The same notice identifies a swapped-in guest rather than the local host.
                     game.lan_acting_uuid = Some(0x1111_2222_3333_4444_5555_6666_7777_8888);
                     game.lan_acting_entity = Some(123);
@@ -207,13 +369,11 @@ fn run_isolated() {
                     assert!(game.offhand.is_none());
                     take_notice(&observer, Some(Hand::Off), "minecraft:wheat", 0);
 
-                    // Durability reports pre-wear damage, and no duplicate from the enclosing use.
+                    // Immediate durability reports pre-wear damage.
                     let mut tool = named_stack("minecraft:iron_pickaxe", 1);
                     tool.damage = 249;
                     game.offhand = Some(tool);
-                    game.with_hand(Hand::Off, |g| {
-                        g.with_item_destroy_notice(Hand::Off, |g| g.damage_held(1))
-                    });
+                    game.with_hand(Hand::Off, |g| g.damage_held(1));
                     assert!(game.offhand.is_none());
                     take_notice(&observer, Some(Hand::Off), "minecraft:iron_pickaxe", 249);
 
@@ -229,9 +389,9 @@ fn run_isolated() {
                     game.offhand = Some(named_stack("minecraft:iron_helmet", 1));
                     game.with_hand(Hand::Off, |g| g.use_hand(None)).unwrap();
                     assert!(game.armor[0].is_some() && game.offhand.is_none());
-                    assert!(observer.0.lock().unwrap().is_empty());
+                    assert!(observer.0.lock().unwrap().notices.is_empty());
                 }
-                assert!(observer.0.lock().unwrap().is_empty());
+                assert!(observer.0.lock().unwrap().notices.is_empty());
             });
         }
     });

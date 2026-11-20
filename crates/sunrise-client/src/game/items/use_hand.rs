@@ -16,7 +16,7 @@ impl Game<'_> {
 
     /// One hand's turn in `startUseItem`: `useItemOn` the block aimed at,
     /// then `useItem`. Whether the click ends here (it acted or failed).
-    pub(in crate::game) fn use_hand_inner(&mut self, block_hit: Option<&Hit>) -> Result<bool> {
+    pub(in crate::game) fn use_hand(&mut self, block_hit: Option<&Hit>) -> Result<bool> {
         if self.guest_use.is_none()
             && let Some(hit) = block_hit
         {

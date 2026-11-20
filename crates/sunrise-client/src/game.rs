@@ -1928,7 +1928,7 @@ struct Game<'a> {
     /// The last `use_hand` that ended the click did so with `FAIL`, which
     /// does not consume the action (handleUseItemOn's ANY_BLOCK_USE).
     use_failed: bool,
-    item_use_stacks: item_use_stacks::ItemUseStacks,
+    block_use_original: Vec<(Hand, Option<ItemStack>)>,
     /// Level events of this tick for the guests, with their excluded source.
     lan_events: Vec<QueuedLevelEvent>,
     /// Jukebox level events 1010 (song name) and 1011 (`None`) for the guests;
@@ -4365,9 +4365,11 @@ impl Game<'_> {
         if !creative {
             // The stack as the removal left it: a listener may have swapped it.
             let held = self.held().cloned();
-            if removed {
-                self.mine_block_with_held(&facts.name, facts.hardness);
-            }
+            let broken_tool = if removed {
+                self.mine_block_with_held(&facts.name, facts.hardness)
+            } else {
+                None
+            };
             if removed && harvest {
                 // Block.playerDestroy: the mined statistic, the exhaustion and the drops.
                 self.award_stat("mined", &facts.name, 1);
@@ -4467,6 +4469,9 @@ impl Game<'_> {
                         prevents_melting,
                     );
                 });
+            }
+            if let Some(original) = broken_tool {
+                self.player_item_destroyed(&original, Some(Hand::Main));
             }
         }
         self.pending.clear(pos);
@@ -11404,7 +11409,7 @@ impl<'a> Game<'a> {
             client_pick: Default::default(),
             guest_use: None,
             use_failed: false,
-            item_use_stacks: Default::default(),
+            block_use_original: Vec::new(),
             lan_events: Vec::new(),
             lan_songs: Vec::new(),
             lan_cushion_breaks: Vec::new(),

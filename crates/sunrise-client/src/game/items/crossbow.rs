@@ -281,6 +281,11 @@ impl Game<'_> {
             {
                 self.consume_player_slot(i, 1);
             }
+            // The ammo notice is allowed to replace the weapon, even with
+            // a different crossbow. Only charge the stack that drew it.
+            if self.stack_in(slot) != Some(stack) {
+                return;
+            }
             let ammo = ammo.stack;
             // useAmmo: the extra multishot arrows and creative's are intangible.
             let drawn = (0..shots)

@@ -13,11 +13,15 @@ or `None` for worn equipment and inventory ammunition). Count, pre-wear damage a
 are preserved; a returned bottle or bucket does not replace `original`.
 
 The callback receives `HostSide`: the server sees its applied action, including its local host player,
-and a client sees its own prediction, completed use or equipment-break notification. Other players'
-inventory synchronization does not produce notices. This is a notification after the change, so it
-cannot cancel the action. Consuming only part of a stack and creative use that preserves the item
-produce no notice. Equipping an item into an empty armour slot moves it and is not a use-up. The notice is sent before a
-remainder (an empty bottle) replaces the used-up stack, so a listener never sees the remainder in the hand. An enclosing use does not repeat an already reported break or consumption.
+and a client sees its own prediction or completed use. An equipment-break status packet still plays
+its sound and particles, but does not send this notice: it has no original stack. Inventory updates
+do not send notices either.
+
+This is a notification after the change, so it cannot cancel the action. A mining break notifies
+after the block's drops. A completed use notifies after consumption and before a remainder such as
+an empty bottle enters the hand. Partial consumption, refused interactions, and creative use that
+preserves the item do not notify. Equipping an item into an empty armour slot moves it rather than
+consuming it.
 
 See the [API reference](../reference/api.md) for the generated event and `Hooks` method.
 

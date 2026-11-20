@@ -197,12 +197,7 @@ impl Game<'_> {
     /// told, `ItemStack.finishUsingItem` (a consumable is eaten, a potion
     /// drunk, a spyglass lowered, anything else given back) with its use
     /// cooldown, then `LivingEntityUseItemEvent.Finish`.
-    pub(super) fn complete_using_item_inner(
-        &mut self,
-        slot: usize,
-        stack: &ItemStack,
-        info: &ItemInfo,
-    ) {
+    pub(super) fn complete_using_item(&mut self, slot: usize, stack: &ItemStack, info: &ItemInfo) {
         // a potion is drunk (no last tick of its own: a mod's tick ran it out).
         if self.finish_drinking(slot, stack) {
             self.use_item_finished(stack);
@@ -240,7 +235,7 @@ impl Game<'_> {
     /// sends no creative packet in vanilla (its inventory-slot edits go out
     /// through the open creative screen's `CreativeInventoryListener`), so the
     /// slot counts as synced for this client's creative sync.
-    pub(super) fn remote_use_item_finished_inner(
+    pub(super) fn remote_use_item_finished(
         &mut self,
         slot: usize,
         stack: &ItemStack,
@@ -250,11 +245,14 @@ impl Game<'_> {
         let mut result = self.finish_result(stack, info);
         let hand = hand_of(Some((slot, 0))).unwrap_or(self.hand);
         self.native_living_entity_use_item_finish(stack, None, hand, 0, &mut result);
-        // Heard while the hand still holds the used-up stack, before a remainder replaces it.
+        let before = self.creative_stacks();
         if !self.creative && stack.count == 1 && self.consumable(stack).is_some() {
+            if self.stack_in(slot) != Some(stack) {
+                return;
+            }
+            *self.stack_in_mut(slot) = None;
             self.player_item_destroyed(stack, Some(hand));
         }
-        let before = self.creative_stacks();
         *self.stack_in_mut(slot) = result.filter(|s| s.count > 0);
         self.remote_synced_since(&before);
     }
