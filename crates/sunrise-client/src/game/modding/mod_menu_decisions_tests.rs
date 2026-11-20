@@ -664,6 +664,13 @@ fn a_code_opened_menus_button_reaches_a_blocks_menu_button_only_for_its_menu_typ
                 BUTTON_POSITIONS.with(|positions| positions.borrow_mut().clear());
                 let window = open_depot(game);
                 depot_container(game);
+                // The prepared protocol registry has no fixture mod IDs. Use the generic
+                // window's protocol slot but give the server menu its actual mod owner.
+                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                    let menu = guest.menu.as_mut().unwrap();
+                    menu.registry_id = DEPOT_MENU.into();
+                    menu.mod_type = sunrise_client::containers::mod_menu_type(DEPOT_MENU);
+                });
                 button(game, window, 99);
                 assert_eq!(BUTTONS.get(), 0, "a menu rejects unsupported button IDs");
                 button(game, window + 1, 3);
