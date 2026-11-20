@@ -380,6 +380,11 @@ fn forget(map: &mut FxHashMap<NonZeroU32, Location>, id: NonZeroU32, location: L
 }
 
 #[cfg(test)]
+fn collect_level_entities(table: &mut EntityTable, dimension: DimensionKey) -> Vec<u32> {
+    table.level_entities(dimension)
+}
+
+#[cfg(test)]
 #[path = "table/completion_tests.rs"]
 mod completion_tests;
 #[cfg(test)]
@@ -466,17 +471,35 @@ mod tests {
             },
         );
         // Also compared to the runtime vanilla EntityLookup by the parity harness.
-        println!("lookup-order: {:?}", f.table.level_entities(HOME.dimension));
-        assert_eq!(f.table.level_entities(HOME.dimension), vec![90, 3, 40]);
+        println!(
+            "lookup-order: {:?}",
+            collect_level_entities(&mut f.table, HOME.dimension)
+        );
+        assert_eq!(
+            collect_level_entities(&mut f.table, HOME.dimension),
+            vec![90, 3, 40]
+        );
         let identity = Identity::new(90, first.join).unwrap();
         f.emit(first, Change::Extract(identity));
         f.emit(first, Change::PutBack(identity));
-        println!("lookup-order: {:?}", f.table.level_entities(HOME.dimension));
-        assert_eq!(f.table.level_entities(HOME.dimension), vec![90, 3, 40]);
+        println!(
+            "lookup-order: {:?}",
+            collect_level_entities(&mut f.table, HOME.dimension)
+        );
+        assert_eq!(
+            collect_level_entities(&mut f.table, HOME.dimension),
+            vec![90, 3, 40]
+        );
         f.emit(first, Change::Remove(identity));
         f.emit(first, Change::Install(identity));
-        println!("lookup-order: {:?}", f.table.level_entities(HOME.dimension));
-        assert_eq!(f.table.level_entities(HOME.dimension), vec![3, 40, 90]);
+        println!(
+            "lookup-order: {:?}",
+            collect_level_entities(&mut f.table, HOME.dimension)
+        );
+        assert_eq!(
+            collect_level_entities(&mut f.table, HOME.dimension),
+            vec![3, 40, 90]
+        );
         f.emit(first, Change::Remove(identity));
         let away = f.admit(
             90,
@@ -485,14 +508,20 @@ mod tests {
                 ..HOME
             },
         );
-        println!("lookup-order: {:?}", f.table.level_entities(HOME.dimension));
         println!(
             "lookup-order: {:?}",
-            f.table.level_entities(DimensionKey::NETHER)
+            collect_level_entities(&mut f.table, HOME.dimension)
+        );
+        println!(
+            "lookup-order: {:?}",
+            collect_level_entities(&mut f.table, DimensionKey::NETHER)
         );
         f.emit(away, Change::Remove(Identity::new(90, away.join).unwrap()));
         f.admit(90, HOME);
-        println!("lookup-order: {:?}", f.table.level_entities(HOME.dimension));
+        println!(
+            "lookup-order: {:?}",
+            collect_level_entities(&mut f.table, HOME.dimension)
+        );
     }
 
     #[test]
