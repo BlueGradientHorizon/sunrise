@@ -1,6 +1,88 @@
 // exports: none (reached inside the crate only)
 //! Registration refusals and bounded loading messages.
 
+/// Why a native declaration was not accepted.
+#[derive(Clone, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
+#[non_exhaustive]
+pub enum DeclarationError {
+    /// The thread is no longer in the registration phase.
+    RegistrationClosed {
+        /// Identifier supplied by the caller.
+        id: String,
+    },
+    /// The identifier is not a valid resource location.
+    InvalidId {
+        /// Rejected identifier, including any inferred namespace.
+        id: String,
+    },
+    /// The mod's manifest does not own the identifier's namespace.
+    UnownedNamespace {
+        /// Rejected identifier.
+        id: String,
+        /// Namespace not available to the declaring mod.
+        namespace: String,
+    },
+    /// A declaration failed another registry-specific check.
+    Rejected {
+        /// Rejected identifier.
+        id: String,
+        /// Registry-specific explanation.
+        reason: String,
+    },
+}
+
+impl DeclarationError {
+    /// The identifier of the rejected declaration.
+    pub fn id(&self) -> &str {
+        match self {
+            Self::RegistrationClosed { id }
+            | Self::InvalidId { id }
+            | Self::UnownedNamespace { id, .. }
+            | Self::Rejected { id, .. } => id,
+        }
+    }
+}
+
+impl std::fmt::Display for DeclarationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::RegistrationClosed { id } => write!(f, "registration is closed for {id:?}"),
+            Self::InvalidId { id } => write!(f, "invalid identifier {id:?}"),
+            Self::UnownedNamespace { id, namespace } => {
+                write!(f, "{id:?} in unowned namespace {namespace:?}")
+            }
+            Self::Rejected { id, reason } => write!(f, "{id:?}: {reason}"),
+        }
+    }
+}
+impl std::error::Error for DeclarationError {}
+
+// no wire: engine-side admission record; only its typed error crosses to the mod.
+// hidden: the game collects these records before opening any world.
+#[doc(hidden)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+// exhaustive: the engine provides all three fields.
+pub struct DeclarationRefusal {
+    /// ID of the submitting package, not necessarily the declaration's namespace.
+    pub mod_id: String,
+    /// Registry or declaration kind.
+    pub kind: DeclarationKind,
+    /// Rejected identifier and reason.
+    pub error: DeclarationError,
+}
+
+// no wire: engine-side admission record discriminant.
+// hidden: the game owns the admission report.
+#[doc(hidden)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+// exhaustive: the engine translates every kind used in admission diagnostics.
+pub enum DeclarationKind {
+    /// A native block declaration.
+    Block,
+    /// A native item declaration.
+    Item,
+}
+
 /// The most loading warnings one mod keeps; later ones are dropped.
 // hidden: registration contexts enforce the cap.
 #[doc(hidden)]

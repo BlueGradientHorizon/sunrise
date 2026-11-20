@@ -9,7 +9,7 @@ pub trait CustomStatsRegistrar {
     /// even when the returned error is ignored. IDs freeze before worlds open.
     /// Servers with custom statistics require Sunrise clients with the same
     /// ordered registry; the configuration-phase content identity checks it.
-    fn register_custom_stat(&mut self, id: &str) -> Result<(), String>;
+    fn register_custom_stat(&mut self, id: &str) -> Result<(), crate::DeclarationError>;
 }
 
 /// Validated custom statistic IDs, in declaration order after vanilla's IDs.

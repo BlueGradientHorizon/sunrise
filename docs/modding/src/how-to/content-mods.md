@@ -88,11 +88,12 @@ server Parts.
 
 Code mods declare content through `BlocksEvent` and `ItemsEvent`, using API-owned
 `mod_api::Block` and `mod_api::Item` records. Start with `Block::new(id, template)` or
-`Item::new(id, template)`, passing identifier strings, then set the overrides. These records are unvalidated; admission reports malformed values with the content loader's refusal messages.
-These are load-time declarations, not live registry entries. The game admits them
-with the content-file checks, atomically for each namespace, before resources load.
-A block's `item` defaults to true, in code as in a file: `Block::with_item(false)` gives it none. Each mod receives its own declaration
-batch. New identifiers from code—including block entity types and other registrar
+`Item::new(id, template)`, passing identifier strings, then set the overrides and call
+`event.register(declaration)`. Invalid IDs return a typed `DeclarationError`; the remaining checks
+run before resources load. These are load-time declarations, not live registry entries. The game
+admits them with the content-file checks, atomically for each owner.
+A block's `item` defaults to true, in code as in a file: `Block::with_item(false)` gives it none.
+New identifiers from code—including block entity types and other registrar
 declarations—may use any namespace owned by that mod's manifest. Bare names use
 the mod ID; an explicit owned namespace stays unchanged. An unowned namespace
 refuses registration with a diagnostic naming both the mod and namespace. Attaching a Part to an existing vanilla or

@@ -67,7 +67,7 @@ impl mod_api::Hooks for Resisting {
     fn blocks(&self, _: &RegistrationContext, event: &mut BlocksEvent<'_>) {
         let mut block = Block::new("test:blastproof", "minecraft:stone");
         block.properties.explosion_resistance = Some(42.0);
-        event.blocks.push(block);
+        event.register(block).unwrap();
     }
 }
 

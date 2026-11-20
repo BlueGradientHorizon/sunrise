@@ -896,7 +896,7 @@ impl Game<'_> {
     /// are logged and that namespace's are left out.
     pub(in crate::game) fn native_blocks(
         context: &mod_api::RegistrationContext,
-        blocks: &mut Vec<mod_api::Block>,
+        blocks: &mut Vec<mod_api::Answered<mod_api::Block>>,
     ) {
         Self::fire_blocks(context, blocks);
     }
@@ -909,7 +909,7 @@ impl Game<'_> {
     /// Asked once at start, on every side.
     pub(in crate::game) fn native_items(
         context: &mod_api::RegistrationContext,
-        items: &mut Vec<mod_api::Item>,
+        items: &mut Vec<mod_api::Answered<mod_api::Item>>,
     ) {
         Self::fire_items(context, items);
     }

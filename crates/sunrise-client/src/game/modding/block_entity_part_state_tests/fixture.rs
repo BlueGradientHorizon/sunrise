@@ -95,6 +95,6 @@ pub fn register(registrar: &mut dyn Registrar) {
 /// The block the state's block entity stands in, so a save keeps it.
 pub fn blocks(event: &mut BlocksEvent<'_>) {
     event
-        .blocks
-        .push(Block::new("part_state_fixture:part_state", "minecraft:barrel").with_item(false));
+        .register(Block::new("part_state_fixture:part_state", "minecraft:barrel").with_item(false))
+        .unwrap();
 }

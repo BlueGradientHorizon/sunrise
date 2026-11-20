@@ -41,8 +41,8 @@ impl Hooks for Tanks {
     }
     fn blocks(&self, _: &RegistrationContext, event: &mut BlocksEvent<'_>) {
         event
-            .blocks
-            .push(mod_api::Block::new(TANK, "minecraft:stone"));
+            .register(mod_api::Block::new(TANK, "minecraft:stone"))
+            .unwrap();
     }
 }
 

@@ -17,8 +17,8 @@ impl Hooks for Press {
     }
     fn blocks(&self, _: &mod_api::RegistrationContext, event: &mut BlocksEvent<'_>) {
         event
-            .blocks
-            .push(mod_api::Block::new("press", "minecraft:stone"));
+            .register(mod_api::Block::new("press", "minecraft:stone"))
+            .unwrap();
     }
 }
 
@@ -52,13 +52,15 @@ fn a_bare_block_name_binds_the_type_to_the_mods_own_block() {
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new("press_mod", Box::new(Press))].into();
     let (blocks, types) = mod_platform::testing::with_mods(mods.clone(), || {
         crate::game::api_values::install_parts(&mods).unwrap();
+        let _registration =
+            mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
         let context = mod_api::RegistrationContext::new();
         let mut blocks = Vec::new();
         Game::native_blocks(&context, &mut blocks);
         assert!(mod_api::__private::take_declaration_refusals(&context).is_empty());
         let blocks: Vec<sunrise_mod_package::content::Block> = blocks
             .iter()
-            .map(|block| block.try_into_engine(&()).unwrap())
+            .map(|block| block.answer.try_into_engine(&()).unwrap())
             .collect();
         (blocks, crate::game::api_values::block_entity_declarations())
     });

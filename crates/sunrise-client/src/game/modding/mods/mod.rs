@@ -9,8 +9,8 @@ use super::{
 mod menu_books;
 pub(in crate::game) mod runtime_files;
 mod standalone;
-use mod_api::__private::game::*;
-use mod_api::RegistrationContext;
+use mod_api::__private::{DeclarationKind, DeclarationRefusal, game::*};
+use mod_api::{Answered, DeclarationError, LoadingMessage, RegistrationContext};
 use standalone::collect_standalone_models;
 use std::{
     collections::BTreeMap,
@@ -273,20 +273,88 @@ pub(super) fn register_components(root: &std::path::Path) -> sunrise_client::Res
 
 /// Finish every once-only content declaration on the registration thread.
 pub(super) fn freeze_declarations() -> sunrise_client::Result<()> {
-    let declared = native_declared();
-    if !declared.errors.is_empty() {
-        return Err(declared.errors.join("\n").into());
-    }
-    Ok(())
+    native_declared().validate()
 }
+
+#[derive(Clone, Debug)]
+pub(crate) struct DeclarationFailures(Vec<DeclarationRefusal>);
+
+impl DeclarationFailures {
+    fn messages(&self) -> impl Iterator<Item = LoadingMessage> {
+        use sunrise_client::text::Text;
+        let quoted = |value: &str| Text::literal(format!("{value:?}"));
+        self.0.iter().map(move |refusal| {
+            let key = match refusal.kind {
+                DeclarationKind::Block => "sunrise.mods.declaration.block",
+                DeclarationKind::Item => "sunrise.mods.declaration.item",
+            };
+            let detail = match &refusal.error {
+                DeclarationError::RegistrationClosed { id } => {
+                    Text::translate("sunrise.mods.declaration.closed", &[quoted(id)])
+                }
+                DeclarationError::InvalidId { id } => {
+                    Text::translate("sunrise.mods.declaration.invalid_id", &[quoted(id)])
+                }
+                DeclarationError::UnownedNamespace { id, namespace } => Text::translate(
+                    "sunrise.mods.declaration.unowned_namespace",
+                    &[quoted(id), quoted(namespace)],
+                ),
+                DeclarationError::Rejected { id, reason } => Text::translate(
+                    "sunrise.mods.declaration.rejected",
+                    &[quoted(id), Text::literal(reason.clone())],
+                ),
+                error => Text::literal(error.to_string()),
+            };
+            let detail = detail.plain().replace(['\r', '\n'], " ");
+            LoadingMessage::new(key, &[&refusal.mod_id, &detail])
+        })
+    }
+
+    pub(crate) fn lines(&self) -> Vec<String> {
+        use sunrise_client::text::Text;
+        let render = || {
+            self.messages()
+                .map(|message| {
+                    let args: Vec<_> = message
+                        .args()
+                        .iter()
+                        .map(|arg| Text::literal(arg.clone()))
+                        .collect();
+                    Text::translate(message.key(), &args).plain()
+                })
+                .collect()
+        };
+        if lang::current().is_some() {
+            render()
+        } else {
+            lang::scoped(lang::Language::load(&[], lang::DEFAULT), render).0
+        }
+    }
+}
+
+impl std::fmt::Display for DeclarationFailures {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.lines().join("\n"))
+    }
+}
+impl std::error::Error for DeclarationFailures {}
 
 #[derive(Clone)]
 struct NativeDeclared {
-    errors: Vec<String>,
+    refusals: DeclarationFailures,
     blocks: Vec<sunrise_mod_package::content::Block>,
     items: Vec<sunrise_mod_package::content::Item>,
     types: Vec<sunrise_mod_package::content::BlockEntityType>,
     fluids: Vec<sunrise_mod_package::content::FluidLook>,
+}
+
+impl NativeDeclared {
+    fn validate(&self) -> sunrise_client::Result<()> {
+        if !self.refusals.0.is_empty() {
+            return Err(self.refusals.clone().into());
+        }
+        Ok(())
+    }
 }
 
 /// The same native declarations serve startup and every pack reload.
@@ -296,35 +364,36 @@ fn native_declared() -> std::borrow::Cow<'static, NativeDeclared> {
         let context = RegistrationContext::new();
         Game::native_blocks(&context, &mut blocks);
         Game::native_items(&context, &mut items);
-        let mut errors = mod_api::__private::take_declaration_refusals(&context);
+        let mut refusals = mod_api::__private::take_declaration_refusals(&context);
         let types = super::api_values::block_entity_declarations();
         use super::api_values::TryIntoEngine;
-        let mut blocks: Vec<sunrise_mod_package::content::Block> = blocks
-            .iter()
-            .filter_map(|v| {
-                v.try_into_engine(&())
-                    .map_err(|e| {
-                        errors.push(format!(
-                            "native blocks and items of {}: {e}",
-                            v.id.split(':').next().unwrap_or("")
-                        ))
-                    })
-                    .ok()
-            })
-            .collect();
-        let mut items: Vec<sunrise_mod_package::content::Item> = items
-            .iter()
-            .filter_map(|v| {
-                v.try_into_engine(&())
-                    .map_err(|e| {
-                        errors.push(format!(
-                            "native blocks and items of {}: {e}",
-                            v.id.split(':').next().unwrap_or("")
-                        ))
-                    })
-                    .ok()
-            })
-            .collect();
+        fn convert<T: TryIntoEngine<(), Error = String>>(
+            entries: Vec<Answered<T>>,
+            kind: DeclarationKind,
+            id: impl Fn(&T) -> &str,
+            refusals: &mut Vec<DeclarationRefusal>,
+        ) -> Vec<T::Engine> {
+            entries
+                .into_iter()
+                .filter_map(|Answered { answer, mod_id, .. }| {
+                    answer
+                        .try_into_engine(&())
+                        .map_err(|reason| {
+                            refusals.push(DeclarationRefusal {
+                                mod_id: mod_id.into(),
+                                kind,
+                                error: DeclarationError::Rejected {
+                                    id: id(&answer).to_owned(),
+                                    reason,
+                                },
+                            });
+                        })
+                        .ok()
+                })
+                .collect()
+        }
+        let mut blocks = convert(blocks, DeclarationKind::Block, |b| &b.id, &mut refusals);
+        let mut items = convert(items, DeclarationKind::Item, |i| &i.id, &mut refusals);
         let fluids: Vec<_> = mod_api::__private::declared_world_fluids()
             .iter()
             .map(|draft| draft.try_into_engine(&()).unwrap())
@@ -332,7 +401,7 @@ fn native_declared() -> std::borrow::Cow<'static, NativeDeclared> {
         blocks.extend(fluids.iter().filter_map(|f| f.world_block()));
         items.extend(fluids.iter().filter_map(|f| f.world_bucket()));
         NativeDeclared {
-            errors,
+            refusals: DeclarationFailures(refusals),
             blocks,
             items,
             types,
@@ -349,6 +418,9 @@ fn native_declared() -> std::borrow::Cow<'static, NativeDeclared> {
     }
     #[cfg(test)]
     {
+        // Test fixtures bypass startup; collect with the same thread phase as startup.
+        let _registration =
+            mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Registration);
         std::borrow::Cow::Owned(collect())
     }
 }
@@ -860,16 +932,15 @@ pub(super) fn content_overlay(
             Err(e) => log::warn!("Sunrise: mod {} content not loaded: {e}", m.id),
         }
     }
+    let declared = native_declared();
+    declared.validate()?;
     let NativeDeclared {
-        errors,
         blocks,
         items,
         types,
         fluids,
-    } = &*native_declared();
-    if !errors.is_empty() {
-        return Err(errors.join("\n").into());
-    }
+        ..
+    } = &*declared;
     let declared_ids = (blocks.iter().map(|b| ("block", b.id.as_str())))
         .chain(items.iter().map(|i| ("item", i.id.as_str())))
         .chain(types.iter().map(|t| ("block entity type", t.id.as_str())))
@@ -893,9 +964,9 @@ pub(super) fn content_overlay(
             Some(types) => types,
             None => known.insert(mod_content::known_components(root)?),
         };
-        let errors = mod_content::accept_declared(&mut mods, blocks, items, types, known);
-        if !errors.is_empty() {
-            return Err(errors.join("\n").into());
+        let refusals = mod_content::accept_declared(&mut mods, blocks, items, types, known);
+        if !refusals.is_empty() {
+            return Err(DeclarationFailures(refusals).into());
         }
         mod_content::accept_world_fluids(&mut mods, fluids);
         // A file item's remainder named a code-declared item that was refused: that mod
@@ -2075,14 +2146,49 @@ mod tests {
     }
 
     #[test]
+    fn native_declaration_diagnostics_report_each_bad_submission() {
+        struct DeclaresBadContent;
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for DeclaresBadContent {
+            fn blocks(&self, _: &RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
+                let _ = event.register(mod_api::Block::new("foreign:lamp", "minecraft:stone"));
+            }
+            fn items(&self, _: &RegistrationContext, event: &mut mod_api::ItemsEvent<'_>) {
+                let _ = event.register(mod_api::Item::new("Bad Key", "minecraft:stick"));
+            }
+        }
+        mod_platform::testing::with_mods(
+            vec![mod_api::ModEntry::new(
+                "maker",
+                Box::new(DeclaresBadContent),
+            )]
+            .into(),
+            || {
+                let error = freeze_declarations().unwrap_err();
+                let report = error.downcast_ref::<DeclarationFailures>().unwrap();
+                let messages: Vec<_> = report.messages().collect();
+                assert_eq!(messages.len(), 2);
+                assert_eq!(messages[0].key(), "sunrise.mods.declaration.block");
+                assert_eq!(messages[1].key(), "sunrise.mods.declaration.item");
+                let expected = [
+                    r#"Mod maker: block declaration refused: "foreign:lamp" in unowned namespace "foreign""#,
+                    r#"Mod maker: item declaration refused: invalid identifier "maker:Bad Key""#,
+                ];
+                assert_eq!(report.lines(), expected);
+                assert_eq!(error.to_string(), expected.join("\n"));
+            },
+        );
+    }
+
+    #[test]
     fn native_declarations_follow_the_scoped_mod_fixture() {
         struct DeclaresBlock;
         #[mod_api::__subscriptions]
         impl mod_api::Hooks for DeclaresBlock {
             fn blocks(&self, _: &RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
                 event
-                    .blocks
-                    .push(mod_api::Block::new("test:blastproof", "minecraft:stone"));
+                    .register(mod_api::Block::new("test:blastproof", "minecraft:stone"))
+                    .unwrap();
             }
         }
         mod_platform::testing::with_mods(Vec::new().into(), || {

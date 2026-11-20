@@ -4,7 +4,7 @@
 pub trait Hooks {
     /// Blocks this mod adds, declared in code rather than one file each
     /// (NeoForge's `DeferredRegister.Blocks` drained by `RegisterEvent`):
-    /// push a `mod_api::Block` per block, the same declaration
+    /// pass a `mod_api::Block` per block to `event.register`, the same declaration
     /// a content mod's `data/<id>/sunrise/block/<path>.json` holds (a
     /// vanilla `template`, `properties`, `state_properties`, `shapes`...),
     /// with its id in a namespace owned by your mod's manifest. It has a block
@@ -14,11 +14,8 @@ pub trait Hooks {
     /// recipes are its files), else one of their own, with the template's
     /// look. Ids, saves and the check that a joining client has the same
     /// blocks are the files' (docs/modding/src/how-to/content-mods.md). Asked once at start, on every
-    /// side, before any resource loads: push the same ones every time, from
-    /// nothing but your code. Unowned namespaces refuse registration, naming the mod
-    /// and namespace. Each mod receives its own declaration batch. Declarations
-    /// that don't pass the other files' checks
-    /// are logged and that namespace's are left out.
+    /// side, before any resource loads. Invalid IDs and unowned namespaces return a
+    /// typed error and refuse startup, even if the caller ignores the error.
     #[notes = r#"## Villager farming
 
 Farmers recognize mod blocks made from farmland and `CropBlock` templates, including declarations from
@@ -33,7 +30,8 @@ requires a farmer at work and `mob_griefing` enabled."#]
         contract = "collect",
         out = "blocks",
         context = "registration",
-        neoforge = "RegisterEvent"
+        neoforge = "RegisterEvent",
+        version = 2
     )]
     fn blocks();
 }

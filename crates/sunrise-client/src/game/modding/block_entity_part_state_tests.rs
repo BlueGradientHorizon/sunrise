@@ -76,8 +76,8 @@ impl Hooks for StateMod {
         r.block_entity_part_with_state(&kind, Press).unwrap();
     }
     fn blocks(&self, _: &mod_api::RegistrationContext, e: &mut mod_api::BlocksEvent<'_>) {
-        e.blocks
-            .push(mod_api::Block::new("part_state:press", "minecraft:barrel").with_item(false));
+        e.register(mod_api::Block::new("part_state:press", "minecraft:barrel").with_item(false))
+            .unwrap();
     }
 }
 

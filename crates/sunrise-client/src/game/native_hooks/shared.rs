@@ -3405,10 +3405,11 @@ mod tests {
                     .build();
             }
             fn blocks(&self, _context: &mod_api::RegistrationContext, event: &mut BlocksEvent<'_>) {
-                event.blocks.extend(
-                    [FIRST, SECOND, EMPTY, PLAIN]
-                        .map(|id| mod_api::Block::new(id, "minecraft:white_banner")),
-                );
+                for block in [FIRST, SECOND, EMPTY, PLAIN]
+                    .map(|id| mod_api::Block::new(id, "minecraft:white_banner"))
+                {
+                    event.register(block).unwrap();
+                }
             }
         }
         let case = std::env::var(CHILD).unwrap();

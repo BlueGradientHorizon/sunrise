@@ -141,8 +141,8 @@ fn enchant_particles_share_native_power_and_rebuild_only_on_parts_reload() {
         }
         fn blocks(&self, _: &mod_api::RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
             event
-                .blocks
-                .push(mod_api::Block::new(CUSTOM, "minecraft:glass"));
+                .register(mod_api::Block::new(CUSTOM, "minecraft:glass"))
+                .unwrap();
         }
     }
     let parts = std::env::var(CHILD).unwrap() == "parts";

@@ -1,4 +1,9 @@
 // exports: none (reached inside the crate only)
+use crate::{
+    __private::{DeclarationKind, DeclarationRefusal},
+    Answered, DeclarationError,
+};
+
 /// The package inventory carries the same namespace set as content files and
 /// the package loader's collision fence. A package always owns its own ID.
 pub fn owns_namespace(owner: &str, namespace: &str) -> bool {
@@ -21,14 +26,20 @@ pub fn qualified(owner: &str, name: &str) -> String {
 
 /// Validate and qualify a declaration using the package namespace inventory.
 pub fn owned_declaration_id(owner: &str, name: &str) -> Result<String, String> {
-    let id = qualified(owner, name);
-    let parsed = crate::Identifier::parse_namespaced(&id)
-        .ok_or_else(|| format!("mod {owner} declares invalid identifier {id:?}"))?;
+    validate_owned_id(owner, qualified(owner, name))
+        .map_err(|error| format!("mod {owner} declares {error}"))
+}
+
+fn validate_owned_id(owner: &str, id: String) -> Result<String, DeclarationError> {
+    let Some(parsed) = crate::Identifier::parse_namespaced(&id) else {
+        return Err(DeclarationError::InvalidId { id });
+    };
     let namespace = parsed.namespace();
     if !owns_namespace(owner, namespace) {
-        return Err(format!(
-            "mod {owner} declares {id:?} in unowned namespace {namespace:?}"
-        ));
+        return Err(DeclarationError::UnownedNamespace {
+            id,
+            namespace: namespace.to_owned(),
+        });
     }
     Ok(id)
 }
@@ -36,11 +47,15 @@ pub fn owned_declaration_id(owner: &str, name: &str) -> Result<String, String> {
 /// A declaration a mod's `blocks` or `items` hook adds: its id, and the names of other
 /// content it references.
 pub(crate) trait Declaration {
+    const KIND: DeclarationKind;
+
     /// The declared id and its optional references.
     fn names(&mut self) -> (&mut String, impl IntoIterator<Item = &mut Option<String>>);
 }
 
 impl Declaration for crate::Block {
+    const KIND: DeclarationKind = DeclarationKind::Block;
+
     fn names(&mut self) -> (&mut String, impl IntoIterator<Item = &mut Option<String>>) {
         (
             &mut self.id,
@@ -55,6 +70,8 @@ impl Declaration for crate::Block {
 }
 
 impl Declaration for crate::Item {
+    const KIND: DeclarationKind = DeclarationKind::Item;
+
     fn names(&mut self) -> (&mut String, impl IntoIterator<Item = &mut Option<String>>) {
         (
             &mut self.id,
@@ -63,17 +80,37 @@ impl Declaration for crate::Item {
     }
 }
 
-/// Make `declaration` mod `owner`'s: each bare reference names its own content, and
-/// the id must be in a namespace it owns. On an error the id is left as given.
-pub(crate) fn own_declaration(
-    owner: &str,
-    declaration: &mut impl Declaration,
-) -> Result<(), String> {
+/// Validate at the call site and keep the dispatch owner with the declaration.
+pub(crate) fn submit_declaration<D: Declaration>(
+    context: &crate::RegistrationContext,
+    mod_id: &'static str,
+    output: &mut Vec<Answered<D>>,
+    mut declaration: D,
+) -> Result<(), DeclarationError> {
     let (id, references) = declaration.names();
-    for reference in references.into_iter().flatten() {
-        *reference = qualified(owner, reference);
+    if !crate::registration_open() {
+        let error = DeclarationError::RegistrationClosed { id: id.clone() };
+        log::warn!("mod {mod_id} {:?} declaration refused: {error}", D::KIND);
+        return Err(error);
     }
-    *id = owned_declaration_id(owner, id)?;
+    *id = validate_owned_id(mod_id, qualified(mod_id, id)).inspect_err(|error| {
+        context
+            .declaration_refusals
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .push(DeclarationRefusal {
+                mod_id: mod_id.into(),
+                kind: D::KIND,
+                error: error.clone(),
+            });
+    })?;
+    for reference in references.into_iter().flatten() {
+        *reference = qualified(mod_id, reference);
+    }
+    output.push(Answered {
+        answer: declaration,
+        mod_id,
+    });
     Ok(())
 }
 
@@ -102,20 +139,13 @@ impl crate::RegistrationContext {
             warnings.push(super::registration_refusal::LoadingMessage::new(key, args));
         }
     }
-
-    pub(crate) fn refuse_declaration(&self, reason: String) {
-        self.declaration_refusals
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .push(reason);
-    }
 }
 
 /// The engine consumes block/item declaration ownership refusals before loading
 /// resources.
 // hidden: engine admission plumbing, re-exported through __private for the loader.
 #[doc(hidden)]
-pub fn take_declaration_refusals(context: &crate::RegistrationContext) -> Vec<String> {
+pub fn take_declaration_refusals(context: &crate::RegistrationContext) -> Vec<DeclarationRefusal> {
     std::mem::take(
         &mut *context
             .declaration_refusals

@@ -367,8 +367,8 @@ mod tests {
                 event: &mut mod_api::BlocksEvent<'_>,
             ) {
                 event
-                    .blocks
-                    .push(mod_api::Block::new(CRATE, "minecraft:stone"));
+                    .register(mod_api::Block::new(CRATE, "minecraft:stone"))
+                    .unwrap();
             }
         }
         let mods: mod_api::Mods =

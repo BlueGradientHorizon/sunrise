@@ -1,7 +1,27 @@
 # Registration and diagnostics
 
-Use `Hooks::register` to declare content and crash-report callbacks. If your bootstrap cannot
-complete, call `cx.refuse("reason")` and return. The registration error path reports the refusal without panicking or exiting the process.
+Declare keys, Parts, and crash-report callbacks in `Hooks::register`; submit blocks and items
+with `event.register(declaration)` in `Hooks::blocks` and `Hooks::items`. Like NeoForge's
+`RegisterEvent`, these hooks collect declarations once before the world opens. NeoForge's
+`DeferredRegister` rejects new entries after `RegisterEvent` fires; Sunrise's registrar and
+collect events are borrowed, so a mod cannot keep them for a later hook.
+
+If you expose registration to scripts, use `mod_api::registration_open()` in the binding to
+reject late calls with the requested ID (for example `DeclarationError::RegistrationClosed`).
+Run your declaring scripts in the relevant registration hook, not in `player_logged_in`.
+Queuing into a mod-owned list after registration is closed does not change the game's registry.
+A `true` phase read does not replace the event or registrar: you still need the borrowed
+registration API for the kind of declaration you are making.
+
+`BlocksEvent::register` and `ItemsEvent::register` return `DeclarationError` for a malformed ID
+or a namespace your manifest does not own. The game records the refusal even if you ignore the
+error. Valid declarations stay staged until cross-declaration checks complete: for example,
+a submitted item may conflict with another declaration's generated block item. Startup refuses
+invalid batches and reports the mod, kind, ID, and reason on separate lines in the startup error
+and log, following NeoForge's `ModLoadingIssue` model.
+
+If your `Hooks::register` bootstrap cannot complete, call `cx.refuse("reason")` and return.
+The registration error path reports the refusal without panicking or exiting from the hook.
 
 ## Registration refusal
 

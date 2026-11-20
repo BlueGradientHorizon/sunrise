@@ -209,63 +209,120 @@ mod tests {
     }
 
     #[test]
-    fn blocks_and_items_are_attributed_before_flattening_mod_outputs() {
+    fn registration_open_is_true_inside_register_and_false_after() {
+        struct ChecksPhase;
+        #[mod_api::__subscriptions]
+        impl Hooks for ChecksPhase {
+            fn register(&self, _: &mut dyn Registrar, _: &RegistrationContext) {
+                assert!(registration_open());
+            }
+        }
+        let mods = [ModEntry::new("phase", Box::new(ChecksPhase))];
+        assert!(!registration_open());
+        super::super::register_all(&mods, |_| false);
+        assert!(!registration_open());
+    }
+
+    #[test]
+    fn late_block_declaration_is_refused_with_its_id() {
+        struct Late;
+        #[mod_api::__subscriptions]
+        impl Hooks for Late {
+            fn blocks(&self, _: &RegistrationContext, event: &mut BlocksEvent<'_>) {
+                assert_eq!(
+                    event.register(Block::new("late:pot", "minecraft:stone")),
+                    Err(DeclarationError::RegistrationClosed {
+                        id: "late:pot".into()
+                    })
+                );
+            }
+        }
+        crate::testing::with_mods(vec![ModEntry::new("late", Box::new(Late))].into(), || {
+            let mut blocks = Vec::new();
+            // Call the engine dispatcher out of phase; a mod cannot retain the event.
+            crate::dispatch_blocks(&RegistrationContext::new(), &mut blocks);
+            assert!(blocks.is_empty());
+        });
+    }
+
+    #[test]
+    fn blocks_and_items_keep_their_owner_and_report_bad_ids_at_the_call() {
         struct Declares;
         #[crate::__subscriptions]
         impl Hooks for Declares {
             fn blocks(&self, _: &RegistrationContext, event: &mut BlocksEvent<'_>) {
-                event.blocks.push({
-                    let mut value: Block = Block::default();
-                    value.id = "legacy:pot".into();
-                    value.template = "minecraft:stone".into();
-                    value.block_item = Some("spoon".into());
-                    value.pick_item = Some("minecraft:stick".into());
-                    value.wall_block = Some("legacy:wall_pot".into());
-                    value.base_block = Some("soil".into());
-                    value
-                });
-                event.blocks.push({
-                    let mut value: Block = Block::default();
-                    value.id = "unowned:pot".into();
-                    value.template = "minecraft:stone".into();
-                    value
-                });
+                let mut value = Block::new("legacy:pot", "minecraft:stone");
+                value.block_item = Some("spoon".into());
+                value.pick_item = Some("minecraft:stick".into());
+                value.wall_block = Some("legacy:wall_pot".into());
+                value.base_block = Some("soil".into());
+                event.register(value).unwrap();
+                assert_eq!(
+                    event.register(Block::new("unowned:pot", "minecraft:stone")),
+                    Err(DeclarationError::UnownedNamespace {
+                        id: "unowned:pot".into(),
+                        namespace: "unowned".into(),
+                    })
+                );
             }
             fn items(&self, _: &RegistrationContext, event: &mut ItemsEvent<'_>) {
-                event.items.push({
-                    let mut value: Item = Item::default();
-                    value.id = "spoon".into();
-                    value.template = "minecraft:stick".into();
-                    value.crafting_remainder = Some("bowl".into());
-                    value.block = Some("minecraft:stone".into());
-                    value
-                });
+                let mut value = Item::new("spoon", "minecraft:stick");
+                value.crafting_remainder = Some("bowl".into());
+                value.block = Some("minecraft:stone".into());
+                event.register(value).unwrap();
+                assert_eq!(
+                    event.register(Item::new("Bad Name", "minecraft:stick")),
+                    Err(DeclarationError::InvalidId {
+                        id: "porter:Bad Name".into()
+                    })
+                );
             }
         }
         let mods: Mods = vec![ModEntry::new("porter", Box::new(Declares))].into();
         crate::testing::with_mods(mods, || {
             with_porter(|| {
+                let _registration =
+                    crate::__private::PhaseOwner::scope(crate::__private::ModPhase::Registration);
                 let context = RegistrationContext::new();
                 let mut blocks = Vec::new();
                 let mut items = Vec::new();
                 crate::dispatch_blocks(&context, &mut blocks);
                 crate::dispatch_items(&context, &mut items);
-                assert_eq!(blocks[0].id, "legacy:pot");
-                assert_eq!(items[0].id, "porter:spoon");
-                // A bare reference is the declaring mod's, as a bare id is; a full one is kept.
-                let pot = &blocks[0];
+                assert_eq!(blocks.len(), 1);
+                assert_eq!(blocks[0].mod_id, "porter");
+                let pot = &blocks[0].answer;
+                assert_eq!(pot.id, "legacy:pot");
+                // Bare references use the declaring mod, not the declaration's other namespace.
                 assert_eq!(pot.block_item.as_deref(), Some("porter:spoon"));
                 assert_eq!(pot.pick_item.as_deref(), Some("minecraft:stick"));
                 assert_eq!(pot.wall_block.as_deref(), Some("legacy:wall_pot"));
                 assert_eq!(pot.base_block.as_deref(), Some("porter:soil"));
-                assert_eq!(items[0].crafting_remainder.as_deref(), Some("porter:bowl"));
-                assert_eq!(items[0].block.as_deref(), Some("minecraft:stone"));
-                // Invalid output stays visible for an outer host dispatch to refuse
-                // too.
-                assert_eq!(blocks[1].id, "unowned:pot");
-                let errors = take_declaration_refusals(&context);
-                assert_eq!(errors.len(), 1);
-                assert!(errors[0].contains("porter") && errors[0].contains("unowned"));
+                assert_eq!(items.len(), 1);
+                let item = &items[0].answer;
+                assert_eq!(item.id, "porter:spoon");
+                assert_eq!(item.crafting_remainder.as_deref(), Some("porter:bowl"));
+                assert_eq!(item.block.as_deref(), Some("minecraft:stone"));
+                use crate::__private::{DeclarationKind, DeclarationRefusal};
+                assert_eq!(
+                    take_declaration_refusals(&context),
+                    [
+                        DeclarationRefusal {
+                            mod_id: "porter".into(),
+                            kind: DeclarationKind::Block,
+                            error: DeclarationError::UnownedNamespace {
+                                id: "unowned:pot".into(),
+                                namespace: "unowned".into(),
+                            },
+                        },
+                        DeclarationRefusal {
+                            mod_id: "porter".into(),
+                            kind: DeclarationKind::Item,
+                            error: DeclarationError::InvalidId {
+                                id: "porter:Bad Name".into()
+                            },
+                        },
+                    ]
+                );
             })
         });
     }

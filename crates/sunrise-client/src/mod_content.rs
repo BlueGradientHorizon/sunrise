@@ -19,6 +19,10 @@ use crate::{
     blocks::MAP_COLORS,
     mobs::data::{PartAnswers, PathComputationType, VALID_EMPTY_SPAWN},
 };
+use mod_api::{
+    __private::{DeclarationKind, DeclarationRefusal},
+    DeclarationError,
+};
 use serde::{Deserialize, Serialize, de};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -883,14 +887,14 @@ fn component_types(map: &J) -> BTreeSet<String> {
 /// Code declarations, joined to their manifest owner. Each owner's namespaces
 /// validate together, independent of namespace order, with all-or-nothing refusal.
 /// Unknown namespaces become synthetic content-only mods. Checked as files are
-/// ([`sunrise_mod_package::Content::declare`], [`accept_mod`]).
+/// ([`sunrise_mod_package::Content::declare`]).
 pub fn accept_declared(
     mods: &mut Vec<ContentMod>,
     blocks: &[sunrise_mod_package::content::Block],
     items: &[sunrise_mod_package::content::Item],
     types: &[BlockEntityType],
     known: &BTreeSet<String>,
-) -> Vec<String> {
+) -> Vec<DeclarationRefusal> {
     let owners: BTreeMap<_, _> = mods
         .iter()
         .flat_map(|m| {
@@ -925,41 +929,62 @@ pub fn accept_declared(
     let mut errors = Vec::new();
     for (id, (blocks, items)) in by_owner {
         let types = types.iter().filter(|t| owner(&t.id) == id).cloned();
-        let result = match mods.iter().position(|m| m.id == id) {
-            Some(i) => {
-                let mut content = sunrise_mod_package::Content::declared(&mods[i].id);
-                content.namespaces.clone_from(&mods[i].content.namespaces);
-                content.blocks.clone_from(&mods[i].content.blocks);
-                content.items.clone_from(&mods[i].content.items);
-                content
-                    .declare(&blocks, &items)
-                    .and_then(|()| {
-                        let mut added = sunrise_mod_package::Content::declared(&id);
-                        added.blocks.clone_from(&blocks);
-                        added.items.clone_from(&items);
-                        validate_components(&added, known).map_err(|e| e.to_string())
-                    })
-                    .map(|()| {
-                        mods[i].content.blocks.extend(blocks);
-                        mods[i].content.items.extend(items);
-                        mods[i].content.block_entity_types.extend(types);
-                    })
+        let existing = mods.iter().position(|m| m.id == id);
+        let mut content = Content::declared(&id);
+        if let Some(i) = existing {
+            content.namespaces.clone_from(&mods[i].content.namespaces);
+            content.blocks.clone_from(&mods[i].content.blocks);
+            content.items.clone_from(&mods[i].content.items);
+        }
+        if let Err(refusals) = content.declare(&blocks, &items) {
+            errors.extend(
+                refusals
+                    .into_iter()
+                    .map(|(kind, error)| DeclarationRefusal {
+                        mod_id: id.clone(),
+                        kind,
+                        error,
+                    }),
+            );
+            continue;
+        }
+        let before = errors.len();
+        for (kind, name, components) in items
+            .iter()
+            .map(|i| (DeclarationKind::Item, &i.id, &i.components))
+            .chain(
+                blocks
+                    .iter()
+                    .filter(|b| b.item)
+                    .map(|b| (DeclarationKind::Block, &b.id, &b.components)),
+            )
+        {
+            if let Err(reason) = validate_components_for(components, known) {
+                errors.push(DeclarationRefusal {
+                    mod_id: id.clone(),
+                    kind,
+                    error: DeclarationError::Rejected {
+                        id: name.clone(),
+                        reason: reason.to_string(),
+                    },
+                });
             }
-            None => {
-                let mut content = sunrise_mod_package::Content::declared(&id);
-                content.declare(&blocks, &items).and_then(|()| {
-                    content.block_entity_types.extend(types);
-                    let candidate = ContentMod {
-                        id: id.clone(),
-                        content,
-                        jars: Vec::new(),
-                    };
-                    accept_mod(mods, candidate, known).map_err(|e| e.to_string())
-                })
-            }
-        };
-        if let Err(e) = result {
-            errors.push(format!("native blocks and items of {id}: {e}"));
+        }
+        if errors.len() != before {
+            continue;
+        }
+        if let Some(i) = existing {
+            mods[i].content.blocks.extend(blocks);
+            mods[i].content.items.extend(items);
+            mods[i].content.block_entity_types.extend(types);
+        } else {
+            // The owner map already routed every occupied namespace to its mod.
+            content.block_entity_types.extend(types);
+            mods.push(ContentMod {
+                id,
+                content,
+                jars: vec![],
+            });
         }
     }
     errors
@@ -997,11 +1022,17 @@ fn validate_components(
             .filter(|b| b.item)
             .map(|b| (&b.id, &b.components)),
     ) {
-        let patch = component_patch(id, components)?;
-        patch_components(&mut J::Obj(Vec::new()), &patch, known)
-            .map_err(|e| format!("{id}: {e}"))?;
+        validate_components_for(components, known).map_err(|error| format!("{id}: {error}"))?;
     }
     Ok(())
+}
+
+fn validate_components_for(
+    components: &BTreeMap<String, serde_json::Value>,
+    known: &BTreeSet<String>,
+) -> Result<()> {
+    let patch = component_patch(components)?;
+    Ok(patch_components(&mut J::Obj(Vec::new()), &patch, known)?)
 }
 
 /// An item's component patch on its entry; `known` holds every type a vanilla item has, so typos fail.
@@ -1025,22 +1056,16 @@ fn patch_components(
 }
 
 /// A declared component patch, as the overlay's JSON.
-fn component_patch(
-    id: &str,
-    components: &BTreeMap<String, serde_json::Value>,
-) -> Result<Vec<(String, J)>> {
+fn component_patch(components: &BTreeMap<String, serde_json::Value>) -> Result<Vec<(String, J)>> {
     components
         .iter()
         .map(|(key, value)| {
             if !key.starts_with('!') && sunrise_protocol::item::custom::id(key).is_some() {
                 let tag = sunrise_client_core::scoreboard::json_to_tag(value);
                 sunrise_core::nbt::validate_component_value(&tag)
-                    .map_err(|error| format!("{id}: component {key}: {error}"))?;
+                    .map_err(|error| format!("component {key}: {error}"))?;
             }
-            Ok((
-                key.clone(),
-                serde_json::from_value(value.clone()).map_err(|error| format!("{id}: {error}"))?,
-            ))
+            Ok((key.clone(), serde_json::from_value(value.clone())?))
         })
         .collect()
 }
@@ -1684,7 +1709,8 @@ impl<'a> Plan<'a> {
                     rename: Rename::new(item, &b.decl.id),
                     max_stack_size: None,
                     rarity: None,
-                    components: component_patch(&b.decl.id, &b.decl.components)?,
+                    components: component_patch(&b.decl.components)
+                        .map_err(|error| format!("{}: {error}", b.decl.id))?,
                     crafting_remainder: None,
                     block: None,
                     arm_pose: None,
@@ -1705,7 +1731,8 @@ impl<'a> Plan<'a> {
                     rename: Rename::new(&i.template, &i.id),
                     max_stack_size: i.max_stack_size,
                     rarity: i.rarity,
-                    components: component_patch(&i.id, &i.components)?,
+                    components: component_patch(&i.components)
+                        .map_err(|error| format!("{}: {error}", i.id))?,
                     crafting_remainder: i.crafting_remainder.clone(),
                     block: i.block.clone(),
                     arm_pose: i.arm_pose,

@@ -1039,10 +1039,12 @@ mod tests {
                 _: &mod_api::RegistrationContext,
                 event: &mut mod_api::BlocksEvent<'_>,
             ) {
-                event.blocks.push(mod_api::Block::new(
-                    "fluid_filter_test:water_tank",
-                    "minecraft:stone",
-                ));
+                event
+                    .register(mod_api::Block::new(
+                        "fluid_filter_test:water_tank",
+                        "minecraft:stone",
+                    ))
+                    .unwrap();
             }
         }
         let mods: Mods = vec![ModEntry::new("fluid_filter_test", Box::new(WaterTanks))].into();

@@ -442,6 +442,14 @@ pub(super) fn emit<'a>(
         let event = fresh_name("event", &mut used);
         let event_type = format!("{}Event", hook_id(name));
         let hook_id = event_type.strip_suffix("Event").unwrap();
+        // The checked declaration view replaces the old plain collect output.
+        // Surface export reads the input tree's types, including older trees.
+        let declaration = match (name, output.as_ref()) {
+            ("blocks" | "items", Some((_, Type::Reference(output)))) => {
+                answered_batch(&output.elem).map(ToTokens::to_token_stream)
+            }
+            _ => None,
+        };
         if !is_render {
             hook_ids.push_str(&format!("{hook_id},\n"));
             hook_constants.push_str(&format!(
@@ -550,6 +558,14 @@ pub(super) fn emit<'a>(
             let ty = &owned_ty;
             dispatch_params.push(format!("{name}: {}", ty.to_token_stream()));
             if collect_cancel && name == "cancel" {
+                continue;
+            }
+            if declaration.is_some() && Some(name.as_str()) == out {
+                lifetimes.a = true;
+                fields.push_str(&format!(
+                    "mod_id: &'static str,\ncontext: &'a RegistrationContext,\n{name}: {},\n",
+                    lifetimes.field(ty).0.to_token_stream()
+                ));
                 continue;
             }
             let ty_tokens = ty.to_token_stream().to_string();
@@ -923,9 +939,7 @@ pub(super) fn emit<'a>(
             (Contract::Replace, Some(out)) => method_source.push_str(&format!(
                 "///\n/// Return `Some` to set `{out}`; the first {callee} returning `Some` wins.\n"
             )),
-            (Contract::Collect, Some(out)) if matches!(name, "blocks" | "items") => method_source.push_str(&format!(
-                "///\n/// Each mod receives its own empty `{event}.{out}` batch. A bare name, in an identifier or\n/// in `block_item`, `pick_item`, `wall_block`, `base_block`, `crafting_remainder` or `Item::block`,\n/// is that mod's own; declared identifiers must belong to\n/// that mod's manifest-owned namespaces, and unowned identifiers refuse registration.\n"
-            )),
+            (Contract::Collect, _) if declaration.is_some() => (),
             (Contract::Collect, Some(out)) if answered => method_source.push_str(&format!(
                 "///\n/// Each mod receives its own empty `{event}.{out}` batch; every entry it adds is recorded\n/// as that mod's.\n"
             )),
@@ -950,23 +964,34 @@ pub(super) fn emit<'a>(
         dispatch.push_str(&format!(
             "/// What [`{trait_name}::{name}`] is told. Each field is that hook's argument of the same name, described in the hook's doc.\n///\n{event_struct}"
         ));
+        if let Some(entry) = &declaration {
+            let out = out.unwrap();
+            dispatch.push_str(&format!(
+                "impl {event_type}<'_> {{\n\
+                 /// Submit a declaration in a manifest-owned namespace. A bare name or reference\n\
+                 /// uses the mod's ID as its namespace. A locally invalid declaration returns\n\
+                 /// a [`DeclarationError`] and is also reported at startup if ignored.\n\
+                 pub fn register(&mut self, entry: {entry}) -> Result<(), DeclarationError> {{\n\
+                     super::parts::submit_declaration(self.context, self.mod_id, self.{out}, entry)\n\
+                 }}\n}}\n"
+            ));
+        }
         if declaration_only {
             continue;
         }
-        let build = format!(
-            "{stack_snapshots}{}let {}{event} = {event_type} {{ {} }};",
-            if answered && contract == Contract::Collect {
-                format!("let mut {batch} = Vec::new(); ")
-            } else {
-                String::new()
-            },
-            if matches!(name, "blocks" | "items") {
-                ""
-            } else {
-                "mut "
-            },
-            inits.join(", "),
-        );
+        let build = if declaration.is_some() {
+            String::new()
+        } else {
+            format!(
+                "{stack_snapshots}{}let mut {event} = {event_type} {{ {} }};",
+                if answered && contract == Contract::Collect {
+                    format!("let mut {batch} = Vec::new(); ")
+                } else {
+                    String::new()
+                },
+                inits.join(", "),
+            )
+        };
         let write_back = if name == "block_entity_tick" {
             format!(
                 "*{event}.reply = if tick_changed {{ BlockEntityTickReply::Changed }} else {{ BlockEntityTickReply::Unchanged }}; {write_back}"
@@ -1176,10 +1201,10 @@ pub(super) fn emit<'a>(
         };
         let inert_owner = fresh_name("disabled_owner", &mut used);
         let (lookup, calls) = match &scoped {
-            None if matches!(name, "blocks" | "items") => (
+            None if declaration.is_some() => (
                 String::new(),
                 format!(
-                    "for (mod_id, {mod_item}) in super::entered_with_id(HookId::{hook_id}, \"{name}\") {{ let mut local = Vec::new(); {{ let mut {event} = {event_type} {{ {name}: &mut local }}; {mod_item}.{name}(context, &mut {event}); }} for declaration in &mut local {{ if let Err(reason) = super::parts::own_declaration(mod_id, declaration) {{ context.refuse_declaration(reason); }} }} {event}.{name}.extend(local); }}"
+                    "for (mod_id, {mod_item}) in super::entered_with_id(HookId::{hook_id}, \"{name}\") {{ let mut {event} = {event_type} {{ mod_id, context, {name} }}; {mod_item}.{name}(context, &mut {event}); }}"
                 ),
             ),
             None if hook.context == Some(PhaseContext::ChunkDisk) => (

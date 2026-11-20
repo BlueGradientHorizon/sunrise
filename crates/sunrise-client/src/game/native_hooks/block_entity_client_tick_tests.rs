@@ -132,8 +132,8 @@ impl Hooks for Probe {
     fn blocks(&self, _: &RegistrationContext, event: &mut BlocksEvent<'_>) {
         for block in [HUM, QUIET] {
             event
-                .blocks
-                .push(mod_api::Block::new(block, "minecraft:stone"));
+                .register(mod_api::Block::new(block, "minecraft:stone"))
+                .unwrap();
         }
     }
     fn client_tick_pre(&self, _: &mut dyn ClientHost, _: &mut ClientTickPreEvent) {
