@@ -211,9 +211,10 @@ mod tests {
                         Choice::MoveBystander => {
                             // This body was already selected. Raise it by 1/32 before
                             // its lift: using its old box would now overshoot the dirt.
-                            assert!(host.commands().run_command(
-                                "tp @e[type=minecraft:pig,x=1.8,y=63.9375,z=1.5,distance=..0,limit=1] 1.8 63.96875 1.5"
-                            ));
+                            let result = host.commands().run_command_with_output(
+                                "tp @e[type=minecraft:pig,x=1.8,y=63.9375,z=1.5,distance=..0,limit=1] 1.8 63.96875 1.5",
+                            );
+                            assert!(result.success, "bystander teleport: {:?}", result.feedback);
                         }
                         _ => {}
                     }
@@ -347,7 +348,8 @@ mod tests {
         }
         mod_platform::testing::with_mods(mods.into(), || {
             with_game(|game| {
-                if player {
+                if player || choice == Choice::MoveBystander {
+                    // The live-bounds case needs a server console for its teleport.
                     open_to_lan(game);
                 } else {
                     game.options.dedicated = Some(Vec::new());
