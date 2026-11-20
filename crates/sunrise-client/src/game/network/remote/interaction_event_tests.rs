@@ -48,7 +48,7 @@ enum Step {
     Phase(UsePhase, LogicalSide),
     BlockPart,
     EmptyPart(Hand, bool),
-    UseOnPart,
+    UseOnPart(LogicalSide),
     FirstPart,
     Air(LogicalSide, Hand),
     ItemPart,
@@ -290,11 +290,11 @@ impl ItemPart for Observer {
     }
     fn use_on(&self, host: HostSide<'_>, _: &mut UseOnEvent<'_>) -> Option<Answer> {
         let mut state = self.0.lock().unwrap();
-        let answer = match host {
-            HostSide::Server(_) => Answer::SuccessServer,
-            HostSide::Client(_) => state.client_use_on_answer?,
+        let (side, answer) = match host {
+            HostSide::Server(_) => (LogicalSide::Server, Answer::SuccessServer),
+            HostSide::Client(_) => (LogicalSide::Client, state.client_use_on_answer?),
         };
-        state.steps.push(Step::UseOnPart);
+        state.steps.push(Step::UseOnPart(side));
         Some(answer)
     }
     fn use_item(&self, host: HostSide<'_>, event: &mut UseItemEvent<'_>) -> Option<Answer> {
@@ -614,7 +614,7 @@ fn phase_events_replace_the_behaviour_before_its_part_on_both_sides() {
                 expected.push(Step::BlockPart);
                 expected.push(Step::Phase(UsePhase::ItemAfterBlock, side));
                 if !client {
-                    expected.push(Step::UseOnPart);
+                    expected.push(Step::UseOnPart(LogicalSide::Server));
                 }
                 assert_eq!(observer.0.lock().unwrap().steps, expected);
 
@@ -1402,7 +1402,7 @@ fn client_empty_block_part_runs_only_for_the_selected_main_hand_fallback() {
                         Step::BlockPart,
                         Step::EmptyPart(Hand::Main, true),
                         Step::Phase(UsePhase::ItemAfterBlock, LogicalSide::Client),
-                        Step::UseOnPart,
+                        Step::UseOnPart(LogicalSide::Client),
                     ],
                     "{answer:?}",
                 );
@@ -1637,7 +1637,7 @@ fn an_item_used_from_the_off_hand_reaches_the_use_hooks_on_the_server() {
                         .all(|h| *h == Hand::Off || guest.is_none())
                 );
                 assert_eq!(state.hands.as_ref().unwrap().last(), Some(&Hand::Off));
-                assert_eq!(state.steps.last(), Some(&Step::UseOnPart));
+                assert_eq!(state.steps.last(), Some(&Step::UseOnPart(side)));
             }
         });
     });
