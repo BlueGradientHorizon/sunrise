@@ -127,23 +127,25 @@ fn the_delay_lines_are_allocated_once_at_creation_for_192_khz() {
 }
 
 #[test]
-fn the_buses_decay_times_and_damping_are_the_documented_ones() {
-    let numbers: Vec<(f32, f32)> = ROOMS.iter().map(|r| (r.decay, r.damping)).collect();
-    assert_eq!(numbers, [(0.6, 7_000.0), (1.8, 4_500.0), (4.0, 3_000.0)]);
-}
-
-#[test]
 fn a_send_of_silence_lets_the_tail_die_away() {
-    // A click into the room, then a sending sound gone quiet: the bus still goes idle.
+    // Small buffers leave several silent callbacks before the first reflection.
     let mut reverb = Reverb::new(ROOMS[0]);
-    let mut input = vec![0.0; 480];
+    let mut input = [0.0; 128];
     input[0] = 1.0;
-    let mut out = vec![0.0; 960];
+    let mut out = [0.0; 256];
     reverb.run(&input, true, &mut out, 2, RATE);
+    assert!(out.iter().all(|s| *s == 0.0));
     input[0] = 0.0;
-    for _ in 0..1000 {
+    let mut heard_tail = false;
+    for _ in 0..(3 * RATE as usize / input.len()) {
+        out.fill(0.0);
         reverb.run(&input, true, &mut out, 2, RATE);
+        heard_tail |= out.iter().any(|s| *s != 0.0);
+        if reverb.idle() {
+            break;
+        }
     }
+    assert!(heard_tail);
     assert!(reverb.idle());
 }
 

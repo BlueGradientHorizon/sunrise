@@ -995,11 +995,19 @@ pub trait Backend {
     fn unpause(&mut self, channel: ChannelId);
     /// `Channel.stopped`.
     fn stopped(&mut self, channel: ChannelId) -> bool;
-    /// Update volume, pitch, and position in a single backend call.
-    fn update_channel(&mut self, channel: ChannelId, volume: f32, pitch: f32, position: [f64; 3]) {
+    /// Update volume, pitch, position, and effects in a single backend call.
+    fn update_channel(
+        &mut self,
+        channel: ChannelId,
+        volume: f32,
+        pitch: f32,
+        position: [f64; 3],
+        effects: mod_api::SoundEffects,
+    ) {
         self.set_volume(channel, volume);
         self.set_pitch(channel, pitch);
         self.set_position(channel, position);
+        self.set_effects(channel, effects);
     }
     /// Filter which handles have stopped playing in a single pass.
     fn filter_stopped(&mut self, live: &[(u64, ChannelId)], stopped: &mut Vec<u64>) {
@@ -1693,8 +1701,7 @@ impl SoundEngine {
                 h.pitch_edited = pitch_edited;
             }
             if let Some(c) = self.handles.get(&handle).and_then(handle_channel) {
-                backend.update_channel(c, volume, pitch, position);
-                backend.set_effects(c, effects);
+                backend.update_channel(c, volume, pitch, position, effects);
             }
             let instance = self.instances.get_mut(&id).expect("present");
             if instance.looping

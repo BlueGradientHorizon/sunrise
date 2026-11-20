@@ -719,13 +719,21 @@ impl Backend for MixerBackend {
     fn set_effects(&mut self, channel: ChannelId, effects: mod_api::SoundEffects) {
         self.with(channel, |c| c.fx.target = effects);
     }
-    fn update_channel(&mut self, channel: ChannelId, volume: f32, pitch: f32, position: [f64; 3]) {
+    fn update_channel(
+        &mut self,
+        channel: ChannelId,
+        volume: f32,
+        pitch: f32,
+        position: [f64; 3],
+        effects: mod_api::SoundEffects,
+    ) {
         if let Ok(mut m) = self.mixer.lock()
             && let Some(c) = m.channels.get_mut(&channel)
         {
             c.gain = volume;
             c.pitch = pitch;
             c.at = [position[0] as f32, position[1] as f32, position[2] as f32];
+            c.fx.target = effects;
         }
     }
     fn filter_stopped(&mut self, live: &[(u64, ChannelId)], stopped: &mut Vec<u64>) {
@@ -877,7 +885,6 @@ fn distance_gain(linear: Option<f32>, distance: f32) -> f32 {
 /// (linear interpolation, looping or stopping at the end), its direct sound filtered and panned
 /// by `[left, right, gain]` into `out`, and its sends, at the sound's distance gain, into the
 /// shared reverbs' input.
-#[cfg_attr(not(feature = "audio"), allow(dead_code))]
 fn mix_with_effects(
     c: &mut Channel,
     (samples, source_channels, frames, step): (&[f32], usize, usize, f64),

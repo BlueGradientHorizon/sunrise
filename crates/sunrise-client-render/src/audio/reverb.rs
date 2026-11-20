@@ -10,9 +10,8 @@
 //! the start of each line. A bus with nothing sent to it, whose tail has died away, costs one
 //! check per buffer.
 //!
-//! Each bus's `decay` is its 60 dB time below its `damping` frequency; the one-pole low-pass in
-//! the loop (unity at 0 Hz, about -3 dB at `damping` on each pass) makes higher frequencies die
-//! sooner.
+//! Each bus's `decay` is its 60 dB decay time at low frequencies. The one-pole low-pass in the
+//! loop (unity at 0 Hz, about -3 dB at `damping` on each pass) makes higher frequencies die sooner.
 
 /// How many shared reverbs there are: room, hall, cavern.
 pub(super) const BUSES: usize = 3;
@@ -78,6 +77,10 @@ pub(super) struct Reverb {
     lp: [f32; LINES],
     /// The output rate the lines are set for; 0 before the first buffer.
     rate: u32,
+    /// Consecutive frames with no input or appreciable signal in the tail.
+    quiet_frames: usize,
+    /// The longest delay: shorter gaps can still hide a pending reflection.
+    longest_delay: usize,
     /// Its tail has died away and nothing is sent to it: it is skipped.
     idle: bool,
 }
@@ -107,6 +110,8 @@ impl Reverb {
             damp: 1.0,
             lp: [0.0; LINES],
             rate: 0,
+            quiet_frames: 0,
+            longest_delay: 1,
             idle: true,
         }
     }
@@ -132,6 +137,8 @@ impl Reverb {
         self.memory.fill(0.0);
         self.lp = [0.0; LINES];
         self.rate = rate;
+        self.quiet_frames = 0;
+        self.longest_delay = self.len.into_iter().max().unwrap_or(1);
         self.idle = true;
     }
 
@@ -160,10 +167,12 @@ impl Reverb {
             return;
         }
         let mut loudest = 0.0f32;
+        let mut frames = 0;
         for (x, frame) in input.iter().zip(out.chunks_mut(channels)) {
             let mut v = [0.0f32; LINES];
             for (i, v) in v.iter_mut().enumerate() {
                 *v = self.memory[self.start[i] + self.at[i]];
+                loudest = loudest.max(v.abs());
             }
             // Two different sign patterns of the lines, so the two ears hear unrelated tails.
             let left = (v[0] - v[1] + v[2] - v[3] + v[4] - v[5] + v[6] - v[7]) * OUTPUT;
@@ -182,15 +191,23 @@ impl Reverb {
                 self.lp[i] += (fed - self.lp[i]) * self.damp;
                 // Alternate signs keep the input from piling up in one of the matrix's modes.
                 let input = if i % 2 == 0 { x } else { -x };
-                self.memory[self.start[i] + self.at[i]] = self.lp[i] + input;
+                let sample = self.lp[i] + input;
+                self.memory[self.start[i] + self.at[i]] = sample;
+                loudest = loudest.max(sample.abs());
                 self.at[i] += 1;
                 if self.at[i] == self.len[i] {
                     self.at[i] = 0;
                 }
             }
+            frames += 1;
         }
         self.lp.iter_mut().for_each(super::fx::flush_tiny);
-        self.idle = !fed && loudest < SILENT;
+        if fed || loudest >= SILENT {
+            self.quiet_frames = 0;
+        } else {
+            self.quiet_frames += frames;
+        }
+        self.idle = self.quiet_frames >= self.longest_delay;
     }
 }
 

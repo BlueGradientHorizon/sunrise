@@ -93,7 +93,7 @@ meshed so far and nothing where a section is not meshed yet.
 - `amount`, from 0 to 1, is the fraction of every sound's volume taken away.
 - `lowpass`, from 0 to 1, dulls the output, from untouched to a 300 Hz low-pass.
 - Both effects start at full strength and fade linearly over `ticks` client ticks. The fade waits while the game is paused.
-- The sound events in `exempt` remain clear, including ones already playing. Use this for the mod's ringing sound. Other sounds already playing, music and interface clicks are muffled too.
+- The sound events in `exempt` keep their direct sound clear, including ones already playing, but their shared reverb tail is still muffled. Use this for the mod's ringing sound. Other sounds already playing, music and interface clicks are muffled too.
 
 A new call replaces the current muffle; `ticks` of 0 ends it immediately. The effect belongs to the client’s sound output. The call refuses an amount or strength outside 0 to 1, more than 64 exempt events, or an exempt event that is not a namespaced sound ID, without changing the output. Server code cannot call this client-only service.
 
@@ -157,7 +157,7 @@ Each reverb is an eight-line feedback delay network shared by every sound that s
 | `hall` | 1.8 s | 4500 Hz | 30.0 to 73.2 ms | a large build, a ravine |
 | `cavern` | 4.0 s | 3000 Hz | 46.2 to 112.6 ms | a deep cave, a stronghold |
 
-The decay is the time for the tail to fall 60 dB below the damping frequency. The damping is a one-pole low-pass inside
+The decay is the time for the tail to fall 60 dB at low frequencies. The damping is a one-pole low-pass inside
 the loop, flat at 0 Hz and about 3 dB down at the damping frequency on each pass through a line, so higher frequencies
 die sooner, as in a real room. The line lengths set how dense the echoes are. The reverbs' delay lines are allocated
 once, when the sound system starts, and about 1.1 MiB is used whatever the device's rate. A reverb nothing is sent to
