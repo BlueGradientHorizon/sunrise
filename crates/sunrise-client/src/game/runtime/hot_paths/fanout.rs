@@ -1,24 +1,34 @@
 //! Fan-out over native dispatch, with one counted call per subscribed mod.
 use super::{Game, Recorder};
-use std::{cell::Cell, num::NonZeroU16};
+use std::{
+    cell::{Cell, OnceCell},
+    num::NonZeroU16,
+    sync::LazyLock,
+};
 use sunrise_client::Result;
 
 const CALLS: u64 = 100_000;
 
 thread_local! {
-    // Callbacks and measurements run on the same server thread. Counting does not allocate
-    // or add a contended atomic operation to any listener.
-    static LISTENER_CALLS: Cell<u64> = const { Cell::new(0) };
+    // Allocate the slots before measuring on the server thread. Outside the measured fixture
+    // an incidental call on another thread has nothing to count.
+    static LISTENER_CALLS: OnceCell<Box<[Cell<u64>]>> = const { OnceCell::new() };
 }
 
-/// Observable work performed by each of the benchmark executable's fan-out listeners.
+/// Record a call to one independently registered listener without allocating or locking.
 #[doc(hidden)]
-pub fn note_hot_paths_listener_call() {
-    LISTENER_CALLS.set(LISTENER_CALLS.get() + 1);
+pub fn note_hot_paths_listener_call(slot: usize) {
+    LISTENER_CALLS.with(|calls| {
+        if let Some(calls) = calls.get() {
+            let count = &calls[slot];
+            count.set(count.get() + 1);
+        }
+    });
 }
 
 /// Which native benchmark listeners the executable is asked to install for this process.
 #[doc(hidden)]
+#[derive(Clone, Copy)]
 pub enum HotPathsMods {
     None,
     Native,
@@ -27,16 +37,22 @@ pub enum HotPathsMods {
 
 impl HotPathsMods {
     pub fn from_env() -> Result<Self> {
-        let mods = std::env::var("SUNRISE_HOT_PATHS_MODS").unwrap_or_default();
-        if mods == "native" {
-            Ok(Self::Native)
-        } else if let Some(count) = mods.strip_prefix("fanout-") {
-            Ok(Self::Fanout(count.parse().map_err(|error| {
-                format!("invalid SUNRISE_HOT_PATHS_MODS={mods}: {error}")
-            })?))
-        } else {
-            Ok(Self::None)
-        }
+        static MODE: LazyLock<std::result::Result<HotPathsMods, String>> = LazyLock::new(|| {
+            let mods = std::env::var("SUNRISE_HOT_PATHS_MODS").unwrap_or_default();
+            if mods == "native" {
+                Ok(HotPathsMods::Native)
+            } else if let Some(count) = mods.strip_prefix("fanout-") {
+                count
+                    .parse()
+                    .map(HotPathsMods::Fanout)
+                    .map_err(|error| format!("invalid SUNRISE_HOT_PATHS_MODS={mods}: {error}"))
+            } else {
+                Ok(HotPathsMods::None)
+            }
+        });
+        MODE.as_ref()
+            .copied()
+            .map_err(|error| error.as_str().into())
     }
 }
 
@@ -46,20 +62,28 @@ impl Game<'_> {
         recorder: &mut Recorder,
         listeners: NonZeroU16,
     ) -> Result<()> {
+        LISTENER_CALLS.with(|calls| {
+            calls.get_or_init(|| (0..listeners.get()).map(|_| Cell::new(0)).collect());
+        });
         let entity_tick = format!("mod.hook.fanout.entity_tick.{listeners}");
         let server_started = format!("mod.hook.fanout.server_started.{listeners}");
         if recorder.wants(&entity_tick) {
             self.hot_level(5, 2)?;
             self.hot_mobs(128, 2)?;
             let dimension = self.dim.id().to_owned();
-            let entities: Vec<_> = self.mobs.iter().map(|mob| mob.id).collect();
+            let entities: Vec<_> = self
+                .mobs
+                .iter()
+                .map(|mob| (mob.id, mob.kind.id.clone()))
+                .collect();
             let mut canceled = Vec::new();
-            measure(recorder, &entity_tick, listeners, || {
+            measure(recorder, &entity_tick, || {
                 for call in 0..CALLS as usize {
+                    let (entity, kind) = &entities[call % entities.len()];
                     self.native_entity_tick_pre(
                         &dimension,
-                        std::slice::from_ref(&entities[call % entities.len()]),
-                        &["minecraft:cow"],
+                        std::slice::from_ref(entity),
+                        &[kind.as_str()],
                         &mut canceled,
                     );
                     canceled.clear();
@@ -70,7 +94,7 @@ impl Game<'_> {
             self.hot_level(5, 2)?;
             // One notification per successful server start in play. Repeat just the
             // notification to measure dispatch, not the cost of opening a world.
-            measure(recorder, &server_started, listeners, || {
+            measure(recorder, &server_started, || {
                 for _ in 0..CALLS {
                     self.native_server_started(true);
                 }
@@ -80,21 +104,51 @@ impl Game<'_> {
     }
 }
 
-fn measure(
-    recorder: &mut Recorder,
-    name: &str,
-    listeners: NonZeroU16,
-    dispatch: impl FnOnce(),
-) -> Result<()> {
-    LISTENER_CALLS.set(0);
-    recorder.measure(name, CALLS, || {
-        dispatch();
-        LISTENER_CALLS.get()
-    })?;
-    let observed = LISTENER_CALLS.get();
-    let expected = u64::from(listeners.get()) * CALLS;
-    if observed != expected {
-        return Err(format!("{name}: expected {expected} listener calls, got {observed}").into());
+fn measure(recorder: &mut Recorder, name: &str, dispatch: impl FnOnce()) -> Result<()> {
+    LISTENER_CALLS.with(|calls| {
+        let calls = calls
+            .get()
+            .expect("fan-out slots are initialized by the fixture");
+        for count in calls {
+            count.set(0);
+        }
+        recorder.measure_checked(name, CALLS, dispatch, |()| {
+            verified_calls(name, calls, CALLS)
+        })
+    })
+}
+
+fn verified_calls(name: &str, calls: &[Cell<u64>], expected: u64) -> Result<u64> {
+    let mut total = 0;
+    for (slot, count) in calls.iter().enumerate() {
+        let observed = count.get();
+        if observed != expected {
+            return Err(format!(
+                "{name}: listener {slot} expected {expected} calls, got {observed}"
+            )
+            .into());
+        }
+        total += observed;
     }
-    Ok(())
+    Ok(total)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_doubled_listener_cannot_make_up_for_a_missing_listener() {
+        let counts = [Cell::new(0), Cell::new(0)];
+        LISTENER_CALLS.with(|calls| {
+            calls.set(Box::new(counts)).unwrap();
+            note_hot_paths_listener_call(1);
+            note_hot_paths_listener_call(1);
+            let slots = calls.get().unwrap();
+            assert!(verified_calls("fanout", slots, 1).is_err());
+            slots[1].set(1);
+            note_hot_paths_listener_call(0);
+            assert_eq!(verified_calls("fanout", slots, 1).unwrap(), 2);
+        });
+    }
 }

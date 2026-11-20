@@ -105,9 +105,8 @@ def run_game(game, resources, work, mods, only, prefix=()):
     """One process of the benchmark; returns its lines by workload name."""
     work.mkdir(parents=True)
     out = work / 'workloads.jsonl'
-    env = scratch_env(work, SUNRISE_HOT_PATHS=str(out), SUNRISE_HOT_PATHS_MODS=mods)
-    if only:
-        env['SUNRISE_HOT_PATHS_ONLY'] = only
+    env = scratch_env(work, SUNRISE_HOT_PATHS=str(out), SUNRISE_HOT_PATHS_MODS=mods,
+                      SUNRISE_HOT_PATHS_ONLY=only)
     game_dir = work / 'game'
     game_dir.mkdir()
     command = [*prefix, str(game), '--resources', str(resources), '--game-dir', str(game_dir)]
@@ -197,7 +196,8 @@ def measure(args):
     samples = {}  # (workload, metric) -> per-operation values
     checksums, operations, notes = {}, {}, []
     modes = {'none': set(), 'native': set()}
-    prefixes = tuple(args.only.split(',')) if args.only else ('',)
+    only = args.only if args.only is not None else os.environ.get('SUNRISE_HOT_PATHS_ONLY', '')
+    prefixes = tuple(only.split(','))
     max_fanout = 0
     for count in FANOUT_COUNTS:
         names = {f'mod.hook.fanout.{hook}.{count}' for hook in FANOUT_HOOKS}
@@ -221,14 +221,14 @@ def measure(args):
 
         for mods in modes:
             for sample in range(args.wall_samples):
-                rows = run_game(game, resources, work / f'wall-{mods}-{sample}', mods, args.only)
+                rows = run_game(game, resources, work / f'wall-{mods}-{sample}', mods, only)
                 take(rows, mods, sample)
                 for name, row in rows.items():
                     samples.setdefault((name, 'wall_ns'), []).append(row['wall_ns'] / row['operations'])
             if not valgrind:
                 continue
             for sample in range(args.count_samples):
-                counted, rows = callgrind(valgrind, game, resources, work / f'count-{mods}-{sample}', mods, args.only)
+                counted, rows = callgrind(valgrind, game, resources, work / f'count-{mods}-{sample}', mods, only)
                 take(rows, mods, f'callgrind-{sample}')
                 missing = modes[mods] - counted.keys()
                 if missing:

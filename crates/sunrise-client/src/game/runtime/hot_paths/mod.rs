@@ -52,6 +52,17 @@ impl Recorder {
         operations: u64,
         work: impl FnOnce() -> T,
     ) -> Result<()> {
+        self.measure_checked(name, operations, work, Ok)
+    }
+
+    /// Check and derive the checksum from the measured work after stopping the counters.
+    fn measure_checked<T, C: Hash>(
+        &mut self,
+        name: &str,
+        operations: u64,
+        work: impl FnOnce() -> T,
+        checksum: impl FnOnce(T) -> Result<C>,
+    ) -> Result<()> {
         let label = CString::new(name)?;
         let started = Instant::now();
         sunrise_threads::callgrind::start();
@@ -59,7 +70,7 @@ impl Recorder {
         sunrise_threads::callgrind::stop(&label);
         let wall = started.elapsed();
         let mut hash = DefaultHasher::new();
-        done.hash(&mut hash);
+        checksum(done)?.hash(&mut hash);
         writeln!(
             self.out,
             "{}",

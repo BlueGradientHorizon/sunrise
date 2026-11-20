@@ -34,7 +34,7 @@ impl Hooks for Listener {
     fn entity_tick_post(&self, _: HostSide<'_>, _: &mut EntityTickPostEvent<'_>) {}
 }
 
-struct FanoutListener;
+struct FanoutListener(usize);
 
 #[mod_api::__subscriptions]
 impl Hooks for FanoutListener {
@@ -43,11 +43,11 @@ impl Hooks for FanoutListener {
     }
 
     fn entity_tick_pre(&self, _: HostSide<'_>, _: &mut EntityTickPreEvent<'_>) {
-        note_hot_paths_listener_call();
+        note_hot_paths_listener_call(self.0);
     }
 
     fn server_started(&self, _: &mut dyn ServerHost, _: &mut ServerStartedEvent) {
-        note_hot_paths_listener_call();
+        note_hot_paths_listener_call(self.0);
     }
 }
 
@@ -70,7 +70,8 @@ fn main() -> sunrise_client::Result<()> {
                 .collect();
             let entries = built
                 .iter()
-                .map(|item| ModEntry::new(item.id, Box::new(FanoutListener)))
+                .enumerate()
+                .map(|(slot, item)| ModEntry::new(item.id, Box::new(FanoutListener(slot))))
                 .collect();
             (entries, Box::leak(built.into_boxed_slice()))
         }
