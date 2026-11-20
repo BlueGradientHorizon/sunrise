@@ -125,7 +125,7 @@ impl super::Renderer {
 const BLOCK_OFFSETS: [u64; 4] = [0, 256, 512, 768];
 const BLOCK_SIZES: [u64; 4] = [48, 64, 160, 48];
 
-pub(super) struct CoreText {
+pub(crate) struct CoreText {
     pub(super) polygon_offset: Option<wgpu::RenderPipeline>,
     pub(super) see_through: Option<wgpu::RenderPipeline>,
     pub(super) group: wgpu::BindGroup,

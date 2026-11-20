@@ -22,7 +22,7 @@ struct Uniform {
     hdr_light: [f32; 4],
 }
 
-pub(super) struct Stars {
+pub(crate) struct Stars {
     pipeline: wgpu::RenderPipeline,
     group: wgpu::BindGroup,
     uniform: wgpu::Buffer,
