@@ -279,9 +279,14 @@ impl Game<'_> {
             .min_by(|a, b| a.1.total_cmp(&b.1))
             .map(|(id, _)| id)
     }
-    /// `LevelRenderer`: the camera entity is not drawn from its own eyes.
+    /// `LevelRenderer`: the camera entity is not drawn from its own eyes, but a sleeping one is.
     pub(super) fn hides_as_camera(&self, id: u32) -> bool {
-        self.camera_type.is_first_person() && self.remote_camera_id() == Some(id)
+        self.camera_type.is_first_person()
+            && self.remote_camera_id() == Some(id)
+            && !self
+                .mobs
+                .iter()
+                .any(|m| m.id == id && sunrise_client::mobs::villager::sleeping(m))
     }
 }
 
