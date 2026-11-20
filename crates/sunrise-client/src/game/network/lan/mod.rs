@@ -1139,7 +1139,7 @@ impl Game<'_> {
     pub(super) fn lan_status(&self) -> serde_json::Value {
         use serde_json::json;
         match &self.lan {
-            Some(h) if !self.serving() || self.published_port().is_some() => json!({
+            Some(h) if self.open_to_others() => json!({
                 "open": true,
                 // The owner's profile name.
                 "host": self.options.player_name(),
@@ -1211,11 +1211,7 @@ impl Game<'_> {
             &self.res.core.item_data,
             &self.pack_files(),
         )?;
-        let features = if self.level.enabled_features.is_empty() {
-            vec!["minecraft:vanilla".to_owned()]
-        } else {
-            self.level.enabled_features.to_vec()
-        };
+        let features = self.enabled_feature_ids().to_vec();
         // A world whose packs change biomes sends its own biome registry.
         let packed = self.world_biomes.clone().filter(|b| b.has_packs());
         if packed.is_some()
@@ -1481,7 +1477,7 @@ impl Game<'_> {
         others: &[u32],
         remove: bool,
     ) -> Option<(sunrise_core::nbt::Tag, [i32; 4])> {
-        vehicle?;
+        let vehicle = vehicle?;
         let back = self.dim;
         let theirs = super::Dim::from_id(dim);
         if theirs != back
@@ -1490,26 +1486,23 @@ impl Game<'_> {
             log::error!("could not open {}: {e}", theirs.id());
             return None;
         }
-        let found = if self.dim == theirs {
-            self.parent_vehicle_tag(vehicle, others)
+        let saved = if self.dim == theirs {
+            self.snapshot_parent_vehicle(vehicle, others, remove)
         } else {
             None
         };
-        if remove && let Some((_, root, _)) = &found {
-            self.remove_vehicle_tree(*root);
-        }
         if self.dim != back
             && let Err(e) = self.enter_level(back)
         {
             log::error!("could not reopen {}: {e}", back.id());
         }
-        found.map(|(tag, _, attach)| (tag, attach))
+        saved
     }
-    /// `PlayerList.remove` of a guest out of the hub: its file takes the
-    /// vehicle it alone rides (`saveParentVehicle`'s RootVehicle, kept in
-    /// `saved` as a file not yet ridden again), the vehicle tree leaves the
-    /// world, and the guest stops riding (`unRide`). A guest the crash save excludes keeps
-    /// the vehicle in the world: its file is not written, so nothing would hold it.
+    /// `PlayerList.remove` of a guest out of the hub: the vehicle it alone rides
+    /// leaves the world, and the guest stops riding (`unRide`). The file takes
+    /// a persistent tree as `RootVehicle` (`saved` holds it until the next ride).
+    /// A guest the crash save excludes keeps the vehicle in the world: its file
+    /// is not written, so nothing would hold it.
     pub(super) fn take_parent_vehicle(&mut self, guest: &mut sunrise_client::lan::guest::Guest) {
         // An interrupted player's file is not written, so the vehicle stays in the world.
         if self.crash_save.excludes(guest.conn) {
@@ -2082,7 +2075,9 @@ impl Game<'_> {
             }
             match event {
                 HostEvent::InputCredits(credits) => drop(credits),
-                HostEvent::RawPayload(delivery) => self.receive_raw_delivery(delivery),
+                HostEvent::RawPayload(delivery) => {
+                    self.run_payload(delivery.endpoint, delivery.incoming);
+                }
                 event @ (HostEvent::Chat { .. } | HostEvent::Warn(_) | HostEvent::Error(_)) => {
                     self.lan_log_event(event);
                 }
@@ -5103,6 +5098,7 @@ mod sources_tests {
             overlay_key(&PackOverlay {
                 conditions: &sunrise_world::conditions::LoadConditions::vanilla(),
                 files,
+                ..PackOverlay::default()
             })
         };
         assert_eq!(key(&files), key(&files.clone()));

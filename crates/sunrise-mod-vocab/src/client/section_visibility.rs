@@ -2,10 +2,8 @@
 //! the raw section a client mod reads and the frozen answer it gives before the section meshes.
 //!
 //! The game captures the input and asks on the client world thread, never on a meshing worker; the
-//! workers read only the checked answers. Every value here is a bounded integer value, the same
-//! on native and wasm.
-#[allow(unused_imports)]
-use crate::*;
+//! workers read only the checked answers.
+use crate::BlockStateId;
 
 /// Cells along each axis of a [`SectionVisibilityInput`]: the section's 16 and one each side.
 pub const SECTION_INPUT_SIDE: usize = 18;
@@ -19,7 +17,6 @@ pub const ALL_FACES: u8 = 0b11_1111;
 /// One cell of a [`SectionVisibilityInput`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
 pub enum SectionCell {
     /// The block state there as the world holds it, before any mod hid it: a state a
     /// `block_render_visibility` part hides still reads here as itself. Above or below the
@@ -36,7 +33,6 @@ pub enum SectionCell {
 /// nothing beyond the border is available.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
 pub struct SectionVisibilityInput {
     /// The block position of the section's lowest corner: a multiple of 16 on each axis.
     pub origin: [i32; 3],
@@ -99,7 +95,6 @@ impl SectionVisibilityInput {
 /// hidden, and what one mod hides no other mod brings back.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
 pub struct CellVisibility {
     /// The cell, from the section's lowest corner: 0 to 15 on each axis.
     pub pos: [u8; 3],
@@ -134,11 +129,10 @@ impl CellVisibility {
 /// A mod's answer for one section in `section_visibility`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
 pub enum SectionVisibility {
     /// The section draws, with these cells changed, each named at most once and at most
     /// [`MAX_CELL_RECORDS`] of them. `Keep(vec![])` changes nothing.
-    Keep(#[wire(max = MAX_CELL_RECORDS)] Vec<CellVisibility>),
+    Keep(Vec<CellVisibility>),
     /// None of the section's terrain draws: no block model, fluid or section geometry quads,
     /// and it hides nothing behind it. Block entities that draw themselves, entities and
     /// collision are untouched.
@@ -184,7 +178,6 @@ impl SectionVisibility {
 /// refused whole, logged once with the mod named, and the section draws as if it had not answered.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
 pub enum SectionVisibilityRefusal {
     /// `E_SECTION_VISIBILITY_OUTSIDE_INPUT`: a read beyond the one-block border.
     OutsideInput,
@@ -212,8 +205,8 @@ pub enum SectionVisibilityRefusal {
         /// How many were given.
         count: u32,
     },
-    /// `E_SECTION_VISIBILITY_PANIC`: the mod's listener panicked or trapped. It is not asked again
-    /// until the next `ClientHost::refresh_render_visibility`.
+    /// `E_SECTION_VISIBILITY_PANIC`: the mod's listener panicked. It is not asked again
+    /// during this session.
     Failed,
 }
 
@@ -246,7 +239,7 @@ impl std::fmt::Display for SectionVisibilityRefusal {
             Self::TooManyCells { count } => {
                 write!(f, "{code}: {count} cell records, more than 4096")
             }
-            Self::Failed => write!(f, "{code}: the listener panicked or trapped"),
+            Self::Failed => write!(f, "{code}: the listener panicked"),
         }
     }
 }
@@ -256,12 +249,9 @@ impl std::error::Error for SectionVisibilityRefusal {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::wire::{Reader, Writer};
 
-    /// A guest's answer past the record cap is refused while decoding, before any record is read
-    /// or storage made for it; one at the cap round-trips.
     #[test]
-    fn a_list_past_the_record_cap_is_refused_while_decoding() {
+    fn an_answer_with_more_than_one_record_per_cell_is_refused() {
         let cells = |count: usize| {
             SectionVisibility::Keep(
                 (0..count)
@@ -275,20 +265,10 @@ mod tests {
                     .collect(),
             )
         };
-        let mut out = Writer::new();
-        out.put(&cells(MAX_CELL_RECORDS));
+        assert_eq!(cells(MAX_CELL_RECORDS).check(), Ok(()));
         assert_eq!(
-            Reader::new(out.bytes())
-                .take::<SectionVisibility>()
-                .unwrap(),
-            cells(MAX_CELL_RECORDS)
-        );
-        let mut out = Writer::new();
-        out.put(&cells(MAX_CELL_RECORDS + 1));
-        assert!(
-            Reader::new(out.bytes())
-                .take::<SectionVisibility>()
-                .is_err()
+            cells(MAX_CELL_RECORDS + 1).check(),
+            Err(SectionVisibilityRefusal::TooManyCells { count: 4097 }),
         );
     }
 }

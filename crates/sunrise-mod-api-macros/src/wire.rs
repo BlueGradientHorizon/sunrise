@@ -47,11 +47,9 @@ pub(crate) fn expand(mut input: DeriveInput) -> syn::Result<TokenStream> {
             #[automatically_derived]
             impl #imp #w::Wire for #name #ty #clause {
                 const MIN: usize = <#via as #w::Wire>::MIN;
-                fn holds_resource(visiting: &mut ::std::vec::Vec<&'static str>) -> bool { <#via as #w::Wire>::holds_resource(visiting) }
                 fn put(&self, out: &mut #w::Writer) {
                     out.put(&<#via as ::core::convert::From<&Self>>::from(self));
                 }
-                fn put_owned(self, out: &mut #w::Writer) { self.put(out); }
                 fn take(input: &mut #w::Reader<'_>) -> ::core::result::Result<Self, #w::WireError> {
                     <Self as ::core::convert::TryFrom<#via>>::try_from(input.take::<#via>()?)
                         .map_err(|_| #w::WireError::Invalid(::core::stringify!(#name)))
@@ -60,26 +58,21 @@ pub(crate) fn expand(mut input: DeriveInput) -> syn::Result<TokenStream> {
         });
     }
     let mut min = quote!(0usize);
-    let mut resource = Vec::new();
     let mut puts = Vec::new();
-    let mut owned = Vec::new();
     let mut takes = Vec::new();
     let nested;
     match &input.data {
         Data::Struct(data) => {
             nested = !matches!(data.fields, Fields::Unit);
-            let (pattern, build, fields) = fields(&data.fields, &w);
+            let (pattern, build, fields) = fields(&data.fields);
             for (field, bind) in data.fields.iter().zip(&fields) {
                 check_owned(&field.ty)?;
                 let ft = &field.ty;
                 min = quote!(#min + <#ft as #w::Wire>::MIN);
-                resource.push(quote!(|| <#ft as #w::Wire>::holds_resource(visiting)));
                 puts.push(quote!(out.put(#bind);));
-                owned.push(quote!(out.put_owned(#bind);));
             }
             takes.push(quote!(#build));
             puts = vec![quote!(let Self #pattern = self; #(#puts)*)];
-            owned = vec![quote!(let Self #pattern = self; #(#owned)*)];
         }
         Data::Enum(data) => {
             min = quote!(4usize);
@@ -90,25 +83,19 @@ pub(crate) fn expand(mut input: DeriveInput) -> syn::Result<TokenStream> {
             for (index, variant) in data.variants.iter().enumerate() {
                 let index = index as u32;
                 let case = &variant.ident;
-                let (pat, _, binds) = fields(&variant.fields, &w);
+                let (pat, _, binds) = fields(&variant.fields);
                 let pat = quote!(Self::#case #pat);
                 // `fields` returns a constructor beginning with Self; enum cases supply that prefix.
-                let build = construct(&variant.fields, quote!(Self::#case), &w);
+                let build = construct(&variant.fields, quote!(Self::#case));
                 let mut ps = Vec::new();
-                let mut os = Vec::new();
                 for (field, bind) in variant.fields.iter().zip(binds) {
                     check_owned(&field.ty)?;
-                    let ft = &field.ty;
-                    resource.push(quote!(|| <#ft as #w::Wire>::holds_resource(visiting)));
                     ps.push(quote!(out.put(#bind);));
-                    os.push(quote!(out.put_owned(#bind);));
                 }
                 puts.push(quote!(#pat => { out.put(&#index); #(#ps)* }));
-                owned.push(quote!(#pat => { out.put(&#index); #(#os)* }));
                 takes.push(quote!(#index => #build,));
             }
             puts = vec![quote!(match self { #(#puts,)* _ => ::core::unreachable!() })];
-            owned = vec![quote!(match self { #(#owned,)* _ => ::core::unreachable!() })];
             takes = vec![
                 quote!(match input.take::<u32>()? { #(#takes)* tag => return ::core::result::Result::Err(#w::WireError::Tag(tag)) }),
             ];
@@ -125,32 +112,18 @@ pub(crate) fn expand(mut input: DeriveInput) -> syn::Result<TokenStream> {
     } else {
         quote!(#(#puts)*)
     };
-    let put_owned = if nested {
-        quote!(out.nested(|out| { #(#owned)* }))
-    } else {
-        quote!(#(#owned)*)
-    };
     Ok(quote! {
         #[allow(unreachable_patterns, unused_variables)]
         #[automatically_derived]
             impl #imp #w::Wire for #name #ty #clause {
             const MIN: usize = #min;
-            fn holds_resource(visiting: &mut ::std::vec::Vec<&'static str>) -> bool {
-                let this = ::core::any::type_name::<Self>();
-                if visiting.contains(&this) { return false; }
-                visiting.push(this);
-                let found = false #(#resource)*;
-                visiting.pop();
-                found
-            }
             fn put(&self, out: &mut #w::Writer) { #put }
-            fn put_owned(self, out: &mut #w::Writer) { #put_owned }
             fn take(input: &mut #w::Reader<'_>) -> ::core::result::Result<Self, #w::WireError> { #take }
         }
     })
 }
 
-fn fields(fields: &Fields, w: &syn::Path) -> (TokenStream, TokenStream, Vec<syn::Ident>) {
+fn fields(fields: &Fields) -> (TokenStream, TokenStream, Vec<syn::Ident>) {
     let binds: Vec<_> = fields
         .iter()
         .enumerate()
@@ -164,42 +137,17 @@ fn fields(fields: &Fields, w: &syn::Path) -> (TokenStream, TokenStream, Vec<syn:
         Fields::Unnamed(_) => quote!((#(#binds),*)),
         Fields::Unit => quote!(),
     };
-    (pattern, construct(fields, quote!(Self), w), binds)
+    (pattern, construct(fields, quote!(Self)), binds)
 }
 
-/// How one field decodes: `input.take()`, or, for a `Vec` field marked `#[wire(max = N)]`, a list
-/// whose length is checked against `N` before any element is decoded or any storage allocated.
-fn take_field(field: &syn::Field, w: &syn::Path) -> TokenStream {
-    let mut max: Option<syn::Expr> = None;
-    for attr in field
-        .attrs
-        .iter()
-        .filter(|attr| attr.path().is_ident("wire"))
-    {
-        attr.parse_nested_meta(|meta| {
-            if !meta.path.is_ident("max") {
-                return Err(meta.error("a field takes `#[wire(max = N)]`"));
-            }
-            max = Some(meta.value()?.parse()?);
-            Ok(())
-        })
-        .expect("a field takes `#[wire(max = N)]`");
-    }
-    match max {
-        Some(max) => quote!(input.list_with(#max, #w::Wire::take)?),
-        None => quote!(input.take()?),
-    }
-}
-
-fn construct(fields: &Fields, prefix: TokenStream, w: &syn::Path) -> TokenStream {
+fn construct(fields: &Fields, prefix: TokenStream) -> TokenStream {
     match fields {
         Fields::Named(fields) => {
             let names = fields.named.iter().map(|f| &f.ident);
-            let takes = fields.named.iter().map(|f| take_field(f, w));
-            quote!(#prefix { #(#names: #takes),* })
+            quote!(#prefix { #(#names: input.take()?),* })
         }
         Fields::Unnamed(fields) => {
-            let takes = fields.unnamed.iter().map(|f| take_field(f, w));
+            let takes = fields.unnamed.iter().map(|_| quote!(input.take()?));
             quote!(#prefix (#(#takes),*))
         }
         Fields::Unit => prefix,

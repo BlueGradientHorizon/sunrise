@@ -6,14 +6,14 @@
 use crate::game::native_guest_turn_tests::with_guests;
 use mod_api::{
     BlockEntityPart, Flow, Hooks, ITEMS, ItemPlace, ItemResource, MenuButtonEvent,
-    MenuClickedEvent, MenuQuickMoveEvent, ModEntry, Mods, Registrar, ServerHost,
+    MenuClickedEvent, MenuQuickMoveEvent, MenuSlotTakeEvent, ModEntry, Mods, Registrar, ServerHost,
 };
 use std::{
     cell::{Cell, RefCell},
     sync::Arc,
 };
 use sunrise_client::{
-    containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields, ModContainer},
+    containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields, ModContainer, ModMenuType},
     items::ItemStack,
     lan::menu::Slots,
 };
@@ -30,21 +30,35 @@ struct Script {
     /// ...and answer with a stack past the item's maximum in slot 1.
     invalid: bool,
     /// `menu_quick_move`: move 4 of the stack into the second block through its `ITEMS`
-    /// capability, leave 6 in `stack`, and return unhandled.
+    /// capability, leave 6 in `stack`, and return unhandled unless `handle_cross` is set.
     cross: bool,
+    handle_cross: bool,
+    fail_take: bool,
+    /// `menu_button`: replace the open menu through the host, returning its cursor to inventory.
+    replace_menu: bool,
+    /// `menu_button`: propose a cursor edit before replacing the menu, to ensure stale edits lose.
+    change_cursor: bool,
+    /// `menu_button`: consume the player's carried stack.
+    clear_cursor: bool,
 }
 
 thread_local! {
     static SCRIPT: RefCell<Script> = RefCell::new(Script::default());
     static DISPATCHES: Cell<usize> = const { Cell::new(0) };
+    static TAKE: Cell<Option<(u32, u32)>> = const { Cell::new(None) };
     /// `menu_button` calls on the depot.
     static BUTTONS: Cell<usize> = const { Cell::new(0) };
+    /// `menu_button` calls that received the depot's actual backing entity.
+    static BUTTON_ENTITIES: Cell<usize> = const { Cell::new(0) };
+    /// Optional positions delivered to menu-button listeners.
+    static BUTTON_POSITIONS: RefCell<Vec<Option<[i32; 3]>>> = const { RefCell::new(Vec::new()) };
     /// Whether a transaction was open at each dispatch: the action's savepoint.
     static IN_ACTION: RefCell<Vec<bool>> = const { RefCell::new(Vec::new()) };
 }
 
 fn script(script: Script) {
     DISPATCHES.set(0);
+    TAKE.set(None);
     super::decided_action::DECIDED.set(0);
     IN_ACTION.with(|a| a.borrow_mut().clear());
     SCRIPT.with(|s| *s.borrow_mut() = script);
@@ -66,9 +80,6 @@ struct Part;
 impl mod_api::BlockPart for Part {}
 #[mod_api::sunrise_part]
 impl BlockEntityPart for Part {
-    fn menu_button(&self, _: &mut dyn ServerHost, _: &mut MenuButtonEvent<'_>) {
-        BUTTONS.set(BUTTONS.get() + 1);
-    }
     fn menu_quick_move(
         &self,
         host: &mut dyn ServerHost,
@@ -104,7 +115,7 @@ impl BlockEntityPart for Part {
                 .expect("the second block's items");
             let tx = host.transaction_current().expect("inside the action");
             assert_eq!(
-                items.insert(host, &tx, 0, &ItemResource::of(&stone(1)), 4),
+                items.insert_at(host, &tx, 0, &ItemResource::of(&stone(1)), 4),
                 4
             );
             event.stack.as_mut().unwrap().set_count(6).unwrap();
@@ -112,10 +123,70 @@ impl BlockEntityPart for Part {
         if s.panic {
             panic!("a listener failed");
         }
-        if s.take {
+        if s.take || s.handle_cross {
             return Flow::Cancel;
         }
         Flow::Continue
+    }
+
+    fn menu_slot_take(&self, host: &mut dyn ServerHost, event: &mut MenuSlotTakeEvent<'_>) {
+        if !SCRIPT.with(|s| s.borrow().handle_cross) {
+            return;
+        }
+        TAKE.set(Some((
+            event.taken.count(),
+            event.left.map_or(0, |left| left.count()),
+        )));
+        if SCRIPT.with(|s| s.borrow().fail_take) {
+            write_dirt(host);
+            panic!("the take listener failed after the cross-block move");
+        }
+    }
+}
+#[mod_api::sunrise_part]
+impl mod_api::MenuPart for Part {
+    fn menu_button_valid(
+        &self,
+        _: &dyn mod_api::Host,
+        event: &mut mod_api::MenuButtonValidEvent<'_>,
+    ) -> Flow {
+        if matches!(event.id, 3 | 4) {
+            Flow::Cancel
+        } else {
+            Flow::Continue
+        }
+    }
+
+    fn menu_button(&self, host: &mut dyn ServerHost, event: &mut MenuButtonEvent<'_>) {
+        BUTTONS.set(BUTTONS.get() + 1);
+        if event.entity.is_some() {
+            BUTTON_ENTITIES.set(BUTTON_ENTITIES.get() + 1);
+        }
+        BUTTON_POSITIONS.with(|positions| positions.borrow_mut().push(event.context.pos));
+        let script = SCRIPT.with(|script| script.borrow().clone());
+        if script.clear_cursor {
+            *event.carried = None;
+        }
+        if script.change_cursor {
+            *event.carried = Some(
+                mod_api::ItemStack::new(
+                    mod_api::__private::item_key("minecraft:gold_ingot").unwrap(),
+                    1,
+                )
+                .unwrap(),
+            );
+        }
+        if script.replace_menu {
+            host.open_menu(
+                event.context.player,
+                1,
+                mod_api::Text::literal("opened by menu_button"),
+                Vec::new(),
+                mod_api::MenuReplace::InPlace,
+            )
+            .unwrap()
+            .expect("the menu button's player is online");
+        }
     }
 }
 
@@ -125,6 +196,7 @@ impl Hooks for Mod {
     fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
         let kind = r.block_entity_type("depot").blocks(&[]).build();
         r.block_entity_part(&kind, Part).unwrap();
+        r.menu_part(DEPOT_MENU, Part);
     }
     fn menu_clicked(&self, host: &mut dyn ServerHost, event: &mut MenuClickedEvent) {
         DISPATCHES.set(DISPATCHES.get() + 1);
@@ -143,8 +215,10 @@ impl Hooks for Mod {
 
 fn with_mod(test: impl FnOnce()) {
     let mods: Mods = vec![ModEntry::new("movemod", Box::new(Mod))].into();
-    crate::game::api_values::install_parts(&mods).unwrap();
-    mod_platform::testing::with_mods(mods, test);
+    mod_platform::testing::with_mods(mods.clone(), || {
+        crate::game::api_values::install_parts(&mods).unwrap();
+        test();
+    });
 }
 
 /// How many decisions were entered since the last `script`.
@@ -333,6 +407,7 @@ fn second_block(game: &mut crate::game::Game<'_>) {
             state.0,
             Arc::new(ModContainer {
                 slots: 9,
+                inputs: vec![0],
                 ..Default::default()
             }),
         )]
@@ -536,6 +611,49 @@ fn an_untaken_quick_move_that_wrote_to_another_block_is_undone_and_routed_once()
 
 #[test]
 #[ignore = "daily"]
+fn a_handled_cross_block_move_commits_only_if_its_take_returns() {
+    with_mod(|| {
+        with_guests(|game| {
+            let kind = Box::leak(Box::new(ModMenuType {
+                id: "minecraft:generic_9x1",
+                slots: 9,
+                data_slots: 0,
+                results: Vec::new(),
+                inputs: Vec::new(),
+                crafting: None,
+                links: None,
+            }));
+            for fail_take in [true, false] {
+                let window = open_depot(game);
+                second_block(game);
+                game.lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(0, |g| g.menu.as_mut().unwrap().mod_type = Some(kind));
+                script(Script {
+                    cross: true,
+                    handle_cross: true,
+                    fail_take,
+                    ..Script::default()
+                });
+                game.lan_guest_packet(12, container_click(window, 0, 1));
+                assert_eq!(DISPATCHES.get(), 1);
+                assert_eq!(TAKE.get(), Some((4, 6)));
+                assert_eq!(
+                    stone_everywhere(game),
+                    if fail_take { (10, 0, 0) } else { (6, 4, 0) }
+                );
+                assert_eq!(inventory(game, 20), 0);
+                assert!(game.transactions.is_empty());
+            }
+        })
+    });
+}
+
+#[test]
+#[ignore = "daily"]
 fn a_replaced_block_entity_makes_an_admitted_quick_move_stale() {
     use super::native_quick_move::Admitted;
     with_guests(|game| {
@@ -592,52 +710,143 @@ fn depot_container(game: &mut crate::game::Game<'_>) {
 #[test]
 #[ignore = "daily"]
 fn a_code_opened_menus_button_reaches_a_blocks_menu_button_only_for_its_menu_type() {
-    let depot_menu = [(DEPOT_MENU.into(), 9, 0, Vec::new(), None, None)];
+    let depot_menu = [(DEPOT_MENU.into(), 9, 0, Vec::new(), Vec::new(), None, None)];
     sunrise_client::containers::with_mod_menu_types(depot_menu, || {
         with_mod(|| {
             with_guests(|game| {
-                let button = |game: &mut crate::game::Game<'_>, window| {
+                let button = |game: &mut crate::game::Game<'_>, window, id| {
                     game.lan_guest_packet(
                         12,
                         Serverbound::ContainerButtonClick(ContainerButtonClick {
                             container: window,
-                            button: 3,
+                            button: id,
                         }),
                     );
                 };
                 BUTTONS.set(0);
+                BUTTON_ENTITIES.set(0);
+                BUTTON_POSITIONS.with(|positions| positions.borrow_mut().clear());
                 let window = open_depot(game);
                 depot_container(game);
-                button(game, window);
+                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                    guest.menu.as_mut().unwrap().registry_id = DEPOT_MENU.into();
+                });
+                button(game, window, 99);
+                assert_eq!(BUTTONS.get(), 0, "a menu rejects unsupported button IDs");
+                button(game, window + 1, 3);
+                assert_eq!(BUTTONS.get(), 0, "a stale window has no button owner");
+                button(game, window, 3);
                 assert_eq!(
                     BUTTONS.get(),
                     1,
                     "the block's own menu reaches its menu_button"
                 );
-                // A menu a mod opened from code at the same position: the block's when its type is
-                // the one the block's container opens (as the client tells the screen hooks).
+                assert_eq!(BUTTON_ENTITIES.get(), 1, "the block menu lends its entity");
+                BUTTON_POSITIONS.with(|positions| {
+                    assert_eq!(
+                        positions.borrow().as_slice(),
+                        &[Some([POS.0, POS.1, POS.2])]
+                    );
+                });
+                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                    guest.carried = Some(ItemStack::new("minecraft:diamond", 2));
+                });
+                SCRIPT.with(|script| {
+                    *script.borrow_mut() = Script {
+                        clear_cursor: true,
+                        ..Script::default()
+                    }
+                });
+                button(game, window, 4);
+                SCRIPT.with(|script| *script.borrow_mut() = Script::default());
+                let guest = game.lan.as_ref().unwrap().hub.guest(12).unwrap();
+                assert_eq!(
+                    guest.carried, None,
+                    "a button can consume the carried stack"
+                );
+                assert!(
+                    !guest
+                        .inventory
+                        .iter()
+                        .flatten()
+                        .any(|stack| { &*stack.item == "minecraft:diamond" && stack.count == 2 })
+                );
+                assert_eq!(BUTTONS.get(), 2);
+                assert_eq!(BUTTON_ENTITIES.get(), 2);
+                // A code-opened native menu of this type routes by its live menu owner. The
+                // coincidental position is not entity backing; only Slots::Block lends an entity.
                 let window = open_native_menu(game);
                 game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
                     let menu = guest.menu.as_mut().unwrap();
                     menu.pos = Some(POS);
                     menu.registry_id = DEPOT_MENU.into();
                 });
-                button(game, window);
+                button(game, window, 3);
                 assert_eq!(
                     BUTTONS.get(),
-                    2,
-                    "the same type at the block is the block's menu"
+                    3,
+                    "the menu type owns its button even without block backing"
                 );
+                assert_eq!(
+                    BUTTON_ENTITIES.get(),
+                    2,
+                    "a code-opened menu's position alone does not lend the block entity"
+                );
+                BUTTON_POSITIONS.with(|positions| {
+                    assert_eq!(
+                        positions.borrow().as_slice(),
+                        &[
+                            Some([POS.0, POS.1, POS.2]),
+                            Some([POS.0, POS.1, POS.2]),
+                            None,
+                        ],
+                        "a blockless menu supplies no position even if it has a screen hint"
+                    );
+                });
                 // Another menu type at that position (another mod's menu at a machine): not the
                 // block's.
                 game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
                     guest.menu.as_mut().unwrap().registry_id = "test:native".into();
                 });
-                button(game, window);
+                button(game, window, 3);
                 assert_eq!(
                     BUTTONS.get(),
-                    2,
+                    3,
                     "another menu type reaches no block's menu_button"
+                );
+                game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                    guest.menu.as_mut().unwrap().registry_id = DEPOT_MENU.into();
+                    guest.carried = Some(ItemStack::new("minecraft:diamond", 2));
+                });
+                SCRIPT.with(|script| {
+                    *script.borrow_mut() = Script {
+                        replace_menu: true,
+                        change_cursor: true,
+                        ..Script::default()
+                    }
+                });
+                button(game, window, 4);
+                SCRIPT.with(|script| *script.borrow_mut() = Script::default());
+                assert_eq!(BUTTONS.get(), 4);
+                assert_eq!(BUTTON_ENTITIES.get(), 2);
+                let guest = game.lan.as_ref().unwrap().hub.guest(12).unwrap();
+                assert_eq!(
+                    guest.carried, None,
+                    "a cursor edit from the old menu cannot overwrite the replacement"
+                );
+                assert!(
+                    guest
+                        .inventory
+                        .iter()
+                        .flatten()
+                        .any(|stack| { &*stack.item == "minecraft:diamond" && stack.count == 2 }),
+                    "the returned cursor stack stays in the player's inventory"
+                );
+                assert!(
+                    !guest.inventory.iter().flatten().any(|stack| {
+                        &*stack.item == "minecraft:gold_ingot" && stack.count == 1
+                    }),
+                    "the stale menu's explicit cursor edit is not applied"
                 );
             });
         })

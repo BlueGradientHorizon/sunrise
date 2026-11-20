@@ -130,11 +130,16 @@ pub struct Hook {
     /// ruling). A cancel hook stops there; a collector's later listeners still run, each answering
     /// into its own batch.
     pub isolate: bool,
+    /// An isolated cancel hook's per-listener check of the outputs it wrote: a path to
+    /// `fn(&accepted, ..., &proposed, ...) -> Result<(), &'static str>` taking each set of
+    /// vector/scalar outputs in declaration order and naming the first refused one. A refused
+    /// result, including its cancellation, rolls back; later listeners still run.
+    pub output_validator: Option<String>,
     pub scope: Option<PartScope>,
     pub host: Option<HostAccess>,
     pub context: Option<PhaseContext>,
     pub counterparts: Counterparts,
-    /// The contract version an injection's `hook_version` names.
+    /// The hook's contract version.
     pub version: u64,
     /// Whether the NeoForge counterpart event is cancellable, written by the
     /// stamper from the counterpart's javadoc; documentation metadata, not the
@@ -143,12 +148,8 @@ pub struct Hook {
     /// The parameters of a hook whose game target takes them as one generated `<Name>Call`
     /// (name and type, in order, without a `Ticks` parameter); empty for a flat target.
     pub call: Vec<(String, String)>,
-    /// Parameter retained in a decision-scoped guest slot instead of copied per ask.
-    pub prepared: Option<String>,
     /// Admission policy for the mutable stack-list output; placement owns trimming.
     pub stack_count: Option<StackCount>,
-    /// Keep construction and exhaustive patterns of the event inside the vocabulary crate.
-    pub non_exhaustive: bool,
     /// Rebuild a listener event from its original inputs for every subscriber.
     pub event_per_listener: bool,
 }
@@ -273,11 +274,7 @@ struct HookEntry {
     context: Option<PhaseContext>,
     #[serde(default)]
     call: Vec<(String, String)>,
-    /// Only `prepared = "stack"` on `can_equip` is supported; reject at parse time.
-    prepared: Option<String>,
     stack_count: Option<StackCount>,
-    #[serde(default)]
-    non_exhaustive: bool,
     #[serde(default)]
     event_per_listener: bool,
     inert: Option<String>,
@@ -297,6 +294,7 @@ struct ModApiEntry {
     owner: Option<String>,
     collect_validator: Option<String>,
     isolate: Option<bool>,
+    output_validator: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -317,16 +315,6 @@ impl Hook {
                 hook: name.clone(),
                 error: error.to_string(),
             })?;
-        // This transport is implemented only for can_equip's stack. Validate here,
-        // before either host or guest generation can accept a different hook.
-        if let Some(parameter) = &entry.prepared
-            && (name != "can_equip" || parameter != "stack")
-        {
-            return Err(CatalogError::InvalidHook {
-                hook: name,
-                error: "prepared is supported only as prepared = \"stack\" on can_equip".into(),
-            });
-        }
         let doc = entry
             .doc
             .filter(|doc| !doc.trim().is_empty())
@@ -413,6 +401,16 @@ impl Hook {
                         .into(),
             });
         }
+        if let Some(validator) = &api.output_validator
+            && (!isolate
+                || api.contract != Contract::Cancel
+                || syn::parse_str::<syn::Path>(validator).is_err())
+        {
+            return Err(CatalogError::InvalidHook {
+                hook: name.clone(),
+                error: "output_validator is a path on an isolated cancel hook".into(),
+            });
+        }
         let counterparts = Counterparts {
             neoforge: counterparts(&name, "neoforge", entry.neoforge)?,
             fabric: counterparts(&name, "fabric", entry.fabric)?,
@@ -431,6 +429,7 @@ impl Hook {
             collect_validator: api.collect_validator,
             inert: entry.inert,
             isolate,
+            output_validator: api.output_validator,
             scope,
             host: entry.host,
             context: entry.context,
@@ -438,9 +437,7 @@ impl Hook {
             version: entry.version.unwrap_or(1),
             cancellable: entry.cancellable,
             call: entry.call,
-            prepared: entry.prepared,
             stack_count: entry.stack_count,
-            non_exhaustive: entry.non_exhaustive,
             event_per_listener: entry.event_per_listener,
         })
     }
@@ -693,6 +690,7 @@ impl Declared {
                             "owner",
                             "collect_validator",
                             "isolate",
+                            "output_validator",
                         ] {
                             if let Some(value) = entry.remove(key) {
                                 api.insert(key.into(), value);
@@ -876,6 +874,7 @@ impl Hook {
             collect_validator: None,
             inert: None,
             isolate: false,
+            output_validator: None,
             scope: None,
             host: None,
             context: None,
@@ -883,9 +882,7 @@ impl Hook {
             version: 1,
             cancellable: None,
             call: Vec::new(),
-            prepared: None,
             stack_count: None,
-            non_exhaustive: false,
             event_per_listener: false,
         }
     }
@@ -938,31 +935,6 @@ mod tests {
                 .any(|h| h.contract == Contract::Replace)
         );
         assert!(!catalog.draw_contexts.is_empty());
-    }
-
-    #[test]
-    fn prepared_is_rejected_on_other_hooks_at_catalog_boundary() {
-        let mut declaration = serde_json::json!({"name":"other_hook","doc":"Doc.","side":"server","target":"unused", "prepared":"stack", "mod_api":{"contract":"listen"}});
-        let error = Hook::parse(declaration.clone()).unwrap_err().to_string();
-        assert_eq!(
-            error,
-            "hook other_hook: prepared is supported only as prepared = \"stack\" on can_equip"
-        );
-        declaration["name"] = "can_equip".into();
-        assert_eq!(
-            Hook::parse(declaration.clone())
-                .unwrap()
-                .prepared
-                .as_deref(),
-            Some("stack")
-        );
-        declaration["prepared"] = "other".into();
-        assert!(
-            Hook::parse(declaration)
-                .unwrap_err()
-                .to_string()
-                .contains("only as prepared")
-        );
     }
 
     fn checkout(files: &[(&str, &str)]) -> std::path::PathBuf {

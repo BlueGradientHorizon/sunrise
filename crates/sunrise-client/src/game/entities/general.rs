@@ -1016,9 +1016,11 @@ impl Game<'_> {
         }
         // Extract: highest index first, each row with the place it left.
         tree.sort_unstable();
-        let mut extracted: Vec<(usize, GeneralRow)> = Vec::new();
+        let mut extracted = Vec::new();
         for &index in tree.iter().rev() {
-            extracted.push((index, self.resident_entities.general.rows.remove(index)));
+            let row = self.resident_entities.general.rows.remove(index);
+            let transient = self.persist.transient.remove(&row.id);
+            extracted.push((index, row, transient));
         }
         extracted.reverse();
         // The removals are leaves of the source level
@@ -1027,14 +1029,20 @@ impl Game<'_> {
         // The only failing step: if the destination cannot open, every row
         // returns to the source, at its place and with its join identity.
         if let Err(error) = self.enter_level(destination) {
-            for (index, row) in extracted {
+            for (index, row, transient) in extracted {
+                if transient {
+                    self.persist.transient.insert(row.id);
+                }
                 self.resident_entities.general.rows.insert(index, row);
             }
             return Err(format!("{error}"));
         }
         // The tree joins the destination: identities unchanged, join
         // identity new (a fresh admission — no source handle reaches it).
-        for (_, mut row) in extracted {
+        for (_, mut row, transient) in extracted {
+            if transient {
+                self.persist.transient.insert(row.id);
+            }
             row.join = JoinSeq::UNJOINED;
             if row.id == root_id {
                 row.position = Vec3::new(at[0], at[1], at[2]);
