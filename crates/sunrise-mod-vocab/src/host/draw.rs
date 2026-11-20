@@ -267,11 +267,14 @@ pub trait DrawContext {
     fn gui_draw_item_with(&mut self, stack: &ItemStack, at: [f32; 2], text: Option<&str>) {
         unimplemented!("DrawContext::gui_draw_item_with")
     }
-    /// A button as the game's screens draw one (`AbstractButton`): `label` centred on the
-    /// `widget/button` sprite (`button_highlighted` when `highlighted`, `button_disabled` and
-    /// grey when not `active`), scrolling when it doesn't fit, and recorded for the narrator and
-    /// a controller's focus. `rect` is `[x, y, w, h]` in GUI pixels. What
-    /// [`crate::client::widgets::Widgets`] draws its buttons with.
+    /// Draws a button and registers it for narration and controller focus like `AbstractButton`.
+    /// `rect` is `[x, y, w, h]` in GUI pixels. The label is centred, scrolls when it is too wide,
+    /// and is grey when inactive. [`crate::client::widgets::Widgets`] uses this to draw its buttons.
+    ///
+    /// `None` uses the vanilla nine-slice for the button's state. With [`ButtonSprites`] the
+    /// full custom sprite stretches into `rect`, and the label moves by `label_offset`. Inactive
+    /// takes precedence over highlighted. An omitted or unknown state id falls back to the custom
+    /// normal sprite, then to the vanilla nine-slice for the current state.
     /// Refuses text deeper than 512 component nodes before applying any changes.
     fn widget_button(
         &mut self,
@@ -279,6 +282,7 @@ pub trait DrawContext {
         label: &Text,
         active: bool,
         highlighted: bool,
+        sprites: Option<&ButtonSprites>,
     ) -> Result<(), TextFormError> {
         unimplemented!("DrawContext::widget_button")
     }
@@ -629,8 +633,7 @@ pub trait WorldDrawContext {
     /// multiplies only faces that have a tint index, the same as vanilla's model
     /// renderer; [`ModelInstance::color`] multiplies every face. The view budget is 16,384 copies. Pass at most that many: a longer
     /// list is refused with [`InstanceError::CapacityExceeded`] before any copy is
-    /// examined. On wasm the guest pays for the list it passes, because the runtime
-    /// lifts the slice before that check. Within the bound, copies outside the frustum
+    /// examined. Within the bound, copies outside the frustum
     /// are omitted and do not count. On `Err`, nothing from this call is drawn.
     fn draw_model_instances(
         &mut self,

@@ -85,6 +85,10 @@ pub struct World {
     pub shape: LevelShape,
     pub fast_lava: bool,
     pub chunks: crate::chunk_map::ChunkMap,
+    /// The light the columns that left the level keep (`light_border.rs`).
+    pub border: crate::fast_hash::FxHashMap<(i32, i32), crate::light_border::Border>,
+    /// Published section support of proto neighbours of saved columns.
+    pub(crate) proto_light_support: crate::fast_hash::FxHashMap<(i32, i32), SectionMask>,
     pub random: LevelRandom,
     pub revision: u64,
     pub health_rules: HealthRules,
@@ -158,6 +162,7 @@ pub struct World {
     /// The sections whose light changed since the log was last drained, as
     /// a bit per section of each column, kept while `block_log` is
     /// (`ChunkHolder.sectionLightChanged`).
+    /// Pending network light updates, indexed from the column's lower light pad.
     pub light_log: Option<crate::fast_hash::FxHashMap<(i32, i32), SectionMask>>,
     /// The villager POIs of each section (`PoiManager`'s sections).
     pub pois: crate::poi_sections::PoiSections<sunrise_world::poi::PoiIdentity>,
@@ -310,6 +315,8 @@ impl World {
             infiniburn: None,
             shape: LevelShape::OVERWORLD,
             chunks: Default::default(),
+            border: Default::default(),
+            proto_light_support: Default::default(),
             random: LevelRandom::for_level(LegacyRandom::new(seed)),
             revision: 0,
             health_rules: HealthRules::default(),
@@ -604,10 +611,32 @@ impl World {
                 .0
         })
     }
+    /// The published light at a block, `sky << 4 | block`: its chunk's, or for a column with no
+    /// chunk what the light storage keeps there (`light_border.rs`). A level without skylight has
+    /// no sky layer (`LevelLightEngine.getRawBrightness`). Never loads a chunk.
+    #[inline]
     pub fn light(&self, x: i32, y: i32, z: i32) -> u8 {
-        self.chunks
-            .get(&(x >> 4, z >> 4))
-            .map_or(0xF0, |chunk| chunk.light(x & 15, y, z & 15))
+        match self.chunks.get(&(x >> 4, z >> 4)).and_then(|chunk| {
+            let s = chunk.section_index(y)?;
+            Some(chunk.sections[s].light(crate::chunk::index(x, y, z)))
+        }) {
+            Some(light) => light,
+            None => self.light_outside(x, y, z),
+        }
+    }
+    /// The light of a position no section holds: past a loaded column's sections, or in a column that
+    /// is not loaded ([`Self::border_light`]), without sky in a level without it. It takes the same
+    /// arguments as [`Self::light`] and looks the column up again, so the hot read keeps nothing live
+    /// for it; a read inside a column of a level without skylight is already without it (its
+    /// sections' sky is 0).
+    #[cold]
+    #[inline(never)]
+    fn light_outside(&self, x: i32, y: i32, z: i32) -> u8 {
+        let light = match self.chunks.get(&(x >> 4, z >> 4)) {
+            Some(chunk) => chunk.light(x & 15, y, z & 15),
+            None => self.border_light((x >> 4, z >> 4), x, y, z),
+        };
+        light & (0x0F | (u8::from(self.shape.sky_light) * 0xF0))
     }
     pub fn is_air(&self, state: BlockStateId) -> bool {
         state == self.air
@@ -619,7 +648,9 @@ impl World {
     /// positions held.
     pub fn unload_chunk(&mut self, key: (i32, i32)) -> Option<Arc<Chunk>> {
         self.capability_generations.unload_chunk(key);
-        self.chunks.remove(&key)
+        let chunk = self.chunks.remove(&key)?;
+        self.retain_border(key, &chunk);
+        Some(chunk)
     }
     /// `Level.isLoaded`: `y` is inside the build height and the chunk of `(x, z)` is loaded.
     /// Never loads a chunk.

@@ -130,7 +130,8 @@ mod generated {
         // The generated standalone-model dispatch builds the stub `Answered` and names the type through this path.
         pub(super) use super::super::Answered;
         pub(super) use super::super::{
-            Command, Config, Dispensed, InteractionResult, MapDecoration, MapInfo, Screen, Zoom,
+            Command, Config, DeclarationError, Dispensed, InteractionResult, MapDecoration,
+            MapInfo, Screen, Zoom,
         };
         #[derive(Clone)]
         pub struct FluidModel;
@@ -144,11 +145,6 @@ mod generated {
         BlockEntityTickReply, BlockFace, BlockKey, BlockState, CrosshairTarget,
     };
     pub use sunrise_mod_api_macros::__subscriptions;
-    // What `#[__subscriptions]` marks each implemented hook with: these listeners are not built for wasm.
-    macro_rules! __sunrise_mark {
-        ($owner:literal $method:ident) => {};
-    }
-    pub(crate) use __sunrise_mark;
 }
 use generated::*;
 struct Installed {

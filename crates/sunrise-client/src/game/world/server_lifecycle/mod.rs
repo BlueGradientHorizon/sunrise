@@ -276,6 +276,7 @@ impl Game<'_> {
         super::cauldron_interactions::clear();
         self.clear_world_parts();
         self.world_adopted = false;
+        self.startup_ticket_restore_pending = false;
         result
     }
 }

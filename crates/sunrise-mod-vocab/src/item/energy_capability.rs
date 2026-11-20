@@ -10,11 +10,6 @@ use std::marker::PhantomData;
 /// A block's energy (NeoForge's `EnergyHandler`): stateless, given the host, and written only in
 /// a transaction, as a [`ResourceHandler`](crate::ResourceHandler) is.
 pub trait EnergyHandler: Send + Sync {
-    // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
-    #[doc(hidden)]
-    fn __sunrise_marks(&self, _: crate::__private::Sealed) {
-        sunrise_mod_marks::energy_handler::<Self>();
-    }
     /// How much it holds.
     fn amount(&self, host: &mut dyn ServerHost) -> u32;
     /// How much it holds when full.
@@ -71,9 +66,9 @@ impl EnergyHandler for GameEnergy {
 }
 
 /// Moves up to `max` energy out of `from` into `to` (NeoForge's `EnergyHandlerUtil.move`), in
-/// transaction `tx`: how much moved. As one step of `move_resources`: all or nothing in a
-/// transaction of its own, a move `to` takes only part of tried again with that part, and a
-/// handler answering more than it was asked ending it with [`Overanswered`].
+/// transaction `tx`: how much moved. Extract from `from` first, then offer the extracted amount
+/// to `to` in the same journal. If `to` takes only part, roll back and retry once with that amount.
+/// A handler that answers more than it was asked rolls back the move with [`Overanswered`].
 pub fn move_energy(
     host: &mut dyn ServerHost,
     from: &Capability<dyn EnergyHandler>,
@@ -95,7 +90,7 @@ pub fn move_energy(
         },
         want,
         |host, tx, want| from.extract(host, tx, want),
-        |host, tx, out| to.insert(host, tx, out),
+        |host, tx, out| Ok(to.insert(host, tx, out)),
     )
 }
 

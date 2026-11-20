@@ -74,8 +74,11 @@ macro_rules! game_side {
             features: $s
                 .remote
                 .as_ref()
-                .map_or(&$s.level.enabled_features, |remote| &remote.features),
-            items: if $s.options.execution_role.is_client() {
+                .map_or($s.level.enabled_features.as_arc(), |remote| {
+                    &remote.features
+                }),
+            items: $s.res.items(),
+            tag_items: if $s.options.execution_role.is_client() {
                 $s.remote.as_ref().and_then(|remote| remote.tags.as_ref())
             } else {
                 $s.session_lock.is_some().then(|| $s.res.items())
@@ -89,60 +92,14 @@ fn pack_files(world_tables: &Option<WorldTables>) -> sunrise_world::loot::PackOv
         Some(t) => sunrise_world::loot::PackOverlay {
             conditions: &t.conditions,
             files: &t.files,
+            priority_layers: &t.priority_layers,
         },
         None => sunrise_world::loot::PackOverlay::NONE,
     }
 }
 include!(concat!(env!("OUT_DIR"), "/game_modules.rs"));
-/// Installs the dispatcher of each injection point a mod listens at as its function's entry,
-/// once the points are sealed. The prebuilt game's staging pass writes the call; a build without
-/// points has none to arm.
-macro_rules! arm_points {
-    () => {};
-}
+pub use hot_paths::{HotPathsMods, note_hot_paths_listener_call};
 
-/// The game's side of the injection points (#589), whose slots and listeners live above the engine.
-#[doc(hidden)]
-pub mod points {
-    /// A `side = "both"` point's host, out of line: each point's listener call stays a few bytes.
-    /// Called only by the `#[point]`s the stage adds to its copy.
-    #[inline(never)]
-    #[allow(dead_code, reason = "used by the staged copy's points")]
-    pub(super) fn host_side<'a>(game: &'a mut super::Game<'_>) -> mod_api::HostSide<'a> {
-        super::execution_role::host_side(game)
-    }
-
-    /// An engine value's `mod_api` mirror for a point record, through the boundary's conversion.
-    #[allow(dead_code, reason = "used by the staged copy's points")]
-    pub(super) fn mirror_in<T: super::api_values::TryIntoApi + ?Sized>(
-        value: &T,
-    ) -> Option<T::Api> {
-        value.try_into_api().ok()
-    }
-
-    /// A listener's `mod_api` value as the engine's, validated as every mod value is; a value the
-    /// engine refuses leaves the engine's own in place.
-    #[allow(dead_code, reason = "used by the staged copy's points")]
-    pub(super) fn mirror_out<A: super::api_values::TryIntoEngine<()>>(
-        value: &A,
-        point: &str,
-    ) -> Option<A::Engine> {
-        let engine = value.try_into_engine(&()).ok();
-        if engine.is_none() {
-            log::warn!(
-                "point {point}: a listener's value has no engine form; the engine's is kept"
-            );
-        }
-        engine
-    }
-
-    /// An engine value with no `mod_api` form at this call: its listeners are skipped this once.
-    #[cold]
-    #[allow(dead_code, reason = "used by the staged copy's points")]
-    pub(super) fn unconverted(point: &str) {
-        log::warn!("point {point}: a value has no API form; its listeners were skipped");
-    }
-}
 mod host;
 mod native_hooks;
 use event_loop::EventLoopCtl;
@@ -163,7 +120,6 @@ pub(crate) use api_values::{block_jump_factor, block_speed_factor, is_ladder};
 pub(crate) use launch_options::Options;
 pub use native_block_entity_draw::BlockEntityDraw;
 pub use native_claimed_items::{HeldItemSlot, ModEvent};
-pub use native_components::NativeComponentError;
 pub use native_configs::ConfigFile;
 pub use native_data_maps::DataMapType;
 pub use native_hooks::{PhantomSpawnResult, Shake, SleepProblem};
@@ -787,6 +743,7 @@ struct WorldTables {
     /// The pack files the tables were built from (a native mod's among
     /// them), for the advancement tree reload and the loot data.
     files: Vec<(String, Vec<Vec<u8>>)>,
+    priority_layers: Vec<sunrise_world::loot::RecipePriorityLayer>,
     items: Arc<Items>,
     /// Registry definitions stay frozen at world open, even when tags reload.
     packed_registries: Arc<sunrise_client::lan::data::PackRegistryDefinitions>,
@@ -903,10 +860,7 @@ fn equipment_modifier_applies(group: &str, slot: &str) -> bool {
 /// A chunk whose ticking future can complete (`ChunkMap.prepareTickingChunk`):
 /// lit, with its neighbours loaded, as `postprocess_chunks` waits for.
 fn ticking_chunk(world: &World, x: i32, z: i32) -> bool {
-    let Some(center) = world.chunks.get(&(x, z)) else {
-        return false;
-    };
-    center.lit && world.chunks.surrounded((x, z))
+    world.chunks.is_ticking_ready((x, z))
 }
 /// `TicketStorage.canTicketExpire` for a `PORTAL` ticket: its chunk's holder is
 /// ready for saving once the futures of its level are done, the chunk lit and
@@ -1307,6 +1261,9 @@ struct Game<'a> {
     /// reads see ready tables, and is not this marker: a final save before the
     /// prepared `Level` is installed would replace the world with placeholder state.
     world_adopted: bool,
+    /// An early shutdown must not replace on-disk tickets while the server is
+    /// still publishing levels or activating their tickets.
+    startup_ticket_restore_pending: bool,
     audio: Audio,
     /// The side, registries and mod settings of this game's resource generation, which
     /// its menus lend to the hooks they fire inside a loop; rebuilt by `refresh_loop_context`.
@@ -2133,7 +2090,6 @@ struct Game<'a> {
     player_model: Option<Mob>,
     block_entity_tick_key: Option<block_entity_tick_items::Key>,
     block_entity_tick_items: Option<Box<block_entity_tick_items::Scope>>,
-    wasm_dispatch_failures: std::rc::Rc<std::cell::Cell<u64>>,
 }
 /// The open world's dimensions past vanilla's three. One per process, as a window
 /// and its server thread name the same dimensions.
@@ -3227,7 +3183,9 @@ impl Game<'_> {
             enabled_features: self
                 .remote
                 .as_ref()
-                .map_or(&self.level.enabled_features, |remote| &remote.features),
+                .map_or(self.level.enabled_features.as_arc(), |remote| {
+                    &remote.features
+                }),
             player_box,
             guest_boxes,
             building_player_boxes,
@@ -3323,29 +3281,6 @@ impl Game<'_> {
             );
         });
         self.process_level_events()
-    }
-    /// `BlockState.canSurvive(level, pos)` for `state` at `pos` in the level in
-    /// place: the rule a placement checks before `level_set` (a sapling on
-    /// grass, a torch on a wall), with a mod block's own `native_can_survive`
-    /// hook. False for an invalid state, an unloaded or out-of-height
-    /// position, and on a client.
-    ///
-    /// This is the non-closure equivalent of `with_level(|b, level, ticks|
-    /// b.can_survive(level, ticks, pos, state))`, for a wasm mod whose
-    /// internals view cannot send a closure.
-    // A wasm mod's staged internals table calls this; nothing in Sunrise does.
-    #[allow(dead_code)]
-    fn level_can_survive(&mut self, pos: [i32; 3], state: BlockStateId) -> bool {
-        if !self.is_logical_server()
-            || !self.world.loaded(pos[0], pos[2])
-            || !self.world.shape.contains_y(pos[1])
-            || self.pack.assets.registry.state(state).is_none()
-        {
-            return false;
-        }
-        self.with_level(|b, level, ticks| {
-            b.can_survive(level, ticks, BlockPos::new(pos[0], pos[1], pos[2]), state)
-        })
     }
     fn attack_block(&mut self, pos: [i32; 3]) -> Result<()> {
         let note = self.with_level(|b, level, ticks| {
@@ -4153,7 +4088,14 @@ impl Game<'_> {
                     pos,
                     state,
                     kind: "push_entities_up",
-                } => self.push_entities_up(pos, state),
+                } => {
+                    self.push_entities_up(
+                        pos,
+                        state,
+                        self.world.block(pos.x, pos.y, pos.z),
+                        |_| true,
+                    );
+                }
                 LevelEvent::GrowTree { .. }
                 | LevelEvent::PlaceFeature { .. }
                 | LevelEvent::BlockEvent { .. } => {}
@@ -6578,7 +6520,11 @@ impl Game<'_> {
                         ) {
                             return None;
                         }
-                        self.capture_block_entity_payload(*pos, entity.id(), &entity.nbt)
+                        let registry = self.pack.assets.registry;
+                        let block = registry
+                            .state(c.block(pos.0 & 15, pos.1, pos.2 & 15))
+                            .map_or("", |state| state.name.as_str());
+                        self.capture_block_entity_payload(*pos, block, entity, self.res.items())
                             .map(|edited| (*pos, edited))
                     })
                     .collect();
@@ -6700,14 +6646,10 @@ impl Game<'_> {
         self.inventory = inventory;
         self.bind_chunk_disk_worker(&save, dim);
         self.save = self.with_profession_save_snapshot(save);
-        // MinecraftServer.prepareLevels: the saved tickets come back.
-        self.tickets = if self.options.execution_role.is_client() {
-            Default::default()
-        } else {
-            sunrise_client::ticket_levels::ChunkTickets::with_saved_portal(
-                self.save.load_portal_tickets(),
-            )
-        };
+        // MinecraftServer.prepareLevels restores the saved tickets after the
+        // built-in levels have been published.
+        self.tickets = Default::default();
+        self.startup_ticket_restore_pending = self.options.execution_role.is_logical_server();
         // The ride the player's file names, once the vehicle is in the world.
         self.pending_vehicle = level.root_vehicle;
         self.level = level;
@@ -6780,8 +6722,7 @@ impl Game<'_> {
         self.streaming.nether_shading =
             facts.cardinal_light == sunrise_world::dimension_type::CardinalLight::Nether;
         self.load_world_state()?;
-        self.native_world_opened(dim);
-        self.open_saved_portal_levels()?;
+        self.open_builtin_levels()?;
         Ok(stack)
     }
     fn finish_close_world(&mut self) -> Result<()> {
@@ -6802,6 +6743,7 @@ impl Game<'_> {
         self.session_lock = None;
         self.clear_world_parts();
         self.world_adopted = false;
+        self.startup_ticket_restore_pending = false;
         self.world_icon = None;
         sunrise_client::crash::clear_detail("World");
         self.debug_charts.reset();
@@ -9064,6 +9006,7 @@ impl Game<'_> {
                 range: self.settings.cloud_range,
                 fast: self.settings.clouds == "fast",
                 color: sky.cloud_color,
+                height: sky.cloud_height,
             }),
             entities: &entities,
             static_block_entities: &static_block_entities,
@@ -11095,6 +11038,7 @@ impl<'a> Game<'a> {
             player_autosaves: Default::default(),
             session_lock: None,
             world_adopted: false,
+            startup_ticket_restore_pending: false,
             audio,
             loop_context: Arc::new(res.core.item_data.context().loop_context(loop_side, [])),
             tick: sunrise_client::parallel::TickThread::mint(),
@@ -11327,8 +11271,6 @@ impl<'a> Game<'a> {
             transactions: Default::default(),
             block_entity_tick_key: None,
             block_entity_tick_items: None,
-            wasm_dispatch_failures:
-                sunrise_mod_runtime::dispatch_failures::dispatch_failure_counter(),
             contents_changing: Vec::new(),
             mod_screen: None,
             mod_container_viewers: HashMap::new(),
@@ -11663,14 +11605,6 @@ pub(crate) fn run_with(
     let mod_phase = mod_api::__private::PhaseOwner::new(mod_api::__private::ModPhase::Packages);
     api_values::install_packages(options.mods.native.packages(), &options.mods.selected)?;
     mods::install_registration_data(&vanilla_root, mods::runtime_files::sources(&options.mods))?;
-    {
-        use mod_api::__private::game::RegistrationContextNew;
-        let context = mod_api::RegistrationContext::new();
-        let inventory: Vec<_> = context.mods().iter().cloned().collect();
-        crate::entry::initialize_code(&inventory);
-    }
-    sunrise_engine_slots::seal().expect("engine registration seals once at startup");
-    arm_points!();
     mod_phase.advance(mod_api::__private::ModPhase::Registration)?;
     crate::game::part_admission::admit_parts(mod_api::__private::mods())?;
     // The structure types those mods registered, handed to the engine before
@@ -11714,7 +11648,7 @@ pub(crate) fn run_with(
     mods::register_client_presentations(options.execution_role);
     mods::register_meshing(options.execution_role);
     mods::register_particles(options.execution_role);
-    mods::freeze_declarations()?;
+    mods::freeze_declarations();
     mod_phase.advance(mod_api::__private::ModPhase::Setup)?;
     // Minecraft.<init>: read the last start's flag, then mark this one as not
     // finished until onGameLoadFinished. A dedicated server has no options.txt.
@@ -11763,6 +11697,9 @@ pub(crate) fn run_with(
             &options.mods,
         )
         .or_else(|e| {
+            if e.is::<mods::DeclarationFailures>() {
+                return Err(e);
+            }
             log::warn!("Sunrise: resource packs not applied: {e}");
             pack_error = Some(e.to_string());
             mods::content_root(&vanilla_root, &options.mods)

@@ -42,7 +42,6 @@ disconnecting discards it. Reads allocate nothing and do not rescan recipes or r
 A client without this mod predicts vanilla here; the server corrects it.
 
 Parts that read `context.setting(..)` or `side()` have no counterpart on the Host.
-Named injections for `menu_slot_rules` request `hook_version = 5`.
 
 ### Who and where: the slot's context
 
@@ -123,6 +122,45 @@ gives up all of its stack or none of it. The slot's own rule comes first, and on
 with `menu_quick_move` is asked the pickup rule before that hook. A click asks once for each slot and stack: the
 take, the all-or-nothing check and a shift-click the parts leave to the game reuse that answer, so the server and
 the client's prediction ask the same number of times.
+
+## Taking from a slot
+
+`menu_slot_take` is `Slot.onTake` for a mod menu type open on your block entity: heard on the server after a player
+took a stack out of one of the block's own slots, once per take. It refuses nothing (`may_pickup` above refuses); a
+result slot uses it to give experience, unlock a recipe or use up its inputs, through the `Host`. `item_crafted` and
+`item_smelted` stay the crafting grid's and the furnaces' events and are never heard for a mod menu.
+
+```rust,ignore
+struct PotOutput;
+#[mod_api::sunrise_part]
+impl mod_api::BlockPart for PotOutput {}
+#[mod_api::sunrise_part]
+impl mod_api::BlockEntityPart for PotOutput {
+    fn menu_slot_take(
+        &self,
+        _: &mut dyn mod_api::ServerHost,
+        event: &mut mod_api::MenuSlotTakeEvent<'_>,
+    ) {
+        // Slot 6 is the result: each item taken uses up one input from slot 0.
+        if event.slot == 6 && let Some(input) = event.entity.items[0].take() {
+            event.entity.items[0] = input.shrink(event.taken.count());
+        }
+    }
+}
+```
+
+`taken` is a copy of what left the slot and `left` what the slot holds afterwards (`None` when it was emptied). A
+click hands over what it took: all of the slot or half of it rounded up to an empty cursor, all of a result onto a
+matching cursor, the slot's stack on a hotbar or offhand swap, each throw, and each slot a double-click's pick-all
+took from (with the part taken). A shift-click hands over the amount it moved, and a shift-click on a crafting result
+is heard once for each craft it repeats. An exchange of the cursor and the slot, putting a stack in, a drag, a creative
+clone and a refused take are not takes. Taking from a linked container or from the player's inventory does not notify
+the block behind the menu. When `menu_quick_move` handles a shift-click, its move is heard before the click commits.
+Each take runs before the next iteration, so a listener can refill a crafting grid and the next iteration sees it.
+
+The take and the listeners are one action: what a listener writes through the `Host` stays when it returns, and if one
+panics or traps its writes are undone and so is the take, the slot and the cursor going back as they were. The block
+entity is out of the world during the call, as in `menu_button`. Nothing is asked when no mod listens.
 
 ## Crafted-by processing for held stacks
 
@@ -260,7 +298,7 @@ Inside `menu_clicked`, `ItemPlace::MenuSlot` can take from and give to the click
 player's inventory and hotbar slots as well as the menu's own storage. Inserts fill
 only the named slot and return the amount that fits. Abort the transaction if a
 partial move should leave both places unchanged. Stale menu or player identities
-refuse writes. The same storage path is used by native and wasm listeners.
+refuse writes.
 
 ## A mod's chest menu
 
@@ -379,7 +417,12 @@ player's open block menu before its own grid transfer, on the same thread.
 `slot_count` entries. It describes the client's layout and content declaration,
 not the server's backing or acceptance rules. `Player(index)` uses hotbar 0–8,
 main 9–35, armour 36–39 (feet to head), off hand 40. Container equipment is
-`Equipment`; linked storage is `Storage`. Workstations without a classified layout (anvil, enchanting table, loom,
+`Equipment`. General storage, including unmarked linked slots, is `Storage`.
+Furnaces, blast furnaces, and smokers report the ingredient and fuel slots as `Input`
+and the output as `Result`. Brewing stands report the bottle, ingredient, and fuel
+slots as `Input`. Content menus report `Input` for the slots listed in their
+[menu type's `inputs`](../../how-to/content-mods.md#menu-types), even when those slots
+are linked. Workstations without a classified layout (anvil, enchanting table, loom,
 and similar types) return `Other` for every slot, including player slots. A game menu with no known client slot count returns `None`, as do
 stale or foreign handles, missing content types, and calls without an open menu
 or outside a world. Creative returns the underlying inventory menu's 46 slots,

@@ -134,6 +134,11 @@ pub fn main(args: &[String]) -> Result<(), String> {
                     review.errors.push("to review a takedown, give --files <dir> with the head checkout's packages named by SHA-256".into());
                 }
             }
+            review.errors.extend(registry::check_screenshot_rule(
+                &base.entries,
+                &head.entries,
+                checkout,
+            ));
             let collections = registry::review_collections(&base, &head, author);
             if json {
                 let json = serde_json::json!({"errors": review.errors, "notes": review.notes, "collection_reviews": collections});
@@ -165,7 +170,7 @@ pub fn main(args: &[String]) -> Result<(), String> {
                 ))
             }
         }
-        // `check` (and its trial run) on each file `head` lists and `base`
+        // `check` on each file `head` lists and `base`
         // doesn't: a pull request's new files.
         Some("check") => {
             let (files, json) = (options.value("--files")?, options.switch("--json"));
@@ -175,15 +180,11 @@ pub fn main(args: &[String]) -> Result<(), String> {
                 return Err(USAGE.into());
             };
             let files = Path::new(files.ok_or(USAGE)?);
-            let old: std::collections::HashSet<String> = match registry::load(Path::new(base)) {
-                Ok(base) => base
-                    .entries
-                    .iter()
-                    .flat_map(|e| e.versions.iter().map(|v| v.sha256.clone()))
-                    .collect(),
-                // The first pull request has no entries to compare with.
-                Err(_) => Default::default(),
-            };
+            let base_entries = registry::load(Path::new(base)).map_err(lines)?.entries;
+            let old: std::collections::HashSet<String> = base_entries
+                .iter()
+                .flat_map(|e| e.versions.iter().map(|v| v.sha256.clone()))
+                .collect();
             let checkout = Path::new(head);
             let head = registry::load(checkout).map_err(lines)?;
             let assembled = registry::candidate(
@@ -247,6 +248,12 @@ pub fn main(args: &[String]) -> Result<(), String> {
                     errors
                 }
             };
+            let mut errors = errors;
+            errors.extend(registry::check_screenshot_rule(
+                &base_entries,
+                &head.entries,
+                checkout,
+            ));
             if json {
                 println!(
                     "{}",

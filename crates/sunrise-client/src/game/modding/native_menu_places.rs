@@ -1007,8 +1007,8 @@ mod tests {
         }
         fn blocks(&self, _: &mod_api::RegistrationContext, event: &mut mod_api::BlocksEvent<'_>) {
             event
-                .blocks
-                .push(mod_api::Block::new("satchel:stand", "minecraft:barrel").with_item(false));
+                .register(mod_api::Block::new("satchel:stand", "minecraft:barrel").with_item(false))
+                .unwrap();
         }
     }
     /// The content mod menu type the satchel opens: a prepared registry slot for a synthetic
@@ -1037,7 +1037,15 @@ mod tests {
                 std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
             let root = crate::game::mods::content_root(&base, &Default::default()).unwrap();
             sunrise_client::containers::with_mod_menu_types(
-                [(SATCHEL_MENU.into(), 9, 0, Vec::new(), None, None)],
+                [(
+                    SATCHEL_MENU.into(),
+                    9,
+                    0,
+                    Vec::new(),
+                    Vec::new(),
+                    None,
+                    None,
+                )],
                 || {
                     super::super::native_entity_refs::tests::with_game_role(
                         root.prepared().to_owned(),

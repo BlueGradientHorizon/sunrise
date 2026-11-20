@@ -92,8 +92,7 @@ impl PayloadRegistrar<'_> {
     /// on it with `PlayerRef::send_payload` (vanilla's 1,048,576-byte limit)
     /// and `server`, when given, receives what a client sends on it (vanilla's
     /// 32,767-byte limit), on the main thread. Several mods may declare one raw
-    /// channel; each receives it once, in mod load order. A handler that fails or
-    /// stays busy past its deadline loses only its own delivery (logged, its
+    /// channel; each receives it once, in mod load order. A handler that fails loses only its own delivery (logged, its
     /// staged work rolled back): the player stays connected and the other mods'
     /// copies still run. `minecraft:` and `sunrise:` ids, and an id a typed
     /// payload uses, refuse load.
@@ -173,7 +172,7 @@ methods!(
 );
 
 // no wire: the load event borrows its registrar and has no invocation data representation.
-/// The load-time payload registration event, reached from the current Registrar.
+/// The load-time payload registration event, built by the game through the current [`Registrar`].
 #[non_exhaustive]
 pub struct RegisterPayloadHandlersEvent<'a> {
     registrar: &'a mut dyn Registrar,
@@ -187,6 +186,7 @@ impl RegisterPayloadHandlersEvent<'_> {
 
 // no wire: the load event borrows its registrar; handler callbacks cross separately.
 /// Assign client handlers to already declared clientbound payloads before freeze.
+/// The game builds this event through the current [`Registrar`].
 #[non_exhaustive]
 pub struct RegisterClientPayloadHandlersEvent<'a> {
     registrar: &'a mut dyn Registrar,

@@ -9,6 +9,8 @@ use sunrise_protocol::packets::configuration::ClientInformation;
 
 #[path = "tests/fall_reset.rs"]
 mod fall_reset;
+#[path = "tests/travel.rs"]
+mod travel;
 
 fn guest(entity_id: i32) -> Guest {
     let (sender, _) = mpsc::channel();
@@ -176,7 +178,12 @@ fn guest_equipment_changes_powder_snow_support_on_the_same_move() {
                     guest.armor[3] = boots.then(|| ItemStack::new("minecraft:leather_boots", 1));
                     guest.on_ground = true;
                     guest.moves_from_ground = false;
-                    guest.moves.push(([0.0, -0.25, 0.0], true));
+                    guest.moves.push(sunrise_client::lan::guest::GuestMove {
+                        position: guest.position,
+                        delta: [0.0, -0.25, 0.0],
+                        on_ground: true,
+                        sneaking: false,
+                    });
                 })
                 .unwrap();
             game.guest_server_tick(1, true);
@@ -285,7 +292,12 @@ fn breathing_guest_tick(meddle: bool) -> (Option<String>, i32, i32) {
                     .update_guest(1, |guest| {
                         guest.on_ground = true;
                         guest.moves_from_ground = false;
-                        guest.moves.push(([0.0, -0.25, 0.0], true));
+                        guest.moves.push(sunrise_client::lan::guest::GuestMove {
+                            position: guest.position,
+                            delta: [0.0, -0.25, 0.0],
+                            on_ground: true,
+                            sneaking: false,
+                        });
                     })
                     .unwrap();
                 game.guest_server_tick(1, true);
