@@ -151,7 +151,7 @@ impl mod_api::Hooks for Crusher {
 
 #[test]
 fn every_projection_uses_the_same_priority_order() {
-    let mods = || [mod_api::ModEntry::new("crusher", Box::new(Crusher))];
+    let mods = || [mod_api::ModEntry::new("test", Box::new(Crusher))];
     mod_platform::testing::with_mods(mods().into(), || {
         mod_platform::__private::part_tests::install_parts_fixture(&mods()).unwrap();
         projections_follow_one_order();
