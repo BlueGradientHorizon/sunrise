@@ -336,7 +336,8 @@ impl PackSky {
     /// and stars turn with it (7.1). In the End under the dragon fight's fog, only the End's fan,
     /// in the fog colour (`fogColor`), as stage SKY. A part the pack's `switches` turn off is left
     /// out: `sky` the disc, the sunset fan, the void and the End's fan; `stars`, `sun` and `moon`
-    /// their own. The End's flash, in the sun's place there, stays.
+    /// their own. The End's flash is not drawn here: the End has no skybox, so the pack's sky runs
+    /// there only under the dragon fight's fog (`PackPost::draw_opaque`), as the End's fan alone.
     pub fn prepare(
         &self,
         queue: &wgpu::Queue,
@@ -413,7 +414,7 @@ impl PackSky {
         }
         let bodies = [("SUN", switches.sun), ("MOON", switches.moon)];
         for (i, (stage, on)) in bodies.into_iter().enumerate().take(quads.len()) {
-            if on || frame.end_sky {
+            if on {
                 parts.push(part(stage, true, i as u32 * 6..i as u32 * 6 + 6));
             }
         }
