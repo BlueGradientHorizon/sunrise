@@ -309,19 +309,9 @@ pub(super) fn surface<'a>(
 pub(super) fn surface_reading<'a>(
     root: &'a Path,
     included: &'a [(&'a str, &'a str)],
-    missing: Option<&mut Vec<String>>,
-) -> Result<Surface<'a>, String> {
-    let index = crate::index::game(root, included);
-    surface_reading_index(root, index, missing)
-}
-
-/// [`surface_reading`] over a game index the caller already built: the provider keys and the
-/// surface read one parse of the crates instead of two.
-pub(super) fn surface_reading_index<'a>(
-    root: &'a Path,
-    index: crate::index::Index<'a>,
     mut missing: Option<&mut Vec<String>>,
 ) -> Result<Surface<'a>, String> {
+    let index = crate::index::game(root, included);
     let mut types = Types::new(index)?;
     let api = types.index.module("mod_api", &[])?;
     let mut declared = trait_roles::declared(root)?;
@@ -906,7 +896,7 @@ pub struct Generated {
 
 pub fn generate(root: &Path, included: &[(&str, &str)]) -> Result<Generated, String> {
     let providers = crate::capability_providers::generate(root, included)?.0;
-    generate_with_providers(root, included, providers)
+    generate_with_providers(root, included, &providers)
 }
 
 /// [`generate`] with the provider enums a caller already generated for these `included`
@@ -914,10 +904,10 @@ pub fn generate(root: &Path, included: &[(&str, &str)]) -> Result<Generated, Str
 pub fn generate_with_providers(
     root: &Path,
     included: &[(&str, &str)],
-    providers: String,
+    providers: &str,
 ) -> Result<Generated, String> {
     let mut with_providers = included.to_vec();
-    with_providers.push(("capability_providers_generated.rs", providers.as_str()));
+    with_providers.push(("capability_providers_generated.rs", providers));
     let mut surface = surface(root, &with_providers)?;
     coverage(&surface)?;
     let catalog = crate::Catalog::load(root)?;

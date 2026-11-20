@@ -97,7 +97,7 @@ pub fn generate(root: &Path, out_dir: &Path, target: Target) -> Result<(), Strin
                 std::thread::Builder::new()
                     .stack_size(64 << 20)
                     .spawn_scoped(scope, || {
-                        super::wire::generate_with_providers(root, &included, providers.clone())
+                        super::wire::generate_with_providers(root, &included, &providers)
                     })
                     .map_err(|e| e.to_string())?
                     .join()
