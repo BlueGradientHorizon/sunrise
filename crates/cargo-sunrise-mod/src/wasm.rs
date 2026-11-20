@@ -122,6 +122,49 @@ fn toolchain() -> Result<Toolchain, String> {
             field("release:")?
         ));
     }
+    // A rustup-managed toolchain already there can still be a minimal profile: `-Zbuild-std`
+    // needs rust-src, and TARGET its std. Querying the installed lists stays local; a rustup
+    // that cannot answer means the toolchain is not rustup's to complete, and Cargo's error
+    // names the missing component as before.
+    if rustup_found() {
+        let installed = |args: &[&str]| {
+            output({
+                let mut c = Command::new("rustup");
+                c.args(args);
+                c
+            })
+            .unwrap_or_default()
+        };
+        let missing: [(&[&str], &[&str], fn(&str) -> bool, &str); 2] = [
+            (
+                &["component", "list", "--toolchain", TOOLCHAIN, "--installed"],
+                &["component", "add", "--toolchain", TOOLCHAIN, "rust-src"],
+                |line| line.starts_with("rust-src"),
+                "rust-src",
+            ),
+            (
+                &["target", "list", "--toolchain", TOOLCHAIN, "--installed"],
+                &["target", "add", "--toolchain", TOOLCHAIN, TARGET],
+                |line| line.trim() == TARGET,
+                TARGET,
+            ),
+        ];
+        for (list, add, has, label) in missing {
+            let present = installed(list);
+            if present.lines().all(|line| !has(line)) && !present.is_empty() {
+                println!("Adding {label} to Rust {TOOLCHAIN}…");
+                let status = Command::new("rustup")
+                    .args(add)
+                    .status()
+                    .map_err(|e| format!("rustup: {e}"))?;
+                if !status.success() {
+                    return Err(format!(
+                        "wasm mods build std from source: Rust {TOOLCHAIN} needs {label} and rustup couldn't add it"
+                    ));
+                }
+            }
+        }
+    }
     let host = field("host:")?;
     let sysroot = output({
         let mut c = pinned("rustc");

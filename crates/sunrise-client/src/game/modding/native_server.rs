@@ -1614,6 +1614,59 @@ impl Game<'_> {
         let mut set = false;
         self.native_as_player_handle(player, |game| set = game.set_respawn_point(stored)) && set
     }
+    /// The ping the Tab list shows (`ServerCommonPacketListenerImpl.latency`, kept by the
+    /// connection's keep-alives): 0 for a fake player and for an acting player with no known
+    /// connection.
+    pub(super) fn player_latency(
+        &self,
+        player: PlayerRef,
+    ) -> Result<i32, mod_api::PlayerWorldRefusal> {
+        use mod_api::PlayerWorldRefusal as Refusal;
+        if !self.is_logical_server() {
+            return Err(Refusal::Client);
+        }
+        if let Some(guest) = self.online_player_record(player) {
+            return Ok(guest.latency.load(Ordering::Relaxed));
+        }
+        (self.native_acting_player() == Some(player) || self.player_handle_read(player).is_some())
+            .then_some(0)
+            .ok_or(Refusal::Stale)
+    }
+    /// The permission level `player_hide` set, `None` when shown: kept by UUID, and read as
+    /// stored before the world is opened to others (an unpublished single-player world runs a
+    /// hub for its owner too), where it applies once it is.
+    pub(super) fn player_hidden(
+        &self,
+        player: PlayerRef,
+    ) -> Result<Option<u8>, mod_api::PlayerWorldRefusal> {
+        use mod_api::PlayerWorldRefusal as Refusal;
+        if !self.is_logical_server() {
+            return Err(Refusal::Client);
+        }
+        let hub = &self.lan.as_ref().ok_or(Refusal::Stale)?.hub;
+        if self.native_lifecycle.epoch() != Some(player.entity().epoch()) {
+            return Err(Refusal::Stale);
+        }
+        Ok(hub.hidden.get(&player.uuid()).copied())
+    }
+    /// The name `player_set_nickname` set, `None` when there is none; the player must be
+    /// online. An unpublished single-player world has a server list: `player_set_nickname`
+    /// works there, so its nickname reads back.
+    pub(super) fn player_nickname(
+        &self,
+        player: PlayerRef,
+    ) -> Result<Option<String>, mod_api::PlayerWorldRefusal> {
+        use mod_api::PlayerWorldRefusal as Refusal;
+        if !self.is_logical_server() {
+            return Err(Refusal::Client);
+        }
+        let uuid = self.message_player_uuid(player).ok_or(Refusal::Stale)?;
+        let hub = &self.lan.as_ref().ok_or(Refusal::Stale)?.hub;
+        if !hub.online_players().any(|g| g.uuid == uuid) {
+            return Err(Refusal::Stale);
+        }
+        Ok(hub.nicknames.get(&uuid).cloned())
+    }
     /// Hides that player (a vanish) from the players below permission
     /// `level`, or shows them again (None): from the next tick those players
     /// lose them from the Tab list and the world (their client stops

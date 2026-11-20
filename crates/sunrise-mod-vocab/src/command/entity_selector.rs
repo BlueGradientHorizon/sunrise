@@ -67,6 +67,11 @@ impl SelectorBase {
 /// The game keeps one value per token and calls it on the server thread: implement it to be
 /// shared, without mutable state.
 pub trait EntitySelectorType: Send + Sync + 'static {
+    // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
+    #[doc(hidden)]
+    fn __sunrise_marks(&self, _: crate::__private::Sealed) {
+        sunrise_mod_marks::entity_selector_type::<Self>();
+    }
     /// The base selection, read once at registration and frozen for the process.
     /// A panic, zero limit, or a tooltip longer than 32767 UTF-16 units refuses registration.
     fn base(&self) -> SelectorBase;

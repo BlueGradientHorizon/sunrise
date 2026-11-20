@@ -486,15 +486,16 @@ impl World {
                 writes.push(((x, y, z), previous, state.0));
             }
             self.modified.insert((x >> 4, z >> 4));
-            // The mesher reads a 3x3x3 neighbourhood for AO, so a write marks
-            // the sections it can reach: this section, the one above/below
-            // only on a section face, and a neighbour column only on a chunk
+            // The mesher reads a 3x3x3 neighbourhood for AO, and a connected texture's `above`
+            // test reads the cell two above a face's block, so a write marks the sections it
+            // can reach: this section, the one above only on its top layer, the one below on
+            // its bottom two layers, and a neighbour column only on a chunk
             // border (the diagonal only where both borders meet).
             let sy = (y - min_y) >> 4;
             let local_y = y & 15;
             let mark = |dirty: &mut DirtySections, bx: i32, bz: i32| {
                 dirty.insert((bx >> 4, sy, bz >> 4));
-                if local_y == 0 && sy > 0 {
+                if local_y <= 1 && sy > 0 {
                     dirty.insert((bx >> 4, sy - 1, bz >> 4));
                 }
                 if local_y == 15 && sy + 1 < sections {
@@ -923,6 +924,23 @@ mod tests {
                 assert_eq!(world.dirty_sections.len(), 8);
             }
         }
+    }
+
+    /// A connected texture's `above` test reads two cells up, so a write on the second layer of a
+    /// section re-meshes the section below too, and one on the third does not.
+    #[test]
+    fn a_write_on_a_sections_second_layer_marks_the_section_below() {
+        let mut world = World::new(BlockStateId(0), 0);
+        world.chunks.insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+        let sy = (65 - MIN_Y) >> 4;
+        assert_eq!(65 & 15, 1);
+        world.set(3, 65, 3, BlockStateId(1)).unwrap();
+        let got: Vec<_> = world.dirty_sections.columns().collect();
+        assert_eq!(world.dirty_sections.len(), 2, "{got:?}");
+        assert!(world.dirty_sections.contains(&(0, sy - 1, 0)));
+        world.dirty_sections.clear();
+        world.set(3, 66, 3, BlockStateId(1)).unwrap();
+        assert_eq!(world.dirty_sections.len(), 1);
     }
 
     /// `ChunkAccess.getNoiseBiome` clamps the cell to the level. An End chunk read back from a

@@ -105,7 +105,7 @@ fn matrix(mods: mod_api::Mods) {
             // local player; the final keys and eligible sprint reach the server.
             for food in [0, 6, 7, 20] {
                 reset_player(game, food);
-                let mut predicted = game.player.as_ref().unwrap().clone();
+                let mut replayed = game.player.as_ref().unwrap().clone();
                 tick(game);
                 let player = game.player.as_ref().unwrap();
                 assert_eq!(player.move_vector, [0.0, 1.0]);
@@ -116,15 +116,19 @@ fn matrix(mods: mod_api::Mods) {
                 assert_eq!(player.sprinting, food > 6, "food={food}");
                 assert_eq!(game.remote.as_ref().unwrap().last_input, 1 | 64);
                 assert_eq!(game.remote.as_ref().unwrap().was_sprinting, food > 6);
+                // What the client sent is enough to play its tick again: the input packet's keys
+                // and the sprint state, through `MotionWorld::replayed_tick` (the tick a mod's
+                // `native_simulate_player_move` plays), without asking the listener again, move
+                // the player as the client's own tick did.
                 let position = player.position;
                 let sprinting = player.sprinting;
-                let replay_keys =
+                let sent_keys =
                     crate::game::lan_vehicles::input_keys(game.remote.as_ref().unwrap().last_input);
                 let side = game_side!(game);
                 MotionWorld {
                     side: &side,
                     entities: &[],
-                    player: &mut predicted,
+                    player: &mut replayed,
                     scene: &mut game.world,
                     assets: &game.pack.assets,
                     collision_binding: game.collision,
@@ -135,11 +139,11 @@ fn matrix(mods: mod_api::Mods) {
                     tag_items: None,
                     block_registries: None,
                 }
-                .replayed_tick(replay_keys, sprinting)
+                .replayed_tick(sent_keys, sprinting)
                 .unwrap();
-                assert_eq!(predicted.move_vector, [0.0, 1.0]);
-                assert_eq!(predicted.sprinting, sprinting);
-                assert!((predicted.position.z - position.z).abs() < 1.0e-10);
+                assert_eq!(replayed.move_vector, [0.0, 1.0]);
+                assert_eq!(replayed.sprinting, sprinting);
+                assert!((replayed.position.z - position.z).abs() < 1.0e-10);
             }
 
             reset_player(game, 20);

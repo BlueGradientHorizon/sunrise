@@ -194,6 +194,22 @@ pub fn offsets(axes: Axes) -> [(u8, Vec3); 8] {
     ]
 }
 
+/// For `offset` on an edge of a face (one step along one axis of the face's plane), the two cells
+/// beside the block along the plane's other axis; `None` for any other offset.
+pub fn beside(normal: Vec3, offset: Vec3) -> Option<[Vec3; 2]> {
+    let steps = offset.iter().filter(|&&c| c != 0).count();
+    if steps != 1 || dot(normal, offset) != 0 {
+        return None;
+    }
+    // `normal x offset`: a unit step along the plane's other axis.
+    let along = [
+        normal[1] * offset[2] - normal[2] * offset[1],
+        normal[2] * offset[0] - normal[0] * offset[2],
+        normal[0] * offset[1] - normal[1] * offset[0],
+    ];
+    Some([along, neg(along)])
+}
+
 /// The neighbours of a face that join it, by `joins(offset from the block)`: all eight, so
 /// overlays see the corners whatever the sides. With `inner_seams`, a neighbour whose own face
 /// is covered (the block in front of it joins too) doesn't count, which draws a seam on inner
@@ -458,6 +474,20 @@ fn mix(mut x: u32) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_cells_beside_a_block_lie_along_the_faces_other_axis() {
+        // A north face (normal -z): its edge at -x has the cells above and below beside it.
+        assert_eq!(
+            beside([0, 0, -1], [-1, 0, 0]),
+            Some([[0, 1, 0], [0, -1, 0]])
+        );
+        // An up face (normal +y): its edge at +z has the cells at -x and +x beside it.
+        assert_eq!(beside([0, 1, 0], [0, 0, 1]), Some([[1, 0, 0], [-1, 0, 0]]));
+        // A corner and the cell in front are no edge.
+        assert_eq!(beside([0, 1, 0], [1, 0, 1]), None);
+        assert_eq!(beside([0, 1, 0], [0, 1, 0]), None);
+    }
 
     #[test]
     fn ctm_tiles_from_the_template() {

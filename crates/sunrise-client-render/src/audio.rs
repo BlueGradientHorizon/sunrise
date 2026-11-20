@@ -371,6 +371,12 @@ pub struct CapturedSound {
     pub source: usize,
     pub entity: Option<u32>,
     pub except_entity: Option<u32>,
+    /// The seed the sound's instance takes (`SoundInstance`'s random).
+    pub seed: i64,
+    /// How many particle requests this thread's particle captures had taken when this sound
+    /// was captured (`particles::requested_count`): a test reads the two captures as one
+    /// ordered stream.
+    pub particles_before: u64,
 }
 
 pub struct Audio {
@@ -1911,6 +1917,8 @@ impl Audio {
                 }),
                 entity: None,
                 except_entity: None,
+                seed,
+                particles_before: crate::particles::requested_count(),
             });
         }
         *self.heard.entry(event.to_owned()).or_default() += 1;
@@ -1937,6 +1945,8 @@ impl Audio {
                 source: sound.source.index(),
                 entity: None,
                 except_entity: None,
+                seed,
+                particles_before: crate::particles::requested_count(),
             });
         }
         *self.heard.entry(sound.identifier.clone()).or_default() += 1;
@@ -2051,6 +2061,7 @@ impl Audio {
         entity: crate::sound_engine::SoundEntity,
         except_entity: Option<u32>,
     ) {
+        let seed = self.random.next_long();
         if let Some(capture) = self.capture.as_mut() {
             capture.push(CapturedSound {
                 event: event.to_owned(),
@@ -2060,9 +2071,10 @@ impl Audio {
                 source,
                 entity: Some(entity.id),
                 except_entity,
+                seed,
+                particles_before: crate::particles::requested_count(),
             });
         }
-        let seed = self.random.next_long();
         self.play_entity_seeded(event, source, volume, pitch, seed, entity);
     }
     /// Removal belongs to the old object even if its numeric id is immediately reused.
@@ -2098,6 +2110,8 @@ impl Audio {
                 }),
                 entity: None,
                 except_entity: None,
+                seed,
+                particles_before: crate::particles::requested_count(),
             });
         }
         if at.is_some() {

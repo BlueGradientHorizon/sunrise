@@ -9,6 +9,11 @@ use std::sync::Arc;
 /// (`assets/<namespace>/textures/<path>.png`). It is given to `Hooks::sprite_source` and valid
 /// for that call only: a read after it returns finds nothing. The same on native and wasm.
 pub trait ResourceReader: Send + Sync + 'static {
+    // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
+    #[doc(hidden)]
+    fn __sunrise_marks(&self, _: crate::__private::Sealed) {
+        sunrise_mod_marks::resource_reader::<Self>();
+    }
     /// The winning copy of `path`, the topmost pack's (`ResourceManager.getResource`); `None`
     /// where no pack provides it.
     fn read(&self, path: &str) -> Option<Vec<u8>>;

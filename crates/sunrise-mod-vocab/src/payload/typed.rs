@@ -384,6 +384,7 @@ impl PayloadRegistrar<'_> {
             direction,
             optional: self.optional,
             thread: self.thread,
+            delivery: self.delivery,
         };
         self.registrar.borrow_mut().add_typed_payload(
             declaration,

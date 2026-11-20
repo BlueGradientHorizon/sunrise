@@ -482,6 +482,8 @@ pub enum Target {
     Api,
     /// Engine vocabulary: hook and host traits, values, and dispatch.
     Vocab,
+    /// `sunrise-mod-marks`: the handler traits' imports, below the vocabulary.
+    Marks,
     /// The game: the host traits' implementation on `Game`.
     Client,
 }
@@ -1196,10 +1198,10 @@ mod tests {
             Some(("sunrise-client", "menu::native_menu_slot_rules".to_owned()))
         );
         assert_eq!(
-            super::free_function_source("sunrise_client_lib::breathing::native_living_breathe"),
+            super::free_function_source("sunrise_client_lib::breathing::native_living_drown"),
             Some((
                 "sunrise-client",
-                "breathing::native_living_breathe".to_owned()
+                "breathing::native_living_drown".to_owned()
             ))
         );
         assert_eq!(
@@ -1213,7 +1215,7 @@ mod tests {
         );
         for target in [
             "sunrise_client::menu::native_menu_slot_rules",
-            "sunrise_client::breathing::native_living_breathe",
+            "sunrise_client::breathing::native_living_drown",
         ] {
             assert_eq!(super::free_function_source(target), None);
         }

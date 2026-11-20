@@ -139,7 +139,6 @@
   "How fast the right stick turns the view.": "چوب راست با چه سرعتی نما را می‌چرخاند.",
   "How fast the stick moves the crosshair in inventories.": "چوب با چه سرعتی کراسهیر را در موجودی‌ها حرکت می‌دهد.",
   "How frames reach the screen while VSync is off.": "چگونه فریم‌ها در حالی که VSync خاموش است به صفحه نمایش می‌رسند.",
-  "How frames reach the screen, and the performance overlay.": "نحوه رسیدن فریم ها به صفحه و پوشش عملکرد.",
   "How long a held direction takes between repeats.": "یک جهت نگه‌داشته‌شده بین تکرارها چقدر فاصله دارد.",
   "How long a held direction waits before it repeats.": "یک جهت نگه‌داشته‌شده چقدر صبر می‌کند تا تکرار شود.",
   "How many particles effects spawn.": "چند اثر ذرات تخم ریزی می کنند.",
