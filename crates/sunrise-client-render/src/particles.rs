@@ -4826,6 +4826,12 @@ const CREEPER: [[f64; 2]; 12] = [
 
 #[cfg(test)]
 mod tick_bench;
+/// `SingleQuadParticle`'s roll: `Quaternionf.rotationZ(roll)`, with JOML's sine and cosine.
+fn roll_rotation(roll: f32) -> Quat {
+    let q = crate::camera::joml::Quat::rotation_z(roll);
+    Quat::from_xyzw(q.x, q.y, q.z, q.w)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -6282,10 +6288,4 @@ mod tests {
         assert_eq!(engine.pending.len(), 0);
         assert!(engine.tracked_explosions.is_empty());
     }
-}
-
-/// `SingleQuadParticle`'s roll: `Quaternionf.rotationZ(roll)`, with JOML's sine and cosine.
-fn roll_rotation(roll: f32) -> Quat {
-    let q = crate::camera::joml::Quat::rotation_z(roll);
-    Quat::from_xyzw(q.x, q.y, q.z, q.w)
 }
