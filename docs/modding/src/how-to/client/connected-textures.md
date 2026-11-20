@@ -104,8 +104,8 @@ One rule per case, in order. Create's copper roofs, for example, are a rule for 
 - The neighbours read are the ones within one block, on the face's plane, the cell in front of each for `cover` and the cell above each for `above`.
   The game re-meshes a section when a block within one block of it changes, and the one below when a block on
   its bottom two layers changes (the cell above a neighbour is two up), so a joined texture follows its neighbours.
-  That holds in every world, with or without such rules: a write on a section's second layer, one of its 16, also
-  re-meshes the section below.
+  That holds in every world, with or without such rules: a block-state change on a section's second layer also
+  marks the section below for remeshing if that section exists.
 - A rule that also names a block the pack formats (OptiFine's connected textures) name is ordered with them:
   by weight, then by path. Tile rules (a rule with `sprites`) come before block rules.
 - There is no hook that decides a connection with code, and a block cannot present another block's look to its
