@@ -380,7 +380,7 @@ fn template_tag(t: &Tag, native_templates: bool) -> Result<Template> {
                 .strip_prefix('!')
                 .map_or((false, name.as_str()), |n| (true, n));
             let name = identifier(name)?;
-            if !super::is_persistent(&name) {
+            if !native_templates && remove && !super::is_persistent(&name) {
                 return Err(format!("{name} has no persistent codec"));
             }
             let value = if remove {
@@ -452,6 +452,9 @@ pub fn from_upgraded_component_tag(id: &str, t: &Tag) -> Result<Value> {
 }
 fn component_tag(id: &str, t: &Tag, native_templates: bool) -> Result<Value> {
     let id = identifier(id)?;
+    if !native_templates && !super::is_persistent(&id) {
+        return Err(format!("{id} has no persistent codec"));
+    }
     let name = id.strip_prefix("minecraft:").unwrap_or(&id);
     validate_source(name, t)?;
     Ok(match name {
@@ -1556,6 +1559,41 @@ mod tests {
                 matches!(&native,Value::List(values) if matches!(&values[0],Value::Template(item) if item.count==count))
             );
         }
+    }
+    #[test]
+    fn persistent_input_refuses_transient_components_by_name_but_native_stacks_keep_them() {
+        for name in [
+            "creative_slot_lock",
+            "map_post_processing",
+            "additional_trade_cost",
+        ] {
+            let value = if name == "creative_slot_lock" {
+                Tag::Compound(Default::default())
+            } else {
+                Tag::Int(3)
+            };
+            let error = from_component_tag(&format!("minecraft:{name}"), &value).unwrap_err();
+            assert!(error.contains(name), "{error}");
+            assert!(from_upgraded_component_tag(&format!("minecraft:{name}"), &value).is_ok());
+        }
+        let removal =
+            parse(r#"{id:"minecraft:stone",components:{"!minecraft:map_post_processing":{}}}"#);
+        assert!(
+            template_from_tag(&removal)
+                .unwrap_err()
+                .contains("map_post_processing")
+        );
+        let native = from_upgraded_component_tag("minecraft:use_remainder", &removal).unwrap();
+        let Value::Template(native) = native else {
+            panic!("use_remainder holds a template");
+        };
+        assert_eq!(
+            native.patch,
+            vec![("minecraft:map_post_processing".into(), None)]
+        );
+
+        let hidden = parse(r#"{hidden_components:["minecraft:map_post_processing"]}"#);
+        assert!(from_component_tag("minecraft:tooltip_display", &hidden).is_ok());
     }
     #[test]
     fn float_ranges_follow_java_ordering_and_refuse_negative_zero_at_a_zero_minimum() {

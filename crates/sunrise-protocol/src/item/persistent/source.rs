@@ -312,9 +312,6 @@ fn template_body(w: &mut Writer, t: &Template, ids: &dyn Ids, depth: u32) -> Res
 /// Persistent input is normalized below protocol before registry admission.
 pub fn component_from_tag(kind: i32, value: &Tag, ids: &dyn Ids) -> Result<Component> {
     let name = component_name(kind).ok_or_else(|| err("unknown component type"))?;
-    if !sunrise_world::component_value::is_persistent(name) {
-        return Err(err("component has no persistent codec"));
-    }
     let value =
         sunrise_world::component_value::source::from_component_tag(name, value).map_err(err)?;
     component_from_value(kind, &value, ids)

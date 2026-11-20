@@ -584,4 +584,11 @@ mod tests {
         assert!(convert(crate::item::MAX_NESTING as usize).unwrap());
         assert!(convert(crate::item::MAX_NESTING as usize + 1).is_err());
     }
+    #[test]
+    fn persistent_input_names_the_transient_component_it_refuses() {
+        let error = component_from_tag(20, &Tag::Compound(Default::default()), &registry_id)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("creative_slot_lock"), "{error}");
+    }
 }
