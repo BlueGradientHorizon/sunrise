@@ -3468,6 +3468,21 @@ fn take_resent_column(
     // section often changes in a bulk edit, is mostly sections that did not).
     let mut cells = crate::light::LightChanges::default();
     cells.keyed(world.layout());
+    // A pad has no mesh of its own. Only the adjacent row can be sampled by the
+    // boundary sections in this column or its horizontal neighbours.
+    let pads = [
+        (chunk.min_y() - 1, 0),
+        (chunk.max_y(), chunk.sections.len() as i32 - 1),
+    ];
+    for (y, s) in pads {
+        if (0..16).any(|z| (0..16).any(|x| old.light(x, y, z) != chunk.light(x, y, z))) {
+            for dz in -1..=1 {
+                for dx in -1..=1 {
+                    world.dirty_sections.insert((key.0 + dx, s, key.1 + dz));
+                }
+            }
+        }
+    }
     let kept = keep_unchanged_sections(old, &mut chunk, &mut cells);
     chunk.light_loaded = old.light_loaded;
     chunk.lit = true;
@@ -4938,6 +4953,30 @@ mod tests {
         chunk.lit = true;
         world.chunks.insert((2, -3), Arc::new(chunk.clone()));
         chunk
+    }
+
+    #[test]
+    fn a_pad_only_resend_dirties_the_boundary_mesh_and_its_neighbours() {
+        use crate::chunk::SECTIONS;
+        use crate::light::light_from_layers;
+        for (pad, boundary) in [(0, 0), (SECTIONS + 1, SECTIONS - 1)] {
+            let mut world = World::new(sunrise_world::registry::BlockStateId(0), 0);
+            let mut old = Chunk::empty(2, -3);
+            let mut layers = vec![(None, None); SECTIONS + 2];
+            layers[pad].1 = Some(vec![0x22; 2048]);
+            light_from_layers(&mut old, &layers, true);
+            world.install_light_column(old.clone());
+            let mut new = old.clone();
+            layers[pad].1 = Some(vec![0x77; 2048]);
+            light_from_layers(&mut new, &layers, true);
+            take_resent_column(&mut world, (2, -3), &old, new, false);
+            assert_eq!(world.dirty_sections.len(), 9);
+            for z in -4..=-2 {
+                for x in 1..=3 {
+                    assert!(world.dirty_sections.contains(&(x, boundary as i32, z)));
+                }
+            }
+        }
     }
 
     /// A server's resent column uses the light in its packet, as vanilla's
