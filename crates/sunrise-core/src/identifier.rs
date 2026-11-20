@@ -139,6 +139,26 @@ mod tests {
         );
     }
 
+    /// Non-ASCII text is refused in the namespace and in the path, never hashed. A valid
+    /// identifier hashes as vanilla's `31 * namespace.hashCode() + path.hashCode()`.
+    #[test]
+    fn only_ascii_reaches_the_hash() {
+        for text in ["\u{e9}", "a\u{1F600}", "\u{0101}", "\u{ff}"] {
+            assert_eq!(
+                Identifier::from_parts(text, "x"),
+                Err(IdentifierError::Namespace)
+            );
+            assert_eq!(
+                Identifier::from_parts("x", text),
+                Err(IdentifierError::Path)
+            );
+        }
+        assert_eq!(
+            Identifier::parse("minecraft:stone").unwrap().hash_code(),
+            182_203_480
+        );
+    }
+
     /// A character outside `[a-z0-9_.-]` is refused in the namespace; `/` only in the path.
     #[test]
     fn invalid_characters_are_still_refused() {
