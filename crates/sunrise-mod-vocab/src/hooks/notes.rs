@@ -3002,12 +3002,14 @@ registration path.
   `ItemEntityRef::set_stack` changes one's nonempty stack; discarding an entity is a separate operation. The query acts on
   the level in place.
 
-- `LevelRef::with_random(host, |random| ...)`, the server level's own random (vanilla's `Level.random`, NeoForge mods'
-  `level.getRandom()`): a mod draws from the stream vanilla's explosions and block drops use, so its draws shift theirs
-  as a Java mod's would. The closure draws on the level's stream and the level keeps it after (`random(host)` is a copy
-  of it, `set_random(host, random)` stores one back), also for a level parked while the server ticks another. It is `None` on a client of a server, for a stale handle and for a level that isn't open:
-  the Nether and the End open at server startup and can later close while idle. Inside a
-  restricted level hook, `with_random` on the `LevelRandomHost` draws from the same stream.
+- `level.with_random(host, |rng| rng.next_int_bound(bound))` borrows the named server level's live
+  stream (`Level.getRandom()`), including levels parked while the server ticks another. In a restricted
+  level hook use `host.with_random(|rng| rng.next_int_bound(bound))` to borrow the hook's level stream.
+  The borrow ends with the closure. Without an authoritative, resident stream to lend, including for a
+  stale level handle, the call returns `None` and skips the closure. A panic inside the closure restores
+  the seed and cached Gaussian; a later panic does not undo completed, unjournaled draws. A transaction
+  abort restores each stream's first snapshot in that frame, including snapshots inherited from committed
+  children. A mod that sets its own seed uses a separate `LegacyRandomSource`.
 
 - Server lifecycle hooks run once per start, on both the single-player server thread and a dedicated server.
   `server_about_to_start(dedicated)` runs before worlds load (`ServerAboutToStartEvent`).

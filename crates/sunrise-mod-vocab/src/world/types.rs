@@ -336,13 +336,19 @@ impl LevelRef {
         crate::content::registry_keys::dimension_id(self.dimension)
             .expect("the game's table made the key")
     }
-    /// Borrow the named server level's live random stream (`Level.getRandom`), in vanilla's
-    /// order. Draws advance that stream even when the level is parked, without switching levels.
-    /// Returns `None` without calling `draw` on a client, for a stale or closed level, or if
-    /// the host cannot lend the stream.
+    /// Borrow the named server level's live random stream (`Level.getRandom`) for `draw`
+    /// only: `level.with_random(host, |rng| rng.next_int_bound(bound))`. The closure cannot
+    /// keep or reseed the stream. Draws advance that level's stream in vanilla's order,
+    /// even when the level is parked; this never switches or loads levels.
     ///
-    /// Unwinding restores the stream, including any cached Gaussian, to its state before the
-    /// call. If there is an open transaction, its abort also undoes successful draws.
+    /// Returns `None` without calling `draw` if the host lacks server authority, the
+    /// handle is stale, the level is not resident, or world access is unavailable.
+    ///
+    /// If `draw` unwinds, the seed and cached Gaussian revert to their state before this
+    /// call. A later panic does not undo a completed, unjournaled draw. In a transaction,
+    /// abort restores each level's stream to its first snapshot in that frame; a child
+    /// commit keeps its draws and passes any first snapshots the parent doesn't yet have
+    /// to the parent for rollback.
     pub fn with_random<T>(
         self,
         host: &mut dyn ServerHost,
@@ -1593,7 +1599,7 @@ pub trait LevelHost {
     }
 }
 
-/// Access vanilla's `Level.random`, so draws come in vanilla's order.
+/// Restricted access to the hook's own level and its live `Level.getRandom` stream.
 pub trait LevelRandomHost: LevelHost {
     /// Vanilla comparator container signal, 0 to 15, through the engine comparator path.
     /// Generates unopened container loot once before reading, as vanilla getItem does;
@@ -1608,11 +1614,12 @@ pub trait LevelRandomHost: LevelHost {
     fn attachments(&mut self) -> &mut dyn AttachmentStore {
         unimplemented!("LevelRandomHost::attachments")
     }
-    /// Lend the level's live random stream (`Level.getRandom`) to `draw` for this call.
-    /// A host that cannot lend the stream declines by not running `draw`, as the default
-    /// implementation does. A host that runs it preserves all draws on normal return and
-    /// restores the stream, including its cached Gaussian, if it unwinds.
-    /// Listeners request draws with `host.with_random(|random| ...)`.
+    /// Lend the level's live random stream to `draw` for this call by using
+    /// [`RandomDraw::run`]. A host that cannot lend the stream declines by not running it,
+    /// as the default implementation does. Preserve completed draws on normal return and
+    /// restore the seed and cached Gaussian if the draw unwinds.
+    ///
+    /// Listeners request a draw with `host.with_random(|rng| rng.next_int_bound(bound))`.
     fn lend_random(&mut self, _draw: RandomDraw<'_>) {}
 }
 

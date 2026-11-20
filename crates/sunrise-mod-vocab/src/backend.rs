@@ -291,10 +291,14 @@ host_attachment_store!(
 macro_rules! level_random_draws {
     ($($host:ident),+) => { $(
         impl dyn $host + '_ {
-            /// Borrow the level's live random stream (`Level.getRandom`), in vanilla's order.
-            /// Draws are kept on normal return. If `draw` unwinds, the stream is restored to
-            /// its state before the call. Returns `None` without invoking `draw` if the host
-            /// does not lend a stream.
+            /// Borrow the hook's level stream (`Level.getRandom`) for the closure only:
+            /// `host.with_random(|rng| rng.next_int_bound(bound))`. Returns `None` without
+            /// invoking `draw` if the host does not lend an authoritative level stream.
+            ///
+            /// If `draw` unwinds, the seed and cached Gaussian revert to their state before
+            /// this call. Completed draws advance the live stream in vanilla's order. A
+            /// later panic does not undo an unjournaled draw; a transactional level writer
+            /// restores its first snapshot for that frame on abort.
             pub fn with_random<T>(&mut self, draw: impl FnOnce(&mut dyn RandomSource) -> T) -> Option<T> {
                 with_random_draw(draw, |draw| self.lend_random(draw))
             }

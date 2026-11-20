@@ -15,32 +15,50 @@ Wherever the game has a random stream a mod may draw from, you get a `&mut dyn R
 | `GroundLevel::random` | The tree decorator's random |
 | The tree-grow hook's random | The tree's own random |
 | `GoalContext::random` | The mob's own random |
-| `host.with_random(\|random\| ...)` on a restricted level host | A scoped borrow of the level's live random |
-| `level.with_random(host, \|random\| ...)` on a `LevelRef` | A scoped borrow of the named server level's live random, even when parked |
+| `host.with_random(\|rng\| ...)` on a restricted level host | The hook's live level stream |
+| `level.with_random(host, \|rng\| ...)` on a `LevelRef` | The named server level's live stream, even when parked |
 
 A draw moves the game's own stream, in vanilla's order, so your draws shift vanilla's later ones
 exactly as a Java mod's would. You need no import to call these methods on a `dyn RandomSource`.
+For example, `goal_context.random().next_int_bound(20)` draws from the mob's own stream.
+
+## Borrow the live level stream
+
+In a hook with a `LevelRandomHost`, `HitHost` or `LevelWriteHost`, draw from that hook's level:
 
 ```rust,ignore
-let roll = goal_context.random().next_int_bound(20);
-// In a hook with a LevelRandomHost, HitHost, or LevelWriteHost:
-let level_roll = host.with_random(|random| random.next_int_bound(20));
-// With a named LevelRef and a ServerHost:
-let named_roll = level.with_random(host, |random| random.next_int_bound(20));
+let level_roll = host.with_random(|rng| rng.next_int_bound(bound));
 ```
 
-Both forms return `None` without calling the closure if the host cannot lend the stream, such
-as when the level is closed or the handle is stale. The closure cannot take the random with
-it or reseed it. On unwinding, the stream goes back to where it was before the closure,
-including its cached Gaussian. For a `LevelRef` draw or a transactional `LevelWriteHost` draw,
-an abort restores the stream to its state before the transaction's first draw.
+With a `LevelRef` and a mutable `ServerHost`, draw from the named level:
+
+```rust,ignore
+let named_roll = level.with_random(host, |rng| rng.next_int_bound(bound));
+```
+
+Both return the closure's value in `Some`. If the host cannot lend an authoritative stream,
+they return `None` without calling the closure. A `LevelRef` also refuses a stale handle, a
+level that isn't resident or a phase without world access. A parked level is still resident:
+drawing from it neither loads a level nor switches which one the server is processing.
+The closure borrows the stream only while it runs. It cannot keep, replace or reseed it.
+
+If a panic unwinds out of the closure, the seed and cached Gaussian revert to their values
+before that call. A later panic, after the closure has returned, does not undo a completed
+draw that wasn't journaled.
+
+A `LevelRef` draw in an open transaction and a draw through a transactional `LevelWriteHost`
+are journaled. Aborting a nested transaction restores each level's stream to its first snapshot
+in that frame, leaving the parent's earlier draws intact. Committing the child keeps its draws;
+the parent keeps its earlier snapshots and takes the child's first snapshot for each stream
+it hasn't recorded yet. If the parent aborts, it restores those streams too.
 
 ## Your own seeded stream
 
 `LegacyRandomSource` is vanilla's `LegacyRandomSource` (the generator Java's `Random` is):
 `LegacyRandomSource::new(seed)`, `set_seed(seed)`, and `RandomSource` for the draws (import the
 trait to call them on the concrete type). Two sources with the same seed give the same values.
-This stream is independent of the level's random.
+If your mod chooses the seed, it must own the generator: this stream is independent of the
+level's random. Its Wire form preserves the owned generator's state and cached Gaussian.
 
 ## Never panics
 

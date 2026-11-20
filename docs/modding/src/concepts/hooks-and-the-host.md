@@ -342,10 +342,17 @@ both the saved point and the block above. This includes a bed or anchor at which
 set. `Some(true)` accepts that state, `Some(false)` rejects it, and `None` keeps vanilla's predicate.
 It does not select a bed or anchor's stand-up position; `respawn_position` handles those.
 
-`LevelHost` has no random access: a draw from a read-only hook inside a level write would shift the level's random sequence away from vanilla's order. A hook that may draw is given a `LevelRandomHost`.
-`LevelRandomHost` lends vanilla's live `Level.random` through `host.with_random(|random| ...)`
-so mod draws come in vanilla's order ([Randomness](randomness.md)). `LevelTicksHost` adds scheduling through
-`schedule_block_tick` and `schedule_fluid_tick`, while
+`LevelHost` has no random access: a draw from a read-only hook inside a level write would shift
+the level's random sequence away from vanilla's order. A hook that may draw is given a
+`LevelRandomHost`. Use `host.with_random(|rng| rng.next_int_bound(bound))` to borrow its level's
+live stream for that closure only. With a mutable `ServerHost`, use
+`level.with_random(host, |rng| rng.next_int_bound(bound))` to select a resident server level,
+even a parked one. If the stream can't be lent, the call returns `None` without running the closure.
+Unwinding out of the closure restores both the seed and cached Gaussian; a later panic does not
+undo a completed, unjournaled draw. An abort rolls back journaled draws, including committed
+child draws ([Randomness](randomness.md#borrow-the-live-level-stream)).
+
+`LevelTicksHost` adds scheduling through `schedule_block_tick` and `schedule_fluid_tick`, while
 `LevelWriteHost` adds random access, `set_block`, `set_block_property`, `play_sound` and
 `send_particles` and `level_event` (`levelEvent`, queued in order with the write's own events).
 A damage hit's listeners (`living_incoming_damage`, `living_damage_pre`, `living_damage_post`,

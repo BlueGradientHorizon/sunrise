@@ -51,14 +51,16 @@ pub trait RandomSource {
     }
 }
 
-/// A one-shot draw requested by `with_random`. A level host can run it with the live stream or
-/// decline by leaving it unrun; it cannot keep the callback past the call.
+/// A one-shot request from `with_random`, scoped to the call on the caller's stack.
+/// A level host can run it with the live stream or decline by returning without running it.
 // no wire: the callback is borrowed from the caller's stack.
 // exhaustive: only the scoped adapter can construct a request.
 pub struct RandomDraw<'a>(&'a mut dyn FnMut(&mut dyn RandomSource));
 
 impl RandomDraw<'_> {
-    /// Consume this request, giving the caller scoped access to `random`.
+    /// Consume this request, lending `random` only for the closure's duration. The host
+    /// that lends the stream is responsible for restoring the seed and cached Gaussian if
+    /// the closure unwinds and for journaling a completed draw if it is transactional.
     pub fn run(self, random: &mut dyn RandomSource) {
         (self.0)(random);
     }
@@ -78,8 +80,9 @@ pub(crate) fn with_random_draw<T>(
 
 /// Vanilla's `LegacyRandomSource`: the generator Java's `Random` is, seeded by the mod.
 ///
-/// This is an independent stream, not the level's random. Two sources with the same seed draw
-/// the same values.
+/// Own one of these if you choose the seed. It draws independently of the level's live
+/// stream. Two sources with the same seed draw the same values. Its Wire form carries its
+/// own 48-bit state and cached Gaussian.
 #[derive(Clone, Debug, sunrise_mod_api_macros::Wire)]
 #[wire(via = (u64, Option<f64>))]
 // exhaustive: its one field is private, so mods cannot build or destructure it
