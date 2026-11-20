@@ -105,3 +105,60 @@ instance, so a looping sound is not restarted: use them to follow a moving machi
 takes a position in the client's level (finite, within 30 million blocks) and has no effect on a sound played at the
 listener (`SoundPlay::ui`); `set_pitch` takes a pitch at or above 0, as `SoundPlay::pitch`. Each returns `false`,
 changing nothing, for a bad value or a sound that is over.
+
+### A sound's own effects
+
+`SoundPlay::effects` (`SoundEffects`) shapes one sound in the mixer, where `muffle_sounds` shapes them all:
+
+- `gain` turns the whole sound down, direct and reverb, without changing how far it carries.
+- `direct` turns down only the sound heard directly; `lowpass` and `highpass` filter it (two-pole Butterworth
+  filters, 12 dB per octave). A sound behind a wall: a low `lowpass` and some `direct` taken away.
+- `room`, `hall` and `cavern` send it to three shared reverbs, and `reverb_lowpass` dulls what is sent (one pole,
+  6 dB per octave).
+
+Every field's valid range, inclusive at both ends:
+
+| Field | Range | Off / open |
+| --- | --- | --- |
+| `gain` | 0 to 1 | 1 |
+| `direct` | 0 to 1 | 1 |
+| `lowpass` | 20 to 20000 Hz | 20000 (open) |
+| `highpass` | 0 to 20000 Hz | 0 (off) |
+| `room`, `hall`, `cavern` | 0 to 1 | 0 (no send) |
+| `reverb_lowpass` | 20 to 20000 Hz | 20000 (open) |
+
+The cutoffs are in hertz whatever the output device's sample rate, so a value valid on one device is valid on every
+device. `SoundEffects::valid` refuses NaN, infinities and any value outside its range; nothing is clamped. The same
+check runs on all three paths: a `play_sound` edit when a sound starts, the live refresh of a ticking sound, and
+`play_local_sound`. A refused value plays nothing (or stops the live sound), as a bad volume does. Inside the mixer, a
+`lowpass` or `highpass` above the output's Nyquist frequency (half its sample rate; the mixer stops at 0.49 of the
+rate) works as that limit: on a 32 kHz output, a `lowpass` of 18000 filters as 15680 would. That limit depends on the
+device, not on your value, and is not a refusal.
+
+Start from `SoundEffects::NONE`, which changes nothing, and set the fields you need. Pass them with
+`play_local_sound`, or set them on any sound the client plays from a `play_sound` listener: when it starts, and on each
+live refresh of a ticking sound (`event.starting` false, once a tick), so a mod can follow a moving source. Every
+change glides over one output buffer and never clicks.
+
+A sound that doesn't tick can't change its effects after it starts: it keeps the ones it started with until it ends.
+Only a ticking sound gets live refreshes. A NeoForge mod that changes an OpenAL channel at any time has no
+counterpart here yet. Per-channel calls may follow as their own issue.
+
+`SoundEffects` is a plain value with no sound id in it. Mod audio streams ([Audio streams](audio-streams.md)) fire no
+sound hooks and have their own voices, so effects don't reach them yet.
+
+#### The three reverbs
+
+Each reverb is an eight-line feedback delay network shared by every sound that sends to it. Pick one by its numbers:
+
+| Bus | 60 dB decay | Damping | Line lengths (about) | Sounds like |
+| --- | --- | --- | --- | --- |
+| `room` | 0.6 s | 7000 Hz | 13.9 to 33.8 ms | a house, a corridor |
+| `hall` | 1.8 s | 4500 Hz | 30.0 to 73.2 ms | a large build, a ravine |
+| `cavern` | 4.0 s | 3000 Hz | 46.2 to 112.6 ms | a deep cave, a stronghold |
+
+The decay is the time for the tail to fall 60 dB below the damping frequency. The damping is a one-pole low-pass inside
+the loop, flat at 0 Hz and about 3 dB down at the damping frequency on each pass through a line, so higher frequencies
+die sooner, as in a real room. The line lengths set how dense the echoes are. The reverbs' delay lines are allocated
+once, when the sound system starts, and about 1.1 MiB is used whatever the device's rate. A reverb nothing is sent to
+costs nothing once its tail has died away. Mod-set reverb parameters are not available yet.
