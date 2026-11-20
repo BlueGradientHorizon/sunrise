@@ -546,7 +546,7 @@ mod tests {
             tags: None,
         };
         with_test_packages(&["one", "two"], || {
-            let context = OwningLoop::new(LoopSide::Client, &source);
+            let context = OwningLoop::new(LoopSide::Client, &source, None);
             assert_eq!(context.side(), LoopSide::Client);
             assert_eq!(context.registry("item"), Some(&["a:b".to_owned()][..]));
             assert_eq!(context.registry("block"), None);
