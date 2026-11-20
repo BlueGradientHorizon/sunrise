@@ -914,6 +914,9 @@ pub(super) fn emit<'a>(
         // A scoped hook is its part's method alone: a global moment beside it is its own hook.
         let callee = if scoped.is_some() { "part" } else { "mod" };
         match (contract, out) {
+            (Contract::Cancel, Some(out)) if mod_cancel && hook.output_validator.is_some() => method_source.push_str(&format!(
+                "///\n/// Return `Flow::Cancel` to propose setting `{out}`. Once accepted, a cancellation cannot be\n/// cleared; only mods registered with `#[listener(receive_cancelled)]` still run.\n"
+            )),
             (Contract::Cancel, Some(out)) if mod_cancel => method_source.push_str(&format!(
                 "///\n/// Return `Flow::Cancel` to take it: this sets `{out}`, and later mods are skipped unless they\n/// listen with `#[listener(receive_cancelled)]`; those see `{event}.cancelled` and may set it back to\n/// `false`.\n"
             )),
@@ -1215,9 +1218,9 @@ pub(super) fn emit<'a>(
                     })
                     .collect::<String>();
                 (
-                    accepted,
+                    format!("{accepted} let mut __accepted_cancelled = {event}.cancelled;"),
                     format!(
-                        "Ok(Ok(__flow)) => {{ if matches!(__flow, Flow::Cancel) {{ {event}.cancelled = true; }} match {validator}({arguments}) {{ Ok(()) => {{ {keep} }} Err(__field) => {{ {undo} log::warn!(\"mod {{}} hook {name} output {{__field}} refused: its outputs are dropped and the preceding ones stand\", {mod_entry}.id); }} }} }} "
+                        "Ok(Ok(__flow)) => {{ match {validator}({arguments}) {{ Ok(()) => {{ {keep} __accepted_cancelled |= {event}.cancelled || matches!(__flow, Flow::Cancel); }} Err(__field) => {{ {undo} log::warn!(\"mod {{}} hook {name} output {{__field}} refused: its outputs are dropped and the preceding ones stand\", {mod_entry}.id); }} }} {event}.cancelled = __accepted_cancelled; }} "
                     ),
                 )
             }

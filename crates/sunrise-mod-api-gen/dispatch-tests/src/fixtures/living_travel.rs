@@ -3,13 +3,21 @@
 //! stands for the next listener, and later listeners still run.
 
 /// What a fixture listener heard of one travel: the input and velocity it was handed.
-type TravelHeard = Vec<([f64; 3], [f64; 3])>;
+type TravelHeard = Vec<([f64; 3], [f64; 3], bool)>;
 
 /// A listener that records what it hears, then writes `input` and `velocity`.
 struct Setter {
     input: [f64; 3],
     velocity: [f64; 3],
+    cancel: Cancel,
     heard: Arc<Mutex<TravelHeard>>,
+}
+
+#[derive(Clone, Copy)]
+enum Cancel {
+    None,
+    Flag,
+    Flow,
 }
 
 #[mod_api::__subscriptions]
@@ -18,10 +26,17 @@ impl Hooks for Setter {
         self.heard
             .lock()
             .unwrap()
-            .push((*event.input, *event.velocity));
+            .push((*event.input, *event.velocity, event.cancelled));
         *event.input = self.input;
         *event.velocity = self.velocity;
-        Flow::Continue
+        match self.cancel {
+            Cancel::None => Flow::Continue,
+            Cancel::Flag => {
+                event.cancelled = true;
+                Flow::Continue
+            }
+            Cancel::Flow => Flow::Cancel,
+        }
     }
 }
 
@@ -29,6 +44,7 @@ fn setter(
     id: &'static str,
     input: [f64; 3],
     velocity: [f64; 3],
+    cancel: Cancel,
 ) -> (Arc<Mutex<TravelHeard>>, ModEntry) {
     let heard = Arc::new(Mutex::new(Vec::new()));
     let entry = ModEntry::new(
@@ -36,22 +52,14 @@ fn setter(
         Box::new(Setter {
             input,
             velocity,
+            cancel,
             heard: Arc::clone(&heard),
         }),
     );
     (heard, entry)
 }
 
-/// A refused pair is dropped whole; the earlier accepted pair stands, and the listener after
-/// it hears that accepted pair, never the refused proposal.
-#[test]
-fn a_refused_pair_is_dropped_alone_and_later_listeners_hear_the_accepted_one() {
-    let (_, accepted) = setter("accepted", [0.5, 0.0, 0.0], [3.0, 0.0, 0.0]);
-    let (_, refused) = setter("refused", [2.0, 0.0, 0.0], [7.0, 0.0, 0.0]);
-    let (later_heard, later) = setter("later", [0.5, 0.0, 0.0], [3.0, 0.0, 0.0]);
-    install(vec![accepted, refused, later].into());
-    let mut input = [0.1, 0.0, 0.0];
-    let mut velocity = [1.0, 0.0, 0.0];
+fn dispatch(mut input: [f64; 3], mut velocity: [f64; 3]) -> ([f64; 3], [f64; 3], bool) {
     let mut canceled = false;
     mod_api::dispatch_living_travel(
         &Loop("server"),
@@ -62,17 +70,53 @@ fn a_refused_pair_is_dropped_alone_and_later_listeners_hear_the_accepted_one() {
         &mut velocity,
         &mut canceled,
     );
-    assert_eq!(
-        (input, velocity),
-        ([0.5, 0.0, 0.0], [3.0, 0.0, 0.0]),
-        "the accepted pair stands; the refused one, velocity included, is gone"
-    );
-    assert_eq!(
-        *later_heard.lock().unwrap(),
-        vec![([0.5, 0.0, 0.0], [3.0, 0.0, 0.0])],
-        "the later listener hears the accepted pair"
-    );
-    assert!(!canceled);
+    (input, velocity, canceled)
+}
+
+#[test]
+fn a_refused_pair_rolls_back_its_cancel_and_later_listeners_hear_the_accepted_result() {
+    let input = [0.5, 0.0, 0.0];
+    let velocity = [3.0, 0.0, 0.0];
+    for cancel in [Cancel::Flag, Cancel::Flow] {
+        let (_, accepted) = setter("accepted", input, velocity, Cancel::None);
+        let (_, refused) = setter("refused", [2.0, 0.0, 0.0], [7.0, 0.0, 0.0], cancel);
+        let (later_heard, later) = setter("later", input, velocity, Cancel::None);
+        install(vec![accepted, refused, later].into());
+        assert_eq!(
+            dispatch([0.1, 0.0, 0.0], [1.0, 0.0, 0.0]),
+            (input, velocity, false),
+            "the accepted result stands; the refused one, cancellation included, is gone"
+        );
+        assert_eq!(*later_heard.lock().unwrap(), vec![(input, velocity, false)]);
+    }
+}
+
+#[test]
+fn a_listener_receiving_a_cancellation_cannot_clear_it() {
+    struct Clear(Arc<Mutex<TravelHeard>>);
+    #[mod_api::__subscriptions]
+    impl Hooks for Clear {
+        #[listener(receive_cancelled)]
+        fn living_travel(&self, _: &dyn LoopContext, event: &mut LivingTravelEvent<'_>) -> Flow {
+            self.0
+                .lock()
+                .unwrap()
+                .push((*event.input, *event.velocity, event.cancelled));
+            event.cancelled = false;
+            Flow::Continue
+        }
+    }
+
+    let input = [0.5, 0.0, 0.0];
+    let velocity = [3.0, 0.0, 0.0];
+    let (_, first) = setter("first", input, velocity, Cancel::Flow);
+    let heard = Arc::new(Mutex::new(Vec::new()));
+    let clear = ModEntry::new("clear", Box::new(Clear(Arc::clone(&heard))));
+    let (skipped_heard, skipped) = setter("skipped", [0.0; 3], [0.0; 3], Cancel::None);
+    install(vec![first, clear, skipped].into());
+    assert_eq!(dispatch([0.0; 3], [0.0; 3]), (input, velocity, true));
+    assert_eq!(*heard.lock().unwrap(), vec![(input, velocity, true)]);
+    assert!(skipped_heard.lock().unwrap().is_empty());
 }
 
 mod crate_root {
