@@ -60,7 +60,7 @@ fn checked_records_have_declared_field_bytes() {
         (FluidStack::new(FluidKey::from_slot(0).unwrap(), 1),),
     );
     let block = BlockKey::from_slot(0).unwrap();
-    let state: BlockState = BlockStateRecord::new(block, 9).into();
+    let state: BlockState = crate::__private::block_state_from_ordinal(block, 9);
     fields(state, (block, 9u16));
     fields(BlockStateRange::new(state, 3).unwrap(), (state, 3u32));
     fields(
