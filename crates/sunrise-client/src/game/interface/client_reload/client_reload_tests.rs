@@ -133,9 +133,20 @@ fn a_listener_error_keeps_every_previous_state() {
         }
     }
     let root = root_with_asset("failing", b"{}");
+    let applied = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let listener = Arc::new(HatListener {
+        seen: std::sync::Mutex::new(Vec::new()),
+        applied: applied.clone(),
+    });
     let mut listeners = <mod_api::ClientListenerRegistry as mod_api::__private::game::ClientReloadListenersOrder>::new();
     listeners
+        .add_listener(id("test_mod:pending"), hats(), listener.clone())
+        .unwrap();
+    listeners
         .add_listener(id("test_mod:failing"), hats(), Arc::new(Failing))
+        .unwrap();
+    listeners
+        .add_dependency(id("test_mod:pending"), id("test_mod:failing"))
         .unwrap();
     let Err(error) = stage_client_reload(
         &sunrise_assets::resource_source::ResourceSource::directory(root.to_path_buf()),
@@ -147,6 +158,17 @@ fn a_listener_error_keeps_every_previous_state() {
     assert_eq!(
         error.to_string(),
         "reload listener test_mod:failing: test_mod:broken: not a hat"
+    );
+    assert_eq!(
+        listener.seen.lock().unwrap().as_slice(),
+        ["test_mod:top={}"]
+    );
+    assert!(applied.lock().unwrap().is_empty(), "no partial apply");
+    let probe = Arc::downgrade(&applied);
+    drop((applied, listener));
+    assert!(
+        probe.upgrade().is_none(),
+        "aborted apply retained its capture"
     );
     std::fs::remove_dir_all(root).unwrap();
 }

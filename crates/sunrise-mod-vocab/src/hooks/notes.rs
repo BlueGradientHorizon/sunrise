@@ -1974,14 +1974,17 @@ trailing `/`, or empty, `.` or `..` components. Converter fields and reload-view
 
 The prepare context is the pack view only, as vanilla's `ResourceManager`. Like vanilla's
 `SimplePreparableReloadListener`, `ServerReloadListener::prepare` parses and validates without
-changing live state and returns `Box::new(move || { /* publish parsed state */ })`.
-All listeners prepare before **any** apply runs. Do not read another listener's new published
-state in prepare: dependencies order both phases but do not remove this barrier. Publication
-cannot fail. As vanilla's `SimpleJsonResourceReloadListener.scanDirectory`, a listener that
-parses its files logs and skips one that will not parse, carrying the rest through. Returning
-`Err` from `prepare` — like any preparation, registration or ordering error — aborts the whole
-reload: all pending applies are dropped and the old mod data and vanilla function library are
-kept. A panic in `prepare` or an apply is not recovered: it stops the server, and the crash
+changing live state and returns a `Box<dyn FnOnce() + Send + 'static>` using
+`Box::new(move || { /* publish parsed state */ })`. The action owns its prepared state and the
+runner consumes it once on the server's owning thread. All listeners prepare before **any** apply
+runs. Do not read another listener's new published state in prepare: dependencies order both
+phases but do not remove this barrier. Publication cannot report an error, and a later server
+table refusal does not roll back actions that already ran. As vanilla's
+`SimpleJsonResourceReloadListener.scanDirectory`, a listener that parses its files logs and
+skips one that will not parse, carrying the rest through. Returning `Err` from `prepare` — like
+any preparation, registration or ordering error — aborts the whole reload: all pending actions
+are dropped without running and the old mod data and vanilla function library are kept. A
+panic in `prepare` or an apply is not recovered: it stops the server, and the crash
 report names the listener and the mod that registered it. The error names the namespaced
 listener and, for file errors, resource ID; world open fails, and `/reload` reports the
 failure. A failed `/datapack` change also preserves the selected packs on disk.
@@ -1994,9 +1997,8 @@ listeners run after vanilla by default, in registration order; an explicit depen
 `functions()` works without a false cycle. Use these anchors rather than their string values. The read-only `get_registry`,
 `get_graph` and `get_last_vanilla_listener` give the registered names, the dependency edges and
 the vanilla anchor's name, by value (NeoForge's give the objects; a mod keeps its own listener's
-`Arc`, and its name is the one it registered it under). `prepare` returns
-`Box<dyn FnOnce() + Send + 'static>`; `Box::new(move || ...)` makes one from a closure. Sunrise does not expose NeoForge's condition
-context here.
+`Arc`, and its name is the one it registered it under). Sunrise does not expose NeoForge's
+condition context here.
 
 `event.listeners.add_retained_listener(&key, converter, listener)` also keeps the listener
 object for other hooks, the counterpart of NeoForge's `addRetainedListener(key, listener)`: the
@@ -2013,13 +2015,16 @@ for a key whose id or type does not match a registration, `listener` gives `None
 use std::sync::{Arc, RwLock};
 use mod_api::{
     self, AddServerReloadListenersEvent, FileToIdConverter, Host, Hooks, Identifier,
-    ServerReloadContext, ReloadResourceError, ServerReloadListener,
+    ReloadResourceError, ServerReloadContext, ServerReloadListener,
 };
 
 #[derive(Default)]
 struct MachineData(Arc<RwLock<serde_json::Value>>);
 impl ServerReloadListener for MachineData {
-    fn prepare(&self, context: &ServerReloadContext) -> Result<Box<dyn FnOnce() + Send + 'static>, ReloadResourceError> {
+    fn prepare(
+        &self,
+        context: &ServerReloadContext,
+    ) -> Result<Box<dyn FnOnce() + Send + 'static>, ReloadResourceError> {
         let id = Identifier::parse("my_mod:press").unwrap();
         let next = match context.read(&id) {
             Some(bytes) => serde_json::from_slice(bytes)
@@ -2069,12 +2074,12 @@ language files arrive key-wise merged across the packs, as vanilla loads them.
 
 Prepare and apply semantics, error handling, crash attribution, dependency ordering and the
 read-only registry views are the [server listener's](#server-data-reload-listeners):
-`ClientReloadListener::prepare` parses without changing live state and returns a `ReloadApply`;
-all prepares finish before any apply, a prepare, registration or ordering error aborts the
-reload and keeps every listener's previous assets, and a panic names the listener and its
-registering mod in the crash report. `VanillaClientListeners::model_manager()` names vanilla's
-model manager, the anchor of the 26.3 `Minecraft` registration order; `first()` and `last()`
-are the ordering boundaries. Mod applies run on the main thread after the staged pack is
+`ClientReloadListener::prepare` parses without changing live state and returns a boxed
+`FnOnce() + Send + 'static` action. All prepares finish before any apply; a prepare,
+registration or ordering error aborts the reload and drops pending actions without running them.
+A panic names the listener and its registering mod in the crash report.
+`VanillaClientListeners::model_manager()` names vanilla's model manager, the anchor of the
+26.3 `Minecraft` registration order; `first()` and `last()` are the ordering boundaries. Mod applies run on the main thread after the staged pack is
 published, before `client_resources_reloaded`. Listeners are registered fresh for every
 load: the initial resource load registers them once, before any prepare runs (as
 NeoForge's construction-time event does — no game exists yet, and a host read during
@@ -2097,7 +2102,10 @@ use mod_api::{
 #[derive(Default)]
 struct Theme(Arc<RwLock<serde_json::Value>>);
 impl ClientReloadListener for Theme {
-    fn prepare(&self, context: &ClientReloadContext) -> Result<Box<dyn FnOnce() + Send + 'static>, ReloadResourceError> {
+    fn prepare(
+        &self,
+        context: &ClientReloadContext,
+    ) -> Result<Box<dyn FnOnce() + Send + 'static>, ReloadResourceError> {
         let id = Identifier::parse("my_mod:theme").unwrap();
         let next = match context.read(&id) {
             Some(bytes) => serde_json::from_slice(bytes)

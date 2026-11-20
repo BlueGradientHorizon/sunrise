@@ -64,13 +64,18 @@ impl ServerReloadContext {
 }
 
 /// A server-side `SimplePreparableReloadListener`: prepare reads the new pack
-/// view without changing live state; its returned apply publishes the result.
-/// All prepares finish before any apply, including vanilla's, runs. Prepare
-/// cannot see another listener's new published state. Dependencies order both
-/// phases deterministically; they do not remove the barrier. On any error all
-/// pending applies are dropped, keeping the previous data and function library.
+/// view without changing live state; the game consumes its returned action to
+/// publish the result. All prepares finish before any apply, including vanilla's,
+/// runs on the server's owning thread. Prepare cannot see another listener's new
+/// published state. Dependencies order both phases; they do not remove the barrier.
+/// On a prepare error, pending actions are dropped without running, keeping the
+/// previous data and function library.
 pub trait ServerReloadListener: Send + Sync + 'static {
     /// Parse and validate new data without changing the listener's live state.
+    /// Return `Ok(Box::new(move || { /* publish prepared data */ }))` with owned
+    /// data. The action is consumed once and cannot report an error. A later
+    /// server table refusal leaves the previous engine generation in place but
+    /// does not undo effects of actions that already ran.
     ///
     /// As vanilla's `SimpleJsonResourceReloadListener.scanDirectory`, a
     /// listener that parses its files logs and skips one that won't parse,
