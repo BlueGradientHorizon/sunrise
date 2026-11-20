@@ -47,7 +47,7 @@ jobs:
       - run: cargo build --release --locked -p sunrise-mod-package --features runtime-process --example holder_actor
         working-directory: .
         shell: bash
-      - run: cargo test --no-fail-fast --release --locked -p sunrise-mod-package --features runtime-process --lib -- --skip durable::
+      - run: "cargo test --no-fail-fast --release --locked -p sunrise-mod-package --features runtime-process --lib -- --skip durable::"
         working-directory: .
         shell: bash
       # sunrise-mod-package's durable writes use MoveFileExW on Windows; Linux cannot exercise that path.
