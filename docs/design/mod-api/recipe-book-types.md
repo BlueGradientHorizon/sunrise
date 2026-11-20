@@ -1,9 +1,8 @@
 # Design: custom recipe-book settings
 
-> Historical: this design predates the removal of WebAssembly mods; the current native API is documented
-> in [recipe book types](../../modding/src/concepts/recipe-book-types.md). Native declaration and Wire
-> rules remain. The old guest registration and transport are historical; host and guest player swaps
-> still refer to LAN players.
+> The native contract below still applies. WebAssembly mods were removed; the parts about guests are history.
+> Host and guest player swaps still refer to LAN players.
+> See [recipe book types](../../modding/src/concepts/recipe-book-types.md) for the current native API.
 
 Design for [#1023](https://github.com/arismoko/horizon/issues/1023).
 Storage, registration, player settings handles and negotiated synchronization

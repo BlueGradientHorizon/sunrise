@@ -1,8 +1,8 @@
 # Design: level extracted state
 
-> Historical: this design predates the removal of WebAssembly mods; the current native API is documented
-> in [the mod API reference](../../modding/src/reference/api.md). The proposed guest extraction, draw
-> views and unload requirements below are historical.
+> Historical: this design predates the removal of WebAssembly mods.
+> See [the mod API reference](../../modding/src/reference/api.md) for the current native API.
+> The proposed guest extraction, draw views and unload requirements below are historical.
 
 Provisional answer to [#866](https://github.com/arismoko/horizon/issues/866):
 use a typed, frame-owned extension store, freeze it after base extraction and

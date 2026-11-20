@@ -1,9 +1,8 @@
 # Design: pending children
 
-> Historical: this design predates the removal of WebAssembly mods; the current native API is documented
-> in [`PendingChildrenEdits`](../../../crates/sunrise-mod-vocab/src/entity/pending_children.rs). The
-> native lease and ownership rules remain; the original guest bindings, trap cases and dual-target
-> proposal below are historical.
+> The native contract below still applies. WebAssembly mods were removed; the parts about guests are history.
+> This applies to the implemented leases and child ownership, not the proposed coordinator work.
+> See [`PendingChildrenEdits`](../../../crates/sunrise-mod-vocab/src/entity/pending_children.rs) for the current native API.
 
 Implemented collection contract for [#825](https://github.com/arismoko/horizon/issues/825): the engine owns an action-local ordered collection of fully constructed, unspawned children. Listeners borrow editors; the engine validates and consumes the final collection exactly once at the original insertion boundary. The implementation status below distinguishes the shipped collection from the transaction-coordinator work still outstanding. The evidence and acceptance matrix record the original design investigation, not executed verification of the implementation.
 
@@ -19,7 +18,7 @@ Construct the complete vanilla list first, drawing inheritance, child yaw and ot
 
 Provide ServerHost and a scoped collection receiver with construct, edit, replace, append and remove operations. Construct returns an unattached pending child owned by the action arena. Append/replace consumes its ownership token; it cannot be attached twice. Removal destroys the removed pending object and invalidates its editor. Unattached objects are destroyed when the callback action closes. Replacement preserves the list position, not the removed object's identity. Never accept a resident mob as a pending child. BabyEntitySpawn has a zero-or-one child slot; it supports replacement/removal, while multiple children belong to MobSplit's collection. A second baby is an error, not silently dropped.
 
-Native and wasm use the same action identity, world epoch, slot generation and ownership checks. A callback-scoped UnspawnedMobRef is a borrow, not permission to retain or insert it later. End every borrow before nested dispatch; nested actions get separate arenas and cannot consume outer children. Reacquire a fresh editor after reentrancy. Reject expired, foreign-action, removed, already-consumed and cross-world tokens before mutation; slot reuse must never retarget a leaked handle. Earlier listeners' accepted edits are visible to later listeners in dependency order. Cancellation is monotonic.
+Native dispatch checks action identity, world epoch, slot generation and ownership. A callback-scoped UnspawnedMobRef is a borrow, not permission to retain or insert it later. End every borrow before nested dispatch; nested actions get separate arenas and cannot consume outer children. Reacquire a fresh editor after reentrancy. Reject expired, foreign-action, removed, already-consumed and cross-world tokens before mutation; slot reuse must never retarget a leaked handle. Earlier listeners' accepted edits are visible to later listeners in dependency order. Cancellation is monotonic.
 
 Freeze after dispatch, validate the entire list and parent/read-set versions, then apply once. Refuse stale preconditions without recomputing breeding or replaying RNG. Ordered insertion uses the existing residency boundary and join notifications. Never retry an entered insertion consumer: retain explicit completion progress so recovery cannot duplicate earlier children. A failure before commit inserts zero; a failure after an irreversible consumer entered is a recovery error, not authorization to replay it.
 
@@ -47,7 +46,7 @@ Paths and line numbers are inspected Sunrise owners at this note's base. Vanilla
 | Villager/armadillo | Armadillos use the ordinary animal breeding route. Villagers retain their separate `villager_birth` moment and do not fire `baby_entity_spawn`. |
 | Native pending lend | `crates/sunrise-client/src/game/modding/native_unspawned_mob.rs:107` lend_unspawned already owns scoped lending and unwind restoration. Extend its ownership discipline; do not treat the stand-in clone as a child. |
 
-Change mob_split and baby_entity_spawn in place, once per vanilla moment. Delete count/kind-only transport, obsolete helpers and the stale “handle does not exist” prose in both declarations, hook notes, generated native/wasm bindings and samples together. Retain parent/player metadata. Do not add parallel legacy hooks or a second post-construction hook.
+Change mob_split and baby_entity_spawn in place, once per vanilla moment. Delete count/kind-only transport, obsolete helpers and the stale “handle does not exist” prose in both declarations, hook notes, generated native bindings and samples together. Retain parent/player metadata. Do not add parallel legacy hooks or a second post-construction hook.
 
 Coordinate with open [#2285](https://github.com/arismoko/horizon/pull/2285) (pending output FIFO, nested consumer frames and reset lifetime), [#2227](https://github.com/arismoko/horizon/pull/2227) (completed outputs across unwind), and [#2112](https://github.com/arismoko/horizon/pull/2112) (borrowed tick restoration). These are overlapping ownership/recovery foundations, not proof of atomic staged-spawn support. Their PR descriptions explicitly retain recovery limits; do not assume any supplies this collection contract.
 
@@ -55,9 +54,9 @@ Coordinate with open [#2285](https://github.com/arismoko/horizon/pull/2285) (pen
 
 Treat all mod inputs as untrusted. Propose at most 64 split children and one breeding child; validate before allocating or consuming tokens. Reject unknown mob kinds, duplicate ownership, invalid dimensions, non-finite positions/yaw, out-of-world coordinates and invalid species sizes at the boundary. Use registered species constraints rather than a universal guessed size range. Reject an invalid operation without changing the list; a final invariant failure suppresses the action's children. Bound nesting and total arena storage; exceeding a budget refuses, never truncates.
 
-Catch native unwinding at dispatch and handle wasm traps identically: close borrows, invalidate tokens, discard pending children and listener writes, report the listener under runtime policy. Recovery must preserve already completed unrelated outputs. Do not claim recovery from panic=abort or a second panic in restoration/destruction. No insertion runs during unwinding.
+Catch native unwinding at dispatch: close borrows, invalidate tokens, discard pending children and listener writes, report the listener under runtime policy. Recovery must preserve already completed unrelated outputs. Do not claim recovery from panic=abort or a second panic in restoration/destruction. No insertion runs during unwinding.
 
-Resolve subscribers at load. With none, run today's vanilla construction/insertion directly, with zero new collection transport allocation, no registry/string lookup and no all-mod scan. Existing outer transaction requirements still apply. With listeners, work is proportional to actual children and edits. Measure both native and wasm, including allocation counts.
+Resolve subscribers at load. With none, run today's vanilla construction/insertion directly, with zero new collection transport allocation, no registry/string lookup and no all-mod scan. Existing outer transaction requirements still apply. With listeners, work is proportional to actual children and edits. Measure native allocation counts. The former guest matrix also covered traps, retained guest tokens and guest allocation counts.
 
 ## Acceptance matrix
 
@@ -72,9 +71,9 @@ Expected implementation outcomes below are fixtures to write, not tests already 
 | Breeding | Replace cow child with constructed pig baby: exactly one pig, age negative, no cow; both parents age=6000 and love=0. |
 | Breeding veto | Zero child, zero XP/hearts/stat/advancement; both ages=6000, love=0; construction RNG unchanged from accepted construction baseline. |
 | Egg exclusions | Turtle, frog, sniffer laying and turtle hatching: zero baby_entity_spawn calls. Preserve their original egg/XP results. |
-| Reentrancy and targets | Nested action cannot resolve outer borrow; retained native and wasm tokens both fail after return; zero retargeted writes. |
+| Reentrancy | Nested action cannot resolve outer borrow; retained tokens fail after return; zero retargeted writes. |
 | Invalid input | 65th split child, second baby, NaN position, unknown kind and duplicate token each fail before mutation; original valid list remains. |
-| Panic/trap before commit | Zero child joins, zero published holders; pre-callback parent/RNG effects retained; unrelated completed output delivered once. |
+| Native panic before commit | Zero child joins, zero published holders; pre-callback parent/RNG effects retained; unrelated completed output delivered once. |
 | Outer abort | Zero children/joins/sends; original parent state, RNG and attachment values restored. |
 | No listeners | Exact vanilla child fields, ordering, RNG, XP and parent effects; zero added payload allocations. |
 

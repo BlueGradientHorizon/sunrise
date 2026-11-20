@@ -1,8 +1,7 @@
 # Design: dynamic textures for client mods
 
-> Historical: this design predates the removal of WebAssembly mods; the current native API is documented
-> in [textures made at run time](../../modding/src/how-to/client/dynamic-textures.md). The native
-> texture contract remains; the guest transport and fixture references below are historical.
+> The native contract below still applies. WebAssembly mods were removed; the parts about guests are history.
+> See [textures made at run time](../../modding/src/how-to/client/dynamic-textures.md) for the current native API.
 
 Answer to [#1343](https://github.com/sunrise-org/sunrise/issues/1343), built to the contract the maintainers settled
 in the issue on 2026-11-14: a client mod creates an RGBA image under a name, draws it as a GUI sprite, updates it and

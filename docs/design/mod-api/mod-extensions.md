@@ -1,10 +1,8 @@
 # Design: mods extending the mod API
 
-> Historical: this design predates the removal of WebAssembly mods; the current native API is documented
-> in [dependencies between mods](../../modding/src/concepts/dependencies.md). The mixed-target
-> extension proposal is historical. Native library mods use ordinary Rust calls; the
-> [Wire derive](../../modding/src/concepts/wire-types.md) is still current for typed values that use
-> Wire.
+> Historical: this design predates the removal of WebAssembly mods.
+> See [dependencies between mods](../../modding/src/concepts/dependencies.md) for the current native API.
+> The mixed-target extension proposal is historical. Native library mods use ordinary Rust calls; the [Wire derive](../../modding/src/concepts/wire-types.md) is still current for typed values that use Wire.
 
 This is a proposed contract for [#2339](https://github.com/arismoko/horizon/issues/2339). The explicit `Wire` derive and recursive layout identity are implemented; the mod extension facilities below remain proposed. It covers how a library mod (a chemicals system, an energy network, a machine framework) defines things that other mods use, listen to or extend: **mod hooks**, **mod Part kinds**, **mod services** and **mod registries**, plus the `#[derive(Wire)]` they rest on (section 0, the first to build) and how addons patch another mod's code. Each section gives the contract, its behaviour on wasm, its NeoForge counterpart and what it costs when nobody uses it. A staged PR plan and the open questions come at the end.
 

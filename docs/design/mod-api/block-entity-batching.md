@@ -1,10 +1,8 @@
 # Design: per-type batched block entity ticks
 
-> Historical: this design predates the removal of WebAssembly mods; the current native API is documented
-> in
-> [block-entity tick write-back](../../modding/src/how-to/world/machine-menu-data.md#skip-unchanged-tick-write-back).
-> The individual native tick reply remains; proposed guest batching, fixtures and measurements below
-> are historical.
+> The native contract below still applies. WebAssembly mods were removed; the parts about guests are history.
+> This applies to the individual `BlockEntityTickReply`, not the unbuilt batching proposal.
+> See [block-entity tick write-back](../../modding/src/how-to/world/machine-menu-data.md#skip-unchanged-tick-write-back) for the current native API.
 
 **Provisional; implementation waits for a maintainer decision.** This answers
 [#2759](https://github.com/arismoko/horizon/issues/2759).
@@ -110,6 +108,9 @@ not a 26.3 batching contract. The 26.3
 Javadoc were consulted; no NeoForge source or patches were read.
 
 ## Proposed execution contract
+
+The remaining batching design, guest paths and acceptance matrix are proposal
+history, not requirements for the implemented individual tick reply.
 
 Choose **A: contiguous runs**, not B: one call per type across the level.
 For `[A1,A2,B1,A3]`, dispatch `[A1,A2]`, tick B1, then dispatch `[A3]`.

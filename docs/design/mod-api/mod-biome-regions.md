@@ -1,8 +1,8 @@
 # Design: a mod's biomes inside the Overworld and Nether
 
-> Historical: this design predates the removal of WebAssembly mods; the current native API is documented
-> in [biome regions](../../modding/src/how-to/content-mods/biome-regions.md). The saved-region contract
-> and native fixtures remain; the guest loopback fixture is historical.
+> The native contract below still applies. WebAssembly mods were removed; the parts about guests are history.
+> The saved region rules and native fixture matrix still apply.
+> See [biome regions](../../modding/src/how-to/content-mods/biome-regions.md) for the current native API.
 
 Scope 2 of [#2554](https://github.com/arismoko/horizon/issues/2554): how a mod's biomes generate among vanilla's in the Overworld and the Nether. The design below was ruled on in [#2554](https://github.com/arismoko/horizon/issues/2554#issuecomment-6803604498) and built in the stages listed at the end. One part is not built yet and is marked so. Scope 1, a mod's own dimension with its own climate points (`BiomeSourceKind::Points`), is separate and does not need this note.
 

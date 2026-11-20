@@ -1,8 +1,8 @@
 # Design: client extensions
 
-> Historical: this design predates the removal of WebAssembly mods; the current native API is documented
-> in [the mod API reference](../../modding/src/reference/api.md). The proposed shared guest registrars,
-> validation and callback fixtures below are historical.
+> Historical: this design predates the removal of WebAssembly mods.
+> See [the mod API reference](../../modding/src/reference/api.md) for the current native API.
+> The proposed shared guest registrars, validation and callback fixtures below are historical.
 
 Provisional answer for [#895](https://github.com/arismoko/horizon/issues/895).
 This proposes ownership and registration, not an implemented API or a completed

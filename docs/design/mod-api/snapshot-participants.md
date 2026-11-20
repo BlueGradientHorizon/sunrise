@@ -1,9 +1,8 @@
 # Design: snapshot participants
 
-> Historical: this design predates the removal of WebAssembly mods; the current native API is documented
-> in [transactions](../../modding/src/concepts/transactions.md). Participant snapshots below were
-> proposed, not a current rollback API. The guest runtime path, restore steps and target-parity gates
-> are historical.
+> Historical: this design predates the removal of WebAssembly mods.
+> See [transactions](../../modding/src/concepts/transactions.md) for the current native API.
+> Participant snapshots below were proposed, not a current rollback API. The guest runtime path, restore steps and target-parity gates are historical.
 
 Provisional proposal for [#999](https://github.com/arismoko/horizon/issues/999), not an implemented guarantee. Named question: **what native-and-wasm participant contract can preserve synchronous rollback given reentry?**
 

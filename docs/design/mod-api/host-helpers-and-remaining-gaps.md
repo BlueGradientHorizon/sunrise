@@ -1,8 +1,7 @@
 # Host helpers and remaining gaps
 
-> Historical: this design predates the removal of WebAssembly mods; the current native API is documented
-> in [hooks and their hosts](../../modding/src/concepts/hooks-and-the-host.md). The native Host methods
-> remain; the old same-group callback limitation and cross-runtime adapter notes below are historical.
+> The native contract below still applies. WebAssembly mods were removed; the parts about guests are history.
+> See [hooks and their hosts](../../modding/src/concepts/hooks-and-the-host.md) for the current native API.
 
 `Host` exposes the documented `Game` helpers declared by area in
 `crates/sunrise-mod-vocab/src/host/<area>.rs`, one trait per area; `Host`, `ServerHost` and `ClientHost` are the

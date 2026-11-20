@@ -1,9 +1,8 @@
 # Design: vehicle health layout
 
-> Historical: this design predates the removal of WebAssembly mods; the current native API is documented
-> in [HUD drawing](../../modding/src/how-to/client/hud-drawing.md). The drawing hook is not a
-> vehicle-health layout hook. Guest Wire decoding, malformed-output fixtures and both-target dispatch
-> gates below are historical.
+> Historical: this design predates the removal of WebAssembly mods.
+> See [HUD drawing](../../modding/src/how-to/client/hud-drawing.md) for the current native API.
+> The drawing hook is not a vehicle-health layout hook. Guest Wire decoding, malformed-output fixtures and both-target dispatch gates below are historical.
 
 Provisional implementation contract for #2741; records the provisional answers A and B, with vanilla default sizing preserved.
 Approval admits this note only; public counterpart verification remains a shipping gate.

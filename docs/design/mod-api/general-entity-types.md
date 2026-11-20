@@ -1,8 +1,8 @@
 # Design: general entity types
 
-> Historical: this design predates the removal of WebAssembly mods; the current native API is documented
-> in [entity rendering](../../modding/src/how-to/client/entity-renderers.md). The native entity
-> registry and renderer remain; the guest tick and renderer stages and tests below are historical.
+> The native contract below still applies. WebAssembly mods were removed; the parts about guests are history.
+> This applies to the implemented general-entity registry, tracking and renderer handoff, not the later proposals.
+> See [entity rendering](../../modding/src/how-to/client/entity-renderers.md) for the current native API.
 
 Provisional answer to [#792](https://github.com/arismoko/horizon/issues/792): register a type once, store each instance in a game-owned general entity row, and dispatch its catalog-generated EntityPart behavior through a resolved type slot. The row owns identity, residency, persistence and tracking. It must never create a throwable or other template entity. This is a proposal for Ari's decision on the issue, not implemented API or a closure claim.
 
@@ -49,15 +49,16 @@ with a per-pass resolved slot table and a first-child rider index reused
 across passes, the `ordered.born` cutoff holding this tick's joins for the
 next, parked levels untouched, liveness re-checked at every step (a
 listener's removal or dismount takes effect mid-pass), and a transaction
-plus catch around each row's dispatch so a panic or trap rolls the row's
+plus catch around each row's dispatch so a native unwind rolls the row's
 writes back. The moment fires only for general rows: vanilla families tick
 their own paths, and bringing them to one walk is #6509's, extendable
-later if Ari wants it wider. Stage 4b crosses the tick to wasm: a wasm part
-is a handler the host calls back, each row keeps its own attachments, and a
-trap rolls the row's writes back and stops the mod's dependency group. A wasm
-part that overrides a native-only method (`register_goals`,
-`register_behaviors`, `spawn_cluster_size`, `is_shearable`, `on_sheared`) is
-refused at load by name, never silently skipped.
+later if Ari wants it wider.
+
+**Historical guest route (stage 4b):** the host called back into a guest Part,
+each row kept its own attachments, and a trap rolled back the row's writes and
+stopped the dependency group. Guest overrides of `register_goals`,
+`register_behaviors`, `spawn_cluster_size`, `is_shearable` or `on_sheared`
+were refused by name at load. That restriction does not apply to native Parts.
 
 The remaining sections describe the wider design, not shipped lifecycle support.
 
@@ -109,7 +110,7 @@ The [moving-structures carrier](moving-structures.md) remains a game-owned speci
 - **Vanilla clients.** A vanilla client is never paired with a row: no packet names it. Refusing such a client when required general types exist is still the open question below.
 - **The client.** A Sunrise client keeps the rows it was shown in `game/network/remote/general.rs`. Each row's type is resolved in the client's frozen catalog. It moves with the non-living interpolation (3 steps), keeps the position and rotation of the tick before for a frame's partial tick, and is dropped on removal or a world change. An unknown key or a duplicate id is ignored with one warning. No mod code runs on the client.
 - **Shown with its fields.** The server sends every row its first attachment snapshot at tracking start, empty or not, and the client shows a row only once the spawn and that snapshot are both there.
-- **The renderer handoff.** `resolve_entity_renderers` resolves a renderer registered for a general key into a slot per catalog slot (`EntityRendererTable`, `game/modding/native_entity_renderers.rs`), so a frame does no lookup by name. Each frame, shown rows are culled by distance, frustum and section eligibility. The visible list preserves client entity lookup order. Each extracted row goes to its type's renderer (`game/mobs/general_draw.rs`) through the guard every route shares, at `lerp(previous, position, partial)`, with `EntityRenderState`'s identity, age and angles interpolated the same way. Extraction captures a bounded, immutable snapshot of only that row's synced attachments, built when sync changes. Native and Wasm renderers both read it via `EntityRenderState::attachments` and draw through `EntityRenderer::submit`, without a live host. A type with no renderer draws nothing and is named once a resource load; a failed renderer draws nothing until the next load, and a reload re-resolves the slots without touching the rows.
+- **The renderer handoff.** `resolve_entity_renderers` resolves a renderer registered for a general key into a slot per catalog slot (`EntityRendererTable`, `game/modding/native_entity_renderers.rs`), so a frame does no lookup by name. Each frame, shown rows are culled by distance, frustum and section eligibility. The visible list preserves client entity lookup order. Each extracted row goes to its type's renderer (`game/mobs/general_draw.rs`) through the guard every route shares, at `lerp(previous, position, partial)`, with `EntityRenderState`'s identity, age and angles interpolated the same way. Extraction captures a bounded, immutable snapshot of only that row's synced attachments, built when sync changes. Native renderers read it via `EntityRenderState::attachments` and draw through `EntityRenderer::submit`, without a live host. A type with no renderer draws nothing and is named once a resource load; a failed renderer draws nothing until the next load, and a reload re-resolves the slots without touching the rows.
 
 ## Lifecycle route owners and migration obligations
 
@@ -129,13 +130,13 @@ Paths below are verified existing integration owners relative to this repository
 
 Every creation source must reach the general insertion coordinator: summon, mod/fake-player spawn, item use, dispenser, projectile creation, breeding, natural and block spawners, conversion, chunk load and dimension arrival. Every exit must reach retirement: discard, death, despawn, conversion, chunk unload, dimension departure, disconnect-owned cleanup and world close. Client spawn/update/remove packets and renderer disposal require parallel coverage. Exact leaf owners for those sources, the authoritative general tick seam and client renderer/packet dispatch are **not yet verified** by this note; implementation must trace and record file:line callers before enabling them. Existing vanilla-only routes remain unchanged until explicitly migrated. This is a coverage gap, not an exhaustive verified caller inventory.
 
-## Trust, native/wasm and cost
+## Trust and cost
 
-Native and wasm use the same registry, dependencies, state model and generated contract. Native exact-build checks and wasm interface linking remain loader concerns. Existing native-only registration is not evidence of wasm parity; enable this feature only when both adapters implement registration, tick, codecs and client handoff.
+The native loader checks the exact build. The old proposal gated enablement on both adapters providing registration, tick, codecs and client handoff; the guest adapter is no longer part of the contract.
 
 Treat registration, callback results, serialized input and packets as untrusted. Reject NaN/infinite positions or dimensions, negative/overflowed lengths, unknown owned type ids, duplicate UUIDs and stale handles before writes. Unrelated unknown ids retain their existing behavior. Propose payload limit 64 KiB per entity, nesting 32, positive dimensions at most 64 blocks, tracking at most 32 chunks and update interval 1–1200 ticks; confirm these provisional limits before implementation. Quarantined records of a missing mod are bounded too — 69 632 encoded bytes per record, 256 records per chunk; both provisional, with no vanilla analogue (vanilla deletes such entities rather than preserving them). Bound aggregate decoding and outgoing bytes per connection too.
 
-Catch native unwinding and wasm traps at dispatch: abort the callback transaction, discard buffered effects, restore lifts, disable the failing subscriber and report it. A native process-aborting panic cannot be recovered. No irreversible external I/O inside transactional callbacks. A subsequent built-in action must still succeed.
+Catch native unwinding at dispatch: abort the callback transaction, discard buffered effects, restore lifts, disable the failing subscriber and report it. A native process-aborting panic cannot be recovered. No irreversible external I/O inside transactional callbacks. A subsequent built-in action must still succeed.
 
 No per-entity mod list, type-name lookup, serialized-data read or family scan. Indexed type dispatch costs O(1) plus actual subscribers; identity lookup O(1); one O(n) eligible-row walk is the necessary tick work. No subscribers means zero hook payload allocation and zero mod calls. Maintain interest/spatial indexes on movement and insertion, and encode only dirty tracked fields. Measure actual callee costs before claiming this bound; current string-based Part lookup alone does not prove it.
 
@@ -157,10 +158,10 @@ Future implementation tests, not results of this documentation change:
 | Reuse runtime id 42 after removal | Old ref and old delta cannot affect replacement; replacement counter remains 7. |
 | Join/reconnect/interest exit | One spawn snapshot per entry, one removal per exit, no server behavior on client. |
 | Duplicate type, NaN pose, 65537-byte payload, passenger cycle | Refused with zero published rows/effects; next valid built-in step succeeds. |
-| Native panic / wasm trap during tick | Counter and listener edits rolled back, balanced lift, zero outbound deltas; next valid built-in step succeeds. |
+| Native panic during tick | Counter and listener edits rolled back, balanced lift, zero outbound deltas; next valid built-in step succeeds. |
 | No Parts on 1000 general entities | 1000 common ticks, zero callback calls and zero callback payload allocations; no per-entity scans. |
 
-Run the scene on integrated, LAN and dedicated servers for both targets. Pin ordinary entity ordering and lifecycle behavior against vanilla oracles separately from Sunrise-specific expected values.
+Run the scene on integrated, LAN and dedicated servers. Pin ordinary entity ordering and lifecycle behavior against vanilla oracles separately from Sunrise-specific expected values.
 
 ## Proposed stages (file none)
 

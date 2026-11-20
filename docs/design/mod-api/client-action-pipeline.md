@@ -1,8 +1,7 @@
 # Client action pipeline design
 
-> Historical: this design predates the removal of WebAssembly mods; the current native API is documented
-> in [hooks and their hosts](../../modding/src/concepts/hooks-and-the-host.md). The current client and
-> server paths are native; the original dual-runtime dispatch statement below is historical.
+> The native contract below still applies. WebAssembly mods were removed; the parts about guests are history.
+> See [hooks and their hosts](../../modding/src/concepts/hooks-and-the-host.md) for the current native API.
 
 The window owns input, targeting, animation and prediction. The logical server owns
 combat and world changes. A single-player window uses the same client path as a window

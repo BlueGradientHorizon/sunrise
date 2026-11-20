@@ -1,9 +1,8 @@
 # Design: section geometry
 
-> Historical: this design predates the removal of WebAssembly mods; the current native API is documented
-> in [`add_section_geometry`](../../../crates/sunrise-mod-vocab/src/hooks/add_section_geometry.rs). The
-> native registration hook remains; the proposed guest workers, fuel and target-parity matrix are
-> historical.
+> Historical: this design predates the removal of WebAssembly mods.
+> See [`add_section_geometry`](../../../crates/sunrise-mod-vocab/src/hooks/add_section_geometry.rs) for the current native API.
+> The registration hook remains, but the proposed guest workers, fuel and target-parity matrix are historical.
 
 Provisional answer to [#864](https://github.com/arismoko/horizon/issues/864):
 geometry added by a mod belongs to one section compilation, replaces its previous

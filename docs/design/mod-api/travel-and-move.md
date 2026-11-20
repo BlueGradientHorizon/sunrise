@@ -1,10 +1,8 @@
 # Design: travel and move hooks
 
-> Historical: this design predates the removal of WebAssembly mods; the current native API is documented
-> in
-> [physical movement decisions](../../modding/src/how-to/entities/entity-hooks.md#physical-movement-decisions).
-> The current hook does not imply that the entire travel proposal shipped. Guest traps and the target
-> axis of the old test matrix are historical; the LAN player route remains distinct.
+> Historical: this design predates the removal of WebAssembly mods.
+> See [physical movement decisions](../../modding/src/how-to/entities/entity-hooks.md#physical-movement-decisions) for the current native API.
+> The current hook does not imply that the entire travel proposal shipped. Guest traps and the target axis of the old test matrix are historical; the LAN player route remains distinct.
 
 Proposal for [#1009](https://github.com/arismoko/horizon/issues/1009), not an implemented API.
 This is a clean-room Sunrise design from vanilla 26.3 and the requested use cases.

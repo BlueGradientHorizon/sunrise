@@ -1,9 +1,8 @@
 # Registered payloads and the typed-payload design
 
-> Historical: this design predates the removal of WebAssembly mods; the current native API is documented
-> in [typed networking](../../modding/src/how-to/client/networking.md). Native registration, token
-> checks and the transport's ordered retry contract remain; guest dispatch and fixtures below are
-> historical.
+> The native contract below still applies. WebAssembly mods were removed; the parts about guests are history.
+> The native registration, token checks and transport retry contract remain.
+> See [typed networking](../../modding/src/how-to/client/networking.md) for the current native API.
 
 The registered **raw** transport implements [#2882](https://github.com/arismoko/horizon/issues/2882).
 Typed registration and token binding over it are [below](#typed-registration-and-tokens-813-step-4b-1);
@@ -269,7 +268,7 @@ fn register(r: &mut dyn Registrar) {
 | Registration | `play_to_server_typed::<T>(id, handler) -> ToServer<T>`, `play_to_client_typed -> ToClient<T>`, `play_bidirectional_typed -> (ToServer<T>, ToClient<T>)`, and the `configuration_*` and `common_*` forms, on the same `PayloadRegistrar` view as the raw methods: its version, `optional()` and `executes_on(...)` apply. A typed value needs `PayloadCodec` only; it never crosses Wire, only its encoded body does. `T` is the only generic (`play_to_server_typed::<T>(id, handler)`). The handler is `Fn(T, &mut dyn IPayloadContext) -> Result<(), String>`; a typed clientbound handler is given at registration |
 | Schema | `#[derive(PayloadCodec)]` writes `T`'s fingerprint: leaf kinds and bounds, field schemas in declaration order, variant positions. Field, variant and type names are not part of it; a type that holds itself has a finite one. A hand-written codec returns a leaf of its own name and version. The declaration's negotiated version is `<version>+payload-schema.<16 hex digits>`; a raw declaration's version cannot contain that marker |
 | Admission | Another schema under one application version is `Mismatch::Schema`: refused, naming both versions, when either end requires the declaration; absent when both ends are optional, so a send returns `UnsupportedPeer`. Another application version stays a version mismatch, optional or not |
-| Token | `ToServer<T>` and `ToClient<T>` carry a `PayloadToken`: the id, the declaration's slot in its load's typed table, the load, the protocol, the one direction it sends in and the schema of `T`. They have a Wire form, so a wasm mod keeps and passes them; a token remembers the schema of the type it is held as, computed once when it is registered or read as that type. A token grants nothing: the host checks it against the frozen table before every send (`Host::check_payload_token`, `IPayloadContext::check_payload_token`), and a forged, other-load or other-type token, or one whose owner is off, is `PayloadSendError::StaleToken` with nothing encoded or sent |
+| Token | `ToServer<T>` and `ToClient<T>` carry a `PayloadToken`: the id, the declaration's slot in its load's typed table, the load, the protocol, the one direction it sends in and the schema of `T`. They have a Wire form. A token remembers the schema of the type it is held as, computed once when it is registered or read as that type. A token grants nothing: the host checks it against the frozen table before every send (`Host::check_payload_token`, `IPayloadContext::check_payload_token`), and a forged, other-load or other-type token, or one whose owner is off, is `PayloadSendError::StaleToken` with nothing encoded or sent |
 | Sending | `ToServer::send(host: &mut dyn ClientHost, &value)` goes through `ClientHost::send_payload_to_server`; `ToClient::send(host: &mut dyn ServerHost, player, &value)` through `PlayerRef::send_payload`; `reply(context, &value)` on either through `IPayloadContext::reply`. Each returns the raw send's results. The encoder refuses what the peer's decoder would refuse (`EncodeFailed` naming the id) before any bytes are queued, its allocation budget included: the writer charges `PAYLOAD_DECODE_BUDGET` by the reader's rules, with 64-bit sizes on every target. A wrong direction does not compile: a `ToServer` has no send to a player |
 | Receiving | The adapter runs `decode_payload::<T>(body)`. A body that is not one `T` (a negative length, a count past its bound, nesting past 64, a trailing byte) fails the session by name, as a raw handler's error does, with no callback and nothing reserved before the bound is checked. A callback that panics is disabled for every connection, raw or typed: the transaction rolls back, no reply goes out, the session closes and a later message for it is refused without running it |
 | Load refusals | Two owners of one id refuse load, naming the first. A typed id has one declaration: declaring it again in another protocol, typed or raw, refuses load, so a token's protocol is the only one its id exists in and a send in the other phase is `WrongProtocol`. The refused registration's token names load 0 and is always stale |
@@ -327,10 +326,14 @@ snapshots, stale-update rejection, revision-gap handling and visibility-loss cle
 with #796's world/dimension, residency join, full-before-delta ordering, bounded assembly
 and rollback proofs.
 
-Acceptance for those future layers must exercise native and wasm over the real
-integrated, LAN, and dedicated routes: exact typed decoding, mismatched/optional
-peers, invalid tokens, malformed structured values, sender identity, ordered
-application, next-turn replies, root rollback/traps, stale epochs, and resource
-pressure with progress after drain. Measure wasm copying/allocation honestly; Wire
-transfer is not zero-copy. Raw transport tests do not prove the unfinished
-configuration-snapshot or attachment contracts.
+Acceptance for those future layers must exercise the real integrated, LAN, and
+dedicated routes: exact typed decoding, mismatched/optional peers, invalid tokens,
+malformed structured values, sender identity, ordered application, next-turn
+replies, root rollback, stale epochs, and resource pressure with progress after
+drain. Raw transport tests do not prove the unfinished configuration-snapshot or
+attachment contracts.
+
+### Historical guest route
+
+The original plan also checked guest traps and measured copies and allocations for
+guest Wire transfer; it did not assume zero-copy transfer. Neither is a native test requirement.

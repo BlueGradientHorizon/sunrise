@@ -1,8 +1,8 @@
 # Registered raw custom payload transport
 
-> Historical: this design predates the removal of WebAssembly mods; the current native API is documented
-> in [registered payloads](../modding/src/how-to/client/networking.md). The registered transport and
-> ordered retry contract remain; the guest contention source and compiled fixture below are historical.
+> The native contract below still applies. WebAssembly mods were removed; the parts about guests are history.
+> The ordered retry contract remains, without guest-group contention.
+> See [registered payloads](../modding/src/how-to/client/networking.md) for the current native API.
 
 This is the raw transport below the typed payload work in #813, implementing
 #2882. The codec prerequisite is #2951. Names and contracts are based on

@@ -1,8 +1,8 @@
 # Read-only equipment predicates inside menu loops
 
-> Historical: this design predates the removal of WebAssembly mods; the current native API is documented
-> in [`ItemPart::can_equip`](../../crates/sunrise-mod-vocab/src/hooks/can_equip.rs). The native
-> borrowed predicate remains; guest preparation, export refusals and copy probes below are historical.
+> The native contract below still applies. WebAssembly mods were removed; the parts about guests are history.
+> The borrowed predicate does not require guest preparation or missing-export refusals.
+> See [`ItemPart::can_equip`](../../crates/sunrise-mod-vocab/src/hooks/can_equip.rs) for the current native API.
 
 Implemented boundary for #2669 and #3549. The historical conversion analysis below
 explains why the engine stack and API stack remain distinct owned types.
