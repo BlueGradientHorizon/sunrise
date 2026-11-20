@@ -3467,32 +3467,38 @@ mod tests {
     }
 
     #[test]
-    fn a_huge_level_light_translation_keeps_the_fixed_light() {
-        let pos = [10, 64, 20];
-        let mut draw = draw();
-        KeptGeometry::default().render(
-            pos,
-            KeptKey {
-                light: 0x3070,
-                ..KEY
-            },
-            machine(),
-            &mut draw,
-            Vec3::ZERO,
-            &LevelLight {
-                origin: DVec3::from_array(pos.map(f64::from)),
-                light_at: &|cell| panic!("must not sample {cell:?}"),
-            },
-            || DEFAULT_BOUNDS,
-            |_, _| true,
-            |draw| {
-                draw.level_light();
-                draw.translate([2_147_483_648.0, 0.0, 0.0]);
-                draw.quad(LIGHT_QUAD, [[0.0; 2]; 4], sprite(), 0xFFFFFF);
-            },
-        );
-        assert_eq!(draw.vertices.len(), 4);
-        assert!(draw.vertices.iter().all(|v| v.light == 0x3070));
+    fn a_huge_translation_samples_only_when_the_absolute_cell_fits() {
+        for (anchor_x, cell, expected) in [(10, None, 0x3070), (-1, Some(i32::MAX), 0x2040)] {
+            let pos = [anchor_x, 64, 20];
+            let mut draw = draw();
+            KeptGeometry::default().render(
+                pos,
+                KeptKey {
+                    light: 0x3070,
+                    ..KEY
+                },
+                machine(),
+                &mut draw,
+                Vec3::ZERO,
+                &LevelLight {
+                    origin: DVec3::from_array(pos.map(f64::from)),
+                    light_at: &|[x, y, z]| {
+                        assert_eq!(Some(x), cell);
+                        assert_eq!([y, z], [64, 20]);
+                        0x42
+                    },
+                },
+                || DEFAULT_BOUNDS,
+                |_, _| true,
+                |draw| {
+                    draw.level_light();
+                    draw.translate([2_147_483_648.0, 0.0, 0.0]);
+                    draw.quad(LIGHT_QUAD, [[0.0; 2]; 4], sprite(), 0xFFFFFF);
+                },
+            );
+            assert_eq!(draw.vertices.len(), 4);
+            assert!(draw.vertices.iter().all(|v| v.light == expected));
+        }
     }
 
     #[test]
