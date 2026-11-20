@@ -799,11 +799,19 @@ mod tests {
                 Ok(())
             );
             let host: &mut dyn ServerHost = game;
+            let custom_data = mod_api::ComponentId::new("minecraft:custom_data").unwrap();
+            let data = mod_api::Tag::Compound(
+                [("value".into(), mod_api::Tag::Int(42))]
+                    .into_iter()
+                    .collect(),
+            );
             let stone = ItemPlace::PlayerSlot {
                 player: 123,
                 slot: 9,
             }
             .resource(host)
+            .unwrap()
+            .with_component(host, &custom_data, data.clone())
             .unwrap();
             let put =
                 host.transaction(|host, tx| Ok::<_, ()>(held_slot(4).insert(host, tx, &stone, 5)));
@@ -813,8 +821,29 @@ mod tests {
                 guest.native_menu[4].as_ref().map(|s| s.count)
             };
             assert_eq!(shown(game), None, "mirrored after the write, not inside it");
+            let place = ItemPlace::MenuSlot { menu, slot: 4 };
+            let found = place.with_stack(game, |stack| (stack.count(), stack.project()));
+            let (count, projected) = found.unwrap();
+            assert_eq!(count, 5);
+            let projected = projected.unwrap();
+            assert_eq!(projected.count(), 5);
+            assert_eq!(
+                mod_api::ItemResource::of(&projected).component(&custom_data),
+                Some(data)
+            );
             game.run_native_menu_events();
             assert_eq!(shown(game), Some(5));
+
+            let host: &mut dyn ServerHost = game;
+            let taken =
+                host.transaction(|host, tx| Ok::<_, ()>(held_slot(4).extract(host, tx, &stone, 5)));
+            assert_eq!(taken, Ok(5));
+            assert_eq!(shown(game), Some(5), "the mirror has not caught up yet");
+            assert_eq!(
+                place.with_stack(game, |_| ()),
+                None,
+                "no fallback to the display mirror"
+            );
         });
     }
 

@@ -1,15 +1,15 @@
 //! The game's item places for native mods (`mod_api::ItemPlace`, arismoko/horizon#41 §7): a
 //! player's slots, hands and cursor, entities' slots, item entities and the guest storage a
 //! menu slot shows (ender chest, crafting grid, a mod's chest menu). Mods read and write
-//! them through `ItemPlace`'s `stack`, `insert` and `extract`, which come here for these places; a block entity's slots,
-//! a stack inside an item and a mod's own places go through their handlers.
+//! them through `ItemPlace`'s `with_stack`, `insert` and `extract`, which come here for these
+//! places; a block entity's slots, a stack inside an item and a mod's own places go through their handlers.
 use super::Game;
 use super::native_server::PlayerRead;
 use super::transactions::{After, DeferredEffect};
 use mod_api::__private::game::*;
 use mod_api::{
-    CraftedByError, EquipmentSlot, ItemPlace, ItemPlaceEditError, LivingRef, MenuSlotBacking,
-    Transaction,
+    CraftedByError, EquipmentSlot, ItemPlace, ItemPlaceEditError, ItemStackView, LivingRef,
+    MenuSlotBacking, Transaction,
 };
 use sunrise_client::{
     first_person::Hand,
@@ -161,14 +161,18 @@ impl Game<'_> {
         let tag = sunrise_client::command::args::normalize(tag);
         self.res.mob_data().entity_has(&tag, entity_type)
     }
-    /// The owned stack for the current item-place backend. Reads follow `game_stack_source`.
-    pub(super) fn game_stack(&mut self, place: &ItemPlace) -> Option<ItemStack> {
-        Some(self.game_stack_source(place)?.project().into_owned())
+    /// Lend a native place's stack without encoding components or initializing storage.
+    pub(super) fn game_stack(
+        &mut self,
+        place: &ItemPlace,
+        read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
+    ) -> Option<()> {
+        super::native_living_refs::lend_equipment(self.game_stack_source(place)?, read)
     }
 
     /// Borrow the stack in a native place without initializing a player or container.
     /// Equipment overlays are only applied when the caller projects a complete stack.
-    pub(super) fn game_stack_source(&self, place: &ItemPlace) -> Option<EquipmentRead<'_>> {
+    fn game_stack_source(&self, place: &ItemPlace) -> Option<EquipmentRead<'_>> {
         if let ItemPlace::Scratch(id) | ItemPlace::ScratchSlots(id) = place {
             return self.scratch_held(*id).map(EquipmentRead::resident);
         }
@@ -249,7 +253,12 @@ impl Game<'_> {
             )
         }) {
             // The handler owns this stack, not the slot's display mirror.
-            Some(place.stack(self).ok_or(CraftedByError::NotHeld)?)
+            Some(
+                place
+                    .with_stack(self, |stack| stack.project())
+                    .flatten()
+                    .ok_or(CraftedByError::NotHeld)?,
+            )
         } else {
             None
         };
@@ -3820,12 +3829,20 @@ pub(super) mod tests {
             let mut player = guest(1);
             player.inventory[0] = Some(ItemStack::new("minecraft:bucket", 16));
             game.lan.as_mut().unwrap().hub.guests.push(player);
-            let one = ItemPlace::OneByOne(Box::new(ItemPlace::PlayerSlot {
+            let slot = ItemPlace::PlayerSlot {
                 player: 123,
                 slot: 0,
-            }));
+            };
+            let one = ItemPlace::OneByOne(Box::new(slot.clone()));
             let host: &mut dyn ServerHost = game;
-            assert_eq!(one.amount(host), 1);
+            assert_eq!(
+                one.with_stack(host, |stack| (
+                    stack.count(),
+                    stack.project().map(|s| s.count())
+                )),
+                Some((1, Some(1)))
+            );
+            assert_eq!(slot.amount(host), 16);
             let block = level.capability(host, &FLUIDS, [2, 64, 0], None).unwrap();
             let bucket = one.capability(host, &ITEM_FLUIDS).unwrap();
             let moved = host.transaction(|host, tx| {

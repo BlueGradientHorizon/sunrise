@@ -320,10 +320,13 @@ pub mod tests {
             resource: &ItemResource,
             amount: u32,
         ) -> u32 {
-            let Some(pouch) = self.0.stack(host).filter(|_| resource.matches(&stick())) else {
+            let Some(damage) = self.0.with_stack(host, |pouch| pouch.damage()) else {
                 return 0;
             };
-            let filled = ItemResource::of(&stack("test:pouch", 1, pouch.damage() + amount));
+            if !resource.matches(&stick()) {
+                return 0;
+            }
+            let filled = ItemResource::of(&stack("test:pouch", 1, damage + amount));
             match self.0.exchange(host, tx, &filled, 1) {
                 1 => amount,
                 _ => 0,
@@ -372,12 +375,8 @@ pub mod tests {
             amount: u32,
         ) -> u32 {
             let pouch = resource.to_stack(1).unwrap();
-            match self.0.stack(host) {
-                Some(bag)
-                    if bag.damage() == 0
-                        && amount > 0
-                        && resource.item() == fixture_item_key("test:pouch") =>
-                {
+            match self.0.with_stack(host, |bag| bag.damage()) {
+                Some(0) if amount > 0 && resource.item() == fixture_item_key("test:pouch") => {
                     let full = ItemResource::of(&stack("test:bag", 1, pouch.damage() + 1));
                     self.0.exchange(host, tx, &full, 1)
                 }
@@ -488,7 +487,11 @@ pub mod tests {
     pub(crate) struct Charms;
     impl PlaceProvider for Charms {
         fn stack(&self, host: &mut dyn ServerHost, key: u64) -> Option<ItemStack> {
-            backend_mut_of(host).and_then(|backend| backend.game_stack(&charm_slot(key)))
+            let mut stack = None;
+            backend_mut_of(host)?.game_stack(&charm_slot(key), &mut |held| {
+                stack = held.project();
+            })?;
+            stack
         }
         fn insert(
             &self,
@@ -499,13 +502,18 @@ pub mod tests {
             amount: u32,
         ) -> u32 {
             let place = charm_slot(key);
-            match place.stack(host) {
-                Some(held) if !resource.matches(&held) => 0,
-                held => {
-                    let room = 64 - held.map_or(0, |held| held.count());
-                    place.insert(host, tx, resource, amount.min(room))
-                }
-            }
+            let room = place
+                .with_stack(host, |held| {
+                    if held.item() == resource.item()
+                        && held.project().is_some_and(|stack| resource.matches(&stack))
+                    {
+                        64u32.saturating_sub(held.count())
+                    } else {
+                        0
+                    }
+                })
+                .unwrap_or(64);
+            place.insert(host, tx, resource, amount.min(room))
         }
         fn extract(
             &self,
@@ -1125,8 +1133,8 @@ pub mod tests {
         };
         assert_eq!(fill(host, &in_bag, stick(), 3), 3);
         assert_eq!(
-            in_bag.with_stack(host, |stack| stack.project()).flatten(),
-            Some(stack("test:pouch", 1, 3))
+            in_bag.with_stack(host, |stack| (stack.count(), stack.project())),
+            Some((1, Some(stack("test:pouch", 1, 3))))
         );
         assert_eq!(
             HAND.with_stack(host, |stack| stack.project()).flatten(),
@@ -1139,8 +1147,8 @@ pub mod tests {
         };
         assert_eq!(fill(host, &charm, stick(), 1), 1);
         assert_eq!(
-            charm.with_stack(host, |stack| stack.project()).flatten(),
-            Some(stack("test:pouch", 1, 3))
+            charm.with_stack(host, |stack| (stack.count(), stack.project())),
+            Some((1, Some(stack("test:pouch", 1, 3))))
         );
         let unknown = ItemPlace::Mod {
             provider: "test:none",
@@ -1906,8 +1914,12 @@ pub mod tests {
     mod_api::impl_backend_areas!(HeldItem, except(items));
     #[cfg(test)]
     impl mod_api::prelude::ItemsBackendMut for HeldItem {
-        fn game_stack(&mut self, place: &ItemPlace) -> Option<ItemStack> {
-            (*place == HAND).then(|| self.0.clone())
+        fn game_stack(
+            &mut self,
+            place: &ItemPlace,
+            read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
+        ) -> Option<()> {
+            (*place == HAND).then(|| read(ItemStackView::from_stack(&self.0)))
         }
     }
     #[cfg(test)]

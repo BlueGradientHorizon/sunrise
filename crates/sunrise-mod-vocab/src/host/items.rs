@@ -514,11 +514,13 @@ pub trait ItemsBackendMut {
         tx: &Transaction,
     ) -> u64;
     /// Side: server.
-    /// The stack at a player's or an item entity's place; none for an empty one, a player who
-    /// isn't here or is dead, an item entity not in the level in place, any other place
-    /// (`ItemPlace::stack` reads those), and on a client.
+    /// Lend a stack in a native item place, once, as in [`ItemPlace::with_stack`].
     #[access(WorldOnly)]
-    fn game_stack(&mut self, place: &ItemPlace) -> Option<ItemStack>;
+    fn game_stack(
+        &mut self,
+        place: &ItemPlace,
+        read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
+    ) -> Option<()>;
     /// Side: server. Writes the changed components on a stack in a player slot, hand or mob or
     /// armor stand equipment, without running any equipment effects. The stack must already be
     /// there. Journaled in `tx`.
@@ -548,7 +550,7 @@ pub trait ItemsBackendMut {
     /// the root commit (a creative player's hand takes anything, and gives them one if they have
     /// none, as `ItemUtils.createFilledResult`); an item entity's dropped beside it at the root
     /// commit; an entity slot's into the entity's other slots (`forHandlerIndex`). How much
-    /// went: 0 where `native_game_stack` reads nothing for want of the place. In transaction
+    /// went: 0 where the place is unavailable. In transaction
     /// `tx`, which keeps each place as it was. The player's screen follows with the tick's sync.
     #[access(WorldOnly)]
     fn game_insert(

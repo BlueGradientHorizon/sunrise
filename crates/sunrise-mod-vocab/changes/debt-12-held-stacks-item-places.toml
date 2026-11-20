@@ -1,0 +1,6 @@
+ids = [
+    "handle:ItemPlace::stack",
+    "handle:ItemPlace::with_stack",
+]
+why = "Inspect an item place without copying the stack or encoding its components just to read the item, count or damage. Provider-backed menu slots read the provider rather than the display copy. Wrapped reads through OneByOne show and project a count of one without changing storage."
+migrate = "Replace place.stack(host).map(|stack| stack.count()) with place.with_stack(host, |stack| stack.count()). Move other scalar reads into the callback; for a presence check use place.with_stack(host, |_| ()).is_some(). For an owned stack or its component patch use place.with_stack(host, |stack| stack.project()).flatten(). The callback does not run when the place is empty or unavailable. Keep place.amount(host), place.resource(host), PlaceProvider::stack and MenuRef::slot as written. In a native mixin selecting the call, change the callee selector from .stack to .with_stack."

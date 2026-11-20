@@ -54,7 +54,7 @@ use crate::world::ticket_controller::{ControllerInfo, TEST_CONTROLLERS};
 use crate::{
     Backend, BackendMut, BackendMutRef, BackendRef, BlockEntityRef, BlockEntityTypeKey, BlockSide,
     ClientHost, Commands, EntityRef, FluidStack, Host, InventoryView, ItemPlace, ItemStack,
-    LevelRef, Messages, Mods, PlayerRef, Players, ServerHost, TEST_MODS, Tag, Text,
+    ItemStackView, LevelRef, Messages, Mods, PlayerRef, Players, ServerHost, TEST_MODS, Tag, Text,
     TicketController, WorldEpoch,
 };
 
@@ -789,9 +789,14 @@ impl crate::prelude::ItemsBackendMut for FakeHost {
         }
         amount - left
     }
-    fn game_stack(&mut self, place: &ItemPlace) -> Option<ItemStack> {
+    fn game_stack(
+        &mut self,
+        place: &ItemPlace,
+        read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
+    ) -> Option<()> {
         let (player, slot) = self.players.place(place)?;
-        player.slots.get(&slot).cloned()
+        read(ItemStackView::from_stack(player.slots.get(&slot)?));
+        Some(())
     }
     fn game_edit_stack(
         &mut self,

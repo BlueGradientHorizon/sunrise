@@ -99,13 +99,19 @@ impl<'a> ItemStackView<'a> {
     }
 
     /// Lend the resident stack's checked `(item, count, damage override)` without encoding it.
-    /// The projector receives those same scalars when an owned stack is requested.
+    /// The projector receives the view's scalars when an owned stack is requested.
     #[doc(hidden)]
     pub fn resident(metadata: StackMetadata, project: &'a StackProjector<'a>) -> Self {
         Self {
             metadata,
             projection: StackProjection::Resident(project),
         }
+    }
+
+    /// Lend the same item and components with a different visible count.
+    pub(crate) fn with_count(mut self, count: NonZeroU32) -> Self {
+        self.metadata.1 = count;
+        self
     }
 
     /// The process-local identity of the item.
@@ -132,12 +138,28 @@ impl<'a> ItemStackView<'a> {
     /// Copy this stack into an owned API value, including its normalized component patch.
     /// Returns `None` if the source cannot be represented as an owned [`ItemStack`].
     pub fn project(&self) -> Option<ItemStack> {
-        match self.projection {
-            StackProjection::Borrowed(stack) => Some(stack.clone()),
-            StackProjection::Resident(project) => project(self.metadata),
-            StackProjection::Slot(slot, project) => project(slot, self.metadata),
-        }
+        let mut stack = match self.projection {
+            StackProjection::Borrowed(stack) => stack.clone(),
+            StackProjection::Resident(project) => project(self.metadata)?,
+            StackProjection::Slot(slot, project) => project(slot, self.metadata)?,
+        };
+        stack.count = self.metadata.1;
+        Some(stack)
     }
+}
+
+pub(crate) fn read_stack_view<R>(
+    read: impl for<'a> FnOnce(ItemStackView<'a>) -> R,
+    lend: impl FnOnce(&mut dyn for<'a> FnMut(ItemStackView<'a>)) -> Option<()>,
+) -> Option<R> {
+    let mut read = Some(read);
+    let mut result = None;
+    lend(&mut |view| {
+        if let Some(read) = read.take() {
+            result = Some(read(view));
+        }
+    })?;
+    result
 }
 
 /// A read-only loan of numbered inventory slots, in their source's numbering.

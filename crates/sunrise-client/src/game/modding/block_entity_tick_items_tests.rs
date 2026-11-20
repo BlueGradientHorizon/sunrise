@@ -52,12 +52,8 @@ impl BlockEntityPart for Consume {
         )];
         assert_eq!(item.set_stack(host, stack), Ok(true));
         assert_eq!(item.with_stack(host, |stack| stack.count()).unwrap(), 2);
-        assert_eq!(
-            ItemPlace::ItemEntity { id: first.id() }
-                .with_stack(host, |stack| stack.count())
-                .unwrap(),
-            2
-        );
+        let place = ItemPlace::ItemEntity { id: first.id() };
+        assert_eq!(place.with_stack(host, |stack| stack.count()), Some(2));
         if case == "nested_abort" {
             let aborted: Result<(), ()> = host.transaction(|host, _| {
                 assert_eq!(
@@ -68,10 +64,12 @@ impl BlockEntityPart for Consume {
                     Ok(true)
                 );
                 assert_eq!(item.with_stack(host, |stack| stack.count()).unwrap(), 1);
+                assert_eq!(place.with_stack(host, |stack| stack.count()), Some(1));
                 Err(())
             });
             assert_eq!(aborted, Err(()));
             assert_eq!(item.with_stack(host, |stack| stack.count()).unwrap(), 2);
+            assert_eq!(place.with_stack(host, |stack| stack.count()), Some(2));
         }
         assert!(second.discard(host));
         assert!(host.entity(second.id()).is_none());

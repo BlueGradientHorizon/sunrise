@@ -350,9 +350,13 @@ fn fill(
     amount: u32,
     limit: u32,
 ) -> u32 {
-    let held = match place.stack(host) {
-        Some(held) if !resource.matches(&held) => return 0,
-        held => held.map_or(0, |held| held.count()),
+    let held = place.with_stack(host, |held| {
+        resource.matches_view(&held).then(|| held.count())
+    });
+    let held = match held {
+        Some(Some(count)) => count,
+        Some(None) => return 0,
+        None => 0,
     };
     match amount.min(limit.saturating_sub(held)) {
         0 => 0,
@@ -486,17 +490,22 @@ impl ResourceHandler<ItemResource> for PlayerItems {
             .filter_map(|index| self.slot(index));
         let mut went = 0;
         for place in same {
-            if went < amount
-                && place
-                    .stack(host)
-                    .is_some_and(|held| resource.matches(&held))
-            {
-                went += fill(host, tx, &place, resource, amount - went, limit);
+            if went >= amount {
+                break;
+            }
+            if let Some(Some(count)) = place.with_stack(host, |held| {
+                resource.matches_view(&held).then(|| held.count())
+            }) {
+                let room = (amount - went).min(limit.saturating_sub(count));
+                went += place.insert(host, tx, resource, room);
             }
         }
         for place in (0..MAIN).filter_map(|index| self.slot(index)) {
-            if went < amount && place.stack(host).is_none() {
-                went += fill(host, tx, &place, resource, amount - went, limit);
+            if went >= amount {
+                break;
+            }
+            if place.with_stack(host, |_| ()).is_none() {
+                went += place.insert(host, tx, resource, (amount - went).min(limit));
             }
         }
         Ok(went)

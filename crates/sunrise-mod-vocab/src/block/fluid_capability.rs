@@ -1,6 +1,7 @@
 //! The fluid capability (arismoko/horizon#41 §7): [`FLUIDS`], as NeoForge 26.3's
 //! `Capabilities.Fluid.BLOCK`, a [`ResourceHandler`] of [`FluidResource`]s as
 //! [`ITEMS`](crate::ITEMS) is of items. Amounts are millibuckets: a bucket is 1000.
+use super::item_place::ItemCapabilityDefault;
 use crate::__private::ingredient_parser::WalkedIngredient;
 use crate::Components;
 use crate::{
@@ -310,13 +311,13 @@ impl ResourceHandler<FluidResource> for GameFluids {
 /// whole, an empty bucket taking plain water or lava.
 pub const ITEM_FLUIDS: ItemCapabilityKey<dyn ResourceHandler<FluidResource>> = ItemCapabilityKey {
     name: "sunrise:item_fluids",
-    default: Some(|host, place, stack| {
+    default: Some(ItemCapabilityDefault::Item(|host, place, item| {
         let buckets = [
             host.item_key(&BUCKET_IDS[0])?,
             host.item_key(&BUCKET_IDS[1])?,
             host.item_key(&BUCKET_IDS[2])?,
         ];
-        if !buckets.contains(&stack.item()) {
+        if !buckets.contains(&item) {
             return None;
         }
         Some(Box::new(GameBucket {
@@ -324,8 +325,8 @@ pub const ITEM_FLUIDS: ItemCapabilityKey<dyn ResourceHandler<FluidResource>> = I
             water: host.fluid_key("minecraft:water")?,
             lava: host.fluid_key("minecraft:lava")?,
             buckets,
-        }) as Box<dyn ResourceHandler<FluidResource>>)
-    }),
+        }))
+    })),
     handler: PhantomData,
 };
 
@@ -357,10 +358,10 @@ struct GameBucket {
 impl GameBucket {
     /// What the bucket here holds: none for an empty one, or where no bucket is now.
     fn held(&self, host: &mut dyn ServerHost) -> Option<FluidKey> {
-        let stack = self.place.stack(host)?;
-        if stack.item() == self.buckets[1] {
+        let item = self.place.with_stack(host, |stack| stack.item())?;
+        if item == self.buckets[1] {
             Some(self.water)
-        } else if stack.item() == self.buckets[2] {
+        } else if item == self.buckets[2] {
             Some(self.lava)
         } else {
             None
@@ -423,10 +424,7 @@ impl ResourceHandler<FluidResource> for GameBucket {
         resource: &FluidResource,
         amount: u32,
     ) -> u32 {
-        let empty = self
-            .place
-            .stack(host)
-            .is_some_and(|stack| stack.item() == self.buckets[0]);
+        let empty = self.place.with_stack(host, |stack| stack.item()) == Some(self.buckets[0]);
         match self.bucket_of(resource) {
             Some(full) if index == 0 && empty && amount >= BUCKET => self.exchange(host, tx, full),
             _ => 0,

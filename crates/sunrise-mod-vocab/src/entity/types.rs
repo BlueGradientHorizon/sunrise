@@ -1,4 +1,5 @@
 // Types that lived in the API root before the domain split.
+use crate::item::item_stack::read_stack_view;
 use crate::*;
 
 /// Why an entity type's attribute declaration or addition was refused
@@ -252,20 +253,6 @@ impl LivingRef {
         let backend = crate::backend_of(host)?;
         read_stack_view(read, |lend| backend.living_weapon_item(self, lend))
     }
-}
-
-fn read_stack_view<R>(
-    read: impl for<'a> FnOnce(ItemStackView<'a>) -> R,
-    lend: impl FnOnce(&mut dyn for<'a> FnMut(ItemStackView<'a>)) -> Option<()>,
-) -> Option<R> {
-    let mut read = Some(read);
-    let mut result = None;
-    lend(&mut |view| {
-        if let Some(read) = read.take() {
-            result = Some(read(view));
-        }
-    })?;
-    result
 }
 
 impl From<LivingRef> for EntityRef {
