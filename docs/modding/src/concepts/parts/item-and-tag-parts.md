@@ -72,7 +72,7 @@ After `Hooks::right_click_block` lets the click through, `Hooks::use_item_on_blo
 `ItemBeforeBlock`, `Block`, then `ItemAfterBlock`. The event and the scoped Parts
 below share `event.click`: the logical side, level, position, exact hit, hand,
 optional held stack and acting player. Return `Flow::Cancel` to skip the selected
-phase's Part and template, using `*event.cancellation_result` (initially
+phase's Part and vanilla behaviour, using `*event.cancellation_result` (initially
 `TryWithEmptyHand`) as its result. Canceling does not undo work from earlier phases.
 
 - `ItemPart::on_item_use_first` is the held item's first refusal, after the
@@ -130,7 +130,7 @@ not asked when Unbreaking already saved the item or for a creative player's tool
 one table lookup. With no part, the vanilla amount applies.
 
 To change wear without attaching a Part to an item, use an enchantment's
-`minecraft:item_damage` effect (the component Unbreaking uses), or an injection.
+`minecraft:item_damage` effect (the component Unbreaking uses).
 A part does not get the wearing entity;
 `host.players().acting_player()` names the player on the paths a player takes.
 
