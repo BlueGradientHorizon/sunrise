@@ -15,7 +15,8 @@ ZombifiedPiglin.playAngerSound	port	crates/sunrise-client/src/mobs/undead.rs::zo
 ZombifiedPiglin.setTarget	port	crates/sunrise-client/src/mobs/undead.rs::zombified_piglin_step	anger and timers start on the first tick with a target, not inside setTarget
 ZombifiedPiglin.checkZombifiedPiglinSpawnRules	port	crates/sunrise-client/src/mobs/spawn_rules.rs::check_spawn_rules	ZombifiedPiglin arm: not peaceful and not on a nether wart block
 ZombifiedPiglin.checkSpawnObstruction	port	crates/sunrise-client/src/mobs/spawn_selection.rs::spawn_obstruction	the Mob default two tests: no liquid, unobstructed
-CatSpawner.spawnInVillage	port	crates/sunrise-client/src/game/mobs/cat_spawner.rs::Game::spawn_cat_in_village	village cats: more than four claimed beds within 48 blocks and fewer than five cats
+CatSpawner.spawnInVillage	port	crates/sunrise-gameplay/src/cat_spawner.rs::village_takes_cat	village cats: more than four claimed beds within 48 blocks and fewer than five cats
+CatSpawner.spawnInHut	port	crates/sunrise-gameplay/src/cat_spawner.rs::hut_takes_cat	hut cats: no cat within 16 blocks
 CatSpawner.spawnCat	port	crates/sunrise-client/src/game/mobs/cat_spawner.rs::Game::spawn_cat	black variant inside cats_spawn_as_black structures; persistence flag from the caller
 InventoryCarrier.pickUpItem	port	crates/sunrise-client/src/game/mobs/villagers.rs::Game::villager_pickups	gap: minor: villager arm only; piglins, sulfur cubes, pandas and others have their own pickup fns
 AbstractVillager.finalizeSpawn	port	crates/sunrise-client/src/mobs/finalize.rs::Ctx::finalize	villager arm: type, then the baby group
