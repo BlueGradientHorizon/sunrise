@@ -64,8 +64,9 @@ is `/tick query`'s average over 100 ticks.
 | guest in the End (the Nether still parked) | 0.9 ms | 1.1 ms | 1324 MB |
 | both back, the Nether and End closed after 300 idle ticks | 0.8 ms | 0.9 ms | 1335 MB |
 
-- Startup opens each built-in level and waits for the chunks held by its saved tickets, including
-  `/forceload` and mod tickets. A built-in level with no tickets starts without loading chunks.
+- Startup opens all built-in levels, then activates their saved tickets, including `/forceload`
+  and mod tickets, and waits for the chunks they hold. Opening an unticketed level does not by
+  itself preload chunks; spawn preparation can load chunks separately.
 - A level with players or tickets keeps its chunks and entities and runs its tick. If nothing keeps
   levels outside the Overworld active, the server ticks only the Overworld.
 - A closed level's memory goes back to the allocator, not always to the system. Entering it again

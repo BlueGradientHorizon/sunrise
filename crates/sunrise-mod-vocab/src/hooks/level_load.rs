@@ -7,6 +7,7 @@ pub trait Hooks {
     /// (`chunk_load`), so a mod sets up what it keeps for the level
     /// here. Before `server_started`, this fires in Overworld, Nether, End
     /// order, with the level in place, regardless of the saved player's dimension.
+    /// The next built-in is not available until after the current notification.
     /// It fires again if a built-in level closes and later reopens.
     /// Explicitly opened runtime levels can fire this while parked:
     /// `event.dimension` names the opened level, not the Host's current level.

@@ -3514,9 +3514,11 @@ impl Game<'_> {
     /// `dimension`'s level opened on the server (NeoForge's `LevelEvent.Load`,
     /// posted in `MinecraftServer.createLevels`): before any of its chunks
     /// (`native_chunk_load`), so a mod sets up what it keeps for the level
-    /// here. The level the world opens in comes before `WorldOpenReady`; the
-    /// others open when someone first goes there (a player, a portal, an
-    /// `execute in` command), with the level in place. Once for each open:
+    /// here. At startup the Overworld, Nether and End are published and
+    /// announced in that order, before `server_started`, with each level in
+    /// place. A level closed while idle fires this again when it reopens.
+    /// An explicitly opened runtime level can fire while parked: `dimension`
+    /// names that level, not the Host's current one. Once for each open;
     /// `native_level_unload` follows. Server-side.
     pub(in crate::game) fn native_level_load(&mut self, dimension: &str) {
         self.fire_level_load(dimension);
