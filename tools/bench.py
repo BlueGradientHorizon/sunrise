@@ -46,7 +46,13 @@ except ImportError:
 
 ROOT = Path(__file__).resolve().parent.parent
 EXE = '.exe' if os.name == 'nt' else ''
-SERVERS = ('sunrise', 'vanilla', 'pumpkin')
+# Which console queries each server has; a figure it lacks is reported as UNSUPPORTED, one it has but never answers fails the run.
+SERVERS = {
+    'sunrise': {'gametime': True, 'tick_query': True},
+    'vanilla': {'gametime': True, 'tick_query': True},
+    'pumpkin': {'gametime': True, 'tick_query': False},
+}
+UNSUPPORTED = 'unsupported'
 
 PROPERTIES = {
     'level-seed': '12345',
@@ -312,9 +318,10 @@ def summarize(kind, args, ticks, rss, cpu, gametime, window_seconds, summary, st
         'bots': args.bots,
         'behaviour': args.behaviour,
         'start_seconds': start_seconds,
-        'tps': tps(*gametime, window_seconds),
-        'mspt': {k: mean([t[k] for t in ticks]) for k in ('average', 'p50', 'p95', 'p99')},
-        'mspt_worst_p99': max((t['p99'] for t in ticks), default=None),
+        'tps': UNSUPPORTED if gametime is None else tps(*gametime, window_seconds),
+        'mspt': {k: UNSUPPORTED if ticks is None else mean([t[k] for t in ticks])
+                 for k in ('average', 'p50', 'p95', 'p99')},
+        'mspt_worst_p99': UNSUPPORTED if ticks is None else max((t['p99'] for t in ticks), default=None),
         'rss_mb': {'mean': mean([r / 1e6 for r in rss]), 'max': round(max(rss) / 1e6, 1) if rss else None},
         'cpu_percent': mean(cpu),
         'bytes_per_player_second': bandwidth,
@@ -322,7 +329,7 @@ def summarize(kind, args, ticks, rss, cpu, gametime, window_seconds, summary, st
         'bots_joined': summary.get('joined'),
         'bots_failed': [b for b in summary.get('per_bot', []) if b.get('error')],
         'chunks_total': summary.get('chunks'),
-        'tick_queries': len(ticks),
+        'tick_queries': UNSUPPORTED if ticks is None else len(ticks),
     }
 
 
@@ -343,9 +350,11 @@ def run_once(kind, args, out):
         bot_lines = []
         threading.Thread(target=lambda: bot_lines.extend(bot_process.stdout), daemon=True).start()
         time.sleep(args.bots * args.join_every + args.warmup)
-        first_time = server.ask('time query gametime', parse_gametime)
+        supports = SERVERS[kind]
+        first_time = server.ask('time query gametime', parse_gametime) if supports['gametime'] else None
         began = time.time()
-        rss, cpu, ticks = [], [], []
+        rss, cpu = [], []
+        ticks = [] if supports['tick_query'] else None
         usage = tree_usage(server.process.pid)
         last_cpu, last_time = (usage[1] if usage else 0), time.time()
         next_query = time.time()
@@ -356,15 +365,15 @@ def run_once(kind, args, out):
                 rss.append(u[0])
                 cpu.append((u[1] - last_cpu) / (now - last_time) * 100)
                 last_cpu, last_time = u[1], now
-            if now >= next_query:
+            if ticks is not None and now >= next_query:
                 ticks.append(server.ask('tick query', parse_tick_query))
                 next_query = now + 5
         window = time.time() - began
-        last = server.ask('time query gametime', parse_gametime)
+        last = server.ask('time query gametime', parse_gametime) if supports['gametime'] else None
         bot_process.wait(timeout=total + 120)
         time.sleep(0.5)
         _, summary = split_bot_output(list(bot_lines))
-        result.update(summarize(kind, args, ticks, rss, cpu, (first_time, last), window, summary, start_seconds,
+        result.update(summarize(kind, args, ticks, rss, cpu, (first_time, last) if supports['gametime'] else None, window, summary, start_seconds,
                                 total))
     except Exception as e:  # a failed run is reported, and the next one still runs
         result['error'] = str(e)

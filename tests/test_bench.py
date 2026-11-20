@@ -29,6 +29,19 @@ class ParserTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             bench.tps(1000, 2200, 0)
 
+    def test_a_server_without_a_query_reports_it_as_unsupported(self):
+        self.assertFalse(bench.SERVERS['pumpkin']['tick_query'])
+        self.assertTrue(all(bench.SERVERS[k].values() for k in ('sunrise', 'vanilla')))
+        run = bench.summarize('pumpkin', args(), None, [], [], None, 60, {}, 1.0, 100)
+        self.assertEqual((run['tps'], run['mspt']['p99'], run['mspt_worst_p99'], run['tick_queries']), ('unsupported',) * 4)
+        self.assertIn('| TPS | unsupported |', bench.table([run]))
+        self.assertIn('| MSPT p99 (worst query) | unsupported |', bench.table([run]))
+
+    def test_a_supported_query_is_measured_and_none_is_omitted(self):
+        ticks = [{'average': 10.0, 'p50': 9.0, 'p95': 15.0, 'p99': 20.0}]
+        run = bench.summarize('sunrise', args(), ticks, [], [], (1000, 2200), 60, {}, 1.0, 100)
+        self.assertEqual((run['tps'], run['mspt']['p99'], run['tick_queries']), (20.0, 20.0, 1))
+
     def test_ask_raises_when_the_console_gives_no_parseable_answer(self):
         class Console:
             """A server console that answers every command with the given line."""
