@@ -27,6 +27,12 @@ pub(in crate::game) enum Epoch {
     Player,
 }
 
+/// The decision's menu owner and the lifecycle identity of its actor and target.
+pub(in crate::game) struct DecidedTarget {
+    pub(in crate::game) route: MenuId,
+    pub(in crate::game) identity: Identity,
+}
+
 #[cfg(test)]
 thread_local! {
     /// How many times `decided_action` was entered: the no-listener tests prove it stays zero.
@@ -113,15 +119,15 @@ impl Game<'_> {
     ) -> bool {
         self.decided_action_on(
             name,
-            (
+            DecidedTarget {
                 route,
-                Identity {
+                identity: Identity {
                     side: Side::Server,
                     world: actor.epoch(),
                     actor,
                     target: actor,
                 },
-            ),
+            },
             epoch,
             fresh,
             fire,
@@ -133,13 +139,13 @@ impl Game<'_> {
     pub(in crate::game) fn decided_action_on<'p>(
         &mut self,
         name: &'static str,
-        target: (MenuId, Identity),
+        target: DecidedTarget,
         epoch: Epoch,
         fresh: impl Fn(&Game<'_>) -> bool + 'p,
         fire: impl FnOnce(&mut Game<'_>) -> Reply,
         perform: impl FnOnce(&mut Game<'_>) + 'p,
     ) -> bool {
-        let (route, identity) = target;
+        let DecidedTarget { route, identity } = target;
         #[cfg(test)]
         DECIDED.set(DECIDED.get() + 1);
         let target = Action {
