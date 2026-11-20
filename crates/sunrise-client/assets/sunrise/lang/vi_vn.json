@@ -139,7 +139,6 @@
   "How fast the right stick turns the view.": "Tốc độ cần phải xoay góc nhìn.",
   "How fast the stick moves the crosshair in inventories.": "Tốc độ cần di chuyển con trỏ trong kho đồ.",
   "How frames reach the screen while VSync is off.": "Cách các khung hình tiếp cận màn hình khi VSync tắt.",
-  "How frames reach the screen, and the performance overlay.": "Cách khung hình tiếp cận màn hình và lớp phủ hiệu suất.",
   "How long a held direction takes between repeats.": "Khoảng thời gian giữa các lần lặp của một hướng được giữ.",
   "How long a held direction waits before it repeats.": "Một hướng được giữ sẽ chờ bao lâu trước khi lặp lại.",
   "How many particles effects spawn.": "Có bao nhiêu hạt hiệu ứng sinh ra.",

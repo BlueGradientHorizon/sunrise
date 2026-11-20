@@ -139,7 +139,6 @@
   "How fast the right stick turns the view.": "右摇杆转动视角的速度。",
   "How fast the stick moves the crosshair in inventories.": "物品栏中摇杆移动准星的速度。",
   "How frames reach the screen while VSync is off.": "关闭垂直同步时帧画面如何送到屏幕。",
-  "How frames reach the screen, and the performance overlay.": "帧如何送达屏幕，以及性能叠加层。",
   "How long a held direction takes between repeats.": "按住的方向两次重复之间的间隔。",
   "How long a held direction waits before it repeats.": "按住方向多久后开始重复。",
   "How many particles effects spawn.": "效果生成的粒子数量。",

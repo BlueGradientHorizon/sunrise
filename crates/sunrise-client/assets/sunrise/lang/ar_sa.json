@@ -139,7 +139,6 @@
   "How fast the right stick turns the view.": "مدى سرعة إدارة العصا اليمنى للعرض.",
   "How fast the stick moves the crosshair in inventories.": "مدى سرعة تحريك العصا للتصويب في المخزون.",
   "How frames reach the screen while VSync is off.": "كيفية وصول الإطارات إلى الشاشة أثناء إيقاف تشغيل VSync.",
-  "How frames reach the screen, and the performance overlay.": "كيفية وصول الإطارات إلى الشاشة وتراكب الأداء.",
   "How long a held direction takes between repeats.": "كم يستغرق اتجاه ممسوك بين التكرارات.",
   "How long a held direction waits before it repeats.": "كم ينتظر اتجاه ممسوك قبل أن يتكرر.",
   "How many particles effects spawn.": "كم عدد الجسيمات التي تفرخ الآثار.",

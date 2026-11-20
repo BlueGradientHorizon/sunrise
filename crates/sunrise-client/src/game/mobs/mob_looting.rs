@@ -26,8 +26,8 @@ impl LootingLevel for Game<'_> {
         let tags = &self.stations().enchantments.entity_tags;
         equip::equippable_in_slot(self.items(), tags, stack, slot, kind)
     }
-    fn equip_stack(&self, stack: &ItemStack, kinds: &[&str], targets: &[u32]) -> Self::Prepared {
-        Game::equip_stack(self, stack, kinds, targets)
+    fn equip_stack(&self, stack: &ItemStack, targets: &[u32]) -> Self::Prepared {
+        Game::equip_stack(self, stack, targets)
     }
     fn can_equip(
         &self,

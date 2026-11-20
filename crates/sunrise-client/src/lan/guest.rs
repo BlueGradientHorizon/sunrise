@@ -156,6 +156,15 @@ impl InboxItem {
     }
 }
 
+/// The body state at a single accepted move, before later input or reports.
+#[derive(Clone, Copy, Debug)]
+pub struct GuestMove {
+    pub position: [f64; 3],
+    pub delta: [f64; 3],
+    pub on_ground: bool,
+    pub sneaking: bool,
+}
+
 pub struct Guest {
     /// Identity generation and journal binding travel with the actual player record.
     pub residency: crate::join_seq::residency::member::Member,
@@ -268,6 +277,10 @@ pub struct Guest {
     /// `landing` was set by a `tp` hold waiting for chunks (`Game::hold_for_chunks`), not by a portal.
     pub tp_held: bool,
     pub teleport_counter: i32,
+    /// The last server travel veto holds new position reports from this body.
+    pub(super) travel_vetoed: bool,
+    /// The velocity in a travel correction still awaiting confirmation.
+    pub(super) pending_travel_velocity: Option<[f64; 3]>,
     /// `ServerPlayer.getCamera() != this`.
     pub watching: bool,
     /// The hub tick the pending teleport was (re)sent on (awaitingTeleportTime).
@@ -421,6 +434,8 @@ pub struct Guest {
     pub menu_state: i32,
     /// `lastSentHealth`, `lastSentFood` and `lastFoodSaturationZero`.
     pub sent_health: Option<(f32, i32, bool)>,
+    /// Whether the entity tracker has sent the initial health metadata to this player.
+    pub(super) sent_health_data: bool,
     pub sent_xp: Option<(f32, i32, i32)>,
     /// The air supply and absorption the player's client was last sent
     /// (Entity.DATA_AIR_SUPPLY_ID, Player.DATA_PLAYER_ABSORPTION_ID); their
@@ -446,9 +461,8 @@ pub struct Guest {
     pub inbox: VecDeque<InboxItem>,
     pub joined_tick: u64,
     pub ticks: u64,
-    /// The moves accepted since the game last looked (movement, on ground),
-    /// for ServerPlayer.doCheckFallDamage.
-    pub moves: Vec<([f64; 3], bool)>,
+    /// The moves accepted since the game last looked, for ServerPlayer.doCheckFallDamage.
+    pub moves: Vec<GuestMove>,
     /// Whether the guest was on the ground before the first of `moves`.
     pub moves_from_ground: bool,
     /// `ServerPlayer.lastKnownClientMovement`: the last move accepted from
@@ -738,6 +752,8 @@ impl Guest {
             landing: false,
             tp_held: false,
             teleport_counter: 0,
+            travel_vetoed: false,
+            pending_travel_velocity: None,
             watching: false,
             teleport_tick: 0,
             first_good: position,
@@ -805,6 +821,7 @@ impl Guest {
             menu_sent: vec![None; 46],
             menu_state: 0,
             sent_health: None,
+            sent_health_data: false,
             sent_xp: None,
             sent_air: (300, 0.0),
             sent_frozen: 0,
@@ -1028,6 +1045,7 @@ impl Guest {
     /// same player in another level (`restore_all`), only their base values
     /// after a death. The old body, for what else it hands over.
     pub fn new_body(&mut self, restore_all: bool) -> Option<Box<PlayerMotion>> {
+        self.travel_vetoed = false;
         if !restore_all {
             self.carried_hit = None;
             self.death_canceled = false;

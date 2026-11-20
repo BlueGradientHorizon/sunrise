@@ -15,6 +15,7 @@ impl Game<'_> {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
+        host.hub.sync_initial_health_data();
         Self::sync_hub_mod_flags(&mut host.hub);
         let turns: Vec<_> = host
             .hub
@@ -316,7 +317,7 @@ impl Game<'_> {
         let play = host.play.entry(conn).or_default();
         play.chat_spam = play.chat_spam.saturating_sub(1);
         play.command_spam = play.command_spam.saturating_sub(1);
-        play.recipe_checks = play.recipe_checks.saturating_sub(1);
+        play.decay_recipe_checks();
         // commandSuggestionsProvider.tick: one answer a tick, to the latest request.
         play.suggestion_budget = true;
         self.guest_try_suggestions(conn);
