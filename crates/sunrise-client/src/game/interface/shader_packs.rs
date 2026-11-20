@@ -583,6 +583,26 @@ impl Game<'_> {
         let survival = !self.creative && !spectator;
         let invisible = self.own_invisible();
         let riding = self.riding.is_some();
+        let id = self.own_entity_id() as u32;
+        // `Entity.isCurrentlyGlowing` on a client: shared flag 6 from a server, else the
+        // Glowing effect `LivingEntity.isCurrentlyGlowing` sets it from.
+        let glowing = self
+            .remote_glowing(id)
+            .unwrap_or_else(|| self.potions.effects.get("glowing").is_some());
+        // `Entity.isVehicle`: the server's passenger list, else the passengers here.
+        let ridden = match &self.remote {
+            Some(r) => r.has_passengers(id),
+            None => !self.seated_passengers(id).is_empty(),
+        };
+        // `Entity.isInWaterOrRain`: `isInWater`, else `isInRain`.
+        let wet = match &self.player {
+            Some(p) if p.fluids.was_touching_water => true,
+            Some(p) => {
+                let (at, top) = (p.position, p.bounds().max_position().y);
+                self.in_rain(at, top)
+            }
+            None => false,
+        };
         let Some(p) = &mut self.player else {
             return PlayerStatus::default();
         };
@@ -605,6 +625,13 @@ impl Game<'_> {
             invisible,
             sneaking: p.pose == sunrise_client::pose::Pose::Crouching,
             sprinting: p.sprinting,
+            // `LivingEntity.isAlive`: the window's player is never removed while it is the
+            // camera.
+            alive: p.health.health() > 0.0,
+            glowing,
+            in_lava: p.is_in_lava(),
+            ridden,
+            wet,
         }
     }
 
@@ -1380,5 +1407,99 @@ mod toggle_tests {
             ),
             ("sunrise:warm", "sunrise:warm")
         );
+    }
+}
+
+#[cfg(test)]
+mod player_status_tests {
+    use std::sync::Arc;
+    use sunrise_client::{
+        chunk::Chunk,
+        effects::EffectInstance,
+        motion::{MotionWorld, PlayerMotion},
+    };
+    use sunrise_core::geometry::Vec3;
+
+    /// The player booleans only custom uniforms read follow the window's player (spec 3.4):
+    /// `LivingEntity.isAlive`, `Entity.isCurrentlyGlowing` (the Glowing effect),
+    /// `Entity.isInLava`, `Entity.isVehicle` and `Entity.isInWaterOrRain`.
+    #[test]
+    #[ignore = "daily"]
+    fn pack_status_follows_the_player() {
+        crate::game::native_entity_refs::tests::with_game(|game| {
+            game.options.dedicated = Some(Vec::new());
+            // `EntityFluidInteraction.update` needs the chunks around the box loaded as well.
+            for chunk in [(-1, -1), (-1, 0), (0, -1), (0, 0)] {
+                game.world
+                    .chunks
+                    .insert(chunk, Arc::new(Chunk::empty(chunk.0, chunk.1)));
+            }
+            game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
+            crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
+            let status = game.pack_player_status();
+            assert!(status.alive);
+            assert!(!status.glowing && !status.in_lava && !status.ridden && !status.wet);
+
+            // Rain over the player's open plains column, and none once it stops.
+            game.install_live_features();
+            let plains = game.res.biomes().id("minecraft:plains");
+            let qy = (64 - game.world.bottom_y()) >> 2;
+            Arc::make_mut(game.world.chunks.get_mut(&(0, 0)).unwrap())
+                .set_biome_cell(0, qy, 0, plains);
+            game.world.weather.raining = true;
+            game.world.weather.settle_levels();
+            assert!(game.pack_player_status().wet, "rain");
+            game.world.weather.raining = false;
+            game.world.weather.settle_levels();
+            assert!(!game.pack_player_status().wet);
+            game.player.as_mut().unwrap().fluids.was_touching_water = true;
+            assert!(game.pack_player_status().wet, "water");
+            game.player.as_mut().unwrap().fluids.was_touching_water = false;
+
+            game.potions
+                .effects
+                .add(EffectInstance::new("glowing", 200, 0));
+            assert!(game.pack_player_status().glowing);
+
+            let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
+            let mut rider = sunrise_client::mobs::Mob::new(42, pig, Vec3::new(0.5, 65.8, 0.5), 0.0);
+            rider.extra.mount = Some(20);
+            game.mobs.push(rider);
+            assert!(game.pack_player_status().ridden);
+            game.mobs[0].removed = true;
+            assert!(!game.pack_player_status().ridden, "a removed rider is gone");
+
+            let lava = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:lava")
+                .unwrap();
+            assert!(game.world.set_stored(0, 64, 0, lava));
+            let side = game_side!(game);
+            let mut world = MotionWorld {
+                side: &side,
+                entities: &[],
+                player: game.player.as_mut().unwrap(),
+                scene: &mut game.world,
+                assets: &game.pack.assets,
+                collision_binding: game.collision,
+                resources: game.motion,
+                health: &game.health_resources,
+                tag_items: None,
+                loop_context: &game.loop_context,
+                damage_hooks: &game.damage_hooks,
+                block_registries: None,
+            };
+            world.fluid_base_tick().unwrap();
+            assert!(game.pack_player_status().in_lava);
+
+            game.player
+                .as_mut()
+                .unwrap()
+                .set_health(0.0, false)
+                .unwrap();
+            assert!(!game.pack_player_status().alive);
+        });
     }
 }
