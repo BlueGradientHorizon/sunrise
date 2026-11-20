@@ -133,6 +133,86 @@ fn the_index_lists_each_function_with_its_text_or_its_refusal() {
 }
 
 #[test]
+fn restricted_reexports_in_another_module_refuse_a_target_by_name() {
+    let root = fixture();
+    fs::write(
+        root.path().join("crates/sunrise-client/src/game.rs"),
+        r#"
+mod inner {
+    mod deep { pub fn f() {} }
+    pub(crate) use deep::f;
+}
+mod public {
+    mod deep { pub fn f() {} }
+    pub use deep::f;
+}
+use public as local;
+fn private_reexport() { inner::f(); }
+fn public_reexport() { public::f(); }
+fn local_import() { local::f(); }
+"#,
+    )
+    .unwrap();
+    let index = index(root.path(), &BTreeSet::new()).unwrap();
+    let check = |name| index.check(root.path(), &format!("sunrise_client::game::{name}"));
+    let (code, why) = check("private_reexport").unwrap_err();
+    assert_eq!(code, "E_MIXIN_NOT_REPLACEABLE");
+    assert!(
+        why.contains("`inner::f`") && why.contains("`sunrise_client::game::inner`"),
+        "{why}"
+    );
+    check("public_reexport").unwrap();
+    check("local_import").unwrap();
+}
+
+#[test]
+fn qualified_paths_follow_module_aliases_and_globs() {
+    let root = fixture();
+    fs::write(
+        root.path().join("crates/sunrise-client/src/game.rs"),
+        r#"
+mod inner {
+    mod deep { pub fn f() {} pub fn private_glob() {} }
+    pub(super) use self::deep::{f as alias, *};
+}
+mod public {
+    mod deep { pub fn f() {} }
+    pub use deep::*;
+}
+use self::inner as local;
+mod child {
+    use super::*;
+    fn private_alias() { crate::game::inner::alias(); }
+    fn private_glob() { super::local::private_glob(); }
+    fn public_glob() { self::public::f(); }
+}
+fn block_import() { use crate::game::inner::alias; alias(); }
+fn shadowed() { use public as inner; inner::f(); }
+"#,
+    )
+    .unwrap();
+    let index = index(root.path(), &BTreeSet::new()).unwrap();
+    let check = |name| index.check(root.path(), &format!("sunrise_client::game::child::{name}"));
+    for (name, path) in [
+        ("private_alias", "crate::game::inner::alias"),
+        ("private_glob", "super::local::private_glob"),
+    ] {
+        let (code, why) = check(name).unwrap_err();
+        assert_eq!(code, "E_MIXIN_NOT_REPLACEABLE");
+        assert!(why.contains(path), "{why}");
+    }
+    check("public_glob").unwrap();
+    let (code, why) = index
+        .check(root.path(), "sunrise_client::game::block_import")
+        .unwrap_err();
+    assert_eq!(code, "E_MIXIN_NOT_REPLACEABLE");
+    assert!(why.contains("crate::game::inner::alias"), "{why}");
+    index
+        .check(root.path(), "sunrise_client::game::shadowed")
+        .unwrap();
+}
+
+#[test]
 fn a_target_is_checked_by_its_key_and_its_text() {
     let root = fixture();
     let index = index(root.path(), &BTreeSet::new()).unwrap();
