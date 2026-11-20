@@ -236,10 +236,10 @@ mod tests {
         use sunrise_client::containers::{ModCrafting, ModLinks};
         let content = ModMenuType {
             id: "test:roles",
-            slots: 8,
+            slots: 9,
             data_slots: 0,
             results: vec![7],
-            inputs: vec![5],
+            inputs: vec![5, 8],
             crafting: Some(ModCrafting {
                 grid: 0,
                 size: 2,
@@ -256,16 +256,11 @@ mod tests {
             Input,
             Storage,
             Result,
+            Input,
         ];
         expected.extend(PLAYER);
         assert_eq!(
-            layout_kinds("test:roles", 44, Some(&content), |s| Some(if s < 8 {
-                300 + s
-            } else if s < 35 {
-                s + 1
-            } else {
-                s - 35
-            })),
+            layout_kinds("test:roles", 45, Some(&content), |_| None),
             expected
         );
     }
