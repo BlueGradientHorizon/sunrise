@@ -115,10 +115,15 @@ pub(crate) fn key(name: &str) -> u64 {
     h.write_usize(name.len());
     h.finish()
 }
+#[derive(Clone, Copy)]
+struct PoseEntry {
+    pose: [f32; 9],
+}
+
 /// Part poses for one draw, keyed by part name.
 #[derive(Clone, Default)]
 pub struct Poses {
-    map: FxHashMap<u64, [f32; 9]>,
+    map: FxHashMap<u64, PoseEntry>,
     dummy: [f32; 9],
     /// Parts with `skipDraw` set: their own cubes are not drawn, children are.
     skipped: FxHashSet<u64>,
@@ -197,9 +202,10 @@ impl Poses {
     /// Refills this for another model, keeping the map and the sets' capacity:
     /// a mob draws its body and every equipment layer each frame.
     pub fn reset(&mut self, model: &Part) {
-        fn walk(p: &Part, map: &mut FxHashMap<u64, [f32; 9]>) {
+        fn walk(p: &Part, map: &mut FxHashMap<u64, PoseEntry>) {
             // ModelPart.createPartLookup fills its map with putIfAbsent: the first part keeps a name.
-            map.entry(key(&p.name)).or_insert(p.pose);
+            map.entry(key(&p.name))
+                .or_insert(PoseEntry { pose: p.pose });
             for c in &p.children {
                 walk(c, map);
             }
@@ -214,16 +220,16 @@ impl Poses {
     pub fn get(&mut self, name: &str) -> &mut [f32; 9] {
         self.changed();
         match self.map.get_mut(&key(name)) {
-            Some(p) => p,
+            Some(entry) => &mut entry.pose,
             None => &mut self.dummy,
         }
     }
     /// The pose of the part named `name`, when the model has one.
     pub fn pose_of(&self, name: &str) -> Option<[f32; 9]> {
-        self.map.get(&key(name)).copied()
+        self.map.get(&key(name)).map(|entry| entry.pose)
     }
     pub fn pose(&self, part: &Part) -> [f32; 9] {
-        self.map.get(&key(&part.name)).copied().unwrap_or(part.pose)
+        self.pose_of(&part.name).unwrap_or(part.pose)
     }
     pub fn skip_draw(&mut self, name: &str) {
         if self.skipped.insert(key(name)) {
@@ -1203,7 +1209,7 @@ mod flight_pose_tests {
                 "left_leg",
             ]
             .into_iter()
-            .map(|n| (key(n), [0.0; 9]))
+            .map(|n| (key(n), PoseEntry { pose: [0.0; 9] }))
             .collect(),
             dummy: [0.0; 9],
             skipped: Default::default(),
@@ -1231,7 +1237,7 @@ mod flight_pose_tests {
                 let mut p = Poses {
                     map: ["head", "right_arm", "left_arm"]
                         .into_iter()
-                        .map(|n| (key(n), [0.0; 9]))
+                        .map(|n| (key(n), PoseEntry { pose: [0.0; 9] }))
                         .collect(),
                     dummy: [0.0; 9],
                     skipped: Default::default(),
@@ -1271,7 +1277,7 @@ mod flight_pose_tests {
                 let mut p = Poses {
                     map: ["head", "right_arm", "left_arm"]
                         .into_iter()
-                        .map(|n| (key(n), [0.0; 9]))
+                        .map(|n| (key(n), PoseEntry { pose: [0.0; 9] }))
                         .collect(),
                     dummy: [0.0; 9],
                     skipped: Default::default(),
@@ -1326,7 +1332,7 @@ mod flight_pose_tests {
                 "left_leg",
             ]
             .into_iter()
-            .map(|n| (key(n), [0.0; 9]))
+            .map(|n| (key(n), PoseEntry { pose: [0.0; 9] }))
             .collect(),
             dummy: [0.0; 9],
             skipped: Default::default(),
@@ -1383,7 +1389,7 @@ mod flight_pose_tests {
                 "body",
             ]
             .into_iter()
-            .map(|n| (key(n), [0.0; 9]))
+            .map(|n| (key(n), PoseEntry { pose: [0.0; 9] }))
             .collect(),
             dummy: [0.0; 9],
             skipped: Default::default(),
@@ -1426,7 +1432,7 @@ mod flight_pose_tests {
         let make = || Poses {
             map: ["head", "right_arm", "left_arm", "right_leg", "left_leg"]
                 .into_iter()
-                .map(|n| (key(n), [0.0; 9]))
+                .map(|n| (key(n), PoseEntry { pose: [0.0; 9] }))
                 .collect(),
             dummy: [0.0; 9],
             skipped: Default::default(),
@@ -1534,7 +1540,7 @@ mod flight_pose_tests {
         let mut p = Poses {
             map: ["head", "right_arm", "left_arm"]
                 .into_iter()
-                .map(|n| (key(n), [0.0; 9]))
+                .map(|n| (key(n), PoseEntry { pose: [0.0; 9] }))
                 .collect(),
             dummy: [0.0; 9],
             skipped: Default::default(),
@@ -1562,7 +1568,7 @@ mod flight_pose_tests {
         let mut p = Poses {
             map: ["head", "right_arm", "left_arm"]
                 .into_iter()
-                .map(|n| (key(n), [0.0; 9]))
+                .map(|n| (key(n), PoseEntry { pose: [0.0; 9] }))
                 .collect(),
             dummy: [0.0; 9],
             skipped: Default::default(),
@@ -1592,7 +1598,7 @@ mod flight_pose_tests {
         let make = || Poses {
             map: ["head", "right_arm", "left_arm"]
                 .into_iter()
-                .map(|n| (key(n), [0.0; 9]))
+                .map(|n| (key(n), PoseEntry { pose: [0.0; 9] }))
                 .collect(),
             dummy: [0.0; 9],
             skipped: Default::default(),
@@ -1660,7 +1666,7 @@ mod flight_pose_tests {
         let make = || Poses {
             map: ["head", "right_arm", "left_arm", "right_leg", "left_leg"]
                 .into_iter()
-                .map(|n| (key(n), [0.0; 9]))
+                .map(|n| (key(n), PoseEntry { pose: [0.0; 9] }))
                 .collect(),
             dummy: [0.0; 9],
             skipped: Default::default(),
