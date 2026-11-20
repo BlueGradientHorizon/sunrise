@@ -223,9 +223,9 @@ pub trait BlockStatesBackend {
     #[access(Metadata)]
     fn block_states_of(&self, block: BlockKey) -> Option<BlockStateRange>;
     /// Side: both.
-    /// The properties of a resolved block, copied for the mod as plain data.
+    /// The properties of a resolved block, borrowed from the tables.
     #[access(Metadata)]
-    fn block_state_definition(&self, block: BlockKey) -> Option<Vec<StateProperty>>;
+    fn block_state_definition(&self, block: BlockKey) -> Option<StateProperties<'_>>;
     /// Side: both.
     /// Match against the existing command registry definitions without allocating on the call.
     #[access(Metadata)]
@@ -236,10 +236,10 @@ pub trait BlockStatesBackend {
         constraints: &[StateConstraint],
     ) -> Option<Result<bool, StateMatchError>>;
     /// Side: both.
-    /// A registered fluid's world default and legal properties, or TankOnly.
-    /// None means the owning host has no resolved registry.
+    /// A registered fluid's world default and borrowed legal properties, or TankOnly.
+    /// None for an unknown key or unavailable registry.
     #[access(Metadata)]
-    fn fluid_state_definition(&self, fluid: FluidKey) -> Option<FluidDefinition>;
+    fn fluid_state_definition(&self, fluid: FluidKey) -> Option<FluidDefinition<'_>>;
     /// Side: both.
     /// A registered fluid's level-independent type properties.
     /// None means the owning host has no resolved registry or `fluid` isn't in it.

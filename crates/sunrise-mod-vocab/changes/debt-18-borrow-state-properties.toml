@@ -1,0 +1,20 @@
+ids = [
+    "type:StateProperty",
+    "type:StateProperty.name",
+    "type:StateProperty.values",
+    "handle:StateProperty::new",
+    "type:StateProperties",
+    "handle:StateProperties::iter",
+    "handle:StateProperties::len",
+    "handle:StateProperties::is_empty",
+    "type:FluidDefinition",
+    "type:FluidDefinition.World",
+    "handle:BlockStates::definition",
+    "handle:FluidStates::definition",
+]
+why = "Block and fluid definition reads lend ordered property names and legal values from the loaded tables instead of allocating a copy. Unknown definitions, known empty definitions and tank-only fluids stay distinct."
+migrate = """
+`host.block_states().definition(key)` now returns `Option<StateProperties<'_>>`. `host.fluid_states().definition(key)` now returns `Option<FluidDefinition<'_>>`; a `FluidDefinition::World { default, properties }` still has an owned default, but its `properties` is the same borrowed `StateProperties<'_>` view. Use `properties.iter()` in place of indexing or consuming the old vector, and keep using `len()` and `is_empty()`. Each `StateProperty<'_>` has a `name: &str` and `values: &[String]`. Compare a name with `property.name == "facing"` and a value with `property.values.iter().any(|v| v == "north")`.
+`StateProperty::new` is gone. To retain a definition after the host borrow, collect `properties.iter().map(|p| (p.name.to_owned(), p.values.to_vec())).collect::<Vec<_>>()`. Store owned `(String, Vec<String>)` entries in place of constructing `StateProperty` yourself. For matching constraints, continue to use `StateConstraint::new(name, value)`.
+`StateProperty` and `FluidDefinition` no longer implement `Wire`. If you send these facts as a typed payload, copy the needed fields into your own owned `#[derive(Wire)]` payload type instead of using the borrowed API definition as the payload.
+"""

@@ -638,18 +638,23 @@ mod tests {
                 service.validate(tank, &[]),
                 Err(FluidStateError::NoWorldState)
             );
-            for (id, amount, source, property_count) in [
-                ("minecraft:empty", 0, false, 0),
-                ("minecraft:water", 8, true, 1),
-                ("minecraft:flowing_water", 1, false, 2),
-                ("minecraft:lava", 8, true, 1),
-                ("minecraft:flowing_lava", 1, false, 2),
+            const SOURCE: &[(&str, &[&str])] = &[("falling", &["true", "false"])];
+            const FLOWING: &[(&str, &[&str])] = &[
+                ("falling", &["true", "false"]),
+                ("level", &["1", "2", "3", "4", "5", "6", "7", "8"]),
+            ];
+            for (id, amount, source, expected) in [
+                ("minecraft:water", 8, true, SOURCE),
+                ("minecraft:flowing_water", 1, false, FLOWING),
+                ("minecraft:lava", 8, true, SOURCE),
+                ("minecraft:flowing_lava", 1, false, FLOWING),
+                ("minecraft:empty", 0, false, &[]),
             ] {
                 let key = host.fluid_key(id).unwrap();
                 let FluidDefinition::World {
                     default,
                     properties,
-                } = service.definition(key).unwrap()
+                } = host.fluid_states().definition(key).unwrap()
                 else {
                     panic!("world definition")
                 };
@@ -662,7 +667,12 @@ mod tests {
                     ),
                     (key, amount, source, amount != 0)
                 );
-                assert_eq!(properties.len(), property_count);
+                assert_eq!(properties.is_empty(), id == "minecraft:empty");
+                assert_eq!(properties.len(), expected.len());
+                for (property, &(name, values)) in properties.iter().zip(expected) {
+                    assert_eq!(property.name, name);
+                    assert_eq!(property.values, values);
+                }
                 assert_eq!(service.validate(key, &[]), Ok(()));
             }
             assert_eq!(
@@ -676,15 +686,10 @@ mod tests {
                 ),
                 Err(FluidStateError::UnknownProperty(0))
             );
-            let FluidDefinition::World {
-                default,
-                properties,
-            } = service.definition(water).unwrap()
-            else {
+            let FluidDefinition::World { default, .. } = service.definition(water).unwrap() else {
                 panic!("world fluid")
             };
             assert!(default.is_source());
-            assert!(properties.iter().any(|p| p.name == "falling"));
             assert_eq!(
                 service.validate(water, &[StateConstraint::new("level", "8")]),
                 Err(FluidStateError::UnknownProperty(0))
@@ -951,6 +956,28 @@ mod facts_tests {
             let sound = facts.sound(stone).unwrap();
             assert_eq!(&*sound.break_sound, "minecraft:block.stone.break");
             assert_eq!((sound.volume, sound.pitch), (1.0, 1.0));
+            let properties = game.block_states().definition(stairs.block()).unwrap();
+            let expected: [(&str, &[&str]); 4] = [
+                ("facing", &["north", "south", "west", "east"]),
+                ("half", &["top", "bottom"]),
+                (
+                    "shape",
+                    &[
+                        "straight",
+                        "inner_left",
+                        "inner_right",
+                        "outer_left",
+                        "outer_right",
+                    ],
+                ),
+                ("waterlogged", &["true", "false"]),
+            ];
+            assert_eq!(properties.len(), expected.len());
+            for (property, (name, values)) in properties.iter().zip(expected) {
+                assert_eq!(property.name, name);
+                assert_eq!(property.values, values);
+            }
+            assert!(facts.definition(stone.block()).unwrap().is_empty());
             // Oak stairs: facing 4 × half 2 × shape 5 × waterlogged 2 = 80 states, its default
             // among them; stone has one.
             let range = facts
