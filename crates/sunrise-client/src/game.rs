@@ -5802,6 +5802,8 @@ impl Game<'_> {
             let anim = |p: [i32; 3]| self.block_anim(p, alpha as f32);
             let substitute =
                 |text: &sunrise_client::text::Text| self.substitute_inline_images(text);
+            let inline_sprite =
+                |atlas: &str, sprite: &str| self.gui.atlas.inline_sprite(atlas, sprite);
             let scene = BlockEntityScene {
                 camera,
                 orientation: self.camera_orientation(),
@@ -5825,7 +5827,7 @@ impl Game<'_> {
                     block_entity_render::SignInlineImages {
                         revision,
                         substitute: &substitute,
-                        sprite: &|atlas, sprite| self.gui.atlas.inline_sprite(atlas, sprite),
+                        sprite: &inline_sprite,
                     }
                 }),
                 banner: &|p| self.banner_layers_at(p),

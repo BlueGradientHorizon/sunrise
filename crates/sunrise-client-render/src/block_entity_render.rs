@@ -722,9 +722,7 @@ fn sign_text_calls(
         let mut pen = 0.0;
         for span in shown.spans.iter().filter(|s| !s.text.is_empty()) {
             let inline_sprite = scene.inline_images.as_ref().and_then(|images| {
-                if substituted.is_none() {
-                    return None;
-                }
+                substituted.as_ref()?;
                 match &span.style.inline_object {
                     Some(InlineObject::Atlas { atlas, sprite, .. }) => {
                         (images.sprite)(atlas, sprite)
@@ -4777,11 +4775,12 @@ mod tests {
             Some(Text::from_spans(vec![span]))
         };
         scene.sign = &two_faces_at;
+        let icon_sprite = |_: &str, _: &str| Some(icon);
         for state in 0..2 {
             scene.inline_images = Some(SignInlineImages {
                 revision: [1, 1, 0],
                 substitute: &substitute,
-                sprite: &|_, _| Some(icon),
+                sprite: &icon_sprite,
             });
             let reads = image_reads.get();
             for _ in 0..2 {
@@ -4801,7 +4800,7 @@ mod tests {
             scene.inline_images = Some(SignInlineImages {
                 revision: [1, 2, 0],
                 substitute: &|_| None,
-                sprite: &|_, _| Some(icon),
+                sprite: &icon_sprite,
             });
             vertices.clear();
             renderer.render(&scene, [(pos, state)].iter(), &mut vertices);
