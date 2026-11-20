@@ -1129,7 +1129,7 @@ pub(super) fn handler_marks_module(names: &super::Names) -> String {
     for (base, marks) in traits {
         writeln!(
             out,
-            "/// The imports of a mod that implements `{base}`.\npub fn {}<T: ?Sized>() {{\n#[cfg(target_arch = \"wasm32\")]\n{{\n#[link(wasm_import_module = \"sunrise\")]\nunsafe extern \"C\" {{",
+            "/// The imports of a mod that implements `{base}`.\npub fn {}<T: ?Sized>() {{\n#[cfg(target_arch = \"wasm32\")]\n{{\n// SAFETY: each import takes nothing and returns nothing, as the entry of that name in the game's\n// `sunrise` module does, and the loader refuses the module, naming the import, when the game's\n// table has no such entry.\n#[link(wasm_import_module = \"sunrise\")]\nunsafe extern \"C\" {{",
             base.to_snake_case()
         )
         .unwrap();

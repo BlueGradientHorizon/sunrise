@@ -9,6 +9,5 @@
 //!
 //! The functions are generated from the vocabulary's sources by `sunrise-mod-api-gen`, as the
 //! vocabulary's own build is.
-#![allow(unsafe_code)]
 
 include!(concat!(env!("OUT_DIR"), "/handler_marks_generated.rs"));
