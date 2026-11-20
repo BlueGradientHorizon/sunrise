@@ -199,6 +199,23 @@ class PartialSummaryTests(unittest.TestCase):
         self.assertIn("green=false", out.splitlines())
 
 
+class ReleaseLineIssueTests(unittest.TestCase):
+    run_summary = daily.DailySummaryTests.run_summary
+
+    def test_the_release_lines_reds_file_their_own_issues_and_never_move_the_tag(self):
+        red = [daily.job("shards / ignored-tests-shards (sunrise-world)", "failure", ["Run"])] + daily.GREEN_JOBS[2:]
+        results = dict(daily.LEGS, shards={"result": "failure"})
+        main_issue = {"number": 5, "title": "Daily: sunrise-world a::b", "body": ""}
+        api = daily.Api(red, issues=[main_issue])
+        self.run_summary(api, [daily.shard_report([daily.failure("a::b")])], ref="refs/heads/release/26.3",
+                         results=results)
+        created = [body["title"] for method, path, body in api.writes if method == "POST" and path == "issues"]
+        self.assertEqual(created, ["Daily (release/26.3): sunrise-world a::b"], "main's open issue is not the line's")
+        api = daily.Api(daily.GREEN_JOBS, issues=[main_issue])
+        self.run_summary(api, ref="refs/heads/release/26.3")
+        self.assertEqual(api.writes, [], "a green release-line run neither moves daily-green nor closes main's issue")
+
+
 class WorkflowTests(unittest.TestCase):
     def test_the_build_waits_for_both_environments_and_their_recorded_approvals(self):
         jobs = workflow("nightly-build.yml")["jobs"]

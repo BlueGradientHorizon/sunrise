@@ -6,7 +6,8 @@ run-name: daily ${{ inputs.commit || github.sha }}${{ inputs.break_glass && ' (b
 # Linux and Windows client jobs run the native linkage probe before packing.
 # The summary then moves the tag `daily-green` to the commit when every leg passed, or files one issue per failing
 # test (tools/ci/daily_summary.py), and on all green the nightly is published from that commit (release.yml).
-# Only a run on main with dry_run false writes anything: tags, issues, the nightly (release/26.3: docs/release-flow.md "Release branches").
+# Only a run on main with dry_run false writes anything: tags, issues, the nightly. A real run on release/26.3 files and
+# closes only its own issues, titled `Daily (release/26.3): …` (docs/release-flow.md "Release branches").
 #   gh workflow run daily.yml --ref main -f dry_run=false             # the real run, as the schedule starts it
 #   gh workflow run daily.yml --ref <branch> -f dry_run=true          # writes nothing; prints what it would do
 #   gh workflow run daily.yml --ref release/26.3 -f dry_run=false -f break_glass=true

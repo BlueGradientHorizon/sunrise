@@ -434,8 +434,8 @@ commit to `nightly/26.3` has not completed yet: it passes its own `<run id>/<att
 1. builds only the full SHA approved in the release-candidate check (`-f base=<sha>`), which must be the head of
    `release/26.3` (a missing branch is refused) and have a real daily run that passed every leg on exactly it: main's
    for the commit the branch was cut at, or the branch's own (`gh workflow run daily.yml --ref release/26.3
-   -f dry_run=false`, which publishes the commit's SDK and moves no `daily-green`, files no issue and starts no
-   Nightly). The pick step only warns about missing daily evidence or a missing SDK in a dry run;
+   -f dry_run=false`, which publishes the commit's SDK, moves no `daily-green` and starts no Nightly; its reds file
+   `bug` issues titled `Daily (release/26.3): …`, apart from main's). The pick step only warns about missing daily evidence or a missing SDK in a dry run;
 2. needs `sdk-<sha>` of that commit published first, as a Nightly does;
 3. is held by `RELEASES_PAUSED` and by an open `release-blocker` at the pick, and by a blocker again before publishing;
 4. is tagged `<target>-<release_version>`, which a real run must name: newer than every stable tag on the target,
@@ -503,7 +503,8 @@ waives the full daily on the release commit and nothing else:
   as a full one.
 - **Recorded and followed up.** The release notes and the run's summary say it was a break-glass release, why (the
   `break_glass` input) and who approved it with their comments. Once it is published, `full-daily` dispatches the full
-  daily on the release branch for its commit. Until that run passes, the next patch can't take this path.
+  daily on the release branch for its commit: a real run, whose reds file `bug` issues titled
+  `Daily (release/26.3): …`. Until it passes, the next patch can't take this path.
 
 `pick` checks the rules of `release_train.break_glass_problems`, and `nightly.py reserve-stable-tag` checks them again
 right before the tag is made.
