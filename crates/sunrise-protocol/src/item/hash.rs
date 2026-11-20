@@ -7,14 +7,14 @@
 //! codec writes as identifiers. [`raw`] decodes the stream bytes of the components
 //! Sunrise keeps as bytes ([`Component::Raw`]). A component with no codec form
 //! Sunrise can build (vanilla has none, an id has no name, or a codec is not
-//! ported yet) has no hash: it is left out of the added map and a vanilla server
-//! resyncs that slot.
+//! ported yet) refuses the stack; it must not produce an incomplete patch.
 mod exact;
 mod gameplay;
 pub(crate) mod ops;
 mod raw;
 use super::{
-    Component, FireworkExplosion, Hashed, Stack, WirePatch, component as kind, persistent,
+    Component, FireworkExplosion, Hashed, Stack, StackHashError, WirePatch, component as kind,
+    persistent,
 };
 use crate::hash_ops::HashCode;
 use ops::{Ops, Record};
@@ -91,10 +91,7 @@ fn pick_with<O: Ops>(table: &[&str], id: i32) -> Option<O::Value> {
 }
 /// `ComponentSerialization.CODEC`.
 fn text_with<O: Ops>(tag: &sunrise_core::nbt::Tag) -> Option<O::Value> {
-    O::from_nbt(
-        sunrise_world::component_value::compact_text_tag(tag),
-        &TEXT_BOOLS,
-    )
+    O::saved_component("minecraft:custom_name", tag)
 }
 /// `Filterable.codec`: the full record (`Codec.withAlternative` encodes with
 /// the first codec), the filtered variant absent when there is none.
@@ -167,14 +164,7 @@ impl Component {
             return None;
         }
         let value = persistent::component_value_named(id, name, self, names).ok()?;
-        let hash = match value.to_component_tag_with(name, persistent::is_native_component) {
-            Ok(tag) => {
-                sunrise_core::nbt::discard_tag(tag);
-                ops::Values::hash(&value)
-            }
-            Err(_) => None,
-        };
-        hash
+        ops::Values::hash_component(name, &value)
     }
     /// Decode the retained stream value, preserving native-only state.
     pub(crate) fn code_with<O: Ops>(&self, id: i32, names: &dyn Names) -> Option<O::Value> {
@@ -210,6 +200,9 @@ impl Component {
             Self::Unit => O::empty_map(),
             Self::Bool(v) => O::create_boolean(*v),
             Self::Text(t) => text_with::<O>(t)?,
+            Self::Nbt(t) if id == kind::CUSTOM_DATA => {
+                O::saved_component("minecraft:custom_data", t)?
+            }
             Self::Nbt(t) => O::from_nbt(t, &[])?,
             Self::Ident(s) => string_with::<O>(s),
             Self::Lore(lines) => O::create_list(
@@ -477,29 +470,37 @@ impl Component {
 }
 
 impl Hashed {
-    /// `HashedStack.create` for a non-empty stack: `HashedPatchMap.create` hashes
-    /// each added component (those Sunrise cannot hash are left out) and sends the
-    /// removed ones' ids.
-    pub fn create(stack: &Stack, names: &dyn Names) -> Self {
-        // A stack kept as the server sent it goes back as its own patch bytes
-        // ([`Stack::wire`]): that patch is what it holds.
+    /// Hash all effective sets on a nonempty stack, or refuse the whole patch.
+    /// An absent slot is represented by the caller, separately from failure.
+    pub fn create(stack: &Stack, names: &dyn Names) -> Result<Self, StackHashError> {
+        // For a stack kept as the server sent it, hash the same retained patch
+        // that DelimitedSlot would write. Malformed bytes are not an empty patch.
         let decoded = stack
             .wire
             .0
             .as_deref()
-            .and_then(|patch| WirePatch::decode(patch).ok());
-        let (added, removed) = match &decoded {
-            Some((added, removed)) => (added, removed),
-            None => (&stack.added, &stack.removed),
-        };
-        Self {
+            .map(WirePatch::decode)
+            .transpose()
+            .map_err(StackHashError::Wire)?;
+        let (sets, removals) = decoded
+            .as_ref()
+            .map_or((&stack.added, &stack.removed), |(a, r)| (a, r));
+        let (sets, removed) = super::effective_wire_patch(sets, removals);
+        let mut added: Vec<_> = sets
+            .map(|(id, component)| {
+                let hash = component
+                    .hash(*id, names)
+                    .ok_or(StackHashError::Component(*id))?;
+                Ok((*id, hash))
+            })
+            .collect::<Result<_, _>>()?;
+        added.reverse();
+        Ok(Self {
             item: stack.item,
             count: stack.count,
-            added: super::effective_sets(added, removed)
-                .filter_map(|(id, c)| Some((*id, c.hash(*id, names)?)))
-                .collect(),
-            removed: super::effective_removals(removed).collect(),
-        }
+            added,
+            removed,
+        })
     }
 }
 
@@ -861,15 +862,14 @@ mod tests {
     }
 
     #[test]
-    fn a_hashed_stack_carries_each_hashable_component_and_the_removed_ones() {
+    fn a_hashed_stack_uses_effective_sets_and_refuses_an_incomplete_patch() {
         let mut stack = Stack::new(1, 2);
         stack.added.push((k::DAMAGE, C::Int(1)));
         stack.added.push((k::DAMAGE, C::Int(5)));
         stack.added.push((k::RARITY, C::Int(1)));
-        stack.added.push((42, C::Raw(vec![0])));
         stack.removed.extend([k::RARITY, k::RARITY]);
         assert_eq!(
-            Hashed::create(&stack, &Table),
+            Hashed::create(&stack, &Table).unwrap(),
             Hashed {
                 item: 1,
                 count: 2,
@@ -878,7 +878,10 @@ mod tests {
             }
         );
         // Without names the plain ones still hash.
-        assert_eq!(Hashed::of(&stack).added, vec![(k::DAMAGE, 645064431)]);
+        assert_eq!(
+            Hashed::of(&stack).unwrap().added,
+            vec![(k::DAMAGE, 645064431)]
+        );
         // A stack kept as the server sent it hashes the patch it holds.
         use crate::buf::Codec as _;
         let mut w = crate::buf::Writer::new();
@@ -891,6 +894,21 @@ mod tests {
         assert_eq!(
             Hashed::create(&bare, &Table),
             Hashed::create(&stack, &Table)
+        );
+        // A valid sibling must not hide an invalid set, on either input path.
+        stack.added.push((k::DAMAGE, C::Int(-1)));
+        assert_eq!(
+            Hashed::create(&stack, &Table),
+            Err(StackHashError::Component(k::DAMAGE))
+        );
+        let mut w = crate::buf::Writer::new();
+        crate::item::DelimitedSlot::write(&Some(stack), &mut w);
+        let kept = crate::item::DelimitedSlot::read(&mut crate::buf::Reader::new(&w.data))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            Hashed::create(&kept, &Table),
+            Err(StackHashError::Component(k::DAMAGE))
         );
     }
 }

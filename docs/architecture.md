@@ -32,8 +32,11 @@ Item component values live in `W/component_value.rs`; the protocol's
 those values after saved-codec validation. Templates retain their own patches and
 dense container holes. The last entry for a component wins, and saved projections
 and nested template hashes omit transients. Values outside the saved codec's
-contract stay intact when projection refuses them. Binary NBT read limits live
-in `sunrise-core`'s `nbt.rs`; they do not apply to materialized component trees.
+contract stay intact when projection refuses them. Clicks check typed values
+without projecting a new saved tree; a failed component hash refuses the click.
+Equality of directly constructed `Value::Map`s allocates nothing but is quadratic
+in the number of entries. Binary NBT read limits live in `sunrise-core`'s `nbt.rs`;
+they do not apply to materialized component trees.
 Check this seam with `cargo test -p sunrise-world --lib component_value::` and
 `cargo test -p sunrise-protocol --lib item::`.
 

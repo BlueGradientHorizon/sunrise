@@ -791,7 +791,7 @@ fn serverbound_round_trips() {
             button: 0,
             input: 0,
             changed: vec![(36, None)],
-            carried: Some(Hashed::of(&Stack::new(1, 64))),
+            carried: Some(Hashed::of(&Stack::new(1, 64)).unwrap()),
         }),
         Serverbound::MovePlayerPosRot(MovePlayerPosRot {
             x: 1.0,

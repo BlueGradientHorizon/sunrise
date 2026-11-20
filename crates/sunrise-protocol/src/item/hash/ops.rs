@@ -17,6 +17,7 @@ pub(crate) trait Ops: Sized {
     fn create_string_units(v: &[u16]) -> Self::Value;
     fn create_int_list(v: &[i32]) -> Self::Value;
     fn create_map(v: Vec<(Self::Value, Self::Value)>) -> Self::Value;
+    fn create_record(v: Vec<(Self::Value, Self::Value)>) -> Self::Value;
     fn create_list(v: impl IntoIterator<Item = Self::Value>) -> Self::Value;
     fn from_nbt(v: &Tag, bools: &[&str]) -> Option<Self::Value>;
     fn saved_component(name: &str, tag: &Tag) -> Option<Self::Value>;
@@ -44,9 +45,14 @@ pub(crate) trait Ops: Sized {
 }
 pub(crate) struct Values;
 impl Values {
+    pub(super) fn hash_component(name: &str, value: &Value) -> Option<HashCode> {
+        sunrise_world::component_value::source::validate_stream_value(name, value).ok()?;
+        Self::hash(value)
+    }
+
     /// The saved codec has already validated this tree. Retain the types that NBT
     /// alone can't represent, notably `Codec.BOOL` versus `Codec.BYTE`.
-    pub(super) fn hash(value: &Value) -> Option<HashCode> {
+    fn hash(value: &Value) -> Option<HashCode> {
         sunrise_core::nbt::with_tree_stack(|| Self::hash_with_stack(value))
     }
 
@@ -95,17 +101,25 @@ impl Values {
     }
 
     fn template_hash(template: &sunrise_world::component_value::Template) -> Option<HashCode> {
-        use sunrise_world::component_value::{effective_patch, is_persistent};
+        use sunrise_world::component_value::{is_persistent, source::validate_template_count};
+        validate_template_count(template.count).ok()?;
         let mut record =
             crate::hash_ops::RecordHash::new().field("id", HashOps::create_string(&template.item));
         if template.count != 1 {
             record = record.field("count", HashOps::create_int(template.count));
         }
-        let entries: Vec<_> = effective_patch(&template.patch)
+        // Both typed stream patch conversion and saved source have
+        // already retained exactly one entry per name.
+        let entries: Vec<_> = template
+            .patch
+            .iter()
             .filter(|(name, _)| is_persistent(name))
             .map(|(name, value)| {
                 Some(match value {
-                    Some(value) => (HashOps::create_string(name), Self::hash(value)?),
+                    Some(value) => (
+                        HashOps::create_string(name),
+                        Self::hash_component(name, value)?,
+                    ),
                     None => (
                         HashOps::create_string(&format!("!{name}")),
                         HashOps::empty_map(),
@@ -149,16 +163,26 @@ impl Ops for Values {
     fn create_int_list(v: &[i32]) -> Value {
         Value::IntArray(v.to_vec())
     }
-    fn create_map(v: Vec<(Value, Value)>) -> Value {
-        let mut out: Vec<(Value, Value)> = Vec::with_capacity(v.len());
-        for (key, value) in v {
-            if let Some((_, old)) = out.iter_mut().find(|(k, _)| *k == key) {
-                *old = value;
-            } else {
-                out.push((key, value));
-            }
+    fn create_map(mut v: Vec<(Value, Value)>) -> Value {
+        if v.len() <= 1 {
+            return Value::Map(v);
         }
-        Value::Map(out)
+        let mut entries = std::collections::HashMap::with_capacity(v.len());
+        for (mut key, value) in v.drain(..) {
+            let Value::String(units) = &mut key else {
+                unreachable!("all stream codec maps have string keys");
+            };
+            entries.insert(std::mem::take(units), value);
+        }
+        v.extend(
+            entries
+                .into_iter()
+                .map(|(key, value)| (Value::String(key), value)),
+        );
+        Value::Map(v)
+    }
+    fn create_record(fields: Vec<(Value, Value)>) -> Value {
+        Value::Map(fields)
     }
     fn create_list(v: impl IntoIterator<Item = Value>) -> Value {
         Value::List(v.into_iter().collect())
@@ -222,6 +246,6 @@ impl<O: Ops> Record<O> {
         }
     }
     pub(crate) fn build(self) -> O::Value {
-        O::create_map(self.0)
+        O::create_record(self.0)
     }
 }

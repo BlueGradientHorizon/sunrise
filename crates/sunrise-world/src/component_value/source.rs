@@ -486,6 +486,14 @@ impl Source {
     }
 }
 
+#[doc(hidden)]
+pub fn validate_template_count(count: i32) -> Result<()> {
+    if !(1..=99).contains(&count) {
+        return Err("template count outside 1..99".into());
+    }
+    Ok(())
+}
+
 /// `ItemStackTemplate.CODEC`: source admission, not the signed native stream codec.
 pub fn template_from_tag(t: &Tag) -> Result<Template> {
     template_tag(t, Source::SAVED)
@@ -518,14 +526,15 @@ fn template_tag(t: &Tag, source: Source) -> Result<Template> {
         if count == 0 {
             return Err("native template count must be nonzero".into());
         }
-    } else if !(1..=99).contains(&count) {
-        return Err("template count outside 1..99".into());
+    } else {
+        validate_template_count(count)?;
     }
     let mut patch: Patch = vec![];
     if let Some(c) = t.get("components") {
         let Tag::Compound(c) = c else {
             return Err("template components are not a map".into());
         };
+        let mut entries = std::collections::HashMap::with_capacity(c.len());
         for (name, value) in c {
             let name = name.to_string_lossy();
             let (remove, name) = name
@@ -544,12 +553,9 @@ fn template_tag(t: &Tag, source: Source) -> Result<Template> {
             } else {
                 Some(component_tag(&name, value, source)?)
             };
-            if let Some(entry) = patch.iter_mut().find(|(n, _)| n == &name) {
-                entry.1 = value;
-            } else {
-                patch.push((name, value));
-            }
+            entries.insert(name, value);
         }
+        patch.extend(entries);
     }
     Ok(Template { item, count, patch })
 }
@@ -1203,6 +1209,11 @@ fn partial_predicates(t: &Tag, source: Source) -> Result<Value> {
                 return Err("custom data predicate must be a compound".into());
             }
             Value::string(&crate::snbt_text::to_snbt(&tag))
+        } else if name == "minecraft:creative_slot_lock" {
+            if !matches!(v, Tag::Compound(_)) {
+                return Err(format!("{name}: expected presence predicate map"));
+            }
+            Value::Map(Vec::new())
         } else {
             predicate_value(v, source)?
         };
@@ -1269,22 +1280,150 @@ fn item_predicate(t: &Tag, source: Source) -> Result<Value> {
         })
     })
 }
-fn validate_source(name: &str, t: &Tag) -> Result<()> {
-    fn integer(t: &Tag, min: i32, max: i32) -> Result<()> {
-        let Value::Int(n) = int(t)? else {
-            unreachable!()
+/// A borrowed view used by the saved codec's constraints on both raw source tags
+/// and stream values whose shape was built by their typed encoder.
+#[derive(Clone, Copy)]
+enum Input<'a> {
+    Tag(&'a Tag),
+    Value(&'a Value),
+}
+impl<'a> Input<'a> {
+    fn field(self, name: &str) -> Option<Self> {
+        match self {
+            Self::Tag(tag) => tag.get(name).map(Self::Tag),
+            Self::Value(Value::Map(entries)) => entries.iter().rev().find_map(|(k, value)| {
+                matches!(k, Value::String(units) if units.iter().copied().eq(name.encode_utf16()))
+                    .then_some(Self::Value(value))
+            }),
+            _ => None,
+        }
+    }
+    fn list(self) -> impl Iterator<Item = Self> + 'a {
+        let (tags, values): (&[Tag], &[Value]) = match self {
+            Self::Tag(Tag::List(v)) => (v, &[]),
+            Self::Value(Value::List(v) | Value::Set(v)) => (&[], v),
+            _ => (&[], &[]),
+        };
+        tags.iter()
+            .map(Self::Tag)
+            .chain(values.iter().map(Self::Value))
+    }
+    fn string(self) -> Option<&'a [u16]> {
+        match self {
+            Self::Tag(Tag::String(v)) => Some(&v.0),
+            Self::Value(Value::String(v)) => Some(v),
+            _ => None,
+        }
+    }
+    fn matches(self, expected: &str) -> bool {
+        self.string()
+            .is_some_and(|v| v.iter().copied().eq(expected.encode_utf16()))
+    }
+}
+
+fn validate_source(name: &str, tag: &Tag) -> Result<()> {
+    validate_codec_limits(name, Input::Tag(tag))
+}
+
+/// Validate the persistent constraints not enforced by the stream type itself.
+/// The typed stream encoder owns the record shape; this does not project NBT.
+#[doc(hidden)]
+pub fn validate_stream_value(id: &str, value: &Value) -> Result<()> {
+    let name = id.strip_prefix("minecraft:").unwrap_or(id);
+    let input = Input::Value(value);
+    validate_codec_limits(name, input)?;
+    match (name, value) {
+        ("enchantments" | "stored_enchantments", Value::Map(entries)) => {
+            for (_, level) in entries {
+                if !matches!(level, Value::Int(n) if (1..=255).contains(n)) {
+                    return Err("enchantment level outside 1..255".into());
+                }
+            }
+        }
+        ("consumable" | "death_protection", _) => {
+            let key = if name == "consumable" {
+                "on_consume_effects"
+            } else {
+                "death_effects"
+            };
+            if let Some(effects) = input.field(key) {
+                for effect in effects.list() {
+                    if let Some(kind) = effect.field("type") {
+                        for (id, codec) in [
+                            ("minecraft:apply_effects", "apply_effects"),
+                            ("minecraft:teleport_randomly", "teleport_randomly"),
+                        ] {
+                            if kind.matches(id) {
+                                validate_codec_limits(codec, effect)?;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        ("can_place_on" | "can_break", _) => {
+            let check = |predicate: Input<'_>| {
+                if let Some(Input::Value(Value::Map(entries))) = predicate.field("components") {
+                    for (key, value) in entries {
+                        let Value::String(key) = key else {
+                            return Err("invalid exact component key".into());
+                        };
+                        let key = String::from_utf16_lossy(key);
+                        if !super::is_persistent(&key) {
+                            return Err(format!("transient exact component {key}"));
+                        }
+                        super::with_tree_stack(|| validate_stream_value(&key, value))?;
+                    }
+                }
+                Ok(())
+            };
+            if matches!(value, Value::List(_)) {
+                if input.list().next().is_none() {
+                    return Err("empty adventure predicate".into());
+                }
+                for predicate in input.list() {
+                    check(predicate)?;
+                }
+            } else {
+                check(input)?;
+            }
+        }
+        ("custom_data" | "bucket_entity_data", value) if !matches!(value, Value::Map(_)) => {
+            return Err("expected compound data".into());
+        }
+        ("container", Value::Container(slots)) if slots.len() > 256 => {
+            return Err("container source exceeds 256 entries".into());
+        }
+        _ => (),
+    }
+    Ok(())
+}
+
+fn validate_codec_limits(name: &str, t: Input<'_>) -> Result<()> {
+    fn integer(t: Input<'_>, min: i32, max: i32) -> Result<()> {
+        let n = match t {
+            Input::Tag(t) => super::source::integer(t)?,
+            Input::Value(Value::Int(n)) => *n,
+            _ => return Err("expected integer".into()),
         };
         if !(min..=max).contains(&n) {
             return Err(format!("integer outside {min}..{max}"));
         }
         Ok(())
     }
-    fn real(t: &Tag, min: f32, max: f32, exclusive: bool) -> Result<()> {
-        let Value::Float(n) = float(t)? else {
-            unreachable!()
+    fn real(t: Input<'_>, min: f32, max: f32, exclusive: bool) -> Result<()> {
+        let bits = match t {
+            Input::Tag(t) => {
+                let Value::Float(n) = float(t)? else {
+                    unreachable!()
+                };
+                n
+            }
+            Input::Value(Value::Float(n)) => *n,
+            _ => return Err("expected float".into()),
         };
-        let n = f32::from_bits(n);
-        // `Float.compareTo` order, as `ExtraCodecs.floatRange` uses: -0.0 is below 0.0 and NaN above every number.
+        let n = f32::from_bits(bits);
+        // `Float.compareTo` order, as `ExtraCodecs.floatRange` uses.
         let below = n.total_cmp(&min);
         if !n.is_finite()
             || below.is_lt()
@@ -1295,25 +1434,29 @@ fn validate_source(name: &str, t: &Tag) -> Result<()> {
         }
         Ok(())
     }
-    fn field(t: &Tag, k: &str, f: impl FnOnce(&Tag) -> Result<()>) -> Result<()> {
-        if let Some(v) = t.get(k) {
-            f(v)?;
+    fn field(t: Input<'_>, k: &str, f: impl FnOnce(Input<'_>) -> Result<()>) -> Result<()> {
+        t.field(k).map_or(Ok(()), f)
+    }
+    fn enumeration(t: Input<'_>, values: &[&str]) -> Result<()> {
+        let units = t.string().ok_or("expected string")?;
+        if !values
+            .iter()
+            .any(|value| units.iter().copied().eq(value.encode_utf16()))
+        {
+            return Err(format!(
+                "unknown enum value {}",
+                String::from_utf16_lossy(units)
+            ));
         }
         Ok(())
     }
-    fn enumeration(t: &Tag, values: &[&str]) -> Result<()> {
-        let s = string(t)?;
-        if !values.contains(&s.as_str()) {
-            return Err(format!("unknown enum value {s}"));
-        }
-        Ok(())
-    }
-    fn limit(t: &Tag, max: usize) -> Result<()> {
+    fn limit(t: Input<'_>, max: usize) -> Result<()> {
         let n = match t {
-            Tag::List(v) => v.len(),
-            Tag::ByteArray(v) => v.len(),
-            Tag::IntArray(v) => v.len(),
-            Tag::LongArray(v) => v.len(),
+            Input::Tag(Tag::List(v)) => v.len(),
+            Input::Tag(Tag::ByteArray(v)) | Input::Value(Value::ByteArray(v)) => v.len(),
+            Input::Tag(Tag::IntArray(v)) | Input::Value(Value::IntArray(v)) => v.len(),
+            Input::Tag(Tag::LongArray(v)) | Input::Value(Value::LongArray(v)) => v.len(),
+            Input::Value(Value::List(v) | Value::Set(v)) => v.len(),
             _ => return Ok(()),
         };
         if n > max {
@@ -1321,14 +1464,14 @@ fn validate_source(name: &str, t: &Tag) -> Result<()> {
         }
         Ok(())
     }
-    fn string_limit(t: &Tag, max: usize) -> Result<()> {
-        if let Tag::String(v) = t {
-            if v.0.len() > max {
+    fn string_limit(t: Input<'_>, max: usize) -> Result<()> {
+        if let Some(v) = t.string() {
+            if v.len() > max {
                 return Err(format!("component string exceeds {max}"));
             }
-        } else if let Tag::Compound(_) = t {
+        } else {
             for k in ["raw", "filtered"] {
-                field(t, k, |v| string_limit(v, max))?;
+                field(t, k, |v| super::with_tree_stack(|| string_limit(v, max)))?;
             }
         }
         Ok(())
@@ -1444,8 +1587,8 @@ fn validate_source(name: &str, t: &Tag) -> Result<()> {
         "villager_food" => field(t, "nutrition", |v| integer(v, 1, i32::MAX))?,
         "tool" => {
             field(t, "damage_per_block", |v| integer(v, 0, i32::MAX))?;
-            if let Some(Tag::List(rules)) = t.get("rules") {
-                for rule in rules {
+            if let Some(rules) = t.field("rules") {
+                for rule in rules.list() {
                     field(rule, "speed", |v| real(v, 0.0, f32::MAX, true))?;
                 }
             }
@@ -1485,7 +1628,7 @@ fn validate_source(name: &str, t: &Tag) -> Result<()> {
                 "knockback_conditions",
                 "damage_conditions",
             ] {
-                if let Some(v) = t.get(k) {
+                if let Some(v) = t.field(k) {
                     field(v, "max_duration_ticks", |v| integer(v, 0, i32::MAX))?;
                 }
             }
@@ -1510,10 +1653,8 @@ fn validate_source(name: &str, t: &Tag) -> Result<()> {
         "writable_book_content" => {
             field(t, "pages", |v| {
                 limit(v, 100)?;
-                if let Tag::List(v) = v {
-                    for v in v {
-                        string_limit(v, 1024)?;
-                    }
+                for v in v.list() {
+                    string_limit(v, 1024)?;
                 }
                 Ok(())
             })?;
@@ -1526,8 +1667,8 @@ fn validate_source(name: &str, t: &Tag) -> Result<()> {
             for k in ["block_delay_seconds", "disable_cooldown_scale"] {
                 field(t, k, |v| real(v, 0.0, f32::MAX, false))?;
             }
-            if let Some(Tag::List(reductions)) = t.get("damage_reductions") {
-                for v in reductions {
+            if let Some(reductions) = t.field("damage_reductions") {
+                for v in reductions.list() {
                     field(v, "horizontal_blocking_angle", |v| {
                         real(v, 0.0, f32::MAX, true)
                     })?;

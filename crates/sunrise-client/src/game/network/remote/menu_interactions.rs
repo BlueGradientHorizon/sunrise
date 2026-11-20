@@ -42,22 +42,37 @@ impl Game<'_> {
             clicks.push((slot, button, input));
         }
         // Unpredicted: nothing changed, the carried stack as it is.
-        let mut sent: Vec<Predicted> = clicks
-            .iter()
-            .map(|&(slot, button, input)| (slot, button, input, Vec::new(), self.carried.clone()))
-            .collect();
+        let mut prepared = None;
         let mut threw = false;
-        // The engine's slot indices are the menu's own, as on the network.
-        self.menu_session(|m, env, _| {
+        self.menu_session_with_game(|game, m, env, _| {
             let Some((predicted, dropped)) = predict_clicks(m, env, &clicks) else {
                 // The server throws on it too: nothing is predicted.
                 return Some(false);
             };
-            sent = predicted;
+            let packets = game.prepare_clicks(container, &predicted);
+            let commit = packets.is_ok();
+            prepared = Some(packets.map(|packets| (predicted, packets)));
             threw = dropped;
-            Some(true)
+            Some(commit)
         });
-        self.send_clicks(container, sent);
+        let result = prepared.unwrap_or_else(|| {
+            let unpredicted: Vec<Predicted> = clicks
+                .iter()
+                .map(|&(slot, button, input)| {
+                    (slot, button, input, Vec::new(), self.carried.clone())
+                })
+                .collect();
+            self.prepare_clicks(container, &unpredicted)
+                .map(|packets| (unpredicted, packets))
+        });
+        let (predicted, packets) = match result {
+            Ok(result) => result,
+            Err(error) => {
+                log::warn!("Refused menu click: {error}");
+                return true;
+            }
+        };
+        self.send_clicks(&predicted, packets);
         // LivingEntity.drop(.., Prediction.PREDICTED): the client swings its own
         // main hand; the server shows the swing only to the other players.
         if threw {
@@ -75,8 +90,11 @@ impl Game<'_> {
             return false;
         };
         let carried = self.carried.clone();
-        let click = (slot as i16, 0, Input::QuickMove, Vec::new(), carried);
-        self.send_clicks(container, vec![click]);
+        let clicks = [(slot as i16, 0, Input::QuickMove, Vec::new(), carried)];
+        match self.prepare_clicks(container, &clicks) {
+            Ok(packets) => self.send_clicks(&clicks, packets),
+            Err(error) => log::warn!("Refused quick move: {error}"),
+        }
         true
     }
     /// A Shift double click on a server (`AbstractContainerScreen.mouseReleased`):
@@ -84,7 +102,8 @@ impl Game<'_> {
     pub(in crate::game) fn remote_quick_move_all(&mut self, slot: usize, moved: &ItemStack) {
         let (container, _) = self.remote_menu();
         let mut sent: Vec<Predicted> = Vec::new();
-        self.menu_session(|m, env, to_menu| {
+        let mut prepared = None;
+        self.menu_session_with_game(|game, m, env, to_menu| {
             let clicked = to_menu(slot)?;
             let mut before = menu_items(m);
             let mut each = |m: &sunrise_client::menu::Menu, t: usize| {
@@ -92,14 +111,46 @@ impl Game<'_> {
                 sent.push((t as i16, 0, Input::QuickMove, changed, m.carried.clone()));
                 before = menu_items(m);
             };
-            Some(
-                m.quick_move_all_each(env, clicked, moved, &mut each)
-                    .is_ok(),
-            )
+            let modeled = m
+                .quick_move_all_each(env, clicked, moved, &mut each)
+                .is_ok();
+            let packets = game.prepare_clicks(container, &sent);
+            let commit = modeled && packets.is_ok();
+            prepared = Some(packets);
+            Some(commit)
         });
-        self.send_clicks(container, sent);
+        match prepared {
+            Some(Ok(packets)) => self.send_clicks(&sent, packets),
+            Some(Err(error)) => log::warn!("Refused quick move: {error}"),
+            None => (),
+        }
     }
-    pub(in crate::game) fn send_clicks(&mut self, container: i32, clicks: Vec<Predicted>) {
+    fn prepare_clicks(
+        &self,
+        container: i32,
+        clicks: &[Predicted],
+    ) -> sunrise_protocol::Result<Vec<play::ContainerClick>> {
+        let state = self.remote.as_ref().map_or(0, |r| r.state_id);
+        clicks
+            .iter()
+            .map(|(slot, button, input, changed, carried)| {
+                Ok(play::ContainerClick {
+                    container,
+                    state,
+                    slot: *slot,
+                    button: *button as i8,
+                    input: input_ordinal(*input),
+                    changed: changed
+                        .iter()
+                        .map(|(i, stack)| Ok((*i, self.hashed_stack(stack)?)))
+                        .collect::<sunrise_protocol::Result<_>>()?,
+                    carried: self.hashed_stack(carried)?,
+                })
+            })
+            .collect()
+    }
+
+    fn send_clicks(&mut self, clicks: &[Predicted], packets: Vec<play::ContainerClick>) {
         // A result the engine claims to have changed is the one the server
         // agrees to (`click_agreed`), so it sends none: keep it. A result the
         // engine doesn't claim (a recipe it doesn't know) the server sends.
@@ -108,26 +159,14 @@ impl Game<'_> {
             "inventory" | "minecraft:crafting"
         ) && let Some(r) = self.remote.as_mut()
         {
-            for (.., changed, _) in &clicks {
+            for (.., changed, _) in clicks {
                 if let Some((_, result)) = changed.iter().find(|(slot, _)| *slot == 0) {
                     r.craft_result = result.clone();
                 }
             }
         }
-        let state = self.remote.as_ref().map_or(0, |r| r.state_id);
-        let hashed = |g: &Self, s: &Option<ItemStack>| g.hashed_stack(s);
-        for (slot, button, input, changed, carried) in clicks {
-            let changed = changed.iter().map(|(i, s)| (*i, hashed(self, s))).collect();
-            let carried = hashed(self, &carried);
-            self.send(S::ContainerClick(play::ContainerClick {
-                container,
-                state,
-                slot,
-                button: button as i8,
-                input: input_ordinal(input),
-                changed,
-                carried,
-            }));
+        for packet in packets {
+            self.send(S::ContainerClick(packet));
         }
     }
     /// The server's open menu is the inventory or a chest-like container
@@ -156,17 +195,28 @@ impl Game<'_> {
             .as_ref()
             .and_then(|r| r.menu.as_ref())
             .map_or(0, |m| m.0);
+        let mut predicted = self.carried.clone();
+        let threw = input == Input::Pickup && predicted.is_some();
         if input == Input::Pickup
-            && let Some(c) = self.carried.as_mut()
+            && let Some(c) = predicted.as_mut()
         {
             if right && c.count > 1 {
                 c.count -= 1;
             } else {
-                self.carried = None;
+                predicted = None;
             }
+        }
+        let carried = match self.hashed_stack(&predicted) {
+            Ok(carried) => carried,
+            Err(error) => {
+                log::warn!("Refused drop click: {error}");
+                return;
+            }
+        };
+        if threw {
+            self.carried = predicted;
             self.swing_arm();
         }
-        let carried = self.hashed_stack(&self.carried);
         let state = self.remote.as_ref().map_or(0, |r| r.state_id);
         self.send(S::ContainerClick(play::ContainerClick {
             container,

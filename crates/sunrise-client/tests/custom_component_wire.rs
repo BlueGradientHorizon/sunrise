@@ -91,7 +91,7 @@ fn custom_components_survive_save_wire_and_nested_stacks() {
         assert!(!custom::permitted(&outer, false).unwrap(), "kind {kind}");
         assert!(custom::permitted(&outer, true).unwrap());
     }
-    let hash = Hashed::create(&stack, &names);
+    let hash = Hashed::create(&stack, &names).unwrap();
     assert_eq!(hash.added.len(), 1);
     assert_eq!(hash.removed, [FIRST_CUSTOM_ID + 1]);
     assert_eq!(
@@ -106,7 +106,7 @@ fn custom_components_survive_save_wire_and_nested_stacks() {
     let received = Slot::read(&mut Reader::new(&writer.data)).unwrap().unwrap();
     let client = item_sync::from_network(&received, &builtin, &dynamic);
     assert!(saved.same_item_same_components(&client));
-    assert_eq!(hash, Hashed::create(&encode(&client), &names));
+    assert_eq!(hash, Hashed::create(&encode(&client), &names).unwrap());
 
     let mut writer = Writer::new();
     DelimitedSlot::write(&Some(encode(&client)), &mut writer);

@@ -104,7 +104,15 @@ fn components_with<O: Ops>(map: &Compound, names: &dyn Names) -> Option<O::Value
     for (key, value) in map.iter() {
         let key = units(&key.0);
         let hashed = match key.strip_prefix('!') {
-            Some(_) => O::empty_map(),
+            Some(name) => {
+                persistent::component_id(name)?;
+                if !sunrise_world::component_value::is_persistent(name)
+                    || !matches!(value, Tag::Compound(_))
+                {
+                    return None;
+                }
+                O::empty_map()
+            }
             None => {
                 let short = key.strip_prefix("minecraft:")?;
                 match (short, value) {
@@ -117,7 +125,10 @@ fn components_with<O: Ops>(map: &Compound, names: &dyn Names) -> Option<O::Value
                         | "use_remainder"
                         | "sulfur_cube_content"
                         | "pot_decorations"
-                        | "tooltip_display",
+                        | "tooltip_display"
+                        | "custom_name"
+                        | "item_name"
+                        | "lore",
                         _,
                     ) => O::saved_component(&key, value)?,
                     // `enchantment_glint_override` is a bare `Codec.BOOL`.

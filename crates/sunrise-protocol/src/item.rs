@@ -820,22 +820,23 @@ impl PartialEq for WirePatch {
 
 // The stream reads every set before every removal, into one map. Walking the
 // retained wire groups must give the same last-entry result.
-fn effective_sets<'a>(
+fn effective_wire_patch<'a>(
     sets: &'a [(i32, Component)],
-    removals: &'a [i32],
-) -> impl Iterator<Item = &'a (i32, Component)> {
-    sets.iter().enumerate().filter_map(|(index, entry)| {
-        let kind = entry.0;
-        (!removals.contains(&kind) && !sets[index + 1..].iter().any(|(later, _)| *later == kind))
-            .then_some(entry)
-    })
-}
-
-fn effective_removals(removals: &[i32]) -> impl Iterator<Item = i32> + '_ {
-    removals
+    removals: &[i32],
+) -> (impl Iterator<Item = &'a (i32, Component)>, Vec<i32>) {
+    let mut seen = std::collections::HashSet::with_capacity(sets.len() + removals.len());
+    let mut removed: Vec<_> = removals
         .iter()
-        .enumerate()
-        .filter_map(|(index, kind)| (!removals[index + 1..].contains(kind)).then_some(*kind))
+        .rev()
+        .copied()
+        .filter(|kind| seen.insert(*kind))
+        .collect();
+    removed.reverse();
+    let sets = sets
+        .iter()
+        .rev()
+        .filter(move |(kind, _)| seen.insert(*kind));
+    (sets, removed)
 }
 
 /// A non-empty item stack.
@@ -1027,10 +1028,24 @@ pub struct Hashed {
     pub added: Vec<(i32, i32)>,
     pub removed: Vec<i32>,
 }
+/// The wire patch or a component's persistent hash could not be produced.
+#[derive(Debug, PartialEq, Eq)]
+pub enum StackHashError {
+    Wire(crate::Error),
+    Component(i32),
+}
+impl std::fmt::Display for StackHashError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Wire(error) => write!(f, "invalid retained item patch: {error}"),
+            Self::Component(id) => write!(f, "cannot hash component {id}"),
+        }
+    }
+}
+impl std::error::Error for StackHashError {}
 impl Hashed {
-    /// The stack hashed without registry names: only components that hold no
-    /// registry id get a hash (see [`Hashed::create`]).
-    pub fn of(stack: &Stack) -> Self {
+    /// Hash a stack with only components that don't require registry names.
+    pub fn of(stack: &Stack) -> std::result::Result<Self, StackHashError> {
         Self::create(stack, &NoNames)
     }
 }
@@ -1490,7 +1505,7 @@ mod tests {
         round::<Option<Stack>, Slot>(Some(quill));
         assert_eq!(sword.damage(), 17);
         round::<Option<Stack>, Slot>(Some(sword.clone()));
-        round::<Option<Hashed>, HashedSlot>(Some(Hashed::of(&sword)));
+        round::<Option<Hashed>, HashedSlot>(Some(Hashed::of(&sword).unwrap()));
         round::<Option<Hashed>, HashedSlot>(None);
     }
 

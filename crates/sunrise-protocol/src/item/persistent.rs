@@ -1,6 +1,6 @@
 //! Current pinned component codecs with explicit registry callbacks.
 //! Canonical values retain stream-only state; persistent encoding is a read-only projection.
-use super::{Component, Names, Stack, effective_removals, effective_sets};
+use super::{Component, Names, Stack, effective_wire_patch};
 use crate::{Error, Result, buf::Reader};
 use sunrise_core::nbt::Tag;
 use sunrise_world::component_value::{Patch, Template as ValueTemplate, Value};
@@ -54,7 +54,8 @@ pub fn template_value(stack: &Stack, names: &dyn Names) -> Result<ValueTemplate>
         .filter(|name| name != "minecraft:air")
         .ok_or_else(|| Error::new("item template registry id has no name"))?;
     let mut patch: Patch = Vec::with_capacity(stack.added.len() + stack.removed.len());
-    for (kind, value) in effective_sets(&stack.added, &stack.removed) {
+    let (sets, removals) = effective_wire_patch(&stack.added, &stack.removed);
+    for (kind, value) in sets {
         let _nested = super::Nested::enter()?;
         let name = component_name(*kind)
             .ok_or_else(|| Error::new(format!("unknown pinned component type {kind}")))?;
@@ -63,7 +64,7 @@ pub fn template_value(stack: &Stack, names: &dyn Names) -> Result<ValueTemplate>
             Some(component_value_named(*kind, name, value, names)?),
         ));
     }
-    for kind in effective_removals(&stack.removed) {
+    for kind in removals {
         let name = component_name(kind)
             .ok_or_else(|| Error::new(format!("unknown removed pinned component type {kind}")))?;
         patch.push((name.to_owned(), None));
@@ -487,6 +488,11 @@ mod tests {
                 Tag::Compound(Default::default()),
             )]),
         )]);
+        let malformed = Tag::compound([(
+            "predicates",
+            Tag::compound([("minecraft:creative_slot_lock", Tag::Int(7))]),
+        )]);
+        assert!(component_from_tag(k::CAN_BREAK, &malformed, &registry_id).is_err());
         let Component::Raw(bytes) =
             component_from_tag(k::CAN_BREAK, &source, &registry_id).unwrap()
         else {
