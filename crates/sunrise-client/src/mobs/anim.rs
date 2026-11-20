@@ -117,7 +117,7 @@ pub(crate) fn key(name: &str) -> u64 {
     h.write_usize(name.len());
     h.finish()
 }
-// Index by HumanoidPart, like PosedParts, but key only mid-animation inputs.
+// Index by HumanoidPart, keying only the editable mid-animation inputs.
 static HUMANOID_POSE_KEYS: LazyLock<[Option<u64>; HumanoidPart::ALL.len()]> = LazyLock::new(|| {
     HumanoidPart::ALL.map(|part| match part {
         HumanoidPart::Head
@@ -242,7 +242,10 @@ impl Poses {
     }
     /// The pose of the part named `name`, when the model has one.
     pub fn pose_of(&self, name: &str) -> Option<[f32; 9]> {
-        self.map.get(&key(name)).map(|entry| entry.pose)
+        self.pose_by_key(key(name)).copied()
+    }
+    pub(super) fn pose_by_key(&self, key: u64) -> Option<&[f32; 9]> {
+        self.map.get(&key).map(|entry| &entry.pose)
     }
     pub fn pose(&self, part: &Part) -> [f32; 9] {
         self.pose_of(&part.name).unwrap_or(part.pose)
@@ -314,7 +317,10 @@ impl Poses {
     }
     /// `is_hidden` by the part's name.
     pub fn is_hidden_named(&self, name: &str) -> bool {
-        !self.hidden.is_empty() && self.hidden.contains(&key(name))
+        !self.hidden.is_empty() && self.is_hidden_by_key(key(name))
+    }
+    pub(super) fn is_hidden_by_key(&self, key: u64) -> bool {
+        self.hidden.contains(&key)
     }
 }
 

@@ -155,10 +155,14 @@ impl Game<'_> {
                 mob.species(),
                 Species::Blaze | Species::MagmaCube | Species::GlowSquid | Species::SulfurCube
             );
-        let (mut skinned, added) = (None, self.mod_layers(mob));
+        // AvatarRenderer.shouldRenderLayers: a spectator draws no layers.
+        let layers = sunrise_client::mobs::render::layers_shown(mob);
+        let added = if layers { self.mod_layers(mob) } else { None };
+        let mut skinned = None;
         let mut frame_draw = FrameDraw {
             hidden,
-            capture_model: listened || added.is_some(),
+            capture_model: !modded
+                && (added.is_some() || (listened && self.mob_render_post_listened(who.is_some()))),
             ..Default::default()
         };
         if posable {
@@ -229,8 +233,6 @@ impl Game<'_> {
                 v.layer |= u32::from(tier) << 16;
             }
         }
-        // AvatarRenderer.shouldRenderLayers: a spectator draws no layers.
-        let layers = sunrise_client::mobs::render::layers_shown(mob);
         if is_player && layers {
             // PlayerRenderer's CapeLayer, WingsLayer, ParrotOnShoulderLayer
             // and SpinAttackEffectLayer. Only the cape hides with the body;

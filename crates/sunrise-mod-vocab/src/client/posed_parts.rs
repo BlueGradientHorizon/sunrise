@@ -1,7 +1,4 @@
-//! A humanoid model's parts during `HumanoidModel.setupAnim` and after it is drawn.
-//! `HumanoidPose` lends the intermediate pose to `humanoid_setup_anim`. The final poses
-//! in `render_living_post`, `render_player_post` and entity layers are read-only; a mod
-//! can copy those poses onto its own baked layer and draw it where vanilla drew the body.
+//! Borrowed parts of a living model during setup animation and after posing.
 
 /// A part of a humanoid model, by the name vanilla's `PlayerModel` gives it. The outer skin
 /// layer's parts (`Hat`, `Jacket`, the sleeves and the pants) are children of the part they cover.
@@ -197,65 +194,62 @@ impl TryFrom<HiddenPartsWire> for HiddenParts {
     }
 }
 
-/// One humanoid part as posed this frame: its pose relative to its parent, and whether it draws
-/// (`ModelPart.visible` as the body drew it: after Skin Customization and the parts
-/// `render_player_pre` hid).
-#[derive(Clone, Copy, Debug, PartialEq, sunrise_mod_api_macros::Wire)]
-#[non_exhaustive]
-pub struct PosedPart {
-    /// Which part it is.
-    pub part: HumanoidPart,
-    /// Its pose relative to its parent.
-    pub pose: crate::PartPose,
-    /// Whether it draws.
+// no wire: borrows the baked hierarchy and final pose for this draw.
+/// The read-only living model selected and posed for this draw. Registered layers and Post
+/// hooks borrow it only for their callback; indices belong to this model, not to the entity or
+/// to a later draw (which may select a different model).
+pub trait FrameModel {
+    /// The root of this model, even when it has no cubes of its own.
+    fn root(&self) -> FrameModelPart<'_>;
+
+    /// The first depth-first match for this exact name, including the root. Returns `None` if
+    /// there is no match; use the hierarchy to distinguish parts with the same name.
+    fn part(&self, name: &str) -> Option<FrameModelPart<'_>>;
+
+    /// The part at a model-local index, or `None` if it is outside this model.
+    fn part_at(&self, index: usize) -> Option<FrameModelPart<'_>>;
+}
+
+// no wire: name and local pose are borrowed from the current frame model.
+/// A read-only view of one part within a [`FrameModel`]. Hierarchy links are indices for
+/// [`FrameModel::part_at`]; a missing link is `None`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FrameModelPart<'a> {
+    /// This part's index in the model.
+    pub index: usize,
+    /// Baked name of this part.
+    pub name: &'a str,
+    /// The parent, absent for the root.
+    pub parent: Option<usize>,
+    /// The first child, absent for a leaf.
+    pub first_child: Option<usize>,
+    /// The next child of the same parent, absent for the last sibling and for the root.
+    pub next_sibling: Option<usize>,
+    /// Position (x, y, z) in texels, then rotation (x, y, z) in radians, then scale (x, y, z)
+    /// as unitless factors, all relative to the parent. The root is relative to the model origin.
+    pub local_pose: &'a [f32; 9],
+    /// Whether visibility allows traversal of this subtree: false if this part or an ancestor
+    /// is hidden. A visible part can still submit no cubes of its own (an empty part, a part
+    /// whose cubes were skipped, or a draw that submitted only layers).
     pub visible: bool,
 }
 
-/// The humanoid parts of a model, posed this frame: a fixed-size snapshot, nothing allocated.
-#[derive(Clone, Copy, Debug, PartialEq, sunrise_mod_api_macros::Wire)]
-#[non_exhaustive]
-pub struct PosedParts {
-    /// Each of [`HumanoidPart::ALL`] at its index there: None for a part the model lacks.
-    pub parts: [Option<PosedPart>; 12],
-}
-
-impl PosedParts {
-    /// The parts `pose` gives `ModelPart`'s nine numbers for (x, y, z, x rot, y rot, z rot, x, y,
-    /// z scale) and whether they draw; None when the model lacks a head or a body (not a humanoid
-    /// model). A part the model lacks, such as a zombie's sleeves, is left out.
-    pub fn new(pose: impl Fn(HumanoidPart) -> Option<([f32; 9], bool)>) -> Option<Self> {
-        let parts = HumanoidPart::ALL.map(|part| {
-            let (v, visible) = pose(part)?;
-            let pose = crate::PartPose {
-                x: v[0],
-                y: v[1],
-                z: v[2],
-                x_rot: v[3],
-                y_rot: v[4],
-                z_rot: v[5],
-                x_scale: v[6],
-                y_scale: v[7],
-                z_scale: v[8],
-            };
-            Some(PosedPart {
-                part,
-                pose,
-                visible,
-            })
-        });
-        let posed = Self { parts };
-        (posed.get(HumanoidPart::Head).is_some() && posed.get(HumanoidPart::Body).is_some())
-            .then_some(posed)
-    }
-
-    /// `part` as posed this frame, if the model has it.
-    pub fn get(&self, part: HumanoidPart) -> Option<PosedPart> {
-        self.parts[part as usize]
-    }
-
-    /// The parts the model has, in [`HumanoidPart::ALL`]'s order.
-    pub fn iter(&self) -> impl Iterator<Item = PosedPart> + '_ {
-        self.parts.iter().flatten().copied()
+impl FrameModelPart<'_> {
+    /// The local pose as a [`crate::PartPose`] for drawing. Use the parent links to compose
+    /// the full transform when attaching geometry to a nested part.
+    pub fn pose(&self) -> crate::PartPose {
+        let &[x, y, z, x_rot, y_rot, z_rot, x_scale, y_scale, z_scale] = self.local_pose;
+        crate::PartPose {
+            x,
+            y,
+            z,
+            x_rot,
+            y_rot,
+            z_rot,
+            x_scale,
+            y_scale,
+            z_scale,
+        }
     }
 }
 
@@ -297,38 +291,6 @@ mod tests {
             w.put(&raw);
             assert!(Reader::new(w.bytes()).take::<HiddenParts>().is_err());
         }
-    }
-
-    #[test]
-    fn a_humanoid_needs_a_head_and_a_body_and_keeps_each_parts_pose() {
-        let pose = |x: f32| ([x, 0.0, 0.0, 0.5, 0.0, 0.0, 1.0, 1.0, 1.0], true);
-        let parts = PosedParts::new(|part| match part {
-            HumanoidPart::Head => Some(pose(1.0)),
-            HumanoidPart::Body => Some(pose(2.0)),
-            HumanoidPart::RightArm => Some(([3.0, 0.0, 0.0, 0.0, 0.25, 0.0, 1.0, 1.0, 1.0], false)),
-            _ => None,
-        })
-        .expect("a head and a body make a humanoid");
-        let arm = parts.get(HumanoidPart::RightArm).unwrap();
-        assert_eq!(
-            (arm.pose.x, arm.pose.y_rot, arm.visible),
-            (3.0, 0.25, false)
-        );
-        assert_eq!(parts.get(HumanoidPart::RightSleeve), None);
-        assert_eq!(parts.get(HumanoidPart::Head).unwrap().pose.x_rot, 0.5);
-        let order: Vec<_> = parts.iter().map(|p| p.part).collect();
-        assert_eq!(
-            order,
-            [
-                HumanoidPart::Head,
-                HumanoidPart::Body,
-                HumanoidPart::RightArm
-            ]
-        );
-        assert!(PosedParts::new(|part| (part == HumanoidPart::Head).then(|| pose(1.0))).is_none());
-        let names: Vec<_> = HumanoidPart::ALL.iter().map(|p| p.model_name()).collect();
-        assert_eq!(names.len(), 12);
-        assert!(names.contains(&"left_pants") && names.contains(&"hat"));
     }
 
     #[test]

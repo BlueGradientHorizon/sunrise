@@ -2,6 +2,7 @@
 
 use super::super::{MobType, Part, anim};
 use crate::fast_hash::FxHashMap;
+use mod_api::{FrameModel, FrameModelPart};
 use std::sync::Arc;
 
 /// One part of a baked frame model. Links are indices into that model's nodes.
@@ -68,7 +69,7 @@ impl BakedFrameModel {
 #[derive(Default)]
 pub struct BakedFrameModels {
     // Retain each root so its address cannot be reused by a different model.
-    by_model: FxHashMap<usize, (Arc<Part>, BakedFrameModel)>,
+    by_model: FxHashMap<usize, (Arc<Part>, Arc<BakedFrameModel>)>,
 }
 
 impl BakedFrameModels {
@@ -80,16 +81,63 @@ impl BakedFrameModels {
                 layouts
                     .by_model
                     .entry(Arc::as_ptr(model) as usize)
-                    .or_insert_with(|| (model.clone(), BakedFrameModel::bake(model)));
+                    .or_insert_with(|| (model.clone(), Arc::new(BakedFrameModel::bake(model))));
             }
         }
         layouts
     }
 
     /// Find the layout for the exact tree selected by the renderer.
-    pub fn get(&self, model: &Arc<Part>) -> Option<&BakedFrameModel> {
+    pub fn get(&self, model: &Arc<Part>) -> Option<&Arc<BakedFrameModel>> {
         self.by_model
             .get(&(Arc::as_ptr(model) as usize))
             .map(|(_, layout)| layout)
+    }
+}
+
+/// The exact body poses kept alive for layer and Post callbacks. Dropping this returns the
+/// poses to the render thread's pool. The shared layout also outlives the CEM read guard.
+pub struct FrameModelPose {
+    pub(super) layout: Arc<BakedFrameModel>,
+    pub(super) poses: anim::PooledPoses,
+}
+
+impl FrameModelPose {
+    fn view<'a>(&'a self, index: usize, node: &'a BakedFrameNode) -> FrameModelPart<'a> {
+        let mut ancestor = Some(node);
+        let mut visible = true;
+        while let Some(current) = ancestor {
+            if self.poses.is_hidden_by_key(current.anim_key) {
+                visible = false;
+                break;
+            }
+            ancestor = current.parent.map(|i| &self.layout.nodes[i]);
+        }
+        FrameModelPart {
+            index,
+            name: &node.name,
+            parent: node.parent,
+            first_child: node.first_child,
+            next_sibling: node.next_sibling,
+            local_pose: self
+                .poses
+                .pose_by_key(node.anim_key)
+                .expect("poses were reset from the baked model's tree"),
+            visible,
+        }
+    }
+}
+
+impl FrameModel for FrameModelPose {
+    fn root(&self) -> FrameModelPart<'_> {
+        self.view(0, &self.layout.nodes[0])
+    }
+
+    fn part(&self, name: &str) -> Option<FrameModelPart<'_>> {
+        self.part_at(self.layout.find(name)?)
+    }
+
+    fn part_at(&self, index: usize) -> Option<FrameModelPart<'_>> {
+        Some(self.view(index, self.layout.nodes.get(index)?))
     }
 }

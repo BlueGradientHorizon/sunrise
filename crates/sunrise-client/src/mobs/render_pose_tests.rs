@@ -1,101 +1,14 @@
-#[test]
-fn posed_parts_are_the_poses_the_draw_made_and_change_nothing() {
-    use super::super::anim;
-    let (mob, data) = humanoid_zombie();
-    let atlas = |_: &str| Some([0.0, 0.0, 1.0, 1.0]);
-    let draw = |mob: &Mob, keep: bool| {
-        let mut out = Vec::new();
-        let mut frame = FrameDraw {
-            capture_model: keep,
-            ..Default::default()
-        };
-        render_with_frame(
-            mob,
-            0.5,
-            glam::DVec3::ZERO,
-            &atlas,
-            0xf0f0,
-            &data,
-            &[],
-            &mut frame,
-            &mut out,
-        );
-        (
-            out.iter().map(|v| format!("{v:?}")).collect::<Vec<_>>(),
-            frame.parts,
-        )
-    };
-    let (before, none) = draw(&mob, false);
-    assert!(none.is_none(), "nothing kept unless asked");
-    let (after, parts) = draw(&mob, true);
-    assert_eq!(after, before, "keeping the poses changes nothing drawn");
-    let parts = parts.expect("a head and a body: a humanoid");
+fn pose_test_cube(x: f32) -> serde_json::Value {
+    serde_json::json!({ "pose": [x, 0.0, 0.0], "polygons": [[[x, 0.0, 0.0, 0.0, 0.0], [x + 1.0, 0.0, 0.0, 1.0, 0.0], [x + 1.0, 1.0, 0.0, 1.0, 1.0], [x, 1.0, 0.0, 0.0, 1.0]]] })
+}
 
-    // Independently: the model's poses after the zombie's setupAnim for this frame.
-    let mut poses = anim::Poses::new(&mob.kind.model);
-    anim::setup(&mob, &anim::state(&mob, 0.5), &mut poses, &data.animations);
-    for part in mod_api::HumanoidPart::ALL {
-        let expected = poses.pose_of(part.model_name());
-        let got = parts.get(part).map(|p| {
-            let q = p.pose;
-            [
-                q.x, q.y, q.z, q.x_rot, q.y_rot, q.z_rot, q.x_scale, q.y_scale, q.z_scale,
-            ]
-        });
-        assert_eq!(got, expected, "{part:?}");
-    }
-    let arm = parts.get(mod_api::HumanoidPart::RightArm).unwrap();
-    assert!(
-        arm.pose.x_rot != 0.0 && arm.visible,
-        "a zombie holds its arms out"
-    );
-    assert!(
-        parts.get(mod_api::HumanoidPart::RightSleeve).is_none(),
-        "a zombie has no sleeves"
-    );
-
-    // The GPU path and the layers-only draw (an invisible player's armour) keep the same.
-    let mut models = super::super::skin::SkinModels::default();
-    let mut frame = crate::gfx::entity_skin::SkinFrame::default();
-    let mut skin = super::super::skin::Skin::new(&mut models, &mut frame);
-    let mut skinned = FrameDraw {
-        capture_model: true,
-        ..Default::default()
-    };
-    render_skinned(
-        &mob,
-        0.5,
-        glam::DVec3::ZERO,
-        &atlas,
-        0xf0f0,
-        &data,
-        &mut skinned,
-        &mut Vec::new(),
-        &mut skin,
-    );
-    assert_eq!(skinned.parts, Some(parts), "the GPU path");
-    let mut layered = FrameDraw {
-        capture_model: true,
-        ..Default::default()
-    };
-    render_layers(
-        &mob,
-        0.5,
-        glam::DVec3::ZERO,
-        &atlas,
-        0xf0f0,
-        &data,
-        &[],
-        &mut layered,
-        &mut Vec::new(),
-    );
-    assert_eq!(layered.parts, Some(parts), "the layers over an unseen body");
-
-    // QuadrupedModel (a cow) has a head and a body too: its family, not its parts, says it
-    // isn't humanoid.
-    let cube = |x: f32| serde_json::json!({ "pose": [x, 0.0, 0.0], "polygons": [[[x, 0.0, 0.0, 0.0, 0.0], [x + 1.0, 0.0, 0.0, 1.0, 0.0], [x + 1.0, 1.0, 0.0, 1.0, 1.0], [x, 1.0, 0.0, 0.0, 1.0]]] });
+fn quadruped_fixture() -> Mob {
+    let cube = pose_test_cube;
+    let mut head = cube(0.0);
+    head["pose"] = serde_json::json!([3.5, -2.5, 1.0, 0.0, 0.0, 0.25, 2.0, 0.5, 1.0]);
+    head["children"] = serde_json::json!({"jaw": cube(1.0)});
     let quadruped = serde_json::json!({ "children": {
-        "head": cube(0.0), "body": cube(0.0), "right_hind_leg": cube(-2.0),
+        "head": head, "body": cube(0.0), "right_hind_leg": cube(-2.0),
         "left_hind_leg": cube(2.0), "right_front_leg": cube(-2.0), "left_front_leg": cube(2.0),
     }});
     let mut kind = (*crate::mobs::sensor_scan_tests::kind()).clone();
@@ -109,10 +22,165 @@ fn posed_parts_are_the_poses_the_draw_made_and_change_nothing() {
         0.0,
     );
     cow.age = 37;
-    let (cow_drawn, cow_parts) = draw(&cow, true);
-    assert!(!cow_drawn.is_empty(), "the cow draws");
-    assert!(cow_parts.is_none(), "a cow is no humanoid");
+    cow
+}
 
+#[test]
+fn frame_model_lends_the_drawn_pose_without_changing_geometry() {
+    use std::f32::consts::FRAC_PI_2;
+
+    let mut cow = quadruped_fixture();
+    cow.head_pitch = 90.0;
+    cow.previous_head_pitch = 90.0;
+    let (_, mut data) = humanoid_zombie();
+    data.frame_models = BakedFrameModels::bake([cow.kind.as_ref()]);
+    let atlas = |_: &str| Some([0.0, 0.0, 1.0, 1.0]);
+    let check = |model: &dyn mod_api::FrameModel| {
+        // The empty root still leads to its children. The head's pitch is animated on this
+        // draw, while its offset, roll and scale are the fixture's literal local values.
+        let root = model.root();
+        assert_eq!((root.index, root.name, root.parent), (0, "root", None));
+        assert_eq!((root.first_child, root.next_sibling), (Some(1), None));
+        assert!(root.visible);
+        let body = model.part_at(1).unwrap();
+        assert_eq!(
+            (body.name, body.parent, body.next_sibling),
+            ("body", Some(0), Some(2))
+        );
+        let head = model.part("head").unwrap();
+        assert_eq!(
+            (head.index, head.parent, head.first_child, head.next_sibling),
+            (2, Some(0), Some(3), Some(4))
+        );
+        let expected = [3.5, -2.5, 1.0, FRAC_PI_2, 0.0, 0.25, 2.0, 0.5, 1.0];
+        assert_eq!(*head.local_pose, expected);
+        let pose = head.pose();
+        assert_eq!(
+            [
+                pose.x,
+                pose.y,
+                pose.z,
+                pose.x_rot,
+                pose.y_rot,
+                pose.z_rot,
+                pose.x_scale,
+                pose.y_scale,
+                pose.z_scale
+            ],
+            expected,
+        );
+        let jaw = model.part_at(3).unwrap();
+        assert_eq!(
+            (jaw.name, jaw.parent, jaw.first_child, jaw.next_sibling),
+            ("jaw", Some(2), None, None)
+        );
+        assert_eq!(jaw.pose(), mod_api::PartPose::offset(1.0, 0.0, 0.0));
+        assert!(jaw.visible);
+        assert!(model.part("left_sleeve").is_none());
+        assert!(model.part_at(8).is_none());
+    };
+
+    let cpu = |capture_model, layers_only| {
+        let mut frame = FrameDraw {
+            capture_model,
+            ..Default::default()
+        };
+        let mut out = Vec::new();
+        if layers_only {
+            let extra = [(
+                &*cow.kind.model,
+                [0.0, 0.0, 1.0, 1.0],
+                0xFFFF_FFFF,
+                0,
+                false,
+            )];
+            render_layers(
+                &cow,
+                0.5,
+                glam::DVec3::ZERO,
+                &atlas,
+                0xf0f0,
+                &data,
+                &extra,
+                &mut frame,
+                &mut out,
+            );
+        } else {
+            render_with_frame(
+                &cow,
+                0.5,
+                glam::DVec3::ZERO,
+                &atlas,
+                0xf0f0,
+                &data,
+                &[],
+                &mut frame,
+                &mut out,
+            );
+        }
+        (out, frame)
+    };
+    for layers_only in [false, true] {
+        let (before, uncaptured) = cpu(false, layers_only);
+        let (after, captured) = cpu(true, layers_only);
+        assert!(uncaptured.model().is_none());
+        assert!(!before.is_empty());
+        assert_eq!(
+            bytemuck::cast_slice::<_, u8>(&before),
+            bytemuck::cast_slice::<_, u8>(&after)
+        );
+        check(captured.model().unwrap());
+    }
+
+    // The skinned path keeps the same local pose and submits the same GPU jobs and matrices.
+    let gpu = |capture_model| {
+        let mut models = super::super::skin::SkinModels::default();
+        let mut skin_frame = crate::gfx::entity_skin::SkinFrame::default();
+        let mut skin = super::super::skin::Skin::new(&mut models, &mut skin_frame);
+        let mut frame = FrameDraw {
+            capture_model,
+            ..Default::default()
+        };
+        let mut out = Vec::new();
+        render_skinned(
+            &cow,
+            0.5,
+            glam::DVec3::ZERO,
+            &atlas,
+            0xf0f0,
+            &data,
+            &mut frame,
+            &mut out,
+            &mut skin,
+        );
+        assert!(out.is_empty());
+        (skin_frame, frame)
+    };
+    let (before, uncaptured) = gpu(false);
+    let (after, captured) = gpu(true);
+    assert!(uncaptured.model().is_none());
+    assert!(!before.jobs.is_empty(), "the cow takes the skinned path");
+    assert_eq!(
+        bytemuck::cast_slice::<_, u8>(&before.jobs),
+        bytemuck::cast_slice::<_, u8>(&after.jobs)
+    );
+    assert_eq!(
+        bytemuck::cast_slice::<_, u8>(&before.parts),
+        bytemuck::cast_slice::<_, u8>(&after.parts)
+    );
+    assert_eq!(
+        bytemuck::cast_slice::<_, u8>(&before.new_model),
+        bytemuck::cast_slice::<_, u8>(&after.new_model)
+    );
+    check(captured.model().unwrap());
+}
+
+#[test]
+fn named_hidden_parts_leave_the_body_and_its_overlays_but_not_armour() {
+    let cow = quadruped_fixture();
+    let cube = pose_test_cube;
+    let (_, data) = humanoid_zombie();
+    let atlas = |_: &str| Some([0.0, 0.0, 1.0, 1.0]);
     // `render_living_pre` hides a part of any model by its name, on the CPU and on the GPU
     // (#2957): a leg's one face goes; an unknown name is refused.
     let mut leg = mod_api::HiddenParts::default();

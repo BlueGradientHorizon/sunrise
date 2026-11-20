@@ -28,6 +28,7 @@ pub fn render_seen_invisible(
         render_with_frame(m, alpha, camera, atlas, light, data, extra, frame, out);
         return;
     }
+    frame.model = None;
     let tint = (body_color(m, alpha) & 0x00FF_FFFF) | 0x2600_0000;
     render_visible(
         m,

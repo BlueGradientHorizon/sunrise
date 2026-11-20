@@ -49,8 +49,8 @@ use mod_api::{
     TriState, UsePhase,
 };
 use mod_api::{
-    BlockKey, DebugEntry, DebugRenderer, EffectKey, GuiLayer, HiddenParts, MapDecorationType,
-    ParticleGroup, FrameModel, SkullModel, TaskId, TextureAtlasRegistration,
+    BlockKey, DebugEntry, DebugRenderer, EffectKey, FrameModel, GuiLayer, HiddenParts,
+    MapDecorationType, ParticleGroup, SkullModel, TaskId, TextureAtlasRegistration,
 };
 pub(crate) use mod_api::{
     BlockRim, ClientPacket, ClientPayload, ColoredLight, ContainerLootFilled, ExplosionStart,

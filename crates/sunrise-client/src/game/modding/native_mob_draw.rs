@@ -12,7 +12,7 @@ pub use mod_api::game::{MobRender, PlayerRender};
 
 use super::{Game, native_block_entity_draw::BlockEntityDraw};
 use glam::{DVec3, Mat4};
-use mod_api::{EntityRenderState, HiddenParts, HookId, FrameModel};
+use mod_api::{EntityRenderState, FrameModel, HiddenParts, HookId};
 use std::cell::RefCell;
 use sunrise_client::{
     block_entity_render::diffuse_lights,
@@ -26,6 +26,8 @@ use sunrise_client::{
 #[derive(Default)]
 struct EntityFrame {
     listened: bool,
+    living_post: bool,
+    player_post: bool,
     canceled: FxHashSet<u32>,
 }
 
@@ -37,15 +39,17 @@ thread_local! {
 /// Starts a frame's entity pass: asks once whether any mod listens to the render hook pair, and
 /// forgets the last frame's canceled entities.
 pub(in crate::game) fn begin_entity_frame() {
-    let hooks = [
-        HookId::RenderLivingPre,
-        HookId::RenderLivingPost,
-        HookId::RenderPlayerPre,
-        HookId::RenderPlayerPost,
-    ];
-    let listened = hooks.into_iter().any(mod_api::__private::listened);
+    use mod_api::__private::listened;
+    let living_post = listened(HookId::RenderLivingPost);
+    let player_post = listened(HookId::RenderPlayerPost);
+    let any = living_post
+        || player_post
+        || listened(HookId::RenderLivingPre)
+        || listened(HookId::RenderPlayerPre);
     FRAME.with_borrow_mut(|frame| {
-        frame.listened = listened;
+        frame.listened = any;
+        frame.living_post = living_post;
+        frame.player_post = player_post;
         frame.canceled.clear();
     });
 }
@@ -147,6 +151,10 @@ impl Game<'_> {
     pub(super) fn mob_render_listened(&self) -> bool {
         FRAME.with_borrow(|frame| frame.listened)
     }
+    /// Whether a Post listener can read the final model of this entity.
+    pub(super) fn mob_render_post_listened(&self, player: bool) -> bool {
+        FRAME.with_borrow(|frame| frame.living_post || (player && frame.player_post))
+    }
     /// Whether a mod's pre hook canceled the drawing of entity `id` this frame: the later passes
     /// (flames, name tags, shadows, leashes) leave it out too.
     pub(in crate::game) fn render_canceled(&self, id: u32) -> bool {
@@ -165,8 +173,8 @@ impl Game<'_> {
     /// it is this window's own), then `render_living_pre`, each from a draw posed at the feet and
     /// turned with the body, whose geometry is kept. None when one canceled: the entity draws
     /// nothing more this frame and its post hooks aren't asked, but for a player whose living pre
-    /// alone canceled, whose `render_player_post` is asked here. Else the parts of the vanilla
-    /// model the hooks hid. `listened` is the frame's [`Game::mob_render_listened`].
+    /// alone canceled, whose `render_player_post` is asked here without a model. Else the parts
+    /// of the vanilla model the hooks hid. `listened` is the frame's [`Game::mob_render_listened`].
     #[allow(clippy::too_many_arguments)]
     pub(super) fn mod_render_pre(
         &self,
@@ -239,8 +247,8 @@ impl Game<'_> {
     }
     /// The layers mods added to `mob`'s type or player model (`register_entity_layers`), drawn
     /// after its vanilla model and layers: `layers`, looked up once for the mob by `mod_layers`,
-    /// whose answer also decided whether the draw kept its parts. `who` is set for a player, and
-    /// `parts` are the humanoid parts as the vanilla draw posed them this frame, kept by it.
+    /// whose answer also decided whether the draw kept its model. `who` is set for a player, and
+    /// `model` lends the final model as the vanilla draw posed it, if one ran.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn mod_layer_geometry(
         &self,
@@ -261,8 +269,8 @@ impl Game<'_> {
     }
     /// The mods' post hooks for `mob`, whose pre hooks weren't canceled: `render_living_post`,
     /// then, for a player (`who`), `render_player_post`. Asked whether or not its layers drew (a
-    /// spectating player draws none). `parts` are the humanoid parts as the vanilla draw posed
-    /// them this frame, kept by it.
+    /// spectating player draws none). `model` is the same borrowed model offered to the layers,
+    /// absent if there was no vanilla body pose.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn mod_render_post(
         &self,
@@ -275,14 +283,15 @@ impl Game<'_> {
         out: &mut Vec<Vertex>,
     ) {
         // Every mob in view each frame: only when a mod listens.
-        if !self.mob_render_listened() {
-            return;
-        }
+        let (living_post, player_post) =
+            FRAME.with_borrow(|frame| (frame.living_post, frame.player_post));
         let local = who.as_ref().is_some_and(|who| who.local);
-        self.mod_entity_draw(mob, local, partial, camera, light, out, |render, draw| {
-            self.native_render_living_post(render, model, draw);
-        });
-        if let Some(who) = &who {
+        if living_post {
+            self.mod_entity_draw(mob, local, partial, camera, light, out, |render, draw| {
+                self.native_render_living_post(render, model, draw);
+            });
+        }
+        if player_post && let Some(who) = &who {
             self.mod_entity_draw(mob, local, partial, camera, light, out, |render, draw| {
                 self.native_render_player_post(render, who, model, draw);
             });

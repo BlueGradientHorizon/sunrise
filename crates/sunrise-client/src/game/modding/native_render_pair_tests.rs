@@ -73,9 +73,11 @@ impl Hooks for Pair {
         event: &mut RenderPlayerPostEvent<'_>,
     ) {
         let mut heard = self.0.lock().unwrap();
-        heard
-            .events
-            .push(format!("player_post {}", event.who.local));
+        heard.events.push(format!(
+            "player_post {} model {}",
+            event.who.local,
+            event.model.is_some()
+        ));
     }
 }
 
@@ -238,15 +240,19 @@ fn the_player_pair_wraps_the_living_pair() {
                 "player_pre true",
                 "living_pre 4321",
                 "living_post 4321",
-                "player_post true"
+                "player_post true model true"
             ]
         );
         heard.lock().unwrap().cancel_living.push(4321);
         own_player_frame(game, false);
         assert_eq!(
             events(&heard),
-            ["player_pre true", "living_pre 4321", "player_post true"],
-            "a canceled living pre still asks the player post"
+            [
+                "player_pre true",
+                "living_pre 4321",
+                "player_post true model false"
+            ],
+            "a canceled living pre still asks the player post, without a model"
         );
         assert!(game.own_render_canceled());
         heard.lock().unwrap().cancel_player.push(true);
@@ -272,7 +278,7 @@ fn a_spectator_draws_no_layers_but_gets_its_post_hooks() {
                 "player_pre true",
                 "living_pre 4321",
                 "living_post 4321",
-                "player_post true"
+                "player_post true model true"
             ]
         );
         // A spectating mannequin in the level's draw.

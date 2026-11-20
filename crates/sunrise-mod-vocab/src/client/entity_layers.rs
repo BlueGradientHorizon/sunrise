@@ -35,15 +35,16 @@ pub enum LayerTarget {
 /// Entities of a target share one layer, so what differs between them comes from
 /// [`EntityRenderState`].
 ///
-/// A frame has no `Host`: drawing reads nothing of the world but what the state, the parts and
+/// A frame has no `Host`: drawing reads nothing of the world but what the state, the model and
 /// `draw` give. A layer that needs more reads it in a hook and keeps what it read.
 pub trait EntityRenderLayer: Send + Sync + 'static {
     /// `RenderLayer.submit`: draw over `entity` with `draw`'s helpers (`quad`, `cube`, `block`,
     /// `item`, `model_part`), after its model and the layers before this one. The pose stack starts
     /// in the entity's frame: at its feet, turned with its body, +z the way it faces, +x its left,
-    /// +y up, in blocks (`entity.yaw` is the body's turn, `entity.pitch` the head's). `parts` are a
-    /// humanoid model's parts as vanilla posed them this frame, to attach to an arm or the head;
-    /// None for a model that isn't humanoid. `draw` also has the partial tick, the game time and
+    /// +y up, in blocks (`entity.yaw` is the body's turn, `entity.pitch` the head's). `model`
+    /// borrows the final posed body hierarchy for this callback (also passed to the Post hooks),
+    /// or `None` if no body pose was produced, for example by a successful replacement renderer.
+    /// `draw` also has the partial tick, the game time and
     /// the entity's light. Asked once a frame for each entity of the target in view, but not for
     /// one whose `render_living_pre` or `render_player_pre` a mod canceled: as with NeoForge's
     /// canceled `RenderLivingEvent.Pre`, none of its layers draw then. A frame is

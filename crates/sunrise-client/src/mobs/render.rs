@@ -13,7 +13,7 @@ use std::f32::consts::PI;
 use sunrise_core::geometry::trig::Mth;
 
 mod frame_model;
-pub use frame_model::{BakedFrameModel, BakedFrameModels, BakedFrameNode};
+pub use frame_model::{BakedFrameModel, BakedFrameModels, BakedFrameNode, FrameModelPose};
 
 // The invisible body a viewer still sees (`Entity.isInvisibleTo`), beside this file.
 #[path = "invisible_body.rs"]
@@ -1477,15 +1477,24 @@ pub fn render_with(
 pub struct FrameDraw {
     /// Parts to omit from the body and the layers on its own model.
     pub hidden: mod_api::HiddenParts,
-    /// Whether the post hooks or mod layers need the posed parts.
+    /// Whether the post hooks or mod layers need the final model.
     pub capture_model: bool,
-    /// The humanoid pose from the draw, when requested.
-    pub parts: Option<mod_api::PosedParts>,
+    /// The baked model and original body poses from the draw, when requested.
+    pub model: Option<FrameModelPose>,
+}
+
+impl FrameDraw {
+    /// Borrow the captured body model for layer and Post callbacks.
+    pub fn model(&self) -> Option<&dyn mod_api::FrameModel> {
+        self.model
+            .as_ref()
+            .map(|model| model as &dyn mod_api::FrameModel)
+    }
 }
 
 /// [`render_with`], applying `frame.hidden` to the body after Skin Customization
 /// and to the layers on its own model, but not to armour or the other layers.
-/// For a humanoid, `frame.capture_parts` keeps the same pose for post hooks and mod layers.
+/// `frame.capture_model` keeps the pose the draw used for post hooks and mod layers.
 #[allow(clippy::too_many_arguments)]
 pub fn render_with_frame(
     m: &Mob,
@@ -1498,6 +1507,7 @@ pub fn render_with_frame(
     frame: &mut FrameDraw,
     out: &mut Vec<Vertex>,
 ) {
+    frame.model = None;
     let paint = Some(body_color(m, alpha));
     // The invisibility effect hides the model (a drinking wandering trader);
     // an illusioner shows its four mirror images instead.
@@ -1549,6 +1559,7 @@ pub fn render_skinned(
         render_with_frame(m, alpha, camera, atlas, light, data, &[], frame, out);
         return;
     }
+    frame.model = None;
     render_visible(
         m,
         alpha,
@@ -1819,6 +1830,7 @@ pub fn render_layers(
     frame: &mut FrameDraw,
     out: &mut Vec<Vertex>,
 ) {
+    frame.model = None;
     let base = base_transform(m, alpha, camera);
     render_visible(
         m, alpha, base, atlas, light, data, extra, None, frame, out, None,
@@ -1961,14 +1973,6 @@ fn posed_body(
     }
     let anchors = custom.map_or(Vec::new(), |c| c.anchors.clone());
     (model, poses, anchors)
-}
-/// The humanoid parts of a body drawn with `poses`, for the mods' post hooks and layers: read from the poses the
-/// draw already made, so nothing is posed twice; fixed-size, nothing allocated.
-fn posed_parts(poses: &Poses) -> Option<mod_api::PosedParts> {
-    mod_api::PosedParts::new(|part| {
-        let name = part.model_name();
-        Some((poses.pose_of(name)?, !poses.is_hidden_named(name)))
-    })
 }
 // Validate names against this frame's model before mutating its body poses.
 // Return the borrowed name so a repeated refusal never allocates an error string.
@@ -2172,21 +2176,17 @@ fn render_visible(
     // layers over its own model (`getParentModel`) draw without them, the armour and the other
     // layers below with every part.
     let mut hidden_poses = Poses::pooled();
-    let body_poses: &Poses = if paint.is_none() || frame.hidden.is_empty() {
-        &poses
-    } else {
+    let apply_hidden = paint.is_some() && !frame.hidden.is_empty();
+    let body_poses: &Poses = if apply_hidden {
         hidden_poses.copy_from(&poses);
         if let Err(name) = hide_parts(&mut hidden_poses, &frame.hidden) {
             report_unknown_hidden_part(&m.kind.id, name);
             return;
         }
         &hidden_poses
+    } else {
+        &poses
     };
-    // The mods' post hooks' snapshot: the body's parts as drawn, for `HumanoidMobRenderer`'s families
-    // (`anim::extracts_humanoid`) only.
-    if frame.capture_parts && anim::extracts_humanoid(m) {
-        frame.parts = posed_parts(body_poses);
-    }
     let draw_body = |out: &mut Vec<Vertex>, skin: &mut Option<&mut super::skin::Skin>| {
         // A player or mannequin whose skin has no atlas sprite (an evicted or
         // never stored download) draws with its default skin, not invisibly.
@@ -2406,6 +2406,18 @@ fn render_visible(
     }
     if shell_last {
         draw_body(out, &mut skin);
+    }
+    if frame.capture_model
+        && let Some(layout) = custom_body
+            .map(|custom| &custom.frame_model)
+            .or_else(|| data.mob_data().frame_models.get(&model))
+    {
+        // Keep the original pooled poses, not a second animation or a copy. Each mirror
+        // that renders replaces the capture, leaving the last one for layers and Post.
+        frame.model = Some(FrameModelPose {
+            layout: layout.clone(),
+            poses: if apply_hidden { hidden_poses } else { poses },
+        });
     }
 }
 /// `EnergySwirlLayer`'s model, texture and `xOffset(t)` for a charged creeper
@@ -2848,9 +2860,9 @@ mod tests {
     }
 
     /// A zombie whose model is a humanoid built here (head with its hat, body, arms, legs: one
-    /// face each), and empty mob data: what the posed-parts tests draw, without `.local`.
+    /// face each), and baked mob data: what the frame-model tests draw, without `.local`.
     fn humanoid_zombie() -> (Mob, MobData) {
-        let cube = |x: f32| serde_json::json!({ "pose": [x, 0.0, 0.0], "polygons": [[[x, 0.0, 0.0, 0.0, 0.0], [x + 1.0, 0.0, 0.0, 1.0, 0.0], [x + 1.0, 1.0, 0.0, 1.0, 1.0], [x, 1.0, 0.0, 0.0, 1.0]]] });
+        let cube = pose_test_cube;
         let mut head = cube(0.0);
         head["children"] = serde_json::json!({ "hat": cube(0.0) });
         let model = serde_json::json!({ "children": {
@@ -2876,7 +2888,7 @@ mod tests {
             biome_tags: Default::default(),
             entity_tags: Default::default(),
             villager_hats: Default::default(),
-            frame_models: Default::default(),
+            frame_models: BakedFrameModels::bake([mob.kind.as_ref()]),
             cem: Default::default(),
             random_textures: Default::default(),
             emissive: Default::default(),
@@ -2889,7 +2901,7 @@ mod tests {
         (mob, data)
     }
 
-    // The mods' post hooks' posed parts are kept from the body's own draw, on every entry the game draws
+    // The final model and pose come from the body's own draw, on every entry the game draws
     // a mob or player through (CPU, GPU, layers only), and keeping them changes nothing drawn
     // (#2060, #2464).
     include!("render_pose_tests.rs");
@@ -2926,7 +2938,7 @@ mod tests {
                 &mut frame,
                 &mut out,
             );
-            (out.len(), frame.parts.expect("a humanoid"))
+            (out.len(), frame.model.expect("the body model"))
         };
         let draw =
             |hidden, extra: &[(&Part, [f32; 4], u32, u32, bool)]| draw_parts(hidden, extra).0;
@@ -2952,19 +2964,17 @@ mod tests {
             "only the body loses the arm"
         );
 
-        // `render_living_post` reads the parts as the body drew them: the hidden arm doesn't draw, and
-        // nothing else changed (#2464).
+        // The final pose stays in place when a pre hook hides a part, and visibility
+        // propagates to all its children even though only the head was marked hidden.
+        use mod_api::FrameModel;
         let (_, shown) = draw_parts(hide(&[]), &[]);
-        let (_, armless) = draw_parts(hide(&[mod_api::HumanoidPart::RightArm]), &[]);
-        for part in mod_api::HumanoidPart::ALL {
-            let (a, b) = (shown.get(part), armless.get(part));
-            if part == mod_api::HumanoidPart::RightArm {
-                let (a, b) = (a.unwrap(), b.unwrap());
-                assert!(a.visible && !b.visible, "the hidden arm doesn't draw");
-                assert_eq!(a.pose, b.pose, "still posed where vanilla posed it");
-            } else {
-                assert_eq!(a, b, "{part:?}");
-            }
+        let (_, headless) = draw_parts(hide(&[mod_api::HumanoidPart::Head]), &[]);
+        for name in ["head", "hat", "body", "right_arm"] {
+            let original = shown.part(name).unwrap();
+            let edited = headless.part(name).unwrap();
+            assert!(original.visible);
+            assert_eq!(edited.visible, !matches!(name, "head" | "hat"), "{name}");
+            assert_eq!(edited.pose(), original.pose(), "{name}");
         }
     }
 

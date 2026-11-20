@@ -824,11 +824,16 @@ impl Game<'_> {
         let Some(hidden) = pre else {
             return;
         };
-        // The mods' layers' posed parts, kept from the draw below while they want them.
-        let layers = self.mod_layers(m);
+        // AvatarRenderer.shouldRenderLayers: a spectator draws no layers.
+        let show_layers = sunrise_client::mobs::render::layers_shown(m);
+        let layers = if show_layers {
+            self.mod_layers(m)
+        } else {
+            None
+        };
         let mut frame_draw = FrameDraw {
             hidden,
-            capture_model: listened || layers.is_some(),
+            capture_model: layers.is_some() || (listened && self.mob_render_post_listened(true)),
             ..Default::default()
         };
         // A spectator still draws its own model in third person: the poses'
@@ -861,8 +866,7 @@ impl Game<'_> {
             );
         }
         let model = frame_draw.model();
-        // AvatarRenderer.shouldRenderLayers: a spectator draws no layers.
-        if sunrise_client::mobs::render::layers_shown(m) {
+        if show_layers {
             let chest = self.armor[1].as_ref().map(|s| &*s.item);
             // CapeLayer: no cape on an invisible player (`isInvisible`, whoever looks).
             if !self.own_invisible() {

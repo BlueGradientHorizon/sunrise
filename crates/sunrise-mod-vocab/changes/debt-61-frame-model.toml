@@ -1,0 +1,42 @@
+ids = [
+    "type:PosedPart",
+    "type:PosedPart.part",
+    "type:PosedPart.pose",
+    "type:PosedPart.visible",
+    "type:PosedParts",
+    "type:PosedParts.parts",
+    "handle:PosedParts::new",
+    "handle:PosedParts::get",
+    "handle:PosedParts::iter",
+    "trait:FrameModel",
+    "method:FrameModel::root",
+    "method:FrameModel::part",
+    "method:FrameModel::part_at",
+    "type:FrameModelPart",
+    "handle:FrameModelPart::pose",
+    "method:EntityRenderLayer::submit",
+    "hook:render_living_post",
+    "hook:render_living_post.parts",
+    "hook:render_living_post.model",
+    "type:RenderLivingPostEvent.parts",
+    "type:RenderLivingPostEvent.model",
+    "hook:render_player_post",
+    "hook:render_player_post.parts",
+    "hook:render_player_post.model",
+    "type:RenderPlayerPostEvent.parts",
+    "type:RenderPlayerPostEvent.model",
+]
+why = "Layers and Post hooks lend the selected model and its final pose instead of copying a fixed list of humanoid parts. Nonhumanoids and custom pack models are readable too, including descendants of a hidden part."
+migrate = """
+Rebuild for render_living_post and render_player_post version 2. Replace event.parts with
+event.model, and change the layer's submit parameter from parts: Option<&PosedParts> to
+model: Option<&dyn FrameModel>. Handle None as no body pose, not as a nonhumanoid: it still
+occurs for successful replacement renderers and a player Post after only living Pre canceled.
+Replace parts.get(p) with model.part(p.model_name()), part.part with part.name or part.index,
+and part.pose with part.pose(). part.visible now includes ancestors; true does not guarantee
+any cubes were drawn. Replace the parts array and iter() with model.root() and walks through
+first_child and next_sibling using model.part_at(index); to retain the old humanoid order,
+filter HumanoidPart::ALL with model.part(p.model_name()). The indices are not enum ordinals.
+There is no PosedParts::new: read the model already provided by the callback. Save a copied
+PartPose or an owned name if needed after the callback; the view itself has no Wire form.
+"""

@@ -1,4 +1,4 @@
 pub use client::posed_parts::{
-    HiddenParts, HideError, HumanoidPart, HumanoidPose, MAX_HIDDEN_PARTS, MAX_PART_NAME, PosedPart,
-    PosedParts,
+    FrameModel, FrameModelPart, HiddenParts, HideError, HumanoidPart, HumanoidPose,
+    MAX_HIDDEN_PARTS, MAX_PART_NAME,
 };

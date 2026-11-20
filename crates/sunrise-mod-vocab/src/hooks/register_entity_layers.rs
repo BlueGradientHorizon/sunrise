@@ -62,9 +62,9 @@ entity whose `render_living_pre` or `render_player_pre` a mod canceled draws non
 NeoForge's canceled `RenderLivingEvent.Pre` skips them. Several mods may add to one target: their layers
 draw in the order they were added, after the entity's model and its vanilla layers, each from the entity's
 frame (at its feet, turned with its body, as `render_living_pre` draws). `entity.yaw` is the body's turn
-and `entity.pitch` the head's; `parts` has a humanoid model's posed parts, to attach to an arm or the
-head; they are kept from the model's draw only for a type or player model with a layer (or while a mod
-listens to the render hook pair). A layer that returns an `Err` or panics is logged once with the error
+and `entity.pitch` the head's. `model` lends the final body hierarchy for the callback, including for
+nonhumanoids, or `None` if no body pose was produced. Read a named part or follow the hierarchy
+to attach geometry. A layer that returns an `Err` or panics is logged once with the error
 and asked no more until the next resource load adds it again; what it drew that frame is dropped. The layers draw on the mobs (vanilla's and the content mods'
 living types) and the players; the armour stand and the ender dragon take them once their own draws run
 layers, in a follow-up of #860, which lifts their refusal."#]

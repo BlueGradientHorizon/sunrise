@@ -97,34 +97,27 @@ fn client_humanoid_setup_reaches_body_skinned_and_layer_routes() {
                     assert!(!events.is_empty(), "{kind} route {route}");
                     assert!(events.iter().all(|(id, ty)| *id == 73 && ty == kind));
                     drop(events);
-                    if let Some(parts) = draw.parts {
-                        let body = parts.get(HumanoidPart::Body).unwrap();
-                        assert_eq!(body.pose.y_rot, 0.19, "{kind} route {route}");
-                    } else {
-                        // The existing post-render snapshot intentionally covers
-                        // HumanoidMobRenderer families, not EndermanRenderer.
-                        // Prove its edit through actual geometry instead of
-                        // broadening that separate hook's publication contract.
-                        assert_eq!(kind, "minecraft:enderman", "route {route}");
-                        if route == 0 {
-                            let mut baseline = Vec::new();
-                            render::render_with_frame(
-                                &mob,
-                                0.5,
-                                glam::DVec3::ZERO,
-                                &lookup,
-                                0xf0f0,
-                                game.res.mob_data(),
-                                &[],
-                                &mut render::FrameDraw::default(),
-                                &mut baseline,
-                            );
-                            assert_eq!(out.len(), baseline.len());
-                            assert!(
-                                out.iter().zip(&baseline).any(|(a, b)| a.pos != b.pos),
-                                "enderman body edit must change drawn geometry"
-                            );
-                        }
+                    let model = draw.model().expect("the baked body was posed");
+                    let body = model.part("body").unwrap();
+                    assert_eq!(body.pose().y_rot, 0.19, "{kind} route {route}");
+                    if kind == "minecraft:enderman" && route == 0 {
+                        let mut baseline = Vec::new();
+                        render::render_with_frame(
+                            &mob,
+                            0.5,
+                            glam::DVec3::ZERO,
+                            &lookup,
+                            0xf0f0,
+                            game.res.mob_data(),
+                            &[],
+                            &mut render::FrameDraw::default(),
+                            &mut baseline,
+                        );
+                        assert_eq!(out.len(), baseline.len());
+                        assert!(
+                            out.iter().zip(&baseline).any(|(a, b)| a.pos != b.pos),
+                            "enderman body edit must change drawn geometry"
+                        );
                     }
                 }
             }

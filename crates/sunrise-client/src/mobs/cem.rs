@@ -42,7 +42,7 @@ pub struct CemModels {
 pub struct CemLayer {
     pub model: Arc<Part>,
     /// The hierarchy of this replacement, including the pack's own bones.
-    pub frame_model: BakedFrameModel,
+    pub frame_model: Arc<BakedFrameModel>,
     /// The `.jem`'s animations, run after the vanilla animation.
     pub animation: Option<super::cem_anim::Animation>,
     /// The atlas name of the `.jem`'s texture (`entity/zombie/zombie_green`), drawn instead of
@@ -683,7 +683,7 @@ impl CemLayer {
             old_layout(&mut out, scale);
         }
         Self {
-            frame_model: BakedFrameModel::bake(&out),
+            frame_model: Arc::new(BakedFrameModel::bake(&out)),
             model: Arc::new(out),
             animation,
             texture: jem.texture.as_deref().and_then(atlas_name),
@@ -787,7 +787,7 @@ impl Legacy {
                     let mut tree = (**part).clone();
                     old_layout(&mut tree, self.taller);
                     CemLayer {
-                        frame_model: BakedFrameModel::bake(&tree),
+                        frame_model: Arc::new(BakedFrameModel::bake(&tree)),
                         model: Arc::new(tree),
                         animation: None,
                         texture: None,

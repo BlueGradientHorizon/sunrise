@@ -311,8 +311,8 @@ Each mob and player in view gets the render hook pair once a frame, NeoForge's
 3. the model and its vanilla layers, or in their place the renderer a mod registered for its type
    ([entity renderers](entity-renderers.md)), then the layers mods added to its type
    ([entity layers](entity-layers.md));
-4. `render_living_post(entity, parts, draw)`;
-5. `render_player_post(player, who, parts, draw)`, for a player only.
+4. `render_living_post(entity, model, draw)`;
+5. `render_player_post(player, who, model, draw)`, for a player only.
 
 The order today: the model and the layers are drawn before the post hooks; the entity's name tag, leash, flames
 and shadow are drawn in the frame's later passes, after them. The reference draws the leash and the name tag
@@ -325,18 +325,26 @@ of that entity this frame: its model (or its type's registered renderer), its la
 shadow, flames, leash and glowing outline, and the post hooks. A mod that draws one entity's model of
 its own draws it in `render_living_pre` and cancels; one that draws every entity of a type registers
 a renderer for the type instead; one that wants the name tag or the shadow then draws them itself, or doesn't cancel.
-Canceling only `render_living_pre` of a player still asks its `render_player_post`. An entity the
-frame culls gets neither hook. The game asks once a frame whether any mod listens to the four, and
-with none builds nothing for them.
+Canceling only `render_living_pre` of a player still asks its `render_player_post`, with `model`
+set to `None`. An entity the frame culls gets neither hook. The game asks once a frame whether any
+mod listens to the four, and with none builds nothing for them.
 
-## A player's or humanoid's parts
+## Read the final body model
 
-`render_living_post` and `render_player_post` get a humanoid's parts as vanilla posed them this frame (`parts`,
-`HumanoidModel.setupAnim`), read-only, to attach geometry to an arm or the head without
-animating it again. Only `HumanoidMobRenderer`'s families have them (players, zombies and their
-kin, skeletons, piglins); every other mob gets `None`, a cow included, though its model has a
-head and a body. `PosedParts` is a fixed-size snapshot: `get(part)` or `iter()`. It is taken
-from the vanilla body's own draw, so a part `render_player_pre` hid (below) has `visible` false.
+A registered layer and both Post hooks borrow the same `Option<&dyn FrameModel>` for their
+callback. It is the selected body's own pose after animation, including custom resource-pack models
+and the posed body beneath a layers-only draw. It works for nonhumanoids too. `None` means there
+was no body pose, for example when a registered replacement renderer drew instead.
+
+Use `model.part("head")` for the first exact name match, or `model.root()` and the `first_child`
+and `next_sibling` links to walk the model. `model.part_at(index)` follows a link or returns `None`
+for an out-of-range index. The `parent` links let you compose a part's ancestors when attaching
+geometry to it. `part.pose()` gives a parent-relative `PartPose`: translation in texels, rotation
+in radians, and unitless scale. Indices and borrows are valid only for this model in this callback.
+A part's `visible` is false if it or an ancestor is hidden; true permits traversal but does not
+mean that part submitted its own cubes.
+
+## Hide parts before drawing
 
 `render_player_pre` can hide single parts of the vanilla player model instead of replacing all of
 it: `hidden.hide(HumanoidPart::Head)`, as a mod drawing its own outer skin layer does.
