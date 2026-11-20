@@ -141,7 +141,9 @@ migrate = "Replacement ids: point:sunrise_client::game::level_tick::Game<'_>::ti
 A note can also say that a merge already changed its ids, without a note, with `landed = "<full merge sha>"`. Its ids are
 then checked against that merge's first parent and the merge itself, not against the pull request that adds the note,
 and must have changed there: a wrong `landed` fails the report, naming the note and the id. The merge must have two
-parents. The pull request's own comparison leaves such notes out, and a note without `landed` is checked as before.
+parents. The notes that merge brought itself count as coverage in that comparison, read apart from the late ones; their
+ids are not checked again for staleness, since they were when the merge landed. The pull request's own comparison
+leaves notes with `landed` out, and a note without `landed` is checked as before.
 
 The reader checks new top-level notes; a note with an unknown key, a missing `ids` or `why`, an empty `ids`, or an id
 that did not change is refused. `changes/history/` holds backfilled notes in the same format. The reader does not

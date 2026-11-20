@@ -1,2 +1,1 @@
 sunrise-mod-api-gen a_landed_note_is_checked_only_against_its_own_merge test:surface_diff daily child-process
-sunrise-mod-api-gen a_merges_own_notes_cover_its_diff_without_being_held_to_it test:surface_diff daily child-process

@@ -222,9 +222,10 @@ fn a_landed_note_is_checked_only_against_its_own_merge() {
 
 #[test]
 #[ignore = "daily"]
-fn a_merges_own_notes_cover_its_diff_without_being_held_to_it() {
+fn a_merges_own_notes_cover_its_diff_apart_from_the_late_ones() {
     let dir = folder();
     let sha = "6597e0855f562498319f093afcf2ed1ea8d717cb";
+    let late = |ids: &str| format!("ids = [{ids}]\nwhy = \"Late.\"\nlanded = \"{sha}\"\n");
     let gated = [
         "--notes",
         "changes",
@@ -232,25 +233,54 @@ fn a_merges_own_notes_cover_its_diff_without_being_held_to_it() {
         "base",
         "--landed",
         sha,
+        "--covered-by",
+        "merge",
+        "--covered-base",
+        "parent",
         "--gate",
     ];
     // fn:spawn's removal, with no note at all, is breaking and unnoted.
+    for folder in ["changes", "base", "merge", "parent"] {
+        std::fs::create_dir_all(dir.path().join(folder)).unwrap();
+    }
     let (code, _, err) = run(dir.path(), &gated);
     assert_eq!(code, 1);
     assert!(
         err.contains("breaking change without a change note: fn:spawn"),
         "{err}"
     );
-    // The merge's own note covers it; one naming an unchanged id is coverage, not stale.
+    // The merge's own note covers it, and its unchanged fn:keep is not stale: it was checked when it merged.
     note(
         dir.path(),
-        "changes",
-        "own.toml",
+        "merge",
+        "late.toml",
         "ids = [\"fn:spawn\", \"fn:keep\"]\nwhy = \"Then.\"\n",
     );
     let (code, out, err) = run(dir.path(), &gated);
     assert_eq!(code, 0, "{err}");
     assert!(out.contains("Then."), "{out}");
+    // A late note of the same file name is read apart from it: still checked, and a wrong id still fails.
+    note(dir.path(), "changes", "late.toml", &late("\"fn:keep\""));
+    let (code, _, err) = run(dir.path(), &gated);
+    assert_eq!(code, 1);
+    assert!(
+        err.contains("change note late.toml names fn:keep, which did not change"),
+        "{err}"
+    );
+    // Nor does a file of that name in the first parent's notes hide it.
+    note(
+        dir.path(),
+        "parent",
+        "late.toml",
+        "ids = [\"fn:x\"]\nwhy = \"Old.\"\n",
+    );
+    let (code, _, err) = run(dir.path(), &gated);
+    assert_eq!(code, 1);
+    assert!(err.contains("names fn:keep, which did not change"), "{err}");
+    note(dir.path(), "changes", "late.toml", &late("\"fn:spawn\""));
+    let (code, out, err) = run(dir.path(), &gated);
+    assert_eq!(code, 0, "{err}");
+    assert!(out.contains("Late."), "{out}");
 }
 
 #[test]
