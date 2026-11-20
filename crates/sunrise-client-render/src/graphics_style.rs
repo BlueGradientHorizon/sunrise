@@ -275,7 +275,7 @@ pub fn cost_color(cost: Cost) -> u32 {
     hex(cost.rgb(), 255)
 }
 
-/// An atlas of vanilla's widget sprites from `assets/minecraft/textures/gui/sprites/widget/`, as a pack lays them out.
+/// An atlas of the vanilla widget sprites and menu backgrounds the settings screens draw, as a pack lays them out.
 #[cfg(test)]
 pub(crate) fn widget_atlas() -> HudAtlas {
     let root = tempfile::tempdir().unwrap();
@@ -286,23 +286,27 @@ pub(crate) fn widget_atlas() -> HudAtlas {
         r#"{"sources":[{"type":"minecraft:directory","prefix":"","source":"gui/sprites"}]}"#,
     )
     .unwrap();
-    let widgets = assets.join("textures/gui/sprites/widget");
-    std::fs::create_dir_all(&widgets).unwrap();
+    let textures = assets.join("textures/gui");
     for (name, w, h) in [
-        ("checkbox", 17, 17),
-        ("checkbox_highlighted", 17, 17),
-        ("checkbox_selected", 17, 17),
-        ("checkbox_selected_highlighted", 17, 17),
-        ("button", 200, 20),
-        ("button_highlighted", 200, 20),
-        ("button_disabled", 200, 20),
-        ("text_field", 200, 20),
-        ("text_field_highlighted", 200, 20),
-        ("scroller", 6, 32),
-        ("scroller_background", 6, 32),
+        ("sprites/widget/checkbox", 17, 17),
+        ("sprites/widget/checkbox_highlighted", 17, 17),
+        ("sprites/widget/checkbox_selected", 17, 17),
+        ("sprites/widget/checkbox_selected_highlighted", 17, 17),
+        ("sprites/widget/button", 200, 20),
+        ("sprites/widget/button_highlighted", 200, 20),
+        ("sprites/widget/button_disabled", 200, 20),
+        ("sprites/widget/text_field", 200, 20),
+        ("sprites/widget/text_field_highlighted", 200, 20),
+        ("sprites/widget/scroller", 6, 32),
+        ("sprites/widget/scroller_background", 6, 32),
+        ("menu_background", 32, 32),
+        ("inworld_menu_background", 32, 32),
+        ("menu_list_background", 32, 32),
+        ("inworld_menu_list_background", 32, 32),
     ] {
-        let file = std::fs::File::create(widgets.join(format!("{name}.png"))).unwrap();
-        let mut encoder = png::Encoder::new(file, w, h);
+        let path = textures.join(format!("{name}.png"));
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let mut encoder = png::Encoder::new(std::fs::File::create(path).unwrap(), w, h);
         encoder.set_color(png::ColorType::Rgba);
         encoder.set_depth(png::BitDepth::Eight);
         let pixels = vec![255; (w * h * 4) as usize];
@@ -398,6 +402,24 @@ mod tests {
         assert!(
             drew_sprite(&batch, &atlas, "widget/button"),
             "the cycler's button drawn"
+        );
+    }
+
+    /// A sprite named by its file path, as #2522 named them, fails the draw instead of leaving it blank.
+    #[test]
+    #[should_panic(expected = "no GUI sprite \"gui/sprites/widget/checkbox\"")]
+    fn a_wrong_sprite_name_fails_the_draw() {
+        let atlas = widget_atlas();
+        let mut batch = HudBatch::scratch([640, 480]);
+        ui::nine_slice(
+            &mut batch,
+            &atlas,
+            "gui/sprites/widget/checkbox",
+            0.0,
+            0.0,
+            17.0,
+            17.0,
+            WHITE,
         );
     }
 
