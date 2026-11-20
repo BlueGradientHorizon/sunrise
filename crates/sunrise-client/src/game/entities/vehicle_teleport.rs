@@ -62,12 +62,153 @@ pub(super) fn passenger_rotation(before: [f32; 2], after: [f32; 2], rider: [f32;
     [axis(0), absolute_pitch(axis(1)).unwrap_or(rider[1])]
 }
 
-/// The angles a command turned a vehicle to, with the angles it had before:
-/// what `Entity.calculatePassengerTransition` needs for the riders.
+/// An entity's position and angles.
 #[derive(Clone, Copy)]
-pub(super) struct PlacedRotation {
-    pub before: [f32; 2],
-    pub after: [f32; 2],
+pub(super) struct Pose {
+    pub position: Vec3,
+    pub rotation: [f32; 2],
+}
+
+/// A `TeleportTransition` with no motion of its own: `position` is absolute or, on a `relative` axis, a shift; a `delta` axis keeps its motion; `rotation` is unclamped.
+#[derive(Clone, Copy)]
+pub(super) struct Transition {
+    pub position: Vec3,
+    pub relative: [bool; 3],
+    pub delta: [bool; 3],
+    pub rotation: Option<[f32; 2]>,
+}
+
+impl Transition {
+    /// `TeleportCommand.performTeleport`: a relative axis carries `to - from` and keeps its motion.
+    pub(super) fn of_command(
+        from: Pose,
+        to: Vec3,
+        relative: [bool; 3],
+        rotation: Option<[f32; 2]>,
+    ) -> Self {
+        let axis = |k: usize, to: f64, from: f64| if relative[k] { to - from } else { to };
+        Self {
+            position: Vec3::new(
+                axis(0, to.x, from.position.x),
+                axis(1, to.y, from.position.y),
+                axis(2, to.z, from.position.z),
+            ),
+            relative,
+            delta: relative,
+            rotation,
+        }
+    }
+
+    /// A transition to an absolute `to` whose motion is kept (a portal's) or stopped (`/tp`'s).
+    pub(super) fn to_level(to: Vec3, motion: TeleportMotion, rotation: Option<[f32; 2]>) -> Self {
+        Self {
+            position: to,
+            relative: [false; 3],
+            delta: [matches!(motion, TeleportMotion::Keep); 3],
+            rotation,
+        }
+    }
+
+    /// `Entity.calculatePassengerTransition`: the transition of `rider` on a
+    /// vehicle standing at `vehicle` that is given `self`.
+    pub(super) fn for_passenger(self, vehicle: Pose, rider: Pose) -> Self {
+        let offset = |k: usize, rider: f64, vehicle: f64| {
+            if self.relative[k] {
+                0.0
+            } else {
+                rider - vehicle
+            }
+        };
+        Self {
+            position: Vec3::new(
+                self.position.x + offset(0, rider.position.x, vehicle.position.x),
+                self.position.y + offset(1, rider.position.y, vehicle.position.y),
+                self.position.z + offset(2, rider.position.z, vehicle.position.z),
+            ),
+            relative: self.relative,
+            delta: self.delta,
+            rotation: self.rotation.map(|[yaw, pitch]| {
+                [
+                    yaw + (rider.rotation[0] - vehicle.rotation[0]),
+                    pitch + (rider.rotation[1] - vehicle.rotation[1]),
+                ]
+            }),
+        }
+    }
+
+    /// `PositionMoveRotation.calculateAbsolute` of the position.
+    pub(super) fn position_for(self, current: Vec3) -> Vec3 {
+        let axis = |k: usize, shift: f64, current: f64| {
+            if self.relative[k] {
+                current + shift
+            } else {
+                shift
+            }
+        };
+        Vec3::new(
+            axis(0, self.position.x, current.x),
+            axis(1, self.position.y, current.y),
+            axis(2, self.position.z, current.z),
+        )
+    }
+
+    /// The transition carries no motion: a relative axis keeps its own, the others stop.
+    pub(super) fn velocity_for(self, current: Vec3) -> Vec3 {
+        Vec3::new(
+            if self.delta[0] { current.x } else { 0.0 },
+            if self.delta[1] { current.y } else { 0.0 },
+            if self.delta[2] { current.z } else { 0.0 },
+        )
+    }
+
+    /// The angles after the transition, through `Entity.setXRot`'s clamp; NaN leaves the entity's own.
+    pub(super) fn rotation_for(self, current: [f32; 2]) -> Option<[f32; 2]> {
+        let [yaw, pitch] = self.rotation?;
+        Some([
+            if yaw.is_finite() { yaw } else { current[0] },
+            absolute_pitch(pitch).unwrap_or(current[1]),
+        ])
+    }
+}
+
+/// `Entity.teleportCrossDimension`'s transitions for the general rows of one tree that left their level: the root takes `transition`, each rider its own vehicle's.
+pub(super) fn transfer_general_tree(
+    rows: &mut [super::general::GeneralRow],
+    root: u32,
+    transition: Transition,
+    turn_riders: bool,
+) {
+    let mut work = vec![(root, transition)];
+    while let Some((vehicle, transition)) = work.pop() {
+        let Some(at) = rows.iter().position(|row| row.id == vehicle) else {
+            continue;
+        };
+        let from = Pose {
+            position: rows[at].position,
+            rotation: rows[at].rotation,
+        };
+        let riders: Vec<_> = rows
+            .iter()
+            .filter(|row| row.mount == Some(vehicle))
+            .map(|row| {
+                let pose = Pose {
+                    position: row.position,
+                    rotation: row.rotation,
+                };
+                let mut next = transition.for_passenger(from, pose);
+                next.rotation = next.rotation.filter(|_| turn_riders);
+                (row.id, next)
+            })
+            .collect();
+        let row = &mut rows[at];
+        row.position = transition.position_for(row.position);
+        row.previous = row.position;
+        row.velocity = transition.velocity_for(row.velocity);
+        if let Some(rotation) = transition.rotation_for(row.rotation) {
+            row.rotation = rotation;
+        }
+        work.extend(riders);
+    }
 }
 
 /// What a teleport's `TeleportTransition` does with the entity's motion.
@@ -334,6 +475,13 @@ impl Game<'_> {
         motion: TeleportMotion,
     ) -> sunrise_client::Result<Option<bool>> {
         if let Target::General(id) = target {
+            // Entity.teleport's stopRiding(): a targeted rider leaves its vehicle first.
+            if self.dim != destination
+                && self.general_row(id).is_some_and(|row| row.mount.is_some())
+                && let Some(entity) = self.entity(id)
+            {
+                self.entity_stop_riding(entity);
+            }
             let tree = self.vehicle_tree_ids(id);
             if tree.iter().all(|&id| {
                 self.general_row(id).is_some()
@@ -344,6 +492,9 @@ impl Game<'_> {
                     id,
                     destination,
                     at,
+                    rotation,
+                    turn_riders,
+                    motion,
                 )?));
             }
             return self
@@ -514,6 +665,13 @@ impl Game<'_> {
                 TeleportMotion::Stop => None,
             };
             let from = if let Target::General(id) = target {
+                let to = Vec3::new(at[0], at[1], at[2]);
+                game.teleport_riders_first(
+                    target,
+                    to,
+                    [false; 3],
+                    rotation.filter(|_| turn_riders),
+                );
                 let row = game
                     .resident_entities
                     .general
@@ -522,10 +680,8 @@ impl Game<'_> {
                     .find(|row| row.id == id)
                     .ok_or("missing general vehicle")?;
                 let before = row.position;
-                let before_rotation = row.rotation;
-                let after = Vec3::new(at[0], at[1], at[2]);
-                row.position = after;
-                row.previous = after;
+                row.position = to;
+                row.previous = to;
                 if let Some([yaw, pitch]) = rotation {
                     if yaw.is_finite() {
                         row.rotation[0] = yaw;
@@ -537,13 +693,6 @@ impl Game<'_> {
                 if kept.is_none() {
                     row.velocity = Vec3::ZERO;
                 }
-                let rotation = rotation
-                    .filter(|_| turn_riders)
-                    .map(|after| PlacedRotation {
-                        before: before_rotation,
-                        after,
-                    });
-                game.move_riders(id, before, after, rotation);
                 Some([before.x, before.y, before.z])
             } else {
                 game.place_teleport_in_level(target, at, rotation, [false; 3], turn_riders)
@@ -670,158 +819,238 @@ impl Game<'_> {
         }
     }
 
-    /// `Entity.teleportSameDimension`: after `t` moved from `from` to `to`, its
-    /// riders move by the same offset, and to the angles the vehicle was
-    /// placed at when it turned (`calculatePassengerTransition`), staying
-    /// seated and recursive. The player in place and the hub's guests (a guest
-    /// also gets its own position packet, as `ServerPlayer.teleport` sends one
-    /// for a passenger).
-    pub(super) fn teleport_passengers(
+    /// The riders of `t`, about to be placed at `to`, teleported before it; returns the riding players' connections.
+    pub(super) fn teleport_riders_first(
         &mut self,
         t: Target,
-        from: [f64; 3],
-        to: [f64; 3],
-        rotation: Option<PlacedRotation>,
-    ) {
-        let Some(id) = vehicle_id(t) else {
-            return;
+        to: Vec3,
+        relative: [bool; 3],
+        rotation: Option<[f32; 2]>,
+    ) -> Vec<u32> {
+        let (Some(id), Some(at)) = (vehicle_id(t), self.target_position(t)) else {
+            return Vec::new();
         };
-        let (old, new) = (
-            Vec3::new(from[0], from[1], from[2]),
-            Vec3::new(to[0], to[1], to[2]),
-        );
-        self.move_riders(id, old, new, rotation);
+        let from = Pose {
+            position: Vec3::new(at[0], at[1], at[2]),
+            rotation: self.target_rotation(t),
+        };
+        self.teleport_passengers(id, from, Transition::of_command(from, to, relative, rotation))
     }
-    fn move_riders(
+
+    /// `Entity.teleportSameDimension`'s walk of `vehicle`'s riders, deepest first; returns the players' connections.
+    pub(super) fn teleport_passengers(
         &mut self,
         vehicle: u32,
-        old: Vec3,
-        new: Vec3,
-        rotation: Option<PlacedRotation>,
-    ) {
-        let riders = self.vehicle_passenger_ids(vehicle);
-        let mut guest_steps = Vec::new();
-        for id in riders {
-            let mut carried = None;
-            if let Some(m) = self.mob_object_mut(id) {
-                let from = m.position;
-                let at = passenger_destination(old, new, m.position);
-                sunrise_client::mobs::living::teleports::snap_to(m, at);
-                carried = Some((from, m.position));
-                // Entity.calculatePassengerTransition turns the rider with the
-                // vehicle, then Entity.teleportSetPosition keeps the old angles
-                // for the interpolation.
-                if let Some(placed) = rotation {
-                    let [yaw, pitch] =
-                        passenger_rotation(placed.before, placed.after, [m.yaw, m.head_pitch]);
-                    m.yaw = yaw;
-                    m.body_yaw = yaw;
-                    m.head_yaw = yaw;
-                    m.head_pitch = pitch;
-                    m.previous_yaw = yaw;
-                    m.previous_head_pitch = pitch;
-                }
-            } else if let Some(row) = self
-                .resident_entities
-                .general
-                .rows
-                .iter_mut()
-                .find(|row| row.id == id)
-            {
-                let from = row.position;
-                row.position = passenger_destination(old, new, row.position);
-                row.previous = row.position;
-                if let Some(placed) = rotation {
-                    row.rotation = passenger_rotation(placed.before, placed.after, row.rotation);
-                }
-                carried = Some((from, row.position));
-            }
-            // Each rider's `teleportSetPosition` is a position update of its own.
-            if let Some((from, to)) = carried {
-                self.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
-            }
-            self.move_riders(id, old, new, rotation);
+        from: Pose,
+        transition: Transition,
+    ) -> Vec<u32> {
+        struct Frame {
+            id: u32,
+            from: Pose,
+            transition: Transition,
+            riders: std::vec::IntoIter<u32>,
         }
-        if self.riding == Some(vehicle)
+        let mut riding = Vec::new();
+        let mut stack = vec![Frame {
+            id: vehicle,
+            from,
+            transition,
+            riders: self.vehicle_passenger_ids(vehicle).into_iter(),
+        }];
+        while let Some(frame) = stack.last_mut() {
+            if let Some(id) = frame.riders.next() {
+                let Some(pose) = self.rider_pose(id) else {
+                    continue;
+                };
+                let transition = frame.transition.for_passenger(frame.from, pose);
+                stack.push(Frame {
+                    id,
+                    from: pose,
+                    transition,
+                    riders: self.vehicle_passenger_ids(id).into_iter(),
+                });
+                continue;
+            }
+            let Some(done) = stack.pop() else { break };
+            self.teleport_riding_players(done.id, done.from, done.transition, &mut riding);
+            if !stack.is_empty() {
+                self.commit_rider(done.id, done.transition);
+            }
+        }
+        riding
+    }
+
+    fn rider_pose(&self, id: u32) -> Option<Pose> {
+        if let Some(m) = self.mob_object(id) {
+            return Some(Pose {
+                position: m.position,
+                rotation: [m.yaw, m.head_pitch],
+            });
+        }
+        let row = self
+            .resident_entities
+            .general
+            .rows
+            .iter()
+            .find(|r| r.id == id)?;
+        Some(Pose {
+            position: row.position,
+            rotation: row.rotation,
+        })
+    }
+
+    /// `Entity.teleportSetPosition` of one non-player rider, then its section step.
+    fn commit_rider(&mut self, id: u32, transition: Transition) {
+        let mut carried = None;
+        if let Some(m) = self.mob_object_mut(id) {
+            let from = m.position;
+            sunrise_client::mobs::living::teleports::snap_to(m, transition.position_for(from));
+            m.velocity = transition.velocity_for(m.velocity);
+            carried = Some((from, m.position));
+            if let Some([yaw, pitch]) = transition.rotation_for([m.yaw, m.head_pitch]) {
+                m.yaw = yaw;
+                m.body_yaw = yaw;
+                m.head_yaw = yaw;
+                m.head_pitch = pitch;
+                m.previous_yaw = yaw;
+                m.previous_head_pitch = pitch;
+            }
+        } else if let Some(row) = self
+            .resident_entities
+            .general
+            .rows
+            .iter_mut()
+            .find(|row| row.id == id)
+        {
+            let from = row.position;
+            row.position = transition.position_for(from);
+            row.previous = row.position;
+            row.velocity = transition.velocity_for(row.velocity);
+            if let Some(rotation) = transition.rotation_for(row.rotation) {
+                row.rotation = rotation;
+            }
+            carried = Some((from, row.position));
+        }
+        if let Some((from, to)) = carried {
+            self.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
+        }
+    }
+
+    /// The players seated on `vehicle` take `transition`: the acting body here (`leave_guest` publishes it), the others through the hub.
+    fn teleport_riding_players(
+        &mut self,
+        vehicle: u32,
+        from: Pose,
+        transition: Transition,
+        riding: &mut Vec<u32>,
+    ) {
+        let acting = self.lan_acting.filter(|_| self.player.is_some());
+        let seated = self.riding;
+        if seated == Some(vehicle)
             && let Some(p) = self.player.as_mut()
         {
-            let from = p.position;
-            p.position = passenger_destination(old, new, p.position);
+            let before = p.position;
+            let transition = transition.for_passenger(
+                from,
+                Pose {
+                    position: before,
+                    rotation: [self.yaw, self.pitch],
+                },
+            );
+            p.position = transition.position_for(before);
+            p.velocity = transition.velocity_for(p.velocity);
             p.teleported = true;
+            p.teleported_delta = transition.delta;
             self.previous_position = p.position;
             let (to, own) = (p.position, self.own_entity_id());
             if let Ok(own) = u32::try_from(own) {
-                self.entity_section_step(own, [from.x, from.y, from.z], [to.x, to.y, to.z]);
+                self.entity_section_step(own, [before.x, before.y, before.z], [to.x, to.y, to.z]);
             }
-        }
-        if let Some(placed) = rotation
-            && self.riding == Some(vehicle)
-        {
-            let [yaw, pitch] =
-                passenger_rotation(placed.before, placed.after, [self.yaw, self.pitch]);
-            if yaw.is_finite() {
+            if let Some([yaw, pitch]) = transition.rotation_for([self.yaw, self.pitch]) {
                 self.yaw = yaw;
-            }
-            if pitch.is_finite() {
                 self.pitch = pitch;
             }
         }
-        let [yaw, pitch] = self.vehicle_rotation(vehicle);
-        if let Some(host) = self.lan.as_mut() {
-            for i in 0..host.hub.guests.len() {
-                if host.hub.guests[i].vehicle != Some(vehicle) {
-                    continue;
+        let Some(host) = self.lan.as_mut() else {
+            return;
+        };
+        let mut steps = Vec::new();
+        for i in 0..host.hub.guests.len() {
+            let conn = host.hub.guests[i].conn;
+            let rides = if acting == Some(conn) {
+                seated
+            } else {
+                host.hub.guests[i].vehicle
+            };
+            if rides != Some(vehicle) {
+                continue;
+            }
+            riding.push(conn);
+            if acting == Some(conn) {
+                continue;
+            }
+            let [x, y, z] = host.hub.guests[i].position;
+            let before = Vec3::new(x, y, z);
+            let transition = transition.for_passenger(
+                from,
+                Pose {
+                    position: before,
+                    rotation: [host.hub.guests[i].yaw, host.hub.guests[i].pitch],
+                },
+            );
+            if transition.rotation.is_some() {
+                host.hub.guests.update(i, |g| {
+                    if let Some([yaw, pitch]) = transition.rotation_for([g.yaw, g.pitch]) {
+                        g.yaw = yaw;
+                        g.head_yaw = yaw;
+                        g.pitch = pitch;
+                    }
+                });
+            }
+            let id = host.hub.guests[i].entity_id as u32;
+            let at = transition.position_for(before);
+            host.hub.teleport_rider(
+                i,
+                [at.x, at.y, at.z],
+                transition.delta,
+                transition.rotation.is_none(),
+            );
+            host.hub.guests.update(i, |g| {
+                if let Some(m) = g.motion.as_mut() {
+                    m.velocity = transition.velocity_for(m.velocity);
                 }
-                // Entity.sendTeleportTransitionToRidingPlayers: the rider's
-                // client moves the vehicle it drives itself, so it hears the
-                // vehicle's teleport (else its next MoveVehicle undoes it).
-                host.hub.guests[i].send(&C::TeleportEntity(play::TeleportEntity {
-                    id: vehicle as i32,
-                    position: [new.x, new.y, new.z],
-                    delta: [0.0; 3],
+            });
+            steps.push((id, before, at));
+        }
+        for (id, from, to) in steps {
+            self.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
+        }
+    }
+
+    /// `Entity.sendTeleportTransitionToPlayers`: every player riding the tree hears the vehicle's written pose and motion.
+    pub(super) fn announce_vehicle_teleport(&mut self, t: Target, riding: &[u32]) {
+        let Some(id) = vehicle_id(t) else {
+            return;
+        };
+        let (Some(at), [yaw, pitch]) = (self.target_position(t), self.target_rotation(t)) else {
+            return;
+        };
+        let delta = self.transition_motion(t).unwrap_or(Vec3::ZERO);
+        let Some(host) = self.lan.as_mut() else {
+            return;
+        };
+        for &conn in riding {
+            if let Some(guest) = host.hub.guest(conn) {
+                guest.send(&C::TeleportEntity(play::TeleportEntity {
+                    id: id as i32,
+                    position: at,
+                    delta: [delta.x, delta.y, delta.z],
                     yaw,
                     pitch,
                     relatives: 0,
                     on_ground: false,
                 }));
-                if let Some(placed) = rotation {
-                    host.hub.guests.update(i, |g| {
-                        let [yaw, pitch] =
-                            passenger_rotation(placed.before, placed.after, [g.yaw, g.pitch]);
-                        g.yaw = yaw;
-                        g.head_yaw = yaw;
-                        g.pitch = pitch;
-                    });
-                }
-                let id = host.hub.guests[i].entity_id as u32;
-                let g = host.hub.guests[i].position;
-                let from = Vec3::new(g[0], g[1], g[2]);
-                let at = passenger_destination(old, new, Vec3::new(g[0], g[1], g[2]));
-                if rotation.is_some() {
-                    // A rider turned with its vehicle: its position packet
-                    // carries the new rotation and keeps its motion.
-                    host.hub.teleport_rider(i, [at.x, at.y, at.z]);
-                } else {
-                    host.hub.teleport_keeping_motion(i, [at.x, at.y, at.z]);
-                }
-                guest_steps.push((id, from, at));
             }
-        }
-        for (id, from, to) in guest_steps {
-            self.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
-        }
-    }
-
-    /// A vehicle's yaw and pitch, for the riders' teleport packet.
-    fn vehicle_rotation(&self, id: u32) -> [f32; 2] {
-        if let Some(b) = self.boats.iter().find(|b| b.id == id) {
-            [b.yaw, b.pitch]
-        } else if let Some(c) = self.carts.iter().find(|c| c.id == id) {
-            [c.yaw, c.pitch]
-        } else if let Some(m) = self.mob_object(id) {
-            [m.yaw, m.head_pitch]
-        } else {
-            [0.0, 0.0]
         }
     }
 

@@ -2037,19 +2037,24 @@ impl Hub {
         self.teleport_relative(i, Some(position), relatives, [0.0; 3]);
     }
 
-    /// A rider's own teleport when its vehicle is teleported
-    /// (`Entity.teleportSameDimension`'s passenger transition): the position,
-    /// the rotation the vehicle turned it by (absolute, as
-    /// `ServerPlayer.teleport` sends it), and its motion kept
-    /// (`Relative.DELTA`).
-    pub fn teleport_rider(&mut self, i: usize, position: [f64; 3]) {
+    /// A rider's own teleport when its vehicle is teleported (`Entity.teleportSameDimension`'s passenger transition): a `delta` axis keeps its motion, `keep_look` the look.
+    pub fn teleport_rider(&mut self, i: usize, position: [f64; 3], delta: [bool; 3], keep_look: bool) {
         {
             let value = 0;
             self.guests
                 .update(i, |guest| guest.above_ground_ticks = value);
         }
-        use play::relative::{DELTA_X, DELTA_Y, DELTA_Z};
-        self.teleport_relative(i, Some(position), DELTA_X | DELTA_Y | DELTA_Z, [0.0; 3]);
+        use play::relative::{DELTA_X, DELTA_Y, DELTA_Z, X_ROT, Y_ROT};
+        let mut relatives = 0;
+        for (flag, bit) in delta.into_iter().zip([DELTA_X, DELTA_Y, DELTA_Z]) {
+            if flag {
+                relatives |= bit;
+            }
+        }
+        if keep_look {
+            relatives |= Y_ROT | X_ROT;
+        }
+        self.teleport_relative(i, Some(position), relatives, [0.0; 3]);
     }
 
     /// A displacement of the player by `by` to `target`, made on its server copy by the caller
