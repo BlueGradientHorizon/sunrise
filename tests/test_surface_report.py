@@ -297,7 +297,9 @@ class MainTests(unittest.TestCase):
         code, out, summary = self.run_main(
             base_commit=lambda *a: ("abcd", ""),
             unpack=lambda sha, into: fetched.append(sha),
-            report=lambda *a, **kw: (1, "Surface: breaking\n"))
+            report=lambda *a, **kw: (1, "Surface: breaking\n"),
+            # The checkout's own change notes may carry `landed`; LandedTests covers that pass.
+            landed_notes=lambda head, base: {})
         self.assertEqual((code, fetched), (1, ["abcd"]))
         self.assertRegex(out, r"^Surface: breaking\nBase abcd; fetch \d+\.\ds, total \d+\.\ds\n$")
         self.assertTrue(summary.startswith("### Mod API surface\n\n```text\nSurface: breaking\nBase abcd"))
