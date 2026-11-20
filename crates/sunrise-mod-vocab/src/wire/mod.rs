@@ -929,7 +929,7 @@ impl<T: Wire, const N: usize> Wire for [T; N] {
 
 /// Sets and maps cross as a list of their entries; a key that repeats keeps the last.
 macro_rules! sets {
-    ($($ty:ident [$($bound:tt)+]),*) => {$(
+    ($($ty:ident [$($bound:tt)+] => $budget:ident),*) => {$(
         impl<T: Wire + $($bound)+> Wire for $ty<T> {
             const MIN: usize = 4;
             fn describe(schema: &mut WireSchema) -> u64 where Self: 'static {
@@ -937,8 +937,7 @@ macro_rules! sets {
             }
             fn put(&self, out: &mut Writer) {
                 out.payload_nested(|out| {
-                    // Allow for backing-table slots and per-entry metadata.
-                    if !out.charge::<(T, usize)>(self.len().saturating_mul(2)) { return; }
+                    if !out.charge_with(|budget| budget.$budget::<T>(self.len())) { return; }
                     out.put_len(self.len());
                     for item in self {
                         item.put(out);
@@ -948,7 +947,7 @@ macro_rules! sets {
             fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
                 input.payload_nested(|input| {
                     let len = input.take_len(T::MIN)?;
-                    input.charge::<(T, usize)>(len.saturating_mul(2))?;
+                    input.charge_with(|budget| budget.$budget::<T>(len))?;
                     let mut set = Self::default();
                     for _ in 0..len {
                         set.insert(T::take(input)?);
@@ -959,10 +958,10 @@ macro_rules! sets {
         }
     )*};
 }
-sets!(BTreeSet[Ord], HashSet[Eq + Hash]);
+sets!(BTreeSet[Ord] => btree, HashSet[Eq + Hash] => hash_table);
 
 macro_rules! maps {
-    ($($ty:ident [$($bound:tt)+]),*) => {$(
+    ($($ty:ident [$($bound:tt)+] => $budget:ident),*) => {$(
         impl<K: Wire + $($bound)+, V: Wire> Wire for $ty<K, V> {
             const MIN: usize = 4;
             fn describe(schema: &mut WireSchema) -> u64 where Self: 'static {
@@ -971,7 +970,7 @@ macro_rules! maps {
             }
             fn put(&self, out: &mut Writer) {
                 out.payload_nested(|out| {
-                    if !out.charge::<(K, V, usize)>(self.len().saturating_mul(2)) { return; }
+                    if !out.charge_with(|budget| budget.$budget::<(K, V)>(self.len())) { return; }
                     out.put_len(self.len());
                     for (key, value) in self {
                         key.put(out);
@@ -982,7 +981,7 @@ macro_rules! maps {
             fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
                 input.payload_nested(|input| {
                     let len = input.take_len(K::MIN + V::MIN)?;
-                    input.charge::<(K, V, usize)>(len.saturating_mul(2))?;
+                    input.charge_with(|budget| budget.$budget::<(K, V)>(len))?;
                     let mut map = Self::default();
                     for _ in 0..len {
                         let key = K::take(input)?;
@@ -994,7 +993,7 @@ macro_rules! maps {
         }
     )*};
 }
-maps!(BTreeMap[Ord], HashMap[Eq + Hash]);
+maps!(BTreeMap[Ord] => btree, HashMap[Eq + Hash] => hash_table);
 
 macro_rules! tuples {
     ($(($($name:ident),+)),*) => {$(

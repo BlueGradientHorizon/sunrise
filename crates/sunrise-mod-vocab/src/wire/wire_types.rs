@@ -37,7 +37,9 @@ impl Wire for crate::FluidResource {
         out.put(&self.0);
     }
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
-        Ok(Self::of(&input.take()?))
+        let mut stack: crate::FluidStack = input.take()?;
+        stack.amount = 1;
+        Ok(Self(stack))
     }
 }
 
@@ -280,7 +282,10 @@ impl Wire for crate::ItemStack {
         out.put(&self.item());
         out.put(&self.count());
         out.put(&self.damage_component());
-        out.put(&self.components().cloned());
+        let components = self.components();
+        if components.is_none() || out.charge_with(|budget| budget.arc::<crate::Components>(1)) {
+            out.put_opt(components);
+        }
     }
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
         let mut stack = Self::new(input.take()?, input.take()?)
@@ -289,8 +294,9 @@ impl Wire for crate::ItemStack {
             stack.set_damage(damage);
         }
         if let Some(components) = input.take::<Option<crate::Components>>()? {
+            input.charge_with(|budget| budget.arc::<crate::Components>(1))?;
             stack
-                .set_components(components.as_nbt().clone())
+                .set_components(components.into_nbt())
                 .map_err(|_| WireError::Invalid("invalid item components"))?;
         }
         Ok(stack)
@@ -714,9 +720,7 @@ impl Wire for sunrise_core::nbt::Compound {
     layout_via!(std::collections::BTreeMap<sunrise_core::nbt::JavaString, crate::Tag>);
     const MIN: usize = 4;
     fn put(&self, out: &mut Writer) {
-        if !out.charge::<(sunrise_core::nbt::JavaString, crate::Tag, usize)>(
-            self.len().saturating_mul(2),
-        ) {
+        if !out.charge_with(|budget| budget.compound(self.len())) {
             return;
         }
         out.put_len(self.len());
@@ -727,7 +731,7 @@ impl Wire for sunrise_core::nbt::Compound {
     }
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
         let len = input.take_len(sunrise_core::nbt::JavaString::MIN + crate::Tag::MIN)?;
-        input.charge::<(sunrise_core::nbt::JavaString, crate::Tag, usize)>(len * 2)?;
+        input.charge_with(|budget| budget.compound(len))?;
         let mut map = Self::new();
         for _ in 0..len {
             let key = input.take()?;

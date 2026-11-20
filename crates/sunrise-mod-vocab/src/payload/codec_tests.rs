@@ -158,7 +158,10 @@ fn java_string_list_consumes_one_level_in_both_directions() {
     let mut bytes = vec![0; 4 * usize::from(PAYLOAD_MAX_DEPTH - 1)];
     bytes.extend([1, 0, 0, 0, 1, 0, 0, 0, b'a', 0]);
     assert_eq!(encode_payload(&at_boundary, bytes.len()).unwrap(), bytes);
-    assert_eq!(decode_payload(&bytes), Ok(at_boundary));
+    assert_eq!(
+        decode_payload::<NestedKey>(&bytes).as_ref(),
+        Ok(&at_boundary)
+    );
     let over_boundary = NestedKey::Parent(Box::new(at_boundary));
     let bytes = [&[0; 4], bytes.as_slice()].concat();
     assert_eq!(
@@ -223,8 +226,10 @@ fn arc_counts_are_charged_even_for_zero_width_values() {
 
 #[test]
 fn typed_static_strings_and_unmetered_documents_are_refused() {
-    use crate::wire::{UNBOUNDED_PAYLOAD_FORM, WireError};
     use crate::{MeshDefinition, ModelPart, PartPose, Text};
+
+    const UNSUPPORTED: WireError =
+        WireError::Invalid("this Wire form is not available in typed payloads");
 
     fn ordinary_only<T: Wire>(value: &T) {
         let mut writer = Writer::new();
@@ -232,10 +237,10 @@ fn typed_static_strings_and_unmetered_documents_are_refused() {
         assert!(Reader::decode::<T>(writer.bytes()).is_ok());
         assert_eq!(
             encode_payload(value, PAYLOAD_DECODE_BUDGET),
-            Err(UNBOUNDED_PAYLOAD_FORM)
+            Err(UNSUPPORTED)
         );
         let mut input = Reader::for_payload(writer.bytes());
-        assert!(matches!(T::take(&mut input), Err(error) if error == UNBOUNDED_PAYLOAD_FORM));
+        assert!(matches!(T::take(&mut input), Err(error) if error == UNSUPPORTED));
         assert_eq!(input.rest(), writer.bytes());
     }
 
@@ -253,4 +258,22 @@ fn typed_static_strings_and_unmetered_documents_are_refused() {
         decode_payload::<&str>(&[0xff]),
         Err(WireError::Invalid(_))
     ));
+}
+
+#[test]
+fn sparse_maps_must_fit_their_retained_backing_storage() {
+    use std::collections::BTreeMap;
+    type Maps = Vec<BTreeMap<[u8; 1024], ()>>;
+
+    // Each single-entry map retains a full B-tree node, not one key-sized slot.
+    let single = BTreeMap::from([([0; 1024], ())]);
+    let mut bytes = vec![0x20, 3, 0, 0]; // 800 maps, all with one key and a zero-width value.
+    let mut one = vec![1, 0, 0, 0];
+    one.resize(1028, 0);
+    bytes.extend(one.repeat(800));
+    assert_eq!(
+        encode_payload(&vec![single; 800], bytes.len()),
+        Err(WireError::Budget)
+    );
+    assert_eq!(decode_payload::<Maps>(&bytes), Err(WireError::Budget));
 }

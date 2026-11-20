@@ -57,7 +57,7 @@ pub(super) fn put(tag: &Tag, out: &mut Writer) {
                 out.put(v);
             }
             Tag::List(v) => {
-                if !out.charge::<Tag>(v.len()) {
+                if !out.charge::<Tag>(v.len()) || (!v.is_empty() && !out.charge::<Frame>(4)) {
                     return;
                 }
                 out.put(&9u32);
@@ -66,7 +66,9 @@ pub(super) fn put(tag: &Tag, out: &mut Writer) {
                 len += 1;
             }
             Tag::Compound(v) => {
-                if !out.charge::<(JavaString, Tag, usize)>(v.len().saturating_mul(2)) {
+                if !out.charge_with(|budget| budget.compound(v.len()))
+                    || (!v.is_empty() && !out.charge::<Frame>(4))
+                {
                     return;
                 }
                 out.put(&10u32);
@@ -134,6 +136,7 @@ pub(super) fn take(input: &mut Reader<'_>) -> Result<Tag, WireError> {
                     let len = input.take_len(4)?;
                     input.charge::<Tag>(len)?;
                     if len != 0 {
+                        input.charge::<Frame>(4)?;
                         frames.push(Frame::List(len, Vec::with_capacity(len)));
                         continue;
                     }
@@ -141,8 +144,9 @@ pub(super) fn take(input: &mut Reader<'_>) -> Result<Tag, WireError> {
                 }
                 10 => {
                     let len = input.take_len(8)?;
-                    input.charge::<(JavaString, Tag, usize)>(len * 2)?;
+                    input.charge_with(|budget| budget.compound(len))?;
                     if len != 0 {
+                        input.charge::<Frame>(4)?;
                         let key = input.take()?;
                         frames.push(Frame::Map(len, Compound::new(), key));
                         continue;

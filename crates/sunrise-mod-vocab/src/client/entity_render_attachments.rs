@@ -162,6 +162,20 @@ mod tests {
     use super::*;
 
     #[test]
+    fn attachment_snapshots_use_only_the_ordinary_wire_reader() {
+        let bytes = [0; 4]; // zero entries is a valid snapshot, without any NBT to parse.
+        let snapshot = Reader::decode::<Snapshot>(&bytes).unwrap();
+        assert!(matches!(
+            crate::decode_payload::<Snapshot>(&bytes),
+            Err(WireError::Invalid(_))
+        ));
+        assert!(matches!(
+            crate::encode_payload(&snapshot, bytes.len()),
+            Err(WireError::Invalid(_))
+        ));
+    }
+
+    #[test]
     fn attachment_snapshot_wire_decode_refuses_more_than_one_render_frame() {
         let encoded = nbt::write_network(
             &Tag::Compound([("v".into(), Tag::ByteArray(vec![42; 40 * 1024]))].into()),
