@@ -1060,8 +1060,15 @@ fn run(
     c.send(&cfg::Serverbound::ClientInformation(info).encode())
         .map_err(e)?;
     let (mut reader, writer) = c.split();
-    *shared_writer.lock().unwrap() =
-        Some(QueuedWriter::new(writer).map_err(|error| Reason::plain(error.to_string()))?);
+    let writer = QueuedWriter::new(writer).map_err(|error| Reason::plain(error.to_string()))?;
+    if let Some(queue) = payloads
+        .connection
+        .as_ref()
+        .and_then(|connection| connection.droppable())
+    {
+        writer.attach_droppable(queue.clone());
+    }
+    *shared_writer.lock().unwrap() = Some(writer);
     let registries = configure(
         &mut reader,
         shared_writer,

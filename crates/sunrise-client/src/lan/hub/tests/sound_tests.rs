@@ -62,6 +62,8 @@ fn a_trident_joining_after_tracking_is_paired_before_its_throw_sound() {
             source: 7,
             entity: Some(37),
             except_entity: None,
+            seed: 0,
+            particles_before: 0,
         },
         None,
     );
@@ -151,6 +153,8 @@ fn a_captured_sound_reaches_the_client_before_its_emitter_is_removed() {
         source: 7,
         entity: Some(37),
         except_entity: None,
+        seed: 0,
+        particles_before: 0,
     };
     let mut sounds = vec![sound];
     hub.prepare_captured_sounds(&mut sounds, ctx.entities);
@@ -245,6 +249,8 @@ fn a_new_pair_does_not_reorder_sounds_or_remove_an_old_emitter_early() {
                 source: 7,
                 entity: Some(37),
                 except_entity: None,
+                seed: 0,
+                particles_before: 0,
             };
             let fresh_sound = crate::audio::CapturedSound {
                 event: "minecraft:entity.ghastling.spawn".into(),
@@ -351,6 +357,8 @@ fn direct_removals_split_the_sound_emitters_and_do_not_leak_into_the_next_batch(
             source: 6,
             entity: Some(38),
             except_entity: None,
+            seed: 0,
+            particles_before: 0,
         };
         let mut sounds = vec![
             sound.clone(),
@@ -408,6 +416,8 @@ fn captured_entity_sound_routes_by_player_dimension_range_and_exclusion() {
         source: 6,
         entity: Some(37),
         except_entity: None,
+        seed: 0,
+        particles_before: 0,
     };
     hub.guests.update(0, |g| g.position = [0.0; 3]);
     // The server broadcasts by distance even if this player does not track
@@ -492,6 +502,8 @@ fn captured_and_direct_sounds_share_the_server_seed_stream_and_synced_registry()
         source: 6,
         entity: Some(37),
         except_entity: None,
+        seed: 0,
+        particles_before: 0,
     };
     hub.sound("fixture:bound", sound.position, 1.0, 1.0, 6, None);
     let C::Sound(packet) = next_sent_packet(&rx) else {

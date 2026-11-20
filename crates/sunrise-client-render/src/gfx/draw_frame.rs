@@ -1378,6 +1378,7 @@ impl Renderer {
             native_solid_quads,
             native_cutout_quads,
             native_cutout_mipped_quads,
+            native_translucent_quads,
         ] = self.entity_batch.update(
             entities,
             frame.additive,
@@ -1409,7 +1410,8 @@ impl Renderer {
             + world_text_offset_quads
             + native_solid_quads
             + native_cutout_quads
-            + native_cutout_mipped_quads;
+            + native_cutout_mipped_quads
+            + native_translucent_quads;
         laps.lap("r_draw_lists");
         // Where the tail of materials the classic and the improved passes
         // both draw ends: the shadows, particles and items count back from it.
@@ -1420,7 +1422,8 @@ impl Renderer {
             - world_text_offset_quads
             - native_solid_quads
             - native_cutout_quads
-            - native_cutout_mipped_quads;
+            - native_cutout_mipped_quads
+            - native_translucent_quads;
         let native_clouds = self.native.as_ref().is_none_or(|n| n.vanilla_clouds);
         // A pack's core/clouds, decided before either mesh is prepared: its faces, or none and
         // the native mesh in this same frame.
@@ -2832,8 +2835,11 @@ impl Renderer {
             // Native terrain models use the block sprite arrays with their own
             // alpha/mipmap policies and ordinary opaque depth. Storage follows
             // the existing materials without moving their indices or frame tails.
-            let mut first =
-                world_quads - native_solid_quads - native_cutout_quads - native_cutout_mipped_quads;
+            let mut first = world_quads
+                - native_solid_quads
+                - native_cutout_quads
+                - native_cutout_mipped_quads
+                - native_translucent_quads;
             for (i, count) in [
                 native_solid_quads,
                 native_cutout_quads,
@@ -2852,6 +2858,20 @@ impl Renderer {
                 first += count;
             }
             pass.set_bind_group(0, &self.group, &[]);
+            // Translucent moving blocks (`RenderTypes.translucentMovingBlock`): alpha blended,
+            // depth written, quads far to near, before terrain transparency like fluids.
+            if native_translucent_quads > 0 {
+                pass.stage(self.own_timing.as_mut(), "translucent terrain models");
+                pass.set_pipeline(&self.terrain_model_pipelines[3]);
+                pass.set_bind_group(0, &self.terrain_model_group, &[]);
+                pass.set_vertex_buffer(0, self.entity_buffer.slice(..));
+                pass.draw_indexed(
+                    0..native_translucent_quads * 6,
+                    ((world_quads - native_translucent_quads) * 4) as i32,
+                    0..1,
+                );
+                pass.set_bind_group(0, &self.group, &[]);
+            }
             // Still-fluid block entities draw as their own ordinary sorted
             // translucent material, before terrain transparency. This material
             // always writes depth and never joins the improved-transparency queues.
