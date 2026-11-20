@@ -51,8 +51,9 @@ payment and `offer.out_of_stock()` to check availability.
 
 On a Sunrise server, an edit accepted by `trade_with_villager` reaches this snapshot when the
 whole result click commits. A listener that only observes a trade does not move the ordinary
-server offer refresh earlier. A refused click sends the authoritative offers and contents again
-to correct the client's prediction.
+server offer refresh earlier. A take is stale if a listener wrote through the `Host` to a player's
+inventory, cursor or menu storage (the take read its own player's; a write to any player's counts).
+A refused click sends the authoritative offers and contents again to correct the client's prediction.
 
 `Ok(None)` means the handle is no longer current, doesn't belong to the local player, or isn't a
 merchant menu. An open merchant menu can return `Ok(Some(vec![]))` before the offers arrive.

@@ -22,19 +22,14 @@ use sunrise_client::{
 use sunrise_protocol::packets::play;
 
 /// The live owner's generation covers its slots, offer list, selection, and packet snapshot.
-/// The hub owns cursor and player slots separately. A quick move reads the whole destination
-/// range; one pickup must not overwrite unrelated player-slot writes made by its listener.
+/// The action's player epoch separately covers the cursor and player-owned destinations.
 struct TakeReads {
     conn: u32,
     window: i32,
     identity: Identity,
     stamp: OwnerStamp,
     hub_generation: u64,
-    carried: Option<ItemStack>,
     creative: bool,
-    inventory: Option<Vec<Option<ItemStack>>>,
-    hotbar: Option<(usize, Option<ItemStack>)>,
-    offhand: Option<Option<ItemStack>>,
     map_id: Option<i32>,
 }
 
@@ -62,20 +57,7 @@ impl TakeReads {
                 .iter()
                 .any(|m| m.id == mob && m.alive() && !m.removed)
             && guest.menu_generation == self.hub_generation
-            && guest.carried == self.carried
             && guest.creative() == self.creative
-            && self
-                .inventory
-                .as_deref()
-                .is_none_or(|kept| kept == &guest.inventory[..36])
-            && self
-                .hotbar
-                .as_ref()
-                .is_none_or(|(slot, kept)| &guest.inventory[*slot] == kept)
-            && self
-                .offhand
-                .as_ref()
-                .is_none_or(|kept| &guest.offhand == kept)
             && self.map_id.is_none_or(|id| game.peek_map_id() == id)
     }
 }
@@ -238,6 +220,7 @@ impl Game<'_> {
             if let Some(frozen) = seen {
                 let stamp = host.menus[&conn].merchant.stamp();
                 let hub_generation = host.hub.guest(conn).expect("planned guest").menu_generation;
+                // The shared pickup decision checks its journal epoch as well as these stacks.
                 let same = frozen.clone();
                 if self.stacked_pickup(
                     route,
@@ -288,12 +271,7 @@ impl Game<'_> {
                 identity,
                 stamp: owner.merchant.stamp(),
                 hub_generation: guest.menu_generation,
-                carried: guest.carried.clone(),
                 creative: guest.creative(),
-                inventory: (input == Input::QuickMove).then(|| guest.inventory[..36].to_vec()),
-                hotbar: (input == Input::Swap && (0..9).contains(&button))
-                    .then(|| (button as usize, guest.inventory[button as usize].clone())),
-                offhand: (input == Input::Swap && button == 40).then(|| guest.offhand.clone()),
                 map_id: None,
             };
             if input == Input::Throw && button != 0 && previous.is_none() {
@@ -347,10 +325,8 @@ impl Game<'_> {
             let mut changed = false;
             let accepted = self.decided_action_on(
                 "trade_with_villager",
-                route,
-                identity,
-                // A listener may write outside this take's exact read set.
-                Epoch::Off,
+                (route, identity),
+                Epoch::Player,
                 |game| reads.fresh(game),
                 |game| {
                     let mut slot = plan.borrow_mut();
@@ -419,7 +395,7 @@ impl Game<'_> {
         true
     }
 
-    /// Install only the writes calculated by the plan; listener writes outside its read set stand.
+    /// Install only the writes calculated by the plan.
     fn apply_merchant_take(&mut self, reads: &TakeReads, mut plan: TakePlan) {
         let conn = reads.conn;
         let mob = reads.identity.target.id();

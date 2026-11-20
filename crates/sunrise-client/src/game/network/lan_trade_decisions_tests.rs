@@ -17,6 +17,12 @@ use sunrise_client::{
 };
 use sunrise_protocol::packets::play::{Clientbound, ContainerClick};
 
+#[derive(Clone, Copy)]
+enum PlayerWrite {
+    Unrelated,
+    ShiftDestination { restore: bool },
+}
+
 #[derive(Clone, Default)]
 struct Script {
     panic_on: Option<usize>,
@@ -25,9 +31,8 @@ struct Script {
     /// An answer whose result stack is not a valid one for the game.
     invalid_stack: bool,
     edit_other_merchant_and_board: bool,
-    skip_inventory: bool,
+    player_write: Option<PlayerWrite>,
     raise_second_price: bool,
-    change_shift_destination: bool,
     refuse_stacked: bool,
 }
 thread_local! {
@@ -90,17 +95,23 @@ fn trade(host: &mut dyn ServerHost, event: &mut TradeWithVillagerEvent<'_>) {
         assert_eq!(event.merchant, 40);
         USES.with(|uses| uses.borrow_mut().push(event.offer.uses));
         let s = SCRIPT.with(|s| s.borrow().clone());
-        let key = mod_api::__private::item_key("minecraft:dirt").unwrap();
-        let dirt = mod_api::ItemStack::new(key, 1).unwrap();
-        let place = ItemPlace::PlayerSlot {
-            player: 12,
-            slot: if s.change_shift_destination { 8 } else { 20 },
-        };
-        let tx = host
-            .transaction_current()
-            .expect("trade listener is inside the action");
-        if !s.skip_inventory {
-            assert_eq!(place.insert(host, &tx, &ItemResource::of(&dirt), 2), 2);
+        if let Some(write) = s.player_write {
+            let key = mod_api::__private::item_key("minecraft:dirt").unwrap();
+            let dirt = ItemResource::of(&mod_api::ItemStack::new(key, 1).unwrap());
+            let place = ItemPlace::PlayerSlot {
+                player: 12,
+                slot: match write {
+                    PlayerWrite::Unrelated => 20,
+                    PlayerWrite::ShiftDestination { .. } => 8,
+                },
+            };
+            let tx = host
+                .transaction_current()
+                .expect("trade listener is inside the action");
+            assert_eq!(place.insert(host, &tx, &dirt, 2), 2);
+            if matches!(write, PlayerWrite::ShiftDestination { restore: true }) {
+                assert_eq!(place.extract(host, &tx, &dirt, 2), 2);
+            }
         }
         if s.raise_second_price && call == 2 {
             event.offer.special_price_diff = 1;
@@ -362,7 +373,7 @@ fn unchanged(game: &mut Game<'_>, payment: u32) {
 
 #[test]
 #[ignore = "daily"]
-fn accepted_trade_keeps_the_collect_answer_and_listener_writes() {
+fn accepted_trade_keeps_the_collect_answer() {
     with_mod(|| {
         with_guests(|game| {
             let click = open(game, 2);
@@ -376,7 +387,7 @@ fn accepted_trade_keeps_the_collect_answer_and_listener_writes() {
             assert_eq!(super::decided_action::DECIDED.get(), 1);
             assert_eq!(IN_ACTION.with(|a| a.borrow().clone()), [true]);
             assert_eq!(result(game), 1);
-            assert_eq!(dirt(game), 2);
+            assert_eq!(dirt(game), 0);
             assert_eq!(stat(game), 1);
             let session = game.lan_trade_session(12).unwrap();
             assert_eq!(session.xp, 7);
@@ -421,6 +432,7 @@ fn a_panicking_trade_listener_undoes_the_take_and_the_next_trade_works() {
             let click = open(game, 2);
             script(Script {
                 panic_on: Some(1),
+                player_write: Some(PlayerWrite::Unrelated),
                 ..Script::default()
             });
             assert!(game.lan_merchant_click(12, &click));
@@ -443,7 +455,6 @@ fn a_second_trade_panic_undoes_the_entire_shift_click() {
             click.input = 1;
             script(Script {
                 panic_on: Some(2),
-                skip_inventory: true,
                 ..Script::default()
             });
             assert!(game.lan_merchant_click(12, &click));
@@ -451,10 +462,7 @@ fn a_second_trade_panic_undoes_the_entire_shift_click() {
             assert_eq!(super::decided_action::DECIDED.get(), 2);
             unchanged(game, 3);
             assert!(game.transactions.is_empty());
-            script(Script {
-                skip_inventory: true,
-                ..Script::default()
-            });
+            script(Script::default());
             assert!(game.lan_merchant_click(12, &click));
             assert_eq!((CALLS.get(), result(game), stat(game)), (3, 3, 3));
         })
@@ -471,7 +479,7 @@ fn an_outer_abort_undoes_an_accepted_trade() {
             let rx = record_packets(game);
             let seal = game.transaction_open();
             assert!(game.lan_merchant_click(12, &click));
-            assert_eq!((result(game), dirt(game), stat(game)), (1, 2, 1));
+            assert_eq!((result(game), dirt(game), stat(game)), (1, 0, 1));
             assert!(game.orbs.is_empty(), "orb creation waits for root commit");
             assert_eq!(COMPLETED.get(), 0);
             assert!(packets(&rx).is_empty());
@@ -531,7 +539,7 @@ fn a_result_pickup_heard_as_trade_and_stacked_event_is_one_accepted_action() {
             });
             assert!(game.lan_merchant_click(12, &click));
             assert_eq!((CALLS.get(), STACKED.get()), (1, 1));
-            assert_eq!((result(game), dirt(game), stat(game)), (1, 2, 1));
+            assert_eq!((result(game), dirt(game), stat(game)), (1, 0, 1));
             assert!(game.transactions.is_empty());
         })
     });
@@ -591,7 +599,6 @@ fn shift_click_reads_each_use_and_applies_the_second_price_before_the_next_trade
             let mut click = open(game, 3);
             click.input = 1;
             script(Script {
-                skip_inventory: true,
                 raise_second_price: true,
                 ..Script::default()
             });
@@ -610,21 +617,27 @@ fn shift_click_reads_each_use_and_applies_the_second_price_before_the_next_trade
 
 #[test]
 #[ignore = "daily"]
-fn stale_shift_destination_refuses_the_plan_without_recomputing() {
+fn player_writes_refuse_the_frozen_take_without_recomputing() {
     with_mod(|| {
         with_guests(|game| {
             let mut click = open(game, 3);
-            click.input = 1;
             let rx = record_packets(game);
-            script(Script {
-                change_shift_destination: true,
-                ..Script::default()
-            });
-            assert!(game.lan_merchant_click(12, &click));
-            assert_eq!(CALLS.get(), 1);
-            unchanged(game, 3);
-            assert!(game.lan.as_ref().unwrap().hub.guest(12).unwrap().inventory[8].is_none());
-            corrected(&rx, click.container, 3);
+            for (input, player_write) in [
+                (1, PlayerWrite::ShiftDestination { restore: false }),
+                (1, PlayerWrite::ShiftDestination { restore: true }),
+                (0, PlayerWrite::Unrelated),
+            ] {
+                click.input = input;
+                script(Script {
+                    player_write: Some(player_write),
+                    ..Script::default()
+                });
+                assert!(game.lan_merchant_click(12, &click));
+                assert_eq!(CALLS.get(), 1);
+                unchanged(game, 3);
+                assert!(game.lan.as_ref().unwrap().hub.guest(12).unwrap().inventory[8].is_none());
+                corrected(&rx, click.container, 3);
+            }
         })
     });
 }
@@ -638,10 +651,7 @@ fn observing_a_trade_keeps_the_plain_packet_sequence() {
             with_guests(|game| {
                 let click = open(game, 2);
                 let rx = record_packets(game);
-                script(Script {
-                    skip_inventory: true,
-                    ..Script::default()
-                });
+                script(Script::default());
                 assert!(game.lan_merchant_click(12, &click));
                 let trace = packets(&rx);
                 assert!(matches!(
