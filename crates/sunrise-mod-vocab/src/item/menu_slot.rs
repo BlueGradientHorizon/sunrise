@@ -44,7 +44,7 @@ pub enum MenuSlotBacking {
 
 /// Why [`MenuRef::set_data_slot`] left the menu unchanged.
 #[non_exhaustive]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MenuDataRefusal {
     /// This host or menu does not support blockless mod menu data.
     Unsupported,

@@ -1222,7 +1222,6 @@ impl ProfileProperty {
 /// Why [`PlayerRef::open_mod_menu`] opened nothing.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
 pub enum OpenMenuError {
     /// The menu type is not a content mod's (`data/<id>/sunrise/menu/`).
     NotModMenu,
