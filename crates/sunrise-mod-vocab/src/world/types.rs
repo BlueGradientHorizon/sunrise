@@ -2,14 +2,14 @@
 use crate::*;
 
 /// A saved fluid name retained for the lifetime of the process.
-// no wire: decoding validates the u64 slot with UnresolvedFluid::from_slot on the host; wasm carries the host-issued opaque token without consulting guest tables.
+// no wire: decoding validates the u64 slot with UnresolvedFluid::from_slot on the host.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 // exhaustive: only trusted engine boundaries create handles
 pub struct UnresolvedFluid(pub(crate) u64);
 
 /// A dimension (`minecraft:the_nether`), as the game's table numbers it: a `LevelRef`'s identity.
 /// A key stays the same dimension until the game exits; `key.id(host)` gives the name.
-// no wire: decoding validates the u32 slot with DimensionKey::from_slot on the host; wasm carries the host-issued opaque token without consulting guest tables.
+// no wire: decoding validates the u32 slot with DimensionKey::from_slot on the host.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 // exhaustive: its field is private, so only the game's table creates a key
 pub struct DimensionKey(pub(crate) u32);
@@ -30,21 +30,21 @@ pub enum GameRuleError {
 }
 
 /// A boolean game rule declared by a mod.
-// no wire: decoding validates the u32 slot with BoolGameRuleKey::from_slot on the host; wasm carries the host-issued opaque token without consulting guest tables.
+// no wire: decoding validates the u32 slot with BoolGameRuleKey::from_slot on the host.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 // exhaustive: only the registration table creates keys
 pub struct BoolGameRuleKey(pub(crate) u32);
 
 /// An integer game rule declared by a mod with
 /// [`Registrar::game_rule_int`](GameRulesRegistrar::game_rule_int).
-// no wire: decoding validates the u32 slot with IntGameRuleKey::from_slot on the host; wasm carries the host-issued opaque token without consulting guest tables.
+// no wire: decoding validates the u32 slot with IntGameRuleKey::from_slot on the host.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 // exhaustive: only the registration table creates keys
 pub struct IntGameRuleKey(pub(crate) u32);
 
 /// A load-owned fluid identity requested through [`Registrar::fluid_key`](FluidsRegistrar::fluid_key) or resolved through
 /// [`DataLoadContext::fluid_key`].
-// no wire: decoding validates the u32 slot with FluidKey::from_slot on the host; wasm carries the host-issued opaque token without consulting guest tables.
+// no wire: decoding validates the u32 slot with FluidKey::from_slot on the host.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 // exhaustive: only the registration table creates keys
 pub struct FluidKey(pub(crate) u32);
@@ -529,7 +529,7 @@ impl FeatureFlags {
     }
 }
 
-/// The flags as their ids, the form they cross into a wasm mod as.
+/// The flags as their IDs.
 impl From<&FeatureFlags> for Vec<String> {
     fn from(flags: &FeatureFlags) -> Self {
         flags.0.to_vec()
@@ -1009,9 +1009,8 @@ pub enum SpawnLight {
 
 /// A mod entity type's spawn rule, declared with
 /// [`Registrar::declare_spawn_placement`](SpawnPlacementsRegistrar::declare_spawn_placement):
-/// the arguments of NeoForge's `RegisterSpawnPlacementsEvent.register` as data, so one
-/// rule serves native and wasm mods. Every field must hold for a spawn to pass; a trial
-/// spawner ignores `light`, as for vanilla types.
+/// the arguments of NeoForge's `RegisterSpawnPlacementsEvent.register` as data. Every field
+/// must hold for a spawn to pass; a trial spawner ignores `light`, as for vanilla types.
 #[derive(Clone, Debug, PartialEq)]
 // exhaustive: a mod builds it with a literal; the game reads it
 #[derive(sunrise_mod_api_macros::Wire)]
@@ -1376,8 +1375,8 @@ pub trait LevelHost {
     /// inside `random_tick`. Read-only and allocation-free per read. A level view with no
     /// tables answers every fact with `None` (or `BlockStateError::Unavailable`).
     ///
-    /// Not on wasm: the service borrows the game's own tables, which a level frame lends no
-    /// import for; a wasm part reads these facts through the `Host` of its other hooks.
+    /// Computed from this level view's tables.
+    #[sunrise_mod_api_macros::computed_in_mod]
     fn block_states(&self) -> crate::BlockStates<'_> {
         crate::BlockStates::unavailable()
     }
@@ -1500,8 +1499,8 @@ pub trait LevelHost {
     fn block_in_tag(&self, _block: BlockKey, _tag: &str) -> Option<bool> {
         unimplemented!("LevelHost::block_in_tag")
     }
-    /// The merged-tag service for this level's owning-thread context.
-    /// Not on wasm: a frame resource; its methods are the imports.
+    /// The merged-tag service for this level's owning-thread context: a frame resource, whose
+    /// methods are the imports.
     fn tags(&self) -> &dyn Tags {
         unimplemented!("LevelHost::tags")
     }
@@ -1737,7 +1736,8 @@ pub trait LevelWriteHost: LevelTicksHost + LevelRandomHost {
         unimplemented!("LevelWriteHost::play_sound")
     }
     /// `ServerLevel.sendParticles` through `native_send_particles`.
-    /// Item particles require `options.item_stack`; invalid stacks return false.
+    /// Item particles require `options.item_stack`; invalid stacks return false, and so does an
+    /// item crumb whose colour has a component outside 0 to 1.
     fn send_particles(
         &mut self,
         _options: &ParticleOptions,

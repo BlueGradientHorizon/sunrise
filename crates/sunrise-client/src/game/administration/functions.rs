@@ -1516,19 +1516,7 @@ impl Game<'_> {
             })?
         };
         let source = self.command_source.unwrap_or_else(|| self.player_source());
-        let view = source.entity.map(|t| {
-            let scores = self.holder_name(t).map(|holder| {
-                self.score
-                    .board
-                    .holder_scores(&holder)
-                    .into_iter()
-                    .map(|(objective, value)| (objective.name.clone(), value))
-                    .collect()
-            });
-            let mut view = self.entity_view_asked(t, &json);
-            view.scores = scores;
-            view
-        });
+        let view = source.entity.map(|t| self.entity_view_scored(t, &json));
         Ok(self.command_conditions_hold(&json, view.as_ref(), source.pos))
     }
 }

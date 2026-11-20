@@ -105,18 +105,29 @@ console.log(JSON.stringify(eval(expression)));
         started = {"macos-x64": ("macos-x64-intel", "macos-15-intel"),
                    "windows-arm64": ("windows-arm64-native", "windows-11-vs2026-arm")}
         self.assertEqual({row["name"] for row in rows if row.get("started_elsewhere")}, set(started))
+        self.assertEqual(set(game["legs"]["needs"]), {"build", *(job for job, _ in started.values())})
+        folders = {"macos-x64": "intel", "windows-arm64": "arm64"}
         for row in rows:
             if row["name"] in started:
                 job, runner = started[row["name"]]
                 with self.subTest(started_elsewhere=row["name"]):
                     self.assertEqual(game[job]["runs-on"], runner)
-                    self.assertIn(job, game["legs"]["needs"])
                     steps = game[job]["steps"]
-                    downloads = {s["with"]["name"] for s in steps if s.get("uses", "").startswith("actions/download-artifact@")}
-                    uploads = {s["with"]["name"] for s in steps if s.get("uses", "").startswith("actions/upload-artifact@")}
-                    self.assertEqual(downloads, {f"untested-{row['asset']}"})
-                    self.assertEqual(uploads, {row["asset"], f"leg-{row['name']}"})
-        self.assertEqual({row["name"] for row in rows if row.get("started_elsewhere")}, {"macos-x64", "windows-arm64"})
+                    artifacts = [(s["uses"].split("@")[0], s["with"]["name"], s["with"]["path"]) for s in steps
+                                 if s.get("uses", "").startswith(("actions/download-artifact@", "actions/upload-artifact@"))]
+                    temp = "${{ runner.temp }}"
+                    self.assertEqual(artifacts, [
+                        ("actions/download-artifact", f"untested-{row['asset']}", f"{temp}/{folders[row['name']]}"),
+                        ("actions/upload-artifact", row["asset"], f"{temp}/ship/{row['asset']}"),
+                        ("actions/upload-artifact", f"leg-{row['name']}", f"{temp}/leg-{row['name']}"),
+                    ])
+                    # The programs start between the download and the first upload: nothing ships unstarted.
+                    names = [s.get("name", "") for s in steps]
+                    start = next(i for i, name in enumerate(names) if name.startswith("Every program starts"))
+                    download = next(i for i, s in enumerate(steps) if s.get("uses", "").startswith("actions/download-artifact@"))
+                    upload = next(i for i, s in enumerate(steps) if s.get("uses", "").startswith("actions/upload-artifact@"))
+                    self.assertLess(download, start)
+                    self.assertLess(start, upload)
 
         timeout = re.search(r"^\s*timeout-minutes:\s*\$\{\{(.*?)\}\}", workflow_jobs["build"], re.M).group(1)
         for repository, trusted, row in itertools.product(["sunrise-org/sunrise", "horizon-rust/horizon"], [False, True], rows):
@@ -154,6 +165,63 @@ console.log(JSON.stringify(Boolean(eval(s.expression))));
                                          env={**os.environ, "REPOSITORY": repository, "KIND": kind, "GITHUB_OUTPUT": str(output)})
                     self.assertEqual(ran.returncode == 0, expected, ran.stdout)
                     self.assertEqual(output.exists() and output.read_text() == "complete=true\n", expected)
+
+    def test_build_timings_are_a_report_and_never_a_signed_or_released_asset(self):
+        game = yaml.safe_load(GAME.read_text())
+        steps = game["jobs"]["build"]["steps"]
+        self.assertIn("cargo build --release --locked --timings", GAME.read_text())
+        collect = next(i for i, step in enumerate(steps) if step.get("name") == "The build's timings, by leg")
+        upload = collect + 1
+        self.assertTrue(steps[upload]["uses"].startswith("actions/upload-artifact@"))
+        # Both timing steps are best-effort, and run after the marker and the keychain lock, so a stalled
+        # upload cannot keep a finished leg from counting as built.
+        for index in (collect, upload):
+            self.assertIs(steps[index]["continue-on-error"], True)
+        for name in ("This leg built", "The signing keychain, locked again"):
+            self.assertLess(next(i for i, step in enumerate(steps) if step.get("name") == name), collect)
+        self.assertLess(next(i for i, step in enumerate(steps)
+                             if step.get("with", {}).get("name") == "leg-${{ matrix.name }}"), collect)
+        name = steps[upload]["with"]["name"]
+        self.assertTrue(name.startswith("cargo-timings-"))
+        # The sign job hashes every `sunrise-*` artifact, and publish's download leaves the reports out.
+        nightly = yaml.safe_load((ROOT / ".github/workflows/nightly-build.yml").read_text())
+        self.assertEqual(next(step["with"]["pattern"] for step in nightly["jobs"]["sign"]["steps"]
+                              if step.get("uses", "").startswith("actions/download-artifact@") and "pattern" in step["with"]),
+                         "sunrise-*")
+        download = [step for step in nightly["jobs"]["publish"]["steps"]
+                    if step.get("uses", "").startswith("actions/download-artifact@")]
+        self.assertEqual([step["with"]["pattern"] for step in download], ["!cargo-timings-*"])
+
+    def test_musl_is_checked_after_packaging_and_before_upload(self):
+        build = yaml.load(GAME.read_text(), Loader=yaml.BaseLoader)["jobs"]["build"]
+        self.assertRegex(build["env"]["MUSL_IMAGE"], r"^alpine:3\.22@sha256:[0-9a-f]{64}$")
+        musl, = [row for row in build["strategy"]["matrix"]["include"] if row.get("musl") == "true"]
+        self.assertEqual(musl["target"], "x86_64-unknown-linux-musl")
+        self.assertEqual(musl["asset"], "sunrise-linux-musl-x86_64.tar.gz")
+        steps = build["steps"]
+        cross = next(i for i, s in enumerate(steps) if s.get("name") == "Cross-build for musl with glibc-hosted Rust")
+        validate = next(i for i, s in enumerate(steps) if s.get("name") == "Check the packaged musl programs")
+        package = next(i for i, s in enumerate(steps) if s.get("name") == "Package")
+        archive = next(i for i, s in enumerate(steps) if s.get("with", {}).get("if-no-files-found") == "error"
+                       and s["with"]["path"].startswith("dist/") and "matrix.asset" in s["with"]["path"])
+        marker = next(i for i, s in enumerate(steps) if s.get("name") == "This leg built")
+        self.assertLess(cross, package)
+        self.assertLess(package, validate)
+        self.assertLess(validate, archive)
+        self.assertLess(archive, marker)
+        # The checks read the uploaded archive, unpacked, not the folder it was made from.
+        self.assertIn('tar -xzf "dist/${{ matrix.asset }}"', steps[validate]["run"])
+        for step in (steps[cross], steps[validate]):
+            self.assertEqual(step["if"], "matrix.musl")
+            self.assertIn('"$MUSL_IMAGE"', step["run"])
+            # Check the configured version prefixes, not the packages that apk resolves.
+            installs = " ".join(re.findall(r"apk add --no-cache ([^\n]+)", step["run"].replace("\\\n", " "))).split()
+            held = {spec.strip('"') for spec in installs if "~" in spec}
+            runtime = {"musl~1.2.5", "libgcc~14.2.0", "alsa-lib~1.2.14", "eudev-libs~3.2.14"}
+            build_only = {"gcc~14.2.0", "binutils~2.44", "musl-dev~1.2.5", "linux-headers~6.14.2", "alsa-lib-dev~1.2.14",
+                          "eudev-dev~3.2.14"}
+            # The sysroot and startup check configure the same runtime-library prefixes.
+            self.assertEqual(held, runtime | build_only if step is steps[cross] else runtime)
 
     def test_every_shipped_glibc_program_is_checked_by_workflow_owned_tools(self):
         text = GAME.read_text()

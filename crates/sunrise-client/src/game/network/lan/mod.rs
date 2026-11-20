@@ -1139,7 +1139,7 @@ impl Game<'_> {
     pub(super) fn lan_status(&self) -> serde_json::Value {
         use serde_json::json;
         match &self.lan {
-            Some(h) if !self.serving() || self.published_port().is_some() => json!({
+            Some(h) if self.open_to_others() => json!({
                 "open": true,
                 // The owner's profile name.
                 "host": self.options.player_name(),
@@ -1481,7 +1481,7 @@ impl Game<'_> {
         others: &[u32],
         remove: bool,
     ) -> Option<(sunrise_core::nbt::Tag, [i32; 4])> {
-        vehicle?;
+        let vehicle = vehicle?;
         let back = self.dim;
         let theirs = super::Dim::from_id(dim);
         if theirs != back
@@ -1490,26 +1490,23 @@ impl Game<'_> {
             log::error!("could not open {}: {e}", theirs.id());
             return None;
         }
-        let found = if self.dim == theirs {
-            self.parent_vehicle_tag(vehicle, others)
+        let saved = if self.dim == theirs {
+            self.snapshot_parent_vehicle(vehicle, others, remove)
         } else {
             None
         };
-        if remove && let Some((_, root, _)) = &found {
-            self.remove_vehicle_tree(*root);
-        }
         if self.dim != back
             && let Err(e) = self.enter_level(back)
         {
             log::error!("could not reopen {}: {e}", back.id());
         }
-        found.map(|(tag, _, attach)| (tag, attach))
+        saved
     }
-    /// `PlayerList.remove` of a guest out of the hub: its file takes the
-    /// vehicle it alone rides (`saveParentVehicle`'s RootVehicle, kept in
-    /// `saved` as a file not yet ridden again), the vehicle tree leaves the
-    /// world, and the guest stops riding (`unRide`). A guest the crash save excludes keeps
-    /// the vehicle in the world: its file is not written, so nothing would hold it.
+    /// `PlayerList.remove` of a guest out of the hub: the vehicle it alone rides
+    /// leaves the world, and the guest stops riding (`unRide`). The file takes
+    /// a persistent tree as `RootVehicle` (`saved` holds it until the next ride).
+    /// A guest the crash save excludes keeps the vehicle in the world: its file
+    /// is not written, so nothing would hold it.
     pub(super) fn take_parent_vehicle(&mut self, guest: &mut sunrise_client::lan::guest::Guest) {
         // An interrupted player's file is not written, so the vehicle stays in the world.
         if self.crash_save.excludes(guest.conn) {
@@ -2669,12 +2666,17 @@ impl Game<'_> {
         }
         // A guest whose file names the vehicle it rode rides it again.
         self.restore_guest_vehicles();
-        // Finish the players' mining, item use and pickups before describing
-        // this tick to their clients. Otherwise a newly broken block and its
-        // drops remain absent from the snapshot until the following tick.
+        // Keep chunk and entity publication in the level pass. A real server
+        // then runs each connection's player body after all levels; a standalone
+        // level tick (e.g. a fixture) has no outer server pass.
+        let defer_connections = self.level_pass.running.is_some();
         if !paused {
-            sunrise_client::spans::time("lan_guests", || self.tick_guests());
-            // The vehicles the guests just moved enter their portals now.
+            sunrise_client::spans::time("lan_guests", || self.tick_level_guests());
+            if !defer_connections {
+                self.tick_guest_connections(false)
+                    .expect("the current-level connection pass does not switch levels");
+            }
+            // Ridden vehicles enter their portals on the level path.
             let Some(host) = self.lan.as_ref() else {
                 return;
             };
@@ -2859,9 +2861,13 @@ impl Game<'_> {
                 // entry, before world sync/physics or any scheduled work.
                 let mut events = Vec::new();
                 events.extend(sunrise_client::spans::time("lan_tick_level", || {
-                    host.hub.tick_level(&mut ctx)
+                    if defer_connections {
+                        host.hub.tick_level_before_connections(&mut ctx)
+                    } else {
+                        host.hub.tick_level(&mut ctx)
+                    }
                 }));
-                (events, pass.last)
+                (events, pass.last && !defer_connections)
             };
             // The mods hear the pass's starts and stops of tracking at each one's packet, before
             // the players' own state and the end of the tick (#4522).
@@ -2917,17 +2923,7 @@ impl Game<'_> {
         {
             self.run_native_tracking();
         }
-        // A blast from a guest's attack, and a mace's wind burst.
-        self.flush_lan_explosions();
-        let _ = self.flush_wind_bursts();
-        // A sweep attack's reach to the other players from a guest's attack.
-        self.flush_sweeps();
-        // A reeled-in hook pulling a player.
-        self.flush_hook_pulls();
-        // Particles a guest's turn sent (sweep attack, damage indicator, a hook's splashes).
-        self.flush_lan_particles();
-        self.lan_flush_effects();
-        self.lan_living_flags();
+        self.flush_guest_connection_effects();
         self.lan_stuck(paused);
         self.tick_server_travel();
         self.lan_swings();
@@ -2948,6 +2944,17 @@ impl Game<'_> {
         if self.level_pass.running.is_none() {
             self.level_pass.packets_drained = false;
         }
+    }
+
+    /// Flush actions made by guest turns while their level is still in place.
+    pub(in crate::game) fn flush_guest_connection_effects(&mut self) {
+        self.flush_lan_explosions();
+        let _ = self.flush_wind_bursts();
+        self.flush_sweeps();
+        self.flush_hook_pulls();
+        self.flush_lan_particles();
+        self.lan_flush_effects();
+        self.lan_living_flags();
     }
 
     pub(super) fn lan_guest_joined(
