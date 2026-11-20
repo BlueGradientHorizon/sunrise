@@ -433,6 +433,14 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn entity_renderer_samples_the_elements_world_cell_but_a_preview_stays_fixed() {
+        if super::super::native_entity_refs::tests::run_fresh_cases(
+            "game::native_entity_renderers::tests::entity_renderer_samples_the_elements_world_cell_but_a_preview_stays_fixed",
+            "SUNRISE_ENTITY_LEVEL_LIGHT_CHILD",
+            &["world-and-preview"],
+        ) {
+            return;
+        }
+
         struct LitQuad;
         impl EntityRenderer for LitQuad {
             fn submit(
