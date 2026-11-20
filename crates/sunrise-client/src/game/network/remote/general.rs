@@ -477,11 +477,13 @@ mod tests {
                     game.guest_interact(1, 0, id, Hand::Main, [0.0, 1.65, -0.25]),
                     Ok(true)
                 );
+                game.as_guest(1, |guest| guest.attack_ticks = 20).unwrap();
                 assert_eq!(
                     game.guest_attack(1, 0, id),
                     Ok(false),
                     "an unclaimed hit cannot hurt a plain row"
                 );
+                assert_eq!(game.as_guest(1, |guest| guest.attack_ticks), Some(0));
                 assert!(game.resident_entities.general.row(id as u32).is_some());
                 game.as_guest(1, |guest| guest.player.as_mut().unwrap().position.z = -64.5)
                     .unwrap();
