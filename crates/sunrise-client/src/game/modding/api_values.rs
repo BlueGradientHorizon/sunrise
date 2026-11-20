@@ -93,7 +93,7 @@ pub(crate) fn default_state(
 ) -> Option<sunrise_world::registry::BlockStateId> {
     use mod_api::BlockMetadata;
     let metadata = mod_api::__private::block_definitions()?;
-    let value = mod_api::BlockState::from(metadata.of(block, &[]).ok()?);
+    let value = metadata.of(block, &[]).ok()?;
     block_state::current().ok()?.to_engine(value).ok()
 }
 
