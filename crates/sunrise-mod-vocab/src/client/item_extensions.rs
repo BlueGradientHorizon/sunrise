@@ -105,6 +105,11 @@ impl EquipmentLayer {
 /// A panicking native callback or refused/trapped wasm callback discards every layer of
 /// the piece, draws it with vanilla behaviour, and disables the provider until reload.
 pub trait ClientItemExtensions: Send + Sync + 'static {
+    // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
+    #[doc(hidden)]
+    fn __sunrise_marks(&self, _: crate::__private::Sealed) {
+        sunrise_mod_marks::client_item_extensions::<Self>();
+    }
     /// Choose the tree for one material layer, after its nonzero tint and texture resolve.
     /// Humanoid pose and slot visibility are copied onto the registered tree.
     /// This per-layer selection deliberately differs from NeoForge's one model per piece:

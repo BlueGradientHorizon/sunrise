@@ -250,14 +250,7 @@ pub(crate) fn install_client_hooks() {
             let context = reader.context();
             mod_api::dispatch_living_heal(&context, entity, amount, cancel);
         },
-        living_breathe: |context, entity, kind, can_breathe, consume, refill| {
-            if !mod_api::__private::listened(mod_api::HookId::LivingBreathe) {
-                return;
-            }
-            let reader = sunrise_client_render::api_context::LoopReader(context);
-            let context = reader.context();
-            mod_api::dispatch_living_breathe(&context, entity, kind, can_breathe, consume, refill);
-        },
+        living_breathe_heard: || mod_api::__private::listened(mod_api::HookId::LivingBreathe),
         farmland_trample: |context, entity, pos, state, distance, cancel| {
             if !mod_api::__private::listened(mod_api::HookId::FarmlandTrample) {
                 return;
@@ -367,9 +360,7 @@ pub(crate) fn install_client_hooks() {
         },
         makes_open_trapdoor_above_climbable:
             crate::game::native_trapdoor_ladder::makes_open_trapdoor_above_climbable,
-        friction: |context, entity, kind, pos, state, friction| {
-            crate::game::native_surface::friction(context, entity, kind, pos, state, friction);
-        },
+        friction: crate::game::native_surface::friction,
         collision_shape: |context, pos, state, query, shape| {
             crate::game::native_collision_shape::collision_shape(context, pos, state, query, shape);
         },

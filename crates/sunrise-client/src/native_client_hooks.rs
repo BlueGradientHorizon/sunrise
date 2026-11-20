@@ -1,5 +1,5 @@
 //! Callbacks into the executable for native trait mods' client-library hooks.
-use crate::items::ItemStack;
+use crate::{items::ItemStack, motion::FrictionLevel};
 use mod_api::{BlockSoundCause, BlockSoundType};
 use std::sync::OnceLock;
 use sunrise_core::position::BlockPos;
@@ -13,7 +13,7 @@ pub struct NativeClientHooks {
     pub menu_still_valid: MenuValidity,
     pub menu_still_valid_listens: fn(&str) -> bool,
     pub living_heal: fn(&LoopContext, u32, &mut f32, &mut bool),
-    pub living_breathe: fn(&LoopContext, u32, &str, &mut bool, &mut i32, &mut i32),
+    pub living_breathe_heard: fn() -> bool,
     pub farmland_trample: fn(&LoopContext, u32, [i32; 3], u32, f64, &mut bool),
     pub has_mods: fn() -> bool,
     pub player_name_format: fn(&LoopContext, &crate::text::Text, &mut crate::text::Text),
@@ -29,7 +29,8 @@ pub struct NativeClientHooks {
     pub is_ladder: fn(&LoopContext, u32, BlockPos, BlockStateId, &mut bool),
     pub makes_open_trapdoor_above_climbable:
         fn(&LoopContext, BlockStateId, BlockPos, BlockStateId, &mut bool),
-    pub friction: fn(&LoopContext, u32, &str, BlockPos, BlockStateId, &mut f32),
+    pub friction:
+        fn(FrictionLevel<'_>, Option<(u32, &str)>, BlockPos, BlockStateId, &mut f32) -> bool,
     /// `BlockPart::collision_shape` of the state's block, for one collision query; `shape`
     /// arrives `None` and leaves checked.
     pub collision_shape: fn(
@@ -136,17 +137,10 @@ pub(crate) fn living_heal(context: &LoopContext, entity: u32, amount: &mut f32, 
     }
 }
 
-pub(crate) fn living_breathe(
-    context: &LoopContext,
-    entity: u32,
-    kind: &str,
-    can_breathe: &mut bool,
-    consume: &mut i32,
-    refill: &mut i32,
-) {
-    if let Some(hooks) = HOOKS.get() {
-        (hooks.living_breathe)(context, entity, kind, can_breathe, consume, refill);
-    }
+pub(crate) fn living_breathe_heard() -> bool {
+    HOOKS
+        .get()
+        .is_some_and(|hooks| (hooks.living_breathe_heard)())
 }
 
 pub(crate) fn farmland_trample(
@@ -283,16 +277,15 @@ pub(crate) fn makes_open_trapdoor_above_climbable(
 }
 
 pub(crate) fn friction(
-    context: &LoopContext,
-    entity: u32,
-    kind: &str,
+    level: FrictionLevel<'_>,
+    entity: Option<(u32, &str)>,
     pos: BlockPos,
     state: BlockStateId,
     friction: &mut f32,
-) {
-    if let Some(hooks) = HOOKS.get() {
-        (hooks.friction)(context, entity, kind, pos, state, friction);
-    }
+) -> bool {
+    HOOKS
+        .get()
+        .is_none_or(|hooks| (hooks.friction)(level, entity, pos, state, friction))
 }
 
 pub(crate) fn collision_shape(

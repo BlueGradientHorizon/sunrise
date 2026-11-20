@@ -18,8 +18,15 @@ pub const VALUE: AttachmentType<i32> = AttachmentType {
     sync: false,
 };
 
+/// A game that loads this fixture saves and loads every chunk, nearly all holding the attachment's
+/// default: only a chunk the chunk-disk test filled with a value is this fixture's to check, and a trap
+/// on another would stop the whole group.
 pub fn save(host: &dyn ChunkDiskHost, data: &mut ChunkDiskData) {
-    assert_eq!(data.get(&VALUE).unwrap(), 7);
+    let value = data.get(&VALUE).unwrap();
+    if value == 0 {
+        return;
+    }
+    assert_eq!(value, 7);
     data.set(&VALUE, 8).unwrap();
     if host.job().pos == [99, 99] {
         panic!("guest trap after tentative write");
@@ -28,5 +35,7 @@ pub fn save(host: &dyn ChunkDiskHost, data: &mut ChunkDiskData) {
 
 pub fn load(_: &dyn ChunkDiskHost, data: &mut ChunkDiskData) {
     let value = data.get(&VALUE).unwrap();
-    data.set(&VALUE, value + 1).unwrap();
+    if value != 0 {
+        data.set(&VALUE, value + 1).unwrap();
+    }
 }

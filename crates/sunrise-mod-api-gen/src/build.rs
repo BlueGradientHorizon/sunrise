@@ -1,6 +1,7 @@
 //! Cargo-facing generation: the mod API's and the game's generated files.
 use super::{Catalog, Target, free_function_source, host, sources};
 use quote::ToTokens;
+use sha2::{Digest, Sha256};
 use std::{fs, path::Path};
 mod vocab_boundary;
 
@@ -68,7 +69,7 @@ pub fn generate(root: &Path, out_dir: &Path, target: Target) -> Result<(), Strin
             // engine's `GoalCx` in `mobs/part_goals.rs`.
             ("mod_api_goal_view_generated.rs", generated.goal_view),
         ],
-        Target::Api | Target::Vocab => {
+        Target::Api | Target::Vocab | Target::Marks => {
             if matches!(target, Target::Api) {
                 generate_api_parts(root, out_dir)?;
             }
@@ -95,7 +96,9 @@ pub fn generate(root: &Path, out_dir: &Path, target: Target) -> Result<(), Strin
             let generated_wire = std::thread::scope(|scope| {
                 std::thread::Builder::new()
                     .stack_size(64 << 20)
-                    .spawn_scoped(scope, || super::wire::generate(root, &included))
+                    .spawn_scoped(scope, || {
+                        super::wire::generate_with_providers(root, &included, &providers)
+                    })
                     .map_err(|e| e.to_string())?
                     .join()
                     .map_err(|_| "generating the wire impls panicked".to_string())?
@@ -104,6 +107,7 @@ pub fn generate(root: &Path, out_dir: &Path, target: Target) -> Result<(), Strin
                 crate::rerun_if_changed(&path.display());
             }
             let outputs = vec![
+                (MARKS_OUTPUT, generated_wire.marks),
                 (host::AREAS_OUTPUT, generated.areas),
                 ("mod_api_generated.rs", hooks),
                 ("mod_api_generated_host.rs", generated.host),
@@ -117,7 +121,8 @@ pub fn generate(root: &Path, out_dir: &Path, target: Target) -> Result<(), Strin
                 // take (`generate_api_parts`): it comes from the sources Vocab has just generated.
                 .filter(|(name, _)| match target {
                     Target::Api => *name == GUEST_OUTPUT,
-                    Target::Vocab => true,
+                    Target::Vocab => *name != MARKS_OUTPUT,
+                    Target::Marks => *name == MARKS_OUTPUT,
                     Target::Client => unreachable!(),
                 })
                 .collect()
@@ -134,6 +139,10 @@ pub fn generate(root: &Path, out_dir: &Path, target: Target) -> Result<(), Strin
     }
     Ok(())
 }
+
+/// The handler traits' import functions, which `sunrise-mod-marks` includes: the one place the
+/// imports' unsafe code lives, so the vocabulary holds none.
+pub const MARKS_OUTPUT: &str = "handler_marks_generated.rs";
 
 /// The mod side's WebAssembly guest transport, which `sunrise-mod-api` includes.
 pub const GUEST_OUTPUT: &str = "wire_guest_generated.rs";
@@ -310,15 +319,66 @@ pub(super) fn wire_types_from_sources(
         ("mod_api_generated.rs", generated.hooks.as_str()),
         ("mod_api_generated_host.rs", generated.host.as_str()),
     ];
+    // The resolution reads the three sources and the indexed crates' files, and nothing a game
+    // edit changes: it is cached by their contents, and recomputed when any of them differs.
+    let name = wire_entry(root, &included)?;
+    if let Some(cached) = crate::interface_cache::load(&name)? {
+        return Ok(cached.lines().map(str::to_owned).collect());
+    }
     // The resolver recurses through the API's types: give it a deep stack.
-    std::thread::scope(|scope| {
+    let types = std::thread::scope(|scope| {
         std::thread::Builder::new()
             .stack_size(64 << 20)
             .spawn_scoped(scope, || super::wire::owned_types(root, &included))
             .map_err(|e| e.to_string())?
             .join()
             .map_err(|_| "reading the wire types panicked".to_string())?
-    })
+    })?;
+    let body = types
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .join("\n");
+    crate::interface_cache::store(&name, &body)?;
+    Ok(types)
+}
+
+/// The cache entry of the wire types resolved from `included` and the indexed crates below `root`.
+fn wire_entry(root: &Path, included: &[(&str, &str)]) -> Result<String, String> {
+    let mut key = Sha256::new();
+    for (name, code) in included {
+        key.update([name.as_bytes(), &[0], code.as_bytes(), &[0]].concat());
+    }
+    for (_, directory) in crate::index::CRATES {
+        hash_tree(root, &root.join(directory), &mut key)?;
+    }
+    Ok(format!("wire-types-{:x}.cache", key.finalize()))
+}
+
+/// Feeds `key` every file below `directory`, in path order: each one's path below `root` and its bytes.
+fn hash_tree(root: &Path, directory: &Path, key: &mut Sha256) -> Result<(), String> {
+    // A tree without one of the crates reads none of it.
+    if !directory.is_dir() {
+        return Ok(());
+    }
+    let mut entries = fs::read_dir(directory)
+        .map_err(|e| format!("{}: {e}", directory.display()))?
+        .map(|entry| entry.map(|entry| entry.path()))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    entries.sort();
+    for path in entries {
+        if path.is_dir() {
+            hash_tree(root, &path, key)?;
+        } else {
+            let bytes = fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+            let relative = path.strip_prefix(root).unwrap_or(&path);
+            key.update(relative.as_os_str().as_encoded_bytes());
+            key.update([0]);
+            key.update(Sha256::digest(bytes));
+        }
+    }
+    Ok(())
 }
 
 /// `sunrise-mod-points`' generated file: each point's record, `PointId` and typed function constructors,
@@ -348,14 +408,54 @@ pub fn generate_engine_points(root: &Path, out_dir: &Path) -> Result<(), String>
                 .transpose()?;
             let code = super::points::engine_records(&points, selected.as_ref());
             let generated = syn::parse_file(&code).map_err(|e| format!("engine points: {e}"))?;
-            let mut code = String::new();
-            for item in generated.items {
-                code.push_str(&item.to_token_stream().to_string());
-                code.push('\n');
-            }
+            let code = short_lines(generated);
             write_if_changed(out_dir.join("engine_points.rs"), code).map_err(|e| e.to_string())
         })
     })
+}
+
+/// `file`'s tokens as text with a line break after every item and after every `,` or `;` inside
+/// braces and brackets (a `match`, a list, a block), and no other change: a single multi-megabyte
+/// line makes Clippy's source lookups, `clippy::four_forward_slashes` above all, prohibitively slow.
+fn short_lines(file: syn::File) -> String {
+    use proc_macro2::{Delimiter, Spacing, TokenTree};
+    fn push(code: &mut String, stream: proc_macro2::TokenStream, breaks: bool) {
+        for tree in stream {
+            match tree {
+                TokenTree::Group(group) => {
+                    let (open, close, inner) = match group.delimiter() {
+                        Delimiter::Parenthesis => ("( ", ") ", false),
+                        Delimiter::Brace => ("{ ", "} ", true),
+                        Delimiter::Bracket => ("[ ", "] ", true),
+                        Delimiter::None => ("", "", breaks),
+                    };
+                    code.push_str(open);
+                    push(code, group.stream(), inner);
+                    code.push_str(close);
+                }
+                TokenTree::Punct(punct) => {
+                    code.push(punct.as_char());
+                    match punct.spacing() {
+                        Spacing::Joint => {}
+                        Spacing::Alone if breaks && matches!(punct.as_char(), ',' | ';') => {
+                            code.push('\n')
+                        }
+                        Spacing::Alone => code.push(' '),
+                    }
+                }
+                tree => {
+                    code.push_str(&tree.to_string());
+                    code.push(' ');
+                }
+            }
+        }
+    }
+    let mut code = String::new();
+    for item in file.items {
+        push(&mut code, item.to_token_stream(), true);
+        code.push('\n');
+    }
+    code
 }
 
 pub(super) fn generate_points_inner(root: &Path, out_dir: &Path) -> Result<(), String> {
@@ -393,12 +493,7 @@ pub(super) fn generate_points_inner(root: &Path, out_dir: &Path) -> Result<(), S
         );
     phase("records");
     let generated = syn::parse_file(&code).map_err(|e| format!("generated Rust: points: {e}"))?;
-    // A single multi-megabyte line makes Clippy's source lookups prohibitively slow.
-    let mut code = String::new();
-    for item in generated.items {
-        code.push_str(&item.to_token_stream().to_string());
-        code.push('\n');
-    }
+    let code = short_lines(generated);
     phase("format");
     write_if_changed(out_dir.join("points_generated.rs"), code).map_err(|e| e.to_string())?;
     phase("written");
@@ -457,4 +552,60 @@ pub(super) fn track(root: &Path, all_game: bool) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The output differs from the token stream's own text only in whitespace, and no line holds
+    /// more than a list's element.
+    #[test]
+    fn short_lines_keep_the_tokens_and_break_lists() {
+        let source = "pub enum Id { A, B, C } impl Id { pub fn n(self) -> u8 { let t = [1, 2, 3]; match self { Id::A => { f(1, 2); 1 } _ => 2 } } } const S: &str = \"a, b; c\"; fn g<'a>(x: &'a u8) -> Vec<::std::string::String> { vec![] }";
+        let file = syn::parse_file(source).unwrap();
+        let text = short_lines(file.clone());
+        let original = file.to_token_stream().to_string();
+        let reparsed = syn::parse_file(&text)
+            .unwrap()
+            .to_token_stream()
+            .to_string();
+        assert_eq!(reparsed, original);
+        assert!(text.lines().count() > 10);
+        assert!(text.contains("\"a, b; c\""));
+    }
+
+    /// A cached wire result follows every input it was derived from: the generated API sources (the
+    /// catalog and hooks) and each indexed crate's files (mod-vocab's among them), and not the game.
+    #[test]
+    fn the_wire_cache_entry_follows_the_catalog_and_vocab_but_not_the_game() {
+        let root = std::env::temp_dir().join(format!("wire-entry-{}", std::process::id()));
+        let vocab = root.join("crates/sunrise-mod-vocab/src");
+        let game = root.join("crates/sunrise-client/src/game");
+        fs::create_dir_all(vocab.join("hooks")).unwrap();
+        fs::create_dir_all(&game).unwrap();
+        fs::write(
+            vocab.join("hooks/delivery.rs"),
+            "pub struct PayloadDeclaration;",
+        )
+        .unwrap();
+        fs::write(game.join("boat.rs"), "fn paddle() {}").unwrap();
+        let entry = |hooks: &str| wire_entry(&root, &[("mod_api_generated.rs", hooks)]).unwrap();
+        let before = entry("pub trait Hooks {}");
+        assert_eq!(before, entry("pub trait Hooks {}"));
+        fs::write(game.join("boat.rs"), "fn paddle() { edited(); }").unwrap();
+        assert_eq!(before, entry("pub trait Hooks {}"), "a game edit");
+        assert_ne!(
+            before,
+            entry("pub trait Hooks { fn added(); }"),
+            "a catalog change"
+        );
+        fs::write(
+            vocab.join("hooks/delivery.rs"),
+            "pub struct PayloadDeclaration { pub delivery: u8 }",
+        )
+        .unwrap();
+        assert_ne!(before, entry("pub trait Hooks {}"), "a vocab change");
+        fs::remove_dir_all(root).unwrap();
+    }
 }

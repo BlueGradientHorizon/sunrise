@@ -40,6 +40,21 @@ the sign's block position and whether its front side is being edited. It returns
 editor open, or outside a world. A close of the sign editor always sends the sign update, however it
 closes; there is no close that skips it, because the vanilla client never omits that packet.
 
+## Reading open trades
+
+From a client hook in the world, get the menu from `host.local_player()` and
+`PlayerRef::container_menu(host)`, then call `menu.merchant_offers(host)`. The result is an owned
+snapshot of the latest offers the server sent to the open merchant menu, in display order. Each
+`MerchantOffer` has the first payment, an optional second payment, the result stack and its
+components, and stock and pricing data. Use `offer.cost_a_count(host)` for the adjusted first
+payment and `offer.out_of_stock()` to check availability.
+
+`Ok(None)` means the handle is no longer current, doesn't belong to the local player, or isn't a
+merchant menu. An open merchant menu can return `Ok(Some(vec![]))` before the offers arrive.
+`Err(LevelReadError::Unavailable)` means the snapshot couldn't be read. The call doesn't select
+an offer, buy anything, or send packets; the server still decides every trade. Native and wasm
+mods use the same read.
+
 ## Frame coordinates
 
 `screen_draw` and `screen_tooltip` version 3 carry `pointer: [i32; 2]`

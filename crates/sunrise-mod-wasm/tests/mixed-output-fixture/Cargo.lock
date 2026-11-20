@@ -459,6 +459,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "sunrise-mod-marks"
+version = "0.1.0"
+dependencies = [
+ "sunrise-mod-api-gen",
+]
+
+[[package]]
 name = "sunrise-mod-point-shape"
 version = "0.1.0"
 dependencies = [
@@ -511,6 +518,7 @@ dependencies = [
  "sunrise-core",
  "sunrise-mod-api-gen",
  "sunrise-mod-api-macros",
+ "sunrise-mod-marks",
  "sunrise-mod-runtime",
 ]
 

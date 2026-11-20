@@ -180,6 +180,48 @@ fn a_new_note_naming_an_unchanged_id_fails_and_an_old_or_edited_one_is_ignored()
 
 #[test]
 #[ignore = "daily"]
+fn a_landed_note_is_checked_only_against_its_own_merge() {
+    let dir = folder();
+    let sha = "6597e0855f562498319f093afcf2ed1ea8d717cb";
+    let own = ["--notes", "changes", "--base-notes", "base"];
+    let landed = [own[0], own[1], own[2], own[3], "--landed", sha];
+    // Changed in that merge: attached with `--landed`, and left out of the pull request's own diff.
+    note(
+        dir.path(),
+        "changes",
+        "late.toml",
+        &format!("ids = [\"fn:spawn\"]\nwhy = \"Late.\"\nlanded = \"{sha}\"\n"),
+    );
+    let (code, out, err) = run(dir.path(), &own);
+    assert_eq!(code, 0, "{err}");
+    assert!(!out.contains("Late."), "{out}");
+    let (code, out, err) = run(dir.path(), &landed);
+    assert_eq!(code, 0, "{err}");
+    assert!(out.contains("Late."), "{out}");
+    // An id that did not change in that merge is stale; another merge's notes are not read.
+    note(
+        dir.path(),
+        "changes",
+        "late.toml",
+        &format!("ids = [\"fn:keep\"]\nwhy = \"Late.\"\nlanded = \"{sha}\"\n"),
+    );
+    let (code, _, err) = run(dir.path(), &landed);
+    assert_eq!(code, 1);
+    assert!(
+        err.contains("change note late.toml names fn:keep, which did not change"),
+        "{err}"
+    );
+    let other = "1".repeat(40);
+    let (code, out, _) = run(
+        dir.path(),
+        &[own[0], own[1], own[2], own[3], "--landed", &other],
+    );
+    assert_eq!(code, 0);
+    assert!(!out.contains("Late."), "{out}");
+}
+
+#[test]
+#[ignore = "daily"]
 fn sdk_note_scope_ignores_engine_ids_but_checks_api_ids() {
     let dir = folder();
     note(
@@ -197,12 +239,12 @@ fn sdk_note_scope_ignores_engine_ids_but_checks_api_ids() {
     let notes = ["--notes", "changes", "--base-notes", "base"];
     let mut publish = notes.to_vec();
     publish.extend(["--api-notes-only", "--json", "diff.json"]);
-    let (code, out, err) = run(dir.path(), &publish);
+    let (code, _, err) = run(dir.path(), &publish);
     assert_eq!(code, 0, "{err}");
     assert!(err.is_empty(), "{err}");
-    assert!(out.contains("0 breaking without a note"), "{out}");
     let diff: mod_surface::Diff =
         serde_json::from_slice(&std::fs::read(dir.path().join("diff.json")).unwrap()).unwrap();
+    assert_eq!(diff.undeclared().count(), 0);
     let noted: Vec<_> = diff
         .changes
         .iter()
@@ -216,14 +258,16 @@ fn sdk_note_scope_ignores_engine_ids_but_checks_api_ids() {
 
     let (code, _, err) = run(dir.path(), &notes);
     assert_eq!(code, 1);
-    assert!(
-        err.contains("change note point.toml names point:game::old_tick, which did not change"),
-        "{err}"
-    );
-    assert!(
-        err.contains("change note mixed.toml names loop:old.tick, which did not change"),
-        "{err}"
-    );
+    for refused in [
+        ["point.toml", "point:game::old_tick", "which did not change"],
+        ["mixed.toml", "loop:old.tick", "which did not change"],
+    ] {
+        assert!(
+            err.lines()
+                .any(|line| refused.iter().all(|word| line.contains(word))),
+            "{err}"
+        );
+    }
 
     note(
         dir.path(),
@@ -233,10 +277,14 @@ fn sdk_note_scope_ignores_engine_ids_but_checks_api_ids() {
     );
     let (code, _, err) = run(dir.path(), &publish);
     assert_eq!(code, 1);
-    assert_eq!(
-        err.trim(),
-        "change note api-stale.toml names fn:keep, which did not change"
+    // The engine id in the same note is outside the SDK's scope, so only the API id is refused.
+    assert!(
+        err.contains("api-stale.toml")
+            && err.contains("fn:keep")
+            && err.contains("which did not change"),
+        "{err}"
     );
+    assert!(!err.contains("point:game::new_tick"), "{err}");
 }
 
 #[test]

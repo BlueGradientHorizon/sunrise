@@ -1,0 +1,2 @@
+ids = ["hook:item_stacked_on_other", "hook:menu_clicked", "hook:menu_quick_move"]
+why = "Wasm listeners now get the documented rollback during a decided action. A trapped listener, missing reply, or invalid reply refuses the action and undoes tentative writes just like a native listener unwind. This does not change a call id, payload, signature or layout."

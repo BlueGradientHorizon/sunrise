@@ -4,14 +4,29 @@
 //! [`horizontal`], [`overlay_tiles`]...) or from the position ([`repeat_index`],
 //! [`random_index`]).
 //!
-//! Nothing here knows OptiFine's files, so other connected-texture formats (Fusion's) share it:
-//! they build the same mask and read the same tables.
+//! Nothing here knows a file format: OptiFine's connected textures, Fusion's, and a mod's own
+//! share it. They build the same mask and read the same tables.
 //!
 //! The tile tables are OptiFine's documented templates (`ctm_template.png`,
 //! `ctm_compact_template.png`, `horizontal_template.png`, `vertical_template.png`,
 //! `overlay_template.png`), read off the images.
 
-use super::Symmetry;
+/// How faces of a block share a choice (`symmetry`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Symmetry {
+    #[default]
+    None,
+    /// Opposite faces share a choice.
+    Opposite,
+    /// All six faces share a choice.
+    All,
+}
+
+mod rule;
+mod table;
+
+pub use rule::*;
+pub use table::*;
 
 pub type Vec3 = [i32; 3];
 
@@ -28,7 +43,7 @@ const fn dot(a: Vec3, b: Vec3) -> i64 {
     a[0] as i64 * b[0] as i64 + a[1] as i64 * b[1] as i64 + a[2] as i64 * b[2] as i64
 }
 
-/// Block faces in `Direction` order, the bit order of [`super::faces`].
+/// Block faces in `Direction` order, the bit order of a rule's `faces`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Face {
     Down,
@@ -66,7 +81,7 @@ impl Face {
         }
     }
 
-    /// The face's [`super::faces`] bit.
+    /// The face's bit in a rule's `faces`.
     pub const fn bit(self) -> u8 {
         1 << self as u8
     }
@@ -179,6 +194,22 @@ pub fn offsets(axes: Axes) -> [(u8, Vec3); 8] {
     ]
 }
 
+/// For `offset` on an edge of a face (one step along one axis of the face's plane), the two cells
+/// beside the block along the plane's other axis; `None` for any other offset.
+pub fn beside(normal: Vec3, offset: Vec3) -> Option<[Vec3; 2]> {
+    let steps = offset.iter().filter(|&&c| c != 0).count();
+    if steps != 1 || dot(normal, offset) != 0 {
+        return None;
+    }
+    // `normal x offset`: a unit step along the plane's other axis.
+    let along = [
+        normal[1] * offset[2] - normal[2] * offset[1],
+        normal[2] * offset[0] - normal[0] * offset[2],
+        normal[0] * offset[1] - normal[1] * offset[0],
+    ];
+    Some([along, neg(along)])
+}
+
 /// The neighbours of a face that join it, by `joins(offset from the block)`: all eight, so
 /// overlays see the corners whatever the sides. With `inner_seams`, a neighbour whose own face
 /// is covered (the block in front of it joins too) doesn't count, which draws a seam on inner
@@ -251,7 +282,7 @@ const TEMPLATE: [u8; 47] = [
 ];
 
 /// A mask without the corners whose sides don't both join.
-pub(crate) const fn reduce(mask: u8) -> u8 {
+pub const fn reduce(mask: u8) -> u8 {
     let mut out = mask & (U | R | D | L);
     let corners = [(UR, U | R), (DR, D | R), (DL, D | L), (UL, U | L)];
     let mut i = 0;
@@ -443,6 +474,20 @@ fn mix(mut x: u32) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_cells_beside_a_block_lie_along_the_faces_other_axis() {
+        // A north face (normal -z): its edge at -x has the cells above and below beside it.
+        assert_eq!(
+            beside([0, 0, -1], [-1, 0, 0]),
+            Some([[0, 1, 0], [0, -1, 0]])
+        );
+        // An up face (normal +y): its edge at +z has the cells at -x and +x beside it.
+        assert_eq!(beside([0, 1, 0], [0, 0, 1]), Some([[1, 0, 0], [-1, 0, 0]]));
+        // A corner and the cell in front are no edge.
+        assert_eq!(beside([0, 1, 0], [1, 0, 1]), None);
+        assert_eq!(beside([0, 1, 0], [0, 1, 0]), None);
+    }
 
     #[test]
     fn ctm_tiles_from_the_template() {

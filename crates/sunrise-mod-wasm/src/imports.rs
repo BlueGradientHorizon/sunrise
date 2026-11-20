@@ -22,6 +22,14 @@ pub fn set_game_build(id: &str) {
     let _ = GAME_BUILD.set(id.to_owned());
 }
 
+/// The SDK a mod is rebuilt with, as a refusal names it: `rebuild with SDK sdk-<build id>`, or
+/// plain `rebuild it` before the game has recorded its build.
+pub(crate) fn rebuild_advice() -> String {
+    GAME_BUILD.get().map_or("rebuild it".to_owned(), |build| {
+        format!("rebuild it with SDK sdk-{build}")
+    })
+}
+
 /// What the game serves a name with.
 pub(crate) enum Bound {
     /// A host call: the generated function that answers it.

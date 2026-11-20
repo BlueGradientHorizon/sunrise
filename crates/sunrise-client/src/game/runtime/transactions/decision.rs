@@ -509,7 +509,7 @@ pub(in crate::game) fn run<H: ActionHost, T: ActionTarget<H>>(
             return outcome;
         }
         guard.host.dispatched();
-        let reply = fire(guard.host);
+        let reply = sunrise_mod_runtime::dispatch_failures::with_action_fire(|| fire(guard.host));
         apply(guard.host, token, reply)
     }))
     .unwrap_or(Outcome::ListenerFailed);

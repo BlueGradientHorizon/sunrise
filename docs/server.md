@@ -323,8 +323,8 @@ velocity that is not finite numbers (a rotation past what a float holds too). A 
 (`RootVehicle`) puts the player back on it at the vehicle's own place, so a request that names a position for such a
 record is refused. The border, the blocks and the chunks are not checked,
 as a vanilla server does not check the place its player file names. The player is teleported to the position (the
-client confirms a new teleport id), so an anticheat never sees the arrival as a move, however far it is from the
-export.
+client confirms a new teleport id), so the arrival is a teleport, never judged as a move (vanilla's speed and
+collision checks), however far it is from the export.
 
 **The view follows the imported position.** `recentered` says whether the import moved the player to another chunk
 than the one its view was built around (only possible with the `position` part, and only once the player has been sent

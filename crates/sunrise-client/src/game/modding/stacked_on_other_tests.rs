@@ -5,6 +5,7 @@
 //! This hook's cancellation is an override result, not an abort: a cancelled, handled click
 //! sets the stacks the listener names and is Applied. The abort outcomes are a stale read, an
 //! invalid answer and a failing listener; each undoes every write the listener made.
+use super::mod_menu_decisions_tests::GuestFailure;
 use crate::game::native_entity_refs::tests::with_game;
 use crate::game::native_guest_turn_tests::with_guests;
 use mod_api::item::menu::StackResult;
@@ -22,6 +23,7 @@ struct Script {
     /// ...and take it out again at once.
     take_dirt_back: bool,
     panic: bool,
+    guest: Option<GuestFailure>,
     cancel: bool,
     handled: bool,
     /// Set the cursor to this stack (item, count); `Some(None)` empties it.
@@ -113,6 +115,9 @@ impl Hooks for Listener {
                 mod_api::ObjectiveRenderType::Integer,
             )
             .unwrap();
+        }
+        if let Some(failure) = s.guest {
+            return failure.module().item_stacked_on_other(host, event);
         }
         if s.panic {
             panic!("a listener failed");
@@ -256,6 +261,37 @@ fn a_listener_that_panics_after_a_committed_write_is_undone_and_the_next_click_w
             assert!(game.transactions.is_empty());
             script(Script::default());
             assert_eq!(click(game), (3, 0, 0));
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_guest_failure_aborts_item_stacked_on_other_without_falling_back() {
+    sunrise_guest_stack::run_on_guest_stack(|| {
+        with_mod(|| {
+            with_local(|game| {
+                for failure in GuestFailure::ALL {
+                    for write_dirt in [Some(20), None] {
+                        let failures = game.wasm_dispatch_failures.get();
+                        script(Script {
+                            write_dirt,
+                            guest: Some(failure),
+                            ..Script::default()
+                        });
+                        assert_eq!(click(game), (0, 3, 0), "{failure:?}");
+                        assert_eq!(
+                            game.wasm_dispatch_failures.get(),
+                            failures + 1,
+                            "{failure:?}"
+                        );
+                        assert_eq!(dispatches(), 1);
+                        assert!(game.transactions.is_empty());
+                    }
+                }
+                script(Script::default());
+                assert_eq!(click(game), (3, 0, 0));
+            });
         });
     });
 }
