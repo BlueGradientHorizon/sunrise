@@ -396,12 +396,14 @@ jobs:
           sysroot="$RUNNER_TEMP/alpine-sysroot"
           mkdir -p "$sysroot"
           # The image is pinned by digest; its packages come from the live 3.22 repository, so each one the build
-          # links against is held to the exact upstream version this route was proven with. apk's `~X.Y.Z` matches
-          # that version's Alpine revisions only (-rN: Alpine's own rebuilds and security fixes, which the repository
-          # replaces, so `=` with a revision would break), never another upstream release. The whole set is logged.
+          # links against (headers and the runtime libraries they come with) is held to the upstream version this
+          # route was proven with. apk's `~X.Y.Z` matches on whole version components: X.Y.Z with any Alpine revision
+          # (-rN: its own rebuilds and security fixes, which the repository replaces, so `=` with a revision would
+          # break) or letter suffix, never X.Y.Z1 or another release. The whole set is logged.
           docker run --rm "$MUSL_IMAGE" sh -ec '
             apk add --no-cache build-base "gcc~14.2.0" "binutils~2.44" "musl-dev~1.2.5" "linux-headers~6.14.2" \
-              "alsa-lib-dev~1.2.14" "eudev-dev~3.2.14" >&2
+              "alsa-lib-dev~1.2.14" "eudev-dev~3.2.14" "musl~1.2.5" "libgcc~14.2.0" "alsa-lib~1.2.14" \
+              "eudev-libs~3.2.14" >&2
             apk info -v | sort >&2
             tar -C / -cf - lib usr
           ' | tar --no-same-owner -xf - -C "$sysroot"

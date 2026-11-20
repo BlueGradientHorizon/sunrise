@@ -202,10 +202,12 @@ console.log(JSON.stringify(Boolean(eval(s.expression))));
             self.assertIn('"$MUSL_IMAGE"', step["run"])
             # Every package the build links against, or the programs load, is held to the proven upstream version.
             installs = " ".join(re.findall(r"apk add --no-cache ([^\n]+)", step["run"].replace("\\\n", " "))).split()
-            held = {spec.strip('"').split("~")[0] for spec in installs if "~" in spec}
-            needed = {"gcc", "binutils", "musl-dev", "linux-headers", "alsa-lib-dev", "eudev-dev"} if step is steps[cross] \
-                else {"alsa-lib", "eudev-libs", "libgcc", "musl"}
-            self.assertEqual(held, needed)
+            held = {spec.strip('"') for spec in installs if "~" in spec}
+            runtime = {"musl~1.2.5", "libgcc~14.2.0", "alsa-lib~1.2.14", "eudev-libs~3.2.14"}
+            build_only = {"gcc~14.2.0", "binutils~2.44", "musl-dev~1.2.5", "linux-headers~6.14.2", "alsa-lib-dev~1.2.14",
+                          "eudev-dev~3.2.14"}
+            # The sysroot holds the same runtime libraries the startup check loads.
+            self.assertEqual(held, runtime | build_only if step is steps[cross] else runtime)
 
     def test_every_shipped_glibc_program_is_checked_by_workflow_owned_tools(self):
         text = GAME.read_text()

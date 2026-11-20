@@ -144,7 +144,7 @@ def check(path, server=False, musl=False):
             problems += [f"needs {n}, which a server may not have" for n in needed if n in LINUX_DESKTOP_ONLY]
         if musl:
             try:
-                elf = subprocess.run(["readelf", "--wide", "--dynamic", "--version-info", "--", path],
+                elf = subprocess.run(["readelf", "--wide", "--version-info", "--", path],
                                      text=True, capture_output=True, env={**os.environ, "LC_ALL": "C"})
             except FileNotFoundError:
                 sys.exit("readelf is required for --musl (install binutils)")
