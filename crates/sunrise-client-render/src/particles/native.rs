@@ -247,12 +247,8 @@ pub(super) struct ProviderLevel<'a, 'l> {
 }
 impl ParticleLevelView for ProviderLevel<'_, '_> {
     fn block_state(&self, [x, y, z]: [i32; 3]) -> BlockState {
-        let id = self.level.block(x, y, z).0 as usize;
-        *self
-            .states
-            .get(id)
-            .or(self.states.first())
-            .expect("the game gives the particle engine its block states before a provider ticks")
+        // The table holds every state the world can: an id outside it is the game's bug.
+        self.states[self.level.block(x, y, z).0 as usize]
     }
     fn brightness(&self, layer: LightLayer, [x, y, z]: [i32; 3]) -> u8 {
         // An unloaded chunk reads as full sky and no block light.

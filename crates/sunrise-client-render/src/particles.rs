@@ -1266,17 +1266,20 @@ impl ParticleEngine {
         engine
     }
     /// The block states a provider's level view reads, by engine state id: set when a game holds
-    /// providers, and again when the registry changes.
-    pub fn set_block_states(&mut self, states: BlockStates) {
-        if self.providers.is_empty()
-            || self
-                .block_states
-                .as_ref()
-                .is_some_and(|known| Arc::ptr_eq(known, &states))
-        {
+    /// providers, and again when the registry changes. `None` (the game has no table) stops the
+    /// providers from running, so a provider never reads a state the engine cannot name.
+    pub fn set_block_states(&mut self, states: Option<BlockStates>) {
+        if self.providers.is_empty() {
             return;
         }
-        self.block_states = Some(states);
+        let same = match (&self.block_states, &states) {
+            (Some(known), Some(new)) => Arc::ptr_eq(known, new),
+            (None, None) => true,
+            _ => false,
+        };
+        if !same {
+            self.block_states = states;
+        }
     }
     /// `onResourceManagerReload`: sprite rects and sets come from the
     /// reloaded atlas and pack; a live particle keeps drawing its sprite by
@@ -3645,12 +3648,16 @@ impl ParticleEngine {
     /// The providers' part of a tick: each provider once with every particle of its type that
     /// `tick_particle` aged.
     fn tick_providers(&mut self, particles: &mut [Particle], level: &ParticleLevel) {
-        if self.providers.is_empty() {
+        let Some(states) = self
+            .block_states
+            .as_deref()
+            .filter(|_| !self.providers.is_empty())
+        else {
             return;
-        }
+        };
         let view = native::ProviderLevel {
             level,
-            states: self.block_states.as_deref().map_or(&[], AsRef::as_ref),
+            states: states.as_ref(),
         };
         let mut batch = std::mem::take(&mut self.batch);
         batch.tick(particles, &view, |p, frame| self.set_sprite_frame(p, frame));
