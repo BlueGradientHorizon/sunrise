@@ -460,10 +460,11 @@ impl PlayerSender {
             })
             .is_ok()
     }
-    /// Count a packet's bytes as queued; false past the cap, where the caller
-    /// closes the connection. A memory connection's reader is this process and takes a join's
-    /// whole first view in one burst, so only a network client is capped
-    /// (as [`io_pool::Outbox`] does).
+    /// Count a packet's bytes as queued. A network connection is refused (false) past its
+    /// cap, where the caller closes it. A memory connection counts the bytes but never
+    /// refuses: its reader is this process, and a join sends its whole first view in one
+    /// burst. `pending` may then exceed [`io_pool::MAX_PENDING`] until it drains, and
+    /// `prepare_payload` can answer `Backpressure` meanwhile.
     fn reserve_queued(&self, cost: usize) -> bool {
         if matches!(self.framing, sunrise_protocol::connection::Framing::Memory) {
             self.pending.fetch_add(cost, Ordering::AcqRel);
