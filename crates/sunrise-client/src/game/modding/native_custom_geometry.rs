@@ -611,6 +611,36 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
+    fn a_tinted_block_state_carries_its_default_tint_in_the_baked_colour() {
+        let _fixture = sunrise_client::models::standalone_fixture(Vec::new());
+        super::super::native_entity_refs::tests::with_client_game(|game| {
+            let colours = |name: &str| {
+                let state = game.pack.assets.registry.default_state(name).unwrap();
+                let model = game
+                    .native_block_state_model(mod_api::BlockStateId(state.0))
+                    .unwrap();
+                let slot = mod_api::__private::game::Fields::fields(&model).slot;
+                let faces = game.model_faces(slot).unwrap();
+                faces
+                    .iter()
+                    .filter(|face| face.quad.tint_index >= 0)
+                    .map(|face| face.quad.color)
+                    .collect::<Vec<_>>()
+            };
+            // Grass's top face is tinted by the grass colour, which is not white.
+            let grass = colours("minecraft:grass_block");
+            assert!(!grass.is_empty(), "the grass block has a tinted face");
+            assert!(
+                grass.iter().all(|c| c.is_some_and(|c| c != -1)),
+                "{grass:?}"
+            );
+            // Stone has no tinted face, so nothing is baked into its colour.
+            assert!(colours("minecraft:stone").is_empty());
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn persistent_groups_match_batch() {
         use mod_api::{GroupError, InstanceGroups};
         let _fixture = sunrise_client::models::standalone_fixture(vec![
