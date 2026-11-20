@@ -11,6 +11,14 @@ use std::sync::{Arc, Mutex};
 fn section_read_backend_refuses_reads_outside_its_snapshot() {
     let host = LiveSectionHost(None);
     let entity = EntityRef::new(mod_api::WorldEpoch::new(1), 1);
+    assert_eq!(
+        entity.piston_push_reaction(&host),
+        Err(mod_api::LevelReadError::Unavailable)
+    );
+    assert_eq!(
+        entity.is_hanging(&host),
+        Err(mod_api::LevelReadError::Unavailable)
+    );
     let player = mod_api::__private::game::player_ref(entity, 1);
     let menu = mod_api::__private::game::menu_ref(player, 1, 1);
 

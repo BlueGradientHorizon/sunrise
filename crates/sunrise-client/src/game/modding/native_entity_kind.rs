@@ -162,14 +162,43 @@ mod tests {
             let (client, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(client, "reaction").unwrap();
             game.remote.as_mut().unwrap().logged_in = true;
-            game.spawn_entity(10, "minecraft:pig", [0.0; 3], [0.0; 3]);
-            game.spawn_entity(11, "minecraft:armor_stand", [0.0; 3], [0.0; 3]);
-            game.spawn_entity(12, "minecraft:item_frame", [0.0; 3], [0.0; 3]);
-            game.spawn_entity(13, "minecraft:leash_knot", [0.0; 3], [0.0; 3]);
-            game.spawn_entity(14, "minecraft:block_display", [0.0; 3], [0.0; 3]);
-            game.armor_stands.push(ArmorStand::new(11, Vec3::ZERO, 0.0));
+            use sunrise_protocol::packets::play::{self, Clientbound as C};
+
+            for (id, key) in [
+                (10, "minecraft:pig"),
+                (11, "minecraft:armor_stand"),
+                (12, "minecraft:item_frame"),
+                (13, "minecraft:leash_knot"),
+                (14, "minecraft:block_display"),
+            ] {
+                let kind = game
+                    .remote
+                    .as_ref()
+                    .unwrap()
+                    .builtin
+                    .get("minecraft:entity_type")
+                    .unwrap()
+                    .id(key)
+                    .unwrap();
+                game.handle_packet(C::AddEntity(play::AddEntity {
+                    id,
+                    uuid: id as u128,
+                    kind,
+                    position: [0.0; 3],
+                    velocity: [0.0; 3],
+                    pitch: 0,
+                    yaw: 0,
+                    head_yaw: 0,
+                    data: 0,
+                }))
+                .unwrap();
+            }
             assert_eq!(read(game, 11), (PushPull, false));
-            game.armor_stands.update(0, |stand| stand.marker = true);
+            game.handle_packet(C::SetEntityData(play::SetEntityData {
+                id: 11,
+                values: vec![(15, 0, sunrise_protocol::entity_data::Value::Byte(16))],
+            }))
+            .unwrap();
             assert_eq!(read(game, 10), (PushPull, false));
             assert_eq!(read(game, 11), (IgnoreEntity, false));
             assert_eq!(read(game, 12), (PushPull, true));

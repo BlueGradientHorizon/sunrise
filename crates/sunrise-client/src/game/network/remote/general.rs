@@ -292,7 +292,7 @@ mod tests {
                     mod_api::GeneralSavePolicy::Save,
                     true,
                     pickable,
-                    None,
+                    (!pickable).then_some(mod_api::PushReaction::IgnoreEntity),
                     8,
                     1,
                     1,
@@ -420,6 +420,10 @@ mod tests {
                 game.handle_packet(spawn(40, "mymod:missile", [0.5, 66.5, 1.2]))
                     .unwrap();
                 game.handle_packet(snapshot(40, None)).unwrap();
+                assert_eq!(
+                    game.entity(40).unwrap().piston_push_reaction(game),
+                    Ok(Some(mod_api::PushReaction::IgnoreEntity))
+                );
                 game.handle_packet(spawn(41, PACKAGE, [0.5, 65.0, 1.8]))
                     .unwrap();
                 game.handle_packet(spawn(42, PACKAGE, AT)).unwrap();
