@@ -1,7 +1,7 @@
 //! Real LAN merchant result takes, with native listeners and the production coordinator.
 use super::{Game, native_guest_turn_tests::with_guests};
 use mod_api::{
-    Flow, Hooks, Host, HostSide, HostTransaction, ItemPlace, ItemResource, ItemStackedOnOtherEvent,
+    Flow, Hooks, HostSide, HostTransaction, ItemPlace, ItemResource, ItemStackedOnOtherEvent,
     ModEntry, Mods, PlayerTradeEvent, ServerHost, TradeWithVillagerEvent,
 };
 use std::cell::{Cell, RefCell};
