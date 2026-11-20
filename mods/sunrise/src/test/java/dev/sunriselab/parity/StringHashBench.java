@@ -1,7 +1,9 @@
 package dev.sunriselab.parity;
 
 /**
- * HotSpot's String.hashCode per call on fresh strings, for tools/string_hash_kit: MIX LEN ROUNDS [stepped|check].
+ * HotSpot's String.hashCode per call on fresh strings, for tools/string_hash_kit: MIX LEN ROUNDS [stepped|check], or with
+ * the mode prefixed `create-` (new String(utf8 bytes, UTF_8) then hashCode, per string) or `lookup-` (HashMap.get of 64
+ * String keys whose hash is already cached, per lookup).
  * Each batch makes the row's strings anew (untimed: new String(char[], off, len), compact Latin-1 when every unit
  * fits), then times one hashCode call on each, so that no hash is cached. The strings are the same as
  * tools/string_hash_kit/bench.rs makes.
@@ -38,28 +40,65 @@ public final class StringHashBench {
             }
         }
         fresh = new String[count];
-        if (a.length > 3 && a[3].equals("check")) {
-            make(pool, len);
-            System.out.println(hashAll());
+        String mode = a.length > 3 ? a[3] : "stepped";
+        boolean check = mode.endsWith("check");
+        if (mode.startsWith("create-")) {
+            byte[][] utf8 = new byte[count][];
+            for (int i = 0; i < count; i++) utf8[i] = new String(pool, i * len, len).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            run(a, check, () -> createAll(utf8), () -> {}, count);
+            return;
+        }
+        if (mode.startsWith("lookup-")) {
+            java.util.HashMap<String, Integer> map = new java.util.HashMap<>();
+            String[] queries = new String[64];
+            for (int i = 0; i < 64; i++) {
+                map.put(new String(pool, i * len, len), i);
+                queries[i] = new String(pool, i * len, len);
+                queries[i].hashCode();
+            }
+            run(a, check, () -> lookupAll(map, queries), () -> {}, 64 * 16);
+            return;
+        }
+        run(a, check, () -> hashAll(), () -> make(pool, len), count);
+    }
+
+    /** One timed batch per round: `prepare` untimed, then `work` timed, `per` calls in it. */
+    static void run(String[] a, boolean check, java.util.function.IntSupplier work, Runnable prepare, int per)
+            throws Exception {
+        if (check) {
+            prepare.run();
+            System.out.println(work.getAsInt());
             return;
         }
         int rounds = Integer.parseInt(a[2]);
-        boolean stepped = a.length > 3 && a[3].equals("stepped");
+        boolean stepped = a.length > 3 && a[3].endsWith("stepped");
         java.io.BufferedReader in = new java.io.BufferedReader(new java.io.InputStreamReader(System.in));
         for (int round = 0; round < rounds; round++) {
             if (stepped && in.readLine() == null) return;
-            for (int w = 0; w < 2000; w++) { make(pool, len); sink = hashAll(); }
+            for (int w = 0; w < 2000; w++) { prepare.run(); sink = work.getAsInt(); }
             double[] t = new double[400];
             for (int b = 0; b < 400; b++) {
-                make(pool, len);
+                prepare.run();
                 long s = System.nanoTime();
-                sink = hashAll();
-                t[b] = (System.nanoTime() - s) / (double) count;
+                sink = work.getAsInt();
+                t[b] = (System.nanoTime() - s) / (double) per;
             }
             java.util.Arrays.sort(t);
             System.out.printf("hotspot median %.4f ns%n", t[200]);
             System.out.flush();
         }
+    }
+
+    static int createAll(byte[][] utf8) {
+        int s = 0;
+        for (byte[] b : utf8) s += new String(b, java.nio.charset.StandardCharsets.UTF_8).hashCode();
+        return s;
+    }
+
+    static int lookupAll(java.util.HashMap<String, Integer> map, String[] queries) {
+        int s = 0;
+        for (int pass = 0; pass < 16; pass++) for (String q : queries) s += map.get(q);
+        return s;
     }
 
     static void make(char[] pool, int len) {

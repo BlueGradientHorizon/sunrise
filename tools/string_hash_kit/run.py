@@ -12,9 +12,11 @@ String.hashCode on fresh strings, by the math kits' method.
   read from the binary with nm, and prints them. A row's figure is the mean over the copies.
 - Confidence: per round, the copies' mean divided by HotSpot's round; the median ratio with a percentile-bootstrap
   95% interval. `faster`: the whole interval under 0.98; `slower`: over 1.00; otherwise `inside the noise`.
-- Allocations in the timed Rust loops are counted (0 expected); `check` compares both sides' hash sums per row.
+- Allocations and reallocations in the timed Rust loops are counted (0 required for hash and lookup,
+  reported separately for creation and decode); `check` compares both sides' hash sums per row.
 
 Writes .local/string-hash-kit/report.json and prints the table. Needs cargo, java 25 (PATH or --java) and nm.
+Set STRING_HASH_KIT_LOCKED=1 to use the kit's checked-in lockfile and build offline (requires cached or vendored crates).
 """
 import argparse
 import json
@@ -29,12 +31,18 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 MODULE = ROOT / "crates/sunrise-core/src/java_string.rs"
+MAIN = HERE / "main_hash.rs"
 BENCH = ROOT / "mods/sunrise/src/test/java/dev/sunriselab/parity/StringHashBench.java"
 BENCH_CLASS = "dev.sunriselab.parity.StringHashBench"
 BUILD = ROOT / ".local/string-hash-kit"
 MIXES = ["ascii", "latin1", "bmp", "surrogates"]
 LENGTHS = [0, 1, 8, 32, 128, 1024]
-ENTRIES = ["utf16", "str"]
+ENTRIES = ["utf16", "str", "main_utf16", "main_str"]
+MAIN_OF = {"utf16": "main_utf16", "str": "main_str"}
+ALLOCATOR = "system"
+PLACED = [*ENTRIES, "create", "decode"]
+KINDS = {"hash": ENTRIES, "create": ["create", "decode"], "lookup": ["lookup"]}
+LOOKUP_LENGTHS = [1, 8, 32]
 
 
 def log(message):
@@ -88,7 +96,7 @@ def pick_cpu():
     return default, "the default rule (CPU 2 if allowed, else the last allowed CPU): no hybrid cores found"
 
 
-GROUPS = ["module", "utf16", "str"]
+GROUPS = ["module", *PLACED]
 
 
 def filler(name, uid, n):
@@ -108,31 +116,55 @@ def generate(copies, fill):
     (src / "copies").mkdir(parents=True)
     (crate / "Cargo.toml").write_text(
         '[package]\nname = "string-hash-kit"\nversion = "0.0.0"\nedition = "2024"\npublish = false\n\n'
+        '[dependencies]\nsafe_arch = "=1.2.0"\n'
+        f'sunrise-core = {{ path = "{ROOT / "crates/sunrise-core"}" }}\n'
+        f'sunrise-threads = {{ path = "{ROOT / "crates/sunrise-threads"}", optional = true }}\n\n'
+        '[features]\ngame = ["dep:sunrise-threads"]\n\n'
         '[workspace]\n\n[profile.release]\nopt-level = 3\ncodegen-units = 1\nlto = "thin"\n')
+    if os.environ.get("STRING_HASH_KIT_LOCKED"):
+        # This lockfile was generated for the standalone kit manifest above, not the root workspace.
+        shutil.copyfile(HERE / "Cargo.lock", crate / "Cargo.lock")
     shutil.copyfile(HERE / "bench.rs", src / "main.rs")
     lines = ["//! Written by tools/string_hash_kit/run.py.", "#![allow(dead_code)]", "use std::hint::black_box;", ""]
-    utf16, text, fillers = [], [], []
+    lists, fillers = {e: [] for e in PLACED}, []
     for c in range(copies):
         (src / "copies" / f"copy_{c}").mkdir()
         shutil.copyfile(MODULE, src / "copies" / f"copy_{c}" / "java_string.rs")
+        shutil.copyfile(MAIN, src / "copies" / f"copy_{c}" / "main_hash.rs")
         # `java_strinf` sorts just before `java_string`'s functions.
         (src / "copies" / f"copy_{c}.rs").write_text(
-            "use std::hint::black_box;\npub mod java_string;\n"
+            "use std::hint::black_box;\npub mod java_string;\npub mod main_hash;\n"
             + "\n".join(filler("java_strinf", 1000 + c, fill["module"] if c else 0)) + "\n")
         lines.append(f"pub mod copy_{c};")
         fillers.append(f"    copy_{c}::java_strinf,")
     for c in range(copies):
-        for group, entry, arg in (("utf16", "java_string_hash", "&[&[u16]]"), ("str", "java_string_hash_str", "&[&str]")):
+        for group, module, entry, arg in (
+                ("utf16", "java_string", "java_string_hash", "&[&[u16]]"),
+                ("str", "java_string", "java_string_hash_str", "&[&str]"),
+                ("main_utf16", "main_hash", "java_string_hash", "&[&[u16]]"),
+                ("main_str", "main_hash", "java_string_hash_str", "&[&str]"),
+                ("create", "java_string", "java_string_hash", "&[&str]"),
+                ("decode", "java_string", "java_string_hash", "&[&str]")):
             lines += filler(f"{group}_{c}_g", 2000 + 10 * c + len(group), fill[group] if c else 0)
             # Each loop starts from a sum of its own (c + 1), so that no two copies' loops are one function.
             lines += ["#[inline(never)]", f"pub fn {group}_{c}_h(s: {arg}) -> u32 {{",
-                      f"    s.iter().fold({c + 1}u32, |a, x| a.wrapping_add(copy_{c}::java_string::{entry}(black_box(x)) as u32))",
+                      f"    s.iter().fold({c + 1}u32, |a, x| a.wrapping_add(copy_{c}::{module}::{entry}(black_box(x)) as u32))"
+                      if group not in ("create", "decode") else
+                      f"    s.iter().fold({c + 1}u32, |a, x| {{ let (u, h) = copy_{c}::{module}::utf16_with_hash(black_box(x)); "
+                      f"a.wrapping_add(h as u32) + 0 * black_box(u).len() as u32 }})"
+                      if group == "create" else
+                      f"    let mut u: Vec<u16> = Vec::with_capacity(4096);\n"
+                      f"    s.iter().fold({c + 1}u32, |a, x| {{ u.clear(); u.extend(black_box(x).encode_utf16()); "
+                      f"a.wrapping_add(copy_{c}::{module}::{entry}(&u) as u32) }})",
                       "}"]
             fillers.append(f"    {group}_{c}_g,")
-        utf16.append(f"    ({c}, utf16_{c}_h),")
-        text.append(f"    ({c}, str_{c}_h),")
-    lines += ["pub const UTF16: &[(usize, fn(&[&[u16]]) -> u32)] = &[", *utf16, "];",
-              "pub const STR: &[(usize, fn(&[&str]) -> u32)] = &[", *text, "];",
+            lists[group].append(f"    ({c}, {group}_{c}_h),")
+    lines += ["pub const UTF16: &[(usize, fn(&[&[u16]]) -> u32)] = &[", *lists["utf16"], "];",
+              "pub const STR: &[(usize, fn(&[&str]) -> u32)] = &[", *lists["str"], "];",
+              "pub const MAIN_UTF16: &[(usize, fn(&[&[u16]]) -> u32)] = &[", *lists["main_utf16"], "];",
+              "pub const MAIN_STR: &[(usize, fn(&[&str]) -> u32)] = &[", *lists["main_str"], "];",
+              "pub const CREATE: &[(usize, fn(&[&str]) -> u32)] = &[", *lists["create"], "];",
+              "pub const DECODE: &[(usize, fn(&[&str]) -> u32)] = &[", *lists["decode"], "];",
               "pub const FILLERS: &[fn(u64) -> u64] = &[", *fillers, "];", ""]
     (src / "copies.rs").write_text("\n".join(lines))
     return crate
@@ -146,15 +178,16 @@ def symbols(binary):
         if len(parts) != 3:
             continue
         name = re.sub(r"::h[0-9a-f]{16}$", "", parts[2])
-        m = re.search(r"copies::(?:(utf16|str)_(\d+)_h|copy_(\d+)::java_string::(\w+(?:::<\w+>)?))$", name)
+        m = re.search(r"copies::(?:(utf16|str|main_utf16|main_str|create|decode)_(\d+)_h|copy_(\d+)::java_string::(\w+(?:::<\w+>)?))$", name)
         if m:
             key, c = (m.group(1), m.group(2)) if m.group(1) else (m.group(4), m.group(3))
             out.setdefault(key, {})[int(c)] = int(parts[0], 16)
     return out
 
 
-def build_placed(copies, attempts=16):
-    """Builds until every group's copies start at min(copies, 4) distinct offsets mod 64: while a group's copies share
+def build_placed(copies, attempts=64):
+    """Builds until each loop group's copies start at min(copies, 4) distinct offsets mod 64 (the module's out-of-line
+    function, which only the non-ASCII &str rows reach, is reported but not required to differ): while a group's copies share
     an offset, its filler grows by a statement. -Z merge-functions=disabled (RUSTC_BOOTSTRAP, this build only) keeps
     LLVM from folding the byte-identical copies of the module's out-of-line functions into one."""
     need = min(copies, 4)
@@ -163,16 +196,19 @@ def build_placed(copies, attempts=16):
            "RUSTFLAGS": "-Z merge-functions=disabled"}
     for attempt in range(1, attempts + 1):
         crate = generate(copies, fill)
-        run("cargo", "build", "--release", "--quiet", "--manifest-path", crate / "Cargo.toml", env=env)
+        run("cargo", "build", "--release", "--quiet", "--manifest-path", crate / "Cargo.toml",
+            *(["--features", "game"] if ALLOCATOR == "game" else []),
+            *(["--locked", "--offline"] if os.environ.get("STRING_HASH_KIT_LOCKED") else []), env=env)
         binary = BUILD / "target/release/string-hash-kit"
         groups = symbols(binary)
-        ok = {k: len(g) == copies and len({a % 64 for a in g.values()}) >= need for k, g in groups.items()}
+        ok = {k: len(g) == copies and len({a % 64 for a in g.values()}) >= (need if k in PLACED else 1)
+              for k, g in groups.items()}
         if all(ok.values()):
             break
-        if not all(ok[e] for e in ENTRIES if e in ok):
-            for e in ENTRIES:
+        if not all(ok[e] for e in PLACED if e in ok):
+            for e in PLACED:
                 fill[e] += not ok.get(e, False)
-        if not all(v for k, v in ok.items() if k not in ENTRIES):
+        if not all(v for k, v in ok.items() if k not in PLACED):
             fill["module"] += 1
     distinct = all(ok.values())
     log(f"placement: {attempt} build(s), fillers {fill}; " + ("every copy at a distinct offset mod 64" if distinct
@@ -196,10 +232,20 @@ def main():
     parser.add_argument("--rounds", type=int, default=5, help="rounds per JVM")
     parser.add_argument("--mixes", default=",".join(MIXES))
     parser.add_argument("--lengths", default=",".join(map(str, LENGTHS)))
+    parser.add_argument("--kinds", default="hash,create,lookup",
+                        help="hash: hashing a made string; create: UTF-8 text to UTF-16 units and a hash against "
+                             "new String(bytes, UTF_8).hashCode(); lookup: keyed::compound_get of 64 keys against "
+                             "HashMap.get with cached hashes (ASCII, lengths 1, 8, 32)")
     parser.add_argument("--java", default=shutil.which("java"), help="a JDK 25's bin/java")
     parser.add_argument("--check-only", action="store_true",
                         help="build, place the copies and compare every row's hash sums; time nothing")
+    parser.add_argument("--cpu", type=int, default=None, help="pin to this CPU (default: the kit's own rule)")
+    parser.add_argument("--allocator", choices=["system", "game"], default="system",
+                        help="the bench binary's global allocator: the system's (default), or the game's "
+                             "(sunrise_threads::GAME_ALLOCATOR, mimalloc on Linux)")
     args = parser.parse_args()
+    global ALLOCATOR
+    ALLOCATOR = args.allocator
     BUILD.mkdir(parents=True, exist_ok=True)
     java = Path(args.java)
     log(run(java, "-version", capture_output=True, text=True).stderr.splitlines()[0])
@@ -207,27 +253,36 @@ def main():
     classes.mkdir(exist_ok=True)
     run(java.with_name("javac"), "--release", "25", "-d", classes, BENCH)
     binary, offsets, placed = build_placed(args.copies)
-    cpu, why = pick_cpu()
+    cpu, why = (args.cpu, "given with --cpu") if args.cpu is not None else pick_cpu()
     pin = ["taskset", "-c", str(cpu)] if shutil.which("taskset") else []
     log(f"pinned to CPU {cpu}: {why}" if pin else "not pinned (no taskset)")
     rng = random.Random(20261119)
     report = {"java": str(java), "cpu": cpu, "why": why, "copies": args.copies, "offsets": offsets,
               "placement_distinct": placed, "rows": {}}
-    allocations = 0
-    rows = [(m, int(n)) for m in args.mixes.split(",") for n in args.lengths.split(",")]
-    for mix, length in rows:
-        rust_sum = run(binary, "check", mix, length, capture_output=True, text=True).stdout.split()
-        java_sum = run(java, "-cp", classes, BENCH_CLASS, mix, length, 0, "check",
+    allocations = dict.fromkeys([*PLACED, "lookup"], 0)
+    rows = []
+    for kind in args.kinds.split(","):
+        for m in args.mixes.split(","):
+            for n in args.lengths.split(","):
+                if kind != "lookup" or (m == "ascii" and int(n) in LOOKUP_LENGTHS):
+                    rows.append((kind, m, int(n)))
+    for kind, mix, length in rows:
+        suffix = "" if kind == "hash" else f"-{kind}"
+        tag = mix if kind == "hash" else f"{kind} {mix}"
+        entries = KINDS[kind]
+        rust_sum = run(binary, f"check{suffix}", mix, length, capture_output=True, text=True).stdout.split()
+        java_sum = run(java, "-cp", classes, BENCH_CLASS, mix, length, 0, "check" if kind == "hash" else f"{kind}-check",
                        capture_output=True, text=True).stdout.split()
-        if rust_sum != java_sum * 2:
-            sys.exit(f"{mix} {length}: hash sums differ: rust {rust_sum}, java {java_sum}")
+        if rust_sum != java_sum * (4 if kind == "hash" else 1):
+            sys.exit(f"{tag} {length}: sums differ: rust {rust_sum}, java {java_sum}")
         if args.check_only:
-            log(f"{mix:10} {length:5}: hash sums agree")
+            log(f"{tag:10} {length:5}: sums agree")
             continue
         rounds = []
+        row_allocations = dict.fromkeys(entries, 0)
         for start in range(args.starts):
             jvm = subprocess.Popen([str(a) for a in (*pin, java, "-cp", classes, BENCH_CLASS, mix, length,
-                                                     args.rounds, "stepped")],
+                                                     args.rounds, "stepped" if kind == "hash" else f"{kind}-stepped")],
                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
 
             def hotspot():
@@ -237,11 +292,10 @@ def main():
 
             def rust():
                 ns = {}
-                for line in run(*pin, binary, "bench", mix, length, capture_output=True, text=True).stdout.splitlines():
+                for line in run(*pin, binary, f"bench{suffix}", mix, length, capture_output=True, text=True).stdout.splitlines():
                     row = json.loads(line)
                     ns.setdefault(row["entry"], {})[row["copy"]] = row["median_ns"]
-                    nonlocal allocations
-                    allocations += row["allocations"]
+                    row_allocations[row["entry"]] += row["allocations"]
                 return ns
 
             for i in range(args.rounds):
@@ -257,29 +311,50 @@ def main():
                "hotspot_start_spread": (max(per_start) - min(per_start)) / median(per_start), "entries": {},
                "raw": rounds}
         mean = lambda d: sum(d.values()) / len(d)
-        for entry in ENTRIES:
+        for entry in entries:
+            allocations[entry] += row_allocations[entry]
             med, lo, hi = bootstrap_median_ci([mean(r["ns"][entry]) / r["hotspot_ns"] for r in rounds], rng)
             copies = {c: median([r["ns"][entry][c] / r["hotspot_ns"] for r in rounds])
                       for c in sorted(rounds[0]["ns"][entry])}
             row["entries"][entry] = {
                 "rust_ns": median([mean(r["ns"][entry]) for r in rounds]), "ratio_median": med,
-                "ratio_ci95": [lo, hi], "copies": copies,
+                "ratio_ci95": [lo, hi], "copies": copies, "allocations": row_allocations[entry],
                 "status": ("faster" if hi < 0.98 else "slower" if lo > 1.0 else "inside the noise")
                 + ("" if placed else ", not placement-averaged")}
-        report["rows"][f"{mix} {length}"] = row
-        log(f"{mix:10} {length:5}: hotspot {row['hotspot_ns']:8.3f} ns (JVM starts spread "
+        for entry, main_entry in (MAIN_OF.items() if kind == "hash" else ()):
+            # Ours over main's, round by round (the copies' means): the same method as the HotSpot ratio.
+            med, lo, hi = bootstrap_median_ci([mean(r["ns"][entry]) / mean(r["ns"][main_entry]) for r in rounds], rng)
+            row["entries"][entry]["vs_main"] = {
+                "ratio_median": med, "ratio_ci95": [lo, hi],
+                "status": "faster" if hi < 0.98 else "slower" if lo > 1.0 else "not slower" if hi <= 1.0
+                else "inside the noise"}
+        report["rows"][f"{tag} {length}"] = row
+        log(f"{tag:10} {length:5}: hotspot {row['hotspot_ns']:8.3f} ns (JVM starts spread "
             f"{row['hotspot_start_spread'] * 100:4.1f}%)" + "".join(
                 f"  {e} {d['rust_ns']:8.3f} ns ratio {d['ratio_median']:.3f} [{d['ratio_ci95'][0]:.3f}, "
-                f"{d['ratio_ci95'][1]:.3f}] {d['status']}" for e, d in row["entries"].items()))
+                f"{d['ratio_ci95'][1]:.3f}] {d['status']}" + (
+                    f" | vs main {d['vs_main']['ratio_median']:.3f} [{d['vs_main']['ratio_ci95'][0]:.3f}, "
+                    f"{d['vs_main']['ratio_ci95'][1]:.3f}] {d['vs_main']['status']}" if "vs_main" in d else "")
+                for e, d in row["entries"].items()))
     if args.check_only:
         return
+    checked_allocations = sum(allocations[e] for e in (*ENTRIES, "lookup"))
     report["allocations_in_bench_loops"] = allocations
     (BUILD / "report.json").write_text(json.dumps(report, indent=1))
     misses = [f"{k} {e}" for k, r in report["rows"].items() for e, d in r["entries"].items()
-              if not d["status"].startswith("faster")]
-    log(f"allocations in the timed Rust loops: {allocations}")
-    log("verdict: " + ("PASS: every row faster than HotSpot by more than 2%" if not misses and not allocations
-                       else "FAIL: rows that miss the bar: " + ", ".join(misses)))
+              if (e in MAIN_OF or e in ("create", "lookup")) and not d["status"].startswith("faster")]
+    slower_than_main = [f"{k} {e}" for k, r in report["rows"].items() for e, d in r["entries"].items()
+                        if e in MAIN_OF and d["vs_main"]["status"] in ("slower", "inside the noise")]
+    log("against main's code: " + ("no row slower, or inside the noise above 1.0" if not slower_than_main
+                                   else "rows not shown below 1.0: " + ", ".join(slower_than_main)))
+    log(f"allocations in timed hash and lookup loops (must be zero): {checked_allocations}")
+    log(f"allocations in timed creation and decode loops: {allocations['create']} create, {allocations['decode']} decode")
+    failures = []
+    if misses:
+        failures.append("rows that miss the speed bar: " + ", ".join(misses))
+    if checked_allocations:
+        failures.append("hash or lookup allocated")
+    log("verdict: " + ("FAIL: " + "; ".join(failures) if failures else "PASS: every row faster than HotSpot by more than 2%"))
 
 
 if __name__ == "__main__":
