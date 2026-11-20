@@ -1,0 +1,38 @@
+ids = [
+    "fn:move_resources",
+    "trait:ResourceHandler",
+    "method:ResourceHandler::insert",
+    "method:ResourceHandler::extract",
+    "method:ResourceHandler::insert_any",
+    "method:ResourceHandler::extract_any",
+    "method:ResourceHandler::insert_at",
+    "method:ResourceHandler::extract_at",
+]
+why = "ResourceHandler now follows NeoForge’s preferred slot-less overload names. Indexed insert/extract become insert_at/extract_at; insert_any/extract_any become insert/extract. Transfer helpers and stock wrappers live in resource_util, and writes accept an optional enclosing transaction."
+migrate = "Rename indexed calls and impl methods to insert_at/extract_at, and slot-less calls and overrides from insert_any/extract_any to insert/extract. Import mod_api::resource_util::move_resources and pass Some(tx) for an enclosing transaction or None to open one. Rebuild native and wasm mods against the updated SDK."
+
+# Generated wasm held-call IDs and implementation marks (old → new):
+# call:held::ResourceHandler<FluidResource>::insert#b11fffe79529c55be97f6ef79606fe8c → call:held::ResourceHandler<FluidResource>::insert_at#4dd94ca67a426ad22ad14ee8f48bf0b0
+# call:held::ResourceHandler<FluidResource>::extract#9a1c30fed0c245b97d26b16c030b11f4 → call:held::ResourceHandler<FluidResource>::extract_at#4ef6dc26a3530044ad69e7a084b71062
+# call:held::ResourceHandler<FluidResource>::insert_any#fb5ee51aaf5548a62e717e80483798a3 → call:held::ResourceHandler<FluidResource>::insert#f6efbf44359b63fc8967fe8bc2835c03
+# call:held::ResourceHandler<FluidResource>::extract_any#25f131def9dedc24b5eab1590e85b779 → call:held::ResourceHandler<FluidResource>::extract#332e1e1ed124ff94d74a3d77d62db987
+# Added call:held::ResourceHandler<FluidResource>::amount_int#c69d7f2cdd1bc689549b3b5122218808
+# Added call:held::ResourceHandler<FluidResource>::capacity_int#15c79cf1987eb4b268f4bb2e77f0d9a4
+# call:held::ResourceHandler<ItemResource>::insert#9671a17d43c1aceee3a74f495d68de29 → call:held::ResourceHandler<ItemResource>::insert_at#9dcfcbda7b5a7b10c40aac3525636b83
+# call:held::ResourceHandler<ItemResource>::extract#d7ea2316a7acb617b6a0ee2469ce572a → call:held::ResourceHandler<ItemResource>::extract_at#5b5d17c5526f2858a35f7be9b986397b
+# call:held::ResourceHandler<ItemResource>::insert_any#2be5c11a963ba902bc8fed88f03b2102 → call:held::ResourceHandler<ItemResource>::insert#438c99393b5d09a0a49921376d26d5b9
+# call:held::ResourceHandler<ItemResource>::extract_any#938bd87bd1e9c24f87cddc1db11c0d0d → call:held::ResourceHandler<ItemResource>::extract#5f8aa01c42db9e378c1cd2d6a210cb9b
+# Added call:held::ResourceHandler<ItemResource>::amount_int#66aaefdf703f8d64425f4f543e175af7
+# Added call:held::ResourceHandler<ItemResource>::capacity_int#7d73b951c56a2ed2dce183ef21d23d1c
+# part:ResourceHandler<FluidResource>::insert#a935c488e3720b1fc185f68cb7d769ce → part:ResourceHandler<FluidResource>::insert_at#6e8e6240b8a37ffcf6fff52969f10679
+# part:ResourceHandler<FluidResource>::extract#9aae1e2c7fd87ecc3e1be10739943848 → part:ResourceHandler<FluidResource>::extract_at#bab7dbeaffc5ca14d0f7899015ea246c
+# part:ResourceHandler<FluidResource>::insert_any#ac35857415954c9f70b63f116b7ee8a4 → part:ResourceHandler<FluidResource>::insert#3d821d66089ac6eea7bf91011dbb3052
+# part:ResourceHandler<FluidResource>::extract_any#60ffd5e20bcd364144c7c8cedd9f00cf → part:ResourceHandler<FluidResource>::extract#8b50aae6e570ffc1aaf649f4928d9d2a
+# Added part:ResourceHandler<FluidResource>::amount_int#de68bf9b844f44d15c7aac7ae7fc73c5
+# Added part:ResourceHandler<FluidResource>::capacity_int#9c717291565ef7914e071aae76c01556
+# part:ResourceHandler<ItemResource>::insert#f57e5b72303b462c16c2bbac54259d55 → part:ResourceHandler<ItemResource>::insert_at#c51225eeca17c7ae74a7fa8827fa7b62
+# part:ResourceHandler<ItemResource>::extract#75366af234e8778eb50e9b7092302f18 → part:ResourceHandler<ItemResource>::extract_at#daa3d4a849ae18a8380e56a5e36fa1d7
+# part:ResourceHandler<ItemResource>::insert_any#41ccd65b3a5c02427b86ead9be546e52 → part:ResourceHandler<ItemResource>::insert#5da894c00b64b085eff8784fc0bee032
+# part:ResourceHandler<ItemResource>::extract_any#76a55cb70c2c5c2e7d00eaeac0b0b120 → part:ResourceHandler<ItemResource>::extract#9b284c1a7230a072476d6680fdda454d
+# Added part:ResourceHandler<ItemResource>::amount_int#2827f8588f5912e7cfb767d1e936e6ff
+# Added part:ResourceHandler<ItemResource>::capacity_int#d1a8987f02fd3663dcdb47e5906d17a5
