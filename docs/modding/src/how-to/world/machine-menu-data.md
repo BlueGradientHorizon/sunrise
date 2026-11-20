@@ -66,8 +66,7 @@ its container; acquire a new handle for the replacement.
 
 ## Skip unchanged tick write-back
 
-The existing `BlockEntityPart::block_entity_tick` event has the same reply on native
-and wasm. It defaults to `Changed`, retaining full checked payload write-back.
+The `BlockEntityPart::block_entity_tick` reply defaults to `Changed`, retaining full checked payload write-back.
 When no payload should be written back, set:
 
 ```rust,ignore
@@ -84,7 +83,7 @@ effects. The input snapshot is still sent; this is not batching or a validity ca
 
 To tell clients about something that happened once, such as a burst of particles, queue
 fields instead of writing them to the saved `nbt`. In `block_entity_tick`, or another
-event with a mutable entity, native and wasm mods alike call
+event with a mutable entity, call
 `event.entity.set_client_update_fields(fields)`, then `host.block_entity_sync(event.pos)`.
 A later call replaces the batch; an empty compound clears it.
 
