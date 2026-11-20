@@ -14,7 +14,7 @@ pub fn compact_text_tag(mut value: &Tag) -> &Tag {
         match value {
             Tag::List(values) if values.len() == 1 => value = &values[0],
             Tag::Compound(fields) if fields.len() == 1 => match fields.iter().next() {
-                Some((key, text @ Tag::String(_))) if key.units() == [116, 101, 120, 116] => {
+                Some((key, text @ Tag::String(_))) if key.0 == [116, 101, 120, 116] => {
                     return text;
                 }
                 _ => return value,
@@ -150,7 +150,7 @@ impl Value {
             Tag::Long(v) => Self::Long(*v),
             Tag::Float(v) => Self::Float(*v),
             Tag::Double(v) => Self::Double(*v),
-            Tag::String(v) => Self::String(v.units().to_vec()),
+            Tag::String(v) => Self::String(v.0.clone()),
             Tag::ByteArray(v) => Self::ByteArray(v.clone()),
             Tag::IntArray(v) => Self::IntArray(v.clone()),
             Tag::LongArray(v) => Self::LongArray(v.clone()),
@@ -162,13 +162,13 @@ impl Value {
                             Tag::Byte(v)
                                 if bool_keys
                                     .iter()
-                                    .any(|n| k.units().iter().copied().eq(n.encode_utf16())) =>
+                                    .any(|n| k.0.iter().copied().eq(n.encode_utf16())) =>
                             {
                                 Self::Bool(*v != 0)
                             }
                             _ => Self::convert_nbt(v, bool_keys),
                         };
-                        (Self::String(k.units().to_vec()), value)
+                        (Self::String(k.0.clone()), value)
                     })
                     .collect(),
             ),
@@ -207,7 +207,7 @@ impl Value {
             Self::Float(v) => Tag::Float(*v),
             Self::Double(v) => Tag::Double(*v),
             Self::Bool(v) => Tag::Byte(i8::from(*v)),
-            Self::String(v) => Tag::String(JavaString::from(v.clone())),
+            Self::String(v) => Tag::String(JavaString(v.clone())),
             Self::ByteArray(v) => Tag::ByteArray(v.clone()),
             Self::IntArray(v) => Tag::IntArray(v.clone()),
             Self::LongArray(v) => Tag::LongArray(v.clone()),
@@ -222,7 +222,7 @@ impl Value {
                         let Self::String(k) = k else {
                             return Err("component map key is not a string".into());
                         };
-                        Ok((JavaString::from(k.clone()), v.tag(projection, depth + 1)?))
+                        Ok((JavaString(k.clone()), v.tag(projection, depth + 1)?))
                     })
                     .collect::<Result<_, String>>()?,
             ),
