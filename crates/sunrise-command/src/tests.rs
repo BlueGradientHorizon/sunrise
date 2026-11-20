@@ -722,6 +722,26 @@ fn suggestions_like_vanilla() {
     assert_eq!(suggestions("time set 5"), ["d", "s", "t"]);
     assert!(suggestions("time set ").contains(&"minecraft:day".to_owned()));
 }
+
+/// `CommandDispatcher.getCompletionSuggestions`: a merged empty list is
+/// `Suggestions.empty()`, `StringRange.at(0)` — not the token's range the
+/// chat merge keeps for `ask_server` replies.
+#[test]
+fn empty_suggestions_answer_at_zero() {
+    let reg = reg();
+    let d = vanilla::dispatcher();
+    for input in ["gamemode x", "time set  1", "tp nope "] {
+        let parse = d.parse(input, &reg);
+        let (range, list) = d.suggestions(&parse, input.len(), &reg);
+        assert!(list.is_empty(), "{input}");
+        assert_eq!(range, (0, 0), "{input}");
+        // The chat entries still answer a range ending at the cursor, so the
+        // merge pastes an `ask_server` reply over the token being typed.
+        let (range, list) = d.client_suggestions(&parse, input.len(), &reg);
+        assert!(list.is_empty(), "{input}");
+        assert_eq!(range.1, input.len(), "{input}");
+    }
+}
 /// ClientSuggestionProvider: block and column positions offer the targeted
 /// block (`getRelevantCoordinates`), `Vec3` and `Vec2` the exact hit point
 /// with two decimals (`getAbsoluteCoordinates`); with no block hit, `~`.
@@ -1800,10 +1820,11 @@ fn an_ask_server_node_replies_with_the_token_range_when_it_has_no_suggestion_of_
     assert!(ask, "the client asks the server for this node");
     assert!(list.is_empty(), "the identifier itself suggests nothing");
     assert_eq!(range, (6, typed.len()), "the token, never (0, 0)");
-    // The server answers the same way; its dispatcher has no provider to ask, only its mods.
+    // The server's dispatcher has no provider to ask, only its mods; an empty merge is
+    // `Suggestions.empty()`.
     let (range, list) = dispatcher.suggestions(&parse, typed.len(), &registries);
     assert!(list.is_empty());
-    assert_eq!(range, (6, typed.len()));
+    assert_eq!(range, (0, 0), "Suggestions.empty()");
 }
 
 #[test]
