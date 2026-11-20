@@ -13,7 +13,9 @@
 //! - a tuple struct's field (`X.0`) counts only where the parser ties the read to `X`: `X(..).0`,
 //!   `v.0` where `v` is bound by `let v: X`, `let v = X(..)` or a parameter `v: X` (through `&`
 //!   and `&mut`), `self.0` in a method of an impl for `X`, and each position a pattern
-//!   `X(a, b, ..)` lists before its `..`. A position read anywhere else (on a tuple, a closure's
+//!   `X(a, b, ..)` lists before its `..`. A qualified `X` (`mod_api::Pos`, or an impl's target
+//!   written so) is the API struct its path leads to; one through the mod's own modules to a name
+//!   the mod defines (`local::Pos`) counts for none. A position read anywhere else (on a tuple, a closure's
 //!   untyped argument, another field, a method's result, in a macro body) counts for no struct;
 //!   the compile against the target build judges it.
 //!
@@ -1472,6 +1474,23 @@ impl<'a, 's, 't> Resolver<'a, 's, 't> {
         })
     }
 
+    /// The API modules file `index` imports with a glob, and the mod's own API globs when the
+    /// file has a glob of the mod's own (`use super::*;`, `use api::*;`).
+    fn globs(&self, index: usize) -> BTreeSet<Vec<&'t str>> {
+        let file = &self.files[index];
+        let mut globs = api_globs(file, self.module);
+        if file.imports.iter().any(|(segments, local)| {
+            *local == "*"
+                && segments.first().is_some_and(|first| {
+                    matches!(*first, "crate" | "self" | "super")
+                        || self.module.modules.contains(first)
+                })
+        }) {
+            globs.extend(self.mod_globs.iter().cloned());
+        }
+        globs
+    }
+
     /// Whether an unqualified `name` in file `index` certainly means the mod's own type: the
     /// file defines it at its top level under no `#[cfg]` (a `type` alias of an API item is no
     /// definition), no `use` in it binds the name, and the file is certain. Anything else
@@ -1757,26 +1776,58 @@ impl<'s, 't> Walk<'_, '_, 's, 't> {
         let file = &files[index];
         for field in &file.syntax.tuple_fields {
             let place = (path, field.line);
-            let (name, unqualified) = match &field.path[..] {
+            // The struct's path as written, or the impl's target for `Self`; a leading empty name
+            // is a leading `::`.
+            let (written, rooted): (&[&'t str], bool) = match &field.path[..] {
                 ["Self"] => match resolver.impl_at(index, field.byte) {
-                    Some(Some(target)) => (*target.last().unwrap_or(&"Self"), target.len() == 1),
+                    Some(Some(target)) => match &target[..] {
+                        ["", rest @ ..] => (rest, true),
+                        target => (target, false),
+                    },
                     _ => continue,
                 },
-                [.., last] => (*last, field.path.len() == 1 && !field.rooted),
-                [] => continue,
+                path => (path, field.rooted),
             };
+            let Some(&name) = written.last() else {
+                continue;
+            };
+            let unqualified = written.len() == 1 && !rooted;
             resolver.lookup(name);
             let resolver: &Resolver<'_, 's, 't> = resolver;
             let resolved = &resolver.memo[name];
             if (unqualified && !resolved.aliased && resolver.own_in(index, name))
-                || (!resolved.aliased && resolver.is_member(&field.path, field.rooted))
+                || (!resolved.aliased && resolver.is_member(written, rooted))
             {
                 continue;
             }
             let api = resolver.index;
+            // A path is the API struct it leads to (`mod_api::Pos`, `crate::Pos` through a
+            // re-export); one through the mod's own modules to a name the mod defines
+            // (`local::Pos`) may be that type, so it counts for none.
+            let within = |segment: &&str| {
+                matches!(*segment, "crate" | "self" | "super")
+                    || resolver.module.modules.contains(segment)
+            };
+            let leads_to: Option<BTreeSet<String>> = (!unqualified).then(|| {
+                if written.first().is_some_and(within) && resolver.module.types.contains(name) {
+                    return BTreeSet::new();
+                }
+                resolver
+                    .api_paths(written, &resolver.globs(index))
+                    .iter()
+                    .map(|path| path.join("::"))
+                    .collect()
+            });
             for id in &resolved.ids {
                 if api.kind(id) != Some(TypeKind::TupleStruct) {
                     continue;
+                }
+                if let Some(leads_to) = &leads_to {
+                    let own = id.split_once(':').map_or("", |(_, rest)| rest);
+                    let public = api.public_paths.get(id).copied().unwrap_or_default();
+                    if !leads_to.contains(own) && !public.iter().any(|p| leads_to.contains(p)) {
+                        continue;
+                    }
                 }
                 let member = format!("{id}.{}", field.position);
                 if let Some((member, _)) = api.hashes.get_key_value(member.as_str()) {
@@ -1792,18 +1843,7 @@ impl<'s, 't> Walk<'_, '_, 's, 't> {
         let resolver = &*self.resolver;
         let file = &resolver.files[self.index];
         let tokens = &file.tokens;
-        // A file with a glob of the mod's own (`use super::*;`, `use api::*;`) sees the mod's
-        // API globs.
-        let mut globs = api_globs(file, resolver.module);
-        if file.imports.iter().any(|(segments, local)| {
-            *local == "*"
-                && segments.first().is_some_and(|first| {
-                    matches!(*first, "crate" | "self" | "super")
-                        || resolver.module.modules.contains(first)
-                })
-        }) {
-            globs.extend(resolver.mod_globs.iter().cloned());
-        }
+        let globs = resolver.globs(self.index);
         let mut paths: Vec<Vec<String>> = Vec::new();
         for (segments, local) in &file.imports {
             if *local != "*" {

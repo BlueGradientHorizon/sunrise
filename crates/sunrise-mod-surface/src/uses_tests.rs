@@ -1307,6 +1307,35 @@ fn a_position_read_tied_to_the_struct_names_its_field() {
 }
 
 #[test]
+fn a_qualified_struct_path_is_the_struct_it_leads_to() {
+    let field = |source: &str| {
+        ids(&scan_on(
+            wider(),
+            &format!("use mod_api::Pos;\nmod local {{ pub struct Pos(pub i32); }}\n{source}"),
+        ))
+        .contains(&"type:Pos.0")
+    };
+    // The mod's own `local::Pos`, by a typed binding, a pattern and an impl's `self`.
+    assert!(!field("fn read(p: local::Pos) -> i32 { p.0 }"));
+    assert!(!field("fn read(p: local::Pos) { let local::Pos(x) = p; }"));
+    assert!(!field(
+        "trait Tr { fn f(&self) -> i32; } impl Tr for local::Pos { fn f(&self) -> i32 { self.0 } }"
+    ));
+    // The API's, written by its path or through a re-export of the mod's.
+    assert!(field("fn read(p: mod_api::Pos) -> i32 { p.0 }"));
+    assert!(field(
+        "trait Tr { fn f(&self) -> i32; } impl Tr for ::mod_api::Pos { fn f(&self) -> i32 { self.0 } }"
+    ));
+    // Through the mod's own modules: the API's where the mod defines no `Pos`, none where it does.
+    assert!(!field("fn read(p: crate::Pos) -> i32 { p.0 }"));
+    let uses = scan_on(
+        wider(),
+        "use mod_api::Pos;\nfn read(p: crate::Pos) -> i32 { p.0 }",
+    );
+    assert!(ids(&uses).contains(&"type:Pos.0"));
+}
+
+#[test]
 fn full_builds_by_another_name_are_full() {
     let built = |source: &str, id: &str| entry(&scan_on(wider(), source), id).built;
     let full = Some(Built::Full);
