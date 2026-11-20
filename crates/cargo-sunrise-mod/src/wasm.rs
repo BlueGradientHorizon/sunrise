@@ -122,6 +122,54 @@ fn toolchain() -> Result<Toolchain, String> {
             field("release:")?
         ));
     }
+    // A rustup-managed toolchain already there can still be a minimal profile: `-Zbuild-std`
+    // needs rust-src, and TARGET its std. Querying the installed lists stays local; a rustup
+    // that cannot answer means the toolchain is not rustup's to complete, and Cargo's error
+    // names the missing component as before.
+    if rustup_found() {
+        let installed = |args: &[&str]| {
+            output({
+                let mut c = Command::new("rustup");
+                c.args(args);
+                c
+            })
+            .unwrap_or_default()
+        };
+        let installed_components =
+            installed(&["component", "list", "--toolchain", TOOLCHAIN, "--installed"]);
+        if installed_components
+            .lines()
+            .all(|line| !line.starts_with("rust-src"))
+            && !installed_components.is_empty()
+        {
+            println!("Adding rust-src to Rust {TOOLCHAIN}…");
+            let status = Command::new("rustup")
+                .args(["component", "add", "--toolchain", TOOLCHAIN, "rust-src"])
+                .status()
+                .map_err(|e| format!("rustup: {e}"))?;
+            if !status.success() {
+                return Err(format!(
+                    "wasm mods build std from source: Rust {TOOLCHAIN} needs rust-src and rustup couldn't add it"
+                ));
+            }
+        }
+        let installed_targets =
+            installed(&["target", "list", "--toolchain", TOOLCHAIN, "--installed"]);
+        if installed_targets.lines().all(|line| line.trim() != TARGET)
+            && !installed_targets.is_empty()
+        {
+            println!("Adding {TARGET} to Rust {TOOLCHAIN}…");
+            let status = Command::new("rustup")
+                .args(["target", "add", "--toolchain", TOOLCHAIN, TARGET])
+                .status()
+                .map_err(|e| format!("rustup: {e}"))?;
+            if !status.success() {
+                return Err(format!(
+                    "Rust {TOOLCHAIN} needs the {TARGET} target and rustup couldn't add it"
+                ));
+            }
+        }
+    }
     let host = field("host:")?;
     let sysroot = output({
         let mut c = pinned("rustc");
