@@ -171,7 +171,11 @@ fn fields(fields: &Fields, w: &syn::Path) -> (TokenStream, TokenStream, Vec<syn:
 /// whose length is checked against `N` before any element is decoded or any storage allocated.
 fn take_field(field: &syn::Field, w: &syn::Path) -> TokenStream {
     let mut max: Option<syn::Expr> = None;
-    for attr in field.attrs.iter().filter(|attr| attr.path().is_ident("wire")) {
+    for attr in field
+        .attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident("wire"))
+    {
         attr.parse_nested_meta(|meta| {
             if !meta.path.is_ident("max") {
                 return Err(meta.error("a field takes `#[wire(max = N)]`"));

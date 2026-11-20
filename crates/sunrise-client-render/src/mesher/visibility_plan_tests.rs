@@ -72,7 +72,11 @@ fn hide_terrain_wins_over_cell_answers() {
     })
     .unwrap();
     assert!(hidden.hides_terrain());
-    assert!(plan_section(Some(&hidden), |_| None).unwrap().hides_terrain());
+    assert!(
+        plan_section(Some(&hidden), |_| None)
+            .unwrap()
+            .hides_terrain()
+    );
 }
 
 #[test]
@@ -89,8 +93,16 @@ fn the_border_reads_the_neighbours_answers() {
     assert!(!plan.hides_terrain());
     assert_eq!(plan.kept([16, 4, 7]), 0);
     assert_eq!(plan.kept([16, 4, 8]), ALL);
-    assert_eq!(plan.kept([5, 16, 9]), 0, "a hidden section above occludes nothing");
-    assert_eq!(plan.kept([16, 16, 7]), ALL, "the diagonal above-east has no answer");
+    assert_eq!(
+        plan.kept([5, 16, 9]),
+        0,
+        "a hidden section above occludes nothing"
+    );
+    assert_eq!(
+        plan.kept([16, 16, 7]),
+        ALL,
+        "the diagonal above-east has no answer"
+    );
     for local in [[0, 4, 7], [15, 4, 7], [5, 15, 9]] {
         assert_eq!(plan.kept(local), ALL, "{local:?}: the section's own cells");
     }
@@ -105,7 +117,10 @@ fn only_outer_cells_change_the_neighbours() {
     assert!(SectionAnswer::border_differs(Some(&outer), None));
     assert!(SectionAnswer::border_differs(None, Some(&corner)));
     assert!(SectionAnswer::border_differs(Some(&outer), Some(&corner)));
-    assert!(!SectionAnswer::border_differs(Some(&outer), Some(&outer.clone())));
+    assert!(!SectionAnswer::border_differs(
+        Some(&outer),
+        Some(&outer.clone())
+    ));
 }
 
 #[test]
@@ -127,7 +142,11 @@ fn a_cell_without_model_or_fluid_turns_to_air_and_keeps_its_block_entity() {
     substitute(&plan, &mut pad, &infos, &mut out, [1, MIN_Y, 2]);
     assert_eq!(pad.blocks[pi(2, 3, 4)], 0);
     assert_eq!(pad.blocks[pi(16, 0, 0)], 0, "the neighbour's hidden cell");
-    assert_eq!(pad.blocks[pi(5, 5, 5)], 1, "a fluid still drawn keeps the cell");
+    assert_eq!(
+        pad.blocks[pi(5, 5, 5)],
+        1,
+        "a fluid still drawn keeps the cell"
+    );
     assert_eq!(pad.blocks[pi(17, 0, 0)], 1, "beyond the one-block border");
     let world = [16 + 2, MIN_Y + 3, 32 + 4];
     assert_eq!(out.block_entities, [(world, 2)]);
@@ -144,8 +163,14 @@ fn a_cell_with_anything_removed_stops_being_solid() {
     assert_eq!(row(0, 15), u32::MAX & !(1 << (4 + B)));
     assert_eq!(row(0, 14), u32::MAX);
     assert!(occludes(ALL, 3));
-    assert!(!occludes(ALL & !MODEL, 3), "a model not drawn occludes nothing");
-    assert!(!occludes(ALL & !(1 << 3), 3), "a removed face occludes nothing");
+    assert!(
+        !occludes(ALL & !MODEL, 3),
+        "a model not drawn occludes nothing"
+    );
+    assert!(
+        !occludes(ALL & !(1 << 3), 3),
+        "a removed face occludes nothing"
+    );
     assert!(occludes(ALL & !(1 << 2), 3));
     let mut visible = [true; 6];
     keep_faces(0b11_1101, &mut visible);
@@ -176,9 +201,7 @@ fn the_raw_input_reads_the_world_and_names_missing_columns() {
     capture_input(&region, 1, &mut cells, &mut light);
     assert_eq!(cells.len(), mod_api::SECTION_INPUT_CELLS);
     assert_eq!(light.len(), mod_api::SECTION_INPUT_CELLS);
-    let at = |local: [i32; 3]| {
-        cells[mod_api::SectionVisibilityInput::index(local).unwrap()]
-    };
+    let at = |local: [i32; 3]| cells[mod_api::SectionVisibilityInput::index(local).unwrap()];
     // The state is read as stored: a state a mod hides from the mesher still reads as itself.
     assert_eq!(at([15, 15, 15]), Some(7));
     assert_eq!(at([16, 0, 0]), Some(9));
@@ -213,10 +236,7 @@ fn the_api_checks_answers_whole() {
         .collect();
     assert_eq!(V::Keep(many.clone()).check(), Ok(()));
     many.push(cell([0, 0, 0], 0));
-    assert_eq!(
-        V::Keep(many).check(),
-        Err(R::TooManyCells { count: 4097 })
-    );
+    assert_eq!(V::Keep(many).check(), Err(R::TooManyCells { count: 4097 }));
     assert_eq!(
         mod_api::SectionVisibilityInput::index([17, 0, 0]),
         Err(R::OutsideInput)
@@ -237,7 +257,10 @@ fn leases_charge_the_shared_in_flight_bytes_and_give_them_back() {
     let plan = Lease::charge_in(&SHARED, PLAN_BYTES).unwrap();
     let other = Lease::charge_in(&SHARED, PLAN_BYTES).unwrap();
     let answer = Lease::charge_in(&SHARED, ANSWER_BYTES).unwrap();
-    assert!(Lease::charge_in(&SHARED, 1).is_none(), "the limit is reached");
+    assert!(
+        Lease::charge_in(&SHARED, 1).is_none(),
+        "the limit is reached"
+    );
     drop(plan);
     assert!(Lease::charge_in(&SHARED, PLAN_BYTES + 1).is_none());
     let again = Lease::charge_in(&SHARED, PLAN_BYTES).expect("a dropped lease's bytes are free");

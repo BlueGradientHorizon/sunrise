@@ -18,13 +18,19 @@ fn each_section_visibility_answer_names_the_mod_that_gave_it() {
     impl Hooks for Answers {
         fn section_visibility(&self, _: &dyn ClientHost, event: &mut SectionVisibilityEvent<'_>) {
             assert_eq!(*event.input, SectionVisibilityInput([16, -64, 32]));
-            assert!(event.answers.is_empty(), "each mod starts from its own batch");
+            assert!(
+                event.answers.is_empty(),
+                "each mod starts from its own batch"
+            );
             event.answers.extend(self.0.map(|answer| answer()));
         }
     }
     install(
         vec![
-            ModEntry::new("xray", Box::new(Answers(Some(|| SectionVisibility::Keep(61))))),
+            ModEntry::new(
+                "xray",
+                Box::new(Answers(Some(|| SectionVisibility::Keep(61)))),
+            ),
             ModEntry::new("quiet", Box::new(Answers(None))),
             ModEntry::new(
                 "cutaway",
@@ -91,8 +97,18 @@ fn a_section_visibility_listener_that_unwinds_loses_only_its_own_answer() {
     install(
         vec![
             mod_entry("xray", Some(|| SectionVisibility::Keep(61)), false, &asked),
-            mod_entry("broken", Some(|| SectionVisibility::Keep(1)), true, &failing),
-            mod_entry("cutaway", Some(|| SectionVisibility::HideTerrain), false, &asked),
+            mod_entry(
+                "broken",
+                Some(|| SectionVisibility::Keep(1)),
+                true,
+                &failing,
+            ),
+            mod_entry(
+                "cutaway",
+                Some(|| SectionVisibility::HideTerrain),
+                false,
+                &asked,
+            ),
         ]
         .into(),
     );
@@ -118,6 +134,10 @@ fn a_section_visibility_listener_that_unwinds_loses_only_its_own_answer() {
         );
         assert_eq!(answers, healthy, "dispatch {dispatch}");
     }
-    assert_eq!(*failing.lock().unwrap(), 1, "the failed listener is not asked again");
+    assert_eq!(
+        *failing.lock().unwrap(),
+        1,
+        "the failed listener is not asked again"
+    );
     assert_eq!(*asked.lock().unwrap(), 4, "the others answer both times");
 }

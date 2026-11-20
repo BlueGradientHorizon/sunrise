@@ -408,8 +408,9 @@ impl Hook {
         {
             return Err(CatalogError::InvalidHook {
                 hook: name.clone(),
-                error: "isolate is for a global cancel hook or a global collect hook answered by mod"
-                    .into(),
+                error:
+                    "isolate is for a global cancel hook or a global collect hook answered by mod"
+                        .into(),
             });
         }
         let counterparts = Counterparts {

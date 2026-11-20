@@ -370,7 +370,8 @@ pub fn capture_input(
     for y in -1i32..=16 {
         for z in -1i32..=16 {
             for x in -1i32..=16 {
-                let column = region[(z.div_euclid(16) + 1) as usize][(x.div_euclid(16) + 1) as usize];
+                let column =
+                    region[(z.div_euclid(16) + 1) as usize][(x.div_euclid(16) + 1) as usize];
                 let (lx, wy, lz) = (x.rem_euclid(16), base_y + y, z.rem_euclid(16));
                 match column {
                     Some(chunk) => {
@@ -388,8 +389,8 @@ pub fn capture_input(
 }
 
 #[cfg(test)]
-#[path = "visibility_plan_tests.rs"]
-mod tests;
-#[cfg(test)]
 #[path = "visibility_plan_mesh_tests.rs"]
 mod mesh_tests;
+#[cfg(test)]
+#[path = "visibility_plan_tests.rs"]
+mod tests;

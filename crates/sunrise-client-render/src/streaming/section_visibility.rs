@@ -6,11 +6,11 @@
 //! mesh sequence and frozen into the job. With no mod listening a chosen section is queued at
 //! once, exactly as before.
 use super::{Job, Streaming};
+use crate::fast_hash::{FxHashMap, FxHashSet};
 use crate::mesher::{
     ANSWER_BYTES, Lease, PLAN_BYTES, Region, SectionAnswer, SectionVisibilityPlan, plan_section,
 };
 use crate::world::World;
-use crate::fast_hash::{FxHashMap, FxHashSet};
 use std::sync::Arc;
 
 /// The sections waiting for the mods' visibility answers, and every section's last combined
@@ -154,9 +154,14 @@ impl Streaming {
                 _ => answers.remove(&key),
             };
             let answers = &self.section_visibility.answers;
-            let plan = plan_section(answers.get(&key).map(|held| &held.answer), |[dx, dy, dz]| {
-                answers.get(&(x + dx, sy + dy, z + dz)).map(|held| &held.answer)
-            })
+            let plan = plan_section(
+                answers.get(&key).map(|held| &held.answer),
+                |[dx, dy, dz]| {
+                    answers
+                        .get(&(x + dx, sy + dy, z + dz))
+                        .map(|held| &held.answer)
+                },
+            )
             .map(|plan| FrozenPlan {
                 plan,
                 _lease: plan_lease,

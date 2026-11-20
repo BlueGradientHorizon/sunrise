@@ -50,7 +50,10 @@ impl SectionVisibilityHooks {
         _: &dyn mod_api::ClientHost,
         event: &mut mod_api::SectionVisibilityEvent<'_>,
     ) {
-        assert!(event.answers.is_empty(), "the guest starts from its own batch");
+        assert!(
+            event.answers.is_empty(),
+            "the guest starts from its own batch"
+        );
         event.answers.extend(answer(event.input));
     }
 }

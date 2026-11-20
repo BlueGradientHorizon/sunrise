@@ -4,12 +4,12 @@
 //! answers are checked whole and combined here; the worker reads only the frozen plan.
 
 use super::Game;
-use sunrise_client::mesher::{SectionAnswer, SectionPlanBuilder, borrow, capture_input};
-use sunrise_client::streaming::VisibilityRequest;
 use mod_api::{
     Answered, BlockStateId, SectionCell, SectionVisibility, SectionVisibilityInput,
     SectionVisibilityRefusal,
 };
+use sunrise_client::mesher::{SectionAnswer, SectionPlanBuilder, borrow, capture_input};
+use sunrise_client::streaming::VisibilityRequest;
 
 impl Game<'_> {
     /// Asks the mods about the sections the streaming update chose to mesh, then queues them
@@ -20,7 +20,8 @@ impl Game<'_> {
         if requests.is_empty() && !self.streaming.section_visibility.has_waiting() {
             return;
         }
-        let switched_off = mod_api::__private::poisoned_listeners(mod_api::HookId::SectionVisibility);
+        let switched_off =
+            mod_api::__private::poisoned_listeners(mod_api::HookId::SectionVisibility);
         let mut answered = Vec::with_capacity(requests.len());
         let (mut cells, mut light) = (Vec::new(), Vec::new());
         for request in requests {
@@ -60,16 +61,23 @@ impl Game<'_> {
         let min_y = region[1][1].map_or(self.world.bottom_y(), |c| c.min_y());
         let raw = cells
             .iter()
-            .map(|cell| cell.map_or(SectionCell::Missing, |id| SectionCell::State(BlockStateId(id))))
+            .map(|cell| {
+                cell.map_or(SectionCell::Missing, |id| {
+                    SectionCell::State(BlockStateId(id))
+                })
+            })
             .collect();
-        let input =
-            match SectionVisibilityInput::new([x * 16, min_y + sy * 16, z * 16], raw, light.clone()) {
-                Ok(input) => input,
-                Err(refusal) => {
-                    log::warn!("Sunrise: section visibility input refused: {refusal}");
-                    return None;
-                }
-            };
+        let input = match SectionVisibilityInput::new(
+            [x * 16, min_y + sy * 16, z * 16],
+            raw,
+            light.clone(),
+        ) {
+            Ok(input) => input,
+            Err(refusal) => {
+                log::warn!("Sunrise: section visibility input refused: {refusal}");
+                return None;
+            }
+        };
         let mut answers: Vec<Answered<SectionVisibility>> = Vec::new();
         self.native_section_visibility(mod_api::__private::SectionVisibilityCall {
             input: &input,

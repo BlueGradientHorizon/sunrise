@@ -265,14 +265,22 @@ mod tests {
         let cells = |count: usize| {
             SectionVisibility::Keep(
                 (0..count)
-                    .map(|i| CellVisibility::hidden([(i & 15) as u8, (i >> 4 & 15) as u8, (i >> 8) as u8]))
+                    .map(|i| {
+                        CellVisibility::hidden([
+                            (i & 15) as u8,
+                            (i >> 4 & 15) as u8,
+                            (i >> 8) as u8,
+                        ])
+                    })
                     .collect(),
             )
         };
         let mut out = Writer::new();
         out.put(&cells(MAX_CELL_RECORDS));
         assert_eq!(
-            Reader::new(out.bytes()).take::<SectionVisibility>().unwrap(),
+            Reader::new(out.bytes())
+                .take::<SectionVisibility>()
+                .unwrap(),
             cells(MAX_CELL_RECORDS)
         );
         let mut out = Writer::new();
