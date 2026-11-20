@@ -1158,6 +1158,37 @@ impl OriginalPlayerRef {
     }
 }
 
+/// The collision flags left by a player's last `Entity.move`.
+#[derive(sunrise_mod_api_macros::Wire, Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct CollisionFlags {
+    /// Movement hit a wall or another horizontal obstruction.
+    pub horizontal: bool,
+    /// The horizontal collision only slightly changed the movement direction.
+    pub minor_horizontal: bool,
+    /// Movement was stopped vertically, by a floor or a ceiling.
+    pub vertical: bool,
+    /// The vertical collision stopped downward movement.
+    pub vertical_below: bool,
+}
+
+impl CollisionFlags {
+    /// Build a snapshot of the collision flags retained by a move.
+    pub const fn new(
+        horizontal: bool,
+        minor_horizontal: bool,
+        vertical: bool,
+        vertical_below: bool,
+    ) -> Self {
+        Self {
+            horizontal,
+            minor_horizontal,
+            vertical,
+            vertical_below,
+        }
+    }
+}
+
 /// A player's food data.
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[non_exhaustive]

@@ -1009,6 +1009,21 @@ impl Game<'_> {
         Some(PlayerRead::Guest(guest))
     }
 
+    pub(super) fn player_collision_flags(
+        &self,
+        player: PlayerRef,
+    ) -> Result<Option<mod_api::CollisionFlags>, mod_api::LevelReadError> {
+        Ok(self.player_read_both(player).and_then(|read| {
+            let flags = read.body()?.collision;
+            Some(mod_api::CollisionFlags::new(
+                flags.horizontal,
+                flags.minor,
+                flags.vertical,
+                flags.below,
+            ))
+        }))
+    }
+
     /// `ServerPlayerGameMode.getGameModeForPlayer`; Paper `HumanEntity#getGameMode`.
     /// None for stale, offline or unavailable players (including displaced outer players).
     pub(super) fn player_game_mode(&self, player: PlayerRef) -> Option<GameMode> {

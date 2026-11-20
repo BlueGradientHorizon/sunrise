@@ -19,6 +19,20 @@ pub trait PlayerWorldBackend {
     #[access(WorldOnly)]
     fn player_dimension(&self, player: PlayerRef) -> Option<Identifier>;
     /// Side: both.
+    /// The collision flags the player's last move left (`Entity.horizontalCollision`,
+    /// `minorHorizontalCollision`, `verticalCollision`, `verticalCollisionBelow`).
+    /// On the client, reads the local player's prediction. `Ok(None)` for a stale
+    /// handle or a player whose motion this side does not keep.
+    /// `Err(LevelReadError::Unavailable)` if the host cannot read player motion.
+    #[access(WorldOnly)]
+    fn player_collision_flags(
+        &self,
+        player: PlayerRef,
+    ) -> Result<Option<CollisionFlags>, LevelReadError> {
+        let _ = player;
+        Err(AccessRefusal::unavailable())
+    }
+    /// Side: both.
     /// The dimension and block of the player's last death
     /// (`Player.getLastDeathLocation`).
     #[access(WorldOnly)]
