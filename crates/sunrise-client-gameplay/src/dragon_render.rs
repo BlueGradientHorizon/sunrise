@@ -1,6 +1,6 @@
 //! The dying ender dragon's rays and dissolve (`EnderDragonRenderer`).
 use sunrise_client::mesher::Vertex;
-use sunrise_core::random::LegacyRandom;
+use sunrise_core::random::{LegacyRandom, RandomSource};
 
 /// `submitRays`: the death rays from a fixed seed, fading in white to magenta.
 pub fn dragon_rays(
