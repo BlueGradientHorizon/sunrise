@@ -216,7 +216,7 @@ pub trait Players {
     }
     /// Side: server.
     /// The player whose action or command a hook hears, as their state is
-    /// swapped in (`run_mod_command`, `right_click_block`,
+    /// swapped in (a command executor, `right_click_block`,
     /// `native_use_on`, `break_block`...): None outside such a
     /// hook.
     fn acting_player(&self) -> Option<PlayerRef> {
