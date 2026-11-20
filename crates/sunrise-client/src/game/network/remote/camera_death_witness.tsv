@@ -1,6 +1,4 @@
-# Real 26.3 Camera.calculateFov / calculateHudFov of a camera entity with deathTime (none = alive), FOV option 70,
-# effect scale 1.0, first person, no fluid, a creeper camera entity (26.3). Recorded by tools/record_camera_death_witness.py
-# (VanillaCameraOracle camera op on the pinned 26.3 client jar). Columns: deathTime, partial bits, fov bits, hudFov bits.
+# 26.3 Camera.calculateFov/HudFov, camera entity with deathTime (none = alive), FOV 70, scale 1.0, first person; tools/record_camera_death_witness.py; columns deathTime, partial bits, fov bits, hud bits
 none	00000000	428ae800	428c0000
 none	3f000000	428b2e00	428c0000
 none	3f800000	428b7400	428c0000
