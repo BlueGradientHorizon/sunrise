@@ -795,6 +795,46 @@ impl<K: JavaKey, V> JavaHashMap<K, V> {
             }
         }
     }
+    /// Java HashMap.computeIfAbsent for a non-null result. Unlike `put`, this
+    /// grows before the lookup and inserts at the head of a plain bin.
+    pub fn compute_if_absent(&mut self, key: K, make: impl FnOnce() -> V) -> &mut V {
+        if self.mask == 0 || self.len > self.threshold {
+            self.grow();
+        }
+        let hash = spread(key.java_hash());
+        if let Some(index) = self.find_slot(&key, hash) {
+            return self.value_mut(index);
+        }
+        let b = hash as u32 as usize & self.mask;
+        let head = self.head(b);
+        let value = make();
+        if let Some(root) = self.root(head) {
+            let index = self.tree_put(b, root, key, value, hash);
+            self.mod_count = self.mod_count.saturating_add(1);
+            self.len += 1;
+            self.value_mut(index)
+        } else {
+            let mut count = 0;
+            let mut node = head;
+            while node != END {
+                count += 1;
+                node = self.meta(node).next;
+            }
+            let index = self.new_slot(key, value, hash);
+            self.meta_mut(index).next = head;
+            self.set_head(b, index);
+            self.mod_count = self.mod_count.saturating_add(1);
+            self.len += 1;
+            if count >= TREEIFY_LEN - 1 {
+                if self.mask + 1 < MIN_TREE_CAPACITY {
+                    self.grow();
+                } else {
+                    self.treeify(b);
+                }
+            }
+            self.value_mut(index)
+        }
+    }
     #[inline(always)]
     pub fn put(&mut self, key: K, value: V) -> Option<V> {
         let hash = spread(key.java_hash());
@@ -1195,7 +1235,7 @@ impl<K: JavaKey, V> JavaHashMap<K, V> {
     }
     /// A new key into the tree bin of bucket `b`: it joins the tree, and the list right after
     /// its tree parent.
-    fn tree_put(&mut self, b: usize, root: u32, key: K, value: V, hash: i32) {
+    fn tree_put(&mut self, b: usize, root: u32, key: K, value: V, hash: i32) -> u32 {
         // All user comparisons happen before the slot exists, so an unwind leaves the map untouched.
         let (parent, to_left) = self.attach_point(root, &key, hash);
         let new = self.new_slot(key, value, hash);
@@ -1204,6 +1244,7 @@ impl<K: JavaKey, V> JavaHashMap<K, V> {
         self.meta_mut(new).next = after;
         self.meta_mut(parent).next = new;
         self.move_root_to_front(b, root);
+        new
     }
     /// Puts the tree's root first in the bin's list, the other nodes keeping their order.
     fn move_root_to_front(&mut self, b: usize, root: u32) {
@@ -1719,6 +1760,21 @@ mod tests {
         map.next_entry(cursor)
             .map(|entry| entry.map(|(k, v)| (k.id, *v)))
     }
+    #[test]
+    fn compute_if_absent_prepends_before_treeification() {
+        let mut map = JavaHashMap::default();
+        for id in 0..14 {
+            assert_eq!(*map.compute_if_absent(key(id, id as i32 * 64), || id), id);
+            match id {
+                3 => assert_eq!(order(&map), [3, 2, 1, 0]),
+                9 => assert_eq!(order(&map), [6, 9, 8, 7, 5, 4, 3, 2, 1, 0]),
+                _ => {}
+            }
+        }
+        assert_eq!(order(&map), [6, 9, 10, 11, 12, 13, 8, 7, 5, 4, 3, 2, 1, 0]);
+        assert_eq!(*map.compute_if_absent(key(9, 9 * 64), || unreachable!()), 9);
+    }
+
     /// Java: `HashMap.newHashMap(0)`, put ids 5, 3, 1 with hashes 5, 3, 1: the table grows 1, 2, 4 buckets, so
     /// 5 and 1 share bucket 1 and 3 sits in bucket 3.
     #[test]
