@@ -33,6 +33,7 @@ mod bundle;
 pub mod container_items;
 pub use container_items::fits_inside_container_items;
 mod click;
+pub use click::{ClickContinuation, SlotTake};
 mod storage;
 pub use storage::{MutationStamp, Snapshot};
 mod asked;
@@ -815,7 +816,7 @@ impl Menu {
                 item_smelted: Vec::new(),
                 item_smithed_hook: false,
                 item_smithed: Vec::new(),
-                slot_takes: None,
+                takes: None,
                 output_removed: 0,
                 equipped: Vec::new(),
                 merchant: None,

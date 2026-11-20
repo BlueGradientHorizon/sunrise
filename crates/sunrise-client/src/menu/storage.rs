@@ -163,10 +163,8 @@ pub struct State {
     /// for a shift-click), for `ItemSmithedEvent`: the template, base and
     /// addition as they were before the take used them, and the stack taken.
     pub item_smithed: Vec<([Option<ItemStack>; 3], ItemStack)>,
-    /// Set (to an empty list) by a server caller when a mod listens: each take from a mod menu
-    /// type's own slot (`Slot.onTake`), for `menu_slot_take`: the menu slot, the stack taken
-    /// and what the slot holds afterwards.
-    pub slot_takes: Option<Vec<(usize, ItemStack, Option<ItemStack>)>>,
+    /// The authoritative click's take recorder, never enabled during prediction.
+    pub(super) takes: Option<super::click::TakeTracker>,
     /// `FurnaceResultSlot.removeCount`.
     pub(super) output_removed: u32,
     /// `LivingEntity.onEquipItem` calls that change the item: the

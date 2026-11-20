@@ -25,6 +25,7 @@ impl Menu {
 
     /// `ResultSlot.onTake` and the other `Slot.onTake` overrides.
     pub(super) fn on_take(&mut self, env: &Env, s: usize, taken: &mut ItemStack) {
+        self.touch();
         self.note_take(s, taken);
         if self.state.slots[s].role == Role::Output {
             self.furnace_take(env, taken);
@@ -177,9 +178,15 @@ impl Menu {
             .find_with(env.loop_context, &grid, n, &map_scale)
         {
             let id = crate::crafting::qualified(id);
-            let made = (id.clone(), taken.clone(), grid.clone());
-            self.state.crafted.push((id, grid.clone()));
-            self.state.item_crafted.push(made);
+            if matches!(self.state.kind, Kind::Mod(_)) {
+                self.crafted_by(taken, taken.count as i32);
+                self.state.crafted.push((id, grid.clone()));
+            } else {
+                self.state.crafted.push((id.clone(), grid.clone()));
+                self.state
+                    .item_crafted
+                    .push((id, taken.clone(), grid.clone()));
+            }
         }
         let remaining = match env
             .recipes

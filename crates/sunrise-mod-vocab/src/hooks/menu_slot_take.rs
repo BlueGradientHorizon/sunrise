@@ -6,7 +6,7 @@ pub trait Hooks {
     /// a notice after the item left the slot, which refuses nothing (the
     /// pickup rule, `menu_slot_rules`' `may_pickup`, refuses). `player` is the
     /// player's UUID; `slot` is the menu's index, the block's own slots first
-    /// (the player's inventory slots in the menu are never heard). `taken` is
+    /// (linked containers and the player's inventory are never heard). `taken` is
     /// a copy of the stack that left the slot, components included, and `left`
     /// what the slot holds afterwards (`None` when it was emptied). Vanilla
     /// hands `onTake` the taken stack on a click but the stack left in the
@@ -33,8 +33,8 @@ pub trait Hooks {
     ///
     /// The take and the listeners are one action: what a listener writes
     /// through the host stays when it returns, and if a listener fails
-    /// (panics or traps) its writes are undone with the take, the slot and the
-    /// cursor going back as they were. `entity` is out of the world during the
+    /// (panics or writes an invalid block entity snapshot), all writes and
+    /// takes from that click are undone before the menu is resent. `entity` is out of the world during the
     /// call, as in `menu_button`. Not `item_crafted` or `item_smelted`, which
     /// keep their meaning: a result slot that gives experience or unlocks a
     /// recipe does it here through the host. Nothing is asked when no mod

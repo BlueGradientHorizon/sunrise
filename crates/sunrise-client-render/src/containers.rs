@@ -27,7 +27,7 @@ pub fn mod_container_insert_allowed(
     }
 }
 
-/// a content mod's menu type (`data/<id>/sunrise/menu/`, vanilla's
+/// A content mod's menu type (`data/<id>/sunrise/menu/`, vanilla's
 /// `MenuType`): its container slots, its data slots (`ContainerData`) and the
 /// slots players only take from.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -44,7 +44,15 @@ pub struct ModMenuType {
     pub links: Option<ModLinks>,
 }
 
-/// a mod menu type's linked slots: `count` container slots from `from` on,
+impl ModMenuType {
+    /// Whether this menu slot belongs to its own block or crafting result, not a linked
+    /// container or the player.
+    pub fn owns_slot(&self, slot: usize) -> bool {
+        slot < self.slots && self.links.is_none_or(|link| !link.slots().contains(&slot))
+    }
+}
+
+/// A mod menu type's linked slots: `count` container slots from `from` on,
 /// which show the slots of the containers a native mod links them to
 /// (`native_menu_links`) instead of the block entity's.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -154,8 +154,9 @@ click hands over what it took: all of the slot or half of it rounded up to an em
 matching cursor, the slot's stack on a hotbar or offhand swap, each throw, and each slot a double-click's pick-all
 took from (with the part taken). A shift-click hands over the amount it moved, and a shift-click on a crafting result
 is heard once for each craft it repeats. An exchange of the cursor and the slot, putting a stack in, a drag, a creative
-clone and a refused take are not takes and are not heard, nor are the player's inventory slots in the menu. When your
-`menu_quick_move` handled a shift-click, the move it applied is heard as a take afterwards.
+clone and a refused take are not takes. Taking from a linked container or from the player's inventory does not notify
+the block behind the menu. When `menu_quick_move` handles a shift-click, its move is heard before the click commits.
+Each take runs before the next iteration, so a listener can refill a crafting grid and the next iteration sees it.
 
 The take and the listeners are one action: what a listener writes through the `Host` stays when it returns, and if one
 panics or traps its writes are undone and so is the take, the slot and the cursor going back as they were. The block
