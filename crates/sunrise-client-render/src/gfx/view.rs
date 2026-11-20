@@ -165,6 +165,11 @@ pub(super) fn mirror_inverse_view(inverse_view: [[f32; 4]; 4], plane: f32) -> [[
     inverse_view.map(|[x, y, z, w]| [x, 2.0 * plane * w - y, z, w])
 }
 
+#[cfg(feature = "test-support")]
+pub fn test_frustum(planes: [Vec4; 6]) -> JoinedFrusta {
+    JoinedFrusta::new(super::Frustum::from_planes(planes), [])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -221,9 +226,4 @@ mod tests {
         assert_eq!(*set.primary(), view);
         assert_eq!(*set.cull(), view);
     }
-}
-
-#[cfg(feature = "test-support")]
-pub fn test_frustum(planes: [Vec4; 6]) -> JoinedFrusta {
-    JoinedFrusta::new(super::Frustum::from_planes(planes), [])
 }
