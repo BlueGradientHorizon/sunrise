@@ -2010,6 +2010,7 @@ mod preview_tests {
             pois: Default::default(),
             species_placements: Default::default(),
             mod_spawns: Default::default(),
+            vanilla_spawn_placements: None,
             resolved: Default::default(),
         };
         let draw = |body: bool| {

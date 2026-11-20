@@ -171,6 +171,9 @@ pub struct MobData {
     /// empty with no mod. Their placement type and heightmap sit in
     /// [`MobData::placements`] and [`MobData::heightmaps`] as vanilla's do.
     pub mod_spawns: HashMap<String, mod_api::SpawnPlacementRule>,
+    /// Entity type IDs with a vanilla spawn placement, before mod registration.
+    /// `None` means the original membership has not been captured.
+    pub vanilla_spawn_placements: Option<std::collections::HashSet<String>>,
 }
 impl MobData {
     pub fn load(root: &ResourceRoot, facts: &BlockFacts) -> Self {
@@ -331,6 +334,7 @@ impl MobData {
             pois: Default::default(),
             species_placements: Default::default(),
             mod_spawns: Default::default(),
+            vanilla_spawn_placements: None,
         }
     }
     /// Without the export, approximate path types from the gameplay facts.
@@ -394,6 +398,7 @@ impl MobData {
             pois: Default::default(),
             species_placements: Default::default(),
             mod_spawns: Default::default(),
+            vanilla_spawn_placements: None,
         }
     }
     pub fn state(&self, id: BlockStateId) -> StateData {
