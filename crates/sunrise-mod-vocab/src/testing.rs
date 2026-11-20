@@ -627,10 +627,8 @@ impl crate::prelude::KeysBackend for FakeHost {
             .expect("fake entity type key belongs to its load")
     }
 
-    fn item_key_id(&self, key: crate::ItemKey) -> String {
+    fn item_key_id(&self, key: crate::ItemKey) -> Option<&str> {
         crate::content::registry_keys::item_id(key)
-            .expect("fake item key belongs to its load")
-            .to_owned()
     }
 }
 impl crate::prelude::PlayerInventoryBackend for FakeHost {

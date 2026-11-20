@@ -201,10 +201,8 @@ pub mod tests {
         );
         struct Table;
         impl mod_api::prelude::KeysBackend for Table {
-            fn block_entity_type_key_id(&self, key: BlockEntityTypeKey) -> String {
+            fn block_entity_type_key_id(&self, key: BlockEntityTypeKey) -> Option<&str> {
                 mod_vocab::__private::block_entity_type_name(key)
-                    .unwrap()
-                    .to_owned()
             }
         }
         impl Backend for Table {}
@@ -215,7 +213,7 @@ pub mod tests {
             }
         }
         mod_api::impl_host_areas!(Table);
-        assert_eq!(keys[0].id(&Table), "owner:press");
+        assert_eq!(keys[0].id(&Table), Some("owner:press"));
     }
 
     #[test]

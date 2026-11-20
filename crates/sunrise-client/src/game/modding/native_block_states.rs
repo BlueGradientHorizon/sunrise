@@ -33,29 +33,21 @@ impl Game<'_> {
     }
     /// The canonical block id retained by the load-owned registration slot. An invalid slot
     /// is a boundary error.
-    pub(super) fn block_key_id(&self, key: BlockKey) -> String {
+    pub(super) fn block_key_id(&self, key: BlockKey) -> Option<&str> {
         mod_api::__private::block_key_id(key)
-            .expect("invalid block key slot")
-            .to_owned()
     }
     /// The canonical item id retained by the load-owned registration slot.
-    pub(super) fn item_key_id(&self, key: ItemKey) -> String {
+    pub(super) fn item_key_id(&self, key: ItemKey) -> Option<&str> {
         mod_api::__private::item_key_id(key)
-            .expect("invalid item key slot")
-            .to_owned()
     }
     /// The canonical effect id retained by the load-owned registration slot.
-    pub(super) fn effect_key_id(&self, key: EffectKey) -> String {
+    pub(super) fn effect_key_id(&self, key: EffectKey) -> Option<&str> {
         mod_api::__private::effect_key_id(key)
-            .expect("invalid effect key slot")
-            .to_owned()
     }
 
     /// The canonical fluid id retained by the completed registry.
-    pub(super) fn fluid_key_id(&self, key: FluidKey) -> String {
+    pub(super) fn fluid_key_id(&self, key: FluidKey) -> Option<&str> {
         mod_api::__private::fluid_id(key)
-            .expect("invalid fluid key slot")
-            .to_owned()
     }
     /// The key of a block in the completed registry.
     pub(super) fn block_key(&self, id: &str) -> Option<BlockKey> {
@@ -66,10 +58,8 @@ impl Game<'_> {
         mod_api::__private::effect_key(id)
     }
     /// The canonical block entity type id retained by the load-owned slot.
-    pub(super) fn block_entity_type_key_id(&self, key: BlockEntityTypeKey) -> String {
+    pub(super) fn block_entity_type_key_id(&self, key: BlockEntityTypeKey) -> Option<&str> {
         mod_api::__private::block_entity_type_name(key)
-            .expect("invalid block entity type key slot")
-            .to_owned()
     }
     /// Every block key in registry order, mod blocks after vanilla's.
     pub(super) fn block_keys(&self) -> Vec<BlockKey> {
@@ -403,13 +393,19 @@ mod tests {
             let host: &dyn Host = game;
             let blocks = host.block_keys();
             assert_eq!(blocks.len(), 1286);
-            assert_eq!(blocks[0].id(host), "minecraft:air");
-            assert_eq!(blocks.last().unwrap().id(host), "minecraft:firefly_bush");
+            assert_eq!(blocks[0].id(host), Some("minecraft:air"));
+            assert_eq!(
+                blocks.last().unwrap().id(host),
+                Some("minecraft:firefly_bush")
+            );
 
             let items = host.item_keys();
             assert_eq!(items.len(), 1658);
-            assert_eq!(items[0].id(host), "minecraft:air");
-            assert_eq!(items.last().unwrap().id(host), "minecraft:ominous_bottle");
+            assert_eq!(items[0].id(host), Some("minecraft:air"));
+            assert_eq!(
+                items.last().unwrap().id(host),
+                Some("minecraft:ominous_bottle")
+            );
 
             let entities = host.entity_type_keys();
             assert_eq!(entities.len(), 161);
@@ -462,11 +458,11 @@ mod tests {
                 let host: &dyn mod_api::Host = game;
                 assert_eq!(
                     host.block_key("minecraft:stone").unwrap().id(host),
-                    "minecraft:stone"
+                    Some("minecraft:stone")
                 );
                 assert_eq!(
                     host.effect_key("minecraft:speed").unwrap().id(host),
-                    "minecraft:speed"
+                    Some("minecraft:speed")
                 );
                 assert_eq!(host.block_key("test:missing_block"), None);
                 assert_eq!(host.effect_key("test:missing_effect"), None);

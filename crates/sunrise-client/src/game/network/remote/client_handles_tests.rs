@@ -48,7 +48,7 @@ fn client_handles_reach_a_custom_level() {
 
         let level = game.level("test:pocket").unwrap();
         assert_ne!(level.dimension(), DimensionKey::OVERWORLD);
-        assert_eq!(level.dimension().id(game).as_deref(), Some("test:pocket"));
+        assert_eq!(level.dimension().id(game), Some("test:pocket"));
         assert!(game.level("minecraft:overworld").is_none());
         assert!(level.height(game).is_some());
         let facts = level.dimension_type(game).unwrap();

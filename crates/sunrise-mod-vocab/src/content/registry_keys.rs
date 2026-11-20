@@ -709,7 +709,7 @@ pub fn effect_index(key: EffectKey) -> Option<usize> {
 
 /// Canonical diagnostic name, unavailable until the process effect registry is resolved.
 pub fn effect_id(key: EffectKey) -> Option<&'static str> {
-    Some(&crate::parts::resolved_effects().get()?.names.entries[key.0 as usize].id)
+    crate::parts::resolved_effects().get()?.names.id(key.0)
 }
 
 /// Canonical diagnostic name of a trusted, load-owned slot, independent of world resolution.

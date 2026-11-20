@@ -1573,8 +1573,8 @@ mod tests {
             );
             assert_eq!(slot3(game), Some(3));
             assert_eq!(
-                chest.kind(game).map(|kind| kind.id(game)),
-                Some("minecraft:chest".to_owned())
+                chest.kind(game).and_then(|kind| kind.id(game)),
+                Some("minecraft:chest")
             );
             assert_eq!(chest.position(game), Some([0, 64, 0]));
             assert!(

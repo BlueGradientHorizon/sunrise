@@ -15,7 +15,7 @@ pub trait LevelDimensionBackend {
     /// Side: both.
     /// The name of a dimension's key.
     #[access(Metadata)]
-    fn dimension_key_id(&self, key: DimensionKey) -> Option<String>;
+    fn dimension_key_id(&self, key: DimensionKey) -> Option<&str>;
     /// Side: both.
     /// The lowest block `y` and the height of the level
     /// (`LevelHeightAccessor.getMinY`, `getHeight`). Reads any loaded server level

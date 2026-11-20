@@ -208,8 +208,8 @@ impl Game<'_> {
         Some(LevelRef::new(epoch, remote.level_key))
     }
     /// The name of a dimension's key.
-    pub(in crate::game) fn dimension_key_id(&self, key: DimensionKey) -> Option<String> {
-        mod_api::__private::dimension_id(key).map(str::to_owned)
+    pub(in crate::game) fn dimension_key_id(&self, key: DimensionKey) -> Option<&str> {
+        mod_api::__private::dimension_id(key)
     }
     /// The key of the level in place: on a client the level it shows, which
     /// `Dim` may have no name for.
@@ -2784,7 +2784,7 @@ pub(super) mod tests {
                         .unwrap()
                         .item()
                         .id(game),
-                    "minecraft:stone"
+                    Some("minecraft:stone")
                 );
                 assert_eq!(game.player.as_ref().unwrap().health.health(), 20.0);
                 // The loaded walking speed is the movement speed's base.
@@ -2860,7 +2860,7 @@ pub(super) mod tests {
                     .unwrap()
                     .item()
                     .id(game),
-                "minecraft:stone"
+                Some("minecraft:stone")
             );
             let player = game.player(13).unwrap();
             assert_eq!(player.fields().entity, other);

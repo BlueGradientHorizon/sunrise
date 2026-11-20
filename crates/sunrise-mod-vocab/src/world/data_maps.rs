@@ -4,6 +4,7 @@ use crate::{
     Backend, BiomeKey, BlockEntityTypeKey, BlockKey, DataMapType, EffectKey, EnchantmentKey,
     EntityTypeKey, FluidKey, Host, ItemKey, NoBackend, ProfessionKey,
 };
+use std::borrow::Cow;
 use sunrise_core::nbt::Tag;
 
 /// A data map a mod registers and reads, typed (NeoForge's `DataMapType<R, T>`): its id, the
@@ -73,7 +74,7 @@ mod entry {
         /// The registry's id.
         const REGISTRY: &'static str;
         /// The entry's full registry id.
-        fn id(&self, backend: &dyn Backend) -> Result<String, DataMapError>;
+        fn id<'a>(&self, backend: &'a dyn Backend) -> Result<Cow<'a, str>, DataMapError>;
     }
 }
 
@@ -83,8 +84,8 @@ macro_rules! typed_entries {
         impl DataMapEntry for $key {}
         impl entry::Entry for $key {
             const REGISTRY: &'static str = $registry;
-            fn id(&self, backend: &dyn Backend) -> Result<String, DataMapError> {
-                key_id_result(backend.$id(*self))
+            fn id<'a>(&self, backend: &'a dyn Backend) -> Result<Cow<'a, str>, DataMapError> {
+                backend.$id(*self).into_result()
             }
         }
         impl $key {
@@ -108,24 +109,26 @@ macro_rules! typed_entries {
         }
     )+};
 }
-trait KeyIdResult {
-    fn into_result(self) -> Result<String, DataMapError>;
+trait KeyIdResult<'a> {
+    fn into_result(self) -> Result<Cow<'a, str>, DataMapError>;
 }
-impl KeyIdResult for String {
-    fn into_result(self) -> Result<String, DataMapError> {
-        Ok(self)
+impl<'a> KeyIdResult<'a> for String {
+    fn into_result(self) -> Result<Cow<'a, str>, DataMapError> {
+        Ok(Cow::Owned(self))
     }
 }
-impl KeyIdResult for Result<String, crate::GameEventKeyError> {
-    fn into_result(self) -> Result<String, DataMapError> {
-        self.map_err(|error| match error {
+impl<'a> KeyIdResult<'a> for Option<&'a str> {
+    fn into_result(self) -> Result<Cow<'a, str>, DataMapError> {
+        self.map(Cow::Borrowed).ok_or(DataMapError::InvalidKey)
+    }
+}
+impl<'a> KeyIdResult<'a> for Result<String, crate::GameEventKeyError> {
+    fn into_result(self) -> Result<Cow<'a, str>, DataMapError> {
+        self.map(Cow::Owned).map_err(|error| match error {
             crate::GameEventKeyError::Unavailable => DataMapError::Unavailable,
             crate::GameEventKeyError::InvalidKey => DataMapError::InvalidKey,
         })
     }
-}
-fn key_id_result(value: impl KeyIdResult) -> Result<String, DataMapError> {
-    value.into_result()
 }
 typed_entries! {
     crate::GameEventKey => "minecraft:game_event", game_event_key_id;
@@ -140,11 +143,14 @@ typed_entries! {
 impl DataMapEntry for BiomeKey {}
 impl entry::Entry for BiomeKey {
     const REGISTRY: &'static str = "minecraft:worldgen/biome";
-    fn id(&self, backend: &dyn Backend) -> Result<String, DataMapError> {
-        backend.biome_key_id(*self).map_err(|error| match error {
-            crate::BiomeKeyError::Unavailable => DataMapError::Unavailable,
-            crate::BiomeKeyError::WrongGeneration => DataMapError::InvalidKey,
-        })
+    fn id<'a>(&self, backend: &'a dyn Backend) -> Result<Cow<'a, str>, DataMapError> {
+        backend
+            .biome_key_id(*self)
+            .map(Cow::Borrowed)
+            .map_err(|error| match error {
+                crate::BiomeKeyError::Unavailable => DataMapError::Unavailable,
+                crate::BiomeKeyError::WrongGeneration => DataMapError::InvalidKey,
+            })
     }
 }
 impl BiomeKey {
@@ -161,8 +167,8 @@ impl BiomeKey {
 impl DataMapEntry for ProfessionKey {}
 impl entry::Entry for ProfessionKey {
     const REGISTRY: &'static str = "minecraft:villager_profession";
-    fn id(&self, _: &dyn Backend) -> Result<String, DataMapError> {
-        Ok(self.0.to_string())
+    fn id<'a>(&self, _: &'a dyn Backend) -> Result<Cow<'a, str>, DataMapError> {
+        Ok(Cow::Owned(self.0.to_string()))
     }
 }
 impl ProfessionKey {
@@ -208,7 +214,7 @@ fn data<M: DataMap>(
     let backend = crate::backend_of(host).ok_or_else(DataMapError::no_backend)?;
     let id = entry::Entry::id(entry, backend)?;
     let registry = <M::Entry as entry::Entry>::REGISTRY;
-    match backend.data_map_value(registry, &id, map.id())? {
+    match backend.data_map_value(registry, id.as_ref(), map.id())? {
         Some(value) => map
             .decode(&value)
             .map(Some)
@@ -278,11 +284,13 @@ mod tests {
         }
     }
     impl crate::host::keys::KeysBackend for Maps {
-        fn item_key_id(&self, key: ItemKey) -> String {
-            ["test:coal", "test:stick", "test:air"][key.0 as usize].into()
+        fn item_key_id(&self, key: ItemKey) -> Option<&str> {
+            ["test:coal", "test:stick", "test:air"]
+                .get(key.0 as usize)
+                .copied()
         }
-        fn block_key_id(&self, key: BlockKey) -> String {
-            ["test:stone", "test:dirt"][key.0 as usize].into()
+        fn block_key_id(&self, key: BlockKey) -> Option<&str> {
+            ["test:stone", "test:dirt"].get(key.0 as usize).copied()
         }
     }
     impl Host for Maps {

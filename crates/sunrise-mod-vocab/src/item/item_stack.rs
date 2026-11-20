@@ -447,12 +447,9 @@ impl ItemStack {
     /// Returns None when id metadata is unavailable. Only components present on the
     /// stack are written; effective defaults and maxima belong to the items host area.
     pub fn to_nbt(&self, host: &dyn crate::Host) -> Option<Compound> {
-        let id = self.item.id(host);
-        if id.is_empty() {
-            return None;
-        }
+        let id = self.item.id(host)?;
         let mut value = Compound::new();
-        value.insert(JavaString::from("id"), Tag::String(id.as_str().into()));
+        value.insert(JavaString::from("id"), Tag::String(id.into()));
         value.insert(JavaString::from("count"), unsigned_tag(self.count()));
         let mut patch = self
             .components()

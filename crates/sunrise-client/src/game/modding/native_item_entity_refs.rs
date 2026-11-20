@@ -154,8 +154,8 @@ mod tests {
             assert_eq!(item.entity(), entity);
             let read = item.stack(game).unwrap();
             assert_eq!(
-                (read.item().id(game).as_str(), read.count(), read.damage()),
-                ("minecraft:diamond_pickaxe", 1, 17)
+                (read.item().id(game), read.count(), read.damage()),
+                (Some("minecraft:diamond_pickaxe"), 1, 17)
             );
             let mut changed = stack;
             changed.damage = 21;
