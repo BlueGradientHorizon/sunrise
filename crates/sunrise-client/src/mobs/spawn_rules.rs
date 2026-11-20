@@ -881,20 +881,51 @@ mod light_draw_tests {
 /// changing the template species or bypassing the placement-check hook.
 #[cfg(test)]
 mod mod_spawn_rule_tests {
+    use super::super::spawn_selection::Heightmap as Surface;
     use super::*;
     use crate::blocks::{RenderShape, Sounds, StateFacts};
     use data::Placement;
     use mod_api::__private::{SpawnPlacementDeclaration, parts_installation::entity_type_key};
     use mod_api::{
-        EntityTypeKey, Heightmap, SpawnPlacementOperation, SpawnPlacementPredicate,
-        SpawnPlacementType,
+        EntityTypeKey, Heightmap,
+        SpawnPlacementOperation::{And, Or, Replace},
+        SpawnPlacementPredicate, SpawnPlacementType,
     };
-    use std::{cell::RefCell, sync::Arc};
+    use std::{
+        cell::RefCell,
+        sync::{Arc, Mutex},
+    };
     use sunrise_core::random::LegacyRandom;
 
     const AIR: BlockStateId = BlockStateId(0);
     const GRASS: BlockStateId = BlockStateId(1);
     const STONE: BlockStateId = BlockStateId(2);
+
+    // java.util.Random(7).nextInt(), in order.
+    const JAVA_DRAWS: [i32; 7] = [
+        -1_156_638_823,
+        -1_552_468_968,
+        -1_077_308_326,
+        41_356_089,
+        1_495_978_761,
+        2_107_132_509,
+        -441_191_359,
+    ];
+
+    type PredicateCalls = Arc<Mutex<Vec<(&'static str, i32)>>>;
+
+    fn recording_predicate(
+        calls: &PredicateCalls,
+        name: &'static str,
+        passes: bool,
+    ) -> impl SpawnPlacementPredicate + use<> {
+        let calls = Arc::clone(calls);
+        move |_: EntityTypeKey, ctx: &mut dyn SpawnPlacementContext, _: Reason, _: BlockPos| {
+            let draw = ctx.random().next_int();
+            calls.lock().unwrap().push((name, draw));
+            passes
+        }
+    }
 
     fn state(name: &str, full: bool) -> StateFacts {
         let sound: Arc<str> = Arc::from("");
@@ -944,13 +975,14 @@ mod mod_spawn_rule_tests {
         }
     }
 
-    /// A flat world: grass at y 0, stone at x 5 up to y 1, air above. Light,
-    /// the biome and the answer the hook gives are the test's to set.
+    /// A flat world: grass at y 0, stone at x 5 up to y 1, air above. Tests
+    /// can set light, biome tags, whether the level is Peaceful, and the hook's answer.
     struct Flat {
         facts: BlockFacts,
         data: data::MobData,
         sky: i32,
         block: i32,
+        peaceful: bool,
         /// The biome tags the spot's biome is in.
         biome_tags: Vec<&'static str>,
         /// What the hook is told the rule answered, and what it answers.
@@ -970,22 +1002,37 @@ mod mod_spawn_rule_tests {
                 sign_texts: Default::default(),
             };
             let mut data = data::MobData::fallback(&facts);
-            data.vanilla_spawn_placements = Some(["minecraft:zombie".to_owned()].into());
+            data.vanilla_spawn_placements = Some(
+                [
+                    "minecraft:zombie".to_owned(),
+                    "minecraft:shulker".to_owned(),
+                ]
+                .into(),
+            );
             data.placements
                 .insert("minecraft:zombie".to_owned(), Placement::OnGround);
-            data.install_spawn_placements(declarations, |id| {
-                matches!(id, "minecraft:zombie" | "ruby:ghoul" | "ruby:floater")
-            })
-            .unwrap();
-            Self {
+            data.placements
+                .insert("minecraft:shulker".to_owned(), Placement::NoRestrictions);
+            let mut level = Self {
                 facts,
                 data,
                 sky: 15,
                 block: 0,
+                peaceful: false,
                 biome_tags: vec!["test:haunted"],
                 heard: RefCell::default(),
                 hook: None,
-            }
+            };
+            level.install(declarations).unwrap();
+            level
+        }
+        fn install(&mut self, declarations: &[SpawnPlacementDeclaration]) -> Result<(), String> {
+            self.data.install_spawn_placements(declarations, |id| {
+                matches!(
+                    id,
+                    "minecraft:zombie" | "minecraft:shulker" | "ruby:ghoul" | "ruby:floater"
+                )
+            })
         }
         /// `SpawnPlacements.checkSpawnRules` for a type of the zombie species.
         fn check(&self, entity: &str, reason: Reason, at: [i32; 3]) -> bool {
@@ -1038,7 +1085,7 @@ mod mod_spawn_rule_tests {
             1
         }
         fn peaceful(&self) -> bool {
-            false
+            self.peaceful
         }
         fn dimension_type(&self) -> &DimensionFacts {
             DimensionFacts::vanilla("minecraft:overworld").unwrap()
@@ -1066,7 +1113,7 @@ mod mod_spawn_rule_tests {
             placement: Some(SpawnPlacementType::OnGround),
             heightmap: Some(Heightmap::OceanFloor),
             predicate: Arc::new(predicate),
-            operation: SpawnPlacementOperation::Replace,
+            operation: Replace,
         }
     }
 
@@ -1138,9 +1185,9 @@ mod mod_spawn_rule_tests {
         // Java's Random(7): the refused bound draws nothing, and the Overworld's
         // darkness check then draws nextInt(32) and nextInt(8).
         assert_eq!(context.random().next_int_bound(0), 0);
-        assert_eq!(context.random().next_int(), -1_156_638_823);
+        assert_eq!(context.random().next_int(), JAVA_DRAWS[0]);
         assert!(context.is_dark_enough_to_spawn());
-        assert_eq!(rng.next_int(), 41_356_089);
+        assert_eq!(rng.next_int(), JAVA_DRAWS[3]);
     }
 
     /// `mob_spawn_placement_check` still runs after the rule and is told its
@@ -1157,7 +1204,6 @@ mod mod_spawn_rule_tests {
 
     #[test]
     fn a_declared_placement_type_and_heightmap_replace_the_species_ones() {
-        use super::super::spawn_selection::Heightmap as Surface;
         let level = Flat::new(&[SpawnPlacementDeclaration {
             id: "ruby:floater".to_owned(),
             kind: entity_type_key(1),
@@ -1167,7 +1213,7 @@ mod mod_spawn_rule_tests {
             predicate: Arc::new(
                 |_: EntityTypeKey, _: &mut dyn SpawnPlacementContext, _: Reason, _: BlockPos| true,
             ),
-            operation: SpawnPlacementOperation::And,
+            operation: And,
         }]);
         // Mid-air with nothing below: no restrictions allows it, a zombie's
         // `ON_GROUND` does not, and the same type on grass is fine.
@@ -1204,5 +1250,232 @@ mod mod_spawn_rule_tests {
             level.data.heightmap("ruby:undeclared"),
             Surface::MotionBlockingNoLeaves
         );
+    }
+
+    #[test]
+    fn composed_predicates_short_circuit_in_order_on_the_callers_random() {
+        for (case, original, second_or, second_and, expected_calls, passes) in [
+            (
+                "the original succeeds, then an AND fails",
+                true,
+                false,
+                false,
+                &["original", "and-1", "and-2"][..],
+                false,
+            ),
+            (
+                "an OR succeeds, then an AND fails",
+                false,
+                true,
+                false,
+                &["original", "or-1", "or-2", "and-1", "and-2"][..],
+                false,
+            ),
+            (
+                "an OR and all ANDs succeed",
+                false,
+                true,
+                true,
+                &["original", "or-1", "or-2", "and-1", "and-2", "and-3"][..],
+                true,
+            ),
+            (
+                "neither the original nor any OR succeeds",
+                false,
+                false,
+                true,
+                &["original", "or-1", "or-2", "or-3"][..],
+                false,
+            ),
+        ] {
+            let calls = PredicateCalls::default();
+            let declarations = [
+                (Or, "original", original),
+                (And, "and-1", true),
+                (Or, "or-1", false),
+                (And, "and-2", second_and),
+                (Or, "or-2", second_or),
+                (Or, "or-3", false),
+                (And, "and-3", true),
+            ]
+            .into_iter()
+            .enumerate()
+            .map(|(i, (operation, name, answer))| SpawnPlacementDeclaration {
+                operation,
+                placement: (i == 0).then_some(SpawnPlacementType::OnGround),
+                heightmap: (i == 0).then_some(Heightmap::OceanFloor),
+                ..ghoul(recording_predicate(&calls, name, answer))
+            })
+            .collect::<Vec<_>>();
+            let level = Flat::new(&declarations);
+            let mut rng = LegacyRandom::new(7);
+            // The template zombie always passes for a trial spawner. The first
+            // custom row has to be the original, not an OR after that template.
+            let actual = check_spawn_rules(
+                "ruby:ghoul",
+                Species::Zombie,
+                &level,
+                Reason::TrialSpawner,
+                &mut rng,
+                [0, 1, 0],
+            );
+            assert_eq!(actual, passes, "{case}");
+            let expected: Vec<_> = expected_calls.iter().copied().zip(JAVA_DRAWS).collect();
+            assert_eq!(*calls.lock().unwrap(), expected, "{case}");
+            assert_eq!(rng.next_int(), JAVA_DRAWS[expected_calls.len()], "{case}");
+        }
+    }
+
+    #[test]
+    fn only_the_last_replacement_runs_without_resetting_geometry_or_changing_a_sibling() {
+        let at @ [x, y, z] = [0, 8, 0];
+        let position_ok = |entity: &str, level: &Flat| {
+            is_spawn_position_ok(entity, Species::Zombie, level, x, y, z)
+        };
+        // Both answers matter: a passing replacement bypasses AND, and a failing one bypasses OR.
+        for latest in [false, true] {
+            let mut level = Flat::new(&[]);
+            // Fill the shared species cache before installing an override for its vanilla type.
+            assert!(!position_ok("minecraft:zombie", &level));
+            let calls = PredicateCalls::default();
+            let declarations = [
+                ("and-before", "ruby", And, None, None, false),
+                (
+                    "first-replace",
+                    "quartz",
+                    Replace,
+                    Some(SpawnPlacementType::NoRestrictions),
+                    Some(Heightmap::OceanFloor),
+                    !latest,
+                ),
+                ("or-between", "ruby", Or, None, None, true),
+                ("last-replace", "jade", Replace, None, None, latest),
+                ("and-after", "quartz", And, None, None, false),
+                ("or-after", "ruby", Or, None, None, true),
+            ]
+            .map(|(name, mod_id, operation, placement, heightmap, answer)| {
+                SpawnPlacementDeclaration {
+                    id: "minecraft:zombie".to_owned(),
+                    kind: entity_type_key(2),
+                    mod_id,
+                    placement,
+                    heightmap,
+                    predicate: Arc::new(recording_predicate(&calls, name, answer)),
+                    operation,
+                }
+            });
+            level.install(&declarations).unwrap();
+
+            assert!(position_ok("minecraft:zombie", &level));
+            assert_eq!(
+                level.data.heightmap("minecraft:zombie"),
+                Surface::OceanFloor
+            );
+            assert!(!position_ok("ruby:ghoul", &level));
+            assert_eq!(
+                level.data.heightmap("ruby:ghoul"),
+                Surface::MotionBlockingNoLeaves
+            );
+
+            level.hook = Some(!latest);
+            assert_eq!(
+                level.check("minecraft:zombie", Reason::TrialSpawner, at),
+                !latest
+            );
+            level.hook = None;
+            assert!(level.check("ruby:ghoul", Reason::TrialSpawner, at));
+            assert_eq!(*level.heard.borrow(), [latest, true]);
+            assert_eq!(*calls.lock().unwrap(), [("last-replace", JAVA_DRAWS[0])]);
+        }
+    }
+
+    #[test]
+    fn registration_validates_geometry_and_loaded_types() {
+        let mut level = Flat::new(&[]);
+        for (placement, heightmap) in [
+            (Some(SpawnPlacementType::OnGround), None),
+            (None, Some(Heightmap::OceanFloor)),
+        ] {
+            let row = SpawnPlacementDeclaration {
+                placement,
+                heightmap,
+                ..ghoul(bright_ghoul)
+            };
+            assert_eq!(
+                level.install(&[row]).unwrap_err(),
+                "mod ruby spawn placement for ruby:ghoul: the first registration needs both a placement and a heightmap"
+            );
+            for operation in [And, Or] {
+                let extension = SpawnPlacementDeclaration {
+                    mod_id: "jade",
+                    placement,
+                    heightmap,
+                    operation,
+                    ..ghoul(bright_ghoul)
+                };
+                let original = SpawnPlacementDeclaration {
+                    operation: And,
+                    ..ghoul(bright_ghoul)
+                };
+                assert_eq!(
+                    level.install(&[original, extension]).unwrap_err(),
+                    "mod jade spawn placement for ruby:ghoul: only Replace may supply placement or heightmap for an existing entry"
+                );
+            }
+        }
+        let unknown = SpawnPlacementDeclaration {
+            id: "ruby:missing".to_owned(),
+            kind: entity_type_key(4),
+            ..ghoul(bright_ghoul)
+        };
+        assert_eq!(
+            level.install(&[unknown]).unwrap_err(),
+            "mod ruby spawn placement for ruby:missing: no such loaded entity type"
+        );
+
+        let calls = PredicateCalls::default();
+        let shulker = SpawnPlacementDeclaration {
+            id: "minecraft:shulker".to_owned(),
+            kind: entity_type_key(3),
+            mod_id: "ruby",
+            placement: None,
+            heightmap: None,
+            predicate: Arc::new(recording_predicate(&calls, "shulker-and", false)),
+            operation: And,
+        };
+        level.install(&[shulker]).unwrap();
+        assert_eq!(
+            level.data.placement("minecraft:shulker"),
+            Placement::NoRestrictions
+        );
+        assert!(!check_spawn_rules(
+            "minecraft:shulker",
+            Species::Shulker,
+            &level,
+            Reason::TrialSpawner,
+            &mut LegacyRandom::new(7),
+            [0, 1, 0],
+        ));
+        assert_eq!(*calls.lock().unwrap(), [("shulker-and", JAVA_DRAWS[0])]);
+    }
+
+    #[test]
+    fn peaceful_rejects_the_disallowed_species_before_predicate_hook_or_random_draw() {
+        let calls = PredicateCalls::default();
+        let mut level = Flat::new(&[ghoul(recording_predicate(&calls, "ghoul-replace", true))]);
+        level.peaceful = true;
+        level.hook = Some(true);
+        let mut rng = LegacyRandom::new(7);
+        assert!(!check_spawn_rules(
+            "ruby:ghoul",
+            Species::Zombie,
+            &level,
+            Reason::Natural,
+            &mut rng,
+            [0, 1, 0],
+        ));
+        assert!(calls.lock().unwrap().is_empty());
+        assert!(level.heard.borrow().is_empty());
+        assert_eq!(rng.next_int(), JAVA_DRAWS[0]);
     }
 }
