@@ -342,11 +342,10 @@ impl ConnectedTextures {
         let states: Vec<_> = states.collect();
         // Each block's states, for `connectBlocks` and `tintBlock`.
         let mut block_states: HashMap<&str, Vec<u32>> = HashMap::new();
-        if out
-            .rules
-            .iter()
-            .any(|r| r.rule.method.is_overlay() || r.rule.connect == Connect::Blocks)
-        {
+        if out.rules.iter().any(|r| {
+            r.rule.method.is_overlay()
+                || matches!(r.rule.connect, Connect::Blocks | Connect::Height(_))
+        }) {
             for (id, state) in states.iter().enumerate() {
                 if let Some((name, _)) = state {
                     block_states.entry(name).or_default().push(id as u32);
