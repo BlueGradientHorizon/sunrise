@@ -3,8 +3,10 @@
 For an item-specific Part, request its canonical registry key once in `register`:
 `let stick = r.item_key("minecraft:stick"); r.item_part(stick, Sharp);`. Bare names use the
 `minecraft:` namespace. Requests may refer to content declared later; the final item registry refuses
-unknown IDs with the requesting mod. `ItemKey` equality uses its load-owned slot, and `key.id(host)`
-borrows its canonical name as `Option<&str>`. Item capability registration and item helpers use strings.
+unknown IDs with the requesting mod. Compare `ItemKey` values directly when you have both keys.
+When you need text, `key.id(host)` borrows its canonical name as `Option<&str>`, so you can
+compare with `Some("minecraft:stick")` without allocating. Item capability registration and item
+helpers use strings.
 
 `r.block_part_tag("minecraft:logs", Rotates)` and `r.item_part_tag("minecraft:axes", Sharp)` attach a part to
 every member of a tag (its name without `#`). Each game resolves them against its own tags when its world

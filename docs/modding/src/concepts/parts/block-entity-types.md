@@ -27,9 +27,10 @@ block hooks) by block. The factory is a `BlockEntityPart` method, not a global `
 `BlockEntityTypeKey` as the declaration builder: equality and hashing use the shared load-owned
 registration slot, not the type's blocks. Bare names use the `minecraft:` namespace. The final
 registry resolves requests after all declarations and refuses unknown IDs, naming the requesting mod
-and type. `key.id(host)` borrows the canonical name as `Option<&str>`; a key retains its identity
-until restart. Use a type ID, not a block ID (`minecraft:shulker_box`, not `minecraft:red_shulker_box`).
-`BlockEntityRef::kind(host)` returns `Option<BlockEntityTypeKey>`.
+and type. A key retains its identity until restart. `BlockEntityRef::kind(host)` returns
+`Option<BlockEntityTypeKey>`: compare it with `Some(chest_type)` if you already have the key.
+To read the canonical name, use `kind.id(host)`, which borrows it as `Option<&str>`.
+Use a type ID, not a block ID (`minecraft:shulker_box`, not `minecraft:red_shulker_box`).
 
 Lookup keys may answer capabilities for vanilla and native types. `block_entity_part` accepts only
 native types and returns `BlockEntityPartError::VanillaType { kind }` immediately for a vanilla key. Native

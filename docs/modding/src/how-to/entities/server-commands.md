@@ -79,9 +79,12 @@ function permission; blocks and carts use game-master permission. `execute as`,
 Two reads work in a command and elsewhere on the server. `player.profile(host)` returns
 the player's `GameProfile<'_>`: UUID, borrowed name and login properties such as the signed
 `textures` skin. Iterate `profile.properties()` in login order; each row lends its `name`,
-`value` and optional `signature`. The iterator is empty for an offline-mode player, and a
-stale player returns no profile. Copy individual strings only to keep them after the host
-borrow. `host.advancement(&id)` returns a loaded
+`value` and `signature: Option<&str>`. For example, find the skin with
+`profile.properties().find(|p| p.name == "textures")`. An offline-mode player has an empty
+iterator; a stale player has no profile. Copy individual strings only to keep them after the
+host borrow.
+
+`host.advancement(&id)` returns a loaded
 `AdvancementInfo`: its parent, display (title, description, icon stack with its components, frame and
 flags), criterion names and requirements, from the set the last `/reload` built. Feedback through
 `host.commands().feedback` honours the underlying source's silence and track-output.

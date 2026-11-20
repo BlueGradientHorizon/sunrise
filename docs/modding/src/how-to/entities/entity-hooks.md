@@ -15,6 +15,15 @@ Implement the `render_needs` callback to set `RenderNeeds` requests for world de
 and entity geometry; these requests feed the engine's frame requirements so it
 retains the resources your drawing callbacks borrow.
 
+## Checking an entity's tags
+
+In a server hook that gives you an entity and a host, use
+`entity.tags(host).is_some_and(|tags| tags.contains("mymod:marked"))` to match a
+scoreboard tag without allocating. To read all tags, the
+[borrowed view](../../concepts/parts/entity-parts-and-mob-goals.md#entity-tags)
+yields UTF-16 slices in saved order. Choose checked or lossy conversion explicitly
+when you need UTF-8.
+
 ## Opening a container
 
 `player_container_open` runs synchronously after a successful open. Failed opens and opening the player's

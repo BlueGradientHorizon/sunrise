@@ -44,15 +44,16 @@ Read identity through `player.uuid()`, `player.name(host)`,
 connection IP without a port. `player.client_brand(host)` reads the brand the
 client announced. Name, address and brand return `Option<&str>`: borrow them
 for comparisons, and use `.map(str::to_owned)` only to keep the text beyond the
-host borrow. An acting player without a known connection has an empty address
-and brand.
+host borrow. A stale or unavailable player gives `None`; an acting player without
+a known connection gives `Some("")` for address and brand.
 
 `player.announced_channels(host)` returns `Option<Arc<[String]>>` in announcement
 order. The snapshot includes `minecraft:register` minus `minecraft:unregister`
 from configuration and play. It can outlive the host borrow and does not change
-when the client updates its list. Read it with `.iter()`; call the method again
-to see new announcements. An acting player without a known connection gets an
-empty snapshot; a stale or unavailable player returns `None`.
+when the client updates its list. Read it with `.iter()` and keep the `Arc` if
+you need that exact list later; call the method again to see new announcements.
+An acting player without a known connection gets an empty snapshot; a stale or
+unavailable player returns `None`.
 
 `player.latency(host)` reads the ping the Tab list shows, in milliseconds: the keep-alive round
 trips averaged three parts old to one part new. It is 0 until the first keep-alive answer, for a fake

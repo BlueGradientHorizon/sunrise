@@ -10,15 +10,16 @@ logged-in client world. These reads use existing local state and send nothing.
 explicit: its `name` is the integrated world's current display name, or `None`
 for an external connection (the game retains the player name, not a server
 display name). Its `address` is absent for memory connections; friend-invite
-secrets are redacted. `integrated_local`
-means this window actually owns that integrated server, not that the address
-looks like localhost.
-`save_folder` gives the owning window the integrated save's folder name as a
-key for local data. It survives display-name changes and is scoped to the game
-instance. It is absent when this window does not own the server.
+secrets are redacted. `integrated_local` means this window actually owns that
+integrated server, not that the address looks like localhost. `save_folder`
+gives the owning window the integrated save's folder name as a key for local
+data. It survives display-name changes and is scoped to the game instance. It
+is absent for any other connection. All three text fields are `Option<&str>`;
+use `.map(str::to_owned)` on a field only to keep it beyond the host borrow.
 
 `client_language()` shares an `Arc<str>` snapshot of the applied language code,
-not a pending options choice. A later language change leaves the snapshot intact.
+not a pending options choice. Use `.as_deref()` to compare it with `Some("en_us")`.
+A later language change leaves the snapshot intact.
 Use the existing `ClientHost::is_paused()` for the applied pause state.
 `ClientFrameStats` reports the game's most recently computed `fps`, lifetime
 `rendered_frames` (menus included), and the newest completed frame's wall

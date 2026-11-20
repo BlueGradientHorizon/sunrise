@@ -9,9 +9,11 @@ Request existing entries inside `Hooks::register` with `r.block_key(id)`,
 - An unknown request refuses the load with the requesting mod and canonical ID, even if
   you never attach the key to a Part.
 - Keys are opaque `u32` slots, not engine numeric IDs.
-- `key.id(host)` returns a borrowed canonical name (`Option<&str>`). It returns `None` if the
-  host has no backend or no name for the slot. Compare with `Some("minecraft:stone")`, and copy
-  with `.map(str::to_owned)` only if you need to keep the name after releasing the host borrow.
+- Block, item, effect, fluid, block-entity-type and dimension keys return a borrowed canonical
+  name (`Option<&str>`) from `key.id(host)`. Compare with `Some("minecraft:stone")`; `None`
+  means the host cannot name the slot. Use `.map(str::to_owned)` only to keep the text after
+  the host borrow. Biome keys [borrow from the current world registry](../how-to/items/data-maps.md)
+  and return a `Result` instead.
 
 Keys identify entries for the running mod load, not persistent data. Persist canonical identifiers
 and property strings rather than registration slots or state ordinals. Reload preserves key identity;
@@ -52,9 +54,8 @@ For example, retain the zombie key at setup, then compare
 The key derives `Wire` through its scalar slot: host decoding checks the registered
 slot.
 
-This is a clean break from `Option<String>`: callers that need textual names must
-request `.id(host)` explicitly. `UnspawnedMobRef::kind` keeps its separate scoped
-`Identifier`/error contract, and block-entity type reads keep `BlockEntityTypeKey`.
+`UnspawnedMobRef::kind` has a separate scoped `Identifier`/error contract,
+and block-entity type reads use `BlockEntityTypeKey`.
 
 ## Pinned registry names
 
@@ -66,7 +67,8 @@ A `RegistryName` borrows resident text or keeps its registry snapshot alive; it
 holds no registry lock and does not borrow the host. Use `name.as_str()` to borrow
 its text or compare `key.id(host).as_deref() == Some("minecraft:zombie")` without a
 copy. The pinned text remains readable across reloads; it does not reflect a later
-registry publication. To persist just the text, copy it with `name.as_str().to_owned()`.
+registry publication. Bind the snapshot before borrowing it if the text is used beyond the
+current expression. For persistent storage, copy just the text with `name.as_str().to_owned()`.
 
 ## Block states
 

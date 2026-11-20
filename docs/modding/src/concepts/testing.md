@@ -48,11 +48,12 @@ bucket sounds `fluid_pickup_sound` and `fluid_empty_sound` answer.
 A fake's constructors do not install or resolve entity types. Declare its entities with
 `host.level.entity(id, kind)`, then call `host.resolve_entity_types().unwrap()` explicitly.
 This freezes the current load's table with requested mod keys, the player type and every kind in
-that fake level. After `host.join(1, 10)` and this explicit setup,
-`host.player(1).unwrap().entity().kind(&host).unwrap().id(&host).as_deref()` is
-`Some("minecraft:player")` (with `PlayersHost` in scope). Existing kinds may be instantiated after
-resolution; inserting a new undeclared kind panics at the fake setup boundary. Repeated resolution
-checks the frozen table rather than extending it. A new load requires a new part installation.
+that fake level. After `host.join(1, 10)` and this explicit setup, read the entity type with
+`host.player(1).unwrap().entity().kind(&host).unwrap()` (with `PlayersHost` in scope).
+Assert that `kind.id(&host).as_deref() == Some("minecraft:player")` without copying the name.
+Existing kinds may be instantiated after resolution; inserting a new undeclared kind panics at the
+fake setup boundary. Repeated resolution checks the frozen table rather than extending it. A new
+load requires a new part installation.
 
 An unsupported host method panics with its name, so an unexpected call fails
 loudly. You can write your own double for behavior the fakes do not model,

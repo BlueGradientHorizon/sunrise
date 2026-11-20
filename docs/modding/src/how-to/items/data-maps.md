@@ -160,8 +160,9 @@ yet.
 
 `host.biome_key("minecraft:plains")` resolves a `BiomeKey` in the installed
 server world registry. Its `id(host)` borrows the canonical name from the installed snapshot
-(`Result<&str, BiomeKeyError>`). `data(host, &map)` returns an owned value from maps whose
-`DataMap::Entry` is `BiomeKey`, including
+(`Result<&str, BiomeKeyError>`): use `key.id(host)?` directly, or copy the result only to retain
+it beyond the host borrow. The borrow does not affect the result of `data(host, &map)`: it still
+returns an owned value from maps whose `DataMap::Entry` is `BiomeKey`, including
 `neoforge:villager_types` in `minecraft:worldgen/biome`. Missing entries return
 `Ok(None)`. Lookup returns `None` on clients and before world data is installed;
 data maps there return `DataMapError::Unavailable`. Reacquire biome keys after
@@ -174,8 +175,9 @@ key across reload receives an error without panicking the server.
 Game events use `GameEventKey`, resolved with `host.game_event_key("minecraft:step")`
 after startup registry completion. The key is load-owned and survives world data
 reloads. `key.id(host)` returns a pinned [`RegistryName`](../../concepts/registry-keys.md#pinned-registry-names)
-or `GameEventKeyError`; unknown slots return `InvalidKey` rather than panicking. A `DataMap` whose `Entry`
-is `GameEventKey` reads `minecraft:game_event`, including
+or `GameEventKeyError`; unknown slots return `InvalidKey` rather than panicking. Use
+`let name = key.id(host)?;` and `name.as_str()` instead of copying it. A `DataMap` whose
+`Entry` is `GameEventKey` reads `minecraft:game_event`, including
 `neoforge:vibration_frequencies` (canonical NBT compound with an `Int` `frequency` field). Missing values return
 `Ok(None)`; clients and reads before data installation return
 `DataMapError::Unavailable`. Invalid keys return `DataMapError::InvalidKey`.

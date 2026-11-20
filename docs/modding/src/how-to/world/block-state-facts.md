@@ -29,8 +29,17 @@ Use `StateConstraint` for each partial constraint; `StateMatchError` identifies 
 properties returns an empty `StateProperties<'_>` view. Use `properties.iter()` to read each
 `StateProperty<'_>` in property-name order. Its `name: &str` and `values: &[String]` borrow the
 loaded table, keeping its value order. The view is tied to the host (or level view), not the temporary
-service returned by `block_states()`. Compare in scope; use `property.name.to_owned()` and
-`property.values.to_vec()` only if you need to retain the text after that borrow ends.
+service returned by `block_states()`. For example, to check whether `facing` accepts `north`
+without copying the definition:
+
+```rust,ignore
+let allows_north = host.block_states().definition(block).is_some_and(|properties| {
+    properties.iter().any(|p| p.name == "facing" && p.values.iter().any(|v| v == "north"))
+});
+```
+
+Copy a property's name with `.to_owned()` and values with `.to_vec()` only if you need them
+after that borrow ends.
 
 The conductor query uses the same exported predicate as redstone, not render solidity. It returns
 `None` for shulker boxes because their collision bounds depend on the live block entity. To query a

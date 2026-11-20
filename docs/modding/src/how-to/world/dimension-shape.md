@@ -5,9 +5,10 @@
 `LevelRef::dimension` returns a `DimensionKey`, a small `Copy` value that names the dimension
 for as long as the game runs, custom dimensions included. Compare it with another key or with
 `DimensionKey::OVERWORLD`, `NETHER` and `END`; `level.dimension().id(host)` borrows the name
-(for example, `Some("minecraft:the_nether")`). It returns `None` without a backend or for an
-unissued slot. On a client, `host.level(name)` gives the level it shows under the name the
-server calls it, whether or not that is a vanilla dimension.
+as `Option<&str>` (for example, `Some("minecraft:the_nether")`). It returns `None`
+without a backend or for an unissued slot. Copy the name only if you need to retain it
+beyond the host borrow. On a client, `host.level(name)` gives the level it shows under
+the name the server calls it, whether or not that is a vanilla dimension.
 
 ## Dimension shape
 

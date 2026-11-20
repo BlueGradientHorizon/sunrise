@@ -109,7 +109,8 @@ macro_rules! typed_entries {
             /// packs and mods' files left it: the newest file wins, a `#tag` entry gives every
             /// entry in the tag its value, `replace` and `remove` apply, and conditional files
             /// and values count only when their conditions hold. `Ok(None)` where the map
-            /// gives this entry no value.
+            /// gives this entry no value. A key that this host cannot name returns
+            /// `DataMapError::InvalidKey` when its registry is available to the host.
             ///
             /// Server side: the server merges the maps when its data loads, on a world's first
             /// open and after every `/reload`, and a read sees the last load whole, never a mix
