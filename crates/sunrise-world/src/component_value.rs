@@ -1,5 +1,5 @@
 //! Immutable component codec values shared by item templates and protocol codecs.
-use sunrise_core::nbt::{JavaString, Tag, with_tree_stack};
+use sunrise_core::nbt::{JavaString, Tag, discard_tag, with_tree_stack};
 pub mod source;
 pub mod types;
 pub use source::from_component_tag;
@@ -203,6 +203,28 @@ enum Projection {
     Presentation,
 }
 
+/// Keep the collected prefix on error so its NBT children can be released iteratively.
+fn collect_projected<T, C: FromIterator<T>>(
+    children: impl Iterator<Item = Result<T, String>>,
+    into_tag: impl FnOnce(C) -> Tag,
+) -> Result<C, String> {
+    let mut error = None;
+    let projected = children
+        .map_while(|child| match child {
+            Ok(child) => Some(child),
+            Err(cause) => {
+                error = Some(cause);
+                None
+            }
+        })
+        .collect();
+    if let Some(error) = error {
+        discard_tag(into_tag(projected));
+        return Err(error);
+    }
+    Ok(projected)
+}
+
 impl Value {
     pub fn string(value: &str) -> Self {
         Self::String(value.encode_utf16().collect())
@@ -284,7 +306,7 @@ impl Value {
         match source::from_component_tag_with(name, &tag, is_native) {
             Ok(_) => Ok(tag),
             Err(error) => {
-                sunrise_core::nbt::discard_tag(tag);
+                discard_tag(tag);
                 Err(error)
             }
         }
@@ -310,39 +332,39 @@ impl Value {
             Self::ByteArray(v) => Tag::ByteArray(v.clone()),
             Self::IntArray(v) => Tag::IntArray(v.clone()),
             Self::LongArray(v) => Tag::LongArray(v.clone()),
-            Self::List(v) | Self::Set(v) => Tag::List(
-                v.iter()
-                    .map(|v| v.tag(projection))
-                    .collect::<Result<_, _>>()?,
-            ),
-            Self::Map(v) => Tag::Compound(
+            Self::List(v) | Self::Set(v) => Tag::List(collect_projected(
+                v.iter().map(|v| v.tag(projection)),
+                Tag::List,
+            )?),
+            Self::Map(v) => {
                 // The compound's string keys identify the effective entries; don't
                 // project overwritten values (they need not have a saved form).
-                v.iter()
+                let entries = v
+                    .iter()
                     .map(|(key, value)| match key {
                         Self::String(key) => Ok((key, value)),
                         _ => Err("component map key is not a string".to_owned()),
                     })
-                    .collect::<Result<std::collections::BTreeMap<_, _>, _>>()?
-                    .into_iter()
-                    .map(|(k, v)| Ok((JavaString(k.clone()), v.tag(projection)?)))
-                    .collect::<Result<_, String>>()?,
-            ),
+                    .collect::<Result<std::collections::BTreeMap<_, _>, _>>()?;
+                Tag::Compound(collect_projected(
+                    entries
+                        .into_iter()
+                        .map(|(k, v)| Ok((JavaString(k.clone()), v.tag(projection)?))),
+                    Tag::Compound,
+                )?)
+            }
             Self::Template(v) => v.tag(projection)?,
-            Self::Container(slots) => Tag::List(
-                slots
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(slot, item)| {
-                        item.as_ref().map(|item| {
-                            Ok(Tag::compound([
-                                ("slot", Tag::Int(slot as i32)),
-                                ("item", item.tag(projection)?),
-                            ]))
-                        })
+            Self::Container(slots) => Tag::List(collect_projected(
+                slots.iter().enumerate().filter_map(|(slot, item)| {
+                    item.as_ref().map(|item| {
+                        Ok(Tag::compound([
+                            ("slot", Tag::Int(slot as i32)),
+                            ("item", item.tag(projection)?),
+                        ]))
                     })
-                    .collect::<Result<_, String>>()?,
-            ),
+                }),
+                Tag::List,
+            )?),
             Self::StreamOnly(v) if projection == Projection::Presentation => v.tag(projection)?,
             Self::StreamOnly(_) => return Err("inline holder has no persistent encoding".into()),
         })
@@ -363,36 +385,34 @@ impl Template {
         if self.count != 1 {
             fields.push(("count".into(), Tag::Int(self.count)));
         }
-        let mut patch = Vec::with_capacity(self.patch.len());
-        for (name, value) in effective_patch(&self.patch) {
-            if projection != Projection::Presentation && !is_persistent(name) {
-                continue;
-            }
-            patch.push(match value {
-                Some(value) => (
-                    name.as_str().into(),
-                    value
-                        .tag(children)
-                        .map_err(|error| format!("{name}: {error}"))?,
-                ),
-                None => (
-                    format!("!{name}").as_str().into(),
-                    Tag::Compound(Default::default()),
-                ),
-            });
-        }
+        let patch = collect_projected(
+            effective_patch(&self.patch)
+                .filter(|(name, _)| projection == Projection::Presentation || is_persistent(name))
+                .map(|(name, value)| {
+                    Ok(match value {
+                        Some(value) => (
+                            name.as_str().into(),
+                            value
+                                .tag(children)
+                                .map_err(|error| format!("{name}: {error}"))?,
+                        ),
+                        None => (
+                            format!("!{name}").as_str().into(),
+                            Tag::Compound(Default::default()),
+                        ),
+                    })
+                }),
+            Tag::Compound,
+        )?;
         if !patch.is_empty() {
-            fields.push((
-                "components".into(),
-                Tag::Compound(patch.into_iter().collect()),
-            ));
+            fields.push(("components".into(), Tag::Compound(patch)));
         }
         let tag = Tag::Compound(fields.into_iter().collect());
         if projection == Projection::Tree {
             match source::template_from_tag(&tag) {
                 Ok(_) => (),
                 Err(error) => {
-                    sunrise_core::nbt::discard_tag(tag);
+                    discard_tag(tag);
                     return Err(error);
                 }
             }
@@ -423,6 +443,50 @@ mod tests {
                     _ => Value::StreamOnly(Box::new(child)),
                 });
                 drop(value);
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
+    #[test]
+    fn late_projection_refusal_releases_deep_nbt_on_a_small_stack() {
+        std::thread::Builder::new()
+            .stack_size(128 * 1024)
+            .spawn(|| {
+                let deep = || (0..8_192).fold(Value::Int(1), |child, _| Value::List(vec![child]));
+                let inline = || Value::StreamOnly(Box::new(Value::Empty));
+                let stone = |patch| Template::new("minecraft:stone".into(), 1, patch);
+                let custom_data = || {
+                    (
+                        "minecraft:custom_data".into(),
+                        Some(Value::Map(vec![(Value::string("deep"), deep())])),
+                    )
+                };
+                let invalid_damage = || ("minecraft:damage".into(), Some(inline()));
+                for value in [
+                    Value::List(vec![deep(), inline()]),
+                    Value::Set(vec![deep(), inline()]),
+                    Value::Map(vec![
+                        (Value::string("a"), deep()),
+                        (Value::string("z"), inline()),
+                    ]),
+                    Value::Template(Box::new(stone(vec![custom_data(), invalid_damage()]))),
+                    Value::Container(vec![
+                        Some(stone(vec![custom_data()])),
+                        Some(stone(vec![invalid_damage()])),
+                    ]),
+                ] {
+                    // The owning codec has not run when the later child refuses.
+                    let error = value
+                        .to_component_tag("minecraft:container")
+                        .map(discard_tag)
+                        .unwrap_err();
+                    assert!(
+                        error.ends_with("inline holder has no persistent encoding"),
+                        "{error}"
+                    );
+                }
             })
             .unwrap()
             .join()
