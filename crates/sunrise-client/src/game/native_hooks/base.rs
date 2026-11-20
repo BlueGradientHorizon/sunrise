@@ -3116,14 +3116,9 @@ impl Game<'_> {
     /// `handled` after doing the click itself.
     pub(in crate::game) fn native_menu_clicked(
         &mut self,
-        uuid: u128,
-        window: i32,
-        slot: i32,
-        button: i32,
-        mode: i32,
-        handled: &mut bool,
+        call: mod_api::__private::MenuClickedCall<'_>,
     ) {
-        self.fire_menu_clicked(uuid, window, slot, button, mode, handled);
+        self.fire_menu_clicked(call);
     }
     /// A menu a mod opened closed: the player closed it, the server or a mod
     /// opened another, or the player left.

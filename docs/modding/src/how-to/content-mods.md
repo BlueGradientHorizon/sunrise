@@ -1044,7 +1044,8 @@ container slots, never the optional player group. A mapping to an absent slot is
 
 For blockless opens, an optional `owned_slots` array declares [transient menu storage](../concepts/capabilities/menu-slots.md#menu-owned-slots).
 It must contain exactly `slots` entries, each the maximum stack size (1–99) of that slot.
-Types declaring `owned_slots` are blockless-only; a block container cannot bind one as its menu.
+Types declaring `owned_slots` are blockless-only and cannot declare `results` or `crafting`.
+A block container cannot bind an owned-slot type as its menu.
 
 The optional menu `inputs` list marks machine feeds, including fuel, as `Input`
 in [`MenuRef::slot_kinds`](../concepts/capabilities/menu-slots.md). Indices start at zero and

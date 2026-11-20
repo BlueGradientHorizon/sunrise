@@ -224,6 +224,9 @@ pub(super) struct Level {
     stations: HashMap<(u32, decision::MenuId), super::lan_stations::GuestStation>,
     /// Each guest's inventory crafting grid before the first write, by connection.
     menus: HashMap<u32, KeptMenus>,
+    /// Drag, machine and preview state before a scoped default click.
+    menu_clicks: HashMap<u64, KeptClick>,
+    pub(super) menu_click_active: Option<u32>,
     /// Each native window's slots before the first write, by menu generation.
     native_menu_slots: HashMap<u64, Vec<Option<ItemStack>>>,
     menu_data: MenuDataJournal,
@@ -360,6 +363,15 @@ enum KeptEquipment {
     Stand(Vec<Option<ItemStack>>),
 }
 
+struct KeptClick {
+    conn: u32,
+    drag: Option<(u8, Vec<usize>)>,
+    craft: Option<sunrise_client::lan::menu::ModCraft>,
+    owned: Option<(u64, Box<sunrise_client::menu::Menu>)>,
+    machine: Option<(i32, Box<sunrise_client::menu::Menu>)>,
+    places: Option<super::native_menu_places::MenuSlotPlaces>,
+}
+
 #[derive(Clone)]
 struct KeptMenus {
     craft_grid: [Option<ItemStack>; 4],
@@ -388,6 +400,11 @@ pub(super) enum After {
     /// A detached menu listener removed its holder; spill any unreturned contents only on commit.
     LostMenuContents(Pos, Box<sunrise_client::containers::ModBlockEntity>),
     GuestMenu(u32, Box<super::lan_crafting::GuestMenuEffects>),
+    MenuClick(Box<super::lan_menus::MenuClickReply>),
+    MenuPlacesNotice(u32, u128, i32),
+    FurnaceMenu(Box<super::lan_crafting::FurnaceMenuEffects>),
+    StoreCartItems(Pos),
+    BackedMenuClick(u32, u128, mod_api::MenuRef, i32),
     /// A provider's answer changed here (`level_invalidate_capabilities`): the capability
     /// generation moves on.
     Capabilities(Pos),
@@ -718,6 +735,9 @@ impl Game<'_> {
                 }
                 for (conn, kept) in level.menus {
                     outer.menus.entry(conn).or_insert(kept);
+                }
+                for (generation, kept) in level.menu_clicks {
+                    outer.menu_clicks.entry(generation).or_insert(kept);
                 }
                 for (generation, kept) in level.native_menu_slots {
                     outer.native_menu_slots.entry(generation).or_insert(kept);
@@ -1142,6 +1162,35 @@ impl Game<'_> {
             }
         }
     }
+    pub(super) fn journal_menu_click(&mut self, conn: u32) {
+        let Some(level) = self.transactions.last_mut() else {
+            return;
+        };
+        let Some(host) = self.lan.as_ref() else {
+            return;
+        };
+        let Some(guest) = host.hub.guest(conn) else {
+            return;
+        };
+        let Some(menu) = guest.menu.as_ref() else {
+            return;
+        };
+        level
+            .menu_clicks
+            .entry(guest.menu_generation)
+            .or_insert_with(|| {
+                let owner = host.menus.get(&conn);
+                KeptClick {
+                    conn,
+                    drag: menu.drag.clone(),
+                    craft: menu.craft.clone(),
+                    owned: owner.and_then(|owner| owner.owned_menu.clone()),
+                    machine: owner.and_then(|owner| owner.crafting.machine.as_ref().cloned()),
+                    places: owner.and_then(|owner| owner.slot_places.clone()),
+                }
+            });
+    }
+
     /// Keeps entity `id`'s inventory as it is, if a transaction is open and hasn't yet.
     pub(super) fn journal_entity(&mut self, id: u32) {
         self.transactions.writes = self.transactions.writes.wrapping_add(1);
@@ -1326,6 +1375,15 @@ impl Game<'_> {
             }
             After::LostMenuContents(pos, taken) => self.drop_unreturned_mod_contents(pos, *taken),
             After::GuestMenu(conn, effects) => self.publish_guest_menu_effects(conn, *effects),
+            After::MenuClick(reply) => self.publish_menu_click(*reply),
+            After::MenuPlacesNotice(conn, uuid, window) => {
+                self.queue_menu_places_notice(conn, uuid, window);
+            }
+            After::FurnaceMenu(effects) => self.publish_furnace_menu_effects(*effects),
+            After::StoreCartItems(pos) => self.store_cart_items(pos),
+            After::BackedMenuClick(conn, uuid, menu, window) => {
+                self.publish_backed_menu_click(conn, uuid, menu, window);
+            }
             After::Capabilities(pos) => self.world.capability_generations.invalidate(pos),
 
             After::BreakProgress(breaker, pos, progress) => {
@@ -1778,6 +1836,22 @@ impl Game<'_> {
                         .is_some_and(|s| s.window == kept.window)
                 {
                     menus.station.restore(Some(kept));
+                }
+            }
+            for (generation, kept) in level.menu_clicks {
+                if let Some(i) = host.hub.guests.connection_index(kept.conn)
+                    && host.hub.guests[i].menu_generation == generation
+                    && host.hub.guests[i].menu.is_some()
+                {
+                    host.hub.guests.update(i, |g| {
+                        let menu = g.menu.as_mut().unwrap();
+                        menu.drag = kept.drag;
+                        menu.craft = kept.craft;
+                    });
+                    let owner = host.menus.entry(kept.conn).or_default();
+                    owner.owned_menu = kept.owned;
+                    owner.crafting.machine.restore(kept.machine);
+                    owner.slot_places = kept.places;
                 }
             }
             // A removed window's snapshot is now held by its pending close notice, not

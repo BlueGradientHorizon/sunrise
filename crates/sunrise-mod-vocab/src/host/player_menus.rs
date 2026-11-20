@@ -26,7 +26,7 @@ pub trait PlayerMenusBackendMut {
     /// Side: server.
     /// Opens a block entity's menu for a connected player (`ServerPlayer.openMenu`).
     /// Returns Stale for an invalidated entity; Ok(false) for a wrong-level player,
-    /// non-provider, cancelled open, or an unconnected player such as a fake player.
+    /// non-provider, cancelled open, active menu click, or an unconnected player such as a fake player.
     #[access(WorldOnly)]
     fn player_open_menu(
         &mut self,
@@ -43,14 +43,15 @@ pub trait PlayerMenusBackendMut {
     /// mod can change them with [`MenuRef::set_data_slot`]. Pass `opening_hand` for an item
     /// opener regardless of slot backing, or `None` for another opener. The server remembers that
     /// hand's stack for `menu_still_valid`. A type declaring `owned_slots` uses ordinary clicks
-    /// and accepts writes through `ItemPlace::MenuSlot`.
+    /// and accepts writes through `ItemPlace::MenuSlot`; it may not declare results or crafting.
     /// The old menu closes on the server as a close does (its
     /// `removed`, `player_container_close`, the cursor stack and crafting grids back to the
     /// inventory) before the new one is built; `replace` says whether the client is first sent
     /// a close for it, as for `open_menu`. `MenuReplace::InPlace` sends none: the client keeps
     /// its screen and mouse until the new screen replaces it. The window id, or Ok(None) when
-    /// a mod cancelled the open. Errors: `NotModMenu`, `PlayerUnavailable` (including a
-    /// disconnect in progress or a turn unavailable for the veto), `TooLarge`,
+    /// a mod cancelled the open. Errors: `NotModMenu`, `OwnedSlotsWithResults`,
+    /// `ClickInProgress` (a speculative click cannot open a new screen), `PlayerUnavailable`
+    /// (including a disconnect in progress or a turn unavailable for the veto), `TooLarge`,
     /// `DataCountMismatch`, `Title` or `TitleNotEncodable`. A cancelled or refused open
     /// does not close the old menu.
     #[access(WorldOnly)]
@@ -68,7 +69,7 @@ pub trait PlayerMenusBackendMut {
     /// after each click and each write through an `ItemPlace` of that storage, never each tick.
     /// Right after the open is the place to call it, the player's own item use included: backed
     /// inside a hook of that player's own action, the slots are mirrored once the action is over.
-    /// A slot past `places` stays the mods' own (`native_menu_clicked`). The menu closes once a
+    /// A slot past `places` stays the mods' own (`menu_clicked`). The menu closes once a
     /// place stops resolving (the backpack left the hand, the entity is gone) or a held stack is
     /// no longer the one bound when the slots were backed, checked before each click and at
     /// each change notice. A `MenuSlotPlace::HeldItem` locks the inventory slot holding that

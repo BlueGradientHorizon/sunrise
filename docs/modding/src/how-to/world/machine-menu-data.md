@@ -267,15 +267,9 @@ For a slotless status screen, declare `data/mymod/sunrise/menu/status.json` as
 to `mymod:status`. Open it with two signed values, in index order:
 
 ```rust,ignore
-player.open_mod_menu(host, ModMenuOpen {
-    menu: status,
-    title: Text::translate("mymod.status", vec![]),
-    extra: vec![],
-    data: vec![-80_000, 7],
-    pos: None,
-    opening_hand: None,
-    replace: MenuReplace::CloseFirst,
-})?;
+let mut request = ModMenuOpen::new(status, Text::translate("mymod.status", vec![]));
+request.data = vec![-80_000, 7];
+player.open_mod_menu(host, request)?;
 ```
 
 The initial values are sent after the new window opens. In `screen_draw`, read

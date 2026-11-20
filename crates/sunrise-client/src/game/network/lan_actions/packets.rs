@@ -141,6 +141,43 @@ impl Game<'_> {
 
     /// A packet from a guest that the hub does not handle itself.
     pub(in crate::game) fn lan_guest_packet(&mut self, conn: u32, packet: S) {
+        // The window's ordinary reply cannot fix a predicted swap in a player slot
+        // it doesn't show. Prepare the repair even if menu validation closes the window.
+        const OFFHAND_BUTTON: i8 = crate::game::shield::OFFHAND_SLOT as i8;
+        let swap = if let S::ContainerClick(click) = &packet
+            && click.input == sunrise_client::lan::menu::input::SWAP
+            && matches!(click.button, 0..=8 | OFFHAND_BUTTON)
+        {
+            use super::super::lan_menus::ClickReply;
+            self.lan
+                .as_ref()
+                .and_then(|host| host.hub.guest(conn))
+                .and_then(|guest| guest.menu.as_ref())
+                .filter(|menu| {
+                    menu.window == click.container
+                        && usize::try_from(click.slot).is_ok_and(|slot| slot < menu.slot_count())
+                })
+                .and_then(|menu| {
+                    if menu.mod_type.is_some() && menu.player_slots() == 0 {
+                        Some(ClickReply::Inventory)
+                    } else if click.button == OFFHAND_BUTTON
+                        && (menu.mod_type.is_some() || menu.slots == Slots::Native)
+                    {
+                        Some(ClickReply::Offhand)
+                    } else {
+                        None
+                    }
+                })
+        } else {
+            None
+        };
+        self.lan_guest_packet_inner(conn, packet);
+        if let Some(reply) = swap {
+            self.reply_menu_click(conn, reply);
+        }
+    }
+
+    fn lan_guest_packet_inner(&mut self, conn: u32, packet: S) {
         // A crossing the hub's move check passed; a dead player's is refused, not dropped.
         if let S::CustomPayload(p) = &packet
             && p.channel == sunrise_protocol::passage_sync::CROSS_CHANNEL
@@ -658,17 +695,6 @@ impl Game<'_> {
                     });
                 }
             }
-            // The mod may replace the click before the menu's ordinary routing.
-            S::ContainerClick(p) if self.mod_menu_click(conn, &p) => {}
-            S::ContainerClick(p) if self.lan_owned_menu_click(conn, &p) => {}
-            S::ContainerClick(p) if self.lan_mod_quick_move(conn, &p) => {}
-            S::ContainerClick(p) if self.lan_merchant_click(conn, &p) => {}
-            S::ContainerClick(p) if self.lan_inventory_click(conn, &p) => {}
-            S::ContainerClick(p) if self.lan_crafting_click(conn, &p) => {}
-            S::ContainerClick(p) if self.lan_machine_click(conn, &p) => {}
-            S::ContainerClick(p) if self.lan_station_click(conn, &p) => {}
-            S::ContainerClick(p) if self.lan_lectern_click(conn, &p) => {}
-            S::ContainerClick(p) if self.lan_mount_click(conn, &p) => {}
             // ServerboundPlayerCommandPacket OPEN_INVENTORY: the ridden
             // mount's inventory (`HasCustomInventoryScreen`).
             S::PlayerCommand(p) if p.action == 5 => {
@@ -768,31 +794,9 @@ impl Game<'_> {
                 }
             }
             S::ContainerClick(p) => {
-                let Some(host) = self.lan.as_mut() else {
-                    return;
-                };
-                let slots = host.hub.guests[gi]
-                    .menu
-                    .as_ref()
-                    .filter(|m| m.window == p.container)
-                    .map(|m| m.slots);
-                let before = slots.and_then(|s| s.read(&self.world, &host.hub.guests[gi]));
-                let drops = self.lan_hub_click(conn, &p);
-                // A click that changed the container's slots: BlockEntity.setChanged,
-                // so comparators read it again (a double chest's other half follows).
-                let Some(host) = self.lan.as_ref() else {
-                    return;
-                };
-                if let Some(Slots::Block(key) | Slots::Double(key, _)) = slots
-                    && slots.and_then(|s| s.read(&self.world, &host.hub.guests[gi])) != before
-                {
-                    self.container_changed(key);
+                if !self.menu_clicked_decided(conn, &p) {
+                    self.lan_default_container_click(conn, &p);
                 }
-                // A vehicle's menu edits the vehicle's own items.
-                if let Some(Slots::Block(key)) = slots {
-                    self.store_cart_items(key);
-                }
-                self.drop_guest_items(gi, drops);
             }
             S::ContainerClose(p) => {
                 // A vehicle's menu closed: its slots go back to the vehicle
@@ -1321,6 +1325,91 @@ impl Game<'_> {
             g.new_body(true);
         });
         host.hub.teleport(gi, Some(at));
+    }
+
+    /// Ordinary click routing. A scoped override calls this inside its action on Continue;
+    /// an unsubscribed click uses it directly. False means the route refused the click.
+    pub(in crate::game) fn lan_default_container_click(
+        &mut self,
+        conn: u32,
+        p: &play::ContainerClick,
+    ) -> bool {
+        let Some(gi) = self.guest_index(conn) else {
+            return false;
+        };
+        let guest = &self.lan.as_ref().unwrap().hub.guests[gi];
+        if let Some(open) = guest.menu.as_ref().filter(|m| m.window == p.container) {
+            if open.mod_type.is_some()
+                && usize::try_from(p.slot).is_ok_and(|s| s >= open.slot_count())
+            {
+                return false;
+            }
+            if open.slots == Slots::Native && open.owned_slots().is_none() && !guest.spectator() {
+                // Display menus do not move items unless their slots were explicitly backed.
+                if let Some(applied) = self.place_menu_click(
+                    guest.uuid,
+                    p.container,
+                    i32::from(p.slot),
+                    i32::from(p.button),
+                    p.input,
+                ) {
+                    return applied;
+                }
+                self.reply_predicted_menu_click(conn, p, Vec::new());
+                return true;
+            }
+        }
+        if let Some(applied) = self
+            .lan_owned_menu_click(conn, p)
+            .or_else(|| self.lan_mod_quick_move(conn, p))
+        {
+            return applied;
+        }
+        if self.lan_merchant_click(conn, p)
+            || self.lan_inventory_click(conn, p)
+            || self.lan_crafting_click(conn, p)
+        {
+            return true;
+        }
+        if let Some(applied) = self.lan_machine_click_asked(conn, p, Default::default()) {
+            return applied;
+        }
+        if self.lan_station_click(conn, p)
+            || self.lan_lectern_click(conn, p)
+            || self.lan_mount_click(conn, p)
+        {
+            return true;
+        }
+        let Some(host) = self.lan.as_ref() else {
+            return false;
+        };
+        let slots = host.hub.guests[gi]
+            .menu
+            .as_ref()
+            .filter(|m| m.window == p.container)
+            .map(|m| m.slots);
+        let before = slots.and_then(|s| s.read(&self.world, &host.hub.guests[gi]));
+        let Some(drops) = self.lan_hub_click(conn, p) else {
+            return false;
+        };
+        let Some(host) = self.lan.as_ref() else {
+            return false;
+        };
+        if let Some(Slots::Block(key) | Slots::Double(key, _)) = slots
+            && slots.and_then(|s| s.read(&self.world, &host.hub.guests[gi])) != before
+        {
+            self.after_commit(super::super::transactions::After::Changed(key));
+        }
+        if let Some(Slots::Block(key)) = slots {
+            self.after_commit(super::super::transactions::After::StoreCartItems(key));
+        }
+        if !drops.is_empty() {
+            self.after_commit(super::super::transactions::After::GuestMenu(
+                conn,
+                Box::new(super::super::lan_crafting::GuestMenuEffects::dropped(drops)),
+            ));
+        }
+        true
     }
 }
 

@@ -991,7 +991,8 @@ pub struct MenuType {
     #[serde(default)]
     pub data_slots: u16,
     /// Per-slot maxima for transient slots when the menu is opened with no backing block.
-    /// When present, supplies one maximum (1–99) for each container slot.
+    /// When present, supplies one maximum (1–99) for each container slot. Cannot be combined
+    /// with take-only `results` or a `crafting` layout.
     #[serde(default)]
     pub owned_slots: Option<Vec<u8>>,
     /// slots a player takes from but never puts into, each below `slots`.
@@ -1727,6 +1728,11 @@ impl Content {
             {
                 return Err(format!(
                     "{name} ({menu}): owned_slots must give one maximum in 1..=99 per container slot"
+                ));
+            }
+            if file.owned_slots.is_some() && (!file.results.is_empty() || file.crafting.is_some()) {
+                return Err(format!(
+                    "{source}: owned_slots cannot be combined with results or crafting"
                 ));
             }
             let mut seen = BTreeSet::new();
@@ -2829,6 +2835,24 @@ capabilities = ["registries"]
             let menu = format!(r#"{{"slots":2,"owned_slots":{limits}}}"#);
             let error = smod(case, MANIFEST_TEXT, &[(path, menu.as_bytes())]).unwrap_err();
             assert!(error.contains("owned_slots"), "{case}: {error}");
+        }
+    }
+
+    #[test]
+    fn menu_owned_slots_reject_take_only_and_crafting_results() {
+        let path = "data/ruby/sunrise/menu/filter.json";
+        for (case, result) in [
+            ("take-only", r#""results":[4]"#),
+            ("crafting", r#""crafting":{"grid":0,"size":2,"result":4}"#),
+        ] {
+            let menu = format!(r#"{{"slots":5,"owned_slots":[1,1,1,1,1],{result}}}"#);
+            let error = smod(case, MANIFEST_TEXT, &[(path, menu.as_bytes())]).unwrap_err();
+            assert!(
+                error.contains(
+                    "(ruby:filter): owned_slots cannot be combined with results or crafting"
+                ),
+                "{case}: {error}"
+            );
         }
     }
 

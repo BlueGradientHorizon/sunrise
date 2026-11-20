@@ -8,7 +8,7 @@ use crate::{
 
 /// The complete request to open a blockless mod menu, passed to [`crate::PlayerRef::open_mod_menu`].
 // no wire: A native Host request; the game sends the title, extra and data via the menu protocol.
-// exhaustive: Openers write the context as a struct literal.
+#[non_exhaustive]
 pub struct ModMenuOpen {
     /// The declared mod menu type.
     pub menu: MenuKey,
@@ -26,6 +26,22 @@ pub struct ModMenuOpen {
     pub replace: MenuReplace,
 }
 
+impl ModMenuOpen {
+    /// A request with no extra data, opening hand or screen position. Set `data` if the
+    /// menu declares live data slots. The previous window is closed before opening this one.
+    pub fn new(menu: MenuKey, title: Text) -> Self {
+        Self {
+            menu,
+            title,
+            extra: Vec::new(),
+            data: Vec::new(),
+            pos: None,
+            opening_hand: None,
+            replace: MenuReplace::CloseFirst,
+        }
+    }
+}
+
 /// The hand that opened a mod menu and its status at a `menu_still_valid` check.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
@@ -33,7 +49,7 @@ pub struct MenuOpeningItem {
     /// The hand supplied when the menu opened.
     pub hand: Hand,
     /// That hand holds an item with the same item type and components as at open. Count is
-    /// ignored. This compares values, not stack instance identity.
+    /// ignored. False if the opening hand was empty. This compares values, not instance identity.
     pub stack_matches: bool,
 }
 

@@ -15,7 +15,7 @@ use sunrise_client::{
         guest::Guest,
         menu::{SlotBacking, Slots, VEHICLE_KEY_Y},
     },
-    menu::{Input, Kind, Menu},
+    menu::{Env, Input, Kind, Menu},
 };
 
 impl Game<'_> {
@@ -445,21 +445,15 @@ impl Game<'_> {
         slot: usize,
         stack: &ItemStack,
     ) -> Option<u32> {
-        if let Some(max) = self.menu_owned_slot_limit(menu, slot) {
-            return Some(max.min(self.containers().max_stack(stack)));
-        }
-        let rules = self.native_menu_rules(menu, slot)?;
-        Some(rules.slot_holds(&self.menu_env(), slot, stack))
+        let (rules, env) = self.native_menu_rules(menu, slot)?;
+        Some(rules.slot_holds(&env, slot, stack))
     }
 
     /// Whether menu slot `slot` gives up what it holds (`Slot.mayPickup`): bound armour stays
     /// on outside creative.
     pub(super) fn menu_slot_gives(&self, menu: MenuRef, slot: usize) -> Option<bool> {
-        if self.menu_owned_slot_limit(menu, slot).is_some() {
-            return Some(true);
-        }
-        let rules = self.native_menu_rules(menu, slot)?;
-        Some(rules.slot_gives(&self.menu_env(), slot))
+        let (rules, env) = self.native_menu_rules(menu, slot)?;
+        Some(rules.slot_gives(&env, slot))
     }
 
     pub(super) fn menu_owned_slot_limit(&self, menu: MenuRef, slot: usize) -> Option<u32> {
@@ -472,7 +466,7 @@ impl Game<'_> {
     /// inventory menu, a furnace's, brewing stand's, crafter's or content mod's menu over its
     /// block entity, a shulker box's, or a plain container of the menu's size. None for a slot
     /// with no backing (`menu_slot_backing`), and for one the model hasn't.
-    fn native_menu_rules(&self, menu: MenuRef, slot: usize) -> Option<Box<Menu>> {
+    fn native_menu_rules(&self, menu: MenuRef, slot: usize) -> Option<(Box<Menu>, Env<'_>)> {
         self.menu_slot_backing(menu, slot)?;
         let guest = self.native_menu_guest(menu)?;
         let (kind, disabled, menu_id) = match &guest.menu {
@@ -490,6 +484,11 @@ impl Game<'_> {
                 };
                 let kind = match entity.and_then(|e| machine_menu(e, open.mod_type)) {
                     Some((kind, _)) => kind,
+                    None if let Some(layout) =
+                        open.mod_type.filter(|t| t.owned_slots.is_some()) =>
+                    {
+                        Kind::Mod(layout)
+                    }
                     None if name == Some("minecraft:shulker_box") => Kind::Shulker,
                     None if open.size == 5 => Kind::Hopper,
                     None if open.size == 9 => Kind::Dispenser,
@@ -503,12 +502,21 @@ impl Game<'_> {
                 (kind, disabled, name)
             }
         };
+        let env = Env {
+            player: Some(guest.uuid),
+            player_entity_id: Some(guest.entity_id),
+            ..self.menu_env()
+        };
         let mut rules = Box::new(Menu::new(kind));
         rules.set_registry_id(menu_id);
         if let Some(open) = guest.menu.as_ref() {
             let world = self.native_level_world(self.level(&guest.dimension)?)?;
             let limits = open.slots.stack_limits(world, open.size);
             rules.set_container_limits(limits);
+            rules.set_block_pos(open.pos.map(|(x, y, z)| [x, y, z]));
+            if open.owned_slots().is_some() {
+                rules.load_container(&env, &guest.native_menu);
+            }
         }
         (slot < rules.slot_count()).then_some(())?;
         if self.lan_acting == Some(guest.conn) {
@@ -529,7 +537,7 @@ impl Game<'_> {
         for (k, off) in disabled.iter().flatten().enumerate() {
             rules.data[k] = i32::from(*off);
         }
-        Some(rules)
+        Some((rules, env))
     }
 
     /// The game's own storage menu slot `slot` shows, for a write: the ender chest's, the

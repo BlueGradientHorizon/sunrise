@@ -15,7 +15,7 @@ pub trait MenusServerHost {
     /// `MenuReplace::InPlace` changes the title and rows without the client
     /// centring the mouse again. Packets for the old window are ignored. The
     /// items of an open menu change through its slots (`menu`), not by
-    /// opening it again.
+    /// opening it again. An active speculative menu click refuses the open with `Ok(None)`.
     #[access(WorldOnly)]
     fn open_menu(
         &mut self,
@@ -36,7 +36,8 @@ pub trait MenusServerHost {
     #[access(WorldOnly)]
     fn menu(&self, uuid: u128, window: i32) -> Option<MenuRef>;
     /// Side: server.
-    /// Closes the player's native menu (a `menu_closed` follows).
+    /// Closes the player's native menu (a `menu_closed` follows). During an active menu click,
+    /// the close waits for the transaction to commit; an abort leaves the window open.
     #[access(WorldOnly)]
     fn close_menu(&mut self, uuid: u128);
     /// Side: server.
@@ -49,7 +50,8 @@ pub trait MenusServerHost {
     /// list rebuilt. Each refusal sends nothing and changes nothing, and is named by
     /// `MenuItemsRefusal`: `Client`, `NoPlayer` (no placed player of that UUID), `NotOpen`
     /// (`window` is not their open native menu), `Stack` (a stack the game's item conversion
-    /// refuses), or `OwnedSlots` (use `ItemPlace::MenuSlot` for an owned window).
+    /// refuses), or `OwnedSlots` (use `ItemPlace::MenuSlot` for an owned window). Inside a
+    /// transaction, an abort puts the display contents back without sending a packet.
     #[access(WorldOnly)]
     fn menu_set_items(
         &mut self,

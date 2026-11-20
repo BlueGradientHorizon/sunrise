@@ -13,18 +13,20 @@ use crate::game::transactions::decision::{
     Side, StaleReason,
 };
 use mod_api::EntityRef;
-use std::{cell::RefCell, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
 /// What a decision reads of the journals.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(in crate::game) enum Epoch {
-    /// Nothing: the action reads no state a listener could write.
-    Off,
+pub(in crate::game) enum Epoch<'p> {
     /// Players' state (inventory, cursor, menu storage). The epoch is one count for all players,
     /// so a write to any player's state makes the decision stale, not only the acting player's: a
     /// cautious refusal, never a partial move. A write to another block, which a mod's move
     /// legitimately makes, does not make the decision stale.
     Player,
+    /// A continued click must keep its player read set; a replacement owns those writes.
+    Click(&'p Cell<bool>),
 }
 
 /// The decision's menu owner and the lifecycle identity of its actor and target.
@@ -43,7 +45,7 @@ type Fresh<'p> = Box<dyn Fn(&Game<'_>) -> bool + 'p>;
 type Perform<'p> = Box<dyn FnOnce(&mut Game<'_>) + 'p>;
 
 struct Shared<'p> {
-    epoch: Epoch,
+    epoch: Epoch<'p>,
     fresh: Fresh<'p>,
     perform: RefCell<Option<Perform<'p>>>,
 }
@@ -84,9 +86,11 @@ impl<'a, 'g> ActionTarget<GameHost<'a, 'g>> for Action<'_> {
         false
     }
     fn validate(&self, host: &GameHost<'a, 'g>, reads: &Reads) -> std::result::Result<(), Outcome> {
-        if self.shared.epoch == Epoch::Player
-            && host.game.transactions.player_writes() != reads.player_writes
-        {
+        let check_player_writes = match self.shared.epoch {
+            Epoch::Player => true,
+            Epoch::Click(handled) => !handled.get(),
+        };
+        if check_player_writes && host.game.transactions.player_writes() != reads.player_writes {
             return Err(Outcome::Stale(StaleReason::Mutation));
         }
         if (self.shared.fresh)(host.game) {
@@ -112,7 +116,7 @@ impl Game<'_> {
         name: &'static str,
         route: MenuId,
         actor: EntityRef,
-        epoch: Epoch,
+        epoch: Epoch<'p>,
         fresh: impl Fn(&Game<'_>) -> bool + 'p,
         fire: impl FnOnce(&mut Game<'_>) -> Reply,
         perform: impl FnOnce(&mut Game<'_>) + 'p,
@@ -140,7 +144,7 @@ impl Game<'_> {
         &mut self,
         name: &'static str,
         target: DecidedTarget,
-        epoch: Epoch,
+        epoch: Epoch<'p>,
         fresh: impl Fn(&Game<'_>) -> bool + 'p,
         fire: impl FnOnce(&mut Game<'_>) -> Reply,
         perform: impl FnOnce(&mut Game<'_>) + 'p,
@@ -203,40 +207,150 @@ impl Game<'_> {
 }
 
 impl Game<'_> {
-    /// Whether to skip the default click after the mod callback. Its writes are committed
-    /// when it returns, but a failed or busy action leaves both the callback and default undone.
-    pub(super) fn menu_clicked_decided(
+    /// A scoped click decision fully consumes the packet. Unsubscribed layouts use the same
+    /// default router without opening an action or allocating its read set.
+    pub(in crate::game) fn menu_clicked_decided(
         &mut self,
         conn: u32,
-        uuid: u128,
         click: &sunrise_protocol::packets::play::ContainerClick,
     ) -> bool {
-        if !mod_api::__private::listened(mod_api::HookId::MenuClicked) {
+        use super::lan_menus::ClickReply;
+        use sunrise_client::lan::menu::Slots;
+        if !mod_api::__private::has_part_hook(mod_api::HookId::MenuClicked) {
             return false;
         }
-        let mut handled = false;
-        let Some((actor, route)) = self.guest_actor(conn).zip(self.guest_route(conn)) else {
+        let Some(guest) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+            return false;
+        };
+        let Some(open) = guest.menu.as_ref().filter(|m| {
+            m.window == click.container && (m.mod_type.is_some() || m.slots == Slots::Native)
+        }) else {
+            return false;
+        };
+        if guest.spectator() {
+            return false;
+        }
+        if usize::try_from(click.slot).is_ok_and(|slot| slot >= open.slot_count()) {
+            return true;
+        }
+        if !mod_api::__private::menu_listens(mod_api::HookId::MenuClicked, &open.registry_id) {
+            return false;
+        }
+        let (uuid, generation, state, slots) =
+            (guest.uuid, guest.menu_generation, open.state, open.slots);
+        let menu = open.registry_id.clone();
+        let items = slots.read(&self.world, guest);
+        let drag = open.drag.clone();
+        let craft = open.craft.clone();
+        let (selected, mode, creative, pos) = (
+            guest.selected,
+            guest.game_mode,
+            guest.creative(),
+            guest.position,
+        );
+        let armor = guest.armor.clone();
+        let inventory = guest.inventory.clone();
+        let offhand = guest.offhand.clone();
+        let carried = guest.carried.clone();
+        let capture_block =
+            |game: &Game<'_>, guest: &sunrise_client::lan::guest::Guest, pos: (i32, i32, i32)| {
+                (
+                    game.world.block_entities.generation(&pos),
+                    game.world.block(pos.0, pos.1, pos.2),
+                    Slots::Block(pos).read(&game.world, guest),
+                )
+            };
+        let blocks: Vec<_> = slots
+            .halves()
+            .chain(open.links.iter().copied())
+            .map(|pos| (pos, capture_block(self, guest, pos)))
+            .collect();
+        let redo = ClickReply::Resend(click.container);
+        let Some(actor) = self.guest_actor(conn) else {
+            log::warn!("menu_clicked: the clicking player's action identity is unavailable");
+            self.reply_menu_click(conn, redo);
             return true;
         };
-        let applied = self.decided_action(
+        let route = self
+            .lan
+            .as_mut()
+            .unwrap()
+            .menus
+            .entry(conn)
+            .or_default()
+            .click
+            .id();
+        let handled = Cell::new(false);
+        let default_ok = Cell::new(false);
+        // `decided_action` gives the hook and router one savepoint. Its outer transaction
+        // also has the router's outcome, so a nested refused default rolls the hook back.
+        let seal = self.transaction_open();
+        let decided = self.decided_action(
             "menu_clicked",
             route,
             actor,
-            Epoch::Off,
-            |_| true,
+            Epoch::Click(&handled),
             |game| {
-                game.native_menu_clicked(
+                let Some(guest) = game.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+                    return false;
+                };
+                let live = !guest.dead
+                    && !guest.disconnect_pending
+                    && guest.menu_generation == generation
+                    && guest.menu.as_ref().is_some_and(|m| {
+                        m.window == click.container
+                            && m.state == state
+                            && m.drag == drag
+                            && m.craft == craft
+                    });
+                live && (handled.get()
+                    || ((
+                        guest.selected,
+                        guest.game_mode,
+                        guest.creative(),
+                        guest.position,
+                    ) == (selected, mode, creative, pos)
+                        && guest.inventory == inventory
+                        && guest.armor == armor
+                        && guest.offhand == offhand
+                        && guest.carried == carried
+                        && slots.read(&game.world, guest) == items
+                        && blocks
+                            .iter()
+                            .all(|(pos, old)| capture_block(game, guest, *pos) == *old)))
+            },
+            |game| {
+                game.transactions.last_mut().unwrap().menu_click_active = Some(conn);
+                let mut skip_default = false;
+                game.native_menu_clicked(mod_api::__private::MenuClickedCall {
+                    menu: &menu,
                     uuid,
-                    click.container,
-                    i32::from(click.slot),
-                    i32::from(click.button),
-                    click.input,
-                    &mut handled,
-                );
+                    window: click.container,
+                    slot: i32::from(click.slot),
+                    button: i32::from(click.button),
+                    mode: click.input,
+                    handled: &mut skip_default,
+                });
+                handled.set(skip_default);
                 Reply::Allow
             },
-            |_| {},
+            |game| {
+                if handled.get() {
+                    default_ok.set(true);
+                } else {
+                    game.journal_guest_click(conn);
+                    game.journal_menu_click(conn);
+                    default_ok.set(game.lan_default_container_click(conn, click));
+                }
+            },
         );
-        !applied || handled
+        let applied = decided && default_ok.get();
+        self.transaction_close(&seal, applied);
+        if !applied || handled.get() {
+            // The client predicted the unmodified click. Compare neither IDs nor component
+            // hashes here: a replacement may leave the same counts with different components.
+            self.reply_menu_click(conn, redo);
+        }
+        true
     }
 }

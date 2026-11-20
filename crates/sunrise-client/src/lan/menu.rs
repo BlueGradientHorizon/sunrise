@@ -364,7 +364,7 @@ impl Slots {
         let m = guest.menu.as_ref().filter(|m| m.slots == self)?;
         m.linked()
     }
-    fn halves(self) -> impl Iterator<Item = (i32, i32, i32)> {
+    pub fn halves(self) -> impl Iterator<Item = (i32, i32, i32)> {
         match self {
             Slots::Block(k) => [Some(k), None],
             Slots::Double(a, b) => [Some(a), Some(b)],
