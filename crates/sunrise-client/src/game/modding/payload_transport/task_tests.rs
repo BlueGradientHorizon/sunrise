@@ -1,7 +1,8 @@
 //! Configuration admission through the serving Game and its main-thread payload executor.
 use mod_api::{
-    ConfigurationConnection, ConfigurationTask, ConfigurationTaskError, Hooks, IPayloadContext,
-    IPayloadHandler, Identifier, ModEntry, PayloadBytes, PayloadId, Registrar, ServerHost,
+    ConfigurationConnection, ConfigurationTask, ConfigurationTaskError, Hooks, HostTransaction,
+    IPayloadContext, IPayloadHandler, Identifier, ModEntry, PayloadBytes, PayloadId, Registrar,
+    ServerHost,
 };
 use std::{
     sync::{Arc, Mutex},
@@ -33,10 +34,31 @@ impl IPayloadHandler for Reply {
         context: &mut dyn IPayloadContext,
     ) -> Result<(), mod_api::PayloadHandleError> {
         assert_eq!(std::thread::current().name(), Some("Server thread"));
-        assert_eq!(bytes.0, [7]);
+        let first = kind("first");
+        assert_eq!(
+            self.0.starts.lock().unwrap().as_slice(),
+            std::slice::from_ref(&first)
+        );
         let connection = self.0.connection.lock().unwrap().unwrap();
+        let host = context.server_host().unwrap();
+        let reply = match bytes.0.as_slice() {
+            [7] => {
+                let aborted: Result<(), ()> = host.transaction(|host, _| {
+                    connection.finish(host, &first).unwrap();
+                    Err(())
+                });
+                assert_eq!(aborted, Err(()));
+                8
+            }
+            [8] => {
+                host.transaction(|host, _| connection.finish(host, &first))
+                    .unwrap();
+                9
+            }
+            other => panic!("unexpected configuration request: {other:?}"),
+        };
         connection
-            .finish(context.server_host().unwrap(), &kind("first"))
+            .send_payload(host, &PayloadId(CHANNEL.into()), PayloadBytes(vec![reply]))
             .unwrap();
         Ok(())
     }
@@ -250,17 +272,19 @@ fn serving_game_drives_configuration_tasks() {
                 };
                 c.send(&cfg::Serverbound::SelectKnownPacks(known).encode())
                     .unwrap();
-                let mut replies = 0;
+                let mut replies = [7_u8, 8, 9].into_iter();
                 loop {
                     let (id, body) = c.recv().unwrap();
                     match cfg::Clientbound::decode(id, &body).unwrap() {
                         cfg::Clientbound::CustomPayload(p) if p.channel == CHANNEL => {
                             assert!(matches!(case, Case::Reply));
-                            assert_eq!(p.data, [7]);
-                            assert_eq!(*fixture.starts.lock().unwrap(), vec![kind("first")]);
-                            replies += 1;
-                            c.send(&cfg::Serverbound::CustomPayload(p).encode())
-                                .unwrap();
+                            let expected = replies.next().expect("too many configuration replies");
+                            assert_eq!(p.data, [expected]);
+                            if expected != 9 {
+                                assert_eq!(*fixture.starts.lock().unwrap(), [kind("first")]);
+                                c.send(&cfg::Serverbound::CustomPayload(p).encode())
+                                    .unwrap();
+                            }
                         }
                         cfg::Clientbound::KeepAlive(p) => {
                             c.send(&cfg::Serverbound::KeepAlive(p).encode()).unwrap();
@@ -275,7 +299,13 @@ fn serving_game_drives_configuration_tasks() {
                         }
                         cfg::Clientbound::FinishConfiguration(_) => {
                             assert!(!matches!(case, Case::WrongType | Case::Failure));
-                            assert_eq!(replies, usize::from(matches!(case, Case::Reply)));
+                            if matches!(case, Case::Reply) {
+                                assert_eq!(
+                                    replies.next(),
+                                    None,
+                                    "FinishConfiguration overtook a reply"
+                                );
+                            }
                             let expected = if matches!(case, Case::Vanilla) {
                                 vec![]
                             } else {

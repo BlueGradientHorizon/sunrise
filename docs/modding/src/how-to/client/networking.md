@@ -42,13 +42,16 @@ payload with `send_payload`, and `finish(host, task_type)`. Keep the connection
 capability if a payload reply handler will finish the task later. In a main-thread
 payload handler, obtain the server host from `IPayloadContext::server_host`.
 Alternatively, `configuration_task_tick` checks the task each server tick and
-sets `finished` when it is complete. The next task starts only after completion.
+sets `finished` when it is complete. Both routes stage completion in a transaction.
+A committed child passes its completion to its parent; an abort discards it.
+The next task starts only after the outermost commit publishes its queued sends.
+A handler can request completion and then queue a final reply in that transaction.
 
 A wrong task type, refused payload send, explicit `fail`, or callback panic closes
 that client with the configuration-error reason. Check the channel before sending
-to an optional or vanilla peer, then finish immediately or explain why it cannot
-join. Sends use the existing negotiated payload transport and publish on transaction
-commit. A callback panic aborts its transaction.
+to an optional or vanilla peer, then request completion or explain why it cannot
+join. Sends use the existing negotiated payload transport. A callback panic aborts
+its transaction.
 
 There is **no per-task timeout**. A client answering keep-alives can remain in
 configuration indefinitely while its task waits. The connection's ordinary idle

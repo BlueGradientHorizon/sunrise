@@ -35,7 +35,10 @@ impl ConfigurationConnection {
     ) -> Result<(), ConfigurationTaskError> {
         host.configuration_send_payload(self, channel, bytes)
     }
-    /// Finish the current task. A different task type is refused and fails configuration.
+    /// Request completion of the current task in the open transaction. `Ok` means it was
+    /// staged; the task advances only after the outermost transaction commits and publishes
+    /// its queued sends. An abort discards the request. A different task type is refused and
+    /// fails configuration.
     pub fn finish(
         self,
         host: &mut dyn ServerHost,
@@ -55,7 +58,7 @@ impl ConfigurationConnection {
 pub enum ConfigurationTaskError {
     /// The connection has left configuration.
     Disconnected,
-    /// The connection has no active task to send from.
+    /// The connection has no active task to send from, or completion has no open transaction.
     NotRunning,
     /// Finish named a type other than the running task.
     WrongType,

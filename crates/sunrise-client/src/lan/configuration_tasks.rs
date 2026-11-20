@@ -74,10 +74,31 @@ struct State {
     failure: Option<String>,
     closed: bool,
 }
+impl State {
+    fn active(&self) -> bool {
+        self.registered && self.started && !self.finished && !self.closed && self.failure.is_none()
+    }
+}
 pub struct Turn {
     pub task_type: Identifier,
+    pub ordinal: usize,
     pub start: bool,
 }
+
+/// A completion held until commit, bound to exactly one session and queue entry.
+pub struct ConfigurationCompletion {
+    session: Arc<Session>,
+    ordinal: usize,
+}
+impl ConfigurationCompletion {
+    pub fn publish(self) {
+        let mut state = self.session.state.lock().unwrap_or_else(|e| e.into_inner());
+        if state.at == self.ordinal && state.active() && !self.session.transport().closed() {
+            state.finished = true;
+        }
+    }
+}
+
 pub struct Session {
     state: Mutex<State>,
     sender: ConfigSender,
@@ -116,7 +137,11 @@ impl Session {
         let task_type = state.tasks.get(state.at)?.clone();
         let start = !state.started;
         state.started = true;
-        Some(Turn { task_type, start })
+        Some(Turn {
+            task_type,
+            ordinal: state.at,
+            start,
+        })
     }
     pub fn finished(&self) -> bool {
         self.state
@@ -125,27 +150,32 @@ impl Session {
             .finished
     }
     pub fn active(&self) -> bool {
-        let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        state.registered
-            && state.started
-            && !state.finished
-            && !state.closed
-            && state.failure.is_none()
+        self.state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .active()
     }
-    pub fn finish(&self, task_type: &Identifier) -> Result<(), ConfigurationTaskError> {
-        if self.closed() {
-            return Err(ConfigurationTaskError::Disconnected);
-        }
+    /// Validate the legacy type-based request without marking the task complete.
+    pub fn prepare_finish(
+        self: &Arc<Self>,
+        task_type: &Identifier,
+    ) -> Result<ConfigurationCompletion, ConfigurationTaskError> {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-        if state.closed || state.failure.is_some() {
+        if state.closed || state.failure.is_some() || self.transport().closed() {
             return Err(ConfigurationTaskError::Disconnected);
         }
         if !state.started || state.finished || state.tasks.get(state.at) != Some(task_type) {
             state.failure = Some("Finished a configuration task with the wrong type".into());
             return Err(ConfigurationTaskError::WrongType);
         }
-        state.finished = true;
-        Ok(())
+        Ok(self.completion(state.at))
+    }
+    /// Bind a completion to an ordinal already issued by this session's turn.
+    pub fn completion(self: &Arc<Self>, ordinal: usize) -> ConfigurationCompletion {
+        ConfigurationCompletion {
+            session: self.clone(),
+            ordinal,
+        }
     }
     pub fn fail(&self, reason: impl Into<String>) {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -184,7 +214,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn finishing_twice_before_the_next_turn_refuses_and_fails_configuration() {
+    fn completion_only_takes_effect_on_publication_for_its_own_turn() {
         use crate::lan::config_payloads::ConfigIo;
         use sunrise_protocol::connection::{Connection, Pipe};
 
@@ -194,15 +224,32 @@ mod tests {
         let (events, _receiver) = crate::lan::event_channel_with_capacity(1 << 20);
         let mut io = ConfigIo::new(&mut server, transport.clone(), events).unwrap();
         let session = Session::new(io.task_sender(transport).unwrap());
-        let task_type = Identifier::parse("task_fixture:first").unwrap();
-        session.register(vec![ConfigurationTask::new(task_type.clone())]);
+        let first = Identifier::parse("task_fixture:first").unwrap();
+        let second = Identifier::parse("task_fixture:second").unwrap();
+        session.register(vec![
+            ConfigurationTask::new(first.clone()),
+            ConfigurationTask::new(second.clone()),
+        ]);
         assert!(session.turn().unwrap().start);
-        assert_eq!(session.finish(&task_type), Ok(()));
-        // No intervening turn: completion itself must consume the right to finish.
-        assert_eq!(
-            session.finish(&task_type),
+        let completion = session.prepare_finish(&first).unwrap();
+        let delayed = session.prepare_finish(&first).unwrap();
+        assert!(!session.finished());
+        assert_eq!(session.turn().unwrap().task_type, first);
+
+        completion.publish();
+        assert!(session.finished());
+        let next = session.turn().unwrap();
+        assert!(next.start);
+        assert_eq!(next.task_type, second);
+        delayed.publish();
+        assert!(!session.finished());
+
+        session.prepare_finish(&second).unwrap().publish();
+        // No intervening turn: publication consumes the right to finish this type.
+        assert!(matches!(
+            session.prepare_finish(&second),
             Err(ConfigurationTaskError::WrongType)
-        );
+        ));
         assert!(matches!(session.result(), Some(Err(_))));
         assert!(session.turn().is_none());
     }

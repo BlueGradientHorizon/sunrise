@@ -20,7 +20,8 @@ pub trait ConfigurationTasksServerHost {
         channel: &PayloadId,
         bytes: PayloadBytes,
     ) -> Result<(), ConfigurationTaskError>;
-    /// Side: server. Finish only the current task's exact type.
+    /// Side: server. Stage completion of the current task's exact type in the open transaction.
+    /// Its root commit publishes deferred sends before allowing the task to advance.
     #[access(WorldOnly)]
     fn configuration_finish(
         &mut self,

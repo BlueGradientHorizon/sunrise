@@ -1,0 +1,4 @@
+# Completion methods keep their signatures; the hook versions track the new timing.
+ids = ["hook:configuration_task_start", "hook:configuration_task_tick"]
+why = "Finishing a configuration task now waits for the outermost transaction to commit and publish its replies. An aborted handler or child transaction no longer advances the queue."
+migrate = "Keep calling connection.finish(host, task_type) from a configuration callback or main-thread payload handler, or set event.finished = true in configuration_task_tick. Treat Ok from finish as staged, not immediate: commit the enclosing transaction (return Ok from a payload handler), and queue any final reply before returning. Do not call finish without an open transaction; that returns NotRunning for an otherwise valid request."

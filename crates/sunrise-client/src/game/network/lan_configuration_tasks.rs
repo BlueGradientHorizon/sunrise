@@ -2,6 +2,7 @@
 use super::{Game, lan::LanHost};
 use mod_api::{
     ConfigurationConnection, ConfigurationTaskError, Identifier, PayloadBytes, PayloadId,
+    TransactionSeal,
 };
 use std::{io, sync::Arc};
 use sunrise_client::lan::{Lan, NetConfig, configuration_tasks::Session, data::SyncData};
@@ -14,9 +15,15 @@ pub(super) fn start(sync: Arc<SyncData>, net: NetConfig) -> io::Result<Lan> {
     )
 }
 impl Game<'_> {
-    fn configuration_callback(&mut self, session: &Session, callback: impl FnOnce(&mut Self)) {
+    fn configuration_callback(
+        &mut self,
+        session: &Session,
+        callback: impl FnOnce(&mut Self, &TransactionSeal),
+    ) {
         let transaction = self.transaction_open();
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| callback(self)));
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            callback(self, &transaction);
+        }));
         self.transaction_close(
             &transaction,
             result.is_ok() && !matches!(session.result(), Some(Err(_))),
@@ -45,7 +52,7 @@ impl Game<'_> {
                     .configuration_tasks
                     .insert(&request);
                 let mut tasks = Vec::new();
-                self.configuration_callback(&request.session, |game| {
+                self.configuration_callback(&request.session, |game, _| {
                     game.native_register_configuration_tasks(
                         request.connection,
                         request.player,
@@ -66,7 +73,7 @@ impl Game<'_> {
             {
                 after = Some(connection);
                 while let Some(turn) = session.turn() {
-                    self.configuration_callback(&session, |game| {
+                    self.configuration_callback(&session, |game, seal| {
                         if turn.start {
                             game.native_configuration_task_start(connection, &turn.task_type);
                         } else {
@@ -76,12 +83,17 @@ impl Game<'_> {
                                 &turn.task_type,
                                 &mut finished,
                             );
-                            // A listener may also have called `finish` itself: one completion.
-                            if finished && !session.finished() {
-                                let _ = session.finish(&turn.task_type);
+                            if finished {
+                                // If an explicit finish also committed, publishing this ordinal
+                                // again is harmless. Do not attach the flag to an abandoned child.
+                                game.journal_configuration_completion(
+                                    Some(seal),
+                                    session.completion(turn.ordinal),
+                                );
                             }
                         }
                     });
+                    // Only a committed start can immediately open the next turn.
                     if !turn.start || !session.finished() {
                         break;
                     }
@@ -132,9 +144,14 @@ impl Game<'_> {
         connection: ConfigurationConnection,
         task_type: &Identifier,
     ) -> Result<(), ConfigurationTaskError> {
-        self.configuration_session(connection)
+        let completion = self
+            .configuration_session(connection)
             .ok_or(ConfigurationTaskError::Disconnected)?
-            .finish(task_type)
+            .prepare_finish(task_type)?;
+        if !self.journal_configuration_completion(None, completion) {
+            return Err(ConfigurationTaskError::NotRunning);
+        }
+        Ok(())
     }
     pub(in crate::game) fn configuration_fail(
         &mut self,
