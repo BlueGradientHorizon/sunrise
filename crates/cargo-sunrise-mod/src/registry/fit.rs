@@ -5,7 +5,7 @@ use mod_surface::{Surface, uses::Fit};
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use sunrise_mod_package::{
-    index::{BuildVerdict, FitVerdict, Index, Kind, sha256},
+    index::{BuildVerdict, FitVerdict, Index, Kind},
     sdk,
 };
 use sunrise_native_build::game_uses;
@@ -24,10 +24,8 @@ impl Build {
             sdk::Index::read(&bytes, commit).map_err(|e| format!("{}: {e}", path.display()))?;
         let path = directory.join(SURFACE);
         let surface_bytes = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-        let asset = sdk.asset(SURFACE).map_err(|e| e.to_string())?;
-        if sha256(&surface_bytes) != asset.sha256 {
-            return Err(format!("{} does not match {}", path.display(), sdk::INDEX));
-        }
+        sdk.verify(SURFACE, surface_bytes.as_slice())
+            .map_err(|e| e.to_string())?;
         let surface =
             Surface::read(&surface_bytes).map_err(|e| format!("{}: {e}", path.display()))?;
         Ok(Self {
