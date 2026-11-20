@@ -1986,7 +1986,12 @@ mod tests {
             };
             let parked = LevelRef::new(level.epoch(), other.key());
             let host: &mut dyn ServerHost = game;
-            assert!(parked.random(&*host).is_none(), "not open yet");
+            assert!(
+                parked
+                    .with_random::<()>(host, |_| panic!("unopened level lent its random stream"))
+                    .is_none(),
+                "not open yet"
+            );
             let back = game.dim;
             game.enter_level(other).unwrap();
             game.enter_level(back).unwrap();
