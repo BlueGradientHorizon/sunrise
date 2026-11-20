@@ -283,11 +283,15 @@ Mutable stack arguments are compared using value equality with the snapshot pass
 the listener. An unchanged argument retains the original engine value without strict
 write validation (including engine-legal stacks above effective count or damage maxima).
 A changed argument is validated in full; a refusal commits no listener edits. The same
-rule applies to editable grindstone records and menu cursor/quick-move stacks.
-`anvil_update` lends read-only inputs and validates only an output replacement that differs
-from vanilla. If it is invalid or the event is cancelled, the anvil shows no result at zero
-cost instead of applying any of the edits. The anvil's Pre and Post take hooks borrow the
-same read-only API snapshot; neither writes back a stack.
+rule applies to menu cursor and quick-move stacks.
+
+Anvil and grindstone hook inputs are borrowed, read-only snapshots, not stack writes.
+`anvil_update` validates an output replacement only if it differs from vanilla. An invalid
+replacement or cancellation leaves no result and zero costs. The anvil's Pre and Post
+hooks lend the same pre-take snapshot and do not take any stack edits. `grindstone_place`
+validates an explicit output override and `grindstone_take` validates supplied remainders,
+not the original inputs. See [item and tag Parts](parts/item-and-tag-parts.md) for the staged
+edits and the different cancellation outcomes.
 
 Recursive `Clone`, `Eq` and `Drop` of a tree a mod itself built are ordinary Rust ownership,
 not part of the boundary guarantee.

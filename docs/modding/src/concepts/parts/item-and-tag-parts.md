@@ -212,15 +212,15 @@ vanilla's result through `event.inputs`. Set `event.edits.output = Some(stack)` 
 stack to replace the result. Only a replacement uses `event.edits.xp`: leave it at `-1` for
 vanilla experience or set a nonnegative award. Leaving the override at `None` keeps vanilla's
 result and award. Only the replacement stack is checked as a write; the borrowed stacks are not.
-An invalid replacement or an uncancelled XP below `-1` refuses the answer. A cancel or refusal
-leaves no result.
+An invalid replacement or an uncancelled XP below `-1` refuses the answer. Either cancellation
+or refusal leaves no result and rolls back the listener's writes.
 
 `grindstone_take` lends the pre-take stacks as `event.inputs.top` and `event.inputs.bottom`.
 These optional references do not change when listeners edit the answer. Set a valid
 `event.edits.new_top` or `event.edits.new_bottom` to leave a stack in that slot; both start
 at `None` (empty the slot). `event.edits.xp` starts with the award set on place or `-1`
 for vanilla's award from the pre-take stacks. Set a nonnegative value to give that much
-experience.
+experience. The game resolves the default award only on an accepted take.
 
 Cancelling a take keeps the click that took the result but skips input replacement,
 experience and sound. An invalid remainder refuses the click even if the listener cancels;
@@ -234,16 +234,20 @@ After the anvil calculates a result with a left input, `anvil_update` lends
 and vanilla's output and costs. Read those values without cloning; they don't change as
 listeners edit `event.edits`. Leave `edits.output` at `StackResult::Keep` to use vanilla's
 output, use `StackResult::Set(Some(stack))` to replace it, or use `StackResult::Set(None)`
-to clear it. The level and material costs start at vanilla's values. Changing only the
-costs doesn't revalidate vanilla's stack. Cancellation or an invalid replacement clears the
-output and both costs.
+to clear it. To read the current answer, match on `&event.edits.output`: use
+`event.inputs.vanilla_output` for `Keep` and `stack.as_ref()` for `Set(stack)`. The level
+and material costs start at vanilla's values. Changing only the costs doesn't revalidate
+vanilla's stack. Cancellation or an invalid replacement clears the output and both costs.
 
 The server's `anvil_craft_pre` and `anvil_craft_post` both borrow the same pre-take snapshot
 through `event.inputs` (`AnvilCraftInputs<'_>`). Read the optional stacks through `inputs.left`
-and `inputs.right`, and the taken result through `inputs.output`. Clone an individual stack
-only if you need to keep it after the callback. Set `event.cancelled` in Pre to leave the menu,
-cursor, inventory and levels unchanged and skip Post. Post runs after the inputs are consumed,
-levels are charged and anvil wear is applied.
+and `inputs.right`, and the taken result through `inputs.output`. Set `event.cancelled` or
+return `Flow::Cancel` in Pre to veto the whole take: the result stays in the slot, the inputs,
+cursor, inventory and levels do not change, and Post is skipped. Post runs after the inputs
+are consumed, levels are charged and anvil wear is applied.
+
+These input views are valid only during the callback. Clone an individual stack only if you
+need to keep it afterwards. The input views and staged edits are not Wire records.
 
 `MenuPart::menu_slot_rules` answers per menu type and slot, including for a replacement from
 `item_stacked_on_other`.
