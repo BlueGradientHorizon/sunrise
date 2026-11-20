@@ -458,7 +458,7 @@ pub fn draw_posed(
         }
     }
     if batch.vertices.len() > start {
-        batch.depth_glint_since(start, glint_start, [lo[0], lo[1], hi[0], hi[1]]);
+        batch.depth_glint_over(start, glint_start, lo, hi);
     }
     true
 }

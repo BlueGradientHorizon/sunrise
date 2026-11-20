@@ -126,7 +126,7 @@ impl Game<'_> {
             batch.quad_3d(face.corners, face.uv, face.color);
         }
         if batch.vertices.len() > start {
-            batch.depth_since(start, [lo[0], lo[1], hi[0], hi[1]]);
+            batch.depth_over(start, lo, hi);
         }
         Ok(())
     }
