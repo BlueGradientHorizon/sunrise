@@ -15,20 +15,14 @@ pub trait PlayerWorldBackend {
     fn player_supporting_block(
         &self,
         player: PlayerRef,
-    ) -> Result<Option<BlockPos>, LevelReadError> {
-        let _ = player;
-        Err(AccessRefusal::unavailable())
-    }
+    ) -> Result<Option<BlockPos>, LevelReadError>;
     /// Side: both.
     /// `Entity.getOnPos()` for this player: its recorded support block, otherwise the block
     /// at its feet with vanilla's `1.0E-5F` offset subtracted from Y. `Ok(None)` for a stale
     /// handle or a player whose motion this side does not keep.
     /// `Err(LevelReadError::Unavailable)` if the host cannot read player motion.
     #[access(WorldOnly)]
-    fn player_on_block(&self, player: PlayerRef) -> Result<Option<BlockPos>, LevelReadError> {
-        let _ = player;
-        Err(AccessRefusal::unavailable())
-    }
+    fn player_on_block(&self, player: PlayerRef) -> Result<Option<BlockPos>, LevelReadError>;
     /// Side: both.
     /// The level the online player is in (`ServerPlayer.level`): on an integrated
     /// server or dedicated server, the player's current dimension; on a client,

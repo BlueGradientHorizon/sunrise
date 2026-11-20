@@ -979,9 +979,16 @@ impl Game<'_> {
     ) -> Result<Option<mod_api::BlockPos>, mod_api::LevelReadError> {
         Ok(self.player_read_both(player).and_then(|read| {
             let body = read.body()?;
+            let position = match read {
+                PlayerRead::Acting { .. } => body.position,
+                PlayerRead::Guest(guest) => {
+                    let [x, y, z] = guest.position;
+                    sunrise_core::geometry::Vec3::new(x, y, z)
+                }
+            };
             let [x, y, z] = super::native_entity_motion::on_block_position(
                 body.ground.supporting_block,
-                body.position,
+                position,
             );
             Some(mod_api::BlockPos::new(x, y, z))
         }))
