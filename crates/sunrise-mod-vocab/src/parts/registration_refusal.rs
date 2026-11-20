@@ -46,6 +46,7 @@ pub(crate) fn bounded_text(text: &str) -> &str {
 }
 
 /// Drains the context's warnings after the registration callback.
+// hidden: the loader collects warnings before installing Parts.
 #[doc(hidden)]
 pub fn take_registration_warnings(cx: &crate::RegistrationContext) -> Vec<LoadingMessage> {
     std::mem::take(&mut *cx.warnings.lock().unwrap_or_else(|p| p.into_inner()))
@@ -66,6 +67,7 @@ pub fn registration_warnings(id: &str) -> Vec<LoadingMessage> {
 }
 
 /// Drains the context's refusal after the registration callback.
+// hidden: the loader decides whether to admit the registered mod.
 #[doc(hidden)]
 pub fn take_registration_refusal(cx: &crate::RegistrationContext) -> Option<String> {
     cx.self_refusal
