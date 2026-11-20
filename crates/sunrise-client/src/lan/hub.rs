@@ -2422,7 +2422,8 @@ impl Hub {
     }
 
     /// Keeps server-answer packets in a frozen player's inbox (teleport, chunk batch,
-    /// loaded, keep-alive, ping, tick end, client information) and drops the rest.
+    /// loaded, keep-alive, ping request, tick end, client information) and drops the rest:
+    /// a play `Pong` too, which answers nothing the server sent.
     /// Chat messages and signed commands are dropped, but their last-seen messages
     /// are taken first (`unpackAndApplyLastSeen`). Chat acknowledgements are handled
     /// here in arrival order: the client counts them as acknowledged, and its next
@@ -2454,8 +2455,7 @@ impl Hub {
                 | S::ClientInformation(_)
                 | S::ClientTickEnd(_)
                 | S::KeepAlive(_)
-                | S::PingRequest(_)
-                | S::Pong(_) => {
+                | S::PingRequest(_) => {
                     self.guests
                         .update(i, |g| g.inbox.push_back(InboxItem::Packet(packet, credit)));
                     continue;
