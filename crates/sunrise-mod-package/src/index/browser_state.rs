@@ -342,6 +342,8 @@ mod tests {
             // the filesystem can place.
             vec![old.clone(), claim("./sunrise-mods//ruby.smod")],
             vec![old.clone(), claim("sunrise-mods/../sunrise-mods/ruby.smod")],
+            // Even a completed manifest update cannot clear another project's claim.
+            vec![new.clone(), claim("./sunrise-mods//ruby.smod")],
         ] {
             let dir = tempfile::tempdir().unwrap();
             let home = dir.path();
@@ -364,6 +366,7 @@ mod tests {
             assert!(reconcile(home).is_err(), "{manifest_rows:?}");
             assert_eq!(fs::read(home.join(PENDING)).unwrap(), journal);
             assert_eq!(fs::read(home.join(MANIFEST)).unwrap(), before);
+            assert_eq!(fs::read(home.join(&file)).unwrap(), b"new");
         }
     }
 
