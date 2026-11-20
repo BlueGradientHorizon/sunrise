@@ -178,6 +178,27 @@ console.log(JSON.stringify(Boolean(eval(s.expression))));
         self.assertIn("continue-on-error: true", upload)
         self.assertNotIn("cargo-timing", nightly)
 
+    def test_musl_is_checked_after_packaging_and_before_upload(self):
+        build = yaml.load(GAME.read_text(), Loader=yaml.BaseLoader)["jobs"]["build"]
+        self.assertRegex(build["env"]["MUSL_IMAGE"], r"^alpine:3\.22@sha256:[0-9a-f]{64}$")
+        musl, = [row for row in build["strategy"]["matrix"]["include"] if row.get("musl") == "true"]
+        self.assertEqual(musl["target"], "x86_64-unknown-linux-musl")
+        self.assertEqual(musl["asset"], "sunrise-linux-musl-x86_64.tar.gz")
+        steps = build["steps"]
+        cross = next(i for i, s in enumerate(steps) if s.get("name") == "Cross-build for musl with glibc-hosted Rust")
+        validate = next(i for i, s in enumerate(steps) if s.get("name") == "Check the packaged musl programs")
+        package = next(i for i, s in enumerate(steps) if s.get("name") == "Package")
+        archive = next(i for i, s in enumerate(steps) if s.get("with", {}).get("if-no-files-found") == "error"
+                       and s["with"]["path"].startswith("dist/") and "matrix.asset" in s["with"]["path"])
+        marker = next(i for i, s in enumerate(steps) if s.get("name") == "This leg built")
+        self.assertLess(cross, package)
+        self.assertLess(package, validate)
+        self.assertLess(validate, archive)
+        self.assertLess(archive, marker)
+        for step in (steps[cross], steps[validate]):
+            self.assertEqual(step["if"], "matrix.musl")
+            self.assertIn('"$MUSL_IMAGE"', step["run"])
+
     def test_every_shipped_glibc_program_is_checked_by_workflow_owned_tools(self):
         text = GAME.read_text()
         commands = re.findall(r"check_glibc.py ([^\n]+)", text.replace("\\\n", " "))

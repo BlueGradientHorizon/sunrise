@@ -152,6 +152,7 @@ jobs:
             os: ubuntu-22.04
             blacksmith: blacksmith-16vcpu-ubuntu-2204
             musl: true
+            target: x86_64-unknown-linux-musl
             dir: sunrise-linux-musl-x86_64
             asset: sunrise-linux-musl-x86_64.tar.gz
           - name: windows
@@ -201,11 +202,13 @@ jobs:
     # The fork's cold client + headless builds need both feature variants; keep upstream's limits unchanged.
     # GitHub's macOS runner builds Sunrise's game cold: 60 minutes ran out mid-build (nightly dry run
     # 43813225420), and a timed-out job counts as cancelled, which continue-on-error does not cover, so the
-    # whole build stopped before signing. The musl leg, built in Alpine on a hosted runner, took 53 minutes in
+    # whole build stopped before signing. The musl leg, when built in Alpine on a hosted runner, took 53 minutes in
     # nightly dry run 43838074073 and ran out at 60 in nightly 43869408636, cancelling it the same way.
     timeout-minutes: ${{ github.repository == 'sunrise-org/sunrise' && ((matrix.mac || matrix.musl) && 100 || 60) || (matrix.mac && 60 || 40) }}
     env:
       RUSTFLAGS: ${{ matrix.rustflags }}
+      # Same Alpine base for the cross-link sysroot and the separate runtime-only check.
+      MUSL_IMAGE: alpine:3.22@sha256:49340b346798875b5592e5d420241f2f9cfba5f47e62ebb1446a1b34734e898f
       # The release's version, built in (sunrise_core::release): --version, user agents and crash reports
       # say it. No version-bump commits.
       SUNRISE_VERSION: ${{ inputs.version }}
@@ -231,7 +234,11 @@ jobs:
           persist-credentials: false
           sparse-checkout-cone-mode: false
           sparse-checkout: |
+            tools/check_cpu_baseline.py
             tools/check_glibc.py
+            tools/check_imports.py
+            tools/ci/build-musl.sh
+            tools/ci/check-musl-startup.sh
             tools/ci/game_smoke.sh
             tools/ci/rust-version
             tools/ci/with_xvfb.py
@@ -254,7 +261,8 @@ jobs:
           shared-key: ${{ inputs.trusted && 'release' || 'nightly' }}-${{ matrix.name }}
           save-if: ${{ inputs.trusted }}
       - name: ALSA and udev headers
-        if: runner.os == 'Linux' && !matrix.musl
+        # libudev-sys also probes the host (not the target) for hwdb in the musl build.
+        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev libudev-dev
       - name: Build the official game, sunrise-ctl, sunrise-perf, sunrise-prepare, sunrise-server and sunrise-port-pack
         if: ${{ !matrix.musl }}
@@ -379,16 +387,21 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           name: wasm-std
-          path: ${{ matrix.musl && 'target/x86_64-unknown-linux-musl/release' || env.BIN }}
-      - name: Build, check and package for musl in Alpine
+          path: ${{ env.BIN }}
+      - name: Cross-build for musl with glibc-hosted Rust
         if: matrix.musl
-        # Run Docker on the Ubuntu host: JavaScript actions themselves require glibc.
         run: |
-          docker run --rm -v "$PWD:/work" -w /work \
-            -e SUNRISE_VERSION -e SUNRISE_NIGHTLY \
-            rust:alpine3.22 sh tools/ci/build-musl.sh
+          sysroot="$RUNNER_TEMP/alpine-sysroot"
+          mkdir -p "$sysroot"
+          docker run --rm "$MUSL_IMAGE" sh -ec '
+            apk add --no-cache build-base linux-headers alsa-lib-dev eudev-dev >&2
+            tar -C / -cf - lib usr
+          ' | tar --no-same-owner -xf - -C "$sysroot"
+          # Let Alpine's GCC and binutils run without putting musl libraries on glibc's search path.
+          sudo install -Dm755 "$sysroot/lib/ld-musl-x86_64.so.1" /lib/ld-musl-x86_64.so.1
+          printf '%s\n' "$sysroot/lib:$sysroot/usr/lib" | sudo tee /etc/ld-musl-x86_64.path > /dev/null
+          bash .workflow-tools/tools/ci/build-musl.sh "$sysroot"
       - name: Package
-        if: ${{ !matrix.musl }}
         run: |
           set -euo pipefail
           cargo run --locked -p xtask -- package "$BIN/sunrise-client${{ matrix.exe }}" "dist/${{ matrix.dir }}"
@@ -412,6 +425,19 @@ jobs:
                fi ;;
           esac
           ls -l "${{ matrix.asset }}"
+      - name: Check the packaged musl programs
+        if: matrix.musl
+        run: |
+          folder="dist/${{ matrix.dir }}"
+          programs=("$folder"/sunrise-{client,ctl,perf,prepare,server,port-pack})
+          python3 .workflow-tools/tools/check_imports.py --musl "${programs[@]}"
+          rustup component add llvm-tools
+          python3 .workflow-tools/tools/check_cpu_baseline.py "${programs[@]}"
+          # This container sees the package only, not the compiler sysroot or host libraries.
+          docker run --rm -i -e SUNRISE_VERSION -v "$PWD/$folder:/package:ro" "$MUSL_IMAGE" sh -ec '
+            apk add --no-cache alsa-lib eudev-libs libgcc
+            exec sh -s /package
+          ' < .workflow-tools/tools/ci/check-musl-startup.sh
       - name: Notarized
         # A zip of programs can't be stapled: Gatekeeper asks Apple the first time each one runs.
         if: runner.os == 'macOS' && vars.MACOS_SIGN_IDENTITY != '' && inputs.developer_id
