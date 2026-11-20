@@ -1,0 +1,5 @@
+ids = ["handle:EntityRef::tags", "type:EntityTags", "handle:EntityTags::iter_utf16", "handle:EntityTags::contains"]
+why = "Live tag reads borrow the saved list instead of allocating a vector of strings. The view preserves the saved order and exact UTF-16 units, including unpaired surrogates; command display and tag writes keep their existing behavior."
+migrate = """
+`entity.tags(host)` now returns `Option<EntityTags<'_>>` instead of `Option<Vec<String>>`. Replace `entity.tags(host).is_some_and(|tags| tags.iter().any(|tag| tag == name))` with `entity.tags(host).is_some_and(|tags| tags.contains(name))`, passing `&str`. For iteration, replace `tags.iter()` with `tags.iter_utf16()`; each item is a borrowed `&[u16]`. Replace `tags.is_empty()` with `tags.iter_utf16().next().is_none()`. To keep the old lossy owned strings, use `entity.tags(host).map(|tags| tags.iter_utf16().map(String::from_utf16_lossy).collect::<Vec<_>>())`. To retain exact units instead, copy each slice with `units.to_vec()` before the host borrow ends. A live entity without tags still gives an empty view, and a stale or unavailable entity still gives `None`.
+"""
