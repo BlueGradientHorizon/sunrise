@@ -319,9 +319,9 @@ pub trait BlockEntityDrawContext {
     fn animation_time(&self) -> f64 {
         unimplemented!("BlockEntityDrawContext::draw_animation_time")
     }
-    /// The light the helpers draw with: the block's own
-    /// (`LevelRenderer.getLightCoords`), 16 times sky light in bits 0..8 and
-    /// 16 times block light in bits 8..16.
+    /// The fixed light setting, even while [`Self::level_light`] is enabled. It starts
+    /// as the block's or entity's light: 16 times sky light in bits 0..8 and 16 times
+    /// block light in bits 8..16.
     fn light(&self) -> u32 {
         unimplemented!("BlockEntityDrawContext::draw_light")
     }
@@ -329,17 +329,18 @@ pub trait BlockEntityDrawContext {
     fn set_light(&mut self, light: u32) {
         unimplemented!("BlockEntityDrawContext::draw_set_light")
     }
-    /// Lights what is drawn next by the level's sky and block light at each
-    /// element's centre, where the element is this frame: under the pose and
-    /// turned by `spin`. An element is one `block`, `model`, `terrain_model`,
-    /// `cube` or `quad` call, lit once as a whole, as vanilla lights a moving
-    /// block (a falling block, a piston's moving block) once at its position;
-    /// items, text and the rest keep `draw.light`. Until `set_light`, which
-    /// goes back to a fixed light. With `keep`, geometry under `spin` is lit
-    /// again each frame where it has turned to, with no new submit; geometry
-    /// that stands still keeps the light it was drawn with, and is drawn again
-    /// when the block's own light changes. A mob's frame and other scenes have
-    /// no level around them and keep the fixed light.
+    /// Lights what is drawn next by the level's sky and block light. Each element uses
+    /// one level-light sample, at its centre under the pose and any applied `spin`:
+    /// the unit-cell centre for `block`, `model` and `terrain_model`, the box midpoint
+    /// for `cube`, or the mean of the corners for `quad`. Baked emission and other
+    /// per-channel light floors still apply. Items, text and other draws keep the fixed
+    /// light setting. `set_light` returns to fixed light, which is the default.
+    ///
+    /// Works in world block-entity and entity renderers. Level-less scenes, previews
+    /// and mob model frames use the fixed light, as does an element whose sample centre
+    /// lies outside the representable cell coordinates. With `keep`, geometry under
+    /// `spin` is sampled again each frame without a new submit; stationary geometry keeps
+    /// the light it was drawn with until the draw is invalidated.
     fn level_light(&mut self) {
         unimplemented!("BlockEntityDrawContext::draw_level_light")
     }
@@ -406,9 +407,9 @@ pub trait BlockEntityDrawContext {
     /// their phases apart (a cog meshing with its neighbour). Draw the part at rest; the
     /// game turns it each frame, and with `keep` without asking again until the block
     /// entity changes. With a new speed, pass `old_angle - animation_time() * new_speed`
-    /// as the phase to keep the part where it was. The shading of a quad drawn while it is
-    /// active follows the turn (its normal turns); its light is fixed, and follows the
-    /// turn only under `level_light`. Until `still` or the next `spin`. A mob's frame draws it at rest.
+    /// as the phase to keep the part where it was. For `quad` and `cube`, directional
+    /// shading follows the turn. Light stays fixed unless `level_light` is on. Until
+    /// `still` or the next `spin`. Entity renderer and mob model frames draw it at rest.
     fn spin(&mut self, axis: [f32; 3], pivot: [f32; 3], degrees_per_tick: f32, phase: f32) {
         unimplemented!("BlockEntityDrawContext::draw_spin")
     }

@@ -368,16 +368,18 @@ holds that clock; `/tick freeze` holds the level partial at 1 and stops texture 
 Camera motion during a freeze does not spin a part backwards. Server time updates do
 not reset animation. Held-arm, hand, mob and scene draws use this same level partial.
 
-A turning part's shading follows the turn (its normal turns with it), but its light does
-not: it keeps the light it was drawn with. Call `BlockEntityDrawContext::level_light` before
-drawing a moving structure (a rotating bearing, a contraption) and each `block`, `model`,
-`terrain_model`, `cube` or `quad` call after it is lit by the level's sky and block light at
-that element's centre, as the element is this frame: under the pose and turned by `spin`.
-One light is taken per element, not per vertex, as vanilla lights a falling block or a
-piston's moving block once at its position. After `keep`, spun elements are lit again each
-frame at the cell they have turned into, with no new submit; elements that stand still keep
-the light they were drawn with, and are drawn again when the block's own light changes.
-`set_light` returns to a fixed light, which stays the default.
+Directional shading on `quad` and `cube` follows `spin`, but light stays fixed by default.
+To use the level's sky and block light, call `BlockEntityDrawContext::level_light` in a world
+block-entity or entity renderer. Each element uses one level-light sample. The centre is the
+unit-cell centre for `block`, `model` and `terrain_model`, the box midpoint for `cube`, or the
+mean of the corners for `quad`, transformed by the pose and any applied `spin`. Baked emission
+and other per-channel light floors still apply. Items and text keep the fixed light.
+
+After `keep`, spun elements sample the cell they turn into each frame without a new submit.
+Stationary elements keep their original sample until the draw is invalidated. If the centre
+falls outside representable cell coordinates, the element uses its fixed light instead.
+Level-less scenes, previews and mob model frames also stay fixed. `light()` always reports the
+fixed setting; `set_light` returns subsequent draws to fixed light.
 
 ## Copycat faces
 

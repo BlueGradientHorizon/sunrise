@@ -330,10 +330,8 @@ pub struct BlockEntityDraw {
 }
 
 /// One element (`block`, `model`, `terrain_model`, `cube` or `quad`) drawn under
-/// `level_light`: its vertices and the centre it is lit at, in blocks from the
-/// block's corner, under its pose and before any `spin`.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct LitElement {
+/// `level_light`: its vertices and posed centre in draw coordinates, before any `spin`.
+struct LitElement {
     start: usize,
     end: usize,
     centre: Vec3,
@@ -640,7 +638,10 @@ impl BlockEntityDraw {
     }
 
     /// Finish a posed frame drawn at rest, sampling the level when supplied.
-    pub(super) fn into_vertices_with_light(mut self, level: Option<&LevelLight<'_>>) -> Vec<Vertex> {
+    pub(super) fn into_vertices_with_light(
+        mut self,
+        level: Option<&LevelLight<'_>>,
+    ) -> Vec<Vertex> {
         self.finish_light(level);
         self.vertices
     }
@@ -807,7 +808,7 @@ impl BlockEntityDraw {
         self.lit_since(
             start,
             |draw| {
-                let mean = corners.into_iter().map(Vec3::from_array).sum::<Vec3>() / 4.0;
+                let mean = corners.into_iter().map(|c| Vec3::from_array(c) / 4.0).sum();
                 draw.pose().transform_point3(mean)
             },
             self.light,
@@ -1498,7 +1499,7 @@ impl Game<'_> {
         draw.lit_since(
             start,
             |draw| {
-                let middle = (Vec3::from_array(from) + Vec3::from_array(to)) / 32.0;
+                let middle = Vec3::from_array(from) / 32.0 + Vec3::from_array(to) / 32.0;
                 draw.pose().transform_point3(middle)
             },
             draw.light,
