@@ -1071,8 +1071,9 @@ impl Hub {
     ) {
         let in_menu = p.container != 0;
         // handleContainerClick: a click made without the latest state gets the
-        // whole menu (`broadcastFullState`). Answering it slot by slot can leave
-        // the client with a correction of a click it has already gone past.
+        // whole menu (`broadcastFullState`), including committed live data.
+        // Answering it slot by slot can leave the client with a correction of
+        // a click it has already gone past.
         let g = &self.guests[i];
         let open = g
             .menu
@@ -1088,6 +1089,7 @@ impl Hub {
                 Some((size, _)) => {
                     let items = (0..size).map(|s| self.view_slot(i, world, s)).collect();
                     self.send_menu_content(i, items);
+                    self.guests[i].send_menu_data_snapshot();
                 }
                 None => self.send_inventory(i),
             }

@@ -2407,28 +2407,50 @@ impl Game<'_> {
                     }
                 }
                 HostEvent::Packet(conn, packet) => {
-                    let hidden_inventory_swap = matches!(
-                        packet.as_ref(),
+                    const OFFHAND_BUTTON: i8 = OFFHAND_SLOT as i8;
+                    let undisplayed_swap = match packet.as_ref() {
                         play::Serverbound::ContainerClick(click)
                             if click.input == lan::menu::input::SWAP
-                                && matches!(click.button, 0..=8 | 40)
-                                && self.lan.as_ref().and_then(|host| host.hub.guest(conn))
-                                    .and_then(|guest| guest.menu.as_ref()).is_some_and(|menu| {
-                                        menu.window == click.container
-                                            && menu.player_slots() == 0
-                                            && usize::try_from(click.slot)
-                                                .is_ok_and(|slot| slot < menu.slot_count())
-                                    })
-                    );
+                                && matches!(click.button, 0..=8 | OFFHAND_BUTTON) =>
+                        {
+                            self.lan
+                                .as_ref()
+                                .and_then(|host| host.hub.guest(conn))
+                                .and_then(|guest| guest.menu.as_ref())
+                                .filter(|menu| {
+                                    menu.window == click.container
+                                        && usize::try_from(click.slot)
+                                            .is_ok_and(|slot| slot < menu.slot_count())
+                                })
+                                .and_then(|menu| menu.mod_type)
+                                .filter(|layout| {
+                                    !layout.player_inventory || click.button == OFFHAND_BUTTON
+                                })
+                                .map(|layout| layout.player_inventory)
+                        }
+                        _ => None,
+                    };
                     self.lan_guest_packet(conn, *packet);
-                    // A full resend omits these slots, and an unchanged server inventory
-                    // cannot correct a predicted swap through its usual delta broadcast.
-                    if hidden_inventory_swap
+                    // The grid leaves out offhand; a menu without a grid also leaves out
+                    // the hotbar. A refusal won't correct either slot through a delta.
+                    if let Some(grid_shown) = undisplayed_swap
                         && let Some(host) = self.lan.as_mut()
                         && let Some(gi) = host.hub.guests.connection_index(conn)
                         && !host.hub.guests[gi].disconnect_pending
                     {
-                        host.hub.send_inventory(gi);
+                        if grid_shown {
+                            let offhand = host.hub.guests[gi].offhand.clone();
+                            let item = host.hub.stack(&offhand);
+                            host.hub.guests.update(gi, |guest| {
+                                guest.send(&C::SetPlayerInventory(play::SetPlayerInventory {
+                                    slot: OFFHAND_SLOT as i32,
+                                    item,
+                                }));
+                                guest.menu_sent[45] = offhand;
+                            });
+                        } else {
+                            host.hub.send_inventory(gi);
+                        }
                     }
                     if self
                         .lan

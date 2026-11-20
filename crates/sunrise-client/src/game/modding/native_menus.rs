@@ -1608,96 +1608,107 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn refused_swap_resends_the_menu_and_undisplayed_hotbar() {
-        sunrise_client::containers::with_mod_menu_types(
-            [(
-                MOD_MENU.into(),
-                "status_package".into(),
-                1,
-                0,
-                vec![],
-                vec![],
-                None,
-                None,
-                false,
-            )],
-            || {
-                with_game(|game| {
-                    let (rx, key) = mod_menu_guest(game);
-                    let held = ItemStack::new("minecraft:stone", 5);
-                    let stored = ItemStack::new("minecraft:dirt", 2);
-                    game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
-                        g.sender.menu_extra_rev = sunrise_protocol::menu_extra::LIVE_DATA_REVISION;
-                        g.inventory[2] = Some(held.clone());
-                    });
-                    let player = game.player(123).unwrap();
-                    let window = player
-                        .open_mod_menu(
-                            game,
-                            key,
-                            mod_api::Text::literal("Panel"),
-                            vec![],
-                            vec![],
-                            None,
-                            MenuReplace::CloseFirst,
+        for (player_inventory, button, menu_slots) in [(false, 2, 1), (true, 40, 37)] {
+            sunrise_client::containers::with_mod_menu_types(
+                [(
+                    MOD_MENU.into(),
+                    "status_package".into(),
+                    1,
+                    0,
+                    vec![],
+                    vec![],
+                    None,
+                    None,
+                    player_inventory,
+                )],
+                || {
+                    with_game(|game| {
+                        let (rx, key) = mod_menu_guest(game);
+                        let held = ItemStack::new("minecraft:stone", 5);
+                        let stored = ItemStack::new("minecraft:dirt", 2);
+                        game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                            g.sender.menu_extra_rev =
+                                sunrise_protocol::menu_extra::LIVE_DATA_REVISION;
+                            if player_inventory {
+                                g.offhand = Some(held.clone());
+                            } else {
+                                g.inventory[2] = Some(held.clone());
+                            }
+                        });
+                        let player = game.player(123).unwrap();
+                        let window = player
+                            .open_mod_menu(
+                                game,
+                                key,
+                                mod_api::Text::literal("Panel"),
+                                vec![],
+                                vec![],
+                                None,
+                                MenuReplace::CloseFirst,
+                            )
+                            .unwrap()
+                            .unwrap();
+                        let host: &mut dyn ServerHost = game;
+                        host.menu_set_items(
+                            123,
+                            window,
+                            vec![Some(stored.clone().try_into_api().unwrap())],
                         )
-                        .unwrap()
                         .unwrap();
-                    let host: &mut dyn ServerHost = game;
-                    host.menu_set_items(
-                        123,
-                        window,
-                        vec![Some(stored.clone().try_into_api().unwrap())],
-                    )
-                    .unwrap();
-                    sent(&rx);
+                        sent(&rx);
 
-                    // This native menu has no click listener, so it keeps its stack even
-                    // though the client predicted a swap with the undisplayed hotbar.
-                    let click = S::ContainerClick(play::ContainerClick {
-                        container: window,
-                        state: 0,
-                        slot: 0,
-                        button: 2,
-                        input: sunrise_client::lan::menu::input::SWAP,
-                        changed: vec![],
-                        carried: None,
-                    });
-                    let host = game.lan.take().unwrap();
-                    let host = game
-                        .lan_process_events(
-                            host,
-                            [sunrise_client::lan::hub::HostEvent::Packet(
-                                1,
-                                Box::new(click),
-                            )],
-                            &[],
-                            [0.0; 3],
-                        )
-                        .unwrap();
-                    let packets = sent(&rx);
-                    let [
-                        C::ContainerSetContent(menu),
-                        C::ContainerSetContent(inventory),
-                    ] = &packets[..]
-                    else {
-                        panic!(
-                            "expected corrections for the menu and backing inventory, got {packets:?}"
+                        // With no click listener the menu keeps its stack, but the client
+                        // predicted a swap with the undisplayed hotbar or offhand.
+                        let click = S::ContainerClick(play::ContainerClick {
+                            container: window,
+                            state: 0,
+                            slot: 0,
+                            button,
+                            input: sunrise_client::lan::menu::input::SWAP,
+                            changed: vec![],
+                            carried: None,
+                        });
+                        let host = game.lan.take().unwrap();
+                        let host = game
+                            .lan_process_events(
+                                host,
+                                [sunrise_client::lan::hub::HostEvent::Packet(
+                                    1,
+                                    Box::new(click),
+                                )],
+                                &[],
+                                [0.0; 3],
+                            )
+                            .unwrap();
+                        let packets = sent(&rx);
+                        let [C::ContainerSetContent(menu), correction] = &packets[..] else {
+                            panic!(
+                                "swap button {button}: expected menu and backing inventory corrections, got {packets:?}"
+                            );
+                        };
+                        assert_eq!((menu.container, menu.items.len()), (window, menu_slots));
+                        assert_eq!(
+                            host.hub.stack_from_network(menu.items[0].as_ref().unwrap()),
+                            stored
                         );
-                    };
-                    assert_eq!((menu.container, menu.items.len()), (window, 1));
-                    assert_eq!((inventory.container, inventory.items.len()), (0, 46));
-                    assert_eq!(
-                        host.hub.stack_from_network(menu.items[0].as_ref().unwrap()),
-                        stored
-                    );
-                    assert_eq!(
-                        host.hub
-                            .stack_from_network(inventory.items[38].as_ref().unwrap()),
-                        held
-                    );
-                });
-            },
-        );
+                        let item = match (player_inventory, correction) {
+                            (false, C::ContainerSetContent(inventory)) => {
+                                assert_eq!((inventory.container, inventory.items.len()), (0, 46));
+                                &inventory.items[38]
+                            }
+                            (true, C::SetPlayerInventory(offhand)) => {
+                                assert_eq!(offhand.slot, 40);
+                                &offhand.item
+                            }
+                            _ => {
+                                panic!("swap button {button}: unexpected correction {correction:?}")
+                            }
+                        };
+                        assert_eq!(host.hub.stack_from_network(item.as_ref().unwrap()), held);
+                    });
+                },
+            );
+        }
     }
 
     #[test]
@@ -1985,6 +1996,38 @@ mod tests {
                                 value: i32::MIN
                             }]
                         );
+                        let hub = &mut game.lan.as_mut().unwrap().hub;
+                        let state = hub.guests[0].menu.as_ref().unwrap().state;
+                        hub.inventory_clicked(
+                            1,
+                            &play::ContainerClick {
+                                container: window,
+                                state: (state - 1) & 0x7FFF,
+                                slot: -999,
+                                button: 0,
+                                input: sunrise_client::lan::menu::input::PICKUP,
+                                changed: vec![],
+                                carried: None,
+                            },
+                            &game.world,
+                            &[],
+                        );
+                        let packets = sent(&rx);
+                        assert!(matches!(packets.first(), Some(C::ContainerSetContent(p))
+                            if p.container == window && p.items.is_empty() && p.state != state
+                        ));
+                        assert_eq!(
+                            updates(packets),
+                            [
+                                DataSlot {
+                                    value: i32::MIN,
+                                    ..snapshot[0]
+                                },
+                                snapshot[1]
+                            ],
+                            "a stale click resends every committed data slot after the contents"
+                        );
+
                         // Force the counter to reuse the old id, as it would after 100 opens.
                         game.lan
                             .as_mut()
