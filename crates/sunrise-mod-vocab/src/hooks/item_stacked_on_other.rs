@@ -8,9 +8,10 @@ pub trait Hooks {
     /// a stack on any other answer refuses the click). A stack set for the clicked slot goes
     /// through its pickup, placement and size rules using the actual replacement stack.
     /// A replacement cannot change a result slot or take a stack from a brewing potion slot:
-    /// it would skip the slot's take effects. A write through the `Host` to what the
-    /// click read makes it stale: the click is refused and every write is undone. A panic or an
-    /// invalid answer does the same. A refused click changes nothing.
+    /// it would skip the slot's take effects. A write through the `Host` to what the click read
+    /// makes it stale: the click is refused and every write is undone. An invalid answer,
+    /// native panic, or wasm trap, missing reply, or malformed reply also refuses the click
+    /// without falling back to the plain pickup.
     #[hook(
         side = "both",
         contract = "cancel",

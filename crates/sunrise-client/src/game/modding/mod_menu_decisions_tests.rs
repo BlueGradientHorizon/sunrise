@@ -353,6 +353,7 @@ fn a_guest_failure_aborts_menu_clicked_and_scoped_menu_quick_move() {
                             "{failure:?}"
                         );
                         assert_eq!(depot(game), (10, 0, 0, 0), "{failure:?}");
+                        assert_eq!(inventory(game, 20), 0, "{failure:?}");
                         assert_eq!((decided(), DISPATCHES.get()), (1, 1));
                         assert!(game.transactions.is_empty());
                     }
