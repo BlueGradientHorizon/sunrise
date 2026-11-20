@@ -821,23 +821,40 @@ impl Game<'_> {
         if self.options.execution_role.is_client() {
             return Ok(());
         }
-        let back = self.dim;
-        if matches!(back, Dim::Extra(_)) {
-            self.native_level_opened(back);
-        }
-        for dim in [Dim::Overworld, Dim::Nether, Dim::End] {
-            if dim == back {
-                // The save's starting level is already open. Notify it in registry order.
-                if self.dim != back {
-                    self.enter_level(back)?;
-                }
-                self.native_level_opened(back);
-            } else if !self.levels.parked.contains_key(&dim) {
+        let starting_dim = self.dim;
+        // World preparation can build the owner's starting level before the
+        // Overworld. Keep it out of both the current and parked slots until
+        // its registry turn, so earlier `level_load` listeners cannot see it.
+        let mut starting_level = if starting_dim != Dim::Overworld {
+            let mut overworld = self.open_level(Dim::Overworld)?;
+            self.replace_level(Dim::Overworld, &mut overworld);
+            self.apply_settings();
+            self.read_raids();
+            Some(overworld)
+        } else {
+            None
+        };
+        self.native_level_opened(Dim::Overworld);
+        for dim in [Dim::Nether, Dim::End] {
+            if dim == starting_dim
+                && let Some(level) = starting_level.take()
+            {
+                self.levels.parked.insert(dim, level);
+                self.enter_level(dim)?;
+                self.native_level_opened(dim);
+            } else {
                 self.enter_level(dim)?;
             }
         }
-        if self.dim != back {
-            self.enter_level(back)?;
+        // Switching back to the owner's level is separate from publishing the
+        // built-ins. A saved custom starting level, if any, is published here.
+        let publish_starting_level = starting_level.is_some();
+        if let Some(level) = starting_level {
+            self.levels.parked.insert(starting_dim, level);
+        }
+        self.enter_level(starting_dim)?;
+        if publish_starting_level {
+            self.native_level_opened(starting_dim);
         }
         Ok(())
     }
@@ -980,6 +997,32 @@ impl Game<'_> {
         self.clear_client_particles();
     }
 
+    /// Swap the level in place without publishing the one just left.
+    fn replace_level(&mut self, target: Dim, p: &mut Parked) -> Dim {
+        p.world.game_time = self.world.game_time;
+        // The level's day time is its default clock's; a level without one follows the
+        // Overworld's.
+        let clock = self.level_clock_name(target);
+        p.world.day_time = self.switch_clock(&clock);
+        p.world.end_clock = self.world.end_clock;
+        p.world.weather = self.world.weather;
+        // The game rules and the difficulty are the server's, not a
+        // level's: natural regeneration holds in every dimension.
+        p.world.health_rules = self.world.health_rules;
+        // The sculk tables' watched blocks are built once per game.
+        p.world.watched = std::mem::take(&mut self.world.watched);
+        self.swap_level(p);
+        // The tracked entities go with their level: a level's moves, read before its tick
+        // describes its entities again, would otherwise meet the last level's (a move
+        // missed the boat under a player while anyone was in another dimension).
+        if let Some(h) = self.lan.as_mut() {
+            std::mem::swap(&mut h.states, &mut p.lan_states);
+            std::mem::swap(&mut h.border_sent, &mut p.border_sent);
+        }
+        p.idle = 0;
+        std::mem::replace(&mut self.dim, target)
+    }
+
     /// Put `target`'s level in place, opening it first if it is not loaded.
     /// The level that was in place is kept with the others; the shared
     /// clock and weather go with the swap.
@@ -993,31 +1036,7 @@ impl Game<'_> {
                 Some(p) => (p, false),
                 None => (self.open_level(target)?, true),
             };
-            p.world.game_time = self.world.game_time;
-            // The level's day time is its default clock's; a level without one follows the
-            // Overworld's.
-            let clock = self.level_clock_name(target);
-            p.world.day_time = self.switch_clock(&clock);
-            p.world.end_clock = self.world.end_clock;
-            p.world.weather = self.world.weather;
-            // The game rules and the difficulty are the server's, not a
-            // level's: natural regeneration holds in every dimension.
-            p.world.health_rules = self.world.health_rules;
-            // The sculk tables' watched blocks are built once per game.
-            p.world.watched = std::mem::take(&mut self.world.watched);
-            self.swap_level(&mut p);
-            // The tracked entities go with their level: a level's moves, read before its tick
-            // describes its entities again, would otherwise meet the last level's (a move
-            // missed the boat under a player while anyone was in another dimension).
-            let states = self.lan.as_mut().map(|h| &mut h.states);
-            if let Some(states) = states {
-                std::mem::swap(states, &mut p.lan_states);
-            }
-            if let Some(h) = self.lan.as_mut() {
-                std::mem::swap(&mut h.border_sent, &mut p.border_sent);
-            }
-            p.idle = 0;
-            let left = std::mem::replace(&mut self.dim, target);
+            let left = self.replace_level(target, &mut p);
             self.levels.parked.insert(left, p);
             if opened {
                 // The new streaming's radius and meshing options.
@@ -1969,6 +1988,7 @@ mod tests {
         .unwrap();
         game.build_registries();
         game.set_allow_commands(true);
+        game.native_lifecycle_open_started();
         let folder = world.to_string_lossy().into_owned();
         game.load_world(
             crate::game::world_loading::WorldRequest::new(
@@ -2071,12 +2091,21 @@ mod tests {
         use mod_api::{Hooks, LevelLoadEvent, ModEntry, ServerHost};
         use std::sync::{Arc, Mutex};
 
-        struct Observer(Arc<Mutex<Vec<String>>>);
+        const BUILT_INS: [&str; 3] = [
+            "minecraft:overworld",
+            "minecraft:the_nether",
+            "minecraft:the_end",
+        ];
+        struct Observer(Arc<Mutex<Vec<(String, [bool; 3])>>>);
         #[mod_api::__subscriptions]
         impl Hooks for Observer {
             fn level_load(&self, host: &mut dyn ServerHost, event: &mut LevelLoadEvent<'_>) {
                 assert_eq!(host.dimension(), event.dimension);
-                self.0.lock().unwrap().push(event.dimension.to_owned());
+                let available = BUILT_INS.map(|id| host.level(id).is_some());
+                self.0
+                    .lock()
+                    .unwrap()
+                    .push((event.dimension.to_owned(), available));
             }
         }
 
@@ -2101,15 +2130,14 @@ mod tests {
             let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
             let mut resources = None;
             let game = open_game(&mut resources, &root, home.path(), &world);
-            // The owner still starts in their saved dimension; only the hook order changes.
             assert_eq!(game.dim, Dim::Nether);
         });
         assert_eq!(
             *seen.lock().unwrap(),
             [
-                "minecraft:overworld",
-                "minecraft:the_nether",
-                "minecraft:the_end"
+                (BUILT_INS[0].into(), [true, false, false]),
+                (BUILT_INS[1].into(), [true, true, false]),
+                (BUILT_INS[2].into(), [true, true, true]),
             ]
         );
     }
