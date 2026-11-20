@@ -1981,13 +1981,24 @@ impl Game<'_> {
 
     /// `HashedStack.create` with the connection's registries (the client's
     /// `decoratedHashOpsGenerator`).
-    fn hashed_stack(&self, s: &Option<ItemStack>) -> Option<Hashed> {
-        let r = self.remote.as_ref()?;
+    fn hashed_stack(&self, s: &Option<ItemStack>) -> sunrise_protocol::Result<Option<Hashed>> {
+        if s.is_none() {
+            return Ok(None);
+        }
+        let r = self
+            .remote
+            .as_ref()
+            .ok_or_else(|| sunrise_protocol::Error::new("no live menu connection"))?;
         let names = SyncedNames {
             builtin: &r.builtin,
             dynamic: &r.registries,
         };
-        self.to_network(s).map(|s| Hashed::create(&s, &names))
+        let stack = self
+            .to_network(s)
+            .ok_or_else(|| sunrise_protocol::Error::new("cannot encode a nonempty stack"))?;
+        Hashed::create(&stack, &names)
+            .map(Some)
+            .map_err(|e| sunrise_protocol::Error::new(e.to_string()))
     }
 
     /// A line in the connection's chat, with its styles, click and hover
