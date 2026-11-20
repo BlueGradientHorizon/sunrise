@@ -1106,7 +1106,6 @@ mod tests {
         );
         for (error, option) in [
             (hooks_args(&argv("spawn --al")).unwrap_err(), "--al"),
-            (hooks_args(&argv("block -- break")).unwrap_err(), "--"),
             (
                 fits_args(&argv("--bild a")).map(drop).unwrap_err(),
                 "--bild",
@@ -1118,5 +1117,9 @@ mod tests {
         ] {
             assert!(error.contains(option), "{error}");
         }
+        // The usage below the diagnostic has dashes of its own: the diagnostic names the separator.
+        let error = hooks_args(&argv("block -- break")).unwrap_err();
+        let refused = error.lines().next().unwrap().split(' ').next_back();
+        assert_eq!(refused, Some("--"), "{error}");
     }
 }

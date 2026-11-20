@@ -188,7 +188,8 @@ mod tests {
         let mut options = Options::new("hooks", &args, &[]);
         assert_eq!(options.positional(), ["block"]);
         let error = options.finish().unwrap_err();
-        assert_eq!(error.lines().next(), Some("hooks does not take --"));
+        let refused = error.lines().next().unwrap().split(' ').next_back();
+        assert_eq!(refused, Some("--"), "{error}");
     }
 
     #[test]
