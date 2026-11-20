@@ -289,6 +289,7 @@ message Start {
   uint32 players = 14;
   uint64 world_fs_used_mb = 15;
   uint64 world_fs_total_mb = 16;
+  ClientSettings client_settings = 17;     // clients: render distance chosen and loaded, simulation distance, far terrain distance and on/off, graphics preset
 }
 
 message HealthSample {
@@ -383,11 +384,9 @@ message Stop {
 
 Notes on fields:
 
-- On this fork, `Start.mods` includes loaded content, native and wasm mods. `ModKind` adds the
-  protobuf value `MOD_KIND_WASM = 3`; existing values keep their numbers. Native membership comes
-  from the validated compiled inventory, wasm membership from selected wasm manifests. Unknown
-  code provenance remains unspecified, not guessed to be native or wasm. A crate name is recorded
-  only when canonical metadata supplies one.
+- `Start.mods` includes loaded content and native mods. Native membership comes from the validated
+  compiled inventory. Unknown code provenance remains unspecified. A crate name is recorded only
+  when canonical metadata supplies one.
 - `Stop.overhead`: `spans_ms_per_tick`, `spans_share`, `sampler_share_of_thread`, `writer_core_share`,
   `dropped_samples`, `dropped_messages`, `timeline_stopped_t`, `heap_samples`, `heap_sample_ns`.
 - `Start.settings`, `game_rules` and `sunrise_options` are typed allowlists, never a dump of a file or of the

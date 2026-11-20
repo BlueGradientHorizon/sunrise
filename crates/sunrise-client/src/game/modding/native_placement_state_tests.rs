@@ -70,7 +70,9 @@ impl Hooks for PlacementReadMod {
     }
 
     fn blocks(&self, _: &RegistrationContext, event: &mut BlocksEvent<'_>) {
-        event.blocks.push(Block::new(BLOCK, "minecraft:stone"));
+        event
+            .register(Block::new(BLOCK, "minecraft:stone"))
+            .unwrap();
     }
 }
 
