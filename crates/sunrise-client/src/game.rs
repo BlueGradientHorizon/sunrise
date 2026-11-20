@@ -2438,6 +2438,21 @@ mod billboard_axes_tests {
         }
     }
 }
+/// What the falling blocks of one frame share: the depth-only view (none under a pack) and the
+/// camera's forward axis.
+struct FallingSetup<'a> {
+    view: Option<&'a sunrise_client::gfx::JoinedFrusta>,
+    forward: glam::Vec3,
+}
+
+/// What the experience orbs of one frame share: their sprite and the camera's axes.
+pub(crate) struct OrbFrame {
+    sprite: Option<sunrise_client_render::hud::Rect>,
+    forward: glam::Vec3,
+    right: glam::Vec3,
+    up: glam::Vec3,
+}
+
 impl Game<'_> {
     /// `Level.canHaveWeather`, from the level's dimension type (sky light, no
     /// ceiling) and the End, which vanilla names by id. Every rain, thunder
@@ -5571,6 +5586,11 @@ impl Game<'_> {
         let orb_view = billboard_frustum
             .as_ref()
             .filter(|_| self.pack_ids.is_none() && self.native_shaders.picked.is_empty());
+        // What a family sets up once a frame, not once per run: the first run of the family
+        // builds it.
+        let tnt_sprites = std::cell::OnceCell::new();
+        let falling_setup = std::cell::OnceCell::new();
+        let orb_frame = std::cell::OnceCell::new();
         let mut runs = std::mem::take(&mut self.entity_runs);
         self.ordered_draw_runs(&mut runs);
         for run in &runs {
@@ -5592,15 +5612,18 @@ impl Game<'_> {
                         ];
                         (o, at, alpha as f32)
                     });
-                    self.orb_geometry(camera, live, orb_view, &mut out);
+                    let frame = orb_frame.get_or_init(|| self.orb_frame());
+                    self.orb_geometry(camera, frame, live, orb_view, &mut out);
                 }
                 F::Falling => {
                     self.mark_entity(out.len(), "minecraft:falling_block");
-                    self.falling_geometry(camera, alpha, range, &mut out);
+                    let setup = falling_setup.get_or_init(|| self.falling_setup());
+                    self.falling_geometry(camera, alpha, setup, range, &mut out);
                 }
                 F::Tnt => {
                     self.mark_entity(out.len(), "minecraft:tnt");
-                    self.tnt_geometry(camera, alpha, &mut out, range);
+                    let sprites = *tnt_sprites.get_or_init(|| self.tnt_face_sprites());
+                    self.tnt_geometry(camera, alpha, &mut out, range, sprites);
                 }
                 F::ArmorStand => {
                     self.mark_entity(out.len(), "minecraft:armor_stand");
@@ -6053,21 +6076,31 @@ impl Game<'_> {
 
     /// `FallingBlockRenderer` for the falling blocks of `run`, drawn with their baked model,
     /// including non-cubic shapes.
+    fn falling_setup(&self) -> FallingSetup<'_> {
+        FallingSetup {
+            // Packs can move vertices or draw another view; otherwise only depth
+            // planes are used, which TAA's X/Y projection jitter cannot change.
+            view: self
+                .view_frustum
+                .as_ref()
+                .filter(|_| self.pack_ids.is_none() && self.native_shaders.picked.is_empty()),
+            forward: self.camera_orientation() * -glam::Vec3::Z,
+        }
+    }
+
     fn falling_geometry(
         &self,
         camera: glam::DVec3,
         alpha: f64,
+        setup: &FallingSetup<'_>,
         run: std::ops::Range<usize>,
         out: &mut Vec<Vertex>,
     ) {
-        // Packs can move vertices or draw another view; otherwise only depth
-        // planes are used, which TAA's X/Y projection jitter cannot change.
-        let falling_view = self
-            .view_frustum
-            .as_ref()
-            .filter(|_| self.pack_ids.is_none() && self.native_shaders.picked.is_empty());
+        let FallingSetup {
+            view: falling_view,
+            forward: falling_forward,
+        } = *setup;
         let tables = &self.pack.context.tables;
-        let falling_forward = self.camera_orientation() * -glam::Vec3::Z;
         for f in &self.falling[run] {
             let p = f.model_origin(alpha, |state, x, z| tables.offset(state, x, z)) - camera;
             let o = p.as_vec3();
@@ -6119,13 +6152,8 @@ impl Game<'_> {
             }
         }
     }
-    pub(super) fn orb_geometry<'a>(
-        &self,
-        camera: glam::DVec3,
-        orbs: impl Iterator<Item = (&'a sunrise_client::entities::ExperienceOrb, [f64; 3], f32)>,
-        orb_view: Option<&sunrise_client::gfx::JoinedFrusta>,
-        out: &mut Vec<Vertex>,
-    ) {
+    /// The orb's sprite and the camera's axes, once a frame however many runs of orbs draw.
+    pub(super) fn orb_frame(&self) -> OrbFrame {
         let sprite = self
             .gui
             .atlas
@@ -6140,6 +6168,28 @@ impl Game<'_> {
         );
         let right = forward.cross(glam::Vec3::Y).normalize_or_zero();
         let up = right.cross(forward).normalize_or_zero();
+        OrbFrame {
+            sprite,
+            forward,
+            right,
+            up,
+        }
+    }
+
+    pub(super) fn orb_geometry<'a>(
+        &self,
+        camera: glam::DVec3,
+        frame: &OrbFrame,
+        orbs: impl Iterator<Item = (&'a sunrise_client::entities::ExperienceOrb, [f64; 3], f32)>,
+        orb_view: Option<&sunrise_client::gfx::JoinedFrusta>,
+        out: &mut Vec<Vertex>,
+    ) {
+        let OrbFrame {
+            sprite,
+            forward,
+            right,
+            up,
+        } = *frame;
         for (o, at, partial) in orbs {
             let p = glam::DVec3::new(at[0], at[1] + 0.1, at[2]) - camera;
             let c = p.as_vec3();
@@ -6308,7 +6358,8 @@ impl Game<'_> {
             pickups::Taken::Orb(o) => Some((&**o, pickups::position(p, alpha), 1.0)),
             _ => None,
         });
-        self.orb_geometry(camera, taken, None, out);
+        let frame = self.orb_frame();
+        self.orb_geometry(camera, &frame, taken, None, out);
         self.mark_entity(out.len(), "minecraft:elder_guardian");
         self.elder_apparition_geometry(alpha, out);
         if self.mod_clear_particles.get() {
