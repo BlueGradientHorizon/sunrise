@@ -96,6 +96,8 @@ fn pack_files(world_tables: &Option<WorldTables>) -> sunrise_world::loot::PackOv
     }
 }
 include!(concat!(env!("OUT_DIR"), "/game_modules.rs"));
+pub use hot_paths::{HotPathsMods, note_hot_paths_listener_call};
+
 mod host;
 mod native_hooks;
 use event_loop::EventLoopCtl;
