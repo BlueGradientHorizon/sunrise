@@ -355,10 +355,10 @@ pub trait RenderAssets {
     /// position. Any state: a mod's, vanilla's, a resource pack's. It draws through
     /// [`WorldDrawContext::draw_model_instances`](crate::WorldDrawContext::draw_model_instances),
     /// [`InstanceGroupRef`] and `BlockEntityDrawContext::terrain_model`. `ModelError::UnknownModel` for a
-    /// state with no baked model (air, a block drawn by a special renderer) or an id past the
-    /// block state table. Resolve once per distinct state in `client_setup` and again in
+    /// state with no baked model (air, a block drawn by a special renderer) or an unknown block
+    /// key or state ordinal. Resolve once per distinct state in `client_setup` and again in
     /// `client_resources_reloaded`, not each frame; the handle goes stale on a reload.
-    fn block_state_model(&self, state: BlockStateId) -> Result<ModelRef, ModelError> {
+    fn block_state_model(&self, state: BlockState) -> Result<ModelRef, ModelError> {
         crate::world::phase::unprovided(
             "RenderAssets::block_state_model",
             "block_state_model",

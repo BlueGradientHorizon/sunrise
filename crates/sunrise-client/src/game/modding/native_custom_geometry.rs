@@ -592,7 +592,7 @@ mod tests {
         let _fixture = sunrise_client::models::standalone_fixture(Vec::new());
         super::super::native_entity_refs::tests::with_client_game(|game| {
             let slot = |state: u32| {
-                game.native_block_state_model(mod_api::BlockStateId(state))
+                game.native_block_state_model(sunrise_world::registry::BlockStateId(state))
                     .map(|model| mod_api::__private::game::Fields::fields(&model).slot)
             };
             // Air has no model, and a state past the registry's table is not a panic.

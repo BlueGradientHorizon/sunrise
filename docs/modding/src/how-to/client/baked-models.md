@@ -36,7 +36,7 @@ fn model_baking_completed(&self, host: &mut dyn ClientHost, _: &mut ModelBakingC
 | Call | Answers |
 | --- | --- |
 | `block_state_models(state: BlockState)` | Every model the state can select, in bake order without repeats, whichever one a position's seed picks. Empty for a valid state with no baked binding. `UnknownModel` if the block key or state ordinal cannot be resolved. |
-| `block_state_model(state)` | The state as one drawable `ModelRef` (see [Model drawing](model-drawing.md)). `UnknownModel` for air, a state no blockstate file binds or an id past the state table. |
+| `block_state_model(state: BlockState)` | The state as one drawable `ModelRef` (see [Model drawing](model-drawing.md)). `UnknownModel` for air, a state no blockstate file binds, or a block key or state ordinal that cannot be resolved. |
 | `baked_model(key)` | A read-only copy of the listed fields: `ambient_occlusion`, the `particle` sprite and its `quads`. `StaleModel` once a reload superseded the key; `UnknownModel` for a slot the store lacks. |
 
 `BakedModelView` and `BakedQuad` are copies: changing them changes nothing the game draws. They
