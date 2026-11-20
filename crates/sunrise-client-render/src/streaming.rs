@@ -451,13 +451,15 @@ impl Mailbox {
     fn try_recv(&self) -> Option<Done> {
         self.try_lock()?.pop_front()
     }
-    fn recv_timeout(&self, timeout: std::time::Duration) -> Option<Done> {
+    fn wait(&self, timeout: std::time::Duration) -> MutexGuard<'_, VecDeque<Done>> {
         let done = self.done.lock().unwrap();
-        let (mut done, _) = self
-            .arrived
+        self.arrived
             .wait_timeout_while(done, timeout, |done| done.is_empty())
-            .unwrap();
-        done.pop_front()
+            .unwrap()
+            .0
+    }
+    fn recv_timeout(&self, timeout: std::time::Duration) -> Option<Done> {
+        self.wait(timeout).pop_front()
     }
 }
 /// [`Streaming::proto_census`].
@@ -2902,12 +2904,10 @@ impl Streaming {
         }
         counts
     }
-    /// Wait up to `timeout` for a worker to finish a job; the next `update`
-    /// takes it. A server pumps generation with this between its ticks.
+    /// Wait up to `timeout` for a worker to finish a job, leaving the result
+    /// queued for the next update or synchronous save.
     pub fn wait(&mut self, timeout: std::time::Duration) {
-        if let Some(done) = self.shared.done.recv_timeout(timeout) {
-            self.deferred.push(done);
-        }
+        drop(self.shared.done.wait(timeout));
     }
 }
 /// `ChunkTrackingView.isInViewDistance`: whether the column (x, z) is drawn
@@ -3823,7 +3823,9 @@ mod tests {
         streaming.save_finished(chunk);
         streaming.finishing.insert((103, 0));
         streaming.shared.done.send(late(103));
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+        // Startup can wait for work and then save before its next update.
+        streaming.wait(std::time::Duration::ZERO);
+        let deadline = std::time::Instant::now();
         let SaveStep::Full(chunk) = streaming.prepare_save(&mut world, true, deadline) else {
             panic!("blocking yield")
         };
