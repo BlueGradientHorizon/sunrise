@@ -664,6 +664,8 @@ pub struct Chunk {
     /// inside the column and has no computed pads yet.
     pub(crate) light_layers: Option<[crate::section_mask::SectionMask; 2]>,
     pub(crate) light_sky: bool,
+    /// Padded light sections kept by this column's published non-air sections.
+    pub(crate) light_support: crate::section_mask::SectionMask,
     /// `Heightmap.Types.WORLD_SURFACE` per column (`z << 4 | x`): one above
     /// the highest non-air block, or the column's minimum Y. Built on the first read; a
     /// `set` that can move a column's surface marks that column, found again on its next read.
@@ -724,6 +726,7 @@ impl Chunk {
             pad_above: None,
             light_layers: None,
             light_sky: true,
+            light_support: crate::section_mask::SectionMask::EMPTY,
             surface: Heights::default(),
             motion_blocking: Heights::default(),
             lit: false,
@@ -954,6 +957,14 @@ impl Chunk {
             Err(Outside::Uniform(light)) => light,
         }
     }
+    /// Publish that terrain section `s` is non-air: it supports the three light sections
+    /// touching it, in this column and its eight neighbours.
+    pub fn add_light_support(&mut self, s: usize) {
+        for b in s..=s + 2 {
+            self.light_support.insert(b);
+        }
+    }
+
     /// Stored sky and block presence for a hydrated light section `b` (0 is the lower pad).
     /// Computed columns have no sparse DataLayer map.
     pub fn stored_light_layers(&self, b: usize) -> Option<[bool; 2]> {

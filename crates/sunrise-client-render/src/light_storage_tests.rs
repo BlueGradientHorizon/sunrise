@@ -5,7 +5,6 @@
 
 use crate::chunk::Chunk;
 use crate::world::World;
-use std::sync::Arc;
 use sunrise_world::registry::BlockStateId;
 
 const SCENARIO: &str = include_str!("../../../tools/light_storage_scenario.txt");
@@ -51,6 +50,7 @@ pub(crate) fn replay(scenario: &str) -> String {
                 for s in f[3].trim_start_matches("nonair=").split(',') {
                     if let Ok(s) = s.parse::<i32>() {
                         chunk.set(0, s * 16, 0, 1);
+                        chunk.add_light_support(chunk.section_index(s * 16).unwrap());
                     }
                 }
                 let mut layers = vec![(None, None); 26];
@@ -62,7 +62,7 @@ pub(crate) fn replay(scenario: &str) -> String {
                         (Some(layer(sky)), Some(layer(block)));
                 }
                 crate::light::light_from_layers(&mut chunk, &layers, world.shape.sky_light);
-                world.chunks.insert((n(1), n(2)), Arc::new(chunk));
+                world.install_light_column(chunk);
             }
             "drop" => {
                 world.unload_chunk((n(1), n(2)));

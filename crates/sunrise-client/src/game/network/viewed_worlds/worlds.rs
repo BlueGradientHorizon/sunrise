@@ -96,7 +96,7 @@ impl ViewedWorld {
             C::LevelChunkWithLight(p) => match self.format.column(&p) {
                 Ok(chunk) => {
                     let key = (p.x, p.z);
-                    self.world.chunks.insert(key, Arc::new(chunk));
+                    self.world.install_light_column(chunk);
                     self.unload_block_entities(key);
                     self.block_entities.insert(key, p.chunk.block_entities);
                     column_changed(&mut self.world, key);

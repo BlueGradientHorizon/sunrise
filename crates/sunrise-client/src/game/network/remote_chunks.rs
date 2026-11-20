@@ -102,6 +102,10 @@ impl ChunkFormat {
             };
             section.compact();
             chunk.sections[target as usize] = Arc::new(section);
+            // `LevelChunkSection.read` publishes this count, and `hasOnlyAir` reads it.
+            if s.non_empty != 0 {
+                chunk.add_light_support(target as usize);
+            }
         }
         let biomes: Vec<_> = sections.iter().map(|s| &s.biomes).collect();
         self.put_biomes(&mut chunk, &biomes);

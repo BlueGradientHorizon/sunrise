@@ -1301,7 +1301,7 @@ impl Streaming {
         let key = (chunk.x, chunk.z);
         self.lighting.remove(&key);
         self.light_snapshots.remove(&key);
-        world.chunks.insert(key, Arc::new(chunk));
+        world.install_light_column(chunk);
         self.lit.insert(key);
         self.generated_total += 1;
         let mask = SectionMask::below(world.layout().sections());
@@ -1541,7 +1541,11 @@ impl Streaming {
         let new = self.dropped_new.remove(&key) || chunk.generated;
         world.loaded_chunks.push((key.0, key.1, new));
         chunk.dynamic_pending = self.light_tables.holds_dynamic(&chunk);
-        world.chunks.insert(key, Arc::new(chunk));
+        if loaded {
+            self.light_tables
+                .publish_section_status(&mut chunk, world.shape);
+        }
+        world.install_light_column(chunk);
         if loaded {
             self.lit.insert(key);
             for sy in 0..world.layout().sections() as i32 {
@@ -3467,7 +3471,7 @@ fn take_resent_column(
     let kept = keep_unchanged_sections(old, &mut chunk, &mut cells);
     chunk.light_loaded = old.light_loaded;
     chunk.lit = true;
-    world.chunks.insert(key, Arc::new(chunk));
+    world.install_light_column(chunk);
     world.revision = world.revision.wrapping_add(1);
     // A section with new biomes and the same blocks remeshes now (its tint), with its neighbours, whose tint
     // blends across the border: above and below too, as a block's tint can sample the biome quart of the

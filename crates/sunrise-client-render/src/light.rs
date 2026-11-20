@@ -17,7 +17,7 @@
 use crate::fast_hash::FxHashMap;
 use crate::{
     blocks::BlockFacts,
-    chunk::{Chunk, ColumnLayout, Light, Section, index},
+    chunk::{Chunk, ColumnLayout, LevelShape, Light, Section, index},
     section_mask::SectionMask,
 };
 use std::{
@@ -55,6 +55,8 @@ pub struct LightTables {
     faces: usize,
     /// Number of distinct `(shaped, faces)` configurations.
     types: usize,
+    /// `BlockState.isAir`, for published section status, not the occlusion rule.
+    air_states: Vec<bool>,
     /// Per state: `emission << 16 | type << 4 | dampening`, and [`DYNAMIC`]. The low 16 bits are
     /// what `light_chunk` stores per cell, so a cell costs 2 bytes and the
     /// flood fill never reads the (large) `cells` table.
@@ -81,6 +83,9 @@ impl LightTables {
                     faces: [EMPTY; 6],
                 })
                 .collect(),
+            air_states: (0..facts.states.len())
+                .map(|id| facts.is_air(BlockStateId(id as u32)))
+                .collect(),
             occludes: vec![false, true, true, true],
             faces: 2,
             types: 1,
@@ -92,6 +97,22 @@ impl LightTables {
         tables.rebuild_cache();
         tables
     }
+    /// `LevelChunkSection.hasOnlyAir`: only used when a column first publishes its light.
+    pub(crate) fn publish_section_status(&self, chunk: &mut Chunk, shape: LevelShape) {
+        let first = chunk.min_y() >> 4;
+        chunk.light_support = SectionMask::EMPTY;
+        chunk.light_sky = shape.sky_light;
+        for s in 0..chunk.sections.len() {
+            if shape.has_section(first + s as i32)
+                && chunk.sections[s]
+                    .blocks
+                    .has(|id| !self.air_states.get(id as usize).copied().unwrap_or(true))
+            {
+                chunk.add_light_support(s);
+            }
+        }
+    }
+
     /// Build the packed per-cell info and the per-configuration blocking masks
     /// used by `light_chunk`'s flood fill.
     fn rebuild_cache(&mut self) {
@@ -227,6 +248,7 @@ impl LightTables {
     #[cfg(test)]
     fn from_parts(cells: Vec<Cell>, occludes: Vec<bool>, faces: usize) -> Self {
         let mut tables = Self {
+            air_states: (0..cells.len()).map(|id| id == 0).collect(),
             cells,
             occludes,
             faces,
@@ -2485,6 +2507,31 @@ pub(crate) mod tests {
         apply_relighting(&mut chunk, lights, &mut LightChanges::default());
         assert_eq!(chunk.stored_light_layers(1), Some([false, true]));
         assert_eq!(chunk.light(0, MIN_Y, 0), 0xF4);
+    }
+
+    #[test]
+    fn a_mixed_air_section_does_not_create_a_dark_border() {
+        use crate::world::World;
+        let mut tables = tables();
+        tables.air_states = vec![true, true, true, false];
+        let mut chunk = Chunk::empty(0, 0);
+        chunk.set(0, 0, 0, 1); // cave air
+        chunk.set(1, 0, 0, 2); // void air, alongside ordinary air
+        let mut world = World::new(BlockStateId(0), 0);
+        tables.publish_section_status(&mut chunk, world.shape);
+        world.install_light_column(chunk);
+        assert_eq!(world.light(16, 0, 0), 0xF0);
+
+        Arc::make_mut(world.chunks.get_mut(&(0, 0)).unwrap()).set(0, 0, 0, 3);
+        assert_eq!(
+            world.light(16, 0, 0),
+            0xF0,
+            "unpublished blocks do not change light"
+        );
+        let mut chunk = (*world.chunks[&(0, 0)]).clone();
+        tables.publish_section_status(&mut chunk, world.shape);
+        world.install_light_column(chunk);
+        assert_eq!(world.light(16, 0, 0), 0);
     }
 
     #[test]
