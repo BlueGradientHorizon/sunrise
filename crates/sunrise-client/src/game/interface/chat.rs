@@ -1700,6 +1700,15 @@ impl Game<'_> {
         if self.ui.hide_gui && !focused {
             return;
         }
+        let revision = self.inline_images_revision();
+        if self.ui.chat.inline_images_stale(revision) {
+            // Layout borrows a read-only Host while asking listeners.
+            let mut chat = std::mem::take(&mut self.ui.chat);
+            chat.refresh_inline_images(&self.gui.atlas, revision, |text| {
+                self.substitute_inline_images(text)
+            });
+            self.ui.chat = chat;
+        }
         self.ui.chat.smooth = self.settings.extras.chat_animation;
         self.ui.chat.hide_indicator = !self.settings.extras.chat_indicator;
         // The fractional tick makes the smooth chat extra's slide move every

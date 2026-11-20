@@ -2733,8 +2733,8 @@ impl HudBatch {
                     left: 0.0,
                     top: 0.0,
                     right: 0.0,
-                    bottom: 8.0,
-                    advance: 8.0,
+                    bottom: crate::font::INLINE_OBJECT_SIZE,
+                    advance: crate::font::INLINE_OBJECT_SIZE,
                     offset: 1.0,
                 }
             } else {
@@ -2959,7 +2959,8 @@ impl HudBatch {
             }
             InlineObject::Atlas { .. } => {
                 if let Some(rect) = atlas.inline_object_sprite(object) {
-                    self.rect_uv(x, y, 8.0, 8.0, rect, tint);
+                    let size = crate::font::INLINE_OBJECT_SIZE;
+                    self.rect_uv(x, y, size, size, rect, tint);
                 }
             }
         }
