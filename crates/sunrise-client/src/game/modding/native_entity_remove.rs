@@ -50,24 +50,7 @@ impl Game<'_> {
     }
     /// `Entity.setRemoved` of `t`, which `entity` names and is no mob, player or dragon part.
     pub(in crate::game) fn remove_target_now(&mut self, entity: EntityRef, t: Target) {
-        // Read before the entity counts as removed: its handle stops resolving.
-        let vehicle_y = match t {
-            Target::Boat(id) => self.boats.iter().find(|b| b.id == id).map(|b| b.position.y),
-            Target::Cart(id) => self.carts.iter().find(|c| c.id == id).map(|c| c.position.y),
-            _ => None,
-        };
-        let passengers: Vec<_> = self
-            .entity_passengers(entity)
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|passenger| {
-                vehicle_y.is_none()
-                    || !matches!(
-                        self.native_entity_target(*passenger),
-                        Some(Target::Mob(_) | Target::General(_))
-                    )
-            })
-            .collect();
+        let position = self.target_position(t);
         // `Entity.setRemoved`: the reason first, so the hooks below see
         // it removed; then the riding links are ended and the level is told.
         let mount = self.native_vehicle_id(t);
@@ -78,16 +61,23 @@ impl Game<'_> {
             self.release_removed_vehicle(vehicle);
         }
         self.retire_vehicle_registration(t);
-        if vehicle_y.is_some() {
+        if matches!(
+            t,
+            Target::Boat(_)
+                | Target::Cart(_)
+                | Target::Stand(_)
+                | Target::Tnt(_)
+                | Target::Other(_)
+                | Target::Cushion(_)
+        ) {
+            // The physical sweep uses the same destruction paths, but a
+            // passenger veto here must not trigger another attempt there.
             self.persist.notified_vehicle_removals.insert(entity.id());
         }
-        for passenger in passengers {
-            self.entity_stop_riding(passenger);
+        if let Some([_, y, _]) = position {
+            self.dismount_removed_passengers(entity.id(), y);
         }
-        if let Some(y) = vehicle_y {
-            // Notify actual Mob edges here, including rejected objects.
-            // A reentrant physical sweep must not notify them again.
-            self.dismount_destroyed_vehicle_mobs(entity.id(), y);
+        if matches!(t, Target::Boat(_) | Target::Cart(_)) {
             self.score_destroyed_vehicle_once(entity.id());
         }
         self.native_entity_left(entity.id());
@@ -138,7 +128,7 @@ impl Game<'_> {
             .then(|| EntityRef::new(entity.epoch(), id))
     }
     /// A mob leaves the level: its effects act first when it was killed.
-    fn remove_mob_now(&mut self, id: u32, killed: bool) {
+    pub(super) fn remove_mob_now(&mut self, id: u32, killed: bool) {
         if !self.mobs.iter().any(|m| m.id == id && !m.removed) {
             return;
         }
@@ -148,7 +138,15 @@ impl Game<'_> {
         if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
             m.removed = true;
         }
-        self.dismount_general_passengers(id);
+        self.finish_mob_removal(id);
+    }
+
+    /// The row is already marked removed; the root transaction commit also
+    /// ends passengers and tells the level here.
+    pub(in crate::game) fn finish_mob_removal(&mut self, id: u32) {
+        if let Some(mob) = self.mob_object(id) {
+            self.dismount_removed_passengers(id, mob.position.y);
+        }
         self.native_entity_left(id);
     }
     /// What a killed mob's effects do on removal (Oozing's slimes, Weaving's cobwebs, Wind

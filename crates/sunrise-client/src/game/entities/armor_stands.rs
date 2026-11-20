@@ -929,8 +929,10 @@ impl Game<'_> {
         let at = self.armor_stands[i].position;
         let at = [at.x, at.y, at.z];
         if creative {
-            let (width, height) = stand_box(&self.armor_stands[i]);
-            self.armor_stands.remove(i);
+            let Some(stand) = self.take_removed_armor_stand(self.armor_stands[i].id) else {
+                return false;
+            };
+            let (width, height) = stand_box(&stand);
             self.audio
                 .play("minecraft:entity.armor_stand.break", Some(at), 1.0, 1.0);
             self.show_breaking_particles(at, f64::from(width), f64::from(height));
@@ -948,7 +950,9 @@ impl Game<'_> {
             return true;
         }
         // brokenByPlayer: the stand item, then brokenByAnything: the equipment.
-        let a = self.armor_stands.remove(i);
+        let Some(a) = self.take_removed_armor_stand(self.armor_stands[i].id) else {
+            return false;
+        };
         let (width, height) = stand_box(&a);
         self.audio
             .play("minecraft:entity.armor_stand.break", Some(at), 1.0, 1.0);
@@ -1148,13 +1152,15 @@ impl Game<'_> {
                     )
                 },
             ) {
-                dead.push((i, damage_type));
+                dead.push((id, damage_type));
             }
             let (id, from, to) = section_step;
             self.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
         }
-        for (i, damage_type) in dead.into_iter().rev() {
-            self.break_armor_stand_by_anything(i, damage_type, 0);
+        for (id, damage_type) in dead.into_iter().rev() {
+            if let Some(i) = self.armor_stands.iter().position(|a| a.id == id) {
+                self.break_armor_stand_by_anything(i, damage_type, 0);
+            }
         }
         Ok(())
     }
@@ -1360,6 +1366,16 @@ impl Game<'_> {
             |_| None,
         );
     }
+    pub(super) fn take_removed_armor_stand(
+        &mut self,
+        id: u32,
+    ) -> Option<sunrise_client::entities::ArmorStand> {
+        self.with_destroying_vehicle(super::commands::Target::Stand(id), |game| {
+            let i = game.armor_stands.iter().position(|stand| stand.id == id)?;
+            Some(game.armor_stands.remove(i))
+        })?
+    }
+
     /// `ArmorStand.brokenByAnything`, then `kill`, as burning out or a blast
     /// breaks a stand: its equipment pops above its block, the stand item does
     /// not drop.
@@ -1369,7 +1385,9 @@ impl Game<'_> {
         damage_type: &str,
         causing: u32,
     ) {
-        let a = self.armor_stands.remove(i);
+        let Some(a) = self.take_removed_armor_stand(self.armor_stands[i].id) else {
+            return;
+        };
         let at = [a.position.x, a.position.y, a.position.z];
         self.armor_stand_death_drops(&a, damage_type, causing);
         let source = self

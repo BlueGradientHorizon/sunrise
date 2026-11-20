@@ -1415,7 +1415,7 @@ impl Game<'_> {
     /// gets out, and a server's player is asked to
     /// (`guest_vehicle_tick` lets it out through its client).
     fn eject_boat_riders(&mut self, i: usize) {
-        self.eject_boat_mobs(i, false);
+        self.eject_boat_mobs(i);
         let id = self.boats[i].id;
         if self.riding == Some(id) && self.player.is_some() {
             self.dismount(i);
@@ -2142,29 +2142,17 @@ impl Game<'_> {
             }) {
                 return Some(true);
             }
-            if self
-                .with_destroying_vehicle(super::commands::Target::Boat(id), |game| {
-                    game.dismount_destroyed_vehicle_players(id);
-                    if let Some(i) = game.boats.iter().position(|boat| boat.id == id) {
-                        game.eject_boat_mobs(i, true);
-                    }
+            let Some(Some(b)) =
+                self.with_destroying_vehicle(super::commands::Target::Boat(id), |game| {
+                    game.release_vehicle_container(id);
+                    let i = game.boats.iter().position(|b| b.id == id)?;
+                    game.unpack_boat_loot(i, false);
+                    let i = game.boats.iter().position(|b| b.id == id)?;
+                    Some(game.boats.remove(i))
                 })
-                .is_none()
-            {
-                return Some(true);
-            }
-            let Some(i) = self.boats.iter().position(|b| {
-                b.id == id
-                    && !self
-                        .persist
-                        .removals
-                        .contains(&crate::game::commands::Target::Boat(id))
-            }) else {
+            else {
                 return Some(true);
             };
-            self.release_vehicle_container(id);
-            self.unpack_boat_loot(i, false);
-            let b = self.boats.remove(i);
             // `AbstractChestBoat.remove` spills the chest through
             // `Containers.dropContents` for every destroying removal reason
             // (the kill below, and a creative hit's discard); that has no

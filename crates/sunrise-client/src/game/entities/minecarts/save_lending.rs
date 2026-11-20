@@ -39,14 +39,6 @@ impl Game<'_> {
         let silent = explodes && self.entity_silent(c.id);
         if self
             .with_destroying_vehicle(target, |game| {
-                game.dismount_destroyed_vehicle_players(c.id);
-                if let Some(i) = game
-                    .carts
-                    .iter()
-                    .position(|x| x.id == c.id && x.join == c.join)
-                {
-                    game.eject_cart_mobs(i);
-                }
                 if game.carts.iter().any(|x| x.id == c.id && x.join == c.join) {
                     game.release_vehicle_container(c.id);
                 }
@@ -160,13 +152,6 @@ impl Game<'_> {
                     return true;
                 }
                 let _ = self.with_destroying_vehicle(target, |game| {
-                    game.dismount_destroyed_vehicle_players(id);
-                    let Some(i) = game.carts.iter().position(|c| {
-                        c.id == id && c.join == join && !game.persist.removals.contains(&target)
-                    }) else {
-                        return;
-                    };
-                    game.eject_cart_mobs(i);
                     if !game.carts.iter().any(|c| {
                         c.id == id && c.join == join && !game.persist.removals.contains(&target)
                     }) {

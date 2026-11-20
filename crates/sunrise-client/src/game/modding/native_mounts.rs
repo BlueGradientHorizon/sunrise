@@ -27,11 +27,18 @@ impl Game<'_> {
         target: Target,
         action: impl FnOnce(&mut Self) -> R,
     ) -> Option<R> {
+        let id = self.network_entity_id(target)? as u32;
+        let y = self.target_position(target)?[1];
         if !self.persist.destroying_vehicles.insert(target) {
             return None;
         }
         self.retire_vehicle_registration(target);
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| action(self)));
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            if !self.persist.notified_vehicle_removals.remove(&id) {
+                self.dismount_removed_passengers(id, y);
+            }
+            action(self)
+        }));
         self.persist.destroying_vehicles.remove(&target);
         match result {
             Ok(value) => Some(value),

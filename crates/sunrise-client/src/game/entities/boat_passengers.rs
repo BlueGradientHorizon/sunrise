@@ -640,96 +640,42 @@ impl Game<'_> {
             Target::Boat(id) | Target::Cart(id) => id,
             _ => unreachable!("only boat and cart removals use this helper"),
         };
-        if !self.persist.notified_vehicle_removals.remove(&id)
-            && self
-                .with_destroying_vehicle(target, |game| {
-                    game.dismount_destroyed_vehicle_players(id);
-                    match target {
-                        Target::Boat(_) => game.dismount_killed_boat(id),
-                        Target::Cart(_) => game.dismount_killed_cart(id),
-                        _ => unreachable!(),
+        let remove = |game: &mut Self| {
+            game.release_vehicle_container(id);
+            match target {
+                Target::Boat(_) => {
+                    if let Some(i) = game.boats.iter().position(|b| b.id == id) {
+                        game.unpack_boat_loot(i, false);
                     }
-                })
-                .is_none()
-        {
-            return false;
-        }
-        match target {
-            Target::Boat(_) => {
-                if let Some(i) = self.boats.iter().position(|b| b.id == id) {
-                    self.release_vehicle_container(id);
-                    self.unpack_boat_loot(i, false);
-                    let boat = self.boats.remove(i);
-                    self.drop_vehicle_contents(boat.position.components(), &boat.items);
-                    self.boat_removed(&boat);
-                    self.retain_removed_vehicle(id, RemovedVehicle::Boat(boat));
+                    if let Some(i) = game.boats.iter().position(|b| b.id == id) {
+                        let boat = game.boats.remove(i);
+                        game.drop_vehicle_contents(boat.position.components(), &boat.items);
+                        game.boat_removed(&boat);
+                        game.retain_removed_vehicle(id, RemovedVehicle::Boat(boat));
+                    }
                 }
-            }
-            Target::Cart(_) => {
-                self.release_vehicle_container(id);
-                if let Some(i) = self.carts.iter().position(|c| c.id == id) {
-                    self.unpack_loot(
-                        super::container_loot::LootTarget::Cart(self.carts[i].id),
-                        None,
-                    );
-                    let cart = self.carts.remove(i);
-                    self.drop_vehicle_contents(cart.position.components(), &cart.items);
-                    self.retain_removed_vehicle(id, RemovedVehicle::Cart(cart));
+                Target::Cart(_) => {
+                    game.unpack_loot(super::container_loot::LootTarget::Cart(id), None);
+                    if let Some(i) = game.carts.iter().position(|c| c.id == id) {
+                        let cart = game.carts.remove(i);
+                        game.drop_vehicle_contents(cart.position.components(), &cart.items);
+                        game.retain_removed_vehicle(id, RemovedVehicle::Cart(cart));
+                    }
                 }
+                _ => unreachable!(),
             }
-            _ => unreachable!(),
-        }
-        true
-    }
-
-    /// `Entity.setRemoved` also attempts the player edges, using their own
-    /// server context and rechecking each after earlier callbacks.
-    pub(super) fn dismount_destroyed_vehicle_players(&mut self, vehicle: u32) {
-        let players: Vec<_> = self
-            .seated_passengers(vehicle)
-            .into_iter()
-            .filter_map(|(_, id, player)| player.then_some(id))
-            .collect();
-        let local_listed = self
-            .lan_acting_entity
-            .is_some_and(|id| players.contains(&id));
-        for id in players {
-            if self
-                .seated_passengers(vehicle)
-                .iter()
-                .any(|&(_, rider, player)| player && rider == id)
-                && let Some(rider) = self.entity(id)
-            {
-                self.entity_stop_riding(rider);
-            }
-        }
-        // A local player outside a server guest turn has no seated entity ID.
-        if !local_listed
-            && self.lan_acting.is_none()
-            && self.player.is_some()
-            && self.riding == Some(vehicle)
-        {
-            self.stop_riding();
+        };
+        if self.persist.notified_vehicle_removals.remove(&id) {
+            // A deferred native removal already marked the vehicle and told its riders.
+            remove(self);
+            true
+        } else {
+            self.with_destroying_vehicle(target, remove).is_some()
         }
     }
 
-    /// `Entity.setRemoved`: attempt each passenger once; a veto keeps the edge.
-    pub(super) fn dismount_destroyed_vehicle_mobs(&mut self, vehicle: u32, y: f64) {
-        for rider in self.mob_passenger_ids(vehicle) {
-            if self
-                .mob_object(rider)
-                .is_some_and(|mob| !mob.removed && mob.extra.mount == Some(vehicle))
-            {
-                self.dismount_cart_mob_at(rider, y);
-            }
-        }
-        self.dismount_general_passengers(vehicle);
-    }
-
-    /// `ejectPassengers` for the mobs in boat `i`: each gets out where
-    /// `getDismountLocationForPassenger` puts it (beside the boat when it
-    /// broke: `LivingEntity.dismountVehicle`) and can't board for a while.
-    pub(super) fn eject_boat_mobs(&mut self, i: usize, broken: bool) {
+    /// `ejectPassengers` when a submerged boat is no longer rideable.
+    pub(super) fn eject_boat_mobs(&mut self, i: usize) {
         let b = &self.boats[i];
         let (id, y) = (b.id, b.position.y);
         for rider in self.mob_passenger_ids(id) {
@@ -748,14 +694,7 @@ impl Game<'_> {
             else {
                 continue;
             };
-            let at = if broken {
-                self.removed_vehicle_dismount_point(
-                    m.position,
-                    f64::from(m.width()),
-                    f64::from(m.height()),
-                    y,
-                )
-            } else if let Some(boat) = self.boats.iter().find(|b| b.id == id) {
+            let at = if let Some(boat) = self.boats.iter().find(|b| b.id == id) {
                 self.boat_dismount_target(boat, f64::from(m.width()), m.yaw)
             } else {
                 self.removed_vehicle_dismount_point(
@@ -1093,7 +1032,7 @@ mod boat_callback_review_tests {
                     mob.extra.vehicle_order = i64::from(id);
                     game.mobs.push(mob);
                 }
-                game.eject_boat_mobs(0, true);
+                assert!(game.kill_vehicle_object(crate::game::commands::Target::Boat(71)));
                 assert_eq!(game.mob_object(73).unwrap().extra.mount, Some(74));
                 assert_eq!(
                     heard
@@ -1139,7 +1078,7 @@ mod boat_callback_review_tests {
                 let mut boat = game.boats[0].clone();
                 boat.position = Vec3::new(40.0, 70.0, 40.0);
                 game.boats.store_back(0, boat);
-                game.eject_boat_mobs(0, true);
+                assert!(game.kill_vehicle_object(crate::game::commands::Target::Boat(71)));
                 assert!(game.mob_object(72).unwrap().removed);
                 assert_eq!(game.mob_object(72).unwrap().position, original);
                 assert_eq!(game.mob_object(73).unwrap().position, original);

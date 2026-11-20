@@ -2276,7 +2276,11 @@ impl Game<'_> {
             // Entity.kill removes the orb.
             Target::Orb(id) => self.orbs.retain(|o| o.id != id),
             Target::Projectile(id) => self.remove_projectile(id),
-            Target::Stand(id) => self.armor_stands.retain(|a| a.id != id),
+            Target::Stand(id) => {
+                if self.take_removed_armor_stand(id).is_none() {
+                    return;
+                }
+            }
             Target::Frame(id) => {
                 // ItemFrame.onKilled.
                 if let Some(frame) = self.item_frames.iter().find(|f| f.id == id).cloned() {
@@ -2291,14 +2295,29 @@ impl Game<'_> {
                 }
             }
             Target::Other(id) => {
-                self.others.retain(|o| o.id != id);
-                self.forget_entity(id);
+                if self
+                    .with_destroying_vehicle(t, |game| {
+                        game.others.retain(|o| o.id != id);
+                        game.forget_entity(id);
+                    })
+                    .is_none()
+                {
+                    return;
+                }
             }
             Target::Fangs(id) => self.fangs.list.retain(|f| f.id != id),
             Target::Crystal(id) => self.kill_crystal(id),
             Target::Dragon(id) => self.kill_dragon(id),
-            Target::Tnt(id) => self.tnts.retain(|t| t.id != id),
-            Target::Cushion(id) => self.kill_cushion(id),
+            Target::Tnt(id) => {
+                if self.take_removed_tnt(id).is_none() {
+                    return;
+                }
+            }
+            Target::Cushion(id) => {
+                if self.take_removed_cushion(id).is_none() {
+                    return;
+                }
+            }
             Target::Falling(id) => self.falling.retain(|f| f.id != id),
             Target::Rocket(id) => self.rockets.retain(|r| r.id != id),
             Target::Trident(id) => self.tridents.retain(|t| t.id != id),

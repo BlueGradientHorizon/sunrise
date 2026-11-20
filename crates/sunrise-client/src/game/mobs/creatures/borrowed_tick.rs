@@ -81,6 +81,16 @@ pub(super) struct BorrowedMobTick<'a> {
     pub(super) round: &'a mut super::super::native_ticks::TickRound,
 }
 impl Game<'_> {
+    fn removed_mob_has_riders(&self, id: u32, lent: &[Mob]) -> bool {
+        self.riding == Some(id)
+            || self.ridden_by_guest(id)
+            || self.general_passengers(id).next().is_some()
+            || lent
+                .iter()
+                .chain(self.mob_objects())
+                .any(|m| !m.removed && m.extra.mount == Some(id))
+    }
+
     pub(super) fn tick_borrowed_creatures(
         &mut self,
         state: BorrowedMobTick<'_>,
@@ -183,6 +193,7 @@ impl Game<'_> {
             let mut pause = None;
             let mut air_answer = None;
             let mut retry_rider = None;
+            let mut removing_vehicle = None;
             // A mob told alone hears its Pre right before its tick and its Post right after:
             // stop there, restore the list, tell it while the live rows are readable, and resume.
             let mut tell_pre: Option<(u32, std::sync::Arc<sunrise_client::mobs::MobType>, usize)> =
@@ -295,6 +306,12 @@ impl Game<'_> {
                         keep[slot] = !m.hostile() || m.persistent;
                         gone_rows |= !keep[slot];
                         cursor += 1;
+                        let id = m.id;
+                        if !keep[slot] && self.removed_mob_has_riders(id, &mobs) {
+                            mobs[i].removed = true;
+                            removing_vehicle = Some(id);
+                            break;
+                        }
                         continue;
                     }
                     // ServerLevel.tick walks the entity tick list, which holds only the
@@ -386,6 +403,11 @@ impl Game<'_> {
                         keep[slot] = kept;
                         gone_rows |= !kept;
                         cursor += 1;
+                        let id = m.id;
+                        if !kept && self.removed_mob_has_riders(id, &mobs) {
+                            removing_vehicle = Some(id);
+                            break;
+                        }
                         continue;
                     }
                     let controlling_player_movement = sunrise_client::mobs::equine::controlled(m)
@@ -445,6 +467,7 @@ impl Game<'_> {
                             &mut m.extra.equipment,
                         );
                     }
+                    let was_removed = m.removed;
                     let from = if resuming { resume_from } else { events.len() };
                     // The guest's view is lent to the mob for its tick, not copied:
                     // the tick only reads it (`&MobWorld`), and it goes back to the
@@ -747,6 +770,7 @@ impl Game<'_> {
                     snapshot[slot].alive &= kept;
                     snapshot[slot].removed |= !kept;
                     grid.update(slot, snapshot[slot].bounds);
+                    let id = m.id;
                     sunrise_client::mobs::apply_brain_events(
                         &mut mobs,
                         &mut level,
@@ -754,6 +778,11 @@ impl Game<'_> {
                         from,
                     );
                     cursor += 1;
+                    if !kept && !was_removed && self.removed_mob_has_riders(id, &mobs) {
+                        mobs[i].removed = true;
+                        removing_vehicle = Some(id);
+                        break;
+                    }
                     if section_yield || tell_post.is_some() {
                         break;
                     }
@@ -762,6 +791,7 @@ impl Game<'_> {
             self.creatures.lan_sounds.append(&mut hit_sounds);
             if pause.is_none()
                 && retry_rider.is_none()
+                && removing_vehicle.is_none()
                 && !section_yield
                 && tell_pre.is_none()
                 && tell_post.is_none()
@@ -776,7 +806,7 @@ impl Game<'_> {
             // can read or replace another actor's velocity. A section-only
             // or a told-alone yield must not change the normal end-of-pass
             // push ordering.
-            if pause.is_some() || retry_rider.is_some() {
+            if pause.is_some() || retry_rider.is_some() || removing_vehicle.is_some() {
                 for m in &mut mobs {
                     sunrise_client::mobs::apply_mob_pushes(m, &mut pushes);
                 }
@@ -786,15 +816,21 @@ impl Game<'_> {
             // any) and is taken again as it is, so the loop's views of it (snapshot, grid,
             // index, places) stay valid unless the call wrote a mob or added one. The list's
             // write stamp says whether it did: any mutable access moves it.
-            let told_only = pause.is_none() && retry_rider.is_none() && !section_yield;
+            let told_only = pause.is_none()
+                && retry_rider.is_none()
+                && removing_vehicle.is_none()
+                && !section_yield;
             let same_rows = told_only && !gone_rows;
             if !same_rows {
                 mobs.retain(|m| {
-                    index
-                        .get(&m.id)
-                        .and_then(|&slot| keep.get(slot as usize))
-                        .copied()
-                        .unwrap_or(true)
+                    // Give the removed vehicle back for its dismount hooks; its
+                    // position is still needed but its handle no longer resolves.
+                    removing_vehicle == Some(m.id)
+                        || index
+                            .get(&m.id)
+                            .and_then(|&slot| keep.get(slot as usize))
+                            .copied()
+                            .unwrap_or(true)
                 });
                 gone_rows = false;
             }
@@ -842,6 +878,19 @@ impl Game<'_> {
                         }
                     }
                 }
+                if let Some(id) = removing_vehicle {
+                    self.finish_mob_removal(id);
+                    if let Some(index) = self.mobs.iter().position(|mob| mob.id == id) {
+                        let removed = self.mobs.remove(index);
+                        if !self.persist.off_level.is_empty()
+                            && self.mob_objects().any(|mob| mob.extra.mount == Some(id))
+                        {
+                            self.persist
+                                .off_level
+                                .insert(id, crate::game::persist::OffLevel::Mob(removed));
+                        }
+                    }
+                }
                 if let Some((id, kind)) = &tell_post {
                     self.native_tick_post_one(round, *id, &kind.id);
                 }
@@ -866,7 +915,7 @@ impl Game<'_> {
             if tell_pre.is_some() {
                 told_at = Some(cursor);
             }
-            if retry_rider.is_some() {
+            if retry_rider.is_some() || removing_vehicle.is_some() {
                 blocked = std::borrow::Cow::Owned(self.mobs_below_off_level());
             }
             mobs = self.mobs.lift();

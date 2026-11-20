@@ -1928,20 +1928,6 @@ impl Game<'_> {
             }
         }
     }
-    /// `ejectPassengers` for the mobs in cart `i`.
-    pub(super) fn eject_cart_mobs(&mut self, i: usize) {
-        let (id, y) = (self.carts[i].id, self.carts[i].position.y);
-        for (_, rider, player) in self.seated_passengers(id) {
-            if player
-                || self
-                    .mob_object(rider)
-                    .is_none_or(|mob| mob.removed || mob.extra.mount != Some(id))
-            {
-                continue;
-            }
-            self.dismount_cart_mob_at(rider, y);
-        }
-    }
     /// Refuse a removed target before carrying its owning slot into a tick clone.
     pub(super) fn store_cart_back(&mut self, index: usize, cart: Minecart) -> bool {
         !self
@@ -3831,7 +3817,7 @@ mod rejected_passenger_tests {
                 .unwrap();
             let leaf = game.mob_passenger_ids(ghost)[0];
             assert!(game.mobs_below_off_level().contains(&leaf));
-            game.eject_cart_mobs(0);
+            assert!(game.kill_vehicle_object(crate::game::commands::Target::Cart(5000)));
             let rider = game.mob_object(ghost).unwrap();
             assert_eq!(rider.extra.mount, None);
             assert!(!rider.extra.passenger);

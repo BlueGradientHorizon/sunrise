@@ -773,6 +773,45 @@ impl Game<'_> {
         }
     }
 
+    /// `Entity.setRemoved`: stop each direct passenger in list order, not
+    /// the reverse order of `ejectPassengers`. A callback can move a later
+    /// passenger, so check each edge again before asking it to stop riding.
+    pub(super) fn dismount_removed_passengers(&mut self, vehicle: u32, y: f64) {
+        let passengers = self.seated_passengers(vehicle);
+        let own = self
+            .player
+            .as_ref()
+            .filter(|_| self.lan_acting.is_none())
+            .map(|player| player.entity_id as u32);
+        // An own-player edge that has no seat entry still needs to dismount.
+        if let Some(own) = own
+            && self.riding == Some(vehicle)
+            && !passengers
+                .iter()
+                .any(|&(_, id, player)| player && id == own)
+        {
+            self.stop_riding_from_removed_vehicle(vehicle, y);
+        }
+        for (_, id, player) in passengers {
+            if player {
+                let target = if own == Some(id) {
+                    Some(Target::Player)
+                } else {
+                    self.player_vehicle(id)
+                };
+                if let Some(target) = target
+                    && self.native_vehicle_id(target) == Some(vehicle)
+                {
+                    self.for_player(target, |g| g.stop_riding_from_removed_vehicle(vehicle, y));
+                }
+            } else if self.native_vehicle_id(Target::Mob(id)) == Some(vehicle) {
+                self.dismount_mob_from_removed_vehicle(id, y);
+            } else if self.native_vehicle_id(Target::General(id)) == Some(vehicle) {
+                self.dismount_general(id, vehicle);
+            }
+        }
+    }
+
     pub(super) fn dismount_general_passengers(&mut self, vehicle: u32) {
         let mut passengers: Vec<_> = self
             .general_passengers(vehicle)

@@ -2663,28 +2663,6 @@ mod nested_vehicle_discard_tests {
     }
 }
 
-impl Game<'_> {
-    pub(super) fn dismount_killed_boat(&mut self, id: u32) {
-        if let Some(y) = self.boats.iter().find(|b| b.id == id).map(|b| b.position.y) {
-            self.dismount_destroyed_vehicle_mobs(id, y);
-        }
-    }
-}
-
-impl Game<'_> {
-    pub(super) fn dismount_killed_cart(&mut self, id: u32) {
-        if let Some(y) = self.carts.iter().find(|c| c.id == id).map(|c| c.position.y) {
-            self.dismount_destroyed_vehicle_mobs(id, y);
-        }
-    }
-}
-
-impl Game<'_> {
-    pub(super) fn dismount_cart_mob_at(&mut self, rider: u32, y: f64) {
-        self.dismount_mob_from_removed_vehicle(rider, y);
-    }
-}
-
 #[cfg(test)]
 mod content_seat_tests {
     use super::*;

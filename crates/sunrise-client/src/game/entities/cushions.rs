@@ -424,12 +424,10 @@ impl Game<'_> {
         source: Option<super::commands::Target>,
         killed: bool,
     ) {
-        let c = self.cushions.remove(index);
+        let Some(c) = self.take_removed_cushion(self.cushions[index].id) else {
+            return;
+        };
         let p = c.position;
-        self.world.modified.insert((c.pos[0] >> 4, c.pos[2] >> 4));
-        if self.riding == Some(c.id) {
-            self.dismount_removed_vehicle(p.y);
-        }
         if killed {
             // BlockAttachedEntity.kill, before dropItem.
             self.entity_killed_event_by([p.x, p.y, p.z], source);
@@ -469,15 +467,13 @@ impl Game<'_> {
     }
 
     /// `Entity.kill` of a cushion (`/kill`): gone with no drop, its rider let go.
-    pub(super) fn kill_cushion(&mut self, id: u32) {
-        let Some(i) = self.cushions.iter().position(|c| c.id == id) else {
-            return;
-        };
-        let c = self.cushions.remove(i);
-        self.world.modified.insert((c.pos[0] >> 4, c.pos[2] >> 4));
-        if self.riding == Some(c.id) {
-            self.dismount_removed_vehicle(c.position.y);
-        }
+    pub(super) fn take_removed_cushion(&mut self, id: u32) -> Option<Cushion> {
+        self.with_destroying_vehicle(super::commands::Target::Cushion(id), |game| {
+            let i = game.cushions.iter().position(|c| c.id == id)?;
+            let c = game.cushions.remove(i);
+            game.world.modified.insert((c.pos[0] >> 4, c.pos[2] >> 4));
+            Some(c)
+        })?
     }
 
     /// `Cushion.showBreakingParticles`: ten of the matching wool block.
