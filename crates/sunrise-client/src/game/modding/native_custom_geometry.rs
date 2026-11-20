@@ -563,8 +563,10 @@ mod tests {
                 .draw_model_instances(
                     model,
                     &[
-                        ModelInstance::at([3.0, 70.0, 0.0], half_red),
-                        ModelInstance::at([9.0, 70.0, 0.0], half_red).with_hidden_faces(0b1),
+                        ModelInstance::at([3.0, 70.0, 0.0], u32::MAX).with_color(half_red),
+                        ModelInstance::at([9.0, 70.0, 0.0], u32::MAX)
+                            .with_color(half_red)
+                            .with_hidden_faces(0b1),
                     ],
                 )
                 .unwrap();
