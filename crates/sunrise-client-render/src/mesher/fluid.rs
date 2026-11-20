@@ -4,7 +4,10 @@
 //! light.
 use super::{
     Info, MeshTables, Padded, SectionMesh, TerrainVertex, fluid_face, lighting, pack_coords,
-    pack_rgb, part_tables::PartTables, pi,
+    pack_rgb,
+    part_tables::PartTables,
+    pi,
+    visibility_plan::{self, CellMasks},
 };
 use std::{convert::Infallible, sync::OnceLock};
 use sunrise_core::{
@@ -214,7 +217,7 @@ pub(super) fn splits_north_east(nw: f32, ne: f32, sw: f32, se: f32) -> bool {
 /// up-face value when a shader pack lights the faces (`Mesher::shader_pack_lighting`), whether to
 /// keep pure alpha for separate AO, and whether a `shaders/` pack draws the terrain
 /// (`Mesher::shader_pack`: tops split as Iris splits them, [`splits_north_east`]).
-pub(super) fn tesselate(
+pub(super) fn tesselate<M: CellMasks>(
     tables: &MeshTables,
     parts: &PartTables,
     (nether, shader_pack_lighting, separate_ao, shader_pack): (bool, bool, bool, bool),
@@ -222,7 +225,7 @@ pub(super) fn tesselate(
     water_color: u32,
     out: &mut SectionMesh,
     [x, y, z]: [i32; 3],
-    faces: u8,
+    masks: &M,
 ) {
     use sunrise_assets::model::Direction as D;
     let cardinal = |d: D| {
@@ -246,13 +249,27 @@ pub(super) fn tesselate(
     // Empty with no part answering: vanilla's tests alone.
     let hides = !parts.hidden_fluid_faces.is_empty();
     let hidden = |d: Direction| hides && parts.hides_fluid_face(neighbor_id(d), kind, d);
-    // `faces`: the directions a mod's section visibility keeps (all six without one).
-    let kept = |d: Direction| faces >> d as u8 & 1 != 0;
-    let should_render =
-        |d: Direction| kept(d) && !same(neighbor(d)) && !occluded_by_self(me, d) && !hidden(d);
-    let render_up = kept(Direction::Up) && !same(up) && !hidden(Direction::Up);
-    let render_down =
-        should_render(Direction::Down) && !occluded_by(Direction::Down, MAX_HEIGHT, down);
+    // What a mod's section visibility leaves of the cells around: the cell's own faces, and a
+    // neighbour only occludes through a face whose model and face bit it kept. `NoMasks`
+    // keeps everything, so none of this is read on the no-mod path.
+    let kept = masks.at(cell as usize);
+    let faces = kept & visibility_plan::FACES;
+    let neighbor_occludes = |d: Direction| {
+        !M::ACTIVE
+            || visibility_plan::occludes(
+                masks.at((cell + super::OFFSETS[d as usize]) as usize),
+                d.opposite() as u8,
+            )
+    };
+    let self_occludes = |d: Direction| {
+        occluded_by_self(me, d) && (!M::ACTIVE || kept & visibility_plan::MODEL != 0)
+    };
+    let should_render = |d: Direction| {
+        faces >> d as u8 & 1 != 0 && !same(neighbor(d)) && !self_occludes(d) && !hidden(d)
+    };
+    let render_up = faces >> Direction::Up as u8 & 1 != 0 && !same(up) && !hidden(Direction::Up);
+    let render_down = should_render(Direction::Down)
+        && !(neighbor_occludes(Direction::Down) && occluded_by(Direction::Down, MAX_HEIGHT, down));
     let sides = [
         should_render(Direction::North),
         should_render(Direction::South),
@@ -387,7 +404,10 @@ pub(super) fn tesselate(
     };
     let (fx, fy, fz) = (x as f32, y as f32, z as f32);
     let bottom = if render_down { EPSILON } else { 0.0 };
-    if render_up && !occluded_by(Direction::Up, nw.min(sw).min(se.min(ne)), up) {
+    if render_up
+        && !(neighbor_occludes(Direction::Up)
+            && occluded_by(Direction::Up, nw.min(sw).min(se.min(ne)), up))
+    {
         nw -= EPSILON;
         sw -= EPSILON;
         se -= EPSILON;
@@ -486,7 +506,7 @@ pub(super) fn tesselate(
             ),
         };
         let face_state = neighbor(d);
-        if !sides[i] || occluded_by(d, h0.max(h1), face_state) {
+        if !sides[i] || (neighbor_occludes(d) && occluded_by(d, h0.max(h1), face_state)) {
             continue;
         }
         let (layer, is_overlay) = match overlay {
@@ -614,7 +634,7 @@ mod tests {
                 0x00FF00,
                 &mut mesh,
                 [0, 0, 0],
-                0b11_1111,
+                &super::visibility_plan::NoMasks,
             );
             let (vertices, expected) = if kind == FluidKind::Lava {
                 assert!(mesh.translucent.is_empty());
@@ -650,12 +670,142 @@ mod tests {
             0x00FF00,
             &mut mesh,
             [0, 0, 0],
-            0b11_1111,
+            &super::visibility_plan::NoMasks,
         );
         let mut layers: Vec<_> = mesh.translucent.iter().map(|v| v.layer).collect();
         layers.sort_unstable();
         layers.dedup();
         assert_eq!(layers, vec![11, 12, 13]);
+    }
+
+    /// The kept bits a test hands the mesher: everything kept but the listed cells.
+    struct Kept(Vec<(usize, u8)>);
+    impl CellMasks for Kept {
+        const ACTIVE: bool = true;
+        fn at(&self, padded: usize) -> u8 {
+            self.0
+                .iter()
+                .find(|(cell, _)| *cell == padded)
+                .map_or(0xFF, |(_, kept)| *kept)
+        }
+    }
+
+    /// A fluid face is culled against what a neighbour still draws: a stone whose model or whose
+    /// face toward the fluid a mod removed no longer hides it, in the section and across its
+    /// border, while its fluid bit (the captured simulation) is untouched.
+    #[test]
+    fn fluid_culls_against_the_neighbours_that_still_occlude() {
+        use super::super::{Tint, mod_tint::ModTints};
+        use sunrise_world::fluid::FluidState;
+        let air = Info {
+            solid: false,
+            full: false,
+            permeable: true,
+            shade: 1.0,
+            emission: 0,
+            tier: 0,
+            emissive: false,
+            fluid: FluidState::EMPTY,
+            model: false,
+            block_entity: false,
+            tints: [Tint::None; 2],
+            tint_count: 0,
+            colormap: None,
+            offset: None,
+            legacy_solid: false,
+            overlay: false,
+            leaves: false,
+            pane: false,
+            opaque_cube: false,
+            blocks_flow: false,
+            ice: false,
+            opaque_ice: false,
+            sturdy: 0,
+            face: [0; 6],
+            cover: [0.0; 6],
+        };
+        let tables = MeshTables {
+            info: vec![
+                air,
+                Info {
+                    fluid: FluidState::new(FluidKind::Water, 8, true),
+                    ..air
+                },
+                Info {
+                    solid: true,
+                    full: true,
+                    model: true,
+                    legacy_solid: true,
+                    opaque_cube: true,
+                    face: [1; 6],
+                    cover: [1.0; 6],
+                    ..air
+                },
+            ],
+            solid: vec![],
+            full_faces: vec![],
+            visibility: sunrise_world::block_render::FaceVisibility::empty(),
+            water_still: 11,
+            water_flow: 12,
+            water_overlay: 13,
+            lava_still: 21,
+            lava_flow: 22,
+            mod_fluids: vec![],
+            animated_layers: vec![],
+            mod_tints: ModTints::default(),
+            section_geometry: std::sync::Arc::new([]),
+            colormaps: Vec::new(),
+            water_colormap: None,
+        };
+        // The vertices of the water at `at` with stone `beside` it, under `kept`.
+        let vertices = |at: [i32; 3], beside: [i32; 3], kept: &[(usize, u8)]| {
+            let mut pad = Padded {
+                blocks: vec![0; super::super::P.pow(3)],
+                light: vec![0xF0; super::super::P.pow(3)],
+            };
+            pad.blocks[pi(at[0], at[1], at[2])] = 1;
+            pad.blocks[pi(beside[0], beside[1], beside[2])] = 2;
+            let mut mesh = SectionMesh::default();
+            tesselate(
+                &tables,
+                &PartTables::NONE,
+                (false, false, true, false),
+                &pad,
+                0x00FF00,
+                &mut mesh,
+                at,
+                &Kept(kept.to_vec()),
+            );
+            mesh.translucent.len()
+        };
+        let model = 0xFF & !visibility_plan::MODEL;
+        let west_face = 0xFF & !(1 << Direction::West as u8);
+        let up_face = 0xFF & !(1 << Direction::Up as u8);
+        let east = pi(1, 0, 0);
+        for (at, beside, stone) in [
+            ([0, 0, 0], [1, 0, 0], east),
+            ([15, 0, 0], [16, 0, 0], pi(16, 0, 0)),
+        ] {
+            let culled = vertices(at, beside, &[]);
+            assert_eq!(
+                vertices(at, beside, &[(stone, model)]),
+                culled + 4 + 4,
+                "hiding the stone's model shows the face beside it, front and back"
+            );
+            assert_eq!(
+                vertices(at, beside, &[(stone, west_face)]),
+                culled + 4 + 4,
+                "a stone that removed its face toward the water no longer hides it"
+            );
+            assert_eq!(
+                vertices(at, beside, &[(stone, up_face)]),
+                culled,
+                "a face away from the water changes nothing"
+            );
+        }
+        // Stone above the water: the top shows once the stone's model is hidden.
+        let culled = vertices([0, 0, 0], [0, 1, 0], &[]);
+        assert!(vertices([0, 0, 0], [0, 1, 0], &[(pi(0, 1, 0), model)]) > culled);
     }
 
     #[test]

@@ -2277,7 +2277,6 @@ impl Mesher<'_> {
                             self.separate_ao,
                             self.shader_pack,
                         );
-                        let faces = kept & visibility_plan::FACES;
                         fluid::tesselate(
                             self.tables,
                             self.part_tables,
@@ -2286,7 +2285,7 @@ impl Mesher<'_> {
                             water,
                             &mut out,
                             [x, y, z],
-                            faces,
+                            masks,
                         );
                         if self.shader_pack {
                             out.record_source(
