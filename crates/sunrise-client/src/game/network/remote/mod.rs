@@ -2353,7 +2353,7 @@ impl Game<'_> {
         else {
             return;
         };
-        let mut w = sunrise_protocol::buf::Writer::new();
+        let mut w = ::sunrise_core::vanilla_bytes::Writer::new();
         w.varint(id);
         w.string(&command);
         self.send(S::Unknown(

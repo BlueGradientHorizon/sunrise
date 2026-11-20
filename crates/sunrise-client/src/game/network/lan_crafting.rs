@@ -861,7 +861,7 @@ impl Game<'_> {
     }
 
     pub(super) fn guest_recipe_transfer(&mut self, conn: u32, data: &[u8]) {
-        use sunrise_protocol::buf::Writer;
+        use sunrise_core::vanilla_bytes::Writer;
         let Some(host) = self.lan.as_ref() else {
             return;
         };
@@ -909,7 +909,8 @@ impl Game<'_> {
     /// packet but the reply. Each guest can burst ten checks, then gains one
     /// check per server tick (twenty per second at 20 TPS); more go unanswered.
     pub(super) fn guest_recipe_check(&mut self, conn: u32, data: &[u8]) {
-        use sunrise_protocol::buf::{Reader, Writer};
+        use sunrise_core::vanilla_bytes::Writer;
+        use sunrise_protocol::buf::Reader;
         let Some(host) = self.lan.as_mut() else {
             return;
         };
@@ -2077,7 +2078,7 @@ mod recipe_check_tests {
     }
 
     fn request(window: i32, tag: i32, id: &str) -> Vec<u8> {
-        let mut w = sunrise_protocol::buf::Writer::new();
+        let mut w = ::sunrise_core::vanilla_bytes::Writer::new();
         w.varint(window);
         w.varint(tag);
         w.string(id);
@@ -2213,7 +2214,7 @@ mod recipe_check_tests {
             );
             // The transfer the first check answered for does move them.
             game.guest_recipe_transfer(2, &{
-                let mut w = sunrise_protocol::buf::Writer::new();
+                let mut w = ::sunrise_core::vanilla_bytes::Writer::new();
                 w.varint(WINDOW);
                 w.string("minecraft:stick");
                 w.data

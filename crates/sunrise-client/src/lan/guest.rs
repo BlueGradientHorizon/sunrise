@@ -1215,7 +1215,7 @@ fn sign_text_bytes(text: &sunrise_core::nbt::Tag) -> Option<Vec<u8>> {
         Some(Tag::List(lines)) if lines.len() == 4 => Some(lines),
         _ => None,
     };
-    let mut w = sunrise_protocol::buf::Writer::new();
+    let mut w = ::sunrise_core::vanilla_bytes::Writer::new();
     lines("messages")?.iter().for_each(|line| w.nbt(line));
     let filtered = lines("filtered_messages");
     w.bool(filtered.is_some());
@@ -1249,7 +1249,7 @@ fn builtin_component(
     ids: &dyn Fn(&str, &str) -> Option<i32>,
 ) -> Option<sunrise_protocol::item::Component> {
     use sunrise_core::nbt::Tag;
-    use sunrise_protocol::buf::Writer;
+    use sunrise_core::vanilla_bytes::Writer;
     let mut w = Writer::new();
     match name {
         "minecraft:attribute_modifiers" => {
@@ -1317,7 +1317,7 @@ fn builtin_component(
 fn write_tool(
     value: &sunrise_core::nbt::Tag,
     ids: &dyn Fn(&str, &str) -> Option<i32>,
-    w: &mut sunrise_protocol::buf::Writer,
+    w: &mut ::sunrise_core::vanilla_bytes::Writer,
 ) -> Option<()> {
     use sunrise_core::nbt::Tag;
     use sunrise_world::datafix::dynamic::{as_bool_opt, as_number};
@@ -1365,7 +1365,7 @@ fn write_holder_set(
     registry: &str,
     value: &sunrise_core::nbt::Tag,
     ids: &dyn Fn(&str, &str) -> Option<i32>,
-    w: &mut sunrise_protocol::buf::Writer,
+    w: &mut ::sunrise_core::vanilla_bytes::Writer,
 ) -> Option<()> {
     use sunrise_core::nbt::Tag;
     if let Tag::String(name) = value {
@@ -1409,7 +1409,7 @@ fn write_holder_set(
 fn write_block_predicate(
     value: &sunrise_core::nbt::Tag,
     ids: &dyn Fn(&str, &str) -> Option<i32>,
-    w: &mut sunrise_protocol::buf::Writer,
+    w: &mut ::sunrise_core::vanilla_bytes::Writer,
 ) -> Option<()> {
     use sunrise_core::nbt::Tag;
     let Tag::Compound(map) = value else {
@@ -1507,7 +1507,7 @@ fn write_block_predicate(
 fn write_matchers(
     value: &sunrise_core::nbt::Tag,
     ids: &dyn Fn(&str, &str) -> Option<i32>,
-    w: &mut sunrise_protocol::buf::Writer,
+    w: &mut ::sunrise_core::vanilla_bytes::Writer,
 ) -> Option<()> {
     use sunrise_core::nbt::Tag;
     for (field, expected, registry) in [
@@ -1956,7 +1956,7 @@ pub(super) fn network_stack(
             // The saved list names only the filled slots; the codec counts them
             // all, from the first to the last that holds one.
             let size = slots.iter().map(|(slot, _)| slot + 1).max().unwrap_or(0);
-            let mut w = sunrise_protocol::buf::Writer::new();
+            let mut w = ::sunrise_core::vanilla_bytes::Writer::new();
             w.varint(size);
             for slot in 0..size {
                 let stack = slots.iter().find(|(at, _)| *at == slot).map(|(_, s)| s);
@@ -2192,7 +2192,8 @@ pub fn within_block_range(eye: [f64; 3], range: f64, pos: [i32; 3]) -> bool {
 mod tests {
     use super::*;
     use sunrise_core::nbt::Tag;
-    use sunrise_protocol::buf::{Codec, Reader, Writer};
+    use sunrise_core::vanilla_bytes::Writer;
+    use sunrise_protocol::buf::{Codec, Reader};
     use sunrise_protocol::item::{Component, component};
 
     #[test]

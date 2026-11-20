@@ -3864,7 +3864,7 @@ impl Hub {
                 ))
             })
             .collect();
-        let mut w = sunrise_protocol::buf::Writer::new();
+        let mut w = ::sunrise_core::vanilla_bytes::Writer::new();
         w.varint(known.len() as i32);
         for (ty, value, count) in known {
             w.varint(ty);
@@ -5059,7 +5059,7 @@ fn noted_last_tick(noted: Option<(u64, Vec<EntityState>)>, ticks: u64) -> Vec<En
 
 /// ClientboundTickingStatePacket: the tick rate and whether the game is frozen.
 fn ticking_state(rate: f32, frozen: bool) -> C {
-    let mut w = sunrise_protocol::buf::Writer::new();
+    let mut w = ::sunrise_core::vanilla_bytes::Writer::new();
     w.f32(rate);
     w.bool(frozen);
     raw(ids::TICKING_STATE, w.data)
