@@ -198,7 +198,8 @@ impl Particle {
         let fixed = match view.facing {
             ParticleFacing::Fixed(q) => {
                 let q = glam::Quat::from_array(q);
-                (q.is_finite() && q.length_squared() > 0.0).then(|| Some(q.normalize()))
+                let length_squared = q.length_squared();
+                (length_squared.is_finite() && length_squared > 0.0).then(|| Some(q.normalize()))
             }
             _ => Some(None),
         };
