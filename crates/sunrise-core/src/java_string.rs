@@ -6,7 +6,8 @@
 //! `unsafe`. Each unit is weighted by its power of 31 straight from a table (a power of 31 modulo
 //! 2^32, since wrapping multiplication and addition are a ring), so the units of a block are
 //! independent sums and no multiplication waits for another: the same value as `h = 31 * h + c`,
-//! summed in another order. Short UTF-16 inputs and targets without SSE2 use the plain loop.
+//! summed in another order. Short inputs on x86-64 use independent scalar products; other targets
+//! use the plain loop.
 //! This module depends on nothing else in the crate, so that `tools/string_hash_kit` can time
 //! byte-identical copies of it.
 
@@ -16,15 +17,36 @@ mod units;
 pub(crate) use units::{INLINE_CAPACITY, Units};
 
 /// `String.hashCode` of a string's UTF-16 units.
-#[inline]
+#[inline(always)]
 pub fn java_string_hash(units: &[u16]) -> i32 {
     #[cfg(target_arch = "x86_64")]
-    if units.len() >= WIDE_FROM {
-        return simd::fold_wide_utf16(units) as i32;
+    {
+        let Some((&a, rest)) = units.split_first() else {
+            return 0;
+        };
+        if let [b, tail @ ..] = rest {
+            if tail.len() <= 1 {
+                let (a, b) = (i32::from(a), i32::from(*b));
+                if let [c] = tail {
+                    return 961 * a + 31 * b + i32::from(*c);
+                }
+                return 31 * a + b;
+            }
+        } else {
+            return i32::from(a);
+        }
+        if units.len() == 8 {
+            return simd::weighted_sum(units) as i32;
+        }
+        if units.len() >= WIDE_FROM {
+            return simd::fold_wide_utf16(units) as i32;
+        }
+        simd::fold_short(0, units) as i32
     }
-    units.iter().fold(0i32, |hash, &unit| {
-        hash.wrapping_mul(31).wrapping_add(i32::from(unit))
-    })
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        fold(0, units) as i32
+    }
 }
 
 /// Widen bytes already known to be ASCII, folding inline keys in the same pass.
@@ -263,30 +285,36 @@ mod simd {
     #[inline(always)]
     pub(super) fn fold<T: Unit>(hash: u32, units: &[T]) -> u32 {
         if units.len() < WIDE_FROM {
-            // Independent multiplies avoid a dependency chain for each short key. The
-            // terms in a group fit in u32 even at the largest UTF-16 code unit.
-            let (groups, tail) = units.as_chunks::<4>();
-            let mut hash = hash;
-            for &[a, b, c, d] in groups {
-                hash = hash.wrapping_mul(POWERS[4]).wrapping_add(
-                    a.into() * POWERS[3] + b.into() * POWERS[2] + c.into() * 31 + d.into(),
-                );
-            }
-            return match tail {
-                [a, b, c] => hash
-                    .wrapping_mul(POWERS[3])
-                    .wrapping_add((*a).into() * POWERS[2] + (*b).into() * 31 + (*c).into()),
-                [a, b] => hash
-                    .wrapping_mul(POWERS[2])
-                    .wrapping_add((*a).into() * 31 + (*b).into()),
-                [a] => hash.wrapping_mul(31).wrapping_add((*a).into()),
-                _ => hash,
-            };
+            fold_short(hash, units)
+        } else {
+            fold_wide(hash, units)
         }
-        fold_wide(hash, units)
+    }
+
+    /// Independent multiplies avoid a dependency chain for each short key. The
+    /// terms in a group fit in u32 even at the largest UTF-16 code unit.
+    #[inline(always)]
+    pub(super) fn fold_short<T: Unit>(mut hash: u32, units: &[T]) -> u32 {
+        let (groups, tail) = units.as_chunks::<4>();
+        for &[a, b, c, d] in groups {
+            hash = hash.wrapping_mul(POWERS[4]).wrapping_add(
+                a.into() * POWERS[3] + b.into() * POWERS[2] + c.into() * 31 + d.into(),
+            );
+        }
+        match tail {
+            [a, b, c] => hash
+                .wrapping_mul(POWERS[3])
+                .wrapping_add((*a).into() * POWERS[2] + (*b).into() * 31 + (*c).into()),
+            [a, b] => hash
+                .wrapping_mul(POWERS[2])
+                .wrapping_add((*a).into() * 31 + (*b).into()),
+            [a] => hash.wrapping_mul(31).wrapping_add((*a).into()),
+            _ => hash,
+        }
     }
 
     /// Keep the wide path's register and stack setup out of the inline UTF-16 loop.
+    #[cold]
     #[inline(never)]
     pub(super) fn fold_wide_utf16(units: &[u16]) -> u32 {
         fold_wide(0, units)
@@ -391,7 +419,7 @@ mod simd {
     /// pairs a multiply-add (`pmaddwd`) sums; `hi` products only matter modulo 2^16, which a 16-bit
     /// multiply (`pmullw`) gives.
     #[inline(always)]
-    fn weighted_sum<T: Unit>(units: &[T]) -> u32 {
+    pub(super) fn weighted_sum<T: Unit>(units: &[T]) -> u32 {
         let (front, rest) = units.split_at(units.len() % (2 * STEP));
         let pairs = rest.as_chunks::<{ 2 * STEP }>().0;
         let rows = 2 * (pairs.len() + usize::from(!front.is_empty()));
