@@ -53,10 +53,16 @@ The game checks each mod's answer whole before it uses any of it. More than 4096
 (`E_SECTION_VISIBILITY_TOO_MANY`), a cell outside 0 to 15 (`E_SECTION_VISIBILITY_OUTSIDE_SECTION`), a face mask
 above 63 (`E_SECTION_VISIBILITY_FACE_MASK`) or a cell named twice (`E_SECTION_VISIBILITY_DUPLICATE`) refuses that
 mod's answer for the section, logged once per mod and code, and the section draws as if the mod had not answered.
+A wasm answer with more than 4096 records is refused while it is decoded, before any record is read.
 A listener that panics (`E_SECTION_VISIBILITY_PANIC`) is switched off for this hook for the session, alone: the
 other listeners are asked as before, and every loaded section is asked again without it, so no mask it gave earlier
 stays in a neighbour's border or in a queued mesh.
 
+The answers the game keeps for the border (4096 bytes per section that changes anything) and the frozen plans the
+workers read (5832 bytes each, until their job ends) count against the same 128 MiB of in-flight bytes as section
+geometry. A section that finds no room waits, answered, until bytes come free. A section of air, when no
+mod draws section geometry, is not asked: it
+has no cell to hide.
 `SectionVisibility::check` is the same check, for a mod's own tests.
 
 ## When it is asked

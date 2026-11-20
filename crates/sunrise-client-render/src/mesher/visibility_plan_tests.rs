@@ -226,3 +226,24 @@ fn the_api_checks_answers_whole() {
         Err(R::InputSize)
     );
 }
+
+/// Cached answers and frozen plans are charged to the workers' shared in-flight bytes: past the
+/// limit a charge is refused, and a dropped lease gives its bytes back.
+#[test]
+fn leases_charge_the_shared_in_flight_bytes_and_give_them_back() {
+    use super::super::mod_geometry::MAX_IN_FLIGHT_BYTES;
+    static SHARED: std::sync::atomic::AtomicUsize =
+        std::sync::atomic::AtomicUsize::new(MAX_IN_FLIGHT_BYTES - 2 * PLAN_BYTES - ANSWER_BYTES);
+    let plan = Lease::charge_in(&SHARED, PLAN_BYTES).unwrap();
+    let other = Lease::charge_in(&SHARED, PLAN_BYTES).unwrap();
+    let answer = Lease::charge_in(&SHARED, ANSWER_BYTES).unwrap();
+    assert!(Lease::charge_in(&SHARED, 1).is_none(), "the limit is reached");
+    drop(plan);
+    assert!(Lease::charge_in(&SHARED, PLAN_BYTES + 1).is_none());
+    let again = Lease::charge_in(&SHARED, PLAN_BYTES).expect("a dropped lease's bytes are free");
+    drop((other, answer, again));
+    assert_eq!(
+        SHARED.load(std::sync::atomic::Ordering::Acquire),
+        MAX_IN_FLIGHT_BYTES - 2 * PLAN_BYTES - ANSWER_BYTES
+    );
+}

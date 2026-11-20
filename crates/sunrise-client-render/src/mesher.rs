@@ -17,7 +17,8 @@ mod part_tables_tests;
 mod sides;
 mod visibility_plan;
 pub use visibility_plan::{
-    SectionAnswer, SectionPlanBuilder, SectionVisibilityPlan, capture_input, plan_section,
+    ANSWER_BYTES, Lease, PLAN_BYTES, SectionAnswer, SectionPlanBuilder, SectionVisibilityPlan,
+    capture_input, plan_section,
 };
 #[cfg(test)]
 #[path = "mesher/source_tests.rs"]

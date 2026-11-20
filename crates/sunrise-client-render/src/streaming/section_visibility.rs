@@ -6,7 +6,9 @@
 //! mesh sequence and frozen into the job. With no mod listening a chosen section is queued at
 //! once, exactly as before.
 use super::{Job, Streaming};
-use crate::mesher::{Region, SectionAnswer, SectionVisibilityPlan, plan_section};
+use crate::mesher::{
+    ANSWER_BYTES, Lease, PLAN_BYTES, Region, SectionAnswer, SectionVisibilityPlan, plan_section,
+};
 use crate::world::World;
 use crate::fast_hash::{FxHashMap, FxHashSet};
 use std::sync::Arc;
@@ -18,34 +20,35 @@ pub struct SectionPreparation {
     /// Whether a mod listens to `section_visibility`, set by
     /// [`Streaming::refresh_section_visibility`]; false is the no-mod path.
     listening: bool,
-    /// A listener panicked: no section is asked until the next refresh.
-    disabled: bool,
     pending: Vec<VisibilityRequest>,
-    answers: FxHashMap<(i32, i32, i32), Arc<SectionAnswer>>,
+    /// Sections whose answer is given but whose storage the shared in-flight bytes had no room
+    /// for yet: admitted, in order, as bytes come free.
+    waiting: Vec<(VisibilityRequest, Option<SectionAnswer>)>,
+    answers: FxHashMap<(i32, i32, i32), HeldAnswer>,
     /// The mods and refusal codes logged since the last refresh: each is logged once.
     logged: FxHashSet<(&'static str, &'static str)>,
 }
 
+/// A section's cached answer and the in-flight bytes it holds until it is replaced or forgotten.
+struct HeldAnswer {
+    answer: SectionAnswer,
+    _lease: Lease,
+}
+
+/// A frozen plan and the in-flight bytes it holds until the job carrying it ends.
+pub struct FrozenPlan {
+    pub(crate) plan: SectionVisibilityPlan,
+    _lease: Lease,
+}
+
 impl SectionPreparation {
-    /// Whether sections wait for the mods' answers before they are queued.
-    pub fn listening(&self) -> bool {
-        self.listening
-    }
-    /// Whether the mods are asked: listening and no listener failed since the last refresh.
-    pub fn asks(&self) -> bool {
-        self.listening && !self.disabled
-    }
-    /// A listener panicked: stop asking until the next refresh; sections mesh without answers.
-    pub fn disable(&mut self) {
-        self.disabled = true;
+    /// Whether answers wait for room in the shared in-flight bytes.
+    pub fn has_waiting(&self) -> bool {
+        !self.waiting.is_empty()
     }
     /// Whether `mod_id`'s refusal `code` is new since the last refresh, so it is logged once.
     pub fn first_refusal(&mut self, mod_id: &'static str, code: &'static str) -> bool {
         self.logged.insert((mod_id, code))
-    }
-    /// The last combined answer of section `key`; `None` when it changes nothing.
-    pub fn answer(&self, key: (i32, i32, i32)) -> Option<&SectionAnswer> {
-        self.answers.get(&key).map(|a| &**a)
     }
 }
 
@@ -86,10 +89,10 @@ impl Streaming {
         region: Arc<Region>,
         seq: u64,
         first: bool,
-        visibility: Option<Arc<SectionVisibilityPlan>>,
+        visibility: Option<FrozenPlan>,
     ) {
         let mut settings = self.mesh_settings();
-        settings.visibility = visibility;
+        settings.visibility = visibility.map(Arc::new);
         let job = Job::Mesh(x, sy, z, region, seq, settings);
         self.submit(Some((x, z)), if first { 2 } else { 0 }, job);
     }
@@ -99,39 +102,66 @@ impl Streaming {
         std::mem::take(&mut self.section_visibility.pending)
     }
     /// The mods' combined answers to [`take_visibility_requests`](Self::take_visibility_requests),
-    /// in its order, applied in one step on the world thread. A section whose mesh sequence moved
-    /// on (remeshed, reloaded, refreshed) or whose column unloaded is refused and its answer
-    /// dropped: it is asked again when it is queued again. A section whose outer cells' answer
-    /// changed dirties its loaded neighbours, whose border reads them.
+    /// in its order, applied in one step on the world thread, after the sections still waiting
+    /// for room. A section whose mesh sequence moved on (remeshed, reloaded, refreshed) or whose
+    /// column unloaded is refused and its answer dropped: it is asked again when it is queued
+    /// again. A section whose outer cells' answer changed dirties its loaded neighbours, whose
+    /// border reads them. The cached answer and the frozen plan are charged to the workers'
+    /// shared in-flight bytes ([`ANSWER_BYTES`], [`PLAN_BYTES`]) before anything is changed, and
+    /// a section that finds no room waits, answered, for the next call.
     pub fn submit_visibility_answers(
         &mut self,
         world: &mut World,
         answered: Vec<(VisibilityRequest, Option<SectionAnswer>)>,
     ) {
-        for (request, answer) in answered {
+        let mut answered = {
+            let mut all = std::mem::take(&mut self.section_visibility.waiting);
+            all.extend(answered);
+            all
+        };
+        for (request, answer) in answered.drain(..) {
+            let (x, sy, z) = request.key;
+            if self.meshing.get(&request.key) != Some(&request.seq)
+                || !world.chunks.contains_key(&(x, z))
+            {
+                continue;
+            }
+            let leases = Lease::charge(PLAN_BYTES).and_then(|plan| {
+                let held = match &answer {
+                    Some(_) => Some(Lease::charge(ANSWER_BYTES)?),
+                    None => None,
+                };
+                Some((plan, held))
+            });
+            let Some((plan_lease, answer_lease)) = leases else {
+                self.section_visibility.waiting.push((request, answer));
+                continue;
+            };
             let VisibilityRequest {
                 key,
                 region,
                 seq,
                 first,
+                ..
             } = request;
-            let (x, sy, z) = key;
-            if self.meshing.get(&key) != Some(&seq) || !world.chunks.contains_key(&(x, z)) {
-                continue;
-            }
             let answers = &mut self.section_visibility.answers;
-            if SectionAnswer::border_differs(answers.get(&key).map(|a| &**a), answer.as_ref()) {
+            let before = answers.get(&key).map(|held| &held.answer);
+            if SectionAnswer::border_differs(before, answer.as_ref()) {
                 dirty_neighbours(world, key);
             }
-            match answer {
-                Some(answer) => answers.insert(key, Arc::new(answer)),
-                None => answers.remove(&key),
+            match (answer, answer_lease) {
+                (Some(answer), Some(_lease)) => answers.insert(key, HeldAnswer { answer, _lease }),
+                _ => answers.remove(&key),
             };
             let answers = &self.section_visibility.answers;
-            let plan = plan_section(answers.get(&key).map(|a| &**a), |[dx, dy, dz]| {
-                answers.get(&(x + dx, sy + dy, z + dz)).map(|a| &**a)
+            let plan = plan_section(answers.get(&key).map(|held| &held.answer), |[dx, dy, dz]| {
+                answers.get(&(x + dx, sy + dy, z + dz)).map(|held| &held.answer)
+            })
+            .map(|plan| FrozenPlan {
+                plan,
+                _lease: plan_lease,
             });
-            self.queue_mesh(key, region, seq, first, plan.map(Arc::new));
+            self.queue_mesh(key, region, seq, first, plan);
         }
     }
     /// A mod's `refresh_render_visibility`, or the join: whether a mod listens now, every
@@ -143,8 +173,8 @@ impl Streaming {
             return;
         }
         state.listening = listening;
-        state.disabled = false;
         state.pending.clear();
+        state.waiting.clear();
         state.answers.clear();
         state.logged.clear();
         self.reload_sections(world);
@@ -162,8 +192,8 @@ impl Streaming {
             .filter(|(x, _, z)| columns.contains(&(*x, *z)))
             .collect();
         for key in gone {
-            let answer = answers.remove(&key);
-            if SectionAnswer::border_differs(answer.as_deref(), None) {
+            let held = answers.remove(&key);
+            if SectionAnswer::border_differs(held.as_ref().map(|held| &held.answer), None) {
                 dirty_neighbours(world, key);
             }
         }

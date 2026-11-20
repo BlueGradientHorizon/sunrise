@@ -7,6 +7,7 @@
 //! `NoMasks` body, in which every step below is a constant and compiles away.
 use super::{ALL_VISIBLE, B, Info, Mesher, P, Padded, SectionMesh, pi};
 use crate::chunk::Chunk;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// The face bits of a cell's kept bits: down, up, north, south, west, east (`Direction` order).
 pub(super) const FACES: u8 = 0b0011_1111;
@@ -16,6 +17,38 @@ pub(super) const MODEL: u8 = 1 << 6;
 pub(super) const FLUID: u8 = 1 << 7;
 /// Everything kept: a cell no mod changed.
 const ALL: u8 = 0xFF;
+
+/// The bytes a section's cached [`SectionAnswer`] holds.
+pub const ANSWER_BYTES: usize = 4096;
+/// The bytes a section's frozen [`SectionVisibilityPlan`] holds.
+pub const PLAN_BYTES: usize = P * P * P;
+
+/// Bytes of visibility storage charged to the meshing workers' shared in-flight bytes (the ones
+/// added section geometry is counted in, [`MAX_IN_FLIGHT_BYTES`](super::mod_geometry)), given
+/// back when it drops: a cached answer's lease lives as long as the answer, a plan's as long as
+/// the job that carries it.
+#[derive(Debug)]
+pub struct Lease {
+    shared: &'static AtomicUsize,
+    bytes: usize,
+}
+
+impl Lease {
+    /// Charges `bytes` to the workers' shared in-flight bytes, or `None` at the global limit: the
+    /// caller waits for room.
+    pub fn charge(bytes: usize) -> Option<Self> {
+        Self::charge_in(&super::mod_geometry::IN_FLIGHT, bytes)
+    }
+    fn charge_in(shared: &'static AtomicUsize, bytes: usize) -> Option<Self> {
+        super::mod_geometry::reserve_in_flight(shared, bytes).then_some(Self { shared, bytes })
+    }
+}
+
+impl Drop for Lease {
+    fn drop(&mut self) {
+        self.shared.fetch_sub(self.bytes, Ordering::AcqRel);
+    }
+}
 
 /// What the mesher reads of a section's visibility, by padded cell index (`pi`).
 pub(super) trait CellMasks {

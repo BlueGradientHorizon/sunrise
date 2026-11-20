@@ -13,10 +13,11 @@ use mod_api::{
 
 impl Game<'_> {
     /// Asks the mods about the sections the streaming update chose to mesh, then queues them
-    /// with their frozen plans. Nothing waits while no mod listens: the update queued them.
+    /// with their frozen plans, and admits the sections still waiting for room in the workers'
+    /// in-flight bytes. Nothing waits while no mod listens: the update queued them.
     pub(in crate::game) fn prepare_section_visibility(&mut self) {
         let requests = self.streaming.take_visibility_requests();
-        if requests.is_empty() {
+        if requests.is_empty() && !self.streaming.section_visibility.has_waiting() {
             return;
         }
         let switched_off = mod_api::__private::poisoned_listeners(mod_api::HookId::SectionVisibility);

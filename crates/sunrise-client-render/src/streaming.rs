@@ -289,7 +289,7 @@ struct MeshSettings {
     translucent_layers: Arc<[bool]>,
     leaf_culling: LeafCullingMode,
     /// The section's frozen `section_visibility` plan; `None` on the no-mod path.
-    visibility: Option<Arc<crate::mesher::SectionVisibilityPlan>>,
+    visibility: Option<Arc<section_visibility::FrozenPlan>>,
 }
 enum Job {
     Generate(i32, i32),
