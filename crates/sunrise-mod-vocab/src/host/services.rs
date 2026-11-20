@@ -47,7 +47,7 @@ pub trait ClientSession {
     /// The connected server, not a stale reconnect target. None outside a
     /// logged-in client world. External display names are not retained; memory
     /// connections have no address. Friend-invite secrets are redacted.
-    fn client_server(&self) -> Option<ClientServer> {
+    fn client_server(&self) -> Option<ClientServer<'_>> {
         crate::world::phase::unprovided(
             "ClientSession::client_server",
             "client_server",
@@ -57,7 +57,7 @@ pub trait ClientSession {
     /// Side: client.
     /// The applied language code, not a pending options selection. None outside
     /// a logged-in client world. Read is_paused for the applied pause state.
-    fn client_language(&self) -> Option<String> {
+    fn client_language(&self) -> Option<Arc<str>> {
         crate::world::phase::unprovided(
             "ClientSession::client_language",
             "client_language",

@@ -4,6 +4,7 @@ use super::{Game, remote::Remote};
 #[cfg(test)]
 use mod_api::prelude::*;
 use mod_api::{BlockBreakingState, BlockPos, ClientFrameStats, ClientServer, PlayerRef};
+use std::sync::Arc;
 
 impl Game<'_> {
     pub(super) fn native_session(&self) -> Option<&Remote> {
@@ -15,7 +16,7 @@ impl Game<'_> {
     /// The connected server, not a stale reconnect target. None outside a
     /// logged-in client world. External display names are not retained; memory
     /// connections have no address. Friend-invite secrets are redacted.
-    pub(super) fn native_client_server(&self) -> Option<ClientServer> {
+    pub(super) fn native_client_server(&self) -> Option<ClientServer<'_>> {
         let remote = self.native_session()?;
         Some(ClientServer {
             name: self
@@ -34,7 +35,7 @@ impl Game<'_> {
 
     /// The applied language code, not a pending options selection. None outside
     /// a logged-in client world. Read is_paused for the applied pause state.
-    pub(super) fn native_client_language(&self) -> Option<String> {
+    pub(super) fn native_client_language(&self) -> Option<Arc<str>> {
         self.native_session()?;
         Some(sunrise_client::lang::code())
     }

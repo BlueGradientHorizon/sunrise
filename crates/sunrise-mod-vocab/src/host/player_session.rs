@@ -23,7 +23,7 @@ pub trait PlayerSessionBackend {
     /// `textures` included) of a connected or acting player. An offline-mode
     /// player has no properties. None for a stale or unavailable player.
     #[access(WorldOnly)]
-    fn player_profile(&self, player: PlayerRef) -> Option<GameProfile>;
+    fn player_profile(&self, player: PlayerRef) -> Option<GameProfile<'_>>;
     /// Side: server.
     /// The player's permission level, 0 to 4 (`Player.permissions()`,
     /// `PlayerList.getProfilePermissions`): an op's level, the

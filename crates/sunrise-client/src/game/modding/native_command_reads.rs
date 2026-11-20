@@ -27,7 +27,7 @@ impl Game<'_> {
 
     /// `ServerPlayer.getGameProfile`: the name `player_name` reads, and the properties the
     /// player logged in with. None for a stale or unavailable player.
-    pub(super) fn player_profile(&self, player: PlayerRef) -> Option<GameProfile> {
+    pub(super) fn player_profile(&self, player: PlayerRef) -> Option<GameProfile<'_>> {
         let name = self.player_name(player)?;
         let properties = self
             .lan
