@@ -59,11 +59,11 @@ mod tests {
         }
 
         fn blocks(&self, _: &RegistrationContext, event: &mut BlocksEvent<'_>) {
-            event.blocks.extend(
-                self.1
-                    .iter()
-                    .map(|&id| Block::new(id, "minecraft:stone").with_item(false)),
-            );
+            for &id in self.1 {
+                event
+                    .register(Block::new(id, "minecraft:stone").with_item(false))
+                    .unwrap();
+            }
         }
     }
     fn holder(count: i32) -> BlockEntity {
