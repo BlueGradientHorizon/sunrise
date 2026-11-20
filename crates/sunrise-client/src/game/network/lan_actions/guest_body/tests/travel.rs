@@ -147,6 +147,21 @@ fn correction(rx: &mpsc::Receiver<Out>) -> play::PlayerPosition {
     packet
 }
 
+fn acknowledge(game: &mut Game<'_>, packet: &play::PlayerPosition) {
+    let [x, y, z] = packet.position;
+    send(
+        game,
+        S::AcceptTeleportation(play::AcceptTeleportation {
+            id: packet.teleport,
+            x,
+            y,
+            z,
+            yaw: packet.yaw,
+            pitch: packet.pitch,
+        }),
+    );
+}
+
 #[test]
 #[ignore = "daily"]
 fn a_player_travel_veto_holds_new_reports_not_previously_accepted_ones() {
@@ -165,18 +180,7 @@ fn a_player_travel_veto_holds_new_reports_not_previously_accepted_ones() {
                 assert_eq!(packet.position, ACCEPTED);
                 assert_eq!(guest(game).position, ACCEPTED);
 
-                let [x, y, z] = ACCEPTED;
-                send(
-                    game,
-                    S::AcceptTeleportation(play::AcceptTeleportation {
-                        id: packet.teleport,
-                        x,
-                        y,
-                        z,
-                        yaw: packet.yaw,
-                        pitch: packet.pitch,
-                    }),
-                );
+                acknowledge(game, &packet);
                 assert!(guest(game).awaiting_teleport.is_none());
                 report(game, NEXT);
                 assert_eq!(correction(&rx).position, ACCEPTED);
@@ -225,6 +229,38 @@ fn a_player_travel_replacement_commits_displacement_and_corrects_velocity() {
             });
         }
     }
+}
+
+#[test]
+#[ignore = "daily"]
+fn another_travel_replacement_waits_for_the_first_correction_acknowledgement() {
+    with_reply(Some(Reply::Velocity), || {
+        with_player(false, |game, rx| {
+            game.guest_server_tick(1, true);
+            let first = correction(&rx);
+            assert_eq!(first.position, NEXT);
+
+            for _ in 0..2 {
+                game.lan.as_mut().unwrap().hub.ticks += 1;
+                game.guest_server_tick(1, true);
+            }
+            report(game, [4.0, 64.0, 5.0]);
+            assert_eq!(guest(game).position, NEXT);
+            assert!(!packets(&rx).into_iter().any(|(id, body)| matches!(
+                C::decode(id, &body).unwrap(),
+                C::PlayerPosition(_) | C::SetEntityMotion(_)
+            )));
+
+            acknowledge(game, &first);
+            assert!(guest(game).awaiting_teleport.is_none());
+            report(game, [4.0, 64.0, 5.0]);
+            assert_eq!(guest(game).position, [4.0, 64.0, 5.0]);
+            game.guest_server_tick(1, true);
+            let next = correction(&rx);
+            assert_ne!(next.teleport, first.teleport);
+            assert_eq!(next.position, [4.5, 64.0, 5.0]);
+        });
+    });
 }
 
 #[test]

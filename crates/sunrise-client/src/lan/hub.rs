@@ -2219,9 +2219,13 @@ impl Hub {
             return false;
         };
         let position = position.components();
-        if (g.awaiting_teleport.is_none() || g.pending_travel_velocity.is_some())
-            && g.position.map(f64::to_bits) != position.map(f64::to_bits)
-        {
+        if g.position.map(f64::to_bits) != position.map(f64::to_bits) {
+            // The in-flight target and its velocity belong to the ordinary
+            // acknowledgement and resend path. A later travel tick can
+            // publish a new target once the connection is ready for it.
+            if g.awaiting_teleport.is_some() {
+                return false;
+            }
             let carried = g.on_collider;
             self.guests.update(i, |g| {
                 g.on_ground = on_ground;
@@ -2231,8 +2235,7 @@ impl Hub {
             self.send_position_correction(i, Some(position), 0, [0.0; 3], Some(velocity));
             self.keep_carried_at(i, carried, position);
         } else {
-            // Leave an unrelated teleport alone, and don't send a position
-            // packet when only the body's velocity changed.
+            // Don't send a position packet when only velocity changed.
             g.send(&C::SetEntityMotion(play::SetEntityMotion {
                 id: g.entity_id,
                 velocity,
