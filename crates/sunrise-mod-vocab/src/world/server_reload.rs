@@ -5,7 +5,7 @@ mod tests;
 
 use crate::{
     FileToIdConverter, Identifier, ReloadApply, ReloadResourceError,
-    world::reload::{Boundary, ReloadFiles},
+    world::reload::{Boundary, ReloadCore, ReloadFiles},
     world::reload_order::ReloadOrderError,
 };
 use std::{
@@ -119,12 +119,45 @@ pub trait ServerReloadListeners {
         first: Identifier,
         second: Identifier,
     ) -> Result<(), ReloadOrderError>;
-    /// The registered names in registration order, boundaries included.
-    fn get_registry(&self) -> Vec<Identifier>;
-    /// The dependency edges as `(first, second)` names.
-    fn get_graph(&self) -> Vec<(Identifier, Identifier)>;
-    /// The name of the vanilla anchor preceding mod listeners by default.
-    fn get_last_vanilla_listener(&self) -> Identifier;
+    /// Borrow the registered names in registration order, boundaries included.
+    fn get_registry(&self) -> ServerReloadRegistryView<'_>;
+    /// Borrow the dependency graph as `(first, second)` names.
+    fn get_graph(&self) -> ServerReloadGraphView<'_>;
+    /// Borrow the effective vanilla anchor preceding mod listeners by default.
+    /// On the server this is the built-in loot modifier listener once registered,
+    /// not the function library. Use `VanillaServerListeners::functions()` to
+    /// order against the function library itself.
+    fn get_last_vanilla_listener(&self) -> &Identifier;
+}
+
+// no wire: borrows the live server reload registry during registration.
+/// The names registered so far in one server reload, borrowed from the registry.
+// exhaustive: its fields are private, so mods cannot build or destructure it
+pub struct ServerReloadRegistryView<'a> {
+    core: &'a ReloadCore<dyn ServerReloadListener>,
+}
+
+impl<'a> ServerReloadRegistryView<'a> {
+    /// Iterate over registered names in registration order, boundaries included.
+    pub fn iter(&self) -> impl Iterator<Item = &'a Identifier> + use<'a> {
+        self.core.registry().map(|(id, _)| id)
+    }
+}
+
+// no wire: borrows the live server reload dependency graph during registration.
+/// The current server reload dependencies, borrowed from the registry.
+// exhaustive: its fields are private, so mods cannot build or destructure it
+pub struct ServerReloadGraphView<'a> {
+    core: &'a ReloadCore<dyn ServerReloadListener>,
+}
+
+impl<'a> ServerReloadGraphView<'a> {
+    /// Iterate over dependency edges in insertion order. Each `(first, second)`
+    /// edge requires `first` to run before `second`; the edges include the
+    /// built-in ordering boundaries and are not a sorted list of listeners.
+    pub fn iter(&self) -> impl Iterator<Item = (&'a Identifier, &'a Identifier)> + use<'a> {
+        self.core.graph()
+    }
 }
 
 impl dyn ServerReloadListeners + '_ {
@@ -146,7 +179,7 @@ impl dyn ServerReloadListeners + '_ {
 /// The game's [`ServerReloadListeners`].
 // exhaustive: its fields are private, so mods cannot build or destructure it
 pub struct ServerListenerRegistry {
-    core: crate::world::reload::ReloadCore<dyn ServerReloadListener>,
+    core: ReloadCore<dyn ServerReloadListener>,
     retained: Vec<RetainedEntry>,
     pub(crate) default_anchor: Identifier,
 }
@@ -177,23 +210,20 @@ impl ServerReloadListeners for ServerListenerRegistry {
     ) -> Result<(), ReloadOrderError> {
         self.core.add_dependency(first, second)
     }
-    fn get_registry(&self) -> Vec<Identifier> {
-        self.core.registry().map(|(id, _)| id.clone()).collect()
+    fn get_registry(&self) -> ServerReloadRegistryView<'_> {
+        ServerReloadRegistryView { core: &self.core }
     }
-    fn get_graph(&self) -> Vec<(Identifier, Identifier)> {
-        self.core
-            .graph()
-            .map(|(first, second)| (first.clone(), second.clone()))
-            .collect()
+    fn get_graph(&self) -> ServerReloadGraphView<'_> {
+        ServerReloadGraphView { core: &self.core }
     }
-    fn get_last_vanilla_listener(&self) -> Identifier {
-        self.default_anchor.clone()
+    fn get_last_vanilla_listener(&self) -> &Identifier {
+        &self.default_anchor
     }
 }
 impl ServerListenerRegistry {
     pub(crate) fn new() -> Self {
         Self {
-            core: crate::world::reload::ReloadCore::new(
+            core: ReloadCore::new(
                 VanillaServerListeners::first(),
                 VanillaServerListeners::functions(),
                 VanillaServerListeners::last(),
