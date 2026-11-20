@@ -1,4 +1,4 @@
-//! `EntityRef::move_by` and the hanging entities `LevelRef::entities_in` lists.
+//! `EntityRef::move_by` and the hanging entities `LevelRef::visit_entities_in` visits.
 
 use super::native_entity_refs::tests::{collect_game_entities_in, with_game};
 use mod_api::MoveCause;

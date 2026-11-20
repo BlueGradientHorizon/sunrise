@@ -82,8 +82,8 @@ mod tests {
         viewed_worlds::tests::{client, close, column, layered, open, run, spawn},
     };
     use mod_api::{
-        BlockFace, BlockState, BlockUpdateFlags, ClipBlock, ClipFluid, Host, LevelRef,
-        LevelWriteError,
+        BlockFace, BlockState, BlockUpdateFlags, ClipBlock, ClipFluid, Host, LevelReadError,
+        LevelRef, LevelWriteError,
     };
     use sunrise_protocol::packets::play::{self, Clientbound as C};
     use sunrise_world::registry::BlockStateId;
@@ -232,7 +232,7 @@ mod tests {
         assert_eq!(viewed.fluid_state(&game, POCKET), None);
         assert_eq!(
             collect_entities_in(&game, viewed, [0.0; 3], [16.0; 3]),
-            None
+            Err(LevelReadError::Unavailable)
         );
     }
 

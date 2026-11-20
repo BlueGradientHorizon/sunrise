@@ -80,8 +80,8 @@ through, nearest first, with where it enters each box grown by `margin` and how 
 the test `ProjectileUtil.getEntityHitResult` makes on each candidate. Vanilla's filter is a
 predicate (`canHitEntity`, `isPickable`); here it is the caller's, who takes the first hit it
 accepts, for example the first living entity. A ray starting inside a box does not hit it, so
-pass the shooter as `exclude` or start outside it. Candidates are the entities `entities_in`
-finds, so spectators are never hit."#]
+pass the shooter as `exclude` or start outside it. Candidates are the entities
+`visit_entities_in` visits, so spectator guests are not hit."#]
     fn level_reads_note2();
     #[notes = r#"## Fluid properties and the explicit fluid tick
 
@@ -114,8 +114,8 @@ queues one."#]
 `LevelRef::online_players(host)` is `ServerLevel.players`: the online players in the level, parked or in
 place, each once under their own UUID, also while a guest's turn is running. Fake players are not
 listed, nor is a player a nested guest turn displaced, whose handle resolves again when that turn
-ends. `entities_in` stays the one area query: on a server it finds players in a box too;
-on a client it includes only the window's own player, not other players.
+ends. `visit_entities_in` is the spatial query: it visits placed non-spectator guests on a
+server, or the tracked players and the window's own non-spectator player on a client.
 
 `find_nearest_structure(host, structure, StructureSearch::new(origin, radius))` is
 `ServerLevel.findNearestMapStructure` without skipping known starts, the search `/locate

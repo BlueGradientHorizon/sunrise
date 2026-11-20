@@ -17,16 +17,14 @@ currently stores only the remainder item id, not a template's count or component
 returns `None`, while a known block with no item returns `Some("minecraft:air")`.
 Both reads are available on either side.
 
-`level.entities_in(host, min, max)` also works on the client's displayed level: tracked
-entities and the window's own non-spectator player are returned as readable handles.
-Other players are omitted (arismoko/horizon#3033);
-a level the client does not show, or a read before login, returns `None`.
-A bound that is NaN or infinite returns `None` on either side, before any entity is walked;
-a minimum above its maximum is the same box with the two swapped, as vanilla's `AABB`.
+`level.visit_entities_in(host, min, max, &mut visit)` also works on the client's displayed level:
+it visits readable tracked entities (including players) and the window's own non-spectator player.
+A level the client does not display, a read before login, or a NaN or infinite bound returns
+`Err(LevelReadError::Unavailable)` before any visit. A minimum above its maximum is the same box
+with the two swapped, as in vanilla's `AABB`. The walk resolves matches as it goes without a list
+and stops when the visitor returns `ControlFlow::Break(())`.
 `host.experience_orbs(dimension, min, max)` takes its box the same way, with an empty list
 for a bound that is not finite.
-Every entity list is walked once per call, O(entities) regardless of the box;
-each overlapping mob resolves through a mob-list scan, O(K*N) for K overlaps and N mobs.
 
 For engine contributors, every area method declares its load access once with `#[access(...)]`.
 `Metadata` admits registry facts during setup and reload; `WorldOnly`, `ClientSetup` and

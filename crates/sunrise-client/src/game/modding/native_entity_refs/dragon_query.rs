@@ -2,14 +2,22 @@
 use super::*;
 
 impl Game<'_> {
-    pub(super) fn append_dragon_query_ids(&self, bounds: Aabb, parts: bool, ids: &mut Vec<u32>) {
+    pub(super) fn visit_dragon_query_ids(
+        &self,
+        bounds: Aabb,
+        parts: bool,
+        visit_id: &mut impl FnMut(u32) -> ControlFlow<()>,
+    ) -> ControlFlow<()> {
         let Some(dragon) = self.dragon.as_ref().filter(|d| d.id != 0) else {
-            return;
+            return ControlFlow::Continue(());
         };
         if parts {
-            ids.extend(self.dragon.parts_table().iter().filter(|&id| {
-                bounds.intersects(dragon.part_geometry((id - dragon.id - 1) as usize).1)
-            }));
+            let mut cursor = None;
+            while let Some(id) = self.dragon.next_part(&mut cursor) {
+                if bounds.intersects(dragon.part_geometry((id - dragon.id - 1) as usize).1) {
+                    visit_id(id)?;
+                }
+            }
         } else {
             // EntityType.ENDER_DRAGON dimensions: 16 wide, 8 high.
             let p = dragon.position;
@@ -18,9 +26,10 @@ impl Game<'_> {
                 Vec3::new(p.x + 8.0, p.y + 8.0, p.z + 8.0),
             );
             if bounds.intersects(body) {
-                ids.push(dragon.id);
+                visit_id(dragon.id)?;
             }
         }
+        ControlFlow::Continue(())
     }
 }
 
@@ -187,6 +196,64 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
+    fn spatial_visit_stops_before_later_matches() {
+        with_game(|game| {
+            let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
+            let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
+            game.mobs.push(Mob::new(12, kind, Vec3::ZERO, 0.0));
+            game.item_frames.push(sunrise_client::entities::ItemFrame {
+                attachment_lifetime: Default::default(),
+                join: Default::default(),
+                id: 13,
+                pos: [0, 0, 0],
+                facing: 3,
+                glow: false,
+                item: None,
+                rotation: 0,
+                drop_chance: 1.0,
+                fixed: false,
+                invisible: false,
+                custom_name: None,
+                random: sunrise_core::random::LegacyRandom::new(0),
+                check_interval: 0,
+                ticks: 0,
+            });
+            let mut dragon = Dragon::new(Vec3::new(0.0, 80.0, 0.0), 0.0, 0);
+            dragon.id = 20;
+            game.dragon.replace(dragon);
+
+            let level = game.level(game.dim.id()).unwrap();
+            let host: &dyn mod_api::Host = game;
+            let min = [-10.0; 3];
+            let max = [10.0; 3];
+            let mut calls = 0;
+            assert_eq!(
+                level.visit_entities_in(host, min, max, &mut |entity| {
+                    calls += 1;
+                    assert_eq!(entity.id(), 12);
+                    assert_eq!(entity.position(host), Some([0.0; 3]));
+                    ControlFlow::Break(())
+                }),
+                Ok(ControlFlow::Break(()))
+            );
+            assert_eq!(calls, 1);
+            let ids: Vec<_> = collect_entities_in(host, level, min, max)
+                .unwrap()
+                .into_iter()
+                .map(|entity| entity.id())
+                .collect();
+            assert_eq!(ids, [12, 13, 25, 27, 28, 24, 26, 23, 22, 21]);
+            assert_eq!(
+                level.visit_entities_in(host, [100.0; 3], [110.0; 3], &mut |_| {
+                    panic!("empty box invoked the visitor")
+                }),
+                Ok(ControlFlow::Continue(()))
+            );
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn entities_in_includes_dragon_and_separate_parts() {
         with_game(|game| {
             let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
@@ -266,23 +333,23 @@ mod tests {
             let parts = [25, 27, 28, 24, 26, 23, 22, 21];
             assert_eq!(
                 ids(game, [-100.0, -10.0, -100.0], [100.0, 300.0, 100.0]),
-                Some([vec![15, 20, 7], parts.to_vec()].concat())
+                Ok([vec![15, 20, 7], parts.to_vec()].concat())
             );
             // Only the dragon's own 16x8 box: the dragon alone, with no part.
             assert_eq!(
                 ids(game, [-10.0, 199.0, -10.0], [10.0, 210.0, 10.0]),
-                Some(vec![20])
+                Ok(vec![20])
             );
             // Only parts: every part is listed and the dragon is not.
             assert_eq!(
                 ids(game, [-100.0, 40.0, -100.0], [100.0, 120.0, 100.0]),
-                Some(parts.to_vec())
+                Ok(parts.to_vec())
             );
             // A spectating window leaves only its own player out.
             game.set_mode_id(3);
             assert_eq!(
                 ids(game, [-100.0, -10.0, -100.0], [100.0, 300.0, 100.0]),
-                Some([vec![15, 20], parts.to_vec()].concat())
+                Ok([vec![15, 20], parts.to_vec()].concat())
             );
         });
     }

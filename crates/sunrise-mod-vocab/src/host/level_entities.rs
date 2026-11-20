@@ -43,33 +43,38 @@ pub trait LevelEntitiesBackend {
         visit: &mut dyn FnMut(EntityRef) -> core::ops::ControlFlow<()>,
     ) -> Result<core::ops::ControlFlow<()>, LevelReadError>;
     /// Side: both.
-    /// Entities whose bounding boxes intersect this box (`Level.getEntities`).
-    /// Face-only contact does not intersect; spectator players are excluded.
-    /// Returns None for a stale handle or a parked level: its entity handles
-    /// cannot resolve until the level is in place, and for a bound that is not
-    /// finite (NaN or infinite). A minimum above its maximum is the same box
-    /// with the two swapped, as vanilla's `AABB`. On a client (`ClientLevel`),
-    /// the entities the server tracks to it, other players among them, and the
-    /// window's own player, with the same walk.
-    /// None there before login and for a level it does not show. The walk
-    /// is in entity-list order, then item frames and paintings, followed by players. Every entity list is walked
-    /// once per call: O(entities) regardless of the box. Each overlapping mob
-    /// resolves through a mob-list scan: O(K*N) for K overlapping mobs and N mobs. Tridents do not
-    /// resolve. On the server block displays, item displays, text displays, markers and
-    /// interactions are included using physical boxes (zero-sized for displays and markers),
-    /// not display culling bounds. Eyes of ender and leash knots are not yet returned.
-    /// Other special entities
-    /// are not on the entity-list walk. The dragon follows ordinary entities;
-    /// its eight intersecting parts follow players in vanilla hash-table order (`Level.getEntities`).
-    /// During `hears_projectile_impacts`, the projectile list is taken out of
-    /// the game and is not visible; it is restored for `projectile_impact`.
+    /// Visit readable entities whose bounding boxes intersect this box (`Level.getEntities`).
+    /// Face-only contact does not intersect. Inverted bounds are swapped on each axis,
+    /// as in vanilla's `AABB`. The visitor can read each handle through the same host.
+    /// Return `ControlFlow::Break(())` to stop; the walk returns `Ok(ControlFlow::Break(()))`.
+    /// Full completion, including an empty box, returns `Ok(ControlFlow::Continue(()))`.
+    /// No result list is built and an early stop does not walk later matches.
+    ///
+    /// A stale level returns `LevelReadError::Stale`. Non-finite bounds, an inactive
+    /// server level, a client that has not logged in or is not displaying this level,
+    /// or unavailable world access return `LevelReadError::Unavailable`. A refused
+    /// walk does not call the visitor.
+    ///
+    /// The walk uses entity-list order, then item frames and paintings in join order
+    /// (frames first on ties), then the dragon's body. On the server, block, item and text
+    /// displays, markers, interactions and fishing hooks come next, then placed guests
+    /// other than spectators. Displays and markers use zero-sized physical boxes,
+    /// not rendering bounds. The client walks the entities it tracks, including tracked
+    /// players, then its own player if not spectating. The dragon's intersecting parts
+    /// come last on either side, in vanilla part-table order.
+    ///
+    /// Unresolved handles are skipped, including held-out server entities. Tridents
+    /// that do not resolve, eyes of ender and leash knots are not visited. The projectile
+    /// list is temporarily absent during `hears_projectile_impacts`; it is visible again
+    /// during `projectile_impact`.
     #[access(WorldOnly)]
-    fn level_entities_in(
+    fn level_visit_entities_in(
         &self,
         level: LevelRef,
         min: [f64; 3],
         max: [f64; 3],
-    ) -> Option<Vec<EntityRef>>;
+        visit: &mut dyn FnMut(EntityRef) -> core::ops::ControlFlow<()>,
+    ) -> Result<core::ops::ControlFlow<()>, LevelReadError>;
     /// Side: server.
     /// `ServerLevel.players`: the online players in this level, parked or in
     /// place, each once under their own UUID, also during a guest's turn. Fake
@@ -85,9 +90,8 @@ pub trait LevelEntitiesBackend {
     /// `margin` on every side and clipped against the segment. A ray that starts inside a box
     /// does not hit that entity, as in vanilla. `exclude` (the shooter) is skipped. Vanilla's
     /// filter (`canHitEntity`, `isPickable`) is the caller's: take the first hit it accepts.
-    /// Candidates are those `entities_in` finds, so spectators are not hit and the same kinds
-    /// are left out. None for a negative or non-finite margin, a non-finite point, and where
-    /// `entities_in` is None (a stale handle, a parked level).
+    /// Candidates are those `visit_entities_in` finds, so the same kinds are left out. None
+    /// for a negative or non-finite margin, a non-finite point, or a refused spatial walk.
     #[access(WorldOnly)]
     fn level_ray_trace_entities(
         &self,

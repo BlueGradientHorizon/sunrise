@@ -265,154 +265,161 @@ impl Game<'_> {
         }
         Ok(ControlFlow::Continue(()))
     }
-    /// Entities whose bounding boxes intersect this box (`Level.getEntities`).
-    /// Face-only contact does not intersect; spectator players are excluded.
-    /// Returns None for a stale handle or a parked level: its entity handles
-    /// cannot resolve until the level is in place, and for a bound that is not
-    /// finite (NaN or infinite). A minimum above its maximum is the same box
-    /// with the two swapped, as vanilla's `AABB`. On a client, see
-    /// `client_entities_in`. The walk
-    /// is in entity-list order, then item frames and paintings, followed by
-    /// players; each overlap requires a handle lookup, so cost grows with the
-    /// box's contents. Tridents cannot yet resolve; displays, markers and
-    /// interactions follow the listed entities. Other special entities
-    /// are not on the entity-list walk. The dragon follows ordinary entities;
-    /// its eight intersecting parts follow players (`Level.getEntities`).
-    /// During `hears_projectile_impacts`, the projectile list is taken out of
-    /// the game and is not visible; it is restored for `projectile_impact`.
+    /// Engine callers that mutate after querying need a snapshot of the matching handles.
     pub(super) fn level_entities_in(
         &self,
         level: LevelRef,
         min: [f64; 3],
         max: [f64; 3],
     ) -> Option<Vec<EntityRef>> {
-        if !self.level_handle_current(level) || !min.iter().chain(&max).all(|v| v.is_finite()) {
-            return None;
+        let mut entities = Vec::new();
+        let _ = self
+            .level_visit_entities_in(level, min, max, &mut |entity| {
+                entities.push(entity);
+                ControlFlow::Continue(())
+            })
+            .ok()?;
+        Some(entities)
+    }
+
+    /// Visit intersecting, readable entities in `Level.getEntities` query order.
+    pub(super) fn level_visit_entities_in(
+        &self,
+        level: LevelRef,
+        min: [f64; 3],
+        max: [f64; 3],
+        visit: &mut dyn FnMut(EntityRef) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, LevelReadError> {
+        if !self.level_handle_current(level) {
+            return Err(LevelReadError::Stale);
         }
+        if !min.iter().chain(&max).all(|v| v.is_finite()) {
+            return Err(LevelReadError::Unavailable);
+        }
+        let client = if self.is_logical_server() {
+            if level.dimension() != self.dim.key() {
+                return Err(LevelReadError::Unavailable);
+            }
+            None
+        } else {
+            Some(
+                self.remote
+                    .as_ref()
+                    .filter(|remote| remote.logged_in && remote.level_key == level.dimension())
+                    .ok_or(LevelReadError::Unavailable)?,
+            )
+        };
         let bounds = Aabb::new(
             Vec3::new(min[0], min[1], min[2]),
             Vec3::new(max[0], max[1], max[2]),
         );
-        if !self.is_logical_server() {
-            return self.client_entities_in(level, bounds);
-        }
-        if level.dimension() != self.dim.key() {
-            return None;
-        }
-        let mut ids = self.listed_entities_in(bounds);
-        self.append_hanging_query_ids(bounds, &mut ids);
-        self.append_dragon_query_ids(bounds, false, &mut ids);
-        ids.extend(
-            self.others
-                .iter()
-                .filter(|e| {
-                    e.display_marker_or_interaction_bounds()
-                        .is_some_and(|body| bounds.intersects(body))
-                })
-                .map(|e| e.id),
-        );
-        ids.extend(
-            self.fishing_hooks_here()
-                .filter(|(hook, _)| bounds.intersects(hook.bounds()))
-                .map(|(hook, _)| hook.id()),
-        );
-        for guest in self.lan.iter().flat_map(|h| &h.hub.guests) {
-            if !guest.participates_in_player_simulation()
-                || !guest.placed
-                || guest.dimension != level.dimension_id()
-            {
-                continue;
-            }
-            let body = if self.lan_acting == Some(guest.conn)
-                && let Some(player) = &self.player
-            {
-                if self.mode_id() == 3 {
-                    continue;
-                }
-                player.bounds()
+        let mut visit_id = |id| {
+            let entity = EntityRef::new(level.epoch(), id);
+            // Resolution ends before mod code runs: the visitor can make its own handle reads.
+            if self.native_entity_read_target(entity).is_some() {
+                visit(entity)
             } else {
-                if guest.game_mode == 3 {
-                    continue;
-                }
-                guest.bounds()
-            };
-            if bounds.intersects(body)
-                && let Ok(id) = u32::try_from(guest.entity_id)
-            {
-                ids.push(id);
+                ControlFlow::Continue(())
             }
-        }
-        self.append_dragon_query_ids(bounds, true, &mut ids);
-        Some(
-            ids.into_iter()
-                .map(|id| EntityRef::new(level.epoch(), id))
-                .filter(|handle| self.native_entity_target(*handle).is_some())
-                .collect(),
-        )
-    }
-    /// The entity lists' entities whose boxes meet `bounds`, in list order.
-    fn listed_entities_in(&self, bounds: Aabb) -> Vec<u32> {
-        let mut ids = Vec::new();
+        };
+        let stopped = Ok(ControlFlow::Break(()));
         for_each_entity!(entity_lists_of!(self), entity => {
             // The join flush assigns zero IDs later; a handle could alias another entity.
-            if entity.id() != 0 && !entity.is_removed() && bounds.intersects(entity.bounds()) {
-                ids.push(entity.id());
+            let id = entity.id();
+            if id != 0
+                && !entity.is_removed()
+                && bounds.intersects(entity.bounds())
+                && visit_id(id).is_break()
+            {
+                return stopped;
             }
         });
-        ids
-    }
-    /// The item frames and paintings whose boxes meet `bounds` (`HangingEntity`s are entities
-    /// of the level's list in vanilla; here they are lists of their own), in join order.
-    fn append_hanging_query_ids(&self, bounds: Aabb, ids: &mut Vec<u32>) {
-        let meets = |(lo, hi): ([f64; 3], [f64; 3])| {
-            bounds.intersects(Aabb::new(
+
+        // Each hanging list appends entities at admission. Merge the two in join order,
+        // taking frames first on ties as the old frame-then-painting stable sort did.
+        let mut frames = self.item_frames.iter().filter(|f| f.id != 0).peekable();
+        let mut paintings = self.paintings.iter().filter(|p| p.id != 0).peekable();
+        loop {
+            let next = if frames
+                .peek()
+                .is_some_and(|f| paintings.peek().is_none_or(|p| f.join <= p.join))
+            {
+                frames.next().map(|f| (f.id, f.bounds()))
+            } else {
+                paintings.next().map(|p| (p.id, p.bounds()))
+            };
+            let Some((id, (lo, hi))) = next else {
+                break;
+            };
+            let body = Aabb::new(
                 Vec3::new(lo[0], lo[1], lo[2]),
                 Vec3::new(hi[0], hi[1], hi[2]),
-            ))
-        };
-        let mut hanging: Vec<(_, u32)> = Vec::new();
-        hanging.extend(
-            self.item_frames
-                .iter()
-                .filter(|f| f.id != 0 && meets(f.bounds()))
-                .map(|f| (f.join, f.id)),
-        );
-        hanging.extend(
-            self.paintings
-                .iter()
-                .filter(|p| p.id != 0 && meets(p.bounds()))
-                .map(|p| (p.join, p.id)),
-        );
-        hanging.sort_by_key(|&(join, _)| join);
-        ids.extend(hanging.into_iter().map(|(_, id)| id));
-    }
-    /// `ClientLevel.getEntities` for `level_entities_in`: the entities the server
-    /// tracks to this client in entity-list order, other players among them (a
-    /// tracked player has a client copy, so its handle resolves), the dragon and
-    /// then the window's own player unless it spectates, then the dragon's parts.
-    /// None before login or for a level the client does not show.
-    fn client_entities_in(&self, level: LevelRef, bounds: Aabb) -> Option<Vec<EntityRef>> {
-        let remote = self.remote.as_ref().filter(|r| r.logged_in)?;
-        if level.dimension() != self.native_level_key() {
-            return None;
+            );
+            if bounds.intersects(body) && visit_id(id).is_break() {
+                return stopped;
+            }
         }
-        let mut ids = self.listed_entities_in(bounds);
-        self.append_hanging_query_ids(bounds, &mut ids);
-        self.append_dragon_query_ids(bounds, false, &mut ids);
-        if self.mode_id() != 3
-            && let Some(player) = &self.player
-            && bounds.intersects(player.bounds())
-            && let Ok(id) = u32::try_from(remote.entity_id)
+        if self
+            .visit_dragon_query_ids(bounds, false, &mut visit_id)
+            .is_break()
         {
-            ids.push(id);
+            return stopped;
         }
-        self.append_dragon_query_ids(bounds, true, &mut ids);
-        Some(
-            ids.into_iter()
-                .map(|id| EntityRef::new(level.epoch(), id))
-                .filter(|handle| self.native_entity_read_target(*handle).is_some())
-                .collect(),
-        )
+
+        if let Some(remote) = client {
+            if self.mode_id() != 3
+                && let Some(player) = &self.player
+                && bounds.intersects(player.bounds())
+                && let Ok(id) = u32::try_from(remote.entity_id)
+                && visit_id(id).is_break()
+            {
+                return stopped;
+            }
+        } else {
+            for entity in &self.others {
+                if entity
+                    .display_marker_or_interaction_bounds()
+                    .is_some_and(|body| bounds.intersects(body))
+                    && visit_id(entity.id).is_break()
+                {
+                    return stopped;
+                }
+            }
+            for (hook, _) in self.fishing_hooks_here() {
+                if bounds.intersects(hook.bounds()) && visit_id(hook.id()).is_break() {
+                    return stopped;
+                }
+            }
+            let dimension = self.dim.id();
+            for guest in self.lan.iter().flat_map(|h| &h.hub.guests) {
+                if !guest.participates_in_player_simulation()
+                    || !guest.placed
+                    || guest.dimension != dimension
+                {
+                    continue;
+                }
+                let body = if self.lan_acting == Some(guest.conn)
+                    && let Some(player) = &self.player
+                {
+                    if self.mode_id() == 3 {
+                        continue;
+                    }
+                    player.bounds()
+                } else {
+                    if guest.game_mode == 3 {
+                        continue;
+                    }
+                    guest.bounds()
+                };
+                if bounds.intersects(body)
+                    && let Ok(id) = u32::try_from(guest.entity_id)
+                    && visit_id(id).is_break()
+                {
+                    return stopped;
+                }
+            }
+        }
+        Ok(self.visit_dragon_query_ids(bounds, true, &mut visit_id))
     }
     /// Every entity the segment `from`..`to` passes through, nearest first, each box grown by
     /// `margin` (`ProjectileUtil.getEntityHitResult`'s test, without its filter: the caller
@@ -1099,8 +1106,13 @@ pub(super) mod tests {
         level: LevelRef,
         min: [f64; 3],
         max: [f64; 3],
-    ) -> Option<Vec<EntityRef>> {
-        level.entities_in(host, min, max)
+    ) -> Result<Vec<EntityRef>, LevelReadError> {
+        let mut entities = Vec::new();
+        let _ = level.visit_entities_in(host, min, max, &mut |entity| {
+            entities.push(entity);
+            ControlFlow::Continue(())
+        })?;
+        Ok(entities)
     }
 
     pub(in crate::game) fn collect_game_all_entities(
@@ -1120,8 +1132,13 @@ pub(super) mod tests {
         level: LevelRef,
         min: [f64; 3],
         max: [f64; 3],
-    ) -> Option<Vec<EntityRef>> {
-        game.level_entities_in(level, min, max)
+    ) -> Result<Vec<EntityRef>, LevelReadError> {
+        let mut entities = Vec::new();
+        let _ = game.level_visit_entities_in(level, min, max, &mut |entity| {
+            entities.push(entity);
+            ControlFlow::Continue(())
+        })?;
+        Ok(entities)
     }
 
     /// Isolate declarations and frozen registries without changing another test's resources.
@@ -3051,14 +3068,14 @@ pub(super) mod tests {
                     .unwrap()
                     .is_empty()
             );
-            assert!(
+            assert_eq!(
                 collect_game_entities_in(
                     game,
                     LevelRef::new(WorldEpoch::new(0), game.dim.key()),
                     [0.0; 3],
                     [2.0; 3]
-                )
-                .is_none()
+                ),
+                Err(LevelReadError::Stale)
             );
         });
     }
@@ -4732,32 +4749,41 @@ pub(super) mod tests {
             // The tracked pig, then the window's own player; the other pig is far away.
             assert_eq!(
                 ids(game, level, [-1.0, -1.0, -1.0], [3.0, 2.0, 1.0]),
-                Some(vec![15, 7])
+                Ok(vec![15, 7])
             );
             assert_eq!(
                 ids(game, level, [39.0, -1.0, -1.0], [41.0, 2.0, 1.0]),
-                Some(vec![16])
+                Ok(vec![16])
             );
             // The pig's box ends at x 2.45.
             assert_eq!(
                 ids(game, level, [2.5, 0.0, -1.0], [4.0, 1.0, 1.0]),
-                Some(vec![])
+                Ok(vec![])
             );
             game.set_mode_id(3);
             assert_eq!(
                 ids(game, level, [-1.0, -1.0, -1.0], [3.0, 2.0, 1.0]),
-                Some(vec![15])
+                Ok(vec![15])
             );
             let nether = LevelRef::new(level.epoch(), mod_api::DimensionKey::NETHER);
-            assert_eq!(ids(game, nether, [-1.0; 3], [3.0; 3]), None);
+            assert_eq!(
+                ids(game, nether, [-1.0; 3], [3.0; 3]),
+                Err(LevelReadError::Unavailable)
+            );
             let stale = LevelRef::new(WorldEpoch::new(level.epoch().get() + 1), level.dimension());
-            assert_eq!(ids(game, stale, [-1.0; 3], [3.0; 3]), None);
+            assert_eq!(
+                ids(game, stale, [-1.0; 3], [3.0; 3]),
+                Err(LevelReadError::Stale)
+            );
             game.remote.as_mut().unwrap().logged_in = false;
-            assert_eq!(ids(game, level, [-1.0; 3], [3.0; 3]), None);
+            assert_eq!(
+                ids(game, level, [-1.0; 3], [3.0; 3]),
+                Err(LevelReadError::Unavailable)
+            );
         });
     }
 
-    /// A client's `entities_in` lists another player standing in the box (added through the
+    /// A client's `visit_entities_in` visits another player standing in the box (added through the
     /// real `AddEntity` packet), after the entities the server tracks and before the window's
     /// own player; a player outside the box, and one the server removed, are not listed.
     #[test]
@@ -4819,18 +4845,18 @@ pub(super) mod tests {
             // Entity-list order: the pig, then the other players, then the window's own.
             assert_eq!(
                 ids(game, level, [-1.0, -1.0, -1.0], [3.0, 2.0, 1.0]),
-                Some(vec![15, 18, 20, 7])
+                Ok(vec![15, 18, 20, 7])
             );
             // A box around only the far player finds it, and the near box did not.
             assert_eq!(
                 ids(game, level, [39.0, -1.0, -1.0], [41.0, 2.0, 1.0]),
-                Some(vec![19])
+                Ok(vec![19])
             );
             game.handle_packet(C::RemoveEntities(RemoveEntities { ids: vec![20] }))
                 .unwrap();
             assert_eq!(
                 ids(game, level, [-1.0, -1.0, -1.0], [3.0, 2.0, 1.0]),
-                Some(vec![15, 18, 7])
+                Ok(vec![15, 18, 7])
             );
         });
     }
@@ -4868,17 +4894,21 @@ pub(super) mod tests {
                 ([-1.0, -1.0, -1.0], [3.0, 2.0, f64::INFINITY]),
                 ([f64::NEG_INFINITY; 3], [f64::INFINITY; 3]),
             ] {
-                assert_eq!(ids(game, level, min, max), None, "{min:?} {max:?}");
+                assert_eq!(
+                    ids(game, level, min, max),
+                    Err(LevelReadError::Unavailable),
+                    "{min:?} {max:?}"
+                );
             }
             // A minimum above its maximum on one axis is the same box swapped (vanilla's
             // AABB): the tracked pig, then the window's own player.
             assert_eq!(
                 ids(game, level, [3.0, -1.0, -1.0], [-1.0, 2.0, 1.0]),
-                Some(vec![15, 7])
+                Ok(vec![15, 7])
             );
             assert_eq!(
                 ids(game, level, [3.0, 2.0, 1.0], [-1.0, -1.0, -1.0]),
-                Some(vec![15, 7])
+                Ok(vec![15, 7])
             );
         });
     }

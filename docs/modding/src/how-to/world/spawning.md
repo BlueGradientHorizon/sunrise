@@ -39,22 +39,38 @@ notifies once with `loaded_from_disk = true`. The normal join cancellation and
 transaction rules apply to these entities too.
 
 `entity_leave_level` (hook version 3) reports the same additional kinds when they leave.
-On the server, `level.entities_in(host, min, max)` additionally returns readable `EntityRef`
-handles for block, item and text displays, markers and interactions. Eyes of ender,
-leash knots and other unmodeled kinds are not returned yet. The returned entities'
-kind, position, saved data and tags can be inspected without command selectors. The query uses physical boxes, not rendering/culling boxes:
-displays and markers have zero-sized boxes at their positions; interactions use their
-saved width and height. Face-only contact does not intersect. A handle expires when its
-entity unloads, so find it again when the saved entity rejoins.
+On the server, `LevelRef::visit_entities_in` also visits block, item and text displays,
+markers and interactions. Eyes of ender, leash knots and other unmodeled kinds are
+not visited yet. The query uses physical boxes, not rendering bounds: displays
+and markers have zero-sized boxes at their positions; interactions use their saved
+width and height. A handle expires when its entity unloads, so find it again when
+the saved entity rejoins.
 
-`level_entities_in(level, min, max)` lists item frames and paintings whose boxes meet the box too, with
-handles that resolve, after the ordinary entities and before the players.
+## Visiting entities in a box
+
+`level.visit_entities_in(host, min, max, &mut visit)` visits readable `EntityRef`s
+whose boxes intersect the given box. Face-only contact does not intersect, and
+inverted bounds are swapped on each axis. Ordinary entities come first, then item
+frames and paintings in join order and the dragon's body. The server then visits
+displays, markers, interactions, fishing hooks and placed non-spectator guests.
+On a client the walk sees the server-tracked entities, including tracked players,
+and visits the window's own player after the dragon's body unless spectating.
+Intersecting dragon parts come last on both sides.
+
+The visitor can read the handle through the same host. Return
+`ControlFlow::Continue(())` to keep walking or `ControlFlow::Break(())` to stop
+without checking later matches. The call returns `Ok(Continue(()))` on completion,
+including an empty query, or `Ok(Break(()))` if stopped. It returns
+`Err(LevelReadError::Stale)` for a stale level or `Err(LevelReadError::Unavailable)`
+for a non-finite bound, a parked or undisplayed level, or unavailable world access.
+A refused call does not run the visitor. Collect in the visitor only if you need
+a list after the call.
 
 ## Walking every entity in a level
 
 `level.visit_all_entities(host, &mut visit)` visits the authoritative level's
 `EntityRef`s without an AABB filter, including spectator players. Vehicles being
-removed are skipped. Unlike `level.entities_in`, it does not append the dragon's
+removed are skipped. Unlike `level.visit_entities_in`, it does not append the dragon's
 parts: vanilla's `ServerLevel.getAllEntities` iterates the entity lookup, not
 multipart hit boxes. The visitor can read the entity through the same host.
 

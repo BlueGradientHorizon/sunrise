@@ -148,7 +148,7 @@ again within the same client level, the old handle reads again. A login, a recon
 into another level replaces the client level: the old handle stays stale for good, and the mod calls
 `host.level` again once the server reopens the level. A respawn in the same level drops the viewed
 levels too, but keeps the client level, so the old handle reads again after the reopen. Writes,
-server-only reads, the other level reads and the entity reads (`entities_in`) refuse a viewed level.
+server-only reads, the other level reads and the entity reads (`visit_entities_in`) refuse a viewed level.
 
 ## Crosshair reads
 
