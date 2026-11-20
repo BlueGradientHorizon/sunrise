@@ -1077,8 +1077,8 @@ fn an_older_list_cannot_tell_a_literal_from_a_doubt_so_a_new_field_is_left_to_th
 fn bad_tables_are_refused_by_kind() {
     let refused = |text: &[u8]| UsesTable::read(text).unwrap_err();
     assert_eq!(
-        refused(br#"{"schema":3,"made_for":"x","entries":[]}"#),
-        UsesError::Schema(3)
+        refused(br#"{"schema":4,"made_for":"x","entries":[]}"#),
+        UsesError::Schema(4)
     );
     assert!(matches!(refused(b"not json"), UsesError::Json(_)));
     assert!(matches!(

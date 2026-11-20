@@ -24,7 +24,7 @@
 //! an input cannot be read or the options are wrong.
 use mod_source::mod_uses;
 use mod_surface::Surface;
-use mod_surface::uses::{Fit, ManifestFacts, Origin, UsesTable, fits, uses_contained};
+use mod_surface::uses::{Fit, ManifestFacts, Origin, UsesTable, uses_contained};
 use std::path::PathBuf;
 use sunrise_mod_api_gen::staging::{self, Mode};
 use sunrise_mod_api_gen::surface::{ExportOptions, export_with};
@@ -176,7 +176,7 @@ fn fits_command(args: &[PathBuf]) -> ! {
                 .to_owned(),
         );
     }
-    match fits(&table.entries, &target) {
+    match table.fits(&table.entries, &target) {
         Fit::Fits => {
             println!(
                 "fits ({} items, made for {})",

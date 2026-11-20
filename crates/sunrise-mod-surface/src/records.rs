@@ -356,7 +356,7 @@ pub struct Type {
     /// The traits it implements, derived or written in the API's crates alike (`Clone`,
     /// `From<String>`, `Default`), by normalised trait path, sorted; `Wire` is `wire`'s. A set
     /// outside the hash: gaining one is additive, and the fit test checks the set itself
-    /// ([`crate::uses::fits`]).
+    /// ([`crate::uses::UsesTable::fits`]).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub impls: Vec<String>,
     /// For a struct, tuple struct or union: [`crate::fields_hash`] of its public fields, outside

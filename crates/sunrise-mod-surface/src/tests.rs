@@ -143,11 +143,11 @@ fn leaves_are_what_a_mod_writes() {
 #[test]
 fn the_reader_refuses_with_a_typed_error() {
     let text = sample().to_json();
-    let older = text.replacen("\"schema\": 2", "\"schema\": 1", 1);
+    let older = text.replacen(&format!("\"schema\": {SCHEMA}"), "\"schema\": 1", 1);
     assert_eq!(Surface::read(older.as_bytes()), Err(ReadError::Schema(1)));
     assert_eq!(
         ReadError::Schema(1).to_string(),
-        "surface schema 1, this tool reads 2"
+        "surface schema 1, this tool reads 2 and 3"
     );
     assert!(matches!(
         Surface::read(&text.as_bytes()[..text.len() / 2]),
@@ -158,7 +158,7 @@ fn the_reader_refuses_with_a_typed_error() {
         Err(ReadError::Json(_))
     ));
     assert!(matches!(Surface::read(b"{}"), Err(ReadError::Json(_))));
-    let wrong_type = text.replacen("\"wasm\": true", "\"wasm\": \"yes\"", 1);
+    let wrong_type = text.replacen("\"signature\":", "\"signature\": false, \"other\":", 1);
     assert!(matches!(
         Surface::read(wrong_type.as_bytes()),
         Err(ReadError::Json(_))

@@ -77,6 +77,7 @@
 //! integrity is the signature's job.
 pub mod child;
 pub mod diff;
+mod legacy_hash;
 pub mod records;
 pub mod scan;
 pub mod shape;
@@ -91,9 +92,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// The schema this crate writes and reads. Adding a field does not change it; removing or
-/// redefining one does. 2: `fields_hash` is over the sorted fields, and a hook argument's
-/// references are matched by full path.
-pub const SCHEMA: u32 = 2;
+/// redefining one does. Schema 3 records hash only the native contract.
+pub const SCHEMA: u32 = 3;
 
 /// The whole document.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -146,7 +146,11 @@ impl std::fmt::Display for ReadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Json(error) => write!(f, "surface.json is not a valid surface: {error}"),
-            Self::Schema(schema) => write!(f, "surface schema {schema}, this tool reads {SCHEMA}"),
+            Self::Schema(schema) => write!(
+                f,
+                "surface schema {schema}, this tool reads {} and {SCHEMA}",
+                legacy_hash::LEGACY_SURFACE_SCHEMA
+            ),
             Self::DuplicateId(id) => write!(f, "surface.json lists {id} twice"),
         }
     }
@@ -722,7 +726,7 @@ impl Surface {
         }
         let header: Header =
             serde_json::from_slice(bytes).map_err(|e| ReadError::Json(e.to_string()))?;
-        if header.schema != SCHEMA {
+        if ![legacy_hash::LEGACY_SURFACE_SCHEMA, SCHEMA].contains(&header.schema) {
             return Err(ReadError::Schema(header.schema));
         }
         let surface: Self =

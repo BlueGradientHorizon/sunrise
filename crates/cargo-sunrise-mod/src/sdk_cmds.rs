@@ -6,7 +6,7 @@ use crate::options::Options;
 use crate::sdk_fetch::{PinnedSdk, ensure_sdk, fetch_build};
 use crate::uses_table::{self, Scanned, surface_of};
 use mod_surface::child::ChildEntry;
-use mod_surface::uses::{Change, Fit, USES_FILE, USES_SCHEMA, UsesTable, fits as fit};
+use mod_surface::uses::{Change, Fit, USES_FILE, USES_SCHEMA, UsesTable};
 use mod_surface::{Surface, leaf};
 use std::path::Path;
 use std::process::{Command, ExitCode};
@@ -382,7 +382,7 @@ fn fits_lines(entry: ChildEntry, args: &[String]) -> Result<Answer, String> {
         // The mod API's items are judged by the surface, the game code the mod declares by the
         // target's build data: one list holds both.
         let api = |table: &UsesTable| {
-            fit(
+            table.fits(
                 table
                     .entries
                     .iter()
@@ -653,7 +653,7 @@ fn report(
     notes: &std::collections::BTreeMap<String, String>,
 ) -> String {
     let total = uses.items.len();
-    let misfits = match fit(uses.entries(), new_surface) {
+    let misfits = match uses.fits(new_surface) {
         // A fresh scan names every hook's version.
         Fit::Fits | Fit::Unversioned(_) => vec![],
         Fit::DoesNotFit(misfits) => misfits,
