@@ -157,6 +157,36 @@ fn open(game: &mut Game<'_>, payment: u32) -> ContainerClick {
         carried: None,
     }
 }
+#[test]
+#[ignore = "daily"]
+fn exploration_trade_maps_share_nested_reservations() {
+    use super::maps::MapData;
+    with_guests(|game| {
+        let start = game.peek_map_id();
+        let dimension = game.dimension_id().to_owned();
+        let make = || MapData::fresh(0.0, 0.0, 0, &dimension);
+        for commit in [false, true] {
+            let outer = game.transaction_open();
+            assert_eq!(game.new_map_id(make()), start);
+            let take = game.transaction_open();
+            let trade_id = game.peek_map_id();
+            assert_eq!(trade_id, start + 1);
+            game.register_exploration_maps(vec![(trade_id, [640, 64, -640], 2, String::new())]);
+            game.transaction_close(&take, true);
+            assert_eq!(game.new_map_id(make()), start + 2);
+            assert!(!game.maps.data.contains_key(&trade_id));
+            game.transaction_close(&outer, commit);
+            assert_eq!(game.peek_map_id(), if commit { start + 3 } else { start });
+            if commit {
+                assert!(game.maps.data[&trade_id].unlimited);
+                assert!(!game.maps.data[&(start + 2)].unlimited);
+            } else {
+                assert!(!game.maps.data.contains_key(&trade_id));
+            }
+        }
+    });
+}
+
 fn count(stack: Option<&ItemStack>) -> u32 {
     stack.map_or(0, |s| s.count)
 }

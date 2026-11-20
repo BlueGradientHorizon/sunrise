@@ -31,7 +31,6 @@ type Restore = Box<dyn FnOnce(&mut Game<'_>)>;
 pub(in crate::game) struct Journal {
     guests: HashMap<u32, Restore>,
     board: Option<Scoreboard>,
-    map_last_id: Option<Option<i32>>,
     /// Why the listener's answer was refused; the take then ends as an invalid action.
     refused: Option<InvalidReason>,
 }
@@ -42,9 +41,6 @@ impl Journal {
         }
         if self.board.is_none() {
             self.board = child.board;
-        }
-        if self.map_last_id.is_none() {
-            self.map_last_id = child.map_last_id;
         }
         if self.refused.is_none() {
             self.refused = child.refused;
@@ -57,9 +53,6 @@ impl Journal {
         if let Some(board) = self.board {
             game.score.board = board;
         }
-        if let Some(last_id) = self.map_last_id {
-            game.maps.last_id = last_id;
-        }
     }
 }
 
@@ -68,7 +61,6 @@ pub(in crate::game) enum Effect {
     Orb([f64; 3], u32),
     Drops(u32, Vec<sunrise_client::items::ItemStack>),
     Reward(u128, Advancement),
-    Maps(Vec<(i32, [i32; 3], u8, String)>),
 }
 
 impl Game<'_> {
@@ -161,7 +153,6 @@ impl Game<'_> {
         let board = self.score.board.clone();
         let level = self.transactions.last_mut().expect("the action is open");
         level.trades.board.get_or_insert(board);
-        level.trades.map_last_id.get_or_insert(self.maps.last_id);
         level.trades.guests.insert(
             conn,
             Box::new(move |game| {
@@ -263,17 +254,6 @@ impl Game<'_> {
         offer.xp = offer.xp.max(0);
     }
 
-    pub(super) fn merchant_maps(&mut self, made: Vec<(i32, [i32; 3], u8, String)>) {
-        if self.merchant_take_active() {
-            if !made.is_empty() {
-                self.maps.last_id = made.iter().map(|m| m.0).chain(self.maps.last_id).max();
-                self.after_commit(After::Trade(Box::new(Effect::Maps(made))));
-            }
-        } else {
-            self.register_exploration_maps(made);
-        }
-    }
-
     pub(super) fn merchant_drops(
         &mut self,
         conn: u32,
@@ -328,7 +308,6 @@ impl Game<'_> {
     pub(in crate::game) fn commit_merchant_effect(&mut self, effect: Effect) {
         match effect {
             Effect::Packets(packets) => packets.publish(),
-            Effect::Maps(made) => self.register_exploration_maps(made),
             Effect::Orb(at, value) => self.add_orb(at, value),
             Effect::Drops(conn, stacks) => {
                 if let Some(gi) = self

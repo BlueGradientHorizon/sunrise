@@ -400,7 +400,7 @@ impl Game<'_> {
                 g.carried = menu.carried.take();
             });
         }
-        self.merchant_maps(made);
+        self.register_exploration_maps(made);
         if !crafted_counts.is_empty() {
             self.as_guest(conn, |g| {
                 for (item, count) in crafted_counts {

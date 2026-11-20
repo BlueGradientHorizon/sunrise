@@ -6,4 +6,5 @@ sunrise-client game::lan_trade_decisions_tests::a_trade_refused_inside_the_stack
 sunrise-client game::lan_trade_decisions_tests::accepted_trade_keeps_the_collect_answer_and_listener_writes lib daily resources
 sunrise-client game::lan_trade_decisions_tests::an_invalid_result_stack_refuses_the_whole_take lib daily resources
 sunrise-client game::lan_trade_decisions_tests::an_outer_abort_undoes_an_accepted_trade lib daily resources
+sunrise-client game::lan_trade_decisions_tests::exploration_trade_maps_share_nested_reservations lib daily resources
 sunrise-client game::lan_trade_decisions_tests::no_subscriber_uses_the_ordinary_trade_without_a_decision lib daily resources
