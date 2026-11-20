@@ -1038,6 +1038,7 @@ pub struct Hashed {
 }
 /// The wire patch or a component's persistent hash could not be produced.
 #[derive(Debug, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum StackHashError {
     Wire(crate::Error),
     Component(i32),

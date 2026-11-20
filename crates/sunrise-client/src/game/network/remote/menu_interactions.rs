@@ -22,8 +22,8 @@ impl Game<'_> {
     /// menu engine predicts them on this client's copy, then each goes out as
     /// a `ContainerClick` with the slots it changed and the carried stack
     /// after it; the server corrects anything it sees differently. A menu the
-    /// engine doesn't model sends the clicks unpredicted. False when a click's
-    /// slot isn't one of the menu's.
+    /// engine doesn't model sends the clicks unpredicted. False when the batch
+    /// cannot be submitted.
     pub(in crate::game) fn remote_menu_ops(&mut self, ops: &[(Option<usize>, i32, Input)]) -> bool {
         // CrafterScreen.slotClicked: a slot toggle goes out before the click.
         if let [(Some(slot), button, input)] = ops {
@@ -69,7 +69,7 @@ impl Game<'_> {
             Ok(result) => result,
             Err(error) => {
                 log::warn!("Refused menu click: {error}");
-                return true;
+                return false;
             }
         };
         self.send_clicks(&predicted, packets);

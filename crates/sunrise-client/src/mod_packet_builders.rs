@@ -174,8 +174,8 @@ fn checked_hash(
     Hashed::create(stack, names).map_err(|error| {
         use sunrise_protocol::item::StackHashError;
         component_error(match error {
-            StackHashError::Wire(_) => format!("{field}.components"),
             StackHashError::Component(id) => format!("{field}.components.{id}"),
+            _ => format!("{field}.components"),
         })
     })
 }
