@@ -25,7 +25,10 @@ impl<const PERIOD: i32> MobEffectPart for Cadence<PERIOD> {
             .unwrap()
             .push((self.package, event.health));
         event.heal(PERIOD as f32);
-        if self.package == "owner" && event.amplifier == 99 {
+        if matches!(
+            (self.package, event.amplifier),
+            ("owner", 99) | ("other", 100)
+        ) {
             event.keep = false;
         }
     }
@@ -274,6 +277,13 @@ fn effect_owner_runs_first_even_when_the_dependent_dispatches_first() {
                         99,
                         vec![EffectTickChange::Heal(2.0)],
                         vec![("owner", 10.0)],
+                        false,
+                    ),
+                    (
+                        6,
+                        100,
+                        vec![EffectTickChange::Heal(2.0), EffectTickChange::Heal(6.0)],
+                        vec![("owner", 10.0), ("other", 10.0)],
                         false,
                     ),
                 ] {
