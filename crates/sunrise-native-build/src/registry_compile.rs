@@ -423,7 +423,14 @@ pub fn compile(
     // from one library, so a mod depending on several mods doesn't reach a copy of each through
     // each of them (`registry_shared`). The mods' manifests were checked above without it; it adds
     // no package cargo hasn't already resolved and locked.
-    let shared = registry_shared::Shared::select(metadata.runtime_uses(out, &mod_dirs)?);
+    const LOGGERS: &str = "/* MOD_LOGGERS */";
+    // The SDK owns the entry template and the sink it can call. The mod's lock still owns log.
+    let logs = if template.contains(LOGGERS) {
+        metadata.runtime_logs()?
+    } else {
+        Default::default()
+    };
+    let shared = registry_shared::Shared::select(metadata.runtime_uses(out, &mod_dirs)?, logs);
     if let Some(shared) = &shared {
         shared.check_name(&metadata.packages, out)?;
         shared.write(out)?;
@@ -438,6 +445,18 @@ pub fn compile(
             registry_shared::link(&mut manifest, &mut source).map_err(|e| format!("{id}: {e}"))?;
             fs::write(&path, manifest.to_string()).map_err(|e| e.to_string())?;
             fs::write(root, source).map_err(|e| e.to_string())?;
+            if !shared.logs.is_empty() {
+                let path = root.with_file_name("__sunrise_entry.rs");
+                let entry = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+                fs::write(
+                    path,
+                    entry.replace(
+                        LOGGERS,
+                        "extern crate sunrise_registry_shared;\n    sunrise_registry_shared::install_loggers();",
+                    ),
+                )
+                .map_err(|e| e.to_string())?;
+            }
         }
         let path = out.join("Cargo.toml");
         let mut manifest: toml::Table = fs::read_to_string(&path)
@@ -451,12 +470,17 @@ pub fn compile(
             .ok_or("generated workspace")?
             .push(registry_shared::RELATIVE.into());
         fs::write(&path, manifest.to_string()).map_err(|e| e.to_string())?;
-        // Bindings with no `--extern`, so the compiler wrapper still links it like a mod: dynamic
-        // linking, and the mods' rpath arguments.
+        // Link it like a mod (dynamic, with the same rpath). Only the forwarder calls the SDK.
+        let mut externs = BTreeMap::new();
+        if !shared.logs.is_empty() {
+            let api = prebuilt::library(&deps, "mod_api")?;
+            prebuilt::refuse_closure_rlib(registry_shared::CRATE, "mod_api", &api)?;
+            externs.insert("mod_api".into(), api);
+        }
         bindings.insert(
             out.join(registry_shared::RELATIVE),
             registry_rustc::Bindings {
-                externs: BTreeMap::new(),
+                externs,
                 link_args: mod_link_args(),
             },
         );

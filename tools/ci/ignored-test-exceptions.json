@@ -734,5 +734,13 @@
     "path": "crates/cargo-sunrise-mod/tests/build_errors.rs",
     "reason": "book-quickstart.yml: the run's own SDK",
     "rationale": "Builds a starter native mod that `cargo sunrise-mod new` pins to the Nightly, so it needs the daily run's own SDK as that Nightly (SUNRISE_SDK_BASE, with SUNRISE_SDK_TRUSTED_KEY): against the published one it would test that SDK and fail whenever main's tool reads a newer SDK format. book-quickstart.yml assembles that SDK and runs it there by exact name with --ignored; its manual row is in tools/ci/ignored-tests/manual-cargo-sunrise-mod.txt."
+  },
+  {
+    "package": "cargo-sunrise-mod",
+    "target": "test:run",
+    "test": "run_writes_native_registration_logs_to_latest_log",
+    "path": "crates/cargo-sunrise-mod/tests/run.rs",
+    "reason": "book-quickstart.yml: the run's own SDK",
+    "rationale": "Builds and runs a starter native mod on the daily head's game and SDK, not the published Nightly. book-quickstart.yml provides SUNRISE_SDK_BASE and runs this test by exact name with --ignored."
   }
 ]

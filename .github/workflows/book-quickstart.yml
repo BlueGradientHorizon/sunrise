@@ -168,6 +168,11 @@ jobs:
           cargo test --locked -p cargo-sunrise-mod --test build_errors --
           --ignored --exact a_failed_native_build_names_the_authors_file_and_not_the_cache_copy
           a_failed_registry_build_names_the_authors_file_and_a_good_one_still_builds
+      - name: Native registration reaches the game log
+        if: inputs.own_sdk
+        run: >-
+          cargo test --locked -p cargo-sunrise-mod --test run --
+          --ignored --exact run_writes_native_registration_logs_to_latest_log
       - name: The start pages run with the mod tool alone
         run: python3 tools/book_quickstart.py --tool "${CARGO_TARGET_DIR:-target}/debug/cargo-sunrise-mod"
       - name: Clean private scratch
