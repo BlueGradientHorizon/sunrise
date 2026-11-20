@@ -181,26 +181,26 @@ pub(crate) fn set_phase(state: PhaseState) {
 #[derive(Default)]
 pub(crate) struct TestReader {
     pub registries: std::collections::BTreeMap<String, Arc<[String]>>,
-    pub tags: Option<Arc<[(String, Arc<[String]>)]>>,
+    pub tags: Arc<[(String, Arc<[String]>)]>,
 }
 #[cfg(test)]
 impl LoadReader for TestReader {
-    fn registry(&self, name: &str) -> Option<&[String]> {
-        self.registries.get(name).map(AsRef::as_ref)
+    fn registry(&self, name: &str) -> Option<Arc<[String]>> {
+        self.registries.get(name).cloned()
     }
-    fn fluid_tags(&self) -> Option<&[(String, Arc<[String]>)]> {
-        self.tags.as_deref()
+    fn fluid_tags(&self) -> Arc<[(String, Arc<[String]>)]> {
+        self.tags.clone()
     }
-    fn setting(&self, _: &str, _: &str) -> Option<&str> {
+    fn setting(&self, _: &str, _: &str) -> Option<String> {
         None
     }
 }
 #[cfg(test)]
 impl LoopReader for TestReader {
-    fn registry(&self, name: &str) -> Option<&[String]> {
-        self.registries.get(name).map(AsRef::as_ref)
+    fn registry(&self, name: &str) -> Option<Arc<[String]>> {
+        self.registries.get(name).cloned()
     }
-    fn setting(&self, _: &str, _: &str) -> Option<&str> {
+    fn setting(&self, _: &str, _: &str) -> Option<String> {
         None
     }
 }
@@ -543,12 +543,15 @@ mod tests {
                 "item".to_owned(),
                 vec!["a:b".into()].into(),
             )]),
-            tags: None,
+            tags: Arc::from([]),
         };
         with_test_packages(&["one", "two"], || {
             let context = OwningLoop::new(LoopSide::Client, &source);
             assert_eq!(context.side(), LoopSide::Client);
-            assert_eq!(context.registry("item"), Some(&["a:b".to_owned()][..]));
+            assert_eq!(
+                context.registry("item").as_deref(),
+                Some(&["a:b".to_owned()][..])
+            );
             assert_eq!(context.registry("block"), None);
             assert_eq!(context.setting("one", "mode"), None);
             assert_eq!(context.mods().ids().collect::<Vec<_>>(), ["one", "two"]);

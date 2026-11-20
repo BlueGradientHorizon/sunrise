@@ -1,5 +1,6 @@
 //! Isolated attachment stores for chunk-worker disk callbacks.
 use crate::*;
+use std::sync::Arc;
 
 #[path = "chunk_disk/data.rs"]
 mod data;
@@ -79,15 +80,12 @@ pub struct ChunkDiskFailure {
 
 /// A disk callback's shared Host. It has no live backend and is never a
 /// `ServerHost`: live handle methods refuse, and world writes do not compile.
-/// Registry and settings reads use the frozen resource generation retained by
-/// the disk worker. Neither getter reads files. The inherited
-/// [`ConfigHost::setting`](prelude::ConfigHost::setting) still returns an owned `Option<String>`.
+/// Registry and settings reads use the owning resource generation's snapshot.
 pub trait ChunkDiskHost: Host {
     /// Borrow the captured world, dimension, chunk, representation and phase.
     fn job(&self) -> &ChunkDiskContext;
-    /// Borrows registry names in ID order for the lifetime of the host borrow,
-    /// or returns `None` if the registry is unavailable in the captured generation.
-    fn registry(&self, name: &str) -> Option<&[String]>;
+    /// Immutable registry names in ID order.
+    fn registry(&self, name: &str) -> Option<Arc<[String]>>;
 }
 
 // no wire: a borrowed worker-only Host.
@@ -119,14 +117,14 @@ impl prelude::LevelsHost for OwningChunkDisk<'_> {
 }
 impl prelude::ConfigHost for OwningChunkDisk<'_> {
     fn setting(&self, mod_id: &str, key: &str) -> Option<String> {
-        self.resources.setting(mod_id, key).map(str::to_owned)
+        self.resources.setting(mod_id, key)
     }
 }
 impl ChunkDiskHost for OwningChunkDisk<'_> {
     fn job(&self) -> &ChunkDiskContext {
         self.job
     }
-    fn registry(&self, name: &str) -> Option<&[String]> {
+    fn registry(&self, name: &str) -> Option<Arc<[String]>> {
         self.resources.registry(name)
     }
 }

@@ -1,4 +1,4 @@
-//! Borrowed adapters for load, loop and worldgen hooks shared by client-lib and gameplay.
+//! Borrowed adapters for load and loop hooks shared by client-lib and gameplay.
 use std::sync::Arc;
 use sunrise_world::native_load_context as engine;
 
@@ -29,13 +29,13 @@ impl LoadReader<'_> {
     }
 }
 impl mod_api::LoadReader for LoadReader<'_> {
-    fn registry(&self, name: &str) -> Option<&[String]> {
+    fn registry(&self, name: &str) -> Option<Arc<[String]>> {
         self.0.registry(name)
     }
-    fn fluid_tags(&self) -> Option<&[(String, Arc<[String]>)]> {
-        self.0.fluid_tags()
+    fn fluid_tags(&self) -> Arc<[(String, Arc<[String]>)]> {
+        self.0.fluid_tags().clone()
     }
-    fn setting(&self, mod_id: &str, key: &str) -> Option<&str> {
+    fn setting(&self, mod_id: &str, key: &str) -> Option<String> {
         self.0.setting(mod_id, key)
     }
 }
@@ -68,22 +68,10 @@ impl mod_api::LoopReader for LoopReader<'_> {
         mod_api::__private::item_key_id(item)
             .is_some_and(|name| self.0.mod_recipe_property_contains(set, name))
     }
-    fn registry(&self, name: &str) -> Option<&[String]> {
+    fn registry(&self, name: &str) -> Option<Arc<[String]>> {
         self.0.registry(name)
     }
-    fn setting(&self, mod_id: &str, key: &str) -> Option<&str> {
-        self.0.setting(mod_id, key)
-    }
-}
-
-/// Borrows a worldgen or disk worker's frozen resource generation.
-pub struct WorldgenReader<'a>(pub &'a engine::WorldgenContext);
-
-impl mod_api::__private::WorldgenReader for WorldgenReader<'_> {
-    fn registry(&self, name: &str) -> Option<&[String]> {
-        self.0.registry(name)
-    }
-    fn setting(&self, mod_id: &str, key: &str) -> Option<&str> {
+    fn setting(&self, mod_id: &str, key: &str) -> Option<String> {
         self.0.setting(mod_id, key)
     }
 }
@@ -94,7 +82,7 @@ mod recipe_properties_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mod_api::{DataLoadContext, LoopContext, WorldgenHost};
+    use mod_api::{DataLoadContext, LoopContext};
 
     #[test]
     fn item_tags_distinguish_unavailable_empty_ordered_and_replaced_generations() {
@@ -172,41 +160,6 @@ mod tests {
     }
 
     #[test]
-    fn recipe_fluid_tags_distinguish_absence_from_empty_and_lend_ordered_members() {
-        let load = engine::LoadContext::from_settings_snapshot(
-            engine::DataLoadOrigin::ServerDataLoad,
-            Arc::new(engine::LoadInputs::new(
-                Default::default(),
-                Default::default(),
-            )),
-            [],
-            Arc::from([]),
-        );
-        assert_eq!(LoadReader(&load).context().fluid_tags(), None);
-
-        let empty = load.with_fluid_tags(Default::default());
-        assert_eq!(LoadReader(&empty).context().fluid_tags(), Some(&[][..]));
-
-        let populated = load.with_fluid_tags(std::collections::HashMap::from([(
-            "test:tag".into(),
-            vec!["test:still".into(), "test:flowing".into()],
-        )]));
-        let reader = LoadReader(&populated);
-        let view = reader.context();
-        let context: &dyn DataLoadContext = &view;
-        let tags = context.fluid_tags().unwrap();
-        assert!(std::ptr::eq(tags, populated.fluid_tags().unwrap()));
-        let [(name, members)] = tags else {
-            panic!("expected one fluid tag, got {tags:?}");
-        };
-        assert_eq!(name, "test:tag");
-        assert_eq!(members.as_ref(), ["test:still", "test:flowing"]);
-
-        let next = populated.for_load(engine::DataLoadOrigin::ServerDataLoad, []);
-        assert_eq!(LoadReader(&next).context().fluid_tags(), None);
-    }
-
-    #[test]
     fn phase_readers_preserve_origins_sides_and_shared_resource_members() {
         let root = std::env::temp_dir().join(format!(
             "phase-reader-{}-{:?}",
@@ -215,13 +168,19 @@ mod tests {
         ));
         std::fs::create_dir_all(root.join("active")).unwrap();
         std::fs::write(root.join("active/mode"), " captured ").unwrap();
-        let inputs = Arc::new(engine::LoadInputs::new(
-            std::collections::BTreeMap::from([(
-                "item".into(),
-                vec!["test:second".into(), "test:first".into()],
-            )]),
-            root.clone(),
-        ));
+        let inputs = Arc::new(
+            engine::LoadInputs::new(
+                std::collections::BTreeMap::from([(
+                    "item".into(),
+                    vec!["test:second".into(), "test:first".into()],
+                )]),
+                root.clone(),
+            )
+            .with_fluid_tags(std::collections::HashMap::from([(
+                "test:tag".into(),
+                vec!["test:flowing".into(), "test:still".into()],
+            )])),
+        );
         mod_platform::__private::with_test_packages(&["second", "first"], || {
             for (origin, expected) in [
                 (
@@ -233,40 +192,36 @@ mod tests {
                     mod_api::DataLoadOrigin::ClientPreload,
                 ),
             ] {
-                let base = engine::LoadContext::new(origin, inputs.clone(), ["active"]);
-                let load = base.with_fluid_tags(std::collections::HashMap::from([(
-                    "test:tag".into(),
-                    vec!["test:flowing".into(), "test:still".into()],
-                )]));
+                let load = engine::LoadContext::new(origin, inputs.clone(), ["active"]);
                 let reader = LoadReader(&load);
                 let context = reader.context();
                 assert_eq!(context.origin(), expected);
                 assert_eq!(
-                    context.registry("item"),
+                    context.registry("item").as_deref(),
                     Some(&["test:second".into(), "test:first".into()][..])
                 );
-                assert!(std::ptr::eq(
-                    context.registry("item").unwrap(),
-                    base.registry("item").unwrap()
+                assert!(Arc::ptr_eq(
+                    &context.registry("item").unwrap(),
+                    &load.registry("item").unwrap()
                 ));
+                assert!(Arc::ptr_eq(
+                    &context.fluid_tags().unwrap(),
+                    load.fluid_tags()
+                ));
+                assert_eq!(
+                    context.fluid_tags().unwrap()[0].1.as_ref(),
+                    ["test:flowing", "test:still"]
+                );
                 assert_eq!(context.registry("missing"), None);
                 assert_eq!(context.setting("missing", "key"), None);
-                assert_eq!(context.setting("active", "mode"), Some("captured"));
+                assert_eq!(
+                    context.setting("active", "mode").as_deref(),
+                    Some("captured")
+                );
                 assert_eq!(
                     context.mods().ids().collect::<Vec<_>>(),
                     ["second", "first"]
                 );
-                let worldgen = load
-                    .captured_loop_context(engine::LoopSide::Server)
-                    .worldgen_context();
-                let reader = WorldgenReader(&worldgen);
-                let host = mod_api::OwningWorldgen::new(&reader, &|_, _, _| None);
-                let context: &dyn WorldgenHost = &host;
-                let names = context.registry("item").unwrap();
-                assert_eq!(names, ["test:second", "test:first"]);
-                assert!(std::ptr::eq(names, load.registry("item").unwrap()));
-                assert_eq!(context.setting("active", "mode"), Some("captured"));
-
                 for (side, expected) in [
                     (engine::LoopSide::Client, mod_api::LoopSide::Client),
                     (engine::LoopSide::Server, mod_api::LoopSide::Server),
@@ -276,12 +231,15 @@ mod tests {
                     let context = reader.context();
                     assert_eq!(context.side(), expected);
                     assert_eq!(
-                        context.registry("item"),
+                        context.registry("item").as_deref(),
                         Some(&["test:second".into(), "test:first".into()][..])
                     );
                     assert_eq!(context.registry("missing"), None);
                     assert_eq!(context.setting("missing", "key"), None);
-                    assert_eq!(context.setting("active", "mode"), Some("captured"));
+                    assert_eq!(
+                        context.setting("active", "mode").as_deref(),
+                        Some("captured")
+                    );
                     assert_eq!(
                         context.mods().ids().collect::<Vec<_>>(),
                         ["second", "first"]

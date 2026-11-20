@@ -46,13 +46,13 @@ fn common_fields_decode_defaults_limits_and_predicate_holders() {
 
 struct Reader;
 impl LoadReader for Reader {
-    fn registry(&self, _: &str) -> Option<&[String]> {
+    fn registry(&self, _: &str) -> Option<Arc<[String]>> {
         None
     }
-    fn fluid_tags(&self) -> Option<&[(String, Arc<[String]>)]> {
-        None
+    fn fluid_tags(&self) -> Arc<[(String, Arc<[String]>)]> {
+        Arc::from([])
     }
-    fn setting(&self, _: &str, _: &str) -> Option<&str> {
+    fn setting(&self, _: &str, _: &str) -> Option<String> {
         None
     }
 }

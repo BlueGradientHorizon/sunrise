@@ -1014,35 +1014,24 @@ pub fn with_controller_tables<R>(
 // exhaustive: the platform or fixture constructs this process-local record as a complete unit.
 pub struct TestReader {
     pub registries: std::collections::BTreeMap<String, std::sync::Arc<[String]>>,
-    /// `None` models a load without a recipe overlay; `Some` models its tag table.
-    pub tags: Option<std::sync::Arc<[(String, std::sync::Arc<[String]>)]>>,
+    pub tags: std::sync::Arc<[(String, std::sync::Arc<[String]>)]>,
 }
 impl crate::LoadReader for TestReader {
-    fn registry(&self, name: &str) -> Option<&[String]> {
-        self.registries.get(name).map(AsRef::as_ref)
+    fn registry(&self, name: &str) -> Option<std::sync::Arc<[String]>> {
+        self.registries.get(name).cloned()
     }
-    fn fluid_tags(&self) -> Option<&[(String, std::sync::Arc<[String]>)]> {
-        self.tags.as_deref()
+    fn fluid_tags(&self) -> std::sync::Arc<[(String, std::sync::Arc<[String]>)]> {
+        self.tags.clone()
     }
-    fn setting(&self, _: &str, _: &str) -> Option<&str> {
+    fn setting(&self, _: &str, _: &str) -> Option<String> {
         None
     }
 }
 impl crate::LoopReader for TestReader {
-    fn registry(&self, name: &str) -> Option<&[String]> {
-        self.registries.get(name).map(AsRef::as_ref)
+    fn registry(&self, name: &str) -> Option<std::sync::Arc<[String]>> {
+        self.registries.get(name).cloned()
     }
-    fn setting(&self, _: &str, _: &str) -> Option<&str> {
-        None
-    }
-}
-
-#[cfg(test)]
-impl crate::__private::WorldgenReader for TestReader {
-    fn registry(&self, name: &str) -> Option<&[String]> {
-        self.registries.get(name).map(AsRef::as_ref)
-    }
-    fn setting(&self, _: &str, _: &str) -> Option<&str> {
+    fn setting(&self, _: &str, _: &str) -> Option<String> {
         None
     }
 }

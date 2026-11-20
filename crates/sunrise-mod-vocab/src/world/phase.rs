@@ -739,10 +739,8 @@ impl RegistrationContext {
     }
 }
 
-/// A data load's read-only view. The loader freezes the metadata for this
-/// resource generation before dispatch. The metadata getters lend that data
-/// without file I/O. Copy data only if it must outlive the context borrow.
-/// Reading already-loaded data never creates this context.
+/// A data load's read-only view. The owning loader supplies its origin and
+/// metadata; reading already-loaded data never creates this context.
 ///
 /// ```compile_fail
 /// use mod_api::{DataLoadContext, Host};
@@ -765,37 +763,35 @@ pub trait DataLoadContext {
     /// The phase selected at the owning load boundary.
     fn origin(&self) -> DataLoadOrigin;
 
-    /// Borrows registry names in ID order, or returns `None` if the registry
-    /// is unavailable.
-    fn registry(&self, name: &str) -> Option<&[String]>;
+    /// Registry names in ID order, from this resource generation's snapshot.
+    fn registry(&self, name: &str) -> Option<Arc<[String]>>;
 
     /// Resolve a fluid name against this load's registered fluid identities.
     fn fluid_key(&self, id: &str) -> Option<crate::FluidKey>;
 
-    /// Borrows the recipe pass's fluid tags (`data/<ns>/tags/fluid`), with each
-    /// tag's members in source order. `None` means the load has no recipe
-    /// overlay; `Some(&[])` means the overlay has no fluid tags.
-    fn fluid_tags(&self) -> Option<&[(String, Arc<[String]>)]> {
+    /// The fluid tags this load's resources hold (`data/<ns>/tags/fluid`):
+    /// each tag id to the fluids it names, in the sources' order — what a
+    /// recipe's fluid ingredient resolves its `#tag`s with. `None` where the
+    /// load reads no recipe resources.
+    fn fluid_tags(&self) -> Option<Arc<[(String, Arc<[String]>)]>> {
         None
     }
 
-    /// Borrows a captured setting, or returns `None` if it was not captured.
-    fn setting(&self, mod_id: &str, key: &str) -> Option<&str>;
+    /// A loaded mod's setting captured at the owning load boundary, without file I/O.
+    fn setting(&self, mod_id: &str, key: &str) -> Option<String>;
 
-    /// Borrows the loaded-mod inventory in dispatch order.
-    fn mods(&self) -> &LoadedMods;
+    /// The same loaded-mod view available during registration.
+    fn mods(&self) -> LoadedMods;
 }
 
-/// Immutable resource-generation reads supplied by an owning loader. Return
-/// borrows into the captured data; the getters must not read files.
+/// Immutable resource-generation reads supplied by an owning loader.
 pub trait LoadReader: Sync {
-    /// Borrows registry names in ID order, or returns `None` if unavailable.
-    fn registry(&self, name: &str) -> Option<&[String]>;
-    /// Borrows recipe fluid tags with members in source order. Return `None`
-    /// without a recipe overlay and `Some(&[])` when it has no fluid tags.
-    fn fluid_tags(&self) -> Option<&[(String, Arc<[String]>)]>;
-    /// Borrows a captured setting, or returns `None` if it was not captured.
-    fn setting(&self, mod_id: &str, key: &str) -> Option<&str>;
+    /// Registry names in ID order.
+    fn registry(&self, name: &str) -> Option<Arc<[String]>>;
+    /// Fluid tags and their members in source order.
+    fn fluid_tags(&self) -> Arc<[(String, Arc<[String]>)]>;
+    /// A captured setting, without file I/O.
+    fn setting(&self, mod_id: &str, key: &str) -> Option<String>;
 }
 
 // no wire: borrowed phase-scoped host readers; authority stays with their owning thread.
@@ -824,20 +820,20 @@ impl DataLoadContext for OwningLoad<'_> {
     fn origin(&self) -> DataLoadOrigin {
         self.origin
     }
-    fn registry(&self, name: &str) -> Option<&[String]> {
+    fn registry(&self, name: &str) -> Option<Arc<[String]>> {
         self.source.registry(name)
     }
     fn fluid_key(&self, id: &str) -> Option<crate::FluidKey> {
         crate::content::registry_keys::fluid_key(id)
     }
-    fn fluid_tags(&self) -> Option<&[(String, Arc<[String]>)]> {
-        self.source.fluid_tags()
+    fn fluid_tags(&self) -> Option<Arc<[(String, Arc<[String]>)]>> {
+        Some(self.source.fluid_tags())
     }
-    fn setting(&self, mod_id: &str, key: &str) -> Option<&str> {
+    fn setting(&self, mod_id: &str, key: &str) -> Option<String> {
         self.source.setting(mod_id, key)
     }
-    fn mods(&self) -> &LoadedMods {
-        &self.mods
+    fn mods(&self) -> LoadedMods {
+        self.mods.clone()
     }
 }
 
@@ -845,8 +841,7 @@ impl DataLoadContext for OwningLoad<'_> {
 /// player-list loop: the side, registries, settings, mod list and authoritative item
 /// tags. A loop without a tag-bearing snapshot (for example, the sound engine) returns
 /// `None` from tag reads even after world tags sync. The side that owns the loop builds
-/// this view; its answers never change while held. Metadata getters return borrows
-/// tied to this context and do no file I/O.
+/// this view; its answers never change while held.
 ///
 /// ```compile_fail
 /// use mod_api::{Host, LoopContext};
@@ -885,19 +880,17 @@ pub trait LoopContext {
     /// The side whose loop fires the hook.
     fn side(&self) -> LoopSide;
 
-    /// Borrows registry names in ID order, or returns `None` if the registry
-    /// is unavailable.
-    fn registry(&self, name: &str) -> Option<&[String]>;
+    /// Registry names in ID order, from the resource generation's snapshot.
+    fn registry(&self, name: &str) -> Option<Arc<[String]>>;
 
-    /// Borrows a captured setting, or returns `None` if it was not captured.
-    fn setting(&self, mod_id: &str, key: &str) -> Option<&str>;
+    /// A loaded mod's setting captured when this context was built, without file I/O.
+    fn setting(&self, mod_id: &str, key: &str) -> Option<String>;
 
-    /// Borrows the loaded-mod inventory in dispatch order.
-    fn mods(&self) -> &LoadedMods;
+    /// The same loaded-mod view available during registration.
+    fn mods(&self) -> LoadedMods;
 }
 
-/// Immutable resource-generation reads supplied by an owning loop. Return
-/// borrows into the captured metadata; the getters must not read files.
+/// Immutable resource-generation reads supplied by an owning loop.
 pub trait LoopReader: Sync {
     /// Authoritative membership, unavailable until this reader has tag inputs.
     fn item_is_in_tag(&self, item: crate::ItemKey, tag: crate::TagKey) -> Option<bool> {
@@ -919,10 +912,10 @@ pub trait LoopReader: Sync {
         let _ = (set, item);
         false
     }
-    /// Borrows registry names in ID order, or returns `None` if unavailable.
-    fn registry(&self, name: &str) -> Option<&[String]>;
-    /// Borrows a captured setting, or returns `None` if it was not captured.
-    fn setting(&self, mod_id: &str, key: &str) -> Option<&str>;
+    /// Registry names in ID order.
+    fn registry(&self, name: &str) -> Option<Arc<[String]>>;
+    /// A captured setting, without file I/O.
+    fn setting(&self, mod_id: &str, key: &str) -> Option<String>;
 }
 
 // no wire: borrowed phase-scoped host readers; authority stays with their owning thread.
@@ -963,24 +956,24 @@ impl LoopContext for OwningLoop<'_> {
     fn side(&self) -> LoopSide {
         self.side
     }
-    fn registry(&self, name: &str) -> Option<&[String]> {
+    fn registry(&self, name: &str) -> Option<Arc<[String]>> {
         self.source.registry(name)
     }
-    fn setting(&self, mod_id: &str, key: &str) -> Option<&str> {
+    fn setting(&self, mod_id: &str, key: &str) -> Option<String> {
         self.source.setting(mod_id, key)
     }
-    fn mods(&self) -> &LoadedMods {
-        &self.mods
+    fn mods(&self) -> LoadedMods {
+        self.mods.clone()
     }
 }
 
 /// The view of a hook fired while a feature generates, where no game is at
 /// hand: on a worldgen worker thread, or on the server thread when a sapling
-/// grows. It lends the server's registries, settings and mod list from the
-/// frozen resource generation. The metadata borrows are tied to this host
-/// and the getters do no file I/O. There are no writes, no level or entity
-/// handles and no transactions: the hook's arguments provide access to the
-/// generating region.
+/// grows. It carries the server's registries, its settings and the mod list;
+/// the server builds it once per resource generation, a hook never builds one,
+/// and its answers never change while it is held. There are no writes, no
+/// level or entity handles and no transaction: what the generating region
+/// holds is the hook's own arguments.
 ///
 /// ```compile_fail
 /// use mod_api::{Host, WorldgenHost};
@@ -995,15 +988,14 @@ impl LoopContext for OwningLoop<'_> {
 /// }
 /// ```
 pub trait WorldgenHost {
-    /// Borrows registry names in ID order, or returns `None` if the registry
-    /// is unavailable.
-    fn registry(&self, name: &str) -> Option<&[String]>;
+    /// Registry names in ID order, from the server's resource generation.
+    fn registry(&self, name: &str) -> Option<Arc<[String]>>;
 
-    /// Borrows a captured setting, or returns `None` if it was not captured.
-    fn setting(&self, mod_id: &str, key: &str) -> Option<&str>;
+    /// A loaded mod's setting captured when the server built this view, without file I/O.
+    fn setting(&self, mod_id: &str, key: &str) -> Option<String>;
 
-    /// Borrows the loaded-mod inventory in dispatch order.
-    fn mods(&self) -> &LoadedMods;
+    /// The same loaded-mod view available during registration.
+    fn mods(&self) -> LoadedMods;
 
     /// `BlockState.setValue`: `state` with its property `key` set to `value`; `state` itself
     /// when it already has that value, None when its block has no such property or value.
@@ -1015,24 +1007,14 @@ pub trait WorldgenHost {
     ) -> Option<crate::BlockState>;
 }
 
-// no wire: a process-local borrow of frozen worldgen metadata.
-/// Immutable world-generation reads supplied by the owning engine boundary.
-// hidden: engine plumbing, re-exported through __private for the game.
-#[doc(hidden)]
-pub trait WorldgenReader: Sync {
-    /// Borrows registry names in ID order.
-    fn registry(&self, name: &str) -> Option<&[String]>;
-    /// Borrows a captured setting, without file I/O.
-    fn setting(&self, mod_id: &str, key: &str) -> Option<&str>;
-}
-
 // no wire: borrowed phase-scoped host readers; authority stays with their owning thread.
 /// The server's world generation, as a [`WorldgenHost`].
 // hidden: the game's side of the context, not part of the mod surface
 #[doc(hidden)]
 // exhaustive: its fields are private; only the game builds it
 pub struct OwningWorldgen<'a> {
-    source: &'a dyn WorldgenReader,
+    registry: &'a dyn Fn(&str) -> Option<Arc<[String]>>,
+    setting: &'a dyn Fn(&str, &str) -> Option<String>,
     state_with_property: &'a StateWithProperty<'a>,
     mods: LoadedMods,
 }
@@ -1042,13 +1024,16 @@ type StateWithProperty<'a> =
     dyn Fn(crate::BlockState, &str, &str) -> Option<crate::BlockState> + 'a;
 
 impl<'a> OwningWorldgen<'a> {
-    /// Borrow the owning engine's frozen metadata reader and block-state query.
+    /// The server's registries, mod settings and block states, read through the game's
+    /// worldgen context.
     pub fn new(
-        source: &'a dyn WorldgenReader,
+        registry: &'a dyn Fn(&str) -> Option<Arc<[String]>>,
+        setting: &'a dyn Fn(&str, &str) -> Option<String>,
         state_with_property: &'a StateWithProperty<'a>,
     ) -> Self {
         Self {
-            source,
+            registry,
+            setting,
             state_with_property,
             mods: LoadedMods::new(),
         }
@@ -1056,14 +1041,14 @@ impl<'a> OwningWorldgen<'a> {
 }
 
 impl WorldgenHost for OwningWorldgen<'_> {
-    fn registry(&self, name: &str) -> Option<&[String]> {
-        self.source.registry(name)
+    fn registry(&self, name: &str) -> Option<Arc<[String]>> {
+        (self.registry)(name)
     }
-    fn setting(&self, mod_id: &str, key: &str) -> Option<&str> {
-        self.source.setting(mod_id, key)
+    fn setting(&self, mod_id: &str, key: &str) -> Option<String> {
+        (self.setting)(mod_id, key)
     }
-    fn mods(&self) -> &LoadedMods {
-        &self.mods
+    fn mods(&self) -> LoadedMods {
+        self.mods.clone()
     }
     fn state_with_property(
         &self,

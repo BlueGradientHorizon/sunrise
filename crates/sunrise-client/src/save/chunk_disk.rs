@@ -2,7 +2,6 @@
 //! Server code captures encoded envelopes; only workers execute mod code.
 use super::*;
 use mod_api::{ChunkDiskContext, ChunkDiskJob, ChunkDiskKind, ChunkDiskPhase, WorldEpoch};
-use sunrise_client_render::api_context::WorldgenReader;
 use sunrise_mod_runtime::attachments::Attachments;
 
 pub(super) struct DiskRuntime {
@@ -41,14 +40,20 @@ impl DiskRuntime {
     }
 
     fn run(&self, job: &ChunkDiskJob) -> std::io::Result<Compound> {
-        let reader = WorldgenReader(&self.resources);
+        let registry = |name: &str| self.resources.registry(name);
+        let setting = |owner: &str, key: &str| self.resources.setting(owner, key);
         // A disk job has no block-state index (that is the game's, published for worldgen), so
         // `state_with_property` answers None, as worldgen does before the index is published.
-        job.run(&mod_api::OwningWorldgen::new(&reader, &|_, _, _| None))
-            .clone()
-            .map_err(|failure| {
-                std::io::Error::other(format!("chunk disk callback refused: {failure:?}"))
-            })
+        let state_with_property = |_: mod_api::BlockState, _: &str, _: &str| None;
+        job.run(&mod_api::OwningWorldgen::new(
+            &registry,
+            &setting,
+            &state_with_property,
+        ))
+        .clone()
+        .map_err(|failure| {
+            std::io::Error::other(format!("chunk disk callback refused: {failure:?}"))
+        })
     }
 }
 

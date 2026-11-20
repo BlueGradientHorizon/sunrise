@@ -67,13 +67,13 @@ mod tests {
         fn side(&self) -> crate::LoopSide {
             crate::LoopSide::Server
         }
-        fn registry(&self, _: &str) -> Option<&[String]> {
+        fn registry(&self, _: &str) -> Option<Arc<[String]>> {
             None
         }
-        fn setting(&self, _: &str, _: &str) -> Option<&str> {
+        fn setting(&self, _: &str, _: &str) -> Option<String> {
             None
         }
-        fn mods(&self) -> &crate::LoadedMods {
+        fn mods(&self) -> crate::LoadedMods {
             unreachable!("not used by this fixture")
         }
         fn mod_recipe_property_contains(&self, _: &str, _: crate::ItemKey) -> bool {
