@@ -26,12 +26,14 @@ def main():
     oracle_harness.java_run(build, classes, dependencies, "VanillaLightStorageOracle", [scenario, expected], "vanilla")
     if expected.read_text() != (lab.ROOT / "tools" / "light_storage_witness.txt").read_text():
         raise AssertionError("the real engine's answers differ from tools/light_storage_witness.txt")
-    env = dict(lab.game_env(), SUNRISE_LIGHT_STORAGE_ORACLE=str(expected))
+    test = "light_storage_tests::light_reads_follow_vanilla_storage"
     oracle_harness.run_logged([
         "cargo", "test", "--locked", "-p", "sunrise-client-render", "--lib",
-        "light_storage_tests::light_reads_match_the_real_engine", "--", "--nocapture",
-    ], build, "rust", env=env)
-    print(f"{len(expected.read_text().splitlines())} light reads match the real engine")
+        test, "--", "--exact",
+    ], build, "rust", env=lab.game_env())
+    if f"test {test} ... ok" not in (build / "rust.log").read_text():
+        raise AssertionError(f"Rust witness replay did not run: {test}")
+    print(f"{sum(line.startswith('read ') for line in expected.read_text().splitlines())} light reads match the real engine")
 
 
 if __name__ == "__main__":

@@ -30,7 +30,7 @@ fn layer(spec: &str) -> Vec<u8> {
 }
 
 /// Replays `scenario` as vanilla's oracle does, one line per read.
-pub(crate) fn replay(scenario: &str) -> String {
+fn replay(scenario: &str) -> String {
     let mut out = Vec::new();
     let mut world = World::new(BlockStateId(0), 0);
     for line in scenario
@@ -80,14 +80,4 @@ pub(crate) fn replay(scenario: &str) -> String {
 #[test]
 fn light_reads_follow_vanilla_storage() {
     assert_eq!(replay(SCENARIO), WITNESS);
-}
-
-/// The harness's step (`tools/test_light_storage_parity.py` sets the variable): the same scenario on
-/// the real 26.3 engine, which must answer as `WITNESS` does and as the world does.
-#[test]
-fn light_reads_match_the_real_engine() {
-    let Ok(path) = std::env::var("SUNRISE_LIGHT_STORAGE_ORACLE") else {
-        return;
-    };
-    assert_eq!(replay(SCENARIO), std::fs::read_to_string(path).unwrap());
 }
