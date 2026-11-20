@@ -10,7 +10,7 @@ use crate::resource_source::ResourceSource;
 use serde::Deserialize;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
-use sunrise_connected::{BlockSel, Connect, Orient, Rule, Table, TableSheet, faces};
+use sunrise_connected::{BlockSel, Connect, HeightJoin, Orient, Rule, Table, TableSheet, faces};
 
 /// The most a rule or table file may hold: both are a few lines.
 const MAX_FILE: u64 = 1 << 20;
@@ -136,6 +136,27 @@ enum FileConnect {
     Tag(String),
     /// The same block with equal values of these state properties.
     Same(Vec<String>),
+    /// By the collision heights of the neighbour.
+    Height(HeightFields),
+}
+
+/// The object form of `connect.height`: the clauses and the blocks `same` compares.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct HeightFields {
+    #[serde(default)]
+    same: bool,
+    #[serde(default)]
+    higher: bool,
+    #[serde(default)]
+    lower: bool,
+    #[serde(default)]
+    above: bool,
+    #[serde(default)]
+    side: bool,
+    /// Block ids, and block tags with a `#`.
+    #[serde(default)]
+    of: Vec<String>,
 }
 
 /// The object form of `connect`: exactly one of its fields.
@@ -144,6 +165,7 @@ enum FileConnect {
 struct ConnectFields {
     tag: Option<String>,
     same: Option<Vec<String>>,
+    height: Option<HeightFields>,
 }
 
 impl TryFrom<serde_json::Value> for FileConnect {
@@ -159,12 +181,19 @@ impl TryFrom<serde_json::Value> for FileConnect {
             Err(ConnectFields {
                 tag: Some(tag),
                 same: None,
+                height: None,
             }) => Ok(Self::Tag(tag)),
             Err(ConnectFields {
                 tag: None,
                 same: Some(same),
+                height: None,
             }) => Ok(Self::Same(same)),
-            Err(_) => Err("connect takes one of tag and same".into()),
+            Err(ConnectFields {
+                tag: None,
+                same: None,
+                height: Some(height),
+            }) => Ok(Self::Height(height)),
+            Err(_) => Err("connect takes one of tag, same and height".into()),
         }
     }
 }
@@ -361,6 +390,36 @@ fn parse(
         FileConnect::Sprite => (Connect::Tile, Vec::new(), Vec::new()),
         FileConnect::Tag(tag) => (Connect::Blocks, tag_blocks(tags, &tag)?, Vec::new()),
         FileConnect::Same(same) => (Connect::Properties, Vec::new(), same),
+        FileConnect::Height(h) => {
+            let join = HeightJoin {
+                same: h.same,
+                higher: h.higher,
+                lower: h.lower,
+                above: h.above,
+                side: h.side,
+            };
+            if !join.any() {
+                return Err("connect.height needs one of same, higher, lower and above".into());
+            }
+            if h.side && !(h.higher || h.above) {
+                return Err("connect.height side needs higher or above".into());
+            }
+            if !h.of.is_empty() && !h.same {
+                return Err("connect.height of is for same".into());
+            }
+            let mut of = Vec::new();
+            for entry in &h.of {
+                if entry.starts_with('#') {
+                    of.extend(tag_blocks(tags, entry)?);
+                } else {
+                    of.push(BlockSel {
+                        id: block_id(namespace, entry),
+                        states: Vec::new(),
+                    });
+                }
+            }
+            (Connect::Height(join), of, Vec::new())
+        }
     };
     let sheet = TableSheet {
         sprite: sheet,
@@ -477,6 +536,55 @@ mod tests {
     }
 
     #[test]
+    fn a_file_can_join_by_height() {
+        let (_scratch, root) = folder(
+            "height",
+            &[("assets/demo/sunrise/connected_tables/row.json", ROW)],
+        );
+        let file = |connect: &str| {
+            parse_in(
+                &root,
+                &format!(
+                    r#"{{"method":"table","blocks":["demo:roof"],"connect":{connect},"sheet":"demo:block/casing_sheet","table":"row"}}"#
+                ),
+            )
+        };
+        let rule = file(
+            r#"{"height":{"same":true,"above":true,"side":true,"of":["demo:shingles","roof"]}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            rule.connect,
+            Connect::Height(HeightJoin {
+                same: true,
+                above: true,
+                side: true,
+                ..Default::default()
+            })
+        );
+        let of: Vec<_> = rule.connect_blocks.iter().map(|b| b.id.as_str()).collect();
+        assert_eq!(of, ["demo:shingles", "demo:roof"]);
+        // A rule with no clause, a `side` with nothing to look for, an `of` with nothing to
+        // compare, an unknown clause and a second way to join are refused by name.
+        for (connect, named) in [
+            (r#"{"height":{}}"#, "needs one of"),
+            (r#"{"height":{"same":true,"side":true}}"#, "side needs"),
+            (
+                r#"{"height":{"higher":true,"of":["demo:roof"]}}"#,
+                "of is for same",
+            ),
+            (r#"{"height":{"heigher":true}}"#, "heigher"),
+            (
+                r#"{"height":{"same":true},"same":["axis"]}"#,
+                "one of tag, same and height",
+            ),
+        ] {
+            let err = file(connect).unwrap_err();
+            assert!(err.contains(named), "{connect}: {err}");
+        }
+    }
+
+    #[test]
     fn a_file_that_cannot_load_is_refused_by_name() {
         let (_scratch, root) = folder(
             "bad",
@@ -529,7 +637,7 @@ mod tests {
         assert!(err.contains("colour"), "{err}");
         // Combined or misspelt fields of a variant fail too, never dropped.
         let err = file(r#","connect":{"tag":"demo:casings","same":["axis"]}"#).unwrap_err();
-        assert!(err.contains("one of tag and same"), "{err}");
+        assert!(err.contains("one of tag, same and height"), "{err}");
         let err = file(r#","connect":{"same":["axis"],"sames":[]}"#).unwrap_err();
         assert!(err.contains("sames"), "{err}");
         let err = file(r#","blocks":[{"block":"demo:log","state":{},"stat":{}}]"#).unwrap_err();

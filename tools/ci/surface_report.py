@@ -3,21 +3,32 @@
 Exports the surface of the merge base and of the checked-out tree with the head's `sunrise-stage`, diffs them, and
 writes the classified report to the job summary. The base comes from the event: on `pull_request` the checkout is
 GitHub's merge commit, whose first parent is the base; on a dispatch with `pr`, GitHub's compare API gives the merge
-base of that pull request's head and its base branch. Only that one commit is fetched (`--depth 1`), and only its
-`Cargo.toml`, `crates/` and `tools/layering` are unpacked. The engine catalogs are read from source; the workspace
+base of that pull request's head and its base branch. Only that one commit is fetched (`--depth 1`, in CI's shallow
+checkout; a full clone is never fetched shallow), and only its `Cargo.toml`, `crates/` and `tools/layering` are
+unpacked. The engine catalogs are read from source; the workspace
 manifest resolves inherited dependencies for crates with injection points. CI compares points and loops, not
 listed internals. To audit internals too, use --with-internals; --trees BASE HEAD accepts local source trees.
 
-It passes when the base cannot be found or fetched, or when the head's tool cannot read
-the base tree (a change to the declaration format), saying so in one line. It fails for a new change note that names
-an id that did not change or cannot be read, and, with `gate = true` in tools/ci/surface.toml (on), for a breaking
-change no new note names.
+It passes when the base cannot be found or fetched, saying so in one line. When the head's tool cannot read the
+base tree (the base predates a rule or format this tool holds trees to), the base's own `sunrise-stage` is built
+(into target/surface-base, which a Dyna slot keeps) and exports the base instead; the report fails, naming both
+errors, when that cannot give a surface this tool compares. It fails for a new change note that names an id that did
+not change or cannot be read, and, with `gate = true` in tools/ci/surface.toml (on), for a breaking change no new note
+names.
+
+A new note that carries `landed = "<merge sha>"` is retroactive: it is left out of the comparison above and checked
+against that merge instead. The merge and its first parent are fetched and exported (the parent by its own tool when
+the head's cannot read it), and `surface-diff --landed` attaches the note and fails when an id did not change there.
+That costs two exports, only on a pull request that adds such a note. A merge that does not have two parents, or a
+tree that cannot be exported, fails naming the note and the sha.
 """
 
 from argparse import ArgumentParser
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -73,13 +84,39 @@ def git(*args: str) -> str:
     return subprocess.run(["git", *args], cwd=ROOT, check=True, capture_output=True, text=True).stdout
 
 
-def unpack(sha: str, into: Path) -> None:
-    git("fetch", "-q", "--no-tags", "--depth", "1", "origin", sha)
-    archive = subprocess.Popen(["git", "archive", sha, "Cargo.toml", "crates", "tools/layering"],
-                               cwd=ROOT, stdout=subprocess.PIPE)
+def fetch_commit(sha: str, depth: int, git_text=git) -> None:
+    """Fetches `sha` with `depth` commits of history. Only a checkout that is already shallow (CI's) is fetched
+    shallow: in a full clone a shallow fetch grafts the commit and its pushes are refused, so there the commit is
+    fetched in full, and not at all when it is already there."""
+    if git_text("rev-parse", "--is-shallow-repository").strip() == "true":
+        git_text("fetch", "-q", "--no-tags", "--depth", str(depth), "origin", sha)
+        return
+    try:
+        git_text("cat-file", "-e", f"{sha}^{{commit}}")
+    except subprocess.CalledProcessError:
+        git_text("fetch", "-q", "--no-tags", "origin", sha)
+
+
+def unpack(sha: str, into: Path, paths=("Cargo.toml", "crates", "tools/layering")) -> None:
+    fetch_commit(sha, 1)
+    archive = subprocess.Popen(["git", "archive", sha, *paths], cwd=ROOT, stdout=subprocess.PIPE)
     subprocess.run(["tar", "-x", "-C", str(into)], stdin=archive.stdout, check=True)
     if archive.wait() != 0:
         raise subprocess.CalledProcessError(archive.returncode, "git archive")
+
+
+def base_tool(sha: str, work: Path) -> str:
+    """The base commit's own sunrise-stage: its whole tree, built as verify builds the head's (test profile)."""
+    tree = work / f"base-tool-{sha[:12]}"
+    tree.mkdir()
+    unpack(sha, tree, ())
+    target = ROOT / "target" / "surface-base"
+    built = subprocess.run(["cargo", "build", "--locked", "--profile", "test", "-p", "sunrise-mod-api-gen",
+                            "--bin", "sunrise-stage", "--target-dir", str(target)],
+                           cwd=tree, capture_output=True, text=True)
+    if built.returncode != 0:
+        raise RuntimeError(f"building the base's sunrise-stage failed: {last_line(built.stderr)}")
+    return str(target / "debug" / "sunrise-stage")
 
 
 def last_line(text: str) -> str:
@@ -88,42 +125,114 @@ def last_line(text: str) -> str:
 
 
 def report(tool: str, base: Path, head: Path, work: Path, gate_on: bool, *,
-           with_internals: bool = False) -> tuple[int, str]:
-    """Exports both trees at once, diffs them; (exit code, report text)."""
+           with_internals: bool = False, own_base_tool: Callable[[], str] | None = None,
+           notes: tuple[Path, Path] | None = None, landed: str | None = None) -> tuple[int, str]:
+    """Exports both trees at once, diffs them; (exit code, report text). `own_base_tool` gives the base's own
+    sunrise-stage, for a base the head's cannot read. `notes` is the (new, base) pair of change-note folders when
+    they are not the trees' own; `landed` selects the notes of one merge."""
     # The base's records may predate the call names: its export names none (`--without-calls`),
     # which no comparison reads.
     catalogs = "--with-internals" if with_internals else "--with-points-and-loops"
+
+    def export(name: str, exporter: str, tree: Path, flags: list[str]) -> subprocess.CompletedProcess:
+        return subprocess.run([exporter, "surface", str(tree), str(work / f"{name}.json"), *flags, catalogs],
+                              capture_output=True, text=True)
+
     with ThreadPoolExecutor(max_workers=2) as pool:
         # Drain both subprocesses' diagnostics while they run so a full pipe cannot stall an export.
-        exports = {name: pool.submit(subprocess.run,
-                                    [tool, "surface", str(tree), str(work / f"{name}.json"), *flags, catalogs],
-                                    capture_output=True, text=True)
+        exports = {name: pool.submit(export, name, tool, tree, flags)
                    for name, tree, flags in (("base", base, ["--without-calls"]), ("head", head, []))}
-    # This tree failing is a broken generator, which no other step would catch; the base failing
-    # is an older tree this tool cannot read, which is no fault of the pull request.
+    # This tree failing is a broken generator, which no other step would catch.
     head_export, base_export = exports["head"].result(), exports["base"].result()
     if head_export.returncode != 0:
         return 1, f"The surface export of this tree failed: {last_line(head_export.stderr)}.\n"
+    note = ""
     if base_export.returncode != 0:
-        return 0, f"No surface report: the head's sunrise-stage cannot read the base tree ({last_line(base_export.stderr)}).\n"
-    return compare(tool, base, head, work, gate_on, with_internals=with_internals)
+        # An older tree this tool holds to a newer rule or format: the base's own tool reads it.
+        why = f"the head's sunrise-stage cannot read the base tree ({last_line(base_export.stderr)})"
+        if own_base_tool is None:
+            return 1, f"No surface report: {why}.\n"
+        try:
+            own = export("base", own_base_tool(), base, ["--without-calls"])
+        except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
+            return 1, f"No surface report: {why}, and the base's own could not be used: {error}.\n"
+        if own.returncode != 0:
+            return 1, f"No surface report: {why}, nor can the base's own ({last_line(own.stderr)}).\n"
+        note = f"The base was exported by its own sunrise-stage: {why}.\n"
+    code, text = compare(tool, base, head, work, gate_on, with_internals=with_internals, notes=notes, landed=landed)
+    return code, note + text
 
 
 def compare(tool: str, base: Path, head: Path, work: Path, gate_on: bool, *,
-            with_internals: bool) -> tuple[int, str]:
-    """Run the gate on the exported documents and the trees' change notes."""
+            with_internals: bool, notes: tuple[Path, Path] | None = None,
+            landed: str | None = None) -> tuple[int, str]:
+    """Run the gate on the exported documents and the change notes (the trees' own unless `notes` is given)."""
+    new_notes, base_notes = notes or (head / NOTES, base / NOTES)
     command = [tool, "surface-diff", str(work / "base.json"), str(work / "head.json"),
-               "--notes", str(head / NOTES), "--base-notes", str(base / NOTES), "--json", str(work / "diff.json")]
+               "--notes", str(new_notes), "--base-notes", str(base_notes), "--json", str(work / "diff.json")]
+    if landed:
+        command += ["--landed", landed]
     if gate_on:
         command.append("--gate")
     diff = subprocess.run(command, capture_output=True, text=True)
-    # A base surface of another schema is an unreadable base, like a tree the exporter cannot read.
+    # A base surface of another schema (one the base's own tool wrote) cannot be compared: say so, and fail.
     base_schema = f"{work / 'base.json'}: surface schema "
     if diff.returncode == 2 and base_schema in diff.stderr:
-        return 0, f"No surface report: the head's sunrise-stage cannot read the base surface ({last_line(diff.stderr)}).\n"
+        return 1, f"No surface report: the head's sunrise-stage cannot read the base surface ({last_line(diff.stderr)}).\n"
     scope = "" if with_internals else (
         "CI does not compare listed internals; use surface_report.py --with-internals for a local audit.\n")
     return (0 if diff.returncode == 0 else 1), scope + diff.stdout + diff.stderr
+
+
+def landed_notes(head: Path, base: Path) -> dict[str, list[str]]:
+    """The new notes of `head` that carry `landed`, by merge sha. New is the reader's rule: a file name or content
+    the base does not have. An unreadable note is the PR's own comparison's to report, so it is skipped here."""
+    old = list((base / NOTES).glob("*.toml"))
+    names, contents = {path.name for path in old}, {path.read_bytes() for path in old}
+    found: dict[str, list[str]] = {}
+    for path in sorted((head / NOTES).glob("*.toml")):
+        if path.name in names or path.read_bytes() in contents:
+            continue
+        try:
+            sha = tomllib.loads(path.read_text()).get("landed")
+        except (tomllib.TOMLDecodeError, UnicodeDecodeError):
+            continue
+        # Exactly what the reader accepts, lowercased: the sha reaches git and a folder name. Anything else is
+        # the reader's to refuse in the pull request's own comparison.
+        if isinstance(sha, str) and re.fullmatch(r"[0-9a-f]{40}", sha := sha.lower()):
+            found.setdefault(sha, []).append(path.name)
+    return found
+
+
+def landed_check(tool: str, head: Path, base: Path, work: Path, shas: dict[str, list[str]], *,
+                 git_text=git, fetch=unpack, own_tool: Callable[[str], str] | None = None) -> tuple[int, str]:
+    """Check each merge's notes against that merge's first parent and the merge; (exit code, text)."""
+    code, text = 0, ""
+    for sha, files in sorted(shas.items()):
+        who = f"{', '.join(files)} (landed {sha})"
+        folder = work / f"landed-{sha}"
+        try:
+            # Two commits deep, so the merge's parents are known.
+            fetch_commit(sha, 2, git_text)
+            parent = merge_parent(git_text("cat-file", "-p", sha))
+        except (OSError, subprocess.CalledProcessError) as error:
+            return 1, text + f"Landed check failed for {who}: the merge could not be fetched: {error}.\n"
+        if parent is None:
+            return 1, text + f"Landed check failed for {who}: it is not a merge commit with two parents.\n"
+        trees = {"base": parent, "head": sha}
+        try:
+            for name, commit in trees.items():
+                (folder / name).mkdir(parents=True)
+                fetch(commit, folder / name)
+        except (OSError, subprocess.CalledProcessError) as error:
+            return 1, text + f"Landed check failed for {who}: a tree could not be fetched: {error}.\n"
+        sub_code, sub_text = report(tool, folder / "base", folder / "head", folder, False,
+                                    own_base_tool=(lambda: own_tool(parent)) if own_tool else None,
+                                    notes=(head / NOTES, base / NOTES), landed=sha)
+        if sub_code != 0:
+            code = 1
+        text += f"Landed {who}, first parent {parent}:\n{sub_text}"
+    return code, text
 
 
 def summary(text: str) -> str:
@@ -169,7 +278,12 @@ def main(argv=None) -> int:
                 sha, why = None, f"the base could not be fetched: {error}"
             if sha:
                 fetched = time.monotonic() - started
-                code, text = report(tool, base, ROOT, work, gate_on, with_internals=args.with_internals)
+                code, text = report(tool, base, ROOT, work, gate_on, with_internals=args.with_internals,
+                                    own_base_tool=lambda: base_tool(sha, work))
+                if shas := landed_notes(ROOT, base):
+                    landed_code, landed_text = landed_check(tool, ROOT, base, work, shas,
+                                                            own_tool=lambda parent: base_tool(parent, work))
+                    code, text = code or landed_code, text + landed_text
                 text += f"Base {sha}; fetch {fetched:.1f}s, total {time.monotonic() - started:.1f}s\n"
             else:
                 code, text = 0, f"No surface report: {why}.\n"

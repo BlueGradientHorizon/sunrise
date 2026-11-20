@@ -165,6 +165,27 @@ forms rebake from current resources on every successful load. Resolve result ids
 This API bakes quads only, not a mod-defined baked result type.
 
 
+## Colour, hidden faces and translucency of copies
+
+`ModelInstance` carries two more fields, set with `with_color` and `with_hidden_faces`:
+
+- `color` (`0xAARRGGBB`, default white) multiplies every face of the copy, tinted or not, after
+  `tint`; its alpha multiplies every face's alpha. `tint` keeps its meaning (tinted faces only).
+- `hidden_faces` (bits 0 to 5: down, up, north, south, west, east) leaves out the faces whose
+  `cull` side is set, so a structure of many copies can drop the sides its neighbours cover.
+
+A copy whose colour alpha is below `0xFF`, or of a model with a translucent face, is drawn in
+the translucent material described below; nothing is drawn when a view has no such copy. Copies with a colour other than
+white, hidden faces or a block state model are baked on the CPU instead of drawn as GPU
+instances; the 16,384-copy budget bounds that cost, and native and wasm are identical. `overlay`
+(the hurt tint) has no effect on a block state model.
+
+`block_state_model(state)` (on `RenderAssets`) resolves a block state as one model: the parts
+its blockstate file selects for its properties, weighted alternatives at the fixed seed
+`BlockEntityDrawContext::block` uses, each tinted face in the block's default tint. It draws
+through `draw_model_instances`, instance groups and `draw.terrain_model`, not `draw.model`.
+Resolve it once per state in `client_setup` and `client_resources_reloaded`.
+
 ## Terrain materials in a block entity
 
 `draw.model(model, tint)` draws a resolved model as an entity model. A block entity, mob or
@@ -180,11 +201,12 @@ let options = TerrainModelOptions::default()
 draw.terrain_model(self.belt, options)?;
 ```
 
-- Faces sample the animated block sprites, cull back faces and write colour and depth like
+- Faces sample the animated block sprites (mipmapped, linear minification and nearest
+  magnification, as vanilla samples a moving block), cull back faces and write colour and depth like
   opaque terrain. Light is the draw's own, raised by each quad's emission.
 - `material`: `Model` keeps each quad's `render_type` (solid, `cutout`, `cutout_mipped`), and
-  a translucent quad refuses the draw. `Solid`, `Cutout` (alpha under 0.1 discarded, no
-  mipmaps) and `CutoutMipped` (under 0.5, mipmapped) choose one material for all quads.
+  draws a translucent quad in the translucent material (below). `Solid`, `Cutout` (alpha under
+  0.1 discarded) and `CutoutMipped` (under 0.5) choose one material for all quads.
 - `shade`: `Model` follows each quad's `shade` flag, `Off` turns directional shading off, and
   `Entity` shades every quad by the level's entity light directions. Full-bright light never
   turns shading off.
@@ -192,15 +214,23 @@ draw.terrain_model(self.belt, options)?;
   `uv_shrink_ratio` (`0.0..=1.0`, default `0.0`) pulls UVs towards each face's centre first,
   for a model baked with an older `FaceBakery`'s atlas shrink. The engine never guesses it.
 - `tint` (`0xRRGGBB`) multiplies only quads with a tint index.
+- `color` (`0xAARRGGBB`, default white) multiplies every quad's colour after its own and the
+  tint, alpha included; white skips the multiply. An alpha below `0xFF` puts every quad in the
+  translucent material.
+- **Translucent material.** The one vanilla draws a translucent block with outside the terrain
+  (`translucent_moving_block`): alpha blended, back faces culled, depth tested **and written**,
+  fragments under alpha 0.1 discarded, the quad's directional shade baked into its colour. The
+  renderer sorts the quads of all translucent models far to near each frame, as vanilla's
+  `sortOnUpload` does, so submission order does not matter.
 - A stale handle returns `TerrainModelError::Model(ModelError)`. If any quad can't be drawn, the result is
-  `TerrainModelError::Refused` and nothing is drawn. That covers a translucent quad under
-  `Model`, a missing sprite, a pose that flattens the model, a ratio out of range, and a shift
+  `TerrainModelError::Refused` and nothing is drawn. That covers an unknown render type, a
+  missing sprite, a pose that flattens the model, a ratio out of range, and a shift
   whose numbers aren't finite, whose sprites are unknown or whose source sprite no face uses.
 
 ## Persistent groups
 
-- `host.create_group(model, capacity)` reserves up to 16,384 copies of a solid model.
-  Initial drawn length is zero. Translucent models are refused.
+- `host.create_group(model, capacity)` reserves up to 16,384 copies of a model.
+  Initial drawn length is zero.
 - `group.write(host, first, copies)` atomically overwrites a range and extends drawn
   length if needed. Unwritten slots start as white, full-bright identity copies at
   world origin. Invalid coordinates or light, or a range beyond capacity, change nothing.
@@ -227,7 +257,9 @@ tint conversion, but cull and stage visible copies each frame. Every visible
 GPU-routed copy uploads each frame; groups do not retain a private GPU buffer.
 Frequent whole-group pose changes rebuild every live record and can cost more than
 uncached transient copies. Shader-pack selection, missing prepared GPU records and
-overlays use the same CPU baking path as transient batches, including tint and light.
+overlays use the same CPU baking path as transient batches, including tint and light. Translucent
+copies and copies of a block state model take the terrain model materials, not the
+block-entity program a `shaders/` pack replaces.
 There is no simulation-tick work.
 
 Only the creating mod can access a group. A foreign handle returns `GroupError::Stale`,

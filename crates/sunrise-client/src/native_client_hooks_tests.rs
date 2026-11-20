@@ -129,16 +129,7 @@ pub(crate) fn install() {
                     *amount += 1.0;
                 }
             },
-            living_breathe: |context, _, kind, can_breathe, consume, _| {
-                if context.setting("rules_mod", "stack").is_some() {
-                    // A cod breathes on land; a salmon loses all its air at once.
-                    *can_breathe = kind == "minecraft:cod";
-                    *consume = match kind {
-                        "minecraft:salmon" => i32::MAX,
-                        _ => *consume + 4,
-                    };
-                }
-            },
+            living_breathe_heard: || false,
             farmland_trample: |context, _, _, _, _, cancel| {
                 *cancel = context.setting("rules_mod", "stack").is_some();
             },

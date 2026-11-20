@@ -210,7 +210,11 @@ impl CoreLightmap {
         };
         let vertex = module("Resource pack lightmap (vertex)", &program.vertex);
         let fragment = module("Resource pack lightmap (fragment)", &program.fragment);
-        let extra = super::expression_blocks::ExpressionBlocks::new(expressions, INFO_OFFSET + 256);
+        let extra = super::expression_blocks::ExpressionBlocks::new(
+            program,
+            expressions,
+            INFO_OFFSET + 256,
+        );
         let uniform = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Resource pack lightmap"),
             size: extra.size(),

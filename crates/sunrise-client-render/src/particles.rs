@@ -1058,6 +1058,16 @@ impl PendingParticle {
     }
 }
 
+thread_local! {
+    static REQUESTED: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+/// How many particle requests this thread's captures (`Particles::requested`) have taken. A
+/// sound captured beside them records it (`CapturedSound::particles_before`), so a test reads
+/// the two captures as one ordered stream.
+pub fn requested_count() -> u64 {
+    REQUESTED.get()
+}
+
 /// `ParticleEngine` plus the sprite sets of `ParticleResources`.
 pub struct ParticleEngine {
     particles: Vec<Particle>,
@@ -1542,6 +1552,7 @@ impl ParticleEngine {
         let d2 = (p[0] - c[0]).powi(2) + (p[1] - c[1]).powi(2) + (p[2] - c[2]).powi(2);
         if let Some(requested) = &mut self.requested {
             requested.push((options.clone(), p, v));
+            REQUESTED.set(REQUESTED.get() + 1);
             return;
         }
         let minimal = self.calculate_particle_level(always_show) == 2;
@@ -3123,6 +3134,12 @@ impl ParticleEngine {
                 let uo = r.next_float() * 3.0;
                 let vo = r.next_float() * 3.0;
                 q.uv = [(uo + 1.0) / 4.0, vo / 4.0, uo / 4.0, (vo + 1.0) / 4.0];
+                // The spawn's colour, white unless a mod gave one (`ParticleOptions::with_color`).
+                if ty.is_item_crumb() {
+                    for i in 0..3 {
+                        q.rgba[i] *= o.color[i];
+                    }
+                }
                 if ty == T::Item {
                     for i in 0..3 {
                         q.velocity[i] = q.velocity[i] * f64::from(0.1f32) + v[i];
@@ -6109,6 +6126,25 @@ mod tests {
         let s =
             (p.velocity[0].powi(2) + (p.velocity[1] - 0.1).powi(2) + p.velocity[2].powi(2)).sqrt();
         assert!((0.15 * 0.4 - 1e-6..=0.45 * 0.4 + 1e-6).contains(&s));
+    }
+    #[test]
+    fn an_item_crumb_multiplies_its_rgb_by_the_spawn_colour_and_ignores_alpha() {
+        let mut engine = ParticleEngine::new(
+            &ResourceSource::indexed(Default::default()),
+            &HashMap::new(),
+            &HashSet::new(),
+        );
+        engine.seed_randoms(1, 42, 2);
+        let crumb = |color| ParticleOptions {
+            item: Some(vec!["minecraft:block/water_still".into()]),
+            color,
+            ..ParticleOptions::simple(ParticleType::Item)
+        };
+        engine.create(&crumb([1.0; 4]), [0.0; 3], [0.0; 3]);
+        engine.create(&crumb([0.5, 0.25, 1.0, 0.1]), [0.0; 3], [0.0; 3]);
+        let rgba = |i: usize| engine.pending[i].ordinary().expect("a crumb").rgba;
+        assert_eq!(rgba(0), [1.0, 1.0, 1.0, 1.0]);
+        assert_eq!(rgba(1), [0.5, 0.25, 1.0, 1.0]);
     }
     #[test]
     fn sizes_follow_vanilla_curves() {

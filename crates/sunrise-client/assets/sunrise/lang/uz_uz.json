@@ -139,7 +139,6 @@
   "How fast the right stick turns the view.": "O'ng tayoqcha ko'rinishni qanchalik tez buradi.",
   "How fast the stick moves the crosshair in inventories.": "Inventarlarda tayoqcha nishonni qanchalik tez harakatlantiradi.",
   "How frames reach the screen while VSync is off.": "VSync o'chiq bo'lganda kadrlar ekranga qanday etib boradi.",
-  "How frames reach the screen, and the performance overlay.": "Kadrlar ekranga qanday etib borishi va ishlash ko'rsatkichi.",
   "How long a held direction takes between repeats.": "Ushlab turilgan yo'nalish takrorlanishlar orasida qancha vaqt oladi.",
   "How long a held direction waits before it repeats.": "Ushlab turilgan yo'nalish takrorlanishidan oldin qancha kutadi.",
   "How many particles effects spawn.": "Qanchadan-qancha zarracha effektlari paydo bo'ladi.",
