@@ -259,68 +259,6 @@ fn mob_pos_rot(m: &Mob) -> PosRot {
     }
 }
 
-impl Game<'_> {
-    /// `Entity.commonTick` for the mount this client drives, `mobs[i]`: an
-    /// interpolation it had going when the client took it over runs on, its
-    /// target carried along by the mount's own moves (where the mount fits).
-    /// The mount's pose before the step: its tick saves the old pose
-    /// (setOldPosAndRot) before the step in vanilla, so `drive_mount` puts this one
-    /// back as the old pose once the tick has run.
-    pub(super) fn interpolate_driven_mount(&mut self, i: usize) -> Option<(Vec3, f32, f32)> {
-        let id = self.mobs[i].id as i32;
-        let handler = self.remote.as_mut().and_then(|r| r.stepped.get_mut(&id))?;
-        let m = &mut self.mobs[i];
-        let mut scene = sunrise_client::collisions::SceneCollisions {
-            world: &self.world,
-            binding: self.collision,
-            subject: None,
-        };
-        handler.follow(mob_pos_rot(m), |to| {
-            let bounds = m.bounds_at(Vec3::new(to[0], to[1], to[2]));
-            scene.unobstructed(bounds).unwrap_or(false)
-        });
-        let before = (m.position, m.yaw, m.head_pitch);
-        let at = handler.interpolate()?;
-        place_interpolated(m, at);
-        // A step that crosses a section is filed where it happens.
-        let to = m.position;
-        if to != before.0 {
-            let from = before.0;
-            self.entity_section_step(id as u32, [from.x, from.y, from.z], [to.x, to.y, to.z]);
-        }
-        Some(before)
-    }
-    /// `Entity.getClientPositionAndRotation` of the mount this client drives:
-    /// while an interpolation runs, where it is going.
-    pub(super) fn driven_mount_heading(&self, m: &Mob) -> PosRot {
-        let at = mob_pos_rot(m);
-        self.remote
-            .as_ref()
-            .and_then(|r| r.stepped.get(&(m.id as i32)))
-            .map_or(at, |h| h.heading(at))
-    }
-    /// The mount this client drives teleported to `at` (`moveOrInterpolateTo`):
-    /// it eases there over its type's update interval.
-    pub(super) fn interpolate_driven_mount_to(&mut self, i: usize, at: PosRot) {
-        let m = &mut self.mobs[i];
-        let Some(r) = self.remote.as_mut() else {
-            return;
-        };
-        let handler = r.stepped.entry(m.id as i32).or_insert_with(|| {
-            let interval = sunrise_client::lan::tracking::settings(&m.kind.id).1;
-            SteppedInterpolation::new(interval as i32)
-        });
-        let entity = mob_pos_rot(m);
-        if let Start::Snap(to) = handler.interpolate_to(
-            entity,
-            Some(Path::Linear(at.position)),
-            Some((at.yaw, at.pitch)),
-        ) {
-            place_interpolated(m, to);
-        }
-    }
-}
-
 /// `Minecraft.services().profileKeySignatureValidator()`: the services' profile-key keys, which a
 /// player's chat key must be signed by. Asked for once per connection to a server, off the game
 /// thread.
