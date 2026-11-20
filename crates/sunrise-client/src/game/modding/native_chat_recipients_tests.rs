@@ -144,20 +144,27 @@ fn two_guests(game: &mut super::Game<'_>) -> (mpsc::Receiver<Out>, mpsc::Receive
     (join(12), join(13))
 }
 
-/// How many public chat lines (signed or disguised) a guest was sent since the last call.
-fn lines(rx: &mpsc::Receiver<Out>) -> usize {
+fn packets(rx: &mpsc::Receiver<Out>) -> impl Iterator<Item = play::Clientbound> + '_ {
     rx.try_iter()
         .flat_map(|out| match out {
             Out::Packet(body) => vec![body],
             Out::Packets(bodies) => bodies,
             Out::Disconnect(_) => Vec::new(),
         })
-        .filter(|body| {
-            let mut reader = sunrise_protocol::buf::Reader::new(body);
+        .filter_map(|body| {
+            let mut reader = sunrise_protocol::buf::Reader::new(&body);
             let id = reader.varint().unwrap();
+            play::Clientbound::decode(id, reader.rest()).ok()
+        })
+}
+
+/// How many public chat lines (signed or disguised) a guest was sent since the last call.
+fn lines(rx: &mpsc::Receiver<Out>) -> usize {
+    packets(rx)
+        .filter(|packet| {
             matches!(
-                play::Clientbound::decode(id, reader.rest()),
-                Ok(play::Clientbound::PlayerChat(_) | play::Clientbound::DisguisedChat(_))
+                packet,
+                play::Clientbound::PlayerChat(_) | play::Clientbound::DisguisedChat(_)
             )
         })
         .count()
@@ -312,6 +319,72 @@ fn console_and_command_block_say_can_be_hidden_per_receiver() {
                     name.to_owned(),
                     message.to_owned(),
                     receiver
+                )),
+            );
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn dispatcher_say_filters_the_acting_guests_captured_copy() {
+    use super::lan_actions::GuestCommand;
+    use play::Clientbound as C;
+    use sunrise_client::scoreboard::{comp_text, tag_to_json};
+
+    let asked = Asked::default();
+    let mods = vec![mod_api::ModEntry::new(
+        "ignorer",
+        Box::new(Ignorer(asked.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            let (peer, actor) = two_guests(game);
+            let chat = |rx| {
+                packets(rx)
+                    .filter_map(|packet| match packet {
+                        C::DisguisedChat(p) => Some((false, p.message)),
+                        C::SystemChat(p) => Some((true, p.content)),
+                        _ => None,
+                    })
+                    .map(|(system, tag)| (system, comp_text(&tag_to_json(&tag)).plain()))
+                    .collect::<Vec<_>>()
+            };
+            chat(&peer);
+            chat(&actor);
+            for (message, should_capture) in [("a secret", false), ("hello", true)] {
+                assert!(game.run_guest_command(GuestCommand {
+                    conn: 13,
+                    command: format!("execute run say {message}"),
+                    permission: 4,
+                    integrated: true,
+                    quiet: false,
+                }));
+                assert_eq!(chat(&peer), [(false, message.to_owned())]);
+                let actor_lines = chat(&actor);
+                if should_capture {
+                    assert_eq!(actor_lines, [(true, "[guest13] hello".to_owned())]);
+                } else {
+                    assert!(
+                        actor_lines.is_empty(),
+                        "the veto also hides captured output: {actor_lines:?}"
+                    );
+                }
+            }
+            assert_eq!(
+                *asked.lock().unwrap(),
+                [
+                    ("a secret", 12),
+                    ("a secret", 13),
+                    ("hello", 12),
+                    ("hello", 13)
+                ]
+                .map(|(message, recipient)| (
+                    13,
+                    "guest13".to_owned(),
+                    message.to_owned(),
+                    recipient
                 )),
             );
         });
