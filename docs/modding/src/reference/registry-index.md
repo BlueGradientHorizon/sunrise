@@ -96,11 +96,17 @@ including earlier ones, and against the current Nightly if supplied. Each decisi
 `targets`, the sorted Rust target triples with `native_binaries` for that exact build's commit:
 
 - `made-for`: the target commit is the one the version was made for.
-- `fits`: the target uses the same Minecraft version and the version can run on it. For native mods, the same
-  comparison as [`cargo sunrise-mod fits`](sdk/04-fit.md) checks the items the package uses; for content mods,
-  the target's content API must also match.
-- `rebuild`: the tool cannot show fit. `changed` lists up to five changed item IDs, or `reason` says why there
-  is no proof (for example, `made for one build only`).
+- `fits`: the target uses the same Minecraft version and everything the package uses is unchanged. For native
+  mods, the comparison in [`cargo sunrise-mod fits`](sdk/04-fit.md) checks the API and declared game code.
+  For content mods, the target's content API must also match.
+- `rebuild`: only the bodies of declared game functions changed, not their signatures. `review` lists their
+  paths so the author can check whether a patch overrides a game fix. This does not hide the version from Stable.
+- `breaks`: an API item or a declared signature or type changed, a used item disappeared, or a build requirement
+  no longer matches. `changed` names up to five items, including `minecraft` or `content-api` for those requirements.
+  A changed legacy fingerprint that does not distinguish signature and body also counts as `breaks`.
+- `exact`: compatibility could not be judged, for example because the package has `[[native.module]]` or
+  `[[native.bridge]]` rows, or no uses list. The `reason` says why. On another build Stable lists it only when a
+  prebuilt binary exists for that build.
 
 The workflow passes `--sdk-data <dir>` alongside `--releases <file>`. Each supplied release's commit needs a
 subdirectory `<dir>/<commit>/` holding its verified `sdk.json`, `surface.json`, and the unpacked

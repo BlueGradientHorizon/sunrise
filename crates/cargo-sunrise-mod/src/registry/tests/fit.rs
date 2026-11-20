@@ -7,14 +7,14 @@ use sunrise_mod_package::{build_data, sdk};
 const DAY: &str = "2026-11-20";
 const TARGET: &str = "sunrise_client::game::example";
 
-pub(super) fn sdk(root: &Path, commit: &str, functions: Value) {
+pub(super) fn sdk(root: &Path, commit: &str, api: &str, functions: Value) {
     let dir = root.join(commit);
     fs::create_dir_all(&dir).unwrap();
     fs::write(
         dir.join("surface.json"),
         json!({
-            "schema": mod_surface::SCHEMA, "hash": "test-surface",
-            "functions": [{"id": "fn:example", "hash": "api", "signature": "fn example()"}]
+            "schema": mod_surface::SCHEMA, "hash": api,
+            "functions": [{"id": "fn:example", "hash": api, "signature": "fn example()"}]
         })
         .to_string(),
     )
@@ -52,15 +52,21 @@ pub(super) fn sdk(root: &Path, commit: &str, functions: Value) {
 fn registry_judges_earlier_releases_on_the_line_and_the_current_nightly() {
     let r = Registry::new();
     let root = r.0.path();
-    let exact = "26.3-0.2.0";
+    let made_for = "26.3-0.2.0";
+    let signature_break = "26.3-0.2.1";
+    let api_break = "26.3-0.2.2";
     let older = "a".repeat(40);
     let other_line = "b".repeat(40);
     let nightly = "c".repeat(40);
+    let changed_signature = "d".repeat(40);
+    let changed_api = "e".repeat(40);
     let releases = root.join("releases.json");
     fs::write(
         &releases,
         json!([
-            {"tag": RELEASE_TAG, "commit": older}, {"tag": exact, "commit": RELEASE_PIN},
+            {"tag": RELEASE_TAG, "commit": older}, {"tag": made_for, "commit": RELEASE_PIN},
+            {"tag": signature_break, "commit": changed_signature},
+            {"tag": api_break, "commit": changed_api},
             {"tag": "26.3-1.0.0", "commit": other_line}
         ])
         .to_string(),
@@ -70,18 +76,21 @@ fn registry_judges_earlier_releases_on_the_line_and_the_current_nightly() {
     let nightly_build = json!({"date": DAY, "commit": nightly});
     fs::write(&nightly_file, nightly_build.to_string()).unwrap();
     let data = root.join("sdk");
-    for (commit, body) in [
-        (&*older, "old"),
-        (RELEASE_PIN, "old"),
-        (&*other_line, "old"),
-        (&*nightly, "new"),
+    for (commit, signature, body, api) in [
+        (&*older, "sig", "old", "api"),
+        (RELEASE_PIN, "sig", "old", "api"),
+        (&*other_line, "sig", "old", "api"),
+        (&*nightly, "sig", "new", "api"),
+        (&*changed_signature, "another-sig", "new", "api"),
+        (&*changed_api, "sig", "new", "different-api"),
     ] {
         sdk(
             &data,
             commit,
+            api,
             json!({TARGET: {
-                "module": "sunrise_client::game", "file": "crates/sunrise-client/src/game.rs",
-                "span": [0, 1], "signature_hash": "sig", "sha256": body
+                "module": "sunrise_client::game", "file": "fixture.rs",
+                "span": [0, 1], "signature_hash": signature, "sha256": body
             }}),
         );
     }
@@ -122,7 +131,7 @@ fn registry_judges_earlier_releases_on_the_line_and_the_current_nightly() {
         .as_str()
         .unwrap();
     let triple = "x86_64-unknown-linux-gnu";
-    r.edit("patched", |t| format!("{t}sunrise='{exact}'\n\
+    r.edit("patched", |t| format!("{t}sunrise='{made_for}'\n\
         [[versions.native_binaries]]\nbuild='{RELEASE_PIN}'\ntarget='{triple}'\n\
         [versions.native_binaries.file]\nurl='https://example.test/native.tar.xz'\nname='native.tar.xz'\n\
         size=1\nsha256='{}'\nsignature='''{signature}'''\n", "a".repeat(64)));
@@ -140,7 +149,7 @@ fn registry_judges_earlier_releases_on_the_line_and_the_current_nightly() {
             ("src/lib.rs", ""),
         ],
     );
-    r.edit("unlisted", |t| format!("{t}sunrise='{exact}'\n"));
+    r.edit("unlisted", |t| format!("{t}sunrise='{made_for}'\n"));
 
     let index = r
         .build(&[
@@ -161,14 +170,16 @@ fn registry_judges_earlier_releases_on_the_line_and_the_current_nightly() {
         serde_json::to_value(&version.verdicts).unwrap(),
         json!({
             (RELEASE_TAG): {"verdict": "fits", "targets": []},
-            (exact): {"verdict": "made-for", "targets": [triple]},
-            "nightly": {"verdict": "rebuild", "targets": [], "changed": [game_item]}
+            (made_for): {"verdict": "made-for", "targets": [triple]},
+            (signature_break): {"verdict": "breaks", "targets": [], "changed": [game_item]},
+            (api_break): {"verdict": "breaks", "targets": [], "changed": ["fn:example"]},
+            "nightly": {"verdict": "rebuild", "targets": [], "review": [TARGET]}
         })
     );
     assert_eq!(
         serde_json::to_value(&index.project("unlisted").unwrap().versions[0].verdicts[RELEASE_TAG])
             .unwrap(),
-        json!({"verdict": "rebuild", "targets": [], "reason": "made for one build only"})
+        json!({"verdict": "exact", "targets": [], "reason": "no uses list"})
     );
     assert!(
         index.project("legacy").unwrap().versions[0]
@@ -187,7 +198,7 @@ fn a_missing_sdk_file_names_the_release_even_if_no_mod_uses_the_data() {
     )
     .unwrap();
     let dir = r.0.path().join("sdk");
-    sdk(&dir, RELEASE_PIN, json!({}));
+    sdk(&dir, RELEASE_PIN, "api", json!({}));
     fs::remove_file(
         dir.join(RELEASE_PIN)
             .join("build-data")

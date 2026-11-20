@@ -310,12 +310,16 @@ pub enum FitVerdict {
     MadeFor,
     Fits,
     Rebuild {
+        /// Functions whose bodies changed but whose signatures did not.
+        review: Vec<String>,
+    },
+    Breaks {
         /// Up to five changed item IDs.
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
         changed: Vec<String>,
-        /// Why fit could not be shown, when no changed item is known.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        reason: Option<String>,
+    },
+    Exact {
+        /// Why the package cannot be judged on another build.
+        reason: String,
     },
 }
 

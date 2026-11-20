@@ -2,7 +2,7 @@
 use crate::sdk_cmds::{Subject, compare_fit, compare_game, package_subject};
 use crate::sdk_fetch::{BUILD_DATA, SURFACE};
 use mod_surface::{Surface, uses::Fit};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 use sunrise_mod_package::{
     index::{BuildVerdict, FitVerdict, Index, Kind},
@@ -98,7 +98,9 @@ pub(super) fn publish(
                 let fit = if commit == made_for.commit {
                     FitVerdict::MadeFor
                 } else if version.game != build.sdk.build.game {
-                    rebuild("Minecraft version changed")
+                    FitVerdict::Breaks {
+                        changed: vec!["minecraft".into()],
+                    }
                 } else if project.kind == Kind::NativeMod {
                     // Assembly has already verified the package. An unreadable uses list is not
                     // evidence of fit, just as a package without a list is not.
@@ -116,9 +118,11 @@ pub(super) fn publish(
                             .map(|b| b.surface_bytes.as_slice())
                             .ok_or_else(|| format!("no SDK data for {pin}"))
                     };
-                    native(subject, baseline, build, &data, known)?
+                    native(subject, baseline, build, &data, known)
                 } else if project.kind == Kind::Mod && version.api != build.sdk.content_api {
-                    rebuild("content mod API changed")
+                    FitVerdict::Breaks {
+                        changed: vec!["content-api".into()],
+                    }
                 } else {
                     FitVerdict::Fits
                 };
@@ -145,35 +149,62 @@ fn native<'a>(
     build: &Build,
     data: &game_uses::Data,
     baseline_surface: impl FnOnce(&str) -> Result<&'a [u8], String>,
-) -> Result<FitVerdict, String> {
-    let Some(Subject::Table {
-        manifest, table, ..
-    }) = subject
-    else {
-        return Ok(rebuild("made for one build only"));
+) -> FitVerdict {
+    let (manifest, table) = match subject {
+        Some(Subject::Table {
+            manifest, table, ..
+        }) => (manifest, table),
+        Some(Subject::NotApplicable { reason, .. }) => return exact(reason),
+        None => return exact("no readable uses list"),
     };
     let game = compare_game(manifest, table, &build.sdk.mixins.rev, || {
         Ok(data.entries(manifest))
     });
-    let comparison = compare_fit(table, &build.surface, game, baseline, baseline_surface)?;
-    Ok(match comparison.report.verdict {
-        Fit::Fits if comparison.compared.unjudged.is_empty() && !comparison.compared.unrecorded => {
-            FitVerdict::Fits
+    let comparison = compare_fit(table, &build.surface, game, baseline, baseline_surface);
+    let game = comparison.compared;
+    let (mut changed, exact_reason) = match comparison.report.verdict {
+        Fit::DoesNotFit(items) => (items, None),
+        Fit::Unversioned(_) => (
+            Vec::new(),
+            Some("the uses list does not record hook versions"),
+        ),
+        Fit::Fits => (Vec::new(), None),
+    };
+    changed.extend(game.breaks);
+    if !changed.is_empty() {
+        return FitVerdict::Breaks {
+            changed: changed
+                .into_iter()
+                .map(|m| m.id)
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .take(5)
+                .collect(),
+        };
+    }
+    if let Some(why) = exact_reason {
+        return exact(why);
+    }
+    if game.unrecorded || !game.unjudged.is_empty() {
+        return exact("game code could not be fully compared");
+    }
+    if game.bodies.is_empty() {
+        FitVerdict::Fits
+    } else {
+        FitVerdict::Rebuild {
+            review: game
+                .bodies
+                .into_iter()
+                .flat_map(|change| change.functions)
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .collect(),
         }
-        Fit::DoesNotFit(mut misfits) => {
-            misfits.dedup_by(|a, b| a.id == b.id);
-            FitVerdict::Rebuild {
-                changed: misfits.into_iter().take(5).map(|m| m.id).collect(),
-                reason: None,
-            }
-        }
-        _ => rebuild("made for one build only"),
-    })
+    }
 }
 
-fn rebuild(reason: &str) -> FitVerdict {
-    FitVerdict::Rebuild {
-        changed: Vec::new(),
-        reason: Some(reason.to_owned()),
+fn exact(reason: &str) -> FitVerdict {
+    FitVerdict::Exact {
+        reason: reason.to_owned(),
     }
 }

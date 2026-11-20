@@ -124,7 +124,7 @@ pub fn judge<E>(
             Err(lack) => return Err(lack),
         }
     }
-    misfits.append(&mut compared.misfits);
+    misfits.extend(compared.take_misfits());
     if !misfits.is_empty() {
         misfits.sort();
         return Ok(Verdict::DoesNotFit { made_for, misfits });
