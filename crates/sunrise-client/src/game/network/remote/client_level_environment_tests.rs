@@ -236,6 +236,7 @@ fn a_joined_levels_synced_cloud_height_reaches_the_frame_under_its_own_pack_laye
         let overworld_sky = game.res.environment().sample(&Sample::default()).sky_color;
         assert_ne!(nether.sky_color, overworld_sky);
         assert_eq!(drawn(game).sky_color, nether.sky_color);
+        assert_eq!(gameplay(game).sky_color, nether.sky_color);
         assert_eq!(game.sky_darken_in(&game.world, Dim::Nether), 11);
 
         // The End's goes over the packs' End stack: 400 + 30, not 400 + 10.
