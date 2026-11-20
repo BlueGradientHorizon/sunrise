@@ -1,5 +1,5 @@
 //! Validated resource identifiers, with Java hashing and path-first ordering.
-use crate::java_hash_map::JavaKey;
+use crate::{java_hash_map::JavaKey, java_string::java_string_hash_ascii_if};
 use std::{cmp::Ordering, fmt, sync::Arc};
 #[derive(Debug, PartialEq, Eq)]
 struct Data {
@@ -26,25 +26,20 @@ impl std::error::Error for IdentifierError {}
 fn valid(c: u8) -> bool {
     c.is_ascii_lowercase() || c.is_ascii_digit() || b"_.-".contains(&c)
 }
-/// `String.hashCode` over the bytes, which are its UTF-16 units only because a valid identifier is
-/// ASCII (`valid`); `from_parts` refuses anything else before it hashes.
-fn hash(s: &str) -> i32 {
-    debug_assert!(s.is_ascii(), "identifier hashed before validation: {s:?}");
-    s.bytes()
-        .fold(0i32, |h, c| h.wrapping_mul(31).wrapping_add(i32::from(c)))
-}
 impl Identifier {
     pub fn from_parts(namespace: &str, path: &str) -> Result<Self, IdentifierError> {
-        if namespace == ".." || !namespace.bytes().all(valid) {
-            return Err(IdentifierError::Namespace);
+        let namespace_hash = if namespace == ".." {
+            None
+        } else {
+            java_string_hash_ascii_if(namespace, valid)
         }
-        if !path.bytes().all(|c| valid(c) || c == b'/') {
-            return Err(IdentifierError::Path);
-        }
+        .ok_or(IdentifierError::Namespace)?;
+        let path_hash = java_string_hash_ascii_if(path, |c| valid(c) || c == b'/')
+            .ok_or(IdentifierError::Path)?;
         Ok(Self(Arc::new(Data {
             namespace: namespace.into(),
             path: path.into(),
-            hash: hash(namespace).wrapping_mul(31).wrapping_add(hash(path)),
+            hash: namespace_hash.wrapping_mul(31).wrapping_add(path_hash),
         })))
     }
     /// A fully qualified identifier with nonempty namespace and path.
@@ -142,9 +137,8 @@ mod tests {
         );
     }
 
-    /// Non-ASCII text never reaches the byte hash, which equals `String.hashCode` only on ASCII:
-    /// it is refused first, in the namespace and in the path. A valid one hashes as vanilla's
-    /// `31 * namespace.hashCode() + path.hashCode()`.
+    /// Non-ASCII text is refused in the namespace and in the path, never hashed. A valid
+    /// identifier hashes as vanilla's `31 * namespace.hashCode() + path.hashCode()`.
     #[test]
     fn only_ascii_reaches_the_hash() {
         for text in ["\u{e9}", "a\u{1F600}", "\u{0101}", "\u{ff}"] {
