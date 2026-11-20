@@ -108,9 +108,9 @@ impl<'a> IntoIterator for &'a mut ParticleBatch {
 }
 
 /// What a provider's tick reads of the level around its particles: the loaded world as
-/// `Particle` code sees it (`level.getBlockState`, `level.getBrightness`). Read-only. A position
-/// in an unloaded chunk reads as air and, as an unloaded chunk does, full sky light and no block
-/// light.
+/// `Particle` code sees it (`level.getBlockState`, `level.getBrightness`). Read-only. In a chunk
+/// that is not loaded `block_state` answers the game's air and `brightness` answers 15 for the sky
+/// layer and 0 for the block layer.
 pub trait ParticleLevelView {
     /// `BlockGetter.getBlockState`: the state at `pos`.
     fn block_state(&self, pos: [i32; 3]) -> BlockState;

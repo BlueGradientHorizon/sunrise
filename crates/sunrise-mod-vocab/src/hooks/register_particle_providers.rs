@@ -56,10 +56,10 @@ group lists its type: it then draws in that group, on the group's blend.
 write. `facing` is `Camera` (vanilla's `LOOKAT_XYZ`), `AroundY` (`LOOKAT_Y`) or `Fixed(quaternion)`, a world-fixed
 orientation such as a quad lying flat; `roll` turns the quad about its normal and is interpolated from the previous tick's. `state` is four numbers that stay with the particle, zero at spawn; it is the only per-particle data,
 since every particle of a type shares the one provider. `tick` is one call per type per tick with every live
-particle of the type, for native and wasm mods alike (a wasm tick copies the batch in and out once), and is not
+particle of the type, for native and wasm mods alike (a native tick allocates nothing per call once warm; a wasm tick copies the batch in and out once, which allocates), and is not
 called when none is alive. A tick has no `Host`, since the engine ticks particles below gameplay, but it reads the
-level through `ParticleLevelView`: `block_state(pos)` and `brightness(layer, pos)` (vanilla's `getBrightness`),
-read-only, with an unloaded chunk reading as air with full sky light. A type with no provider keeps its
+level through `ParticleLevelView`: `block_state(pos)` and `brightness(layer, pos)` (the stored light of one layer),
+read-only; in a chunk that is not loaded they answer the game's air and a sky light of 15 with a block light of 0. A type with no provider keeps its
 declarative motion, and live provider particles are dropped when resources reload, as a compiled
 controller's are."#]
     #[hook(
