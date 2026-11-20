@@ -13,9 +13,9 @@ pub enum TerrainMaterial {
     Model,
     /// Opaque, with no alpha test.
     Solid,
-    /// Texels under alpha 0.1 discarded, sampled without mipmaps.
+    /// Texels under alpha 0.1 discarded.
     Cutout,
-    /// Texels under alpha 0.5 discarded, sampled with mipmaps.
+    /// Texels under alpha 0.5 discarded.
     CutoutMipped,
 }
 

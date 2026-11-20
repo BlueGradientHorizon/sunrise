@@ -735,6 +735,20 @@ mod tests {
                 back(game, places),
                 Err(MenuSlotBackRefusal::PlaceUnresolved { index: 1 })
             );
+            // Hiding one slot leaves the menu handle live for its visible slots.
+            edit_guest(game, |g| g.menu.as_mut().unwrap().hidden.push(1));
+            assert_eq!(back(game, held_places(Hand::Main, 0..1)), Ok(()));
+            let host: &mut dyn ServerHost = game;
+            let menu = host.menu(123, window).unwrap();
+            assert!(matches!(
+                menu.slot_backing(host, 0),
+                Some(MenuSlotBacking::Place(_))
+            ));
+            assert_eq!(menu.slot_backing(host, 1), None);
+            assert_eq!(
+                game.as_guest(1, |game| back(game, held_places(Hand::Main, 0..1))),
+                Some(Ok(()))
+            );
             // A block's menu shows its block's slots: no backing is stored for it.
             edit_guest(game, |g| {
                 g.menu.as_mut().unwrap().slots = Slots::Block((0, 64, 0));
@@ -1023,7 +1037,15 @@ mod tests {
                 std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
             let root = crate::game::mods::content_root(&base, &Default::default()).unwrap();
             sunrise_client::containers::with_mod_menu_types(
-                [(SATCHEL_MENU.into(), 9, 0, Vec::new(), None, None)],
+                [(
+                    SATCHEL_MENU.into(),
+                    9,
+                    0,
+                    Vec::new(),
+                    Vec::new(),
+                    None,
+                    None,
+                )],
                 || {
                     super::super::native_entity_refs::tests::with_game_role(
                         root.prepared().to_owned(),

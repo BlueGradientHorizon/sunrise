@@ -74,7 +74,7 @@ tuple!(A:0,B:1,C:2,D:3);
 tuple!(A:0,B:1,C:2,D:3,E:4);
 impl OwnedHeap for sunrise_core::nbt::JavaString {
     fn owned_heap_bytes(&self) -> usize {
-        self.0.owned_heap_bytes()
+        sunrise_core::nbt::java_string_heap_bytes(self)
     }
 }
 impl OwnedHeap for sunrise_core::nbt::Tag {
@@ -167,10 +167,10 @@ mod tests {
     }
     #[test]
     fn nested_nbt_counts_capacity_at_each_owned_layer() {
-        let mut units = Vec::with_capacity(100);
-        units.push(65);
+        let mut text = JavaString::from("A");
+        text.units_mut().reserve_exact(99);
         let mut children = Vec::with_capacity(20);
-        children.push(Tag::String(JavaString(units)));
+        children.push(Tag::String(text));
         children.push(Tag::ByteArray(Vec::with_capacity(4000)));
         let expected = children.capacity() * size_of::<Tag>() + 200 + 4000;
         let packet = play::Clientbound::BlockEntityData(play::BlockEntityData {

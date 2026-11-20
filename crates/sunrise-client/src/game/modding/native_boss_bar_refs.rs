@@ -517,8 +517,13 @@ mod tests {
             assert_eq!(bar.name(game).unwrap().unwrap(), name);
 
             use mod_api::{Tag, text::TextFormError};
-            let bad_key =
-                Tag::Compound([(sunrise_core::nbt::JavaString(vec![0xd800]), Tag::Byte(1))].into());
+            let bad_key = Tag::Compound(
+                [(
+                    sunrise_core::nbt::JavaString::from(vec![0xd800]),
+                    Tag::Byte(1),
+                )]
+                .into(),
+            );
             for (index, (data, expected)) in [
                 (Tag::Float(f32::NAN.to_bits()), TextFormError::NonFinite),
                 (
@@ -526,7 +531,7 @@ mod tests {
                     TextFormError::NonFinite,
                 ),
                 (
-                    Tag::String(sunrise_core::nbt::JavaString(vec![0xd800])),
+                    Tag::String(sunrise_core::nbt::JavaString::from(vec![0xd800])),
                     TextFormError::InvalidString,
                 ),
                 (bad_key, TextFormError::InvalidString),

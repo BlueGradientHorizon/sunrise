@@ -655,7 +655,7 @@ fn map_read<T>(
 pub(super) struct Maps {
     pub data: HashMap<i32, MapData>,
     /// The highest map id handed out (`maps/last_id.dat`), loaded on first use.
-    last_id: Option<i32>,
+    pub(super) last_id: Option<i32>,
     /// The atlas slots holding map textures.
     pub slots: super::atlas_slots::AtlasSlots<i32>,
     missing: std::collections::HashSet<i32>,
@@ -2107,8 +2107,8 @@ mod tests {
     fn named_map_targets_are_added_once_without_replacing_other_targets() {
         let mut map = MapData::fresh(0.0, 0.0, 0, "minecraft:overworld");
         let target = |key: JavaString, x| (key, "map/decorations/red_x", x, 30.0, 180.0);
-        let first_key = JavaString(vec![0xd800]);
-        let second_key = JavaString(vec![0xd801]);
+        let first_key = JavaString::from(vec![0xd800]);
+        let second_key = JavaString::from(vec![0xd801]);
         map.add_item_decorations(vec![target(first_key.clone(), 20.0)], 0);
         map.add_item_decorations(vec![target(first_key, 40.0), target(second_key, 25.0)], 1);
         assert_eq!(map.decorations.len(), 2);

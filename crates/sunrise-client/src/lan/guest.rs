@@ -156,6 +156,15 @@ impl InboxItem {
     }
 }
 
+/// The body state at a single accepted move, before later input or reports.
+#[derive(Clone, Copy, Debug)]
+pub struct GuestMove {
+    pub position: [f64; 3],
+    pub delta: [f64; 3],
+    pub on_ground: bool,
+    pub sneaking: bool,
+}
+
 pub struct Guest {
     /// Identity generation and journal binding travel with the actual player record.
     pub residency: crate::join_seq::residency::member::Member,
@@ -446,9 +455,8 @@ pub struct Guest {
     pub inbox: VecDeque<InboxItem>,
     pub joined_tick: u64,
     pub ticks: u64,
-    /// The moves accepted since the game last looked (movement, on ground),
-    /// for ServerPlayer.doCheckFallDamage.
-    pub moves: Vec<([f64; 3], bool)>,
+    /// The moves accepted since the game last looked, for ServerPlayer.doCheckFallDamage.
+    pub moves: Vec<GuestMove>,
     /// Whether the guest was on the ground before the first of `moves`.
     pub moves_from_ground: bool,
     /// `ServerPlayer.lastKnownClientMovement`: the last move accepted from
@@ -1427,10 +1435,7 @@ fn write_block_predicate(
         struct Key<'a>(&'a sunrise_core::nbt::JavaString);
         impl sunrise_core::java_hash_map::JavaKey for Key<'_> {
             fn java_hash(&self) -> i32 {
-                self.0
-                    .0
-                    .iter()
-                    .fold(0i32, |h, c| h.wrapping_mul(31).wrapping_add(*c as i32))
+                sunrise_core::java_string::java_string_hash(self.0.units())
             }
             fn comparable_compare(&self, other: &Self) -> Option<std::cmp::Ordering> {
                 Some(self.0.cmp(other.0))

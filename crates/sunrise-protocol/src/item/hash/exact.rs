@@ -108,7 +108,7 @@ fn units(key: &[u16]) -> String {
 fn components_with<O: Ops>(map: &Compound, names: &dyn Names) -> Option<O::Value> {
     let mut entries = Vec::with_capacity(map.len());
     for (key, value) in map.iter() {
-        let key = units(&key.0);
+        let key = units(key.units());
         let hashed = match key.strip_prefix('!') {
             Some(_) => O::empty_map(),
             None => {
@@ -143,7 +143,7 @@ fn walk_with<O: Ops>(tag: &Tag, shape: &Shape, names: &dyn Names) -> Option<O::V
         Tag::Compound(map) => {
             let mut entries = Vec::with_capacity(map.len());
             for (key, value) in map.iter() {
-                let name = units(&key.0);
+                let name = units(key.units());
                 let hashed = match value {
                     Tag::Compound(inner) if shape.stacks && name == "components" => {
                         components_with::<O>(inner, names)?
@@ -164,7 +164,7 @@ fn walk_with<O: Ops>(tag: &Tag, shape: &Shape, names: &dyn Names) -> Option<O::V
                     }
                     _ => walk_with::<O>(value, shape, names)?,
                 };
-                entries.push((O::create_string_units(&key.0), hashed));
+                entries.push((O::create_string_units(key.units()), hashed));
             }
             O::create_map(entries)
         }

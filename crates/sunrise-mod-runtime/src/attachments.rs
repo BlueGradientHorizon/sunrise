@@ -50,10 +50,10 @@ impl Utf16Units<'_> {
 }
 impl AttachmentKeyView for (JavaString, JavaString) {
     fn namespace(&self) -> Utf16Units<'_> {
-        Utf16Units::Owned(self.0.0.iter().copied())
+        Utf16Units::Owned(self.0.units().iter().copied())
     }
     fn name(&self) -> Utf16Units<'_> {
-        Utf16Units::Owned(self.1.0.iter().copied())
+        Utf16Units::Owned(self.1.units().iter().copied())
     }
 }
 impl AttachmentKeyView for (&str, &str) {
@@ -216,7 +216,7 @@ pub enum AttachmentWrite {
 }
 
 /// The current server's holders' values, erased to what crosses any boundary: the typed
-/// [`AttachmentType`] methods are built on it, for a native mod and a wasm mod alike.
+/// [`AttachmentType`] methods are built on it, for mods.
 pub trait AttachmentStore {
     /// Validate an attachment type against the loaded declarations.
     fn validate_attachment(
@@ -1026,8 +1026,9 @@ impl Attachments {
         }
         let invalid = self.raw.as_ref().is_some_and(|raw| {
             NAMESPACE.with_borrow_mut(|key| {
-                key.0.clear();
-                key.0.extend(namespace.encode_utf16());
+                let units = key.units_mut();
+                units.clear();
+                units.extend(namespace.encode_utf16());
                 raw.get(key)
                     .is_some_and(|tag| !matches!(tag, Tag::Compound(_)))
             })
@@ -1060,17 +1061,7 @@ impl Attachments {
     }
     fn store(&mut self, namespace: &str, name: &str, value: Decoded, write: AttachmentWrite) {
         let sync = value.policy.sync;
-        // UTF-8 byte length is an upper bound on UTF-16 units. Reserve once
-        // instead of repeatedly growing the short key buffers during encoding.
-        let [owned_namespace, owned_name] = [namespace, name].map(|text| {
-            let mut units = Vec::with_capacity(text.len());
-            if text.is_ascii() {
-                units.extend(text.bytes().map(u16::from));
-            } else {
-                units.extend(text.encode_utf16());
-            }
-            JavaString(units)
-        });
+        let [owned_namespace, owned_name] = [namespace, name].map(JavaString::from);
         let key = (owned_namespace, owned_name);
         self.write_entry(
             &key,
@@ -1772,7 +1763,10 @@ mod tests {
                             [(JavaString::from("value"), Tag::String("bad".into()))].into(),
                         ),
                     ),
-                    (JavaString(vec![0xd800]), Tag::Compound(Compound::new())),
+                    (
+                        JavaString::from(vec![0xd800]),
+                        Tag::Compound(Compound::new()),
+                    ),
                 ]
                 .into(),
             ),
@@ -1986,7 +1980,10 @@ mod borrowed_key_tests {
             }
         }
         // Saved Java names can contain unpaired surrogates as well.
-        let malformed = (JavaString(vec![0xd800]), JavaString(vec![0xdc00]));
+        let malformed = (
+            JavaString::from(vec![0xd800]),
+            JavaString::from(vec![0xdc00]),
+        );
         let valid = ("𐀀", "");
         assert_eq!(
             (&malformed as &dyn AttachmentKeyView).cmp(&valid),

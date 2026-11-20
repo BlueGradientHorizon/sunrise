@@ -617,9 +617,21 @@ pub(super) struct Remote {
     /// sent none the game takes): owned by the connection, so entering a level touches no other
     /// level's facts, the integrated server's included.
     pub(in crate::game) level_facts: Option<Arc<sunrise_world::dimension_type::DimensionFacts>>,
-    /// The sky, fog and cloud attributes (and timelines) of the level from the server's type, for a
-    /// level of a mod or a pack (`None` for a built-in level, or when the type is refused).
-    pub(in crate::game) level_environment: Option<sunrise_client::environment::Environment>,
+    /// The sky, fog and cloud attributes (and timelines) of the level from the server's type over
+    /// the client's own environment of that type: what gameplay reads. `None` when the type is
+    /// refused, or has no data at all: neither the server sent it nor the client's resources hold
+    /// it (`fill_known_entries` fills a known pack's entries from the client's own files).
+    pub(in crate::game) level_environment: Option<Arc<sunrise_client::environment::Environment>>,
+    /// The same over the packs' Polytone stack of that type, what the frame draws (`None` without
+    /// pack modifiers, or for a type the packs have no stack of: any but the three vanilla IDs).
+    pub(in crate::game) level_pack_environment:
+        Option<Arc<sunrise_client::environment::Environment>>,
+    /// The level's synchronized dimension type, which both environments are built from again
+    /// when the packs change.
+    synced_type: Option<(String, serde_json::Value)>,
+    /// Both environments by synchronized type name, with what they were built from, so that a
+    /// level of an unchanged type is entered again without reading the biome files.
+    level_environments: HashMap<String, level_format::LevelEnvironments>,
     /// Connection-owned facts, cached by level and the full named type identity.
     facts_cache: HashMap<
         String,
@@ -1258,6 +1270,9 @@ impl Game<'_> {
             level_key: mod_api::DimensionKey::OVERWORLD,
             level_facts: None,
             level_environment: None,
+            level_pack_environment: None,
+            synced_type: None,
+            level_environments: Default::default(),
             facts_cache: Default::default(),
             added_levels: Default::default(),
             viewed: Default::default(),
@@ -1508,6 +1523,9 @@ impl Game<'_> {
             level_key: mod_api::DimensionKey::OVERWORLD,
             level_facts: None,
             level_environment: None,
+            level_pack_environment: None,
+            synced_type: None,
+            level_environments: Default::default(),
             facts_cache: Default::default(),
             added_levels: Default::default(),
             viewed: Default::default(),
@@ -1897,8 +1915,11 @@ impl Game<'_> {
     /// A stack from the server, decoded as the saved and command item NBT
     /// are, so tooltips and models see every field.
     pub(super) fn to_stack(&self, s: &Option<Stack>) -> Option<ItemStack> {
+        self.decode_remote_stack(s.as_ref()?)
+    }
+
+    fn decode_remote_stack(&self, stack: &Stack) -> Option<ItemStack> {
         let r = self.remote.as_ref()?;
-        let stack = s.as_ref()?;
         if !sunrise_protocol::item::custom::permitted(stack, r.registries.custom_components)
             .unwrap_or(false)
         {
@@ -2473,11 +2494,11 @@ impl Game<'_> {
         // A Sunrise server's bulk edit sends whole columns with the light
         // from before its relight; any other server's packet light is final.
         let relight_resent = r.quiet_commands;
-        let format = r.level_format(spawn, self.res.environment());
+        let format = r.level_format(spawn);
         let (dimension, shape) = (format.dimension, format.shape);
         r.chunk_format = format.chunk_format;
         r.level_facts = format.facts;
-        r.level_environment = format.environment;
+        r.synced_type = format.synced_type;
         r.dimension = dimension;
         r.resolve_clocks();
         self.world.day_time = r.clock_time(r.default_clock);
@@ -2502,6 +2523,7 @@ impl Game<'_> {
         r.predictions.clear();
         self.set_mode_id(spawn.game_type);
         self.dim = Dim::from_id(&spawn.dimension);
+        self.build_level_environments();
         self.audio.set_world(&spawn.dimension);
         // ClientPacketListener.handleLogin / handleRespawn: the server's
         // Player.getLastDeathLocation, for the recovery compass.
@@ -8664,29 +8686,36 @@ impl Game<'_> {
             can_use_game_master_blocks: self.can_use_game_master_blocks(),
         };
         let registry = self.pack.assets.registry;
+        let stack_state = |state| {
+            crate::game::block_items::item_block_state(
+                registry,
+                state,
+                stack,
+                ctx.can_use_game_master_blocks,
+            )
+        };
+        let has_part = asks_mods
+            && mod_api::__private::item_listens(mod_api::HookId::PlacementContext, &stack.item);
+        let placer = has_part.then(|| self.placement_placer()).flatten();
         self.with_level(|b, level, ticks| {
-            let mut level = DryLevel::new(level);
-            level.reads = Some(ticks);
-            level.asks_mods = asks_mods;
-            let placed = b.place_block_with_state(
-                &mut level,
-                &mut sunrise_world::level::Ticks::default(),
-                &ctx,
-                |state| {
-                    crate::game::block_items::item_block_state(
-                        registry,
-                        state,
-                        stack,
-                        ctx.can_use_game_master_blocks,
-                    )
-                },
-            )?;
+            let mut dry = DryLevel::new(level);
+            dry.reads = Some(ticks);
+            dry.asks_mods = asks_mods;
+            let mut ticks = sunrise_world::level::Ticks::default();
+            // The rewrite reads the base level: the scratch level has not written anything yet.
+            let (decision, _) =
+                b.decide_placement(&mut dry, &mut ticks, &ctx, stack_state, |_, context| {
+                    has_part
+                        .then(|| level.rewrite_placement_context(stack, context, placer))
+                        .flatten()
+                })?;
+            let placed = b.place_resolved_block(&mut dry, &mut ticks, decision, stack_state)?;
             let pos = placed.context.pos;
-            let primary = level.changed.remove_entry(&pos);
+            let primary = dry.changed.remove_entry(&pos);
             Some(DryPlace {
                 pos,
                 matches_candidate: placed.matches_candidate,
-                changes: primary.into_iter().chain(level.changed).collect(),
+                changes: primary.into_iter().chain(dry.changed).collect(),
             })
         })
     }
@@ -10739,6 +10768,9 @@ pub(crate) mod tests {
     }
     mod client_handles_tests {
         include!("client_handles_tests.rs");
+    }
+    mod client_level_environment_tests {
+        include!("client_level_environment_tests.rs");
     }
     mod client_level_lifecycle_tests {
         include!("client_level_lifecycle_tests.rs");

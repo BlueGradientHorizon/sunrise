@@ -87,7 +87,7 @@ fn lists(value: &Tag) -> Option<[List<'_>; 4]> {
         // Compare UTF-16 keys directly; neither lookup nor string matching allocates.
         let raw = map
             .iter()
-            .find(|(key, _)| key.0.iter().copied().eq(name.encode_utf16()))
+            .find(|(key, _)| key.units().iter().copied().eq(name.encode_utf16()))
             .map(|(_, value)| value);
         if !matches!(
             raw,

@@ -88,7 +88,9 @@ fn fox_variant_recipe_codec_matches_exact_names_without_candidate_allocations() 
             for value in [
                 Tag::String(different.into()),
                 Tag::Int(if name == "red" { 0 } else { 1 }),
-                Tag::String(sunrise_core::nbt::JavaString(vec![114, 101, 100, 0xd800])),
+                Tag::String(sunrise_core::nbt::JavaString::from(vec![
+                    114, 101, 100, 0xd800,
+                ])),
             ] {
                 stack
                     .data_mut()

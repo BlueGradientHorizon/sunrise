@@ -5,26 +5,6 @@ use crate::{
     EntityTypeKey, FluidKey, IntGameRuleKey, ItemKey, MenuKey, TagKey, UnresolvedFluid,
 };
 
-impl Wire for crate::OwnProvider {
-    layout_fields!("handler" => String, "resource" => u64);
-    const MIN: usize = 12;
-    fn put(&self, out: &mut Writer) {
-        out.put(&self.handler);
-        if let Ok(id) = out.resource(Box::new(self.provider.clone())) {
-            if id == crate::wire::Unsupported::ID {
-                out.refused(&self.handler)
-            }
-            out.put(&id);
-        }
-    }
-    fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
-        Ok(Self {
-            handler: input.take()?,
-            provider: input.take()?,
-        })
-    }
-}
-
 impl Wire for crate::ItemResource {
     layout_fields!("stack" => crate::ItemStack);
     const MIN: usize = crate::ItemStack::MIN;
@@ -58,173 +38,6 @@ impl Wire for crate::FluidResource {
     }
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
         Ok(Self::of(&input.take()?))
-    }
-}
-
-impl Wire for crate::FeatureFlags {
-    layout_fields!("flags" => Vec<String>);
-    const MIN: usize = 4;
-    fn put(&self, out: &mut Writer) {
-        out.put(&self.iter().map(str::to_owned).collect::<Vec<_>>());
-    }
-    fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
-        Ok(Self::new(input.take::<Vec<String>>()?.into()))
-    }
-}
-
-impl Wire for crate::LoadedMods {
-    const MIN: usize = 0;
-    crate::wire::layout_fields!();
-    fn put(&self, _: &mut Writer) {}
-    fn take(_: &mut Reader<'_>) -> Result<Self, WireError> {
-        Ok(Self::new())
-    }
-}
-impl Wire for crate::RegistrationContext {
-    const MIN: usize = <Option<crate::InstanceDirectory> as Wire>::MIN
-        + <Option<crate::RuntimeEnvironment> as Wire>::MIN
-        + <Option<std::sync::Arc<dyn crate::StartupScreen>> as Wire>::MIN
-        + <Option<std::sync::Arc<dyn crate::RuntimeFileSource>> as Wire>::MIN;
-    crate::wire::layout_fields!(
-        "instance_dir" => Option<crate::InstanceDirectory>,
-        "runtime" => Option<crate::RuntimeEnvironment>,
-        "startup" => Option<std::sync::Arc<dyn crate::StartupScreen>>,
-        "runtime_files" => Option<std::sync::Arc<dyn crate::RuntimeFileSource>>,
-    );
-    fn put(&self, out: &mut Writer) {
-        out.put(&self.instance_dir);
-        out.put(&self.runtime);
-        out.put(&self.startup);
-        // The wasm mod being called gets its own package's files, never another's.
-        out.put(&self.bound_runtime_files());
-    }
-    fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
-        let mut context = Self::new();
-        context.instance_dir = input.take()?;
-        context.runtime = input.take()?;
-        context.startup = input.take()?;
-        context.runtime_files = input.take()?;
-        Ok(context)
-    }
-}
-
-#[cfg(test)]
-mod resource_wire_tests {
-    use super::*;
-    #[test]
-    fn registration_runtime_crosses_wire_without_guest_backend() {
-        for dist in [crate::Dist::Client, crate::Dist::DedicatedServer] {
-            for enabled in [false, true] {
-                let mut native = crate::RegistrationContext::new();
-                native.runtime = Some(crate::RuntimeEnvironment::new(
-                    dist,
-                    "26.3".into(),
-                    "nightly-test".into(),
-                    enabled,
-                ));
-                let mut out = Writer::new();
-                out.put(&native);
-                let guest: crate::RegistrationContext = Reader::new(out.bytes()).take().unwrap();
-                assert_eq!(guest.dist(), dist);
-                assert_eq!(guest.game_version(), "26.3");
-                assert_eq!(guest.sunrise_version(), "nightly-test");
-                assert_eq!(guest.game_tests_enabled(), enabled);
-            }
-        }
-    }
-
-    #[test]
-    fn wire_tokens_and_package_inventory() {
-        let mut out = Writer::new();
-        out.put(&crate::Transaction(7));
-        assert_eq!(
-            out.bytes().len(),
-            8,
-            "a transaction crosses as its frame token"
-        );
-        let mut context = crate::RegistrationContext::new();
-        context.instance_dir = Some(crate::InstanceDirectory::Unix(vec![b'/', 0xff, b'x']));
-        out.put(&context);
-        let mut input = Reader::new(out.bytes());
-        let tx: crate::Transaction = input.take().unwrap();
-        assert_eq!(tx, crate::Transaction(7));
-        crate::world::phase::with_test_packages(&["test_mod"], || {
-            let mods: crate::LoadedMods = input.take().unwrap();
-            let context: crate::RegistrationContext = input.take().unwrap();
-            assert_eq!(mods.ids().collect::<Vec<_>>(), ["test_mod"]);
-            assert_eq!(context.mods().ids().collect::<Vec<_>>(), ["test_mod"]);
-            assert_eq!(
-                context.instance_dir().unwrap(),
-                &crate::InstanceDirectory::Unix(vec![b'/', 0xff, b'x'])
-            );
-        });
-        let package = crate::PackageInfo::new(
-            "test".into(),
-            "2".into(),
-            crate::PackageKind::Content,
-            crate::Side::Both,
-            vec!["test".into()],
-            vec![crate::PackageDependency::new(
-                "other".into(),
-                "^1".into(),
-                crate::DependencyKind::Optional,
-                crate::DependencyOrder::Before,
-                crate::Side::Server,
-                Some("Shared library".into()),
-                Some("https://example.org/library".into()),
-            )],
-        )
-        .with_details(crate::PackageDetails {
-            name: "Test".into(),
-            homepage: Some("https://example.org".into()),
-            runtime: Some(crate::PackageRuntime::Wasm),
-            properties: [("tier".into(), crate::PropertyValue::Integer(3))].into(),
-            ..Default::default()
-        });
-        let mut out = Writer::new();
-        out.put(&package);
-        let decoded: crate::PackageInfo = Reader::new(out.bytes()).take().unwrap();
-        assert_eq!(decoded.id(), "test");
-        assert_eq!(decoded.version(), "2");
-        assert_eq!(decoded.kind(), crate::PackageKind::Content);
-        assert_eq!(decoded.side(), crate::Side::Both);
-        assert!(decoded.depends_on("other"));
-        assert_eq!(decoded.dependencies()[0].version(), "^1");
-        assert_eq!(
-            decoded.dependencies()[0].kind(),
-            crate::DependencyKind::Optional
-        );
-        assert_eq!(
-            decoded.dependencies()[0].order(),
-            crate::DependencyOrder::Before
-        );
-        assert_eq!(decoded.dependencies()[0].side(), crate::Side::Server);
-        assert_eq!(decoded.dependencies()[0].reason(), Some("Shared library"));
-        assert_eq!(
-            decoded.dependencies()[0].url(),
-            Some("https://example.org/library")
-        );
-        assert_eq!(decoded.name(), "Test");
-        assert_eq!(decoded.homepage(), Some("https://example.org"));
-        assert_eq!(decoded.runtime(), Some(crate::PackageRuntime::Wasm));
-        assert_eq!(
-            decoded.property("tier"),
-            Some(&crate::PropertyValue::Integer(3))
-        );
-        assert_eq!(decoded.property("missing"), None);
-        for end in 0..out.bytes().len() {
-            assert!(
-                Reader::new(&out.bytes()[..end])
-                    .take::<crate::PackageInfo>()
-                    .is_err()
-            );
-        }
-        assert!(Reader::new(&[3, 0, 0, 0]).take::<crate::Side>().is_err());
-        assert!(
-            Reader::new(&[2, 0, 0, 0])
-                .take::<crate::PackageKind>()
-                .is_err()
-        );
     }
 }
 
@@ -309,13 +122,7 @@ layout_fields!("slot" => $width);
             fn put(&self, out: &mut Writer) { out.put(&self.0); }
             fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
                 let slot=input.take::<$width>()?;
-                // Slots belong to the host's registry. A wasm guest carries the opaque
-                // token back; its separate registry tables cannot validate a host slot.
-                // Host decoding remains the authoritative validation boundary.
-                #[cfg(target_arch="wasm32")]
-                { Ok(Self(slot)) }
-                #[cfg(not(target_arch="wasm32"))]
-                { Self::from_slot(slot).map_err(WireError::Invalid) }
+                Self::from_slot(slot).map_err(WireError::Invalid)
             }
         }
     )+};
@@ -459,10 +266,10 @@ impl Wire for sunrise_core::nbt::JavaString {
     layout_fields!("units" => Vec<u16>);
     const MIN: usize = <Vec<u16> as Wire>::MIN;
     fn put(&self, out: &mut Writer) {
-        out.put_u16s(&self.0);
+        out.put_u16s(self.units());
     }
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
-        input.nested(|input| input.take_u16s().map(Self))
+        input.nested(|input| input.take_u16s().map(Iterator::collect))
     }
 }
 
@@ -605,35 +412,6 @@ impl Wire for crate::ReductionChange {
             2 => Self::AtLeast(value),
             3 => Self::AtMost(value),
             _ => return Err(WireError::Invalid("invalid reduction change")),
-        })
-    }
-}
-
-impl Wire for crate::ModBlockEntity {
-    layout_fields!("snapshot" => crate::item::containers::ModBlockEntitySnapshot);
-    const MIN: usize = 32;
-    fn put(&self, out: &mut Writer) {
-        out.put(&self.id);
-        out.put(&self.fields.nbt);
-        out.put(&self.fields.items);
-        out.put(&self.fields.data);
-        out.put(&self.revision.identity());
-        out.put(&self.revision.changes());
-        out.put(&self.client_update_fields);
-    }
-    fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
-        Ok(Self {
-            id: input.take()?,
-            fields: crate::item::containers::ModBlockEntityFields {
-                nbt: input.take()?,
-                items: input.take()?,
-                data: input.take()?,
-            },
-            revision: crate::item::containers::ModRevision::from_snapshot(
-                input.take()?,
-                input.take()?,
-            ),
-            client_update_fields: input.take()?,
         })
     }
 }
@@ -794,7 +572,6 @@ mod tests {
 
     #[test]
     fn wire_checked_values_and_garbage() {
-        super::layout_tests::install_layout_resources();
         round(crate::ConfigPath::new("example/options.toml").unwrap());
         round(crate::ConfigPath::root());
         round(crate::SpawnerKey::new("example:spawner").unwrap());
@@ -862,15 +639,15 @@ mod java_string_tests {
             let mut expected = Writer::new();
             expected.put(&units);
             let mut got = Writer::new();
-            got.put(&JavaString(units.clone()));
+            got.put(&JavaString::from(units.clone()));
             assert_eq!(got.bytes(), expected.bytes());
             let key: JavaString = Reader::decode(expected.bytes()).unwrap();
-            assert_eq!(key.0, units);
+            assert_eq!(key.units(), units);
             assert_eq!(Reader::decode::<Vec<u16>>(got.bytes()).unwrap(), units);
             for end in 0..expected.bytes().len() {
                 let cut = &expected.bytes()[..end];
                 assert_eq!(
-                    Reader::decode::<JavaString>(cut).map(|k| k.0),
+                    Reader::decode::<JavaString>(cut).map(JavaString::into_units),
                     Reader::decode::<Vec<u16>>(cut)
                 );
             }
@@ -882,16 +659,16 @@ mod java_string_tests {
         let mut huge = Writer::new();
         huge.put(&u32::MAX);
         assert_eq!(
-            Reader::decode::<JavaString>(huge.bytes()).map(|k| k.0),
+            Reader::decode::<JavaString>(huge.bytes()).map(JavaString::into_units),
             Reader::decode::<Vec<u16>>(huge.bytes())
         );
-        let key = JavaString(vec![7; 10]);
+        let key = JavaString::from(vec![7; 10]);
         for limit in 0..30 {
             let (mut a, mut b) = (Writer::new(), Writer::new());
             a.limit(limit);
             b.limit(limit);
             a.put(&key);
-            b.put(&key.0);
+            b.put(&key.units().to_vec());
             assert_eq!(a.error(), b.error(), "limit {limit}");
             if a.error().is_none() {
                 assert_eq!(a.bytes(), b.bytes());

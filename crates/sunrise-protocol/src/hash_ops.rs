@@ -167,7 +167,7 @@ impl HashOps {
             Tag::Float(bits) => Self::create_float(*bits),
             Tag::Double(bits) => Self::create_double(*bits),
             Tag::ByteArray(v) => Self::create_byte_list(v),
-            Tag::String(s) => Self::create_string_units(&s.0),
+            Tag::String(s) => Self::create_string_units(s.units()),
             Tag::List(items) => {
                 Self::create_list(items.iter().map(|t| Self::from_nbt(t, bool_keys)))
             }
@@ -178,13 +178,13 @@ impl HashOps {
                             Tag::Byte(b)
                                 if bool_keys
                                     .iter()
-                                    .any(|n| k.0.iter().copied().eq(n.encode_utf16())) =>
+                                    .any(|n| k.units().iter().copied().eq(n.encode_utf16())) =>
                             {
                                 Self::create_boolean(*b != 0)
                             }
                             _ => Self::from_nbt(v, bool_keys),
                         };
-                        (Self::create_string_units(&k.0), value)
+                        (Self::create_string_units(k.units()), value)
                     })
                     .collect(),
             ),
