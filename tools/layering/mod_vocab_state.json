@@ -210,14 +210,9 @@
     "reason": "One engine-installed startup-screen service; registration contexts carry this same resource to native and wasm mods, and retained progress handles use it after registration."
   },
   "runtime.rs::LISTENER_SERIAL": {
-    "type": "std::cell::Cell<u64>",
+    "type": "std::cell::Cell<(u64,u64)>",
     "category": "dispatch table",
-    "reason": "Thread-wide count of all listeners entered, bumped by the dispatch loop; scoped engine leases (pending children) compare it so a lease never outlives one listener."
-  },
-  "runtime.rs::ISOLATED_FAILURES": {
-    "type": "std::cell::Cell<u64>",
-    "category": "dispatch table",
-    "reason": "Thread-wide count of listeners poisoned by a trap, bumped only by the dispatch loop's poison path; an owning decide/fire/apply action on the same thread compares it around its dispatch to abort its tentative Host writes."
+    "reason": "Independent per-thread counts of listener entries and trapped listeners. Scoped engine leases compare the entry count; owning decide/fire/apply actions compare the trap count to decide whether to abort tentative Host writes."
   },
   "world/phase_refusal.rs::report::LOGGED": {
     "type": "OnceLock<Mutex<HashSet<(&'staticstr,&'staticstr)>>>",
