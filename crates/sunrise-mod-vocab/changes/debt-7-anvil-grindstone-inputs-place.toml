@@ -1,0 +1,31 @@
+ids = [
+    "hook:grindstone_place",
+    "hook:grindstone_place.place",
+    "hook:grindstone_place.inputs",
+    "hook:grindstone_place.edits",
+    "type:GrindstonePlaceEvent",
+    "type:GrindstonePlaceEvent.place",
+    "type:GrindstonePlaceEvent.inputs",
+    "type:GrindstonePlaceEvent.edits",
+    "type:item::menu::GrindstonePlace",
+    "type:item::menu::GrindstonePlace.top",
+    "type:item::menu::GrindstonePlace.bottom",
+    "type:item::menu::GrindstonePlace.vanilla_output",
+    "type:item::menu::GrindstonePlace.output",
+    "type:item::menu::GrindstonePlace.xp",
+    "type:item::menu::GrindstonePlaceInputs",
+    "type:item::menu::GrindstonePlaceInputs.top",
+    "type:item::menu::GrindstonePlaceInputs.bottom",
+    "type:item::menu::GrindstonePlaceInputs.vanilla_output",
+    "type:item::menu::GrindstonePlaceEdits",
+    "type:item::menu::GrindstonePlaceEdits.output",
+    "type:item::menu::GrindstonePlaceEdits.xp",
+]
+why = "Grindstone Place lends a read-only view of its inputs and vanilla result. Listeners can only edit the replacement output and experience; a valid override is no longer refused for an over-limit stack already in the menu."
+migrate = """
+Use `&mut GrindstonePlaceEvent<'_>` in the listener. Replace `event.place.top.as_ref()`, `event.place.bottom.as_ref()` and `event.place.vanilla_output.as_ref()` with `event.inputs.top`, `event.inputs.bottom` and `event.inputs.vanilla_output`. These stacks are optional references: don't assign to them, and use `.cloned()` on the field if you need to keep its stack past the callback.
+
+Read and write `event.place.output` and `event.place.xp` through `event.edits.output` and `event.edits.xp`. Use `None` for vanilla output and experience or `Some(valid_stack)` for a replacement; with a replacement, `-1` keeps vanilla experience and a nonnegative XP value overrides it. XP below `-1` refuses an uncancelled answer even without an output override. To clear the result, set `event.cancelled` or return `Flow::Cancel`.
+
+If you construct a dispatch fixture, replace the old `mod_api::item::menu::GrindstonePlace` with `GrindstonePlaceInputs<'_>` (borrowing your optional stacks) and `GrindstonePlaceEdits { output: None, xp: -1 }`; pass `&inputs, &mut edits` before the cancel argument. These call-scoped records have no Wire encoding; retain or encode individual owned fields instead. Rebuild and repack the mod for hook version 3.
+"""

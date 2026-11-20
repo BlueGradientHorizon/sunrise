@@ -227,18 +227,31 @@ pub struct AnvilUpdateEdits {
     /// zero or a value exceeding the stack consumes all of it on take.
     pub material_cost: i32,
 }
-/// What `GrindstoneEvent.OnPlaceItem` asks about once the inputs changed,
-/// and what the mods may set: an `output` (none until a mod sets one) and,
-/// with it, `xp` (-1 for vanilla's experience). `vanilla_output` is the
-/// vanilla's result, to read; set `output` to replace it.
+/// The inputs and vanilla result of `GrindstoneMenu.createResult`, borrowed for
+/// the `grindstone_place` callback. Edits by earlier listeners do not change these values.
 #[derive(Clone, Debug, PartialEq)]
 // exhaustive: the game builds it with a literal; mods only read it
-#[derive(sunrise_mod_api_macros::Wire)]
-pub struct GrindstonePlace {
-    pub top: Option<ItemStack>,
-    pub bottom: Option<ItemStack>,
-    pub vanilla_output: Option<ItemStack>,
+// no wire: borrows the converted stacks for the hook call.
+pub struct GrindstonePlaceInputs<'a> {
+    /// The stack in the top input slot, if present.
+    pub top: Option<&'a ItemStack>,
+    /// The stack in the bottom input slot, if present.
+    pub bottom: Option<&'a ItemStack>,
+    /// The result calculated by vanilla, if any.
+    pub vanilla_output: Option<&'a ItemStack>,
+}
+
+/// The shared answer to `grindstone_place`, initially no override and `-1` XP.
+/// The game validates the final answer before applying it.
+#[derive(Clone, Debug, PartialEq)]
+// exhaustive: the game builds it with a literal
+// no wire: staged edits are applied in-process at the end of the hook call.
+pub struct GrindstonePlaceEdits {
+    /// Leave vanilla's result and experience with `None`, or replace the result with a
+    /// valid stack. To clear the result, cancel the hook instead.
     pub output: Option<ItemStack>,
+    /// Experience to award when the replacement is taken. `-1` uses vanilla's award;
+    /// values below `-1` are refused unless cancelled.
     pub xp: i32,
 }
 /// A grindstone result taken, as `GrindstoneEvent.OnTakeItem` reports it:

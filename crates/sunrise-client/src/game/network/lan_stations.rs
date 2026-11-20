@@ -21,7 +21,7 @@ use std::cell::{Cell, RefCell};
 use sunrise_client::{
     containers::BlockEntity,
     items::ItemStack,
-    menu::{GrindstonePlace, Kind, Menu, PendingGrindstoneTake},
+    menu::{GrindstonePlaceEdits, Kind, Menu, PendingGrindstoneTake},
 };
 use sunrise_core::random::RandomSource;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
@@ -426,11 +426,9 @@ impl Game<'_> {
                     .as_ref()
                     .map(|host| (host.hub.guests[gi].uuid, host.hub.guests[gi].entity_id))
                     .unwrap_or((0, 0));
-                let place = gs.menu.grindstone_place();
                 if place_listened && let Some((actor, (route, _), _)) = admission {
                     let read = gs.menu.mutation_stamp();
-                    let original = place.clone();
-                    let answer = RefCell::new(None::<GrindstonePlace>);
+                    let answer = RefCell::new(None::<GrindstonePlaceEdits>);
                     let applied = {
                         let menu = RefCell::new(&mut *gs.menu);
                         self.decided_action(
@@ -440,43 +438,39 @@ impl Game<'_> {
                             Epoch::Player,
                             |game| fresh(game) && menu.borrow().mutation_stamp() == read,
                             |game| {
-                                let mut place = place;
                                 let mut cancel = false;
-                                if let Err(reason) = game.api_grindstone_place(
+                                let edits = match game.api_grindstone_place(
                                     uuid,
                                     entity_id,
                                     pos,
-                                    &mut place,
+                                    menu.borrow().grindstone_place(),
                                     &mut cancel,
                                 ) {
-                                    return Reply::Invalid(reason);
-                                }
+                                    Ok(edits) => edits,
+                                    Err(reason) => return Reply::Invalid(reason),
+                                };
                                 if cancel {
                                     return Reply::Cancel;
                                 }
-                                if place.xp < -1
-                                    || place.output.as_ref().is_some_and(|s| s.count < 1)
-                                {
-                                    return Reply::Invalid(InvalidReason::Plan);
-                                }
-                                *answer.borrow_mut() = Some(place);
+                                *answer.borrow_mut() = Some(edits);
                                 Reply::Allow
                             },
                             |_| {
-                                if let Some(place) = answer.take() {
-                                    menu.borrow_mut().grindstone_placed(place, false);
+                                if let Some(edits) = answer.take() {
+                                    menu.borrow_mut().grindstone_placed(edits, false);
                                 }
                             },
                         )
                     };
                     // A cancel, a refusal and a stale read all leave no result.
                     if !applied {
-                        gs.menu.grindstone_placed(original, true);
+                        gs.menu.grindstone_placed(Default::default(), true);
                     }
                 } else {
                     // Without a subscriber use the vanilla result. A missing listener identity
                     // on the subscribed route instead refuses it, just like a stale read.
-                    gs.menu.grindstone_placed(place, place_listened);
+                    gs.menu
+                        .grindstone_placed(Default::default(), place_listened);
                 }
             }
             if recomputed && gs.kind == StationKind::Smithing {

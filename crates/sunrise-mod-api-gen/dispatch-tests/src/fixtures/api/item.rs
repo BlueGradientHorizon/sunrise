@@ -10,7 +10,9 @@ pub mod item {
         pub struct AnvilUpdateInputs<'a>(std::marker::PhantomData<&'a ()>);
         #[derive(Clone)]
         pub struct AnvilUpdateEdits;
-        pub struct GrindstonePlace;
+        pub struct GrindstonePlaceInputs<'a>(std::marker::PhantomData<&'a ()>);
+        #[derive(Clone)]
+        pub struct GrindstonePlaceEdits;
         pub struct GrindstoneTake;
         pub struct StackedOnOther;
         pub struct StackedOnOtherResult;

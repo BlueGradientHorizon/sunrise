@@ -87,19 +87,23 @@ pub struct AnvilUpdateInputs<'a> {
     pub right: Option<&'a ItemStack>,
     pub name: Option<&'a str>,
 }
-/// What `GrindstoneEvent.OnPlaceItem` asks about once the inputs changed,
-/// and what the mods may set: an `output` (none until a mod sets one) and,
-/// with it, `xp` (-1 for vanilla's experience). `vanilla_output` is the
-/// vanilla's result, to read; set `output` to replace it.
-#[derive(Clone, Debug, PartialEq)]
-// exhaustive: the game builds it with a literal; mods only read it
-pub struct GrindstonePlace {
-    pub top: Option<ItemStack>,
-    pub bottom: Option<ItemStack>,
-    pub vanilla_output: Option<ItemStack>,
+/// An admitted answer to `GrindstoneEvent.OnPlaceItem`: a replacement result
+/// and its experience award, or no replacement to keep the vanilla calculation.
+pub struct GrindstonePlaceEdits {
     pub output: Option<ItemStack>,
+    /// `-1` for the vanilla award, or a nonnegative experience amount.
     pub xp: i32,
 }
+
+impl Default for GrindstonePlaceEdits {
+    fn default() -> Self {
+        Self {
+            output: None,
+            xp: -1,
+        }
+    }
+}
+
 /// A grindstone result taken, as `GrindstoneEvent.OnTakeItem` reports it:
 /// the inputs, the experience (-1 for vanilla's, or what OnPlaceItem set)
 /// and what the inputs hold afterwards (empty, as vanilla's).

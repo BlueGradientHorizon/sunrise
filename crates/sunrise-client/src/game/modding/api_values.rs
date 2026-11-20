@@ -3,6 +3,7 @@
 //! Rust's orphan rule prevents foreign From/TryFrom implementations here.
 #[path = "api_values/ingredient.rs"]
 mod ingredient_values;
+use crate::game::transactions::decision::InvalidReason;
 use mod_api::item::item_stack::{ItemStack as ApiStack, StackWriteError};
 use std::sync::Arc;
 #[cfg(test)]
@@ -1180,32 +1181,6 @@ impl TryIntoApi for crate::menu::AnvilCraftSnapshot {
         ))
     }
 }
-impl TryIntoApi for crate::menu::GrindstonePlace {
-    type Api = mod_api::item::menu::GrindstonePlace;
-    type Error = StackReadError;
-    fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
-        Ok(mod_api::item::menu::GrindstonePlace {
-            top: self.top.try_into_api()?,
-            bottom: self.bottom.try_into_api()?,
-            vanilla_output: self.vanilla_output.try_into_api()?,
-            output: self.output.try_into_api()?,
-            xp: self.xp,
-        })
-    }
-}
-impl TryIntoEngine for mod_api::item::menu::GrindstonePlace {
-    type Engine = crate::menu::GrindstonePlace;
-    type Error = StackWriteError;
-    fn try_into_engine(&self, items: &Items) -> Result<Self::Engine, Self::Error> {
-        Ok(crate::menu::GrindstonePlace {
-            top: self.top.try_into_engine(items)?,
-            bottom: self.bottom.try_into_engine(items)?,
-            vanilla_output: self.vanilla_output.try_into_engine(items)?,
-            output: self.output.try_into_engine(items)?,
-            xp: self.xp,
-        })
-    }
-}
 impl TryIntoApi for crate::menu::PendingGrindstoneTake {
     type Api = mod_api::item::menu::GrindstoneTake;
     type Error = StackReadError;
@@ -1291,22 +1266,40 @@ impl super::Game<'_> {
         player: u128,
         entity: i32,
         pos: [i32; 3],
-        value: &mut crate::menu::GrindstonePlace,
+        inputs: [Option<&EngineStack>; 3],
         cancel: &mut bool,
-    ) -> Result<(), crate::game::transactions::decision::InvalidReason> {
-        let Ok(mut api) = value.try_into_api() else {
-            return Ok(());
+    ) -> Result<crate::menu::GrindstonePlaceEdits, InvalidReason> {
+        use mod_api::item::menu::{GrindstonePlaceEdits, GrindstonePlaceInputs};
+
+        let Ok([top, bottom, vanilla_output]) = inputs.try_into_api() else {
+            return Ok(Default::default());
         };
-        let original = api.clone();
-        self.native_grindstone_place(player, entity, pos, &mut api, cancel);
-        if api == original {
-            return Ok(());
-        }
-        // An answer that is no stack is refused, never read as a cancel.
-        *value = api
+        let inputs = GrindstonePlaceInputs {
+            top: top.as_ref(),
+            bottom: bottom.as_ref(),
+            vanilla_output: vanilla_output.as_ref(),
+        };
+        let mut edits = GrindstonePlaceEdits {
+            output: None,
+            xp: -1,
+        };
+        self.native_grindstone_place(player, entity, pos, &inputs, &mut edits, cancel);
+
+        // Refuse an invalid replacement before considering cancellation or experience.
+        let output = edits
+            .output
             .try_into_engine(self.items())
-            .map_err(|_| crate::game::transactions::decision::InvalidReason::Count)?;
-        Ok(())
+            .map_err(|_| InvalidReason::Count)?;
+        if *cancel {
+            return Ok(Default::default());
+        }
+        if edits.xp < -1 {
+            return Err(InvalidReason::Plan);
+        }
+        Ok(crate::menu::GrindstonePlaceEdits {
+            output,
+            xp: edits.xp,
+        })
     }
     pub(in crate::game) fn api_grindstone_take(
         &mut self,

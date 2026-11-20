@@ -207,8 +207,15 @@ A client without this mod predicts vanilla here; the server corrects it.
   contents) and the item slots a mod gives an item. A hopper filling a shulker box doesn't ask. A `true` for a
   shulker box lets shulker boxes nest: that is the mod's choice, bounded by the NBT readers' depth limit.
 
-`grindstone_place` can replace the result when the inputs change. A cancel or refusal leaves no
-result. `grindstone_take` can replace the two inputs and the experience award. Cancelling a take
+When the grindstone inputs change, `grindstone_place` lends the top and bottom stacks and
+vanilla's result through `event.inputs`. Set `event.edits.output = Some(stack)` with a valid
+stack to replace the result. Only a replacement uses `event.edits.xp`: leave it at `-1` for
+vanilla experience or set a nonnegative award. Leaving the override at `None` keeps vanilla's
+result and award. Only the replacement stack is checked as a write; the borrowed stacks are not.
+An invalid replacement or an uncancelled XP below `-1` refuses the answer. A cancel or refusal
+leaves no result.
+
+`grindstone_take` can replace the two inputs and the experience award. Cancelling a take
 keeps the click that took the result but skips the input replacement and experience. Refusing a
 take (for example, because the backing block changed or the answer is invalid) instead restores
 the click, including the result, cursor, inventory and any dropped item. Both cancel and refusal

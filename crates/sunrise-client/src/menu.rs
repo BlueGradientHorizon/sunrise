@@ -22,8 +22,9 @@ use sunrise_world::native_load_context::{DataLoadOrigin, LoadContext, LoadInputs
 use sunrise_world::native_load_context::{LoopContext, LoopSide};
 mod models;
 pub use models::{
-    AnvilCraftSnapshot, AnvilUpdateInputs, GrindstonePlace, PendingGrindstoneTake, PlanningRules,
-    RuleAnswers, SlotContext, SlotRules, SlotView, StackedClick, StackedOutcome, StoredRules,
+    AnvilCraftSnapshot, AnvilUpdateInputs, GrindstonePlaceEdits, PendingGrindstoneTake,
+    PlanningRules, RuleAnswers, SlotContext, SlotRules, SlotView, StackedClick, StackedOutcome,
+    StoredRules,
 };
 mod slot_context;
 pub use slot_context::{SlotSnapshot, apply_menu_slot_rules, lan_container};
@@ -1305,28 +1306,25 @@ impl Menu {
         self.state.containers[RESULT][0] = state.result;
     }
 
-    /// `GrindstoneEvent.OnPlaceItem`'s question about the result
-    /// `createResult` just made.
-    pub fn grindstone_place(&self) -> GrindstonePlace {
-        GrindstonePlace {
-            top: self.state.containers[MAIN][0].clone(),
-            bottom: self.state.containers[MAIN][1].clone(),
-            vanilla_output: self.state.containers[RESULT][0].clone(),
-            output: None,
-            xp: -1,
-        }
+    /// Lend the top, bottom and vanilla result slots that `GrindstoneEvent.OnPlaceItem` reads.
+    pub fn grindstone_place(&self) -> [Option<&ItemStack>; 3] {
+        [
+            self.state.containers[MAIN][0].as_ref(),
+            self.state.containers[MAIN][1].as_ref(),
+            self.state.containers[RESULT][0].as_ref(),
+        ]
     }
 
-    /// The mods' answer to [`Self::grindstone_place`]: a cancel leaves no
-    /// result; an output replaces vanilla's, and its `xp` (when 0 or more)
-    /// is what taking it gives; otherwise vanilla's result and experience stay.
-    pub fn grindstone_placed(&mut self, place: GrindstonePlace, cancel: bool) {
+    /// Apply the admitted output and experience edits. With no override, keep
+    /// the vanilla result and use vanilla experience. Cancellation clears the
+    /// result and resets experience regardless of the edits.
+    pub fn grindstone_placed(&mut self, edits: GrindstonePlaceEdits, cancel: bool) {
         self.touch();
         self.state.grind_xp = -1;
         if cancel {
             self.state.containers[RESULT][0] = None;
-        } else if let Some(output) = place.output {
-            self.state.grind_xp = place.xp.max(-1);
+        } else if let Some(output) = edits.output {
+            self.state.grind_xp = edits.xp;
             self.state.containers[RESULT][0] = Some(output);
         }
     }
@@ -3759,10 +3757,13 @@ pub(crate) mod tests {
                 menu.grind_hook = true;
                 menu.set_slot(env, 0, stack("iron_sword", 1));
                 menu.set_slot(env, 1, stack("iron_sword", 1));
-                let mut place = menu.grindstone_place();
-                place.output = stack("stick", 1);
-                place.xp = 5;
-                menu.grindstone_placed(place, false);
+                menu.grindstone_placed(
+                    GrindstonePlaceEdits {
+                        output: stack("stick", 1),
+                        xp: 5,
+                    },
+                    false,
+                );
                 menu.click(env, 2, 0, Input::Pickup).unwrap();
                 menu
             };
@@ -3791,29 +3792,44 @@ pub(crate) mod tests {
             let mut menu = Menu::new(Kind::Grindstone);
             menu.set_slot(env, 0, stack("iron_sword", 1));
             menu.load_slot(2, stack("golden_sword", 1));
-            let mut place = menu.grindstone_place();
-            assert_eq!(place.vanilla_output, stack("golden_sword", 1));
-            assert_eq!(place.output, None);
-            place.vanilla_output = stack("dirt", 1);
-            menu.grindstone_placed(place, false);
+            assert_eq!(
+                menu.grindstone_place(),
+                [
+                    stack("iron_sword", 1).as_ref(),
+                    None,
+                    stack("golden_sword", 1).as_ref(),
+                ]
+            );
+            menu.grindstone_placed(
+                GrindstonePlaceEdits {
+                    output: None,
+                    xp: 5,
+                },
+                false,
+            );
             assert_eq!(menu.slot(2), stack("golden_sword", 1).as_ref());
+            assert_eq!(menu.state.grind_xp, -1);
 
-            let mut place = menu.grindstone_place();
-            place.vanilla_output = stack("golden_sword", 1);
-            place.output = stack("stick", 1);
-            menu.grindstone_placed(place, false);
+            menu.grindstone_placed(
+                GrindstonePlaceEdits {
+                    output: stack("stick", 1),
+                    xp: 5,
+                },
+                false,
+            );
             assert_eq!(menu.slot(2), stack("stick", 1).as_ref());
-
-            let mut place = menu.grindstone_place();
-            place.vanilla_output = None;
-            menu.grindstone_placed(place, false);
-            assert_eq!(menu.slot(2), stack("stick", 1).as_ref());
+            assert_eq!(menu.state.grind_xp, 5);
 
             // Cancellation wins even when a mod supplies an override.
-            let mut place = menu.grindstone_place();
-            place.output = stack("stick", 1);
-            menu.grindstone_placed(place, true);
+            menu.grindstone_placed(
+                GrindstonePlaceEdits {
+                    output: stack("stick", 1),
+                    xp: 5,
+                },
+                true,
+            );
             assert_eq!(menu.slot(2), None);
+            assert_eq!(menu.state.grind_xp, -1);
         });
     }
 

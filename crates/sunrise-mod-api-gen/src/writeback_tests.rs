@@ -27,12 +27,7 @@ fn untouched_writeback_runtime_and_mutants() {
     let handwritten = include_str!("../../sunrise-client/src/game/modding/api_values.rs");
     let mut methods =
         format!("fn generated(&mut self, stack: &mut Stack, handled: &mut bool) {{ {generated} }}");
-    for name in [
-        "grindstone_place",
-        "grindstone_take",
-        "menu_button",
-        "menu_quick_move",
-    ] {
+    for name in ["grindstone_take", "menu_button", "menu_quick_move"] {
         let start = handwritten.find(&format!("fn api_{name}(")).unwrap();
         let text = &handwritten[start..];
         let begin = text.find("{").unwrap();
@@ -61,7 +56,7 @@ fn untouched_writeback_runtime_and_mutants() {
             "menu_quick_move" => "",
             _ => "let entity = 0;",
         };
-        let body = if matches!(name, "grindstone_place" | "grindstone_take") {
+        let body = if name == "grindstone_take" {
             body.to_owned()
         } else {
             // Keep the adapter's early `return` inside its original unit-returning body.
@@ -105,7 +100,6 @@ impl ItemBoundary for Game {}
 impl Game {
     fn items(&self) -> &() { &() }
     fn native_generated(&mut self, stack: &mut Stack, handled: &mut bool) { if self.change { stack.0 = 252; } *handled = true; }
-    fn native_grindstone_place(&mut self, _: u128, _: i32, _: [i32; 3], stack: &mut Stack, _: &mut bool) { if self.change { stack.0 = 252; } }
     fn native_grindstone_take(&mut self, _: u128, _: i32, _: [i32; 3], stack: &mut Stack, _: &mut bool) { if self.change { stack.0 = 252; } }
     fn native_menu_button(&mut self, _: &str, _: Option<&str>, _: &(), _: Option<&mut Stack>, stack: &mut Option<Stack>) { if self.change { *stack = Some(Stack(252)); } }
     fn native_menu_quick_move(&mut self, _: [i32; 3], _: &mut Stack, _: usize, _: usize, stack: &mut Option<Stack>, handled: &mut bool) { if self.change { *stack = Some(Stack(252)); } *handled = true; }
@@ -120,8 +114,7 @@ fn main() {
         assert_eq!(stack, Stack(251));
         assert_eq!(handled, !change, "untouched argument must not refuse sibling output");
         type Adapter = fn(&mut Game, &mut Stack, &mut Stack, &mut Option<Stack>, &mut Stack, &mut bool, &mut bool) -> Result<(), InvalidReason>;
-        let adapters: [(&str, Adapter); 4] = [
-            ("grindstone_place", Game::grindstone_place),
+        let adapters: [(&str, Adapter); 3] = [
             ("grindstone_take", Game::grindstone_take),
             ("menu_button", Game::menu_button),
             ("menu_quick_move", Game::menu_quick_move),
@@ -134,7 +127,7 @@ fn main() {
             let result = fire(&mut game, &mut value, &mut entity, &mut carried, &mut stack, &mut cancel, &mut handled);
             assert_eq!(VALIDATIONS.load(std::sync::atomic::Ordering::Relaxed), usize::from(change), "{name}");
             assert_eq!(value, Stack(251)); assert_eq!(stack, Stack(251)); assert_eq!(carried, Some(Stack(251)));
-            if matches!(name, "grindstone_place" | "grindstone_take") && change {
+            if name == "grindstone_take" && change {
                 assert_eq!(result, Err(InvalidReason::Count), "{name}");
             } else {
                 assert_eq!(result, Ok(()), "{name}");
@@ -166,7 +159,6 @@ fn main() {
         ),
     ];
     for (name, condition) in [
-        ("grindstone_place", "api == original"),
         ("grindstone_take", "api == original"),
         ("menu_button", "cursor == original"),
         ("menu_quick_move", "held == original"),
