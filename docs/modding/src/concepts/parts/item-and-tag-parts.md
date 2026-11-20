@@ -19,8 +19,8 @@ does) can't see tag parts, and warns once.
 ## Right click on a block
 
 `Hooks::right_click_block` corresponds to NeoForge 26.3's
-`PlayerInteractEvent.RightClickBlock`, on the clicking client and server, with
-identical switches for native and wasm mods:
+`PlayerInteractEvent.RightClickBlock`, with the same switches on the clicking
+client and server:
 
 - `use_block = TriState::True` allows block use even while sneaking with an item
   in either hand. `Default` skips while sneaking with either hand full; `False` skips block use.
