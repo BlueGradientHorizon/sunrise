@@ -1,7 +1,7 @@
 # Registered raw custom payload transport
 
-> The native contract below still applies. WebAssembly mods were removed; the parts about guests are history.
-> The ordered retry contract remains, without guest-group contention.
+> The native transport below still applies. Former WebAssembly guest dispatch
+> and its busy retries are historical.
 > See [registered payloads](../modding/src/how-to/client/networking.md) for the current native API.
 
 This is the raw transport below the typed payload work in #813, implementing
@@ -105,7 +105,8 @@ Physical ingress reservations follow payloads and work as they move to the main
 thread. A connection-owned receiving turn spans main-thread root publication or
 rollback. Pooled server receivers advance queued payloads on their existing tick;
 dedicated client and configuration receivers wait for the active root to finish.
-Disconnect and phase replacement cancel pending work from the old epoch.
+Disconnect and phase replacement cancel pending work from the old epoch and wake
+those receivers even if the root is still held.
 
 ### Historical WebAssembly retries
 

@@ -1,7 +1,7 @@
 # Registered payloads and the typed-payload design
 
-> The native contract below still applies. WebAssembly mods were removed; the parts about guests are history.
-> The native registration, token checks and transport retry contract remain.
+> The native registration, token checks and ordered transport below still apply.
+> Former WebAssembly guest dispatch and its retry contract are historical.
 > See [typed networking](../../modding/src/how-to/client/networking.md) for the current native API.
 
 The registered **raw** transport implements [#2882](https://github.com/arismoko/horizon/issues/2882).
@@ -69,17 +69,18 @@ The native handler receives opaque `PayloadBytes` and the real connection's
 
 Handlers return `Result<(), PayloadHandleError>`. Application failures must use
 `PayloadHandleError::Failed(message)` explicitly; `PayloadWork::run` still returns
-`Result<(), String>`. Native panics and disabled owners are real failures, not busy
-results. `Busy { payload, holder }` means the callback did not start and preserves
-the exact owned `PayloadBytes`, cheaply shared holder names (`owner`, `export`,
-`thread`), and `held_millis`. The original guest runtime used it for occupied groups.
+`Result<(), String>`. Native panics and disabled owners are failures. There is no
+handler retry result.
 
-The receiving transport, not the handler, retains busy bytes at the connection's
-head so later input cannot overtake them. Retries retain original ingress credit,
-queue budget and the original 60-second payload deadline; they do not renew the
-deadline or consume another lease. Phase changes and disconnect cancel old work.
-The former guest runtime refused nested cross-group calls rather than waiting. Busy snapshots are
-formatted only when a diagnostic is needed, not on each retry.
+Each connection holds the receiving turn until the main root publishes or rolls
+back. Later deliveries stay in order and keep their original ingress credit.
+Disconnect or phase replacement cancels work from the old epoch and wakes a
+dedicated receiver waiting for that turn.
+
+**Historical WebAssembly dispatch:** A guest group could return `Busy` before a
+callback started. The receiving transport retained its body and holder snapshot at
+the head under the original deadline and ingress lease. Nested cross-group guest
+calls refused rather than waiting.
 
 ## Admission, sending, and context
 

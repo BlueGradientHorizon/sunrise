@@ -138,8 +138,7 @@ fn register(r: &mut dyn Registrar) {
   handler does not run. A handler that panics is disabled: its transaction rolls back, nothing it
   staged is sent, the session closes, and it is not called again.
 - **Raw channel failures stay local.** A raw channel (`play_raw`) carries bytes from any client,
-  so a declaring mod's handler that returns `Failed`, or stays busy past its deadline, does not
-  close the session: the game logs the mod and the channel, rolls back that delivery's staged
+  so a declaring mod's handler that returns `Failed` does not close the session: the game logs the mod and the channel, rolls back that delivery's staged
   work (a staged disconnect included), and still delivers the other declaring mods' copies. A
   handler that succeeds and asks to disconnect still disconnects, and so does a refusal by the
   main thread's work queue. A typed payload's failure closes the session as above.
