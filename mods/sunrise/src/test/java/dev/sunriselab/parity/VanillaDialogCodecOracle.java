@@ -74,6 +74,9 @@ public final class VanillaDialogCodecOracle {
                 line.addProperty("name", one.get("name").getAsString());
                 line.addProperty("accept", result.result().isPresent());
                 if (result.result().isEmpty()) line.addProperty("error", result.error().orElseThrow().message());
+                if (one.has("observe")) {
+                    line.add("round_trip", observe(result.getOrThrow(), one.get("observe").getAsString()));
+                }
                 out.println(new Gson().toJson(line));
             }
             var repo = ServerPacksSource.createVanillaTrustedRepository();
@@ -137,6 +140,14 @@ public final class VanillaDialogCodecOracle {
             case "inline_button" -> {
                 var click = (ClickEvent.ShowDialog) dialog.common().title().getStyle().getClickEvent();
                 return observe(click.dialog().value(), "button");
+            }
+            case "inline_custom_activation" -> {
+                var click = (ClickEvent.ShowDialog) dialog.common().title().getStyle().getClickEvent();
+                var button = ((NoticeDialog) click.dialog().value()).action();
+                var activated = (ClickEvent.Custom) button.action().orElseThrow().createAction(Map.of()).orElseThrow();
+                out.addProperty("width", button.button().width());
+                out.addProperty("id", activated.id().toString());
+                out.addProperty("payload", activated.payload().orElseThrow().toString());
             }
             case "multiline" -> {
                 var options = ((TextInput) dialog.common().inputs().getFirst().control()).multiline().orElseThrow();

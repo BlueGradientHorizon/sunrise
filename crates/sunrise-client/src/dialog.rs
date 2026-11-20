@@ -394,11 +394,8 @@ pub fn number_string(v: f32) -> String {
 /// server sends. Each reads a value as the matching `DynamicOps` does
 /// (`JsonOps`, `NbtOps`), so one decoder serves both.
 trait Source: Sized {
-    type Component;
-
-    fn text(reader: &Reader<'_>, value: &Self) -> Option<Self::Component>;
-    fn default_label() -> Self::Component;
-    fn inline(&self, decoded: Dialog<Self::Component>) -> Tag;
+    const NBT: bool;
+    fn component_json(&self) -> Option<std::borrow::Cow<'_, Value>>;
     /// An object's field. A JSON `null` is an absent field (`JsonOps`' `MapLike`).
     fn get(&self, key: &str) -> Option<&Self>;
     fn is_map(&self) -> bool;
@@ -413,22 +410,12 @@ trait Source: Sized {
 }
 
 impl Source for Tag {
-    type Component = Text;
+    const NBT: bool = true;
 
-    fn text(reader: &Reader<'_>, value: &Self) -> Option<Text> {
-        let json = sunrise_core::json_nbt::tag_to_json(value).ok()?;
-        let built =
-            crate::text_grammar::build_for_dialog(&json, reader.registries, true, reader.item)?;
-        let decoded = reader.component_nbt(value, built).ok()?;
-        Some(crate::scoreboard::comp_text(
-            &crate::scoreboard::tag_to_json(&decoded),
-        ))
-    }
-    fn default_label() -> Text {
-        Text::translate("gui.ok", &[])
-    }
-    fn inline(&self, _: Dialog<Text>) -> Tag {
-        self.clone()
+    fn component_json(&self) -> Option<std::borrow::Cow<'_, Value>> {
+        sunrise_core::json_nbt::tag_to_json(self)
+            .ok()
+            .map(std::borrow::Cow::Owned)
     }
 
     fn get(&self, key: &str) -> Option<&Self> {
@@ -474,18 +461,10 @@ impl Source for Tag {
 }
 
 impl Source for Value {
-    type Component = Tag;
+    const NBT: bool = false;
 
-    fn text(reader: &Reader<'_>, value: &Self) -> Option<Tag> {
-        let built =
-            crate::text_grammar::build_for_dialog(value, reader.registries, false, reader.item)?;
-        reader.component_nbt(value, built).ok()
-    }
-    fn default_label() -> Tag {
-        Tag::compound([("translate", Tag::String("gui.ok".into()))])
-    }
-    fn inline(&self, decoded: Dialog<Tag>) -> Tag {
-        decoded.encode()
+    fn component_json(&self) -> Option<std::borrow::Cow<'_, Value>> {
+        Some(std::borrow::Cow::Borrowed(self))
     }
 
     fn get(&self, key: &str) -> Option<&Self> {
@@ -626,14 +605,32 @@ fn template(s: &str) -> bool {
 }
 
 impl Reader<'_> {
-    fn text<S: Source>(&self, t: &S) -> Result<S::Component, String> {
-        S::text(self, t).ok_or_default()
+    fn dialog_nbt<S: Source>(&self, t: &S) -> Result<Tag, String> {
+        let dialog = self.dialog(
+            t,
+            |v| self.text(v, |click| click.encode("action")),
+            || Tag::compound([("translate", Tag::String("gui.ok".into()))]),
+        )?;
+        Ok(dialog.encode())
+    }
+
+    fn text<S: Source>(&self, t: &S, mut click: impl FnMut(Click) -> Tag) -> Result<Tag, String> {
+        let json = t.component_json().ok_or_default()?;
+        let built =
+            crate::text_grammar::build_for_dialog(&json, self.registries, S::NBT, self.item)
+                .ok_or_default()?;
+        self.component_nbt(t, built, &mut click)
     }
 
     /// Emit the fields selected by the shared component grammar. Its child
     /// components keep the shape of the source, so the click codec still sees
     /// the original JsonOps/NbtOps values (including an inline dialog).
-    fn component_nbt<S: Source>(&self, source: &S, built: Value) -> Result<Tag, String> {
+    fn component_nbt<S: Source>(
+        &self,
+        source: &S,
+        built: Value,
+        project_click: &mut impl FnMut(Click) -> Tag,
+    ) -> Result<Tag, String> {
         match built {
             Value::Array(items) => {
                 let sources = source.list().ok_or_default()?;
@@ -641,7 +638,7 @@ impl Reader<'_> {
                     sources
                         .iter()
                         .zip(items)
-                        .map(|(raw, item)| self.component_nbt(raw, item))
+                        .map(|(raw, item)| self.component_nbt(raw, item, project_click))
                         .collect::<Result<_, _>>()?,
                 ))
             }
@@ -649,16 +646,20 @@ impl Reader<'_> {
                 let mut out = sunrise_core::nbt::Compound::new();
                 for (key, value) in fields {
                     let tag = match key.as_str() {
-                        "extra" | "with" | "separator" => {
-                            self.component_nbt(source.get(&key).ok_or_default()?, value)?
-                        }
-                        "fallback" if value.is_object() || value.is_array() => {
-                            self.component_nbt(source.get(&key).ok_or_default()?, value)?
-                        }
+                        "extra" | "with" | "separator" => self.component_nbt(
+                            source.get(&key).ok_or_default()?,
+                            value,
+                            project_click,
+                        )?,
+                        "fallback" if value.is_object() || value.is_array() => self.component_nbt(
+                            source.get(&key).ok_or_default()?,
+                            value,
+                            project_click,
+                        )?,
                         "click_event" => {
                             let click = source.get(&key).ok_or_default()?;
                             let action = required(click, "action", string)?;
-                            self.click(click, &action)?.encode("action")
+                            project_click(self.click(click, &action)?)
                         }
                         "hover_event" => {
                             let raw = source.get(&key).ok_or_default()?;
@@ -678,6 +679,7 @@ impl Reader<'_> {
                                             self.component_nbt(
                                                 raw.get(&key).ok_or_default()?,
                                                 value,
+                                                project_click,
                                             )?
                                         } else {
                                             crate::lan::data::json_to_nbt(&value)
@@ -698,7 +700,12 @@ impl Reader<'_> {
     }
 
     /// `Dialog.DIRECT_CODEC`, dispatched on `type`.
-    fn dialog<S: Source>(&self, t: &S) -> Result<Dialog<S::Component>, String> {
+    fn dialog<S: Source, T>(
+        &self,
+        t: &S,
+        text: impl Fn(&S) -> Result<T, String> + Copy,
+        default_label: impl FnOnce() -> T,
+    ) -> Result<Dialog<T>, String> {
         if !t.is_map() {
             return Err(String::new());
         }
@@ -722,21 +729,21 @@ impl Reader<'_> {
         let width = || -> Result<i32, String> {
             Ok(optional(t, "button_width", |v| ranged(v, 1, 1024))?.unwrap_or(150))
         };
-        let button = |key| optional(t, key, |v| self.button(v));
+        let button = |key| optional(t, key, |v| self.button(v, text));
         let kind = match path(&kind) {
             "notice" => Kind::Notice(button("action")?.unwrap_or_else(|| Button {
-                label: S::default_label(),
+                label: default_label(),
                 tooltip: None,
                 width: 150,
                 action: None,
             })),
             "confirmation" => Kind::Confirmation {
-                yes: required(t, "yes", |v| self.button(v))?,
-                no: required(t, "no", |v| self.button(v))?,
+                yes: required(t, "yes", |v| self.button(v, text))?,
+                no: required(t, "no", |v| self.button(v, text))?,
             },
             "multi_action" => Kind::MultiAction {
                 actions: required(t, "actions", |v| {
-                    members(v, |b| self.button(b)).and_then(|actions| {
+                    members(v, |b| self.button(b, text)).and_then(|actions| {
                         (!actions.is_empty()).then_some(actions).ok_or_default()
                     })
                 })?,
@@ -759,15 +766,16 @@ impl Reader<'_> {
         };
         // DialogBody.COMPACT_LIST_CODEC: one body, or a list of them.
         let body = optional(t, "body", |v| match v.list() {
-            Some(_) => members(v, |b| self.body(b)),
-            None => Ok(vec![self.body(v)?]),
+            Some(_) => members(v, |b| self.body(b, text)),
+            None => Ok(vec![self.body(v, text)?]),
         })?
         .unwrap_or_default();
-        let inputs = optional(t, "inputs", |v| members(v, |i| self.input(i)))?.unwrap_or_default();
+        let inputs =
+            optional(t, "inputs", |v| members(v, |i| self.input(i, text)))?.unwrap_or_default();
         Ok(Dialog {
             kind,
-            title: required(t, "title", |v| self.text(v))?,
-            external_title: optional(t, "external_title", |v| self.text(v))?,
+            title: required(t, "title", &text)?,
+            external_title: optional(t, "external_title", &text)?,
             can_close_with_escape: optional(t, "can_close_with_escape", boolean)?.unwrap_or(true),
             pause,
             after_action,
@@ -779,7 +787,7 @@ impl Reader<'_> {
     /// `Dialog.CODEC`: an id of the dialog registry, or the dialog itself.
     fn holder<S: Source>(&self, t: &S) -> Result<Tag, String> {
         if t.is_map() {
-            return Ok(t.inline(self.dialog(t)?));
+            return self.dialog_nbt(t);
         }
         let id = identifier(t)?;
         self.references.borrow_mut().push(Reference::Id(id.clone()));
@@ -804,13 +812,17 @@ impl Reader<'_> {
     }
 
     /// `ActionButton.CODEC`.
-    fn button<S: Source>(&self, t: &S) -> Result<Button<S::Component>, String> {
+    fn button<S: Source, T>(
+        &self,
+        t: &S,
+        text: impl Fn(&S) -> Result<T, String>,
+    ) -> Result<Button<T>, String> {
         if !t.is_map() {
             return Err(String::new());
         }
         Ok(Button {
-            label: required(t, "label", |v| self.text(v))?,
-            tooltip: optional(t, "tooltip", |v| self.text(v))?,
+            label: required(t, "label", &text)?,
+            tooltip: optional(t, "tooltip", &text)?,
             width: optional(t, "width", |v| ranged(v, 1, 1024))?.unwrap_or(150),
             action: optional(t, "action", |v| self.action(v))?,
         })
@@ -867,7 +879,11 @@ impl Reader<'_> {
     }
 
     /// `Input.CODEC`: its key, and `InputControl.MAP_CODEC` dispatched on `type`.
-    fn input<S: Source>(&self, t: &S) -> Result<Input<S::Component>, String> {
+    fn input<S: Source, T>(
+        &self,
+        t: &S,
+        text: impl Fn(&S) -> Result<T, String>,
+    ) -> Result<Input<T>, String> {
         if !t.is_map() {
             return Err(String::new());
         }
@@ -875,7 +891,7 @@ impl Reader<'_> {
         let key = required(t, "key", |v| {
             string(v).and_then(|s| variable_name(&s).then_some(s).ok_or_default())
         })?;
-        let label = || required(t, "label", |v| self.text(v));
+        let label = || required(t, "label", &text);
         let label_visible = || -> Result<bool, String> {
             Ok(optional(t, "label_visible", boolean)?.unwrap_or(true))
         };
@@ -921,7 +937,7 @@ impl Reader<'_> {
                         Some(id) => Ok((id, None, false)),
                         None if o.is_map() => Ok((
                             required(o, "id", string)?,
-                            optional(o, "display", |v| self.text(v))?,
+                            optional(o, "display", &text)?,
                             optional(o, "initial", boolean)?.unwrap_or(false),
                         )),
                         None => Err(String::new()),
@@ -980,30 +996,38 @@ impl Reader<'_> {
     }
 
     /// `PlainMessage.CODEC`: the full form or just its contents.
-    fn message<S: Source>(&self, t: &S) -> Result<(S::Component, i32), String> {
-        let full = || -> Result<(S::Component, i32), String> {
+    fn message<S: Source, T>(
+        &self,
+        t: &S,
+        text: impl Fn(&S) -> Result<T, String>,
+    ) -> Result<(T, i32), String> {
+        let full = || -> Result<(T, i32), String> {
             Ok((
-                required(t, "contents", |v| self.text(v))?,
+                required(t, "contents", &text)?,
                 optional(t, "width", |v| ranged(v, 1, 1024))?.unwrap_or(200),
             ))
         };
-        full().or_else(|error| self.text(t).map(|text| (text, 200)).map_err(|_| error))
+        full().or_else(|error| text(t).map(|text| (text, 200)).map_err(|_| error))
     }
 
     /// `DialogBody.DIALOG_BODY_CODEC`, dispatched on `type`.
-    fn body<S: Source>(&self, t: &S) -> Result<Body<S::Component>, String> {
+    fn body<S: Source, T>(
+        &self,
+        t: &S,
+        text: impl Fn(&S) -> Result<T, String>,
+    ) -> Result<Body<T>, String> {
         if !t.is_map() {
             return Err(String::new());
         }
         let kind = required(t, "type", string)?;
         Ok(match path(&kind) {
             "plain_message" => {
-                let (contents, width) = self.message(t)?;
+                let (contents, width) = self.message(t, &text)?;
                 Body::Message { contents, width }
             }
             "item" => Body::Item {
                 item: required(t, "item", |v| self.stack(v))?,
-                description: optional(t, "description", |v| self.message(v))?,
+                description: optional(t, "description", |v| self.message(v, &text))?,
                 show_decorations: optional(t, "show_decorations", boolean)?.unwrap_or(true),
                 show_tooltip: optional(t, "show_tooltip", boolean)?.unwrap_or(true),
                 width: optional(t, "width", |v| ranged(v, 1, 256))?.unwrap_or(16),
@@ -1067,7 +1091,36 @@ impl Dialog {
             item,
             references: RefCell::default(),
         };
-        let dialog = reader.dialog(t).ok()?;
+        let dialog = reader
+            .dialog(
+                t,
+                |value| {
+                    use crate::text::ClickEvent;
+                    let mut clicks = Vec::new();
+                    let component = reader.text(value, |click| {
+                        let index = Tag::Int(clicks.len() as i32);
+                        clicks.push(match click {
+                            Click::OpenUrl(url) => ClickEvent::OpenUrl(url),
+                            Click::RunCommand(command) => ClickEvent::RunCommand(command),
+                            Click::SuggestCommand(command) => ClickEvent::SuggestCommand(command),
+                            Click::ShowDialog(holder) => ClickEvent::ShowDialog(holder.into()),
+                            Click::ChangePage(page) => ClickEvent::ChangePage(page),
+                            Click::CopyToClipboard(text) => ClickEvent::CopyToClipboard(text),
+                            Click::Custom { id, payload } => ClickEvent::Custom {
+                                id,
+                                payload: payload.map(Into::into),
+                            },
+                        });
+                        index
+                    })?;
+                    Ok(crate::component::text_with_decoded_clicks(
+                        &crate::scoreboard::tag_to_json(&component),
+                        &clicks,
+                    ))
+                },
+                || Text::translate("gui.ok", &[]),
+            )
+            .ok()?;
         reader
             .references
             .into_inner()
@@ -1088,8 +1141,8 @@ impl Dialog {
             item,
             references: RefCell::default(),
         };
-        let dialog = reader.dialog(value)?;
-        Ok((dialog.encode(), reader.references.into_inner()))
+        let dialog = reader.dialog_nbt(value)?;
+        Ok((dialog, reader.references.into_inner()))
     }
 
     /// `onCancel`: what Escape (or closing it) does.

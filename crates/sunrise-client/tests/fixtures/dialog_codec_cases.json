@@ -461,7 +461,8 @@
 {"name": "packet/unknown_item", "snbt": "{type:notice,title:\"T\",body:{type:item,item:\"test:missing\"}}", "accept": false, "vanilla_error": "Failed to parse either. First: Not a list: {item:\"test:missing\",type:\"item\"}; Second: Failed to parse either. First: Not a map: \"test:missing\"; Second: Unknown registry key in ResourceKey[minecraft:root / minecraft:item]: test:missing"},
 {"name": "packet/unknown_click_holder", "snbt": "{type:notice,title:{text:\"T\",click_event:{action:show_dialog,dialog:\"test:missing\"}}}", "accept": false, "vanilla_error": "Failed to get element test:missing from registry minecraft:dialog"},
 {"name": "packet/valid_nbt_style", "snbt": "{type:notice,title:{text:\"T\",bold:0.5d,click_event:{action:change_page,page:2b}}}", "accept": true},
-{"name": "packet/unknown_hover_item", "snbt": "{type:notice,title:{text:\"T\",hover_event:{action:show_item,id:\"test:missing\"}}}", "accept": false}
+{"name": "packet/unknown_hover_item", "snbt": "{type:notice,title:{text:\"T\",hover_event:{action:show_item,id:\"test:missing\"}}}", "accept": false},
+{"name": "packet/inline_custom_activation", "observe": "inline_custom_activation", "snbt": "{type:notice,title:{text:T,click_event:{action:show_dialog,dialog:{type:notice,title:Inline,action:{label:L,width:42b,action:{type:\"dynamic/custom\",id:\"test:click\",additions:{value:37b}}}}}}}", "accept": true, "round_trip": {"width": 42, "id": "test:click", "payload": "{value:37b}"}}
 ],
 "packs": [
 {"name": "pack/valid", "files": {"data/test/dialog/a.json": {"type": "notice", "title": "T"}}, "accept": true},

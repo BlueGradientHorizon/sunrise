@@ -856,13 +856,38 @@ mod tests {
         };
         for case in fixture["packets"].as_array().unwrap() {
             let (tag, _) = sunrise_core::nbt::parse_snbt(case["snbt"].as_str().unwrap()).unwrap();
-            let decoded = Dialog::parse(&tag, &reg, &|id| id == "minecraft:stone", &|_| false);
+            let parse = |tag| Dialog::parse(tag, &reg, &|id| id == "minecraft:stone", &|_| false);
+            let decoded = parse(&tag);
             assert_eq!(
                 decoded.is_some(),
                 case["accept"].as_bool().unwrap(),
                 "{}",
                 case["name"]
             );
+            if case["observe"] == "inline_custom_activation" {
+                use crate::{dialog::Click, text::ClickEvent};
+                let dialog = decoded.unwrap();
+                let Some(ClickEvent::ShowDialog(holder)) = &dialog.title.spans[0].style.click
+                else {
+                    panic!("title must open an inline dialog");
+                };
+                let opened = parse(holder).unwrap();
+                let buttons = opened.buttons();
+                let button = buttons[0];
+                let Some(Click::Custom { id, payload }) =
+                    button.action.as_ref().unwrap().click(&[], &[])
+                else {
+                    panic!("button must activate a custom click");
+                };
+                let expected = &case["round_trip"];
+                let (expected_payload, _) =
+                    sunrise_core::nbt::parse_snbt(expected["payload"].as_str().unwrap()).unwrap();
+                assert_eq!(
+                    json!({"id": id, "width": button.width}),
+                    json!({"id": expected["id"], "width": expected["width"]})
+                );
+                assert_eq!(payload, Some(expected_payload));
+            }
         }
     }
 

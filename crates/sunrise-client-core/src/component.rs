@@ -271,6 +271,7 @@ fn object_style<'a>(
     o: &'a serde_json::Map<String, Value>,
     child: &mut dyn FnMut(&'a Value) -> Text,
     origin: Origin,
+    decoded_clicks: Option<&[crate::text::ClickEvent]>,
 ) -> Style {
     let mut style = Style::default();
     if let Some(c) = o.get("color").and_then(Value::as_str) {
@@ -285,7 +286,13 @@ fn object_style<'a>(
     style.font = o.get("font").and_then(crate::text::font_id);
     // ClickEvent.CODEC: the actions a chat line acts on here. A component
     // from a server never opens a file.
-    if let Some(e) = style_event_object(o, "click_event", "clickEvent") {
+    if let Some(clicks) = decoded_clicks {
+        style.click = o
+            .get("click_event")
+            .and_then(Value::as_u64)
+            .and_then(|index| clicks.get(index as usize))
+            .cloned();
+    } else if let Some(e) = style_event_object(o, "click_event", "clickEvent") {
         style.click = parse_click_event_origin(e, origin, true).ok().flatten();
     }
     // HoverEvent.ShowText, ShowItem and ShowEntity.
@@ -368,6 +375,22 @@ pub fn to_text_with(
         Sourced(true, Origin::Remote),
         &|_| Origin::Remote,
         None,
+        None,
+    )
+    .unwrap_or_default()
+}
+
+/// Project an already checked network component. Its `click_event` fields are
+/// indices into `clicks`, so opaque NBT never passes through the JSON renderer.
+pub fn text_with_decoded_clicks(v: &Value, clicks: &[crate::text::ClickEvent]) -> Text {
+    build(
+        v,
+        &mut |s| Text::literal(s),
+        &mut |_| None,
+        Sourced(true, Origin::Remote),
+        &|_| Origin::Remote,
+        None,
+        Some(clicks),
     )
     .unwrap_or_default()
 }
@@ -405,6 +428,7 @@ fn build_source(
         Sourced(false, Origin::Remote),
         origin,
         language,
+        None,
     )
 }
 
@@ -706,6 +730,7 @@ fn build(
     sourced: Sourced,
     origin: &dyn Fn(&Value) -> Origin,
     language: Option<&crate::lang::Language>,
+    decoded_clicks: Option<&[crate::text::ClickEvent]>,
 ) -> Option<Text> {
     enum Content<'a> {
         Decode(Option<Text>),
@@ -766,7 +791,8 @@ fn build(
                 let Value::Object(o) = value else {
                     unreachable!()
                 };
-                let style = object_style(o, &mut |v| done.take_text(v), origin(value));
+                let style =
+                    object_style(o, &mut |v| done.take_text(v), origin(value), decoded_clicks);
                 let overridden = if hover { None } else { contents(o) };
                 let needs_content = overridden.is_none();
                 let translation = o.get("translate").and_then(Value::as_str).filter(|_| {
@@ -907,6 +933,7 @@ fn build(
                     piece = Piece::new(text, language.is_some());
                 }
                 if mode.0
+                    && decoded_clicks.is_none()
                     && (o.contains_key("object")
                         || o.contains_key("player")
                         || o.contains_key("sprite"))
