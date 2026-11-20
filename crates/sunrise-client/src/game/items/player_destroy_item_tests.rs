@@ -262,6 +262,26 @@ fn continuations_preserve_listener_hand_writes(game: &mut Game<'_>, observer: &O
     assert_eq!(&*kept.item, "minecraft:crossbow");
     assert_eq!(kept.damage, 2);
     assert!(kept.data().is_none_or(|data| data.charged.is_empty()));
+
+    // A data pack can tag the crossbow itself as ammunition. The original
+    // must be the uncharged stack, not a crossbow that already loaded itself.
+    let items = game.items().with_tags(
+        None,
+        Some(std::collections::HashMap::from([(
+            "minecraft:arrows".into(),
+            vec!["minecraft:crossbow".into()],
+        )])),
+    );
+    let previous_items = game.server_items.replace(Arc::new(items));
+    let bow = named_stack("minecraft:crossbow", 1);
+    game.inventory[slot] = Some(bow.clone());
+    game.offhand = None;
+    game.using = None;
+    game.tick_crossbow(slot, Game::charge_ticks(&bow), &bow);
+    assert!(game.stack_in(slot).is_none());
+    let notice = take_notice(observer, Some(Hand::Main), "minecraft:crossbow", 0);
+    assert_eq!(notice.original, bow.try_into_api().unwrap());
+    game.server_items = previous_items;
     game.using = None;
 }
 

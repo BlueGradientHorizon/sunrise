@@ -290,6 +290,12 @@ impl Game<'_> {
             else {
                 return;
             };
+            // A pack can make the weapon its own ammo. Debit it without
+            // charging it, so the destruction notice sees the original stack.
+            if !creative && ammo.slot == Some(slot) {
+                self.consume_player_slot(slot, 1);
+                return;
+            }
             // Store the projectile before debiting the ammo slot: its destruction
             // listener can now move the loaded bow without losing the projectile.
             // useAmmo: the extra multishot arrows and creative's are intangible.
