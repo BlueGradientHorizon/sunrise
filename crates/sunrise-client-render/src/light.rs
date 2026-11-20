@@ -965,7 +965,7 @@ fn layers_light(sky: Option<&[u8]>, block: Option<&[u8]>, above: &[u8; 256]) -> 
             let layer = match sky {
                 Some(layer) => copy_layer(layer),
                 // No stored sky: the same 256-byte bottom row over and
-                // over, which is exactly `Light::packed`'s layer here.
+                // over, packed two nibbles per byte.
                 None => {
                     let mut layer = Box::new([0u8; 2048]);
                     for row in layer.as_chunks_mut::<128>().0 {
@@ -1009,7 +1009,7 @@ fn layers_light(sky: Option<&[u8]>, block: Option<&[u8]>, above: &[u8; 256]) -> 
     }
 }
 
-/// The bottom sky row that `SkyLightSectionStorage.getLightValue` repeats through gaps.
+/// Unpack the bottom sky row used to fill sections with no named sky layer.
 fn bottom_sky(layer: &[u8], row: &mut [u8; 256]) {
     for (pair, &s) in row.as_chunks_mut::<2>().0.iter_mut().zip(layer) {
         *pair = [s & 15, s >> 4];
