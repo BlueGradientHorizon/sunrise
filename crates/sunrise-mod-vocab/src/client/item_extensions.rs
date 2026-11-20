@@ -129,8 +129,7 @@ pub trait ClientItemExtensions: Send + Sync + 'static {
             .and_then(|c| {
                 // Component maps are small; UTF-16 comparison avoids allocating a lookup key each frame.
                 c.as_nbt().iter().find_map(|(id, tag)| {
-                    id.units()
-                        .iter()
+                    id.0.iter()
                         .copied()
                         .eq("minecraft:dyed_color".encode_utf16())
                         .then_some(tag)

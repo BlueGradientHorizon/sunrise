@@ -22,16 +22,16 @@ pub fn typed_payload_version(version: &str, schema: u64) -> String {
 
 /// Encodes a whole typed payload body as Wire, up to `limit` bytes and the shared payload limits.
 pub fn encode_payload<T: Wire>(value: &T, limit: usize) -> Result<Vec<u8>, WireError> {
-    let mut out = Writer::for_payload(limit);
+    let mut out = Writer::for_payload(limit.min(PAYLOAD_DECODE_BUDGET));
     out.put(value);
-    match out.error() {
-        Some(error) => Err(error),
-        None => Ok(out.into_bytes()),
-    }
+    out.finish_payload()
 }
 
 /// Decodes exactly one Wire value within the shared payload limits; trailing bytes are refused.
 pub fn decode_payload<T: Wire>(body: &[u8]) -> Result<T, WireError> {
+    if body.len() > PAYLOAD_DECODE_BUDGET {
+        return Err(WireError::Length);
+    }
     let mut input = Reader::for_payload(body);
     let value = input.take()?;
     if input.rest().is_empty() {

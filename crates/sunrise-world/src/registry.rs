@@ -69,15 +69,15 @@ fn reserve_saved_state_slot() -> bool {
 // resolved normally without retaining it for the lifetime of the registry.
 fn cacheable_saved_state(tag: &Tag) -> bool {
     fn short_string(tag: &Tag) -> bool {
-        matches!(tag, Tag::String(s) if s.units().len() <= 128)
+        matches!(tag, Tag::String(s) if s.0.len() <= 128)
     }
     match tag {
         Tag::String(_) => short_string(tag),
         Tag::Compound(map) if map.len() <= 2 => map.iter().all(|(key, value)| {
-            if key.units().iter().copied().eq("id".encode_utf16()) {
+            if key.0.iter().copied().eq("id".encode_utf16()) {
                 short_string(value)
-            } else if key.units().iter().copied().eq("properties".encode_utf16()) {
-                matches!(value, Tag::Compound(props) if props.len() <= 16 && props.iter().all(|(k, v)| k.units().len() <= 128 && short_string(v)))
+            } else if key.0.iter().copied().eq("properties".encode_utf16()) {
+                matches!(value, Tag::Compound(props) if props.len() <= 16 && props.iter().all(|(k, v)| k.0.len() <= 128 && short_string(v)))
             } else {
                 false
             }
@@ -559,7 +559,7 @@ mod tests {
                 ("properties", Tag::String("axis=y".into())),
             ]),
             materialized("test:log", &[("axis", Tag::Int(5))]),
-            Tag::String(JavaString::from(vec![0xd800])),
+            Tag::String(JavaString(vec![0xd800])),
             Tag::Compound(Compound::new()),
             // An unknown block name.
             state("minecraft:nope", &[]),
@@ -583,7 +583,7 @@ mod tests {
         assert_eq!(id(&state("test:log", &[("axis", "bogus")])), 3);
         assert_eq!(id(&state("test:door", &[("open", "true")])), 7);
         assert_eq!(id(&state("test:door", &[("facing", "east")])), 6);
-        assert_eq!(id(&Tag::String(JavaString::from(vec![0xd800]))), air);
+        assert_eq!(id(&Tag::String(JavaString(vec![0xd800]))), air);
     }
     #[test]
     fn saved_cache_is_bounded_and_registry_local_under_concurrency() {

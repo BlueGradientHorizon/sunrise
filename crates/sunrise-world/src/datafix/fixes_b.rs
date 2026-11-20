@@ -523,7 +523,7 @@ fn ominous_banner_rarity(cx: &mut Cx) {
             set(
                 c,
                 "minecraft:item_name",
-                Tag::String(sunrise_core::nbt::JavaString::from(
+                Tag::String(sunrise_core::nbt::JavaString(
                     super::json::translatable_component_json("block.minecraft.ominous_banner"),
                 )),
             );

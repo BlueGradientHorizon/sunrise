@@ -6,7 +6,7 @@ use super::{
     PayloadDirection, PayloadHandleError, PayloadId, PayloadProtocol, PayloadRegistrar,
     PayloadSendError,
 };
-use crate::wire::{Reader, Wire, WireError, Writer};
+use crate::wire::{Reader, Wire, WireError, WireSchema, Writer};
 use crate::{
     ChunkRef, ClientHost, EntityRef, LevelRef, PAYLOAD_DECODE_BUDGET, PlayerRef, ServerHost,
     decode_payload, encode_payload, payload_schema,
@@ -384,9 +384,11 @@ impl PayloadRegistrar<'_> {
             thread: self.thread,
             delivery: self.delivery,
         };
+        let mut schema = WireSchema::default();
+        let fingerprint = T::describe(&mut schema);
         self.registrar.borrow_mut().add_typed_payload(
             declaration,
-            payload_schema::<T>(),
+            schema.admits_payload().then_some(fingerprint),
             server,
             client,
         )

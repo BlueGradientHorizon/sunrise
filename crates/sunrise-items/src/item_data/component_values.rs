@@ -32,8 +32,8 @@ enum HolderSet<'a> {
 
 fn holders(value: &Tag) -> Option<HolderSet<'_>> {
     match value {
-        Tag::String(name) if name.units().first() == Some(&u16::from(b'#')) => {
-            resolvable::identifier_units(&name.units()[1..]).map(HolderSet::Named)
+        Tag::String(name) if name.0.first() == Some(&u16::from(b'#')) => {
+            resolvable::identifier_units(&name.0[1..]).map(HolderSet::Named)
         }
         value @ Tag::String(_) => Some(HolderSet::Direct(std::slice::from_ref(value))),
         Tag::List(values) => Some(HolderSet::Direct(values)),
@@ -51,7 +51,7 @@ fn registered(value: &Tag, names: &[String]) -> bool {
     };
     names
         .iter()
-        .any(|name| name.encode_utf16().eq(value.units().iter().copied()))
+        .any(|name| name.encode_utf16().eq(value.0.iter().copied()))
 }
 
 /// `HolderSetCodec` with `RegistryFixedCodec` and compact singleton spelling.
@@ -72,7 +72,7 @@ pub fn holder_set(value: &Tag, registry_key: &str, registry: &Registries) -> Res
             let Tag::String(mut name) = name else {
                 unreachable!("encoded identifier")
             };
-            name.units_mut().insert(0, u16::from(b'#'));
+            name.0.insert(0, u16::from(b'#'));
             Ok(Tag::String(name))
         }
         HolderSet::Direct(values) => Ok(Tag::List(

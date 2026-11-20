@@ -146,7 +146,7 @@ impl Weapon {
         let field = |name: &str| {
             fields
                 .iter()
-                .find(|(key, _)| key.units().iter().copied().eq(name.encode_utf16()))
+                .find(|(key, _)| key.0.iter().copied().eq(name.encode_utf16()))
                 .map(|(_, value)| value)
         };
         let item_damage_per_attack = match field("item_damage_per_attack") {

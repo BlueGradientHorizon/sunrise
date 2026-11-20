@@ -80,3 +80,23 @@ fn typed_numeric_lists_reserve_once_after_checking_the_bounds() {
         assert_eq!(count, 0);
     }
 }
+
+#[test]
+fn a_five_element_boolean_list_reserves_only_once() {
+    let value = vec![true, false, true, false, true];
+    ALLOCATIONS.set(0);
+    let result = black_box(encode_payload(black_box(&value), 9));
+    let count = ALLOCATIONS.get();
+    assert_eq!(count, 1);
+    assert_eq!(result.unwrap(), [5, 0, 0, 0, 1, 0, 1, 0, 1]);
+}
+
+#[test]
+fn a_truncated_fixed_array_never_reserves_storage() {
+    let bytes = [1u8; 15];
+    ALLOCATIONS.set(0);
+    let result = black_box(decode_payload::<[u8; 16]>(black_box(&bytes)));
+    let count = ALLOCATIONS.get();
+    assert_eq!(result, Err(WireError::Eof));
+    assert_eq!(count, 0);
+}

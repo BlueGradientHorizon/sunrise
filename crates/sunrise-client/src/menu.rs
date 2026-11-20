@@ -33,6 +33,7 @@ mod bundle;
 pub mod container_items;
 pub use container_items::fits_inside_container_items;
 mod click;
+pub use click::{ClickContinuation, SlotTake};
 mod storage;
 pub use storage::{MutationStamp, Snapshot};
 mod asked;
@@ -819,6 +820,7 @@ impl Menu {
                 item_smelted: Vec::new(),
                 item_smithed_hook: false,
                 item_smithed: Vec::new(),
+                takes: None,
                 output_removed: 0,
                 equipped: Vec::new(),
                 merchant: None,
@@ -1431,10 +1433,7 @@ impl Menu {
     pub fn rename(&mut self, env: &Env, name: &str) -> bool {
         self.touch();
         // StringUtil.filterText, then validateName's length limit.
-        let name: String = name
-            .chars()
-            .filter(|&c| c != '\u{a7}' && c >= ' ' && c != '\u{7f}')
-            .collect();
+        let name = crate::clipboard::filter_text(name, false);
         if self.state.kind != Kind::Anvil
             || name.encode_utf16().count() > 50
             || self.state.anvil.name.as_deref() == Some(&name)
@@ -1442,7 +1441,7 @@ impl Menu {
             return false;
         }
         if let Some(result) = self.state.containers[RESULT][0].as_mut() {
-            result.data_mut().custom_name = (!name.trim().is_empty())
+            result.data_mut().custom_name = (!sunrise_core::java_character::is_blank(&name))
                 .then(|| sunrise_core::nbt::Tag::String(name.as_str().into()));
             result.tidy();
         }
@@ -3724,6 +3723,29 @@ pub(crate) mod tests {
             let mut menu = renamed();
             menu.anvil_updated(update, true);
             assert_eq!((menu.slot(2), menu.data[0]), (None, 0));
+        });
+    }
+
+    #[test]
+    fn an_anvil_rename_uses_vanillas_definition_of_blank() {
+        bare_env(|env| {
+            let renamed = |name| {
+                let mut menu = Menu::new(Kind::Anvil);
+                menu.set_slot(env, 0, stack("iron_sword", 1));
+                menu.anvil_created();
+                assert!(menu.rename(env, name));
+                menu
+            };
+            let menu = renamed("\u{85}");
+            assert_eq!(
+                menu.slot(2).unwrap().custom_name().as_deref(),
+                Some("\u{85}")
+            );
+            assert_eq!(menu.data[0], 1);
+
+            let menu = renamed("\u{a0}\u{2007}\u{202f}");
+            assert!(menu.slot(2).is_none());
+            assert_eq!(menu.data[0], 0);
         });
     }
 

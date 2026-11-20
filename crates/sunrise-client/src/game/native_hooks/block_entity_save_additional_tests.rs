@@ -35,13 +35,11 @@ mod tests {
                 Some(Tag::Int(-3)) => {
                     event.tag.insert(
                         "values".into(),
-                        Tag::List(vec![Tag::String(JavaString::from(vec![0; 32_768]))]),
+                        Tag::List(vec![Tag::String(JavaString(vec![0; 32_768]))]),
                     );
                 }
                 Some(Tag::Int(-2)) => {
-                    event
-                        .tag
-                        .insert(JavaString::from(vec![0; 32_768]), Tag::Int(-99));
+                    event.tag.insert(JavaString(vec![0; 32_768]), Tag::Int(-99));
                 }
                 Some(Tag::Int(-1)) => {
                     event.tag.insert("invalid".into(), Tag::End);

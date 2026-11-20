@@ -1,8 +1,9 @@
 # Wire types
 
 `mod_api::wire::{Wire, Reader, Writer, WireError}` defines the codec used by
-[typed payload bodies](../how-to/client/networking.md#typed-payloads),
+[typed payload tokens and bodies](../how-to/client/networking.md#typed-payloads),
 [native crafting recipe values](../crafting-recipe-kinds.md), and recipe placement and recipe-book sync.
+A typed body is one bounded Wire value with no extra envelope; raw channels carry caller-supplied bytes.
 Derive `mod_api::Wire` explicitly on a type that needs this encoding. The build never adds the derive.
 Every field of a derived type must also implement `Wire`.
 
@@ -33,16 +34,16 @@ entering level 33; the writer records the same error. Always check `Writer::erro
 before sending its bytes. This is a transport budget for unbounded mod-defined
 trees, including ingredients, item places, loot vehicles and recipe slot displays.
 
-Typed payloads use the same encoding with their own limits. They count list, present
-option and box levels, not records, and enforce `PAYLOAD_MAX_DEPTH`. String and list
-lengths are bounded by `PAYLOAD_MAX_STRING_BYTES` and `PAYLOAD_MAX_LIST_ENTRIES`.
-The reader and writer both charge `PAYLOAD_DECODE_BUDGET` for decoded storage, apart
-from the transport's byte limit. A failed encode is never queued.
+Typed payloads use the same encoding with their own limits. They count lists, present
+options, boxes, shared pointers, NBT containers and explicit recursion, not derived record
+frames, against `PAYLOAD_MAX_DEPTH`. String and list lengths are bounded by
+`PAYLOAD_MAX_STRING_BYTES` and `PAYLOAD_MAX_LIST_ENTRIES`. The reader and writer both
+charge `PAYLOAD_DECODE_BUDGET` for decoded storage, separately from the 8 MiB body cap.
+A failed encode is never queued.
 
-Vanilla trees are not restricted by that structural budget: NBT `Tag` uses an
-explicit work stack with **512** nested containers; `Text` crosses as the existing
-validated flat `TextForm` table, preserving its **512** component-depth contract.
-Text's layout identity is the flat table's identity.
+Ordinary Wire keeps the NBT `Tag` limit of **512** containers and the `Text` limit of
+**512** nested components. `Text` crosses as the validated flat `TextForm` table in
+ordinary Wire; it is not admitted to typed payloads.
 
 JSON-backed `serde_json::Value`, JSON maps and `ModelPart` also refuse beyond
 32 JSON containers. Their encoders preflight the in-memory tree iteratively
@@ -55,15 +56,19 @@ reader cannot police code outside its codec.
 
 Encoding borrows the input (`writer.put(&value)`); the caller still owns it.
 Constructing an arbitrarily deep Rust tree and then dropping it can overflow a
-thread independently of Wire. Use explicit work stacks when disposing of hostile
-trees (`discard_tag` for NBT).
+thread independently of Wire. To dispose of deeply nested NBT, pop tags from
+an explicit work stack. Push the children of each `Tag::List` and the values
+from `Compound::into_values()` for each `Tag::Compound`; drop leaf tags as you go.
 
 ## Checked representations
 
 Use `#[wire(via = String)]` (or another `Wire` type) when a checked constructor owns
 validation. Implement `From<&YourType> for String` and `TryFrom<String> for YourType`.
 The derive writes the representation and maps a failed conversion to
-`WireError::Invalid`. Its layout is the representation's layout.
+`WireError::Invalid`. Its layout is the representation's layout. The conversion can
+allocate outside Wire's budget, so this form is available only to ordinary Wire. For a
+checked typed payload, implement `Wire` explicitly, bound any storage the codec itself
+allocates, and give a different validation contract its own versioned identity.
 
 ## Layout identity
 
@@ -71,7 +76,8 @@ A type's layout describes the fields, enum cases and child types that Wire reads
 The derive declares the layout from the Rust fields. Layouts do not include Rust type paths.
 They feed the SDK's surface digests and `Wire::describe`, which provides the fingerprint used
 in typed payload negotiation. `payload_schema::<T>()` computes that fingerprint; it is not
-written into the payload body. Changing the encoding changes the negotiated fingerprint.
+written into the payload body. A different byte format or validation contract needs a
+different negotiated fingerprint, even if the two formats have some bytes in common.
 
 ## Hand-written implementations
 
@@ -79,9 +85,10 @@ The derive handles this automatically and is preferred. A hand-written implement
 supply `put`, `take`, `MIN` and `describe`. For a new encoding, use a versioned `WireSchema::leaf`
 and combine it with the fingerprints of its parts using `WireSchema::mix`. Use
 `WireSchema::named::<Self>` when describing recursive fields so the walk can recognize a
-reference to an ancestor. If the implementation delegates completely to an existing encoding,
-its `describe` can delegate to the same type.
+reference to an ancestor. An implementation that delegates both encoding and validation
+can delegate `describe` to that type too.
 
 A hand decoder owns tag validation and bounds for any storage it allocates itself. Decode
-indirections through their `Wire` types so they count against the typed-payload limits. Keep
-validation at the checked constructor boundary.
+indirections through their `Wire` types so they count against the typed-payload limits. Use
+`Reader::nested` and `Writer::nested` around explicit recursion in a handwritten codec.
+Keep validation at the checked constructor boundary.

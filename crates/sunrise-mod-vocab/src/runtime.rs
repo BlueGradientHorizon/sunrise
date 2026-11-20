@@ -194,6 +194,11 @@ pub(crate) fn poisoned(hook: generated::HookId, id: &str) -> bool {
     })
 }
 
+pub(crate) fn first_output_refusal(hook: generated::HookId, id: &'static str) -> bool {
+    crate::dispatch_scope::backend()
+        .is_none_or(|backend| (backend.diagnostics.first_output_refusal)(hook, id))
+}
+
 /// The process-wide list in dispatch order, or an empty list before installation.
 pub(crate) fn mods() -> &'static [ModEntry] {
     installed().map_or(&[], |installed| &installed.mods)

@@ -53,6 +53,7 @@ ids = [
     "handle:ToClient::send_tracking_entity",
     "handle:ToServer::reply",
     "handle:ToServer::send",
+    "method:PayloadsRegistrar::add_typed_payload",
     "trait:PayloadCodec",
     "trait:wire::Wire",
     "type:PayloadDecodeError",
@@ -63,4 +64,4 @@ ids = [
     "type:VarLong",
 ]
 why = "Typed payloads now use canonical Wire encoding and structural fingerprints. The duplicate payload codec, reader, writer, error types and variable-length number wrappers are retired. Values whose encoding is unchanged keep their negotiated fingerprint."
-migrate = "Derive Wire or implement Wire::put, take, MIN and describe using mod_api::wire::WireSchema (leaf, mix and named replace payload_schema_*). Use i32 or i64 instead of VarInt or VarLong and match WireError from encode_payload/decode_payload. Rebuild both peers for a changed encoding. Use a raw payload channel if a peer requires exact external packet bytes."
+migrate = "Replace PayloadReader and PayloadWriter with mod_api::wire::{Reader, Writer}. Derive Wire where possible. For a manual implementation use Reader::take and Writer::put, describe its form using WireSchema (leaf, mix and named replace payload_schema_*), declare MIN, and enforce custom bounds. Use i32 or i64 instead of VarInt or VarLong and match WireError from encode_payload/decode_payload. Rebuild both peers for a changed encoding. Use a raw payload channel if a peer requires exact external packet bytes. PayloadsRegistrar implementations accept Some(schema) for bounded forms and refuse None before declaring the channel."

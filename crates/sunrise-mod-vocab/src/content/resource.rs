@@ -491,6 +491,8 @@ impl fmt::Debug for ItemResource {
 pub trait ResourceHandler<R> {
     /// Set the container limit transactionally, accepting 1..=99 (vanilla's upper bound).
     /// Existing oversized stacks remain extractable. The game persists this with block entity data.
+    /// On the default block `ITEMS` handler, a successful call queues the backing container's
+    /// change notice at root commit, even if no items moved.
     /// Unsupported handlers return false without mutation.
     fn set_max_stack_size(
         &self,

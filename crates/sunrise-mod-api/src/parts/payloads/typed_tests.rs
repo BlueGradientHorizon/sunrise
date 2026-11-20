@@ -211,14 +211,14 @@ fn valid_and_malformed_wire_bodies_are_handled_in_both_directions() {
                 servers
                     .lock()
                     .unwrap()
-                    .push((PayloadDirection::ToServer, value.counter));
+                    .push((PayloadDirection::ToServer, value));
                 Ok(())
             },
             move |value: Labelled, _| {
                 clients
                     .lock()
                     .unwrap()
-                    .push((PayloadDirection::ToClient, value.counter));
+                    .push((PayloadDirection::ToClient, value));
                 Ok(())
             },
         );
@@ -235,36 +235,74 @@ fn valid_and_malformed_wire_bodies_are_handled_in_both_directions() {
         let receiver = table
             .handler("test:labelled", PayloadProtocol::Play, direction)
             .unwrap();
-        for (body, error) in [
+        for body in [
             // 4097 labels, one past the list bound.
-            (vec![7, 0, 0, 0, 1, 0x10, 0, 0], "Length"),
+            vec![7, 0, 0, 0, 1, 0x10, 0, 0],
             // Each next link adds an option and a box to the depth.
-            (nested(33), "Depth"),
-            ([valid.as_slice(), &[0xaa]].concat(), "Trailing"),
-            (valid[..5].to_vec(), "Eof"),
+            nested(33),
+            [valid.as_slice(), &[0xaa]].concat(),
+            valid[..5].to_vec(),
         ] {
             let PayloadHandleError::Failed(refused) = receiver
                 .handle(PayloadBytes(body), &mut Unreached)
                 .unwrap_err();
             assert!(refused.contains("test:labelled"), "{refused}");
-            assert!(refused.contains(error), "{refused}");
         }
-        receiver
-            .handle(PayloadBytes(nested(32)), &mut Unreached)
-            .unwrap();
+        assert!(seen.lock().unwrap().is_empty());
         receiver
             .handle(PayloadBytes(valid.to_vec()), &mut Unreached)
             .unwrap();
+        let expected = Labelled {
+            counter: 7,
+            labels: vec!["a".into()],
+            chain: Chain(None),
+        };
+        assert_eq!(&*seen.lock().unwrap(), &[(direction, expected)]);
+        seen.lock().unwrap().clear();
     }
-    assert_eq!(
-        *seen.lock().unwrap(),
-        [
-            (PayloadDirection::ToServer, 7),
-            (PayloadDirection::ToServer, 7),
-            (PayloadDirection::ToClient, 7),
-            (PayloadDirection::ToClient, 7),
-        ]
+}
+
+#[test]
+fn ordinary_only_wire_forms_refuse_registration_before_a_channel_exists() {
+    let mut registrar = PartRegistrar::new("test");
+    let mut payloads = (&mut registrar as &mut dyn Registrar).payload_handlers();
+    let mut view = payloads.registrar("1");
+    let model =
+        view.play_to_server_typed::<crate::ModelPart>(PayloadId("test:model".into()), ignore);
+    let text = view.play_to_server_typed::<crate::Text>(PayloadId("test:text".into()), ignore);
+    let interned = view
+        .play_to_server_typed::<Option<&'static str>>(PayloadId("test:interned".into()), ignore);
+    let json = view
+        .play_to_server_typed::<Option<serde_json::Value>>(PayloadId("test:json".into()), ignore);
+    let converted = view.play_to_server_typed::<crate::LegacyRandomSource>(
+        PayloadId("test:converted".into()),
+        ignore,
     );
+    assert_eq!(
+        [
+            model.token().load,
+            text.token().load,
+            interned.token().load,
+            json.token().load,
+            converted.token().load,
+        ],
+        [0; 5]
+    );
+    drop(view);
+    assert!(registrar.parts.payloads.is_none());
+    assert_eq!(registrar.refused.len(), 5);
+    for (refused, id) in registrar.refused.iter().zip([
+        "test:model",
+        "test:text",
+        "test:interned",
+        "test:json",
+        "test:converted",
+    ]) {
+        assert!(
+            refused.contains(id) && refused.contains("ordinary-only Wire form"),
+            "{refused}"
+        );
+    }
 }
 
 #[test]

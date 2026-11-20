@@ -1,6 +1,9 @@
 //! Byte buffers with vanilla's primitive encodings (FriendlyByteBuf, VarInt,
 //! VarLong, ByteBufCodecs) and the `Codec` building blocks packets are
 //! composed from, mirroring `StreamCodec.composite`.
+//!
+//! For the outgoing writer and VarInt helpers, import `Writer`, `write_varint`
+//! and `varint_size` from [`sunrise_core::vanilla_bytes`].
 use crate::{Error, Result};
 use std::marker::PhantomData;
 use sunrise_core::{nbt, nbt::Tag, vanilla_bytes::Writer};
@@ -614,6 +617,9 @@ pub fn unpack_degrees(b: i8) -> f32 {
 
 /// Define a packet struct and its codec from (field: type => codec) triples,
 /// like vanilla's `StreamCodec.composite`.
+///
+/// Downstream callers need a direct `sunrise-core` dependency: this macro expands
+/// to `::sunrise_core::vanilla_bytes::Writer`.
 #[macro_export]
 macro_rules! packet {
     ($(#[$meta:meta])* $name:ident { $($field:ident : $ty:ty => $codec:ty),* $(,)? }) => {

@@ -140,6 +140,7 @@ pub mod synced_floats;
 pub mod tag_layers;
 pub mod teleport_consume;
 pub mod tick_data;
+pub mod travel;
 pub mod use_remainder;
 pub mod view_direction;
 pub mod water_splash;

@@ -31,8 +31,7 @@ impl<'a> TooltipDisplay<'a> {
                     .as_nbt()
                     .iter()
                     .find(|(id, _)| {
-                        id.units()
-                            .iter()
+                        id.0.iter()
                             .copied()
                             .eq("minecraft:tooltip_display".encode_utf16())
                     })
@@ -85,7 +84,7 @@ impl<'a> TooltipDisplay<'a> {
             return true;
         };
         !hidden.iter().any(|tag| {
-            matches!(tag, Tag::String(id) if id.units().iter().copied().eq(component.encode_utf16()))
+            matches!(tag, Tag::String(id) if id.0.iter().copied().eq(component.encode_utf16()))
         })
     }
 }

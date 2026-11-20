@@ -378,6 +378,11 @@ pub(super) enum After {
     FluidEffects(Box<super::world_fluids::FluidEffects>),
     /// `BlockEntity.setChanged`.
     Changed(Pos),
+    /// Detached mod entity state (not necessarily items) was edited.
+    DirtyBlockEntity(Pos),
+    /// A detached menu listener removed its holder; spill any unreturned contents only on commit.
+    LostMenuContents(Pos, Box<sunrise_client::containers::ModBlockEntity>),
+    GuestMenu(u32, Box<super::lan_crafting::GuestMenuEffects>),
     /// A provider's answer changed here (`level_invalidate_capabilities`): the capability
     /// generation moves on.
     Capabilities(Pos),
@@ -1298,6 +1303,11 @@ impl Game<'_> {
                 self.post_block_game_event(id, pos, Some(who), Some(state));
             }
             After::Changed(pos) => self.container_changed(pos),
+            After::DirtyBlockEntity(pos) => {
+                self.world.modified.insert((pos.0 >> 4, pos.2 >> 4));
+            }
+            After::LostMenuContents(pos, taken) => self.drop_unreturned_mod_contents(pos, *taken),
+            After::GuestMenu(conn, effects) => self.publish_guest_menu_effects(conn, *effects),
             After::Capabilities(pos) => self.world.capability_generations.invalidate(pos),
 
             After::BreakProgress(breaker, pos, progress) => {
@@ -1444,12 +1454,22 @@ impl Game<'_> {
         for (id, data) in level.new_maps {
             self.publish_map(id, data);
         }
+        // A menu callback removed its detached block entity. Its accepted remainder is
+        // spilled separately; replaying removal with the rollback copy would duplicate items.
+        let detached: std::collections::HashSet<_> = level
+            .after
+            .iter()
+            .filter_map(|after| match after {
+                After::LostMenuContents(pos, _) => Some(*pos),
+                _ => None,
+            })
+            .collect();
         let mut told = std::collections::HashSet::new();
         let mut biome_columns = std::collections::HashSet::new();
         for after in level.after {
             match after {
                 // Each storage tells the world once, after every write.
-                After::Changed(pos) if !told.insert(Ok(pos)) => {}
+                After::Changed(pos) if detached.contains(&pos) || !told.insert(Ok(pos)) => {}
                 After::Block(pos) => {
                     if !told.insert(Err(pos)) {
                         continue;
@@ -1465,6 +1485,7 @@ impl Game<'_> {
                     // or that survives because a later write returned it to the old block kind.
                     let b = self.res.behaviours();
                     if level.removed_block_entities.contains(&pos)
+                        && !detached.contains(&pos)
                         && (replay_removal || b.block(now) == b.block(was))
                         && let Some(kept) = level.block_entities.get(&pos)
                     {

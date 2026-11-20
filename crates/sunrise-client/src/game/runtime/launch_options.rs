@@ -295,7 +295,12 @@ impl Options {
                             "--seed" => {
                                 o.seed = value.parse().unwrap_or_else(|_| {
                                     // Text seeds hash like String.hashCode.
-                                    sunrise_core::java_string::java_string_hash_str(&value).into()
+                                    value
+                                        .encode_utf16()
+                                        .fold(0i32, |h, c| {
+                                            h.wrapping_mul(31).wrapping_add(i32::from(c))
+                                        })
+                                        .into()
                                 })
                             }
                             "--frames" => o.frames = Some(value.parse()?),

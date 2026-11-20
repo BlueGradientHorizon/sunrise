@@ -2117,6 +2117,17 @@ impl Hub {
         relatives: i32,
         shift: [f64; 3],
     ) {
+        self.send_position_correction(i, position, relatives, shift, None);
+    }
+
+    fn send_position_correction(
+        &mut self,
+        i: usize,
+        position: Option<[f64; 3]>,
+        relatives: i32,
+        shift: [f64; 3],
+        travel_velocity: Option<[f64; 3]>,
+    ) {
         let ticks = self.ticks;
         self.guests.update(i, |g| {
             g.teleport_tick = ticks;
@@ -2132,6 +2143,7 @@ impl Hub {
             g.teleport_counter = (g.teleport_counter + 1) & 0x7FFF_FFFF;
             let id = g.teleport_counter;
             g.awaiting_teleport = Some((id, g.position));
+            g.pending_travel_velocity = travel_velocity;
             let turn = relatives & (play::relative::Y_ROT | play::relative::X_ROT) != 0;
             // A relative axis (X, Y, Z: bits 0 to 2) goes as its shift: none for a rotation or
             // motion alone (`follow_passage`), the displacement for a move.
@@ -2140,12 +2152,64 @@ impl Hub {
             g.send(&C::PlayerPosition(play::PlayerPosition {
                 teleport: id,
                 position: at,
-                delta: [0.0; 3],
+                delta: travel_velocity.unwrap_or([0.0; 3]),
                 yaw: if turn { 0.0 } else { g.yaw },
                 pitch: if turn { 0.0 } else { g.pitch },
                 relatives,
             }));
         });
+    }
+
+    /// Publish the server's travel decision at the end of this player's body
+    /// tick. A separate teleport during the tick owns the new position instead.
+    /// Returns whether a travel correction already sent the body's velocity.
+    pub fn apply_server_travel(
+        &mut self,
+        conn: u32,
+        teleport_counter: i32,
+        decision: crate::motion::ServerTravel,
+    ) -> bool {
+        use crate::motion::ServerTravel;
+        let Some(i) = self.guests.connection_index(conn) else {
+            return false;
+        };
+        let g = &self.guests[i];
+        let eligible = g.teleport_counter == teleport_counter
+            && g.client_loaded()
+            && !g.dead
+            && !g.spectator()
+            && !g.sleeping
+            && g.vehicle.is_none();
+        let veto = eligible && matches!(decision, ServerTravel::Veto);
+        if self.guests[i].travel_vetoed != veto {
+            self.guests.update(i, |g| g.travel_vetoed = veto);
+        }
+        let g = &self.guests[i];
+        // The in-flight target and its velocity belong to the ordinary
+        // acknowledgement and resend path. No travel result publishes over it.
+        if !eligible || g.awaiting_teleport.is_some() {
+            return false;
+        }
+        let ServerTravel::Replace {
+            position,
+            on_ground,
+        } = decision
+        else {
+            return false;
+        };
+        let Some(velocity) = g.motion.as_ref().map(|b| b.velocity.components()) else {
+            return false;
+        };
+        let position = position.components();
+        let carried = g.on_collider;
+        self.guests.update(i, |g| {
+            g.on_ground = on_ground;
+            g.moved = true;
+            g.known_movement = [0, 1, 2].map(|axis| position[axis] - g.position[axis]);
+        });
+        self.send_position_correction(i, Some(position), 0, [0.0; 3], Some(velocity));
+        self.keep_carried_at(i, carried, position);
+        true
     }
 
     /// ClientboundSetDefaultSpawnPositionPacket for the world's respawn data:
@@ -2309,6 +2373,7 @@ impl Hub {
         // A caller that consumes raw events must resume the inbox before
         // running level/maintenance work. Game uses the split methods.
         if !self.packets_paused() {
+            self.sync_initial_health_data();
             for i in 0..self.guests.len() {
                 if self.here(&self.guests[i]) {
                     self.sync_progress(i);
@@ -3401,6 +3466,27 @@ impl Hub {
 
     // ---- per-player state ------------------------------------------------
 
+    /// `ServerEntity.sendDirtyEntityData`: the tracker sends the player's initial
+    /// health to its own connection before `ServerPlayer.tick` publishes progress.
+    pub fn sync_initial_health_data(&mut self) {
+        for i in 0..self.guests.len() {
+            let guest = &self.guests[i];
+            if !guest.sent_health_data && self.here(guest) {
+                self.send_initial_health_data(i);
+            }
+        }
+    }
+
+    fn send_initial_health_data(&mut self, i: usize) {
+        self.guests.update(i, |g| {
+            g.send(&C::SetEntityData(play::SetEntityData {
+                id: g.entity_id,
+                values: vec![(9, serializer::FLOAT, Value::Float(g.health))],
+            }));
+            g.sent_health_data = true;
+        });
+    }
+
     /// ServerPlayer.doTick: health, food, experience and the inventory menu.
     fn sync_player_state(&mut self, i: usize) {
         // LivingEntity.startSleeping / stopSleeping: the pose and the bed go
@@ -3423,15 +3509,11 @@ impl Hub {
                 }));
             }
         });
-        // ServerEntity.sendDirtyEntityData on the player's first tick: the
-        // health its creation set is still dirty, and goes to the player too.
         let first_tick = self.guests[i].sent_health.is_none();
-        if first_tick {
-            let g = &self.guests[i];
-            g.send(&C::SetEntityData(play::SetEntityData {
-                id: g.entity_id,
-                values: vec![(9, serializer::FLOAT, Value::Float(g.health))],
-            }));
+        // A respawn or level change in the connection phase can replace the
+        // player's body after the level ran its tracker.
+        if first_tick && !self.guests[i].sent_health_data {
+            self.send_initial_health_data(i);
         }
         // ServerEntity.sendDirtyEntityData: the player's changed attribute
         // instances go to the player too (its trackers get them from
@@ -4012,6 +4094,7 @@ impl Hub {
                         self.guests.update(i, |g| {
                             g.position = at;
                             g.awaiting_teleport = None;
+                            g.pending_travel_velocity = None;
                         });
                         // The confirmation is then an ordinary report of where the client
                         // is: its own position goes through the speed test, the collided
@@ -4348,7 +4431,7 @@ impl Hub {
         // teleport, which is sent again after 20 ticks without an answer.
         if let Some((_, at)) = g.awaiting_teleport {
             if self.ticks - g.teleport_tick > 20 {
-                self.resend_teleport(i, Some(at));
+                self.send_position_correction(i, Some(at), 0, [0.0; 3], g.pending_travel_velocity);
             }
             // The awaiting check applies the report's rotation and drops its position, its
             // ground flag and its collision flag. Nothing is counted against the player.
@@ -4454,6 +4537,17 @@ impl Hub {
                 return;
             }
         };
+        // A veto applies from the last server travel onward, not to reports
+        // already committed before it. Do not correct a report that stays put.
+        let g = &self.guests[i];
+        if g.travel_vetoed && to != start && !g.spectator() {
+            let velocity = g.motion.as_ref().map(|body| body.velocity.components());
+            let carried = g.on_collider;
+            self.guests.update(i, |g| (g.yaw, g.pitch) = (yaw, pitch));
+            self.send_position_correction(i, Some(start), 0, [0.0; 3], velocity);
+            self.keep_carried(i, carried, Some(start));
+            return;
+        }
         // The confirmation of a teleport (a carried player's correction included) is committed in
         // place against the world as it stands.
         let (wrongly, refused, stands) = if hearing == Hearing::Confirmation {
@@ -4926,6 +5020,7 @@ impl Hub {
             self.guests.update(i, |g| {
                 g.landing = true;
                 g.awaiting_teleport = None;
+                g.pending_travel_velocity = None;
                 g.teleport_counter = (g.teleport_counter + 1) & 0x7FFF_FFFF;
             });
         } else {
@@ -4949,6 +5044,7 @@ impl Hub {
             // lastSentExp, lastSentHealth and lastSentFood; the client's new
             // player starts with the default air and no absorption.
             g.sent_health = None;
+            g.sent_health_data = false;
             g.sent_xp = None;
             g.sent_air = (300, 0.0);
             g.sent_frozen = 0;
