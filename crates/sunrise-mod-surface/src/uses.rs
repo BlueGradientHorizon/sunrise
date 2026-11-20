@@ -1134,7 +1134,6 @@ const STD_DERIVES: &[&str] = &[
 /// The macro, attribute and derive names a file may use and still be read as written: the
 /// standard ones and the API's own, less every name something in the mod may rebind.
 struct Trusted<'s> {
-    roots: &'s BTreeSet<&'s str>,
     local_modules: &'s BTreeSet<&'s str>,
     /// By kind, the API's own macro names.
     api_macros: BTreeSet<&'s str>,
@@ -1172,9 +1171,8 @@ impl Trusted<'_> {
             [root, .., _] if self.local_modules.contains(root) || self.rebound.contains(root) => {
                 false
             }
-            [root, .., name] if self.roots.contains(root) => {
-                !self.rebound_all && api.contains(name)
-            }
+            // An API alias elsewhere in the mod does not resolve a macro in this scope.
+            ["mod_api", .., name] => !self.rebound_all && api.contains(name),
             [root, .., name] if matches!(*root, "std" | "core" | "alloc") => {
                 !self.rebound_all && std.contains(name)
             }
@@ -1388,7 +1386,6 @@ impl<'s> Index<'s> {
     {
         let macros = &self.surface.macros;
         Trusted {
-            roots: &module.roots,
             local_modules: &module.modules,
             api_macros: macros
                 .iter()

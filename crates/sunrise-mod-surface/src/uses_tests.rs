@@ -1462,6 +1462,21 @@ fn read(p: local::Pos) -> i32 {{ p.0 }}
 }
 
 #[test]
+fn a_sibling_api_alias_does_not_make_an_outer_attribute_trusted() {
+    let uses = scan_on(
+        wider(),
+        r#"
+use mod_api::Pos;
+mod sibling { use mod_api as sunrise_mod; }
+#[sunrise_mod::sunrise_mod]
+mod local { pub struct Pos(pub i32); }
+fn read(p: local::Pos) -> i32 { p.0 }
+"#,
+    );
+    assert!(ids(&uses).contains(&"type:Pos.0"));
+}
+
+#[test]
 fn a_qualified_type_alias_keeps_the_api_field() {
     let uses = scan_on(
         wider(),
