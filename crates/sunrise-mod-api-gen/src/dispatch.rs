@@ -664,15 +664,11 @@ pub(super) fn emit<'a>(
         } else {
             "// no wire: borrowed event crosses as call arguments."
         };
-        let non_exhaustive = if hook.non_exhaustive {
-            "#[non_exhaustive]\n"
-        } else {
-            ""
-        };
+        let event_struct = format!(
+            "/// Built by the game and passed to the listener.\n#[non_exhaustive]\n#[allow(missing_docs)]\n{wire_form}\npub struct {event_type}{generics} {{\n{fields}}}\n"
+        );
         if is_render {
-            render_dispatch.push_str(&format!(
-                "{non_exhaustive}#[allow(missing_docs)]\n{wire_form}\npub struct {event_type}{generics} {{\n{fields}}}\n"
-            ));
+            render_dispatch.push_str(&event_struct);
             continue;
         }
         trait_params.push(format!("{event}: &mut {event_type}{elided}"));
@@ -952,7 +948,7 @@ pub(super) fn emit<'a>(
             .as_ref()
             .map_or(trait_name, |(part_trait, _)| part_trait);
         dispatch.push_str(&format!(
-            "/// What [`{trait_name}::{name}`] is told. Each field is that hook's argument of the same name, described in the hook's doc.\n{non_exhaustive}#[allow(missing_docs)]\n{wire_form}\npub struct {event_type}{generics} {{\n{fields}}}\n"
+            "/// What [`{trait_name}::{name}`] is told. Each field is that hook's argument of the same name, described in the hook's doc.\n///\n{event_struct}"
         ));
         if declaration_only {
             continue;
