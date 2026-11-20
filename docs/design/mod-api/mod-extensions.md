@@ -28,6 +28,8 @@ Owner decision (2026-11-08): one derive in `sunrise-mod-api-macros`, used by `mo
 
 ### What the derive emits: the same bytes as today
 
+This section records the original derive design. The current [Wire codec](../../modding/src/concepts/wire-types.md) borrows values when encoding them.
+
 The derive implements the existing trait (`crates/sunrise-mod-vocab/src/wire/wire.rs:558`: `MIN`, `put`, `put_owned`, `take`). It copies the generator's rules from `wire/emit.rs` exactly, so no encoding changes:
 
 | Shape | Bytes | `MIN` | `take` |

@@ -57,10 +57,6 @@ fn busy_result_encodes_exact_application_bytes_and_resolved_holder_fields() {
 
     let decoded = Reader::decode::<Result<(), PayloadHandleError>>(borrowed.bytes()).unwrap();
     assert_eq!(decoded, result);
-    let mut owned = Writer::new();
-    owned.put_owned(result);
-    assert_eq!(owned.error(), None);
-    assert_eq!(owned.bytes(), borrowed.bytes());
 }
 
 #[test]
