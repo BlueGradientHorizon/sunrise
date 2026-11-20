@@ -559,7 +559,7 @@ mod tests {
             let mut draw = WorldGeometry::default();
             draw.reset(camera.to_array(), Mat4::IDENTITY, [0.0, 0.0]);
             // One whole copy, and one with its bottom faces hidden (direction bit 0).
-            context(&game, &mut draw)
+            context(game, &mut draw)
                 .draw_model_instances(
                     model,
                     &[
@@ -1230,7 +1230,7 @@ mod tests {
             draw.reset(camera.to_array(), Mat4::IDENTITY, [0.0, 0.0]);
             // A near and a far translucent copy and an opaque copy with
             // every face hidden that draws nothing.
-            context(&game, &mut draw)
+            context(game, &mut draw)
                 .draw_model_instances(
                     model,
                     &[
