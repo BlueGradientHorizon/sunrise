@@ -3,6 +3,8 @@
 sunrise-client-render gfx::core_lightmap::tests::a_lightmap_shader_reads_poly_globals lib daily slow
 sunrise-client-render gfx::core_lines::tests::a_pack_outline_reads_poly_globals lib daily slow
 sunrise-client-render gfx::core_sky::expression_tests::a_pack_sky_reads_poly_globals lib daily slow
+sunrise-client-render gfx::core_text::expression_tests::a_pack_world_and_see_through_text_read_poly_globals lib daily slow
+sunrise-client-render hud::pack_text::gpu_tests::a_pack_gui_text_reads_poly_globals lib daily slow
 sunrise-client-render post_chain::tests::a_pass_whose_pipeline_is_refused_falls_back_to_the_stand_in lib daily slow
 sunrise-client-render post_chain::tests::a_post_pass_binds_what_it_reads_and_is_refused_past_the_limits lib daily slow
 sunrise-client-render post_chain::tests::a_post_pass_reads_the_games_poly_globals lib daily slow

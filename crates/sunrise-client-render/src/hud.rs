@@ -1306,6 +1306,12 @@ impl HudAtlas {
         ));
         Ok(atlas)
     }
+    /// The packs' core shaders at `root` over the game's own resources `game`, as
+    /// [`Self::build_over_with_dynamic_textures`] loads them, for tests of the pipelines.
+    #[cfg(test)]
+    pub(crate) fn load_pack_shaders(&mut self, root: &ResourceSource, game: &ResourceSource) {
+        pack_text::load_shaders(self, root, game);
+    }
     /// Empty slots written at run time: map textures (game/blocks/maps/mod.rs),
     /// client mods' dynamic textures (only with `pool`), downloaded skins, world
     /// and pack icons and the on-screen keyboard's text. Their pixels are already zero in
@@ -3353,15 +3359,25 @@ impl HudRenderer {
             cit_glint::CitGlintPass::new(device, queue, self.format, &self.layout, t, self.coverage)
         });
     }
-    /// Draw the GUI's text with `shader` (`HudAtlas::text_shader`), or natively.
+    /// Draw the GUI's text with `shader` (`HudAtlas::text_shaders`' `gui`, with the Polytone
+    /// expression uniforms its stages read, `shader_modifiers`), or natively.
     pub fn set_text_shader(
         &mut self,
         device: &wgpu::Device,
-        shader: Option<&crate::core_shader::CoreProgram>,
+        shader: Option<(
+            &crate::core_shader::CoreProgram,
+            &[crate::polytone_post::ExpressionUniform],
+        )>,
     ) {
         self.pack_text = shader.and_then(|shader| {
             pack_text::PackText::new(device, self.format, &self.atlas_view, shader, self.coverage)
         });
+    }
+    /// The GUI text's Polytone blocks, when a pack's text shader draws it.
+    pub(crate) fn text_expression_blocks(
+        &mut self,
+    ) -> Option<&mut crate::gfx::expression_blocks::ExpressionBlocks> {
+        self.pack_text.as_mut().map(|text| &mut text.extra)
     }
     /// Stage the batch's `patches` and `image_patches` (client mods' dynamic textures) into
     /// the shared atlas texture.
