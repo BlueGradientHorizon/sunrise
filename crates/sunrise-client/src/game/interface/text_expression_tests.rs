@@ -4,6 +4,7 @@
 //! shows the values the frame evaluated (fullbright changes nothing), or zeros where no world
 //! runs (the title screen, a loading screen). Each case runs in a process of its own (one event
 //! loop, its own game resources).
+use super::lightmap_expression_tests::corner_of as corner;
 use super::native_entity_refs::tests::{run_fresh_cases, with_client_game};
 use crate::game::native_hooks::particle_count_tests::frame_scene;
 use sunrise_assets::resource_source::{Resource, ResourceSource};
@@ -39,27 +40,6 @@ fn pack() -> ResourceSource {
             .map(|(path, text)| (path.to_owned(), Resource::bytes(text.as_bytes().to_vec())))
             .collect(),
     )
-}
-
-/// The colour of the pixel two in from the top left corner of `draw`'s frame.
-fn corner(
-    game: &mut super::Game<'_>,
-    draw: impl FnOnce(&mut super::Game<'_>) -> sunrise_client::Result<bool>,
-) -> [u8; 3] {
-    game.renderer.as_mut().unwrap().screenshot = Some(sunrise_client::gfx::ScreenshotRequest {
-        path: "unused.png".into(),
-        size: None,
-        scaled: false,
-        background: false,
-    });
-    draw(game).unwrap();
-    let result = game.renderer.as_mut().unwrap().screenshot_result.take();
-    let mut pending = result.unwrap().unwrap();
-    let image = pending.image_mut();
-    let width = image.width as usize;
-    image.rgba[(2 * width + 2) * 4..(2 * width + 2) * 4 + 3]
-        .try_into()
-        .unwrap()
 }
 
 /// A game frame.

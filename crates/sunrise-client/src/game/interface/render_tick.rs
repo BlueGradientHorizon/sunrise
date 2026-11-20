@@ -1011,6 +1011,23 @@ impl Game<'_> {
             .is_some_and(|r| r.reads_pack_expressions() || (text && r.reads_text_expressions()))
     }
 
+    /// Whether an installed pack core shader reads Polytone's `PolyGlobals`.
+    pub(in crate::game) fn reads_poly_globals(&mut self) -> bool {
+        self.renderer
+            .as_mut()
+            .is_some_and(|r| r.reads_poly_globals())
+    }
+
+    /// The frame's `PolyGlobals` for the pack core shaders that read them; none leaves them 0.
+    pub(in crate::game) fn give_poly_globals(
+        &mut self,
+        globals: Option<&sunrise_client::polytone_post::PolyGlobals>,
+    ) {
+        if let Some(renderer) = self.renderer.as_mut() {
+            renderer.set_poly_globals(globals.map(|g| g.bytes()).as_ref());
+        }
+    }
+
     /// Evaluate the installed pack pipelines' expression uniforms from `frame`, skipping the
     /// lightmap under fullbright, and the text's where no world runs
     /// ([`Self::text_expressions_run`]). Values are uploaded when each pipeline prepares its draw.

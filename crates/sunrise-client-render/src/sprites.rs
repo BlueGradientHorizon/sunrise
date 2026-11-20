@@ -106,6 +106,8 @@ struct StillKey {
 #[derive(Default)]
 pub struct Sprites {
     source: ResourceSource,
+    /// Whether this load draws nothing (a server's): the mods' sprite sources are not run for it.
+    serving: bool,
     /// Edge length of every array layer and the layers' current frames, set
     /// by [`Sprites::finish`].
     pub size: u32,
@@ -250,12 +252,24 @@ impl Sprites {
             ..Self::default()
         }
     }
+    /// The sprites of a load that draws nothing (a server's): the mods' sprite sources are
+    /// declared but not run for it, and no decoded textures are kept.
+    pub fn for_server(source: ResourceSource) -> Self {
+        Self {
+            source,
+            serving: true,
+            ..Self::default()
+        }
+    }
     /// Sprites that reuse textures decoded by an earlier launch, kept in a
-    /// cache file in `root`.
+    /// cache file in `root`. A texture's decoded form stands for the sprite lists this load's
+    /// atlas sources gave, mods' included, and no other.
     pub fn with_disk_cache(root: &ResourceRoot) -> Self {
+        let listing = crate::atlas_sources::listing(root.source());
         Self {
             source: root.source().clone(),
-            disk: crate::sprite_cache::SpriteCache::open(root),
+            disk: crate::sprite_cache::SpriteCache::open(root, listing.fingerprint()),
+            materials: crate::atlas_sources::Materials::over(listing, root.source()).into(),
             ..Self::default()
         }
     }
@@ -273,8 +287,26 @@ impl Sprites {
         }
     }
     fn materials(&self) -> &crate::atlas_sources::Materials {
-        self.materials
-            .get_or_init(|| crate::atlas_sources::Materials::new(&self.source))
+        self.materials.get_or_init(|| {
+            if self.serving {
+                let listing = crate::atlas_sources::Listing::build(
+                    &self.source,
+                    &crate::mod_sprite_sources::Declared,
+                );
+                crate::atlas_sources::Materials::over(Arc::new(listing), &self.source)
+            } else {
+                crate::atlas_sources::Materials::new(&self.source)
+            }
+        })
+    }
+    /// Every sprite a mod's sprite source made in the blocks atlas, by pixels or by naming a
+    /// texture, added though no model names it: the mod that made it looks it up after the
+    /// stitch. Each is the blocks atlas's sprite of its id, whatever the items atlas lists.
+    pub fn insert_mod_sprites(&mut self) -> Result<()> {
+        for id in self.materials().mod_sprites() {
+            self.insert_in_blocks(&id)?;
+        }
+        Ok(())
     }
     /// How many array layers the textures take.
     pub fn count(&self) -> usize {
@@ -843,6 +875,22 @@ impl Sprites {
                 .iter()
                 .any(|p| p[3] != 0 && p[3] != 255),
         })
+    }
+    /// A 16 x 16 opaque white sprite under `name`: what a flat colour is drawn from, tinted.
+    pub fn insert_flat(&mut self, name: &str) -> Result<u32> {
+        self.register(
+            name,
+            crate::sprite_cache::Decoded {
+                side: 16,
+                frames: vec![[255u8; 16 * 16 * 4].to_vec()],
+                animation: None,
+                strategy: Default::default(),
+                alpha_cutoff_bias: 0.0,
+                has_transparent: false,
+                opaque: true,
+                translucent: false,
+            },
+        )
     }
     /// Give a decoded texture its layer (or the one an identical still has).
     #[sunrise_mod_api_macros::replaceable]
@@ -2253,6 +2301,178 @@ mod tests {
         assert_eq!(sprites.files["demo:block/cut"], raw);
         assert_eq!(sprites.layers["demo:block/cut"], model);
         assert_eq!(first_texel(&sprites, model), [255, 0, 0, 255]);
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// A 16 x 16 sprite of one colour, as a mod's source makes it.
+    fn flat(sprite: &str, rgb: [u8; 3]) -> mod_api::SpriteSourceOutput {
+        mod_api::SpriteSourceOutput::Pixels {
+            sprite: mod_api::Identifier::parse(sprite).unwrap(),
+            width: 16,
+            height: 16,
+            rgba: [rgb[0], rgb[1], rgb[2], 255].repeat(256),
+        }
+    }
+    const OWN: &str = r#"{"sources":[{"type":"srcsprites:own"}]}"#;
+
+    /// What a mod's sources make in the blocks atlas is published in the block arrays though no
+    /// model names it, whether it made pixels or named a texture; an id both atlases list keeps
+    /// two sprites, the blocks atlas's found by name and the items atlas's as the model material;
+    /// and what the items atlas alone lists is no blocks sprite.
+    #[test]
+    fn a_mods_sprites_are_published_by_atlas_whether_or_not_a_model_names_them() {
+        let root = atlas_root("mod-published", OWN, Some(OWN));
+        let source = ResourceSource::directory(root.clone());
+        let mods =
+            crate::atlas_sources::test_mods::Mods::new(&["srcsprites:own"], |atlas, _, _, _| {
+                match atlas.path() {
+                    "blocks" => vec![
+                        flat("srcsprites:pixels", [1, 2, 3]),
+                        flat("srcsprites:same", [10, 0, 0]),
+                        mod_api::SpriteSourceOutput::Texture {
+                            sprite: mod_api::Identifier::parse("srcsprites:alias").unwrap(),
+                            texture: mod_api::Identifier::parse("demo:block/sheet").unwrap(),
+                        },
+                    ],
+                    _ => vec![
+                        flat("srcsprites:same", [20, 0, 0]),
+                        flat("srcsprites:items_only", [30, 0, 0]),
+                    ],
+                }
+            });
+        crate::atlas_sources::shared(&source, &mods);
+        let mut sprites = Sprites::new(source);
+        sprites.insert_mod_sprites().unwrap();
+        let blocks = |sprites: &Sprites, name: &str| first_texel(sprites, sprites.layers[name]);
+        assert_eq!(blocks(&sprites, "srcsprites:pixels"), [1, 2, 3, 255]);
+        assert_eq!(
+            blocks(&sprites, "srcsprites:alias"),
+            [255, 0, 0, 255],
+            "the sheet's own first texel: a texture no model names"
+        );
+        assert_eq!(blocks(&sprites, "srcsprites:same"), [10, 0, 0, 255]);
+        assert!(!sprites.layers.contains_key("srcsprites:items_only"));
+        // A model naming the id gets the items atlas's sprite; the blocks atlas's stays.
+        let model = sprites.insert("srcsprites:same").unwrap();
+        assert_eq!(first_texel(&sprites, model), [20, 0, 0, 255]);
+        assert_eq!(blocks(&sprites, "srcsprites:same"), [10, 0, 0, 255]);
+        let items_only = sprites.insert("srcsprites:items_only").unwrap();
+        assert_eq!(first_texel(&sprites, items_only), [30, 0, 0, 255]);
+        assert!(!sprites.layers.contains_key("srcsprites:items_only"));
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// A sprite a mod's source removes is the missing texture where a model names it.
+    #[test]
+    fn a_sprite_a_mods_source_removes_is_missing() {
+        let both = r#"{"sources":[{"type":"minecraft:unstitch","resource":"demo:block/sheet","divisor_x":2,
+            "divisor_y":2,"regions":[{"sprite":"demo:block/cut","x":0,"y":0,"width":1,"height":1},
+            {"sprite":"demo:block/kept","x":1,"y":0,"width":1,"height":1}]},
+            {"type":"srcsprites:own"}]}"#;
+        let root = atlas_root("mod-removed", both, None);
+        let source = ResourceSource::directory(root.clone());
+        let mods = crate::atlas_sources::test_mods::Mods::new(&["srcsprites:own"], |_, _, _, _| {
+            vec![mod_api::SpriteSourceOutput::Remove {
+                sprite: mod_api::Identifier::parse("demo:block/cut").unwrap(),
+            }]
+        });
+        crate::atlas_sources::shared(&source, &mods);
+        let mut sprites = Sprites::new(source);
+        let cut = sprites.insert("demo:block/cut").unwrap();
+        assert_eq!(
+            first_texel(&sprites, cut),
+            [0, 0, 0, 255],
+            "the missing texture"
+        );
+        let kept = sprites.insert("demo:block/kept").unwrap();
+        assert_eq!(first_texel(&sprites, kept), [0, 255, 0, 255]);
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// Code answers a definition differently with no file changed: a warm cache serves what the
+    /// listing of that load gave, never an older answer, for pixels changed, a sprite removed and
+    /// an alias whose texture is missing (the failed origin leaves the next atlas's sprite).
+    #[test]
+    fn a_warm_cache_never_serves_what_the_mods_answered_in_an_earlier_load() {
+        let root = atlas_root("mod-warm", OWN, Some(OWN));
+        let load = |outputs: Vec<mod_api::SpriteSourceOutput>| {
+            let resources = ResourceRoot::directory(root.clone());
+            let outputs = Arc::new(outputs);
+            let mods = crate::atlas_sources::test_mods::Mods::new(
+                &["srcsprites:own"],
+                move |atlas, _, _, _| {
+                    if atlas.path() == "items" {
+                        Vec::new()
+                    } else {
+                        outputs.to_vec()
+                    }
+                },
+            );
+            crate::atlas_sources::shared(resources.source(), &mods);
+            let mut sprites = Sprites::with_disk_cache(&resources);
+            let layer = sprites.insert("srcsprites:a").unwrap();
+            sprites.save_disk_cache();
+            first_texel(&sprites, layer)
+        };
+        let alias = |texture: &str| mod_api::SpriteSourceOutput::Texture {
+            sprite: mod_api::Identifier::parse("srcsprites:a").unwrap(),
+            texture: mod_api::Identifier::parse(texture).unwrap(),
+        };
+        assert_eq!(load(vec![flat("srcsprites:a", [1, 2, 3])]), [1, 2, 3, 255]);
+        assert_eq!(load(vec![flat("srcsprites:a", [1, 2, 3])]), [1, 2, 3, 255]);
+        assert_eq!(
+            load(vec![flat("srcsprites:a", [9, 9, 9])]),
+            [9, 9, 9, 255],
+            "other pixels, the same files"
+        );
+        assert_eq!(load(vec![alias("demo:block/sheet")]), [255, 0, 0, 255]);
+        assert_eq!(
+            load(vec![alias("demo:block/not_there")]),
+            [0, 0, 0, 255],
+            "an alias to nothing is the missing texture, not the sheet's cached pixels"
+        );
+        assert_eq!(
+            load(Vec::new()),
+            [0, 0, 0, 255],
+            "a sprite no source lists any more is missing"
+        );
+        assert_eq!(load(vec![flat("srcsprites:a", [1, 2, 3])]), [1, 2, 3, 255]);
+        assert_eq!(
+            load(vec![
+                flat("srcsprites:a", [1, 2, 3]),
+                mod_api::SpriteSourceOutput::Remove {
+                    sprite: mod_api::Identifier::parse("srcsprites:a").unwrap(),
+                },
+            ]),
+            [0, 0, 0, 255],
+            "listed in this load and removed in it: gone, not the cached pixels"
+        );
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// The items atlas lists the id with a cut that does not finish, so the blocks atlas's sprite
+    /// of the mod's answer is the model's material; a warm cache follows that answer when it
+    /// changes with no file changed.
+    #[test]
+    fn a_failed_items_origin_leaves_the_mods_blocks_sprite_in_a_warm_cache() {
+        let outside = r#"{"sources":[{"type":"minecraft:unstitch","resource":"demo:block/sheet",
+            "divisor_x":2,"regions":[{"sprite":"srcsprites:a","x":2,"y":0,"width":1,"height":1}]}]}"#;
+        let root = atlas_root("mod-failed-items", OWN, Some(outside));
+        let load = |rgb: [u8; 3]| {
+            let resources = ResourceRoot::directory(root.clone());
+            let mods = crate::atlas_sources::test_mods::Mods::new(
+                &["srcsprites:own"],
+                move |_, _, _, _| vec![flat("srcsprites:a", rgb)],
+            );
+            crate::atlas_sources::shared(resources.source(), &mods);
+            let mut sprites = Sprites::with_disk_cache(&resources);
+            let layer = sprites.insert("srcsprites:a").unwrap();
+            sprites.save_disk_cache();
+            first_texel(&sprites, layer)
+        };
+        assert_eq!(load([1, 2, 3]), [1, 2, 3, 255]);
+        assert_eq!(load([1, 2, 3]), [1, 2, 3, 255]);
+        assert_eq!(load([4, 5, 6]), [4, 5, 6, 255]);
         fs::remove_dir_all(&root).unwrap();
     }
 }

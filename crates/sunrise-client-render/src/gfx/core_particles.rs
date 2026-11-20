@@ -225,9 +225,12 @@ impl CoreParticles {
         if title {
             batches.clear();
         }
-        let vanilla = (!batches.is_empty()).then(vanilla);
-        let vanilla = vanilla.as_ref().map_or(&[][..], |v| &v[..]);
-        self.prepare(device, queue, &batches, vanilla);
+        let vanilla = if batches.is_empty() {
+            [0; 1024]
+        } else {
+            vanilla()
+        };
+        self.prepare(device, queue, &batches, &vanilla);
     }
 
     /// This frame's batches, for the shaders [`Self::decide`] drew: their uniforms and records

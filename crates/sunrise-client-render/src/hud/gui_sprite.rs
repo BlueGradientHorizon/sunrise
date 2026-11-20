@@ -16,18 +16,15 @@ impl HudAtlas {
     /// sprite when that atlas has none by that name.
     pub fn inline_sprite(&self, atlas: &str, sprite: &str) -> Option<Rect> {
         let plain = sprite.strip_prefix("minecraft:").unwrap_or(sprite);
-        let gui = atlas_key_of_gui_sprite(sprite);
         let gui_atlas = atlas.strip_prefix("minecraft:").unwrap_or(atlas) == "gui";
-        let (first, second) = if gui_atlas {
-            (gui.as_str(), plain)
+        // The GUI atlas's sprites are found by GUI id; another atlas's by its packed name, then
+        // as a GUI sprite.
+        let found = if gui_atlas {
+            self.gui_rect(plain)
         } else {
-            (plain, gui.as_str())
+            self.sprites.get(plain).or_else(|| self.gui_rect(plain))
         };
-        self.sprites
-            .get(first)
-            .or_else(|| self.sprites.get(second))
-            .or_else(|| self.sprites.get(MISSING_SPRITE))
-            .copied()
+        found.or_else(|| self.sprites.get(MISSING_SPRITE)).copied()
     }
     /// `inline_sprite` for an inline atlas object; `None` for any other object.
     pub(super) fn inline_object_sprite(&self, object: &crate::text::InlineObject) -> Option<Rect> {

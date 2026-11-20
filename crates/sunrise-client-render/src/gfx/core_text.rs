@@ -97,7 +97,7 @@ impl super::Renderer {
         &mut self,
     ) -> impl Iterator<Item = &mut super::expression_blocks::ExpressionBlocks> {
         let world = (self.core_text.iter_mut()).flat_map(|core| core.expression_blocks());
-        (world.chain(self.hud.text_expression_blocks())).filter(|blocks| !blocks.is_empty())
+        (world.chain(self.hud.text_expression_blocks())).filter(|blocks| blocks.has_uniforms())
     }
 
     /// Whether a pack's text shader reads expression uniforms: the game then makes the frame's
@@ -218,8 +218,9 @@ impl CoreText {
         // Vanilla's blocks first, then each pipeline's expression uniforms after the last's.
         let mut base = 1024;
         let extras = specs.each_ref().map(|(_, program, _)| {
-            program.map(|(_, expressions)| {
-                let extra = super::expression_blocks::ExpressionBlocks::new(expressions, base);
+            program.map(|(core, expressions)| {
+                let extra =
+                    super::expression_blocks::ExpressionBlocks::new(core, expressions, base);
                 base = extra.size();
                 extra
             })

@@ -164,8 +164,12 @@ casts a new ray. Without listeners the decision is the vanilla block/entity pick
 It can be read with a screen open. `entity` is an `EntityRef` carrying the current
 client level's epoch and network entity ID, including dragon parts. It becomes stale
 when the client level is replaced or the client disconnects; a same-level respawn
-keeps its epoch. Unlike `view_hit` and `raycast`, this does not find blocks
-in distant terrain or return a block behind a targeted entity.
+keeps its epoch. Unlike `view_hit` and `raycast`, this does not return a block
+behind a targeted entity.
+
+`ClientHost::view_hit()` and `raycast(distance)` cast their own ray along the view, up
+to 1024 blocks, and hit blocks in loaded chunks only: far terrain is never hit. Both
+return `None` on a miss.
 
 A client `EntityRef` supports `bounding_box(host)`, `eye_height(host)` and
 `eye_position(host)`. For the local player these use the current predicted body and pose;
@@ -199,9 +203,6 @@ These read the local player as the client sees it. They take no mod-controlled n
   (`isUsingItem`, `getUsedItemHand`, `getTicksUsingItem`, `getUseItemRemainingTicks`).
   `ticks_used + ticks_remaining` is the use duration. It is `None` when no item is in use or no world
   is open.
-- `ClientHost::hover_name(&stack)` is `ItemStack.getHoverName()` as plain text: the custom name, else
-  a written book's non-blank title, else the item's name in the client's language, without rarity
-  colour or italics. An invalid stack reads an empty string.
 - `ClientHost::creative_search_items()` returns the built creative search tab's display order,
   for ranking stacks in inventory sorters. It requests the catalog with the local player's permission
   and Operator Items Tab option. A cache miss can fire the creative build hook, so this read needs a

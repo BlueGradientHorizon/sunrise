@@ -2247,6 +2247,7 @@ impl Renderer {
             core_sky: None,
             core_particles,
             core_lightmap: None,
+            core_clouds: None,
             debug_lines_opaque,
             debug_lines,
             debug_lines_on_top,

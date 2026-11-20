@@ -153,7 +153,9 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           FILES: ${{ steps.files.outputs.listed == 'true' && format('{0}/pr-files', runner.temp) || '' }}
-        run: python3 tools/ci/rust_changes.py --all ${FILES:+--files "$FILES"} "$BASE_SHA" "$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          # The records pr_files.py wrote: a listing that lost one selects everything.
+          ENTRIES: ${{ steps.files.outputs.entries }}
+        run: python3 tools/ci/rust_changes.py --all ${FILES:+--files "$FILES" --entries "$ENTRIES"} "$BASE_SHA" "$HEAD_SHA" >> "$GITHUB_OUTPUT"
       # Best-effort: any failure leaves `reused` unset, and the push runs the whole gate.
       - name: Reuse the merged head's passed gate
         if: github.event_name == 'push'

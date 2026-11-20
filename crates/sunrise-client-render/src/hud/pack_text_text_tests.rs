@@ -40,7 +40,8 @@ fn fsh(wave: &str) -> String {
     )
 }
 
-pub(super) fn source(files: &[(&str, String)]) -> ResourceSource {
+/// A pack of `files` (path and text).
+pub(crate) fn source(files: &[(&str, String)]) -> ResourceSource {
     ResourceSource::indexed(
         files
             .iter()

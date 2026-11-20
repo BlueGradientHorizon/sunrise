@@ -20,21 +20,15 @@ const MODIFIERS: &str = r#"{"Tint": "0.1 + 0.1", "Fade": "0.3 * 2"}"#;
 /// A pack with the text shader `vsh` and `fsh` and its `shader_modifiers` file `modifiers`, its
 /// text programs loaded as the atlas loads them (`hud::pack_text::load_shaders`).
 fn text_shaders(vsh: &str, fsh: &str, modifiers: &str) -> crate::gfx::core_text::TextShaders {
-    use sunrise_assets::resource_source::{Resource, ResourceSource};
-    let files = [
-        ("assets/minecraft/shaders/core/text.vsh", vsh),
-        ("assets/minecraft/shaders/core/text.fsh", fsh),
+    use sunrise_assets::resource_source::ResourceSource;
+    let pack = crate::hud::pack_text::text_tests::source(&[
+        ("assets/minecraft/shaders/core/text.vsh", vsh.to_owned()),
+        ("assets/minecraft/shaders/core/text.fsh", fsh.to_owned()),
         (
             "assets/minecraft/polytone/shader_modifiers/core/text.json",
-            modifiers,
+            modifiers.to_owned(),
         ),
-    ];
-    let pack = ResourceSource::indexed(
-        files
-            .into_iter()
-            .map(|(path, text)| (path.to_owned(), Resource::bytes(text.as_bytes().to_vec())))
-            .collect(),
-    );
+    ]);
     let mut atlas = crate::hud::HudAtlas::boot();
     atlas.load_pack_shaders(&pack, &ResourceSource::default());
     atlas.text_shaders
