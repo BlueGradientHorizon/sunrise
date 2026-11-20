@@ -400,14 +400,54 @@ pub fn generate_engine_points(root: &Path, out_dir: &Path) -> Result<(), String>
                 .transpose()?;
             let code = super::points::engine_records(&points, selected.as_ref());
             let generated = syn::parse_file(&code).map_err(|e| format!("engine points: {e}"))?;
-            let mut code = String::new();
-            for item in generated.items {
-                code.push_str(&item.to_token_stream().to_string());
-                code.push('\n');
-            }
+            let code = short_lines(generated);
             write_if_changed(out_dir.join("engine_points.rs"), code).map_err(|e| e.to_string())
         })
     })
+}
+
+/// `file`'s tokens as text with a line break after every item and after every `,` or `;` inside
+/// braces and brackets (a `match`, a list, a block), and no other change: a single multi-megabyte
+/// line makes Clippy's source lookups, `clippy::four_forward_slashes` above all, prohibitively slow.
+fn short_lines(file: syn::File) -> String {
+    use proc_macro2::{Delimiter, Spacing, TokenTree};
+    fn push(code: &mut String, stream: proc_macro2::TokenStream, breaks: bool) {
+        for tree in stream {
+            match tree {
+                TokenTree::Group(group) => {
+                    let (open, close, inner) = match group.delimiter() {
+                        Delimiter::Parenthesis => ("( ", ") ", false),
+                        Delimiter::Brace => ("{ ", "} ", true),
+                        Delimiter::Bracket => ("[ ", "] ", true),
+                        Delimiter::None => ("", "", breaks),
+                    };
+                    code.push_str(open);
+                    push(code, group.stream(), inner);
+                    code.push_str(close);
+                }
+                TokenTree::Punct(punct) => {
+                    code.push(punct.as_char());
+                    match punct.spacing() {
+                        Spacing::Joint => {}
+                        Spacing::Alone if breaks && matches!(punct.as_char(), ',' | ';') => {
+                            code.push('\n')
+                        }
+                        Spacing::Alone => code.push(' '),
+                    }
+                }
+                tree => {
+                    code.push_str(&tree.to_string());
+                    code.push(' ');
+                }
+            }
+        }
+    }
+    let mut code = String::new();
+    for item in file.items {
+        push(&mut code, item.to_token_stream(), true);
+        code.push('\n');
+    }
+    code
 }
 
 pub(super) fn generate_points_inner(root: &Path, out_dir: &Path) -> Result<(), String> {
@@ -445,12 +485,7 @@ pub(super) fn generate_points_inner(root: &Path, out_dir: &Path) -> Result<(), S
         );
     phase("records");
     let generated = syn::parse_file(&code).map_err(|e| format!("generated Rust: points: {e}"))?;
-    // A single multi-megabyte line makes Clippy's source lookups prohibitively slow.
-    let mut code = String::new();
-    for item in generated.items {
-        code.push_str(&item.to_token_stream().to_string());
-        code.push('\n');
-    }
+    let code = short_lines(generated);
     phase("format");
     write_if_changed(out_dir.join("points_generated.rs"), code).map_err(|e| e.to_string())?;
     phase("written");
@@ -514,6 +549,23 @@ pub(super) fn track(root: &Path, all_game: bool) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The output differs from the token stream's own text only in whitespace, and no line holds
+    /// more than a list's element.
+    #[test]
+    fn short_lines_keep_the_tokens_and_break_lists() {
+        let source = "pub enum Id { A, B, C } impl Id { pub fn n(self) -> u8 { let t = [1, 2, 3]; match self { Id::A => { f(1, 2); 1 } _ => 2 } } } const S: &str = \"a, b; c\"; fn g<'a>(x: &'a u8) -> Vec<::std::string::String> { vec![] }";
+        let file = syn::parse_file(source).unwrap();
+        let text = short_lines(file.clone());
+        let original = file.to_token_stream().to_string();
+        let reparsed = syn::parse_file(&text)
+            .unwrap()
+            .to_token_stream()
+            .to_string();
+        assert_eq!(reparsed, original);
+        assert!(text.lines().count() > 10);
+        assert!(text.contains("\"a, b; c\""));
+    }
 
     /// A cached wire result follows every input it was derived from: the generated API sources (the
     /// catalog and hooks) and each indexed crate's files (mod-vocab's among them), and not the game.
