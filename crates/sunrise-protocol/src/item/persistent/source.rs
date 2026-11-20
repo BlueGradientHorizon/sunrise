@@ -323,8 +323,7 @@ pub fn component_from_tag(kind: i32, value: &Tag, ids: &dyn Ids) -> Result<Compo
         is_native_component,
     )
     .map_err(err)?;
-    let component = component_from_value(kind, &value, ids);
-    component
+    component_from_value(kind, &value, ids)
 }
 pub fn component_from_value(kind: i32, value: &Value, ids: &dyn Ids) -> Result<Component> {
     let name = component_name(kind).ok_or_else(|| err(format!("unknown component type {kind}")))?;
