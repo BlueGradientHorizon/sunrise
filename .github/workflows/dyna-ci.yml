@@ -658,12 +658,11 @@ jobs:
           python3 tools/ci/run_test_binaries.py --jobs 3 --time-limits 2,5 --network-guard target/network_guard.so --no-data-skips -- cargo test $JOBS --profile test --workspace --lib --bins --tests
       # Prepared-data content-root tests stay in the existing client-lib data leg.
       # Running them again here without the data only rebuilds targets before they return early.
-      # One genuine pinned export also validates source staging and listed slots.
-      # Outside tests/ discovery: the later offline suite must not stage it again.
-      # Keep this before doc tests so their failures cannot hide stale slots.
+      # The surface report's tool. The staging pass itself is proven on a clean checkout by the SDK's Linux leg in
+      # the daily run (prebuilt-game-build.yml, tools/ci/test_stage_catalog.py), not here: it takes minutes.
       - name: Build the source stage generator (test profile)
         id: stage
-        if: ${{ !cancelled() && steps.setup.outcome == 'success' && (needs.changes.outputs.rust_required != 'false') }}
+        if: ${{ !cancelled() && steps.setup.outcome == 'success' && (needs.changes.outputs.rust_required != 'false' && (github.event_name == 'pull_request' || inputs.pr != '')) }}
         run: |
           started=$SECONDS
           cargo build $JOBS --locked --profile test -p sunrise-mod-api-gen --bin sunrise-stage --message-format=json-render-diagnostics > "$RUNNER_TEMP/stage-artifacts.jsonl"
@@ -700,10 +699,6 @@ jobs:
           PR: ${{ inputs.pr }}
           GH_TOKEN: ${{ github.token }}
         run: python3 tools/ci/surface_report.py
-      - name: Validate prebuilt source stage and listed slots
-        id: validate_prebuilt_source_stage_and_listed_slots
-        if: ${{ !cancelled() && steps.setup.outcome == 'success' && (needs.changes.outputs.rust_required != 'false') && steps.stage.outcome == 'success' }}
-        run: python3 tools/ci/test_stage_catalog.py -v
       - name: Test Rust documentation examples
         id: test_rust_documentation_examples
         if: ${{ !cancelled() && steps.setup.outcome == 'success' && (needs.changes.outputs.rust_required != 'false') }}
