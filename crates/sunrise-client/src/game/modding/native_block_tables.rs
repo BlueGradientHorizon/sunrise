@@ -3,9 +3,9 @@
 //! reads the same facts in a level callback as through a `Host`.
 use super::{Game, PackResources, Resources, WorldRest, api_values::TryIntoEngine};
 use mod_api::{
-    BlockKey, BlockSoundType, BlockStateRange, BlockStateRecord, FluidDefinition, FluidKey,
-    FluidState, FluidStateError, FluidTypeProperties, StateConstraint, StateMatchError,
-    StateProperty, WeatheringAge,
+    BlockKey, BlockSoundType, BlockState, BlockStateRange, FluidDefinition, FluidKey, FluidState,
+    FluidStateError, FluidTypeProperties, StateConstraint, StateMatchError, StateProperty,
+    WeatheringAge,
 };
 use sunrise_client::items::ItemStack;
 use sunrise_world::fluid::FluidKind;
@@ -142,17 +142,11 @@ impl<'a> BlockTables<'a> {
     }
 
     /// Convert the canonical ordinal before reading the published weathering tables.
-    fn weathering_state(&self, state: BlockStateRecord) -> Option<(&WorldRest, BlockStateId)> {
-        Some((
-            self.res.rest.get()?,
-            mod_api::BlockState::from(state).try_into_engine(&()).ok()?,
-        ))
+    fn weathering_state(&self, state: BlockState) -> Option<(&WorldRest, BlockStateId)> {
+        Some((self.res.rest.get()?, state.try_into_engine(&()).ok()?))
     }
 
-    pub(in crate::game) fn block_weathering_age(
-        &self,
-        state: BlockStateRecord,
-    ) -> Option<WeatheringAge> {
+    pub(in crate::game) fn block_weathering_age(&self, state: BlockState) -> Option<WeatheringAge> {
         let (rest, state) = self.weathering_state(state)?;
         Some(match rest.behaviours.weathering_age(state)? {
             0 => WeatheringAge::Unaffected,
@@ -165,7 +159,7 @@ impl<'a> BlockTables<'a> {
 
     pub(in crate::game) fn block_next_weathering_stage(
         &self,
-        state: BlockStateRecord,
+        state: BlockState,
     ) -> Option<BlockStateId> {
         let (rest, state) = self.weathering_state(state)?;
         rest.behaviours.weathering_next(state)
@@ -173,24 +167,18 @@ impl<'a> BlockTables<'a> {
 
     pub(in crate::game) fn block_previous_weathering_stage(
         &self,
-        state: BlockStateRecord,
+        state: BlockState,
     ) -> Option<BlockStateId> {
         let (rest, state) = self.weathering_state(state)?;
         rest.behaviours.weathering_previous(state)
     }
 
-    pub(in crate::game) fn block_state_waxed(
-        &self,
-        state: BlockStateRecord,
-    ) -> Option<BlockStateId> {
+    pub(in crate::game) fn block_state_waxed(&self, state: BlockState) -> Option<BlockStateId> {
         let (_, state) = self.weathering_state(state)?;
         self.honeycomb_waxed(state)
     }
 
-    pub(in crate::game) fn block_state_unwaxed(
-        &self,
-        state: BlockStateRecord,
-    ) -> Option<BlockStateId> {
+    pub(in crate::game) fn block_state_unwaxed(&self, state: BlockState) -> Option<BlockStateId> {
         let (rest, state) = self.weathering_state(state)?;
         if let Some(unwaxed) = rest.behaviours.mapped_unwaxed(state) {
             return Some(unwaxed);
@@ -372,17 +360,17 @@ impl<'a> BlockTables<'a> {
     }
     pub(in crate::game) fn block_metadata_property(
         &self,
-        state: mod_api::BlockStateRecord,
+        state: mod_api::BlockState,
         name: &str,
     ) -> Result<Option<&'static str>, mod_api::BlockStateError> {
         mod_api::BlockMetadata::property(super::api_values::block_metadata_table()?, state, name)
     }
     pub(in crate::game) fn block_metadata_with(
         &self,
-        state: mod_api::BlockStateRecord,
+        state: mod_api::BlockState,
         name: &str,
         value: &str,
-    ) -> Result<mod_api::BlockStateRecord, mod_api::BlockStateError> {
+    ) -> Result<mod_api::BlockState, mod_api::BlockStateError> {
         mod_api::BlockMetadata::with(
             super::api_values::block_metadata_table()?,
             state,
@@ -394,7 +382,7 @@ impl<'a> BlockTables<'a> {
         &self,
         block: mod_api::BlockKey,
         properties: &[mod_api::StateConstraint],
-    ) -> Result<mod_api::BlockStateRecord, mod_api::BlockStateError> {
+    ) -> Result<mod_api::BlockState, mod_api::BlockStateError> {
         mod_api::BlockMetadata::of(
             super::api_values::block_metadata_table()?,
             block,

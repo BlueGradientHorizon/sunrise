@@ -90,19 +90,19 @@ pub trait BlockStatesServerHost {
 pub trait BlockStatesBackend {
     /// Side: both. The age read by `BlockStates::weathering_age`.
     #[access(Metadata)]
-    fn block_weathering_age(&self, state: BlockStateRecord) -> Option<WeatheringAge>;
+    fn block_weathering_age(&self, state: BlockState) -> Option<WeatheringAge>;
     /// Side: both. The state read by `BlockStates::next_weathering_stage`.
     #[access(Metadata)]
-    fn block_next_weathering_stage(&self, state: BlockStateRecord) -> Option<BlockState>;
+    fn block_next_weathering_stage(&self, state: BlockState) -> Option<BlockState>;
     /// Side: both. The state read by `BlockStates::previous_weathering_stage`.
     #[access(Metadata)]
-    fn block_previous_weathering_stage(&self, state: BlockStateRecord) -> Option<BlockState>;
+    fn block_previous_weathering_stage(&self, state: BlockState) -> Option<BlockState>;
     /// Side: both. The state read by `BlockStates::waxed`.
     #[access(Metadata)]
-    fn block_state_waxed(&self, state: BlockStateRecord) -> Option<BlockState>;
+    fn block_state_waxed(&self, state: BlockState) -> Option<BlockState>;
     /// Side: both. The state read by `BlockStates::unwaxed`.
     #[access(Metadata)]
-    fn block_state_unwaxed(&self, state: BlockStateRecord) -> Option<BlockState>;
+    fn block_state_unwaxed(&self, state: BlockState) -> Option<BlockState>;
     /// Side: both.
     /// Borrow the canonical block name through the block metadata resource.
     #[access(Metadata)]
@@ -112,7 +112,7 @@ pub trait BlockStatesBackend {
     #[access(Metadata)]
     fn block_metadata_property(
         &self,
-        state: BlockStateRecord,
+        state: BlockState,
         name: &str,
     ) -> Result<Option<&str>, BlockStateError>;
     /// Side: both.
@@ -120,10 +120,10 @@ pub trait BlockStatesBackend {
     #[access(Metadata)]
     fn block_metadata_with(
         &self,
-        state: BlockStateRecord,
+        state: BlockState,
         name: &str,
         value: &str,
-    ) -> Result<BlockStateRecord, BlockStateError>;
+    ) -> Result<BlockState, BlockStateError>;
     /// Side: both.
     /// Apply partial properties through the block metadata resource.
     #[access(Metadata)]
@@ -131,7 +131,7 @@ pub trait BlockStatesBackend {
         &self,
         block: BlockKey,
         properties: &[StateConstraint],
-    ) -> Result<BlockStateRecord, BlockStateError>;
+    ) -> Result<BlockState, BlockStateError>;
     /// Side: both.
     /// `BlockState.canBeReplaced()`: whether placing a block where this state stands
     /// replaces it (air, grass, water, snow layers). None for an unknown state.

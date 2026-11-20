@@ -14,24 +14,24 @@ mod tests {
         }
         fn block_metadata_property(
             &self,
-            state: BlockStateRecord,
+            state: BlockState,
             name: &str,
         ) -> Result<Option<&str>, BlockStateError> {
             self.0.property(state, name)
         }
         fn block_metadata_with(
             &self,
-            state: BlockStateRecord,
+            state: BlockState,
             name: &str,
             value: &str,
-        ) -> Result<BlockStateRecord, BlockStateError> {
+        ) -> Result<BlockState, BlockStateError> {
             self.0.with(state, name, value)
         }
         fn block_metadata_of(
             &self,
             block: BlockKey,
             properties: &[StateConstraint],
-        ) -> Result<BlockStateRecord, BlockStateError> {
+        ) -> Result<BlockState, BlockStateError> {
             self.0.of(block, properties)
         }
     }
@@ -73,9 +73,9 @@ mod tests {
             Err(BlockStateError::Unavailable)
         );
         let off = metadata.of(block, &[]).unwrap();
-        assert_eq!(off.state, 0);
+        assert_eq!(off.ordinal(), 0);
         let on = metadata.with(off, "lit", "true").unwrap();
-        assert_eq!(on.state, 1);
+        assert_eq!(on.ordinal(), 1);
         assert_eq!(metadata.property(on, "lit"), Ok(Some("true")));
         assert_eq!(metadata.property(off, "lit"), Ok(Some("false")));
         let borrowed = crate::__private::backend_read(&host, |backend| {
@@ -117,12 +117,15 @@ mod tests {
             Err(BlockStateError::InvalidValue(0))
         );
         assert_eq!(
-            metadata.property(BlockStateRecord::new(block, 2), "lit"),
+            metadata.property(crate::__private::block_state_from_ordinal(block, 2), "lit"),
             Err(BlockStateError::UnknownState)
         );
         assert_eq!(
             metadata.property(
-                BlockStateRecord::new(mod_vocab::__private::parts_installation::block_key(999), 0),
+                crate::__private::block_state_from_ordinal(
+                    mod_vocab::__private::parts_installation::block_key(999),
+                    0
+                ),
                 "lit"
             ),
             Err(BlockStateError::UnknownBlock)
