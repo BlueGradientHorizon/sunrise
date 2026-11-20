@@ -1,5 +1,5 @@
 //! The cloud layer's height through a game's frames: `EnvironmentAttributes.CLOUD_HEIGHT` as the
-//! dimension type sets it (`minecraft:visual/cloud_height`), probed at the camera each frame as
+//! server's synchronized dimension type sets it (`minecraft:visual/cloud_height`), probed at the camera each frame as
 //! vanilla's `LevelExtractor` does, places the layer the renderer draws. A pack's `core/clouds`
 //! shows it: its `CloudInfo.CloudOffset.y` is the layer's bottom less the camera's height. Each
 //! case runs in a process of its own (one event loop, its own resources).
@@ -41,23 +41,54 @@ fn pack() -> ResourceSource {
     )
 }
 
-/// The overworld's dimension type as the prepared resources have it, with its
-/// `minecraft:visual/cloud_height` set to `height`, loaded as the game loads one.
-fn overworld(height: f64) -> sunrise_client::environment::Environment {
+/// Joins a server whose Overworld's synchronized dimension type is the prepared resources' with
+/// its `minecraft:visual/cloud_height` set to `height`, through the `Login` packet a server sends.
+fn join_overworld(game: &mut super::Game<'_>, height: f64) {
+    use sunrise_protocol::packets::play::{self, Clientbound as C};
     let resources = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let path = "data/minecraft/dimension_type/overworld.json";
     let mut json: serde_json::Value =
         serde_json::from_slice(&std::fs::read(resources.join(path)).unwrap()).unwrap();
     json["attributes"]["minecraft:visual/cloud_height"] = serde_json::json!(height);
-    let source = ResourceSource::indexed(
-        [(
-            path.to_owned(),
-            Resource::bytes(json.to_string().into_bytes()),
-        )]
-        .into_iter()
-        .collect(),
+    let (client, _server) = sunrise_protocol::connection::Pipe::pair();
+    game.connect_local(client, "CloudHeightFrameTest").unwrap();
+    let mut registries = (*game.remote.as_ref().unwrap().registries).clone();
+    registries.registries.insert(
+        "minecraft:dimension_type".into(),
+        vec![(
+            "minecraft:overworld".into(),
+            Some(sunrise_client::scoreboard::json_to_tag(&json)),
+        )],
     );
-    sunrise_client::environment::Environment::load_dimension(&source, "overworld").unwrap()
+    game.set_registries(std::sync::Arc::new(registries));
+    game.handle_packet(C::Login(play::Login {
+        player_id: 7,
+        hardcore: false,
+        levels: vec!["minecraft:overworld".into()],
+        max_players: 1,
+        chunk_radius: 2,
+        simulation_distance: 2,
+        reduced_debug_info: false,
+        show_death_screen: true,
+        limited_crafting: false,
+        spawn: play::SpawnInfo {
+            dimension_type: 0,
+            dimension: "minecraft:overworld".into(),
+            seed: 0,
+            game_type: 1,
+            previous_game_type: None,
+            debug: false,
+            flat: true,
+            last_death: None,
+            portal_cooldown: 0,
+            sea_level: 63,
+        },
+        online_mode: false,
+        enforces_secure_chat: false,
+    }))
+    .unwrap();
+    // The level's terrain is in: the loading screen closes.
+    game.remote.as_mut().unwrap().level_load.finish();
 }
 
 /// A pixel left of the hotbar and the crosshair.
@@ -77,8 +108,8 @@ fn drawn_pixel(game: &mut super::Game<'_>) -> [u8; 4] {
     image.rgba[at..at + 4].try_into().unwrap()
 }
 
-/// The overworld's own height (192.33) leaves the layer 128 above the camera; a dimension type
-/// setting 250 raises it to 186 above, the frame it is set in.
+/// A joined Overworld whose type keeps vanilla's height (192.33) leaves the layer 128 above the
+/// camera; one whose type sets 250 raises it to 186 above, in the first frame after the join.
 #[test]
 #[ignore = "daily"]
 fn the_cloud_layer_follows_the_dimensions_height() {
@@ -89,16 +120,10 @@ fn the_cloud_layer_follows_the_dimensions_height() {
     with_client_game(|game| {
         game.gui = crate::game::UiResources::load(&pack(), std::path::Path::new("")).unwrap();
         assert!(game.gui.atlas.clouds_shader.is_some());
+        join_overworld(game, if raised { 250.0 } else { 192.33 });
         let _event_loop = frame_scene(game);
         game.screen = super::Screen::Playing;
         game.screen_fx.vignette_brightness = 0.0;
-        if raised {
-            game.pack.environments = Some(std::sync::Arc::new([
-                overworld(250.0),
-                overworld(250.0),
-                overworld(250.0),
-            ]));
-        }
         let expected = if raised { 255 } else { 0 };
         assert_eq!(drawn_pixel(game), [expected, expected, expected, 255]);
     });

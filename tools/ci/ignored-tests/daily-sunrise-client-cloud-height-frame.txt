@@ -1,3 +1,4 @@
 # The daily tests of sunrise-client: each is #[ignore = "daily"] in its source and runs once a day in the daily run,
 # where it must pass (README.md). Rows: PACKAGE TEST TARGET daily REASON, sorted; tools/ci/move_to_daily.py writes them.
 sunrise-client game::cloud_height_frame_tests::the_cloud_layer_follows_the_dimensions_height lib daily resources
+sunrise-client game::remote::tests::client_level_environment_tests::a_joined_overworlds_synced_cloud_height_reaches_the_frame lib daily resources

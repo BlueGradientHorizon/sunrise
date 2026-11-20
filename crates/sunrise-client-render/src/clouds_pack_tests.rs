@@ -596,7 +596,6 @@ const JAVA_HEIGHT: &[Case] = &[
 /// `CloudInfo` for that height are vanilla's, byte for byte, above, inside and below the layer.
 #[test]
 fn faces_and_cloud_info_follow_a_datapacks_cloud_height() {
-    assert_eq!(250.0f32.to_bits(), 1_132_068_864);
     for case in JAVA_HEIGHT {
         let texture = java_texture(case.texture);
         let input = java_input(&texture, JAVA_HEIGHT_FRAMES, case.frame, 250.0);

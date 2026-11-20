@@ -114,11 +114,13 @@ impl LevelAccess for RainView<'_> {
 impl Game<'_> {
     /// `Level.getSkyDarken`: the same dimension, time and weather calculation used by gameplay.
     pub(super) fn sky_darken_in(&self, world: &World, dimension: Dim) -> i32 {
-        // A client of a server has the environment its server's type made for a mod's level.
+        // A client of a server has the environment its server's type made for the level it is
+        // in; a parked level keeps the client's own for its dimension.
         let environment = match self
             .remote
             .as_ref()
             .and_then(|r| r.level_environment.as_ref())
+            .filter(|_| dimension == self.dim)
         {
             Some(own) => own,
             None => match dimension {

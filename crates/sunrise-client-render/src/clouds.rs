@@ -706,6 +706,12 @@ mod tests {
         input.partial_tick = 0.0;
         assert!(mesh.prepare(&input).0);
         assert!(!mesh.prepare(&input).0);
+        // A higher layer, still above the camera, moves only the uniform: its bottom is 250 less
+        // the camera's 101.
+        input.height = 250.0;
+        let (rebuilt, uniform) = mesh.prepare(&input);
+        assert!(!rebuilt);
+        assert_eq!(uniform.offset[1], 149.0);
         // 400 ticks of drift move the clouds 12 blocks: one whole snap cell.
         input.time = SNAP_CELLS * 400;
         assert!(mesh.prepare(&input).0);

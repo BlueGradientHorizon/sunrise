@@ -64,7 +64,8 @@ whether or not the client has the mod that registered the level.
 
 `sky_color`, `fog_color` (`#rrggbb`) and `cloud_height` set the sky overhead, the fog at the
 sunrise and the clouds' height; left as None they are the Overworld's. A client of a server draws a
-level of a mod or a pack with the sky the server's type gives it, as the host does.
+level with the sky the server's type gives it, as the host does: a level of a mod or a pack, and a
+built-in level whose type a data pack changed.
 
 `day_cycle` picks the timelines and the clock the dimension type names: `overworld` (the day and moon
 cycles, the villagers' schedule and the Overworld's clock, the default), `nether` (the schedule only,
