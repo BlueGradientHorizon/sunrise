@@ -67,7 +67,8 @@ pub struct ModelInstance {
     pub tint: u32,
     /// Block and sky light in vanilla's `0..=15` convention.
     pub light: LightCoords,
-    /// Hurt tint and white flash, in vanilla's overlay convention.
+    /// Hurt tint and white flash, in vanilla's overlay convention. A copy drawn in the translucent
+    /// material, or of a block state model, takes none of it, on its opaque faces too.
     pub overlay: Overlay,
     /// The draw colour: `0xAARRGGBB`, white (`0xFFFFFFFF`) by default. Its red, green and blue
     /// multiply every face's vertex colour, tinted or not, after the model's own baked colour and,

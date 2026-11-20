@@ -563,8 +563,10 @@ mod tests {
                 .draw_model_instances(
                     model,
                     &[
-                        ModelInstance::at([3.0, 70.0, 0.0], half_red),
-                        ModelInstance::at([9.0, 70.0, 0.0], half_red).with_hidden_faces(0b1),
+                        ModelInstance::at([3.0, 70.0, 0.0], u32::MAX).with_color(half_red),
+                        ModelInstance::at([9.0, 70.0, 0.0], u32::MAX)
+                            .with_color(half_red)
+                            .with_hidden_faces(0b1),
                     ],
                 )
                 .unwrap();
@@ -580,9 +582,8 @@ mod tests {
             // The first copy holds every face; the second lacks the hidden ones.
             assert!(entities.len() > faces * 4, "the whole copy is there");
             assert!(entities.len() < faces * 8, "the hidden faces are absent");
-            // Vertex colours are ABGR: the red channel is at most half of full.
-            assert!(entities.iter().all(|v| v.color & 0xFF <= 0x80));
-            assert!(entities.iter().all(|v| v.color >> 24 == 0xFF));
+            // Vertex colours are ABGR: white times `half_red` (`0xFF80FFFF`) on every face.
+            assert!(entities.iter().all(|v| v.color == 0xFFFF_FF80));
         });
     }
 
@@ -606,6 +607,48 @@ mod tests {
                 .find_map(|state| slot(state).ok().map(|slot| (state, slot)))
                 .expect("some block state has a model");
             assert_eq!(slot(state), Ok(first));
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn a_tinted_block_state_carries_its_default_tint_in_the_baked_colour() {
+        super::super::native_entity_refs::tests::with_client_game(|game| {
+            let colours = |name: &str| {
+                let state = game.pack.assets.registry.default_state(name).unwrap();
+                let model = game
+                    .native_block_state_model(mod_api::BlockStateId(state.0))
+                    .unwrap();
+                let slot = mod_api::__private::game::Fields::fields(&model).slot;
+                let faces = game.model_faces(slot).unwrap();
+                faces
+                    .iter()
+                    .map(|face| (face.quad.tint_index, face.quad.color))
+                    .collect::<Vec<_>>()
+            };
+            let tinted = |faces: &[(i32, Option<i32>)]| {
+                faces
+                    .iter()
+                    .filter(|(index, _)| *index >= 0)
+                    .map(|(_, colour)| *colour)
+                    .collect::<Vec<_>>()
+            };
+            let grass = tinted(&colours("minecraft:grass_block"));
+            assert!(!grass.is_empty(), "the grass block has a tinted face");
+            // `GrassColor.getDefaultColor()` is `get(0.5, 1.0)`: pixel (127, 127) of
+            // `colormap/grass.png`, 0x7CBD6B, times white.
+            assert!(
+                grass.iter().all(|c| *c == Some(0xFF7C_BD6Bu32 as i32)),
+                "{grass:x?}"
+            );
+            // Stone has faces and none is tinted, so none carries a colour.
+            let stone = colours("minecraft:stone");
+            assert!(!stone.is_empty());
+            assert!(
+                stone
+                    .iter()
+                    .all(|&(index, colour)| index < 0 && colour.is_none())
+            );
         });
     }
 
@@ -815,10 +858,11 @@ mod tests {
                 // Subtract world coordinates in f64: each fractional block survives.
                 assert_eq!(staged[0].instance.model[3], [0.25, 0.5, 0.75, 1.0]);
             }
+            // The mod's 65,536 copies: the glass group's 1, this group's 8, three of 16,384 and the rest.
             let sibling = game.create_group(model, 16_384).unwrap();
             let third = game.create_group(model, 16_384).unwrap();
             let fourth = game.create_group(model, 16_384).unwrap();
-            let fifth = game.create_group(model, 16_376).unwrap();
+            let fifth = game.create_group(model, 16_375).unwrap();
             assert_eq!(
                 game.create_group(model, 1),
                 Err(GroupError::CapacityExceeded)
