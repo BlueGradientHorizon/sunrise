@@ -755,9 +755,9 @@ fn a_posed_item_has_a_depth_of_its_own() {
     };
     let sprites = HashMap::from([("item/enchanted_book".to_owned(), sprite)]);
     let mut batch = crate::hud::HudBatch::scratch([64, 64]);
-    // A flat face about its centre (40.25, 30.5), 16 pixels a block, turned 60 degrees about y:
-    // its corners land at x 40.25 +- 4 (16 * 0.5 * cos 60) and y 30.5 +- 8, one side nearer.
-    let pose = Mat4::from_translation(Vec3::new(40.25, 30.5, 0.0))
+    // A flat face about its centre (40.75, 30.5), 16 pixels a block, turned 60 degrees about y:
+    // its corners land at x 40.75 +- 4 (16 * 0.5 * cos 60) and y 30.5 +- 8, one side nearer.
+    let pose = Mat4::from_translation(Vec3::new(40.75, 30.5, 0.0))
         * Mat4::from_scale(Vec3::new(16.0, -16.0, 16.0))
         * Mat4::from_rotation_y(60f32.to_radians());
     assert!(gui::draw_posed(
@@ -782,8 +782,8 @@ fn a_posed_item_has_a_depth_of_its_own() {
         depths.iter().copied().fold(f32::NEG_INFINITY, f32::max),
         1.0
     );
-    // The scissor takes every pixel the bounds [36.25, 44.25] x [22.5, 38.5] touch: the min
-    // edges round down and the max edges up, so a width of 9 and a height of 17.
+    // The scissor takes every pixel the bounds [36.75, 44.75] x [22.5, 38.5] touch, including
+    // the column centred at x = 44.5: rounding the edges out gives a width of 9 and a height of 17.
     assert_eq!(batch.scale, 1.0);
     assert_eq!(
         batch.blends,
