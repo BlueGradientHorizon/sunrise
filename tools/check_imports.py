@@ -148,11 +148,12 @@ def check(path, server=False, musl=False):
                                      text=True, capture_output=True, env={**os.environ, "LC_ALL": "C"})
             except FileNotFoundError:
                 sys.exit("readelf is required for --musl (install binutils)")
+            # Any run path, even an empty one: the musl build never needs one, and a build path is no business of
+            # the player's machine.
+            problems += [f"has a run path [{p}]" for p in runpath]
             if elf.returncode:
                 problems.append(f"could not be inspected by readelf: {elf.stderr.strip()}")
             else:
-                if re.search(r"^\s*0x[0-9a-f]+\s+\((?:RPATH|RUNPATH)\)", elf.stdout, re.M):
-                    problems.append("contains RPATH or RUNPATH")
                 needs = False
                 for line in elf.stdout.splitlines():
                     if line.startswith("Version "):

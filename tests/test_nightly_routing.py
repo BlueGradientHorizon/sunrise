@@ -195,6 +195,8 @@ console.log(JSON.stringify(Boolean(eval(s.expression))));
         self.assertLess(package, validate)
         self.assertLess(validate, archive)
         self.assertLess(archive, marker)
+        # The checks read the uploaded archive, unpacked, not the folder it was made from.
+        self.assertIn('tar -xzf "dist/${{ matrix.asset }}"', steps[validate]["run"])
         for step in (steps[cross], steps[validate]):
             self.assertEqual(step["if"], "matrix.musl")
             self.assertIn('"$MUSL_IMAGE"', step["run"])

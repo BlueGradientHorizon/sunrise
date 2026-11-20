@@ -396,10 +396,11 @@ jobs:
           sysroot="$RUNNER_TEMP/alpine-sysroot"
           mkdir -p "$sysroot"
           # The image is pinned by digest; its packages come from the live 3.22 repository, so each one the build
-          # links against is held to the upstream version this route was proven with (`~`: Alpine's own rebuilds and
-          # security fixes of it still install), and the whole set is printed for the log.
+          # links against is held to the exact upstream version this route was proven with. apk's `~X.Y.Z` matches
+          # that version's Alpine revisions only (-rN: Alpine's own rebuilds and security fixes, which the repository
+          # replaces, so `=` with a revision would break), never another upstream release. The whole set is logged.
           docker run --rm "$MUSL_IMAGE" sh -ec '
-            apk add --no-cache build-base "gcc~14.2" "binutils~2.44" "musl-dev~1.2.5" "linux-headers~6.14" \
+            apk add --no-cache build-base "gcc~14.2.0" "binutils~2.44" "musl-dev~1.2.5" "linux-headers~6.14.2" \
               "alsa-lib-dev~1.2.14" "eudev-dev~3.2.14" >&2
             apk info -v | sort >&2
             tar -C / -cf - lib usr
@@ -435,14 +436,20 @@ jobs:
       - name: Check the packaged musl programs
         if: matrix.musl
         run: |
-          folder="dist/${{ matrix.dir }}"
+          # The archive that is uploaded, as a player unpacks it: its files, paths and modes, not the staging folder.
+          unpacked=$(mktemp -d)
+          tar -xzf "dist/${{ matrix.asset }}" -C "$unpacked"
+          folder="$unpacked/${{ matrix.dir }}"
           programs=("$folder"/sunrise-{client,ctl,perf,prepare,server,port-pack})
+          for program in "${programs[@]}"; do
+            [[ -f "$program" && -x "$program" ]] || { echo "::error::$program is missing or not executable"; exit 1; }
+          done
           python3 .workflow-tools/tools/check_imports.py --musl "${programs[@]}"
           rustup component add llvm-tools
           python3 .workflow-tools/tools/check_cpu_baseline.py "${programs[@]}"
           # This container sees the package only, not the compiler sysroot or host libraries.
-          docker run --rm -i -e SUNRISE_VERSION -v "$PWD/$folder:/package:ro" "$MUSL_IMAGE" sh -ec '
-            apk add --no-cache "alsa-lib~1.2.14" "eudev-libs~3.2.14" "libgcc~14.2" "musl~1.2.5"
+          docker run --rm -i -e SUNRISE_VERSION -v "$folder:/package:ro" "$MUSL_IMAGE" sh -ec '
+            apk add --no-cache "alsa-lib~1.2.14" "eudev-libs~3.2.14" "libgcc~14.2.0" "musl~1.2.5"
             apk info -v | sort
             exec sh -s /package
           ' < .workflow-tools/tools/ci/check-musl-startup.sh

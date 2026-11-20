@@ -10,7 +10,8 @@ from unittest import mock
 from tools import check_imports
 
 
-def elf(interpreter, libraries, runpath=None):
+def elf(interpreter, libraries, runpath=None, paths=()):
+    """A minimal ELF64; `runpath` adds a DT_RUNPATH, `paths` any (tag, value) string entries (15 is DT_RPATH)."""
     data = bytearray(4096)
     data[:7] = b"\x7fELF\x02\x01\x01"
     struct.pack_into("<Q", data, 32, 64)
@@ -18,7 +19,7 @@ def elf(interpreter, libraries, runpath=None):
     struct.pack_into("<IIQQQQQQ", data, 64, 1, 4, 0, 0x400000, 0, len(data), len(data), 4096)
     strings = bytearray(b"\0")
     entries = [(5, 0x400400)]
-    for tag, value in [(1, lib) for lib in libraries] + ([(29, runpath)] if runpath else []):
+    for tag, value in [(1, lib) for lib in libraries] + ([(29, runpath)] if runpath else []) + list(paths):
         entries.append((tag, len(strings)))
         strings.extend(value.encode() + b"\0")
     entries.append((0, 0))
@@ -35,13 +36,11 @@ def elf(interpreter, libraries, runpath=None):
 
 
 class LinuxImportsTests(unittest.TestCase):
-    def check_binary(self, interpreter, libraries, *, runpath=None, report="", **options):
+    def check_binary(self, interpreter, libraries, *, runpath=None, paths=(), report="", **options):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "program"
-            path.write_bytes(elf(interpreter, libraries, runpath))
-            # The fake ELF has program headers but no section metadata for readelf.
-            if runpath:
-                report += f"\n 0x000000000000001d (RUNPATH) Library runpath: [{runpath}]\n"
+            path.write_bytes(elf(interpreter, libraries, runpath, paths))
+            # The fake ELF has program headers but no section metadata for readelf: its version report is given.
             result = subprocess.CompletedProcess([], 0, stdout=report, stderr="")
             with (contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()),
                   mock.patch.object(check_imports.subprocess, "run", return_value=result)):
@@ -63,10 +62,11 @@ class LinuxImportsTests(unittest.TestCase):
                 self.assertFalse(self.check_binary("/lib/ld-musl-x86_64.so.1", [library], musl=True))
 
     def test_musl_rejects_both_runpath_tags(self):
-        for tag, label, value in (("000f", "RPATH", "$ORIGIN/lib"), ("001d", "RUNPATH", "")):
-            with self.subTest(label=label):
-                report = f"\n 0x000000000000{tag} ({label}) Library path: [{value}]\n"
-                self.assertFalse(self.check_binary(check_imports.MUSL_LOADER, [], musl=True, report=report))
+        # Real dynamic entries, an empty RUNPATH among them: the check reads the ELF, not readelf's text.
+        for tag, value in ((15, "$ORIGIN/lib"), (29, ""), (29, "/home/runner/work/_temp/alpine-sysroot/usr/lib")):
+            with self.subTest(tag=tag, value=value):
+                self.assertFalse(self.check_binary(check_imports.MUSL_LOADER, [], musl=True, paths=[(tag, value)]))
+        self.assertTrue(self.check_binary(check_imports.MUSL_LOADER, [], musl=True))
 
     def test_musl_rejects_any_glibc_version_requirement(self):
         for name in ("GCC_3.0", "GLIBC_2.2.5", "GLIBC_PRIVATE", "GLIBC_ABI_DT_RELR"):
