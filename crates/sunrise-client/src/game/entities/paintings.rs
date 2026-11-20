@@ -418,6 +418,7 @@ impl Game<'_> {
                     &entity,
                     "minecraft:painting",
                     at - camera,
+                    Some(at),
                     p.pos,
                     packed,
                     out,

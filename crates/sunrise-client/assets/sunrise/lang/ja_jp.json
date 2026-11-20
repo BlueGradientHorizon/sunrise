@@ -139,7 +139,6 @@
   "How fast the right stick turns the view.": "右スティックで視点を回す速さ。",
   "How fast the stick moves the crosshair in inventories.": "インベントリでスティックがカーソルを動かす速さ。",
   "How frames reach the screen while VSync is off.": "VSync がオフのときにフレームが画面に到達する方法。",
-  "How frames reach the screen, and the performance overlay.": "フレームが画面に到達する方法とパフォーマンス オーバーレイ。",
   "How long a held direction takes between repeats.": "押し続けた方向のリピート間隔。",
   "How long a held direction waits before it repeats.": "方向を押し続けてからリピートが始まるまでの時間。",
   "How many particles effects spawn.": "パーティクル エフェクトのスポーン数。",
