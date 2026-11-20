@@ -7407,6 +7407,13 @@ def check_raid_captain_fields(host, guest, out):
             game('command', command='gamemode survival')
 
 
+def restore_arena(host):
+    """The open stone floor the run starts on, so no check's blocks (a placed stone at the reset spot) stay in the way."""
+    x, y, z = (int(v // 1) for v in host.joined_at)
+    host('command', command=f'execute in {OVERWORLD} run fill {x - 8} {y - 1} {z - 8} {x + 8} {y - 1} {z + 8} minecraft:stone')
+    host('command', command=f'execute in {OVERWORLD} run fill {x - 8} {y} {z - 8} {x + 8} {y + 6} {z + 8} minecraft:air')
+
+
 def run(ctl, out, resources, checks):
     host, guest = Game('host', ctl, resources), Game('guest', ctl, resources)
     # A headless run (SUNRISE_E2E_HEADLESS, or a Linux without vscreen) has no focused window to draw
@@ -7466,6 +7473,8 @@ def run(ctl, out, resources, checks):
                     # of the check alone starts: cases move them, to platforms in the sky and arenas, and
                     # a later case's floor, reach or spawned mobs must not depend on where one ended.
                     x, y, z = host.joined_at
+                    if game is host:
+                        restore_arena(host)
                     x += 3 if game is guest else 0
                     game('command', command=f'execute in {OVERWORLD} run tp @s {x:.2f} {y:.2f} {z:.2f}')
                     if state.get('dimension') != OVERWORLD:
