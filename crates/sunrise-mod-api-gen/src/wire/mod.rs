@@ -196,7 +196,7 @@ pub(super) const SUBSCRIBED: &[(&str, &str)] = &[
 ];
 
 /// The hidden provided method every exported handler trait declares: its body marks the trait's
-/// methods (`__sunrise_handler_marks!`), so a mod that holds a handler of the trait imports them.
+/// methods (`sunrise-mod-marks`' function for the trait), so a mod that holds a handler of the trait imports them.
 const MARKS_METHOD: &str = "__sunrise_marks";
 
 /// Refuses `owner`, an exported trait that is no Part (`handler`), when it does not declare
@@ -884,6 +884,8 @@ fn hidden(attrs: &[syn::Attribute]) -> bool {
 pub struct Generated {
     pub wire: String,
     pub guest: String,
+    /// The handler traits' marks, the source of `sunrise-mod-marks`.
+    pub marks: String,
     /// Every source file read to derive them, for the build script to track.
     pub sources: Vec<std::path::PathBuf>,
 }
@@ -918,11 +920,12 @@ pub fn generate(root: &Path, included: &[(&str, &str)]) -> Result<Generated, Str
     guest.push_str(&calls::dispatch(&surface.types, &surface.methods, &prepared, &names).0);
     guest.push_str(&calls::protocol_module());
     wire.push_str(&calls::mark_macro(&names));
-    wire.push_str(&calls::handler_marks_macro(&names));
+    let marks = calls::handler_marks_module(&names);
     let sources = surface.types.index.read.take();
     Ok(Generated {
         wire,
         guest,
+        marks,
         sources,
     })
 }

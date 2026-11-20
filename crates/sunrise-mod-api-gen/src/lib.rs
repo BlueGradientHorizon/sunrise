@@ -482,6 +482,8 @@ pub enum Target {
     Api,
     /// Engine vocabulary: hook and host traits, values, and dispatch.
     Vocab,
+    /// `sunrise-mod-marks`: the handler traits' imports, below the vocabulary.
+    Marks,
     /// The game: the host traits' implementation on `Game`.
     Client,
 }
