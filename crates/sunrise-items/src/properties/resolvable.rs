@@ -39,7 +39,7 @@ impl Identifier<'_> {
         }
         value.push(u16::from(b':'));
         value.extend_from_slice(self.path);
-        Tag::String(JavaString::from(value))
+        Tag::String(JavaString(value))
     }
 
     /// Compare a snapshot's UTF-8 key without allocating a canonical tag or UTF-16 buffer.
@@ -69,7 +69,7 @@ pub fn identifier(value: &Tag) -> Option<Identifier<'_>> {
     let Tag::String(value) = value else {
         return None;
     };
-    identifier_units(value.units())
+    identifier_units(&value.0)
 }
 
 /// `Identifier.CODEC` for a borrowed UTF-16 slice, including a tag-key suffix.
@@ -246,7 +246,7 @@ mod tests {
             Tag::String("UPPER:path".into()),
             Tag::String("..:path".into()),
             Tag::String("x:bad:path".into()),
-            Tag::String(JavaString::from(vec![0xd800])),
+            Tag::String(JavaString(vec![0xd800])),
             Tag::Compound(Default::default()),
             Tag::List(Vec::new()),
         ] {

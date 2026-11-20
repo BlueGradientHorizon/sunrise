@@ -294,9 +294,7 @@ fn the_renamening_items(name: &str) -> Option<String> {
 
 /// `LegacyComponentDataFixUtils.createTextComponentJson` of a string tag's text.
 fn text_json_units(text: &JavaString) -> Tag {
-    Tag::String(JavaString::from(super::json::text_component_json(
-        text.units(),
-    )))
+    Tag::String(JavaString(super::json::text_component_json(&text.0)))
 }
 
 // ------------------------------------------------------------------ 1451.1
@@ -758,7 +756,7 @@ fn entity_custom_name(cx: &mut Cx) {
         let Some(Tag::String(name)) = e.get("CustomName").cloned() else {
             return;
         };
-        if name.units().is_empty() {
+        if name.0.is_empty() {
             remove(e, "CustomName");
             reread(k, e);
             return;
@@ -801,9 +799,9 @@ const NAMEABLE_BLOCK_ENTITIES: [&str; 11] = [
 fn fix_tag_custom_name(tag: &mut Tag) {
     let name = match tag.get("CustomName") {
         Some(Tag::String(s)) => s.clone(),
-        _ => JavaString::from(Vec::new()),
+        _ => JavaString(Vec::new()),
     };
-    if name.units().is_empty() {
+    if name.0.is_empty() {
         remove(tag, "CustomName");
     } else {
         set(tag, "CustomName", text_json_units(&name));

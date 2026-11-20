@@ -233,7 +233,7 @@ fn spawner_entity_identifiers(cx: &mut Cx) {
             return;
         }
         if let Some(Tag::String(entity)) = sp.get("EntityId") {
-            let id = if entity.units().is_empty() {
+            let id = if entity.0.is_empty() {
                 string("Pig")
             } else {
                 Tag::String(entity.clone())
@@ -500,8 +500,8 @@ fn sign_text_strict_json(cx: &mut Cx) {
     cx.block_entity("Sign", |be| {
         for line in ["Text1", "Text2", "Text3", "Text4"] {
             if let Some(Tag::String(text)) = be.get(line) {
-                let fixed = rewrite_from_lenient(text.units());
-                set(be, line, Tag::String(JavaString::from(fixed)));
+                let fixed = rewrite_from_lenient(&text.0);
+                set(be, line, Tag::String(JavaString(fixed)));
             }
         }
     });
@@ -518,7 +518,7 @@ fn written_book_pages_strict_json(cx: &mut Cx) {
             if pages.iter().all(|p| matches!(p, Tag::String(_))) {
                 for page in pages {
                     if let Tag::String(text) = page {
-                        *text = JavaString::from(rewrite_from_lenient(text.units()));
+                        *text = JavaString(rewrite_from_lenient(&text.0));
                     }
                 }
             }

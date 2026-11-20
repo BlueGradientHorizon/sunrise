@@ -307,7 +307,7 @@ impl<'a> Parser<'a> {
         let mut units = Vec::new();
         loop {
             match self.bump() {
-                Some(c) if c == quote => return Ok(JavaString::from(units)),
+                Some(c) if c == quote => return Ok(JavaString(units)),
                 Some(0x5c) => self.escape(&mut units)?,
                 Some(c) => push_code_point(&mut units, c),
                 None => {
@@ -406,7 +406,7 @@ impl<'a> Parser<'a> {
         }
         loop {
             let key = self.string()?;
-            if key.units().is_empty() {
+            if key.0.is_empty() {
                 return Err(self.error("snbt.parser.empty_key"));
             }
             self.expect(b':')?;
@@ -808,7 +808,7 @@ mod tests {
         );
         assert_eq!(
             tag.get("text"),
-            Some(&Tag::String(JavaString::from(vec![
+            Some(&Tag::String(JavaString(vec![
                 0x41, 0xd800, 0xd83d, 0xde00, 0x2603
             ]))),
         );
@@ -823,8 +823,8 @@ mod tests {
             parse_snbt_utf16(&units).unwrap(),
             (
                 Tag::compound([(
-                    JavaString::from(vec![0xd800]),
-                    Tag::String(JavaString::from(vec![0xdc00]))
+                    JavaString(vec![0xd800]),
+                    Tag::String(JavaString(vec![0xdc00]))
                 )]),
                 units.len()
             ),

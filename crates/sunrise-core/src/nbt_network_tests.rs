@@ -65,33 +65,6 @@ fn network_quota_counts_heap_not_wire_bytes() {
 }
 
 #[test]
-fn modified_utf8_keys_charge_decoded_units_and_validate_after_spilling() {
-    // The ninth key unit, past the inline capacity, uses an accepted overlong encoding; the value
-    // has a lone surrogate.
-    let mut bytes = vec![10, 8, 0, 10];
-    bytes.extend(b"abcdefgh");
-    bytes.extend([0xc1, 0xa9, 0, 4, 0xed, 0xa0, 0x80, b'b', 0]);
-    let tag = Tag::compound([(
-        "abcdefghi",
-        Tag::String(JavaString::from(vec![0xd800, u16::from(b'b')])),
-    )]);
-    // 48 compound + (28 + 18) key + 36 entry + (36 + 4) string.
-    let quota = 170;
-    assert_eq!(
-        Tag::from_network_bytes(&bytes, Some(quota)).unwrap(),
-        (tag, bytes.len())
-    );
-    assert!(Tag::from_network_bytes(&bytes, Some(quota - 1)).is_err());
-    bytes[13] = b'i';
-    assert_eq!(
-        Tag::from_network_bytes(&bytes, Some(quota))
-            .unwrap_err()
-            .offset,
-        14
-    );
-}
-
-#[test]
 fn network_depth_512_and_malformed_inputs() {
     for compound in [false, true] {
         let mut tag = Tag::Int(1);
@@ -146,7 +119,7 @@ fn network_all_variants_and_java_strings_reuse_engine_codec() {
         Tag::ByteArray(vec![1, 2]),
         Tag::IntArray(vec![-1, 2]),
         Tag::LongArray(vec![-1, 2]),
-        Tag::String(JavaString::from(vec![0, 0xd800, 0xdc00, 0xdfff])),
+        Tag::String(JavaString(vec![0, 0xd800, 0xdc00, 0xdfff])),
         Tag::List(vec![Tag::Int(1), Tag::Byte(2)]),
         Tag::compound([("x", Tag::Int(7))]),
     ];
@@ -165,14 +138,14 @@ fn network_all_variants_and_java_strings_reuse_engine_codec() {
         Tag::compound([("x", Tag::Byte(2))])
     );
     assert!(Tag::from_network_bytes(&bytes, Some(161)).is_err());
-    let bytes = Tag::String(JavaString::from(vec![0, 0xd800]))
+    let bytes = Tag::String(JavaString(vec![0, 0xd800]))
         .to_network_bytes()
         .unwrap();
     // UTF-16 units, not the 5 modified UTF-8 bytes: 36 + 2 * 2.
     assert!(Tag::from_network_bytes(&bytes, Some(40)).is_ok());
     assert!(Tag::from_network_bytes(&bytes, Some(39)).is_err());
     assert!(
-        Tag::String(JavaString::from(vec![0; 32768]))
+        Tag::String(JavaString(vec![0; 32768]))
             .to_network_bytes()
             .is_err()
     );

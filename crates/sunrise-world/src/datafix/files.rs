@@ -976,7 +976,7 @@ fn json_to_tag(j: &Json) -> Tag {
         Json::Obj(entries) => Tag::Compound(
             entries
                 .iter()
-                .map(|(k, v)| (JavaString::from(k.clone()), json_to_tag(v)))
+                .map(|(k, v)| (JavaString(k.clone()), json_to_tag(v)))
                 .collect(),
         ),
         other => json::to_nbt(other).unwrap_or(Tag::End),
@@ -990,7 +990,7 @@ fn tag_to_json(t: &Tag) -> Json {
         Tag::List(items) => Json::Arr(items.iter().map(tag_to_json).collect()),
         Tag::Compound(c) => Json::Obj(
             c.iter()
-                .map(|(k, v)| (k.units().to_vec(), tag_to_json(v)))
+                .map(|(k, v)| (k.0.clone(), tag_to_json(v)))
                 .collect(),
         ),
         other => json::from_nbt(other),
