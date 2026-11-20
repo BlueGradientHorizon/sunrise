@@ -2453,6 +2453,9 @@ impl Streaming {
                 let key = (x, sy, z);
                 let air = air_meshes_empty
                     && !self.compile_started.contains_key(&key)
+                    // Even a still-in-flight first compile may have published an answer
+                    // for its neighbours; a raw edit to air must retire or replace it.
+                    && (!listening || !self.section_visibility.has_answer(key))
                     && region
                         .as_deref()
                         .and_then(|region| region[1][1].as_deref())

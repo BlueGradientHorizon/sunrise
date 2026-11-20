@@ -166,6 +166,10 @@ impl SectionPreparation {
         self.retry_masks(&RESIDENT_BYTES, &mut world.dirty_sections);
     }
 
+    pub(super) fn has_answer(&self, key: (i32, i32, i32)) -> bool {
+        self.answers.contains_key(&key)
+    }
+
     pub(super) fn defer_mesh(&mut self, world: &mut World, key: (i32, i32, i32)) {
         self.capacity_waiting.remove(&key);
         // An out-of-view section won't re-prepare until it re-enters the mesh range. Do not
