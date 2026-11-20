@@ -43,6 +43,9 @@ mod celestial_blend_tests;
 mod higher_shadowcolor_tests;
 
 #[cfg(test)]
+mod shadowcolor_image_tests;
+
+#[cfg(test)]
 mod single_side_tests;
 
 #[cfg(test)]
@@ -276,13 +279,16 @@ impl Entities {
     }
 }
 
-/// What an image binds: a buffer (`colorimgN`, the side its sampler reads) or one of the pack's.
+/// What an image binds: a buffer (`colorimgN`, or `shadowcolorimgN` for shadowcolor N: the side
+/// its sampler reads) or one of the pack's.
 #[derive(Clone, Copy, PartialEq)]
 enum Image {
     Color(usize),
+    ShadowColor(usize),
     Custom(usize),
     /// The copy of a buffer or a pack image taken before a dispatch, which its loads read.
     ColorBefore(usize),
+    ShadowColorBefore(usize),
     CustomBefore(usize),
     /// An image no `image.*` gives: its stand-in of the declared format and dimension
     /// (`pack_images::StandIn`).
@@ -315,6 +321,35 @@ fn image_buffers(images: &[(u32, Image)]) -> u16 {
         .iter()
         .filter_map(|i| i.1.buffer())
         .fold(0, |m, b| m | 1 << b)
+}
+
+/// The shadowcolor buffers of `images`, as masks: those bound as themselves, and those read as
+/// copies taken before a dispatch.
+fn shadow_images(images: &[(u32, Image)]) -> (u16, u16) {
+    images.iter().fold((0, 0), |(own, before), i| match i.1 {
+        Image::ShadowColor(n) => (own | 1 << n, before),
+        Image::ShadowColorBefore(n) => (own, before | 1 << n),
+        _ => (own, before),
+    })
+}
+
+/// The shadowcolor buffers a pass of `group` copies first: those it samples (`reads` in the
+/// shadow programs, `shadow_reads` in any) and binds as images, and those whose copy its loads
+/// read.
+fn shadow_copies(group: Group, reads: u16, shadow_reads: u16, images: &[(u32, Image)]) -> u16 {
+    let sampled = shadow_reads | if group.shadow() { reads } else { 0 };
+    let (own, before) = shadow_images(images);
+    own & sampled | before
+}
+
+/// The shadowcolor images a program may declare: `shadowcolorimg0` and `1` (spec 5.2).
+const SHADOW_IMAGES: usize = 2;
+
+/// The shadowcolor buffer image `name` binds (`shadowcolorimgN`), while the shadow pass runs.
+fn shadow_image(name: &str, shadow: bool) -> Option<usize> {
+    name.strip_prefix("shadowcolorimg")
+        .and_then(|n| n.parse::<usize>().ok())
+        .filter(|&n| n < SHADOW_IMAGES && shadow)
 }
 
 /// The format of the sink of passes that write only images.
@@ -435,7 +470,7 @@ struct Pass {
     depth_linear: [f32; 4],
     /// Buffers sampled, for the bind group cache key.
     reads: u16,
-    /// shadowcolor buffers sampled by a program of the other buffers.
+    /// shadowcolor buffers sampled by a program of the other buffers, or bound as images.
     shadow_reads: u16,
     /// Buffers written.
     written: u16,
@@ -452,7 +487,7 @@ struct Pass {
     /// Reads `mc_Entity`'s table (`PackPost::block_ids`).
     ids: bool,
     /// Bind groups by the sides read (bits 0–15), the buffers whose mip chain is current (bits
-    /// 16–31) and the shadowcolor sides read (bits 32–33).
+    /// 16–31) and the shadowcolor sides read or bound as images (bits 32 on).
     groups: HashMap<u64, wgpu::BindGroup>,
     /// The same for End portal draws, with `end_portal.png` bound as the atlas.
     portal_groups: HashMap<u64, wgpu::BindGroup>,
@@ -463,6 +498,8 @@ struct Pass {
     /// Buffers both sampled and bound as images: sampled from a copy taken first, as wgpu binds
     /// a texture one way per pass.
     copies: u16,
+    /// The same for shadowcolor buffers, and those whose copy a dispatch's loads read.
+    shadow_copies: u16,
     /// Compute programs dispatched before this pass.
     compute: Vec<Pass>,
     /// Writes no buffer, only images: draws into `Targets::sink`.
@@ -1289,8 +1326,9 @@ struct Resources<'a> {
     /// Set 5 of a program with a geometry stage: the draw's indices.
     indices: Option<&'a wgpu::BindGroupLayout>,
     gpu: Gpu,
-    /// The buffers whose format can be bound as an image.
-    storable: u16,
+    /// The buffers whose format can be bound as an image: colortex N at bit N, shadowcolor N at
+    /// bit `BUFFERS + N`.
+    storable: u32,
     /// The buffers of a three-channel format (`rgb`): they have no alpha to write, and read 1.
     rgb: u16,
     /// The bits per channel a buffer of a small packed format keeps ([`packed::bits`]).
@@ -1722,6 +1760,7 @@ fn bindings(
             .strip_prefix("colorimg")
             .and_then(|n| n.parse::<usize>().ok())
             .filter(|&n| n < BUFFERS && !group.shadow());
+        let shadow_buffer = shadow_image(&i.name, shadow.is_some());
         let own = pack.images.iter().position(|c| c.def.name == i.name);
         let Some(format) = image_format(&i.format) else {
             notes.push(format!("{name}: `{}` has format {}", i.name, i.format));
@@ -1746,9 +1785,14 @@ fn bindings(
             }
             (Image::StandIn(format, dimension), format)
         };
+        let shadow_format = |n: usize| shadow.map_or(format, |f| f[n]);
         let (target, actual) = match (buffer, own) {
             (_, Some(k)) => (Image::Custom(k), pack.images[k].format),
             (Some(b), None) => (Image::Color(b), formats[b]),
+            (None, None) if shadow_buffer.is_some() => {
+                let n = shadow_buffer.unwrap_or_default();
+                (Image::ShadowColor(n), shadow_format(n))
+            }
             (None, None) if i.before.is_some() => {
                 // Bound as the image it copies.
                 let of = i.before.as_deref().unwrap_or_default();
@@ -1759,7 +1803,10 @@ fn bindings(
                 match (buffer, pack.images.iter().position(|c| c.def.name == of)) {
                     (_, Some(k)) => (Image::CustomBefore(k), pack.images[k].format),
                     (Some(b), None) => (Image::ColorBefore(b), formats[b]),
-                    (None, None) => stand_in(of, notes),
+                    (None, None) => match shadow_image(of, shadow.is_some()) {
+                        Some(n) => (Image::ShadowColorBefore(n), shadow_format(n)),
+                        None => stand_in(of, notes),
+                    },
                 }
             }
             (None, None) => stand_in(&i.name, notes),
@@ -1784,9 +1831,14 @@ fn bindings(
             "atomic" => wgpu::StorageTextureAccess::Atomic,
             _ => wgpu::StorageTextureAccess::ReadWrite,
         };
-        if let Image::Color(b) | Image::ColorBefore(b) = target
-            && pack.storable & 1 << b == 0
-        {
+        let storable = match target {
+            Image::Color(b) | Image::ColorBefore(b) => pack.storable & 1 << b != 0,
+            Image::ShadowColor(n) | Image::ShadowColorBefore(n) => {
+                pack.storable & 1 << (BUFFERS + n) != 0
+            }
+            _ => true,
+        };
+        if !storable {
             notes.push(format!(
                 "{name}: `{}` can't be an image on this GPU; skipped",
                 i.name
@@ -2102,6 +2154,7 @@ fn build_pass(
         ));
     }
     let image_copies = image_copies(&samplers, &images);
+    let (shadow_own, shadow_before) = shadow_images(&images);
     Some(Pass {
         ubo: device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(&p.name),
@@ -2126,7 +2179,8 @@ fn build_pass(
         writes,
         flip,
         depth_linear: depth_linear(interface, pack.shadow_linear),
-        shadow_reads,
+        shadow_reads: shadow_reads | shadow_own | shadow_before,
+        shadow_copies: shadow_copies(p.group, reads, shadow_reads, &images),
         written,
         mipmaps: p.mipmaps,
         draw,
@@ -2237,6 +2291,7 @@ fn build_compute(
     let written = image_buffers(&images);
     let image_copies = image_copies(&samplers, &images);
     let (before_colors, snapshots) = befores(&images);
+    let (shadow_own, shadow_before) = shadow_images(&images);
     Some(Pass {
         ubo: device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(&name),
@@ -2267,8 +2322,9 @@ fn build_compute(
         flip: 0,
         depth_linear: depth_linear(interface, pack.shadow_linear),
         copies: written & reads | before_colors,
+        shadow_copies: shadow_copies(group, reads, shadow_reads, &images),
         reads: reads | written,
-        shadow_reads,
+        shadow_reads: shadow_reads | shadow_own | shadow_before,
         written,
         mipmaps: 0,
         draw: false,
@@ -2436,6 +2492,8 @@ impl PackPost {
         // Buffers some pass draws into the "alt" side of, or flips: only these get a B texture.
         let mut doubled = mask(&post.deferred_pre) | mask(&post.composite_pre);
         let mut shadow_doubled = 0u16;
+        // shadowcolor buffers bound as images, and those copied before a pass.
+        let (mut shadow_storage, mut shadow_copied) = (0u16, 0u16);
         let draws = DrawUniforms::new(device);
         // The shadow buffers' formats when the shadow pass runs; their programs see them as
         // buffers 0 to 7.
@@ -2493,9 +2551,14 @@ impl PackPost {
             objects.clear();
         }
         let buffers = pack_images::Buffers::new(device, objects, minimums, gpu.storage_stages());
+        let shadow_storable = shadow_formats.map_or(0, |f| {
+            (0..SHADOW_COLORS)
+                .filter(|&n| gpu.storable(adapter, f[n], features))
+                .fold(0u32, |m, n| m | 1 << (BUFFERS + n))
+        });
         let storable = (0..BUFFERS)
             .filter(|&i| gpu.storable(adapter, formats[i], features))
-            .fold(0u16, |m, i| m | 1 << i);
+            .fold(shadow_storable, |m, i| m | 1 << i);
         let indices = gpu.vertex_storage.then(|| {
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("Shader pack geometry indices"),
@@ -2651,6 +2714,9 @@ impl PackPost {
                     doubled |= p.flip;
                 }
                 storage |= image_buffers(&p.images);
+                let (own, before) = shadow_images(&p.images);
+                shadow_storage |= own | before;
+                shadow_copied |= p.shadow_copies;
                 image_copied |= p.image_copies;
                 snapshotted |= p.snapshots;
                 copied |= p.copies;
@@ -3071,6 +3137,8 @@ impl PackPost {
                 f,
                 colors,
                 shadow_doubled & colors,
+                shadow_storage & colors,
+                shadow_copied & colors,
                 depth1,
             );
             notes.push(format!(
@@ -3552,6 +3620,17 @@ impl PackPost {
                 }
             }
         }
+        if let Some(shadow) = &self.shadow_targets {
+            for n in (0..SHADOW_COLORS).filter(|n| pass.shadow_copies & 1 << n != 0) {
+                if let (Some(main), Some(copy)) = (shadow.color(n, false), &shadow.scratch[n]) {
+                    encoder.copy_texture_to_texture(
+                        main.texture().as_image_copy(),
+                        copy.texture().as_image_copy(),
+                        main.texture().size(),
+                    );
+                }
+            }
+        }
         let fog = self.uniforms.fog();
         // Our block members first (`hz_target`, `hz_fog_color`, `hz_fog`, `hz_depth_linear`),
         // then the pack's.
@@ -3599,6 +3678,7 @@ impl PackPost {
         let key = u64::from(main & pass.reads)
             | u64::from(current) << 16
             | u64::from(shadow_main & pass.shadow_reads) << 32;
+        let shadow_scratch = |i: usize| shadow.and_then(|t| t.scratch[i].as_ref());
         let group = pass.groups.entry(key).or_insert_with(|| {
             let mut entries = vec![wgpu::BindGroupEntry {
                 binding: 0,
@@ -3609,6 +3689,12 @@ impl PackPost {
                     shadow.and_then(|t| t.color[i].as_ref()).map(|c| &c[side])
                 };
                 let texture = match s.source {
+                    Source::Color(i) if shadow_space && pass.shadow_copies & 1 << i != 0 => {
+                        shadow_scratch(i).unwrap_or(&self.dummy)
+                    }
+                    Source::ShadowColor(i) if pass.shadow_copies & 1 << i != 0 => {
+                        shadow_scratch(i).unwrap_or(&self.dummy)
+                    }
                     Source::Color(i) if shadow_space => {
                         shadow_color(i, usize::from(key & 1 << i != 0)).unwrap_or(&self.dummy)
                     }
@@ -3746,7 +3832,11 @@ impl PackPost {
                         targets.color[i].as_ref().map_or(&self.dummy, |t| &t[side])
                     }
                     Image::Custom(k) => self.images[k].view.as_ref().unwrap_or(&self.dummy),
+                    Image::ShadowColor(i) => shadow
+                        .and_then(|t| t.color[i].as_ref())
+                        .map_or(&self.dummy, |c| &c[usize::from(key & 1 << (32 + i) != 0)]),
                     Image::ColorBefore(i) => targets.scratch[i].as_ref().unwrap_or(&self.dummy),
+                    Image::ShadowColorBefore(i) => shadow_scratch(i).unwrap_or(&self.dummy),
                     Image::CustomBefore(k) => self.images[k].before.as_ref().unwrap_or(&self.dummy),
                     Image::StandIn(format, dimension) => {
                         pack_images::stand_in(&self.stand_ins, format, dimension)
