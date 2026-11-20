@@ -432,9 +432,10 @@ included, is a dry run: it signs with a throwaway key and publishes nothing.
 4. is tagged `<target>-<semver>`: `release_version` when given, else the patch after the newest stable tag on the
    target, `26.3-0.1.0` first. That tag is not semver as a whole, so `release_train.stable_version` reads it as the
    target and a semver, and orders by the semver within a target;
-5. signs `SHA256SUMS` for that tag with the `release` environment's key (`SHA256SUMS.sig`, checked as
-   `signed_digest` checks a release) and publishes a full release, not a pre-release, with `--latest=false`: the
-   site's launcher download reads GitHub's latest release.
+5. carries a Nightly's assets, with `SHA256SUMS.sig` and `SHA256SUMS.v2.sig` both signed for exactly its tag
+   (`horizon release 26.3-0.1.0`, checked as `signed_digest` checks a release) with the `release` environment's key,
+   and publishes a full release, not a pre-release, with `--latest=false`: the site's launcher download reads
+   GitHub's latest release.
 
 No launcher lists a `26.3-<semver>` release yet (they take `v`-tags and the Nightly), so a stable release is a
 download for now.

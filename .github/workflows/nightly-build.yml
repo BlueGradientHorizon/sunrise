@@ -302,9 +302,9 @@ jobs:
           EPHEMERAL: ${{ needs.pick.outputs.dry_run == 'true' && 'yes' || '' }}
           # The channel (nightly or snapshot) and the build's version on it: sign_release.sh refuses a mismatch.
           KIND: ${{ inputs.kind }}
-          # A stable release is signed for its own tag alone, as releases were before the Nightly (signed_digest).
+          # A stable release signs both files for its own tag (horizon release 26.3-0.1.0), as signed_digest checks.
           SIGN_FOR: ${{ inputs.kind == 'stable' && needs.pick.outputs.tag || inputs.kind }}
-          ALSO_FOR: ${{ inputs.kind != 'stable' && format('{0}-{1}-{2}', inputs.kind, needs.pick.outputs.date, needs.pick.outputs.short) || '' }}
+          ALSO_FOR: ${{ inputs.kind == 'stable' && needs.pick.outputs.tag || format('{0}-{1}-{2}', inputs.kind, needs.pick.outputs.date, needs.pick.outputs.short) }}
         run: |
           # Windows ARM64's build may fail without holding the Nightly (game-build.yml): then it is left out.
           arm64=(); if [[ -f dist/sunrise-windows-arm64.zip ]]; then arm64=(dist/sunrise-windows-arm64.zip)
@@ -363,9 +363,9 @@ jobs:
         run: |
           key=(); [[ -n "$EPHEMERAL" ]] && key=(--key "$(cat dist/ephemeral.pub)")
           cargo run --locked --quiet -p sunrise-release-sign -- verify --repository "$GITHUB_REPOSITORY" --tag "$SIGN_FOR" --publishing "${key[@]}" dist
-          [[ "$KIND" == stable ]] && exit 0
+          version="${KIND}-${DATE}-${SHORT}"; [[ "$KIND" == stable ]] && version=$SIGN_FOR
           # The version's own signature, which current launchers require: the title below names the same version.
-          cargo run --locked --quiet -p sunrise-release-sign -- verify --repository "$GITHUB_REPOSITORY" --tag "${KIND}-${DATE}-${SHORT}" \
+          cargo run --locked --quiet -p sunrise-release-sign -- verify --repository "$GITHUB_REPOSITORY" --tag "$version" \
             --signature SHA256SUMS.v2.sig --publishing "${key[@]}" dist
       - name: Ready to publish (the smoke test drew a world, no release-blocker is open)
         # Right before publishing, as for a release: an issue labelled while the builds ran still holds it. A dry run
@@ -480,7 +480,7 @@ jobs:
           files=(); while read -r _ name; do files+=("dist/${name#\*}"); done < dist/SHA256SUMS
           # A full release, never GitHub's latest: the site's launcher download and older servers read the latest.
           gh release create "$TAG" --latest=false --target "$SHA" --title "Sunrise $TAG" --notes-file dist/nightly-notes.md \
-            "${files[@]}" dist/SHA256SUMS dist/SHA256SUMS.sig dist/smoke-test.json
+            "${files[@]}" dist/SHA256SUMS dist/SHA256SUMS.sig dist/SHA256SUMS.v2.sig dist/smoke-test.json
       - name: Record the release identity for the later musl attachment
         id: identity
         if: needs.pick.outputs.dry_run != 'true'
@@ -513,7 +513,7 @@ jobs:
       TAG: ${{ needs.pick.outputs.tag }}
       KIND: ${{ inputs.kind }}
       SIGN_FOR: ${{ inputs.kind == 'stable' && needs.pick.outputs.tag || inputs.kind }}
-      ALSO_FOR: ${{ inputs.kind != 'stable' && format('{0}-{1}-{2}', inputs.kind, needs.pick.outputs.date, needs.pick.outputs.short) || '' }}
+      ALSO_FOR: ${{ inputs.kind == 'stable' && needs.pick.outputs.tag || format('{0}-{1}-{2}', inputs.kind, needs.pick.outputs.date, needs.pick.outputs.short) }}
       DRY_RUN: ${{ needs.pick.outputs.dry_run }}
       ARCHIVE: sunrise-linux-musl-x86_64.tar.gz
     steps:

@@ -86,11 +86,12 @@ class NightlyBuildSnapshotTests(unittest.TestCase):
     def test_the_channel_signed_and_checked_is_the_kind(self):
         sign = self.workflow["jobs"]["sign"]["steps"][2]
         self.assertEqual(sign["env"]["KIND"], "${{ inputs.kind }}")
-        self.assertEqual(sign["env"]["ALSO_FOR"], "${{ inputs.kind != 'stable' && format('{0}-{1}-{2}', inputs.kind, "
-                         "needs.pick.outputs.date, needs.pick.outputs.short) || '' }}")
+        self.assertEqual(sign["env"]["ALSO_FOR"], "${{ inputs.kind == 'stable' && needs.pick.outputs.tag || "
+                         "format('{0}-{1}-{2}', inputs.kind, needs.pick.outputs.date, needs.pick.outputs.short) }}")
         verify = self.steps["The signatures, checked as launchers check them"]["run"]
         self.assertIn('--tag "$SIGN_FOR" --publishing', verify)
-        self.assertIn('--tag "${KIND}-${DATE}-${SHORT}"', verify)
+        self.assertIn('version="${KIND}-${DATE}-${SHORT}"', verify)
+        self.assertIn('--tag "$version"', verify)
         self.assertEqual(self.workflow["on"]["workflow_dispatch"]["inputs"]["kind"]["default"], "nightly")
 
     def test_optional_platforms_follow_repository_and_channel(self):
