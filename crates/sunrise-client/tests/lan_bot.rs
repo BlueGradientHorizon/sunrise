@@ -305,7 +305,7 @@ fn a_lan_guest_sees_the_signed_in_owners_skin() {
     let Some(resources) = resources() else {
         return;
     };
-    let textures = login::Property {
+    let textures = sunrise_core::profile::AccountProperty {
         name: "textures".into(),
         value: "e30=".into(),
         signature: Some("c2lnbmVk".into()),

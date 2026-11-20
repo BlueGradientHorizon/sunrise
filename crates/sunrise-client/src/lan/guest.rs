@@ -127,7 +127,7 @@ struct GuestInit {
     conn: u32,
     uuid: u128,
     name: String,
-    properties: Vec<sunrise_protocol::packets::login::Property>,
+    properties: Vec<sunrise_core::profile::AccountProperty>,
     info: ClientInformation,
     brand: String,
     sender: PlayerSender,
@@ -206,7 +206,7 @@ pub struct Guest {
     pub uuid: u128,
     pub name: String,
     /// The profile's properties, for the player list (skins).
-    pub properties: Vec<sunrise_protocol::packets::login::Property>,
+    pub properties: Vec<sunrise_core::profile::AccountProperty>,
     pub entity_id: i32,
     pub sender: PlayerSender,
     pub latency: Arc<AtomicI32>,

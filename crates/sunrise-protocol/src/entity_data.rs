@@ -47,7 +47,7 @@ pub struct Profile {
     pub name: Option<String>,
     pub uuid: Option<u128>,
     /// `PropertyMap`: its `textures` property carries the skin.
-    pub properties: Vec<crate::packets::login::Property>,
+    pub properties: Vec<sunrise_core::profile::AccountProperty>,
     /// `PlayerSkin.Patch`: texture asset ids overriding the profile's.
     pub body: Option<String>,
     pub cape: Option<String>,
@@ -56,18 +56,15 @@ pub struct Profile {
     pub slim: Option<bool>,
 }
 /// `ByteBufCodecs.GAME_PROFILE_PROPERTIES`.
-fn read_properties(r: &mut Reader) -> Result<Vec<crate::packets::login::Property>> {
+fn read_properties(r: &mut Reader) -> Result<Vec<sunrise_core::profile::AccountProperty>> {
     use crate::buf::Codec;
     let n = r.count(16)?;
-    (0..n)
-        .map(|_| crate::packets::login::Property::read(r))
-        .collect()
+    (0..n).map(|_| PropertyCodec::read(r)).collect()
 }
-fn write_properties(p: &[crate::packets::login::Property], w: &mut Writer) {
+fn write_properties(p: &[sunrise_core::profile::AccountProperty], w: &mut Writer) {
     use crate::buf::Codec;
     w.varint(p.len() as i32);
-    p.iter()
-        .for_each(|p| crate::packets::login::Property::write(p, w));
+    p.iter().for_each(|p| PropertyCodec::write(p, w));
 }
 fn read_profile(r: &mut Reader) -> Result<Profile> {
     let mut p = Profile::default();
@@ -769,11 +766,10 @@ mod tests {
     /// contents round-trip, and an entry after it still decodes.
     #[test]
     fn resolvable_profile_round_trips() {
-        use crate::packets::login::Property;
         let full = Profile {
             name: Some("Gommunity".into()),
             uuid: Some(0x0123_4567_89AB_CDEF_0123_4567_89AB_CDEF),
-            properties: vec![Property {
+            properties: vec![AccountProperty {
                 name: "textures".into(),
                 value: "e30=".into(),
                 signature: Some("sig".into()),

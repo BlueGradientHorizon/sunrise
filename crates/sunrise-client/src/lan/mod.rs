@@ -91,7 +91,7 @@ pub struct Joined {
     pub uuid: u128,
     pub name: String,
     /// The profile's properties (skin textures, in online mode).
-    pub properties: Vec<sunrise_protocol::packets::login::Property>,
+    pub properties: Vec<sunrise_core::profile::AccountProperty>,
     pub info: ClientInformation,
     pub brand: String,
     pub sender: PlayerSender,
@@ -354,13 +354,13 @@ impl NetConfig {
 /// waits for it: until it answers (or when it fails) the owner is listed
 /// without properties, as before.
 pub struct OwnerProfile {
-    properties: std::sync::OnceLock<Vec<sunrise_protocol::packets::login::Property>>,
-    fetch: Mutex<Receiver<Vec<sunrise_protocol::packets::login::Property>>>,
+    properties: std::sync::OnceLock<Vec<sunrise_core::profile::AccountProperty>>,
+    fetch: Mutex<Receiver<Vec<sunrise_core::profile::AccountProperty>>>,
 }
 
 impl OwnerProfile {
     pub fn new(
-        fetch: impl FnOnce() -> Vec<sunrise_protocol::packets::login::Property> + Send + 'static,
+        fetch: impl FnOnce() -> Vec<sunrise_core::profile::AccountProperty> + Send + 'static,
     ) -> Self {
         let (send, receive) = channel();
         let _ = std::thread::Builder::new()
@@ -375,7 +375,7 @@ impl OwnerProfile {
     }
     /// The owner's properties once fetched; empty while the fetch is out
     /// or when it failed. Never blocks.
-    pub fn properties(&self) -> &[sunrise_protocol::packets::login::Property] {
+    pub fn properties(&self) -> &[sunrise_core::profile::AccountProperty] {
         if let Some(properties) = self.properties.get() {
             return properties;
         }

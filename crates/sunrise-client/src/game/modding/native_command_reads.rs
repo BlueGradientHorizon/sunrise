@@ -244,7 +244,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_profile_keeps_its_login_properties() {
-        use sunrise_protocol::packets::login::Property;
+        use sunrise_core::profile::AccountProperty;
 
         super::super::native_guest_turn_tests::with_guests(|game| {
             game.lan
@@ -253,12 +253,12 @@ mod tests {
                 .hub
                 .update_guest(12, |guest| {
                     guest.properties = vec![
-                        Property {
+                        AccountProperty {
                             name: "textures".into(),
                             value: "e30=".into(),
                             signature: Some("sig".into()),
                         },
-                        Property {
+                        AccountProperty {
                             name: "extra".into(),
                             value: "plain".into(),
                             signature: None,

@@ -5209,10 +5209,10 @@ fn shared_flags(sneaking: bool, sprinting: bool, body: &BodyFlags) -> i8 {
 /// in with, or for the integrated server's owner (who logs in with none) the
 /// signed-in account's, once fetched (`IntegratedServer.getSingleplayerProfile`).
 fn listed_properties(
-    logged_in: &[sunrise_protocol::packets::login::Property],
+    logged_in: &[sunrise_core::profile::AccountProperty],
     owner: bool,
     profile: Option<&super::OwnerProfile>,
-) -> Vec<sunrise_protocol::packets::login::Property> {
+) -> Vec<sunrise_core::profile::AccountProperty> {
     match profile {
         Some(profile) if owner && logged_in.is_empty() => profile.properties().to_vec(),
         _ => logged_in.to_vec(),
@@ -7390,8 +7390,8 @@ mod tests {
         assert_eq!(maximum_flying_ticks(1.0E-6), i32::MAX);
     }
 
-    fn textures(value: &str) -> sunrise_protocol::packets::login::Property {
-        sunrise_protocol::packets::login::Property {
+    fn textures(value: &str) -> sunrise_core::profile::AccountProperty {
+        sunrise_core::profile::AccountProperty {
             name: "textures".into(),
             value: value.into(),
             signature: Some("c2lnbmVk".into()),

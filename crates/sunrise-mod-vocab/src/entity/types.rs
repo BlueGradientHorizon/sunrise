@@ -1,6 +1,6 @@
 // Types that lived in the API root before the domain split.
 use crate::*;
-use sunrise_protocol::packets::login::Property;
+use sunrise_core::profile::AccountProperty;
 
 /// Why an entity type's attribute declaration or addition was refused
 /// ([`Registrar::declare_entity_attributes`](EntityAttributesRegistrar::declare_entity_attributes),
@@ -1181,7 +1181,7 @@ pub struct GameProfile<'a> {
     pub uuid: u128,
     /// The player's name, borrowed from the host.
     pub name: &'a str,
-    properties: &'a [Property],
+    properties: &'a [AccountProperty],
 }
 
 // The protocol property's equality compares only its strings and optional signature.
@@ -1200,13 +1200,13 @@ impl<'a> GameProfile<'a> {
 }
 
 pub(crate) mod profile_adapter {
-    use super::{GameProfile, Property};
+    use super::{AccountProperty, GameProfile};
 
     /// Lend the player's login properties from the game record.
     pub fn game_profile<'a>(
         uuid: u128,
         name: &'a str,
-        properties: &'a [Property],
+        properties: &'a [AccountProperty],
     ) -> GameProfile<'a> {
         GameProfile {
             uuid,
@@ -1217,7 +1217,7 @@ pub(crate) mod profile_adapter {
 }
 
 // no wire: borrows one login property's strings from the host.
-/// One borrowed property of a [`GameProfile`] (authlib's `Property`).
+/// One borrowed property of a [`GameProfile`] (authlib's `AccountProperty`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct ProfileProperty<'a> {
