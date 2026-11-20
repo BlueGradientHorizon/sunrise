@@ -16,10 +16,10 @@ the input, the velocity and cancel; for the move the delta, and cancel. No typed
 Host.
 
 Travel fires once at the LivingEntity.travel boundary, after ordinary input and
-attribute resolution and player swimming preparation, before fluid/air/glide
-selection. The listener hears the entity, its kind, and the resolved
-`TravelMode` — water, lava, glide, flying, or air, the branch the selection is
-about to pick, as data a replacement does not change. The output is `Continue`,
+attribute resolution and player swimming preparation, before the branch runs.
+The listener hears the entity, its kind, and the resolved `TravelMode`, which
+includes species overrides. A shulker has no travel branch and fires nothing.
+A replacement does not change the selected branch. The output is `Continue`,
 `Cancel`, or `Replace { input, velocity }`. Replacement supplies the branch's
 starting values; it does not replace the physics algorithm.
 Cancel skips this travel invocation, including its nested moves and flying velocity
@@ -43,13 +43,11 @@ added for individual branches or replay.
 
 Vectors use owned finite f64 components. Travel input components must lie in [-1,1];
 replacement velocity and move delta components in [-64,64] blocks per tick or call.
-These are proposed mod-output budgets, not limits applied to vanilla Continue.
-Reject the entire malformed result (NaN, infinity, out-of-range, including negative
-magnitude budgets); signed negative vector components within range are valid.
-Reject rather than clamp, retain the preceding valid proposal, and diagnose once
-per listener/tick. Dependency-ordered listeners see the preceding valid proposal;
-a rejected result is dropped alone and later listeners still run on the preceding
-valid values. Cancel is terminal. For both hooks — with no host writes there is nothing to
+These are proposed mod-output budgets, not limits applied to untouched values.
+Reject the entire malformed result, including its cancellation, rather than
+clamping it. For travel, diagnose the refusal once per listener per tick.
+Later listeners see the preceding accepted values, and cannot clear an accepted
+travel cancellation. For both hooks — with no host writes there is nothing to
 go stale — a panic keeps the **requested** values (not a replacement
 an earlier listener had proposed), and the panic poison disables that listener
 for the session; the travel or move carries on. A rejected replacement is

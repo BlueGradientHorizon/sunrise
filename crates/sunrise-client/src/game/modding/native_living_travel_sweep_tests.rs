@@ -6,36 +6,27 @@ use super::native_entity_refs::tests::with_game;
 use mod_api::{EntityMoveEvent, Flow, Hooks, LivingTravelEvent, LoopContext, TravelMode};
 use std::sync::{Arc, Mutex};
 
-/// A listener that counts travels and moves by kind.
-struct Counter(
-    Arc<Mutex<Vec<(String, TravelMode)>>>,
-    Arc<Mutex<Vec<String>>>,
-);
+#[derive(Debug, PartialEq, Eq)]
+enum Event {
+    Travel(u32, TravelMode),
+    Move(u32),
+}
+
+struct Recorder(Arc<Mutex<Vec<Event>>>);
 
 #[mod_api::__subscriptions]
-impl Hooks for Counter {
+impl Hooks for Recorder {
     fn living_travel(&self, _: &dyn LoopContext, event: &mut LivingTravelEvent<'_>) -> Flow {
         self.0
             .lock()
             .unwrap()
-            .push((event.kind.to_owned(), event.mode));
+            .push(Event::Travel(event.entity, event.mode));
         Flow::Continue
     }
     fn entity_move(&self, _: &dyn LoopContext, event: &mut EntityMoveEvent<'_>) -> Flow {
-        self.1.lock().unwrap().push(event.kind.to_owned());
+        self.0.lock().unwrap().push(Event::Move(event.entity));
         Flow::Continue
     }
-}
-
-fn counter_mods(
-    travels: Arc<Mutex<Vec<(String, TravelMode)>>>,
-    moves: Arc<Mutex<Vec<String>>>,
-) -> mod_api::Mods {
-    vec![mod_api::ModEntry::new(
-        "counter",
-        Box::new(Counter(travels, moves)),
-    )]
-    .into()
 }
 
 /// One zombie that travels (a motion to spend), one that never does (NoAI):
@@ -46,9 +37,12 @@ fn counter_mods(
 #[test]
 #[ignore = "daily"]
 fn one_travel_fires_once_and_its_move_beside_and_noai_fires_nobody() {
-    let travels = Arc::new(Mutex::new(Vec::new()));
-    let moves = Arc::new(Mutex::new(Vec::new()));
-    let mods = counter_mods(travels.clone(), moves.clone());
+    let heard = Arc::new(Mutex::new(Vec::new()));
+    let mods = vec![mod_api::ModEntry::new(
+        "recorder",
+        Box::new(Recorder(Arc::clone(&heard))),
+    )]
+    .into();
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
@@ -72,24 +66,19 @@ fn one_travel_fires_once_and_its_move_beside_and_noai_fires_nobody() {
                 "{Motion:[0.5d,0.0d,0.0d]}",
             )
             .unwrap_or_else(|e| panic!("summon zombie: {e:?}"));
+            let zombie = game.mobs.iter().next().expect("normal zombie spawned").id;
             game.summon_with_nbt(
                 "minecraft:zombie",
                 [6.5, 40.5, 5.5],
                 "{NoAI:1b,Motion:[0.5d,0.0d,0.0d]}",
             )
             .unwrap_or_else(|e| panic!("summon noai zombie: {e:?}"));
-            travels.lock().unwrap().clear();
-            moves.lock().unwrap().clear();
+            heard.lock().unwrap().clear();
             let _ = game.tick_creatures();
             assert_eq!(
-                *travels.lock().unwrap(),
-                vec![("minecraft:zombie".to_owned(), TravelMode::Air)],
-                "the moving zombie's travel fired once, in the air branch; the NoAI one never travels"
-            );
-            assert_eq!(
-                moves.lock().unwrap().len(),
-                1,
-                "the travel's nested move fired entity_move once beside it"
+                *heard.lock().unwrap(),
+                vec![Event::Travel(zombie, TravelMode::Air), Event::Move(zombie)],
+                "only the normal zombie fires, with travel before its nested move"
             );
         });
     });

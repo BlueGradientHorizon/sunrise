@@ -1,1 +1,0 @@
-sunrise-client game::native_living_travel_sweep_tests::a_move_veto_still_holds_a_travel_that_ran lib daily resources

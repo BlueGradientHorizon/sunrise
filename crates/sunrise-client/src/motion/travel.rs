@@ -196,8 +196,8 @@ mod tests {
     /// One `player_travel` of a flying player standing at `(20.5, 4, 20.5)` with
     /// velocity `(0.2, 0.5, 0)`, under a `living_travel` listener: the
     /// position and velocity it leaves, and where it started.
-    fn flying_travel(listener: Decide, replaying: bool) -> Option<(Vec3, Vec3, Vec3)> {
-        let v = crate::test_fixtures::vanilla()?;
+    fn flying_travel(listener: Decide, replaying: bool) -> (Vec3, Vec3, Vec3) {
+        let v = crate::test_fixtures::vanilla().expect("prepared resources are required");
         let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
         let mut scene = World::test_scene(assets, render, 1).unwrap();
         let start = Vec3::new(20.5, 4.0, 20.5);
@@ -224,7 +224,7 @@ mod tests {
             .player_travel(Vec3::ZERO)
             .unwrap();
         });
-        Some((player.position, player.velocity, start))
+        (player.position, player.velocity, start)
     }
 
     /// A flying player keeps 0.6 of the vertical speed its branch started
@@ -232,11 +232,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_flying_player_damps_the_replaced_vertical_speed() {
-        let Some((_, velocity, _)) =
-            flying_travel(Decide(Flow::Continue, Some([0.2, 1.0, 0.0])), false)
-        else {
-            return;
-        };
+        let (_, velocity, _) = flying_travel(Decide(Flow::Continue, Some([0.2, 1.0, 0.0])), false);
         assert_eq!(velocity.y, 0.6);
     }
 
@@ -245,10 +241,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_cancelled_flying_travel_moves_and_damps_nothing() {
-        let Some((position, velocity, start)) = flying_travel(Decide(Flow::Cancel, None), false)
-        else {
-            return;
-        };
+        let (position, velocity, start) = flying_travel(Decide(Flow::Cancel, None), false);
         assert_eq!(position, start);
         assert_eq!(velocity, Vec3::new(0.2, 0.5, 0.0));
     }
@@ -258,9 +251,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_replayed_travel_ignores_a_cancel() {
-        let Some((position, _, start)) = flying_travel(Decide(Flow::Cancel, None), true) else {
-            return;
-        };
+        let (position, _, start) = flying_travel(Decide(Flow::Cancel, None), true);
         assert_ne!(position, start);
     }
 }

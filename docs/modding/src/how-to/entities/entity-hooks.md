@@ -74,24 +74,24 @@ far the entity moved, and None for a stale handle, on a client, for a player (te
 outside the game's entity walk (a display, a painting, a frame, an End crystal, a dragon part) and for a delta
 that is not finite or beyond 64 blocks on an axis. Fall damage and block effects stay with the entity's tick.
 
-`living_travel` runs one step earlier, on the server, at each living body's
-`LivingEntity.travel` boundary: the player's branch selection (after the player's
-swim steering) and a mob's travel entry. It receives the loop context, not a
-`Host`, and decides only the travel's input, velocity and cancel. `TravelMode`
-names the branch about to run — water, lava, glide, flying, or air — as data a
-replacement does not change. A NoAI mob never travels, so it fires nobody. A replayed player tick runs the resolved values and fires nothing.
+`living_travel` runs on the server, after the player's swim steering or at a
+mob's travel entry. It receives the loop context, not a `Host`, and lets a
+listener change the input and velocity or cancel. `TravelMode` names the branch
+about to run, including species overrides: an allay or vex reports `Flying`, and
+a squid reports `VelocityOnly` in or out of water. A replacement does not change
+the branch. A body that does not travel, such as a shulker, fires no hook; neither
+does a replayed player tick.
 
-An input component must lie in [-1, 1], and a velocity component must be finite
-and within ±64 blocks. Each listener's pair is checked as it returns: one with a
-component outside its budget is refused whole (the log names the mod and the
-field), and the pair the preceding listeners left stands for the next listener and
-the branch, the values the game resolved before any. Cancellation skips
-the invocation — the branch, its nested move and the flying vertical damping
-included — without undoing what the tick already did (input processing, the
-player's swim steering). The move the branch ends in still fires `entity_move`,
-so a travel replacement can meet a move veto. A panicking listener keeps the
-resolved values, not an earlier replacement, and is disabled for this hook for
-the session; its other hooks remain enabled.
+Replacement input components must be finite and within [-1, 1]; replacement
+velocity components within ±64 blocks per tick. Untouched vectors are exempt.
+One malformed vector drops that listener's entire result, including its cancel
+flag. The preceding accepted result stands, and the log names the mod and field
+once per tick. An accepted cancellation cannot be cleared. It skips the branch,
+its nested moves and flying vertical damping, without undoing earlier work such
+as swim steering. If the branch runs and calls `entity_move`, that move can
+still be vetoed. A listener panic restores the originally resolved values, ends
+the dispatch and disables the failed listener for this hook for the session;
+its other hooks remain enabled.
 
 ## Teleport hooks
 

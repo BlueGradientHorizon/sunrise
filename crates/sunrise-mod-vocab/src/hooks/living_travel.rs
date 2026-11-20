@@ -2,34 +2,27 @@
 //! reads (see `hooks/mod.rs`).
 
 pub trait Hooks {
-    /// One `LivingEntity.travel` invocation (#2414 PR 2, design #2308, the
-    /// maintainer ruling of the same issue): the living body `entity` of
-    /// `kind` (`minecraft:player`, `minecraft:zombie`) is about to run one
-    /// travel - in water, in lava, gliding, flying, or in the air, as `mode`
-    /// says. It fires at the travel boundary itself - the player's
-    /// `Player.travel` branch selection and the mob's `LivingEntity.travel`
-    /// entry, after the input resolution and the player's swimming
-    /// preparation, before the branch runs - so one travel fires it once,
-    /// and the physical move the branch ends in fires `entity_move` next:
-    /// a replaced travel can still meet a move veto. Change `input` (each
-    /// component within [-1, 1]) or `velocity` (each component within ±64
-    /// blocks) to replace what the branch starts from - the branch itself is
-    /// the game's own - or set `canceled` to skip this travel invocation:
-    /// its nested move does not run, the flying vertical damping is skipped,
-    /// and what the tick already did (input processing, the player's swim
-    /// steering) is not undone. Each listener's `input` and `velocity` are checked as
-    /// that listener returns: a component that is not a finite number, or
-    /// lies outside its budget, refuses that listener's pair whole (the
-    /// log names the mod and the field), nothing is clamped, and the pair
-    /// the preceding listeners left (the game's resolved values before any)
-    /// stands for the next listener and the branch. A listener that
-    /// unwinds keeps those resolved values, not a replacement an earlier
-    /// listener had proposed, and is switched off for this hook for the
-    /// session. It takes no Host - the maintainer ruling, like
-    /// `entity_move`: the listener only decides input, velocity and cancel,
-    /// and its `context` is the loop `context` of the side that ticks the
-    /// body. Server-authoritative: the client does not predict a custom
-    /// travel. Beyond NeoForge: there is no counterpart.
+    /// Before the server's `Player.travel` branch (after swim steering) or a
+    /// mob's `LivingEntity.travel` branch. `entity`, `kind` and `mode` identify
+    /// the body and the branch it is about to run, including species overrides.
+    /// A body that doesn't travel, such as a shulker, fires no hook. Neither does
+    /// a replayed player tick. A branch that calls `entity_move` can still meet
+    /// a move veto there.
+    ///
+    /// Replace `input` (finite components in [-1, 1]) or `velocity` (finite
+    /// components within ±64 blocks per tick) to change the branch's starting
+    /// values, not the branch itself. An unchanged vector is not subject to the
+    /// replacement budget. A malformed vector drops that listener's entire
+    /// result, including cancellation; later listeners see the preceding accepted
+    /// values, and the log names the mod and refused field once per tick.
+    ///
+    /// Set `cancelled` or return `Flow::Cancel` to skip the branch, its nested
+    /// moves and flying vertical damping. An accepted cancellation cannot be
+    /// cleared. Work before travel, such as swim steering, is not undone. If a
+    /// listener panics, the game uses the originally resolved values, skips later
+    /// listeners for that invocation and disables the failed listener for this
+    /// hook for the session. The hook takes a loop context, not a `Host`.
+    /// Beyond NeoForge: there is no counterpart.
     #[hook(
         side = "server",
         contract = "cancel",
@@ -37,6 +30,7 @@ pub trait Hooks {
         context = "loop",
         cancellable = true,
         isolate = true,
+        non_exhaustive = true,
         output_validator = "crate::entity::types::refused_travel_output",
         neoforge = "none (fork addition; see travel-and-move.md, #2308)",
         target = "sunrise_client_lib::travel_gate::native_living_travel"

@@ -1532,7 +1532,7 @@ impl MoveCause {
 
 /// The `LivingEntity.travel` branch a living body is about to run. Replacing
 /// the travel input or velocity does not change the branch.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, sunrise_mod_api_macros::Wire)]
 #[non_exhaustive]
 pub enum TravelMode {
     /// `LivingEntity.travelInAir`: the ordinary ground-and-air branch.
