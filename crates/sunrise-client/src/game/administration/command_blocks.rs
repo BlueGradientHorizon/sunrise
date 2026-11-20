@@ -12,7 +12,6 @@ use sunrise_client::{
     screen_draw::Measure,
     text::Text,
     ui::{self, EditBox},
-    world::World,
 };
 use sunrise_core::position::BlockPos;
 use sunrise_protocol::packets::play::{self, Clientbound as C, Serverbound as S};
@@ -22,11 +21,12 @@ use winit::{
 };
 use {
     sunrise_core::nbt::Tag,
-    sunrise_world::{
-        chunk::BlockState,
-        level::flags,
-        registry::{BlockRegistry, BlockStateId},
-    },
+    sunrise_world::{chunk::BlockState, level::flags},
+};
+
+pub(super) use sunrise_gameplay::command_blocks::{
+    CommandBlockEdit, CommandBlockTransition, analog_signal, command_block_mut, conditional,
+    facing_step, facing_yaw, mark_condition_met, offset, set_powered, state_of,
 };
 
 type Pos = (i32, i32, i32);
@@ -46,16 +46,6 @@ pub(super) struct CommandBlockScreen {
     mode: Mode,
     conditional: bool,
     auto: bool,
-}
-
-/// What `ServerboundSetCommandBlockPacket` carries.
-pub(super) struct CommandBlockEdit {
-    pub(super) pos: Pos,
-    pub(super) command: String,
-    pub(super) track_output: bool,
-    pub(super) mode: Mode,
-    pub(super) conditional: bool,
-    pub(super) auto: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -200,94 +190,6 @@ fn button_narration(
     };
     let full = full_tr("options.generic_value", &[&tr(name), &value]);
     Narratable::cycle(full, next, rect, true)
-}
-
-fn state_of(registry: &BlockRegistry, state: BlockStateId) -> Option<&BlockState> {
-    registry.state(state)
-}
-fn facing_step(state: &BlockState) -> [i32; 3] {
-    match state.properties.get("facing").map(String::as_str) {
-        Some("down") => [0, -1, 0],
-        Some("up") => [0, 1, 0],
-        Some("south") => [0, 0, 1],
-        Some("west") => [-1, 0, 0],
-        Some("east") => [1, 0, 0],
-        _ => [0, 0, -1],
-    }
-}
-/// `Direction.toYRot`: south 0, west 90, north 180, east (and up/down) 270.
-fn facing_yaw(state: &BlockState) -> f32 {
-    match state.properties.get("facing").map(String::as_str) {
-        Some("south") => 0.0,
-        Some("west") => 90.0,
-        Some("north") => 180.0,
-        _ => 270.0,
-    }
-}
-fn conditional(state: &BlockState) -> bool {
-    state
-        .properties
-        .get("conditional")
-        .is_some_and(|c| c == "true")
-}
-fn offset(pos: Pos, step: [i32; 3]) -> Pos {
-    (pos.0 + step[0], pos.1 + step[1], pos.2 + step[2])
-}
-fn command_block_mut(world: &mut World, pos: Pos) -> Option<&mut CommandBlock> {
-    match world.block_entities.get_mut(&pos)? {
-        BlockEntity::CommandBlock(c) => Some(c),
-        _ => None,
-    }
-}
-
-/// `CommandBlockEntity.markConditionMet`: a conditional block needs the
-/// command block behind it to have succeeded.
-pub(super) fn mark_condition_met(world: &mut World, registry: &BlockRegistry, pos: Pos) -> bool {
-    let Some(state) = state_of(registry, world.block(pos.0, pos.1, pos.2)) else {
-        return false;
-    };
-    let mut met = true;
-    if conditional(state) {
-        let back = facing_step(state).map(|v| -v);
-        let behind = offset(pos, back);
-        let behind_block = state_of(registry, world.block(behind.0, behind.1, behind.2))
-            .is_some_and(|s| Mode::of_block(&s.name).is_some());
-        met = behind_block
-            && matches!(world.block_entities.get(&behind),
-                Some(BlockEntity::CommandBlock(c)) if c.success_count > 0);
-    }
-    if let Some(c) = command_block_mut(world, pos) {
-        c.condition_met = met;
-    }
-    met
-}
-
-/// `CommandBlockEntity.setPowered` from `CommandBlock.setPoweredAndUpdate`
-/// (the level's neighbour hook): the previous flag and `isAutomatic`; a
-/// rising signal that will tick the block checks its condition.
-pub(super) fn set_powered(
-    world: &mut World,
-    registry: &BlockRegistry,
-    pos: Pos,
-    powered: bool,
-) -> Option<(bool, bool)> {
-    let mode = state_of(registry, world.block(pos.0, pos.1, pos.2))
-        .and_then(|s| Mode::of_block(&s.name))?;
-    let c = command_block_mut(world, pos)?;
-    let (was, auto) = (c.powered, c.auto);
-    c.powered = powered;
-    if command_block::power_schedules(mode, was, powered, auto) {
-        mark_condition_met(world, registry, pos);
-    }
-    Some((was, auto))
-}
-
-/// `getAnalogOutputSignal`: the success count.
-pub(super) fn analog_signal(world: &World, pos: Pos) -> Option<i32> {
-    match world.block_entities.get(&pos)? {
-        BlockEntity::CommandBlock(c) => Some(c.success_count),
-        _ => None,
-    }
 }
 
 impl Game<'_> {
@@ -1132,30 +1034,6 @@ impl Game<'_> {
         // `BaseCommandBlock.onUpdated`: the edited block entity is saved and
         // its clients (and comparators) see the new command.
         self.mark_block_entity_updated(pos);
-    }
-}
-
-/// One state-preserving command edit, scoped to its exact removal boundary.
-pub(super) struct CommandBlockTransition {
-    lease: sunrise_client::block_entities::BlockEntityLease,
-    old: BlockStateId,
-    new: BlockStateId,
-    available: bool,
-}
-
-impl CommandBlockTransition {
-    pub(super) fn preserve(&mut self, world: &mut World, pos: BlockPos, old: BlockStateId) -> bool {
-        if !self.available || self.old != old || self.new != world.block(pos.x, pos.y, pos.z) {
-            return false;
-        }
-        if !world
-            .block_entities
-            .rekey(&(pos.x, pos.y, pos.z), &mut self.lease)
-        {
-            return false;
-        }
-        self.available = false;
-        true
     }
 }
 
