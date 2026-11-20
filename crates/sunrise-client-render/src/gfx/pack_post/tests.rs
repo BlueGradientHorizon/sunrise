@@ -1,6 +1,6 @@
 //! The unit tests that take the GPU and build a whole pack (`test_gpu` is the client's).
 
-use super::super::pack_draw::DrawUniforms;
+use crate::gfx::pack_draw::DrawUniforms;
 use sunrise_render_shaderpack::pack_images;
 use sunrise_render_shaderpack::pack_textures;
 use sunrise_shaders::{BUFFERS, Group};

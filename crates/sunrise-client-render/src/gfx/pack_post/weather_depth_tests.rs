@@ -143,7 +143,7 @@ fn pack(
         &properties,
         &macros,
         &sunrise_shaders::GameInputs {
-            weather: Some(super::super::pack_weather::inputs()),
+            weather: Some(crate::gfx::pack_weather::inputs()),
             ..Default::default()
         },
     );

@@ -227,16 +227,20 @@ mod oit;
 mod oit_features;
 pub(crate) mod output;
 mod output_apply;
-mod pack_atlas;
-pub mod pack_draw;
 mod pack_entities;
-mod pack_hand;
-mod pack_lines;
+// The pack's programs' inputs and helpers, from `sunrise-render-shaderpack`: the client's frame
+// only tells them what a `Frame` and the game's own values are.
+pub use sunrise_render_shaderpack::{
+    pack_atlas, pack_draw, pack_hand, pack_lines, pack_sky, pack_timing, pack_weather,
+};
+#[cfg(test)]
+mod frame_tests;
+#[cfg(test)]
+mod pack_atlas_tests;
 mod pack_post;
-mod pack_sky;
-pub mod pack_timing;
-pub mod pack_uniforms;
-mod pack_weather;
+// The client's `Frame` as the shadow light reads it: a `UniformFrameView`; the uniforms
+// themselves come from `sunrise-render-shaderpack`.
+mod pack_uniforms;
 mod pass_timing_api;
 use pass_timing_api::{after_culling_pass, pixel_count, world_pass_after_culling};
 mod page_runs;
