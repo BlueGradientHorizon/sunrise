@@ -17,7 +17,8 @@ impl BlockState {
     pub const fn ordinal(self) -> u16 {
         self.state
     }
-    /// Borrow a property from the supplied immutable metadata; a missing property is `None`.
+    /// Borrow the serialized property value from the supplied immutable metadata. For a known
+    /// state with no such property, return `Ok(None)`.
     pub fn property<'a>(
         self,
         metadata: &'a dyn BlockMetadata,
@@ -25,7 +26,8 @@ impl BlockState {
     ) -> Result<Option<&'a str>, BlockStateError> {
         metadata.property(self, name)
     }
-    /// Return a state with one property changed, without mutating metadata or the world.
+    /// Return a new state with one property changed and the other properties retained. This does
+    /// not change the original state, the metadata or any block in the world.
     pub fn with(
         self,
         metadata: &dyn BlockMetadata,
@@ -34,7 +36,8 @@ impl BlockState {
     ) -> Result<Self, BlockStateError> {
         metadata.with(self, name, value)
     }
-    /// Start at the block's default and apply partial property constraints.
+    /// Construct a state by applying partial property constraints to the block's default from
+    /// `metadata`. Omitted properties keep their defaults; invalid constraints return an error.
     pub fn of(
         metadata: &dyn BlockMetadata,
         block: BlockKey,

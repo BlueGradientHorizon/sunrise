@@ -40,23 +40,25 @@ impl From<sunrise_mod_runtime::block_definitions::StateError> for BlockStateErro
     }
 }
 
-/// Read-only metadata for [`BlockState`] values, lent by a host's block-states service or a tint
-/// worker. This is the low-level resource contract; mods call the `BlockState` methods instead.
+/// Read-only metadata, lent by a host's block-states service or a tint worker. This contract takes
+/// and returns [`BlockState`] directly; mods normally use the methods on `BlockState`.
 // hidden: low-level shared resource contract; BlockState methods are the mod-facing operations.
 #[doc(hidden)]
 pub trait BlockMetadata {
     /// Borrow the canonical block name from this context's retained registry.
     fn name(&self, block: BlockKey) -> Result<&str, BlockStateError>;
-    /// Borrow a property's serialized value from this resource; a missing property returns `None`.
+    /// Borrow the serialized value of `name` on `state` from this resource, or `Ok(None)` if the
+    /// property is absent from a known state.
     fn property(&self, state: BlockState, name: &str) -> Result<Option<&str>, BlockStateError>;
-    /// Return the state with one property changed and all others retained.
+    /// Return a `BlockState` with one property changed and all others retained. This does not
+    /// mutate `state` or write to the world.
     fn with(
         &self,
         state: BlockState,
         name: &str,
         value: &str,
     ) -> Result<BlockState, BlockStateError>;
-    /// Apply partial constraints to the block's default state.
+    /// Return a `BlockState` by applying partial constraints to the block's default state.
     fn of(
         &self,
         block: BlockKey,

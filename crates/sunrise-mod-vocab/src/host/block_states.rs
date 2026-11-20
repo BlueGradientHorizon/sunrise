@@ -113,7 +113,7 @@ pub trait BlockStatesBackend {
     #[access(Metadata)]
     fn block_metadata_name(&self, block: BlockKey) -> Result<&str, BlockStateError>;
     /// Side: both.
-    /// Borrow a property's serialized value from the block metadata resource.
+    /// Borrow the serialized property value for this `BlockState` from immutable block metadata.
     #[access(Metadata)]
     #[forward_api_inputs]
     fn block_metadata_property(
@@ -122,7 +122,7 @@ pub trait BlockStatesBackend {
         name: &str,
     ) -> Result<Option<&str>, BlockStateError>;
     /// Side: both.
-    /// Return the state with one property changed, without a world write.
+    /// Return a `BlockState` with one property changed, without a world write.
     #[access(Metadata)]
     #[forward_api_inputs]
     #[forward_api_output]
@@ -133,7 +133,7 @@ pub trait BlockStatesBackend {
         value: &str,
     ) -> Result<BlockState, BlockStateError>;
     /// Side: both.
-    /// Return the default state with partial properties applied.
+    /// Return a `BlockState` by applying partial constraints to the block's default.
     #[access(Metadata)]
     #[forward_api_output]
     fn block_metadata_of(
