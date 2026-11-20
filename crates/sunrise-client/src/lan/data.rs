@@ -200,7 +200,6 @@ pub struct SyncData {
     registries: Vec<(String, Entries)>,
     packed_registries: Option<Arc<PackRegistryDefinitions>>,
     pub tags: UpdateTags,
-    retained_tag_registries: HashSet<String>,
     pub features: Vec<String>,
     /// Vanilla's command tree (the commands report), when found.
     pub commands: Option<super::commands::CommandTree>,
@@ -431,7 +430,6 @@ impl SyncData {
             tags: UpdateTags {
                 registries: Vec::new(),
             },
-            retained_tag_registries: HashSet::new(),
             features: Vec::new(),
             commands: None,
             recipes: Vec::new(),
@@ -761,11 +759,10 @@ impl SyncData {
         let mut tags = Self::load_tags(&root, &builtin, &dynamic, overlay.conditions);
         Self::merge_pack_tags(&mut tags, &root, overlay, &builtin, &dynamic);
         Self::merge_damage_tags(&mut tags, resources, overlay, &builtin, &dynamic)?;
-        let mut retained_tag_registries = HashSet::new();
         if let Some(kept) = kept.filter(|_| mode == SyncLoad::Reload) {
             // TagLoader.loadPendingTags does not rebind a registry when
-            // no tags were built. Keep its old holders for future joins,
-            // without broadcasting a change for it to connected players.
+            // no tags were built. Play reloads and future joins both send
+            // the complete current snapshot, including retained bindings.
             let loaded: HashSet<_> = tags
                 .registries
                 .iter()
@@ -776,10 +773,7 @@ impl SyncData {
                 .registries
                 .iter()
                 .filter(|r| !loaded.contains(r.registry.as_str()))
-                .map(|r| {
-                    retained_tag_registries.insert(r.registry.clone());
-                    r.clone()
-                })
+                .cloned()
                 .collect();
             tags.registries.extend(retained);
         }
@@ -820,7 +814,6 @@ impl SyncData {
             dynamic,
             registries,
             tags,
-            retained_tag_registries,
             features: vec!["minecraft:vanilla".to_owned()],
             commands: startup::time("sync.commands", || {
                 super::commands::CommandTree::load(resources)
@@ -964,20 +957,6 @@ impl SyncData {
             .iter()
             .position(|(n, _)| n == name)
             .map(|i| i as i32)
-    }
-
-    /// Bindings changed by this reload. Retained registries are still in the
-    /// complete tag snapshot used for configuration on a fresh join.
-    pub fn reload_tags(&self) -> UpdateTags {
-        UpdateTags {
-            registries: self
-                .tags
-                .registries
-                .iter()
-                .filter(|r| !self.retained_tag_registries.contains(&r.registry))
-                .cloned()
-                .collect(),
-        }
     }
 
     /// ClientboundRegistryDataPacket per registry. With `known_pack` the
@@ -1561,24 +1540,28 @@ mod tests {
         .unwrap();
         let registry = "minecraft:mob_effect";
         let tag = "test:boosts";
-        let packet = reloaded.reload_tags();
-        assert!(!packet.registries.iter().any(|r| r.registry == registry));
-        connected.add_tags(&packet);
+        let packet = &reloaded.tags;
+        let retained = packet
+            .registries
+            .iter()
+            .find(|r| r.registry == registry)
+            .unwrap();
+        assert_eq!(retained.tags.len(), 1);
+        assert_eq!(retained.tags[0].name, tag);
+        assert_eq!(retained.tags[0].ids, [0]);
+        connected.add_tags(packet);
         assert_eq!(connected.tag(registry, tag), Some(&[0][..]));
-        assert_eq!(
-            reloaded
-                .tags
-                .registries
-                .iter()
-                .find(|r| r.registry == registry)
-                .unwrap()
-                .tags[0]
-                .ids,
-            [0]
-        );
         let mut fresh_join = Dynamic::default();
         fresh_join.add_tags(&reloaded.tags);
         assert_eq!(fresh_join.tag(registry, tag), connected.tag(registry, tag));
+        let fresh_world = SyncData::load(root, &overlay, &defaults, &sources).unwrap();
+        assert!(
+            !fresh_world
+                .tags
+                .registries
+                .iter()
+                .any(|r| r.registry == registry)
+        );
     }
 
     #[test]

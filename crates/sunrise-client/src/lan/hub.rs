@@ -3731,7 +3731,7 @@ impl Hub {
         self.native_reload_pending = false;
         let sync = self.sync.clone();
         // broadcastAll(ClientboundUpdateTagsPacket).
-        self.broadcast(&C::UpdateTags(sync.reload_tags()));
+        self.broadcast(&C::UpdateTags(sync.tags.clone()));
         // For each player: ClientboundUpdateRecipesPacket, then sendInitialRecipeBook.
         for i in 0..self.guests.len() {
             if !self.guests[i].placed {
