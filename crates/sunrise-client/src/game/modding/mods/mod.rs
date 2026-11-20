@@ -461,17 +461,15 @@ pub(super) fn collect_key_mappings<'declared>(
     if role.is_client() { declared } else { &[] }
 }
 
-/// The native mods' entity model layers (`native_register_layer_definitions`), kept
-/// once at start for `bake_layer`, then their skull types (`native_create_skull_models`), baked
-/// once from those layers (or vanilla's under `vanilla_root`), so `minecraft:head` item models may
-/// name their kinds.
+/// Freeze the native mods' entity model layer definitions at startup, then bake their skull
+/// types (`native_create_skull_models`) from those definitions or vanilla's under `vanilla_root`.
 pub(super) fn register_layer_definitions(role: ExecutionRole, vanilla_root: &std::path::Path) {
     if !role.is_client() {
         return;
     }
-    let mut layers = Vec::new();
-    Game::native_register_layer_definitions(&RegistrationContext::new(), &mut layers);
-    sunrise_client::mobs::model_layers::register(layers);
+    let mut suppliers = Vec::new();
+    Game::native_register_layer_definitions(&RegistrationContext::new(), &mut suppliers);
+    sunrise_client::mobs::model_layers::register(suppliers);
     let mut models = Vec::new();
     Game::native_create_skull_models(&RegistrationContext::new(), &mut models);
     sunrise_client::skull_models::register(models, vanilla_root);

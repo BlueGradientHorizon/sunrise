@@ -18,8 +18,10 @@ ids = [
     "hook:register_particle_groups", "hook:register_particle_groups.groups", "method:Hooks::register_particle_groups",
     "type:RegisterParticleGroupsEvent", "type:RegisterParticleGroupsEvent.groups", "handle:RegisterParticleGroupsEvent::register",
     "type:ParticleGroup", "type:ParticleGroup.id",
+    "hook:register_layer_definitions", "hook:register_layer_definitions.layers", "method:Hooks::register_layer_definitions",
+    "type:RegisterLayerDefinitionsEvent", "type:RegisterLayerDefinitionsEvent.layers", "handle:RegisterLayerDefinitionsEvent::register",
 ]
-why = "Registration appends through scoped event methods instead of exposing staging vectors. Earlier declarations cannot be edited by another listener, and a phase refusal drops only the refused listener's additions. Particle groups bind factories to IDs at registration and construct the in-process group definitions once per engine, not on sprite reload."
+why = "Registration appends through scoped event methods instead of exposing staging vectors. Earlier declarations cannot be edited by another listener, and a phase refusal drops only the refused listener's additions. Particle groups bind factories to IDs at registration and construct the in-process group definitions once per engine, not on sprite reload. Model layer suppliers build their definitions once when the startup table freezes, not on bakes or resource reloads."
 migrate = """
 In Hooks::component_types, replace event.types.push(id) with event.register(id), passing the same owned String.
 In Hooks::create_skull_models, replace event.models.push(model) with event.register(model), passing the same SkullModel.
@@ -44,4 +46,11 @@ For a known literal ID use `Identifier::parse("example:glow").unwrap()`. Use an 
 mod namespace and path. `ParticleGroup` no longer stores its ID or implements Wire. Factories are
 Send + Sync + 'static and may run for multiple engines, so capture owned data and return a fresh
 definition each time. Register each entry in the original order.
+
+In Hooks::register_layer_definitions, move mesh and layer construction into a supplier:
+replace `event.layers.push((id, create_golem_layer()))` with `event.register(id, create_golem_layer)`.
+For an inline definition use `event.register(id, move || LayerDefinition::create(build_mesh(), 64, 32))`,
+with your own mesh and texture dimensions. The supplier is `Fn() -> LayerDefinition + Send + Sync + 'static`;
+capture owned inputs, and if reusing a definition already built, return `definition.clone()`.
+Keep the same `<namespace>:<path>#<layer>` ID and the same calls to `ClientHost::bake_layer`.
 """

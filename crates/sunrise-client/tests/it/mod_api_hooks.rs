@@ -113,15 +113,15 @@ mod model_layers {
             _context: &RegistrationContext,
             event: &mut RegisterLayerDefinitionsEvent<'_>,
         ) {
-            let mut mesh = MeshDefinition::new();
-            let root = mesh.root();
-            let head = CubeListBuilder::create()
-                .tex_offs(0, 0)
-                .add_box([-4.0, -8.0, -4.0], [8.0, 8.0, 8.0]);
-            mesh.add_or_replace_child(root, "head", head, PartPose::offset(0.0, 6.0, 0.0));
-            event
-                .layers
-                .push((self.0.into(), LayerDefinition::create(mesh, 64, 32)));
+            event.register(self.0, || {
+                let mut mesh = MeshDefinition::new();
+                let root = mesh.root();
+                let head = CubeListBuilder::create()
+                    .tex_offs(0, 0)
+                    .add_box([-4.0, -8.0, -4.0], [8.0, 8.0, 8.0]);
+                mesh.add_or_replace_child(root, "head", head, PartPose::offset(0.0, 6.0, 0.0));
+                LayerDefinition::create(mesh, 64, 32)
+            });
         }
         // ANCHOR_END: register_layer_definitions
     }
@@ -142,9 +142,18 @@ mod model_layers {
                     &RegistrationContext::new(),
                     &mut layers,
                 );
-                let ids: Vec<_> = layers.iter().map(|(id, _)| id.as_str()).collect();
-                assert_eq!(ids, ["first:golem#main", "second:golem#main"]);
-                let model = layers[0].1.bake_root();
+                let owners_and_ids: Vec<_> = layers
+                    .iter()
+                    .map(|layer| (layer.mod_id, layer.answer.id.as_str()))
+                    .collect();
+                assert_eq!(
+                    owners_and_ids,
+                    [
+                        ("first", "first:golem#main"),
+                        ("second", "second:golem#main")
+                    ]
+                );
+                let model = (layers[0].answer.supplier)().bake_root();
                 let head = model.get_child("head").expect("the head part");
                 assert_eq!((head.y, head.polygons.len()), (6.0, 6));
             },

@@ -60,6 +60,20 @@ frames or dropped items. Keep the handler fast: it can run once for each held
 stack submitted during a frame. Rendering is not a source of combat state; see
 [Syncing remote item cooldowns](networking.md#syncing-remote-item-cooldowns).
 
+## Entity model layers
+
+At client startup, implement `Hooks::register_layer_definitions` and call
+`event.register("mymod:golem#main", create_golem_layer)`, where `create_golem_layer`
+returns a `LayerDefinition` built from a `MeshDefinition` and the texture size.
+A closure works too; capture owned data so the supplier is `Send + Sync + 'static`.
+Use a `<namespace>:<path>#<layer>` ID outside the `minecraft` namespace.
+
+The game calls each accepted supplier once when it freezes the layer table, in
+registration order. For duplicate IDs, only the first valid registration is
+used. Call `ClientHost::bake_layer("mymod:golem#main")` during renderer setup,
+then keep the resulting `ModelPart` tree for posing and drawing. Baking again
+and reloading resources reuse the definition without calling the supplier.
+
 ## Worn humanoid equipment
 
 An item attaches one `ClientItemExtensions` Part in
