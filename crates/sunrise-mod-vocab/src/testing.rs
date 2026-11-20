@@ -531,15 +531,24 @@ impl crate::prelude::ItemsBackend for FakeHost {
             total.checked_add(room as u64)
         })
     }
-    fn container_listing(
+    fn container_visit_entries(
         &self,
         at: BlockSide,
-        from: usize,
-        limit: usize,
-    ) -> Option<Vec<Option<ItemStack>>> {
-        let items = self.level.standing(at.level, at.pos)?.items.as_ref()?;
-        let limit = limit.min(crate::MAX_STORAGE_PAGE);
-        Some(items.slots.iter().skip(from).take(limit).cloned().collect())
+        visitor: &mut dyn FnMut(&crate::ItemResource, u64) -> std::ops::ControlFlow<()>,
+    ) -> Result<(), crate::LevelReadError> {
+        let Some(items) = self
+            .level
+            .standing(at.level, at.pos)
+            .and_then(|s| s.items.as_ref())
+        else {
+            return Ok(());
+        };
+        for stack in items.slots.iter().flatten() {
+            if visitor(&crate::ItemResource::of(stack), u64::from(stack.count())).is_break() {
+                break;
+            }
+        }
+        Ok(())
     }
     fn container_size(&self, at: BlockSide) -> Option<usize> {
         let items = self.level.standing(at.level, at.pos)?.items.as_ref()?;

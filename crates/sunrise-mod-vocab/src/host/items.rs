@@ -320,17 +320,16 @@ pub trait ItemsBackend {
     #[access(WorldOnly)]
     fn container_kind_space(&self, at: BlockSide, resource: &ItemResource) -> Option<u64>;
     /// Side: server.
-    /// What the slots `at`'s side reaches hold, from its `from`th to before its
-    /// `from + limit`th (fewer at the end), empty ones included, never more than
-    /// [`MAX_STORAGE_PAGE`](crate::MAX_STORAGE_PAGE) slots whatever `limit` asks. None where no
-    /// supported container or composter port exists.
+    /// Visits the occupied slots `at`'s side reaches, in sided order, including duplicate
+    /// kinds. Stops before reading another slot when the visitor breaks. If no supported
+    /// container or composter port exists, there are no entries to visit. Refuses the read
+    /// if a visited stack cannot be represented as an API value.
     #[access(WorldOnly)]
-    fn container_listing(
+    fn container_visit_entries(
         &self,
         at: BlockSide,
-        from: usize,
-        limit: usize,
-    ) -> Option<Vec<Option<ItemStack>>>;
+        visitor: &mut dyn FnMut(&ItemResource, u64) -> std::ops::ControlFlow<()>,
+    ) -> Result<(), LevelReadError>;
     /// Side: both.
     /// Whether an enchantment on `stack` has effect component `effect`, by the world's
     /// enchantment definitions (`EnchantmentHelper.has`), behind
