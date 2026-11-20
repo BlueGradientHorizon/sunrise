@@ -22,7 +22,7 @@ use crate::game::collision_source::Mover;
 use sunrise_client::collisions::{
     EntityCollisions, SceneCollisions, no_collision_empty, with_piston_noclip,
 };
-use sunrise_client::join_seq::Joined;
+use sunrise_client::join_seq::{JoinSeq, Joined};
 use sunrise_client::mobs::Species;
 use sunrise_client::motion::MotionWorld;
 use sunrise_core::geometry::{Aabb, Axis, Direction, ShapeOp, Vec3, border::BorderGeometry};
@@ -832,15 +832,17 @@ impl Game<'_> {
     /// `Block.pushEntitiesUp(old, new, level, pos)` before the block at `pos`
     /// changes (`FarmlandBlock.turnToBaseBlock`): every body
     /// touching the collision that the new state adds over `old` is lifted
-    /// onto it with `teleportRelative`, no collision scan.
+    /// onto it with `teleportRelative`, no collision scan. If the write refuses
+    /// after section listeners have run, put the tentative positions back quietly.
     pub(super) fn push_entities_up(
         &mut self,
         pos: BlockPos,
         old: sunrise_world::registry::BlockStateId,
         new: sunrise_world::registry::BlockStateId,
-    ) {
+        write: impl FnOnce(&mut Self) -> bool,
+    ) -> bool {
         if new == old {
-            return;
+            return write(self);
         }
         let at = [pos.x, pos.y, pos.z];
         let shape = |state| {
@@ -852,10 +854,10 @@ impl Game<'_> {
             self.collision.collision_shape(&mut scene, state, at).ok()
         };
         let (Some(old_shape), Some(new_shape)) = (shape(old), shape(new)) else {
-            return;
+            return write(self);
         };
         let Ok(added) = old_shape.join_unoptimized(&new_shape, ShapeOp::ONLY_SECOND) else {
-            return;
+            return write(self);
         };
         let added = added.moved(Vec3::new(
             f64::from(pos.x),
@@ -863,50 +865,45 @@ impl Game<'_> {
             f64::from(pos.z),
         ));
         let Some(bounds) = added.bounds() else {
-            return;
+            return write(self);
         };
         // Like the level query in `Block.pushEntitiesUp`, take the intersecting
         // bodies before any lift dispatches a section-change listener. A listener
         // can remove another entity, so a saved slot alone is not an identity.
-        let lift: Vec<_> = self
+        let mut lift: Vec<_> = self
             .push_targets()
             .filter_map(|target| {
                 if !self.lift_body_bounds(target)?.intersects(bounds) {
                     return None;
                 }
-                let identity = if let MoveWho::Entity(handle) = target {
-                    with_entity!(self, handle, entity => Some((entity.id(), entity.join_seq())))
-                } else {
-                    None
+                let (id, join) = match target {
+                    MoveWho::Player => (self.own_entity_id() as u32, None),
+                    MoveWho::Guest(conn) => {
+                        (self.lan.as_ref()?.hub.guest(conn)?.entity_id as u32, None)
+                    }
+                    MoveWho::Entity(handle) => with_entity!(self, handle, entity => {
+                        (entity.id(), Some(entity.join_seq()))
+                    }),
                 };
-                Some((target, identity))
+                Some((target, id, join, None))
             })
             .collect();
-        for (mut target, identity) in lift {
-            if let (MoveWho::Entity(hint), Some((id, join))) = (target, identity) {
-                let Some(handle) = self.refresh_entity_handle(id, hint) else {
-                    continue;
-                };
-                if with_entity!(self, handle, entity => {
-                    entity.is_removed() || entity.join_seq() != join
-                }) {
-                    continue;
-                }
-                target = MoveWho::Entity(handle);
-            }
+        for &mut (hint, id, join, ref mut moved) in &mut lift {
+            let Some(target) = self.resolve_lift_target(hint, id, join) else {
+                continue;
+            };
             let Some(body) = self.lift_body_bounds(target) else {
                 continue;
             };
             let dy = 1.0 + added.collide(Axis::Y, body.move_by(Vec3::new(0.0, 1.0, 0.0)), -1.0);
             // `teleportRelative` writes the position only. It does not run an
             // entity move or release projectiles embedded in the old block.
-            let (id, from) = match target {
+            let (from, motion_y) = match target {
                 MoveWho::Player => {
-                    let own = self.own_entity_id() as u32;
                     let p = self.player.as_mut().unwrap();
                     let from = p.position;
                     p.position.y += dy;
-                    (own, from)
+                    (from, None)
                 }
                 MoveWho::Guest(conn) => self
                     .lan
@@ -916,21 +913,80 @@ impl Game<'_> {
                     .update_guest(conn, |g| {
                         let [x, y, z] = g.position;
                         g.position[1] += dy;
-                        if let Some(m) = &mut g.motion {
+                        let motion_y = g.motion.as_mut().map(|m| {
+                            let y = m.position.y;
                             m.position.y += dy;
-                        }
-                        (g.entity_id as u32, Vec3::new(x, y, z))
+                            y
+                        });
+                        (Vec3::new(x, y, z), motion_y)
                     })
                     .unwrap(),
                 MoveWho::Entity(handle) => with_entity_mut!(self, handle, entity => {
-                    let id = entity.id();
                     let pos = entity.position_mut();
                     let from = *pos;
                     pos.y += dy;
-                    (id, from)
+                    (from, None)
                 }),
             };
-            self.entity_section_step(id, from.components(), [from.x, from.y + dy, from.z]);
+            let to = [from.x, from.y + dy, from.z];
+            *moved = Some((from, to, motion_y));
+            self.entity_section_moved_id(id);
+        }
+        if write(self) {
+            for (_, id, _, moved) in lift {
+                if let Some((from, to, _)) = moved {
+                    self.entity_section_entered(id, from.components(), to);
+                }
+            }
+            return true;
+        }
+        for (target, id, join, moved) in lift.into_iter().rev() {
+            let Some((from, _, motion_y)) = moved else {
+                continue;
+            };
+            let Some(target) = self.resolve_lift_target(target, id, join) else {
+                continue;
+            };
+            match target {
+                MoveWho::Player => self.player.as_mut().unwrap().position = from,
+                MoveWho::Guest(conn) => {
+                    self.lan.as_mut().unwrap().hub.update_guest(conn, |g| {
+                        g.position = from.components();
+                        if let (Some(m), Some(y)) = (&mut g.motion, motion_y) {
+                            m.position.y = y;
+                        }
+                    });
+                }
+                MoveWho::Entity(handle) => with_entity_mut!(self, handle, entity => {
+                    *entity.position_mut() = from;
+                }),
+            }
+            self.entity_section_joined(id, from.components());
+        }
+        false
+    }
+
+    fn resolve_lift_target(
+        &self,
+        hint: MoveWho,
+        id: u32,
+        join: Option<JoinSeq>,
+    ) -> Option<MoveWho> {
+        match hint {
+            MoveWho::Player => (self.own_entity_id() as u32 == id).then_some(hint),
+            MoveWho::Guest(conn) => self
+                .lan
+                .as_ref()?
+                .hub
+                .guest(conn)
+                .filter(|g| g.entity_id as u32 == id && self.lan_acting != Some(conn))
+                .map(|_| hint),
+            MoveWho::Entity(handle) => {
+                let handle = self.refresh_entity_handle(id, handle)?;
+                with_entity!(self, handle, entity => {
+                    (!entity.is_removed() && Some(entity.join_seq()) == join).then_some(MoveWho::Entity(handle))
+                })
+            }
         }
     }
 

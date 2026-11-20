@@ -348,6 +348,12 @@ pub(super) enum After {
     Block(Pos),
     /// A validated level write host effect; never published on abort.
     LevelWrite(Box<super::journal_level_write::PendingWrite>),
+    BlockGameEvent(
+        &'static str,
+        [i32; 3],
+        sunrise_client::mobs::Who,
+        BlockStateId,
+    ),
     /// Save, remesh and resend a changed biome column.
     Biome((i32, i32)),
     /// Deferred interaction effects, replayed in the same root-commit order.
@@ -1121,6 +1127,9 @@ impl Game<'_> {
             After::FluidWrite(written) => self.commit_fluid_write(*written),
             After::FluidEffects(effects) => self.commit_fluid_effects(*effects),
             After::LevelWrite(write) => self.commit_level_write(*write),
+            After::BlockGameEvent(id, pos, who, state) => {
+                self.post_block_game_event(id, pos, Some(who), Some(state));
+            }
             After::Changed(pos) => self.container_changed(pos),
             After::Capabilities(pos) => self.world.capability_generations.invalidate(pos),
 

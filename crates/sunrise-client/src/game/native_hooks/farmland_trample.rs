@@ -36,57 +36,91 @@ impl Game<'_> {
             distance,
             ..
         } = trample;
-        let still = |game: &Self| game.world.block(pos.x, pos.y, pos.z) == state;
+        let at = [pos.x, pos.y, pos.z];
+        let dimension = self.dim;
+        let still = |game: &Self| {
+            game.dim == dimension
+                && !game.world_debug
+                && game.world.is_loaded_at(pos.x, pos.y, pos.z)
+                && !game.world.carrier_fences.locks_cell(&at)
+                && game.world.block(pos.x, pos.y, pos.z) == state
+        };
         if !still(self) {
             return;
         }
-        if !mod_api::__private::listened(mod_api::HookId::FarmlandTrample) {
-            self.apply_farmland_trample(entity, player, pos, state, base);
-            return;
-        }
-        let Some(living) = self.entity(entity).and_then(|e| self.living(e)) else {
-            return;
-        };
-        let _: Result<(), ()> = mod_api::run_transaction(self, |game, _| {
-            let mut cancel = false;
-            game.native_farmland_trample(living, pos, state, distance, &mut cancel);
-            if !still(game) || game.entity(entity) != Some(living.entity()) {
-                return Err(());
-            }
-            if !cancel {
-                game.apply_farmland_trample(entity, player, pos, state, base);
-            }
-            Ok(())
-        });
-    }
-
-    fn apply_farmland_trample(
-        &mut self,
-        entity: u32,
-        player: bool,
-        pos: BlockPos,
-        state: BlockStateId,
-        base: BlockStateId,
-    ) {
-        // The player's write asks `entity_change_block_pre` first; a mob's never did.
-        if player {
-            let acting = self.native_acting_id();
-            if self.landing_change_cancelled(Some(acting), pos, state, base) {
+        let applied = if mod_api::__private::listened(mod_api::HookId::FarmlandTrample) {
+            let Some(living) = self.entity(entity).and_then(|e| self.living(e)) else {
                 return;
-            }
-        }
-        let at = [pos.x, pos.y, pos.z];
-        // `FarmlandBlock.turnToBaseBlock` lifts bodies while the old state is
-        // still in the level, then writes the base and emits BLOCK_CHANGE.
-        self.push_entities_up(pos, state, base);
-        if self.level_set(at, base).is_ok() {
+            };
+            let failures = mod_api::runtime::isolated_failures();
+            mod_api::run_transaction(self, |game, _| {
+                let mut cancel = false;
+                game.native_farmland_trample(living, pos, state, distance, &mut cancel);
+                let valid = |game: &Self| {
+                    mod_api::runtime::isolated_failures() == failures
+                        && game.entity(entity) == Some(living.entity())
+                        && still(game)
+                };
+                (!cancel && game.apply_farmland_trample(player, trample, valid, true))
+                    .then_some(())
+                    .ok_or(())
+            })
+            .is_ok()
+        } else {
+            self.apply_farmland_trample(player, trample, still, false)
+        };
+        if applied {
             let who = if player {
                 Who::Player
             } else {
                 Who::Mob(entity)
             };
-            self.post_block_game_event("minecraft:block_change", at, Some(who), Some(base));
+            self.after_commit(crate::game::transactions::After::BlockGameEvent(
+                "minecraft:block_change",
+                at,
+                who,
+                base,
+            ));
         }
+    }
+
+    fn apply_farmland_trample(
+        &mut self,
+        player: bool,
+        trample: FarmlandTrample,
+        still: impl Fn(&Self) -> bool,
+        journalled: bool,
+    ) -> bool {
+        let FarmlandTrample {
+            position: pos,
+            state,
+            base,
+            ..
+        } = trample;
+        if !still(self) {
+            return false;
+        }
+        // The player's write asks `entity_change_block_pre` first; a mob's never did.
+        if player {
+            let acting = self.native_acting_id();
+            if self.landing_change_cancelled(Some(acting), pos, state, base) {
+                return false;
+            }
+        }
+        if !still(self) {
+            return false;
+        }
+        let at = [pos.x, pos.y, pos.z];
+        // A section listener during the lift can change the decided cell too.
+        // Validate after all such callbacks, with no callback between this check and the write.
+        self.push_entities_up(pos, state, base, |game| {
+            still(game)
+                && if journalled {
+                    game.journal_set_block(at, base)
+                } else {
+                    game.level_set(at, base).is_ok()
+                }
+        })
     }
 }
 
@@ -102,6 +136,7 @@ mod tests {
     use sunrise_protocol::packets::{Empty, play, play::Serverbound as S};
 
     const FIELD: [i32; 3] = [1, 63, 1];
+    const LISTENER_WRITE: [i32; 3] = [3, 63, 3];
     const LANDING_Y: f64 = 63.9375;
     const LANDING: u32 = 20;
     const OTHER: u32 = 72;
@@ -116,6 +151,7 @@ mod tests {
         Cancel,
         AvoidSneak,
         Replace,
+        ReplaceDuringLift,
     }
 
     #[derive(Clone, Copy)]
@@ -137,7 +173,7 @@ mod tests {
 
     // This observer listens to the effects, not to farmland_trample. It can be
     // installed on both sides of the allow/no-listener comparison.
-    struct Observe(Trace);
+    struct Observe(Trace, bool);
     #[mod_api::__subscriptions]
     impl Hooks for Observe {
         fn entity_entering_section(
@@ -158,6 +194,15 @@ mod tests {
                     event.entity.position(host).unwrap()[1],
                     state,
                 ));
+                if self.1 && event.entity.id() == LANDING {
+                    let level = event.entity.level(host).unwrap();
+                    let key = host.block_key("minecraft:stone").unwrap();
+                    let stone = mod_api::BlockState::of(&host.block_states(), key, &[]).unwrap();
+                    assert_eq!(
+                        level.set_block(host, FIELD, stone, BlockUpdateFlags::KNOWN_SHAPE),
+                        Ok(true)
+                    );
+                }
             }
         }
         fn block_changed(&self, level: &dyn LevelHost, event: &mut BlockChangedEvent) {
@@ -199,6 +244,15 @@ mod tests {
                 y: entity.position(host).unwrap()[1],
                 health: event.entity.health(host).unwrap(),
             });
+            if matches!(self.0, Choice::Cancel | Choice::Trap | Choice::Replace) {
+                let key = host.block_key("minecraft:stone").unwrap();
+                let stone = mod_api::BlockState::of(&host.block_states(), key, &[]).unwrap();
+                assert_eq!(
+                    level.set_block(host, LISTENER_WRITE, stone, BlockUpdateFlags::KNOWN_SHAPE),
+                    Ok(true)
+                );
+                assert_eq!(level.block_state(host, LISTENER_WRITE), Some(stone));
+            }
             match self.0 {
                 Choice::Cancel => Flow::Cancel,
                 Choice::AvoidSneak => {
@@ -222,7 +276,7 @@ mod tests {
                     event.cancelled = true;
                     panic!("trample listener trapped");
                 }
-                Choice::Allow => Flow::Continue,
+                Choice::Allow | Choice::ReplaceDuringLift => Flow::Continue,
                 Choice::Absent => unreachable!(),
             }
         }
@@ -241,7 +295,11 @@ mod tests {
                     body,
                     Body::Guest { sneaking: true } | Body::Cat { crouching: true }
                 ));
-        let converted = !cancelled && choice != Choice::Replace;
+        let converted = !cancelled
+            && !matches!(
+                choice,
+                Choice::Replace | Choice::ReplaceDuringLift | Choice::Trap
+            );
         let damage = if matches!(body, Body::Cat { .. }) {
             0.0
         } else {
@@ -250,7 +308,7 @@ mod tests {
         let trace = Trace::default();
         let mut mods = vec![ModEntry::new(
             "trample-observer",
-            Box::new(Observe(trace.clone())),
+            Box::new(Observe(trace.clone(), choice == Choice::ReplaceDuringLift)),
         )];
         if choice != Choice::Absent {
             mods.push(ModEntry::new(
@@ -268,11 +326,11 @@ mod tests {
                 game.streaming
                     .insert_remote(&mut game.world, Chunk::empty(0, 0));
                 let reg = game.pack.assets.registry;
-                let [farmland, dirt, wheat, stone] = [
+                let [farmland, dirt, wheat, air] = [
                     "minecraft:farmland",
                     "minecraft:dirt",
                     "minecraft:wheat",
-                    "minecraft:stone",
+                    "minecraft:air",
                 ]
                 .map(|name| reg.default_state(name).unwrap());
                 let [x, y, z] = FIELD;
@@ -382,18 +440,18 @@ mod tests {
                     let m = game.mob_object(LANDING).unwrap();
                     (m.position.y, m.health)
                 };
-                let floor = if cancelled {
-                    farmland
-                } else if choice == Choice::Replace {
-                    stone
-                } else {
-                    dirt
-                };
+                let floor = if converted { dirt } else { farmland };
                 let y_after = if converted { 64.0 } else { LANDING_Y };
                 assert_eq!(game.world.block(x, y, z), floor);
-                if cancelled {
+                if !converted {
                     assert_eq!(game.world.block(x, y + 1, z), wheat);
                 }
+                let [wx, wy, wz] = LISTENER_WRITE;
+                assert_eq!(
+                    game.world.block(wx, wy, wz),
+                    air,
+                    "listener writes rolled back"
+                );
                 let final_y = match later {
                     Some(S::MovePlayerPos(m)) => {
                         let guest = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
@@ -424,14 +482,18 @@ mod tests {
                         health: initial_health,
                     });
                 }
-                if converted {
-                    let farmland = Some(api_state(farmland));
+                if converted || choice == Choice::ReplaceDuringLift {
+                    let following = if choice == Choice::ReplaceDuringLift {
+                        reg.default_state("minecraft:stone").unwrap()
+                    } else {
+                        farmland
+                    };
                     expected.extend([
-                        Moment::Lift(LANDING, 64.0, farmland),
-                        Moment::Lift(OTHER, 64.0, farmland),
+                        Moment::Lift(LANDING, 64.0, Some(api_state(farmland))),
+                        Moment::Lift(OTHER, 64.0, Some(api_state(following))),
                     ]);
                 }
-                if !cancelled {
+                if converted {
                     expected.push(Moment::Write(api_state(floor)));
                 }
                 if damage != 0.0 {
@@ -461,11 +523,9 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn a_trapping_listener_does_not_change_the_landing_order() {
+    fn a_trapping_listener_rolls_back_without_preventing_fall_damage() {
         for body in [WALKING, Body::Pig] {
-            let baseline = land(body, Choice::Absent);
-            let trapped = land(body, Choice::Trap);
-            assert_eq!(trapped[1..], baseline);
+            land(body, Choice::Trap);
         }
     }
 
@@ -620,6 +680,7 @@ mod tests {
     fn a_listener_that_changes_the_block_refuses_the_trample() {
         for body in [WALKING, Body::Pig] {
             land(body, Choice::Replace);
+            land(body, Choice::ReplaceDuringLift);
         }
     }
 }

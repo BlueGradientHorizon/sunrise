@@ -480,6 +480,9 @@ impl Game<'_> {
         if !self.native_level_write_position(level, pos)? {
             return Ok(false);
         }
+        if let Some(mut host) = super::journal_level_write::JournalLevelWrite::new(self, level) {
+            return Ok(host.write_block(pos, state, flags.bits()));
+        }
         Ok(self.native_set_block(level.dimension_id(), pos, state, flags.bits()))
     }
     /// `Block.updateFromNeighbourShapes` for `state` at `pos`, nothing written: the state

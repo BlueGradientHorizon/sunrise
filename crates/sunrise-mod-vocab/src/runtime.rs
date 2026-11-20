@@ -166,11 +166,24 @@ pub(crate) fn install(mods: Mods) -> &'static Installed {
     }
 }
 
+thread_local! {
+    static ISOLATED_FAILURES: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+/// Checkpoint for an owning action around isolated dispatch. A trapped native
+/// listener or wasm proxy resets its outputs, but the owner must also abort
+/// any tentative Host writes. Unrelated threads do not affect the checkpoint.
+#[doc(hidden)]
+pub fn isolated_failures() -> u64 {
+    ISOLATED_FAILURES.get()
+}
+
 /// Mark `id`'s listener of `hook` poisoned for the session (#2414 ruling):
 /// it is skipped by that one hook alone — its other hooks and Parts are
 /// untouched, unlike a whole-mod disable. Called only from a listener's
 /// `catch_unwind` handler, so an installation is always in place.
 pub(crate) fn poison(hook: generated::HookId, id: &'static str) {
+    ISOLATED_FAILURES.set(ISOLATED_FAILURES.get().wrapping_add(1));
     let installed = installed().expect("a poison lands inside a dispatch");
     let mut poisons = installed.poisons.lock().unwrap();
     let sets =
