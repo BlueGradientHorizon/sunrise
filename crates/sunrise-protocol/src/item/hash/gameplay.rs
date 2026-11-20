@@ -36,7 +36,7 @@ fn boolean_with<O: Ops>(r: &mut Reader) -> Option<bool> {
     r.bool().ok()
 }
 fn ident_with<O: Ops>(r: &mut Reader) -> Option<O::Value> {
-    Some(string_with::<O>(&r.string(32767).ok()?))
+    identifier_with::<O>(&r.string(32767).ok()?)
 }
 /// `Codec.xxx.optionalFieldOf(name, default)` for a float.
 fn float_or_with<O: Ops>(rec: Record<O>, name: &str, v: f32, default: f32) -> Record<O> {

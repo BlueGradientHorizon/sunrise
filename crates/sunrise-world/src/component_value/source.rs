@@ -5,14 +5,14 @@ use sunrise_core::nbt::Tag;
 type Result<T, E = String> = std::result::Result<T, E>;
 /// `Identifier.CODEC`: default the namespace, never substitute a registry entry.
 pub fn identifier(s: &str) -> Result<String> {
-    let s = if s.contains(':') {
-        s.to_owned()
-    } else {
-        format!("minecraft:{s}")
-    };
-    let Some((namespace, path)) = s.split_once(':') else {
-        unreachable!()
-    };
+    normalized_identifier(s).map(std::borrow::Cow::into_owned)
+}
+
+/// The saved component codec's identifier admission without cloning qualified names.
+#[doc(hidden)]
+pub fn normalized_identifier(s: &str) -> Result<std::borrow::Cow<'_, str>> {
+    use std::borrow::Cow;
+    let (namespace, path) = s.split_once(':').unwrap_or(("minecraft", s));
     if namespace.is_empty()
         || path.is_empty()
         || !namespace
@@ -24,8 +24,13 @@ pub fn identifier(s: &str) -> Result<String> {
     {
         return Err(format!("invalid identifier {s}"));
     }
-    Ok(s)
+    Ok(if s.contains(':') {
+        Cow::Borrowed(s)
+    } else {
+        Cow::Owned(format!("minecraft:{s}"))
+    })
 }
+
 fn string(t: &Tag) -> Result<String> {
     if let Tag::String(s) = t {
         Ok(s.to_string_lossy())
@@ -423,16 +428,11 @@ fn hover_event(t: &Tag, source: Source) -> Result<Value> {
                             [96, 64, 32, 0].map(|shift| (uuid >> shift) as i32).to_vec(),
                         ));
                     }
-                    let value = integer_list(v)?;
-                    let Value::List(values) = &value else {
-                        unreachable!()
-                    };
-                    let [Value::Int(a), Value::Int(b), Value::Int(c), Value::Int(d)] =
-                        values.as_slice()
-                    else {
+                    let parts = integer_list(v)?;
+                    if parts.len() != 4 {
                         return Err("hover entity UUID must have four integers".into());
-                    };
-                    Ok(Value::IntArray(vec![*a, *b, *c, *d]))
+                    }
+                    Ok(Value::IntArray(parts))
                 })?;
                 r.optional("name", |v| text(v, source))
             }
@@ -903,15 +903,7 @@ fn decode_component(id: &str, t: &Tag, source: Source) -> Result<Value> {
     validate_source(name, t)?;
     // Recursive template and predicate paths do not carry the large leaf dispatcher's frame.
     Ok(match name {
-        "lock" => {
-            let value = item_predicate(t, source)?;
-            let tag = if source.upgraded {
-                value.presentation_tag()?
-            } else {
-                value.tag(super::Projection::Codec)?
-            };
-            Value::from_nbt(&tag, &[])
-        }
+        "lock" => item_predicate(t, source)?,
         "use_remainder" | "sulfur_cube_content" => template(t, source)?,
         "can_place_on" | "can_break" => {
             if let Tag::List(v) = t {
@@ -1067,24 +1059,20 @@ fn component_leaf(name: &str, id: &str, t: &Tag, source: Source) -> Result<Value
             let Tag::Compound(entries) = t else {
                 return Err("enchantments are not a map".into());
             };
-            let mut out = vec![];
+            let mut out = std::collections::HashMap::with_capacity(entries.len());
             for (k, v) in entries {
-                let key = Value::string(&identifier(&k.to_string_lossy())?);
-                let value = int(v)?;
-                let Value::Int(level) = value else {
-                    unreachable!()
-                };
+                let key = identifier(&k.to_string_lossy())?;
+                let level = integer(v)?;
                 if !(1..=255).contains(&level) {
                     return Err("enchantment level outside 1..255".into());
                 }
-                let value = Value::Int(level);
-                if let Some((_, old)) = out.iter_mut().find(|(k, _)| *k == key) {
-                    *old = value;
-                } else {
-                    out.push((key, value));
-                }
+                out.insert(key, Value::Int(level));
             }
-            Value::Map(out)
+            Value::Map(
+                out.into_iter()
+                    .map(|(key, value)| (Value::string(&key), value))
+                    .collect(),
+            )
         }
         "use_effects" => record(t, |r| {
             r.b("can_sprint", false)?;
@@ -1433,21 +1421,20 @@ fn exact_components(t: &Tag, source: Source) -> Result<Value> {
     let Tag::Compound(entries) = t else {
         return Err("expected component map".into());
     };
-    let mut out = vec![];
+    let mut out = std::collections::HashMap::with_capacity(entries.len());
     for (k, v) in entries {
         let name = identifier(&k.to_string_lossy())?;
         if !super::is_persistent(&name) {
             return Err(format!("{name} has no persistent codec"));
         }
         let value = component_tag(&name, v, source)?;
-        let key = Value::string(&name);
-        if let Some((_, old)) = out.iter_mut().find(|(k, _)| *k == key) {
-            *old = value;
-        } else {
-            out.push((key, value));
-        }
+        out.insert(name, value);
     }
-    Ok(Value::Map(out))
+    Ok(Value::Map(
+        out.into_iter()
+            .map(|(key, value)| (Value::string(&key), value))
+            .collect(),
+    ))
 }
 fn partial_predicates(t: &Tag, source: Source) -> Result<Value> {
     let Tag::Compound(entries) = t else {

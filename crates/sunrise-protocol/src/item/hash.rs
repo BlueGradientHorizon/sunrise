@@ -68,6 +68,10 @@ const TEXT_BOOLS: [&str; 7] = [
 fn string_with<O: Ops>(s: &str) -> O::Value {
     O::create_string(s)
 }
+fn identifier_with<O: Ops>(s: &str) -> Option<O::Value> {
+    let name = sunrise_world::component_value::source::normalized_identifier(s).ok()?;
+    Some(O::create_string(&name))
+}
 /// `Identifier.CODEC` of registry entry `id`.
 fn entry_with<O: Ops>(names: &dyn Names, registry: &str, id: i32) -> Option<O::Value> {
     if id < 0 {
@@ -75,7 +79,7 @@ fn entry_with<O: Ops>(names: &dyn Names, registry: &str, id: i32) -> Option<O::V
     }
     names
         .name(registry, id)
-        .map(|n| string_with::<O>(&n))
+        .and_then(|n| identifier_with::<O>(&n))
         .or_else(|| {
             (registry == "minecraft:data_component_type")
                 .then(|| super::persistent::component_name(id))
@@ -204,7 +208,7 @@ impl Component {
                 O::saved_component("minecraft:custom_data", t)?
             }
             Self::Nbt(t) => O::from_nbt(t, &[])?,
-            Self::Ident(s) => string_with::<O>(s),
+            Self::Ident(s) => identifier_with::<O>(s)?,
             Self::Lore(lines) => O::create_list(
                 lines
                     .iter()
@@ -391,12 +395,15 @@ impl Component {
             }
             Self::FireworkExplosion(e) => explosion_with::<O>(e)?,
             Self::LodestoneTracker { target, tracked } => {
-                let target = target.as_ref().map(|(dimension, pos)| {
-                    Record::<O>::new()
-                        .field("dimension", string_with::<O>(dimension))
-                        .field("pos", O::create_int_list(pos))
-                        .build()
-                });
+                let target = match target {
+                    Some((dimension, pos)) => Some(
+                        Record::<O>::new()
+                            .field("dimension", identifier_with::<O>(dimension)?)
+                            .field("pos", O::create_int_list(pos))
+                            .build(),
+                    ),
+                    None => None,
+                };
                 or_default_with::<O, _>(
                     Record::<O>::new().optional("target", target),
                     "tracked",
@@ -895,6 +902,12 @@ mod tests {
             Hashed::create(&bare, &Table),
             Hashed::create(&stack, &Table)
         );
+        bare.wire.0 = Some(vec![0, 0, 0].into());
+        assert!(matches!(
+            Hashed::create(&bare, &Table),
+            Err(StackHashError::Wire(_))
+        ));
+
         // A valid sibling must not hide an invalid set, on either input path.
         stack.added.push((k::DAMAGE, C::Int(-1)));
         assert_eq!(

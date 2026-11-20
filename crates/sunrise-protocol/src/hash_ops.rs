@@ -129,7 +129,7 @@ impl HashOps {
     /// `createMap`: the entries sorted by key hash, then value hash (both as
     /// unsigned ints, `HashCode.padToLong`).
     pub fn create_map(mut entries: Vec<(HashCode, HashCode)>) -> HashCode {
-        entries.sort_by_key(|(k, v)| (k.0, v.0));
+        entries.sort_unstable_by_key(|(k, v)| (k.0, v.0));
         let mut h = Hasher::default().byte(2);
         for (k, v) in entries {
             h = h.bytes(&k.as_bytes()).bytes(&v.as_bytes());

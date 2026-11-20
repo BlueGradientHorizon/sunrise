@@ -806,10 +806,18 @@ impl WirePatch {
         for _ in 0..positive {
             let kind = r.varint()?;
             let len = r.count(r.remaining())?;
-            let (component, _) = read_added(kind, &mut Reader::new(r.bytes(len)?))?;
+            let mut value = Reader::new(r.bytes(len)?);
+            let (component, _) = read_added(kind, &mut value)?;
+            if value.remaining() != 0 {
+                return Err(crate::Error::new("trailing retained component data"));
+            }
             added.push((kind, component));
         }
-        Ok((added, read_removed(&mut r, negative)?))
+        let removed = read_removed(&mut r, negative)?;
+        if r.remaining() != 0 {
+            return Err(crate::Error::new("trailing retained patch data"));
+        }
+        Ok((added, removed))
     }
 }
 impl PartialEq for WirePatch {
@@ -1505,7 +1513,12 @@ mod tests {
         round::<Option<Stack>, Slot>(Some(quill));
         assert_eq!(sword.damage(), 17);
         round::<Option<Stack>, Slot>(Some(sword.clone()));
-        round::<Option<Hashed>, HashedSlot>(Some(Hashed::of(&sword).unwrap()));
+        let names = persistent::NameLookup::new(&|registry, id| match (registry, id) {
+            ("minecraft:enchantment", 5) => Some("minecraft:sharpness".into()),
+            ("minecraft:enchantment", 12) => Some("minecraft:looting".into()),
+            _ => None,
+        });
+        round::<Option<Hashed>, HashedSlot>(Some(Hashed::create(&sword, &names).unwrap()));
         round::<Option<Hashed>, HashedSlot>(None);
     }
 

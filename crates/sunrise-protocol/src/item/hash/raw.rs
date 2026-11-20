@@ -253,7 +253,7 @@ fn holder_or_with<O: Ops>(
 }
 /// `TrimMaterial.DIRECT_CODEC`.
 pub(super) fn trim_material_with<O: Ops>(r: &mut Reader) -> Option<O::Value> {
-    let palette = string_with::<O>(&r.string(32767).ok()?);
+    let palette = identifier_with::<O>(&r.string(32767).ok()?)?;
     let description = text_with::<O>(&r.nbt().ok()?)?;
     Some(
         Record::<O>::new()
@@ -264,7 +264,7 @@ pub(super) fn trim_material_with<O: Ops>(r: &mut Reader) -> Option<O::Value> {
 }
 /// `TrimPattern.DIRECT_CODEC` (`decal` is always written).
 fn trim_pattern_with<O: Ops>(r: &mut Reader) -> Option<O::Value> {
-    let asset = string_with::<O>(&r.string(32767).ok()?);
+    let asset = identifier_with::<O>(&r.string(32767).ok()?)?;
     let description = text_with::<O>(&r.nbt().ok()?)?;
     let decal = r.bool().ok()?;
     Some(
@@ -293,7 +293,7 @@ fn instrument_with<O: Ops>(r: &mut Reader, names: &dyn Names) -> Option<O::Value
 }
 /// `BannerPattern.DIRECT_CODEC`.
 fn banner_pattern_with<O: Ops>(r: &mut Reader) -> Option<O::Value> {
-    let asset = string_with::<O>(&r.string(32767).ok()?);
+    let asset = identifier_with::<O>(&r.string(32767).ok()?)?;
     let key = string_with::<O>(&r.string(32767).ok()?);
     Some(
         Record::<O>::new()
@@ -315,11 +315,13 @@ pub(super) fn code_with<O: Ops>(kind: i32, bytes: &[u8], names: &dyn Names) -> O
         // Persistent codecs only: the stream form is the codec's NBT.
         // intangible_projectile, map_decorations, debug_stick_state, recipes,
         // lock (an `ItemPredicate`) and container_loot.
-        22 | 49 | 59 | 68 | 81 | 82 => O::from_nbt(&r.nbt().ok()?, &[])?,
+        22 | 49 | 59 | 68 | 81 | 82 => {
+            O::saved_component(persistent::component_name(kind)?, &r.nbt().ok()?)?
+        }
         // `Codec.FLOAT`: minimum_attack_charge, potion_duration_scale.
         7 | 54 => float_with::<O>(r)?,
         // `Identifier.CODEC`: tooltip_style, note_block_sound.
-        35 | 73 => string_with::<O>(&r.string(32767).ok()?),
+        35 | 73 => identifier_with::<O>(&r.string(32767).ok()?)?,
         // `Enchantable`, `VillagerFood`.
         31 => int_record_with::<O>("value", r)?,
         44 => int_record_with::<O>("nutrition", r)?,
