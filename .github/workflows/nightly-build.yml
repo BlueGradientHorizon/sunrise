@@ -477,6 +477,14 @@ jobs:
             --title "Snapshot $DATE · $SHORT" --notes-file dist/nightly-notes.md \
             "${files[@]}" dist/SHA256SUMS dist/SHA256SUMS.sig dist/SHA256SUMS.v2.sig dist/smoke-test.json
           python3 tools/ci/nightly.py prune-snapshots --days 7
+      - name: Check stable mod API compatibility and list changed mixin targets
+        # Run before tag reservation, including publish-only retries and dry runs.
+        if: inputs.kind == 'stable' && github.repository == 'sunrise-org/sunrise'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ needs.pick.outputs.sha }}
+          TAG: ${{ needs.pick.outputs.tag }}
+        run: python3 tools/ci/nightly.py stable-mod-api "$SHA" "$TAG" dist/nightly-notes.md
       - name: Publish as the stable release <target>-<semver>
         if: needs.pick.outputs.publish == 'true' && inputs.kind == 'stable'
         env:
@@ -491,6 +499,8 @@ jobs:
           # The approved head, its daily run and the version again, then the tag at that commit in one write.
           python3 tools/ci/nightly.py reserve-stable-tag "$SHA" "$TAG"
           files=(); while read -r _ name; do files+=("dist/${name#\*}"); done < dist/SHA256SUMS
+          # Advisory notes overflow only; this is not an install asset.
+          if [[ -f dist/changed-mixin-targets.md ]]; then files+=(dist/changed-mixin-targets.md); fi
           # A full release, never GitHub's latest: the site's launcher download and older servers read the latest.
           gh release create "$TAG" --verify-tag --latest=false --title "Sunrise $TAG" --notes-file dist/nightly-notes.md \
             "${files[@]}" dist/SHA256SUMS dist/SHA256SUMS.sig dist/SHA256SUMS.v2.sig dist/smoke-test.json

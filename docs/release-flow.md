@@ -435,7 +435,7 @@ commit to `nightly/26.3` has not completed yet: it passes its own `<run id>/<att
    `release/26.3` (a missing branch is refused) and have a real daily run that passed every leg on exactly it: main's
    for the commit the branch was cut at, or the branch's own (`gh workflow run daily.yml --ref release/26.3
    -f dry_run=false`, which publishes the commit's SDK and moves no `daily-green`, files no issue and starts no
-   Nightly). A dry run only warns when that run is missing, as it does for a missing SDK;
+   Nightly). The pick step only warns about missing daily evidence or a missing SDK in a dry run;
 2. needs `sdk-<sha>` of that commit published first, as a Nightly does;
 3. is held by `RELEASES_PAUSED` and by an open `release-blocker` at the pick, and by a blocker again before publishing;
 4. is tagged `<target>-<release_version>`, which a real run must name: newer than every stable tag on the target,
@@ -448,6 +448,20 @@ commit to `nightly/26.3` has not completed yet: it passes its own `<run id>/<att
    (`horizon release 26.3-0.1.0`, checked as `signed_digest` checks a release) with the `release` environment's key,
    and publishes a full release, not a pre-release, with `--latest=false`: the site's launcher download reads
    GitHub's latest release.
+
+The stable workflow compares the signed SDK surfaces against the previous published stable release of the same
+Minecraft version and Sunrise major version (`26.3-0.x` is one line). A patch requires an identical mod API; a
+minor allows only changes the SDK classifies as additive. Conditional changes can break some existing mods, so a
+minor refuses them too. The SDK's `content_api` (the content manifest's API version) must stay the same within a
+line. The first release of a line has no API restriction. No label, change note or dispatch option overrides the
+check. This compares declarations, not behaviour: a vanilla parity fix is allowed in a patch even when a mod
+can observe it. Within a line, backport fixes by cherry-pick; a merge from the Nightly starts a new major.
+
+The check runs before tag reservation, on publish-only retries and in dry runs. Comparing against a previous
+stable release requires both signed SDKs, even on a dry run. Native engine loops, internals and mixin targets
+are outside the API restriction. The release notes list targets added, removed or changed in `functions.json`
+since the previous stable release of the same Minecraft version (including across a major bump). If the list
+doesn't fit in the notes, they link to the full list on the release.
 
 No launcher lists a `26.3-<semver>` release yet (they take `v`-tags and the Nightly), so a stable release is a
 download for now.

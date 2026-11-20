@@ -22,6 +22,7 @@
     nightly.py sdk-index <sha> <out>     writes sdk-<sha>'s sdk.json to <out>, checked against its SHA256SUMS
     nightly.py sdk-previous <sha> <out>  prints the SDK published before <sha> on its history, and writes its
                                    surface.json to <out>, checked; prints nothing when there is none
+    nightly.py stable-mod-api <sha> <tag> <notes>  checks the stable mod API step and appends changed mixin targets
 
 A nightly builds main plus the pull requests the trusted reviewers picked (the set: tools/ci/nightly_set.py), merged
 in their order and pushed as nightly/build-<date>-<n>; with no set, main alone. Main is the commit the
@@ -44,11 +45,13 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import hashlib
+import io
 import json
 import os
 import re
 import subprocess
 import sys
+import tarfile
 import tempfile
 import urllib.parse
 import urllib.request
@@ -268,23 +271,27 @@ def package_format() -> int:
 # The SDK's packing legs (prebuilt-game-build.yml's matrix): each target, and the Linux server's side.
 SDK_LEGS = (("x86_64-unknown-linux-gnu", ""), ("x86_64-unknown-linux-gnu", "-server"),
             ("x86_64-pc-windows-gnu", ""), ("aarch64-apple-darwin", ""))
+SDK_BUILD_DATA = "build-data.tar.xz"
+SDK_SURFACE = "surface.json"
 # Every asset sdk-publish requires: each leg's slices, each client target's tool, the gathered data and the API source.
 SDK_ARCHIVES = (tuple(f"{kind}-{target}{side}.tar.xz" for target, side in SDK_LEGS
                       for kind in ("runtime", "api", "engine"))
                 + tuple(f"tool-{target}.tar.xz" for target, side in SDK_LEGS if not side)
-                + ("api-source.tar.xz", "build-data.tar.xz", "surface.json"))
+                + ("api-source.tar.xz", SDK_BUILD_DATA, SDK_SURFACE))
 # Beside them in the release: the index and the signed sums (`sunrise_mod_package::sdk::BESIDE_ASSETS`).
 SDK_INDEX = "sdk.json"
 SDK_ASSETS = SDK_ARCHIVES + (SDK_INDEX, "SHA256SUMS", "SHA256SUMS.sig")
 
 
+def published_releases():
+    pages = train.gh_json("api", "--paginate", "repos/sunrise-org/sunrise/releases?per_page=100")
+    return (release for page in pages for release in page if not release["draft"])
+
+
 def ready_sdk_shas() -> set[str]:
     """Snapshot of the complete published `sdk-<sha>` releases; API failures fail closed."""
-    releases = train.gh_json("api", "--paginate",
-                             f"repos/sunrise-org/sunrise/releases?per_page=100")
     return {release["tag_name"].removeprefix("sdk-")
-            for page in releases for release in page
-            if not release["draft"] and re.fullmatch(r"sdk-[0-9a-f]{40}", release["tag_name"])
+            for release in published_releases() if re.fullmatch(r"sdk-[0-9a-f]{40}", release["tag_name"])
             and set(SDK_ASSETS) <= {asset["name"] for asset in release["assets"]}}
 
 
@@ -310,20 +317,26 @@ def signature_check(sha: str, folder: Path, names: list[str]) -> list[str]:
             *(argument for name in names for argument in ("--only", name)), str(folder)]
 
 
-def released(sha: str, name: str) -> bytes:
-    """The asset `name` of sdk-<sha>, once its SHA256SUMS signature is the fork's for `sdk-<sha>` and its bytes match
-    them ([`signature_check`])."""
-    with tempfile.TemporaryDirectory() as folder:
-        gh("release", "download", f"sdk-{sha}", "--repo", "sunrise-org/sunrise", "--dir", folder,
-           "--pattern", name, "--pattern", "SHA256SUMS", "--pattern", "SHA256SUMS.sig")
-        data = (Path(folder) / name).read_bytes()
-        if not listed(name, data, (Path(folder) / "SHA256SUMS").read_text()):
-            raise SystemExit(f"sdk-{sha}'s {name} does not match its SHA256SUMS")
-        checked = subprocess.run(signature_check(sha, Path(folder), [name]), cwd=Path(__file__).resolve().parents[2],
+def released_assets(sha: str, *names: str) -> dict[str, bytes]:
+    """Assets of sdk-<sha>, once their bytes match its SHA256SUMS and its signature verifies for that tag."""
+    with tempfile.TemporaryDirectory() as directory:
+        folder = Path(directory)
+        gh("release", "download", f"sdk-{sha}", "--repo", "sunrise-org/sunrise", "--dir", directory,
+           *(argument for name in (*names, "SHA256SUMS", "SHA256SUMS.sig") for argument in ("--pattern", name)))
+        sums = (folder / "SHA256SUMS").read_text()
+        data = {name: (folder / name).read_bytes() for name in names}
+        for name, contents in data.items():
+            if not listed(name, contents, sums):
+                raise SystemExit(f"sdk-{sha}'s {name} does not match its SHA256SUMS")
+        checked = subprocess.run(signature_check(sha, folder, list(names)), cwd=Path(__file__).resolve().parents[2],
                                  capture_output=True, text=True)
         if checked.returncode != 0:
             raise SystemExit(f"sdk-{sha}'s signature does not check: {checked.stderr.strip()}")
         return data
+
+
+def released(sha: str, name: str) -> bytes:
+    return released_assets(sha, name)[name]
 
 
 def checked_index(sha: str, index: bytes) -> dict:
@@ -518,6 +531,100 @@ def remote_tags() -> dict[str, str]:
         else:
             refs.setdefault(name, sha)
     return refs
+
+
+def stable_sdk_inputs(sha: str, surface: Path | None) -> tuple[str, dict]:
+    """Read verified content and mixin declarations; write the plain SDK surface only for a same-line comparison."""
+    names = (SDK_BUILD_DATA, SDK_SURFACE) if surface is not None else (SDK_BUILD_DATA,)
+    files = released_assets(sha, SDK_INDEX, *names)
+    try:
+        index = json.loads(files[SDK_INDEX])
+        if index["schema"] != 1 or index["build"]["commit"] != sha:
+            raise ValueError("sdk.json has an unsupported schema or names the wrong build")
+        content_api = index["content_api"]
+        if not isinstance(content_api, str):
+            raise ValueError("sdk.json has no content_api version")
+        for name in names:
+            asset, data = index["assets"][name], files[name]
+            if asset["size"] != len(data) or asset["sha256"] != hashlib.sha256(data).hexdigest():
+                raise ValueError(f"{name} does not match sdk.json")
+        with tarfile.open(fileobj=io.BytesIO(files[SDK_BUILD_DATA]), mode="r:xz") as archive:
+            member = archive.getmember("./functions.json")
+            if not member.isfile():
+                raise ValueError("functions.json is not a file")
+            with archive.extractfile(member) as file:
+                functions = json.load(file)["functions"]
+        if not isinstance(functions, dict):
+            raise ValueError("functions.json has no function map")
+    except (KeyError, TypeError, ValueError, tarfile.TarError) as error:
+        raise SystemExit(f"sdk-{sha}: cannot read stable comparison inputs: {error}")
+    if surface is not None:
+        surface.write_bytes(files[SDK_SURFACE])
+    return content_api, functions
+
+
+def append_mixin_notes(notes: Path, tag: str, previous: str, old: dict, new: dict) -> None:
+    """Compare complete function records, including their source spans, not internals or refusal rows."""
+    changes = []
+    for name in sorted(old.keys() | new.keys()):
+        if name not in old:
+            changes.append(f"- Added: `{name}`\n")
+        elif name not in new:
+            changes.append(f"- Removed: `{name}`\n")
+        elif old[name] != new[name]:
+            changes.append(f"- Changed: `{name}`\n")
+    intro = f"\n### Changed mixin targets\n\nCompared with `{previous}`:\n\n"
+    section = "".join(changes) or "No mixin targets changed.\n"
+    # Keep the full list as an advisory release asset if it would exceed GitHub's release body limit.
+    if notes.stat().st_size + len((intro + section).encode()) > 125_000:
+        listing = notes.with_name("changed-mixin-targets.md")
+        listing.write_text(intro + section, encoding="utf-8")
+        section = ("[Full list of changed mixin targets]"
+                   f"(https://github.com/sunrise-org/sunrise/releases/download/{tag}/{listing.name}).\n")
+    with notes.open("a", encoding="utf-8") as out:
+        out.write(intro + section)
+
+
+def stable_mod_api(sha: str, tag: str, notes: Path) -> None:
+    """Compare to the latest published stable release, not sdk.json's previous SDK or a reserved tag."""
+    parsed = train.stable_version(tag)
+    if not parsed or parsed[0] != train.TARGET:
+        raise SystemExit(f"::error::refused: {tag} is not a stable tag on {train.TARGET}")
+    target, version = parsed
+    tags = (release["tag_name"] for release in published_releases() if not release["prerelease"])
+    previous = max(((before[1], name) for name in tags if (before := train.stable_version(name))
+                    and before[0] == target and before[1] < version), default=None)
+    if previous is None:
+        with notes.open("a", encoding="utf-8") as out:
+            out.write("\n### Changed mixin targets\n\nNo earlier stable release to compare.\n")
+        return
+    old_version, old_tag = previous
+    old_sha = remote_tags().get(old_tag)
+    if not old_sha:
+        raise SystemExit(f"::error::refused: {tag} cannot resolve the previous stable tag {old_tag}")
+    same_line = old_version[0] == version[0]
+    with tempfile.TemporaryDirectory() as directory:
+        work = Path(directory)
+        before, after = work / "before.json", work / "after.json"
+        old_content, old_functions = stable_sdk_inputs(old_sha, before if same_line else None)
+        new_content, new_functions = stable_sdk_inputs(sha, after if same_line else None)
+        if same_line:
+            report = work / "diff.json"
+            # Both files are plain SDK surfaces: no native internals, loops, or change-note waivers.
+            subprocess.run(["cargo", "run", "--locked", "--quiet", "-p", "sunrise-mod-api-gen", "--bin", "sunrise-stage",
+                            "--", "surface-diff", str(before), str(after), "--json", str(report)], check=True)
+            verdict = json.loads(report.read_text())["verdict"]
+            minor = old_version[1] != version[1]
+            allowed = {"identical", "additive"} if minor else {"identical"}
+            problems = []
+            if verdict not in allowed:
+                problems.append(f"mod API is {verdict} (see the changed records above)")
+            if old_content != new_content:
+                problems.append(f"content_api changed from {old_content!r} to {new_content!r}")
+            if problems:
+                step = "minor" if minor else "patch"
+                raise SystemExit(f"::error::refused: {tag} is a {step} release after {old_tag}: {'; '.join(problems)}")
+    append_mixin_notes(notes, tag, old_tag, old_functions, new_functions)
 
 
 def reserve_stable_tag(sha: str, tag: str) -> None:
@@ -773,6 +880,10 @@ def main() -> None:
     previous = sub.add_parser("sdk-previous")
     previous.add_argument("sha")
     previous.add_argument("out", type=Path)
+    stable_api = sub.add_parser("stable-mod-api")
+    stable_api.add_argument("sha")
+    stable_api.add_argument("tag")
+    stable_api.add_argument("notes", type=Path)
     sub.add_parser("prune").add_argument("--days", type=int, default=7)
     sub.add_parser("prune-snapshots").add_argument("--days", type=int, default=7)
     sub.add_parser("prune-builds").add_argument("--days", type=int, default=7)
@@ -811,8 +922,10 @@ def main() -> None:
         args.out.write_bytes(published_index(args.sha))
     elif args.cmd == "sdk-previous":
         if build := previous_sdk(args.sha):
-            args.out.write_bytes(released(build, "surface.json"))
+            args.out.write_bytes(released(build, SDK_SURFACE))
             print(build)
+    elif args.cmd == "stable-mod-api":
+        stable_mod_api(args.sha, args.tag, args.notes)
     elif args.cmd == "rotate":
         rotate()
     elif args.cmd == "prune-builds":
