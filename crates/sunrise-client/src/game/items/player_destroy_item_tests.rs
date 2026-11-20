@@ -11,16 +11,27 @@ struct Notice {
     entity: i32,
     hand: Option<Hand>,
     original: mod_api::ItemStack,
+    /// What the notified player's hand held while the listener ran.
+    in_hand: Option<mod_api::ItemStack>,
 }
 
 #[derive(Clone, Default)]
-struct Observer(Arc<Mutex<Vec<Notice>>>);
+struct Observer(Arc<Mutex<Vec<Notice>>>, Arc<Mutex<Option<mod_api::WorldEpoch>>>);
 
 #[mod_api::__subscriptions]
 impl Hooks for Observer {
     fn player_destroy_item(&self, host: HostSide<'_>, event: &mut PlayerDestroyItemEvent<'_>) {
+        let client = matches!(host, HostSide::Client(_));
+        let living = self.1.lock().unwrap().map(|epoch| {
+            mod_api::LivingRef::new(mod_api::EntityRef::new(epoch, u32::try_from(event.player_entity_id).unwrap()))
+        });
+        let in_hand = event.hand.zip(living).and_then(|(hand, living)| match host {
+            HostSide::Server(host) => living.hand_item(&*host, hand),
+            HostSide::Client(host) => living.hand_item(&*host, hand),
+        });
         self.0.lock().unwrap().push(Notice {
-            client: matches!(host, HostSide::Client(_)),
+            in_hand,
+            client,
             player: event.player,
             entity: event.player_entity_id,
             hand: event.hand,
@@ -84,6 +95,7 @@ fn run_isolated() {
                 game.player =
                     Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
                 game.player.as_mut().unwrap().entity_id = 71;
+                *observer.1.lock().unwrap() = game.native_lifecycle.epoch();
                 game.set_mode_id(0);
                 game.selected = 0;
                 game.level.player_uuid = Some([1, 2, 3, 4]);
@@ -136,7 +148,16 @@ fn run_isolated() {
                     &*game.offhand.as_ref().unwrap().item,
                     "minecraft:glass_bottle"
                 );
-                take_notice(&observer, Some(Hand::Off), "minecraft:potion", 0);
+                let drunk = take_notice(&observer, Some(Hand::Off), "minecraft:potion", 0);
+                // The notice came before the remainder replaced the used-up stack.
+                assert!(
+                    drunk
+                        .in_hand
+                        .as_ref()
+                        .is_none_or(|held| mod_api::__private::item_key_id(held.item()).unwrap()
+                            != "minecraft:glass_bottle"),
+                    "a listener never sees the glass bottle in the hand"
+                );
 
                 if !client {
                     // The same notice identifies a swapped-in guest rather than the local host.

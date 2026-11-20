@@ -250,12 +250,13 @@ impl Game<'_> {
         let mut result = self.finish_result(stack, info);
         let hand = hand_of(Some((slot, 0))).unwrap_or(self.hand);
         self.native_living_entity_use_item_finish(stack, None, hand, 0, &mut result);
-        let before = self.creative_stacks();
-        *self.stack_in_mut(slot) = result.filter(|s| s.count > 0);
-        self.remote_synced_since(&before);
+        // Heard while the hand still holds the used-up stack, before a remainder replaces it.
         if !self.creative && stack.count == 1 && self.consumable(stack).is_some() {
             self.player_item_destroyed(stack, Some(hand));
         }
+        let before = self.creative_stacks();
+        *self.stack_in_mut(slot) = result.filter(|s| s.count > 0);
+        self.remote_synced_since(&before);
     }
     /// What `Item.finishUsingItem` leaves in the hand on a server's client: a
     /// stack that is not a consumable stays as it is (a spyglass); a

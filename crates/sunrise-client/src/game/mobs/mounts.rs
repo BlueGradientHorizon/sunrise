@@ -271,11 +271,11 @@ impl Game<'_> {
                         &broken,
                     );
                     self.award_stat("broken", &broken.item, 1);
+                    self.player_item_destroyed(&stack, Some(Hand::Main));
                     // hurtAndConvertOnBreak keeps the broken stick's components.
                     let mut rod = stack.transmute("minecraft:fishing_rod", 1);
                     rod.damage = 0;
                     self.inventory[self.selected] = Some(rod);
-                    self.player_item_destroyed(&stack, Some(Hand::Main));
                 }
             }
         }

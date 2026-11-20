@@ -16,7 +16,8 @@ The callback receives `HostSide`: the server sees its applied action, including 
 and a client sees its own prediction, completed use or equipment-break notification. Other players'
 inventory synchronization does not produce notices. This is a notification after the change, so it
 cannot cancel the action. Consuming only part of a stack and creative use that preserves the item
-produce no notice. An enclosing use does not repeat an already reported break or consumption.
+produce no notice. The notice is sent before a
+remainder (an empty bottle) replaces the used-up stack, so a listener never sees the remainder in the hand. An enclosing use does not repeat an already reported break or consumption.
 
 See the [API reference](../reference/api.md) for the generated event and `Hooks` method.
 
