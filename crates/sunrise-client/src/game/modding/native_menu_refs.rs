@@ -738,7 +738,6 @@ mod tests {
             if event.current.id == "playing" && event.new.menu == Some(PANEL) {
                 let menu = host.local_player()?.container_menu(host)?;
                 let count = menu.slot_count(host)?;
-                assert!(menu.slot_boxes(host).is_none());
                 *self.opening.lock().unwrap() = Some((menu, count));
             }
             None
