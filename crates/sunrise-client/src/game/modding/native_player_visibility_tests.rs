@@ -342,9 +342,21 @@ fn player_support_uses_the_footprint_then_the_exact_feet_offset_on_both_sides() 
     with_guests(|game| {
         setup(game);
         let player = game.player(12).unwrap();
+        assert!(game.command_guest(12).unwrap().motion.is_none());
+        assert_eq!(player.supporting_block(game), Ok(None));
+        assert_eq!(player.on_block(game), Ok(Some(BlockPos::new(3, 63, 5))));
+        assert_eq!(player.entity().on_block(game), Some([3, 63, 5]));
+        game.lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .update_guest(12, |guest| guest.position[1] = 64.1)
+            .unwrap();
+        assert_eq!(player.on_block(game), Ok(Some(BlockPos::new(3, 64, 5))));
+        assert_eq!(player.entity().on_block(game), Some([3, 64, 5]));
+
         game.as_guest(12, land).unwrap();
         let slab = BlockPos::new(0, 64, 0);
-        assert_eq!(player.supporting_block(game), Ok(Some(slab)));
         // Changing the world without moving the guest must not replace the
         // support retained by the guest's last movement with a fresh scan.
         let air = game
@@ -354,6 +366,7 @@ fn player_support_uses_the_footprint_then_the_exact_feet_offset_on_both_sides() 
             .default_state("minecraft:air")
             .unwrap();
         game.world.set(0, 64, 0, air).unwrap();
+        assert_eq!(player.supporting_block(game), Ok(Some(slab)));
         assert_eq!(player.on_block(game), Ok(Some(slab)));
         assert_eq!(player.entity().on_block(game), Some([0, 64, 0]));
 
@@ -370,6 +383,14 @@ fn player_support_uses_the_footprint_then_the_exact_feet_offset_on_both_sides() 
             );
             assert_eq!(player.entity().on_block(game), Some([1, block_y, 0]));
         }
+        game.lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .update_guest(12, |guest| guest.position[1] = 66.1)
+            .unwrap();
+        assert_eq!(player.on_block(game), Ok(Some(BlockPos::new(1, 66, 0))));
+        assert_eq!(player.entity().on_block(game), Some([1, 66, 0]));
         assert_eq!(stale(player).supporting_block(game), Ok(None));
         assert_eq!(stale(player).on_block(game), Ok(None));
     });

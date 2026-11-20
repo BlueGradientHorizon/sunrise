@@ -7,9 +7,10 @@ use crate::*;
 #[sunrise_mod_api_macros::host_area]
 pub trait PlayerWorldBackend {
     /// Side: both.
-    /// The support block stored by the player's last move (`Entity.mainSupportingBlockPos`).
-    /// `Ok(None)` for an airborne player, a stale handle or a player whose motion this
-    /// side does not keep. On the client, reads the local player's prediction.
+    /// The support block retained from the player's last move (`Entity.mainSupportingBlockPos`),
+    /// not a new collision query or a read of the current ground flag. `Ok(None)` if no support
+    /// was retained, the handle is stale, or this side does not keep the player's motion.
+    /// On the client, reads the local player's prediction.
     /// `Err(LevelReadError::Unavailable)` if the host cannot read player motion.
     #[access(WorldOnly)]
     fn player_supporting_block(
@@ -17,9 +18,10 @@ pub trait PlayerWorldBackend {
         player: PlayerRef,
     ) -> Result<Option<BlockPos>, LevelReadError>;
     /// Side: both.
-    /// `Entity.getOnPos()` for this player: its recorded support block, otherwise the block
-    /// at its feet with vanilla's `1.0E-5F` offset subtracted from Y. `Ok(None)` for a stale
-    /// handle or a player whose motion this side does not keep.
+    /// `Entity.getOnPos()` for this player: the support retained from its last move, otherwise
+    /// the block at its feet with vanilla's `1.0E-5F` subtracted from Y. A server guest's feet
+    /// come from the authoritative position even before the first motion is stored.
+    /// `Ok(None)` for a stale handle or a player with no readable position on this side.
     /// `Err(LevelReadError::Unavailable)` if the host cannot read player motion.
     #[access(WorldOnly)]
     fn player_on_block(&self, player: PlayerRef) -> Result<Option<BlockPos>, LevelReadError>;
