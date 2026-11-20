@@ -112,7 +112,7 @@ impl Game<'_> {
                         item,
                         "minecraft:bucket" | "minecraft:bowl" | "minecraft:shears"
                     ) || m.extra.variant == 1
-                        && sunrise_client::flowers::stew_effect(item).is_some())
+                        && self.items().suspicious_stew_effects(item).is_some())
             }
             Species::Sheep if !act => {
                 item == "minecraft:shears" || self.sheep_would_take_dye(i, hand)

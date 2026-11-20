@@ -582,7 +582,21 @@ struct BlockFile {
     pick_item: Option<String>,
     #[serde(default)]
     components: BTreeMap<String, serde_json::Value>,
+    suspicious_stew_effects: Option<Vec<StewEffect>>,
 }
+
+/// One entry of a block's suspicious stew effect list, in the item component's JSON form.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, Deserialize)]
+pub struct StewEffect {
+    pub id: String,
+    #[serde(default = "stew_duration")]
+    pub duration: i32,
+}
+
+fn stew_duration() -> i32 {
+    160
+}
+
 fn yes() -> bool {
     true
 }
@@ -664,6 +678,8 @@ pub struct Block {
     pub pick_item: Option<String>,
     /// Its item's component patch, as an [`Item`]'s.
     pub components: BTreeMap<String, serde_json::Value>,
+    /// Ordered effects supplied by this block, independent of its item's components.
+    pub suspicious_stew_effects: Option<Vec<StewEffect>>,
     /// A connecting block (template `minecraft:chorus_plant`, a `PipeBlock`
     /// without the chorus plant's rules): the block tag, without `#`, whose
     /// blocks it joins besides itself (a cable's machines).
@@ -1500,6 +1516,7 @@ impl Content {
                 block_item: file.block_item,
                 pick_item: file.pick_item,
                 components: file.components,
+                suspicious_stew_effects: file.suspicious_stew_effects,
                 connects_to: file
                     .connects_to
                     .map(|t| t.trim_start_matches('#').to_owned()),
@@ -2606,6 +2623,7 @@ capabilities = ["registries"]
                 block_item: None,
                 pick_item: None,
                 components: BTreeMap::new(),
+                suspicious_stew_effects: None,
                 connects_to: None,
                 thickness: None,
                 wood_type: None,
