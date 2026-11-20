@@ -14,16 +14,18 @@ pub trait Hooks {
     /// apply run in one transaction. If the landing entity is gone or the block at `pos` is no
     /// longer `state`, the apply refuses without recomputing, and transactional writes roll back.
     /// Otherwise, an allowed trample first lifts every intersecting body, then writes the base
-    /// block and posts the block-change game event. Fall damage follows, even when the trample
-    /// was cancelled or refused. With no listener, the same lift, write and damage run in the
-    /// same order. A trapping listener's cancellation is discarded and its listener for this
-    /// hook is disabled for the session.
+    /// block and posts the block-change game event. A cancellation, a failed listener or stale
+    /// preconditions roll back the listener's transactional writes and leave the trample unapplied.
+    /// A failed listener is disabled for this hook for the session. Fall damage follows whether
+    /// the trample applies or not. With no listener, the lift, write and damage run in the same
+    /// order, without a transaction.
     #[hook(
         side = "server",
         contract = "cancel",
         out = "cancel",
         neoforge = "BlockEvent.FarmlandTrampleEvent",
         cancellable = true,
+        non_exhaustive = true,
         isolate = true,
         version = 3
     )]
@@ -32,6 +34,6 @@ pub trait Hooks {
 
 /// Original upstream notes; the existing fork event above owns this moment.
 pub trait UpstreamNotes {
-    #[notes = r###"farmland trampling: `farmland_trample(host, event)` is heard when a player or mob that fell onto farmland is about to turn it to dirt, after vanilla's chance and checks (NeoForge's `FarmlandTrampleEvent`, Bukkit's physical `PlayerInteractEvent` and `EntityInteractEvent`). Cancel and the farmland and its crop stay. Otherwise bodies are lifted before the base block is written. Fall damage follows either way. No `self`. Bundles that use it need `"hooks": @API:trample@`."###]
+    #[notes = r###"farmland trampling: `farmland_trample(host, event)` is heard when a player or mob that fell onto farmland is about to turn it to dirt, after vanilla's chance and checks (NeoForge's `FarmlandTrampleEvent`, Bukkit's physical `PlayerInteractEvent` and `EntityInteractEvent`). Cancel and the farmland and its crop stay. Version 3 takes the server host and a `LivingRef`, not a loop context. Cancellation, listener failure or stale state rolls back transactional writes. Otherwise bodies are lifted before the base block is written and `BLOCK_CHANGE` is posted. Fall damage follows either way. Bundles that use it need `"hooks": @API:trample@`."###]
     fn trample();
 }

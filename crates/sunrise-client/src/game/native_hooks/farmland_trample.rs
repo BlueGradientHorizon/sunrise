@@ -302,7 +302,6 @@ mod tests {
     }
 
     fn land_with_later_packet(body: Body, choice: Choice, later: Option<S>) -> Vec<Moment> {
-        crate::entry::install_client_hooks();
         let player = matches!(body, Body::Guest { .. });
         let cancelled = choice == Choice::Cancel
             || (choice == Choice::AvoidSneak
@@ -606,7 +605,6 @@ mod tests {
             motion::MotionWorld,
         };
 
-        crate::entry::install_client_hooks();
         let trace = Trace::default();
         mod_platform::testing::with_mods(
             vec![ModEntry::new(
