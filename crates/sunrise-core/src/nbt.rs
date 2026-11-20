@@ -873,7 +873,9 @@ impl<'a> Reader<'a, '_> {
             _ => self.scalar_payload(id),
         }
     }
-    // Scalar temporaries must not occupy every recursive container frame.
+    // Keep scalar and container frames separate: inlining the branches together
+    // gives every recursive call the largest stack frame and mixes their hot code.
+    #[inline(never)]
     fn scalar_payload(&mut self, id: u8) -> Result<Tag, Error> {
         Ok(match id {
             0 => Tag::End,
@@ -916,6 +918,7 @@ impl<'a> Reader<'a, '_> {
             _ => return Err(self.error("unknown tag type")),
         })
     }
+    #[inline(never)]
     fn list_payload(&mut self, depth: usize) -> Result<Tag, Error> {
         let (element_id, len) = self.list_header()?;
         self.charge(4 * len as u64)?;
@@ -932,6 +935,7 @@ impl<'a> Reader<'a, '_> {
         }
         Ok(Tag::List(values))
     }
+    #[inline(never)]
     fn compound_payload(&mut self, depth: usize) -> Result<Tag, Error> {
         let paths = std::mem::take(&mut self.entering);
         let parent = self.holds_bounded(paths, depth);
