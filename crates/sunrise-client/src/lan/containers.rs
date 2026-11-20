@@ -592,7 +592,9 @@ impl Hub {
         let (window, state) = (menu.window, (menu.state + 1) & 0x7FFF);
         self.send_menu_snapshot(i, window, state, &items);
         self.guests.update(i, |g| {
-            let menu = g.menu.as_mut().unwrap();
+            let Some(menu) = g.menu.as_mut() else {
+                return;
+            };
             menu.state = state;
             menu.sent = items;
             if menu.player_slots() != 0 {
@@ -679,27 +681,16 @@ impl Hub {
         self.native_menu_events.extend(closed);
     }
 
-    fn hashed_matches(&mut self, claimed: &Option<Hashed>, mine: &Option<ItemStack>) -> bool {
-        match (claimed, mine) {
+    /// `HashedStack.matches`: a slot or cursor prediction includes the component patch.
+    fn hashed_matches(&self, item: &Option<Stack>, predicted: &Option<Hashed>) -> bool {
+        match (item, predicted) {
             (None, None) => true,
-            (Some(h), Some(s)) => h.item == self.item_id(&s.item) && h.count == s.count as i32,
-            _ => false,
-        }
-    }
-
-    fn carried_matches_prediction(
-        &self,
-        carried: &Option<Stack>,
-        predicted: &Option<Hashed>,
-    ) -> bool {
-        match (carried, predicted) {
-            (None, None) => true,
-            (Some(carried), Some(predicted)) => {
-                if carried.item != predicted.item || carried.count != predicted.count {
+            (Some(item), Some(predicted)) => {
+                if item.item != predicted.item || item.count != predicted.count {
                     return false;
                 }
                 let current = Hashed::create(
-                    carried,
+                    item,
                     &SyncedNames {
                         builtin: &self.sync.builtin,
                         dynamic: &self.sync.dynamic,
@@ -730,7 +721,7 @@ impl Hub {
         }
         let carried = guest.carried.clone();
         let item = self.stack(&carried);
-        let agreed = prediction.is_some_and(|p| self.carried_matches_prediction(&item, p));
+        let agreed = prediction.is_some_and(|p| self.hashed_matches(&item, p));
         self.guests.update(i, |g| {
             if !agreed {
                 g.send(&C::SetCursorItem(play::SetCursorItem { item }));
@@ -1110,13 +1101,16 @@ impl Hub {
     ) -> bool {
         let carried = self.guests[i].carried.clone();
         let item = self.stack(&carried);
-        if !self.carried_matches_prediction(&item, &p.carried) {
+        if !self.hashed_matches(&item, &p.carried) {
             return false;
         }
         let claimed: HashMap<usize, &Option<Hashed>> =
             p.changed.iter().map(|(s, h)| (*s as usize, h)).collect();
         let agreed = (0..total).all(|slot| match claimed.get(&slot) {
-            Some(c) => self.hashed_matches(c, &view(slot)),
+            Some(c) => {
+                let item = self.stack(&view(slot));
+                self.hashed_matches(&item, c)
+            }
             None => !changed.contains(&slot),
         });
         if agreed {
@@ -1174,7 +1168,10 @@ impl Hub {
         for slot in 0..total {
             let mine = self.view_slot(i, world, slot);
             let agreed = match claimed.get(&slot) {
-                Some(c) => self.hashed_matches(c, &mine),
+                Some(c) => {
+                    let item = self.stack(&mine);
+                    self.hashed_matches(&item, c)
+                }
                 None => {
                     !changed.contains(&slot)
                         && (!in_menu

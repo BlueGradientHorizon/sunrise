@@ -482,10 +482,36 @@ fn owned_click_prediction_applies_caps_and_the_server_corrects_an_override() {
             }),
         );
         let component_correction = sent(&rx);
-        assert!(component_correction.iter().any(|p| matches!(p,
-            C::ContainerSetContent(p) if p.container == window && p.items[1] == named_one_net
-                && p.carried == named_seven_net
-        )));
+        let state = component_correction
+            .iter()
+            .find_map(|p| match p {
+                C::ContainerSetContent(p) if p.container == window => {
+                    assert_eq!(p.items[1], named_one_net);
+                    assert_eq!(p.carried, named_seven_net);
+                    Some(p.state)
+                }
+                _ => None,
+            })
+            .unwrap();
+
+        // No player slots means this quick move does nothing. The prediction has the correct
+        // cursor, but claims the slot kept a named stick instead of an ordinary one.
+        game.lan_guest_packet(
+            1,
+            S::ContainerClick(ContainerClick {
+                container: window,
+                state,
+                slot: 0,
+                button: 0,
+                input: sunrise_client::lan::menu::input::QUICK_MOVE,
+                changed: vec![(0, named_one_net.as_ref().map(Hashed::of))],
+                carried: named_seven_net.as_ref().map(Hashed::of),
+            }),
+        );
+        let slot_correction = sent(&rx);
+        assert!(matches!(&slot_correction[..], [C::ContainerSetSlot(p)]
+            if p.container == window && p.slot == 0 && p.item.as_ref() == Some(one)
+        ));
 
         // Run the real client click path and apply those authoritative packets. Both sides
         // know the declared caps; only the server executes the part's override.
