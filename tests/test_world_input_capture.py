@@ -17,17 +17,23 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def method(source, name):
-    # A method moved out of game.rs is `pub(super)` in its own file; the fixtures paste it as a
-    # private one.
-    plain, moved = f"    fn {name}(", f"    pub(super) fn {name}("
-    start = source.index(plain if plain in source else moved)
+    # A method moved out of game.rs is `pub(super)` (or, out of its parent module,
+    # `pub(in crate::game)`) in its own file; the fixtures paste it as a private one.
+    candidates = [f"    fn {name}(", f"    pub(super) fn {name}(", f"    pub(in crate::game) fn {name}("]
+    at = next((source.index(c) for c in candidates if c in source), None)
+    if at is None:
+        raise ValueError(f"{name} not found")
+    start = at
     opening = source.index("{", start)
     depth = 1
     end = opening + 1
     while depth:
         depth += (source[end] == "{") - (source[end] == "}")
         end += 1
-    return source[start:end].replace("pub(super) fn", "fn", 1)
+    body = source[start:end]
+    for vis in ("pub(super) fn", "pub(in crate::game) fn"):
+        body = body.replace(vis, "fn", 1)
+    return body
 
 
 def function(source, name):
@@ -53,7 +59,8 @@ class WorldInputCaptureTests(unittest.TestCase):
         game = "".join((ROOT / "crates/sunrise-client/src" / path).read_text(encoding="utf-8")
                        for path in ("game/world/player_spawn.rs", "game/runtime/window_handler.rs", "game.rs"))
         remote_dir = next(ROOT.glob('crates/sunrise-client/src/game/*/remote'))
-        remote = (remote_dir / "mod.rs").read_text(encoding="utf-8")
+        # The remote player passes are spread over mod.rs and its sibling modules; read them all.
+        remote = "".join(path.read_text(encoding="utf-8") for path in sorted(remote_dir.glob("*.rs")))
         level_tick = (remote_dir / "client_level_tick.rs").read_text(encoding="utf-8")
         spawn = method(game, "spawn_player")
         self.assertLess(spawn.index("self.player = Some(player)"),
