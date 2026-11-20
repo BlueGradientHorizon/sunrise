@@ -467,6 +467,7 @@ if [ "$1" = surface ]; then
   echo '{{"by": "head"}}' > "$3"; exit 0
 fi
 cat "$2" "$3" > {work}/compared
+while [ $# -gt 0 ]; do case "$1" in --notes|--base-notes|--covered-by|--covered-base) ls "$2" > {work}/given${{1#--}};; esac; shift; done
 if [ {diff_exit} != 0 ]; then echo "change note r61.toml names point:a, which did not change" >&2; fi
 exit {diff_exit}
 """)
@@ -475,15 +476,21 @@ exit {diff_exit}
             fetched = []
 
             def fetch(sha, into):
-                # Each fetched tree names its commit, for the exporters to read.
+                # Each fetched tree names its commit, for the exporters to read; the merge brings a note of its own.
                 fetched.append(sha)
                 (into / "marker").write_text(sha)
+                if sha == self.SHA:
+                    (into / surface_report.NOTES).mkdir(parents=True)
+                    (into / surface_report.NOTES / "then.toml").write_text('ids = ["point:b"]\nwhy = "w"\n')
 
             git_text = git_text or (lambda *a: MERGE if a[0] == "cat-file" else "")
             code, text = surface_report.landed_check(
                 str(tool), work / "head", work / "base", work, shas, git_text=git_text, fetch=fetch,
                 own_tool=own_tool and (lambda sha: own_tool(sha, work)))
             calls = (work / "calls").read_text() if (work / "calls").exists() else ""
+            for given in ("notes", "base-notes", "covered-by", "covered-base"):
+                if (work / f"given{given}").exists():
+                    calls += f"{given}: " + (work / f"given{given}").read_text().replace("\n", " ") + "; "
             if (work / "compared").exists():
                 calls += "compared " + (work / "compared").read_text().replace("\n", " ")
             return shas, code, text, calls, fetched
@@ -498,6 +505,11 @@ exit {diff_exit}
         self.assertEqual(fetched, ["aaaa", self.SHA])
         self.assertIn(f"--landed {self.SHA}", calls)
         self.assertNotIn("--gate", calls)
+        # The diff checks this pull request's notes (the late one for this merge among them), and reads the merge's
+        # own notes against its first parent's apart from them, as coverage.
+        self.assertIn("notes: own.toml r61.toml ;", calls)
+        self.assertIn("covered-by: then.toml ;", calls)
+        self.assertIn("covered-base: ;", calls)
 
     def test_a_note_whose_ids_did_not_change_there_fails_naming_it(self):
         _, code, text, _, _ = self.check(1)
