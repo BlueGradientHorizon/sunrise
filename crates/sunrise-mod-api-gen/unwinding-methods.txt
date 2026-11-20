@@ -860,7 +860,6 @@ mod_state::attachment_query
 mod_state::attachment_validate_write
 mod_state::attachments
 mod_state::cancel_task
-mod_state::schedule_task
 mod_state::transaction_close
 mod_state::transaction_current
 mod_state::transaction_depth

@@ -107,7 +107,6 @@
   "crate::client::world_draw::RenderLevelStage",
   "crate::client::render_pipeline::RenderPipelineError",
   "crate::content::content_declarations::RenderShape",
-  "crate::world::scheduler::ScheduleError",
   "crate::client::types::ScreenOpening",
   "crate::entity::types::Sentiment",
   "crate::item::crafting::Shape",
