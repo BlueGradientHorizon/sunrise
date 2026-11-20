@@ -568,6 +568,7 @@ fn can_open(host: &dyn ServerHost, tx: Option<&Transaction>) -> bool {
 /// A borrowed move endpoint. Pass a capability reference to retain its provider's name in
 /// [`Overanswered`], or a `&dyn ResourceHandler<R>` for a directly composed handler.
 // no wire: borrows a process-local trait object.
+#[non_exhaustive]
 pub struct Attributed<'a, R> {
     handler: &'a (dyn ResourceHandler<R> + 'a),
     owner: Option<&'static str>,
