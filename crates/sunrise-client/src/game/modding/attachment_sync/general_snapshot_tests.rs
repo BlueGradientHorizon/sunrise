@@ -23,6 +23,7 @@ impl mod_api::Hooks for Declare {
             None,
             GeneralSavePolicy::Save,
             true,
+            false,
             8,
             3,
             1,

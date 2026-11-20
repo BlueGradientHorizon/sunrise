@@ -11,7 +11,6 @@ pub trait Hooks {
     /// sides hear their own actions; a client hears its prediction or completed
     /// use, not another player's inventory updates. A partial consumption, a
     /// refused action and creative use that preserves the stack do not fire.
-    /// Native and wasm listeners receive the same immutable snapshot and HostSide.
     #[hook(
         side = "both",
         version = 2,

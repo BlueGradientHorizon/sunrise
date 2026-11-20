@@ -27,7 +27,7 @@ pub fn mod_container_insert_allowed(
     }
 }
 
-/// a content mod's menu type (`data/<id>/sunrise/menu/`, vanilla's
+/// A content mod's menu type (`data/<id>/sunrise/menu/`, vanilla's
 /// `MenuType`): its container slots, its data slots (`ContainerData`) and the
 /// slots players only take from.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -36,13 +36,23 @@ pub struct ModMenuType {
     pub slots: usize,
     pub data_slots: usize,
     pub results: Vec<usize>,
+    /// Validated container indices marked as machine inputs in the client layout.
+    pub inputs: Vec<usize>,
     /// its crafting grid, if it has one (`crafting`).
     pub crafting: Option<ModCrafting>,
     /// its linked slots, if it has any (`links`).
     pub links: Option<ModLinks>,
 }
 
-/// a mod menu type's linked slots: `count` container slots from `from` on,
+impl ModMenuType {
+    /// Whether this menu slot belongs to its own block or crafting result, not a linked
+    /// container or the player.
+    pub fn owns_slot(&self, slot: usize) -> bool {
+        slot < self.slots && self.links.is_none_or(|link| !link.slots().contains(&slot))
+    }
+}
+
+/// A mod menu type's linked slots: `count` container slots from `from` on,
 /// which show the slots of the containers a native mod links them to
 /// (`native_menu_links`) instead of the block entity's.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -78,11 +88,12 @@ impl ModCrafting {
 static MOD_MENU_TYPES: std::sync::OnceLock<Vec<ModMenuType>> = std::sync::OnceLock::new();
 
 /// One menu type as [`register_mod_menu_types`] takes it: `(id, slots, data
-/// slots, results, crafting, links)`.
+/// slots, results, inputs, crafting, links)`.
 pub type ModMenuTypeEntry = (
     String,
     usize,
     usize,
+    Vec<usize>,
     Vec<usize>,
     Option<ModCrafting>,
     Option<ModLinks>,
@@ -92,11 +103,12 @@ fn menu_types(menus: impl IntoIterator<Item = ModMenuTypeEntry>) -> Vec<ModMenuT
     menus
         .into_iter()
         .map(
-            |(id, slots, data_slots, results, crafting, links)| ModMenuType {
+            |(id, slots, data_slots, results, inputs, crafting, links)| ModMenuType {
                 id: Box::leak(id.into_boxed_str()),
                 slots,
                 data_slots,
                 results,
+                inputs,
                 crafting,
                 links,
             },

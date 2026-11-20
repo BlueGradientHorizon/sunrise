@@ -24,6 +24,37 @@ pub(in crate::game) enum DataRef {
 fn empty() -> Tag {
     Tag::Compound(Compound::new())
 }
+/// What the model keeps outside a stored block entity's `encoded` form
+/// (`BlockEntity.saveWithFullMetadata`): the lock, the hopper's
+/// `TransferCooldown` (`HopperBlockEntity.saveAdditional`), the custom name
+/// and the pending loot table.
+pub(in crate::game) fn stored_block_entity_data(
+    world: &sunrise_client::world::World,
+    key: (i32, i32, i32),
+    name: &str,
+    entity: &BlockEntity,
+    items: &sunrise_client::items::Items,
+    hopper_cooldown: impl FnOnce() -> i32,
+) -> Tag {
+    let pending = world
+        .chunks
+        .get(&(key.0 >> 4, key.2 >> 4))
+        .and_then(|chunk| chunk.saved.as_ref())
+        .and_then(|saved| saved.pending_loot.get(&key));
+    save::block_entity_encode::data_with(
+        key,
+        entity,
+        name,
+        save::block_entity_encode::DataFields {
+            lock: world.block_lock(key),
+            custom_name: world.block_names.get(&key),
+            pending,
+            hopper_cooldown: (name == "minecraft:hopper").then(hopper_cooldown),
+        },
+        items,
+        |_, _| None,
+    )
+}
 fn set_key(tag: &mut Tag, key: &str, value: Tag) {
     if let Tag::Compound(c) = tag {
         c.insert(JavaString::from(key), value);

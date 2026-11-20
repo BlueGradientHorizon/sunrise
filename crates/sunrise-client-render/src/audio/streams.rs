@@ -86,6 +86,8 @@ pub(super) struct Control {
     volume: AtomicU32,
     /// Prebuffered and playing, as against buffering.
     playing: AtomicBool,
+    /// Times the stream ran dry and went back to buffering.
+    underruns: AtomicU32,
     closed: AtomicBool,
     /// Another thread is pushing: this push is refused, which keeps the ring single-producer.
     pushing: AtomicBool,
@@ -398,6 +400,7 @@ impl StreamPool {
             owner: owner.to_owned(),
             volume: AtomicU32::new(spec.volume.to_bits()),
             playing: AtomicBool::new(false),
+            underruns: AtomicU32::new(0),
             closed: AtomicBool::new(false),
             pushing: AtomicBool::new(false),
             held: Mutex::new(Held::Flat),
@@ -483,6 +486,18 @@ impl StreamPool {
         for control in self.controls().iter() {
             control.unplace();
         }
+    }
+
+    /// Each open stream's `prebuffer_ms` and how many times it ran dry: what a test of a mod's
+    /// pacing reads.
+    pub(super) fn underruns(&self) -> Vec<(u32, u32)> {
+        self.controls()
+            .iter()
+            .map(|c| {
+                let prebuffer_ms = c.prebuffer_frames * 1000 / u64::from(c.rate);
+                (prebuffer_ms as u32, c.underruns.load(Relaxed))
+            })
+            .collect()
     }
 
     /// The output went away (or came back): its streams stop, and none opens until it is back.
@@ -610,6 +625,7 @@ pub(super) fn mix(
                 taken += advance;
                 if wanted > advance {
                     c.playing.store(false, Release);
+                    c.underruns.fetch_add(1, Relaxed);
                 } else {
                     voice.fraction += step * output_frames as f64 - wanted as f64;
                 }
@@ -625,6 +641,7 @@ pub(super) fn mix(
                 if avail == 0 {
                     // Silence, and buffering again until `prebuffer_ms` is back.
                     c.playing.store(false, Release);
+                    c.underruns.fetch_add(1, Relaxed);
                     break;
                 }
                 voice.current = frame_at(taken);
@@ -1261,7 +1278,7 @@ mod tests {
         assert!(observer.join().unwrap() <= 1_000);
     }
 
-    /// How a wasm mod's audio paces: it pushes once a tick, 50 ms of audio each, and a tick can
+    /// How a tick-paced mod supplies audio: it pushes once a tick, 50 ms of audio each, and a tick can
     /// arrive up to 50 ms late. Returns the underruns in 30 s of 48 kHz mono for `prebuffer_ms`,
     /// with a device callback every 10 ms. The ticks' lateness is a fixed pseudo-random series,
     /// so the figures are exact and repeat.
@@ -1269,7 +1286,7 @@ mod tests {
         let rig = Rig::new();
         let stream = rig
             .open(
-                "wasm",
+                "tick_paced",
                 &StreamSpec::new(SoundSource::Voice, 1, 48_000).with_prebuffer_ms(prebuffer_ms),
             )
             .unwrap();

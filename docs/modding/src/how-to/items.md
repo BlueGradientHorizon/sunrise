@@ -6,7 +6,7 @@ effects, loot, data maps and conditional data.
 ## When a player's item is used up
 
 Implement `Hooks::player_destroy_item` to observe the last item consumed by use or by an entity,
-a completed food/drink use, or a durability break. The same hook is available to native and wasm mods.
+a completed food/drink use, or a durability break.
 Its `PlayerDestroyItemEvent` contains `player` (UUID), `player_entity_id`, `original` (an immutable full
 stack snapshot taken before consumption or wear), and `hand` (`Some(Hand::Main)`, `Some(Hand::Off)`,
 or `None` for worn equipment and inventory ammunition). Count, pre-wear damage and component patches

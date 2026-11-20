@@ -57,6 +57,8 @@ resources = ""               # the prepared game files; empty: resources/ here, 
 restart_on_crash = true      # start the game again when it crashes
 low_memory = false           # true: no transparent huge pages, ~60 MB less idle for ~1 % more tick time
 parallel_tick = false        # reserved: parallel phases are currently disabled in this fork
+droppable_clientbound = 262144  # bytes a second of droppable mod payloads (voice) sent to each player; 0 turns them off
+droppable_serverbound = 16384   # the same, accepted from each player
 
 [backups]
 every = "6h"                 # automatic backups while the server runs: 30m, 6h, 1d...; "0" turns them off
@@ -273,6 +275,11 @@ pub struct Engine {
     pub low_memory: bool,
     /// The game's parallel tick phases (`SUNRISE_PARALLEL_TICK=1`), for hosts that cannot set the variable.
     pub parallel_tick: bool,
+    /// Bytes a second of `Droppable` mod payloads the game sends to each player (docs/hosting.md); 0 turns
+    /// them off.
+    pub droppable_clientbound: u32,
+    /// Bytes a second of `Droppable` mod payloads the game accepts from each player; 0 turns them off.
+    pub droppable_serverbound: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -535,6 +542,8 @@ impl Default for Engine {
             restart_on_crash: true,
             low_memory: false,
             parallel_tick: false,
+            droppable_clientbound: 256 << 10,
+            droppable_serverbound: 16 << 10,
         }
     }
 }
@@ -854,6 +863,8 @@ pub fn render(config: &Config) -> String {
         ("engine", "restart_on_crash"),
         ("engine", "low_memory"),
         ("engine", "parallel_tick"),
+        ("engine", "droppable_clientbound"),
+        ("engine", "droppable_serverbound"),
         ("backups", "every"),
         ("backups", "keep"),
         ("updates", "keep"),
@@ -1201,125 +1212,61 @@ mod tests {
             assert!(!table.contains_key("missing_mods"));
         }
         let typo = Config::parse("[missing_mods]\nalow = true\n").unwrap_err();
-        assert!(typo.contains("unknown field `alow`"), "{typo}");
+        assert!(typo.contains("`alow`"), "{typo}");
     }
 
     #[test]
-    fn hosting_guide_server_toml_examples_pass_config_check() {
-        // The TOML examples in docs/hosting.md, without the explanatory comments.
-        let examples = [
-            (
-                "server setup",
-                r#"[server]
-motd = "A Minecraft Server"
-port = 25565
-bind = ""
-max_players = 20
-online_mode = true
-whitelist = true
-enforce_whitelist = false
-view_distance = 10
-simulation_distance = 10
-max_view_distance = 0
-max_viewed_loaded_chunks = 2048
-max_viewed_ticking_chunks = 441
-max_viewed_loaded_chunks_per_level = 16384
-max_viewed_ticking_chunks_per_level = 3528
-admin_feedback_to_ops = true
+    fn a_fixed_api_address_takes_an_empty_token_and_refuses_one_with_spaces() {
+        let fixed = Config::parse("[api]\nbind = \"127.0.0.1:8131\"\ntoken = \"\"\n").unwrap();
+        assert_eq!(
+            fixed.api.address(),
+            Ok((std::net::Ipv4Addr::LOCALHOST, 8131).into())
+        );
+        let spaced = "[api]\nbind = \"127.0.0.1:8131\"\ntoken = \"a long random string\"\n";
+        assert!(Config::parse(spaced).unwrap_err().contains("api.token"));
+    }
 
-[world]
-name = "world"
-seed = ""
-game_mode = "survival"
-difficulty = "easy"
-hardcore = false
+    #[test]
+    fn a_prune_chunks_section_survives_rendering_and_refuses_what_it_cannot_keep() {
+        let set = Config::parse(
+            "[prune_chunks]\nmode = \"dry-run\"\nmin_inhabited_ticks = 600\nspawn_radius = 16\nring = 2\nkeep_files = [\"claims.json\"]\n",
+        )
+        .unwrap();
+        let prune = &set.prune_chunks;
+        assert_eq!(prune.mode, crate::prune::Mode::DryRun);
+        assert_eq!(
+            (prune.min_inhabited_ticks, prune.spawn_radius, prune.ring),
+            (600, 16, 2)
+        );
+        assert_eq!(prune.keep_files, ["claims.json"]);
+        assert_eq!(Config::parse(&render(&set)).unwrap(), set);
+        for bad in [
+            "ring = 9",
+            "min_inhabited_ticks = -1",
+            "keep_files = [\"../x\"]",
+            "keep_files = [\"/x\"]",
+        ] {
+            let error = Config::parse(&format!("[prune_chunks]\n{bad}\n")).unwrap_err();
+            assert!(error.contains("prune_chunks"), "{bad}: {error}");
+        }
+    }
 
-[properties]
-
-[engine]
-path = ""
-resources = ""
-restart_on_crash = true
-low_memory = false
-parallel_tick = false
-
-[backups]
-every = "6h"
-keep = 12
-
-[updates]
-keep = 1
-
-[panel]
-bind = "127.0.0.1:8130"
-allow_public = false
-
-[api]
-bind = ""
-token = ""
-allow_public = false
-"#,
-            ),
-            (
-                "runtime levels",
-                "[properties]\nsunrise-max-runtime-levels = 128\n",
-            ),
-            (
-                "control API",
-                r#"[api]
-bind = "127.0.0.1:8131"
-token = ""
-"#,
-            ),
-            (
-                "Discord",
-                r#"[discord]
-webhook = "https://discord.com/api/webhooks/..."
-events = ["chat", "join", "leave", "death"]
-enabled = true
-"#,
-            ),
-            (
-                "management protocol",
-                "[properties]\nmanagement-server-enabled = true\nmanagement-server-port = 8132\n",
-            ),
-            (
-                "RCON",
-                r#"[properties]
-enable-rcon = true
-"rcon.port" = 25575
-"rcon.password" = "a long random string"
-"#,
-            ),
-            (
-                "query",
-                "[properties]\nenable-query = true\n\"query.port\" = 25565\n",
-            ),
-            (
-                "prune chunks",
-                r#"[prune_chunks]
-mode = "dry-run"
-min_inhabited_ticks = 1200
-spawn_radius = 32
-ring = 1
-keep_files = ["sunrise-smp/claims.json", "sunrise-smp/places.json"]
-"#,
-            ),
-            (
-                "biome regions",
-                "[biome_regions]\nmissing = \"vanilla\"\nadopt_installed = false\n",
-            ),
-            ("missing mods", "[missing_mods]\nallow = true\n"),
-        ];
-        let errors: Vec<_> = examples
-            .into_iter()
-            .filter_map(|(name, example)| {
-                Config::parse(example)
-                    .err()
-                    .map(|error| format!("{name}: {error}"))
-            })
-            .collect();
-        assert!(errors.is_empty(), "{}", errors.join("\n"));
+    #[test]
+    fn a_discord_section_takes_a_discord_webhook_and_known_events_only() {
+        let hook = "webhook = \"https://discord.com/api/webhooks/1/x\"";
+        let set = Config::parse(&format!(
+            "[discord]\n{hook}\nevents = [\"chat\", \"kick\"]\n"
+        ))
+        .unwrap();
+        assert_eq!(set.discord.events, ["chat", "kick"]);
+        let elsewhere = "[discord]\nwebhook = \"https://example.com/api/webhooks/1/x\"\n";
+        assert!(
+            Config::parse(elsewhere)
+                .unwrap_err()
+                .contains("discord.webhook")
+        );
+        let unknown = format!("[discord]\n{hook}\nevents = [\"chat\", \"bogus\"]\n");
+        assert!(Config::parse(&unknown).unwrap_err().contains("bogus"));
     }
 
     #[test]

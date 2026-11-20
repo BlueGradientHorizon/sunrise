@@ -29,6 +29,7 @@ impl mod_api::Hooks for Declare {
                     mod_api::GeneralSavePolicy::NoSave
                 },
                 true,
+                false,
                 8,
                 3,
                 1,
@@ -80,7 +81,7 @@ fn saved_chunk(game: &mut Game<'_>, key: ChunkKey) -> Vec<Tag> {
         HashMap::new();
     let mut keys = HashSet::new();
     keys.insert(key);
-    game.save_every_entity(&keys, &mut out);
+    game.save_every_entity(&keys, &mut out, false);
     out.remove(&key)
         .unwrap_or_default()
         .into_iter()
@@ -726,6 +727,14 @@ fn general_tree_travels_to_another_dimension_with_its_riders() {
         game.load_listed("mymod:robot", None, None, root).unwrap();
         let rows = &game.resident_entities.general.rows;
         let (old_root, old_rider, old_join) = (rows[0].id, rows[1].id, rows[0].join);
+        {
+            use mod_api::__private::{ModPhase, PhaseOwner};
+            let _world = PhaseOwner::scope(ModPhase::World);
+            assert_eq!(
+                game.entity(old_root).unwrap().set_persistent(game, false),
+                Ok(true)
+            );
+        }
         assert!(
             game.teleport_general_tree_across(
                 old_root,
@@ -762,6 +771,10 @@ fn general_tree_travels_to_another_dimension_with_its_riders() {
             game.with_resident_slot(&DimensionKey::NETHER, id(rows[0].id), |_| true),
             SlotAccess::Done(true)
         ));
+        assert!(
+            saved_chunk(game, (0, 0)).is_empty(),
+            "the live tree remains transient in its destination"
+        );
     });
 }
 

@@ -808,9 +808,12 @@ mod tests {
         use sunrise_core::geometry::Vec3;
 
         with_player(|game, player| {
-            game.world
-                .chunks
-                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            // `EntityFluidInteraction.update` needs the chunks around the box loaded as well.
+            for chunk in [(-1, -1), (-1, 0), (0, -1), (0, 0)] {
+                game.world
+                    .chunks
+                    .insert(chunk, Arc::new(Chunk::empty(chunk.0, chunk.1)));
+            }
             let lava = game
                 .pack
                 .assets
