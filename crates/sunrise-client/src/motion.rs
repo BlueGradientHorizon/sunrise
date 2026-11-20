@@ -543,7 +543,9 @@ pub struct PlayerMotion {
     /// it travels on the server: `isLocalInstanceAuthoritative` is false, so
     /// its moves check no fall damage.
     pub server_copy: bool,
-    /// A tick played again (`replayed_tick`), whose native callbacks must not escape.
+    /// A tick played again (`replayed_tick`): the notifications of what it did (`living_jump`,
+    /// `living_fall`, `player_flyable_fall`) don't fire. What its movement asks (block parts'
+    /// answers, the movement value hooks) still answers, as on any tick.
     pub(crate) replaying: bool,
     /// The span of `events` a wall hit on the server's copy pushed (sound and
     /// damage): `server_travel` keeps them while it drops the simulated moves.
@@ -1284,7 +1286,9 @@ impl MotionWorld<'_, '_, '_> {
         })
     }
     /// A client's tick played again: the client's own keys, and the sprinting it said it had
-    /// (its ServerboundPlayerCommandPacket comes before the tick's move). Mods' callbacks don't fire.
+    /// (its ServerboundPlayerCommandPacket comes before the tick's move). It tells the mods nothing
+    /// of what it did (`living_jump`, `living_fall`, `player_flyable_fall`: `replaying`), but
+    /// their answers to what the movement asks (a bounce's restitution, a block's friction) count.
     pub fn replayed_tick(&mut self, keys: crate::sprint::Keys, sprinting: bool) -> Result<()> {
         self.player.replaying = true;
         let result = self.local_tick(keys, |player, _| {
@@ -2377,30 +2381,7 @@ impl EntityMoveWorld for MotionWorld<'_, '_, '_> {
         state: BlockStateId,
         position: BlockPos,
     ) -> Result<()> {
-        // LivingEntity.aiStep: Slow Falling and Levitation reset the fall
-        // distance every tick, so landing under either does not hurt.
-        if self.player.status.slow_falling || self.player.status.levitation.is_some() {
-            self.player.fall_distance = 0.0;
-        }
-        // LivingEntity.checkFallDamage: a landing runs onChangedBlock.
-        if grounded && self.player.fall_distance > 0.0 {
-            self.player.location_effects.landed = true;
-        }
-        if self.player.spawn_extra_particles_on_fall && grounded && self.player.fall_distance > 0.0
-        {
-            self.player.events.push(MotionEvent::SmashLanding {
-                state,
-                position,
-                fall_distance: self.player.fall_distance,
-            });
-            self.player.spawn_extra_particles_on_fall = false;
-        }
-        self.player.events.push(MotionEvent::Landing {
-            dy,
-            grounded,
-            state,
-            position,
-        });
+        self.before_fall_check(dy, grounded, state, position);
         sunrise_world::living_landing::check_living_fall_damage(self, dy, grounded, state, position)
     }
     fn removed(&mut self) -> Result<bool> {
@@ -2450,6 +2431,59 @@ impl EntityMoveWorld for MotionWorld<'_, '_, '_> {
 }
 // The player's footsteps and swim sounds. Flapping and the step game event
 // are not bound here (the sculk listeners track the player's steps themselves).
+impl MotionWorld<'_, '_, '_> {
+    pub fn check_guest_fall_damage(
+        &mut self,
+        dy: f64,
+        grounded: bool,
+        state: BlockStateId,
+        position: BlockPos,
+    ) -> Result<Option<sunrise_world::block_landing::FarmlandTrample>> {
+        self.before_fall_check(dy, grounded, state, position);
+        sunrise_world::living_landing::check_living_fall_damage_until(
+            self,
+            dy,
+            grounded,
+            state,
+            position,
+            |world, state, position, distance| world.block_fall(state, position, distance, true),
+        )
+    }
+
+    fn before_fall_check(
+        &mut self,
+        dy: f64,
+        grounded: bool,
+        state: BlockStateId,
+        position: BlockPos,
+    ) {
+        // LivingEntity.aiStep: Slow Falling and Levitation reset the fall
+        // distance every tick, so landing under either does not hurt.
+        if self.player.status.slow_falling || self.player.status.levitation.is_some() {
+            self.player.fall_distance = 0.0;
+        }
+        // LivingEntity.checkFallDamage: a landing runs onChangedBlock.
+        if grounded && self.player.fall_distance > 0.0 {
+            self.player.location_effects.landed = true;
+        }
+        if self.player.spawn_extra_particles_on_fall && grounded && self.player.fall_distance > 0.0
+        {
+            self.player.events.push(MotionEvent::SmashLanding {
+                state,
+                position,
+                fall_distance: self.player.fall_distance,
+            });
+            self.player.spawn_extra_particles_on_fall = false;
+        }
+        self.player.events.push(MotionEvent::Landing {
+            dy,
+            grounded,
+            state,
+            position,
+        });
+    }
+}
+
 impl MovementEmissionWorld for MotionWorld<'_, '_, '_> {
     type Error = Box<dyn std::error::Error>;
     type State = BlockStateId;
@@ -5289,8 +5323,8 @@ mod tests {
         assert!(!w.player.swimming);
         assert_eq!(w.player.pose, crate::pose::Pose::Standing);
     }
-    /// The movement prediction plays a tick again on a copy: what the copy
-    /// does (sprinting edits the speed attribute) stays in the copy.
+    /// A mod's simulation of a player's tick (`native_simulate_player_move`) plays it on a
+    /// copy: what the copy does (sprinting edits the speed attribute) stays in the copy.
     #[test]
     #[ignore = "daily"]
     fn a_copied_player_moves_on_its_own() {

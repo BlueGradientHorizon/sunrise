@@ -4,7 +4,7 @@
 //! guest's inventory, with vanilla's packets: OpenScreen, container clicks
 //! and their corrections, and the grid back into the inventory when the menu
 //! closes (`AbstractContainerMenu.clearContainer`).
-use super::{Game, transactions::decision::MenuOwner};
+use super::{Game, lan_actions::RECIPE_CHECK_COST, transactions::decision::MenuOwner};
 use sunrise_client::lan::recipes;
 use sunrise_client::{
     containers::{BlockEntity, ModMenuType},
@@ -45,10 +45,6 @@ pub(super) struct GuestCrafting {
 
 /// The most containers `native_recipe_sources` adds to one placement.
 const MAX_RECIPE_SOURCES: usize = 64;
-/// `GuestPlay::recipe_checks`: what one viewer check adds, and from what the
-/// next goes unanswered: ten at once, then one a second.
-const RECIPE_CHECK_COST: u32 = 20;
-const RECIPE_CHECK_LIMIT: u32 = 200;
 /// The most containers `native_menu_links` links one menu's slots to.
 const MAX_MENU_LINKS: usize = 64;
 
@@ -161,7 +157,7 @@ impl Game<'_> {
             recipes: self.recipes(),
             brewing: &self.stations().brewing,
             banners: &self.stations().banners,
-            station_recipes: &self.stations().recipes,
+            station_recipes: self.station_recipes(),
             enchantments: &self.stations().enchantments,
             names: &self.pack.names,
             trade: None,
@@ -910,8 +906,8 @@ impl Game<'_> {
     /// and placement `guest_recipe_transfer` makes, the mods' recipe sources
     /// counted, on a copy of the guest's menu (`lan_check_recipe`). Nothing is
     /// written back: no slot, block entity or `container_changed`, and no
-    /// packet but the reply. Ten at once, then one a second
-    /// (`GuestPlay::recipe_checks`); more go unanswered.
+    /// packet but the reply. Each guest can burst ten checks, then gains one
+    /// check per server tick (twenty per second at 20 TPS); more go unanswered.
     pub(super) fn guest_recipe_check(&mut self, conn: u32, data: &[u8]) {
         use sunrise_protocol::buf::{Reader, Writer};
         let Some(host) = self.lan.as_mut() else {
@@ -935,7 +931,7 @@ impl Game<'_> {
             return;
         }
         let play = host.play.entry(conn).or_default();
-        if play.recipe_checks >= RECIPE_CHECK_LIMIT {
+        if !play.recipe_check_available() {
             return;
         }
         play.recipe_checks += RECIPE_CHECK_COST;
@@ -1121,6 +1117,7 @@ impl Game<'_> {
         else {
             return false;
         };
+        let owner = play.crafting.table.stamp();
         // handleContainerClick: broadcastFullState only for a click on an old
         // state, else only what the client got wrong. The whole menu after every
         // click would undo the clicks it has predicted since.
@@ -1146,6 +1143,16 @@ impl Game<'_> {
                         .collect::<Vec<_>>()
                 })
             else {
+                // A refused click keeps its menu open. Don't put it back if the
+                // listener closed or replaced the owner while the table was lifted.
+                if let Some(play) = self.lan.as_mut().and_then(|host| host.menus.get_mut(&conn))
+                    && play.crafting.table.stamp() == owner
+                {
+                    play.crafting
+                        .table
+                        .restore(Some((window, state, menu, pos)));
+                    self.lan_send_table_content(conn);
+                }
                 return true;
             };
             let Some(guest) = self.lan.as_ref().map(|host| &host.hub.guests[gi]) else {
@@ -1616,34 +1623,50 @@ impl Game<'_> {
         true
     }
 
-    /// `Inventory.placeItemBackInInventory` of `stacks` for guest `gi`, what
-    /// doesn't fit dropped (`clearContainer`).
-    pub(super) fn lan_place_back(&mut self, gi: usize, stacks: Vec<ItemStack>) {
-        let mut menu = Menu::new(Kind::Inventory);
-        self.guest_menu_op(gi, &mut menu, |menu, env| {
-            place_back(menu, env.items, stacks)
-        });
-    }
-
-    /// `AbstractContainerMenu.removed`: return the closing player's cursor to their inventory
-    /// and send the emptied cursor. Only drop overflow after the player's own turn state is
-    /// restored: spawning it can call mods synchronously, before the Close and Open notices.
-    pub(super) fn guest_carried_back(&mut self, gi: usize) {
+    /// `AbstractContainerMenu.removed`: return the cursor, then any menu inputs, to
+    /// the closing player's inventory. Drop overflow after restoring the active turn,
+    /// since spawning an item can call mods synchronously.
+    pub(super) fn return_guest_menu_items(
+        &mut self,
+        gi: usize,
+        inputs: Vec<ItemStack>,
+        return_cursor: bool,
+    ) {
         let overflow = self.with_own_record(gi, |lan, items| {
-            let overflow = lan.hub.guests.update(gi, |guest| {
-                let carried = guest.carried.take()?;
+            let (overflow, cursor_cleared) = lan.hub.guests.update(gi, |guest| {
+                let carried = if return_cursor {
+                    guest.carried.take()
+                } else {
+                    None
+                };
+                let cursor_cleared = carried.is_some();
+                if !cursor_cleared && inputs.is_empty() {
+                    return None;
+                }
                 let mut menu = Menu::new(Kind::Inventory);
                 load_player(&mut menu, guest);
-                place_back(&mut menu, items, [carried]);
+                place_back(&mut menu, items, carried.into_iter().chain(inputs));
                 store_player(&mut menu, guest);
-                Some(std::mem::take(&mut menu.dropped))
+                Some((std::mem::take(&mut menu.dropped), cursor_cleared))
             })?;
-            lan.hub.send_inventory(gi);
+            if cursor_cleared {
+                lan.hub.send_inventory(gi);
+            }
             Some(overflow)
         });
         if let Some(overflow) = overflow.filter(|stacks| !stacks.is_empty()) {
             self.drop_guest_items(gi, overflow);
         }
+    }
+
+    /// `clearContainer`: return the inputs without taking the cursor.
+    pub(super) fn lan_place_back(&mut self, gi: usize, inputs: Vec<ItemStack>) {
+        self.return_guest_menu_items(gi, inputs, false);
+    }
+
+    /// Return the closing player's cursor when the menu holds no inputs.
+    pub(super) fn guest_carried_back(&mut self, gi: usize) {
+        self.return_guest_menu_items(gi, Vec::new(), true);
     }
 
     /// A guest left: what their crafting grids and workstation held goes back into their
@@ -2101,6 +2124,7 @@ mod recipe_check_tests {
                 slots: 10,
                 data_slots: 0,
                 results: vec![],
+                inputs: Vec::new(),
                 links: None,
                 crafting: Some(ModCrafting {
                     grid: 1,
@@ -2199,7 +2223,7 @@ mod recipe_check_tests {
     }
 
     /// Ten checks at once are answered, the next is dropped, and one more
-    /// goes through once the throttle has drained.
+    /// goes through after one tick.
     #[test]
     #[ignore = "daily"]
     fn checks_past_the_limit_go_unanswered() {
@@ -2216,10 +2240,8 @@ mod recipe_check_tests {
             }
             let replies = sent(&rx);
             assert_eq!(replies.len(), 10);
-            for _ in 0..RECIPE_CHECK_COST {
-                let play = game.lan.as_mut().unwrap().play.entry(conn).or_default();
-                play.recipe_checks = play.recipe_checks.saturating_sub(1);
-            }
+            game.tick_guest_connections(false).unwrap();
+            drop(sent(&rx));
             game.guest_recipe_check(conn, &request(0, 11, "minecraft:stick"));
             assert_eq!(reply(&sent(&rx)).1, 11);
         });
@@ -2352,7 +2374,7 @@ mod empty_ingredient_placement_tests {
                         .tables;
                     game.build_registries();
                     {
-                        // The generated Host entrypoint serves native and wasm callers;
+                        // The generated Host entrypoint serves mod callers;
                         // roundtrip its real answer, not a hand-constructed ingredient.
                         use mod_api::wire::{Reader, Wire, Writer};
                         let host: &dyn mod_api::Host = game;

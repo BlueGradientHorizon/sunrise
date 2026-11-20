@@ -156,6 +156,15 @@ impl InboxItem {
     }
 }
 
+/// The body state at a single accepted move, before later input or reports.
+#[derive(Clone, Copy, Debug)]
+pub struct GuestMove {
+    pub position: [f64; 3],
+    pub delta: [f64; 3],
+    pub on_ground: bool,
+    pub sneaking: bool,
+}
+
 pub struct Guest {
     /// Identity generation and journal binding travel with the actual player record.
     pub residency: crate::join_seq::residency::member::Member,
@@ -421,6 +430,8 @@ pub struct Guest {
     pub menu_state: i32,
     /// `lastSentHealth`, `lastSentFood` and `lastFoodSaturationZero`.
     pub sent_health: Option<(f32, i32, bool)>,
+    /// Whether the entity tracker has sent the initial health metadata to this player.
+    pub(super) sent_health_data: bool,
     pub sent_xp: Option<(f32, i32, i32)>,
     /// The air supply and absorption the player's client was last sent
     /// (Entity.DATA_AIR_SUPPLY_ID, Player.DATA_PLAYER_ABSORPTION_ID); their
@@ -446,9 +457,8 @@ pub struct Guest {
     pub inbox: VecDeque<InboxItem>,
     pub joined_tick: u64,
     pub ticks: u64,
-    /// The moves accepted since the game last looked (movement, on ground),
-    /// for ServerPlayer.doCheckFallDamage.
-    pub moves: Vec<([f64; 3], bool)>,
+    /// The moves accepted since the game last looked, for ServerPlayer.doCheckFallDamage.
+    pub moves: Vec<GuestMove>,
     /// Whether the guest was on the ground before the first of `moves`.
     pub moves_from_ground: bool,
     /// `ServerPlayer.lastKnownClientMovement`: the last move accepted from
@@ -534,6 +544,8 @@ pub struct Guest {
     /// changed since (`progressChanged`).
     pub advancements: crate::advancements::Progress,
     pub advancements_loaded: bool,
+    /// Whether the first advancement snapshot reached this connection.
+    pub advancements_sent: bool,
     pub advancements_visible: Vec<bool>,
     pub advancements_changed: std::collections::BTreeSet<usize>,
     /// The server's scoreboard as this player's client has it (lan/scoreboard.rs).
@@ -803,6 +815,7 @@ impl Guest {
             menu_sent: vec![None; 46],
             menu_state: 0,
             sent_health: None,
+            sent_health_data: false,
             sent_xp: None,
             sent_air: (300, 0.0),
             sent_frozen: 0,
@@ -849,6 +862,7 @@ impl Guest {
             selected_tab: None,
             advancements: Default::default(),
             advancements_loaded: false,
+            advancements_sent: false,
             advancements_visible: Vec::new(),
             advancements_changed: Default::default(),
             scoreboard: Default::default(),

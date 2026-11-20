@@ -8,8 +8,8 @@ pub trait Hooks {
     /// level hosts do, without loading chunks. It has no container, shape or signal view and
     /// answers `None` for those. Block-entity handles are the side's own: a client's is not
     /// the server's, so answer from state both sides hold.
-    /// Set `event.friction` to answer; it starts at the state's own coefficient. Answers outside
-    /// `0..=2` (including non-finite values) keep that coefficient.
+    /// Set `event.friction` to answer; it starts at the state's own coefficient. Any finite answer is used as
+    /// given, as vanilla uses what `getFriction` returns; a non-finite one keeps that coefficient.
     /// Runs on both sides, including during client replay. Keep the answer a pure
     /// function of the event and the level reads.
     #[notes = r#"## Block friction
@@ -28,8 +28,8 @@ only `friction` carries from one listener to the next.
 
 An active query on the same level, position, state and entity id (or no entity) cannot be repeated.
 A recursive or over-deep query returns `None` (`Ok(None)` through `LevelRef`). Without a part,
-or when the part leaves the answer alone or writes a value outside `0..=2`, the state's own
-coefficient is used. Physics still applies vanilla's friction modifier and drag at the sites that
+or when the part leaves the answer alone or writes a non-finite value, the state's own
+coefficient is used; any finite value is used as given. Physics still applies vanilla's friction modifier and drag at the sites that
 used them before. Register the part on both sides and keep its answer pure so prediction and
 replay agree."#]
     #[hook(
@@ -40,7 +40,6 @@ replay agree."#]
         key = "state",
         host = "level",
         version = 2,
-        non_exhaustive = true,
         event_per_listener = true,
         target = "sunrise_client::game::native_hooks::friction::FrictionView<'_>::native_friction",
         neoforge = "IBlockExtension.getFriction"

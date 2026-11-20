@@ -91,16 +91,15 @@ fn declared_waterlogged_blocks_keep_their_class_and_gain_liquid_defaults() {
         ("kelp_plant", "already holds water"),
         ("bubble_column", "already holds water"),
         ("lava", "standalone liquid block"),
+        ("oak_stairs", "already on"),
     ] {
         let json = format!(
             r#"{{"template":"minecraft:{template}","item":false,"state_properties":{{"waterlogged":{{"type":"boolean"}}}},"default_state":{{"waterlogged":"true"}}}}"#
         );
+        let file = "data/wet/sunrise/block/aquatic/plant.json";
         let rejected = folder_mod(
             &scratch.join(format!("refused-{template}")),
-            &[
-                ("sunrise-mod.toml", &manifest("wet", "")),
-                ("data/wet/sunrise/block/plant.json", &json),
-            ],
+            &[("sunrise-mod.toml", &manifest("wet", "")), (file, &json)],
         );
         let error = resource_root_fixture(
             &base,
@@ -111,7 +110,8 @@ fn declared_waterlogged_blocks_keep_their_class_and_gain_liquid_defaults() {
         .unwrap_err()
         .to_string();
         assert!(
-            error.contains("wet:plant")
+            error.starts_with(&format!("{file}:"))
+                && error.contains("wet:aquatic/plant")
                 && error.contains("state_properties.waterlogged")
                 && error.contains(&format!("minecraft:{template}"))
                 && error.contains(reason),
@@ -152,7 +152,7 @@ fn declared_waterlogged_blocks_keep_their_class_and_gain_liquid_defaults() {
     assert_eq!(block_flags[dry_plant.0 as usize], (false, false));
 
     let facts = BlockFacts::load(&root, &registry).unwrap();
-    let mobs = MobData::load(&ResourceRoot::directory(root), &facts);
+    let mobs = MobData::load(&ResourceRoot::directory(root.clone()), &facts);
     assert_eq!(mobs.path_type(plant), PathType::Water);
     assert_eq!(mobs.path_type(dry_plant), PathType::Open);
     assert!(mobs.pathfindable(plant, PathComputationType::Water));
@@ -170,6 +170,18 @@ fn declared_waterlogged_blocks_keep_their_class_and_gain_liquid_defaults() {
         !b.data(stone)
             .is(sunrise_world::level::classes::Class::Stair)
     );
+    // A mod block's item, whose prototype carries no `item_name`, is named by its block's key.
+    let blocks: &'static sunrise_world::registry::BlockRegistry = Box::leak(Box::new(
+        sunrise_world::level::data::load_registry(&root).unwrap(),
+    ));
+    let names = crate::creative::Names::default().with_item_names(&Default::default(), blocks);
+    for (item, key) in [
+        ("wet:stone", "block.wet.stone"),
+        ("wet:plain_item", "item.wet.plain_item"),
+    ] {
+        let name = crate::stations::hover_name_text(&names, &crate::items::ItemStack::new(item, 1));
+        assert_eq!(name.component()["translate"], key, "{item}");
+    }
     assert!(!mobs.pathfindable(stairs, PathComputationType::Water));
 
     let is_waterlogged = |state| b.table.bool(state, b.props.waterlogged);

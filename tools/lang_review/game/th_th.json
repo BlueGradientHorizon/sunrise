@@ -463,7 +463,6 @@
   "How far you see, the window and the HUD.": "คุณมองเห็นหน้าต่างและ HUD ไกลแค่ไหน",
   "The sky and weather, lighting, textures and the image.": "ท้องฟ้าและสภาพอากาศ แสง พื้นผิว และภาพ",
   "Chunk loading, culling and power use.": "การโหลดก้อน การคัดแยก และการใช้พลังงาน",
-  "How frames reach the screen, and the performance overlay.": "วิธีที่เฟรมเข้าถึงหน้าจอ และการแสดงภาพซ้อนทับ",
   "Brighter-than-white output on an HDR display.": "เอาต์พุตที่สว่างกว่าสีขาวบนจอแสดงผล HDR",
   "Results for \"%s\"": "ผลลัพธ์สำหรับ \"%s\"",
   "No settings match.": "ไม่มีการตั้งค่าที่ตรงกัน",

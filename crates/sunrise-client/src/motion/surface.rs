@@ -20,6 +20,13 @@ pub trait SideLevel {
     fn tag_items(&self) -> Option<&crate::items::Items>;
     /// The resident block entity at `pos` of `world`, as a handle of this side's level.
     fn block_entity(&self, world: &World, pos: BlockPos) -> Option<mod_api::BlockEntityRef>;
+    /// Saved data for a resident handle of this side's level; never loads chunks or loot.
+    fn block_entity_data(
+        &self,
+        world: &World,
+        registry: &BlockRegistry,
+        entity: mod_api::BlockEntityRef,
+    ) -> Option<mod_api::Compound>;
 }
 
 /// The level data of a side with no weather, features, tags or block entities. Only for tests and
@@ -40,6 +47,14 @@ pub fn dry_side() -> &'static dyn SideLevel {
         fn block_entity(&self, _: &World, _: BlockPos) -> Option<mod_api::BlockEntityRef> {
             None
         }
+        fn block_entity_data(
+            &self,
+            _: &World,
+            _: &BlockRegistry,
+            _: mod_api::BlockEntityRef,
+        ) -> Option<mod_api::Compound> {
+            None
+        }
     }
     static DRY: std::sync::OnceLock<Dry> = std::sync::OnceLock::new();
     DRY.get_or_init(|| Dry(std::sync::Arc::default()))
@@ -57,7 +72,7 @@ pub struct FrictionLevel<'a> {
 }
 
 /// `IBlockExtension.getFriction` of a state at a position. A cyclic or over-deep mod
-/// query gets no answer. An out-of-range answer keeps the state's own coefficient.
+/// query gets no answer. A non-finite answer keeps the state's own coefficient; any finite one is used as given.
 #[inline(never)]
 pub fn read_friction(
     level: FrictionLevel<'_>,
@@ -70,11 +85,7 @@ pub fn read_friction(
     if !crate::native_client_hooks::friction(level, entity, pos, state, &mut friction) {
         return None;
     }
-    Some(if (0.0..=2.0).contains(&friction) {
-        friction
-    } else {
-        own
-    })
+    Some(if friction.is_finite() { friction } else { own })
 }
 
 /// The friction of the block at `pos` for the entity on it, starting at its `StateFacts` value.

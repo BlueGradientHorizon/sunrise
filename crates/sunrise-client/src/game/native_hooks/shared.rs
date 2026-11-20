@@ -2090,9 +2090,18 @@ impl Game<'_> {
         let game_master = ctx.can_use_game_master_blocks;
         let stack_state =
             |state| crate::game::block_items::item_block_state(registry, state, stack, game_master);
-        let Some((decision, preview)) =
-            self.with_level(|b, level, ticks| b.decide_placement(level, ticks, ctx, stack_state))
-        else {
+        let has_part =
+            mod_api::__private::item_listens(mod_api::HookId::PlacementContext, &stack.item);
+        let placer = (has_part && by_player)
+            .then(|| self.placement_placer())
+            .flatten();
+        let Some((decision, preview)) = self.with_level(|b, level, ticks| {
+            b.decide_placement(level, ticks, ctx, stack_state, |level, context| {
+                has_part
+                    .then(|| level.rewrite_placement_context(stack, context, placer))
+                    .flatten()
+            })
+        }) else {
             return Ok(None);
         };
         let veto = mod_api::__private::listened(mod_api::HookId::EntityPlace);
@@ -2807,26 +2816,32 @@ impl Game<'_> {
             self.drop_unreturned_mod_contents(pos, taken);
         }
     }
-    /// Menu button `id` on the mod container at `pos` (`clickMenuButton`),
-    /// with the acting player's cursor stack (`carried`, read and written).
+    /// Menu button `id` on a mod menu (`clickMenuButton`), with the acting
+    /// player's cursor stack (`carried`, read and written). A block-backed
+    /// menu lends its block entity; a blockless menu lends none.
     pub(super) fn mod_menu_button(
         &mut self,
+        menu: &str,
         context: mod_api::item::menu::MenuButtonContext,
+        block: Option<&str>,
+        backing: Option<(i32, i32, i32)>,
         carried: &mut Option<ItemStack>,
     ) {
-        let pos = (context.pos[0], context.pos[1], context.pos[2]);
-        if self.mod_menu_at(pos).is_none() {
+        let Some(pos) = backing.filter(|&pos| self.mod_menu_at(pos) == Some(menu)) else {
+            self.api_menu_button(menu, block, &context, None, carried);
             return;
-        }
+        };
         let Some(BlockEntity::Mod(m)) = self.world.block_entities.get_mut(&pos) else {
+            self.api_menu_button(menu, block, &context, None, carried);
             return;
         };
         if m.id().is_empty() {
+            self.api_menu_button(menu, block, &context, None, carried);
             return;
         }
         let mut taken = std::mem::take(&mut **m);
         let items = taken.items.clone();
-        self.api_menu_button(&context, &mut taken, carried);
+        self.api_menu_button(menu, block, &context, Some(&mut taken), carried);
         self.put_back_mod_block_entity(pos, taken, &items);
     }
     /// A press on the open mod screen's own button (`native_screen_click`)
@@ -2922,8 +2937,6 @@ impl Game<'_> {
             mod_api::__private::key_mappings(),
         );
         let native = self.mods.native.clone();
-        // Wasm proxies are installed in the same dispatch table as native mods. Their rows
-        // need the same live switch and settings page, not a frozen content-only toggle.
         let mut rows: Vec<_> = self
             .settings
             .mods
@@ -3065,7 +3078,6 @@ impl Game<'_> {
         }
         let mut zoom = None;
         self.native_zoom(&mut zoom);
-        // As the WebAssembly runtime clamped a mod's zoom.
         let z = zoom?;
         let factor = finite(z.factor, 1.0, 10.0);
         (factor > 1.0).then_some(mod_api::Zoom {

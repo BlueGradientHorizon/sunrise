@@ -336,6 +336,10 @@ struct ConsumableComponent {
 }
 impl ConsumableComponent {
     fn new(raw: Tag) -> Option<Arc<Self>> {
+        // `Consumable.CODEC` is a record: a scalar or a list is no consumable.
+        if !matches!(raw, Tag::Compound(_)) {
+            return None;
+        }
         let mut value =
             crate::items::parse_consumable(&sunrise_client_core::scoreboard::tag_to_json(&raw))
                 .ok()?;
