@@ -774,8 +774,8 @@ impl Reader<'_> {
             optional(t, "inputs", |v| members(v, |i| self.input(i, text)))?.unwrap_or_default();
         Ok(Dialog {
             kind,
-            title: required(t, "title", &text)?,
-            external_title: optional(t, "external_title", &text)?,
+            title: required(t, "title", text)?,
+            external_title: optional(t, "external_title", text)?,
             can_close_with_escape: optional(t, "can_close_with_escape", boolean)?.unwrap_or(true),
             pause,
             after_action,
