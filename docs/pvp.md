@@ -38,6 +38,8 @@ Each feature is built from what it visibly does, never from another client's or 
 - Colour (solid), opacity 10-100%, thickness 1-4 times vanilla's width, and an optional fill that tints the
   targeted block's faces at 25%. Turned on, its first settings are vanilla's: black at 40%, vanilla's width.
 - With Accessibility's high contrast outline, the colour replaces the bright stroke and the black one stays.
+- Under a shader pack whose line program widens its own line (Complementary Reimagined), the thickness and
+  the high contrast outline's two widths don't apply: every stroke takes the pack's width.
 - The fill draws each box of the block's shape (`getShape`, the boxes the outline's edges come from) as
   translucent faces after translucent terrain, 0.002 out from the block. Only while the outline shows.
 - Cost: the stroke is vanilla's draw with another colour and width; the fill adds at most a few dozen quads.

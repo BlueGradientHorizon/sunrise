@@ -6,18 +6,23 @@
 
 /// What `gbuffers_line` reads from an outline edge: its camera-relative ends, ARGB colour and
 /// width in pixels. The strip's corners 0 and 1 are at the start, 2 and 3 at the end (six
-/// vertices per edge: pack pipelines draw triangle lists); the
-/// width is applied in screen space after the pack's transform.
+/// vertices per edge: pack pipelines draw triangle lists), and a vertex's `gl_VertexID % 2` is
+/// its corner's side. The width is applied in screen space after the pack's transform, unless
+/// the pack's vertex stage reads its vertex index and the line's direction
+/// (`hz_places_vertices`): that one widens the line itself, as vanilla's `rendertype_lines.vsh`
+/// does.
 pub fn inputs() -> sunrise_shaders::GbuffersInputs {
     let declarations =
         "layout(location = 0) in vec3 hz_l_start;\nlayout(location = 1) in vec3 hz_l_end;\n\
          layout(location = 2) in vec4 hz_l_argb;\nlayout(location = 3) in float hz_l_width;\n\
          int hz_l_c;\n"
             .to_owned();
-    // Pack pipelines draw triangle lists: six vertices per edge, the strip's corners
-    // 0 1 2 and 2 1 3.
+    // Pack pipelines draw triangle lists: six vertices per edge, the strip's corners 0 1 2 and
+    // 3 2 1, so a vertex's `gl_VertexID % 2` is its corner's side, as in vanilla's lines
+    // (`rendertype_lines.vsh` offsets a vertex by that parity; Complementary's `gbuffers_line`
+    // does the same).
     let body = "    int hz_l_v = int(gl_VertexIndex);\n    \
-         hz_l_c = hz_l_v < 3 ? hz_l_v : hz_l_v == 3 ? 2 : hz_l_v == 4 ? 1 : 3;\n    \
+         hz_l_c = hz_l_v < 4 ? hz_l_v : hz_l_v == 4 ? 2 : 1;\n    \
          hz_Vertex = vec4(hz_l_c >= 2 ? hz_l_end : hz_l_start, 1.0);\n    \
          hz_Color = hz_l_argb.zyxw;\n    \
          hz_Normal = normalize(hz_l_end - hz_l_start);\n    \
@@ -31,7 +36,7 @@ pub fn inputs() -> sunrise_shaders::GbuffersInputs {
         ("vaColor", "hz_Color"),
         ("vaNormal", "hz_Normal"),
     ];
-    let after = "    {\n        \
+    let after = "    if (!hz_places_vertices) {\n        \
          vec4 hz_l_a = hz_ModelViewProjectionMatrix * vec4(hz_l_start, 1.0);\n        \
          vec4 hz_l_b = hz_ModelViewProjectionMatrix * vec4(hz_l_end, 1.0);\n        \
          vec2 hz_l_d = (hz_l_b.xy / hz_l_b.w - hz_l_a.xy / hz_l_a.w) * hz_target.xy;\n        \

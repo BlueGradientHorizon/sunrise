@@ -52,7 +52,14 @@ pub fn translate_geometry(
     // The vertex's place isn't the fragment's through a geometry stage.
     gbuffers.water_patches = false;
     gbuffers.attributes = Vec::new();
-    let program = super::translate(&combined, fragment, Target::Buffers, Some(&gbuffers), true)?;
+    let program = super::translate(
+        &combined,
+        fragment,
+        Target::Buffers,
+        Some(&gbuffers),
+        true,
+        true,
+    )?;
     Ok((program, triangles))
 }
 
@@ -330,22 +337,15 @@ fn combine(
             _ => {}
         }
     }
-    // Implicit terrain inputs must be set for each pulled source vertex, alongside
-    // declared attributes. Keep the vertex stage's name separate from geometry globals.
-    let chunk_fade = inputs
-        .inputs
-        .attributes
-        .iter()
-        .find(|(name, _)| name == "mc_chunkFade")
-        .filter(|_| {
-            super::uses_name(&vertex.code, "mc_chunkFade")
-                && !super::scan::Stage::scan(vertex, naga::ShaderStage::Vertex)
-                    .globals
-                    .contains("mc_chunkFade")
-        });
-    if chunk_fade.is_some() {
-        defined.insert("mc_chunkFade".to_owned());
-    }
+    // The game inputs the vertex stage reads without declaring them (terrain's fade, a
+    // `vaPosition`...) are set for each pulled source vertex, alongside declared attributes,
+    // under the vertex stage's own names, apart from the geometry stage's globals.
+    let implicit = super::implicit_inputs(
+        &inputs.inputs.attributes,
+        vertex,
+        &super::scan::Stage::scan(vertex, naga::ShaderStage::Vertex).globals,
+    );
+    defined.extend(implicit.iter().map(|(name, _, _)| name.to_string()));
     let renamed: BTreeSet<&str> = defined
         .iter()
         .map(String::as_str)
@@ -381,8 +381,8 @@ fn combine(
          int hz_n; int hz_strip; int hz_tri; int hz_want_tri; int hz_want_corner; bool hz_found; bool hz_primary;\n\
          vec4 hz_ring_Position[3]; vec4 hz_res_Position; vec4 hz_vs_Position; int hz_vs_vertex;\n",
     );
-    if chunk_fade.is_some() {
-        head.push_str("float hz_vs_mc_chunkFade;\n");
+    for (name, _, ty) in &implicit {
+        writeln!(head, "{ty} hz_vs_{name};").unwrap();
     }
     for (name, ty) in &vs_outs {
         let (base, array) = split_type(ty);
@@ -432,8 +432,8 @@ fn combine(
     main.push_str("        hz_vs_vertex = int(hz_vertex_index);\n");
     main.push_str(&inputs.pull);
     main.push_str(&body);
-    if let Some((_, value)) = chunk_fade {
-        writeln!(main, "        hz_vs_mc_chunkFade = {value};").unwrap();
+    for (name, value, ty) in &implicit {
+        writeln!(main, "        hz_vs_{name} = {ty}({value});").unwrap();
     }
     for (name, ty) in &vs_attributes {
         let value = inputs
@@ -606,6 +606,16 @@ mod tests {
 
     /// `vsh`, `gsh` and `fsh` (a pack's shadow program) folded and translated.
     fn fold(vsh: &str, gsh: &str, fsh: &str) -> Result<(Program, u32), Vec<Error>> {
+        fold_given(vsh, gsh, fsh, Vec::new())
+    }
+
+    /// `fold`, the game giving `attributes` (`GbuffersInputs::attributes`).
+    fn fold_given(
+        vsh: &str,
+        gsh: &str,
+        fsh: &str,
+        attributes: Vec<(String, String)>,
+    ) -> Result<(Program, u32), Vec<Error>> {
         let pack = Pack::from_zip_bytes(
             "P.zip",
             zip(&[
@@ -622,6 +632,7 @@ mod tests {
                                layout(location = 0) in vec3 hz_v_pos;"
                     .into(),
                 body: "    hz_Vertex = vec4(hz_v_pos, 1.0);\n    hz_Color = vec4(1.0);\n".into(),
+                attributes,
                 ..Default::default()
             },
             pull: "        hz_v_pos = uintBitsToFloat(uvec3(hz_vertices[hz_vertex_index * 3u], \
@@ -653,6 +664,42 @@ mod tests {
         assert_eq!(triangles, 2);
         assert_eq!(program.vertex.entry_points.len(), 1);
         assert_eq!(program.fragment.entry_points.len(), 1);
+    }
+
+    /// A vertex stage under a geometry stage reads the game's `vaPosition` and `vaNormal`
+    /// without declaring them, as one without a geometry stage does: they're set for each
+    /// pulled vertex. Not given, they stay unknown. Though it reads its vertex index and
+    /// `gl_Normal`, it places no vertices (`hz_places_vertices`): the geometry stage does.
+    #[test]
+    fn a_vertex_stage_under_a_geometry_stage_reads_undeclared_game_inputs() {
+        let vsh = "#version 430\nout vec3 vNormal;\nvoid main() {\n    vNormal = vaNormal;\n    \
+                   gl_Position = gl_ModelViewProjectionMatrix * vec4(vaPosition, 1.0);\n    \
+                   gl_Position.xy += gl_Normal.yx * float(gl_VertexID % 2);\n}\n";
+        let gsh = "#version 430\nlayout(triangles) in;\nlayout(triangle_strip, max_vertices = 3) out;\n\
+                   in vec3 vNormal[];\nout vec3 gNormal;\nvoid main() {\n    \
+                   for (int i = 0; i < 3; i++) {\n        gNormal = vNormal[i];\n        \
+                   gl_Position = gl_in[i].gl_Position;\n        EmitVertex();\n    }\n    \
+                   EndPrimitive();\n}\n";
+        let fsh = "#version 430\nin vec3 gNormal;\nvoid main() {\n    gl_FragData[0] = vec4(gNormal, 1.0);\n}\n";
+        let given = ["vaPosition", "vaNormal"]
+            .map(|name| (name.to_owned(), "hz_Vertex.xyz".to_owned()))
+            .to_vec();
+        let (program, _) = fold_given(vsh, gsh, fsh, given).unwrap_or_else(|e| panic!("{e:?}"));
+        assert!(!crate::translate::tests::places_vertices_constant(
+            &program.vertex
+        ));
+        for name in ["vaPosition", "vaNormal"] {
+            let given = vec![(name.to_owned(), "hz_Vertex.xyz".to_owned())];
+            let Err(errors) = fold_given(vsh, gsh, fsh, given) else {
+                panic!("{name} alone was enough");
+            };
+            assert!(
+                errors
+                    .iter()
+                    .any(|e| e.message.contains("Unknown variable")),
+                "{errors:?}"
+            );
+        }
     }
 
     /// Stages that pass their varyings in interface blocks (GLSL 4.60, 4.3.9), members with

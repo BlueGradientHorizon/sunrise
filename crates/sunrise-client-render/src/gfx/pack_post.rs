@@ -54,6 +54,9 @@ mod sky_disc_blend_tests;
 #[cfg(test)]
 mod undrawn_terrain_tests;
 
+#[cfg(test)]
+mod line_side_tests;
+
 mod image_formats;
 use image_formats::{image_format, storage_formats_of};
 #[cfg(test)]
