@@ -29,16 +29,18 @@ pub trait LevelDatapacksBackend {
         entry: &str,
     ) -> Result<DatapackHandle, DatapackReadError>;
     /// Side: both.
-    /// The decoded fields of the entry a handle names, in the registry's schema order, as plain
-    /// values: a copy, which carries no authority after the read. The handle is checked first
-    /// (session, then generation), then the entry; the errors are those of
-    /// [`level_datapack_handle`](Self::level_datapack_handle).
+    /// Borrow the published entry a handle names. `visit` runs once on success, without
+    /// holding a registry lock, and never on refusal. `entry.values` is in schema order;
+    /// retain a key or copy any values needed after `visit` returns.
+    /// The handle is checked first (session, then generation), then the entry; registry and
+    /// entry failures are the same as for [`LevelRef::datapack_handle`].
     #[access(WorldOnly)]
     fn level_datapack_read(
         &self,
         level: LevelRef,
         handle: &DatapackHandle,
-    ) -> Result<Vec<(String, DatapackValue)>, DatapackReadError>;
+        visit: &mut dyn FnMut(&DatapackEntry),
+    ) -> Result<(), DatapackReadError>;
     /// Side: server.
     /// Match and assemble through the engine's recipe matcher, without consuming inputs.
     /// Covers minecraft:crafting, smelting, blasting, smoking, campfire_cooking,
