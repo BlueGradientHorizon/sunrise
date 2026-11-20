@@ -233,7 +233,7 @@ impl Game<'_> {
                     game.entity_section_step(id, from.components(), at.components());
                     let Some(player) = game.player.as_mut().filter(|p| p.entity_id as u32 == id)
                     else {
-                        return (collected, None);
+                        return (collected, None, ServerTravel::Continue);
                     };
                     collected.append(&mut player.events);
                     player.events = collected;
@@ -252,7 +252,7 @@ impl Game<'_> {
                     game.trample_farmland(id, true, trample);
                     let Some(player) = game.player.as_mut().filter(|p| p.entity_id as u32 == id)
                     else {
-                        return (collected, None);
+                        return (collected, None, ServerTravel::Continue);
                     };
                     collected.append(&mut player.events);
                     player.events = collected;
