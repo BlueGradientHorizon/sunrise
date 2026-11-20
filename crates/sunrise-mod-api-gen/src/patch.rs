@@ -1488,11 +1488,36 @@ fn mirror(
     let root = !path.contains("::");
     let only_public =
         root || (path.split("::").next() != Some("sunrise_client") && tree.copies.is_empty());
-    let explicit = defined(&items)
+    // One `pub use` brings every namespace a name has: `pub mod render;` beside
+    // `pub fn render` is one re-export, under the cfg either item is compiled under.
+    let mut names: Vec<(syn::Ident, Vec<Vec<syn::Attribute>>)> = Vec::new();
+    for (ident, cfg) in defined(&items)
         .into_iter()
         .filter(|(ident, _)| !reserved.contains(&ident.to_string()))
         .filter(|(ident, _)| !only_public || public.contains(&ident.to_string()))
-        .map(|(ident, cfg)| quote!(#(#cfg)* pub use #original::#ident;));
+    {
+        match names.iter_mut().find(|(name, _)| *name == ident) {
+            Some((_, cfgs)) => cfgs.push(cfg),
+            None => names.push((ident, vec![cfg])),
+        }
+    }
+    let explicit = names.into_iter().map(|(ident, cfgs)| {
+        let cfg = match cfgs.as_slice() {
+            [cfg] => quote!(#(#cfg)*),
+            _ if cfgs.iter().any(Vec::is_empty) => quote!(),
+            _ => {
+                let each = cfgs.iter().map(|attrs| {
+                    let predicates = attrs
+                        .iter()
+                        .filter_map(|attr| attr.meta.require_list().ok())
+                        .map(|list| &list.tokens);
+                    quote!(all(#(#predicates),*))
+                });
+                quote!(#[cfg(any(#(#each),*))])
+            }
+        };
+        quote!(#cfg pub use #original::#ident;)
+    });
     let uses = uses(&items).into_iter().filter_map(|item| {
         let mut item = item.clone();
         item.tree = filter_use_tree(item.tree, None, &|name| {
@@ -2038,6 +2063,69 @@ mod tests {
         );
         assert!(!text.contains("::*"), "{text}");
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// A source whose module `path` is `text`, read from no file.
+    fn source_of(path: &str, text: &str) -> Source {
+        Source {
+            root: PathBuf::new(),
+            loaded: BTreeSet::new(),
+            files: BTreeMap::new(),
+            parsed: BTreeMap::from([(
+                path.to_owned(),
+                Module {
+                    items: syn::parse_file(text).unwrap().items,
+                },
+            )]),
+            local_macros: BTreeSet::new(),
+            libraries: BTreeMap::new(),
+            owners: BTreeMap::new(),
+            cache: Cache::default(),
+            hashes: BTreeMap::new(),
+            stale: None,
+        }
+    }
+
+    #[test]
+    fn a_name_in_two_namespaces_is_re_exported_once() {
+        let mut source = source_of(
+            "sunrise_client::mobs",
+            "pub mod render {}
+             pub fn render() {}
+             #[cfg(unix)] pub fn os() {}
+             #[cfg(windows)] pub mod os {}
+             #[cfg(unix)] pub fn local() {}
+             pub mod local {}",
+        );
+        let out = mirror(
+            &mut source,
+            "sunrise_client::mobs",
+            &Tree::default(),
+            &[],
+            None,
+        )
+        .unwrap()
+        .to_string()
+        .replace(' ', "");
+        assert_eq!(
+            out.matches("pubuse::sunrise_client::mobs::render;").count(),
+            1,
+            "{out}"
+        );
+        assert!(
+            out.contains("#[cfg(any(all(unix),all(windows)))]pubuse::sunrise_client::mobs::os;"),
+            "{out}"
+        );
+        // One of them is compiled always, so the name is.
+        assert!(
+            !out.contains("]pubuse::sunrise_client::mobs::local;"),
+            "{out}"
+        );
+        assert_eq!(
+            out.matches("pubuse::sunrise_client::mobs::local;").count(),
+            1,
+            "{out}"
+        );
     }
 
     #[test]
