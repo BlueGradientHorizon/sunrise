@@ -208,6 +208,12 @@ fn run_isolated() {
                     game.damage_player_equipment(mod_api::EquipmentSlot::Head, 1);
                     assert!(game.armor[0].is_none());
                     take_notice(&observer, None, "minecraft:iron_helmet", 164);
+
+                    // Equipping into an empty armour slot moves the stack: nothing is used up.
+                    game.offhand = Some(named_stack("minecraft:iron_helmet", 1));
+                    game.with_hand(Hand::Off, |g| g.use_hand(None)).unwrap();
+                    assert!(game.armor[0].is_some() && game.offhand.is_none());
+                    assert!(observer.0.lock().unwrap().is_empty());
                 }
                 assert!(observer.0.lock().unwrap().is_empty());
             });

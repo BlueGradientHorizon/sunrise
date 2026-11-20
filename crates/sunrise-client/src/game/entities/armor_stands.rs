@@ -2070,6 +2070,8 @@ impl Game<'_> {
         // Player.setItemSlot: onEquipItem plays the equip sound.
         self.player_equipped(slot, Some(&swap.worn));
         *self.held_mut() = swap.hand;
+        // The stack moved into the armour slot: the hand is not an item used up.
+        self.settle_item_use_notices(self.hand);
         // Inventory.add, else Player.drop (in creative a full inventory
         // takes it anyway: hasInfiniteMaterials empties the stack).
         if let Some(old) = swap.to_inventory

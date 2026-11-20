@@ -20,6 +20,16 @@ impl Game<'_> {
         }
     }
 
+    /// Settle enclosing uses of `hand` whose stack moved elsewhere or was reported:
+    /// an empty hand afterwards is then not an item used up.
+    pub(in crate::game) fn settle_item_use_notices(&mut self, hand: Hand) {
+        for (acting, notified) in &mut self.item_use_stacks.notices {
+            if *acting == hand {
+                *notified = true;
+            }
+        }
+    }
+
     /// Report an applied destruction and settle enclosing uses of the same hand.
     pub(super) fn player_item_destroyed(&mut self, original: &ItemStack, hand: Option<Hand>) {
         if original.count == 0
@@ -29,11 +39,7 @@ impl Game<'_> {
             return;
         }
         if let Some(hand) = hand {
-            for (acting, notified) in &mut self.item_use_stacks.notices {
-                if *acting == hand {
-                    *notified = true;
-                }
-            }
+            self.settle_item_use_notices(hand);
         }
         let (player, player_entity_id) = self.native_clicker();
         self.native_player_destroy_item(player, player_entity_id, original, hand);
