@@ -624,7 +624,17 @@ impl Game<'_> {
     pub(in crate::game) fn commit_merchant_effect(&mut self, effect: Effect) {
         match effect {
             Effect::Packets(packets) => packets.publish(),
-            Effect::Notice(uuid, name, mob) => self.native_player_trade(uuid, &name, mob),
+            Effect::Notice(uuid, name, mob) => {
+                // A completed trade cannot be undone, and its captured success packets
+                // still have to reach the client even if the notification fails.
+                if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    self.native_player_trade(uuid, &name, mob);
+                }))
+                .is_err()
+                {
+                    log::warn!("player_trade: a completion listener failed after commit");
+                }
+            }
             Effect::Orb(at, value) => self.add_orb(at, value),
             Effect::Drops(conn, stacks) => {
                 if let Some(gi) = self

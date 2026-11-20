@@ -26,6 +26,7 @@ enum PlayerWrite {
 #[derive(Clone, Default)]
 struct Script {
     panic_on: Option<usize>,
+    panic_on_completion: bool,
     answer: bool,
     invalid: bool,
     /// An answer whose result stack is not a valid one for the game.
@@ -65,6 +66,10 @@ impl Hooks for Mod {
 
     fn player_trade(&self, _: &mut dyn ServerHost, _: &mut PlayerTradeEvent<'_>) {
         COMPLETED.set(COMPLETED.get() + 1);
+        assert!(
+            !SCRIPT.with(|s| s.borrow().panic_on_completion),
+            "completion listener failed"
+        );
     }
 }
 /// The same trade listener, also hearing `item_stacked_on_other`: the result pickup is both.
@@ -421,6 +426,45 @@ fn accepted_trade_keeps_the_collect_answer() {
             assert!(!game.orbs.is_empty());
             assert!(game.transactions.is_empty());
         })
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_panicking_completion_listener_cannot_drop_success_packets() {
+    with_mod(|| {
+        with_guests(|game| {
+            let click = open(game, 2);
+            let rx = record_packets(game);
+            script(Script {
+                answer: true,
+                panic_on_completion: true,
+                ..Script::default()
+            });
+            let outer = game.transaction_open();
+            assert!(game.lan_merchant_click(12, &click));
+            assert_eq!(COMPLETED.get(), 0);
+            assert!(packets(&rx).is_empty());
+            game.transaction_close(&outer, true);
+            assert_eq!(COMPLETED.get(), 1);
+            assert_eq!((result(game), stat(game)), (1, 1));
+            assert_eq!(game.lan_trade_session(12).unwrap().offers[0].uses, 6);
+            let received = packets(&rx);
+            let [
+                Clientbound::MerchantOffers(offers),
+                Clientbound::ContainerSetContent(content),
+            ] = received.as_slice()
+            else {
+                panic!("expected committed offers and content packets");
+            };
+            assert_eq!(
+                (offers.container, content.container),
+                (click.container, click.container)
+            );
+            assert_eq!(offers.offers[0].uses, 6);
+            assert_eq!(content.carried.as_ref().unwrap().count, 1);
+            assert!(game.transactions.is_empty());
+        });
     });
 }
 
