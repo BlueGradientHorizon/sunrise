@@ -192,6 +192,92 @@ fn slotless_screen_draw_sees_full_width_updates_only_for_its_window() {
     );
 }
 
+#[test]
+#[ignore = "daily"]
+fn screen_extra_data_borrows_only_the_open_windows_bytes() {
+    use sunrise_protocol::{
+        connection::Pipe,
+        menu_extra::{self, CHANNEL, LIVE_DATA_REVISION, Message},
+        packets::{
+            configuration::CustomPayload,
+            play::{Clientbound as C, ContainerClose, OpenScreen},
+        },
+        registry::Ids,
+    };
+
+    sunrise_client::containers::with_mod_menu_types(
+        [(
+            PACK.into(),
+            "test".into(),
+            0,
+            0,
+            Vec::new(),
+            Vec::new(),
+            None,
+            None,
+            false,
+        )],
+        || {
+            with_listener(|game, _| {
+                let (pipe, _server) = Pipe::pair();
+                game.connect_local(pipe, "Extra bytes").unwrap();
+                let remote = game.remote.as_mut().unwrap();
+                Arc::make_mut(&mut remote.registries).menu_extra_revision = LIVE_DATA_REVISION;
+                Arc::make_mut(&mut remote.builtin)
+                    .registries
+                    .insert("minecraft:menu".into(), Ids::from_names(vec![PACK.into()]));
+
+                let receive = |game: &mut Game<'_>, window, bytes: &[u8]| {
+                    game.handle_packet(C::CustomPayload(CustomPayload {
+                        channel: CHANNEL.into(),
+                        data: menu_extra::encode(&Message {
+                            window,
+                            pos: None,
+                            data: bytes.to_vec(),
+                        })
+                        .unwrap(),
+                    }))
+                    .unwrap();
+                };
+                let open = |game: &mut Game<'_>, window| {
+                    game.handle_packet(C::OpenScreen(OpenScreen {
+                        container: window,
+                        menu: 0,
+                        title: sunrise_core::nbt::Tag::String("Test".into()),
+                    }))
+                    .unwrap();
+                };
+                let assert_extra = |host: &dyn mod_api::ClientHost, expected: Option<&[u8]>| {
+                    assert_eq!(host.screen_extra_data(), expected);
+                };
+
+                let expected = [0x12, 0x34, 0x56];
+                receive(game, 1, &expected);
+                assert_extra(game, None);
+                open(game, 1);
+                let host: &dyn mod_api::ClientHost = &*game;
+                let bytes = host.screen_extra_data().unwrap();
+                assert_eq!(bytes, expected.as_slice());
+                let stored = game.shown_native_screen().unwrap().extra.as_ref().unwrap();
+                assert!(std::ptr::eq(bytes, stored.data.as_slice()));
+
+                receive(game, 3, &[0x78]);
+                assert_extra(game, Some(&expected)); // Still showing window 1.
+                open(game, 2); // Discards the payload for window 3.
+                assert_extra(game, Some(&[]));
+                open(game, 3);
+                assert_extra(game, Some(&[]));
+                receive(game, 4, &[]);
+                open(game, 4);
+                assert_extra(game, Some(&[]));
+                game.handle_packet(C::ContainerClose(ContainerClose { container: 4 }))
+                    .unwrap();
+                assert_extra(game, None);
+            })
+        },
+    );
+}
+
 /// A mod that adds `test:crate`, a block whose container opens vanilla's
 /// `minecraft:generic_9x3`, with the `Position` screen on that type.
 struct CrateMod(Seen);
