@@ -53,7 +53,6 @@ impl Hooks for FanoutListener {
 
 fn main() -> sunrise_client::Result<()> {
     sunrise_mod_host::prepare_main_stack();
-    sunrise_mod_host::exit_if_compile_child();
     let startup = sunrise_client::entry::prepare();
     std::hint::black_box(&sunrise_mod_package::holder::CAPABILITY);
     let (entries, built): (Vec<_>, &'static [BuiltMod]) = match HotPathsMods::from_env()? {
@@ -76,6 +75,6 @@ fn main() -> sunrise_client::Result<()> {
             (entries, Box::leak(built.into_boxed_slice()))
         }
     };
-    sunrise_mod_host::main_with(entries, &[], built, startup);
+    sunrise_mod_host::main_with(entries, built, startup);
     Ok(())
 }
