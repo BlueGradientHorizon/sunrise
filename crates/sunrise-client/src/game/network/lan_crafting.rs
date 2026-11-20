@@ -2344,6 +2344,7 @@ mod recipe_check_tests {
                 slots: 10,
                 player_inventory: true,
                 data_slots: 0,
+                owned_slots: None,
                 results: vec![],
                 inputs: Vec::new(),
                 links: None,
@@ -2403,6 +2404,7 @@ mod recipe_check_tests {
                 craft: None,
                 links: Vec::new(),
                 asks_still_valid: false,
+                opening_item: None,
             });
             game.lan.as_mut().unwrap().hub.guests.push(guest);
             sent(&rx);

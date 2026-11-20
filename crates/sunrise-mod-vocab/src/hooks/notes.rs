@@ -1293,7 +1293,7 @@ stock client shows as a chest (`generic_9x1` to `generic_9x6`); nothing is insta
 - **No click moves anything.** Each is heard raw by `menu_clicked(uuid, window, slot, button, mode)` (a single-slot drag once; menu-button clicks, recipe placement and creative set-slot never reach it; the hook cannot know whether a click would change anything and carries no pickup answer), inside an action for a connected player, and the client
   is sent the menu, its inventory and its cursor as they were. `slot` counts the menu's own slots first, then the
   player's inventory below it: `native_menu_inventory_slot(size, slot)` gives the inventory slot (0..9 the hotbar).
-- `menu_closed(uuid, window)`: the player closed it, another menu opened, or the player left.
+- The `menu_closed` notice names the player and the closed window.
 - A trade on these menus leaves the offered stacks in their owners' inventories until both sides are settled. Then,
   in one `host.transaction`, each offered inventory index is checked to still hold exactly what was offered, taken
   out of the player's [`ENTITY_ITEMS`](../concepts/capabilities/entity-items.md) handler and put into the other's with `insert`

@@ -3130,8 +3130,14 @@ impl Game<'_> {
     }
     /// A menu a mod opened closed: the player closed it, the server or a mod
     /// opened another, or the player left.
-    pub(in crate::game) fn native_menu_closed(&mut self, uuid: u128, window: i32) {
-        self.fire_menu_closed(uuid, window);
+    pub(in crate::game) fn native_menu_closed(
+        &mut self,
+        uuid: u128,
+        window: i32,
+        opening_hand: Option<mod_api::Hand>,
+        owned_slots: &[Option<mod_api::ItemStack>],
+    ) {
+        self.fire_menu_closed(uuid, window, opening_hand, owned_slots);
     }
     /// `Item.appendHoverText`: an item's own lines in its tooltip, after its
     /// name and before its components' (enchantments, lore, attributes). Add

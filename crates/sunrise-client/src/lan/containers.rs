@@ -431,6 +431,7 @@ impl Hub {
                 craft: None,
                 links: Vec::new(),
                 asks_still_valid: super::menu::asks_still_valid(mod_type, menu_kind),
+                opening_item: None,
             });
             window
         });
@@ -494,6 +495,7 @@ impl Hub {
                 craft: None,
                 links: Vec::new(),
                 asks_still_valid: false,
+                opening_item: None,
             });
             window
         });
@@ -517,7 +519,7 @@ impl Hub {
         let Some(size) = self.guests[i]
             .menu
             .as_ref()
-            .filter(|m| m.slots == Slots::Native && m.window == window)
+            .filter(|m| m.slots == Slots::Native && m.window == window && m.owned_slots().is_none())
             .map(|m| m.size)
         else {
             return false;
@@ -627,17 +629,9 @@ impl Hub {
             g.send(&C::ContainerClose(play::ContainerClose {
                 container: menu.window,
             }));
-            if menu.slots == Slots::Native {
-                g.native_menu.clear();
-                Some((g.uuid, menu.window))
-            } else {
-                None
-            }
+            menu.native_closed(g.uuid, &mut g.native_menu)
         });
-        if let Some((uuid, window)) = closed {
-            self.native_menu_events
-                .push(NativeMenuEvent::Closed { uuid, window });
-        }
+        self.native_menu_events.extend(closed);
     }
 
     pub(super) fn close_container_for(&mut self, i: usize) {
@@ -657,19 +651,10 @@ impl Hub {
                 if !g.menu.as_ref().is_some_and(|m| m.window == window) {
                     return None;
                 }
-                let native = g.menu.take().is_some_and(|m| m.slots == Slots::Native);
-                if native {
-                    g.native_menu.clear();
-                    Some(g.uuid)
-                } else {
-                    None
-                }
+                g.menu.take()?.native_closed(g.uuid, &mut g.native_menu)
             })
             .flatten();
-        if let Some(uuid) = closed {
-            self.native_menu_events
-                .push(NativeMenuEvent::Closed { uuid, window });
-        }
+        self.native_menu_events.extend(closed);
     }
 
     fn hashed_matches(&mut self, claimed: &Option<Hashed>, mine: &Option<ItemStack>) -> bool {

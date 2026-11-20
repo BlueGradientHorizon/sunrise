@@ -1,0 +1,3 @@
+ids = ["handle:PlayerRef::open_mod_menu", "hook:menu_still_valid", "hook:menu_closed", "type:MenuSlotBacking"]
+why = "Blockless mod menus can declare transient owned slots. menu_still_valid version 3 receives opening_item when the opener supplies a hand; menu_closed version 2 receives the opening hand and final owned slot values."
+migrate = "Pass the item opener's hand, or None, to open_mod_menu. A validity listener may use opening_item.stack_matches. Read owned slot values in menu_closed before deciding whether to return anything."

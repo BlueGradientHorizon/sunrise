@@ -2656,17 +2656,11 @@ impl Hub {
     pub(super) fn remove_guest(&mut self, i: usize, reason: &str) -> Guest {
         let mut g = self.guests.remove(i);
         super::chunk_watch::unwatch_all(&mut self.chunk_watches, &mut g);
-        if let Some(m) = g
+        let closed = g
             .menu
             .as_ref()
-            .filter(|m| m.slots == super::menu::Slots::Native)
-        {
-            self.native_menu_events
-                .push(super::menu::NativeMenuEvent::Closed {
-                    uuid: g.uuid,
-                    window: m.window,
-                });
-        }
+            .and_then(|menu| menu.native_closed(g.uuid, &mut g.native_menu));
+        self.native_menu_events.extend(closed);
         // A held player a proxy dropped keeps, in the log, how its connection really ended
         // (an unreadable packet, a reset): the drop says only that it was dropped.
         if g.held
@@ -6174,6 +6168,7 @@ mod tests {
                 slots: 27,
                 player_inventory: true,
                 data_slots: 0,
+                owned_slots: None,
                 results: vec![],
                 inputs: Vec::new(),
                 links: None,
@@ -6224,6 +6219,7 @@ mod tests {
                     craft: None,
                     links: Vec::new(),
                     asks_still_valid: true,
+                    opening_item: None,
                 });
             });
         };

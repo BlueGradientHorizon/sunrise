@@ -2,7 +2,28 @@
 //! NeoForge 26.3's `ItemAccess.forPlayerSlot`. A slot is the storage it shows, so a write through
 //! [`ItemPlace::MenuSlot`] is a write to that storage, journaled once, through its own handler,
 //! under the slot's own rules.
-use crate::{EntityRef, ItemPlace, LevelRef, MenuRef, MenuSlotPlace};
+use crate::{EntityRef, Hand, ItemPlace, LevelRef, MenuRef, MenuSlotPlace};
+
+/// The hand that opened a mod menu and its status at a `menu_still_valid` check.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
+pub struct MenuOpeningItem {
+    /// The hand supplied when the menu opened.
+    pub hand: Hand,
+    /// That hand holds an item with the same item type and components as at open. Count is
+    /// ignored. This compares values, not stack instance identity.
+    pub stack_matches: bool,
+}
+
+impl MenuOpeningItem {
+    #[doc(hidden)]
+    pub fn new(hand: Hand, stack_matches: bool) -> Self {
+        Self {
+            hand,
+            stack_matches,
+        }
+    }
+}
 
 /// What a menu slot shows: where [`MenuRef::slot_backing`] says its stack lives.
 #[non_exhaustive]
@@ -34,12 +55,15 @@ pub enum MenuSlotBacking {
     CraftGrid(usize),
     /// The inventory crafting grid's result, which nothing writes: a craft is a click.
     CraftResult,
-    /// Slot `.0` of a mod's chest menu (`open_menu`).
+    /// Slot `.0` of a mod's display menu with no declared transient or handler backing.
     Native(usize),
     /// A container slot of a mod menu type opened with no block, backed by storage that is not a
     /// block entity ([`PlayerRef::back_mod_menu_slots`](crate::PlayerRef::back_mod_menu_slots)):
     /// a held item's contents or an entity's item handler. Only such a slot has this backing.
     Place(MenuSlotPlace),
+    /// Slot `.0` of this window's own transient container. It is never backed by another
+    /// inventory or saved independently; its final value appears in `menu_closed`.
+    Owned(usize),
 }
 
 // no wire: An in-process refusal from the native menu setter, not a transported payload.

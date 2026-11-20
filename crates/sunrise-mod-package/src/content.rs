@@ -990,6 +990,10 @@ pub struct MenuType {
     /// 0 to [`MAX_MENU_SLOTS`].
     #[serde(default)]
     pub data_slots: u16,
+    /// Per-slot maxima for transient slots when the menu is opened with no backing block.
+    /// When present, supplies one maximum (1–99) for each container slot.
+    #[serde(default)]
+    pub owned_slots: Option<Vec<u8>>,
     /// slots a player takes from but never puts into, each below `slots`.
     #[serde(default)]
     pub results: Vec<u16>,
@@ -1715,6 +1719,14 @@ impl Content {
                 return Err(format!(
                     "{source}: slots ({}) and data_slots ({}) are each 0 to {MAX_MENU_SLOTS}",
                     file.slots, file.data_slots
+                ));
+            }
+            if let Some(limits) = &file.owned_slots
+                && (limits.len() != usize::from(file.slots)
+                    || limits.iter().any(|limit| !(1..=99).contains(limit)))
+            {
+                return Err(format!(
+                    "{name} ({menu}): owned_slots must give one maximum in 1..=99 per container slot"
                 ));
             }
             let mut seen = BTreeSet::new();
@@ -2795,6 +2807,28 @@ capabilities = ["registries"]
                 &[("data/ruby/sunrise/mob_effect/a.json", file.as_bytes())];
             let e = smod(case, MANIFEST_TEXT, files).unwrap_err();
             assert!(e.contains(why), "{case}: {e}");
+        }
+    }
+
+    #[test]
+    fn menu_owned_slots_require_one_valid_stack_limit_per_slot() {
+        let path = "data/ruby/sunrise/menu/filter.json";
+        let menu = br#"{"slots":2,"owned_slots":[1,32]}"#;
+        let content = smod("menu-owned", MANIFEST_TEXT, &[(path, menu)]).unwrap();
+        assert_eq!(
+            content.menu_types[0].owned_slots.as_deref(),
+            Some(&[1, 32][..])
+        );
+
+        for (case, limits) in [
+            ("too-short", "[1]"),
+            ("too-long", "[1,2,3]"),
+            ("zero", "[0,2]"),
+            ("oversized", "[1,100]"),
+        ] {
+            let menu = format!(r#"{{"slots":2,"owned_slots":{limits}}}"#);
+            let error = smod(case, MANIFEST_TEXT, &[(path, menu.as_bytes())]).unwrap_err();
+            assert!(error.contains("owned_slots"), "{case}: {error}");
         }
     }
 

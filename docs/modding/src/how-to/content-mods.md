@@ -1042,6 +1042,10 @@ A status or control screen that has no item slots at all can omit the player inv
 `player_inventory` defaults to `true`. Result, crafting, linked-slot and recipe-book mappings name declared
 container slots, never the optional player group. A mapping to an absent slot is refused at load.
 
+For blockless opens, an optional `owned_slots` array declares [transient menu storage](../concepts/capabilities/menu-slots.md#menu-owned-slots).
+It must contain exactly `slots` entries, each the maximum stack size (1–99) of that slot.
+Block-backed opens continue to use the block's storage.
+
 The optional menu `inputs` list marks machine feeds, including fuel, as `Input`
 in [`MenuRef::slot_kinds`](../concepts/capabilities/menu-slots.md). Indices start at zero and
 must be unique and below `slots`; they cannot overlap `results`, the crafting grid,

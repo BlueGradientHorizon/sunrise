@@ -187,6 +187,12 @@ for a different window is dropped; a matching spectator click resends the menu w
 `event.pos` is `None`, even if `player_open_mod_menu` was given a position for the client's screen. Set
 `valid` to false to close the menu and return the cursor stack as on a normal close.
 
+An item opener can pass `Some(hand)` to `player.open_mod_menu` regardless of what backs the menu's slots.
+`event.opening_item` then contains the `hand` and `stack_matches`: the hand holds the same item with the
+same components as at open, ignoring the count. This compares stack values, not instance identity. A part
+can set `event.valid = item.stack_matches` to close on a mismatch. With no supplied hand, `opening_item`
+is `None`; in either case the game leaves the decision with the part.
+
 For a block menu, `event.pos` is the backing block and `valid` starts as the reach check: the player's
 eyes must be within their block interaction range plus 4 of each backing block. A large machine with a
 core block deep inside it can override that answer:
@@ -338,6 +344,30 @@ one's place and the mouse stays where it is. Opening from the player's inventory
 `player.open_mod_menu` takes the same `replace` for a content mod's menu type
 ([machine menu data](../../how-to/world/machine-menu-data.md)).
 
+## Menu-owned slots
+
+A blockless mod menu can own transient storage, like the container holding a crafting grid or a
+stonecutter's input. Declare one stack limit (1–99) per container slot in `owned_slots`:
+
+```json
+{ "slots": 2, "player_inventory": false, "owned_slots": [1, 4] }
+```
+
+Each window starts with empty slots. Read them with `MenuRef::slot` and edit them through
+`ItemPlace::MenuSlot` in a transaction. `MenuRef::slot_backing` reports `MenuSlotBacking::Owned`.
+Insertion respects the smaller of the slot limit and the item's limit. Neither `back_mod_menu_slots`
+nor `menu_set_items` replaces this storage. The client gets normal slot updates, with no new packet.
+
+The server forwards clicks to `menu_clicked` without moving an item. For a filter slot, read the
+cursor and insert a copy without extracting from the cursor; for a real input, move the amount from
+the source in the same transaction instead.
+
+The storage is never saved. `menu_closed` sees its final `owned_slots` in slot order and the supplied
+`opening_hand`, if any. The old window and its handles are already stale. The game does not return
+or drop those values automatically. A listener can use the server Host to give real inputs back or to
+write a filter selection to the held item. Check that the player and item are still available before
+writing; do not give filter copies back as real items. The cursor's ordinary close behavior is unchanged.
+
 ## Slots backed by a held item or an entity's handler
 
 A menu opened with no block (`player.open_mod_menu`, or `open_menu`'s chest menu) can show storage that is not a block
@@ -368,13 +398,14 @@ emptied: it never keeps the copy it showed, which stays in the storage it came f
 changes nothing and says why with a `MenuSlotBackRefusal`:
 
 - `NoPlayerOrWindow`: the player is not online here, or `window` is not the menu they have open.
-- `UnsupportedMenu`: the open menu is not a mod menu opened with no block (a block's or an entity's menu shows its own
-  storage).
+- `UnsupportedMenu`: the open menu is not a blockless mod menu, or it declares `owned_slots`.
 - `TooManyPlaces`: more places than the menu's container slots.
 - `PlaceUnresolved { index }`: `places[index]` names no storage now.
 
 ```rust,ignore
-let window = player.open_mod_menu(host, backpack_menu, title, Vec::new(), Vec::new(), None, MenuReplace::CloseFirst)?;
+let window = player.open_mod_menu(
+    host, backpack_menu, title, Vec::new(), Vec::new(), None, Some(Hand::Main), MenuReplace::CloseFirst,
+)?;
 if let Some(window) = window {
     let places = (0..27).map(|slot| MenuSlotPlace::HeldItem { hand: Hand::Main, slot }).collect();
     if let Err(refusal) = player.back_mod_menu_slots(host, window, places) {

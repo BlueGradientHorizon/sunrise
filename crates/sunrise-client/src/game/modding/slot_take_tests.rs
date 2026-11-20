@@ -226,6 +226,7 @@ fn pot_type(slots: usize, crafting: Option<ModCrafting>) -> &'static ModMenuType
         slots,
         player_inventory: true,
         data_slots: 0,
+        owned_slots: None,
         results: vec![RESULT],
         inputs: Vec::new(),
         crafting,

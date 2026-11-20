@@ -73,6 +73,7 @@ mod tests {
             slots: 3,
             player_inventory: true,
             data_slots: 0,
+            owned_slots: None,
             results: vec![2],
             inputs: Vec::new(),
             crafting: None,

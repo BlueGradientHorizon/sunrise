@@ -338,6 +338,7 @@ fn open_native_menu(game: &mut crate::game::Game<'_>) -> i32 {
         craft: None,
         links: Vec::new(),
         asks_still_valid: false,
+        opening_item: None,
     };
     game.lan
         .as_mut()
@@ -622,6 +623,7 @@ fn a_handled_cross_block_move_commits_only_if_its_take_returns() {
                 slots: 9,
                 player_inventory: true,
                 data_slots: 0,
+                owned_slots: None,
                 results: Vec::new(),
                 inputs: Vec::new(),
                 crafting: None,
@@ -726,6 +728,7 @@ fn a_quick_move_cannot_reach_a_player_slot_omitted_from_the_menu() {
             None,
             None,
             false,
+            None,
         )],
         || {
             with_mod(|| {
@@ -761,6 +764,7 @@ fn a_code_opened_menus_button_reaches_a_blocks_menu_button_only_for_its_menu_typ
             None,
             None,
             true,
+            None,
         ),
         (
             STATUS_MENU.into(),
@@ -772,6 +776,7 @@ fn a_code_opened_menus_button_reaches_a_blocks_menu_button_only_for_its_menu_typ
             None,
             None,
             false,
+            None,
         ),
     ];
     sunrise_client::containers::with_mod_menu_types(menus, || {
@@ -856,6 +861,7 @@ fn a_code_opened_menus_button_reaches_a_blocks_menu_button_only_for_its_menu_typ
                         vec![],
                         vec![],
                         Some([POS.0, POS.1, POS.2]),
+                        None,
                         mod_api::MenuReplace::InPlace,
                     )
                     .unwrap()

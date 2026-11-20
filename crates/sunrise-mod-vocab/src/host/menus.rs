@@ -99,13 +99,14 @@ pub trait MenusBackend {
     /// The storage menu slot `slot` shows (`Slot.container` and `getContainerSlot`): the
     /// player's inventory by `ENTITY_ITEMS` index (`InventoryMenu`'s armour slots 5..9 go head
     /// to feet), a block entity's or an entity's slot, the ender chest's, the crafting grid's
-    /// or a mod's chest menu's.
+    /// or a mod's chest or transient container slot.
     #[access(WorldOnly)]
     fn menu_slot_backing(&self, menu: MenuRef, slot: usize) -> Option<MenuSlotBacking>;
     /// Side: server.
     /// How many of `stack` menu slot `slot` holds (`Slot.mayPlace`, then `Slot.getMaxStackSize`):
     /// a furnace's fuel slot one bucket, an armour slot one piece that fits it, a crafting result
-    /// none.
+    /// none. For an owned transient slot, this is the declared limit or the item's own
+    /// limit, whichever is lower; its mod decides what a click moves.
     #[access(WorldOnly)]
     fn menu_slot_holds(&self, menu: MenuRef, slot: usize, stack: &ItemStack) -> Option<u32>;
     /// Side: server.

@@ -375,6 +375,7 @@ impl Game<'_> {
             // Only a slot a mod backed (`player_back_mod_menu_slots`) reads as a place.
             SlotBacking::Native(n) => match self.native_menu_place(guest.conn, open.window, n) {
                 Some(place) => MenuSlotBacking::Place(place),
+                None if open.owned_slots().is_some() => MenuSlotBacking::Owned(n),
                 None => MenuSlotBacking::Native(n),
             },
         })
@@ -426,7 +427,9 @@ impl Game<'_> {
                     guest.ender_items.get(n)?.clone()
                 }
             }
-            MenuSlotBacking::Native(n) => guest.native_menu.get(n)?.clone(),
+            MenuSlotBacking::Native(n) | MenuSlotBacking::Owned(n) => {
+                guest.native_menu.get(n)?.clone()
+            }
             // The place's mirror, refreshed after each click and each tick.
             MenuSlotBacking::Place(_) => guest.native_menu.get(slot)?.clone(),
             _ => unreachable!("MenuSlotBacking: unhandled variant"),
@@ -442,6 +445,9 @@ impl Game<'_> {
         slot: usize,
         stack: &ItemStack,
     ) -> Option<u32> {
+        if let Some(max) = self.menu_owned_slot_limit(menu, slot) {
+            return Some(max.min(self.containers().max_stack(stack)));
+        }
         let rules = self.native_menu_rules(menu, slot)?;
         Some(rules.slot_holds(&self.menu_env(), slot, stack))
     }
@@ -449,8 +455,17 @@ impl Game<'_> {
     /// Whether menu slot `slot` gives up what it holds (`Slot.mayPickup`): bound armour stays
     /// on outside creative.
     pub(super) fn menu_slot_gives(&self, menu: MenuRef, slot: usize) -> Option<bool> {
+        if self.menu_owned_slot_limit(menu, slot).is_some() {
+            return Some(true);
+        }
         let rules = self.native_menu_rules(menu, slot)?;
         Some(rules.slot_gives(&self.menu_env(), slot))
+    }
+
+    pub(super) fn menu_owned_slot_limit(&self, menu: MenuRef, slot: usize) -> Option<u32> {
+        let open = self.native_menu_guest(menu)?.menu.as_ref()?;
+        let limit = *open.owned_slots()?.get(slot)?;
+        (!open.hidden.contains(&slot)).then_some(u32::from(limit))
     }
 
     /// The menu engine's model of `menu`, holding slot `slot`, for its slots' rules: the
@@ -539,7 +554,9 @@ impl Game<'_> {
         match backing {
             MenuSlotBacking::Ender(n) => guests.ender_items_mut(index)?.get_mut(n),
             MenuSlotBacking::CraftGrid(n) => guests.craft_grid_mut(index)?.get_mut(n),
-            MenuSlotBacking::Native(n) => guests.native_menu_mut(index)?.get_mut(n),
+            MenuSlotBacking::Native(n) | MenuSlotBacking::Owned(n) => {
+                guests.native_menu_mut(index)?.get_mut(n)
+            }
             _ => None,
         }
     }
@@ -603,7 +620,8 @@ impl Game<'_> {
             Some(
                 MenuSlotBacking::Ender(_)
                 | MenuSlotBacking::CraftGrid(_)
-                | MenuSlotBacking::Native(_),
+                | MenuSlotBacking::Native(_)
+                | MenuSlotBacking::Owned(_),
             ) => {
                 self.journal_menus(player);
                 let Some(held) = self.native_menu_storage(menu, slot) else {

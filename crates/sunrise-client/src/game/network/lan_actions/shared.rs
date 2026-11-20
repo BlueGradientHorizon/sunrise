@@ -652,6 +652,7 @@ mod tests {
                     slots: 27,
                     player_inventory: true,
                     data_slots: 0,
+                    owned_slots: None,
                     results: Vec::new(),
                     inputs: Vec::new(),
                     crafting: None,

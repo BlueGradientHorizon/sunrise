@@ -54,7 +54,11 @@ impl Game<'_> {
     /// The inventory slot holding `hand`'s stack (the selected hotbar slot, or the offhand's 40) and
     /// that stack, of `guest`: read from the game in their own turn, when their record holds the
     /// outer player's.
-    fn held_by<'a>(&'a self, guest: &'a Guest, hand: Hand) -> (usize, Option<&'a ItemStack>) {
+    pub(super) fn held_by<'a>(
+        &'a self,
+        guest: &'a Guest,
+        hand: Hand,
+    ) -> (usize, Option<&'a ItemStack>) {
         let (selected, inventory, offhand) = match self.lan_acting == Some(guest.conn) {
             true => (self.selected, &self.inventory, &self.offhand),
             false => (guest.selected, &guest.inventory, &guest.offhand),
@@ -93,16 +97,16 @@ impl Game<'_> {
             .native_conn(uuid)
             .ok_or(MenuSlotBackRefusal::NoPlayerOrWindow)?;
         let acting = self.lan_acting == Some(conn);
-        let (size, slots) = self
+        let (size, slots, owned) = self
             .lan
             .as_ref()
             .and_then(|lan| lan.hub.guest(conn)?.menu.as_ref())
             .filter(|open| open.window == window)
-            .map(|open| (open.size, open.slots))
+            .map(|open| (open.size, open.slots, open.owned_slots().is_some()))
             .ok_or(MenuSlotBackRefusal::NoPlayerOrWindow)?;
         // Only a blockless mod menu's slots are the game's to show (`Slots::Native`); a block's
         // or an entity's menu reads its own storage, which a backing would not replace.
-        if slots != Slots::Native {
+        if slots != Slots::Native || owned {
             return Err(MenuSlotBackRefusal::UnsupportedMenu);
         }
         let menu = self
@@ -1048,6 +1052,7 @@ mod tests {
                     None,
                     None,
                     true,
+                    None,
                 )],
                 || {
                     super::super::native_entity_refs::tests::with_game_role(
@@ -1094,6 +1099,7 @@ mod tests {
                 Vec::new(),
                 Vec::new(),
                 Some(pos),
+                None,
                 MenuReplace::CloseFirst,
             )
             .unwrap()

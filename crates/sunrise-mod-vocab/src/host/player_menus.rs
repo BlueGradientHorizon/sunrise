@@ -40,7 +40,11 @@ pub trait PlayerMenusBackendMut {
     /// and their clicks go to the mods (`native_menu_clicked`), as `open_menu`'s do. `extra`
     /// (at most 32 KiB) is the one-time context that `screen_extra_data` reads, and `pos`,
     /// when given, its `screen_pos`. `data` has exactly the menu type's `data_slots` values;
-    /// the client receives them after the new window opens. The menu's owning mod can change
+    /// the client receives them after the new window opens. Pass `opening_hand` for an item
+    /// opener, whether or not this type declares transient slots; pass `None` for other openers.
+    /// The server remembers that hand's stack for `menu_still_valid`. A type declaring
+    /// `owned_slots` starts with an empty transient container, written through `ItemPlace::MenuSlot`.
+    /// The menu's owning mod can change
     /// them with [`MenuRef::set_data_slot`]. The old menu closes on the server as a close does (its
     /// `removed`, `player_container_close`, the cursor stack and crafting grids back to the
     /// inventory) before the new one is built; `replace` says whether the client is first sent
@@ -59,6 +63,7 @@ pub trait PlayerMenusBackendMut {
         extra: Vec<u8>,
         data: Vec<i32>,
         pos: Option<[i32; 3]>,
+        opening_hand: Option<Hand>,
         replace: MenuReplace,
     ) -> Result<Option<i32>, OpenMenuError>;
     /// Side: server.
@@ -78,7 +83,8 @@ pub trait PlayerMenusBackendMut {
     /// places; a slot no longer backed (an empty list, a shorter one) is emptied, never left
     /// holding the copy it showed. A [`MenuSlotBackRefusal`], and nothing changes, for a player
     /// not online or a window that is not their open menu, a menu that is not a blockless mod
-    /// menu, more places than its container slots, or a place that doesn't resolve now.
+    /// menu, a menu that declares `owned_slots`, more places than its container slots, or a
+    /// place that doesn't resolve now.
     #[access(WorldOnly)]
     fn player_back_mod_menu_slots(
         &mut self,

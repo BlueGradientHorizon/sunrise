@@ -121,6 +121,7 @@ impl Game<'_> {
     /// `open_menu`'s do; `extra` and `pos` go first in its `sunrise:menu_extra` payload, and
     /// `replace` is the provider's choice of the client's close, as for `open_menu`. The slots
     /// its screen hides at open (`native_hidden_slots`) take no shift-click there.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn player_open_mod_menu(
         &mut self,
         player: mod_api::PlayerRef,
@@ -129,6 +130,7 @@ impl Game<'_> {
         extra: Vec<u8>,
         data: Vec<i32>,
         pos: Option<[i32; 3]>,
+        opening_hand: Option<mod_api::Hand>,
         replace: MenuReplace,
     ) -> Result<Option<i32>, mod_api::OpenMenuError> {
         use mod_api::OpenMenuError;
@@ -174,12 +176,11 @@ impl Game<'_> {
         {
             return Ok(None);
         }
-        if !self
+        let guest = self
             .online_player_record(player)
-            .is_some_and(|g| g.conn == conn && !g.dead && !g.disconnect_pending)
-        {
-            return Err(OpenMenuError::PlayerUnavailable);
-        }
+            .filter(|g| g.conn == conn && !g.dead && !g.disconnect_pending)
+            .ok_or(OpenMenuError::PlayerUnavailable)?;
+        let opening_item = opening_hand.map(|hand| (hand, self.held_by(guest, hand).1.cloned()));
         self.close_for_open(conn, replace);
         let pos = pos.map(|[x, y, z]| (x, y, z));
         let hidden = self.native_hidden_slots(&id, pos, kind.slots);
@@ -202,6 +203,7 @@ impl Game<'_> {
                     let open = g.menu.as_mut().expect("the window was just installed");
                     open.hidden = hidden;
                     open.blockless_data = data;
+                    open.opening_item = opening_item;
                     g.send_menu_data_snapshot();
                 });
                 Some(window)
@@ -471,9 +473,21 @@ impl Game<'_> {
                         self.menu_clicked_decided(uuid, window, slot, button, mode);
                     }
                 }
-                NativeMenuEvent::Closed { uuid, window } => {
+                NativeMenuEvent::Closed {
+                    uuid,
+                    window,
+                    opening_hand,
+                    owned_slots,
+                } => {
                     self.menu_places_closed(uuid, window);
-                    self.native_menu_closed(uuid, window);
+                    if mod_api::__private::listened(mod_api::HookId::MenuClosed) {
+                        use super::api_values::TryIntoApi;
+                        let owned_slots: Vec<_> = owned_slots
+                            .iter()
+                            .map(|slot| slot.as_ref().and_then(|stack| stack.try_into_api().ok()))
+                            .collect();
+                        self.native_menu_closed(uuid, window, opening_hand, &owned_slots);
+                    }
                 }
                 // A write to a backed menu's storage (#3385): its slots looked at again.
                 NativeMenuEvent::PlacesChanged { uuid, window } => {
@@ -483,6 +497,10 @@ impl Game<'_> {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "native_menus/owned_slots_tests.rs"]
+mod owned_slots_tests;
 
 #[cfg(test)]
 mod tests {
@@ -509,7 +527,7 @@ mod tests {
     }
 
     /// The packets sent since the last call.
-    fn sent(rx: &mpsc::Receiver<Out>) -> Vec<C> {
+    pub(super) fn sent(rx: &mpsc::Receiver<Out>) -> Vec<C> {
         rx.try_iter()
             .flat_map(|out| match out {
                 Out::Packet(body) => vec![body],
@@ -1276,7 +1294,9 @@ mod tests {
                 game.lan.as_ref().unwrap().hub.native_menu_events,
                 vec![NativeMenuEvent::Closed {
                     uuid: 123,
-                    window: 1
+                    window: 1,
+                    opening_hand: None,
+                    owned_slots: Vec::new(),
                 }],
                 "the old menu closed on the server"
             );
@@ -1323,7 +1343,7 @@ mod tests {
     }
 
     /// The content menu type shared by the mod-menu fixtures.
-    const MOD_MENU: &str = "listen:status";
+    pub(super) const MOD_MENU: &str = "listen:status";
 
     /// [`with_game`] with [`MOD_MENU`] as the thread's menu types, so a test neither depends on
     /// registering first nor touches the one-shot process table.
@@ -1339,6 +1359,7 @@ mod tests {
                 None,
                 None,
                 true,
+                None,
             )],
             || with_game(test),
         );
@@ -1346,7 +1367,7 @@ mod tests {
 
     /// [`watched_guest`] on a Sunrise client that reads a menu opened with no block, and the
     /// key of [`MOD_MENU`].
-    fn mod_menu_guest(game: &mut Game<'_>) -> (mpsc::Receiver<Out>, mod_api::MenuKey) {
+    pub(super) fn mod_menu_guest(game: &mut Game<'_>) -> (mpsc::Receiver<Out>, mod_api::MenuKey) {
         let rx = watched_guest(game);
         game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
             g.brand = "sunrise".into();
@@ -1442,6 +1463,7 @@ mod tests {
                     vec![7],
                     Vec::new(),
                     None,
+                    None,
                     replace,
                 )
                 .unwrap()
@@ -1495,7 +1517,9 @@ mod tests {
                 game.lan.as_ref().unwrap().hub.native_menu_events,
                 vec![NativeMenuEvent::Closed {
                     uuid: 123,
-                    window: 1
+                    window: 1,
+                    opening_hand: None,
+                    owned_slots: Vec::new(),
                 }],
                 "the old menu closed on the server"
             );
@@ -1528,6 +1552,7 @@ mod tests {
                     Text::literal("new"),
                     bytes.clone(),
                     Vec::new(),
+                    None,
                     None,
                     MenuReplace::CloseFirst,
                 )
@@ -1586,6 +1611,7 @@ mod tests {
                         Text::literal("refused"),
                         extra,
                         Vec::new(),
+                        None,
                         None,
                         MenuReplace::InPlace,
                     ),
@@ -1776,6 +1802,7 @@ mod tests {
                     None,
                     None,
                     false,
+                    None,
                 )],
                 || {
                     with_game(|game| {
@@ -1790,6 +1817,7 @@ mod tests {
                                 mod_api::Text::literal("status"),
                                 vec![7],
                                 data,
+                                None,
                                 None,
                                 MenuReplace::InPlace,
                             )
@@ -1813,6 +1841,7 @@ mod tests {
                                 network_title,
                                 vec![],
                                 vec![1, 2],
+                                None,
                                 None,
                                 MenuReplace::CloseFirst
                             ),
