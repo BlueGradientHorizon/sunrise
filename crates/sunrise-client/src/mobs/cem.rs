@@ -1427,6 +1427,7 @@ mod tests {
             pois: Default::default(),
             species_placements: Default::default(),
             mod_spawns: Default::default(),
+            vanilla_spawn_placements: None,
             resolved: Default::default(),
         };
         // Sprite i spans u and v from 0.2 i to 0.2 i + 0.1.

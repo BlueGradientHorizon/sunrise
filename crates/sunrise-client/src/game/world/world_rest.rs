@@ -136,19 +136,10 @@ pub(super) fn load_world_rest(
             })
             .collect();
         let mut mob_data = sunrise_client::mobs::MobData::load(resource_root, facts);
-        // #847: the mods' spawn rules (`RegisterSpawnPlacementsEvent`) take
-        // their types' placement, heightmap and predicate here, once, so a
-        // spawn check reads one table with no pass over the mods.
-        for declaration in mod_api::__private::spawn_placement_declarations() {
-            if !mob_types.contains_key(&declaration.id) {
-                return Err(format!(
-                    "mod spawn placement of {} names no loaded entity type",
-                    declaration.id
-                )
-                .into());
-            }
-            mob_data.register_mod_spawn(&declaration.id, &declaration.rule);
-        }
+        mob_data
+            .install_spawn_placements(mod_api::__private::spawn_placement_declarations(), |id| {
+                mob_types.contains_key(id)
+            })?;
         crate::game::entity_part_state::refuse_entity_part_state_kinds(|kind| {
             mob_types.contains_key(kind)
         })?;
