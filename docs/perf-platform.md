@@ -289,6 +289,7 @@ message Start {
   uint32 players = 14;
   uint64 world_fs_used_mb = 15;
   uint64 world_fs_total_mb = 16;
+  ClientSettings client_settings = 17;     // clients: render distance chosen and loaded, simulation distance, far terrain distance and on/off, graphics preset
 }
 
 message HealthSample {
