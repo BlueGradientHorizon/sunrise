@@ -2,7 +2,7 @@
 """`java_string_hash` against JDK 25's String.hashCode, bit for bit.
 
 Every string of one and of two UTF-16 units (all 2^32 pairs, surrogates included), then seeded random
-strings of 0 to 64 units mixing ASCII, Latin-1, BMP, surrogate pairs and lone surrogates (`--billions`).
+strings of 0 to 600 units mixing ASCII, Latin-1, BMP, surrogate pairs and lone surrogates (`--billions`).
 The oracle (VanillaStringHashOracle, JDK only: no game jar) and the Rust probe (sunrise-core's
 `sunrise-string-hash-parity`) generate the same strings from the same seed and print a streaming digest
 per chunk; a chunk whose digests differ is dumped on both sides and its first difference written to
@@ -25,6 +25,7 @@ NAME = "string_hash"
 ORACLE = lab.ROOT / "mods/sunrise/src/test/java/dev/sunriselab/parity/VanillaStringHashOracle.java"
 SEED = 0x5354_5249_4E47_4853  # "STRINGHS"
 PER_CHUNK = 1_000_000
+UTF16_VALUES = 1 << 16
 
 
 def lines(command):
@@ -32,16 +33,29 @@ def lines(command):
     return out.splitlines()
 
 
-def parse(output, tag):
-    """{chunk: (count, digest)} and the &str check's (checked, differed), if printed."""
-    chunks, checked = {}, None
+def parse(output, tag, expected, *, rust=False):
+    """Require the complete chunk schedule and, for Rust, the UTF-8 check summary."""
+    chunks, summary = {}, None
     for line in output:
         parts = line.split()
-        if parts[0] == tag:
-            chunks[int(parts[1])] = (int(parts[2]), parts[3])
-        elif parts[0] == "S":
-            checked = (int(parts[1]), int(parts[2]))
-    return chunks, checked
+        if len(parts) == 4 and parts[0] == tag:
+            chunk, count = map(int, parts[1:3])
+            if chunk in chunks or expected.get(chunk) != count:
+                raise ValueError(f"unexpected or duplicate {tag} chunk {chunk} (count {count})")
+            chunks[chunk] = parts[3]
+        elif rust and len(parts) == 3 and parts[0] == "S" and summary is None:
+            summary = tuple(map(int, parts[1:]))
+        else:
+            raise ValueError(f"unexpected output: {line!r}")
+    if missing := expected.keys() - chunks.keys():
+        raise ValueError(f"missing {tag} chunk {min(missing)} ({len(missing):,} missing)")
+    if rust:
+        if summary is None:
+            raise ValueError("missing Rust S summary")
+        checked, differed = summary
+        if not 0 <= differed <= checked <= sum(expected.values()) or checked == 0:
+            raise ValueError(f"invalid Rust S summary: {checked} {differed}")
+    return chunks, summary
 
 
 def first_difference(build, java, probe, dump_args):
@@ -78,19 +92,29 @@ def main():
 
     runs = []
     if not args.no_exhaustive:
-        runs.append(("exhaustive", "E", ["exhaustive", threads], lambda c: ["exhaustive", c]))
+        # Chunk zero holds the empty string and every one-unit string; one chunk per first unit thereafter.
+        expected = dict.fromkeys(range(1, UTF16_VALUES + 1), UTF16_VALUES)
+        expected[0] = UTF16_VALUES + 1
+        runs.append(("E", ["exhaustive", threads], lambda c: ["exhaustive", c], expected))
     chunks = max(1, round(args.billions * 1e9 / PER_CHUNK))
-    runs.append(("random", "R", ["random", SEED, 0, chunks, PER_CHUNK, threads],
-                 lambda c: ["random", SEED, c, PER_CHUNK]))
+    runs.append(("R", ["random", SEED, 0, chunks, PER_CHUNK, threads],
+                 lambda c: ["random", SEED, c, PER_CHUNK], dict.fromkeys(range(chunks), PER_CHUNK)))
     start = time.monotonic()
     failed = False
     totals = {"inputs": 0, "chunks matched": 0, "chunks differed": 0, "str checked": 0, "str differed": 0}
-    for _, tag, command, dump in runs:
-        j, _ = parse(lines([*java, *command]), tag)
-        r, checked = parse(lines([probe, *command]), tag)
-        differed = sorted(c for c in j.keys() | r.keys() if j.get(c) != r.get(c))
-        totals["inputs"] += sum(count for count, _ in r.values())
-        totals["chunks matched"] += len(j.keys() | r.keys()) - len(differed)
+    for tag, command, dump, expected in runs:
+        for source, cmd in (("Java", [*java, *command]), ("Rust", [probe, *command])):
+            try:
+                parsed, summary = parse(lines(cmd), tag, expected, rust=source == "Rust")
+            except ValueError as error:
+                raise SystemExit(f"{NAME}: FAIL: {source}: {error}") from error
+            if source == "Java":
+                j = parsed
+            else:
+                r, checked = parsed, summary
+        differed = sorted(c for c in expected if j[c] != r[c])
+        totals["inputs"] += sum(expected.values())
+        totals["chunks matched"] += len(expected) - len(differed)
         totals["chunks differed"] += len(differed)
         totals["str checked"] += checked[0]
         totals["str differed"] += checked[1]
