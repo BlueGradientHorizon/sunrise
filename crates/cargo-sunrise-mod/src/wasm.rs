@@ -135,38 +135,33 @@ fn toolchain() -> Result<Toolchain, String> {
             })
             .unwrap_or_default()
         };
-        let installed_components =
-            installed(&["component", "list", "--toolchain", TOOLCHAIN, "--installed"]);
-        if installed_components
-            .lines()
-            .all(|line| !line.starts_with("rust-src"))
-            && !installed_components.is_empty()
-        {
-            println!("Adding rust-src to Rust {TOOLCHAIN}…");
-            let status = Command::new("rustup")
-                .args(["component", "add", "--toolchain", TOOLCHAIN, "rust-src"])
-                .status()
-                .map_err(|e| format!("rustup: {e}"))?;
-            if !status.success() {
-                return Err(format!(
-                    "wasm mods build std from source: Rust {TOOLCHAIN} needs rust-src and rustup couldn't add it"
-                ));
-            }
-        }
-        let installed_targets =
-            installed(&["target", "list", "--toolchain", TOOLCHAIN, "--installed"]);
-        if installed_targets.lines().all(|line| line.trim() != TARGET)
-            && !installed_targets.is_empty()
-        {
-            println!("Adding {TARGET} to Rust {TOOLCHAIN}…");
-            let status = Command::new("rustup")
-                .args(["target", "add", "--toolchain", TOOLCHAIN, TARGET])
-                .status()
-                .map_err(|e| format!("rustup: {e}"))?;
-            if !status.success() {
-                return Err(format!(
-                    "Rust {TOOLCHAIN} needs the {TARGET} target and rustup couldn't add it"
-                ));
+        let missing: [(&[&str], &[&str], fn(&str) -> bool, &str); 2] = [
+            (
+                &["component", "list", "--toolchain", TOOLCHAIN, "--installed"],
+                &["component", "add", "--toolchain", TOOLCHAIN, "rust-src"],
+                |line| line.starts_with("rust-src"),
+                "rust-src",
+            ),
+            (
+                &["target", "list", "--toolchain", TOOLCHAIN, "--installed"],
+                &["target", "add", "--toolchain", TOOLCHAIN, TARGET],
+                |line| line.trim() == TARGET,
+                TARGET,
+            ),
+        ];
+        for (list, add, has, label) in missing {
+            let present = installed(list);
+            if present.lines().all(|line| !has(line)) && !present.is_empty() {
+                println!("Adding {label} to Rust {TOOLCHAIN}…");
+                let status = Command::new("rustup")
+                    .args(add)
+                    .status()
+                    .map_err(|e| format!("rustup: {e}"))?;
+                if !status.success() {
+                    return Err(format!(
+                        "wasm mods build std from source: Rust {TOOLCHAIN} needs {label} and rustup couldn't add it"
+                    ));
+                }
             }
         }
     }
