@@ -96,10 +96,13 @@ its other hooks remain enabled.
 For a player, a veto holds the position accepted at the server's travel boundary;
 it does not rewind reports already accepted before that tick. While the veto
 stands, the server corrects new reports that would move the player away. A
-replacement uses the server branch's displacement and velocity and sends the
-ordinary position and velocity corrections if needed. A no-op, including an
-input-only edit that leaves the branch's position and velocity unchanged, keeps
-the ordinary client-reported movement path. The client never calls this hook.
+replacement uses the server branch's result. If its final position and velocity
+match the server's unedited prediction bit for bit, the ordinary client-reported
+movement path continues without a correction. The prediction runs travel physics
+but does not call mods a second time. Otherwise the server sends the existing
+position or velocity correction. A new travel tick does not replace a position
+correction still awaiting acknowledgement; the ordinary resend rule still
+applies. The client never calls this hook.
 
 ## Teleport hooks
 

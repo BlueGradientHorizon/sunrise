@@ -2,7 +2,8 @@
 use super::*;
 use crate::game::native_entity_refs::tests::with_game;
 use crate::game::native_item_places::tests::guest as online_guest;
-use mod_api::{Flow, Hooks, LivingTravelEvent, LoopContext};
+use mod_api::{Flow, Hooks, LivingTravelEvent, LoopContext, PlayerStaysOnGroundSurfaceEvent};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use sunrise_client::{
     chunk::Chunk,
     lan::{NetConfig, Out, hub::HubConfig},
@@ -259,6 +260,81 @@ fn another_travel_replacement_waits_for_the_first_correction_acknowledgement() {
             let next = correction(&rx);
             assert_ne!(next.teleport, first.teleport);
             assert_eq!(next.position, [4.5, 64.0, 5.0]);
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn collision_can_absorb_a_velocity_edit_without_sending_a_correction() {
+    #[derive(Default)]
+    struct Calls {
+        travel: AtomicUsize,
+        edge: AtomicUsize,
+    }
+    struct IntoWall(Arc<Calls>);
+
+    #[mod_api::__subscriptions]
+    impl Hooks for IntoWall {
+        fn living_travel(&self, _: &dyn LoopContext, event: &mut LivingTravelEvent<'_>) -> Flow {
+            self.0.travel.fetch_add(1, Ordering::Relaxed);
+            *event.velocity = [-0.5, 0.0, 0.0];
+            Flow::Continue
+        }
+
+        fn player_stays_on_ground_surface(
+            &self,
+            _: &dyn LoopContext,
+            _: &mut PlayerStaysOnGroundSurfaceEvent,
+        ) {
+            self.0.edge.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    crate::entry::install_client_hooks();
+    let calls = Arc::new(Calls::default());
+    let mods = vec![mod_api::ModEntry::new(
+        "wall-travel-test",
+        Box::new(IntoWall(calls.clone())),
+    )];
+    mod_platform::testing::with_mods(mods.into(), || {
+        with_player(false, |game, rx| {
+            let stone = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:stone")
+                .unwrap();
+            game.world.set(2, 64, 5, stone).unwrap();
+            let mut at = START;
+            let half_width = f64::from(guest(game).motion.as_ref().unwrap().dimensions.width) / 2.0;
+            at[0] += half_width; // The player's west face is flush with the block at x=2.
+            game.lan.as_mut().unwrap().hub.update_guest(1, |g| {
+                g.position = at;
+                g.first_good = at;
+                g.last_reported.0 = at;
+                g.motion.as_mut().unwrap().position = Vec3::new(at[0], at[1], at[2]);
+            });
+
+            game.guest_server_tick(1, true);
+            let guest = guest(game);
+            assert_eq!(guest.position.map(f64::to_bits), at.map(f64::to_bits));
+            assert_eq!(
+                guest
+                    .motion
+                    .as_ref()
+                    .unwrap()
+                    .velocity
+                    .components()
+                    .map(f64::to_bits),
+                [0.0, -0.08 * f64::from(0.98_f32), 0.0].map(f64::to_bits)
+            );
+            assert_eq!(calls.travel.load(Ordering::Relaxed), 1);
+            assert_eq!(calls.edge.load(Ordering::Relaxed), 1);
+            assert!(!packets(&rx).into_iter().any(|(id, body)| matches!(
+                C::decode(id, &body).unwrap(),
+                C::PlayerPosition(_) | C::SetEntityMotion(_)
+            )));
         });
     });
 }

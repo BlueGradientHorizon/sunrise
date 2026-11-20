@@ -26,9 +26,12 @@ pub trait Hooks {
     /// For a player, the veto takes effect at the server's travel boundary:
     /// reports it already accepted are not rewound. While the veto stands,
     /// the server corrects new movement reports to its accepted position.
-    /// Until shared prediction lands, a replacement that changes the result
-    /// also uses the existing position and velocity corrections. The hook
-    /// never runs on the client. Beyond NeoForge: there is no counterpart.
+    /// A replacement whose final position and velocity match the server's
+    /// unedited prediction bit for bit sends no correction. The prediction does
+    /// not call mods a second time. Otherwise the server uses existing position
+    /// and velocity corrections without replacing a position correction that is
+    /// still awaiting acknowledgement. The hook never runs on the client.
+    /// Beyond NeoForge: there is no counterpart.
     #[hook(
         side = "server",
         contract = "cancel",

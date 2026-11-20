@@ -2202,11 +2202,7 @@ impl Hub {
         if self.guests[i].travel_vetoed != veto {
             self.guests.update(i, |g| g.travel_vetoed = veto);
         }
-        let ServerTravel::Replace {
-            position,
-            on_ground,
-        } = decision
-        else {
+        let ServerTravel::Replace { position } = decision else {
             return false;
         };
         let g = &self.guests[i];
@@ -2218,8 +2214,8 @@ impl Hub {
         else {
             return false;
         };
-        let position = position.components();
-        if g.position.map(f64::to_bits) != position.map(f64::to_bits) {
+        if let Some((position, on_ground)) = position {
+            let position = position.components();
             // The in-flight target and its velocity belong to the ordinary
             // acknowledgement and resend path. A later travel tick can
             // publish a new target once the connection is ready for it.

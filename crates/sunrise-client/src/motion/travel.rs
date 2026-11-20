@@ -12,8 +12,8 @@ pub enum ServerTravel {
     Continue,
     /// Reject new position reports until the next server travel decision.
     Veto,
-    /// Commit the server branch's displacement instead of relying on the client.
-    Replace { position: Vec3, on_ground: bool },
+    /// Correct the velocity alone, or also commit a changed position and its ground flag.
+    Replace { position: Option<(Vec3, bool)> },
 }
 
 #[derive(Clone, Copy)]
@@ -74,35 +74,38 @@ impl MotionWorld<'_, '_, '_> {
             return Ok(ServerTravel::Veto);
         }
 
-        // An input write alone need not change the result: glide ignores it,
-        // small inputs can be below the move-relative threshold, and a wall
-        // can stop the whole change. Compare the branch's motion on scratch
-        // bodies; only the real travel below fires move/bounce callbacks.
-        let changed = self.player.server_copy
+        // Neither an input nor a velocity write proves that travel changed:
+        // collision can absorb either. Only a server copy with changed input
+        // or velocity needs the callback-free prediction. The accepted travel
+        // below is the only live move.
+        let unedited = if self.player.server_copy
             && (!same_vector(velocity, requested_velocity)
-                || (!same_vector(input, requested_input)
-                    && !matches!(branch, TravelBranch::Glide)
-                    && match (
-                        self.measure_travel(branch, requested_input),
-                        self.measure_travel(branch, input),
-                    ) {
-                        (Ok(before), Ok(after)) => before != after,
-                        // A failed scratch evaluation must not skip the real travel.
-                        _ => true,
-                    }));
+                || (!same_vector(input, requested_input) && !matches!(branch, TravelBranch::Glide)))
+        {
+            Some(self.predict_travel(branch, requested_input))
+        } else {
+            None
+        };
         self.player.velocity = velocity;
         self.apply_player_travel(branch, input)?;
-        Ok(if changed {
-            ServerTravel::Replace {
-                position: self.player.position,
-                on_ground: self.player.ground.on_ground,
-            }
-        } else {
-            ServerTravel::Continue
-        })
+        // A prediction error must not suppress the live move, or send a
+        // correction without evidence that its outcome changed.
+        let Some(Ok((position, velocity))) = unedited else {
+            return Ok(ServerTravel::Continue);
+        };
+        let position = (!same_vector(self.player.position, position))
+            .then_some((self.player.position, self.player.ground.on_ground));
+        Ok(
+            if position.is_some() || !same_vector(self.player.velocity, velocity) {
+                ServerTravel::Replace { position }
+            } else {
+                ServerTravel::Continue
+            },
+        )
     }
 
-    fn measure_travel(&mut self, branch: TravelBranch, input: Vec3) -> Result<[[u64; 3]; 2]> {
+    fn predict_travel(&mut self, branch: TravelBranch, input: Vec3) -> Result<(Vec3, Vec3)> {
+        let _parts = sunrise_world::part_collision::InParts::suspend();
         let mut body = self.player.clone();
         body.travel_probe = true;
         MotionWorld {
@@ -116,14 +119,11 @@ impl MotionWorld<'_, '_, '_> {
             tag_items: self.tag_items,
             loop_context: self.loop_context,
             side: self.side,
-            damage_hooks: self.damage_hooks,
+            damage_hooks: &crate::health::DamageHooks::NONE,
             block_registries: self.block_registries,
         }
         .apply_player_travel(branch, input)?;
-        Ok([
-            body.position.components().map(f64::to_bits),
-            body.velocity.components().map(f64::to_bits),
-        ])
+        Ok((body.position, body.velocity))
     }
 
     fn apply_player_travel(&mut self, branch: TravelBranch, input: Vec3) -> Result<()> {
@@ -194,7 +194,7 @@ impl MotionWorld<'_, '_, '_> {
         // must reach its own ears, #8906), only the server hurts, and it
         // compares the horizontal speed before `updateFallFlyingMovement`
         // with the delta `Entity.move` leaves (the collided axes zeroed).
-        if self.player.collision.horizontal {
+        if self.player.collision.horizontal && !self.player.travel_probe {
             let v = self.player.velocity;
             let after_h = (v.x * v.x + v.z * v.z).sqrt();
             let dmg = super::environment::fly_into_wall_damage(move_h, after_h);

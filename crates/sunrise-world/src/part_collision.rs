@@ -40,6 +40,14 @@ impl InParts {
         OPEN.fetch_add(1, Ordering::Relaxed);
         Self(PARTS.with_borrow_mut(|slot| slot.replace(parts)))
     }
+
+    /// Use the block's own shapes for an observational query without calling
+    /// the installed parts. This leaves the other threads' parts in place.
+    pub fn suspend() -> Option<Self> {
+        let parts = PARTS.with_borrow_mut(Option::take)?;
+        OPEN.fetch_add(1, Ordering::Relaxed);
+        Some(Self(Some(parts)))
+    }
 }
 
 impl Drop for InParts {

@@ -544,8 +544,8 @@ pub struct PlayerMotion {
     /// it travels on the server: `isLocalInstanceAuthoritative` is false, so
     /// its moves check no fall damage.
     pub server_copy: bool,
-    /// Scratch branch evaluation for an input-only server travel proposal.
-    /// It may query the level, but never fires move/bounce callbacks or publishes position.
+    /// Unedited travel prediction: query the level but do not call movement
+    /// hooks or parts, publish movement, or produce world effects.
     travel_probe: bool,
     /// A tick played again (`replayed_tick`): the notifications of what it did (`living_jump`,
     /// `living_fall`, `player_flyable_fall`) don't fire. What its movement asks (block parts'
@@ -2010,6 +2010,9 @@ impl MotionWorld<'_, '_, '_> {
         }
         let before = self.player.position;
         entity_move::move_entity(self, MoverType::SelfMovement, gate.delta())?;
+        if self.player.travel_probe {
+            return Ok(());
+        }
         let dx = (self.player.position.x - before.x) as f32;
         let dz = (self.player.position.z - before.z) as f32;
         self.update_auto_jump(dx, dz)
@@ -2102,11 +2105,13 @@ impl EdgeBackoffWorld for MotionWorld<'_, '_, '_> {
     }
     fn staying_on_ground_surface(&mut self) -> Result<bool> {
         let mut staying = self.player.shift_key_down;
-        native_player_stays_on_ground_surface(
-            self.loop_context,
-            self.player.entity_id as u32,
-            &mut staying,
-        );
+        if !self.player.travel_probe {
+            native_player_stays_on_ground_surface(
+                self.loop_context,
+                self.player.entity_id as u32,
+                &mut staying,
+            );
+        }
         Ok(staying)
     }
     fn on_ground(&mut self) -> Result<bool> {
@@ -2203,8 +2208,21 @@ impl EntityMoveWorld for MotionWorld<'_, '_, '_> {
         // block, not their collider; ClipContext.Fluid.WATER: the water's shape.
         // Both shapes are queried for every visited block (the water's first
         // query fixes its cached shape), either one hitting ends the ray.
+        // A prediction can be the first query but must not seed the live cache.
+        let mut predicted_shapes = if self.player.travel_probe {
+            Some(
+                self.resources
+                    .fluids
+                    .shapes
+                    .lock()
+                    .map_err(|_| "fluid shape cache poisoned")?
+                    .clone(),
+            )
+        } else {
+            None
+        };
         let hit = traverse_blocks(from, to, 1_000_000, |p| {
-            let water = match self.water_clip(from, to, p) {
+            let water = match self.water_clip(from, to, p, predicted_shapes.as_mut()) {
                 Ok(hit) => hit,
                 Err(e) => return Some(Err(e)),
             };
@@ -2519,11 +2537,13 @@ impl MovementEmissionWorld for MotionWorld<'_, '_, '_> {
     /// the ground.
     fn movement_emission(&mut self) -> Result<MovementEmission> {
         let discreet = self.player.ground.on_ground && self.player.shift_key_down;
-        Ok(if self.player.flying || discreet {
-            MovementEmission::None
-        } else {
-            MovementEmission::All
-        })
+        Ok(
+            if self.player.travel_probe || self.player.flying || discreet {
+                MovementEmission::None
+            } else {
+                MovementEmission::All
+            },
+        )
     }
 }
 impl RestitutionWorld for MotionWorld<'_, '_, '_> {

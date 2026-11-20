@@ -321,18 +321,27 @@ impl MotionWorld<'_, '_, '_> {
         result.map_err(|e| e.to_string().into())
     }
     /// `ClipContext.Fluid.WATER` in a fall-reset ray: the water's shape.
-    pub(super) fn water_clip(&mut self, from: Vec3, to: Vec3, p: BlockPos) -> Result<bool> {
+    pub(super) fn water_clip(
+        &mut self,
+        from: Vec3,
+        to: Vec3,
+        p: BlockPos,
+        prediction: Option<&mut FluidShapeCache>,
+    ) -> Result<bool> {
         let fluid = self.fluid_at(p);
         if !is_tagged(fluid.kind(), WATER) {
             return Ok(false);
         }
-        let resources = self.resources;
-        let shape = resources
-            .fluids
-            .shapes
-            .lock()
-            .map_err(|_| "fluid shape cache poisoned")?
-            .shape(self, fluid, p)?;
+        let shape = if let Some(cache) = prediction {
+            cache.shape(self, fluid, p)?
+        } else {
+            self.resources
+                .fluids
+                .shapes
+                .lock()
+                .map_err(|_| "fluid shape cache poisoned")?
+                .shape(self, fluid, p)?
+        };
         Ok(shape.clip(from, to, p).is_some())
     }
 }

@@ -5,6 +5,7 @@ use sunrise_core::random::RandomSource;
 use sunrise_world::{
     fluid::FluidKind,
     living_fluid::{LivingFluidWorld, TravelFluidTag},
+    movement_properties::BlockFactorEdits,
 };
 impl MotionWorld<'_, '_, '_> {
     pub(super) fn environment_hurt(&mut self, source: &str, damage: f32) -> Result<()> {
@@ -308,12 +309,17 @@ impl MotionWorld<'_, '_, '_> {
         let efficiency = self.player.attribute("minecraft:movement_efficiency")? as f32;
         let flying = self.player.flying || self.player.fall_flying;
         let location = self.location();
-        let context = self.loop_context;
+        let mod_factors = ModBlockFactors(self.loop_context);
+        let edits: &dyn BlockFactorEdits = if self.player.travel_probe {
+            &NoFactorEdits
+        } else {
+            &mod_factors
+        };
         Ok(movement_support::player_block_speed_factor(
             &mut RegistryMovementWorld {
                 properties: &self.resources.blocks,
                 world: self,
-                edits: &ModBlockFactors(context),
+                edits,
             },
             location,
             flying,

@@ -47,13 +47,15 @@ impl ClimbingWorld for MotionWorld<'_, '_, '_> {
     }
     fn adjust_ladder(&mut self, position: BlockPos, state: BlockStateId, tagged: bool) -> bool {
         let mut ladder = tagged;
-        native_is_ladder(
-            self.loop_context,
-            self.player.entity_id as u32,
-            position,
-            state,
-            &mut ladder,
-        );
+        if !self.player.travel_probe {
+            native_is_ladder(
+                self.loop_context,
+                self.player.entity_id as u32,
+                position,
+                state,
+                &mut ladder,
+            );
+        }
         ladder
     }
     fn adjust_trapdoor_ladder(
@@ -64,13 +66,15 @@ impl ClimbingWorld for MotionWorld<'_, '_, '_> {
         ladder: bool,
     ) -> bool {
         let mut climbable = ladder;
-        native_makes_open_trapdoor_above_climbable(
-            self.loop_context,
-            state,
-            position,
-            trapdoor,
-            &mut climbable,
-        );
+        if !self.player.travel_probe {
+            native_makes_open_trapdoor_above_climbable(
+                self.loop_context,
+                state,
+                position,
+                trapdoor,
+                &mut climbable,
+            );
+        }
         climbable
     }
 }
@@ -87,6 +91,9 @@ impl LivingAirWorld for MotionWorld<'_, '_, '_> {
         let state = self.block(p);
         let blocks = &self.resources.blocks;
         let own = blocks.get(state)?.coefficients.friction;
+        if self.player.travel_probe {
+            return Ok(own);
+        }
         let level = FrictionLevel {
             world: self.scene,
             registry: self.assets.registry,
@@ -102,12 +109,14 @@ impl LivingAirWorld for MotionWorld<'_, '_, '_> {
     }
     fn speed(&mut self) -> Result<f32> {
         let mut speed = self.player.attribute("minecraft:movement_speed")? as f32;
-        native_living_speed(
-            self.loop_context,
-            self.player.entity_id as u32,
-            "minecraft:player",
-            &mut speed,
-        );
+        if !self.player.travel_probe {
+            native_living_speed(
+                self.loop_context,
+                self.player.entity_id as u32,
+                "minecraft:player",
+                &mut speed,
+            );
+        }
         Ok(speed)
     }
     fn flying_speed(&mut self) -> Result<f32> {
@@ -119,12 +128,14 @@ impl LivingAirWorld for MotionWorld<'_, '_, '_> {
         } else {
             0.02
         };
-        native_living_flying_speed(
-            self.loop_context,
-            self.player.entity_id as u32,
-            "minecraft:player",
-            &mut speed,
-        );
+        if !self.player.travel_probe {
+            native_living_flying_speed(
+                self.loop_context,
+                self.player.entity_id as u32,
+                "minecraft:player",
+                &mut speed,
+            );
+        }
         Ok(speed)
     }
     fn yaw(&mut self) -> Result<f32> {

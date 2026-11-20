@@ -11,7 +11,7 @@ impl MotionWorld<'_, '_, '_> {
     pub(super) fn part_bounce_restitution(&mut self, state: BlockStateId) -> Result<f32> {
         let block = self.resources.blocks.get(state)?;
         let own = block.coefficients.bounce_restitution;
-        if !block_contact::restitution_listens(state) {
+        if self.player.travel_probe || !block_contact::restitution_listens(state) {
             return Ok(own);
         }
         let position = self.support(movement_support::LEGACY_SUPPORT_OFFSET)?;

@@ -2,6 +2,7 @@ sunrise-client game::lan_actions::guest_body::tests::travel::a_player_travel_rep
 sunrise-client game::lan_actions::guest_body::tests::travel::a_player_travel_veto_holds_new_reports_not_previously_accepted_ones lib daily resources
 sunrise-client game::lan_actions::guest_body::tests::travel::an_unchanged_player_travel_outcome_keeps_vanilla_reports_and_packets lib daily resources
 sunrise-client game::lan_actions::guest_body::tests::travel::another_travel_replacement_waits_for_the_first_correction_acknowledgement lib daily resources
+sunrise-client game::lan_actions::guest_body::tests::travel::collision_can_absorb_a_velocity_edit_without_sending_a_correction lib daily resources
 sunrise-client game::native_living_travel_sweep_tests::a_move_veto_still_holds_a_travel_that_ran lib daily resources
 sunrise-client game::native_living_travel_sweep_tests::a_replaced_travel_velocity_steer_its_tick lib daily resources
 sunrise-client game::native_living_travel_sweep_tests::one_travel_fires_once_and_its_move_beside_and_noai_fires_nobody lib daily resources
