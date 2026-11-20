@@ -14,6 +14,9 @@ pub mod connection_kind;
 pub mod crc32;
 pub mod density;
 pub mod dimension;
+// The Windows durable rename needs the write-through flag unavailable through std.
+#[cfg_attr(windows, allow(unsafe_code))]
+pub mod durable;
 pub mod equipment_slot;
 pub mod fast_hash;
 pub mod game_mode;
@@ -21,7 +24,7 @@ pub mod geometry;
 pub mod identifier;
 pub mod java_character;
 pub mod java_float_parse;
-// The map's slab and table are the crate's only unsafe code; every block carries its SAFETY note.
+// The map's slab and table are isolated here; every unsafe block carries its SAFETY note.
 #[allow(unsafe_code)]
 pub mod java_hash_map;
 pub mod java_hash_set;
