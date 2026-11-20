@@ -106,7 +106,7 @@ mod tests {
         };
         let error = validate(&[&slotless], "demo:pot", roles, &screen()).unwrap_err();
         assert!(
-            error.contains("recipe book menu \"demo:pot\"") && error.contains("OutOfRange(0)"),
+            error.contains("recipe book menu \"demo:pot\"") && error.contains("InvalidSlotCount"),
             "{error}"
         );
     }
