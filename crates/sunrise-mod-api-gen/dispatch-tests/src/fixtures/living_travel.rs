@@ -154,12 +154,14 @@ mod crate_root {
                 velocity: &[f64; 3],
             ) -> Result<(), &'static str> {
                 if accepted_input[0].to_bits() != input[0].to_bits() && input[0] > 1.0 {
-                    return Err("input");
+                    Err("input")
+                } else if accepted_velocity[0].to_bits() != velocity[0].to_bits()
+                    && velocity[0] > 64.0
+                {
+                    Err("velocity")
+                } else {
+                    Ok(())
                 }
-                if accepted_velocity[0].to_bits() != velocity[0].to_bits() && velocity[0] > 64.0 {
-                    return Err("velocity");
-                }
-                Ok(())
             }
         }
     }
