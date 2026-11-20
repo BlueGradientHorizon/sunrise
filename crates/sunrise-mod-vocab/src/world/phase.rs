@@ -1046,24 +1046,6 @@ impl WorldgenHost for OwningWorldgen<'_> {
 thread_local! {
     static TEST_PACKAGES: std::cell::RefCell<Option<Arc<[PackageInfo]>>> = const { std::cell::RefCell::new(None) };
 }
-/// Runs `f` with only the packages `ids` installed, for tests.
-#[cfg(test)]
-pub fn with_test_packages<R>(ids: &[&str], f: impl FnOnce() -> R) -> R {
-    let packages: Vec<_> = ids
-        .iter()
-        .map(|id| {
-            PackageInfo::new(
-                (*id).to_owned(),
-                "1".to_owned(),
-                PackageKind::Code,
-                crate::Side::Client,
-                vec![(*id).to_owned()],
-                vec![],
-            )
-        })
-        .collect();
-    with_test_package_inventory(packages, f)
-}
 
 #[cfg(test)]
 pub(crate) fn with_test_package_inventory<R>(

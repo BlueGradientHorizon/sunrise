@@ -474,7 +474,7 @@ const ENTITY_PART_DOCS: &str = "/// An entity type's part: code attached through
 /// The crate whose generated sources are being built.
 #[derive(Clone, Copy)]
 pub enum Target {
-    /// `sunrise-mod-api`: the mod-side WebAssembly guest transport.
+    /// `sunrise-mod-api`: the mod-side API.
     Api,
     /// Engine vocabulary: hook and host traits, values, and dispatch.
     Vocab,

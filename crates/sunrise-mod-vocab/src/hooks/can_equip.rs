@@ -37,7 +37,6 @@ pub trait Hooks {
         contract = "listen",
         scope = "item",
         key = "stack",
-        prepared = "stack",
         host = "read",
         target = "sunrise_client::game::native_hooks::can_equip::NativeHookHost<'_>::native_can_equip",
         cancellable = false,

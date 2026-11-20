@@ -53,7 +53,7 @@ fn attributed(message: String) -> String {
     if let Some(scoped) = mod_api::content::crash::current_converted_call()
         && scoped.runtime == call.id
     {
-        // `export` and `site` come from the runtime, and for wasm from module bytes: a name
+        // `export` and `site` come from the converted package runtime: a name
         // with a newline could forge another line of this report, so keep each on one line.
         let _ = write!(
             out,
