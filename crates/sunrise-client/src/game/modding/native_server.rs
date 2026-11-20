@@ -36,7 +36,7 @@ use mod_api::{
 };
 use serde_json::{Map, Value, json};
 use std::sync::{
-    Mutex, PoisonError,
+    LazyLock, Mutex, PoisonError,
     atomic::{AtomicBool, Ordering},
 };
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
@@ -1317,13 +1317,14 @@ impl Game<'_> {
         (self.native_acting_player() == Some(player)).then_some("")
     }
 
-    /// The plugin channels the player's client announced (`minecraft:register` less
-    /// `minecraft:unregister`), kept by its connection from configuration on.
-    pub(super) fn player_announced_channels(&self, player: PlayerRef) -> Option<Vec<String>> {
+    /// A snapshot of the plugin channels the player's client announced (`minecraft:register`
+    /// less `minecraft:unregister`), kept by its connection from configuration on.
+    pub(super) fn player_announced_channels(&self, player: PlayerRef) -> Option<Arc<[String]>> {
+        static EMPTY: LazyLock<Arc<[String]>> = LazyLock::new(Arc::default);
         if let Some(guest) = self.online_player_record(player) {
             return Some(guest.sender.announced.list());
         }
-        (self.native_acting_player() == Some(player)).then(Vec::new)
+        (self.native_acting_player() == Some(player)).then(|| Arc::clone(&EMPTY))
     }
 
     /// Validate identity without requiring a live body: sending to an online

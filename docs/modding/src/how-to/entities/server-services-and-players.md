@@ -41,8 +41,18 @@ runs). To run a command in another level, do it from a moment in that level or f
 
 Read identity through `player.uuid()`, `player.name(host)`,
 `player.permission_level(host)` and `player.address(host)`. The address is the
-connection IP without a port. An acting player without a known connection has
-an empty address.
+connection IP without a port. `player.client_brand(host)` reads the brand the
+client announced. Name, address and brand return `Option<&str>`: borrow them
+for comparisons, and use `.map(str::to_owned)` only to keep the text beyond the
+host borrow. An acting player without a known connection has an empty address
+and brand.
+
+`player.announced_channels(host)` returns `Option<Arc<[String]>>` in announcement
+order. The snapshot includes `minecraft:register` minus `minecraft:unregister`
+from configuration and play. It can outlive the host borrow and does not change
+when the client updates its list. Read it with `.iter()`; call the method again
+to see new announcements. An acting player without a known connection gets an
+empty snapshot; a stale or unavailable player returns `None`.
 
 `player.latency(host)` reads the ping the Tab list shows, in milliseconds: the keep-alive round
 trips averaged three parts old to one part new. It is 0 until the first keep-alive answer, for a fake
@@ -71,7 +81,7 @@ identities.
 | Method | Behavior |
 |---|---|
 | `set_nickname(host, nickname)` | Changes the name shown in chat and the Tab list; `None` restores the account name. Commands, selectors, logs and events use the real name. Validate the nickname's length, filtering and conflicts yourself. |
-| `nickname(host)` | Reads the nickname `set_nickname` set: `Ok(None)` when there is none. Refuses with `PlayerWorldRefusal::Client` on a client and `Stale` for a stale or offline player. |
+| `nickname(host)` | Borrows the nickname `set_nickname` set as `Result<Option<&str>, PlayerWorldRefusal>`: `Ok(None)` when there is none. Refuses with `Client` on a client and `Stale` for a stale or offline player. |
 | `set_sleep_ignored(host, ignored)` | Controls exclusion from the sleep count. |
 | `disconnect(host, reason)` | Disconnects the player with a `Text` reason, as `/kick` does, also inside their own hook or a payload handler (the connection closes after it). Answers `false` for a stale or unavailable handle, the single-player owner and a player already being disconnected (the first reason stands). A fake player's kick keeps the first reason and completes at the next hub poll through the shared leave path. A reason the `Text` form checks refuse returns `TextFormError` before anything changes. |
 | `hide(host, permission)` | Hides the player from players below the supplied permission level, starting next tick; `None` restores visibility. Hidden players disappear from the world and Tab list, and their join and leave messages are suppressed for those viewers. |

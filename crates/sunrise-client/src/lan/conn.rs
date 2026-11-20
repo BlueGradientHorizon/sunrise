@@ -2499,7 +2499,7 @@ mod tests {
         accept_code_of_conduct(&mut io, "Be kind.", &mut info, &transport, &mut negotiation)
             .unwrap();
         let announced = io.channels.announced.as_ref().map(|list| list.list());
-        assert_eq!(announced, Some(vec!["voicechat:secret".to_owned()]));
+        assert_eq!(announced.unwrap().as_ref(), ["voicechat:secret"]);
     }
 
     #[test]
