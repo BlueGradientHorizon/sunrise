@@ -20,7 +20,7 @@ const COMMANDS: &[Command] = &[
         name: "build",
         everyday: true,
         usage: "build [--update-lock | --wasm [--catalog <points.json>] [--with <mod>]…]",
-        summary: "Packs the mod into target/sunrise-mod/<id>.smod; a native mod is compiled too, and --wasm builds a wasm mod's mod.wasm first.",
+        summary: "Packs the mod into target/sunrise-mod/<id>.smod; a native mod is compiled too (--update-lock, native only, resolves its Cargo.lock again), and --wasm builds a wasm mod's mod.wasm first.",
     },
     Command {
         name: "run",

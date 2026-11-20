@@ -216,6 +216,12 @@ fn build_command(
 ) -> Result<PathBuf, String> {
     let wanted = build_args(args)?;
     let root = Path::new(".");
+    // Known from the manifest, before any SDK or package work.
+    if wanted.update_lock && read_manifest(root)?.native.is_none() {
+        return Err(format!(
+            "build --update-lock rewrites a native mod's Cargo.lock; {MANIFEST} has no [native] table"
+        ));
+    }
     let output = PackageOutput::in_project(root)?;
     if wanted.wasm {
         fetched(root)?;
@@ -243,6 +249,11 @@ fn build_command(
     )?;
     println!("Built {}", path.display());
     Ok(path)
+}
+
+/// The manifest in `dir`, read within its size bound.
+fn read_manifest(dir: &Path) -> Result<Manifest, String> {
+    Manifest::parse(&bounded::read(&dir.join(MANIFEST), bounded::MAX_MANIFEST)?)
 }
 
 /// Whether `dir` is a code mod's project: one with a `Cargo.toml`, which depends on the SDK.
