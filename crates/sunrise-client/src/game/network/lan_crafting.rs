@@ -2223,8 +2223,8 @@ mod recipe_check_tests {
             }
             let replies = sent(&rx);
             assert_eq!(replies.len(), 10);
-            let play = game.lan.as_mut().unwrap().play.entry(conn).or_default();
-            play.decay_recipe_checks();
+            game.tick_guest_connections(false).unwrap();
+            drop(sent(&rx));
             game.guest_recipe_check(conn, &request(0, 11, "minecraft:stick"));
             assert_eq!(reply(&sent(&rx)).1, 11);
         });
