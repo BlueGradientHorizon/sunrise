@@ -1276,6 +1276,7 @@ fn a_position_read_tied_to_the_struct_names_its_field() {
         "fn f(p: &Pos) { let q: &mut Pos = todo!(); q.1 = p.1; }",
         "type:Pos.1"
     ));
+    assert!(field("fn f(p: (&Pos)) -> i32 { p.0 }", "type:Pos.0"));
     // A `for` binding shadows the outer parameter only in the loop body.
     assert!(field("fn f(p: Pos) { for p in 0..p.0 {} }", "type:Pos.0"));
     assert!(!field(

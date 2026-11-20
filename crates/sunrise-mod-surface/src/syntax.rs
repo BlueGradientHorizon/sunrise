@@ -106,6 +106,8 @@ fn conditional(attrs: &[syn::Attribute]) -> bool {
 fn type_path<'t>(reader: &Reader<'t>, ty: &syn::Type) -> Option<Tie<'t>> {
     match ty {
         syn::Type::Reference(r) => type_path(reader, &r.elem),
+        syn::Type::Paren(t) => type_path(reader, &t.elem),
+        syn::Type::Group(t) => type_path(reader, &t.elem),
         _ => plain_path(ty).map(|path| (reader.names(path), path.leading_colon.is_some())),
     }
 }
