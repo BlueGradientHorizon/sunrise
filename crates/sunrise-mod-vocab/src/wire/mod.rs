@@ -14,7 +14,13 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::hash::Hash;
 use std::sync::Arc;
 
+pub(crate) mod limits;
+mod schema;
 mod static_strings;
+
+use limits::{Budget, PAYLOAD_MAX_DEPTH, PAYLOAD_MAX_LIST_ENTRIES, PAYLOAD_MAX_STRING_BYTES};
+
+pub use schema::WireSchema;
 
 /// Maximum static strings retained by the process.
 // hidden: transport plumbing used by generated boundary code.
@@ -52,8 +58,10 @@ pub enum WireError {
     Tag(u32),
     /// A length longer than the rest of the buffer could hold.
     Length,
-    /// Values nested deeper than [`MAX_DEPTH`].
+    /// Values nested deeper than the reader or writer allows (normally [`MAX_DEPTH`]).
     Depth,
+    /// The typed value would exceed its allocation budget.
+    Budget,
     /// A value its type refuses (an unknown key, a count out of range), and why.
     Invalid(&'static str),
     /// Bytes left over after the value.
@@ -68,6 +76,7 @@ impl std::fmt::Display for WireError {
             Self::Tag(tag) => write!(f, "case {tag} does not exist"),
             Self::Length => f.write_str("a length is longer than the data"),
             Self::Depth => f.write_str("values are nested too deeply"),
+            Self::Budget => f.write_str("the value exceeds its allocation budget"),
             Self::Invalid(why) => f.write_str(why),
             Self::Trailing => f.write_str("data left over after the value"),
         }
@@ -84,6 +93,7 @@ pub struct Writer {
     error: Option<WireError>,
     limit: Option<usize>,
     depth: u16,
+    budget: Option<Budget>,
 }
 
 impl Writer {
@@ -91,11 +101,19 @@ impl Writer {
     pub fn new() -> Self {
         Self::default()
     }
+    pub(crate) fn for_payload(limit: usize) -> Self {
+        Self {
+            limit: Some(limit),
+            budget: Some(Budget::payload()),
+            ..Self::default()
+        }
+    }
     /// Empties it, keeping its allocation and resetting any per-call error and byte limit.
     pub fn clear(&mut self) {
         self.bytes.clear();
         self.error = None;
         self.limit = None;
+        self.budget = None;
     }
     /// Takes `buffer` as its storage, emptied, resetting the error and byte limit.
     pub fn replace(&mut self, mut buffer: Vec<u8>) {
@@ -103,6 +121,7 @@ impl Writer {
         self.bytes = buffer;
         self.error = None;
         self.limit = None;
+        self.budget = None;
     }
     /// The bytes written, leaving the writer's storage to the caller.
     pub fn into_bytes(self) -> Vec<u8> {
@@ -138,6 +157,16 @@ impl Writer {
     }
     /// A string: its length, then its bytes.
     pub fn put_str(&mut self, text: &str) {
+        if self.budget.is_some() && text.len() > PAYLOAD_MAX_STRING_BYTES {
+            self.fail(WireError::Length);
+            return;
+        }
+        if let Some(budget) = &mut self.budget
+            && let Err(error) = budget.bytes(text.len() as u64)
+        {
+            self.fail(error);
+            return;
+        }
         let Some(bytes) = text.len().checked_add(4) else {
             self.fail(WireError::Length);
             return;
@@ -154,6 +183,10 @@ impl Writer {
     }
     /// A length or count.
     pub fn put_len(&mut self, len: usize) {
+        if self.budget.is_some() && len > PAYLOAD_MAX_LIST_ENTRIES {
+            self.fail(WireError::Length);
+            return;
+        }
         match u32::try_from(len) {
             Ok(len) => self.put(&len),
             Err(_) => self.fail(WireError::Length),
@@ -164,7 +197,7 @@ impl Writer {
         match value {
             Some(value) => {
                 self.put(&1u8);
-                self.put(value);
+                self.payload_nested(|out| out.put(value));
             }
             None => self.put(&0u8),
         }
@@ -175,18 +208,43 @@ impl Writer {
             value.put_to(self);
         }
     }
-    /// Writes one structural level, refusing before recursing past [`MAX_DEPTH`].
+    /// Writes one structural level of ordinary Wire. Typed payloads instead count the
+    /// indirections in the value, not its records.
     pub fn nested(&mut self, write: impl FnOnce(&mut Self)) {
+        if self.budget.is_some() {
+            write(self);
+        } else {
+            self.nest_at(MAX_DEPTH, write);
+        }
+    }
+    fn nest_at(&mut self, limit: u16, write: impl FnOnce(&mut Self)) {
         if self.error.is_some() {
             return;
         }
-        if self.depth >= MAX_DEPTH {
+        if self.depth >= limit {
             self.fail(WireError::Depth);
             return;
         }
         self.depth += 1;
         write(self);
         self.depth -= 1;
+    }
+    fn payload_nested(&mut self, write: impl FnOnce(&mut Self)) {
+        if self.budget.is_some() {
+            self.nest_at(PAYLOAD_MAX_DEPTH, write);
+        } else {
+            write(self);
+        }
+    }
+    /// Charge storage for decoded `T`s before writing them in the bounded payload path.
+    pub(crate) fn charge<T>(&mut self, count: usize) -> bool {
+        if let Some(budget) = &mut self.budget
+            && let Err(error) = budget.charge::<T>(count)
+        {
+            self.fail(error);
+            return false;
+        }
+        true
     }
     /// The first encoding failure; callers refuse the call rather than sending partial bytes.
     pub fn error(&self) -> Option<WireError> {
@@ -219,6 +277,9 @@ impl Put for str {
 
 impl Wire for &str {
     const MIN: usize = 4;
+    fn describe(schema: &mut WireSchema) -> u64 {
+        String::describe(schema)
+    }
     fn put(&self, out: &mut Writer) {
         out.put_str(self);
     }
@@ -229,10 +290,14 @@ impl Wire for &str {
 
 impl<T: Put> Put for [T] {
     fn put_to(&self, out: &mut Writer) {
-        out.put_len(self.len());
-        for item in self {
-            out.put(item);
-        }
+        out.payload_nested(|out| {
+            if out.charge::<T>(self.len()) {
+                out.put_len(self.len());
+                for item in self {
+                    out.put(item);
+                }
+            }
+        });
     }
 }
 
@@ -241,12 +306,23 @@ impl<T: Put> Put for [T] {
 pub struct Reader<'a> {
     data: &'a [u8],
     depth: u16,
+    budget: Option<Budget>,
 }
 
 impl<'a> Reader<'a> {
     /// Reads values from a borrowed buffer without copying it.
     pub fn new(data: &'a [u8]) -> Self {
-        Self { data, depth: 0 }
+        Self {
+            data,
+            depth: 0,
+            budget: None,
+        }
+    }
+    pub(crate) fn for_payload(data: &'a [u8]) -> Self {
+        Self {
+            budget: Some(Budget::payload()),
+            ..Self::new(data)
+        }
     }
     /// The bytes not yet read.
     pub fn rest(&self) -> &'a [u8] {
@@ -262,10 +338,16 @@ impl<'a> Reader<'a> {
     /// of the buffer could not hold them, so no allocation outruns its input.
     pub fn take_len(&mut self, min: usize) -> Result<usize, WireError> {
         let len = u32::take(self)? as usize;
-        match len.checked_mul(min.max(1)) {
-            Some(needed) if needed <= self.data.len() || min == 0 && len <= self.data.len() => {
-                Ok(len)
+        let min = if self.budget.is_some() {
+            if len > PAYLOAD_MAX_LIST_ENTRIES {
+                return Err(WireError::Length);
             }
+            min // Zero-width entries are safe when their count is capped independently.
+        } else {
+            min.max(1)
+        };
+        match len.checked_mul(min) {
+            Some(needed) if needed <= self.data.len() => Ok(len),
             _ => Err(WireError::Length),
         }
     }
@@ -285,9 +367,11 @@ impl<'a> Reader<'a> {
         let mut inner = Self {
             data: &data[..len],
             depth: self.depth,
+            budget: self.budget.take(),
         };
         let value = read(&mut inner);
         self.data = &data[len - inner.data.len()..];
+        self.budget = inner.budget;
         value
     }
     /// A list of `u16` written by [`Writer::put_u16s`]. Check the length against the remaining
@@ -296,6 +380,7 @@ impl<'a> Reader<'a> {
         &mut self,
     ) -> Result<impl ExactSizeIterator<Item = u16> + use<'a>, WireError> {
         let len = self.take_len(2)?;
+        self.charge::<u16>(len)?;
         let bytes = self.take_bytes(len * 2)?;
         Ok(bytes
             .as_chunks::<2>()
@@ -311,29 +396,61 @@ impl<'a> Reader<'a> {
         max_items: usize,
         mut read: impl FnMut(&mut Self) -> Result<T, WireError>,
     ) -> Result<Vec<T>, WireError> {
-        let len = self.take_len(T::MIN)?;
-        if len > max_items {
-            return Err(WireError::Length);
-        }
-        let mut items = Vec::with_capacity(len);
-        for _ in 0..len {
-            items.push(read(self)?);
-        }
-        Ok(items)
+        self.payload_nested(|input| {
+            let len = input.take_len(T::MIN)?;
+            if len > max_items {
+                return Err(WireError::Length);
+            }
+            input.charge::<T>(len)?;
+            let mut items = Vec::with_capacity(len);
+            for _ in 0..len {
+                items.push(read(input)?);
+            }
+            Ok(items)
+        })
     }
     // hidden: transport plumbing used by generated boundary code.
-    /// Reads one level down: the depth the value may nest to is [`MAX_DEPTH`].
+    /// Reads one structural level of ordinary Wire. Typed payloads instead count the
+    /// indirections in the value, not its records.
     pub fn nested<T>(
         &mut self,
         read: impl FnOnce(&mut Self) -> Result<T, WireError>,
     ) -> Result<T, WireError> {
-        if self.depth >= MAX_DEPTH {
+        if self.budget.is_some() {
+            read(self)
+        } else {
+            self.nest_at(MAX_DEPTH, read)
+        }
+    }
+    fn nest_at<T>(
+        &mut self,
+        limit: u16,
+        read: impl FnOnce(&mut Self) -> Result<T, WireError>,
+    ) -> Result<T, WireError> {
+        if self.depth >= limit {
             return Err(WireError::Depth);
         }
         self.depth += 1;
         let value = read(self);
         self.depth -= 1;
         value
+    }
+    fn payload_nested<T>(
+        &mut self,
+        read: impl FnOnce(&mut Self) -> Result<T, WireError>,
+    ) -> Result<T, WireError> {
+        if self.budget.is_some() {
+            self.nest_at(PAYLOAD_MAX_DEPTH, read)
+        } else {
+            read(self)
+        }
+    }
+    /// Charge bounded payload allocations before reserving or copying their storage.
+    pub(crate) fn charge<T>(&mut self, count: usize) -> Result<(), WireError> {
+        if let Some(budget) = &mut self.budget {
+            budget.charge::<T>(count)?;
+        }
+        Ok(())
     }
     /// The whole of `data` as one `T`.
     pub fn decode<T: Wire>(data: &'a [u8]) -> Result<T, WireError> {
@@ -354,6 +471,12 @@ impl<'a> Reader<'a> {
 pub trait Wire: Sized {
     /// Minimum encoded size, used to reject impossible collection lengths.
     const MIN: usize;
+    /// Describes this codec's structural layout, independently of any particular value.
+    /// Derives describe their fields in encoding order. A manual codec must describe (and
+    /// version) any bytes it writes differently, so payload peers can reject a mismatch.
+    fn describe(schema: &mut WireSchema) -> u64
+    where
+        Self: 'static;
     /// Encodes this value, recording failures on the writer.
     fn put(&self, out: &mut Writer);
     /// Decodes one value, leaving any following bytes for the caller.
@@ -362,10 +485,7 @@ pub trait Wire: Sized {
     /// Internal list codec; primitive numbers override this with a contiguous codec.
     #[doc(hidden)]
     fn put_list(items: &[Self], out: &mut Writer) {
-        out.put_len(items.len());
-        for item in items {
-            item.put(out);
-        }
+        Put::put_to(items, out);
     }
     // hidden: internal Vec decoding specialization for contiguous numeric payloads
     #[doc(hidden)]
@@ -375,9 +495,10 @@ pub trait Wire: Sized {
 }
 
 macro_rules! numbers {
-    ($($ty:ty),*) => {$(
+    ($($ty:ty => $format:literal),*) => {$(
         impl Wire for $ty {
-    const MIN: usize = std::mem::size_of::<$ty>();
+            const MIN: usize = std::mem::size_of::<$ty>();
+            fn describe(_: &mut WireSchema) -> u64 { WireSchema::leaf($format) }
             fn put(&self, out: &mut Writer) {
                 out.put_bytes(&self.to_le_bytes());
             }
@@ -386,33 +507,44 @@ macro_rules! numbers {
                 Ok(<$ty>::from_le_bytes(bytes.try_into().expect("a fixed-size slice")))
             }
             fn put_list(items: &[Self], out: &mut Writer) {
-                let Some(size) = items.len().checked_mul(<Self as Wire>::MIN).and_then(|n| n.checked_add(4)) else {
-                    out.fail(WireError::Length);
-                    return;
-                };
-                if !out.can_fit(size) { return; }
-                out.put_len(items.len());
-                #[cfg(target_endian = "little")]
-                out.put_bytes(bytemuck::cast_slice(items));
-                #[cfg(target_endian = "big")]
-                for item in items { out.put_bytes(&item.to_le_bytes()); }
+                out.payload_nested(|out| {
+                    let Some(size) = items.len().checked_mul(<Self as Wire>::MIN).and_then(|n| n.checked_add(4)) else {
+                        out.fail(WireError::Length);
+                        return;
+                    };
+                    if !out.can_fit(size) || !out.charge::<Self>(items.len()) { return; }
+                    out.put_len(items.len());
+                    #[cfg(target_endian = "little")]
+                    out.put_bytes(bytemuck::cast_slice(items));
+                    #[cfg(target_endian = "big")]
+                    for item in items { out.put_bytes(&item.to_le_bytes()); }
+                });
             }
             fn take_list(input: &mut Reader<'_>) -> Result<Vec<Self>, WireError> {
-                let len = input.take_len(<Self as Wire>::MIN)?;
-                let size = len.checked_mul(<Self as Wire>::MIN).ok_or(WireError::Length)?;
-                let bytes = input.take_bytes(size)?;
-                Ok(bytes.chunks_exact(<Self as Wire>::MIN).map(|chunk| {
-                    Self::from_le_bytes(chunk.try_into().expect("a fixed-size chunk"))
-                }).collect())
+                input.payload_nested(|input| {
+                    let len = input.take_len(<Self as Wire>::MIN)?;
+                    input.charge::<Self>(len)?;
+                    let bytes = input.take_bytes(len * <Self as Wire>::MIN)?;
+                    Ok(bytes.chunks_exact(<Self as Wire>::MIN).map(|chunk| {
+                        Self::from_le_bytes(chunk.try_into().expect("a fixed-size chunk"))
+                    }).collect())
+                })
             }
         }
     )*};
 }
-numbers!(u8, i8, u16, i16, u32, i32, u64, i64, u128, i128, f32, f64);
+numbers!(
+    u8 => "u8", i8 => "i8", u16 => "u16-le", i16 => "i16-le",
+    u32 => "u32-le", i32 => "i32-le", u64 => "u64-le", i64 => "i64-le",
+    u128 => "u128-le", i128 => "i128-le", f32 => "f32-le", f64 => "f64-le"
+);
 
 /// A `usize` crosses as 64 bits: a guest's is 32.
 impl Wire for usize {
     const MIN: usize = 8;
+    fn describe(_: &mut WireSchema) -> u64 {
+        WireSchema::leaf("usize:u64-le")
+    }
     fn put(&self, out: &mut Writer) {
         out.put(&(*self as u64));
     }
@@ -423,6 +555,9 @@ impl Wire for usize {
 
 impl Wire for bool {
     const MIN: usize = 1;
+    fn describe(_: &mut WireSchema) -> u64 {
+        WireSchema::leaf("bool")
+    }
     fn put(&self, out: &mut Writer) {
         out.put(&u8::from(*self));
     }
@@ -437,6 +572,9 @@ impl Wire for bool {
 
 impl Wire for char {
     const MIN: usize = 4;
+    fn describe(_: &mut WireSchema) -> u64 {
+        WireSchema::leaf("char:u32-le")
+    }
     fn put(&self, out: &mut Writer) {
         out.put(&u32::from(*self));
     }
@@ -447,6 +585,9 @@ impl Wire for char {
 
 impl Wire for () {
     const MIN: usize = 0;
+    fn describe(_: &mut WireSchema) -> u64 {
+        WireSchema::leaf("unit")
+    }
     fn put(&self, _: &mut Writer) {}
     fn take(_: &mut Reader<'_>) -> Result<Self, WireError> {
         Ok(())
@@ -455,12 +596,21 @@ impl Wire for () {
 
 impl Wire for String {
     const MIN: usize = 4;
+    fn describe(_: &mut WireSchema) -> u64 {
+        WireSchema::leaf("string:u32-le-length")
+    }
     fn put(&self, out: &mut Writer) {
         out.put_str(self);
     }
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
         let len = input.take_len(1)?;
+        if input.budget.is_some() && len > PAYLOAD_MAX_STRING_BYTES {
+            return Err(WireError::Length);
+        }
         let bytes = input.take_bytes(len)?;
+        if let Some(budget) = &mut input.budget {
+            budget.bytes(len as u64)?;
+        }
         std::str::from_utf8(bytes)
             .map(str::to_owned)
             .map_err(|_| WireError::Utf8)
@@ -470,6 +620,9 @@ impl Wire for String {
 /// A mod's own text, owned once read: a `Cow<'static, str>` field is how the API takes either.
 impl Wire for std::borrow::Cow<'_, str> {
     const MIN: usize = 4;
+    fn describe(schema: &mut WireSchema) -> u64 {
+        String::describe(schema)
+    }
     fn put(&self, out: &mut Writer) {
         out.put_str(self);
     }
@@ -480,6 +633,9 @@ impl Wire for std::borrow::Cow<'_, str> {
 
 impl Wire for Box<str> {
     const MIN: usize = 4;
+    fn describe(schema: &mut WireSchema) -> u64 {
+        String::describe(schema)
+    }
     fn put(&self, out: &mut Writer) {
         out.put_str(self);
     }
@@ -490,6 +646,9 @@ impl Wire for Box<str> {
 
 impl Wire for Arc<str> {
     const MIN: usize = 4;
+    fn describe(schema: &mut WireSchema) -> u64 {
+        String::describe(schema)
+    }
     fn put(&self, out: &mut Writer) {
         out.put_str(self);
     }
@@ -500,19 +659,19 @@ impl Wire for Arc<str> {
 
 impl<T: Wire> Wire for Option<T> {
     const MIN: usize = 1;
+    fn describe(schema: &mut WireSchema) -> u64
+    where
+        Self: 'static,
+    {
+        WireSchema::mix(WireSchema::leaf("option"), T::describe(schema))
+    }
     fn put(&self, out: &mut Writer) {
-        match self {
-            None => out.put(&0u8),
-            Some(value) => {
-                out.put(&1u8);
-                out.put(value);
-            }
-        }
+        out.put_opt(self.as_ref());
     }
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
         match u8::take(input)? {
             0 => Ok(None),
-            1 => T::take(input).map(Some),
+            1 => input.payload_nested(T::take).map(Some),
             tag => Err(WireError::Tag(tag.into())),
         }
     }
@@ -520,22 +679,29 @@ impl<T: Wire> Wire for Option<T> {
 
 impl<T: Wire, E: Wire> Wire for Result<T, E> {
     const MIN: usize = 1;
+    fn describe(schema: &mut WireSchema) -> u64
+    where
+        Self: 'static,
+    {
+        let hash = WireSchema::mix(WireSchema::leaf("result:u8-tag"), T::describe(schema));
+        WireSchema::mix(hash, E::describe(schema))
+    }
     fn put(&self, out: &mut Writer) {
         match self {
             Ok(value) => {
                 out.put(&0u8);
-                out.put(value);
+                out.payload_nested(|out| out.put(value));
             }
             Err(error) => {
                 out.put(&1u8);
-                out.put(error);
+                out.payload_nested(|out| out.put(error));
             }
         }
     }
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
         match u8::take(input)? {
-            0 => T::take(input).map(Ok),
-            1 => E::take(input).map(Err),
+            0 => input.payload_nested(T::take).map(Ok),
+            1 => input.payload_nested(E::take).map(Err),
             tag => Err(WireError::Tag(tag.into())),
         }
     }
@@ -543,11 +709,14 @@ impl<T: Wire, E: Wire> Wire for Result<T, E> {
 
 impl<T: Wire> Wire for Arc<[T]> {
     const MIN: usize = 4;
+    fn describe(schema: &mut WireSchema) -> u64
+    where
+        Self: 'static,
+    {
+        Vec::<T>::describe(schema)
+    }
     fn put(&self, out: &mut Writer) {
-        out.put_len(self.len());
-        for item in self.iter() {
-            out.put(item);
-        }
+        T::put_list(self, out);
     }
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
         Vec::<T>::take(input).map(Into::into)
@@ -556,11 +725,14 @@ impl<T: Wire> Wire for Arc<[T]> {
 
 impl<T: Wire> Wire for Box<[T]> {
     const MIN: usize = 4;
+    fn describe(schema: &mut WireSchema) -> u64
+    where
+        Self: 'static,
+    {
+        Vec::<T>::describe(schema)
+    }
     fn put(&self, out: &mut Writer) {
-        out.put_len(self.len());
-        for item in self.iter() {
-            out.put(item);
-        }
+        T::put_list(self, out);
     }
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
         Vec::<T>::take(input).map(Into::into)
@@ -569,26 +741,78 @@ impl<T: Wire> Wire for Box<[T]> {
 
 impl<T: Wire> Wire for Box<T> {
     const MIN: usize = T::MIN;
+    fn describe(schema: &mut WireSchema) -> u64
+    where
+        Self: 'static,
+    {
+        WireSchema::mix(WireSchema::leaf("box"), T::describe(schema))
+    }
     fn put(&self, out: &mut Writer) {
-        out.nested(|out| (**self).put(out));
+        let limit = if out.budget.is_some() {
+            PAYLOAD_MAX_DEPTH
+        } else {
+            MAX_DEPTH
+        };
+        out.nest_at(limit, |out| {
+            if out.charge::<T>(1) {
+                (**self).put(out);
+            }
+        });
     }
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
-        input.nested(T::take).map(Box::new)
+        let limit = if input.budget.is_some() {
+            PAYLOAD_MAX_DEPTH
+        } else {
+            MAX_DEPTH
+        };
+        input.nest_at(limit, |input| {
+            input.charge::<T>(1)?;
+            T::take(input).map(Box::new)
+        })
     }
 }
 
 impl<T: Wire> Wire for Arc<T> {
     const MIN: usize = T::MIN;
+    fn describe(schema: &mut WireSchema) -> u64
+    where
+        Self: 'static,
+    {
+        WireSchema::mix(WireSchema::leaf("arc"), T::describe(schema))
+    }
     fn put(&self, out: &mut Writer) {
-        out.nested(|out| (**self).put(out));
+        let limit = if out.budget.is_some() {
+            PAYLOAD_MAX_DEPTH
+        } else {
+            MAX_DEPTH
+        };
+        out.nest_at(limit, |out| {
+            if out.charge::<T>(1) {
+                (**self).put(out);
+            }
+        });
     }
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
-        input.nested(T::take).map(Arc::new)
+        let limit = if input.budget.is_some() {
+            PAYLOAD_MAX_DEPTH
+        } else {
+            MAX_DEPTH
+        };
+        input.nest_at(limit, |input| {
+            input.charge::<T>(1)?;
+            T::take(input).map(Arc::new)
+        })
     }
 }
 
 impl<T: Wire> Wire for Vec<T> {
     const MIN: usize = 4;
+    fn describe(schema: &mut WireSchema) -> u64
+    where
+        Self: 'static,
+    {
+        WireSchema::mix(WireSchema::leaf("list:u32-le-length"), T::describe(schema))
+    }
     fn put(&self, out: &mut Writer) {
         T::put_list(self, out);
     }
@@ -599,11 +823,21 @@ impl<T: Wire> Wire for Vec<T> {
 
 impl<T: Wire> Wire for VecDeque<T> {
     const MIN: usize = 4;
+    fn describe(schema: &mut WireSchema) -> u64
+    where
+        Self: 'static,
+    {
+        Vec::<T>::describe(schema)
+    }
     fn put(&self, out: &mut Writer) {
-        out.put_len(self.len());
-        for item in self {
-            item.put(out);
-        }
+        out.payload_nested(|out| {
+            if out.charge::<T>(self.len()) {
+                out.put_len(self.len());
+                for item in self {
+                    out.put(item);
+                }
+            }
+        });
     }
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
         Vec::take(input).map(Into::into)
@@ -612,12 +846,22 @@ impl<T: Wire> Wire for VecDeque<T> {
 
 impl<T: Wire, const N: usize> Wire for [T; N] {
     const MIN: usize = T::MIN * N;
+    fn describe(schema: &mut WireSchema) -> u64
+    where
+        Self: 'static,
+    {
+        let hash = WireSchema::mix(WireSchema::leaf("array"), N as u64);
+        WireSchema::mix(hash, T::describe(schema))
+    }
     fn put(&self, out: &mut Writer) {
-        for item in self {
-            item.put(out);
+        if out.charge::<T>(N) {
+            for item in self {
+                item.put(out);
+            }
         }
     }
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
+        input.charge::<T>(N)?;
         let mut items = Vec::with_capacity(N);
         for _ in 0..N {
             items.push(T::take(input)?);
@@ -632,20 +876,30 @@ impl<T: Wire, const N: usize> Wire for [T; N] {
 macro_rules! sets {
     ($($ty:ident [$($bound:tt)+]),*) => {$(
         impl<T: Wire + $($bound)+> Wire for $ty<T> {
-    const MIN: usize = 4;
-            fn put(&self, out: &mut Writer) {
-                out.put_len(self.len());
-                for item in self {
-                    item.put(out);
-                }
+            const MIN: usize = 4;
+            fn describe(schema: &mut WireSchema) -> u64 where Self: 'static {
+                WireSchema::mix(WireSchema::leaf("set:u32-le-length"), T::describe(schema))
             }
-    fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
-                let len = input.take_len(T::MIN)?;
-                let mut set = Self::default();
-                for _ in 0..len {
-                    set.insert(T::take(input)?);
-                }
-                Ok(set)
+            fn put(&self, out: &mut Writer) {
+                out.payload_nested(|out| {
+                    // Allow for backing-table slots and per-entry metadata.
+                    if !out.charge::<(T, usize)>(self.len().saturating_mul(2)) { return; }
+                    out.put_len(self.len());
+                    for item in self {
+                        item.put(out);
+                    }
+                });
+            }
+            fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
+                input.payload_nested(|input| {
+                    let len = input.take_len(T::MIN)?;
+                    input.charge::<(T, usize)>(len.saturating_mul(2))?;
+                    let mut set = Self::default();
+                    for _ in 0..len {
+                        set.insert(T::take(input)?);
+                    }
+                    Ok(set)
+                })
             }
         }
     )*};
@@ -655,22 +909,32 @@ sets!(BTreeSet[Ord], HashSet[Eq + Hash]);
 macro_rules! maps {
     ($($ty:ident [$($bound:tt)+]),*) => {$(
         impl<K: Wire + $($bound)+, V: Wire> Wire for $ty<K, V> {
-    const MIN: usize = 4;
-            fn put(&self, out: &mut Writer) {
-                out.put_len(self.len());
-                for (key, value) in self {
-                    key.put(out);
-                    value.put(out);
-                }
+            const MIN: usize = 4;
+            fn describe(schema: &mut WireSchema) -> u64 where Self: 'static {
+                let hash = WireSchema::mix(WireSchema::leaf("map:u32-le-length"), K::describe(schema));
+                WireSchema::mix(hash, V::describe(schema))
             }
-    fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
-                let len = input.take_len(K::MIN + V::MIN)?;
-                let mut map = Self::default();
-                for _ in 0..len {
-                    let key = K::take(input)?;
-                    map.insert(key, V::take(input)?);
-                }
-                Ok(map)
+            fn put(&self, out: &mut Writer) {
+                out.payload_nested(|out| {
+                    if !out.charge::<(K, V, usize)>(self.len().saturating_mul(2)) { return; }
+                    out.put_len(self.len());
+                    for (key, value) in self {
+                        key.put(out);
+                        value.put(out);
+                    }
+                });
+            }
+            fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
+                input.payload_nested(|input| {
+                    let len = input.take_len(K::MIN + V::MIN)?;
+                    input.charge::<(K, V, usize)>(len.saturating_mul(2))?;
+                    let mut map = Self::default();
+                    for _ in 0..len {
+                        let key = K::take(input)?;
+                        map.insert(key, V::take(input)?);
+                    }
+                    Ok(map)
+                })
             }
         }
     )*};
@@ -682,12 +946,17 @@ macro_rules! tuples {
         #[allow(non_snake_case)]
         impl<$($name: Wire),+> Wire for ($($name,)+) {
 
-    const MIN: usize = 0 $(+ $name::MIN)+;
+            const MIN: usize = 0 $(+ $name::MIN)+;
+            fn describe(schema: &mut WireSchema) -> u64 where Self: 'static {
+                let hash = WireSchema::leaf("tuple");
+                $(let hash = WireSchema::mix(hash, $name::describe(schema));)+
+                hash
+            }
             fn put(&self, out: &mut Writer) {
                 let ($($name,)+) = self;
                 $($name.put(out);)+
             }
-    fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
+            fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
                 Ok(($($name::take(input)?,)+))
             }
         }
@@ -720,13 +989,34 @@ impl Wire for std::time::Duration {
     }
 }
 
-// Explicit layouts for checked codecs are read by the SDK surface generator.
+// The same declarations feed the runtime fingerprint and the SDK surface generator.
 macro_rules! layout_fields {
-    ($($field:literal => $ty:ty),* $(,)?) => {};
+    ($($field:literal => $ty:ty),* $(,)?) => {
+        fn describe(schema: &mut $crate::wire::WireSchema) -> u64 {
+            use $crate::wire::WireSchema;
+            schema.named::<Self>(|schema| {
+                let hash = WireSchema::leaf("wire-layout-v1");
+                $(
+                    // Explicit enum tags are part of the bytes; field and variant names are not.
+                    let hash = if let Some((tag, _)) = $field.split_once(':') {
+                        WireSchema::mix(hash, WireSchema::leaf(tag))
+                    } else {
+                        hash
+                    };
+                    let hash = WireSchema::mix(hash, <$ty as $crate::wire::Wire>::describe(schema));
+                )*
+                hash
+            })
+        }
+    };
 }
 pub(crate) use layout_fields;
 macro_rules! layout_via {
-    ($ty:ty) => {};
+    ($ty:ty) => {
+        fn describe(schema: &mut $crate::wire::WireSchema) -> u64 {
+            schema.named::<Self>(|schema| <$ty as $crate::wire::Wire>::describe(schema))
+        }
+    };
 }
 
 #[cfg(test)]

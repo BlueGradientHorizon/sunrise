@@ -714,6 +714,11 @@ impl Wire for sunrise_core::nbt::Compound {
     layout_via!(std::collections::BTreeMap<sunrise_core::nbt::JavaString, crate::Tag>);
     const MIN: usize = 4;
     fn put(&self, out: &mut Writer) {
+        if !out.charge::<(sunrise_core::nbt::JavaString, crate::Tag, usize)>(
+            self.len().saturating_mul(2),
+        ) {
+            return;
+        }
         out.put_len(self.len());
         for (key, value) in self {
             out.put(key);
@@ -722,6 +727,7 @@ impl Wire for sunrise_core::nbt::Compound {
     }
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
         let len = input.take_len(sunrise_core::nbt::JavaString::MIN + crate::Tag::MIN)?;
+        input.charge::<(sunrise_core::nbt::JavaString, crate::Tag, usize)>(len * 2)?;
         let mut map = Self::new();
         for _ in 0..len {
             let key = input.take()?;
