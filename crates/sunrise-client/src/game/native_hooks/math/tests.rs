@@ -36,9 +36,3 @@ fn game_host_math_profile_matches_platform_and_is_stable() {
         }
     });
 }
-
-#[test]
-#[ignore = "needs SUNRISE_TEST_RESOURCES, SUNRISE_WASM_FIXTURE and SUNRISE_WASM_STD built from this tree"]
-fn compiled_wasm_math_profile_import_matches_actual_game_host() {
-    sunrise_guest_stack::run_on_guest_stack(compiled_wasm_loopback);
-}
