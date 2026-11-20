@@ -66,7 +66,7 @@ pub(super) fn mob_camera_entity(m: &Mob) -> CameraEntity {
             scale: attribute("minecraft:scale", 1.0) as f32,
             camera_distance: attribute("minecraft:camera_distance", 4.0),
             sleeping: sleeping_view(m),
-            dead: None,
+            dead: (m.health <= 0.0).then_some(m.death_time),
         }),
         mount: None,
     }

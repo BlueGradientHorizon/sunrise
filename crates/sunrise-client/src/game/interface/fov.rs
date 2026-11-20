@@ -122,6 +122,13 @@ impl Game<'_> {
             .dead_or_dying()
             .then(|| self.ui.death_time.min(i32::MAX as u32) as i32)
     }
+    /// `modifyFovBasedOnDeathOrFluid`'s death time: the camera entity's, so a spectated entity's.
+    fn camera_death_time(&self) -> Option<i32> {
+        match self.spectated_camera_snapshot() {
+            Some(e) => e.living.and_then(|l| l.dead),
+            None => self.death_time(),
+        }
+    }
     /// `Camera.getFluidInCamera` for the camera at `camera`, where the parts of each block it
     /// reads may answer the state the camera sees there (`state_at_viewpoint`), and the mods may
     /// then replace the answer (`camera_submersion`). Every client reader of the camera's fluid
@@ -169,7 +176,7 @@ impl Game<'_> {
             partial,
             self.settings.fov as i32,
             self.fov_effect_scale(),
-            self.death_time(),
+            self.camera_death_time(),
             self.camera_fluid(camera),
             false,
         );
@@ -215,7 +222,7 @@ impl Game<'_> {
         self.view.calculate_hud_fov(
             partial,
             self.fov_effect_scale(),
-            self.death_time(),
+            self.camera_death_time(),
             self.camera_fluid(camera),
         )
     }
