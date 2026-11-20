@@ -339,8 +339,14 @@ impl Game<'_> {
                 _ => None,
             };
         };
-        if slot >= open.slot_count() || open.hidden.contains(&slot) {
+        if slot >= open.slot_count() {
             return None;
+        }
+        if open.hidden.contains(&slot) {
+            // The screen hides the click target, not a handler explicitly bound to that slot.
+            return self
+                .native_menu_place(guest.conn, open.window, slot)
+                .map(MenuSlotBacking::Place);
         }
         // A block menu whose block entities no longer show its slots (a chest's, over a
         // furnace set in its place) backs none of them, the player's included, until the close

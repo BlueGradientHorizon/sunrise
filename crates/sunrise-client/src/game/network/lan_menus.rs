@@ -121,6 +121,7 @@ impl super::Game<'_> {
                     .as_ref()
                     .is_some_and(|m| m.window == window)
                 {
+                    self.forget_menu_places(conn);
                     self.guest_close_menus_and_tell(conn);
                 }
             }

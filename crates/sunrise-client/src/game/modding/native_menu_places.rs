@@ -210,7 +210,7 @@ impl Game<'_> {
         Some((backed.window, backed.places.len(), backed.locked))
     }
 
-    fn forget_menu_places(&mut self, conn: u32) {
+    pub(super) fn forget_menu_places(&mut self, conn: u32) {
         if let Some(menus) = self.lan.as_mut().and_then(|lan| lan.menus.get_mut(&conn)) {
             menus.slot_places = None;
         }
