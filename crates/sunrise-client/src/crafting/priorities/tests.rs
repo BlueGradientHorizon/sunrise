@@ -240,15 +240,16 @@ fn projections_follow_one_order() {
             .collect::<Vec<_>>(),
         ["test:crusher_b", "test:crusher_c", "test:crusher_a"]
     );
-    for kind in [
-        "smelting",
-        "blasting",
-        "smoking",
-        "campfire_cooking",
-        "smithing_transform",
-        "stonecutting",
+    // Smithing's serializers share one recipe type.
+    for (kind, recipe_type) in [
+        ("smelting", "minecraft:smelting"),
+        ("blasting", "minecraft:blasting"),
+        ("smoking", "minecraft:smoking"),
+        ("campfire_cooking", "minecraft:campfire_cooking"),
+        ("smithing_transform", "minecraft:smithing"),
+        ("stonecutting", "minecraft:stonecutting"),
     ] {
-        let ids: Vec<_> = recipes.by_type[&format!("minecraft:{kind}")]
+        let ids: Vec<_> = recipes.by_type[recipe_type]
             .iter()
             .map(|r| r.id.clone())
             .collect();
