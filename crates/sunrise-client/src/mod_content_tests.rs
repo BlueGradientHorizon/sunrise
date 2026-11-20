@@ -928,7 +928,7 @@ fn creative_tabs_keep_vanilla_items_missing_from_search() {
         names: BTreeMap::new(),
     };
     let mut doc: J = serde_json::from_str(
-        r#"{"schema":4,"item_features":{},"potion_features":{},"tabs":[{"id":"minecraft:search","type":"SEARCH","build":[],"search_metadata":[]}]}"#,
+        r#"{"schema":4,"item_features":{},"potion_features":{},"tabs":[{"id":"minecraft:search","title":"Search Items","type":"SEARCH","build":[],"search_metadata":[]}]}"#,
     )
     .unwrap();
     plan.creative_tabs(&mut doc).unwrap();

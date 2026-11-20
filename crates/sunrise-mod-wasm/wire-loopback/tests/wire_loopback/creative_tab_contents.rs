@@ -6,6 +6,7 @@ use mod_api::{
     Backend, BackendRef, ClientHost, CreativeModeTabInfo, CreativeModeTabs, CreativeTabChange,
     CreativeTabEdit, CreativeTabEditError, CreativeTabList, CreativeTabPermissions,
     CreativeTabPlacement, CreativeTabReadError, CreativeTabVisibility, Host, ItemStack, ServerHost,
+    Text,
 };
 
 struct Catalog {
@@ -32,6 +33,7 @@ impl ItemsHost for Catalog {
             vec![CreativeModeTabInfo::new(
                 "test:items".into(),
                 true,
+                Text::translate("itemGroup.test.items", Vec::new()),
                 Vec::new(),
                 vec![self.stack.clone()],
             )],

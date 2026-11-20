@@ -419,12 +419,26 @@ fn snapshot(
             CreativeModeTabInfo::new(
                 tab.id.clone(),
                 tab.kind == Kind::Category,
+                display_name(&tab.id, &tab.title),
                 api_stacks(&stacks.display),
                 api_stacks(&stacks.search),
             )
         })
         .collect();
     Arc::new(CreativeModeTabs::new(permissions, tabs))
+}
+
+/// `CreativeModeTab.getDisplayName`: the tab's `itemGroup.*` key with its title as fallback.
+fn display_name(id: &str, title: &str) -> mod_api::Text {
+    let key = sunrise_client::creative::item_group_key(id).map_or_else(
+        || sunrise_client::creative::mod_item_group_key(id),
+        str::to_owned,
+    );
+    mod_api::Text::new(mod_api::text::TextContent::Translatable {
+        key,
+        fallback: Some(title.to_owned()),
+        arguments: Vec::new(),
+    })
 }
 
 // Comparison ignores count and resident maxima, but damage must fit the component codec.
