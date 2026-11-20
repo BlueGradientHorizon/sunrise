@@ -238,7 +238,7 @@ mod tests {
                                 mouse,
                             )
                             .unwrap();
-                        eprintln!("50 buttons, draw-list extraction: {:?}", now.elapsed());
+                        eprintln!("50 buttons, CPU draw-list diagnostic: {:?}", now.elapsed());
                         render_hud(&batch, &game.gui.atlas, SIZE)
                             .expect("software Vulkan button draw")
                     };
@@ -281,11 +281,9 @@ mod tests {
                     }
 
                     widgets.button_mut(ids[1]).unwrap().active = false;
-                    widgets::set_narrating(true);
-                    let states = frame(&mut widgets, [11.0, 11.0]);
+                    let inactive_pointer = [31.0, 11.0];
+                    let states = frame(&mut widgets, inactive_pointer);
                     widgets::end_frame(3);
-                    widgets::set_narrating(false);
-                    assert_eq!(pixel(&states, 11, 11), color(0, 1));
                     assert_eq!(pixel(&states, 31, 11), color(1, 2));
                     let recorded = widgets::last();
                     assert_eq!(recorded.len(), COUNT);
@@ -293,24 +291,40 @@ mod tests {
                         recorded.iter().filter(|button| button.enabled).count(),
                         COUNT - 1
                     );
-                    assert!(!recorded[1].enabled);
+                    let inactive = recorded
+                        .iter()
+                        .find(|b| {
+                            (b.x..b.x + b.w).contains(&inactive_pointer[0])
+                                && (b.y..b.y + b.h).contains(&inactive_pointer[1])
+                        })
+                        .expect("the inactive button under the pointer is registered");
+                    assert!(!inactive.enabled);
                     assert_eq!(
-                        [recorded[0].x, recorded[0].y, recorded[0].w, recorded[0].h],
-                        [10.0, 10.0, 14.0, 15.0]
+                        [inactive.x, inactive.y, inactive.w, inactive.h],
+                        [30.0, 10.0, 14.0, 15.0]
                     );
-                    let narration = widgets::take_last_narration();
-                    assert_eq!(narration.items.len(), COUNT);
-                    assert!(
-                        matches!(&narration.items[0].what, What::Button { message, active: true } if message == "iii")
+                    assert_eq!(
+                        widgets.mouse_pressed(game, inactive_pointer, 0, 0),
+                        Outcome::Ignored
                     );
-                    assert_eq!(narration.items[0].hovered, Some(true));
-                    assert_eq!(narration.items[0].rect, [10.0, 10.0, 14.0, 15.0]);
                     assert_eq!(
                         widgets.mouse_pressed(game, [11.0, 11.0], 0, 0),
                         Outcome::Pressed(ids[0])
                     );
                     widgets.key_pressed(game, "key.keyboard.tab", 0);
                     assert_eq!(widgets.focused(), Some(ids[2]));
+                    widgets::set_narrating(true);
+                    let focused = frame(&mut widgets, [0.0, 0.0]);
+                    widgets::end_frame(4);
+                    widgets::set_narrating(false);
+                    assert_eq!(pixel(&focused, 51, 11), color(2, 1));
+                    let narration = widgets::take_last_narration();
+                    assert_eq!(narration.items.len(), COUNT);
+                    assert!(
+                        matches!(&narration.items[2].what, What::Button { message, active: true } if message == "iii")
+                    );
+                    assert_eq!(narration.items[2].hovered, Some(true));
+                    assert_eq!(narration.items[2].rect, [50.0, 10.0, 14.0, 15.0]);
                     for key in ["key.keyboard.enter", "key.keyboard.space"] {
                         assert_eq!(widgets.key_pressed(game, key, 0), Outcome::Pressed(ids[2]));
                     }

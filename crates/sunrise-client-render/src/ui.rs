@@ -1932,6 +1932,12 @@ mod tests {
     #[test]
     fn button_art_selects_the_state_then_its_fallbacks() {
         let mut atlas = atlas();
+        let scaling = Some(NineSlice {
+            width: 16,
+            height: 16,
+            border: [2, 3, 4, 5],
+            stretch_inner: true,
+        });
         for (n, name) in [
             "test:normal",
             "test:hover",
@@ -1943,18 +1949,22 @@ mod tests {
         .into_iter()
         .enumerate()
         {
-            atlas.sprites.insert(
+            atlas.gui.insert(
                 name.into(),
-                Rect {
-                    u0: n as f32 / 8.0,
-                    v0: 0.0,
-                    u1: (n as f32 + 0.5) / 8.0,
-                    v1: 0.25,
-                    w: 200,
-                    h: 20,
+                GuiSprite::Present {
+                    rect: Rect {
+                        u0: n as f32 / 8.0,
+                        v0: 0.0,
+                        u1: (n as f32 + 0.5) / 8.0,
+                        v1: 0.25,
+                        w: 16,
+                        h: 16,
+                    },
+                    scaling,
                 },
             );
         }
+        atlas.gui.insert("test:removed".into(), GuiSprite::Missing);
         let draw = |active, highlighted, sprites: Option<&ButtonSprites>| {
             let mut batch = HudBatch::scratch([640, 480]);
             button_as(
@@ -1967,7 +1977,7 @@ mod tests {
                 sprites,
                 |rect| crate::widgets::Narratable::button("", rect, active),
             );
-            batch.vertices
+            batch
         };
         let mut art = ButtonSprites::new("test:normal");
         art.highlighted = Some("test:hover".into());
@@ -1975,17 +1985,22 @@ mod tests {
         for (active, highlighted, u) in
             [(true, false, 0.0), (true, true, 0.125), (false, true, 0.25)]
         {
-            let vertices = draw(active, highlighted, Some(&art));
-            assert_eq!(vertices.len(), 6, "custom art stretches as one quad");
-            assert_eq!(vertices[0].uv, [u, 0.0]);
-            assert!(vertices.iter().any(|v| v.uv == [u + 0.0625, 0.25]));
-            assert_eq!(vertices[0].pos, [10.0, 20.0]);
-            assert!(vertices.iter().any(|v| v.pos == [24.0, 35.0]));
+            assert_eq!(
+                quads(&draw(active, highlighted, Some(&art))),
+                [([10.0, 20.0, 24.0, 35.0], [u, 0.0, u + 0.0625, 0.25])],
+                "custom art stretches even when its atlas entry has nine-slice metadata",
+            );
         }
-        art.highlighted = Some("test:missing".into());
-        art.disabled = None;
-        for active in [true, false] {
-            assert_eq!(draw(active, true, Some(&art))[0].uv, [0.0, 0.0]);
+        for fallback in [None, Some("test:unknown"), Some("test:removed")] {
+            art.highlighted = fallback.map(str::to_owned);
+            art.disabled = fallback.map(str::to_owned);
+            for active in [true, false] {
+                assert_eq!(
+                    quads(&draw(active, true, Some(&art))),
+                    [([10.0, 20.0, 24.0, 35.0], [0.0, 0.0, 0.0625, 0.25])],
+                    "state sprite {fallback:?} should fall back to normal (active={active})",
+                );
+            }
         }
         art.normal = "test:also_missing".into();
         for (active, highlighted, vanilla_u) in [
@@ -1994,10 +2009,25 @@ mod tests {
             (false, true, 0.625),
         ] {
             let vanilla = draw(active, highlighted, None);
-            assert_eq!(vanilla[0].uv, [vanilla_u, 0.0]);
+            let slices = quads(&vanilla);
+            assert_eq!(slices.len(), 9);
+            // The 2×3 top-left corner keeps its size; the centre fills the inner 8×7.
+            assert!(slices.contains(&(
+                [10.0, 20.0, 12.0, 23.0],
+                [vanilla_u, 0.0, vanilla_u + 2.0 / 256.0, 3.0 / 64.0],
+            )));
+            assert!(slices.contains(&(
+                [12.0, 23.0, 20.0, 30.0],
+                [
+                    vanilla_u + 2.0 / 256.0,
+                    3.0 / 64.0,
+                    vanilla_u + 12.0 / 256.0,
+                    11.0 / 64.0
+                ],
+            )));
             assert_eq!(
-                bytemuck::cast_slice::<_, u8>(&draw(active, highlighted, Some(&art))),
-                bytemuck::cast_slice::<_, u8>(&vanilla),
+                bytemuck::cast_slice::<_, u8>(&draw(active, highlighted, Some(&art)).vertices),
+                bytemuck::cast_slice::<_, u8>(&vanilla.vertices),
             );
         }
     }
@@ -2035,32 +2065,29 @@ mod tests {
             bytemuck::cast_slice::<_, u8>(&centered),
         );
 
-        let long = Text::literal("MMMMMMMMMMMM");
-        let overflowing_text = |offset| {
-            let mut batch = HudBatch::scratch([640, 480]);
-            scrolling_text_with_offset(
-                &mut batch,
-                &atlas,
-                &long,
-                17.0,
-                10.0,
-                24.0,
-                20.0,
-                40.0,
-                24.0,
-                0,
-                u32::MAX,
-                offset,
-            );
-            batch.vertices
-        };
-        let clipped = overflowing_text(Some([5.0, 1.0]));
-        assert!(!clipped.is_empty());
-        assert!(clipped.iter().all(|v| (10.0..=24.0).contains(&v.pos[0])));
-        let unshifted = overflowing_text(None);
-        assert_ne!(
-            bytemuck::cast_slice::<_, u8>(&clipped),
-            bytemuck::cast_slice::<_, u8>(&unshifted),
+        let mut batch = HudBatch::scratch([640, 480]);
+        scrolling_text_with_offset(
+            &mut batch,
+            &atlas,
+            &Text::literal("MMMMMMMMMMMM"),
+            17.0,
+            10.0,
+            24.0,
+            20.0,
+            40.0,
+            24.0,
+            0,
+            u32::MAX,
+            Some([5.0, 10.0]),
+        );
+        // Twelve missing glyphs advance 72 px. At time zero the 58 px overrun is fully
+        // scrolled, so glyph 10 starts at x = 10 - 58 + 5 + 9*6, y = 24 + 10.
+        // The 5×8 glyph boxes extend past both horizontal edges and the bottom edge.
+        assert!(batch.vertices.iter().any(|v| v.pos == [11.0, 34.0]));
+        assert!(
+            batch.vertices.iter().all(|v| {
+                (10.0..=24.0).contains(&v.pos[0]) && (20.0..=40.0).contains(&v.pos[1])
+            })
         );
     }
 
