@@ -95,7 +95,9 @@ pub fn generate(root: &Path, out_dir: &Path, target: Target) -> Result<(), Strin
             let generated_wire = std::thread::scope(|scope| {
                 std::thread::Builder::new()
                     .stack_size(64 << 20)
-                    .spawn_scoped(scope, || super::wire::generate(root, &included))
+                    .spawn_scoped(scope, || {
+                        super::wire::generate_with_providers(root, &included, providers.clone())
+                    })
                     .map_err(|e| e.to_string())?
                     .join()
                     .map_err(|_| "generating the wire impls panicked".to_string())?
