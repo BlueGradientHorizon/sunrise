@@ -3,9 +3,7 @@
 //! scheduled block/fluid ticks (chunk `block_ticks`/`fluid_ticks`).
 #[path = "persist/display.rs"]
 mod display;
-#[path = "persist/entity_uuids.rs"]
-mod entity_uuids;
-pub(super) use entity_uuids::EntityUuids;
+pub(super) use sunrise_gameplay::entity_uuids::EntityUuids;
 #[path = "persist/loaded_pass.rs"]
 mod loaded_pass;
 #[path = "persist/object_memory.rs"]
