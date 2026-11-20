@@ -18,5 +18,5 @@ pub trait AudioClientHost {
     /// 64 are open across every mod, and for a call from no mod or outside the phases a client
     /// opens one in (`Unavailable`).
     #[access(ClientSetup)]
-    fn open_audio_stream(&self, _spec: &StreamSpec) -> Result<AudioStreamRef, AudioRefusal>;
+    fn open_push_audio_stream(&self, _spec: &StreamSpec) -> Result<AudioStreamRef, AudioRefusal>;
 }

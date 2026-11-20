@@ -1,4 +1,4 @@
-//! Mods' audio streams (`ClientHost::open_audio_stream`) in the mixer: a pool of their own
+//! Mods' audio streams (`ClientHost::open_push_audio_stream`) in the mixer: a pool of their own
 //! (never vanilla's streaming slots), each a fixed ring a mod pushes PCM into from any thread and
 //! the output callback reads, resampled to the device rate.
 //!

@@ -14,13 +14,13 @@ let spec = StreamSpec::new(SoundSource::Voice, 1, 48_000)
     .with_placement(StreamPlacement::Entity(speaker))
     .with_range(32.0)
     .with_prebuffer_ms(100);
-let stream = host.open_audio_stream(&spec)?;
+let stream = host.open_push_audio_stream(&spec)?;
 
 // Whenever a frame is ready (interleaved samples, `channels` per frame):
 let accepted = stream.push(&samples);
 ```
 
-`open_audio_stream` is a client call. It refuses with an `AudioRefusal` and opens nothing on a server, without a sound output, for a spec out of range, and past the limits below.
+`open_push_audio_stream` is a client call. It refuses with an `AudioRefusal` and opens nothing on a server, without a sound output, for a spec out of range, and past the limits below.
 
 | `StreamSpec` field | Meaning |
 |---|---|
@@ -45,7 +45,7 @@ Sunrise Extras has a "Mod audio streams" switch (Sound section), on by default. 
 - `Buffering`: silent while the ring fills, or after it ran dry.
 - `Playing`: audible.
 - `Unplaced`: playing, but at a place nobody hears (below).
-- `Stopped`: `stop` was called, the handle dropped, or the game's sound output went away (a device that could not be opened again). It never plays again; open a new stream once the output is back (`open_audio_stream` answers `NoOutput` until then). Changing the output device does not stop streams.
+- `Stopped`: `stop` was called, the handle dropped, or the game's sound output went away (a device that could not be opened again). It never plays again; open a new stream once the output is back (`open_push_audio_stream` answers `NoOutput` until then). Changing the output device does not stop streams.
 
 ## Buffering, underruns and overflow
 

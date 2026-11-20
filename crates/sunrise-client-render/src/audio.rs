@@ -195,7 +195,7 @@ struct Mixer {
     cameras: Vec<([f64; 3], Basis, u32)>,
     /// Per-source gain/pan/step cache for one buffer, reused across callbacks.
     voices: Vec<(ChannelId, [f32; 3], f64)>,
-    /// Mods' audio streams (`ClientHost::open_audio_stream`).
+    /// Mods' audio streams (`ClientHost::open_push_audio_stream`).
     streams: Vec<streams::StreamVoice>,
     /// Each `SoundSource`'s volume for a stream: master times the group, as every sound's.
     stream_gain: [f32; 11],
@@ -1884,7 +1884,7 @@ impl Audio {
             }
         }
     }
-    /// Opens a stream for the mod `owner` (`ClientHost::open_audio_stream`): the ring is
+    /// Opens a stream for the mod `owner` (`ClientHost::open_push_audio_stream`): the ring is
     /// allocated here, and the mod pushes PCM into it from any thread.
     pub fn open_stream(
         &self,

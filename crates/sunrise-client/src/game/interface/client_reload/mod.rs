@@ -32,7 +32,7 @@ impl ClientHost for StartupClientHost {}
 mod_api::impl_client_host_areas!(StartupClientHost, except(audio));
 // A startup reload opens no audio stream.
 impl mod_api::prelude::AudioClientHost for StartupClientHost {
-    fn open_audio_stream(
+    fn open_push_audio_stream(
         &self,
         _: &mod_api::StreamSpec,
     ) -> Result<mod_api::AudioStreamRef, mod_api::AudioRefusal> {

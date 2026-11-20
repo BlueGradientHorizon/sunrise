@@ -1,4 +1,4 @@
-//! A client mod's audio streams (`AudioClientHost::open_audio_stream`): PCM the mod makes, played by
+//! A client mod's audio streams (`AudioClientHost::open_push_audio_stream`): PCM the mod makes, played by
 //! the game's mixer in place of an Ogg file (NeoForge's `SoundInstance.getStream`, vanilla's
 //! `AudioStream`), on a pool of their own that never takes one of vanilla's streaming slots.
 use super::types::SoundSource;
@@ -55,7 +55,7 @@ pub enum AudioStreamState {
     Stopped,
 }
 
-/// What a stream is opened with (`open_audio_stream`).
+/// What a stream is opened with (`open_push_audio_stream`).
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
@@ -141,7 +141,7 @@ pub enum SpecFault {
     Position,
 }
 
-/// Why `open_audio_stream` opened nothing.
+/// Why `open_push_audio_stream` opened nothing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
@@ -221,7 +221,7 @@ pub trait AudioStreamSource: Send + Sync + 'static {
     fn stop(&self);
 }
 
-/// A stream a mod opened with `open_audio_stream`: push PCM and the game plays it.
+/// A stream a mod opened with `open_push_audio_stream`: push PCM and the game plays it.
 ///
 /// Keep the handle while the stream should play. Dropping it stops the stream, as [`stop`]
 /// does. It is `Send`: a mod may push from any thread, a `Network`-thread payload handler

@@ -1,4 +1,4 @@
-//! Client mods' audio streams (`open_audio_stream`): the game opens them on the mixer's own pool and
+//! Client mods' audio streams (`open_push_audio_stream`): the game opens them on the mixer's own pool and
 //! places the entity-following ones each frame.
 use super::Game;
 use mod_api::{AudioRefusal, AudioStreamRef, StreamSpec};
@@ -14,7 +14,7 @@ impl Game<'_> {
     /// Opens a stream for the calling mod, on the mixer's pool for mods' audio. Err on a server,
     /// without a sound output, for a spec out of range and past the 32 streams a mod or the 64
     /// all mods may hold.
-    pub(in crate::game) fn open_audio_stream(
+    pub(in crate::game) fn open_push_audio_stream(
         &self,
         spec: &StreamSpec,
     ) -> Result<AudioStreamRef, AudioRefusal> {
