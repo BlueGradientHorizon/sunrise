@@ -60,25 +60,31 @@ load conditions (`WithConditions`): it counts only when they hold. A top-level
 } }
 ```
 
-Read an entry with its key's `data` (`item.data(host, &Emc)`, `entity_type.data(host, &map)`),
-from any hook with a host. A typed read still returns an owned decoded value. To read raw
-data by name, use `data_map_value(host, "minecraft:worldgen/biome", "minecraft:plains", "mymod:heat")`
-for an `Option<&Tag>`, or `data_map_entries(host, registry, map)` for a
-`&[(String, Tag)]` with every entry/value pair in id order (`IRegistryExtension.getDataMap`).
-A bare entry id such as `plains` uses the `minecraft` namespace. Both reads borrow from the
-host's published data, not the lookup strings. Keep registry ids or keys and read again with
-the next host, or copy the data you need to keep. A point read answers:
+Read an entry with its key's `data` (`item.data(host, &Emc)`, `entity_type.data(host, &map)`).
+A typed read returns an owned decoded value. To read raw NBT by name, use
+`data_map_value(host, "minecraft:worldgen/biome", "minecraft:plains", "mymod:heat")?`
+for an `Option<&Tag>`, or `data_map_entries(host, registry, map)?` for a
+`&[(String, Tag)]` with every entry/value pair sorted by entry ID (`IRegistryExtension.getDataMap`).
+A bare entry ID such as `plains` uses the `minecraft` namespace.
+
+The raw values borrow from the host's published data, not the lookup strings. Iterate over
+bulk results by reference. Keep IDs or keys and read again with the next host, or make an owned
+copy only when needed: `data_map_value(host, registry, entry, map)?.cloned()` for a tag, or
+`data_map_entries(host, registry, map)?.to_vec()` for all the rows. A point read answers:
 
 - `Ok(Some(value))`: the merged value. The newest file wins, a `#tag` gives every entry in it the
   value, `replace` drops what earlier files set and `remove` takes entries away.
 - `Ok(None)`: the map gives this entry no value.
 - `Err(DataMapError::UnknownType)`: neither the engine nor a mod registered the map for that registry in this load.
-- `Err(DataMapError::Undecodable)`: the value is not one `decode` takes.
+- `Err(DataMapError::Undecodable)`: the value cannot be represented as NBT, or a typed read's
+  `decode` refused it.
 - `Err(DataMapError::Unavailable)`: no maps are loaded here. Data maps live on the server (the
   single player server thread included) and are not synced to clients, so a client returns
   this error, as does a server before its world's data first loads.
 
-A whole-map read fails with `Undecodable` if any entry cannot be represented as NBT.
+A known empty map yields an empty slice. As with a point read, an unknown map type or an
+unavailable publication is an error. A whole-map read fails with `Undecodable` if any value
+cannot be represented as NBT.
 
 The server merges every map when its data loads: a world's first open and every `/reload`. A
 read sees the last load whole, never part of one, and a value a reload drops is gone at once.

@@ -1,3 +1,0 @@
-ids = ["fn:data_map_value", "fn:data_map_entries"]
-why = "Raw data-map reads borrow the published tags and sorted rows instead of cloning them on every lookup. Typed key reads still return owned decoded values."
-migrate = "Keep data_map_value(host, registry, entry, map) and data_map_entries(host, registry, map) calls, but read Option<&Tag> and &[(String, Tag)] inside the Result instead of Option<Tag> and Vec<(String, Tag)>. The results borrow only the host. To keep the old owned result, use data_map_value(host, registry, entry, map)?.cloned() or data_map_entries(host, registry, map)?.to_vec(); otherwise retain ids or keys and read again from the next host. No change to key.data(host, &map)."

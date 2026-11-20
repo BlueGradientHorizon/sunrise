@@ -54,9 +54,17 @@ fn native_datapack_host_reads_enforce_level_session_and_generation() {
                 let handle = level
                     .datapack_handle(game, "registry_test:spell", "registry_test:fire")
                     .unwrap();
+                let published = game
+                    .mods
+                    .datapack_registries
+                    .as_ref()
+                    .unwrap()
+                    .get(&handle)
+                    .unwrap();
                 let mut visits = 0;
                 level
                     .datapack_read(game, &handle, &mut |entry| {
+                        assert!(std::ptr::eq(entry, published));
                         assert_eq!(entry.values, [("power".to_owned(), DatapackValue::Int(7))]);
                         visits += 1;
                     })
@@ -138,12 +146,13 @@ fn native_datapack_host_reads_enforce_level_session_and_generation() {
                 let mut visits = 0;
                 level
                     .datapack_read(game, &client_handle, &mut |entry| {
-                        assert_eq!(entry.values, [("power".to_owned(), DatapackValue::Int(19))]);
+                        // Clearing takes the publication lock and drops its reference to the set.
+                        sunrise_client::datapack_net::clear_received();
+                        assert_eq!(entry.get("power"), Some(&DatapackValue::Int(19)));
                         visits += 1;
                     })
                     .unwrap();
                 assert_eq!(visits, 1);
-                sunrise_client::datapack_net::clear_received();
                 assert_eq!(
                     level.datapack_read(game, &client_handle, &mut unexpected_visit),
                     Err(E::UnknownRegistry)

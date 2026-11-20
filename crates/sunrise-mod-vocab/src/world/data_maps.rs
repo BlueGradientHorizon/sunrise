@@ -15,7 +15,8 @@ use crate::{
 ///
 /// Register a mod-defined map in `data_map_types` with [`DataMap::ty`], then read an entry's value with its
 /// key's `data` ([`ItemKey::data`], [`EntityTypeKey::data`]...), or by name with
-/// [`data_map_value`] and [`data_map_entries`], which borrow raw values from the host.
+/// [`data_map_value`] and [`data_map_entries`]. Typed key reads return owned decoded values;
+/// reads by name borrow raw NBT from the host.
 /// A value arrives as the NBT form of the JSON a file held: a whole number is an `Int`, or
 /// a `Long` past `i32`, a fraction a `Double`, a boolean a `Byte`, an object a `Compound`
 /// and an array a `List`. Integers outside signed 64-bit range and `null` at any nesting
@@ -46,7 +47,7 @@ use crate::{
 pub trait DataMap {
     /// The registry entries the map attaches values to: one of the [`DataMapEntry`] keys.
     type Entry: DataMapEntry;
-    /// The value an entry holds.
+    /// The owned result of decoding an entry's borrowed tag.
     type Value;
     /// The map's id, `mod_id:name`, not in the `minecraft` namespace, as registered.
     fn id(&self) -> &str;
@@ -92,7 +93,9 @@ macro_rules! typed_entries {
             /// packs and mods' files left it: the newest file wins, a `#tag` entry gives every
             /// entry in the tag its value, `replace` and `remove` apply, and conditional files
             /// and values count only when their conditions hold. `Ok(None)` where the map
-            /// gives this entry no value.
+            /// gives this entry no value. A present value is decoded into an owned `M::Value`
+            /// that can outlive the host borrow. A refused decode is [`DataMapError::Undecodable`],
+            /// not an absent value.
             ///
             /// Server side: the server merges the maps when its data loads, on a world's first
             /// open and after every `/reload`, and a read sees the last load whole, never a mix
@@ -177,7 +180,7 @@ impl ProfessionKey {
 }
 
 /// Why a data map read has no answer. An entry the map gives no value is `Ok(None)`, not one of
-/// these.
+/// these. An empty map yields an empty slice from [`data_map_entries`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
@@ -185,10 +188,11 @@ pub enum DataMapError {
     /// No data maps are loaded here: a client (data maps are not synced to clients), a server
     /// before its world's data first loads, or a host with no game behind it.
     Unavailable,
-    /// No mod registered the map for the entry's registry in the current data load
+    /// Neither the engine nor a mod registered the map for this registry in the current load
     /// (`data_map_types`).
     UnknownType,
-    /// The entry's value is not one the map's [`DataMap::decode`] takes.
+    /// The value could not be represented as NBT, or a typed read's [`DataMap::decode`]
+    /// refused it.
     Undecodable,
     /// The key is expired, belongs to another world, or was never issued by this generation.
     InvalidKey,
@@ -216,10 +220,11 @@ fn data<M: DataMap>(
 
 /// Entry `entry` of registry `registry`: its raw NBT value in data map `map`
 /// (`IRegistryExtension.getData`). A bare entry id uses the `minecraft` namespace.
-/// `Ok(None)` means the map has no value for this entry.
+/// `Ok(None)` means the map has no value for this entry. A host without loaded maps, an
+/// unknown map type, or a value that cannot be represented as NBT returns a [`DataMapError`].
 ///
-/// The tag borrows from the host's published data, not the lookup ids. Clone it only
-/// if you need to keep an owned value after the host borrow ends.
+/// The tag borrows from the host's published data, not the lookup IDs. Use `Option::cloned`
+/// only if you need the raw value after the host borrow ends.
 pub fn data_map_value<'host>(
     host: &'host dyn Host,
     registry: &str,
@@ -230,10 +235,13 @@ pub fn data_map_value<'host>(
     backend.data_map_value(registry, entry, map)
 }
 
-/// Every entry of `registry` that data map `map` gives a value, with that value, in id order
-/// (`IRegistryExtension.getDataMap`): the whole merged map of the last data load.
-/// The slice borrows from the host's published data, not the lookup ids. If any entry
-/// could not be decoded, the whole read returns [`DataMapError::Undecodable`].
+/// The whole published data map `map` of `registry`, sorted by entry ID
+/// (`IRegistryExtension.getDataMap`). A known empty map yields an empty slice; unavailable
+/// maps or an unknown type return a [`DataMapError`], not an empty slice. If any value
+/// cannot be represented as NBT, the whole read returns [`DataMapError::Undecodable`].
+///
+/// The slice borrows from the host's published data, not the lookup IDs. Iterate by
+/// reference, or call `to_vec` only if you need all the rows after that borrow ends.
 pub fn data_map_entries<'host>(
     host: &'host dyn Host,
     registry: &str,
