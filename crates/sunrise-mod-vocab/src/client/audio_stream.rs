@@ -21,8 +21,16 @@ pub const AUDIO_STREAM_PREBUFFER_MAX_MS: u32 = 500;
 pub const AUDIO_STREAM_RING_MAX_MS: u32 = 1_000;
 
 /// Where a stream is heard. Positions are in the client's current level.
+/// This is local playback state. Send the emitter's network entity ID in your own payload,
+/// and resolve it to a local handle with `host.entity(id)` before constructing `Entity`.
+///
+/// ```compile_fail,E0277
+/// fn requires_wire<T: mod_api::wire::Wire>() {}
+/// requires_wire::<mod_api::StreamPlacement>();
+/// ```
 // exhaustive: mods build every form and the mixer matches them without a wildcard
-#[derive(Clone, Copy, Debug, PartialEq, sunrise_mod_api_macros::Wire)]
+// no wire: placement can contain a client-local entity handle
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum StreamPlacement {
     /// At the listener, wherever they move, with no panning and no fading with distance. The only
     /// placement a stereo stream takes.
@@ -35,10 +43,16 @@ pub enum StreamPlacement {
     Entity(EntityRef),
 }
 
-/// What an audio stream reads (`AudioStreamRef::state`).
+/// What an audio stream reads (`AudioStreamRef::state`). The state describes this client's mixer,
+/// not the sender of the audio, and is not a payload type.
+///
+/// ```compile_fail,E0277
+/// fn requires_wire<T: mod_api::wire::Wire>() {}
+/// requires_wire::<mod_api::AudioStreamState>();
+/// ```
+// no wire: playback state is local to the mixer
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
 pub enum AudioStreamState {
     /// Silent while the ring fills to `prebuffer_ms`: new, or after it ran dry.
     Buffering,
@@ -55,10 +69,16 @@ pub enum AudioStreamState {
     Stopped,
 }
 
-/// What a stream is opened with (`open_audio_stream`).
+/// What a stream is opened with (`open_audio_stream`). Construct this on the playing client
+/// rather than sending it as a payload.
+///
+/// ```compile_fail,E0277
+/// fn requires_wire<T: mod_api::wire::Wire>() {}
+/// requires_wire::<mod_api::StreamSpec>();
+/// ```
+// no wire: stream setup includes local playback placement
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
 pub struct StreamSpec {
     /// The mixer group, scaled by master times the group, as every sound is. Voice chat plays on
     /// [`SoundSource::Voice`], the "Voice/Speech" slider.
@@ -118,10 +138,15 @@ impl StreamSpec {
     }
 }
 
-/// What was wrong with a [`StreamSpec`].
+/// What the playing client found wrong with a [`StreamSpec`]. This is a local validation result.
+///
+/// ```compile_fail,E0277
+/// fn requires_wire<T: mod_api::wire::Wire>() {}
+/// requires_wire::<mod_api::SpecFault>();
+/// ```
+// no wire: spec faults report local validation
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
 pub enum SpecFault {
     /// `channels` is not 1 or 2.
     Channels,
@@ -141,10 +166,15 @@ pub enum SpecFault {
     Position,
 }
 
-/// Why `open_audio_stream` opened nothing.
+/// Why `open_audio_stream` opened nothing. This is a local result, not a network error.
+///
+/// ```compile_fail,E0277
+/// fn requires_wire<T: mod_api::wire::Wire>() {}
+/// requires_wire::<mod_api::AudioRefusal>();
+/// ```
+// no wire: stream refusals report local mixer or host conditions
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
 pub enum AudioRefusal {
     /// This is a server: it has no output to play on.
     OnServer,

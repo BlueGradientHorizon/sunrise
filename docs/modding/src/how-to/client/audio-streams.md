@@ -62,6 +62,28 @@ Each stream has a fixed ring, allocated when it opens: `2 * prebuffer_ms + 100` 
 - An `Entity` stream follows its entity every frame. While the entity is untracked, unloaded or removed the stream is silent and reads `Unplaced`, but its audio is still consumed, so no latency builds up. It plays again if the same entity is tracked again.
 - When the listener changes dimension (or leaves the level) every positional stream goes `Unplaced` until the mod calls `set_placement` again, since a point or entity of another level is never heard.
 
+## Network audio
+
+`StreamPlacement`, `StreamSpec`, `AudioStreamState`, `AudioRefusal` and `SpecFault` are local values,
+not [Wire](../../concepts/wire-types.md) types. For network audio, send a separate
+[typed payload](networking.md#typed-payloads) with the data the receiver needs, such as the emitter's
+server-assigned network entity ID and the encoded audio:
+
+```rust
+#[derive(mod_api::Wire)]
+struct VoiceFrame {
+    emitter_id: u32,
+    encoded_audio: Vec<u8>,
+}
+```
+
+Put the emitter's `entity.id()` in the clientbound frame, not its `EntityRef`: the handle belongs to
+its own world epoch. On the receiving client's main thread, use `host.entity(frame.emitter_id)` to
+resolve a handle in the current level. If it returns `None`, skip the frame. Otherwise, use
+`StreamPlacement::Entity(entity)` for the local stream. Scope the IDs and any cached handles to the
+current level and connection; do not carry pending frames into a new level. A network-thread handler
+can feed a stream already opened and placed on the main thread.
+
 ## Threading
 
 `AudioStreamRef` is `Send`, and `push` works from any thread. A native mod can push from a `Network`-thread payload handler, so its audio never waits for a client tick, and a native `push` never waits for the mixer: it writes straight into a lock-free ring made when the stream opened, which the output callback reads, and allocates nothing. The controls (`set_placement`, `set_volume`) take no lock the output callback takes either. Only one thread pushes at a time: a push that overlaps another on the same stream is refused (returns 0), so keep each stream to one pushing thread.
