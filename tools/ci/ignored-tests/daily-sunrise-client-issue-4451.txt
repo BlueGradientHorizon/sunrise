@@ -1457,7 +1457,7 @@ sunrise-client game::native_hooks::block_entity_on_load_routes_tests::tests::blo
 sunrise-client game::native_hooks::block_entity_on_load_routes_tests::tests::block_entity_on_load_shared_type_replacement_has_fresh_handle lib daily resources
 sunrise-client game::native_hooks::block_entity_on_load_routes_tests::tests::block_entity_on_load_stale_queued_identity_is_skipped lib daily resources
 sunrise-client game::native_hooks::block_entity_on_load_tests::tests::block_entity_on_load_client_instance_reads_received_fields lib daily resources
-sunrise-client game::native_hooks::block_entity_on_load_tests::tests::block_entity_on_load_saved_data_placement_rewrite_and_reload lib daily resources
+sunrise-client game::native_hooks::block_entity_on_load_tests::tests::block_entity_on_load_saved_data_placement_rewrite_and_reload lib daily child-process
 sunrise-client game::native_hooks::block_entity_on_load_tests::tests::block_entity_on_load_without_listener_preserves_data_and_never_queues lib daily resources
 sunrise-client game::native_hooks::block_landing::landing_crossing_tests::landing_crossing_refuses_invalid_writes_and_sibling_damage lib daily resources
 sunrise-client game::native_hooks::book_screen::lifecycle_tests::authoritative_custom_book_rebuilds_cached_geometry_without_observe_screen lib daily resources

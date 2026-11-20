@@ -851,18 +851,17 @@ impl GameLevel<'_> {
         self.world.block_names.remove(&key);
         self.world.forget_block_entity_source(key);
         let name = self.facts.get(old).name.clone();
-        let kind = match &entity {
-            // BaseContainerBlockEntity.preRemoveSideEffects: Containers.dropContents.
-            Some(BlockEntity::Mod(m))
-                if !m.items.is_empty()
-                    && self.world.block_entities.mod_container(old.0).is_some() =>
-            {
-                PreRemove::Contents {
-                    slots: m.items.len(),
-                    furnace: false,
-                }
+        // BaseContainerBlockEntity.preRemoveSideEffects: Containers.dropContents
+        // visits every declared slot, even if its empty storage hasn't been materialized.
+        let kind = if let Some(BlockEntity::Mod(m)) = &entity
+            && let Some(container) = self.world.block_entities.mod_container(old.0)
+        {
+            PreRemove::Contents {
+                slots: container.slots.max(m.items.len()),
+                furnace: false,
             }
-            _ => removal::pre_remove(&name),
+        } else {
+            removal::pre_remove(&name)
         };
         let mut neighbour_updates = 0;
         if side_effects {
@@ -1294,6 +1293,61 @@ mod tests {
             assert_eq!(level.world.random.next_int(), reference.next_int());
         });
     }
+    #[test]
+    #[ignore = "daily"]
+    fn removal_uses_the_same_random_state_for_lazy_and_padded_slots() {
+        use std::sync::Arc;
+        use sunrise_client::containers::{ModBlockEntity, ModBlockEntityFields, ModContainer};
+        use sunrise_core::random::LegacyRandom;
+
+        crate::game::native_entity_refs::tests::with_game(|game| {
+            let state = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:stone")
+                .unwrap();
+            game.world.block_entities.set_mod_containers(
+                [(
+                    state.0,
+                    Arc::new(ModContainer {
+                        slots: 3,
+                        ..Default::default()
+                    }),
+                )]
+                .into_iter()
+                .collect(),
+            );
+            let mut reference = LegacyRandom::new(7);
+            for _ in 0..9 {
+                reference.next_double();
+            }
+            let pos = BlockPos::new(1, 64, 2);
+            for len in [3, 0, 1] {
+                game.world.random.set_seed(7);
+                game.world.block_entities.insert(
+                    (pos.x, pos.y, pos.z),
+                    BlockEntity::Mod(Box::new(ModBlockEntity::new(
+                        "removal:machine".into(),
+                        ModBlockEntityFields {
+                            items: vec![None; len],
+                            ..Default::default()
+                        },
+                    ))),
+                );
+                game.with_level(|_, level, _| {
+                    level.remove_entity(pos, state, true);
+                    assert!(level.spill.spawns.is_empty());
+                    assert_eq!(
+                        level.world.random.state(),
+                        reference.state(),
+                        "stored slots: {len}"
+                    );
+                });
+            }
+        });
+    }
+
     #[test]
     #[ignore = "daily"]
     fn removal_spawn_has_exact_position_and_default_delay() {
