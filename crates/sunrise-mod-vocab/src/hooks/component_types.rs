@@ -2,13 +2,18 @@
 // catalog-order: 0074
 
 pub trait Hooks {
-    /// Register namespaced NBT component types before content loads.
+    /// Register namespaced NBT component types before content loads. Call
+    /// [`ComponentTypesEvent::register`] with each owned ID, such as `"mymod:charge".into()`.
+    /// IDs are checked together at startup: invalid IDs, the `minecraft` namespace and
+    /// duplicate IDs are refused before the component registry is frozen.
     #[hook(
         side = "both",
         contract = "collect",
         out = "types",
+        registration_append = "register",
         context = "registration",
-        neoforge = "RegisterEvent"
+        neoforge = "RegisterEvent",
+        version = 2
     )]
     fn component_types();
 }

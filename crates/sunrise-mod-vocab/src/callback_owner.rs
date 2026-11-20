@@ -1,6 +1,36 @@
 //! Owner enablement, attribution and panic containment for retained resources.
 use std::sync::atomic::{AtomicBool, Ordering};
 
+/// Owner identity and poison state for one retained mod callback.
+// no wire: the callback's enablement and poison state belong to this process.
+pub struct CallbackOwner {
+    id: &'static str,
+    index: usize,
+    poisoned: AtomicBool,
+}
+
+impl CallbackOwner {
+    /// Bind a dispatch-attributed registration to its installed mod slot once, at freeze time.
+    pub fn new(id: &'static str) -> Option<Self> {
+        Some(Self {
+            id,
+            index: crate::__private::mod_index(id)?,
+            poisoned: AtomicBool::new(false),
+        })
+    }
+
+    /// Invoke retained code with its owner's enablement, attribution and panic policy.
+    pub fn call<T>(
+        &self,
+        kind: &'static str,
+        operation: &'static str,
+        invoke: impl FnOnce() -> T,
+    ) -> Result<T, String> {
+        call(self.id, self.index, &self.poisoned, kind, operation, invoke)
+            .map_err(|why| format!("mod {}: {why}", self.id))
+    }
+}
+
 pub(crate) fn call<T>(
     owner: &'static str,
     index: usize,

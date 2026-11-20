@@ -420,8 +420,8 @@ fn native_declared() -> std::borrow::Cow<'static, NativeDeclared> {
 /// The native mods' standalone models (`native_standalone_models`), set once
 /// before the resources first load.
 pub(super) fn register_standalone_models(role: ExecutionRole) {
-    if let Some(names) = collect_standalone_models(role) {
-        sunrise_client::models::register_standalone(names);
+    if let Some(registrations) = collect_standalone_models(role) {
+        sunrise_client::models::register_standalone(registrations);
     }
     register_fluid_models(role);
 }
@@ -461,17 +461,15 @@ pub(super) fn collect_key_mappings<'declared>(
     if role.is_client() { declared } else { &[] }
 }
 
-/// The native mods' entity model layers (`native_register_layer_definitions`), kept
-/// once at start for `bake_layer`, then their skull types (`native_create_skull_models`), baked
-/// once from those layers (or vanilla's under `vanilla_root`), so `minecraft:head` item models may
-/// name their kinds.
+/// Freeze the native mods' entity model layer definitions at startup, then bake their skull
+/// types (`native_create_skull_models`) from those definitions or vanilla's under `vanilla_root`.
 pub(super) fn register_layer_definitions(role: ExecutionRole, vanilla_root: &std::path::Path) {
     if !role.is_client() {
         return;
     }
-    let mut layers = Vec::new();
-    Game::native_register_layer_definitions(&RegistrationContext::new(), &mut layers);
-    sunrise_client::mobs::model_layers::register(layers);
+    let mut suppliers = Vec::new();
+    Game::native_register_layer_definitions(&RegistrationContext::new(), &mut suppliers);
+    sunrise_client::mobs::model_layers::register(suppliers);
     let mut models = Vec::new();
     Game::native_create_skull_models(&RegistrationContext::new(), &mut models);
     sunrise_client::skull_models::register(models, vanilla_root);
@@ -713,8 +711,8 @@ pub(super) fn register_entity_renderers(role: ExecutionRole) {
     super::native_entity_renderers::register(registry.into_renderers());
 }
 /// The native mods' particle providers (`native_register_particle_providers`) and render groups
-/// (`native_register_particle_groups`), kept once at start, before resources load; every particle
-/// sprite-set load resolves each type's provider and group.
+/// (`native_register_particle_groups`) are registered once at startup. Each particle engine
+/// constructs its groups once; sprite-set loads associate types with those groups and providers.
 pub(super) fn register_particles(role: ExecutionRole) {
     if !role.is_client() {
         return;
@@ -722,9 +720,9 @@ pub(super) fn register_particles(role: ExecutionRole) {
     let mut registry = mod_api::ParticleProviderRegistry::default();
     Game::native_register_particle_providers(&RegistrationContext::new(), &mut registry);
     sunrise_client::particles::register_particle_providers(registry.into_providers());
-    let mut groups = Vec::new();
-    Game::native_register_particle_groups(&RegistrationContext::new(), &mut groups);
-    sunrise_client::particles::register_particle_groups(groups);
+    let mut group_factories = Vec::new();
+    Game::native_register_particle_groups(&RegistrationContext::new(), &mut group_factories);
+    sunrise_client::particles::register_particle_groups(group_factories);
 }
 
 /// `root` with the content mods that are on layered over it
@@ -3084,7 +3082,7 @@ mod tests {
                 let mut model = FluidModel::default();
                 model.fluid = "reload_fluid:oil".into();
                 model.still = Some(format!("reload_fluid:block/oil_{generation}"));
-                event.models.push(model);
+                event.register(model);
             }
         }
         let generation = Arc::new(AtomicUsize::new(0));
@@ -3147,7 +3145,7 @@ mod tests {
                 model.fluid = "registration_test:oil".into();
                 model.flowing = Some("registration_test:block/oil_flow".into());
                 model.overlay = Some("registration_test:block/oil_overlay".into());
-                event.models.push(model);
+                event.register(model);
             }
         }
         with_mods(

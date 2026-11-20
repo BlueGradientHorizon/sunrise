@@ -1,4 +1,5 @@
 use super::*;
+use crate::catalog::RegistrationAppend;
 
 pub(super) struct HookSources {
     pub traits: String,
@@ -457,6 +458,32 @@ pub(super) fn emit<'a>(
             }
             _ => None,
         };
+        let registration_append = if let Some(mode) = hook.registration_append {
+            let entry = match output.as_ref() {
+                Some((_, Type::Reference(reference))) => {
+                    if answered {
+                        answered_batch(&reference.elem)
+                    } else {
+                        generic_of(&reference.elem, "Vec")
+                    }
+                }
+                _ => None,
+            };
+            let Some(entry) = entry.filter(|_| {
+                hook.context == Some(PhaseContext::Registration)
+                    && contract == Contract::Collect
+                    && !collect_cancel
+                    && declaration.is_none()
+                    && !is_render
+            }) else {
+                return Err(format!(
+                    "{name}: registration_append requires a non-cancelling RegistrationContext collect with a mutable Vec output"
+                ));
+            };
+            Some((mode, entry))
+        } else {
+            None
+        };
         if !is_render {
             hook_ids.push_str(&format!("{hook_id},\n"));
             hook_constants.push_str(&format!(
@@ -618,10 +645,12 @@ pub(super) fn emit<'a>(
                 }
                 rollback.push((name.clone(), true));
             }
-            let visibility = if event_type == "ApplyEffectTickEvent" && name == "changes" {
-                "pub(super)"
-            } else {
-                "pub"
+            let append = registration_append.filter(|_| Some(name.as_str()) == out);
+            let visibility = match append {
+                Some((RegistrationAppend::Register, _)) => "",
+                Some((RegistrationAppend::Custom, _)) => "pub(super)",
+                None if event_type == "ApplyEffectTickEvent" && name == "changes" => "pub(super)",
+                None => "pub",
             };
             fields.push_str(&format!(
                 "{visibility} {name}: {},\n",
@@ -682,8 +711,13 @@ pub(super) fn emit<'a>(
             (true, false) => ("<'a>", "<'_>"),
             (false, false) => ("", ""),
         };
+        let wire_comment = if registration_append.is_some() {
+            "// no wire: this event borrows the registration staging vector.\n"
+        } else {
+            ""
+        };
         let event_struct = format!(
-            "/// An in-process callback record built by the game and passed to the listener.\n#[non_exhaustive]\n#[allow(missing_docs)]\npub struct {event_type}{generics} {{\n{fields}}}\n"
+            "/// An in-process callback record built by the game and passed to the listener.\n{wire_comment}#[non_exhaustive]\n#[allow(missing_docs)]\npub struct {event_type}{generics} {{\n{fields}}}\n"
         );
         if is_render {
             render_dispatch.push_str(&event_struct);
@@ -945,6 +979,7 @@ pub(super) fn emit<'a>(
                 "///\n/// Return `Some` to set `{out}`; the first {callee} returning `Some` wins.\n"
             )),
             (Contract::Collect, _) if declaration.is_some() => (),
+            (Contract::Collect, _) if registration_append.is_some() => (),
             (Contract::Collect, Some(out)) if answered => method_source.push_str(&format!(
                 "///\n/// Each mod receives its own empty `{event}.{out}` batch; every entry it adds is recorded\n/// as that mod's.\n"
             )),
@@ -966,9 +1001,42 @@ pub(super) fn emit<'a>(
         let trait_name = scoped
             .as_ref()
             .map_or(trait_name, |(part_trait, _)| part_trait);
+        let event_doc = match registration_append {
+            Some((RegistrationAppend::Register, _)) => {
+                "Use [`Self::register`] to add entries without changing earlier registrations."
+            }
+            Some((RegistrationAppend::Custom, _)) => {
+                "Use its registration methods to add entries without changing earlier registrations."
+            }
+            None => {
+                "Each field is that hook's argument of the same name, described in the hook's doc."
+            }
+        };
         dispatch.push_str(&format!(
-            "/// What [`{trait_name}::{name}`] is told. Each field is that hook's argument of the same name, described in the hook's doc.\n///\n{event_struct}"
+            "/// What [`{trait_name}::{name}`] is told. {event_doc}\n///\n{event_struct}"
         ));
+        if let Some((RegistrationAppend::Register, entry)) = registration_append {
+            // An elided lifetime within the vector belongs to the entry, not the vector borrow.
+            let mut entry = entry.clone();
+            let mut entry_lifetimes = EventLifetimes {
+                in_mut: true,
+                ..EventLifetimes::default()
+            };
+            entry_lifetimes.visit_type_mut(&mut entry);
+            let (impl_params, event_params) = if entry_lifetimes.b {
+                ("<'b>", "<'_, 'b>")
+            } else {
+                ("", elided)
+            };
+            let out = out.unwrap();
+            let entry = entry.to_token_stream();
+            dispatch.push_str(&format!(
+                "impl{impl_params} {event_type}{event_params} {{\n\
+                 /// Stage one entry for registration. If the phase gate refuses this listener,\n\
+                 /// its entries are discarded and earlier registrations stand.\n\
+                 pub fn register(&mut self, entry: {entry}) {{ self.{out}.push(entry); }}\n}}\n"
+            ));
+        }
         if let Some(entry) = &declaration {
             let out = out.unwrap();
             dispatch.push_str(&format!(
@@ -1062,6 +1130,12 @@ pub(super) fn emit<'a>(
             .filter(|(field, _)| !surfaces.contains(field))
         {
             let index = snaps.len();
+            if registration_append.is_some() && Some(field.as_str()) == out {
+                // Only the tail is writable; never clone or restore earlier registrations.
+                snaps.push(format!("{event}.{field}.len()"));
+                restores.push(format!("{event}.{field}.truncate({saved}.{index});"));
+                continue;
+            }
             snaps.push(if cloned.contains(field) {
                 // `to_owned`, not `clone`: this generator cannot tell a `Copy` field type from an
                 // owned one, and `clippy::clone_on_copy` would flag a `clone` of the first.

@@ -10,7 +10,7 @@ fn registration_context_reaches_collectors_in_order_without_a_game_host() {
             event: &mut ComponentTypesEvent<'_>,
         ) {
             assert_eq!(context.0, "bootstrap");
-            event.types.push(self.0.into());
+            event.register(self.0.into());
         }
     }
     install(

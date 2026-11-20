@@ -2,14 +2,14 @@
 
 pub trait Hooks {
     /// The map decoration types a mod adds (NeoForge's `RegisterEvent` for
-    /// `Registries.MAP_DECORATION_TYPE`): push a `MapDecorationType` per type. Asked once at
-    /// start, on every side.
+    /// `Registries.MAP_DECORATION_TYPE`): call `event.register(decoration)` with a
+    /// `MapDecorationType` per type. Asked once at startup on every side.
     #[notes = r#"## Map decoration types
 
 `Hooks::map_decoration_types` is the registration-phase counterpart of NeoForge 26.3's
 `RegisterEvent` for `Registries.MAP_DECORATION_TYPE`. It receives a `RegistrationContext`, once at
-startup on every side, and collects a `MapDecorationType` per type: an id `<mod id>:<path>`, the
-GUI atlas sprite that draws it (`assetId`) and `show_on_item_frame`.
+startup on every side. Call `event.register(decoration)` with a `MapDecorationType` per type:
+an id `<mod id>:<path>`, the GUI atlas sprite that draws it (`assetId`) and `show_on_item_frame`.
 
 A registered type is a name a `minecraft:map_decorations` entry can use, exactly as a vanilla
 one: an item's entry `{type: "mymod:treasure", x, z, rotation}` (what `/give` writes and
@@ -29,8 +29,10 @@ client through the item's component, not through that packet."#]
         side = "both",
         contract = "collect",
         out = "types",
+        registration_append = "register",
         context = "registration",
-        neoforge = "RegisterEvent"
+        neoforge = "RegisterEvent",
+        version = 2
     )]
     fn map_decoration_types();
 }

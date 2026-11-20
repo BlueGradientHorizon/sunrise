@@ -26,6 +26,9 @@ use super::{
     native_mob_draw::{MobRender, PlayerRender},
     native_panel_recipes::RecipePage,
 };
+use mod_api::__private::game::{
+    LayerDefinitionRegistration, ParticleGroupRegistration, StandaloneModelRegistration,
+};
 use mod_api::CommandSource;
 use mod_api::GameMode;
 use mod_api::GameTests;
@@ -37,11 +40,10 @@ use mod_api::{
     ClientReloadListeners, ColorResolvers, CommandInvocation, EnchantmentDamageEffects,
     EnchantmentInfo, EntityLayers, EntityRef, EntityRenderers, GameRuleActor, HandRender,
     InsideEffects, InteractionAttempt, InteractionKey, ItemEntityRef, JsonAnimationType,
-    LayerDefinition, LifecycleContext, LivingRef, LoadConditions, NoteBlockChange,
-    ParticleProviders, PathComputationType, Placement, PlayerRef, PoiTypeExtensions,
-    RecipeBookCategory, ScreenId, ScreenOpening, ScreenTarget, ScreenshotImage,
-    ServerReloadListeners, ServerTickPhase, SpecialModelRenderers, TicketController, ToolUse,
-    VillagerProfessions, WorldPhase,
+    LifecycleContext, LivingRef, LoadConditions, NoteBlockChange, ParticleProviders,
+    PathComputationType, Placement, PlayerRef, PoiTypeExtensions, RecipeBookCategory, ScreenId,
+    ScreenOpening, ScreenTarget, ScreenshotImage, ServerReloadListeners, ServerTickPhase,
+    SpecialModelRenderers, TicketController, ToolUse, VillagerProfessions, WorldPhase,
 };
 use mod_api::{
     ActiveEffect, AttachmentStore, BlockClick, BlockUpdateFlags, BonemealSource, ChunkRef,
@@ -50,7 +52,7 @@ use mod_api::{
 };
 use mod_api::{
     BlockKey, DebugEntry, DebugRenderer, EffectKey, GuiLayer, HiddenParts, MapDecorationType,
-    ParticleGroup, PosedParts, SkullModel, TextureAtlasRegistration,
+    PosedParts, SkullModel, TextureAtlasRegistration,
 };
 pub(crate) use mod_api::{
     BlockRim, ClientPacket, ClientPayload, ColoredLight, ContainerLootFilled, ExplosionStart,

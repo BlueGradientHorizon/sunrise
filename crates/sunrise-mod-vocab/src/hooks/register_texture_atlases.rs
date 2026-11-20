@@ -1,13 +1,14 @@
 //! Client texture atlases a mod adds before each atlas build.
 
 pub trait Hooks {
-    /// Declare atlases beside the game's (`RegisterTextureAtlasesEvent`), each with the atlas
+    /// Declare atlases beside the game's (`RegisterTextureAtlasesEvent`). Call
+    /// `event.register(atlas)` with each `TextureAtlasRegistration`, which names the atlas
     /// definition that lists its sprites. Called at first client load and every resource reload,
     /// before textures are stitched.
     #[notes = r#"## Texture atlases
 
-`register_texture_atlases` receives a registration context and a collection of
-`TextureAtlasRegistration` declarations: an atlas id in the mod's own namespace
+`register_texture_atlases` receives a registration context. Call `event.register(atlas)`
+with a `TextureAtlasRegistration` giving an atlas id in the mod's own namespace
 (`mymod:icons`) and its definition (`mymod:icons` reads
 `assets/mymod/atlases/icons.json`). The definition is a `sources` list like
 vanilla's atlas definitions, and resource packs change it the same way.
@@ -30,8 +31,10 @@ already at a sprite's name wins over the sprite."#]
         side = "client",
         contract = "collect",
         out = "atlases",
+        registration_append = "register",
         context = "registration",
-        neoforge = "RegisterTextureAtlasesEvent"
+        neoforge = "RegisterTextureAtlasesEvent",
+        version = 2
     )]
     fn register_texture_atlases();
 }
