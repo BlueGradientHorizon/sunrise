@@ -1654,8 +1654,6 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
         if !ctx.replace_clicked {
             ctx.pos = rel(input.clicked_pos, input.face);
         }
-        let original_can_place =
-            ctx.replace_clicked || self.can_be_replaced(self.state(ctx.pos), &ctx);
         let rewritten = match rewrite(self.level, &ctx) {
             Some(Some(replacement)) => {
                 ctx = replacement;
@@ -1664,7 +1662,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
             Some(None) => return None,
             None => {
                 // The default keeps BlockPlaceContext.canPlace before the item's rewrite.
-                if !original_can_place {
+                if !ctx.replace_clicked && !self.can_be_replaced(self.state(ctx.pos), &ctx) {
                     return None;
                 }
                 if binding.kind == ItemKind::Scaffolding {
