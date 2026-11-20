@@ -14,10 +14,10 @@ impl Game<'_> {
     /// leave the server's menu open), while a pause menu closes to the game.
     /// The sign editor and a book are overlays beside the screen: Escape on the sign editor
     /// sends its `ServerboundSignUpdatePacket`, and on a lectern's book the menu's close. A
-    /// confirmation, a server's pack prompt or a dialog opened over any of them is the
-    /// foreground screen, and only it closes. False when no screen is open, for the death
-    /// screen and the code of conduct, which Escape does not close, and for a dialog that
-    /// Escape cannot close.
+    /// confirmation, a server's pack prompt or a dialog opened over any of them handles
+    /// Escape first. Declining a required pack disconnects rather than returning to the
+    /// screen underneath. False when no screen is open, or the foreground screen does not
+    /// close with Escape.
     pub(in crate::game) fn close_screen(&mut self) -> bool {
         if self.player.is_none() {
             return false;
@@ -45,11 +45,21 @@ impl Game<'_> {
         self.screen != before
     }
     /// Escape on a screen opened in front of the others, in the order `window_event` gives
-    /// it the key: a command's or a link's `ConfirmScreen` answers no, `CodeOfConductScreen`
-    /// stays, `PackConfirmScreen` declines and a dialog runs its own Escape. The book, sign,
-    /// screen or lectern menu behind it is left as it is. Whether it closed, or None when no
-    /// such screen is open.
+    /// it the key: the death-exit confirmation answers no after its delay, a command's or
+    /// link's confirmation answers no, `CodeOfConductScreen` stays, `PackConfirmScreen`
+    /// declines (disconnecting for a required pack), and a dialog runs its own Escape.
+    /// Returns whether it closed, or `None` when no such screen is open.
     fn close_foreground(&mut self) -> Option<bool> {
+        if self.screen == Screen::Dead
+            && let Some(shown) = self.ui.death_confirm
+        {
+            if shown.elapsed().as_millis() >= 1000
+                && let Err(e) = self.death_confirm_answer(false)
+            {
+                log::warn!("Sunrise: closing the death-exit confirmation: {e:#}");
+            }
+            return Some(self.ui.death_confirm.is_none());
+        }
         if self.command_prompt.is_some() {
             self.command_prompt_key(KeyCode::Escape);
             return Some(self.command_prompt.is_none());
