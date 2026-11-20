@@ -818,7 +818,7 @@ impl ParsedStationRecipe {
 #[derive(Clone, Default)]
 pub struct StationRecipes {
     pub smithing: Vec<Smithing>,
-    /// Sorted by recipe id, the registry order vanilla lists them in.
+    /// Descending recipe priority, then vanilla's registration order.
     pub stonecutting: Vec<Stonecutting>,
     /// `trim_material` registry: id -> (asset name, description).
     pub trim_materials: Vec<(String, String)>,

@@ -58,6 +58,28 @@ pub(super) fn menu_of(kind: StationKind) -> Option<(&'static str, Kind, std::ops
 }
 
 impl Game<'_> {
+    /// A reload changes what a stonecutter button number means. Close that window
+    /// before publishing the new recipe generation so queued old buttons cannot act on it.
+    pub(super) fn close_stonecutters_for_reload(&mut self) {
+        let Some(host) = self.lan.as_ref() else {
+            return;
+        };
+        let open: Vec<_> = host
+            .menus
+            .iter()
+            .filter_map(|(&conn, menus)| {
+                menus
+                    .station
+                    .as_ref()
+                    .filter(|menu| menu.kind == StationKind::Stonecutter)
+                    .map(|_| conn)
+            })
+            .collect();
+        for conn in open {
+            self.guest_close_menus_and_tell(conn);
+        }
+    }
+
     /// A workstation a guest's use opened (`ServerPlayer.openMenu`); false
     /// when guests can't use that one yet.
     pub(super) fn lan_open_station(&mut self, conn: u32, station: &Station) -> bool {
@@ -80,6 +102,12 @@ impl Game<'_> {
         };
         let mut menu = Box::new(Menu::new(kind));
         menu.set_registry_id(Some(menu_type));
+        if kind == Kind::Stonecutter {
+            menu.stone.server_buttons = self
+                .lan
+                .as_ref()
+                .map(|host| host.hub.sync_data().stonecutter_buttons.clone());
+        }
         // Without a mod the take runs AnvilMenu.onTake's order in the click itself.
         let hooked = !mod_api::__private::mods().is_empty();
         menu.anvil_hook = kind == Kind::Anvil && hooked;
@@ -791,11 +819,19 @@ impl Game<'_> {
         let mut selected = false;
         let kind = self
             .lan
-            .as_ref()
-            .and_then(|host| host.menus.get(&conn))
-            .and_then(|p| p.station.as_ref())
+            .as_mut()
+            .and_then(|host| host.menus.get_mut(&conn))
+            .and_then(|p| p.station.as_mut())
             .filter(|s| s.window == window)
-            .map(|s| s.kind);
+            .map(|s| {
+                if s.kind == StationKind::Stonecutter
+                    && let Some(sent) = s.sent_data.first_mut()
+                {
+                    // The guest may have predicted a candidate the real stack cannot use.
+                    *sent = None;
+                }
+                s.kind
+            });
         self.lan_station_op(conn, Some(window), |menu, env| {
             selected = menu.button(env, id);
         });

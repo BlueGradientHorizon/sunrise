@@ -1,5 +1,8 @@
 use super::*;
 
+#[cfg(test)]
+mod tests;
+
 impl Game<'_> {
     /// Minecraft.disconnect's `ClientPlayerNetworkEvent.LoggingOut`: on
     /// leaving a world, and on quitting the game from one. Once per
@@ -26,6 +29,11 @@ impl Game<'_> {
         packet: sunrise_protocol::packets::recipes::UpdateRecipes,
     ) {
         self.recipe_ui.server_properties.replace(packet);
+        self.refresh_remote_stonecutter();
+        self.refresh_recipe_property_context();
+    }
+
+    pub(in crate::game) fn refresh_remote_stonecutter(&mut self) {
         self.recipe_ui.server_stations = self.remote.as_ref().map(|remote| {
             let item = |id: i32| {
                 remote
@@ -36,11 +44,14 @@ impl Game<'_> {
             };
             let category = |_: i32| None;
             let tag = |name: &str| {
+                let name = sunrise_client::crafting::qualified(name);
                 remote
-                    .tags
-                    .as_ref()
-                    .and_then(|items| items.item_tag_order.get(name).cloned())
-                    .unwrap_or_default()
+                    .registries
+                    .tag("minecraft:item", &name)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|&id| item(id))
+                    .collect()
             };
             let names = sunrise_client::recipe_book::PacketNames {
                 item: &item,
@@ -48,9 +59,20 @@ impl Game<'_> {
                 tag: &tag,
             };
             self.stations().recipes.with_stonecutting(
-                names.stonecutting(&self.recipe_ui.server_properties.stonecutter),
+                names.stonecutting(&self.recipe_ui.server_properties.stonecutter, |stack| {
+                    self.decode_remote_stack(stack)
+                }),
             )
         });
-        self.refresh_recipe_property_context();
+        if let Some(station) = self
+            .station
+            .as_mut()
+            .filter(|station| station.kind == crate::game::stations::Kind::Stonecutter)
+        {
+            // The table and the menu's cached indices are one generation. Rebuild even
+            // when the input stack has not changed since the previous packet.
+            station.reset_stonecutter_generation();
+            self.remote_station_slot_changed(crate::game::stations::INPUT);
+        }
     }
 }

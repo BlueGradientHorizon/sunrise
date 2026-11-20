@@ -372,6 +372,14 @@ impl Station {
         self.start = 0;
         self.scroll = 0.0;
     }
+    /// Clear state tied to the previous `UpdateRecipes` table.
+    pub(in crate::game) fn reset_stonecutter_generation(&mut self) {
+        self.stone = Default::default();
+        self.selected = None;
+        self.result = None;
+        self.scrolling = false;
+        self.stonecutter_changed();
+    }
     /// `StonecutterScreen.isScrollBarActive`.
     fn stonecutter_scrolls(&self) -> bool {
         self.inputs[0].is_some() && self.stone.recipes.len() > 12
@@ -2121,7 +2129,8 @@ impl Game<'_> {
             "bookcases": s.bookcases,
             "anvil_cost": s.anvil.cost,
             "result": s.result.as_ref().map(|r| format!("{} x{}", r.item, r.count)),
-            "recipes": s.stone.recipes.iter().map(|&i| recipes[i].id.clone()).collect::<Vec<_>>(),
+            "recipes": s.stone.recipes.iter().map(|&i| &recipes[i].id).collect::<Vec<_>>(),
+            "recipe_results": s.stone.recipes.iter().map(|&i| recipes[i].result.item.as_ref()).collect::<Vec<_>>(),
             "selected": s.selected,
         })
     }

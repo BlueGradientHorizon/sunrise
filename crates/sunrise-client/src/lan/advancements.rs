@@ -1762,6 +1762,7 @@ mod tests {
                 stacked: None,
             };
             let mut menu = Menu::new(Kind::Stonecutter);
+            menu.stone.server_buttons = Some(sync.stonecutter_buttons.clone());
             menu.set_slot(&env, 0, Some(ItemStack::new("minecraft:raw_copper", 1)));
 
             let mut reader = Reader::new(&sync.recipes);

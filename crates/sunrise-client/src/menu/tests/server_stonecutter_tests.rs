@@ -37,7 +37,7 @@ fn the_servers_list_becomes_the_clients_recipes_in_its_order() {
         (HolderSet::Items(vec![9]), SlotDisplay::Item(77)),
         (HolderSet::Items(vec![0]), SlotDisplay::Item(1)),
     ];
-    let recipes = names(|names| names.stonecutting(&sent));
+    let recipes = names(|names| names.stonecutting(&sent, |_| None));
     assert_eq!(
         recipes.iter().map(|r| &*r.result.item).collect::<Vec<_>>(),
         [
@@ -64,7 +64,7 @@ fn a_client_menu_lists_the_servers_stonecutter_recipes_not_its_own() {
         ];
         let server = names(|names| {
             env.station_recipes
-                .with_stonecutting(names.stonecutting(&sent))
+                .with_stonecutting(names.stonecutting(&sent, |_| None))
         });
         let env = Env {
             station_recipes: &server,

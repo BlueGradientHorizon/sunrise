@@ -197,6 +197,7 @@ pub struct SyncData {
     pub commands: Option<super::commands::CommandTree>,
     /// ClientboundUpdateRecipesPacket's payload.
     pub recipes: Vec<u8>,
+    pub stonecutter_buttons: Arc<super::recipes::StonecutterButtons>,
     pub advancements: super::advancements::ServerAdvancements,
     /// The registry ids of the particle types effects show, looked up once (`effect_meta`).
     effect_particle_ids: std::sync::Mutex<super::effect_meta::ParticleTypeIds>,
@@ -424,6 +425,7 @@ impl SyncData {
             features: Vec::new(),
             commands: None,
             recipes: Vec::new(),
+            stonecutter_buttons: Arc::default(),
             advancements: super::advancements::ServerAdvancements::load(
                 Path::new(""),
                 &sunrise_world::loot::PackOverlay::NONE,
@@ -781,6 +783,7 @@ impl SyncData {
                 super::commands::CommandTree::load(resources)
             }),
             recipes: Vec::new(),
+            stonecutter_buttons: Arc::default(),
             advancements: match kept.filter(|_| same_files) {
                 Some(kept) => kept.advancements.clone(),
                 None => {
@@ -805,9 +808,11 @@ impl SyncData {
             },
             packed_registries: packed,
         };
-        sync.recipes = startup::time("sync.update_recipes", || {
+        let (recipes, buttons) = startup::time("sync.update_recipes", || {
             super::recipes::update_recipes(&sync.advancements.recipes, &sync, sources)
         });
+        sync.recipes = recipes;
+        sync.stonecutter_buttons = Arc::new(buttons);
         overlay.conditions.check_errors()?;
         Ok(sync)
     }

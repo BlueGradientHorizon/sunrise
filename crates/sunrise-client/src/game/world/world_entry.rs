@@ -637,6 +637,7 @@ impl Game<'_> {
             wire,
             datapack_registries,
         } = prepared;
+        self.close_stonecutters_for_reload();
         lan::sync::forget_server_sources();
         if let Some(tables) = &tables
             && let Some(sources) = &tables.reload_sources
