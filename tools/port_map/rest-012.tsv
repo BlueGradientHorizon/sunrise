@@ -60,7 +60,7 @@ ClientboundLevelChunkPacketData.calculateChunkSize	skip:java		buffer sizing; Vec
 ClientboundLevelChunkPacketData.extractChunkData	port	crates/sunrise-protocol/src/chunk.rs::ChunkData::from_sections	gap: minor: no writer-index length check
 ClientboundLevelChunkPacketData.forEachBlockEntityTag	port	crates/sunrise-client/src/game/network/remote_chunks.rs::Game::remote_chunk	block entities of a chunk are applied when the chunk arrives
 ClientboundLevelEventPacket.write	port	crates/sunrise-protocol/src/buf.rs::write	packet! LevelEvent {kind Int, pos, data Int, global Bool}
-ClientboundLightUpdatePacketData.prepareSectionData	port	crates/sunrise-client/src/lan/chunks.rs::light_data	builds the light layers the section mask marks
+ClientboundLightUpdatePacketData.prepareSectionData	port	crates/sunrise-client/src/lan/chunks.rs::light_sections	uses stored layers and restores empty layers omitted by NBT
 ClientboundMapItemDataPacket.applyToMap	port	crates/sunrise-client/src/game/blocks/maps/mod.rs::Game::remote_map_item_data	decorations and colour patch applied to the map
 ClientboundMoveEntityPacket.Pos.read	port	crates/sunrise-protocol/src/packets/play.rs::read_inner	MoveEntityPos read
 ClientboundMoveEntityPacket.Pos.write	port	crates/sunrise-protocol/src/packets/play.rs::write_inner	MoveEntityPos write

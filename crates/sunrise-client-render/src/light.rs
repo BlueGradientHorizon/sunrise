@@ -17,7 +17,7 @@
 use crate::fast_hash::FxHashMap;
 use crate::{
     blocks::BlockFacts,
-    chunk::{Chunk, ColumnLayout, LevelShape, Light, Section, index},
+    chunk::{Chunk, ColumnLayout, LevelShape, Light, Section, StoredLight, index},
     section_mask::SectionMask,
 };
 use std::{
@@ -918,7 +918,11 @@ fn write_computed_light(
 ) {
     let section = &mut chunk.sections[s];
     let mut refresh = None;
-    if let Some([sky, block]) = &mut chunk.light_layers {
+    if let Some(StoredLight {
+        masks: [sky, block],
+        ..
+    }) = &mut chunk.light_layers
+    {
         // A relight can overwrite an inherited sky or absent block layer. Once computed,
         // the changed layer is data to save and send in its own right.
         let old = &section.light;
@@ -1079,6 +1083,24 @@ pub fn light_from_layers<L: AsRef<[u8]>>(
     layers: &[(Option<L>, Option<L>)],
     sky_light: bool,
 ) {
+    hydrate_light(chunk, layers, sky_light, false);
+}
+
+/// Hydrate saved byte arrays. Unlike a packet, NBT does not list empty layers.
+pub fn light_from_saved_layers<L: AsRef<[u8]>>(
+    chunk: &mut Chunk,
+    layers: &[(Option<L>, Option<L>)],
+    sky_light: bool,
+) {
+    hydrate_light(chunk, layers, sky_light, true);
+}
+
+fn hydrate_light<L: AsRef<[u8]>>(
+    chunk: &mut Chunk,
+    layers: &[(Option<L>, Option<L>)],
+    sky_light: bool,
+    from_save: bool,
+) {
     let sections = chunk.sections.len();
     let mut above = [15 * u8::from(sky_light); 256];
     let mut stored = [SectionMask::EMPTY; 2];
@@ -1114,7 +1136,10 @@ pub fn light_from_layers<L: AsRef<[u8]>>(
             section.compact();
         }
     }
-    chunk.light_layers = Some(stored);
+    chunk.light_layers = Some(StoredLight {
+        masks: stored,
+        from_save,
+    });
     chunk.light_sky = sky_light;
     crate::chunk::share_uniform(&mut chunk.sections);
     chunk.lit = true;
@@ -1131,10 +1156,13 @@ pub fn update_light_layers<L: AsRef<[u8]>>(
 ) -> Vec<usize> {
     let sections = chunk.sections.len();
     let mut above = [15 * u8::from(sky_light); 256];
-    let mut stored = chunk.light_layers.unwrap_or_else(|| {
-        let dense = SectionMask::below(sections + 1).from(1);
-        [if sky_light { dense } else { SectionMask::EMPTY }, dense]
-    });
+    let mut stored = chunk
+        .light_layers
+        .map(|light| light.masks)
+        .unwrap_or_else(|| {
+            let dense = SectionMask::below(sections + 1).from(1);
+            [if sky_light { dense } else { SectionMask::EMPTY }, dense]
+        });
     let mut changed = SectionMask::EMPTY;
     let mut unchanged_source = None;
     let mut refresh = false;
@@ -1214,7 +1242,10 @@ pub fn update_light_layers<L: AsRef<[u8]>>(
             }
         }
     }
-    chunk.light_layers = Some(stored);
+    chunk.light_layers = Some(StoredLight {
+        masks: stored,
+        from_save: false,
+    });
     chunk.light_sky = sky_light;
     changed.iter().collect()
 }

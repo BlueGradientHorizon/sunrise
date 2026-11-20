@@ -3,6 +3,7 @@ package dev.sunriselab.parity;
 import com.google.gson.JsonElement;
 import com.mojang.serialization.JsonOps;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
 import java.io.DataInputStream;
 import java.io.EOFException;
@@ -57,6 +58,7 @@ import net.minecraft.network.protocol.game.ClientboundChunkBatchFinishedPacket;
 import net.minecraft.network.protocol.game.ClientboundDisguisedChatPacket;
 import net.minecraft.network.protocol.game.ClientboundLevelChunkPacketData;
 import net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket;
+import net.minecraft.network.protocol.game.ClientboundLightUpdatePacketData;
 import net.minecraft.network.protocol.game.ClientboundPlayerChatPacket;
 import net.minecraft.network.protocol.game.ClientboundPlayerPositionPacket;
 import net.minecraft.network.protocol.game.ClientboundSystemChatPacket;
@@ -1021,14 +1023,15 @@ public final class VanillaProtocolClient {
             + sha(entities.toString().getBytes()).substring(0, 8);
     }
 
-    /** The light layers a chunk has, sky then block (with data or empty). */
+    /** Compare both data and empty masks and every byte of each sent layer. */
     private static String lightLayers(ClientboundLevelChunkWithLightPacket p) {
-        var light = p.lightData();
-        BitSet sky = (BitSet) light.skyYMask().clone();
-        sky.or(light.emptySkyYMask());
-        BitSet block = (BitSet) light.blockYMask().clone();
-        block.or(light.emptyBlockYMask());
-        return sky + "/" + block;
+        ByteBuf data = Unpooled.buffer();
+        try {
+            ClientboundLightUpdatePacketData.STREAM_CODEC.encode(data, p.lightData());
+            return sha(ByteBufUtil.getBytes(data));
+        } finally {
+            data.release();
+        }
     }
 
     /** The player's chunk part by part, so a difference in its bytes can be told apart. */

@@ -1923,11 +1923,12 @@ pub fn decode_proto(
     })
 }
 
-/// Read the stored `SkyLight`/`BlockLight` layers of a chunk saved with
-/// `isLightOn` (`SerializableChunkData.read` + `ThreadedLevelLightEngine`),
-/// so it needs no relighting. A missing sky layer repeats the bottom layer of
-/// the section above it (15 above the highest stored one); a missing block
-/// layer is dark.
+/// Read the `SkyLight`/`BlockLight` byte arrays of a chunk saved with
+/// `isLightOn` (`SerializableChunkData.read`, which queues the arrays via
+/// `ThreadedLevelLightEngine.queueSectionData`). The render cache inherits missing
+/// sky light from the bottom row of the next stored layer above, or gets full
+/// sky above all stored layers. Empty layers omitted by NBT are restored from
+/// section status when the server sends the chunk.
 pub fn load_light(tag: &Tag, chunk: &mut Chunk, sky_light: bool) {
     if tag.get("isLightOn") != Some(&Tag::Byte(1)) {
         return;
@@ -1954,7 +1955,7 @@ pub fn load_light(tag: &Tag, chunk: &mut Chunk, sky_light: bool) {
         };
         *slot = (layer("SkyLight"), layer("BlockLight"));
     }
-    crate::light::light_from_layers(chunk, &layers, sky_light);
+    crate::light::light_from_saved_layers(chunk, &layers, sky_light);
 }
 
 type RegionCache = Mutex<RegionFiles>;

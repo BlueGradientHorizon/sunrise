@@ -648,6 +648,26 @@ impl ColumnCensus {
             + self.column_bytes
     }
 }
+/// Sparse sky and block DataLayer presence, indexed from the column's lower pad.
+#[derive(Clone, Copy)]
+pub struct StoredLight {
+    pub(crate) masks: [crate::section_mask::SectionMask; 2],
+    pub(crate) from_save: bool,
+}
+
+impl StoredLight {
+    pub fn presence(&self, b: usize) -> [bool; 2] {
+        let [sky, block] = &self.masks;
+        [sky.contains(b), block.contains(b)]
+    }
+
+    /// Whether these masks name NBT byte arrays rather than packet layers.
+    /// NBT leaves out empty layers that the lighting engine creates from section status.
+    pub fn is_from_save(&self) -> bool {
+        self.from_save
+    }
+}
+
 #[derive(Clone)]
 pub struct Chunk {
     pub x: i32,
@@ -657,12 +677,12 @@ pub struct Chunk {
     pub sections: Vec<Arc<Section>>,
     /// The light section one below the column and the one above it, as the server or save stored
     /// them (`LevelLightEngine.getMinLightSection`): an all-air section holding only light. `None`
-    /// is a section vanilla's light storage keeps nothing for (see [`Self::section_at`]).
+    /// has no explicit light data (see [`Self::section_at`]).
     pub pad_below: Option<Arc<Section>>,
     pub pad_above: Option<Arc<Section>>,
     /// Packet/save DataLayer presence, indexed from the lower pad. Computed light is dense
     /// inside the column and has no computed pads yet.
-    pub(crate) light_layers: Option<[crate::section_mask::SectionMask; 2]>,
+    pub(crate) light_layers: Option<StoredLight>,
     pub(crate) light_sky: bool,
     /// Padded light sections kept by this column's published non-air sections.
     pub(crate) light_support: crate::section_mask::SectionMask,
@@ -968,8 +988,12 @@ impl Chunk {
     /// Stored sky and block presence for a hydrated light section `b` (0 is the lower pad).
     /// Computed columns have no sparse DataLayer map.
     pub fn stored_light_layers(&self, b: usize) -> Option<[bool; 2]> {
+        self.stored_light().map(|light| light.presence(b))
+    }
+
+    /// Stored layers of a save or packet. Computed columns have no sparse DataLayer map.
+    pub fn stored_light(&self) -> Option<StoredLight> {
         self.light_layers
-            .map(|[sky, block]| [sky.contains(b), block.contains(b)])
     }
 
     pub(crate) fn light_section(&self, b: usize) -> Option<&Arc<Section>> {
