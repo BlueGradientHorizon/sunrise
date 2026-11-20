@@ -1434,6 +1434,27 @@ fn original_path(libraries: &BTreeMap<String, String>, path: &str) -> String {
     }
 }
 
+/// The statics a `thread_local!` item declares, with their attributes and visibility; `None`
+/// for any other macro, or one whose body doesn't read as statics.
+fn thread_local_statics(mac: &syn::ItemMacro) -> Option<Vec<syn::ItemStatic>> {
+    let path = &mac.mac.path;
+    let named = path.segments.last()?.ident == "thread_local"
+        && (path.segments.len() == 1
+            || (path.segments.len() == 2 && path.segments[0].ident == "std"));
+    if !named {
+        return None;
+    }
+    syn::parse2::<syn::File>(mac.mac.tokens.clone())
+        .ok()?
+        .items
+        .into_iter()
+        .map(|item| match item {
+            Item::Static(item) => Some(item),
+            _ => None,
+        })
+        .collect()
+}
+
 /// The mirror of module `path` and its children in `tree`.
 fn mirror(
     source: &mut Source,
@@ -1452,7 +1473,7 @@ fn mirror(
         .chain(tree.own.iter().cloned())
         .collect();
     // The crate root is not widened: only its public items are there to re-export.
-    let public: BTreeSet<String> = items
+    let mut public: BTreeSet<String> = items
         .iter()
         .filter_map(|item| match item {
             Item::Fn(item) if matches!(item.vis, syn::Visibility::Public(_)) => {
@@ -1488,11 +1509,45 @@ fn mirror(
     let root = !path.contains("::");
     let only_public =
         root || (path.split("::").next() != Some("sunrise_client") && tree.copies.is_empty());
+    // A `thread_local!` names the statics it declares. Only a public one can be re-exported:
+    // nothing widens a private one, which a glob would not have brought either. Any other
+    // macro invocation may define items syn can't see, which only a glob re-exports.
+    let mut glob = false;
+    let mut thread_locals = Vec::new();
+    for item in &items {
+        if let Item::Macro(mac) = item
+            && mac.ident.is_none()
+        {
+            match thread_local_statics(mac) {
+                Some(statics) => thread_locals.extend(statics),
+                None => glob = true,
+            }
+        }
+    }
+    let thread_locals: Vec<(syn::Ident, Vec<syn::Attribute>)> = thread_locals
+        .into_iter()
+        .filter(|item| matches!(item.vis, syn::Visibility::Public(_)))
+        .map(|item| (item.ident, item.attrs))
+        .filter(|(_, attrs)| {
+            !attrs
+                .iter()
+                .any(|a| a.to_token_stream().to_string().contains("test"))
+        })
+        .map(|(ident, attrs)| {
+            let cfg = attrs
+                .into_iter()
+                .filter(|attr| attr.path().is_ident("cfg"))
+                .collect();
+            (ident, cfg)
+        })
+        .collect();
+    public.extend(thread_locals.iter().map(|(ident, _)| ident.to_string()));
     // One `pub use` brings every namespace a name has: `pub mod render;` beside
     // `pub fn render` is one re-export, under the cfg either item is compiled under.
     let mut names: Vec<(syn::Ident, Vec<Vec<syn::Attribute>>)> = Vec::new();
     for (ident, cfg) in defined(&items)
         .into_iter()
+        .chain(thread_locals)
         .filter(|(ident, _)| !reserved.contains(&ident.to_string()))
         .filter(|(ident, _)| !only_public || public.contains(&ident.to_string()))
     {
@@ -1548,10 +1603,7 @@ fn mirror(
     // The explicit re-exports name every item the module defines; the glob is there only for
     // items a macro invocation defines, which syn can't see. A glob would also make
     // horizon-mixins take `format!`/`vec!`/`matches!` as possibly shadowed.
-    let glob = items
-        .iter()
-        .any(|item| matches!(item, Item::Macro(mac) if mac.ident.is_none()))
-        .then(|| quote!(pub use #original::*;));
+    let glob = glob.then(|| quote!(pub use #original::*;));
     Ok(quote! {
         #glob
         #(#bridge_import)*
@@ -2084,6 +2136,48 @@ mod tests {
             hashes: BTreeMap::new(),
             stale: None,
         }
+    }
+
+    /// A mirror tree holding one copied function.
+    fn with_a_copy() -> Tree {
+        let mut tree = Tree::default();
+        tree.copies.push(quote!(
+            pub fn copy() {}
+        ));
+        tree
+    }
+
+    #[test]
+    fn a_thread_local_re_exports_its_public_statics_by_name_not_by_glob() {
+        let mut source = source_of(
+            "lower::anim",
+            "thread_local! {
+                 static POOL: Cell<u8> = const { Cell::new(0) };
+                 pub static SHARED: Cell<u8> = Cell::new(0);
+             }
+             pub fn setup() -> bool { matches!(1, 1) }",
+        );
+        let out = mirror(&mut source, "lower::anim", &with_a_copy(), &[], None)
+            .unwrap()
+            .to_string()
+            .replace(' ', "");
+        // A glob would make horizon-mixins refuse the bare `matches!` in `setup`.
+        assert!(!out.contains("::*"), "{out}");
+        assert!(out.contains("pubuse::lower::anim::SHARED;"), "{out}");
+        assert!(!out.contains("POOL"), "{out}");
+        // A module above a copy re-exports only public names: the public static is one.
+        let out = mirror(&mut source, "lower::anim", &Tree::default(), &[], None)
+            .unwrap()
+            .to_string()
+            .replace(' ', "");
+        assert!(out.contains("pubuse::lower::anim::SHARED;"), "{out}");
+        // A macro whose items syn can't see still gets the glob.
+        let mut source = source_of("lower::anim", "declare_things! {}");
+        let out = mirror(&mut source, "lower::anim", &with_a_copy(), &[], None)
+            .unwrap()
+            .to_string()
+            .replace(' ', "");
+        assert!(out.contains("pubuse::lower::anim::*;"), "{out}");
     }
 
     #[test]
