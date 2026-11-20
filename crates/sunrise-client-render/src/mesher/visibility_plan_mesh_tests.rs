@@ -175,7 +175,9 @@ fn hide_terrain_composes_with_state_visibility_and_section_geometry() {
     assert!(quads(&full) > 6);
     assert!(
         full.solid
-            .chunks_exact(4)
+            .as_chunks::<4>()
+            .0
+            .iter()
             .any(|quad| quad[0].pos == [2., 8., 2.])
     );
     let hidden_cell = plan(|b| b.restrict([5, 4, 5], false, false, 0));
@@ -236,7 +238,9 @@ fn fully_hidden_neighbours_do_not_change_fluid_surface_geometry() {
             let after = mesh_region(&f, &region, masked.as_ref());
             let surface = |mesh: &SectionMesh| {
                 mesh.translucent
-                    .chunks_exact(4)
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
                     .filter(|quad| {
                         quad.iter().all(|v| v.pos[1] > 4.25)
                             && quad.iter().any(|v| v.pos[0] == x as f32)
@@ -253,7 +257,7 @@ fn fully_hidden_neighbours_do_not_change_fluid_surface_geometry() {
                 bytemuck::cast_slice::<_, u8>(&before_surface)
             );
             let east_face = |mesh: &SectionMesh| {
-                mesh.translucent.chunks_exact(4).any(|quad| {
+                mesh.translucent.as_chunks::<4>().0.iter().any(|quad| {
                     let at = quad[0].pos[0];
                     at > x as f32 + 0.5
                         && at < x as f32 + 1.0
@@ -306,7 +310,9 @@ fn masked_translucent_faces_sort_far_to_near() {
     assert!(masked.solid.is_empty());
     let centres: Vec<_> = masked
         .translucent
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|q| quad_center(q[0].pos, q[2].pos))
         .collect();
     assert_eq!(centres.len(), 2);
