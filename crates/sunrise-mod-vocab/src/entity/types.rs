@@ -1226,8 +1226,8 @@ impl ProfileProperty {
 pub enum OpenMenuError {
     /// The menu type is not a content mod's (`data/<id>/sunrise/menu/`).
     NotModMenu,
-    /// The player is stale, not connected (a fake player), or their client lacks Sunrise's
-    /// menu types (a vanilla client); also a host without a game.
+    /// The player is stale, dead, disconnecting, has no supported client, or their turn
+    /// is unavailable for the open veto. Also returned by a host without a game.
     PlayerUnavailable,
     /// The extra data is past the 32 KiB a menu may carry.
     TooLarge,

@@ -46,9 +46,10 @@ pub trait PlayerMenusBackendMut {
     /// inventory) before the new one is built; `replace` says whether the client is first sent
     /// a close for it, as for `open_menu`. `MenuReplace::InPlace` sends none: the client keeps
     /// its screen and mouse until the new screen replaces it. The window id, or Ok(None) when
-    /// a mod cancelled the open. Errors: `NotModMenu`, `PlayerUnavailable` (stale, fake or
-    /// unsupported client), `TooLarge`, `DataCountMismatch`, `Title` or `TitleNotEncodable`;
-    /// a cancelled or refused open leaves the old menu as it was.
+    /// a mod cancelled the open. Errors: `NotModMenu`, `PlayerUnavailable` (including a
+    /// disconnect in progress or a turn unavailable for the veto), `TooLarge`,
+    /// `DataCountMismatch`, `Title` or `TitleNotEncodable`. A cancelled or refused open
+    /// does not close the old menu.
     #[access(WorldOnly)]
     fn player_open_mod_menu(
         &mut self,

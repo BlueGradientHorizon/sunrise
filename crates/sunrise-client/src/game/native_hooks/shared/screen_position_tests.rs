@@ -157,6 +157,10 @@ fn slotless_screen_draw_sees_full_width_updates_only_for_its_window() {
                 assert!(game.slots().is_empty());
                 assert_eq!(game.slot_count(), 0);
                 assert_eq!(Game::inventory_screen_slot(PACK, 0), None);
+                assert_eq!(
+                    game.slot_at(&HudBatch::scratch([200, 200]), 25.0, 40.0),
+                    None
+                );
                 receive(game, 2, 0, -80_000);
                 receive(game, 2, 1, 3);
                 draw(game);

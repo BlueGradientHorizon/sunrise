@@ -875,7 +875,7 @@ impl Guest {
     /// Send a full-width data-slot change to this guest's blockless menu.
     pub fn send_menu_data(&self, window: i32, index: u16, value: i32) {
         use sunrise_protocol::menu_extra::{DATA_CHANNEL, DataSlot};
-        self.send(&play::Clientbound::CustomPayload(play::CustomPayload {
+        self.send(&play::Clientbound::CustomPayload(CustomPayload {
             channel: DATA_CHANNEL.into(),
             data: DataSlot {
                 window,
