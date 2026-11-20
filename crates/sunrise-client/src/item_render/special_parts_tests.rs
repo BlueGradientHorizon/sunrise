@@ -66,7 +66,13 @@ impl SpecialModelRenderer for Pan {
         _: &dyn ClientHost,
         stack: &SpecialModelStack<'_>,
     ) -> Self::Argument {
-        (stack.count(), stack.get(&PanTint))
+        // Only the pan's component tints its geometry, not an unrelated stack's.
+        let tint = if stack.item() == item_key(0) {
+            stack.get(&PanTint)
+        } else {
+            None
+        };
+        (stack.count(), tint)
     }
 
     fn submit(
@@ -82,8 +88,12 @@ impl SpecialModelRenderer for Pan {
             )
         };
         let geometry = |collector: &mut SpecialModelCollector<'_>, model: &SpecialModelGeometry| {
+            let tints = tint.map_or_else(
+                || SpecialModelTints::Indexed(Arc::clone(&self.palette)),
+                |tint| SpecialModelTints::Uniform(tint as u32),
+            );
             collector.with_pose(translated(f32::from(self.handle) / 8.0), |pose| {
-                pose.submit_geometry(model, SpecialModelTints::Indexed(Arc::clone(&self.palette)))
+                pose.submit_geometry(model, tints)
             })
         };
         match count {
@@ -161,7 +171,8 @@ impl SpecialModelRenderer for Pan {
                 collector.with_pose(translated(0.25), |pose| {
                     pose.with_pose(DOUBLED, |pose| {
                         pose.submit_geometry(&self.a, SpecialModelTints::Untinted)
-                    })
+                    })?;
+                    pose.submit_geometry(&self.a, SpecialModelTints::Untinted)
                 })?;
                 collector.submit_geometry(&self.a, SpecialModelTints::Untinted)
             }
@@ -197,6 +208,7 @@ impl ItemDrawEnv for PanEnv {
             "spt:pan" => 0,
             "spt:composite" => 3,
             "spt:fault" | "spt:alias" => 4,
+            "spt:bundle" => 5,
             _ => return None,
         };
         let display = ItemDisplayContext::ALL
@@ -278,6 +290,21 @@ fn write(root: &std::path::Path, name: &str, data: &str) {
     let path = root.join(name);
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(path, data).unwrap();
+}
+
+/// A pan node between ordinary grey and white cube models, to test layer-local refusal.
+fn write_composite(root: &std::path::Path) {
+    write(
+        root,
+        "assets/spt/items/composite.json",
+        &format!(
+            r#"{{"model":{{"type":"composite","models":[
+            {{"type":"model","model":"spt:item/a","tints":[{{"type":"constant","value":{GREY}}}]}},
+            {{"type":"special","base":"spt:item/base","model":{{"type":"spt:pan","handle":2}}}},
+            {{"type":"model","model":"spt:item/b","tints":[{{"type":"constant","value":{WHITE}}}]}}
+        ]}}}}"#
+        ),
+    );
 }
 
 /// The packs in `root`, with B of `b_cubes` cubes.
@@ -412,6 +439,7 @@ fn each_special_draw_reads_effective_components_and_current_context() {
 #[test]
 fn a_fault_rolls_back_and_disables_the_type_only_in_its_resource_generation() {
     let root = tempfile::tempdir().unwrap();
+    write_composite(root.path());
     write(
         root.path(),
         "assets/spt/items/alias.json",
@@ -422,10 +450,13 @@ fn a_fault_rolls_back_and_disables_the_type_only_in_its_resource_generation() {
     let draw = |renderer: &ItemRenderer, stack: &StackView| {
         renderer.resolve(stack, DisplayContext::None, None, None, 0, &env)
     };
+    let is_missing_layer = |renderer: &ItemRenderer, layer: &LayerRender| {
+        matches!(&layer.geometry, LayerGeometry::Quads(model)
+            if Arc::ptr_eq(model, &renderer.bake(MISSING_MODEL)))
+    };
     let is_missing = |renderer: &ItemRenderer, stack: &StackView| {
         let state = draw(renderer, stack);
-        matches!(state.layers.as_slice(), [LayerRender { geometry: LayerGeometry::Quads(model), .. }]
-            if Arc::ptr_eq(model, &renderer.bake(MISSING_MODEL)))
+        matches!(state.layers.as_slice(), [layer] if is_missing_layer(renderer, layer))
     };
     let working = stack("spt:alias", 1);
     let mut unreadable = stack("spt:unreadable", 1);
@@ -437,8 +468,20 @@ fn a_fault_rolls_back_and_disables_the_type_only_in_its_resource_generation() {
         let generation = renderer(root.path(), 2, 2, &factories);
         assert!(is_missing(&generation, &unreadable));
         assert_eq!(quads(&generation, &draw(&generation, &working)).len(), 6);
-        // Err after a write, panic after a write, and a non-finite composed pose.
-        assert!(is_missing(&generation, &stack("spt:pan", count)));
+        // Err after a write, panic after a write, and an ignored non-finite composed pose.
+        let state = draw(&generation, &stack("spt:composite", count));
+        let [_, replacement, _] = state.layers.as_slice() else {
+            panic!("count {count}: the failed layer leaked geometry or erased a sibling");
+        };
+        assert!(is_missing_layer(&generation, replacement));
+        // The fixture atlas omits the missing sprite: only the two ordinary siblings draw.
+        let colors: Vec<_> = quads(&generation, &state)
+            .into_iter()
+            .map(|quad| quad.color)
+            .collect();
+        assert_eq!(colors.len(), 18);
+        assert_eq!(colors[..6], [GREY as u32; 6]);
+        assert_eq!(colors[6..], [WHITE as u32; 12]);
         assert!(
             is_missing(&generation, &working),
             "the sibling node of the same type was not disabled"
@@ -673,25 +716,82 @@ fn special_geometry_leases_resolve_pack_sprites_and_reject_invalid_quads() {
 }
 
 #[test]
-#[ignore = "daily"]
-fn a_registered_special_model_draws_its_renderers_resource_models() {
-    let root = std::env::temp_dir().join(format!("sunrise-special-parts-{}", std::process::id()));
+fn child_poses_leave_following_submissions_in_their_own_scopes() {
+    let root = tempfile::tempdir().unwrap();
+    let renderer = renderer(root.path(), 2, 2, &pan_factories(|_| {}));
+    let state = renderer.resolve(
+        &stack("spt:pan", 25),
+        DisplayContext::None,
+        None,
+        None,
+        0,
+        &PanEnv(FakeHost::new()),
+    );
+    let quads = quads(&renderer, &state);
+    assert_eq!(quads.len(), 18);
+    // The 1/4-wide cube, centered by -1/2 after the local pose: translated by 1/4 and
+    // doubled in the child, only translated in its parent, then unposed at the root.
+    for (cube, expected) in quads
+        .chunks_exact(6)
+        .zip([(-0.25, 0.25), (-0.25, 0.0), (-0.5, -0.25)])
+    {
+        let bounds = cube
+            .iter()
+            .flat_map(|quad| quad.pos)
+            .fold((f32::INFINITY, f32::NEG_INFINITY), |(lo, hi), pos| {
+                (lo.min(pos.x), hi.max(pos.x))
+            });
+        assert_eq!(bounds, expected);
+    }
+}
+
+#[test]
+fn a_bundle_extracts_the_selected_stacks_argument_and_foil() {
+    let root = tempfile::tempdir().unwrap();
     write(
-        &root,
+        root.path(),
         "assets/spt/items/bundle.json",
         r#"{"model":{"type":"bundle/selected_item"}}"#,
     );
-    write(
-        &root,
-        "assets/spt/items/composite.json",
-        &format!(
-            r#"{{"model":{{"type":"composite","models":[
-            {{"type":"model","model":"spt:item/a","tints":[{{"type":"constant","value":{GREY}}}]}},
-            {{"type":"special","base":"spt:item/base","model":{{"type":"spt:pan","handle":2}}}},
-            {{"type":"model","model":"spt:item/b","tints":[{{"type":"constant","value":{WHITE}}}]}}
-        ]}}}}"#
-        ),
+    let renderer = renderer(root.path(), 2, 2, &pan_factories(|_| {}));
+    let mut bundle = stack("spt:bundle", 1);
+    bundle.bundle_selected = 1;
+    bundle
+        .patch
+        .insert("spt:tint".into(), Some(serde_json::json!(GREY)));
+    bundle.patch.insert(
+        "minecraft:bundle_contents".into(),
+        Some(serde_json::json!([
+            {"id": "spt:pan", "count": 1, "components": {"minecraft:item_model": "spt:pan"}},
+            {"id": "spt:pan", "count": 2, "components": {
+                "minecraft:item_model": "spt:pan",
+                "minecraft:enchantment_glint_override": true,
+                "spt:tint": 0xFFAA_1100_u32 as i32
+            }}
+        ])),
     );
+    let state = renderer.resolve(
+        &bundle,
+        DisplayContext::Gui,
+        None,
+        None,
+        0,
+        &PanEnv(FakeHost::new()),
+    );
+    // Two pans draw B, not A. The tint only comes from a pan's own component and foil only
+    // from the selected stack's override; the outer bundle and first entry are not foiled.
+    let drawn: Vec<_> = quads(&renderer, &state)
+        .into_iter()
+        .map(|quad| (quad.color, quad.foil))
+        .collect();
+    assert_eq!(drawn, [(0xFFAA_1100, Foil::Standard); 12]);
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_registered_special_model_draws_its_renderers_resource_models() {
+    let root = std::env::temp_dir().join(format!("sunrise-special-parts-{}", std::process::id()));
+    write_composite(&root);
     write(
         &root,
         "assets/spt/items/fault.json",
@@ -758,17 +858,6 @@ fn a_registered_special_model_draws_its_renderers_resource_models() {
     assert_eq!(x(1), (-0.25, 0.0));
     assert_eq!(x(5), (-0.5, 0.0));
 
-    let scoped = resolve("spt:pan", 25, DisplayContext::None);
-    let [child, sibling] = scoped.layers.as_slice() else {
-        panic!("expected geometry inside and outside the nested pose");
-    };
-    assert_eq!(child.matrix.transform_point3(Vec3::ZERO).x, -0.25);
-    assert_eq!(
-        child.matrix.transform_point3(Vec3::new(0.25, 0.0, 0.0)).x,
-        0.25
-    );
-    assert_eq!(sibling.matrix.transform_point3(Vec3::ZERO).x, -0.5);
-
     // An unreadable nested stack discards the geometry already submitted, without poisoning
     // the parent. The next valid stack of that type still draws.
     let missing = renderer.bake(MISSING_MODEL);
@@ -819,23 +908,6 @@ fn a_registered_special_model_draws_its_renderers_resource_models() {
         quads(&renderer, &resolve("spt:cube", 1, DisplayContext::Gui)).len(),
         6
     );
-
-    // A selected stack of two pans draws B with its own foil; the single bundle would draw A.
-    let mut bundle = stack("spt:bundle", 1);
-    bundle.bundle_selected = 0;
-    bundle.patch.insert(
-        "minecraft:bundle_contents".into(),
-        Some(serde_json::json!([{
-            "id": "spt:pan", "count": 2, "components": {
-                "minecraft:item_model": "spt:pan",
-                "minecraft:enchantment_glint_override": true
-            }
-        }])),
-    );
-    let picked = renderer.resolve(&bundle, DisplayContext::Gui, None, None, 0, &env);
-    let quads_picked = quads(&renderer, &picked);
-    assert_eq!(quads_picked.len(), 12);
-    assert!(quads_picked.iter().all(|quad| quad.foil == Foil::Standard));
 
     // A special type no mod registered isn't loaded: its item draws the missing model.
     assert!(is_missing(&resolve("spt:stranger", 1, DisplayContext::Gui)));
