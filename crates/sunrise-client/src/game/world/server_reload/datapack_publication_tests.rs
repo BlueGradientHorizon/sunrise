@@ -4,6 +4,8 @@ use mod_api::{
     DatapackField, DatapackFieldKind, DatapackRegistrySync, DatapackValue, Registrar,
     RegistrationContext,
 };
+use sunrise_core::nbt::Tag;
+
 struct RegistryMod;
 #[mod_api::__subscriptions]
 impl Hooks for RegistryMod {
@@ -532,14 +534,13 @@ fn with_membership_fixture(run: impl FnOnce(&mut crate::game::Game<'_>, &Path)) 
         },
     );
 }
-fn weights(game: &crate::game::Game<'_>) -> Vec<(String, serde_json::Value)> {
+fn weights(game: &crate::game::Game<'_>) -> Vec<(String, Tag)> {
     game.world_tables
         .as_ref()
         .unwrap()
         .data_maps
-        .json_values("registry_test:spell", "registry_test:weights")
-        .map(|(id, value)| (id.to_owned(), value.clone()))
-        .collect()
+        .entries("registry_test:spell", "registry_test:weights")
+        .unwrap()
 }
 #[test]
 #[ignore = "daily"]
@@ -547,7 +548,7 @@ fn data_map_first_open_uses_staged_membership() {
     with_membership_fixture(|game, _| {
         assert_eq!(
             weights(game),
-            vec![("registry_test:fire".into(), serde_json::json!(11))]
+            vec![("registry_test:fire".into(), Tag::Int(11))]
         );
     });
 }
@@ -563,8 +564,8 @@ fn data_map_reload_add_uses_staged_membership() {
         assert_eq!(
             weights(game),
             vec![
-                ("registry_test:fire".into(), serde_json::json!(11)),
-                ("registry_test:ice".into(), serde_json::json!(17))
+                ("registry_test:fire".into(), Tag::Int(11)),
+                ("registry_test:ice".into(), Tag::Int(17))
             ]
         );
     });
@@ -578,7 +579,7 @@ fn data_map_reload_remove_uses_staged_membership() {
         )
         .unwrap();
         assert!(game.run_command("reload"));
-        assert_eq!(weights(game), vec![]);
+        assert!(weights(game).is_empty());
     });
 }
 #[test]
@@ -589,8 +590,8 @@ fn data_map_later_enabled_layer_uses_staged_membership() {
         assert_eq!(
             weights(game),
             vec![
-                ("registry_test:fire".into(), serde_json::json!(11)),
-                ("registry_test:ice".into(), serde_json::json!(17))
+                ("registry_test:fire".into(), Tag::Int(11)),
+                ("registry_test:ice".into(), Tag::Int(17))
             ]
         );
     });
