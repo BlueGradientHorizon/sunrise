@@ -2,7 +2,7 @@
 mod text_style_capture;
 use mod_api::text::{
     Text, TextClick, TextContent, TextFormError, TextHover, TextNbtSource, TextObject, TextProfile,
-    TextProfileProperty, TextRelation, TextStyle,
+    TextProfileProperty, TextStyle,
 };
 use serde_json::{Map, Value};
 use std::collections::HashMap;
@@ -92,6 +92,15 @@ enum Style<'a> {
     Native(&'a engine::Style),
     Empty,
 }
+#[derive(Clone, Copy)]
+enum CaptureEdge {
+    Child,
+    Argument,
+    Separator,
+    Fallback,
+    HoverText,
+    HoverEntityName,
+}
 struct Node<'a> {
     source: Source<'a>,
     content: Content<'a>,
@@ -99,7 +108,7 @@ struct Node<'a> {
     hover: Option<Hover<'a>>,
     hover_fields: Option<&'a Map<String, Value>>,
     fields: Option<&'a Map<String, Value>>,
-    edges: Vec<(Source<'a>, TextRelation, bool)>,
+    edges: Vec<(Source<'a>, CaptureEdge, bool)>,
     merge: bool,
 }
 
@@ -250,12 +259,12 @@ fn node(source: Source<'_>) -> Result<Node<'_>, Error> {
             node.merge = true;
             if let Some(source) = text.source_component() {
                 node.edges
-                    .push((Source::Json(source), TextRelation::Child, true));
+                    .push((Source::Json(source), CaptureEdge::Child, true));
             } else {
                 node.edges.extend(text.spans.iter().map(|span| {
                     (
                         Source::Span(span),
-                        TextRelation::Child,
+                        CaptureEdge::Child,
                         text.spans.len() == 1,
                     )
                 }));
@@ -269,7 +278,7 @@ fn node(source: Source<'_>) -> Result<Node<'_>, Error> {
                 values
                     .iter()
                     .enumerate()
-                    .map(|(i, v)| (Source::Json(v), TextRelation::Child, i == 0)),
+                    .map(|(i, v)| (Source::Json(v), CaptureEdge::Child, i == 0)),
             );
         }
         Source::Json(Value::Object(fields)) => {
@@ -282,7 +291,7 @@ fn node(source: Source<'_>) -> Result<Node<'_>, Error> {
                 node.edges.extend(
                     values
                         .iter()
-                        .map(|v| (Source::Json(v), TextRelation::Child, false)),
+                        .map(|v| (Source::Json(v), CaptureEdge::Child, false)),
                 );
             }
         }
@@ -359,22 +368,22 @@ fn node(source: Source<'_>) -> Result<Node<'_>, Error> {
         Content::Translate { arguments, .. } => node.edges.extend(
             arguments
                 .iter()
-                .map(|v| (Source::Json(v), TextRelation::Argument, false)),
+                .map(|v| (Source::Json(v), CaptureEdge::Argument, false)),
         ),
         Content::Selector { separator, .. } | Content::Nbt { separator, .. } => node.edges.extend(
             separator
                 .iter()
-                .map(|&v| (v, TextRelation::Separator, false)),
+                .map(|&v| (v, CaptureEdge::Separator, false)),
         ),
         Content::Player { fallback, .. } | Content::Atlas { fallback, .. } => node
             .edges
-            .extend(fallback.iter().map(|&v| (v, TextRelation::Fallback, false))),
+            .extend(fallback.iter().map(|&v| (v, CaptureEdge::Fallback, false))),
         _ => {}
     }
     match &node.hover {
-        Some(Hover::Text(v)) => node.edges.push((*v, TextRelation::HoverText, false)),
+        Some(Hover::Text(v)) => node.edges.push((*v, CaptureEdge::HoverText, false)),
         Some(Hover::Entity { name: Some(v), .. }) => {
-            node.edges.push((*v, TextRelation::HoverEntityName, false))
+            node.edges.push((*v, CaptureEdge::HoverEntityName, false))
         }
         _ => {}
     }
@@ -803,31 +812,30 @@ fn captured_shallow(node: &Node<'_>) -> Result<Text, Error> {
     text.style = captured_style(node)?;
     Ok(text)
 }
-fn attach(text: &mut Text, relation: TextRelation, child: Text) {
+fn attach(text: &mut Text, relation: CaptureEdge, child: Text) {
     match relation {
-        TextRelation::Child => text.children.push(child),
-        TextRelation::Argument => match &mut text.content {
+        CaptureEdge::Child => text.children.push(child),
+        CaptureEdge::Argument => match &mut text.content {
             TextContent::Translatable { arguments, .. } => arguments.push(child),
             _ => unreachable!(),
         },
-        TextRelation::Separator => match &mut text.content {
+        CaptureEdge::Separator => match &mut text.content {
             TextContent::Selector { separator, .. } | TextContent::Nbt { separator, .. } => {
                 *separator = Some(Box::new(child))
             }
             _ => unreachable!(),
         },
-        TextRelation::Fallback => match &mut text.content {
+        CaptureEdge::Fallback => match &mut text.content {
             TextContent::Object(
                 TextObject::Player { fallback, .. } | TextObject::Atlas { fallback, .. },
             ) => *fallback = Some(Box::new(child)),
             _ => unreachable!(),
         },
-        TextRelation::HoverText => text.style.hover = Some(TextHover::Text(Box::new(child))),
-        TextRelation::HoverEntityName => match &mut text.style.hover {
+        CaptureEdge::HoverText => text.style.hover = Some(TextHover::Text(Box::new(child))),
+        CaptureEdge::HoverEntityName => match &mut text.style.hover {
             Some(TextHover::Entity { name, .. }) => *name = Some(Box::new(child)),
             _ => unreachable!(),
         },
-        _ => unreachable!("component visitor supplied an unknown relation"),
     }
 }
 fn capture(root: Source<'_>) -> Result<Text, Error> {
