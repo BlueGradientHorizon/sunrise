@@ -21,9 +21,9 @@ fn update(host: &mut dyn ServerHost) -> Result<(), ()> {
 - The game snapshots each storage before its first write. Handlers use the game's
   journal rather than keeping their own.
 - A nested commit merges into its parent. Only the outermost commit makes storage
-  changes final and publishes deferred game-held vanilla container effects.
+  changes final and publishes deferred engine-managed container effects.
 - An abort restores recorded storage without publishing those commit effects.
-- Raw mod-owned storage writes and restores issue no synthetic notifications.
+- Direct writes by mods to their own storage and rollback restores issue no notices.
 - Explicit changed/comparator/neighbour/data-send notifications run when issued,
   including inside a transaction, and survive abort.
 - A panic unwinding out of the closure aborts its transaction. The parent remains
@@ -44,8 +44,9 @@ The journal covers writes through capability handlers to these storages:
 | Entity inventory | Chest or hopper minecart, chest boat, chested donkey, mule or llama inventory |
 | Item entity | Stack; an emptied entity remains until the outermost commit removes it |
 
-At the outermost commit, game-held vanilla containers publish their implicit change
-notifications. Other deferred effects include jukebox playback, cauldron and composter block updates and
+At the outermost commit, default `ITEMS` and item `STORAGE` writes to vanilla containers
+and engine-managed mod slots publish their implicit change notifications.
+Other deferred effects include jukebox playback, cauldron and composter block updates and
 item drops, including items placed at a block, thrown by a player or entity, or split off an
 item entity. Explicit mod-issued world notifications are not deferred with these effects.
 
@@ -121,8 +122,8 @@ These methods are server-only:
 | `Closing` | A nested transaction is committing into its parent or aborting |
 | `RootClosing` | The outermost transaction is closing |
 
-Implicit vanilla container notices run during `RootClosing`, outside the transaction whose
-commit triggered them. Explicit mod notices issued during a transaction run during `Open`.
+Implicit engine-managed container notices run during `RootClosing`, outside the transaction
+whose commit triggered them. Explicit mod notices issued during a transaction run during `Open`.
 
 ## Entity inventory slots
 

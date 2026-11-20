@@ -164,8 +164,8 @@ preserves the requested resource-drop flag.
 `BlockPart::contents_changed(host, event)` observes a world block's storage at `setChanged`,
 with a `ServerHost`, typed `event.level`, `event.pos: BlockPos` and `event.state`. Attach it to the specific
 blocks you observe, including vanilla containers; it has no global `Hooks` counterpart.
-Hook version 2 also lets an automation block entity watch another position without polling or
-attaching Parts to every possible source block type. Its Part calls
+An automation block entity can watch another position without polling or attaching Parts to
+every possible source block type. Its Part calls
 `observer.watch_contents(host, source_pos, true)` on its live `BlockEntityRef`; false unregisters.
 The source is in the observer's level and need not be loaded. Registration is idempotent and
 joins the current transaction: abort restores the previous watches. An observer without a
@@ -181,13 +181,14 @@ source callback. Removal, replacement and chunk unload discard the observer's wa
 alone does not restore them: the Part must call `watch_contents` again. Watches are runtime
 state, never saved. Unloading the source does not cancel watches of its position.
 
-The backing
-contents are already written, before dirty/comparator updates. Game-held vanilla container writes
-coalesce their implicit notice per backing block at root commit. Explicit `BlockEntityRef::set_changed`
+The backing contents are already written, before dirty/comparator updates. The default `ITEMS`
+and item `STORAGE` handlers coalesce their implicit notice per backing block at root commit,
+for vanilla containers and engine-managed mod slots. Explicit `BlockEntityRef::set_changed`
 notifies immediately, even inside a transaction and for unchanged contents; abort does not retract
-it. Raw mod-owned storage writes and restores synthesize no notification. A double container
-notifies each component, not again for the other half's comparator refresh. A listener's writes
-still apply, but its backing block does not re-enter; another block notifies normally.
+it. Direct writes such as `BlockEntityRef::set_item_slot` and writes to storage a mod provides
+itself do not synthesize notifications; neither do rollback restores. A double container notifies
+each component, not again for the other half's comparator refresh. A listener's writes still apply,
+but its backing block does not re-enter; another block notifies normally.
 Entity/menu placeholder coordinates are not block notices. Explicit notices may read tentative items:
 
 ```rust,ignore

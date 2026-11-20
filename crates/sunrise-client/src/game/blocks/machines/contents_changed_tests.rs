@@ -55,6 +55,15 @@ impl BlockEntityPart for Changes {
     }
 }
 
+struct DepotSignal;
+
+#[mod_api::sunrise_part]
+impl BlockPart for DepotSignal {
+    fn has_analog_output(&self, _: &dyn LevelHost, event: &mut HasAnalogOutputEvent) {
+        event.output = true;
+    }
+}
+
 #[derive(Clone, Copy)]
 enum NoticeAction {
     Observe,
@@ -142,6 +151,16 @@ impl Hooks for Observed {
             let block_key = r.block_key(block);
             r.block_part(block_key, self.clone());
         }
+        let depot = r.block_key(DEPOT);
+        r.block_container(
+            &depot,
+            ModContainer {
+                slots: 2,
+                inputs: vec![0, 1],
+                ..Default::default()
+            },
+        );
+        r.block_part(depot, DepotSignal);
         let kind = r.block_entity_type("depot").blocks(&[DEPOT]).build();
         r.block_entity_part(&kind, self.changes.clone()).unwrap();
     }
@@ -597,6 +616,90 @@ fn notices_come_in_first_write_order_once_each_whatever_the_journal_keeps() {
                 .map(|notice| (notice.pos, notice.amount))
                 .collect();
             assert_eq!(told, [(a, 3), (b, 5)]);
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
+fn default_items_notifies_for_committed_mod_container_writes() {
+    with_changes(
+        "game::machines::contents_changed_tests::default_items_notifies_for_committed_mod_container_writes",
+        NoticeAction::Observe,
+        |game, level, changes| {
+            use sunrise_core::{position::ChunkPos, ticks::TickTypeId};
+
+            // The fixture stops short of the first block entity tick that loads this table.
+            let containers = game.native_containers();
+            game.world.block_entities.set_mod_containers(containers);
+            let pos = [8, 65, 8];
+            place(game, level, pos, DEPOT);
+            place(game, level, [9, 64, 8], "minecraft:stone");
+            place(game, level, [9, 65, 8], "minecraft:comparator");
+            let comparator = BlockPos::new(9, 65, 8);
+            let state = game.world.block(9, 65, 8);
+            let state = game.with_props(state, &[("facing", "west")]).unwrap();
+            game.world.set(9, 65, 8, state).unwrap();
+            game.block_ticks
+                .add_empty_chunk(ChunkPos::new(0, 0))
+                .unwrap();
+            let kind = TickTypeId(u32::from(game.res.behaviours().block(state).0));
+
+            let items = level.capability(game, &ITEMS, pos, None).unwrap();
+            let stick = ItemResource::of(
+                &mod_api::ItemStack::new(
+                    mod_api::__private::item_key("minecraft:stick").unwrap(),
+                    1,
+                )
+                .unwrap(),
+            );
+            changes.0.lock().unwrap().clear();
+            assert_eq!(
+                game.transaction(|host, tx| {
+                    assert_eq!(items.insert(host, tx, 0, &stick, 32), 32);
+                    Err::<(), _>(())
+                }),
+                Err(())
+            );
+            assert_eq!(items.amount(game, 0), 0);
+            assert!(changes.0.lock().unwrap().is_empty());
+            assert!(!game.block_ticks.blocks.has_scheduled(comparator, kind));
+
+            assert_eq!(
+                game.transaction(|host, tx| {
+                    assert_eq!(items.insert(host, tx, 0, &stick, 32), 32);
+                    host.transaction(|host, inner| {
+                        assert_eq!(items.insert(host, inner, 1, &stick, 32), 32);
+                        Ok::<_, ()>(())
+                    })?;
+                    assert!(changes.0.lock().unwrap().is_empty());
+                    Ok::<_, ()>(())
+                }),
+                Ok(())
+            );
+            let scheduled = game.block_ticks.blocks.has_scheduled(comparator, kind);
+            if scheduled {
+                game.with_level(|b, level, ticks| b.scheduled_block_tick(level, ticks, comparator));
+            }
+            assert_eq!(
+                (
+                    changes.0.lock().unwrap().as_slice(),
+                    game.block_ticks
+                        .comparator_outputs
+                        .get(&comparator)
+                        .copied(),
+                ),
+                (
+                    &[Notice {
+                        level,
+                        pos,
+                        amount: 64,
+                        version: Some(0)
+                    }][..],
+                    Some(8)
+                ),
+                "one notice observes both writes and the queued comparator reads two half-full slots"
+            );
         },
     );
 }

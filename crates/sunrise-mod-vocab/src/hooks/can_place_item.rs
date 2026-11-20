@@ -15,9 +15,9 @@ pub trait Hooks {
     /// Menus use `menu_slot_rules` instead (`Slot.mayPlace`). A subscribed wasm part costs
     /// one Wire call per queried slot.
     ///
-    /// Seed a filter from an accepted write, not this query. Default capability writes to
-    /// mod-owned storage do not emit `contents_changed`; use an explicit `set_changed`
-    /// notice or seed in a provider that owns the accepted write.
+    /// Seed a filter from an accepted write, not this query. Default `ITEMS` and `STORAGE`
+    /// writes to engine-managed slots emit `contents_changed` at root commit. A provider
+    /// writing its own storage can issue an explicit `set_changed` or seed the filter itself.
     #[hook(
         side = "server",
         contract = "replace",

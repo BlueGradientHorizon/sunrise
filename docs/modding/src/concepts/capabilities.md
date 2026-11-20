@@ -145,10 +145,11 @@ use the storage attempt path, identically for native and portable handlers.
 - A failed block-hopper pull does not try item entities. A hopper minecart still tries item
   entities after failure and has no block-hopper transfer cooldown.
 
-Notifications your extract/insert issues happen immediately and survive abort. Silent mod
-storage writes/restores do not manufacture notifications; game-held vanilla containers alone
-retain implicit root-commit coalescing. Keep storage in the transaction journal: a handler that
-ignores it can lose an extracted item on abort. The hopper does not guard or repair that loss.
+Notifications your extract/insert issues happen immediately and survive abort. The default
+`ITEMS` and item `STORAGE` handlers defer a single notice per backing block to root commit
+for vanilla containers and engine-managed mod slots. Direct writes by mods to their own storage
+and rollback restores do not issue notices. Keep storage in the transaction journal: a handler
+that ignores it can lose an extracted item on abort. The hopper does not guard or repair that loss.
 
 The ignored `sunrise-client` library tests under
 `game::machines::native_items::storage_attempt_tests::` exercise real ticks and Parts storage,
