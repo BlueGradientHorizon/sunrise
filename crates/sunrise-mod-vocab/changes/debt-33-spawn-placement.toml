@@ -4,6 +4,9 @@ ids = [
     "type:SpawnLight",
     "type:SpawnPlacementType",
     "type:SpawnPlacementError",
+    "type:SpawnPlacementError.Duplicate",
+    "type:SpawnPlacementError.InvalidId",
+    "type:SpawnPlacementError.InvalidTag",
     "hook:mob_spawn_placement_check",
 ]
 why = """
