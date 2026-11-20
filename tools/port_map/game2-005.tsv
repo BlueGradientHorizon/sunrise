@@ -17,7 +17,7 @@ ZombifiedPiglin.checkZombifiedPiglinSpawnRules	port	crates/sunrise-client/src/mo
 ZombifiedPiglin.checkSpawnObstruction	port	crates/sunrise-client/src/mobs/spawn_selection.rs::spawn_obstruction	the Mob default two tests: no liquid, unobstructed
 CatSpawner.spawnInVillage	port	crates/sunrise-gameplay/src/cat_spawner.rs::village_takes_cat	village cats: more than four claimed beds within 48 blocks and fewer than five cats
 CatSpawner.spawnInHut	port	crates/sunrise-gameplay/src/cat_spawner.rs::hut_takes_cat	hut cats: no cat within 16 blocks
-CatSpawner.spawnCat	port	crates/sunrise-client/src/game/mobs/cat_spawner.rs::Game::spawn_cat	black variant inside cats_spawn_as_black structures; persistence flag from the caller
+CatSpawner.spawnCat	port	crates/sunrise-gameplay/src/cat_spawner.rs::spawn_cat	black variant inside cats_spawn_as_black structures; persistence flag from the caller
 InventoryCarrier.pickUpItem	port	crates/sunrise-client/src/game/mobs/villagers.rs::Game::villager_pickups	gap: minor: villager arm only; piglins, sulfur cubes, pandas and others have their own pickup fns
 AbstractVillager.finalizeSpawn	port	crates/sunrise-client/src/mobs/finalize.rs::Ctx::finalize	villager arm: type, then the baby group
 AbstractVillager.addAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt.rs::mob_to_nbt	Offers; Villager inventory via villager::write_nbt, WanderingTrader inventory via extra.inventory, including empty
@@ -67,9 +67,9 @@ WanderingTrader.readAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt
 WanderingTrader.rewardTradeXp	port	crates/sunrise-client/src/merchant.rs::Session::notify_trade	the orb for offers that reward experience; the trader gets no villager XP
 WanderingTrader.WanderToPositionGoal.isTooFarAway	port	crates/sunrise-client/src/mobs/trader.rs::too_far
 WanderingTraderSpawner.getTraderData	port	crates/sunrise-client/src/game/mobs/wandering_trader.rs::Game::load_trader_data
-WanderingTraderSpawner.tryToSpawnLlamaFor	port	crates/sunrise-client/src/game/mobs/wandering_trader.rs::Game::spawn_trader_llama
-WanderingTraderSpawner.findSpawnPositionNear	port	crates/sunrise-client/src/game/mobs/wandering_trader.rs::Game::find_trader_spawn_near
-WanderingTraderSpawner.hasEnoughSpace	port	crates/sunrise-client/src/game/mobs/wandering_trader.rs::Game::trader_has_space
+WanderingTraderSpawner.tryToSpawnLlamaFor	port	crates/sunrise-gameplay/src/wandering_trader.rs::spawn_trader_llama
+WanderingTraderSpawner.findSpawnPositionNear	port	crates/sunrise-gameplay/src/wandering_trader.rs::find_trader_spawn_near
+WanderingTraderSpawner.hasEnoughSpace	port	crates/sunrise-gameplay/src/wandering_trader.rs::trader_has_space
 Inventory.setSelectedSlot	port	crates/sunrise-world/src/player_inventory.rs::PlayerInventory::set_selected	invalid slot is an error here, not a thrown exception
 Inventory.hasRemainingSpaceForItem	port	crates/sunrise-world/src/inventory_pickup.rs::remaining
 Inventory.getFreeSlot	port	crates/sunrise-world/src/player_inventory.rs::PlayerInventory::free_slot
