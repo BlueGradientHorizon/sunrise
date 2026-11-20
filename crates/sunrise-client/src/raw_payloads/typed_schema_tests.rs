@@ -3,12 +3,13 @@
 use super::{Local, Side};
 use mod_api::{Hooks, IPayloadContext, ModEntry, PayloadId, PayloadSendError, Registrar, Wire};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use sunrise_core::nbt::{Compound, JavaString, Tag};
 use sunrise_protocol::payload_negotiation::{
     self as negotiation, Control, Flow, Manifest, Mismatch, Negotiation, Phase, RegistrationPhase,
 };
 
 #[test]
-fn required_hash_and_tree_collection_schemas_do_not_negotiate() {
+fn required_collection_schemas_with_different_budgets_do_not_negotiate() {
     fn required<T: mod_api::wire::Wire + 'static>() -> Manifest {
         let mut builder = Manifest::builder();
         builder
@@ -23,16 +24,20 @@ fn required_hash_and_tree_collection_schemas_do_not_negotiate() {
         builder.finish().unwrap()
     }
 
-    // Even though both forms write the same entry bytes, the backing tables have
-    // different limits. Both maps and sets must refuse the required mismatched peer.
-    for (tree, hash) in [
+    // The entry encodings match, but the decoders charge for different backing
+    // storage. A required channel must refuse a peer using the other decoder.
+    for (local, peer) in [
         (
             required::<BTreeMap<u8, u8>>(),
             required::<HashMap<u8, u8>>(),
         ),
         (required::<BTreeSet<u8>>(), required::<HashSet<u8>>()),
+        (
+            required::<Compound>(),
+            required::<BTreeMap<JavaString, Tag>>(),
+        ),
     ] {
-        let refused = Negotiation::new(tree).receive(Control::Offer(hash));
+        let refused = Negotiation::new(local).receive(Control::Offer(peer));
         assert!(matches!(refused, Err(negotiation::Error::Incompatible {
             ref id, reason: Mismatch::Schema, ..
         }) if id.as_str() == "typed_schema:collection"));

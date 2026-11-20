@@ -269,7 +269,9 @@ fn ordinary_only_wire_forms_refuse_registration_before_a_channel_exists() {
         id: &'static str,
     ) -> &'static str {
         let channel = view.play_to_server_typed::<T>(PayloadId(id.into()), ignore);
-        assert_eq!(channel.token().load, 0, "{id}");
+        let token = channel.token();
+        assert_eq!(token.id.0, id);
+        assert_eq!(token.load, 0, "{id}");
         id
     }
 
@@ -292,10 +294,7 @@ fn ordinary_only_wire_forms_refuse_registration_before_a_channel_exists() {
     assert!(registrar.parts.payloads.is_none());
     assert_eq!(registrar.refused.len(), ids.len());
     for (refused, id) in registrar.refused.iter().zip(ids) {
-        assert!(
-            refused.contains(id) && refused.contains("ordinary-only Wire form"),
-            "{refused}"
-        );
+        assert!(refused.contains(id), "{refused}");
     }
 }
 

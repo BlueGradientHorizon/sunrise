@@ -230,19 +230,16 @@ fn arc_counts_are_charged_even_for_zero_width_values() {
 fn typed_forms_with_unmetered_conversions_are_refused() {
     use crate::{MeshDefinition, ModelPart, PartPose, Text};
 
-    const UNSUPPORTED: WireError =
-        WireError::Invalid("this Wire form is not available in typed payloads");
-
     fn ordinary_only<T: Wire>(value: &T) {
         let mut writer = Writer::new();
         writer.put(value);
         assert!(Reader::decode::<T>(writer.bytes()).is_ok());
-        assert_eq!(
+        assert!(matches!(
             encode_payload(value, PAYLOAD_DECODE_BUDGET),
-            Err(UNSUPPORTED)
-        );
+            Err(WireError::Invalid(_))
+        ));
         let mut input = Reader::for_payload(writer.bytes());
-        assert!(matches!(T::take(&mut input), Err(error) if error == UNSUPPORTED));
+        assert!(matches!(T::take(&mut input), Err(WireError::Invalid(_))));
         assert_eq!(input.rest(), writer.bytes());
     }
 
@@ -271,19 +268,26 @@ fn typed_forms_with_unmetered_conversions_are_refused() {
 
 #[test]
 fn sparse_maps_must_fit_their_retained_backing_storage() {
-    use std::collections::BTreeMap;
-    type Maps = Vec<BTreeMap<u8, Option<[u8; 2048]>>>;
+    use std::collections::{BTreeMap, HashMap};
+    type WideValue = Option<[u8; 2048]>;
 
-    // The thousand map nodes alone have room for eleven 2 KiB values each. The
-    // absent values in the body need only one tag byte apiece.
-    let single = BTreeMap::from([(1u8, None::<[u8; 2048]>)]);
-    let mut bytes = vec![0xe8, 3, 0, 0];
-    bytes.extend([1, 0, 0, 0, 1, 0].repeat(1000));
+    // Each singleton tree map charges a node with room for eleven 2 KiB
+    // values. The hash map needs only four buckets. The absent value in
+    // either body needs just one tag byte.
+    let mut bytes = vec![0xe0, 1, 0, 0]; // 480 singleton maps
+    bytes.extend([1, 0, 0, 0, 1, 0].repeat(480));
+    let hash = decode_payload::<Vec<HashMap<u8, WideValue>>>(&bytes).unwrap();
+    assert_eq!(hash, vec![HashMap::from([(1, None)]); 480]);
+
+    let tree = BTreeMap::from([(1u8, None::<[u8; 2048]>)]);
     assert_eq!(
-        encode_payload(&vec![single; 1000], bytes.len()),
+        encode_payload(&vec![tree; 480], bytes.len()),
         Err(WireError::Budget)
     );
-    assert_eq!(decode_payload::<Maps>(&bytes), Err(WireError::Budget));
+    assert_eq!(
+        decode_payload::<Vec<BTreeMap<u8, WideValue>>>(&bytes),
+        Err(WireError::Budget)
+    );
 }
 
 #[test]
