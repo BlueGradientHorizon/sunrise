@@ -28,8 +28,6 @@ pub const SITE: &str = "";
 pub const CACHE: &str = "mod-browser/sunrise-index.json";
 /// Where a download waits for its checks.
 const DOWNLOADS: &str = "mod-browser/downloads";
-/// Larger than any index should be.
-const MAX_INDEX: u64 = 16 << 20;
 /// The game asks the registry by this name.
 const AGENT: &str = concat!(
     "horizon-rust/horizon/",
@@ -93,7 +91,7 @@ fn fetch_text(at: &str) -> Result<String, String> {
     let mut text = String::new();
     response
         .into_reader()
-        .take(MAX_INDEX)
+        .take(index::MAX_INDEX)
         .read_to_string(&mut text)
         .map_err(|e| e.to_string())?;
     Ok(text)

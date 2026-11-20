@@ -10,7 +10,9 @@ use std::path::Path;
 pub const MANIFEST: &str = "mod-browser.json";
 // There is at most one in-flight install in a home: all browser writers share the home lock.
 const PENDING: &str = ".mod-browser.pending.json";
-const MAX_PENDING: u64 = 256 << 10;
+// Old and new can come from different indexes. Each row stores the version label twice,
+// so allow two index budgets per row, plus space for fixed fields and the journal envelope.
+const MAX_PENDING: u64 = 4 * super::MAX_INDEX + (4 << 10);
 
 /// The managed path for a content mod whose id has been validated by the registry.
 pub fn content_file(id: &str) -> String {
@@ -36,8 +38,9 @@ fn reconcile_locked(home: &Path) -> Result<(), String> {
     let path = home.join(PENDING);
     let error = |e: &dyn std::fmt::Display| format!("{}: {e}", path.display());
     match fs::symlink_metadata(&path) {
-        Ok(info) if info.is_file() => {}
-        Ok(_) => return Err(error(&"not a regular file")),
+        Ok(info) if !info.is_file() => return Err(error(&"not a regular file")),
+        Ok(info) if info.len() > MAX_PENDING => return Err(error(&"pending entry too large")),
+        Ok(_) => {}
         Err(e) if e.kind() == ErrorKind::NotFound => return Ok(()),
         Err(e) => return Err(error(&e)),
     }
@@ -273,6 +276,33 @@ mod tests {
     }
 
     #[test]
+    fn interrupted_publication_recovers_a_large_registry_title() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path();
+        let _guard = lock_home(home).unwrap();
+        let target = home.join(content_file("ruby"));
+        fs::create_dir(home.join(crate::mod_list::DIR)).unwrap();
+        let download = home.join("download.part");
+        durable::write(&download, b"new").unwrap();
+        let row = serde_json::json!({
+            "source": "sunrise", "project": "ruby", "file": content_file("ruby"),
+            "version": "1", "checksum": format!("SHA-256:{}", super::super::sha256(b"new")),
+            "title": "an allowed title ".repeat(20_000),
+        });
+        let manifest = home.join(MANIFEST);
+        fs::create_dir(&manifest).unwrap();
+        assert!(
+            Installed::default()
+                .publish(home, "ruby", &download, row.clone())
+                .is_err()
+        );
+        assert_eq!(fs::read(target).unwrap(), b"new");
+        fs::remove_dir(&manifest).unwrap();
+        assert_eq!(Installed::load(home).unwrap().entries, [row]);
+        assert!(!home.join(PENDING).exists());
+    }
+
+    #[test]
     fn malformed_or_oversized_sidecars_cannot_change_the_manifest() {
         let dir = tempfile::tempdir().unwrap();
         let home = dir.path();
@@ -282,20 +312,17 @@ mod tests {
         let path = home.join(PENDING);
         fs::write(&path, b"not json").unwrap();
         assert!(reconcile(home).is_err());
-        // A JSON object followed by permitted whitespace must still obey the byte limit.
-        let pending = Pending {
-            id: "ruby".into(),
-            file: content_file("ruby"),
-            old: None,
-            new: serde_json::json!({
-                "source": "sunrise", "project": "ruby", "file": content_file("ruby"),
-                "version": "2", "checksum": format!("SHA-256:{}", "a".repeat(64)),
-            }),
-        };
-        let mut bytes = serde_json::to_vec(&pending).unwrap();
-        bytes.resize(MAX_PENDING as usize + 1, b' ');
-        fs::write(&path, bytes).unwrap();
-        assert!(reconcile(home).is_err());
+        fs::OpenOptions::new()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_len(MAX_PENDING + 1)
+            .unwrap();
+        assert!(
+            reconcile(home)
+                .unwrap_err()
+                .ends_with("pending entry too large")
+        );
         assert_eq!(fs::read(&manifest).unwrap(), state);
     }
 }
