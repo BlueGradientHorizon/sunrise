@@ -554,8 +554,11 @@ impl Game<'_> {
                     self.merchant_orb([origin[0], origin[1] + 0.5, origin[2]], v as u32)
                 }
                 merchant::Event::LevelUp(_) => {
-                    if let Some(m) = mob.and_then(|id| self.mobs.iter_mut().find(|m| m.id == id)) {
-                        m.add_effect("minecraft:regeneration", 200, 0);
+                    if let Some(id) = mob {
+                        let _ =
+                            self.mutate_mob_effects(id, Some("minecraft:regeneration"), |mob| {
+                                mob.add_effect("minecraft:regeneration", 200, 0)
+                            });
                     }
                 }
                 merchant::Event::TradeUpdated(yes, pitch) => {

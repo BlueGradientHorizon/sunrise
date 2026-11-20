@@ -23,14 +23,19 @@
 //! changed by the transaction has its result made again at the root commit.
 //! `LivingRef::set_health` keeps the player's synced float storage and unpublished update
 //! events, or the mob's health and sync dirtiness. This does not journal other health,
-//! damage, death or attribute operations.
+//! damage, death or attribute operations. Mob effect writes keep their effect lists, dirty bit,
+//! health and absorption, and the attribute modifier rows the effects own.
 //! An entity added inside one goes at an abort, one removed is only marked until the root
 //! commit, and mods hear of joins and leaves at the root commit (`transactions/entities.rs`).
 use super::{BlockEntity, BlockStateId, Game, machines::HopperState, maps::MapData};
 use mod_api::{Transaction, TransactionLifecycle, TransactionSeal};
 use std::collections::{BTreeMap, HashMap};
 use sunrise_client::{
-    items::ItemStack, living_attributes::ModifierChanges, world::BlockEntityExtras,
+    effects::EffectInstance,
+    items::ItemStack,
+    living_attributes::ModifierChanges,
+    mobs::{Mob, StoredEffect, finalize::EffectModifierUndo},
+    world::BlockEntityExtras,
 };
 use sunrise_core::position::BlockPos;
 use sunrise_mod_runtime::attachments::{Attachments, Holder};
@@ -83,6 +88,9 @@ impl OpenTransactions {
             if let Some(changes) = level.modifier_changes.get_mut(&mob) {
                 changes.keep_explicit_write(attribute, id);
             }
+            level
+                .effect_modifiers
+                .retain(|(owner, kept)| *owner != mob || !kept.names(attribute, id));
         }
     }
 
@@ -182,6 +190,10 @@ pub(super) struct Level {
     player_health: HashMap<u128, KeptPlayerHealth>,
     /// Mob health and synchronization dirtiness before set_health.
     mob_health: HashMap<u32, KeptMobHealth>,
+    /// Active and hidden effects before the first write to the mob at this depth.
+    mob_effects: HashMap<u32, KeptMobEffects>,
+    /// Effect-owned modifier changes in write order, so rows can return to their positions.
+    effect_modifiers: Vec<(u32, EffectModifierUndo)>,
     /// Each entity's inventory (`entity_slots`) before this transaction first wrote it.
     entities: HashMap<u32, Vec<Option<ItemStack>>>,
     /// Each mob's or armor stand's equipment before this transaction first
@@ -298,6 +310,14 @@ struct KeptMobHealth {
     death_time: i32,
     death_canceled: bool,
     processed: bool,
+}
+
+struct KeptMobEffects {
+    active: Vec<StoredEffect>,
+    chains: Vec<EffectInstance>,
+    ambient: Vec<&'static str>,
+    hidden: Vec<&'static str>,
+    dirty: bool,
 }
 
 #[derive(Clone)]
@@ -632,6 +652,10 @@ impl Game<'_> {
                 for (id, kept) in level.mob_health {
                     outer.mob_health.entry(id).or_insert(kept);
                 }
+                for (id, kept) in level.mob_effects {
+                    outer.mob_effects.entry(id).or_insert(kept);
+                }
+                outer.effect_modifiers.extend(level.effect_modifiers);
                 for (id, kept) in level.entities {
                     outer.entities.entry(id).or_insert(kept);
                 }
@@ -980,6 +1004,57 @@ impl Game<'_> {
                 processed: self.died.contains(&id),
             });
         }
+    }
+    /// Writes one mob effect, or any active effect when `effect` is `None`. In a transaction,
+    /// keep the effect lists and use the same health journal as `set_health` and `set_absorption`.
+    pub(super) fn mutate_mob_effects(
+        &mut self,
+        id: u32,
+        effect: Option<&'static str>,
+        mutate: impl FnOnce(&mut Mob) -> bool,
+    ) -> Option<bool> {
+        let before = self.snapshot_mob_modifiers(id);
+        self.journal_mob_health(id);
+        let mob = self
+            .mobs
+            .iter_mut()
+            .find(|mob| mob.id == id && !mob.removed)?;
+        if !self.transactions.is_empty() {
+            self.transactions.writes = self.transactions.writes.wrapping_add(1);
+            let level = self.transactions.last_mut().expect("open transaction");
+            level
+                .mob_effects
+                .entry(id)
+                .or_insert_with(|| KeptMobEffects {
+                    active: mob.extra.effects.clone(),
+                    chains: mob.extra.effect_chains.clone(),
+                    ambient: mob.extra.ambient_effects.clone(),
+                    hidden: mob.extra.hidden_effects.clone(),
+                    dirty: mob.effects_dirty,
+                });
+            let mut keep = |effect| {
+                level
+                    .effect_modifiers
+                    .extend(mob.effect_modifier_undo(effect).map(|kept| (id, kept)));
+            };
+            if let Some(effect) = effect {
+                keep(effect);
+            } else {
+                for effect in &mob.extra.effects {
+                    keep(effect.id);
+                }
+            }
+        }
+        let changed = mutate(mob);
+        // An effect may invalidate the live map and lose its equipment rows and
+        // detection cache; undo those changes through the existing modifier journal.
+        if let Some(before) = before
+            && let Some(after) = self.snapshot_mob_modifiers(id)
+            && let Some(changes) = before.diff(&after)
+        {
+            self.transactions.journal_modifier_changes(id, changes);
+        }
+        Some(changed)
     }
     /// Keeps `player`'s menu storage as it is, if a transaction is open and hasn't yet.
     pub(super) fn journal_menus(&mut self, player: mod_api::PlayerRef) {
@@ -1380,6 +1455,20 @@ impl Game<'_> {
             }
         }
 
+        for (id, kept) in level.mob_effects {
+            if let Some(mob) = self.mobs.iter_mut().find(|mob| mob.id == id) {
+                mob.extra.effects = kept.active;
+                mob.extra.effect_chains = kept.chains;
+                mob.extra.ambient_effects = kept.ambient;
+                mob.extra.hidden_effects = kept.hidden;
+                mob.effects_dirty = kept.dirty;
+            }
+        }
+        for (id, kept) in level.effect_modifiers.into_iter().rev() {
+            if let Some(mob) = self.mobs.iter_mut().find(|mob| mob.id == id) {
+                kept.restore(mob);
+            }
+        }
         for (id, changes) in std::mem::take(&mut level.modifier_changes) {
             if let Some(mob) = self.mobs.iter_mut().find(|m| m.id == id && !m.removed) {
                 super::living_attributes::undo_mob_modifiers(&self.motion.attributes, mob, changes);

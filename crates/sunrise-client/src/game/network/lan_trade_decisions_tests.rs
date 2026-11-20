@@ -32,6 +32,7 @@ struct Script {
     /// An answer whose result stack is not a valid one for the game.
     invalid_stack: bool,
     edit_other_merchant_and_board: bool,
+    edit_other_merchants_effects: bool,
     player_write: Option<PlayerWrite>,
     raise_second_price: bool,
     refuse_stacked: bool,
@@ -148,6 +149,16 @@ fn trade(host: &mut dyn ServerHost, event: &mut TradeWithVillagerEvent<'_>) {
             )
             .unwrap();
         }
+        if s.edit_other_merchants_effects {
+            let other = host.living(host.entity(41).unwrap()).unwrap();
+            let key = |id| mod_api::__private::effect_key(id).unwrap();
+            assert!(other.remove_effect(host, key("minecraft:slowness")));
+            for id in ["minecraft:speed", "minecraft:absorption"] {
+                let effect = mod_api::ActiveEffect::new(key(id), 200, 0, false, true, true);
+                assert!(other.add_effect(host, &effect));
+                assert!(other.potion_affected(host, effect.id));
+            }
+        }
         if s.panic_on == Some(call) {
             panic!("trade listener failed");
         }
@@ -258,6 +269,37 @@ fn refusal_restores_crafted_score_and_another_merchants_offers() {
             let other = game.mobs[1].extra.trade.as_ref().unwrap();
             assert_eq!(other.offers[0].uses, 1);
         })
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn an_invalid_offer_restores_another_merchants_effects_and_modifiers() {
+    with_mod(|| {
+        with_guests(|game| {
+            let click = open(game, 2);
+            super::native_merchant_refs::tests::spawn(game, 41, "minecraft:villager");
+            let mob = &mut game.mobs[1];
+            assert!(mob.add_effect("minecraft:slowness", 300, 0));
+            mob.effects_dirty = false;
+            let speed = mob.movement_speed().to_bits();
+            script(Script {
+                invalid: true,
+                edit_other_merchants_effects: true,
+                ..Script::default()
+            });
+            assert!(game.lan_merchant_click(12, &click));
+            assert_eq!(CALLS.get(), 1);
+            unchanged(game, 2);
+            let other = &game.mobs[1];
+            assert_eq!(other.extra.effects.len(), 1);
+            assert_eq!(other.extra.effects[0].id, "minecraft:slowness");
+            assert_eq!(other.extra.effects[0].duration, 300);
+            assert_eq!(other.movement_speed().to_bits(), speed);
+            assert_eq!(other.absorption, 0.0);
+            assert!(!other.effects_dirty);
+            assert!(game.transactions.is_empty());
+        });
     });
 }
 

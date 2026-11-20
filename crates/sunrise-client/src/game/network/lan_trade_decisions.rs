@@ -489,8 +489,8 @@ impl Game<'_> {
         );
     }
 
-    /// Keep the fields merchant operations own, not the mob's unrelated health, equipment or
-    /// other transaction state. Level-up regeneration owns the effect data and its dirty bit.
+    /// Keep the fields merchant operations own, not the mob's health, equipment or effects,
+    /// which belong to their owning journals.
     pub(super) fn journal_merchant_mob(&mut self, id: u32) {
         let Some(level) = self.transactions.last_mut() else {
             return;
@@ -508,11 +508,6 @@ impl Game<'_> {
         let level = m.extra.villager_level;
         let variant = m.extra.variant;
         let villager = m.extra.villager.clone();
-        let effects = m.extra.effects.clone();
-        let chains = m.extra.effect_chains.clone();
-        let ambient = m.extra.ambient_effects.clone();
-        let hidden = m.extra.hidden_effects.clone();
-        let dirty = m.effects_dirty;
         entry.insert(Box::new(move |game| {
             if let Some(m) = game.mobs.iter_mut().find(|m| m.id == id) {
                 m.random = random;
@@ -522,11 +517,6 @@ impl Game<'_> {
                 m.extra.villager_level = level;
                 m.extra.variant = variant;
                 m.extra.villager = villager;
-                m.extra.effects = effects;
-                m.extra.effect_chains = chains;
-                m.extra.ambient_effects = ambient;
-                m.extra.hidden_effects = hidden;
-                m.effects_dirty = dirty;
             }
         }));
     }
