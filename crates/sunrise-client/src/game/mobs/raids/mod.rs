@@ -86,24 +86,7 @@ impl Raiding {
     }
 }
 
-/// `SectionPos` of a block position.
-pub(super) fn section(p: [i32; 3]) -> (i32, i32, i32) {
-    (p[0] >> 4, p[1] >> 4, p[2] >> 4)
-}
-/// `PoiManager.DistanceTracker`: sections from the nearest village centre,
-/// 7 when farther than 6.
-pub(super) fn sections_to_village(centers: &HashSet<(i32, i32, i32)>, at: (i32, i32, i32)) -> i32 {
-    centers
-        .iter()
-        .map(|c| {
-            (c.0 - at.0)
-                .abs()
-                .max((c.1 - at.1).abs())
-                .max((c.2 - at.2).abs())
-        })
-        .min()
-        .map_or(7, |d| d.min(7))
-}
+pub(super) use sunrise_gameplay::custom_spawner::{section, sections_to_village};
 
 /// The level as a raid sees it, with this tick's village data.
 struct Lvl<'a, 'g> {
@@ -886,7 +869,7 @@ impl Game<'_> {
     /// `EntityType.create` then `finalizeSpawn` for a patrol or a raid: the
     /// mob keeps the default rotation; a leader is set before finalizing so
     /// it wears the banner.
-    fn spawn_event_mob(
+    pub(super) fn spawn_event_mob(
         &mut self,
         kind: &str,
         at: [f64; 3],
@@ -1624,22 +1607,6 @@ fn raid_name_tag(name: BarName) -> Tag {
                 ]),
             ),
         ]),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn sections_to_village_is_a_chebyshev_distance_capped_at_seven() {
-        let mut centers = HashSet::new();
-        assert_eq!(sections_to_village(&centers, (0, 0, 0)), 7);
-        centers.insert(section([40, 64, 40]));
-        assert_eq!(sections_to_village(&centers, (2, 4, 2)), 0);
-        assert_eq!(sections_to_village(&centers, (4, 4, 2)), 2);
-        assert_eq!(sections_to_village(&centers, (-10, 4, 2)), 7);
-        assert_eq!(section([-1, -17, 15]), (-1, -2, 0));
     }
 }
 
