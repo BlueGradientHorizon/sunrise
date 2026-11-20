@@ -100,7 +100,8 @@ SUNRISE_STAGE_TOOL=target/debug/sunrise-stage \
 `BASE` and `HEAD` are source directories, such as two Git worktrees. The option adds advisory internal changes to
 the report without changing the gate. The audit only reads both trees. When this `sunrise-stage` cannot read an older
 `BASE`, add `--build-base-tool` to build `BASE`'s own `sunrise-stage` from that tree and export it with that. This
-compiles and runs `BASE`'s code, so use it only on a whole checkout you trust.
+compiles and runs `BASE`'s code, so use it only on a whole checkout you trust. The build needs POSIX file locking
+(Linux or macOS); elsewhere it refuses and the report says so.
 
 ## Command completion layouts
 

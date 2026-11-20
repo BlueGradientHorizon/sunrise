@@ -121,7 +121,10 @@ def tree_tool(tree: Path, work: Path) -> str:
     """The sunrise-stage of the whole source tree `tree`, built in the test profile in target/surface-base and
     copied into this run's `work`. The build directory is shared (and cached), so a lock held from the build to the
     copy keeps another audit's build from replacing the binary before this one has its copy."""
-    import fcntl  # POSIX only, and only this build needs it: a source-only audit runs anywhere.
+    try:
+        import fcntl  # Only this build needs it: a source-only audit runs anywhere.
+    except ImportError:
+        raise RuntimeError("building sunrise-stage from another tree requires POSIX file locking") from None
 
     target = ROOT / "target" / "surface-base"
     target.mkdir(parents=True, exist_ok=True)
@@ -132,7 +135,7 @@ def tree_tool(tree: Path, work: Path) -> str:
                                 "--bin", "sunrise-stage", "--target-dir", str(target)],
                                cwd=tree, capture_output=True, text=True)
         if built.returncode != 0:
-            raise RuntimeError(f"building the base's sunrise-stage failed: {last_line(built.stderr)}")
+            raise RuntimeError(f"building that tree's sunrise-stage failed: {last_line(built.stderr)}")
         shutil.copy2(target / "debug" / "sunrise-stage", tool)
     return str(tool)
 
@@ -229,8 +232,9 @@ def landed_notes(head: Path, base: Path) -> dict[str, list[str]]:
 
 
 def landed_check(tool: str, head: Path, base: Path, work: Path, shas: dict[str, list[str]], *,
-                 git_text=git, fetch=unpack, own_tool: Callable[[str], str] | None = None) -> tuple[int, str]:
+                 git_text=None, fetch=None, own_tool: Callable[[str], str] | None = None) -> tuple[int, str]:
     """Check each merge's notes against that merge's first parent and the merge; (exit code, text)."""
+    git_text, fetch = git_text or git, fetch or unpack
     code, text = 0, ""
     for sha, files in sorted(shas.items()):
         who = f"{', '.join(files)} (landed {sha})"
@@ -311,11 +315,18 @@ def main(argv=None) -> int:
                 sha, why = None, f"the base could not be fetched: {error}"
             if sha:
                 fetched = time.monotonic() - started
+                built: dict[str, str] = {}
+
+                def own(commit: str) -> str:
+                    """A commit's own sunrise-stage, built once per run: a landed note may name the base itself."""
+                    if commit not in built:
+                        built[commit] = base_tool(commit, work)
+                    return built[commit]
+
                 code, text = report(tool, base, ROOT, work, gate_on, with_internals=args.with_internals,
-                                    own_base_tool=lambda: base_tool(sha, work))
+                                    own_base_tool=lambda: own(sha))
                 if shas := landed_notes(ROOT, base):
-                    landed_code, landed_text = landed_check(tool, ROOT, base, work, shas,
-                                                            own_tool=lambda parent: base_tool(parent, work))
+                    landed_code, landed_text = landed_check(tool, ROOT, base, work, shas, own_tool=own)
                     code, text = code or landed_code, text + landed_text
                 text += f"Base {sha}; fetch {fetched:.1f}s, total {time.monotonic() - started:.1f}s\n"
             else:

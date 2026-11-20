@@ -340,23 +340,23 @@ class MainTests(unittest.TestCase):
         find_base.assert_not_called()
 
     @unittest.skipUnless(shutil.which("bash"), "needs bash for the stub tools")
-    @unittest.skipUnless(shutil.which("bash"), "needs bash for the stub tools")
     def test_local_audit_builds_the_bases_own_tool_only_when_asked(self):
         def audit(folder, *flags, readable=False):
-            """--trees on stub tools: the head's refuses the base unless `readable`; the diff records which export
-            of the base it compared."""
+            """--trees on stub tools; the diff records which exports it compared. Each tree holds a marker file the
+            exporters read, so the diff shows which tree each export came from."""
             for tree in ("base", "head"):
                 (folder / tree).mkdir(exist_ok=True)
+                (folder / tree / "marker").write_text(tree)
             head_tool, own_tool = folder / "head-stage", folder / "own-stage"
-            refuse = "" if readable else "case \"$2\" in *base) exit 1;; esac"
+            refuse = "" if readable else 'case "$2" in */base) exit 1;; esac'
             head_tool.write_text(f"""#!/bin/bash
 if [ "$1" = surface ]; then {refuse}
-  echo '{{"by": "head"}}' > "$3"; exit 0
+  echo "{{\\"by\\": \\"head:$(cat "$2/marker")\\"}}" > "$3"; exit 0
 fi
-cat "$2" > {folder}/compared
+cat "$2" "$3" > {folder}/compared
 """)
             own_tool.write_text("""#!/bin/bash
-echo '{"by": "own"}' > "$3"
+echo "{\\"by\\": \\"own:$(cat "$2/marker")\\"}" > "$3"
 """)
             head_tool.chmod(0o755)
             own_tool.chmod(0o755)
@@ -369,22 +369,61 @@ echo '{"by": "own"}' > "$3"
             code, _, _ = self.run_main(argv=["--trees", str(folder / "base"), str(folder / "head"), *flags],
                                        tool=str(head_tool), tree_tool=tree_tool)
             compared = folder / "compared"
-            return code, built, json.loads(compared.read_text())["by"] if compared.exists() else None
+            exports = [json.loads(line)["by"] for line in compared.read_text().splitlines()] if compared.exists() else []
+            return code, built, exports
 
         cases = [
             # Source only by default: nothing of the base's is built, and no diff runs.
-            ((), False, (1, [], None)),
-            # Asked to, the base tree's own tool exports it, and the diff compares that export.
-            (("--build-base-tool",), False, (0, ["base"], "own")),
+            ((), False, lambda folder: (1, [], [])),
+            # Asked to, BASE's own tool exports BASE, and the diff compares that export with HEAD's.
+            (("--build-base-tool",), False, lambda folder: (0, [folder / "base"], ["own:base", "head:head"])),
             # A base the head's tool reads needs nothing built, flag or not.
-            (("--build-base-tool",), True, (0, [], "head")),
+            (("--build-base-tool",), True, lambda folder: (0, [], ["head:base", "head:head"])),
         ]
         for flags, readable, expected in cases:
             with self.subTest(flags=flags, readable=readable), tempfile.TemporaryDirectory() as directory:
                 folder = Path(directory)
-                code, built, compared = audit(folder, *flags, readable=readable)
-                self.assertEqual((code, [tree.name for tree in built], compared), expected)
+                self.assertEqual(audit(folder, *flags, readable=readable), expected(folder))
 
+    @unittest.skipUnless(shutil.which("bash"), "needs bash for the stub tools")
+    def test_a_commit_both_comparisons_need_is_built_once(self):
+        """A landed note may name the CI base itself: the base comparison and the landed one share its tool."""
+        sha = "6" * 40
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            head_tool, own_tool = folder / "head-stage", folder / "own-stage"
+            # The head's tool refuses every fetched tree (they all hold a marker); the own tool reads the marker.
+            head_tool.write_text(f"""#!/bin/bash
+if [ "$1" = surface ]; then
+  [ -f "$2/marker" ] && exit 1
+  echo '{{"by": "checkout"}}' > "$3"; exit 0
+fi
+cat "$2" "$3" >> {folder}/compared
+""")
+            own_tool.write_text("""#!/bin/bash
+echo "{\\"by\\": \\"$(cat "$2/marker")\\"}" > "$3"
+""")
+            head_tool.chmod(0o755)
+            own_tool.chmod(0o755)
+            built = []
+
+            def base_tool(commit, work):
+                built.append(commit)
+                return str(own_tool)
+
+            def unpack(commit, into, paths=()):
+                (into / "marker").write_text(commit)
+
+            git = lambda *a: MERGE if a[0] == "cat-file" else ""  # noqa: E731
+            code, out, _ = self.run_main(tool=str(head_tool), base_commit=lambda *a: (sha, ""), unpack=unpack,
+                                         git=git, base_tool=base_tool, landed_notes=lambda head, base: {sha: ["n.toml"]})
+            self.assertEqual(code, 0, out)
+            self.assertEqual(built, [sha, "aaaa"])
+            exports = [json.loads(line)["by"] for line in (folder / "compared").read_text().splitlines()]
+            # The base against this checkout, then the landed merge against its first parent.
+            self.assertEqual(exports, [sha, "checkout", "aaaa", sha])
+
+    @unittest.skipUnless(importlib.util.find_spec("fcntl"), "needs POSIX file locking")
     def test_each_base_tool_build_gets_its_own_copy(self):
         with tempfile.TemporaryDirectory() as directory:
             folder = Path(directory)
@@ -433,10 +472,15 @@ exit {diff_exit}
             tool.chmod(0o755)
             shas = surface_report.landed_notes(work / "head", work / "base")
             fetched = []
+
+            def fetch(sha, into):
+                # Each fetched tree names its commit, for the exporters to read.
+                fetched.append(sha)
+                (into / "marker").write_text(sha)
+
             git_text = git_text or (lambda *a: MERGE if a[0] == "cat-file" else "")
             code, text = surface_report.landed_check(
-                str(tool), work / "head", work / "base", work, shas,
-                git_text=git_text, fetch=lambda sha, into: fetched.append(sha),
+                str(tool), work / "head", work / "base", work, shas, git_text=git_text, fetch=fetch,
                 own_tool=own_tool and (lambda sha: own_tool(sha, work)))
             calls = (work / "calls").read_text() if (work / "calls").exists() else ""
             if (work / "compared").exists():
@@ -465,20 +509,20 @@ exit {diff_exit}
         def own_tool(sha, work):
             built.append(sha)
             tool = work / f"own-{sha}"
+            # Says which commit's tool exported which tree.
             tool.write_text(f"""#!/bin/bash
-echo '{{"by": "{sha}"}}' > "$3"
+echo "{{\\"by\\": \\"{sha} tool, $(cat "$2/marker") tree\\"}}" > "$3"
 """)
             tool.chmod(0o755)
             return str(tool)
 
         _, code, text, calls, _ = self.check(0, refuse_landed=True, own_tool=own_tool)
         self.assertEqual(code, 0, text)
-        # The merge by the merge's own tool, its first parent by the parent's; the diff compares those exports.
         self.assertEqual(built, [self.SHA, "aaaa"])
-        self.assertIn('compared {"by": "aaaa"} {"by": "%s"}' % self.SHA, calls)
+        # The diff compares the first parent, exported by its own tool, with the merge, exported by its own.
+        self.assertIn('compared {"by": "aaaa tool, aaaa tree"} {"by": "%s tool, %s tree"}' % (self.SHA, self.SHA),
+                      calls)
         self.assertIn(f"--landed {self.SHA}", calls)
-        self.assertIn("The head was exported by its own sunrise-stage", text)
-        self.assertIn("The base was exported by its own sunrise-stage", text)
         # With no tool to build, a refused tree fails the check, naming why.
         _, code, text, calls, _ = self.check(0, refuse_landed=True)
         self.assertEqual(code, 1)
