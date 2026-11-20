@@ -345,11 +345,17 @@ fn shadow_copies(group: Group, reads: u16, shadow_reads: u16, images: &[(u32, Im
 /// The shadowcolor images a program may declare: `shadowcolorimg0` and `1` (spec 5.2).
 const SHADOW_IMAGES: usize = 2;
 
-/// The shadowcolor buffer image `name` binds (`shadowcolorimgN`), while the shadow pass runs.
-fn shadow_image(name: &str, shadow: bool) -> Option<usize> {
-    name.strip_prefix("shadowcolorimg")
+/// The shadowcolor buffer image `name` binds (`shadowcolorimgN`) and its format, while the
+/// shadow pass runs (its buffers have the formats `shadow`).
+fn shadow_image(
+    name: &str,
+    shadow: Option<&[wgpu::TextureFormat; SHADOW_COLORS]>,
+) -> Option<(usize, wgpu::TextureFormat)> {
+    let n = name
+        .strip_prefix("shadowcolorimg")
         .and_then(|n| n.parse::<usize>().ok())
-        .filter(|&n| n < SHADOW_IMAGES && shadow)
+        .filter(|&n| n < SHADOW_IMAGES)?;
+    shadow.map(|f| (n, f[n]))
 }
 
 /// The format of the sink of passes that write only images.
@@ -766,6 +772,13 @@ pub struct PackPost {
     dummy_1d: wgpu::TextureView,
     /// `image.*` and `bufferObject.*`.
     images: Vec<pack_images::PackImage>,
+    /// The shadowcolor buffers a pass outside the shadow group binds as images (bit n:
+    /// shadowcolor n): such a pass changes them after the shadow pass, so the Shadow Cache
+    /// can't keep them.
+    shadow_images_outside: u16,
+    /// The shadowcolor buffers a shadow program binds as images: cleared before the shadow pass
+    /// draws (`ShadowTargets::clear_images`).
+    shadow_pass_images: u16,
     /// Set 5 of programs with a geometry stage.
     indices: Option<wgpu::BindGroupLayout>,
     shadow_culling: sunrise_shaders::ShadowCulling,
@@ -1760,7 +1773,7 @@ fn bindings(
             .strip_prefix("colorimg")
             .and_then(|n| n.parse::<usize>().ok())
             .filter(|&n| n < BUFFERS && !group.shadow());
-        let shadow_buffer = shadow_image(&i.name, shadow.is_some());
+        let shadow_buffer = shadow_image(&i.name, shadow);
         let own = pack.images.iter().position(|c| c.def.name == i.name);
         let Some(format) = image_format(&i.format) else {
             notes.push(format!("{name}: `{}` has format {}", i.name, i.format));
@@ -1785,14 +1798,10 @@ fn bindings(
             }
             (Image::StandIn(format, dimension), format)
         };
-        let shadow_format = |n: usize| shadow.map_or(format, |f| f[n]);
         let (target, actual) = match (buffer, own) {
             (_, Some(k)) => (Image::Custom(k), pack.images[k].format),
             (Some(b), None) => (Image::Color(b), formats[b]),
-            (None, None) if shadow_buffer.is_some() => {
-                let n = shadow_buffer.unwrap_or_default();
-                (Image::ShadowColor(n), shadow_format(n))
-            }
+            (None, None) if let Some((n, f)) = shadow_buffer => (Image::ShadowColor(n), f),
             (None, None) if i.before.is_some() => {
                 // Bound as the image it copies.
                 let of = i.before.as_deref().unwrap_or_default();
@@ -1803,8 +1812,8 @@ fn bindings(
                 match (buffer, pack.images.iter().position(|c| c.def.name == of)) {
                     (_, Some(k)) => (Image::CustomBefore(k), pack.images[k].format),
                     (Some(b), None) => (Image::ColorBefore(b), formats[b]),
-                    (None, None) => match shadow_image(of, shadow.is_some()) {
-                        Some(n) => (Image::ShadowColorBefore(n), shadow_format(n)),
+                    (None, None) => match shadow_image(of, shadow) {
+                        Some((n, f)) => (Image::ShadowColorBefore(n), f),
                         None => stand_in(of, notes),
                     },
                 }
@@ -2494,6 +2503,7 @@ impl PackPost {
         let mut shadow_doubled = 0u16;
         // shadowcolor buffers bound as images, and those copied before a pass.
         let (mut shadow_storage, mut shadow_copied) = (0u16, 0u16);
+        let (mut shadow_images_outside, mut shadow_pass_images) = (0u16, 0u16);
         let draws = DrawUniforms::new(device);
         // The shadow buffers' formats when the shadow pass runs; their programs see them as
         // buffers 0 to 7.
@@ -2662,6 +2672,17 @@ impl PackPost {
                 )?
             };
             pass.compute.append(&mut computes);
+            // A shadow program with geometry draws into its buffers' "main" side in place, the
+            // side `shadowcolorimgN` binds, and wgpu binds a texture one way per pass.
+            let drawn_images = shadow_images(&pass.images).0 & pass.written;
+            if in_shadow && geometry.is_some() && drawn_images != 0 {
+                let n = drawn_images.trailing_zeros();
+                notes.push(format!(
+                    "{}: draws into shadowcolor{n} and binds it as `shadowcolorimg{n}`; skipped",
+                    pass.name
+                ));
+                return None;
+            }
             // A pass's attachments share a size: the depth buffer's, for the passes that draw
             // the world.
             let size =
@@ -2716,6 +2737,11 @@ impl PackPost {
                 storage |= image_buffers(&p.images);
                 let (own, before) = shadow_images(&p.images);
                 shadow_storage |= own | before;
+                if in_shadow {
+                    shadow_pass_images |= own | before;
+                } else {
+                    shadow_images_outside |= own | before;
+                }
                 shadow_copied |= p.shadow_copies;
                 image_copied |= p.image_copies;
                 snapshotted |= p.snapshots;
@@ -3135,10 +3161,12 @@ impl PackPost {
                 device,
                 &shadow_config,
                 f,
-                colors,
-                shadow_doubled & colors,
-                shadow_storage & colors,
-                shadow_copied & colors,
+                super::pack_shadow::ShadowUse {
+                    colors,
+                    doubled: shadow_doubled & colors,
+                    storage: shadow_storage & colors,
+                    copied: shadow_copied & colors,
+                },
                 depth1,
             );
             notes.push(format!(
@@ -3517,6 +3545,8 @@ impl PackPost {
                 u
             },
             shadow_cache: Default::default(),
+            shadow_images_outside,
+            shadow_pass_images,
         };
         Ok((built, jobs))
     }
@@ -5099,9 +5129,12 @@ impl PackPost {
             .as_ref()
             .is_some_and(|entities| entities.geometry.draws.iter().any(|draw| draw.shadow));
         // Custom images are cleared each frame (`pack_images::clear`) before the
-        // shadow pass writes them, so a pack with any redraws it too.
+        // shadow pass writes them, so a pack with any redraws it too. A pass after the shadow
+        // pass that binds a shadowcolor buffer as an image may change it, so the map kept isn't
+        // the shadow pass's any more.
         let cache_hit = !has_shadow_entities
             && self.images.is_empty()
+            && self.shadow_images_outside == 0
             && self.shadow_cache.key == Some(cache_key)
             && self.shadow_targets.is_some();
         if cache_hit {
@@ -5125,6 +5158,7 @@ impl PackPost {
             return;
         };
         t.begin_frame();
+        t.clear_images(encoder, self.shadow_pass_images);
         let size = [t.size; 2];
         self.draw_terrain(
             device,

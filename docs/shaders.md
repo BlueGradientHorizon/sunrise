@@ -73,6 +73,12 @@ away from it saves its changes, as Apply does). A `shaders/` pack's
 options are saved to `shaderpacks/<pack>.txt` (`NAME=value` lines), and the pack loads again with them, with Apply
 (shown while they differ from the saved ones) or on leaving the screen; a Sunrise pack's apply at once.
 
+The **Shadow Cache** (off by default; `shadowCache` in `sunrise-graphics.txt`) skips the shadow pass and keeps the
+shadow map and shadowcolor buffers of the frame before while nothing that draws them has changed (the world, the
+time, the snapped shadow camera, the shadow settings). The shadow pass still runs every frame while an entity casts a
+shadow, while the pack has `image.*` or `bufferObject.*` images, and while a program outside the shadow pass binds
+`shadowcolorimg0` or `shadowcolorimg1`, since its stores would otherwise pile up in the kept buffers.
+
 ## Testing a pack frame by frame
 
 A pack that keeps something from frame to frame (`history`, eased values) draws a little differently in every run,

@@ -54,12 +54,25 @@ pub(super) struct ShadowTargets {
     pub comparison: wgpu::Sampler,
 }
 
+/// How the pack uses the shadowcolor buffers, a mask each (bit n: shadowcolor n).
+#[derive(Clone, Copy, Default)]
+pub(super) struct ShadowUse {
+    /// Used at all.
+    pub colors: u16,
+    /// Needs a B texture.
+    pub doubled: u16,
+    /// Bound as `shadowcolorimgN`.
+    pub storage: u16,
+    /// Has a `scratch` copy.
+    pub copied: u16,
+}
+
 fn target(
     device: &wgpu::Device,
     label: &str,
     size: u32,
     format: wgpu::TextureFormat,
-    copy: wgpu::TextureUsages,
+    usage: wgpu::TextureUsages,
 ) -> (wgpu::Texture, wgpu::TextureView) {
     let texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some(label),
@@ -72,7 +85,9 @@ fn target(
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
         format,
-        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT | copy,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING
+            | wgpu::TextureUsages::RENDER_ATTACHMENT
+            | usage,
         view_formats: &[],
     });
     let view = texture.create_view(&Default::default());
@@ -101,50 +116,41 @@ pub(super) fn stand_in(device: &wgpu::Device) -> wgpu::TextureView {
 
 impl ShadowTargets {
     pub fn reset_history(&mut self, device: &wgpu::Device, shadow: &sunrise_shaders::Shadow) {
-        let (mut colors, mut doubled, mut storage, mut copied) = (0, 0, 0, 0);
+        let mut uses = ShadowUse::default();
         let formats = std::array::from_fn(|n| match &self.color[n] {
             Some([a, b]) => {
-                colors |= 1 << n;
+                uses.colors |= 1 << n;
                 if a.texture() != b.texture() {
-                    doubled |= 1 << n;
+                    uses.doubled |= 1 << n;
                 }
                 if (a.texture().usage()).contains(wgpu::TextureUsages::STORAGE_BINDING) {
-                    storage |= 1 << n;
+                    uses.storage |= 1 << n;
                 }
                 if self.scratch[n].is_some() {
-                    copied |= 1 << n;
+                    uses.copied |= 1 << n;
                 }
                 a.texture().format()
             }
             None => wgpu::TextureFormat::Rgba8Unorm,
         });
-        *self = Self::new(
-            device,
-            shadow,
-            formats,
-            colors,
-            doubled,
-            storage,
-            copied,
-            self.depth1.is_some(),
-        );
+        *self = Self::new(device, shadow, formats, uses, self.depth1.is_some());
     }
 
-    /// The buffers of `shadow` the pack uses: `colors` (bit n: shadowcolor n), `depth1` when
-    /// some program reads `shadowtex1`, `doubled` (bit n: shadowcolor n needs a B texture),
-    /// `storage` (bit n: bound as `shadowcolorimgN`) and `copied` (bit n: has a `scratch` copy).
-    /// The resolution is kept within the device's limit.
-    #[allow(clippy::too_many_arguments)]
+    /// The buffers of `shadow` the pack uses (`uses`), and `depth1` when some program reads
+    /// `shadowtex1`. The resolution is kept within the device's limit.
     pub fn new(
         device: &wgpu::Device,
         shadow: &sunrise_shaders::Shadow,
         formats: [wgpu::TextureFormat; SHADOW_COLORS],
-        colors: u16,
-        doubled: u16,
-        storage: u16,
-        copied: u16,
+        uses: ShadowUse,
         depth1: bool,
     ) -> Self {
+        let ShadowUse {
+            colors,
+            doubled,
+            storage,
+            copied,
+        } = uses;
         let size = shadow
             .resolution
             .clamp(1, device.limits().max_texture_dimension_2d);
@@ -253,13 +259,28 @@ impl ShadowTargets {
     }
 
     /// Clears what no pass has cleared this frame: all of it when no shadow program drew, the
-    /// cleared shadowcolor buffers the first one did not write. One buffer a pass: eight wide
-    /// formats together would pass the device's bytes-per-sample limit.
+    /// cleared shadowcolor buffers the first one did not write.
     pub fn clear_rest(&mut self, encoder: &mut wgpu::CommandEncoder) {
-        let mut depth = std::mem::take(&mut self.fresh);
+        let depth = std::mem::take(&mut self.fresh);
         let cleared = std::mem::replace(&mut self.cleared, u8::MAX);
+        self.clear(encoder, !cleared, depth);
+    }
+
+    /// Clears the shadowcolor buffers `images` (bit n: shadowcolor n) not cleared yet this
+    /// frame, before a shadow program binds them as images: the first pass clears only what it
+    /// draws into, and `clear_rest` after it would wipe its stores.
+    pub fn clear_images(&mut self, encoder: &mut wgpu::CommandEncoder, images: u16) {
+        let buffers = images as u8 & !self.cleared;
+        self.cleared |= buffers;
+        self.clear(encoder, buffers, false);
+    }
+
+    /// Clears the shadowcolor buffers `buffers` cleared every frame, and the shadow map with
+    /// `depth`. One buffer a pass: eight wide formats together would pass the device's
+    /// bytes-per-sample limit.
+    fn clear(&self, encoder: &mut wgpu::CommandEncoder, buffers: u8, mut depth: bool) {
         let attachments = (0..SHADOW_COLORS)
-            .filter(|n| cleared & 1 << n == 0)
+            .filter(|n| buffers & 1 << n != 0)
             .filter_map(|n| {
                 Some(Some(wgpu::RenderPassColorAttachment {
                     view: self.color(n, false)?,
