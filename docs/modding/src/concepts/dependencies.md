@@ -12,9 +12,9 @@ extra_mod = { version = "^2", optional = true }
 Requirements use Cargo semver syntax and are checked against each installed mod's `sunrise-mod.toml`
 `version`, not its Cargo package version. That version is semver, checked when the manifest is read,
 so a mod whose version isn't semver never loads, whatever requirement a dependent states. Content-only mods use these declarations to validate their
-requirements and, by default, load their layers after dependencies. Native and wasm packages can
-depend on content-only packages without linking anything from them. Code libraries link only
-within one target. Missing required dependencies, incompatible versions and cycles refuse logical
+requirements and, by default, load their layers after dependencies. Native packages can
+depend on content-only packages without linking anything from them. Missing required
+dependencies, incompatible versions and cycles refuse logical
 resolution with the mods named. An absent optional dependency is permitted in the logical graph;
 an installed optional dependency must match its requirement.
 
@@ -38,15 +38,15 @@ or `"none"` changes listener/content dispatch, not compiler staging or actual im
 The instance's `sunrise-mods/dependency-overrides.toml` can drop a logical constraint/dispatch edge
 or make it a warning, including for a required content package that isn't installed. A removed row
 no longer lets a Part attach to that package's effect or block entity type. The policy cannot
-remove a native linked library or compiled package requirement, or a wasm pin or import.
-Selected content and loaded native/wasm code share one rule resolver; warnings and every applied
-override appear on both affected installed Mods rows, alongside any failed/off status.
+remove a linked native library or compiled package requirement. Selected content and loaded
+native code share one rule resolver; warnings and every applied override appear on both affected
+installed Mods rows, alongside any failed/off status.
 
 Native builds add a path dependency for each supplied library using the mod ID as the Cargo alias
 and the target's actual Cargo package name. Optional code libraries use a Cargo feature named
-exactly as their mod ID and enabled only when that library is supplied. Guard calls with `if_installed!`, which builds the block only with
-that feature and runs it only when the mod is installed, so the same source works when built to
-`mod.wasm`, where the library is linked at load and an absent one's functions trap:
+exactly as their mod ID and enabled only when that library is supplied.
+Guard calls with `if_installed!`, which builds the block only with that feature and runs it only
+when the mod is installed:
 
 ```rust,ignore
 mod_api::if_installed!(host, extra_mod, {

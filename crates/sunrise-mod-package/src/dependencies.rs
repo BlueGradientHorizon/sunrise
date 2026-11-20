@@ -197,30 +197,6 @@ pub fn build_dependencies(
         .collect()
 }
 
-/// The libraries a built wasm artifact pins by hash. Even an optional or
-/// side-filtered manifest row is a physical requirement once the artifact
-/// links that library. Unpinned rows stay in the separate logical graph.
-pub fn wasm_link_dependencies(
-    manifest: &crate::Manifest,
-    wasm: &crate::manifest::Wasm,
-) -> Vec<Dependency> {
-    wasm.linked()
-        .keys()
-        .map(|id| Dependency {
-            id: id.clone(),
-            requirement: manifest
-                .dependencies
-                .get(id)
-                .map_or(VersionReq::STAR, |row| row.details().version),
-            optional: false,
-            side: Side::Both,
-            reason: None,
-            url: None,
-            order: mod_vocab::DependencyOrder::After,
-        })
-        .collect()
-}
-
 /// Validate and order a mixed set of code and content declarations.
 pub fn resolve(mods: &[Mod<'_>]) -> Result<Resolution, Error> {
     resolve_all(mods, &[], &Overrides::default(), false)
@@ -1060,36 +1036,27 @@ mod tests {
             "a".repeat(40),
             "b".repeat(40)
         );
-        let wasm = format!(
-            "[wasm]\nsha512='{}'\ntoolchain='t'\nbuilt_with='t'",
-            "a".repeat(128)
+        let dependent = manifest("behaviour", &format!("[dependencies]\ndata='^1'\n{native}"));
+        let build = build_dependencies(&dependent, Side::Client, |_| false);
+        let code = Mod {
+            id: &dependent.id,
+            version: &dependent.version,
+            has_api: true,
+            code: true,
+            dependencies: &build,
+        };
+        assert_eq!(resolve_links(&[code]).unwrap().order, [0]);
+        assert_eq!(
+            resolve_manifests(&[&dependent], Side::Client, &Overrides::default())
+                .unwrap_err()
+                .to_string(),
+            "behaviour requires missing mod data"
         );
-        for target in [native, wasm] {
-            let dependent = manifest("behaviour", &format!("[dependencies]\ndata='^1'\n{target}"));
-            let build = build_dependencies(&dependent, Side::Client, |_| false);
-            let code = Mod {
-                id: &dependent.id,
-                version: &dependent.version,
-                has_api: true,
-                code: true,
-                dependencies: &build,
-            };
-            assert_eq!(
-                resolve_links(std::slice::from_ref(&code)).unwrap().order,
-                [0]
-            );
-            assert_eq!(
-                resolve_manifests(&[&dependent], Side::Client, &Overrides::default())
-                    .unwrap_err()
-                    .to_string(),
-                "behaviour requires missing mod data"
-            );
-            let resolved =
-                resolve_manifests(&[&dependent, &content], Side::Client, &Overrides::default())
-                    .unwrap();
-            assert_eq!(resolved.order, [1, 0]);
-            assert!(resolved.effective.permits("behaviour", "data"));
-        }
+        let resolved =
+            resolve_manifests(&[&dependent, &content], Side::Client, &Overrides::default())
+                .unwrap();
+        assert_eq!(resolved.order, [1, 0]);
+        assert!(resolved.effective.permits("behaviour", "data"));
     }
 
     #[test]
