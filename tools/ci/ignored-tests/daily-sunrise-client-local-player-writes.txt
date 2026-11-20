@@ -1,3 +1,4 @@
-# A client mod's writes to the player it moves itself (ClientHost::set_local_player_velocity and set_local_player_on_ground).
+# A client mod's writes to its own player's motion state.
 sunrise-client game::native_local_player_writes::tests::a_velocity_written_before_the_tick_is_what_the_tick_moves_by lib daily resources
+sunrise-client game::native_local_player_writes::tests::resetting_a_local_fall_discards_the_distance_before_landing lib daily resources
 sunrise-client game::native_local_player_writes::tests::with_no_player_of_its_own_both_writes_answer_false lib daily resources
