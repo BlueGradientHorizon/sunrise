@@ -271,6 +271,7 @@ pub const NAMES: &[&str] = &[
     "rainStrength",
     "wetness",
     "thunderStrength",
+    "lightningBoltPosition",
     "fogColor",
     "skyColor",
     "fogMode",
@@ -957,6 +958,10 @@ impl FrameUniforms {
                 "rainStrength" => Value::f(&[inputs.rain]),
                 "wetness" => Value::f(&[self.wetness]),
                 "thunderStrength" => Value::f(&[inputs.thunder]),
+                "lightningBoltPosition" => Value::f(&lightning_bolt_position(
+                    frame.lightning.bolts,
+                    frame.camera,
+                )),
                 "fogColor" => Value::f(&fog_color),
                 "skyColor" => Value::f(&frame.sky.sky_color),
                 // Iris 1.11.7, measured: programs that draw no geometry read no fog mode (0) and
@@ -1115,6 +1120,20 @@ fn status_value(name: &str, inputs: &PackInputs) -> Option<Value> {
     })
 }
 
+/// `lightningBoltPosition` (spec 5.2): the last of the bolts drawn this frame, in player space
+/// (its position minus `camera`, the `cameraPosition` of the frame), with w = 1; zeros when no
+/// bolt is drawn. `bolts` are the frame's, in the order they are drawn: vanilla draws entities
+/// in the order the level added them (`ClientLevel.entitiesForRendering`, `EntityLookup`'s
+/// linked map), so the last is the newest. A bolt never moves, so its interpolated render
+/// position (`EntityRenderer.extractRenderState`) is where it struck. Recorded as decision D-1
+/// (`docs/cleanroom/decisions.md`).
+pub fn lightning_bolt_position(bolts: &[super::lightning::Bolt], camera: DVec3) -> [f32; 4] {
+    bolts.last().map_or([0.0; 4], |bolt| {
+        let at = (DVec3::from_array(bolt.at) - camera).as_vec3();
+        [at.x, at.y, at.z, 1.0]
+    })
+}
+
 /// How many components the uniform `name` has (16 for a matrix).
 fn components(name: &str) -> usize {
     match name {
@@ -1136,7 +1155,7 @@ fn components(name: &str) -> usize {
         | "skyColor"
         | "endFlashPosition" => 3,
         "eyeBrightness" | "eyeBrightnessSmooth" | "atlasSize" => 2,
-        "entityColor" => 4,
+        "entityColor" | "lightningBoltPosition" => 4,
         // Sunrise's own vec4s, a dynamic light and half a boat's water patch box; their counts
         // are ints.
         n if n.starts_with("sunriseDynamicLight") && n != "sunriseDynamicLightCount" => 4,
@@ -2834,3 +2853,6 @@ fn dynamic_light_index(name: &str) -> Option<usize> {
 #[cfg(test)]
 #[path = "pack_uniforms/ftransform_test.rs"]
 mod ftransform_test;
+#[cfg(test)]
+#[path = "pack_uniforms/lightning_bolt_test.rs"]
+mod lightning_bolt_test;
