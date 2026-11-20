@@ -3,14 +3,11 @@
 use super::Game;
 
 impl Game<'_> {
-    /// The placed players a mod keeps `sender`'s (`name`) public line `message` from: each is
-    /// asked once (`native_chat_recipient`), in the hub's order. Empty, asking nobody, when no
-    /// mod listens.
-    pub(in crate::game) fn chat_hidden_from(
+    /// The placed players a mod keeps a public line from, asked once each in hub order.
+    /// Prepare the sender, name and message only when a mod listens.
+    pub(in crate::game) fn chat_hidden_from<N: AsRef<str>, M: AsRef<str>>(
         &mut self,
-        sender: u128,
-        name: &str,
-        message: &str,
+        fields: impl FnOnce(&Self) -> (u128, N, M),
     ) -> Vec<u128> {
         if !mod_api::__private::listened(mod_api::HookId::ChatRecipient) {
             return Vec::new();
@@ -25,6 +22,8 @@ impl Game<'_> {
             .filter(|g| g.placed)
             .map(|g| g.uuid)
             .collect();
+        let (sender, name, message) = fields(self);
+        let (name, message) = (name.as_ref(), message.as_ref());
         receivers
             .into_iter()
             .filter(|&recipient| {

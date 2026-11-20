@@ -56,6 +56,7 @@ sunrise-client game::mounts::tests::feeding_a_mount_draws_from_its_own_random_an
 sunrise-client game::mounts::tests::saddling_and_armouring_play_at_pitch_one_from_the_mounts_own_random lib daily game-boot
 sunrise-client game::native_block_entity_transform_tests::structure_transform_placement_rotations_mirrors_unset_and_refusal lib daily child-process
 sunrise-client game::native_chat_recipients_tests::a_chat_line_hidden_from_one_receiver_reaches_the_others lib daily resources
+sunrise-client game::native_chat_recipients_tests::console_and_command_block_say_can_be_hidden_per_receiver lib daily resources
 sunrise-client game::native_chat_recipients_tests::say_and_me_are_asked_per_receiver_and_a_whisper_is_not lib daily resources
 sunrise-client game::native_config_files::tests::compiled_wasm_bulk_files_use_actual_game_filesystem_roots lib daily wasm-fixture
 sunrise-client game::native_config_files::tests::world_bulk_files_survive_save_reload_backup_and_world_deletion lib daily game-boot

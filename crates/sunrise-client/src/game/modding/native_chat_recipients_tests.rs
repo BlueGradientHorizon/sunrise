@@ -198,3 +198,53 @@ fn say_and_me_are_asked_per_receiver_and_a_whisper_is_not() {
         });
     });
 }
+
+#[test]
+#[ignore = "daily"]
+fn console_and_command_block_say_can_be_hidden_per_receiver() {
+    let asked = Asked::default();
+    let mods = vec![mod_api::ModEntry::new(
+        "ignorer",
+        Box::new(Ignorer(asked.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            let (first, second) = two_guests(game);
+            game.build_registries();
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+            game.block_ticks
+                .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 0))
+                .unwrap();
+            assert!(game.as_console(|game| game.run_command(
+                r#"setblock 5 100 2 command_block[facing=up]{Command:"say block secret",CustomName:"Announcer",conditionMet:1b}"#,
+            )));
+            lines(&first);
+            lines(&second);
+
+            game.dedicated_console_say("console secret".into());
+            assert_eq!(lines(&first), 1);
+            assert_eq!(lines(&second), 0);
+            game.command_block_tick(sunrise_core::position::BlockPos::new(5, 100, 2));
+            assert_eq!(lines(&first), 1);
+            assert_eq!(lines(&second), 0);
+            assert_eq!(
+                *asked.lock().unwrap(),
+                [
+                    ("Server", "console secret", 12),
+                    ("Server", "console secret", 13),
+                    ("Announcer", "block secret", 12),
+                    ("Announcer", "block secret", 13)
+                ]
+                .map(|(name, message, receiver)| (
+                    0,
+                    name.to_owned(),
+                    message.to_owned(),
+                    receiver
+                )),
+            );
+        });
+    });
+}
