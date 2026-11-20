@@ -384,7 +384,14 @@ def green_base(repo: str, issue: str) -> Ref:
     return Ref("main", sha, dt.datetime.fromisoformat(git("show", "-s", "--format=%cI", sha)))
 
 
+def require_ref(kind: str) -> None:
+    """A real run publishes `kind` only from a ref that may (release_train.PUBLISHES); a dry run from any."""
+    if os.environ.get("DRY_RUN") != "true":
+        train.require_ref(os.environ.get("GITHUB_REF", ""), kind)
+
+
 def pick(force: bool) -> None:
+    require_ref("nightly")
     refs = ["+refs/heads/main:refs/remotes/origin/main"]
     # A new repository has no Nightly yet. Only fetch the tag when the remote advertises it;
     # main's fetch and every network error still fail normally.
@@ -422,6 +429,7 @@ def pick_snapshot() -> None:
     (checked again here, so a hand dispatch can't skip it), with its SDK published, built alone: no picked pull
     requests, no build branch, no nightly-state record, no daily cap. Unchanged since the same day's snapshot of the
     same commit, it is skipped (a tag is never replaced). It is published as snapshot-<date>-<short>, its own tag and version."""
+    require_ref("snapshot")
     git("fetch", "--quiet", "origin", "+refs/heads/main:refs/remotes/origin/main")
     repo, dry_run = os.environ.get("GITHUB_REPOSITORY", ""), os.environ.get("DRY_RUN") == "true"
     sha = train.channel_head("snapshot", os.environ.get("NIGHTLY_BASE", "").strip())
@@ -442,6 +450,54 @@ def pick_snapshot() -> None:
     output(build=str(build).lower(), sha=sha, short=sha[:7], source="main", date=today, version=f"snapshot-{today}",
            nightly=f"{today} {sha[:7]}", source_tag="", tag=tag, sdk=str(sdk).lower())
     print(f"{'build' if build else f'skip ({tag} is already published)'}: {tag} {sha}")
+
+
+def pick_stable() -> None:
+    """A stable release (docs/release-flow.md "Release branches"): the head of the release branch, whose real daily
+    run passed every leg (release_train.release_head), with its SDK published first, built alone and published as
+    `<target>-<semver>`: RELEASE_VERSION when given, else the patch after the newest release on the target
+    (26.3-0.1.0 first). RELEASES_PAUSED and an open release-blocker hold it, as they hold the Nightly; a dry run only
+    warns. A dry run takes NIGHTLY_BASE (the daily-green commit) while the branch does not exist yet."""
+    require_ref("stable")
+    git("fetch", "--quiet", "origin", "+refs/heads/main:refs/remotes/origin/main")
+    repo, dry_run = os.environ.get("GITHUB_REPOSITORY", ""), os.environ.get("DRY_RUN") == "true"
+    held = (["RELEASES_PAUSED is set"] if os.environ.get("RELEASES_PAUSED") == "1" else []) + [
+        f"release-blocker #{number}" for number in train.open_blockers()]
+    if held:
+        if not dry_run:
+            stop(repo, "", f"the release stopped: held by {', '.join(held)}.")
+        print(f"::warning::held by {', '.join(held)}: a real release would stop here")
+    sha = train.release_head(os.environ.get("NIGHTLY_BASE", "").strip(), dry_run)
+    sdk = repo != "sunrise-org/sunrise" or sdk_ready(sha)
+    if not sdk:
+        if not dry_run:
+            stop(repo, "", f"the release stopped: {sha} has no complete published sdk-{sha}; a release is published "
+                           "only after its SDK, on the same commit.")
+        print(f"::warning::{sha} has no published SDK: a real release of it would stop here; this dry run carries no "
+              "sdk.json")
+    tags = [line.split("\t")[1].removeprefix("refs/tags/")
+            for line in git("ls-remote", "--tags", "--refs", "origin").splitlines() if line]
+    tag = train.next_stable_tag(tags, version=os.environ.get("RELEASE_VERSION", "").strip())
+    older = [t for t in tags if (found := train.stable_version(t)) and found[0] == train.TARGET]
+    previous = max(older, key=train.stable_key, default=None)
+    today = dt.datetime.now(dt.timezone.utc).date().isoformat()
+    parts = [f"Sunrise {tag}: the stable release for Minecraft {train.TARGET}, commit {sha} of "
+             f"`{train.RELEASE_BRANCH}`. sunrise-source.tar.gz is its tree; native mods built for it pin that commit, "
+             f"and its SDK is the release sdk-{sha}.", MUSL_NOTE]
+    if previous:
+        git("fetch", "--quiet", "origin", f"+refs/tags/{previous}:refs/tags/{previous}")
+        picked = git("log", "--reverse", "--format=- %s", f"refs/tags/{previous}..{sha}")
+        parts.append(f"### Since {previous}\n" + (picked or "No change since then."))
+    else:
+        parts.append(f"The first stable release for Minecraft {train.TARGET}: what the Nightly of this commit holds.")
+    if issues := train.known_issues():
+        parts.append("### Known issues\n" + "\n".join(issues))
+    parts.append(train.DISCLAIMER)
+    with open("nightly-notes.md", "w") as f:
+        f.write("\n\n".join(parts) + "\n")
+    output(build="true", sha=sha, short=sha[:7], source=train.RELEASE_BRANCH, date=today, version=tag, nightly="",
+           source_tag="", tag=tag, sdk=str(sdk).lower())
+    print(f"build: {tag} {sha}")
 
 
 def rotate() -> None:
@@ -556,7 +612,7 @@ def report_musl_failure(kind: str, step: str) -> None:
     repo = os.environ["GITHUB_REPOSITORY"]
     run = f"{os.environ['GITHUB_SERVER_URL']}/{repo}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
     print(f"::warning::{title}: {run}")
-    if os.environ.get("DRY_RUN") != "false" or os.environ.get("GITHUB_REF") != "refs/heads/main":
+    if os.environ.get("DRY_RUN") != "false" or not train.publishes(os.environ.get("GITHUB_REF", ""), kind):
         return
     pages = train.gh_json("api", "--paginate", f"repos/{repo}/issues?state=open&labels=bug&per_page=100")
     if any(issue["title"] == title and "pull_request" not in issue for page in pages for issue in page):
@@ -655,7 +711,7 @@ def main() -> None:
     sub = ap.add_subparsers(dest="cmd", required=True)
     picker = sub.add_parser("pick")
     picker.add_argument("--force", action="store_true")
-    picker.add_argument("--kind", choices=["nightly", "snapshot"], default="nightly")
+    picker.add_argument("--kind", choices=["nightly", "snapshot", "stable"], default="nightly")
     sub.add_parser("rotate")
     sub.add_parser("require-sdk").add_argument("sha")
     sub.add_parser("sdk-archives")
@@ -673,7 +729,7 @@ def main() -> None:
     keep.add_argument("sha")
     keep.add_argument("date")
     musl = sub.add_parser("report-musl-failure")
-    musl.add_argument("kind", choices=["nightly", "snapshot"])
+    musl.add_argument("kind", choices=["nightly", "snapshot", "stable"])
     musl.add_argument("step", choices=["build", "sign", "verify", "attach", "sign or attach"])
     identity = sub.add_parser("release-identity")
     identity.add_argument("tag")
@@ -688,6 +744,8 @@ def main() -> None:
     if args.cmd == "pick":
         if args.kind == "snapshot":
             pick_snapshot()
+        elif args.kind == "stable":
+            pick_stable()
         else:
             pick(args.force)
     elif args.cmd == "require-sdk":

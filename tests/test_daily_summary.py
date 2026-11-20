@@ -940,12 +940,14 @@ class DailyWorkflowTests(unittest.TestCase):
     def test_only_main_without_dry_run_writes(self):
         jobs = self.workflow["jobs"]
         step = jobs["resolve"]["steps"][-1]
-        self.assertEqual(step["env"]["DRY_RUN"], "${{ inputs.dry_run || github.ref != 'refs/heads/main' }}")
-        # A writing run takes only a commit of main: an unmerged commit is never tagged, signed or published.
-        self.assertIn('git merge-base --is-ancestor "$sha" refs/remotes/origin/main', step["run"])
+        self.assertEqual(step["env"]["DRY_RUN"], "${{ inputs.dry_run || !contains(fromJSON('[\"refs/heads/main\", "
+                         "\"refs/heads/release/26.3\"]'), github.ref) }}")
+        # A writing run takes only a commit of its branch: an unmerged commit is never tagged, signed or published.
+        self.assertIn('git merge-base --is-ancestor "$sha" "refs/remotes/origin/$branch"', step["run"])
         self.assertEqual(jobs["summary"]["steps"][-1]["env"]["DRY_RUN"], "${{ needs.resolve.outputs.dry_run }}")
         self.assertEqual(jobs["nightly"]["if"],
-                         "always() && needs.summary.outputs.green == 'true' && needs.resolve.outputs.dry_run == 'false'"
+                         "always() && github.ref == 'refs/heads/main' && needs.nightly-branch.result == 'success'"
+                         " && needs.summary.outputs.green == 'true' && needs.resolve.outputs.dry_run == 'false'"
                          " && (needs.sdk-publish.result == 'success' || needs.sdk-publish.result == 'skipped')")
         self.assertEqual(self.workflow["concurrency"]["cancel-in-progress"], "false")
         self.assertEqual(jobs["sdk"]["with"]["commit"], "${{ needs.resolve.outputs.commit }}")
@@ -1060,7 +1062,7 @@ class DailyWorkflowTests(unittest.TestCase):
         from tests.test_ci_concurrency import ROOT, yaml
         workflow = yaml.load((ROOT / ".github/workflows/sdk-publish.yml").read_text(), Loader=yaml.BaseLoader)
         jobs = workflow["jobs"]
-        on_main = "inputs.publish && github.ref == 'refs/heads/main'"
+        on_main = "inputs.publish && contains(fromJSON('[\"refs/heads/main\", \"refs/heads/release/26.3\"]'), github.ref)"
         self.assertEqual(jobs["sign"]["environment"], f"${{{{ {on_main} && 'release' || '' }}}}")
         sign = jobs["sign"]["steps"][-3]
         self.assertEqual(sign["run"], 'bash tools/ci/sign_release.sh "$TAG" dist/*')
@@ -1073,7 +1075,7 @@ class DailyWorkflowTests(unittest.TestCase):
         self.assertEqual(jobs["sign"]["steps"][0]["with"]["sparse-checkout"], "tools/ci/sign_release.sh")
         on_main_check = jobs["sign"]["steps"][1]
         self.assertEqual(on_main_check["if"], f"${{{{ {on_main} }}}}")
-        self.assertIn('git merge-base --is-ancestor "$COMMIT" refs/remotes/origin/main', on_main_check["run"])
+        self.assertIn('git merge-base --is-ancestor "$COMMIT" "refs/remotes/origin/$GITHUB_REF_NAME"', on_main_check["run"])
         # The jobs that read the legs' output cannot write; the legs' artifacts only, not an earlier attempt's own.
         for job in ("index", "sign"):
             self.assertEqual(jobs[job]["permissions"], {"contents": "read"}, job)
@@ -1137,6 +1139,8 @@ class DailyWorkflowTests(unittest.TestCase):
             for ref, dry, commit, required in (("main", "false", "head", "true"),
                                                ("main", "false", "older", "true"),
                                                ("main", "true", "head", "false"),
+                                               ("release/26.3", "false", "head", "true"),
+                                               ("nightly/26.3", "false", "head", "false"),
                                                ("topic", "false", "head", "false")):
                 with self.subTest(ref=ref, dry=dry, commit=commit):
                     out.unlink(missing_ok=True)

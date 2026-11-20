@@ -220,7 +220,7 @@ class MuslAttachmentTests(unittest.TestCase):
                 (root / "musl").mkdir()
                 (root / "musl" / archive).write_bytes(b"musl archive")
                 (root / "tools").symlink_to(script_root / "tools", target_is_directory=True)
-                env = dict(os.environ, KIND=kind, ALSO_FOR=f"{kind}-2026-11-04-0123456", TAG=tag, ARCHIVE=archive,
+                env = dict(os.environ, KIND=kind, SIGN_FOR=kind, ALSO_FOR=f"{kind}-2026-11-04-0123456", TAG=tag, ARCHIVE=archive,
                            DRY_RUN="true", EPHEMERAL="yes", GITHUB_REPOSITORY="sunrise-org/sunrise",
                            SHA="0123456789abcdef", RELEASE_ID="123")
 
@@ -421,7 +421,8 @@ class FirstNightlyTests(unittest.TestCase):
                     if args[0] == "ls-remote":
                         return "abc\\trefs/tags/nightly" if existing else ""
                     return ""
-                with mock.patch.object(nightly, "git", side_effect=git), mock.patch.object(nightly, "green_base", side_effect=ReachedGreenBase):
+                with mock.patch.object(nightly, "git", side_effect=git), mock.patch.object(nightly, "green_base", side_effect=ReachedGreenBase), \
+                        mock.patch.dict(os.environ, {"GITHUB_REF": "refs/heads/main", "DRY_RUN": "false"}):
                     with self.assertRaises(ReachedGreenBase):
                         nightly.pick(False)
                 fetched = next(args for args in calls if args[0] == "fetch")
@@ -498,7 +499,7 @@ class PruneBuildsTests(unittest.TestCase):
         self.assertIn('git archive --format=tar.gz --prefix="sunrise-${SHA:0:7}/" -o sunrise-source.tar.gz "$SHA"',
                       pick)
         sign = build.split("\n  sign:", 1)[1].split("\n  publish:", 1)[0]
-        self.assertIn("dist/sunrise-source.tar.gz", sign.split('sign_release.sh "$KIND"', 1)[1])
+        self.assertIn("dist/sunrise-source.tar.gz", sign.split('sign_release.sh "$SIGN_FOR"', 1)[1])
         publish = build.split("\n  publish:", 1)[1].split("\n  answer:", 1)[0]
         self.assertIn('"dist/sunrise-source.tar.gz#Source of this Nightly', publish)
         self.assertIn('nightly.py keep-source "$SHA" "$DATE"', publish)

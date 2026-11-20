@@ -71,7 +71,8 @@ class DryStateTests(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/nightly-build.yml").read_text()
         job = workflow.split("\n  cleanup-dry-run:\n", 1)[1].split("\n  answer:", 1)[0]
         self.assertIn("needs: [pick, build, sign, publish, musl-build]", job)
-        self.assertIn("if: always() && github.event_name == 'workflow_dispatch' && (inputs.dry_run || github.ref != 'refs/heads/main')", job)
+        self.assertIn("if: always() && github.event_name == 'workflow_dispatch' && (inputs.dry_run || !contains(fromJSON('[\"refs/heads/main\", "
+                      "\"refs/heads/nightly/26.3\", \"refs/heads/release/26.3\"]'), github.ref))", job)
         script = textwrap.dedent(job.split("        run: |\n", 1)[1])
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder)

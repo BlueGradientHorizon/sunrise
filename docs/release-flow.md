@@ -95,7 +95,7 @@ Three kinds of game build (CI tiers, owner 2026-11-13):
 |---|---|---|---|
 | [Snapshot](#snapshot) | root, by dispatching `release.yml -f kind=snapshot -f dry_run=false` on main | the gate (`lint`, `verify`, `verify-static`) green on that commit | pre-release `snapshot-<date>-<short>`; no launcher offers it |
 | Nightly | dispatch, or the [daily run](#daily-run) | main’s head or an explicit commit of main, with its dyna-checks gate green and its SDK published first | pre-release `nightly`, every launcher's update |
-| Release (`v*`) | by hand, from a Nightly | | the release |
+| [Stable release](#release-branches) | root, by dispatching `nightly-build.yml -f kind=stable` on `release/26.3` | that branch's head, with a green real daily run and its SDK published first | the full release `26.3-<semver>` (`26.3-0.1.0` first), never GitHub's latest |
 
 ### Snapshot
 
@@ -168,8 +168,9 @@ with no `--sunrise` resolves to it through `SUNRISE_SDK_BASE`. It is an ordinary
 
 The SDK publishes on its own legs (`sdk`, `machine-sample`, `fn-replace-check`: the summary's `sdk_green`) until a runner with prepared data exists (umceko, 2026-11-16). A red linkage probe fails its `sdk / build linux` or `sdk / build windows` job and blocks publication.
 
-Only a run on `main` with `dry_run` false moves the tag, files issues or publishes; any other run prints what it
-would do. On Sunrise a Nightly ships a commit of main with its dyna-checks gate green and its SDK, `sdk-<sha>`, published
+Only a run on `main` with `dry_run` false moves the tag, files issues or publishes; a real run on `release/26.3`
+publishes only its SDK and moves `release-green/26.3` ([Release branches](#release-branches)); any other run prints
+what it would do. On Sunrise a Nightly ships a commit of main with its dyna-checks gate green and its SDK, `sdk-<sha>`, published
 first on the same commit: a game build without its SDK is never published (owner, 2026-11-17).
 A [snapshot](#snapshot) (`release.yml -f kind=snapshot`) needs only dyna-checks' gate on its commit of main.
 
@@ -403,6 +404,45 @@ Why it exists: the tool shipped only inside each `sdk-<commit>`, so a tool fix r
 - Not done: immutable per-commit tags (`mod-tool-<commit>`, each signed for its own tag) beside the moving one. Until
   then an old `mod-tool` set that was once signed still verifies if it were served again; `tool.json`'s commit and date
   and `cargo sunrise-mod --version` show which tool a user has.
+
+## Release branches
+
+Two long-lived branches carry the game version they target (umceko and ari, 2026-11-20); no branch per release.
+Until an owner creates them, everything above runs as it did: the Nightly follows `daily-green` and runs on main.
+
+| Branch | Moves | Publishes |
+| --- | --- | --- |
+| `main` | merges, as before | snapshots, `sdk-<sha>`, and the Nightly while `nightly/26.3` doesn't exist |
+| `nightly/26.3` | fast-forwarded by the [daily run](#daily-run) to each fully green commit of main (job `nightly-branch`, the `sunrise-sunny` App's token); only ever forward | the Nightly: its head, under the `nightly` tag and channel as before |
+| `release/26.3` | cut by an owner from a green daily's commit; later commits by pull request (a fix, or a Nightly merged in) | `26.3-<semver>`, by hand, and the `sdk-<sha>` of its own daily runs |
+
+Only these three refs publish or sign: `PUBLISHES` in `tools/release_train.py` says which kind each may publish
+(`tests/test_release_branches.py` holds every workflow's ref list to it). A run on any other ref, a feature branch
+included, is a dry run: it signs with a throwaway key and publishes nothing.
+
+**A stable release** (`nightly-build.yml` with `kind=stable`, `nightly.py pick --kind stable`):
+
+1. builds only the head of `release/26.3`, and only when that commit has a completed green real daily run: the commit
+   `daily-green` points to (the branch cut from it), or the one `release-green/26.3` points to. A real daily run on
+   the branch (`gh workflow run daily.yml --ref release/26.3 -f dry_run=false`) moves that tag when every leg passed,
+   after publishing the commit's SDK; it moves no `daily-green`, files no issue and starts no Nightly. A dry run only warns
+   when that run is missing, as it does for a missing SDK;
+2. needs `sdk-<sha>` of that commit published first, as a Nightly does;
+3. is held by `RELEASES_PAUSED` and by an open `release-blocker` at the pick, and by a blocker again before publishing;
+4. is tagged `<target>-<semver>`: `release_version` when given, else the patch after the newest stable tag on the
+   target, `26.3-0.1.0` first. That tag is not semver as a whole, so `release_train.stable_version` reads it as the
+   target and a semver, and orders by the semver within a target;
+5. signs `SHA256SUMS` for that tag with the `release` environment's key (`SHA256SUMS.sig`, checked as
+   `signed_digest` checks a release) and publishes a full release, not a pre-release, with `--latest=false`: the
+   site's launcher download reads GitHub's latest release.
+
+No launcher lists a `26.3-<semver>` release yet (they take `v`-tags and the Nightly), so a stable release is a
+download for now.
+
+```sh
+gh workflow run "nightly build" --ref release/26.3 -f kind=stable -f dry_run=true   # check first
+gh workflow run "nightly build" --ref release/26.3 -f kind=stable                    # 26.3-0.1.0, then the next patch
+```
 
 ## Prebuilt SDK retention design (#3011)
 

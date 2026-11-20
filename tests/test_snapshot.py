@@ -27,7 +27,8 @@ class ReleaseSnapshotTests(unittest.TestCase):
     def test_only_main_without_dry_run_publishes(self):
         mode = self.jobs["decide"]["steps"][1]
         self.assertEqual(mode["run"],
-                         "echo \"dry_run=${{ inputs.dry_run || github.ref != 'refs/heads/main' }}\" >> \"$GITHUB_OUTPUT\"")
+                         """echo "dry_run=${{ inputs.dry_run || !contains(fromJSON('["refs/heads/main", """
+                         """"refs/heads/nightly/26.3"]'), github.ref) }}" >> "$GITHUB_OUTPUT\"""")
         self.assertEqual(self.workflow["on"]["workflow_dispatch"]["inputs"]["dry_run"]["default"], "true")
         publish = self.snapshot["snapshot-sdk-publish"]
         self.assertEqual(publish["with"]["publish"], "${{ needs.decide.outputs.dry_run != 'true' }}")
@@ -85,10 +86,10 @@ class NightlyBuildSnapshotTests(unittest.TestCase):
     def test_the_channel_signed_and_checked_is_the_kind(self):
         sign = self.workflow["jobs"]["sign"]["steps"][2]
         self.assertEqual(sign["env"]["KIND"], "${{ inputs.kind }}")
-        self.assertEqual(sign["env"]["ALSO_FOR"],
-                         "${{ inputs.kind }}-${{ needs.pick.outputs.date }}-${{ needs.pick.outputs.short }}")
+        self.assertEqual(sign["env"]["ALSO_FOR"], "${{ inputs.kind != 'stable' && format('{0}-{1}-{2}', inputs.kind, "
+                         "needs.pick.outputs.date, needs.pick.outputs.short) || '' }}")
         verify = self.steps["The signatures, checked as launchers check them"]["run"]
-        self.assertIn('--tag "$KIND" --publishing', verify)
+        self.assertIn('--tag "$SIGN_FOR" --publishing', verify)
         self.assertIn('--tag "${KIND}-${DATE}-${SHORT}"', verify)
         self.assertEqual(self.workflow["on"]["workflow_dispatch"]["inputs"]["kind"]["default"], "nightly")
 
@@ -178,7 +179,8 @@ class SnapshotToolsTests(unittest.TestCase):
             back = os.getcwd()
             os.chdir(folder)
             try:
-                env = {"GITHUB_REPOSITORY": "sunrise-org/sunrise", "GITHUB_OUTPUT": str(out), "NIGHTLY_BASE": sha}
+                env = {"GITHUB_REPOSITORY": "sunrise-org/sunrise", "GITHUB_OUTPUT": str(out), "NIGHTLY_BASE": sha,
+                       "GITHUB_REF": "refs/heads/main"}
                 with mock.patch.dict(os.environ, env), mock.patch.object(nightly, "git"), \
                         mock.patch.object(nightly.train, "channel_head", return_value=sha) as gate, \
                         mock.patch.object(nightly, "sdk_ready", return_value=True), \

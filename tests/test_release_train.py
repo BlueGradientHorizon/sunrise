@@ -295,7 +295,8 @@ class ReleaseTrainTests(unittest.TestCase):
                 git("commit", "-q", "--allow-empty", "-m", str(n))
                 commits.append(git("rev-parse", "HEAD"))
             with mock.patch.object(train, "ROOT", Path(folder)), \
-                    mock.patch.object(train, "daily_green_commit", return_value=commits[1]):
+                    mock.patch.object(train, "daily_green_commit", return_value=commits[1]), \
+                    mock.patch.object(train, "nightly_branch_head", return_value=""):
                 for channel in ("snapshot", "nightly"):
                     git("update-ref", "refs/remotes/origin/main", commits[1])
                     head = commits[1]
@@ -334,7 +335,8 @@ class ReleaseTrainTests(unittest.TestCase):
                 commits.append(git("rev-parse", "HEAD"))
             git("update-ref", "refs/remotes/origin/main", commits[1])
             with mock.patch.object(train, "ROOT", Path(folder)), \
-                    mock.patch.object(train, "fork_gate_passed", return_value=True):
+                    mock.patch.object(train, "fork_gate_passed", return_value=True), \
+                    mock.patch.object(train, "nightly_branch_head", return_value=""):
                 # A gate-green commit of main that is not daily-green: refused, by default and by name.
                 with mock.patch.object(train, "daily_green_commit", return_value=commits[0]):
                     self.assertEqual(train.channel_head("nightly", ""), commits[0], "the default is daily-green")

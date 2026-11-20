@@ -55,9 +55,9 @@ class OptionalReleaseAssetsTests(unittest.TestCase):
                 # The steps' own env from nightly-build.yml: SHORT is the commit the title and
                 # SHA256SUMS.v2.sig name (ALSO_FOR, nightly-<date>-<short>).
                 env = dict(os.environ, GITHUB_REPOSITORY=repository, EPHEMERAL="yes", SHA="0123456789abcdef", SHORT="0123456", DATE="2026-11-04",
-                           KIND="nightly", ALSO_FOR="nightly-2026-11-04-0123456", SOURCE_TAG="nightly-test",
+                           KIND="nightly", SIGN_FOR="nightly", ALSO_FOR="nightly-2026-11-04-0123456", SOURCE_TAG="nightly-test",
                            RELEASE_SIGNING_KEY="", RELEASE_SIGNING_KEY_NEXT="")
-                signed = subprocess.run([BASH, "-e", "-c", run_step('sign_release.sh "$KIND"')],
+                signed = subprocess.run([BASH, "-e", "-c", run_step('sign_release.sh "$SIGN_FOR"')],
                                         cwd=root, env=env, text=True, capture_output=True)
                 self.assertEqual(signed.returncode, 0, signed.stderr)
                 # Windows' sha256sum defaults to binary mode, marked by a * before each name.
@@ -103,9 +103,9 @@ gh() {
             (root / "tools/ci").mkdir(parents=True)
             shutil.copy(ROOT / "tools/ci/sign_release.sh", root / "tools/ci")
             env = dict(os.environ, GITHUB_REPOSITORY="horizon-rust/horizon", EPHEMERAL="yes", SHA="0123456789abcdef",
-                       SHORT="0123456", DATE="2026-11-13", KIND="snapshot", ALSO_FOR="snapshot-2026-11-13-0123456",
+                       SHORT="0123456", DATE="2026-11-13", KIND="snapshot", SIGN_FOR="snapshot", ALSO_FOR="snapshot-2026-11-13-0123456",
                        TAG="snapshot-2026-11-13-0123456", RELEASE_SIGNING_KEY="", RELEASE_SIGNING_KEY_NEXT="")
-            signed = subprocess.run([BASH, "-e", "-c", run_step('sign_release.sh "$KIND"')],
+            signed = subprocess.run([BASH, "-e", "-c", run_step('sign_release.sh "$SIGN_FOR"')],
                                     cwd=root, env=env, text=True, capture_output=True)
             self.assertEqual(signed.returncode, 0, signed.stderr)
             (dist / "smoke-test.json").write_text("{}")
@@ -126,6 +126,6 @@ gh() { printf '%s\\n' "$@" > gh-args; for arg in "$@"; do case "$arg" in dist/*)
             self.assertEqual(files, present | {"SHA256SUMS", "SHA256SUMS.sig", "SHA256SUMS.v2.sig", "smoke-test.json",
                                                "nightly-notes.md"})
             # A snapshot's version signed beside the nightly channel is refused before anything is signed.
-            refused = subprocess.run([BASH, "-e", "-c", run_step('sign_release.sh "$KIND"')], cwd=root,
-                                     env=dict(env, KIND="nightly"), text=True, capture_output=True)
+            refused = subprocess.run([BASH, "-e", "-c", run_step('sign_release.sh "$SIGN_FOR"')], cwd=root,
+                                     env=dict(env, KIND="nightly", SIGN_FOR="nightly"), text=True, capture_output=True)
             self.assertNotEqual(refused.returncode, 0)
