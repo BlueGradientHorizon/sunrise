@@ -1,5 +1,5 @@
 use super::*;
-use mod_api::{HookId, ModBlockEntity};
+use mod_api::ModBlockEntity;
 
 impl Game<'_> {
     /// Tick the existing individual block entity moment. Unchosen replies use full write-back.
@@ -14,15 +14,11 @@ impl Game<'_> {
 
     /// The tick of the mod block entity at `pos`.
     pub(in crate::game) fn tick_mod_block_entity_loaded(&mut self, pos: Pos) {
-        let Some(BlockEntity::Mod(entity)) = self.world.block_entities.get(&pos) else {
+        let Some(BlockEntity::Mod(m)) = self.world.block_entities.get_mut_if(
+            &pos,
+            |entity| matches!(entity, BlockEntity::Mod(m) if m.has_tick_part()),
+        ) else {
             return;
-        };
-        if !mod_api::__private::block_entity_type_listens(HookId::BlockEntityTick, entity.id()) {
-            return;
-        }
-        // A mutable lookup wakes the row; only take it out for an actual dispatch.
-        let Some(BlockEntity::Mod(m)) = self.world.block_entities.get_mut(&pos) else {
-            unreachable!("the subscriber lookup cannot replace the block entity");
         };
         let mut taken = std::mem::take(&mut **m);
         let placeholder_identity = m.revision().identity();

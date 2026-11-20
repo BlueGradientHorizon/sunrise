@@ -1171,6 +1171,9 @@ fn register_block_entity_types(
     }
     mod_api::__private::resolve_block_entity_types(types.names(), |id| types.key(id))
         .map_err(|errors| errors.join("\n"))?;
+    types.bind_tick_parts(|id| {
+        mod_api::__private::block_entity_type_listens(mod_api::HookId::BlockEntityTick, id)
+    });
     let additions: Vec<(String, String)> = if let Some(current) = block_entity_types::current() {
         current
             .memberships()
