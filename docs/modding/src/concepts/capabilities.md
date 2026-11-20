@@ -170,8 +170,10 @@ use the storage attempt path.
 
 Notifications your extract/insert issues happen immediately and survive abort. The default
 `ITEMS` and item `STORAGE` handlers defer a single notice per backing block to root commit
-for vanilla containers and engine-managed mod slots. Direct writes by mods to their own storage
-and rollback restores do not issue notices. Keep storage in the transaction journal: a handler
+for vanilla containers and engine-managed mod slots. On the default block `ITEMS` handler, a
+successful `set_max_stack_size` call queues the backing container's change notice at root commit,
+even if no items moved. Direct writes by mods to their own storage and rollback restores do not
+issue notices. Keep storage in the transaction journal: a handler
 that ignores it can lose an extracted item on abort. The hopper does not guard or repair that loss.
 
 The ignored `sunrise-client` library tests under
