@@ -185,14 +185,12 @@ pub fn install(
     {
         return Err("code mods are installed and updated in the launcher".into());
     }
+    list.check_file_claim(home, &relative, id)?;
     if target.exists() && old_file.as_deref() == Some(relative.as_str()) {
         let package = sunrise_mod_package::Package::read(&target)?;
         if package.manifest.native.is_some() {
             return Err("code mods are installed and updated in the launcher".into());
         }
-    }
-    if let Some(other) = list.taken_by(&relative, id) {
-        return Err(format!("{relative} belongs to {other}: remove it first"));
     }
     if let Some(i) = ours
         && list.entries[i]["version"].as_str() == Some(v.version.as_str())

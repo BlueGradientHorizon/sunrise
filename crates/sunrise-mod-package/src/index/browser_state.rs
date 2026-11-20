@@ -1,11 +1,14 @@
 //! The manifest shared by the game and launcher, and recovery of interrupted game installs.
+mod file_claim;
+
 use crate::durable;
 use crate::install_lock::lock_home;
+use file_claim::FileClaim;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fs;
 use std::io::{ErrorKind, Read};
-use std::path::{Component, Path};
+use std::path::Path;
 
 pub const MANIFEST: &str = "mod-browser.json";
 // There is at most one in-flight install in a home: all browser writers share the home lock.
@@ -68,6 +71,11 @@ fn reconcile_locked(home: &Path) -> Result<(), String> {
         return Err(error(&"invalid pending entry"));
     }
     super::hex64(sha256).map_err(|e| error(&e))?;
+    let mut list = Installed::read(home)?;
+    // Check before reading the archive or discarding any intent, even if the archive
+    // has not been created or the manifest already contains the new row.
+    list.check_file_claim(home, &pending.file, &pending.id)
+        .map_err(|e| error(&e))?;
     let target = home.join(&pending.file);
     let published = match fs::symlink_metadata(&target) {
         Ok(info) if info.is_file() && info.len() <= super::MAX_FILE => {
@@ -78,14 +86,9 @@ fn reconcile_locked(home: &Path) -> Result<(), String> {
         Err(e) => return Err(format!("{}: {e}", target.display())),
     };
     if published {
-        let mut list = Installed::read(home)?;
-        // The journal settles only one row it can name: the project's single row, or none, and no
-        // other entry claiming the same file. Anything else keeps the journal and refuses, so a
-        // row edited since, or a second claim, is never overwritten or lost.
+        // The journal settles only the project's single row, or none. It never overwrites
+        // a row edited since the install began or drops a duplicate row.
         let current = list.single(&pending.id)?.map(|i| &list.entries[i]);
-        if list.taken_by(&pending.file, &pending.id).is_some() {
-            return Err(error(&"another entry claims its file"));
-        }
         // Compare parsed rows so formatting changes don't matter but metadata edits do.
         if current == Some(&pending.new) {
             // The row may be visible before its rename is durable. This also handles a
@@ -111,29 +114,6 @@ fn reconcile_locked(home: &Path) -> Result<(), String> {
 /// Whether `entry` is the registry's row for project `id`.
 fn owned_by(entry: &Value, id: &str) -> bool {
     entry["source"] == "sunrise" && entry["project"] == id
-}
-
-/// A manifest file claim as a key that equal paths share: its components relative to the
-/// home, `.` ones left out, and on Windows with `\` a separator, case ignored and trailing dots
-/// and spaces dropped, as Win32 paths resolve them. `None` for a claim that can't be placed
-/// without the filesystem (absolute, or with `..`), which may alias any file.
-fn claim_key(path: &str) -> Option<Vec<String>> {
-    let mut key = Vec::new();
-    for component in Path::new(path).components() {
-        match component {
-            Component::CurDir => {}
-            Component::Normal(name) => {
-                let name = name.to_string_lossy();
-                key.push(if cfg!(windows) {
-                    name.trim_end_matches(['.', ' ']).to_ascii_lowercase()
-                } else {
-                    name.into_owned()
-                });
-            }
-            _ => return None,
-        }
-    }
-    Some(key)
 }
 
 /// `mod-browser.json`, kept as JSON values so the launcher's entries this
@@ -179,7 +159,8 @@ impl Installed {
     }
 
     /// Publishes a checked, already-synced package and its browser row. The caller holds
-    /// the home lock from before loading through publication, and owns the target path.
+    /// the home lock from before loading through publication and checks that an existing
+    /// target belongs to the browser, not the player.
     pub fn publish(
         &mut self,
         home: &Path,
@@ -193,6 +174,8 @@ impl Installed {
             old: self.single(id)?.map(|i| self.entries[i].clone()),
             new: entry,
         };
+        // Recheck the current filesystem after the download, before writing intent.
+        self.check_file_claim(home, &pending.file, id)?;
         let target = home.join(&pending.file);
         let path = home.join(PENDING);
         let bytes = serde_json::to_vec(&pending).map_err(|e| e.to_string())?;
@@ -221,20 +204,28 @@ impl Installed {
         }
     }
 
-    /// The title of another entry that owns `file` however its path is spelled, or whose path
-    /// can't be placed ([`claim_key`]) and so may own it.
-    pub fn taken_by(&self, file: &str, id: &str) -> Option<String> {
-        let key = claim_key(file);
-        self.entries
-            .iter()
-            .find(|e| {
-                !owned_by(e, id)
-                    && e["file"].as_str().is_some_and(|other| {
-                        let other = claim_key(other);
-                        other.is_none() || other == key
-                    })
-            })
-            .map(|e| e["title"].as_str().unwrap_or("another mod").to_owned())
+    /// Checks that `file` can be used under this home and no other entry can claim it.
+    /// Hold the home lock while checking and using the result.
+    pub fn check_file_claim(&self, home: &Path, file: &str, id: &str) -> Result<(), String> {
+        let target = FileClaim::read(home, file).map_err(|e| format!("{file}: {e}"))?;
+        for entry in &self.entries {
+            if owned_by(entry, id) {
+                continue;
+            }
+            let Some(other) = entry["file"].as_str() else {
+                continue;
+            };
+            let title = entry["title"].as_str().unwrap_or("another mod");
+            let claim = FileClaim::read(home, other).map_err(|e| {
+                format!("cannot compare {file} with {title}'s file claim {other:?}: {e}")
+            })?;
+            if target.conflicts_with(&claim) {
+                return Err(format!(
+                    "{file} conflicts with the file that belongs to {title}: remove it first"
+                ));
+            }
+        }
+        Ok(())
     }
 
     fn record(&mut self, entry: Value) {
@@ -370,28 +361,137 @@ mod tests {
         }
     }
 
-    #[test]
-    fn file_claims_compare_as_the_host_resolves_them() {
-        let key = |path: &str| claim_key(path);
-        assert_eq!(
-            key("./sunrise-mods//ruby.smod"),
-            key("sunrise-mods/ruby.smod")
+    // Exercise both mutations, not just the comparison: neither may rewrite the rows,
+    // replace an archive, clear intent, or consume the staged download on refusal.
+    fn assert_alias_refused(home: &Path, alias: &str, target_exists: bool) {
+        let file = content_file("ruby");
+        let target = home.join(&file);
+        let row = |version, bytes: &[u8]| {
+            serde_json::json!({
+                "source": "sunrise", "project": "ruby", "file": file, "version": version,
+                "checksum": format!("SHA-256:{}", super::super::sha256(bytes)),
+            })
+        };
+        let old = row("1", b"old");
+        let new = row("2", b"new");
+        let mut list = Installed {
+            entries: vec![
+                old.clone(),
+                serde_json::json!({ "source": "modrinth", "file": alias, "title": "Gem" }),
+            ],
+        };
+        let _guard = lock_home(home).unwrap();
+        let manifest = home.join(MANIFEST);
+        list.save(home).unwrap();
+        let before = fs::read(&manifest).unwrap();
+        let download = home.join("download.part");
+        let journal = home.join(PENDING);
+        fs::write(&download, b"new").unwrap();
+
+        assert!(
+            list.publish(home, "ruby", &download, new.clone()).is_err(),
+            "publish: {alias}"
         );
-        assert_ne!(key("sunrise-mods/ruby.smod"), key("sunrise-mods/gem.smod"));
-        assert_eq!(key("sunrise-mods/../sunrise-mods/ruby.smod"), None);
-        assert_eq!(key("/sunrise-mods/ruby.smod"), None);
-        // Win32 paths ignore case and trailing dots and spaces, and take `\` as a separator.
-        for alias in [
-            "sunrise-mods\\ruby.smod",
-            "SUNRISE-MODS/Ruby.smod",
-            "sunrise-mods/ruby.smod. ",
-        ] {
-            assert_eq!(
-                key(alias) == key("sunrise-mods/ruby.smod"),
-                cfg!(windows),
-                "{alias}"
-            );
+        assert_eq!(fs::read(&manifest).unwrap(), before);
+        assert!(!journal.try_exists().unwrap());
+        assert_eq!(fs::read(&download).unwrap(), b"new");
+        if target_exists {
+            assert_eq!(fs::read(&target).unwrap(), b"old");
+            // Now simulate a previously interrupted install, e.g. from a version that
+            // didn't check ownership with the same rules. The archive is already new.
+            fs::write(&target, b"new").unwrap();
+        } else {
+            assert!(!target.try_exists().unwrap());
         }
+        let intent = serde_json::to_vec(&Pending {
+            id: "ruby".into(),
+            file,
+            old: Some(old),
+            new,
+        })
+        .unwrap();
+        fs::write(&journal, &intent).unwrap();
+        assert!(reconcile(home).is_err(), "reconcile: {alias}");
+        assert_eq!(fs::read(&manifest).unwrap(), before);
+        assert_eq!(fs::read(&journal).unwrap(), intent);
+        assert_eq!(fs::read(&download).unwrap(), b"new");
+        if target_exists {
+            assert_eq!(fs::read(&target).unwrap(), b"new");
+        } else {
+            assert!(!target.try_exists().unwrap());
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlinked_directory_cannot_claim_the_same_archive() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path();
+        fs::create_dir(home.join("sunrise-mods")).unwrap();
+        fs::write(home.join(content_file("ruby")), b"old").unwrap();
+        std::os::unix::fs::symlink("sunrise-mods", home.join("alias")).unwrap();
+        assert_alias_refused(home, "alias/ruby.smod", true);
+        assert_eq!(
+            fs::read_link(home.join("alias")).unwrap(),
+            Path::new("sunrise-mods")
+        );
+    }
+
+    #[test]
+    fn ambiguous_spellings_and_invalid_names_are_refused_before_mutation() {
+        for (alias, target_exists) in [
+            ("sunrise-mods/RUBY.smod", true),
+            ("SUNRISE-MODS/RUBY.smod", false),
+            ("sunrise-mods/../sunrise-mods/ruby.smod", true),
+            ("sunrise-mods/ruby.smod.", true),
+            ("sunrise-mods/ruby.smod ", true),
+            ("sunrise-mods/CON.txt", true),
+            ("sunrise-mods/rubý.smod", false),
+            ("sunrise-mods/RUBY~1.SMO", false),
+            ("sunrise-mods/ruby.smod/other.smod", false),
+            ("../sunrise-mods/ruby.smod", true),
+            ("/sunrise-mods/ruby.smod", true),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let home = dir.path();
+            if target_exists {
+                fs::create_dir(home.join("sunrise-mods")).unwrap();
+                fs::write(home.join(content_file("ruby")), b"old").unwrap();
+            }
+            assert_alias_refused(home, alias, target_exists);
+        }
+    }
+
+    #[test]
+    fn a_hard_link_at_a_different_path_cannot_claim_the_same_archive() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path();
+        fs::create_dir(home.join("sunrise-mods")).unwrap();
+        let target = home.join(content_file("ruby"));
+        let link = home.join("gem.smod");
+        fs::write(&target, b"old").unwrap();
+        fs::hard_link(&target, &link).unwrap();
+        assert_alias_refused(home, "gem.smod", true);
+        assert_eq!(fs::read(link).unwrap(), b"new");
+    }
+
+    #[test]
+    fn publication_accepts_a_distinct_claim_with_dot_components() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path();
+        let _guard = lock_home(home).unwrap();
+        fs::create_dir(home.join("sunrise-mods")).unwrap();
+        let download = home.join("download.part");
+        fs::write(&download, b"new").unwrap();
+        let other = serde_json::json!({ "file": "./sunrise-mods/../sunrise-mods/gem.smod" });
+        let mut list = Installed {
+            entries: vec![other.clone()],
+        };
+        let row = serde_json::json!({ "source": "sunrise", "project": "ruby", "file": content_file("ruby") });
+        list.publish(home, "ruby", &download, row.clone()).unwrap();
+        assert_eq!(Installed::read(home).unwrap().entries, [other, row]);
+        assert_eq!(fs::read(home.join(content_file("ruby"))).unwrap(), b"new");
+        assert!(!home.join(PENDING).exists());
     }
 
     #[test]

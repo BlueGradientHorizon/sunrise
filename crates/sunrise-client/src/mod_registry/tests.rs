@@ -288,7 +288,7 @@ fn a_same_version_install_refuses_another_projects_aliased_claim() {
     fs::write(&target, &bytes).unwrap();
     let manifest = serde_json::json!({ "entries": [
         {"source": "sunrise", "project": "ruby", "version": "1.0", "file": "sunrise-mods/ruby.smod"},
-        {"source": "sunrise", "project": "gem", "title": "Gem", "file": "./sunrise-mods//ruby.smod"}
+        {"source": "sunrise", "project": "gem", "title": "Gem", "file": "./sunrise-mods/ruby.smod"}
     ] }).to_string();
     fs::write(home.join(MANIFEST), &manifest).unwrap();
 
@@ -299,6 +299,35 @@ fn a_same_version_install_refuses_another_projects_aliased_claim() {
     assert!(error.contains("belongs to Gem"), "{error}");
     assert_eq!(fs::read_to_string(home.join(MANIFEST)).unwrap(), manifest);
     assert_eq!(fs::read(target).unwrap(), bytes);
+    assert!(!home.join(".mod-browser.pending.json").try_exists().unwrap());
+    fs::remove_dir_all(home).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn an_install_refuses_a_claim_through_a_symlinked_directory_before_download() {
+    let old = ruby("1.0");
+    let newer = ruby("1.1");
+    let index = registry("1.1", &newer, "file:///ruby.smod");
+    let home = scratch("symlinked-claim");
+    let target = home.join("sunrise-mods/ruby.smod");
+    fs::create_dir(home.join("sunrise-mods")).unwrap();
+    fs::write(&target, &old).unwrap();
+    std::os::unix::fs::symlink("sunrise-mods", home.join("alias")).unwrap();
+    let manifest = serde_json::json!({ "entries": [
+        {"source": "sunrise", "project": "ruby", "version": "1.0", "file": "sunrise-mods/ruby.smod"},
+        {"source": "modrinth", "project": "gem", "title": "Gem", "file": "alias/ruby.smod"}
+    ] }).to_string();
+    fs::write(home.join(MANIFEST), &manifest).unwrap();
+
+    let error = install(&index, &home, "ruby", &|_, _| {
+        panic!("a claim through a directory symlink must be refused before download")
+    })
+    .unwrap_err();
+    assert!(error.contains("Gem"), "{error}");
+    assert_eq!(fs::read_to_string(home.join(MANIFEST)).unwrap(), manifest);
+    assert_eq!(fs::read(&target).unwrap(), old);
+    assert_eq!(fs::read(home.join("alias/ruby.smod")).unwrap(), old);
     assert!(!home.join(".mod-browser.pending.json").try_exists().unwrap());
     fs::remove_dir_all(home).unwrap();
 }
