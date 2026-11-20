@@ -18,11 +18,8 @@ pub(crate) use units::{INLINE_CAPACITY, Units};
 /// `String.hashCode` of a string's UTF-16 units.
 #[inline]
 pub fn java_string_hash(units: &[u16]) -> i32 {
-    if units.len() < WIDE_FROM {
-        // Below a vector step, the plain loop main had, with no other branch in front of it.
-        return units.iter().fold(0i32, |hash, &unit| {
-            hash.wrapping_mul(31).wrapping_add(i32::from(unit))
-        });
+    if units.is_empty() {
+        return 0;
     }
     fold(0, units) as i32
 }
