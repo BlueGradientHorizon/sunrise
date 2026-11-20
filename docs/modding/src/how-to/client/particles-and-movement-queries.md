@@ -52,8 +52,8 @@ named by its id (`mymod:spark`), its sprite set and spawn values are the declara
 The game calls `ParticleProvider::tick(&self, particles: &mut ParticleBatch, level: &dyn ParticleLevelView)`
 once per type per tick, after it has aged the particles, with every live particle of the type; it is not called
 when none is alive, and a registered provider with no particle alive is not visited. Iterate the batch
-(`for particle in particles`): a tick edits its particles and cannot add or remove one (`removed` expires one), and the
-game builds the batch, so a mod cannot make or replace it.
+(`for particle in particles`): the public API lets a tick edit particles, not add or remove them (`removed` expires one).
+Only the engine builds the batch. If a callback returns a different length, the engine expires that batch's particles.
 
 Each `ModParticle` carries the particle's pose and look: `position`, `previous`, `velocity`, `size`, `rgba`, `frame`,
 `state` (four numbers kept from tick to tick), a `facing` and a `roll`. `facing` is `Camera` (vanilla's

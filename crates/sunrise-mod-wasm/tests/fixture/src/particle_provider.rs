@@ -13,7 +13,7 @@ pub fn register(providers: &mut dyn ParticleProviders) {
 }
 
 /// Moves each particle by its place in the batch, keeps a count in its state, lays it flat with a
-/// roll, and colours it by the level's light at its own block.
+/// roll, and colours it by the level's light and block states at its own block.
 struct Spark;
 
 impl ParticleProvider for Spark {
@@ -26,6 +26,13 @@ impl ParticleProvider for Spark {
             let at = particle.position.map(|c| c.floor() as i32);
             particle.rgba[0] = f32::from(level.brightness(LightLayer::Sky, at)) / 15.0;
             particle.rgba[1] = f32::from(level.brightness(LightLayer::Block, at)) / 15.0;
+            // One if the block under the particle's block is not the same state as its own.
+            let below = level.block_state([at[0], at[1] - 1, at[2]]);
+            particle.rgba[2] = if level.block_state(at) == below {
+                0.0
+            } else {
+                1.0
+            };
             particle.removed = particle.age > 2;
         }
     }

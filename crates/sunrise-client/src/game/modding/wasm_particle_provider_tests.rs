@@ -5,11 +5,18 @@ use mod_api::{
     LightLayer, ModParticle, ParticleFacing, ParticleLevelView, ParticleProviderRegistry,
 };
 
-/// Sky light 11 and block light 4 at every position.
-struct Lit;
+/// Sky light 11 and block light 4 at every position, and stone at one position among air.
+struct Lit {
+    stone: mod_api::BlockState,
+    air: mod_api::BlockState,
+}
 impl ParticleLevelView for Lit {
-    fn block_state(&self, _: [i32; 3]) -> mod_api::BlockState {
-        unreachable!("the fixture's provider reads no block state")
+    fn block_state(&self, pos: [i32; 3]) -> mod_api::BlockState {
+        if pos == [1, 4, 5] {
+            self.stone
+        } else {
+            self.air
+        }
     }
     fn brightness(&self, layer: LightLayer, _: [i32; 3]) -> u8 {
         match layer {
@@ -59,11 +66,30 @@ fn a_wasm_providers_batch_tick_writes_every_particle_and_reads_the_level() {
                     let spark = providers
                         .get("wasm_fixture:spark")
                         .expect("the guest registered its provider");
+                    mod_api::__private::resolve_block_keys(
+                        ["minecraft:air", "minecraft:stone"],
+                        |_| {
+                            sunrise_mod_runtime::block_definitions::BlockDefinition::new(
+                                &[&std::collections::BTreeMap::new()],
+                                0,
+                            )
+                            .map_err(|error| format!("{error:?}"))
+                        },
+                    )
+                    .unwrap();
+                    let state = |name| {
+                        let key = mod_api::__private::block_key(name).unwrap();
+                        mod_api::BlockStateRecord::new(key, 0).into()
+                    };
+                    let level = Lit {
+                        stone: state("minecraft:stone"),
+                        air: state("minecraft:air"),
+                    };
                     let mut batch = mod_api::__private::particle_batch_from_vec(vec![
                         particle(1, 0.0),
                         particle(3, 10.0),
                     ]);
-                    spark.tick(&mut batch, &Lit);
+                    spark.tick(&mut batch, &level);
                     let [first, second] = [0, 1].map(|i| batch.get_mut(i).unwrap().clone());
                     // Moved by its place in the batch, one state count each, in call order.
                     assert_eq!(first.position, [1.0, 5.0, 5.0]);
@@ -73,8 +99,10 @@ fn a_wasm_providers_batch_tick_writes_every_particle_and_reads_the_level() {
                     let flat = ParticleFacing::Fixed([-0.5, -0.5, -0.5, 0.5]);
                     assert_eq!((first.facing, first.roll), (flat, 0.25));
                     assert_eq!((second.facing, second.roll), (flat, 0.5));
-                    // The guest read the host's level view: sky 11 and block 4 as fractions of 15.
+                    // The guest read the host's level view: sky 11 and block 4 as fractions of 15,
+                    // and stone under the air above it at the first particle's block only.
                     assert_eq!(first.rgba, [11.0 / 15.0, 4.0 / 15.0, 1.0, 1.0]);
+                    assert_eq!(second.rgba, [11.0 / 15.0, 4.0 / 15.0, 0.0, 1.0]);
                     // Only the particle past age 2 is removed.
                     assert!(!first.removed && second.removed);
                     assert_eq!(batch.len(), 2);
