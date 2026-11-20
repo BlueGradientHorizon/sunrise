@@ -21,12 +21,18 @@ invalid UTF-8 or an unsupported length.
 
 ## Nesting and stacks
 
-Structural decoding and encoding allow **32** nested records, payload-carrying
+Ordinary Wire decoding and encoding allow **32** nested records, payload-carrying
 variants and `Box`/`Arc` values (`MAX_DEPTH`). Collection iteration, `Option`
 and tuples do not consume a level. The reader returns `WireError::Depth` before
 entering level 33; the writer records the same error. Always check `Writer::error`
 before sending its bytes. This is a transport budget for unbounded mod-defined
 trees, including ingredients, item places, loot vehicles and recipe slot displays.
+
+Typed payloads use the same encoding with their own limits. They count list, present
+option and box levels, not records, and enforce `PAYLOAD_MAX_DEPTH`. String and list
+lengths are bounded by `PAYLOAD_MAX_STRING_BYTES` and `PAYLOAD_MAX_LIST_ENTRIES`.
+The reader and writer both charge `PAYLOAD_DECODE_BUDGET` for decoded storage, apart
+from the transport's byte limit. A failed encode is never queued.
 
 Vanilla trees are not restricted by that structural budget: NBT `Tag` uses an
 explicit work stack with **512** nested containers; `Text` crosses as the existing
@@ -56,19 +62,21 @@ The derive writes the representation and maps a failed conversion to
 
 ## Layout identity
 
-A type's schema digest describes the layout that `Wire` reads and writes: fields, enum cases and
-child types. The derive declares the shape from the Rust fields. A
-hand-written implementation declares it with `layout_fields!` (its fields) or `layout_via!(T)`
-(the representation it encodes as). Container shapes follow the encoding: `Vec<T>` and
-`VecDeque<T>` agree, as do `String` and `Box<str>`; `Box<T>` is transparent. The digest does
-not include the Rust type's path. The wire format has no compatibility versions or default fields.
+A type's layout describes the fields, enum cases and child types that Wire reads and writes.
+The derive declares the layout from the Rust fields. Layouts do not include Rust type paths.
+They feed the SDK's surface digests and `Wire::describe`, which provides the fingerprint used
+in typed payload negotiation. `payload_schema::<T>()` computes that fingerprint; it is not
+written into the payload body. Changing the encoding changes the negotiated fingerprint.
 
 ## Hand-written implementations
 
-The trait is unsealed. A hand-written implementation must supply `put`, `take` and `MIN`,
-and declare its shape beside the impl with `layout_fields!` or `layout_via!`; the derive
-handles this automatically and is preferred.
+The derive handles this automatically and is preferred. A hand-written implementation must
+supply `put`, `take`, `MIN` and `describe`. For a new encoding, use a versioned `WireSchema::leaf`
+and combine it with the fingerprints of its parts using `WireSchema::mix`. Use
+`WireSchema::named::<Self>` when describing recursive fields so the walk can recognize a
+reference to an ancestor. If the implementation delegates completely to an existing encoding,
+its `describe` can delegate to the same type.
 
-A hand decoder owns tag validation and must use `Reader::nested` for recursive
-values. `Reader` checks byte bounds and UTF-8, but cannot enforce invariants that
-an implementation neglects. Keep validation at the checked constructor boundary.
+A hand decoder owns tag validation and bounds for any storage it allocates itself. Decode
+indirections through their `Wire` types so they count against the typed-payload limits. Keep
+validation at the checked constructor boundary.
