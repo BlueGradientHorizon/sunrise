@@ -35,8 +35,8 @@ fn model_baking_completed(&self, host: &mut dyn ClientHost, _: &mut ModelBakingC
 
 | Call | Answers |
 | --- | --- |
-| `block_state_models(state: BlockState)` | Every model the state can select, in bake order without repeats, whichever one a position's seed picks. Empty for a valid state with no baked binding. `UnknownModel` if the block key or state ordinal cannot be resolved. |
-| `block_state_model(state: BlockState)` | The state as one drawable `ModelRef` (see [Model drawing](model-drawing.md)). `UnknownModel` for air, a state no blockstate file binds, or a block key or state ordinal that cannot be resolved. |
+| `block_state_models(state: BlockState)` | Every model the state can select, in bake order without repeats, whichever one a position's seed picks. Empty for a valid state with no baked binding. `UnknownModel` if the live state index lacks the state. |
+| `block_state_model(state: BlockState)` | The state as one drawable `ModelRef` (see [Model drawing](model-drawing.md)). `UnknownModel` for air, a state no blockstate file binds, or a state the live state index lacks. |
 | `baked_model(key)` | A read-only copy of the listed fields: `ambient_occlusion`, the `particle` sprite and its `quads`. `StaleModel` once a reload superseded the key; `UnknownModel` for a slot the store lacks. |
 
 `BakedModelView` and `BakedQuad` are copies: changing them changes nothing the game draws. They
@@ -52,5 +52,7 @@ resources as they are now, never from the previous store, and publishes it befor
 failed reload publishes nothing, and the keys of the last successful load stay valid. A dedicated
 server bakes no models: its store is empty.
 
-Both calls are available through `ClientHost::render_assets()` in Setup, Reloading and World.
-Native and wasm mods get the same keys, copies and refusals.
+All three calls are available through `ClientHost::render_assets()` in Setup, Reloading and World.
+Native and wasm mods get the same keys and copies, but not the same refusals: a wasm block key the
+game never issued is refused at the boundary, before any lookup, while a state the live index
+lacks gives `UnknownModel` on both.
