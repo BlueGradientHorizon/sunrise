@@ -19,10 +19,6 @@ serde = { version = "1", features = ["derive"] }
 unicode_names2 = "=2.0.0"
 crc32fast = "1.5"
 
-[target.'cfg(windows)'.dependencies]
-# Durable file publication: MoveFileExW with MOVEFILE_WRITE_THROUGH.
-windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"] }
-
 [target.'cfg(any(target_arch = "aarch64", target_arch = "x86_64"))'.dependencies]
 crc-fast = { version = "=1.10.0", default-features = false, features = ["std"] }
 

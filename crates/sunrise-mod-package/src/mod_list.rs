@@ -443,7 +443,7 @@ impl ModList {
             return Ok(());
         }
         let text = self.serialize();
-        sunrise_core::durable::write_with(&path, |file| write(file, text.as_bytes()))
+        crate::durable::write_with(&path, |file| write(file, text.as_bytes()))
     }
     pub fn is_on(&self, i: usize) -> bool {
         self.installed.get(i).is_some_and(|m| {

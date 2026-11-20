@@ -14,7 +14,7 @@ use crate::mod_browser::Listing;
 use std::fs;
 use std::io::Read;
 use std::path::Path;
-use sunrise_core::durable;
+use sunrise_mod_package::durable;
 use sunrise_mod_package::index::browser_state::{Installed, content_file};
 use sunrise_mod_package::index::{self, Index, Kind, Project, Trust, Version};
 

@@ -1,11 +1,11 @@
 //! The manifest shared by the game and launcher, and recovery of interrupted game installs.
+use crate::durable;
 use crate::install_lock::lock_home;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fs;
 use std::io::{ErrorKind, Read};
 use std::path::Path;
-use sunrise_core::durable;
 
 pub const MANIFEST: &str = "mod-browser.json";
 // There is at most one in-flight install in a home: all browser writers share the home lock.

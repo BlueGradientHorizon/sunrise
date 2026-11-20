@@ -1328,7 +1328,6 @@ dependencies = [
  "serde",
  "serde_json",
  "unicode_names2",
- "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1407,6 +1406,7 @@ dependencies = [
  "sunrise-shader-api",
  "toml",
  "wasmparser",
+ "windows-sys 0.61.2",
  "zip",
 ]
 
