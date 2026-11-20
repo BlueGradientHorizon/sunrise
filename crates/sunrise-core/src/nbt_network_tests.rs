@@ -66,28 +66,28 @@ fn network_quota_counts_heap_not_wire_bytes() {
 
 #[test]
 fn modified_utf8_keys_charge_decoded_units_and_validate_after_spilling() {
-    // The ninth key unit, past the inline capacity, uses an accepted overlong encoding; the value
-    // has a lone surrogate.
-    let mut bytes = vec![10, 8, 0, 10];
-    bytes.extend(b"abcdefgh");
-    bytes.extend([0xc1, 0xa9, 0, 4, 0xed, 0xa0, 0x80, b'b', 0]);
+    // The first nine key units spill past inline capacity before the decoder reads an accepted
+    // overlong encoding. The value has a lone surrogate.
+    let mut bytes = vec![10, 8, 0, 11];
+    bytes.extend(b"abcdefghi");
+    bytes.extend([0xc1, 0xaa, 0, 4, 0xed, 0xa0, 0x80, b'b', 0]);
     let tag = Tag::compound([(
-        "abcdefghi",
+        "abcdefghij",
         Tag::String(JavaString::from(vec![0xd800, u16::from(b'b')])),
     )]);
-    // 48 compound + (28 + 18) key + 36 entry + (36 + 4) string.
-    let quota = 170;
+    // 48 compound + (28 + 20) key + 36 entry + (36 + 4) string.
+    let quota = 172;
     assert_eq!(
         Tag::from_network_bytes(&bytes, Some(quota)).unwrap(),
         (tag, bytes.len())
     );
     assert!(Tag::from_network_bytes(&bytes, Some(quota - 1)).is_err());
-    bytes[13] = b'i';
+    bytes[14] = b'j';
     assert_eq!(
         Tag::from_network_bytes(&bytes, Some(quota))
             .unwrap_err()
             .offset,
-        14
+        15
     );
 }
 
