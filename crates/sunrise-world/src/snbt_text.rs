@@ -130,7 +130,7 @@ pub fn to_snbt(tag: &Tag) -> String {
 /// Owning exact `Tag.toString` result, including raw unpaired UTF-16 units.
 pub fn to_snbt_utf16(tag: &Tag) -> JavaString {
     let mut out = JavaString::default();
-    write_snbt_utf16(tag, |unit| out.0.push(unit));
+    write_snbt_utf16(tag, |unit| out.units_mut().push(unit));
     out
 }
 
@@ -168,12 +168,12 @@ fn integer(value: i64, sink: &mut impl FnMut(u16)) {
 }
 
 fn compound_entry(key: &JavaString, value: &Tag, sink: &mut impl FnMut(u16)) {
-    if unquoted_key(&key.0) {
-        for &unit in &key.0 {
+    if unquoted_key(key.units()) {
+        for &unit in key.units() {
             sink(unit);
         }
     } else {
-        quoted_units(key.0.iter().copied(), sink);
+        quoted_units(key.units().iter().copied(), sink);
     }
     sink(58);
     visit(value, sink);
@@ -203,7 +203,7 @@ fn visit(tag: &Tag, sink: &mut impl FnMut(u16)) {
             ascii(&double_to_string(f64::from_bits(*bits)), sink);
             sink(100);
         }
-        Tag::String(value) => quoted_units(value.0.iter().copied(), sink),
+        Tag::String(value) => quoted_units(value.units().iter().copied(), sink),
         Tag::ByteArray(values) => {
             ascii("[B;", sink);
             for (i, value) in values.iter().enumerate() {
@@ -307,14 +307,14 @@ mod tests {
 
     #[test]
     fn utf16_strings_and_utf8_projection_keep_unpaired_units_lossless() {
-        let tag = Tag::String(JavaString(vec![
+        let tag = Tag::String(JavaString::from(vec![
             0, 8, 9, 10, 11, 12, 13, 31, 34, 39, 92, 0xd800, 0xd83d, 0xde00, 0xdc00,
         ]));
         let mut expected: Vec<u16> = "'\\x00\\b\\t\\n\\x0B\\f\\r\\x1F\"\\'\\\\"
             .encode_utf16()
             .collect();
         expected.extend([0xd800, 0xd83d, 0xde00, 0xdc00, 39]);
-        assert_eq!(to_snbt_utf16(&tag).0, expected);
+        assert_eq!(to_snbt_utf16(&tag).units(), expected);
         let mut streamed = Vec::new();
         write_snbt_utf16(&tag, |unit| streamed.push(unit));
         assert_eq!(streamed, expected);
@@ -327,9 +327,9 @@ mod tests {
     #[test]
     fn utf16_key_sorting_and_integer_extremes_match_the_compact_visitor() {
         let tag = Tag::compound([
-            (JavaString(vec![0xe000]), Tag::Long(i64::MIN)),
-            (JavaString(vec![0xd800, 0xdc00]), Tag::Int(i32::MIN)),
-            (JavaString(vec![0xd800]), Tag::Byte(-128)),
+            (JavaString::from(vec![0xe000]), Tag::Long(i64::MIN)),
+            (JavaString::from(vec![0xd800, 0xdc00]), Tag::Int(i32::MIN)),
+            (JavaString::from(vec![0xd800]), Tag::Byte(-128)),
         ]);
         let mut expected = vec![123, 34, 0xd800, 34];
         expected.extend(":-128b,".encode_utf16());
@@ -337,7 +337,7 @@ mod tests {
         expected.extend(":-2147483648,".encode_utf16());
         expected.extend([34, 0xe000, 34]);
         expected.extend(":-9223372036854775808L}".encode_utf16());
-        assert_eq!(to_snbt_utf16(&tag).0, expected);
+        assert_eq!(to_snbt_utf16(&tag).units(), expected);
         assert_eq!(to_snbt(&Tag::Float(0x80000000)), "-0.0f");
         assert_eq!(to_snbt(&Tag::Double(0x8000000000000000)), "-0.0d");
     }

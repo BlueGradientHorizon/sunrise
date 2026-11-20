@@ -269,9 +269,12 @@ fn damage_resistant_component_recipes_use_loaded_holder_sets() {
         Tag::ByteArray(vec![0]),
         Tag::IntArray(vec![0]),
         Tag::LongArray(vec![0]),
-        Tag::String(sunrise_core::nbt::JavaString(vec![0xd800])),
-        Tag::String(sunrise_core::nbt::JavaString(vec![u16::from(b'#'), 0xdc00])),
-        Tag::String(sunrise_core::nbt::JavaString(vec![0xd83d, 0xde00])),
+        Tag::String(sunrise_core::nbt::JavaString::from(vec![0xd800])),
+        Tag::String(sunrise_core::nbt::JavaString::from(vec![
+            u16::from(b'#'),
+            0xdc00,
+        ])),
+        Tag::String(sunrise_core::nbt::JavaString::from(vec![0xd83d, 0xde00])),
     ] {
         let value = Tag::compound([("types", value)]);
         assert!(

@@ -218,12 +218,12 @@ fn tag_list(value: &Tag) -> &[Tag] {
     }
 }
 fn string_is(value: &Tag, expected: &str) -> bool {
-    matches!(value, Tag::String(name) if name.0.iter().copied().eq(expected.encode_utf16()))
+    matches!(value, Tag::String(name) if name.units().iter().copied().eq(expected.encode_utf16()))
 }
 fn kind_is(value: &Tag, expected: &str) -> bool {
     let name = field(value, "type");
     string_is(name, expected)
-        || matches!(name, Tag::String(name) if name.0.iter().copied().eq("minecraft:".encode_utf16().chain(expected.encode_utf16())))
+        || matches!(name, Tag::String(name) if name.units().iter().copied().eq("minecraft:".encode_utf16().chain(expected.encode_utf16())))
 }
 
 /// Borrowed NBT counterpart of `validate_text`; strings are not parsed as JSON.

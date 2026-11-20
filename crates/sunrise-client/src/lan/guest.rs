@@ -1427,7 +1427,7 @@ fn write_block_predicate(
         struct Key<'a>(&'a sunrise_core::nbt::JavaString);
         impl sunrise_core::java_hash_map::JavaKey for Key<'_> {
             fn java_hash(&self) -> i32 {
-                sunrise_core::java_string::java_string_hash(&self.0.0)
+                sunrise_core::java_string::java_string_hash(&self.0.units())
             }
             fn comparable_compare(&self, other: &Self) -> Option<std::cmp::Ordering> {
                 Some(self.0.cmp(other.0))

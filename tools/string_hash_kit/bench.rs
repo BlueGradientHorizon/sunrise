@@ -176,7 +176,7 @@ fn lookup(timed: bool, strings: &[&[u16]]) {
     let keys = &strings[..64];
     let mut compound = Compound::new();
     for (i, key) in keys.iter().enumerate() {
-        compound.insert(JavaString(key.to_vec()), Tag::Int(i as i32));
+        compound.insert(JavaString::from(key.to_vec()), Tag::Int(i as i32));
     }
     let hashed: Vec<_> = keys
         .iter()

@@ -101,7 +101,7 @@ fn opaque_map_charges_cover_independently_observed_live_layouts() {
                 let mut bytes = Vec::with_capacity(1000);
                 bytes.push(42);
                 let mut children = Vec::with_capacity(20);
-                children.push(Tag::String(JavaString(units)));
+                children.push(Tag::String(JavaString::from(units)));
                 children.push(Tag::ByteArray(bytes));
                 inner.insert(
                     JavaString::from(j.to_string().as_str()),

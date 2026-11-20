@@ -27,8 +27,8 @@ pub fn borrow(value: &Tag) -> Result<Cow<'_, Compound>, String> {
 }
 
 fn flattened(text: &JavaString) -> Result<Compound, String> {
-    let (value, used) = parse_snbt_utf16(&text.0).map_err(|error| error.to_string())?;
-    if !text.0[used..]
+    let (value, used) = parse_snbt_utf16(text.units()).map_err(|error| error.to_string())?;
+    if !text.units()[used..]
         .iter()
         .copied()
         .all(|unit| snbt_whitespace(u32::from(unit)))

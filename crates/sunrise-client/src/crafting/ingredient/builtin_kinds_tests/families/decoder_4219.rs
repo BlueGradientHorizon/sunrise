@@ -59,7 +59,7 @@ fn llama_variant_recipe_codec_preserves_names_defaults_removal_and_strictness() 
         for value in [
             Tag::String(different.into()),
             Tag::Int(0),
-            Tag::String(sunrise_core::nbt::JavaString(vec![0xd800])),
+            Tag::String(sunrise_core::nbt::JavaString::from(vec![0xd800])),
         ] {
             egg.data_mut()
                 .set_other("minecraft:llama/variant", Some(value));

@@ -111,7 +111,9 @@ fn tropical_fish_pattern_recipe_codec_matches_exact_names_without_candidate_allo
             for value in [
                 Tag::String(different.into()),
                 Tag::Int(if name == "kob" { 0 } else { 1 }),
-                Tag::String(sunrise_core::nbt::JavaString(vec![114, 101, 100, 0xd800])),
+                Tag::String(sunrise_core::nbt::JavaString::from(vec![
+                    114, 101, 100, 0xd800,
+                ])),
             ] {
                 stack
                     .data_mut()
@@ -295,7 +297,7 @@ fn rollup_rejection_and_absence_matrix_4221() {
         Tag::End,
         Tag::Byte(0),
         Tag::List(vec![]),
-        Tag::String(sunrise_core::nbt::JavaString(vec![0xd800])),
+        Tag::String(sunrise_core::nbt::JavaString::from(vec![0xd800])),
         Tag::String("unknown".into()),
     ] {
         stack

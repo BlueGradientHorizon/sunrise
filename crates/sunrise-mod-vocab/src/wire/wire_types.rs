@@ -459,10 +459,10 @@ impl Wire for sunrise_core::nbt::JavaString {
     layout_fields!("units" => Vec<u16>);
     const MIN: usize = <Vec<u16> as Wire>::MIN;
     fn put(&self, out: &mut Writer) {
-        out.put_u16s(&self.0);
+        out.put_u16s(self.units());
     }
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
-        input.nested(|input| input.take_u16s().map(Self))
+        input.nested(|input| input.take_u16s().map(Self::from))
     }
 }
 
@@ -862,15 +862,15 @@ mod java_string_tests {
             let mut expected = Writer::new();
             expected.put(&units);
             let mut got = Writer::new();
-            got.put(&JavaString(units.clone()));
+            got.put(&JavaString::from(units.clone()));
             assert_eq!(got.bytes(), expected.bytes());
             let key: JavaString = Reader::decode(expected.bytes()).unwrap();
-            assert_eq!(key.0, units);
+            assert_eq!(key.units(), units);
             assert_eq!(Reader::decode::<Vec<u16>>(got.bytes()).unwrap(), units);
             for end in 0..expected.bytes().len() {
                 let cut = &expected.bytes()[..end];
                 assert_eq!(
-                    Reader::decode::<JavaString>(cut).map(|k| k.0),
+                    Reader::decode::<JavaString>(cut).map(|k| k.units()),
                     Reader::decode::<Vec<u16>>(cut)
                 );
             }
@@ -882,16 +882,16 @@ mod java_string_tests {
         let mut huge = Writer::new();
         huge.put(&u32::MAX);
         assert_eq!(
-            Reader::decode::<JavaString>(huge.bytes()).map(|k| k.0),
+            Reader::decode::<JavaString>(huge.bytes()).map(|k| k.units()),
             Reader::decode::<Vec<u16>>(huge.bytes())
         );
-        let key = JavaString(vec![7; 10]);
+        let key = JavaString::from(vec![7; 10]);
         for limit in 0..30 {
             let (mut a, mut b) = (Writer::new(), Writer::new());
             a.limit(limit);
             b.limit(limit);
             a.put(&key);
-            b.put(&key.0);
+            b.put(key.units());
             assert_eq!(a.error(), b.error(), "limit {limit}");
             if a.error().is_none() {
                 assert_eq!(a.bytes(), b.bytes());

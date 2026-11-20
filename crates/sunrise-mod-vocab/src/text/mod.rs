@@ -1310,7 +1310,7 @@ mod tests {
             ("number", Tag::Float(f32::NAN.to_bits())),
             (
                 "string",
-                Tag::String(sunrise_core::nbt::JavaString(vec![0xd800])),
+                Tag::String(sunrise_core::nbt::JavaString::from(vec![0xd800])),
             ),
         ]);
         assert_eq!(
