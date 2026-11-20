@@ -141,7 +141,6 @@
   "How fast the right stick turns the view.": "แท่งขวาหมุนมุมมองเร็วแค่ไหน",
   "How fast the stick moves the crosshair in inventories.": "แท่งอนาล็อกเลื่อนศูนย์เล็งในคลังเร็วแค่ไหน",
   "How frames reach the screen while VSync is off.": "วิธีที่เฟรมเข้าถึงหน้าจอในขณะที่ VSync ปิดอยู่",
-  "How frames reach the screen, and the performance overlay.": "วิธีที่เฟรมเข้าถึงหน้าจอ และการแสดงภาพซ้อนทับ",
   "How long a held direction takes between repeats.": "ทิศที่กดค้างใช้เวลานานแค่ไหนระหว่างการทำซ้ำ",
   "How long a held direction waits before it repeats.": "ทิศที่กดค้างรอนานแค่ไหนก่อนทำซ้ำ",
   "How many particles effects spawn.": "จำนวนอนุภาคที่ส่งผลต่อการวางไข่",

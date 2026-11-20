@@ -11,6 +11,12 @@
     nightly.py prune-builds [--days 7]   deletes the nightly/build-<date>-<n> branches older than that, but the
                                    newest and any a published nightly points to (Ludovic, 2026-10-27)
     nightly.py keep-source <sha> <date>  tags the nightly's commit nightly-source/<date>-<short>, for good
+    nightly.py report-musl-failure <kind> <step>  files a bug for the failed manual-download job, deduped by step
+    nightly.py release-identity <tag> <sha> <sums>  the id of the release publish just made: its tag names <sha> and
+                                   its SHA256SUMS holds the bytes of <sums>
+    nightly.py attach <id> <tag> <sha> <file>...  uploads the files, in order, to release <id> while it is still <tag>
+                                   at <sha>; a rerun keeps a file already there with the same bytes and refuses one
+                                   with other bytes
     nightly.py sdk-archives        the assets the SDK's packing legs make (tools/prebuilt_game.py gather), one per line
     nightly.py sdk-assets          every asset a complete sdk-<sha> release holds: those, sdk.json and the signed sums
     nightly.py sdk-index <sha> <out>     writes sdk-<sha>'s sdk.json to <out>, checked against its SHA256SUMS
@@ -44,6 +50,8 @@ import re
 import subprocess
 import sys
 import tempfile
+import urllib.parse
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -58,6 +66,7 @@ else:  # run as tools/ci/nightly.py: its folder is on the path
 DATED = re.compile(r"^nightly-(\d{4}-\d{2}-\d{2})$")
 TITLE_DATE = re.compile(r"Nightly (\d{4}-\d{2}-\d{2})")
 SOURCE_TAG = "nightly-source/"
+MUSL_NOTE = "The optional musl Linux archive follows separately if its build, signing and upload succeed."
 # Load from the trusted workflow checkout before pick() switches to a possibly older green tree.
 SUNRISE_PLAYERS = Path(__file__).with_name("nightly-players.md").read_text().strip()
 
@@ -117,7 +126,7 @@ def notes(today: str, chosen: Ref, main: Ref, picked: list[dict], left_out: list
     fork = train.REPO == "sunrise-org/sunrise"
     parts = [SUNRISE_PLAYERS if fork else train.PLAYERS,
              f"Nightly {today} · {chosen.sha[:7]}: {built}, built from `{chosen.name}` ({chosen.sha}).",
-             source_line(today, chosen.sha)]
+             source_line(today, chosen.sha), MUSL_NOTE]
     if not fork:
         parts.append(PLAYERS)
     if not shown and not picked:
@@ -364,7 +373,8 @@ def green_base(repo: str, issue: str) -> Ref:
     """NIGHTLY_BASE, else a green main commit (the dyna-checks gate on Sunrise, the green daily tag elsewhere)."""
     explicit = os.environ.get("NIGHTLY_BASE", "").strip()
     if repo == "sunrise-org/sunrise":
-        sha = train.channel_head("nightly", explicit, os.environ.get("NIGHTLY_EXCEPTION", "").strip())
+        sha = train.channel_head("nightly", explicit, os.environ.get("NIGHTLY_EXCEPTION", "").strip(),
+                                 os.environ.get("NIGHTLY_DAILY_RUN", "").strip())
     else:
         sha = explicit or train.daily_green_commit()
         if not sha:
@@ -375,7 +385,14 @@ def green_base(repo: str, issue: str) -> Ref:
     return Ref("main", sha, dt.datetime.fromisoformat(git("show", "-s", "--format=%cI", sha)))
 
 
+def require_ref(kind: str) -> None:
+    """A real run publishes `kind` only from a ref that may (release_train.PUBLISHES); a dry run from any."""
+    if os.environ.get("DRY_RUN") != "true":
+        train.require_ref(os.environ.get("GITHUB_REF", ""), kind)
+
+
 def pick(force: bool) -> None:
+    require_ref("nightly")
     refs = ["+refs/heads/main:refs/remotes/origin/main"]
     # A new repository has no Nightly yet. Only fetch the tag when the remote advertises it;
     # main's fetch and every network error still fail normally.
@@ -413,6 +430,7 @@ def pick_snapshot() -> None:
     (checked again here, so a hand dispatch can't skip it), with its SDK published, built alone: no picked pull
     requests, no build branch, no nightly-state record, no daily cap. Unchanged since the same day's snapshot of the
     same commit, it is skipped (a tag is never replaced). It is published as snapshot-<date>-<short>, its own tag and version."""
+    require_ref("snapshot")
     git("fetch", "--quiet", "origin", "+refs/heads/main:refs/remotes/origin/main")
     repo, dry_run = os.environ.get("GITHUB_REPOSITORY", ""), os.environ.get("DRY_RUN") == "true"
     sha = train.channel_head("snapshot", os.environ.get("NIGHTLY_BASE", "").strip())
@@ -429,10 +447,105 @@ def pick_snapshot() -> None:
     with open("nightly-notes.md", "w") as f:
         f.write(f"Snapshot {today} · {sha[:7]}: main at {sha}, built to test it after merge. Not a Nightly: no "
                 "launcher offers or updates to it; a developer installs it with "
-                f"`sunrise-launcher install {tag}`. Its SDK is the release sdk-{sha}.\n\n{train.DISCLAIMER}\n")
+                f"`sunrise-launcher install {tag}`. Its SDK is the release sdk-{sha}.\n\n{MUSL_NOTE}\n\n{train.DISCLAIMER}\n")
     output(build=str(build).lower(), sha=sha, short=sha[:7], source="main", date=today, version=f"snapshot-{today}",
            nightly=f"{today} {sha[:7]}", source_tag="", tag=tag, sdk=str(sdk).lower())
     print(f"{'build' if build else f'skip ({tag} is already published)'}: {tag} {sha}")
+
+
+def pick_stable() -> None:
+    """A stable release (docs/release-flow.md "Release branches"): NIGHTLY_BASE, the full SHA approved in the
+    release-candidate check, which must be the release branch's head with a real daily run that passed every leg on
+    it (release_train.release_head), with its SDK published first, built alone and published as
+    `<target>-<RELEASE_VERSION>`, which a real run must name (26.3-0.1.0 first; a dry run defaults to the next patch).
+    RELEASES_PAUSED and an open release-blocker hold it, as they hold the Nightly; a dry run only warns, and takes any
+    NIGHTLY_BASE while the branch does not exist yet. The publish job checks it all again (reserve_stable_tag)."""
+    require_ref("stable")
+    git("fetch", "--quiet", "origin", "+refs/heads/main:refs/remotes/origin/main")
+    repo, dry_run = os.environ.get("GITHUB_REPOSITORY", ""), os.environ.get("DRY_RUN") == "true"
+    held = (["RELEASES_PAUSED is set"] if os.environ.get("RELEASES_PAUSED") == "1" else []) + [
+        f"release-blocker #{number}" for number in train.open_blockers()]
+    if held:
+        if not dry_run:
+            stop(repo, "", f"the release stopped: held by {', '.join(held)}.")
+        print(f"::warning::held by {', '.join(held)}: a real release would stop here")
+    sha = train.release_head(os.environ.get("NIGHTLY_BASE", "").strip(), dry_run)
+    sdk = repo != "sunrise-org/sunrise" or sdk_ready(sha)
+    if not sdk:
+        if not dry_run:
+            stop(repo, "", f"the release stopped: {sha} has no complete published sdk-{sha}; a release is published "
+                           "only after its SDK, on the same commit.")
+        print(f"::warning::{sha} has no published SDK: a real release of it would stop here; this dry run carries no "
+              "sdk.json")
+    version = os.environ.get("RELEASE_VERSION", "").strip()
+    if not dry_run and not version:
+        stop(repo, "", "the release stopped: a real stable release names its version (`release_version`, 0.1.0 first), "
+                       "as approved in the release-candidate check.")
+    tags = remote_tags()
+    wanted = f"{train.TARGET}-{version}"
+    own = wanted if version and tags.get(wanted) == sha else ""
+    tag = train.next_stable_tag(tags, version=version, own=own)
+    older = [t for t in tags if t != tag and (found := train.stable_version(t)) and found[0] == train.TARGET]
+    previous = max(older, key=train.stable_key, default=None)
+    today = dt.datetime.now(dt.timezone.utc).date().isoformat()
+    parts = [f"Sunrise {tag}: the stable release for Minecraft {train.TARGET}, commit {sha} of "
+             f"`{train.RELEASE_BRANCH}`. sunrise-source.tar.gz is its tree; native mods built for it pin that commit, "
+             f"and its SDK is the release sdk-{sha}.", MUSL_NOTE]
+    if previous:
+        git("fetch", "--quiet", "origin", f"+refs/tags/{previous}:refs/tags/{previous}")
+        picked = git("log", "--reverse", "--format=- %s", f"refs/tags/{previous}..{sha}")
+        parts.append(f"### Since {previous}\n" + (picked or "No change since then."))
+    else:
+        parts.append(f"The first stable release for Minecraft {train.TARGET}: what the Nightly of this commit holds.")
+    if issues := train.known_issues():
+        parts.append("### Known issues\n" + "\n".join(issues))
+    parts.append(train.DISCLAIMER)
+    with open("nightly-notes.md", "w") as f:
+        f.write("\n\n".join(parts) + "\n")
+    output(build="true", sha=sha, short=sha[:7], source=train.RELEASE_BRANCH, date=today, version=tag, nightly="",
+           source_tag="", tag=tag, sdk=str(sdk).lower())
+    print(f"build: {tag} {sha}")
+
+
+def remote_tags() -> dict[str, str]:
+    """Every tag on origin and the commit it names (annotated tags peeled)."""
+    refs = {}
+    for line in git("ls-remote", "--tags", "origin").splitlines():
+        sha, name = line.split("\t")
+        name = name.removeprefix("refs/tags/")
+        if name.endswith("^{}"):
+            refs[name[:-3]] = sha
+        else:
+            refs.setdefault(name, sha)
+    return refs
+
+
+def reserve_stable_tag(sha: str, tag: str) -> None:
+    """Right before a stable release is created, a publish-only retry too: the approved commit is still the release
+    branch's head with its passed daily run (release_head), `tag` still comes next on its target, and the tag is
+    created at that commit in one write, which GitHub refuses when the tag exists. A tag found at another commit is
+    refused, never reused; one already at this commit (an earlier attempt's) is kept."""
+    train.require_ref(os.environ.get("GITHUB_REF", ""), "stable")
+    found = train.stable_version(tag)
+    if not found or found[0] != train.TARGET:
+        raise SystemExit(f"::error::refused: {tag} is not a stable tag on {train.TARGET}")
+    if train.release_head(sha) != sha:
+        raise SystemExit(f"::error::refused: {sha} is no longer the approved release head")
+    tags = remote_tags()
+    there = tags.get(tag)
+    if there and there != sha:
+        raise SystemExit(f"::error::refused: the tag {tag} already names {there}, not {sha}")
+    train.next_stable_tag(tags, version=tag.split("-", 1)[1], own=tag if there else "")
+    if there:
+        print(f"`{tag}` already names {sha[:9]}")
+        return
+    created = subprocess.run(["gh", "api", f"repos/{os.environ['GITHUB_REPOSITORY']}/git/refs", "-f",
+                              f"ref=refs/tags/{tag}", "-f", f"sha={sha}"], capture_output=True, text=True)
+    if created.returncode:
+        # Made by someone else since the lookup: only the same commit is acceptable.
+        if train.origin_commit(f"refs/tags/{tag}") != sha:
+            raise SystemExit(f"::error::refused: could not create {tag} at {sha}: {created.stderr.strip()}")
+    print(f"tagged {sha[:9]} `{tag}`")
 
 
 def rotate() -> None:
@@ -541,14 +654,117 @@ def keep_source(sha: str, today: str) -> None:
     print(f"tagged {sha[:7]} `{tag}`")
 
 
+def report_musl_failure(kind: str, step: str) -> None:
+    """One open bug per channel and failure step, like the daily's deduped leg failures."""
+    title = f"{kind.capitalize()}: musl {step} failed"
+    repo = os.environ["GITHUB_REPOSITORY"]
+    run = f"{os.environ['GITHUB_SERVER_URL']}/{repo}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+    print(f"::warning::{title}: {run}")
+    if os.environ.get("DRY_RUN") != "false" or not train.publishes(os.environ.get("GITHUB_REF", ""), kind):
+        return
+    pages = train.gh_json("api", "--paginate", f"repos/{repo}/issues?state=open&labels=bug&per_page=100")
+    if any(issue["title"] == title and "pull_request" not in issue for page in pages for issue in page):
+        return
+    body = ("> 🤖 Filed by Aria's agent swarm, Dyna, not by Aria.\n\n"
+            f"The optional musl Linux `{step}` step failed on the {kind} channel. "
+            f"See [the workflow run]({run}/attempts/{os.environ['GITHUB_RUN_ATTEMPT']}). "
+            "The regular release does not depend on this step.")
+    gh("issue", "create", "--repo", repo, "--label", "bug", "--title", title, "--body", body)
+
+
+def file_sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def download_asset(repo: str, asset_id: int) -> bytes:
+    return subprocess.run(["gh", "api", "-H", "Accept: application/octet-stream",
+                           f"repos/{repo}/releases/assets/{asset_id}"], check=True, capture_output=True).stdout
+
+
+def asset_sha256(repo: str, asset: dict) -> str:
+    """GitHub's own digest of an uploaded asset, or the hash of its downloaded bytes where it gives none."""
+    digest = asset.get("digest") or ""
+    if digest.startswith("sha256:"):
+        return digest.removeprefix("sha256:")
+    return hashlib.sha256(download_asset(repo, asset["id"])).hexdigest()
+
+
+def bound_release(repo: str, release_id: str, tag: str, sha: str) -> dict:
+    """Release `release_id`, refused unless it is still `tag` and that tag still names `sha`. The check holds when it
+    is made, not after: writes go to the release by id, so a tag moved later can not redirect them."""
+    release = json.loads(gh("api", f"repos/{repo}/releases/{release_id}"))
+    commit = gh("api", f"repos/{repo}/git/ref/tags/{tag}", "--jq", ".object.sha")
+    if release["tag_name"] != tag or commit != sha:
+        sys.exit(f"Release {release_id} is no longer {tag} at {sha} (it is {release['tag_name']}, "
+                 f"and {tag} names {commit or 'nothing'}); nothing was attached")
+    return release
+
+
+def release_identity(tag: str, sha: str, sums: Path) -> None:
+    repo = os.environ["GITHUB_REPOSITORY"]
+    release_id = str(json.loads(gh("api", f"repos/{repo}/releases/tags/{tag}"))["id"])
+    release = bound_release(repo, release_id, tag, sha)
+    published = [asset for asset in release["assets"] if asset["name"] == sums.name]
+    if not published or asset_sha256(repo, published[0]) != file_sha256(sums):
+        sys.exit(f"Release {release_id} ({tag}) does not hold this run's {sums.name}")
+    output(id=release_id)
+
+
+def upload_asset(upload_url: str, path: Path) -> dict:
+    """One POST to the release's own upload address, which names the release by id."""
+    request = urllib.request.Request(f"{upload_url}?name={urllib.parse.quote(path.name)}", data=path.read_bytes(),
+                                     method="POST", headers={"Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+                                                             "Accept": "application/vnd.github+json",
+                                                             "Content-Type": "application/octet-stream"})
+    with urllib.request.urlopen(request, timeout=600) as response:
+        return json.load(response)
+
+
+def attach(release_id: str, tag: str, sha: str, files: list[Path]) -> None:
+    """Uploads `files` in order. GitHub has no all-or-nothing upload of several assets, so a failure can leave the
+    first ones attached: a rerun keeps each already there with the same bytes, refuses one with other bytes without
+    replacing it, and deletes only an empty `starter` placeholder, an upload GitHub never began storing. Any other
+    asset of that name that is not `uploaded` is refused and left in place."""
+    repo = os.environ["GITHUB_REPOSITORY"]
+    release = bound_release(repo, release_id, tag, sha)
+    upload_url = release["upload_url"].split("{", 1)[0]
+    existing = {asset["name"]: asset for asset in release["assets"]}
+    for path in files:
+        asset = existing.get(path.name)
+        if asset and asset["state"] == "uploaded":
+            if asset_sha256(repo, asset) != file_sha256(path):
+                sys.exit(f"{path.name} is already on release {release_id} with other bytes; left as it is")
+            print(f"{path.name}: already attached with these bytes")
+            continue
+        if asset and (asset["state"] != "starter" or asset["size"]):
+            sys.exit(f"{path.name} is on release {release_id} as {asset['state']} with {asset['size']} bytes; "
+                     "left as it is")
+        if asset:
+            print(f"{path.name}: removing an empty upload placeholder")
+            gh("api", "--method", "DELETE", f"repos/{repo}/releases/assets/{asset['id']}")
+        uploaded = upload_asset(upload_url, path)
+        if uploaded["state"] != "uploaded" or uploaded["size"] != path.stat().st_size:
+            sys.exit(f"{path.name}: the upload ended {uploaded['state']} with {uploaded['size']} bytes")
+        print(f"{path.name}: attached")
+    # Read the release back by id: every file is there, complete, with these bytes.
+    final = {asset["name"]: asset for asset in bound_release(repo, release_id, tag, sha)["assets"]}
+    wrong = [path.name for path in files if path.name not in final or final[path.name]["state"] != "uploaded"
+             or asset_sha256(repo, final[path.name]) != file_sha256(path)]
+    if wrong:
+        sys.exit(f"Release {release_id} does not hold these bytes for: {', '.join(wrong)}")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     picker = sub.add_parser("pick")
     picker.add_argument("--force", action="store_true")
-    picker.add_argument("--kind", choices=["nightly", "snapshot"], default="nightly")
+    picker.add_argument("--kind", choices=["nightly", "snapshot", "stable"], default="nightly")
     sub.add_parser("rotate")
     sub.add_parser("require-sdk").add_argument("sha")
+    reserve = sub.add_parser("reserve-stable-tag")
+    reserve.add_argument("sha")
+    reserve.add_argument("tag")
     sub.add_parser("sdk-archives")
     sub.add_parser("sdk-assets")
     index = sub.add_parser("sdk-index")
@@ -563,14 +779,30 @@ def main() -> None:
     keep = sub.add_parser("keep-source")
     keep.add_argument("sha")
     keep.add_argument("date")
+    musl = sub.add_parser("report-musl-failure")
+    musl.add_argument("kind", choices=["nightly", "snapshot", "stable"])
+    musl.add_argument("step", choices=["build", "sign", "verify", "attach", "sign or attach"])
+    identity = sub.add_parser("release-identity")
+    identity.add_argument("tag")
+    identity.add_argument("sha")
+    identity.add_argument("sums", type=Path)
+    attaching = sub.add_parser("attach")
+    attaching.add_argument("release_id")
+    attaching.add_argument("tag")
+    attaching.add_argument("sha")
+    attaching.add_argument("files", type=Path, nargs="+")
     args = ap.parse_args()
     if args.cmd == "pick":
         if args.kind == "snapshot":
             pick_snapshot()
+        elif args.kind == "stable":
+            pick_stable()
         else:
             pick(args.force)
     elif args.cmd == "require-sdk":
         require_sdk(args.sha)
+    elif args.cmd == "reserve-stable-tag":
+        reserve_stable_tag(args.sha, args.tag)
     elif args.cmd == "sdk-archives":
         print("\n".join(SDK_ARCHIVES))
     elif args.cmd == "sdk-assets":
@@ -589,6 +821,12 @@ def main() -> None:
         prune_snapshots(args.days)
     elif args.cmd == "keep-source":
         keep_source(args.sha, args.date)
+    elif args.cmd == "report-musl-failure":
+        report_musl_failure(args.kind, args.step)
+    elif args.cmd == "release-identity":
+        release_identity(args.tag, args.sha, args.sums)
+    elif args.cmd == "attach":
+        attach(args.release_id, args.tag, args.sha, args.files)
     else:
         prune(args.days)
 

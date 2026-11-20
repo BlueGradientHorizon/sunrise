@@ -878,15 +878,18 @@ pub(super) fn load_resources_for_mods(
     let prepared_at = Instant::now();
     let (game_cpu, renderer_cpu) = if menu {
         let (game_cpu, renderer_cpu) = std::thread::scope(|scope| {
-            let textures = Step::spawn(scope, parallel, "textures", || {
-                startup::time("handoff.renderer_textures", || {
-                    prepare_renderer_textures(&pack)
+            // A server read no sprite pixels (`reload_for_server`), so it has no window textures to mip.
+            let textures = (!headless).then(|| {
+                Step::spawn(scope, parallel, "textures", || {
+                    startup::time("handoff.renderer_textures", || {
+                        prepare_renderer_textures(&pack)
+                    })
                 })
             });
             let game_cpu = startup::time("handoff.game_cpu", || {
                 GameCpuResources::load(&resolved, entity_models.as_deref())
             });
-            (game_cpu, textures.join())
+            (game_cpu, textures.map(Step::join))
         });
         let game_cpu = match game_cpu {
             Ok(game_cpu) => game_cpu,
@@ -901,7 +904,7 @@ pub(super) fn load_resources_for_mods(
             "Sunrise: handoff CPU resources prepared on worker in {} ms",
             prepared_at.elapsed().as_millis()
         );
-        (Some(game_cpu), Some(renderer_cpu))
+        (Some(game_cpu), renderer_cpu)
     } else {
         (None, None)
     };

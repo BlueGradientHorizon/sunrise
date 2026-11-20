@@ -599,6 +599,10 @@ impl StateModels {
     pub fn standalone_slots(&self) -> impl Iterator<Item = u32> + '_ {
         self.standalone.values().copied()
     }
+    /// How many models the baked store holds: the first slot past them is free for a caller's own.
+    pub fn model_count(&self) -> u32 {
+        self.baked.len() as u32
+    }
     /// Geometry in this catalog's existing baked store.
     pub fn model_by_slot(&self, slot: u32) -> Option<&BakedModel> {
         self.baked.get(slot as usize).map(|(_, model)| model)
@@ -893,6 +897,7 @@ mod tests {
             &registry,
             &mut sprites,
             |_, _| Some(base),
+            |_| false,
         );
         assert!(!connected.is_empty());
         crate::native_emissive::load(root.source(), &mut sprites);

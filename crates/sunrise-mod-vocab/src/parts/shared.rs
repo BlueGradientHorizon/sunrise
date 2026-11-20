@@ -65,7 +65,7 @@ pub struct Parts {
     /// Block entity parts by block, for the hooks asked by block (`block_entity`).
     pub(crate) block_entities: HashMap<Box<str>, Vec<Attached<dyn BlockEntityPart>>>,
     /// Block entity parts by block entity type, for the hooks asked by the entity
-    /// (`block_entity_tick`, `menu_button`): its type id need not be its block's id.
+    /// (`block_entity_tick`): its type id need not be its block's id.
     pub(crate) block_entity_kinds: HashMap<Box<str>, Vec<Attached<dyn BlockEntityPart>>>,
     pub(crate) items: HashMap<Box<str>, Vec<Attached<dyn ItemPart>>>,
     pub(crate) menus: HashMap<Box<str>, Vec<Attached<dyn MenuPart>>>,
@@ -649,7 +649,11 @@ mod lookup_context_tests {
     #[test]
     fn unsubscribed_scoped_dispatch_never_looks_up_parts() {
         struct Level;
-        impl crate::LevelHost for Level {}
+        impl crate::LevelHost for Level {
+            fn block_entity_data(&self, _: crate::BlockEntityRef) -> Option<crate::Compound> {
+                None
+            }
+        }
         struct Hook;
         #[mod_api::__subscriptions]
         impl crate::Hooks for Hook {}
