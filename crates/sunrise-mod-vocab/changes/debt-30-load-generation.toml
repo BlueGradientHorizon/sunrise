@@ -1,5 +1,4 @@
 ids = [
-    "trait:DataLoadContext",
     "method:DataLoadContext::registry",
     "method:DataLoadContext::setting",
     "method:DataLoadContext::mods",
@@ -8,18 +7,15 @@ ids = [
     "method:LoadReader::registry",
     "method:LoadReader::setting",
     "method:LoadReader::fluid_tags",
-    "trait:LoopContext",
     "method:LoopContext::registry",
     "method:LoopContext::setting",
     "method:LoopContext::mods",
     "trait:LoopReader",
     "method:LoopReader::registry",
     "method:LoopReader::setting",
-    "trait:WorldgenHost",
     "method:WorldgenHost::registry",
     "method:WorldgenHost::setting",
     "method:WorldgenHost::mods",
-    "trait:ChunkDiskHost",
     "method:ChunkDiskHost::registry",
 ]
 why = "Load, loop and worldgen callbacks can read frozen metadata without taking ownership of it. Registry names keep ID order and packages keep dispatch order. Chunk disk callbacks borrow registry names from the generation retained by their worker. Fluid-tag reads now distinguish a load that has no recipe overlay from one whose recipe overlay has no fluid tags."

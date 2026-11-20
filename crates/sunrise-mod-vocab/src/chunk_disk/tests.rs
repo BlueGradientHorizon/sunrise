@@ -85,7 +85,8 @@ fn with_listener(mode: u8, apply: impl FnOnce(Arc<AtomicUsize>)) {
 #[test]
 fn host_borrows_the_captured_context() {
     let captured = context(ChunkDiskPhase::Save);
-    let resources = OwningWorldgen::new(&|_| None, &|_, _| None, &|_, _, _| None);
+    let reader = TestReader::default();
+    let resources = OwningWorldgen::new(&reader, &|_, _, _| None);
     let host: &dyn ChunkDiskHost = &OwningChunkDisk::new(&captured, &resources);
     assert!(std::ptr::eq(host.job(), &captured));
 }
