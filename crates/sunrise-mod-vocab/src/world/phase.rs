@@ -975,11 +975,12 @@ impl LoopContext for OwningLoop<'_> {
 /// }
 /// ```
 pub trait WorldgenHost {
-    /// Registry names in ID order, from the server's resource generation.
-    fn registry(&self, name: &str) -> Option<Arc<[String]>>;
+    /// Borrows registry names in ID order from this resource generation, or `None`
+    /// if the registry is unavailable.
+    fn registry(&self, name: &str) -> Option<&[String]>;
 
-    /// A loaded mod's setting captured when the server built this view, without file I/O.
-    fn setting(&self, mod_id: &str, key: &str) -> Option<String>;
+    /// Borrows a setting captured for this generation, without file I/O.
+    fn setting(&self, mod_id: &str, key: &str) -> Option<&str>;
 
     /// Borrows the loaded-mod inventory in dispatch order.
     fn mods(&self) -> &LoadedMods;
@@ -994,14 +995,24 @@ pub trait WorldgenHost {
     ) -> Option<crate::BlockState>;
 }
 
+// no wire: a process-local borrow of frozen worldgen metadata.
+/// Immutable world-generation reads supplied by the owning engine boundary.
+// hidden: engine plumbing, re-exported through __private for the game.
+#[doc(hidden)]
+pub trait WorldgenReader: Sync {
+    /// Borrows registry names in ID order.
+    fn registry(&self, name: &str) -> Option<&[String]>;
+    /// Borrows a captured setting, without file I/O.
+    fn setting(&self, mod_id: &str, key: &str) -> Option<&str>;
+}
+
 // no wire: borrowed phase-scoped host readers; authority stays with their owning thread.
 /// The server's world generation, as a [`WorldgenHost`].
 // hidden: the game's side of the context, not part of the mod surface
 #[doc(hidden)]
 // exhaustive: its fields are private; only the game builds it
 pub struct OwningWorldgen<'a> {
-    registry: &'a dyn Fn(&str) -> Option<Arc<[String]>>,
-    setting: &'a dyn Fn(&str, &str) -> Option<String>,
+    source: &'a dyn WorldgenReader,
     state_with_property: &'a StateWithProperty<'a>,
     mods: LoadedMods,
 }
@@ -1011,16 +1022,13 @@ type StateWithProperty<'a> =
     dyn Fn(crate::BlockState, &str, &str) -> Option<crate::BlockState> + 'a;
 
 impl<'a> OwningWorldgen<'a> {
-    /// The server's registries, mod settings and block states, read through the game's
-    /// worldgen context.
+    /// Borrow the owning engine's frozen metadata reader and block-state query.
     pub fn new(
-        registry: &'a dyn Fn(&str) -> Option<Arc<[String]>>,
-        setting: &'a dyn Fn(&str, &str) -> Option<String>,
+        source: &'a dyn WorldgenReader,
         state_with_property: &'a StateWithProperty<'a>,
     ) -> Self {
         Self {
-            registry,
-            setting,
+            source,
             state_with_property,
             mods: LoadedMods::new(),
         }
@@ -1028,11 +1036,11 @@ impl<'a> OwningWorldgen<'a> {
 }
 
 impl WorldgenHost for OwningWorldgen<'_> {
-    fn registry(&self, name: &str) -> Option<Arc<[String]>> {
-        (self.registry)(name)
+    fn registry(&self, name: &str) -> Option<&[String]> {
+        self.source.registry(name)
     }
-    fn setting(&self, mod_id: &str, key: &str) -> Option<String> {
-        (self.setting)(mod_id, key)
+    fn setting(&self, mod_id: &str, key: &str) -> Option<&str> {
+        self.source.setting(mod_id, key)
     }
     fn mods(&self) -> &LoadedMods {
         &self.mods

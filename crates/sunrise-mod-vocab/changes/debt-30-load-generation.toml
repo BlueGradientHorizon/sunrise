@@ -12,6 +12,9 @@ ids = [
     "method:LoopReader::registry",
     "method:LoopReader::setting",
     "method:WorldgenHost::mods",
+    "method:WorldgenHost::registry",
+    "method:WorldgenHost::setting",
+    "method:ChunkDiskHost::registry",
 ]
-why = "Load and loop contexts lend frozen registry names and settings instead of cloning them per read. Load, loop and world-generation contexts lend the same loaded-mod inventory in dispatch order."
-migrate = "Replace load and loop context.registry(name).as_deref() with context.registry(name) (Option<&[String]>), and context.setting(mod_id, key).as_deref() with context.setting(mod_id, key) (Option<&str>). Keep context.mods().ids(), .iter() and .get(id) as before; mods() on load, loop and world-generation contexts now returns &LoadedMods. To keep data past the context borrow, use registry(name).map(<[String]>::to_vec), setting(mod_id, key).map(str::to_owned), or LoadedMods::clone(context.mods()) respectively. LoadReader and LoopReader implementations must return slices and string references into their existing snapshot instead of cloned Arcs or Strings."
+why = "Load, loop and world-generation contexts lend frozen registry names and settings instead of cloning them per read, and lend the loaded-mod inventory in dispatch order. Chunk disk callbacks borrow registry names from the generation retained by their worker, not the current worldgen publication."
+migrate = "Replace load, loop, worldgen and chunk disk context.registry(name).as_deref() with context.registry(name) (Option<&[String]>). On load, loop and worldgen contexts, replace context.setting(mod_id, key).as_deref() with context.setting(mod_id, key) (Option<&str>); chunk disk's ConfigHost::setting still returns Option<String>. Keep context.mods().ids(), .iter() and .get(id) as before; mods() on load, loop and worldgen contexts now returns &LoadedMods. To keep data past the context borrow, use registry(name).map(<[String]>::to_vec), setting(mod_id, key).map(str::to_owned), or LoadedMods::clone(context.mods()) respectively. If a registry consumer still requires Arc<[String]>, use registry(name).map(Arc::<[String]>::from). LoadReader and LoopReader implementations must return slices and string references into their existing snapshot instead of cloned Arcs or Strings."

@@ -16,7 +16,8 @@ For example, capturing 7, writing 8 in the callback and later writing 9 in the
 live chunk produces disk value 8 without changing live value 9. The host's
 `job()` identifies the world epoch, dimension, coordinates, full/proto kind and
 phase. It grants no live chunk lookup, scheduling, packets or world writes.
-Registry and settings reads use the captured resource generation.
+`registry(name)` lends `Option<&[String]>` in registry ID order from the worker's captured
+generation; `ConfigHost::setting` still returns an owned `Option<String>` from that snapshot.
 
 A captured record caches its callback result. Disk encoding and pending reads
 reuse it; they cannot invoke the callback twice. A refusal keeps the original

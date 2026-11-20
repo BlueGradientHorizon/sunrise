@@ -89,13 +89,13 @@ game thread.
 
 ## Load contexts
 
-`DataLoadContext` and `LoopContext` lend frozen metadata for their resource generation:
-`registry(name)` returns `Option<&[String]>` in registry ID order, and `setting(mod_id, key)`
-returns `Option<&str>` without reading files. `None` means the registry or setting is unavailable,
-not that it is present and empty. `mods()` lends a `&LoadedMods` inventory in dispatch order,
-including on `WorldgenHost`. These references live as long as the context borrow; copy the data
-only if it must outlive the borrow. Use `DataLoadOrigin` to identify the load origin and
-`LoopSide` to identify the owning side.
+`DataLoadContext`, `LoopContext` and `WorldgenHost` lend frozen metadata for their resource
+generation: `registry(name)` returns `Option<&[String]>` in registry ID order, and
+`setting(mod_id, key)` returns `Option<&str>` without reading files. `None` means the registry or
+setting is unavailable, not that it is present and empty. `mods()` lends a `&LoadedMods` inventory
+in dispatch order. These references live as long as the context borrow; copy the data only if it
+must outlive the borrow. Use `DataLoadOrigin` to identify the load origin and `LoopSide` to identify
+the owning side.
 
 In World, both client and server hosts expose `registry_entry(registry, id)`,
 `registry_entries(registry)` and `registry_entry_in_tag(&entry, tag)`. These read the

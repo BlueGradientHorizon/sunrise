@@ -8,7 +8,9 @@ not fire this hook. The callback uses `event.data.get(&KEY)` and
 For example, reading disk value 8 and setting 9 publishes 9 on success.
 
 The worker host supplies only the job identity and immutable resource reads.
-It has no live backend and is not a `ServerHost`.
+`registry(name)` lends `Option<&[String]>` in registry ID order from the worker's captured
+generation; `ConfigHost::setting` still returns an owned `Option<String>` from that snapshot.
+The host has no live backend and is not a `ServerHost`.
 Every typed value needs a persistence codec and must implement `Wire`.
 Unknown bounded attachment entries are preserved opaquely.
 

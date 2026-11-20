@@ -1,4 +1,4 @@
-//! Borrowed adapters for load and loop hooks shared by client-lib and gameplay.
+//! Borrowed adapters for load, loop and worldgen hooks shared by client-lib and gameplay.
 use std::sync::Arc;
 use sunrise_world::native_load_context as engine;
 
@@ -76,13 +76,25 @@ impl mod_api::LoopReader for LoopReader<'_> {
     }
 }
 
+/// Borrows a worldgen or disk worker's frozen resource generation.
+pub struct WorldgenReader<'a>(pub &'a engine::WorldgenContext);
+
+impl mod_api::__private::WorldgenReader for WorldgenReader<'_> {
+    fn registry(&self, name: &str) -> Option<&[String]> {
+        self.0.registry(name)
+    }
+    fn setting(&self, mod_id: &str, key: &str) -> Option<&str> {
+        self.0.setting(mod_id, key)
+    }
+}
+
 #[cfg(test)]
 mod recipe_properties_tests;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mod_api::{DataLoadContext, LoopContext};
+    use mod_api::{DataLoadContext, LoopContext, WorldgenHost};
 
     #[test]
     fn item_tags_distinguish_unavailable_empty_ordered_and_replaced_generations() {
@@ -219,6 +231,17 @@ mod tests {
                     context.mods().ids().collect::<Vec<_>>(),
                     ["second", "first"]
                 );
+                let worldgen = load
+                    .captured_loop_context(engine::LoopSide::Server)
+                    .worldgen_context();
+                let reader = WorldgenReader(&worldgen);
+                let host = mod_api::OwningWorldgen::new(&reader, &|_, _, _| None);
+                let context: &dyn WorldgenHost = &host;
+                let names = context.registry("item").unwrap();
+                assert_eq!(names, ["test:second", "test:first"]);
+                assert!(std::ptr::eq(names, load.registry("item").unwrap()));
+                assert_eq!(context.setting("active", "mode"), Some("captured"));
+
                 for (side, expected) in [
                     (engine::LoopSide::Client, mod_api::LoopSide::Client),
                     (engine::LoopSide::Server, mod_api::LoopSide::Server),

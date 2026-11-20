@@ -1,6 +1,5 @@
 //! Isolated attachment stores for chunk-worker disk callbacks.
 use crate::*;
-use std::sync::Arc;
 
 #[path = "chunk_disk/data.rs"]
 mod data;
@@ -80,8 +79,9 @@ pub struct ChunkDiskFailure {
 pub trait ChunkDiskHost: Host {
     /// Captured world, dimension, chunk, representation and phase.
     fn job(&self) -> ChunkDiskContextWire;
-    /// Immutable registry names in ID order.
-    fn registry(&self, name: &str) -> Option<Arc<[String]>>;
+    /// Borrows registry names in ID order from the worker's captured generation,
+    /// or returns `None` if the registry is unavailable.
+    fn registry(&self, name: &str) -> Option<&[String]>;
 }
 
 // no wire: a borrowed worker-only Host.
@@ -113,14 +113,14 @@ impl prelude::LevelsHost for OwningChunkDisk<'_> {
 }
 impl prelude::ConfigHost for OwningChunkDisk<'_> {
     fn setting(&self, mod_id: &str, key: &str) -> Option<String> {
-        self.resources.setting(mod_id, key)
+        self.resources.setting(mod_id, key).map(str::to_owned)
     }
 }
 impl ChunkDiskHost for OwningChunkDisk<'_> {
     fn job(&self) -> ChunkDiskContextWire {
         self.job.clone()
     }
-    fn registry(&self, name: &str) -> Option<Arc<[String]>> {
+    fn registry(&self, name: &str) -> Option<&[String]> {
         self.resources.registry(name)
     }
 }

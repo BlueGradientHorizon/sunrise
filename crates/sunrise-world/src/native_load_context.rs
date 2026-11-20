@@ -62,8 +62,8 @@ impl Snapshot {
         Self { inputs, settings }
     }
 
-    fn registry(&self, name: &str) -> Option<&Arc<[String]>> {
-        self.inputs.registries.get(name)
+    fn registry(&self, name: &str) -> Option<&[String]> {
+        self.inputs.registries.get(name).map(Arc::as_ref)
     }
 
     /// The fluid tags the inputs carry, each tag's fluids in the sources'
@@ -225,7 +225,7 @@ impl LoadContext {
 
     /// Names in registry ID order, from the load's registry snapshot.
     pub fn registry(&self, name: &str) -> Option<&[String]> {
-        self.snapshot.registry(name).map(Arc::as_ref)
+        self.snapshot.registry(name)
     }
 
     /// A loaded mod's setting captured at this load boundary, with no file I/O.
@@ -273,7 +273,7 @@ impl LoopContext {
 
     /// Names in registry ID order, from the registry snapshot it was built over.
     pub fn registry(&self, name: &str) -> Option<&[String]> {
-        self.snapshot.registry(name).map(Arc::as_ref)
+        self.snapshot.registry(name)
     }
 
     /// A loaded mod's setting captured when this context was built, with no file I/O.
@@ -651,13 +651,13 @@ pub struct WorldgenContext {
 
 impl WorldgenContext {
     /// Names in registry ID order, from the registry snapshot it was built over.
-    pub fn registry(&self, name: &str) -> Option<Arc<[String]>> {
-        self.snapshot.registry(name).cloned()
+    pub fn registry(&self, name: &str) -> Option<&[String]> {
+        self.snapshot.registry(name)
     }
 
     /// A loaded mod's setting captured when this context was built, with no file I/O.
-    pub fn setting(&self, mod_id: &str, key: &str) -> Option<String> {
-        self.snapshot.setting(mod_id, key).map(str::to_owned)
+    pub fn setting(&self, mod_id: &str, key: &str) -> Option<&str> {
+        self.snapshot.setting(mod_id, key)
     }
 }
 
@@ -806,10 +806,7 @@ mod tests {
         ));
         std::thread::scope(|scope| {
             scope.spawn(|| {
-                assert_eq!(
-                    worldgen.setting("reader", "value").as_deref(),
-                    Some("before")
-                );
+                assert_eq!(worldgen.setting("reader", "value"), Some("before"));
                 assert_eq!(worldgen.setting("reader", "invalid"), None);
             });
             scope.spawn(|| {
@@ -1177,11 +1174,8 @@ mod tests {
         let worldgen = load.worldgen_context(["active"]);
         fs::write(mod_dir.join("ground"), "moss").unwrap();
 
-        assert_eq!(
-            worldgen.registry("block").as_deref(),
-            Some(&["a:b".to_owned()][..])
-        );
-        assert_eq!(worldgen.setting("active", "ground").as_deref(), Some("mud"));
+        assert_eq!(worldgen.registry("block"), Some(&["a:b".to_owned()][..]));
+        assert_eq!(worldgen.setting("active", "ground"), Some("mud"));
         assert_eq!(worldgen.setting("inactive", "ground"), None);
         assert_eq!(load.setting("active", "ground"), Some("podzol"));
         fs::remove_dir_all(&root).unwrap();

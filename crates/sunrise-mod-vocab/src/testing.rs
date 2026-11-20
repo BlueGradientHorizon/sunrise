@@ -1037,5 +1037,15 @@ impl crate::LoopReader for TestReader {
 }
 
 #[cfg(test)]
+impl crate::__private::WorldgenReader for TestReader {
+    fn registry(&self, name: &str) -> Option<&[String]> {
+        self.registries.get(name).map(AsRef::as_ref)
+    }
+    fn setting(&self, _: &str, _: &str) -> Option<&str> {
+        None
+    }
+}
+
+#[cfg(test)]
 #[path = "testing/handle_level_tests.rs"]
 mod handle_level_tests;
