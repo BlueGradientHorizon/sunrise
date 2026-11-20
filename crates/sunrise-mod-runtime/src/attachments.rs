@@ -88,8 +88,7 @@ impl<'a> std::borrow::Borrow<dyn AttachmentKeyView + 'a> for (JavaString, JavaSt
     }
 }
 
-// no wire: owned by the lower runtime crate, which cannot depend on mod_api's derive;
-// mod_api supplies the explicit tagged Wire implementation, including bounded static text.
+// no wire: reports a local attachment operation's failure, not stored attachment data.
 /// An attachment operation could not be completed.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
@@ -139,7 +138,7 @@ pub fn attachment_compound(tag: Option<&Tag>) -> Result<Option<&Compound>, Attac
 /// A server holder in the host's current dimension.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
-// no wire: runtime-owned selector; mod_api supplies its explicit tagged Wire codec.
+// no wire: addresses storage relative to the current host.
 pub enum Holder {
     Entity(u32),
     Player(u128),
@@ -185,7 +184,7 @@ pub type AttachmentValue = Arc<dyn Any + Send + Sync>;
 
 /// How a policy-checked type declared its value: what saving, respawning and syncing do with it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-// no wire: runtime-owned policy; mod_api supplies its explicit field-wise Wire codec.
+// no wire: local store metadata; disk and sync records carry their own flags.
 pub struct AttachmentPolicy {
     pub copy_on_death: bool,
     pub sync: bool,
@@ -194,7 +193,7 @@ pub struct AttachmentPolicy {
 /// What comes with a stored value: its saved form (`None` for a type with no codec), its type's
 /// policy, and why it is stored.
 #[derive(Clone, Debug, PartialEq)]
-// no wire: runtime-owned saved form; mod_api supplies its explicit NBT-aware Wire codec.
+// no wire: describes a local store operation; the encoded compound is the saved value.
 pub struct AttachmentForm {
     pub encoded: Option<Compound>,
     pub policy: AttachmentPolicy,
@@ -204,7 +203,7 @@ pub struct AttachmentForm {
 /// Why a value is stored, which decides what else changes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-// no wire: runtime-owned write intent; mod_api supplies its explicit tagged Wire codec.
+// no wire: tells the local store how the value arrived.
 pub enum AttachmentWrite {
     /// A saved value just decoded: nothing else changes.
     Decoded,
@@ -215,8 +214,9 @@ pub enum AttachmentWrite {
     Set,
 }
 
-/// The current server's holders' values, erased to what crosses any boundary: the typed
-/// [`AttachmentType`] methods are built on it, for mods.
+/// Local access to the current server's holders' erased values. The typed
+/// [`AttachmentType`] methods are built on this store; persistence and sync use
+/// the attachment's codec.
 pub trait AttachmentStore {
     /// Validate an attachment type against the loaded declarations.
     fn validate_attachment(

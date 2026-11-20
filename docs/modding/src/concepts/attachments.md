@@ -81,6 +81,10 @@ not defaults. Later sets, removals and unloads appear only in fresh queries. Thi
 is a residency view: an entity queued for removal can appear until the removal sweep. Captured handles do not keep holders loaded, and stale writes fail.
 Interior mutability inside `T` is not deep-frozen by a snapshot.
 
+Batches, holder selectors and write tokens stay in the running game; they are
+not `Wire` values. Persist or sync the attachment value through its registered
+`AttachmentCodec`, not by encoding the query or a holder's residency.
+
 On a server, import `AttachmentQueriesMut` for `host.query_mut(&TYPE)` (`T: Clone`).
 Each borrowed row has `holder()`, `value()`, and explicit `set(host, replacement)` /
 `remove(host)` methods. These validate residency against the host's current

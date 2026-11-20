@@ -80,7 +80,8 @@ where
 }
 
 /// A native Part cannot be attached to this type during registration.
-#[derive(sunrise_mod_api_macros::Wire, Clone, Debug, PartialEq, Eq)]
+// no wire: reports a local block entity Part registration failure.
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum BlockEntityPartError {
     /// Vanilla entities do not expose a native Part's payload.
