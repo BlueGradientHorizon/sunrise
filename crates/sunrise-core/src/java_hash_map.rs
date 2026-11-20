@@ -5,6 +5,7 @@
 //! This is the storage/iterator subset needed by simulation callback lifecycles.
 //!
 //! Layout: one slab block holds parallel hash/next, key and value arrays addressed by `u32` slot; slot 0 is a sentinel.
+use crate::hashed_key::HashedKey;
 use std::{
     alloc::{self, Layout},
     borrow::Borrow,
@@ -33,6 +34,18 @@ impl JavaKey for str {
     }
     fn comparable_compare(&self, other: &Self) -> Option<Ordering> {
         Some(self.encode_utf16().cmp(other.encode_utf16()))
+    }
+    fn tie_break(&self, _other: &Self) -> Ordering {
+        unreachable!("unequal strings are Comparable")
+    }
+}
+
+impl JavaKey for [u16] {
+    fn java_hash(&self) -> i32 {
+        crate::java_string::java_string_hash(self)
+    }
+    fn comparable_compare(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
     fn tie_break(&self, _other: &Self) -> Ordering {
         unreachable!("unequal strings are Comparable")
@@ -151,10 +164,9 @@ pub struct Iter<'a, K, V> {
     remaining: usize,
 }
 
-impl<'a, K: JavaKey, V> Iterator for Iter<'a, K, V> {
-    type Item = (&'a K, &'a V);
+impl<'a, K, V> Iter<'a, K, V> {
     #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
+    fn next_slot(&mut self) -> Option<u32> {
         if self.remaining == 0 {
             return None;
         }
@@ -166,6 +178,39 @@ impl<'a, K: JavaKey, V> Iterator for Iter<'a, K, V> {
         let i = self.next;
         self.next = self.map.meta(i).next;
         self.remaining -= 1;
+        Some(i)
+    }
+    /// The same traversal, each key with the Java hash the map stored for it.
+    pub fn hashed(self) -> HashedIter<'a, K, V> {
+        HashedIter(self)
+    }
+}
+
+/// [`Iter`] yielding each key as a [`HashedKey`]: the stored hash, never recomputed.
+pub struct HashedIter<'a, K, V>(Iter<'a, K, V>);
+impl<'a, K: JavaKey, V> Iterator for HashedIter<'a, K, V> {
+    type Item = (HashedKey<&'a K>, &'a V);
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        let i = self.0.next_slot()?;
+        let map = self.0.map;
+        Some((
+            HashedKey::from_parts(spread(map.meta(i).hash), map.key(i)),
+            map.value(i),
+        ))
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.0.size_hint()
+    }
+}
+impl<K: JavaKey, V> ExactSizeIterator for HashedIter<'_, K, V> {}
+impl<K: JavaKey, V> std::iter::FusedIterator for HashedIter<'_, K, V> {}
+
+impl<'a, K: JavaKey, V> Iterator for Iter<'a, K, V> {
+    type Item = (&'a K, &'a V);
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        let i = self.next_slot()?;
         Some((self.map.key(i), self.map.value(i)))
     }
     #[inline]
@@ -218,6 +263,35 @@ impl<K: JavaKey, V> Iterator for IntoIter<K, V> {
         (len, Some(len))
     }
 }
+impl<K, V> IntoIter<K, V> {
+    /// The same traversal, each key with the Java hash the map stored for it.
+    pub fn hashed(self) -> HashedIntoIter<K, V> {
+        HashedIntoIter(self)
+    }
+}
+/// [`IntoIter`] yielding each key as a [`HashedKey`]: the stored hash, never recomputed.
+pub struct HashedIntoIter<K, V>(IntoIter<K, V>);
+impl<K: JavaKey, V> Iterator for HashedIntoIter<K, V> {
+    type Item = (HashedKey<K>, V);
+    fn next(&mut self) -> Option<Self::Item> {
+        let map = &self.0.map;
+        if map.len == 0 {
+            return None;
+        }
+        let mut i = map.table()[self.0.bucket];
+        while i == END {
+            self.0.bucket += 1;
+            i = self.0.map.table()[self.0.bucket];
+        }
+        let hash = spread(self.0.map.meta(i).hash);
+        let (key, value) = self.0.next()?;
+        Some((HashedKey::from_parts(hash, key), value))
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.0.size_hint()
+    }
+}
+impl<K: JavaKey, V> ExactSizeIterator for HashedIntoIter<K, V> {}
 impl<K: JavaKey, V> ExactSizeIterator for IntoIter<K, V> {}
 impl<K: JavaKey, V> std::iter::FusedIterator for IntoIter<K, V> {}
 
@@ -238,7 +312,7 @@ impl<'a, K: JavaKey, V> Entry<'a, K, V> {
             } else {
                 self.map.used + 1
             };
-            self.map.put_hashed(self.key, make(), self.hash);
+            self.map.put_spread(self.key, make(), self.hash);
             index
         });
         // The predicted slot must now be live: checked, because `value_mut` reads it unchecked.
@@ -742,6 +816,68 @@ impl<K: JavaKey, V> JavaHashMap<K, V> {
         let i = self.find_slot(key, spread(key.java_hash()))?;
         Some(self.value(i))
     }
+    /// `get` of a key whose Java hash is known.
+    #[inline]
+    pub fn get_hashed<Q: JavaKey + ?Sized>(&self, key: &HashedKey<&Q>) -> Option<&V>
+    where
+        K: Borrow<Q>,
+    {
+        self.get_hashed_by(key, Borrow::borrow)
+    }
+    pub(crate) fn get_hashed_by<Q: JavaKey + ?Sized>(
+        &self,
+        key: &HashedKey<&Q>,
+        borrow: impl Fn(&K) -> &Q + Copy,
+    ) -> Option<&V> {
+        let i = self.find_slot_by(*key.text(), spread(key.hash()), borrow)?;
+        Some(self.value(i))
+    }
+    pub fn contains_key_hashed<Q: JavaKey + ?Sized>(&self, key: &HashedKey<&Q>) -> bool
+    where
+        K: Borrow<Q>,
+    {
+        self.find_slot(*key.text(), spread(key.hash())).is_some()
+    }
+    pub fn get_mut_hashed<Q: JavaKey + ?Sized>(&mut self, key: &HashedKey<&Q>) -> Option<&mut V>
+    where
+        K: Borrow<Q>,
+    {
+        self.get_mut_hashed_by(key, Borrow::borrow)
+    }
+    pub(crate) fn get_mut_hashed_by<Q: JavaKey + ?Sized>(
+        &mut self,
+        key: &HashedKey<&Q>,
+        borrow: impl Fn(&K) -> &Q + Copy,
+    ) -> Option<&mut V> {
+        let i = self.find_slot_by(*key.text(), spread(key.hash()), borrow)?;
+        Some(self.value_mut(i))
+    }
+    pub fn remove_hashed<Q: JavaKey + ?Sized>(&mut self, key: &HashedKey<&Q>) -> Option<V>
+    where
+        K: Borrow<Q>,
+    {
+        self.remove_hashed_by(key, Borrow::borrow)
+    }
+    pub(crate) fn remove_hashed_by<Q: JavaKey + ?Sized>(
+        &mut self,
+        key: &HashedKey<&Q>,
+        borrow: impl Fn(&K) -> &Q + Copy,
+    ) -> Option<V> {
+        let hash = spread(key.hash());
+        let i = self.find_slot_by(*key.text(), hash, borrow)?;
+        Some(self.remove_node(hash as u32 as usize & self.mask, i, true))
+    }
+    pub fn entry_hashed(&mut self, key: HashedKey<K>) -> Entry<'_, K, V> {
+        let hash = spread(key.hash());
+        let key = key.into_text();
+        let index = self.find_slot(&key, hash);
+        Entry {
+            map: self,
+            key,
+            hash,
+            index,
+        }
+    }
     pub fn entries(&self) -> Iter<'_, K, V> {
         Iter {
             map: self,
@@ -798,10 +934,17 @@ impl<K: JavaKey, V> JavaHashMap<K, V> {
     #[inline(always)]
     pub fn put(&mut self, key: K, value: V) -> Option<V> {
         let hash = spread(key.java_hash());
-        self.put_hashed(key, value, hash)
+        self.put_spread(key, value, hash)
     }
+    /// `put` of a key whose Java hash is known: nothing is hashed here.
     #[inline(always)]
-    fn put_hashed(&mut self, key: K, value: V, hash: i32) -> Option<V> {
+    pub fn put_hashed(&mut self, key: HashedKey<K>, value: V) -> Option<V> {
+        let hash = spread(key.hash());
+        self.put_spread(key.into_text(), value, hash)
+    }
+    /// `put` with `hash` already spread.
+    #[inline(always)]
+    fn put_spread(&mut self, key: K, value: V, hash: i32) -> Option<V> {
         if self.mask == 0 {
             self.grow();
         }
@@ -879,7 +1022,7 @@ impl<K: JavaKey, V> JavaHashMap<K, V> {
         hash: i32,
     ) -> Option<V> {
         let root = self.root(head).expect("tree bin");
-        let found = self.tree_find(root, hash, &key);
+        let found = self.tree_find(root, hash, &key, Borrow::borrow);
         if found != NIL {
             return Some(mem::replace(self.value_mut(found), value));
         }
@@ -993,6 +1136,16 @@ impl<K: JavaKey, V> JavaHashMap<K, V> {
     where
         K: Borrow<Q>,
     {
+        self.find_slot_by(key, hash, Borrow::borrow)
+    }
+
+    #[inline(always)]
+    fn find_slot_by<Q: JavaKey + ?Sized>(
+        &self,
+        key: &Q,
+        hash: i32,
+        borrow: impl Fn(&K) -> &Q + Copy,
+    ) -> Option<u32> {
         let head = self.head(hash as u32 as usize & self.mask);
         if head == END {
             return None;
@@ -1000,45 +1153,48 @@ impl<K: JavaKey, V> JavaHashMap<K, V> {
         // After any `eq` call the search continues out of line, so `hash` is never live across one.
         let first = self.meta(head);
         if first.hash == hash {
-            return if self.key(head).borrow() == key {
+            return if borrow(self.key(head)) == key {
                 Some(head)
             } else {
-                self.find_after(head, self.meta(head).next, key)
+                self.find_after(head, self.meta(head).next, key, hash, borrow)
             };
         }
         if first.next == END {
             return None;
         }
         if !self.links.is_empty() {
-            return self.find_after(head, first.next, key);
+            return self.find_after(head, first.next, key, hash, borrow);
         }
         let second = self.meta(first.next);
         if second.hash == hash {
-            return if self.key(first.next).borrow() == key {
+            return if borrow(self.key(first.next)) == key {
                 Some(first.next)
             } else {
-                self.find_after(head, self.meta(first.next).next, key)
+                self.find_after(head, self.meta(first.next).next, key, hash, borrow)
             };
         }
         if second.next == END {
             return None;
         }
-        self.find_after(head, second.next, key)
+        self.find_after(head, second.next, key, hash, borrow)
     }
     /// The rest of the search: the tree of `head`'s bin, or its list from slot `i` (END: none left).
     #[inline(never)]
-    fn find_after<Q: JavaKey + ?Sized>(&self, head: u32, mut i: u32, key: &Q) -> Option<u32>
-    where
-        K: Borrow<Q>,
-    {
-        let hash = spread(key.java_hash());
+    fn find_after<Q: JavaKey + ?Sized>(
+        &self,
+        head: u32,
+        mut i: u32,
+        key: &Q,
+        hash: i32,
+        borrow: impl Fn(&K) -> &Q + Copy,
+    ) -> Option<u32> {
         if let Some(root) = self.tree_root(head) {
-            let index = self.tree_find(root, hash, key);
+            let index = self.tree_find(root, hash, key, borrow);
             return (index != NIL).then_some(index);
         }
         while i != END {
             let meta = self.meta(i);
-            if meta.hash == hash && self.key(i).borrow() == key {
+            if meta.hash == hash && borrow(self.key(i)) == key {
                 return Some(i);
             }
             i = meta.next;
@@ -1069,10 +1225,13 @@ impl<K: JavaKey, V> JavaHashMap<K, V> {
     }
     /// The node of the key equal to `key` in the subtree at `p`. Trees are ordered by hash
     /// first, so a different hash rules out one side; nodes with the same hash can be on both.
-    fn tree_find<Q: JavaKey + ?Sized>(&self, mut p: u32, hash: i32, key: &Q) -> u32
-    where
-        K: Borrow<Q>,
-    {
+    fn tree_find<Q: JavaKey + ?Sized>(
+        &self,
+        mut p: u32,
+        hash: i32,
+        key: &Q,
+        borrow: impl Fn(&K) -> &Q + Copy,
+    ) -> u32 {
         while p != NIL {
             let node_hash = self.meta(self.tree_node(p)).hash;
             let node_key = self.key(p);
@@ -1080,9 +1239,9 @@ impl<K: JavaKey, V> JavaHashMap<K, V> {
             p = match node_hash.cmp(&hash) {
                 Ordering::Greater => links.left,
                 Ordering::Less => links.right,
-                Ordering::Equal if node_key.borrow() == key => return p,
+                Ordering::Equal if borrow(node_key) == key => return p,
                 Ordering::Equal => {
-                    let found = self.tree_find(links.right, hash, key);
+                    let found = self.tree_find(links.right, hash, key, borrow);
                     if found != NIL {
                         return found;
                     }
@@ -2368,5 +2527,51 @@ mod unwind_tests {
             );
             check_consistent(&mut map, &keys);
         }
+    }
+
+    /// The `_hashed` methods behave as the string ones, in a bin that collides all the way to a tree:
+    /// every concatenation of "Aa" and "BB" has one hash.
+    #[test]
+    fn hashed_methods_match_the_plain_ones_in_treeified_bins() {
+        let keys: Vec<String> = (0..64u32)
+            .map(|n| {
+                (0..6)
+                    .map(|b| if n >> b & 1 == 0 { "Aa" } else { "BB" })
+                    .collect()
+            })
+            .collect();
+        let mut plain = JavaHashMap::<String, usize>::default();
+        let mut hashed = JavaHashMap::<String, usize>::default();
+        for (i, k) in keys.iter().enumerate() {
+            assert_eq!(
+                plain.put(k.clone(), i),
+                hashed.put_hashed(HashedKey::<String>::new(k.clone()), i)
+            );
+        }
+        assert_eq!(
+            hashed.put_hashed(HashedKey::<String>::new(keys[5].clone()), 99),
+            Some(5)
+        );
+        plain.put(keys[5].clone(), 99);
+        for (i, k) in keys.iter().enumerate() {
+            let key = HashedKey::<&str>::new(k);
+            assert_eq!(hashed.get_hashed(&key), plain.get(k.as_str()));
+            assert!(hashed.contains_key_hashed(&key));
+            if i % 3 == 0 {
+                *hashed.get_mut_hashed(&key).unwrap() += 1;
+                *plain.get_mut(k.as_str()).unwrap() += 1;
+            }
+        }
+        for k in keys.iter().step_by(2) {
+            let key = HashedKey::<&str>::new(k);
+            assert_eq!(hashed.remove_hashed(&key), plain.remove(k.as_str()));
+            assert!(!hashed.contains_key_hashed(&key));
+        }
+        *hashed
+            .entry_hashed(HashedKey::<String>::new("zz".into()))
+            .or_insert(1) += 1;
+        assert_eq!(hashed.get_hashed(&HashedKey::<&str>::new("zz")), Some(&2));
+        plain.put("zz".to_owned(), 2);
+        assert!(hashed.entries().eq(plain.entries()));
     }
 }

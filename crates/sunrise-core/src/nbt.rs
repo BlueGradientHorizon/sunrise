@@ -1,5 +1,6 @@
 //! Java Edition NBT with lossless UTF-16 strings and 26.3 mixed-list wrappers.
 use crate::{
+    hashed_key::HashedKey,
     java_hash_map::{IntoIter, Iter, JavaHashMap, JavaKey},
     java_string::java_string_hash,
 };
@@ -7,6 +8,8 @@ use std::{
     cmp::Ordering,
     hash::{Hash, Hasher},
 };
+
+pub mod keyed;
 
 /// Java strings can contain unpaired surrogates, which Rust UTF-8 strings cannot.
 #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -31,6 +34,9 @@ fn with_key<R>(key: &str, f: impl FnOnce(&JavaString) -> R) -> R {
 }
 
 impl JavaString {
+    fn units(&self) -> &[u16] {
+        &self.0
+    }
     pub fn to_string(&self) -> Result<String, std::string::FromUtf16Error> {
         String::from_utf16(&self.0)
     }
@@ -113,12 +119,13 @@ impl Iterator for CompoundIntoIter {
     }
 }
 impl ExactSizeIterator for CompoundIntoIter {}
+
 impl std::iter::FusedIterator for CompoundIntoIter {}
 
 /// An entry defers allocating a never-populated map until a value is inserted.
 pub struct CompoundEntry<'a> {
     map: &'a mut Compound,
-    key: JavaString,
+    key: HashedKey<JavaString>,
 }
 impl<'a> CompoundEntry<'a> {
     pub fn or_insert(self, value: Tag) -> &'a mut Tag {
@@ -131,14 +138,14 @@ impl<'a> CompoundEntry<'a> {
                 .map
                 .0
                 .insert(Box::new(JavaHashMap::default()))
-                .entry(self.key)
+                .entry_hashed(self.key)
                 .or_insert(value);
         }
         self.map
             .0
             .as_deref_mut()
             .expect("allocated map")
-            .entry(self.key)
+            .entry_hashed(self.key)
             .or_insert_with(make)
     }
 }
@@ -186,7 +193,10 @@ impl Compound {
         }
     }
     pub fn entry(&mut self, key: JavaString) -> CompoundEntry<'_> {
-        CompoundEntry { map: self, key }
+        CompoundEntry {
+            map: self,
+            key: HashedKey::<JavaString>::new(key.0),
+        }
     }
     pub fn iter(&self) -> CompoundIter<'_> {
         CompoundIter {
@@ -1628,6 +1638,46 @@ impl<'a> Cursor<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A literal's hashed key finds what `get` finds, and nothing else: in a small map, in one
+    /// with many keys (collisions, resizes) and for a key that is not UTF-8-simple.
+    #[test]
+    fn hashed_literal_keys_find_what_the_string_lookup_finds() {
+        let mut tag = Tag::compound([
+            ("Pos", Tag::Int(1)),
+            ("id", Tag::Int(2)),
+            ("caf\u{e9}", Tag::Int(3)),
+            ("\u{1F600}", Tag::Int(4)),
+        ]);
+        for i in 0..200 {
+            let Tag::Compound(map) = &mut tag else {
+                unreachable!()
+            };
+            map.insert(
+                JavaString::from(format!("k{i}").as_str()),
+                Tag::Int(100 + i),
+            );
+        }
+        assert_eq!(keyed::get(&tag, crate::nbt_key!("Pos")), tag.get("Pos"));
+        assert_eq!(keyed::get(&tag, crate::nbt_key!("id")), Some(&Tag::Int(2)));
+        assert_eq!(
+            keyed::get(&tag, crate::nbt_key!("caf\u{e9}")),
+            tag.get("caf\u{e9}")
+        );
+        assert_eq!(
+            keyed::get(&tag, crate::nbt_key!("\u{1F600}")),
+            Some(&Tag::Int(4))
+        );
+        assert_eq!(
+            keyed::get(&tag, crate::nbt_key!("k150")),
+            Some(&Tag::Int(250))
+        );
+        assert_eq!(keyed::get(&tag, crate::nbt_key!("missing")), None);
+        *keyed::get_mut(&mut tag, crate::nbt_key!("Pos")).unwrap() = Tag::Int(9);
+        assert_eq!(tag.get("Pos"), Some(&Tag::Int(9)));
+        assert_eq!(keyed::get(&Tag::Int(0), crate::nbt_key!("Pos")), None);
+    }
+
     #[test]
     fn collecting_into_a_compound_keeps_insertion_order_whatever_the_size_hint() {
         let entries =
@@ -2295,6 +2345,90 @@ mod tests {
         assert_eq!(
             map.into_iter().collect::<Vec<_>>(),
             [(JavaString::from("Aa"), Tag::Int(15))],
+        );
+    }
+
+    /// Keys read from bytes carry the hash `String.hashCode` gives, and the keyed functions agree with the
+    /// string ones, for ASCII, non-ASCII, surrogate-pair and unpaired-surrogate keys.
+    #[test]
+    fn hashed_keys_agree_with_string_keys() {
+        let keys: Vec<Vec<u16>> = vec![
+            "Count".encode_utf16().collect(),
+            "caf\u{e9}".encode_utf16().collect(),
+            "\u{1F600}x".encode_utf16().collect(),
+            vec![0xD800, 0x61],
+            vec![0x61, 0xDC00],
+            Vec::new(),
+        ];
+        let mut written = Compound::new();
+        for (i, k) in keys.iter().enumerate() {
+            keyed::insert(
+                &mut written,
+                HashedKey::<JavaString>::new(k.clone()),
+                Tag::Int(i as i32),
+            );
+        }
+        let root = NamedTag {
+            name: JavaString::default(),
+            tag: Tag::Compound(written.clone()),
+        };
+        let bytes = write_named(&root, Limits::default()).unwrap();
+        let (read, _) = read_named(&bytes, Limits::default()).unwrap();
+        assert_eq!(read.tag, Tag::Compound(written.clone()));
+        let Tag::Compound(read) = read.tag else {
+            unreachable!()
+        };
+        for (i, k) in keys.iter().enumerate() {
+            let key = HashedKey::<&[u16]>::new(k);
+            assert_eq!(key.hash(), java_string_hash(k));
+            assert_eq!(keyed::compound_get(&read, &key), Some(&Tag::Int(i as i32)));
+            assert_eq!(read.get(&JavaString(k.clone())), Some(&Tag::Int(i as i32)));
+            assert!(keyed::contains_key(&read, &key));
+        }
+        let mut c = read;
+        let first = HashedKey::<&[u16]>::new(&keys[0]);
+        assert_eq!(keyed::remove(&mut c, &first), Some(Tag::Int(0)));
+        assert!(!keyed::contains_key(&c, &first));
+        assert_eq!(
+            keyed::insert(
+                &mut c,
+                HashedKey::<JavaString>::new(keys[0].clone()),
+                Tag::Int(9)
+            ),
+            None
+        );
+        assert_eq!(keyed::compound_get(&c, &first), Some(&Tag::Int(9)));
+        assert_eq!(
+            keyed::compound_get(&c, crate::nbt_key!("Count")),
+            Some(&Tag::Int(9))
+        );
+    }
+
+    /// Keys copied between compounds keep the hash the map stored, in an order that matches the source.
+    #[test]
+    fn iteration_yields_each_keys_hash_and_copies_keep_order() {
+        let mut source = Compound::new();
+        for k in ["Aa", "BB", "x", "caf\u{e9}", "\u{1F600}"] {
+            source.insert(JavaString::from(k), Tag::Int(k.len() as i32));
+        }
+        for (key, _) in keyed::iter(&source) {
+            assert_eq!(key.hash(), java_string_hash(&key.text().0));
+        }
+        let mut copy = Compound::new();
+        for (key, value) in keyed::iter(&source) {
+            keyed::insert(&mut copy, key, value.clone());
+        }
+        assert!(copy.iter().eq(source.iter()));
+        let Tag::Compound(owned) = keyed::compound(keyed::into_iter(source.clone())) else {
+            unreachable!()
+        };
+        assert!(owned.iter().eq(source.iter()));
+        let lit = crate::nbt_key!("Aa");
+        keyed::entry(&mut copy, lit).or_insert(Tag::Int(0));
+        assert_eq!(keyed::compound_get(&copy, lit), Some(&Tag::Int(2)));
+        assert_eq!(
+            keyed::insert(&mut copy, lit, Tag::Int(7)),
+            Some(Tag::Int(2))
         );
     }
 }
