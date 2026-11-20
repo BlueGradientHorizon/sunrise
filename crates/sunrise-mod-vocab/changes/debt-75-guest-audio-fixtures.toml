@@ -1,0 +1,13 @@
+ids = [
+    "method:prelude::AudioClientHost::open_audio_stream",
+    "method:prelude::AudioClientHost::open_push_audio_stream",
+]
+why = "Guest tick pacing is no longer a model for audio. Tests check native callback demand and the async queue directly. Mods still choose their codecs and can use the existing droppable play delivery."
+migrate = """
+No additional code change if you already use the native stream openers. Replace tick-paced refill guidance \
+with `host.open_audio_stream(&spec, Box::new(source))` for on-demand PCM, and verify `AudioStream::read` \
+against device-buffer demand, not ticks. For PCM that arrives asynchronously, use \
+`host.open_push_audio_stream(&spec)` and `stream.push(&pcm)` from one producer thread. Check that your \
+producer handles the unaccepted suffix (`accepted_frames * channels` samples into `pcm`) and gaps. \
+For voice packets, keep your mod's own codec and the same negotiated droppable play channel; size any \
+producer-side jitter buffer and transport budgets for your traffic rather than fixed codec or tick estimates."""

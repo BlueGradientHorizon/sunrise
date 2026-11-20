@@ -34,7 +34,7 @@ fn play_clip(host: &dyn ClientHost, mono_pcm: Vec<i16>) -> Result<AudioStreamRef
 }
 ```
 
-The mixer owns the `Send + 'static` source. Its shared worker calls `read` serially, off the device callback and without holding mixer or pool locks. Keep reads bounded and nonblocking: no waiting on I/O, locks, another thread or a tick. A source has no `Host` or world borrow and must not call back into the game. Use the preallocated buffer it lends you.
+The mixer owns the `Send + 'static` source. Keep `read` bounded and nonblocking: all pull streams on the output share a worker, so one slow source delays the others. Do not wait on I/O, locks, another thread or a tick. A source has no `Host` or world borrow and must not call back into the game. Use the preallocated buffer it lends you.
 
 Write up to `pcm.len() / channels` whole interleaved frames into the cleared buffer and return `AudioRead::Frames(n)` with the **frame** count, not the sample count. A short read plays what was supplied; `Frames(0)` is temporary silence. The worker tries again on later demand. A count larger than the buffer can hold stops the stream. When no more PCM will arrive, return `AudioRead::Eof` on a read after reporting the final frames. The mixer drains those frames before stopping. The worker drops an admitted source off the device callback, even if no further callback runs after you stop it. `push` on a pull handle always returns zero.
 
@@ -93,10 +93,13 @@ With Sunrise Extras' “Mod audio streams” switch off, streams still open and 
 
 ## Threading
 
-Open the stream where the host runs. The `AudioStreamRef` is `Send`: `push`, `set_placement`, `set_volume`, `state` and `stop` all work from any thread. These controls do not take the mixer's lock. Pull source reads run independently on the worker.
+- **Client host:** Open a stream where the host runs. The client tracks placements and reaps stopped streams; it does not have to refill PCM on a tick.
+- **Pull worker:** Calls each source's `read` serially without holding mixer or pool locks. The device callback requests PCM for the next buffer; if several requests arrive before the worker reads, the latest wins.
+- **Async producer:** Decode or generate PCM on your producer thread and `push` it when ready, independently of the client tick. Keep one producer per stream. The `AudioStreamRef` is `Send`: `push`, `set_placement`, `set_volume`, `state` and `stop` work from any thread without taking the mixer's lock.
+- **Device callback:** Drains the queued PCM and mixes it. It does not call your source or wait for a refill. If the producer falls behind, the missing audio is silent.
 
 ## Known limits
 
 - There is no echo cancellation: a mod that plays voice while capturing the microphone must deal with its own echo.
 - Voice is unmoderated: the engine neither records, filters nor reports a stream's audio. Replay recordings capture voice payloads like any other payload.
-- This API plays audio. Getting it between players (payload delivery), encoding it and capturing a microphone are separate: a mod brings its own codec as an ordinary dependency.
+- This API plays audio. To send time-sensitive audio between players, use [droppable play payloads](networking.md#droppable-delivery-audio-live-data). Your mod brings its own codec as an ordinary dependency and owns its buffering and gap handling.

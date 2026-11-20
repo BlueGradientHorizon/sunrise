@@ -336,6 +336,25 @@ mod tests {
     }
 
     #[test]
+    fn pull_uses_the_latest_buffer_demand_when_the_worker_has_not_read_yet() {
+        let mut rig = Rig::new(|pcm| {
+            // The most recent callback asked for two output frames at twice the source rate:
+            // one stereo source frame plus one frame of interpolation lookahead.
+            assert_eq!(pcm.len(), 4);
+            pcm.copy_from_slice(&[16_384, -8192, -16_384, 8192]);
+            AudioRead::Frames(2)
+        });
+        // Two callbacks, no producer pass in between. The smaller request replaces the larger.
+        assert_eq!(rig.play::<8>(), [0.0; 8]);
+        assert_eq!(rig.play::<4>(), [0.0; 4]);
+        assert!(rig.refill());
+        assert_eq!(
+            rig.play::<8>(),
+            [0.5, -0.25, 0.0, 0.0, -0.5, 0.25, -0.5, 0.25]
+        );
+    }
+
+    #[test]
     fn pull_refuses_an_oversized_count_without_publishing_samples() {
         let mut rig = Rig::new(|pcm| {
             pcm.fill(16_384);
