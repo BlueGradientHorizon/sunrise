@@ -161,7 +161,7 @@ pub(super) struct CameraEntities<'a> {
 }
 
 impl CameraEntities<'_> {
-    /// `ClientboundSetCameraPacket.getEntity`: the level holds the id.
+    /// The id is one of the kinds this client can draw the view out of.
     pub(super) fn holds(&self, id: u32) -> bool {
         self.mobs.iter().any(|m| m.id == id)
             || self.stands.iter().any(|a| a.id == id)
@@ -199,7 +199,11 @@ impl Game<'_> {
     /// `ClientPacketListener.handleSetCamera`.
     pub(in crate::game) fn remote_set_camera(&mut self, camera_id: i32) {
         let id = camera_id as u32;
-        let in_level = self.camera_entities().holds(id);
+        let in_level = self.camera_entities().holds(id)
+            || self
+                .remote
+                .as_ref()
+                .is_some_and(|r| r.tracked_entity(camera_id).is_some());
         let player = self
             .remote
             .as_ref()
