@@ -16,6 +16,7 @@ pub struct MenuOpeningItem {
 }
 
 impl MenuOpeningItem {
+    // hidden: The engine constructs this event value; mods only read it.
     #[doc(hidden)]
     pub fn new(hand: Hand, stack_matches: bool) -> Self {
         Self {
