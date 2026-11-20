@@ -781,9 +781,9 @@ mod content_tests {
                 assert_eq!(
                     *matched,
                     [
-                        ("nested".into(), "aspects", "ingredient_predicate"),
-                        ("nested".into(), "aspects", "ingredient_predicate"),
-                        ("plain".into(), "aspects", "ingredient_predicate"),
+                        ("nested".to_owned(), "aspects", "ingredient_predicate"),
+                        ("nested".to_owned(), "aspects", "ingredient_predicate"),
+                        ("plain".to_owned(), "aspects", "ingredient_predicate"),
                     ]
                 );
                 matched.clear();
@@ -796,7 +796,7 @@ mod content_tests {
             );
             assert_eq!(
                 *calls.matched.lock().unwrap(),
-                [("nested".into(), "aspects", "ingredient_predicate"),]
+                [("nested".to_owned(), "aspects", "ingredient_predicate"),]
             );
             // Neither standalone parsing nor an identical JSON value outside
             // this document can supply the forged or the real answer.
