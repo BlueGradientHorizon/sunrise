@@ -1,10 +1,11 @@
 //! Authoritative item requirements supplied by the custom recipe type.
 use crate::Ingredient;
 
+// no wire: placement cells can retain in-process ingredient predicates.
 /// Vanilla's `Recipe#placementInfo`: ingredient cells, distinct from display
 /// pictures. Supplied by the same recipe-type-owned provider as its displays.
 /// NeoForge public documentation names no separate registration event.
-#[derive(Clone, Debug, PartialEq, sunrise_mod_api_macros::Wire)]
+#[derive(Clone, Debug, PartialEq)]
 // exhaustive: recipe providers construct the complete placement declaration
 pub struct PlacementInfo {
     /// Ordered recipe cells. `None` is a shaped hole, never a wildcard ingredient.

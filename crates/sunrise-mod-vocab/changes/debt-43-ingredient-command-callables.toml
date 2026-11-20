@@ -1,8 +1,21 @@
 ids = [
     "hook:ingredient",
     "hook:ingredient_test",
+    "method:Hooks::ingredient",
+    "method:Hooks::ingredient_test",
+    "type:IngredientEvent",
+    "type:IngredientEvent.kind",
+    "type:IngredientEvent.data",
+    "type:IngredientEvent.items",
+    "type:IngredientTestEvent",
+    "type:IngredientTestEvent.kind",
+    "type:IngredientTestEvent.data",
+    "type:IngredientTestEvent.stack",
+    "type:IngredientTestEvent.accept",
     "type:IngredientDefinition",
     "handle:IngredientDefinition::new",
+    "type:IngredientPredicate",
+    "handle:IngredientPredicate::test",
     "type:IngredientStack",
     "handle:IngredientStack::item_id",
     "handle:IngredientStack::item_key",
@@ -11,6 +24,14 @@ ids = [
     "handle:IngredientStack::has_component",
     "handle:IngredientStack::component_removed",
     "handle:IngredientStack::stored_component",
+    "type:Ingredient",
+    "type:Ingredient.custom",
+    "type:Recipe",
+    "type:PlacementInfo",
+    "type:RecipeRule",
+    "type:FireworkShapeIngredient",
+    "type:RecipeBookCategory",
+    "type:RecipeBookDisplayEntry",
 ]
-why = "Recipe JSON stays as authored. The loader holds candidate lists separately for each ingredient occurrence, and its recipe tables, stations and network projection reuse those answers. The match-time hook gets the metadata retained from the load-time call, not a compound with the answer embedded in it. The new predicate definition pairs candidates with native code, and its read-only stack view lends live components without encoding a patch."
-migrate = "Keep filling IngredientEvent.items from Hooks::ingredient and testing the borrowed metadata in Hooks::ingredient_test. Do not put a candidate list in sunrise:resolved_items in recipe JSON; only the list returned by the hook is used as the answer. The existing hooks are still in use. To express the two answers as one definition, pass the candidate IDs to IngredientDefinition::new(items, move |context, stack| ...) and return true to accept and false to reject. On the borrowed input, use stack.item_key() in place of the owned stack's item(), stack.damage() for the optional damage value (including Some(0)), and stack.stored_component(id) for borrowed stored NBT instead of looking it up in an owned component patch. Use stack.has_component(id) for effective presence and stack.component_removed(id) to check explicitly removed components."
+why = "Each recipe occurrence now keeps the predicate of the first mod that defines it. Other mods do not run during matching, and the predicate borrows the live stack. An answer with no candidates keeps manual matching but not placement candidates; an unanswered kind fails recipe loading. Native predicates are not recipe JSON or network data."
+migrate = "Replace Hooks::ingredient(context, event) and Hooks::ingredient_test(context, event) with Hooks::ingredient(&self, context: &dyn DataLoadContext, event: &mut IngredientEvent<'_>) -> Option<IngredientDefinition>. Return None for an unhandled event.kind. For a handled kind, parse event.data once and return Some(IngredientDefinition::new(items, move |context, stack| ...)), capturing the parsed configuration and returning true to accept the stack or false to reject it. Use stack.item_key() or stack.item_id() instead of the owned stack's item(), stack.damage() for optional damage including Some(0), and stack.stored_component(id) to borrow stored NBT instead of looking in an owned patch. Use stack.has_component(id) for effective presence and stack.component_removed(id) for explicit removal. Do not write candidates into sunrise:resolved_items. Use Ingredient::test(host, stack) to test a resolved ingredient; Ingredient.custom is now an opaque bound predicate, not a kind/metadata tuple. Remove Ingredient, Recipe, PlacementInfo, RecipeRule, FireworkShapeIngredient, RecipeBookCategory and RecipeBookDisplayEntry from Wire payloads or derived Wire fields: keep them in-process and send separate data-only records containing the IDs or display values the receiver needs."

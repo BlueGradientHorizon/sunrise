@@ -1,32 +1,9 @@
 # Match custom ingredients
 
-Implement `Hooks::ingredient_test(context, event)` to check a concrete stack's components for your [custom ingredient kind](ingredient-kinds.md). Calling `Ingredient::test(host, stack)` reaches this hook after any nonempty load-time candidate list accepts the stack's item.
+Return an `IngredientDefinition::new(items, test)` from [`Hooks::ingredient`](ingredient-kinds.md). The definition belongs to this occurrence of the ingredient; capture its parsed configuration in the predicate rather than comparing the kind again while matching.
 
-Set `event.accept` to `false` to reject the stack. It starts as `true`.
+The predicate takes `(&dyn LoopContext, IngredientStack<'_>)` and returns `true` to accept a stack or `false` to reject it. Use `stack.item_id()` or `stack.item_key()` for identity, `stack.count()` for the count, and `stack.damage()` for optional damage (including `Some(0)`). `has_component` checks effective presence, `component_removed` checks explicit removal, and `stored_component` lends retained NBT without constructing an owned component patch. `stored_component` does not return inherited defaults or NBT for typed-only fields such as damage.
 
-## Callback contract
+The predicate runs on the side testing the recipe, can run many times while crafting and placing, and cannot edit the game. Give the same answer for the same inputs. `Ingredient::test(host, stack)` uses the host's loop context and calls the bound predicate only after any nonempty candidate list accepts the item's ID. An empty custom list has no item filter for manual matching, but contributes no placement candidates; an empty ordinary tag never matches.
 
-- `context` is the loop context of the side performing the match. The hook itself takes no `Host`.
-- The event supplies the ingredient kind, the metadata compound retained from the load-time hook and the stack being matched. The load-time candidate answer is separate from that metadata.
-- The callback can run many times during crafting. Give the same answer for the same stack and ingredient.
-- An item absent from a nonempty load-time list fails without this callback. An empty custom list still invokes the predicate: manual crafting can match an accepted stack, although recipe-book placement, property sets and stonecutter selection are unavailable.
-
-A client without this mod predicts vanilla here; the server corrects it.
-
-Read `event.data` as an API `Compound` with typed `Tag` variants (`Int`, `Long`, `List`, `Compound`, and others). The loader converts recipe metadata once using vanilla JsonOps-to-NbtOps rules; matching does not reconvert it. Numeric JSON arrays remain lists. Nested null values refuse the ingredient and fail the recipe during loading.
-
-## Borrowed inputs for bound predicates
-
-`IngredientDefinition::new(items, test)` pairs the ordered item IDs with a test that takes
-`(&dyn LoopContext, IngredientStack<'_>)` and returns whether the stack matches. The test can
-capture parsed configuration in a `move` closure; its captures must be `Send + Sync + 'static`.
-The existing `ingredient` and `ingredient_test` hooks still work as above.
-
-On an `IngredientStack`, `item_id()` reads the namespaced ID and `item_key()` gives the resolved
-key when available. `count()` reads the live count. `damage()` returns `Some(0)` when zero damage
-is present, and `None` for an absent or removed damage component. Ask
-`has_component("minecraft:custom_data")` about effective presence and `component_removed(id)`
-about an explicit removal. Use `stored_component(id)` to borrow NBT already stored on the stack,
-such as custom data or an opaque mod component. This does not encode typed fields or return
-inherited defaults, so a component can be present without a stored NBT value. Neither the stack
-view nor its NBT borrow can outlive the call.
+`Ingredient`, `Recipe`, `RecipeRule`, `FireworkShapeIngredient` and `PlacementInfo` remain available in-process but do not implement `Wire`: they can contain native predicates. Use a separate data-only struct for typed payloads. For recipe-book synchronization the game sends display data and static placement requirements, never the predicates. The server rechecks live stacks on a placement request.

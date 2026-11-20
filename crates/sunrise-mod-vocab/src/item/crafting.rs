@@ -1,4 +1,5 @@
 //! Moved here from the game so mods can name it.
+use crate::item::ingredient_predicate::IngredientPredicate;
 #[allow(unused_imports)]
 use crate::*;
 use serde_json::Value;
@@ -29,19 +30,18 @@ impl RecipePropertyAddition {
         }
     }
 }
+// no wire: an ingredient can hold an in-process predicate bound to its defining mod.
 /// A set of accepted items (expanded from an item, list or tag), and the
 /// items in its `HolderSet` order (`Ingredient.display`'s `TagSlotDisplay`).
 #[derive(Clone, Debug, PartialEq)]
 // exhaustive: placement providers and the game construct complete ingredient values
-#[derive(sunrise_mod_api_macros::Wire)]
 pub struct Ingredient {
     /// Full candidate set; non-simple predicates test the concrete stack.
     pub items: HashSet<String>,
     /// Default-stack display/simple-match order; non-simple kinds may have none.
     pub order: Vec<String>,
-    /// A mod's own kind, for matching at craft time: the kind and its
-    /// NBT compound, as the load-time hook saw them (`ingredient_test`).
-    pub custom: Option<(String, sunrise_core::nbt::Compound)>,
+    /// The predicate bound to this occurrence by the mod that defined it.
+    pub custom: Option<IngredientPredicate>,
     /// NeoForge's shapes, with their children parsed: matching a concrete
     /// stack asks each child its own `test` (a mod's kind among them),
     /// as on NeoForge — the flat list above only names items.
@@ -97,7 +97,7 @@ impl Ingredient {
     /// are component-independent. A custom/component predicate anywhere in the tree
     /// returns `NotEnumerable`: the display item list is not an exact predicate (and
     /// for differences containing custom predicates is not even necessarily a superset).
-    /// Such predicates remain mod-owned; this method never invokes a match-time hook.
+    /// Such predicates remain mod-owned; this method never invokes them.
     /// One host call per ingredient at publication; never call this per tick or candidate.
     pub fn item_keys(&self, host: &dyn Host) -> Result<Arc<[crate::ItemKey]>, IngredientKeysError> {
         backend_of(host)
@@ -123,10 +123,11 @@ impl Ingredient {
         backend_of(host).is_some_and(|backend| backend.recipe_ingredient_test(self, stack))
     }
 }
+// no wire: a recipe snapshot may include ingredients backed by native predicates.
 /// A recipe in force (`RecipeManager.getAllRecipesFor`), whatever its type
 /// (vanilla's or a mod's own): its typed parts, and its file for whatever a
 /// mod's own type keeps there. `json` is the data-pack file's JSON, read by a
-/// mod at reload; host parsing helpers accept JSON text. Plain data.
+/// mod at reload; host parsing helpers accept JSON text.
 ///
 /// A recipe the game could not parse (an ingredient it cannot read, no
 /// result) is not in force and is not listed.
@@ -141,7 +142,6 @@ impl Ingredient {
 /// A mod's own type leaves these fields empty and keeps its `json`.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
 pub struct Recipe {
     /// `<namespace>:<path>`, its place under `data/<namespace>/recipe/`.
     pub id: String,
@@ -247,29 +247,5 @@ impl RecipeMatch {
             experience,
             processing_time,
         }
-    }
-}
-
-#[cfg(test)]
-mod empty_candidate_tests {
-    use super::*;
-
-    #[test]
-    fn empty_custom_predicate_round_trips_through_wire() {
-        use crate::wire::{Reader, Wire, Writer};
-        let mut ingredient = Ingredient::of(vec![]);
-        ingredient.custom = Some((
-            "fixture:predicate".into(),
-            [("required_damage".into(), sunrise_core::nbt::Tag::Int(7))]
-                .into_iter()
-                .collect(),
-        ));
-        let mut writer = Writer::default();
-        ingredient.put(&mut writer);
-        let decoded: Ingredient = Reader::decode(&writer.into_bytes()).unwrap();
-        assert_eq!(decoded, ingredient);
-        assert!(decoded.items.is_empty());
-        assert!(decoded.order.is_empty());
-        assert!(decoded.custom.is_some());
     }
 }

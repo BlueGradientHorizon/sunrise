@@ -22,16 +22,27 @@ impl mod_api::Hooks for TypedIngredient {
     fn ingredient(
         &self,
         _: &dyn mod_api::DataLoadContext,
-        kind: &str,
-        data: &mod_api::Compound,
+        event: &mut mod_api::IngredientEvent<'_>,
     ) -> Option<mod_api::IngredientDefinition> {
-        assert_custom_tags(data);
-        event.items.push("minecraft:emerald".into());
+        let kind = event.kind;
+        let data = event.data;
+        if kind != "typed:ingredient" {
+            return None;
+        }
+        assert!(!data.contains_key(&"sunrise:resolved_items".into()));
+        let data = data.clone();
+        Some(mod_api::IngredientDefinition::new(
+            vec!["minecraft:emerald".into()],
+            move |_, _| {
+                assert_custom_tags(&data);
+                true
+            },
+        ))
     }
 }
 
 #[test]
-fn custom_ingredient_tags_reach_hook_and_matching_record() {
+fn custom_ingredient_tags_reach_the_bound_predicate() {
     let items = super::Items::for_tests(Default::default());
     mod_platform::testing::with_mods(
         vec![mod_api::ModEntry::new("typed", Box::new(TypedIngredient))].into(),
@@ -54,27 +65,26 @@ fn custom_ingredient_tags_reach_hook_and_matching_record() {
                     )],
                     &context,
                 )
-                .unwrap()
             };
-            let sources = load(source.clone());
+            let sources = load(source.clone()).unwrap();
             let recipe = &sources.recipes[0];
             let parsed = recipe
                 .parse_ingredient(&recipe.file()["ingredient"], &items)
                 .unwrap();
-            let (_, data) = parsed.custom.unwrap();
-            assert_custom_tags(&data);
-            assert!(!data.contains_key(&"sunrise:resolved_items".into()));
-
-            // Refusal leaves the kind unanswered just as an unknown kind does;
-            // no hook call should see the malformed metadata.
+            let loop_context =
+                context.loop_context(sunrise_world::native_load_context::LoopSide::Server, []);
+            assert!(parsed.test_in(
+                &loop_context,
+                &super::ItemStack::new("minecraft:emerald", 1)
+            ));
             source["nested"]["invalid"] = Value::Null;
-            let sources = load(source);
-            let recipe = &sources.recipes[0];
+            let error = load(source).err().unwrap().to_string();
+            assert!(error.contains("data/typed/recipe/test.json"), "{error}");
             assert!(
-                recipe
-                    .parse_ingredient(&recipe.file()["ingredient"], &items)
-                    .is_none()
+                error.contains("ingredient kind typed:ingredient"),
+                "{error}"
             );
+            assert!(error.contains("nested null"), "{error}");
         },
     );
 }
@@ -85,10 +95,14 @@ impl mod_api::Hooks for WidthIngredient {
     fn ingredient(
         &self,
         _: &dyn mod_api::DataLoadContext,
-        kind: &str,
-        data: &mod_api::Compound,
+        event: &mut mod_api::IngredientEvent<'_>,
     ) -> Option<mod_api::IngredientDefinition> {
+        let kind = event.kind;
+        let data = event.data;
         use sunrise_core::nbt::Tag;
+        if kind != "width:ingredient" {
+            return None;
+        }
         let want = [
             ("flag", Tag::Byte(1)),
             ("one", Tag::Byte(1)),
@@ -102,7 +116,10 @@ impl mod_api::Hooks for WidthIngredient {
         for (key, tag) in want {
             assert_eq!(data.get(&key.into()), Some(&tag), "{key}");
         }
-        event.items.push("minecraft:emerald".into());
+        Some(mod_api::IngredientDefinition::new(
+            vec!["minecraft:emerald".into()],
+            |_, _| true,
+        ))
     }
 }
 

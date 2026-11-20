@@ -8,13 +8,14 @@ mod matching;
 #[path = "ingredient/stack.rs"]
 mod stack;
 use super::{ItemStack, Items};
-use crate::native_stack_hooks::ingredient_test as native_ingredient_test;
 use display::display_stacks;
-use mod_api::__private::{WalkedIngredient, ingredient_parser::CustomIds};
 pub use mod_api::item::crafting::{IngredientRule, Shape};
+use mod_api::{
+    __private::{WalkedIngredient, ingredient_parser::CustomIds},
+    IngredientPredicate,
+};
 use serde_json::Value;
 use std::collections::HashSet;
-use sunrise_core::nbt::Compound;
 
 /// The kind an ingredient object names: `neoforge:ingredient_type` in
 /// current NeoForge, `type` in older packs.
@@ -33,9 +34,8 @@ pub struct Ingredient {
     pub items: HashSet<String>,
     /// Default-stack display/simple-match order; may be empty for non-simple kinds.
     pub order: Vec<String>,
-    /// A mod's own kind, for matching at craft time: the kind and its
-    /// NBT compound, as the load-time hook saw them (`native_ingredient_test`).
-    pub custom: Option<(String, sunrise_core::nbt::Compound)>,
+    /// The predicate bound to this occurrence by the mod that defined it.
+    pub custom: Option<IngredientPredicate>,
     /// NeoForge's shapes, with their children parsed: matching a concrete
     /// stack asks each child its own `test` (a mod's kind among them),
     /// as on NeoForge — the flat list above only names items.
@@ -136,7 +136,7 @@ impl Ingredient {
     pub(super) fn parse_with(
         v: &Value,
         items: &Items,
-        custom: CustomIds<'_, (String, Compound)>,
+        custom: CustomIds<'_, IngredientPredicate>,
     ) -> Option<Self> {
         let walked = WalkedIngredient::walk(
             v,
@@ -171,14 +171,8 @@ impl Ingredient {
         }
         Self::of_walked(walked, items)
     }
-    /// The walk of an item ingredient's answer: NeoForge's standard shapes
-    /// keep their children, and a mod's own kind keeps its kind and NBT metadata,
-    /// since the load-time list only names items and matching a concrete
-    /// stack (its components) is the match-time hook's.
-    fn of_walked(
-        walked: WalkedIngredient<(String, sunrise_core::nbt::Compound)>,
-        items: &Items,
-    ) -> Option<Self> {
+    /// Preserve the standard shapes and the predicate bound to each custom leaf.
+    fn of_walked(walked: WalkedIngredient<IngredientPredicate>, items: &Items) -> Option<Self> {
         let children = match walked.children {
             Some((shape, kids)) => Some((
                 shape,

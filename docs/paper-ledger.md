@@ -831,7 +831,6 @@ Scope: the 20 entity hooks below. A key is added only where moment, side, inform
 | `get_enchantment_level` | **Gap:** none | No dossier candidate fires on an enchantment-level read; nothing exposes a mutable level map for gameplay effects while leaving the stack's own component untouched. No key. |
 | `grindstone_place` | **Partial:** [`PrepareGrindstoneEvent`][paper-PrepareGrindstoneEvent] | Fires server-side when inputs are put in for grinding, exposing the inventory and an inherited `getResult`/`setResult` API, so the output can be replaced or cleared. It is non-cancellable and has no experience override, unlike the hook's `cancel` and `xp`. No key. |
 | `grindstone_take` | **Gap:** none (nearest [`PrepareGrindstoneEvent`][paper-PrepareGrindstoneEvent]) | It fires when an item is put in, not when the result is taken; no listed event covers the take or exposes the experience and input-remainder values. No key. |
-| `ingredient_test` | **Gap:** none | No dossier candidate runs inside recipe matching for a custom ingredient's predicate; the hook answers per stack test, which no listed event exposes. No key. |
 | `is_pathfindable` | **Gap:** none | No dossier candidate answers whether a block state is pathfindable per `PathComputationType`; no listed event exposes that per-state boolean. No key. |
 
 [paper-EntityInsideBlockEvent]: https://jd.papermc.io/paper/26.3/io/papermc/paper/event/entity/EntityInsideBlockEvent.html

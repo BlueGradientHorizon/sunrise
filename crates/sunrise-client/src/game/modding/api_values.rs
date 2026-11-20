@@ -1125,16 +1125,6 @@ impl TryIntoApi for crate::crafting::RecipeSnapshot {
 /// Install the engine-facing callbacks; snapshots never enter engine storage.
 pub(crate) fn install_stack_hooks() {
     crate::native_stack_hooks::install(crate::native_stack_hooks::StackHooks {
-        ingredient_test: |context, kind, data, stack, accept| {
-            if !mod_api::__private::listened(mod_api::HookId::IngredientTest) {
-                return;
-            }
-            if let Ok(stack) = stack.try_into_api() {
-                sunrise_client::crafting::native_hooks::native_ingredient_test(
-                    context, kind, data, &stack, accept,
-                );
-            }
-        },
         enchantments: |stack, target, value| {
             if !mod_api::__private::listened(mod_api::HookId::GetEnchantmentLevel) {
                 return;

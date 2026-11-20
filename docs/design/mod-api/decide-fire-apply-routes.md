@@ -58,8 +58,7 @@ Two consequences a reviewer should keep in mind:
 | `living_fall` | `hooks/living_fall.rs:16` | `landing.rs:45` | both, cancel | value transform + cancel | typed decision |
 | `farmland_trample` | `hooks/farmland_trample.rs` | `block_landing.rs` `fall_on_until_trample` | server, cancel | pause only on an actual trample; fire with the owning host, re-check, lift and write, then resume the fall | typed decision |
 | `ender_entity_teleport` | `hooks/ender_entity_teleport.rs:16` | `mobs/enderman.rs:79` | server, cancel | target write-back + cancel | typed decision |
-| `ingredient` | `hooks/ingredient.rs:32` | `crafting/native_hooks.rs:14` | both, collect, data load | collect (`Vec<String>`) | read-only fire |
-| `ingredient_test` | `hooks/ingredient_test.rs:18` | `crafting/native_hooks.rs:56` | both, listen | pure boolean query at craft time | read-only fire |
+| `ingredient` | `hooks/ingredient.rs` | `crafting/native_hooks.rs` | both, replace, data load | first attributed `IngredientDefinition` | read-only fire |
 | `recipe_property_sets` | `hooks/recipe_property_sets.rs:27` | `crafting/native_hooks.rs:40` | both, collect, data load | collect (additions) | read-only fire |
 | `player_name_format` | `hooks/player_name_format.rs:16` | `lan/hub.rs:462` | both, collect | collect (`Text`) | read-only fire |
 | `player_tab_list_name_format` | `hooks/player_tab_list_name_format.rs:17` | `lan/hub.rs:518` | server, collect | collect (`Option<Text>`) | read-only fire |

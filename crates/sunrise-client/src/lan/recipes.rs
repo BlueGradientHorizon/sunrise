@@ -645,23 +645,68 @@ mod content_tests {
         );
     }
 
-    struct AspectListener(std::sync::Arc<std::sync::Mutex<Vec<(DataLoadOrigin, String)>>>);
+    #[derive(Default)]
+    struct AspectCalls {
+        load: std::sync::Mutex<Vec<(DataLoadOrigin, String)>>,
+        matched: std::sync::Mutex<Vec<(String, &'static str, &'static str)>>,
+    }
+    struct AspectListener(std::sync::Arc<AspectCalls>);
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for AspectListener {
         fn ingredient(
             &self,
             context: &dyn mod_api::DataLoadContext,
-            kind: &str,
-            data: &mod_api::Compound,
+            event: &mut mod_api::IngredientEvent<'_>,
         ) -> Option<mod_api::IngredientDefinition> {
-            self.0.lock().unwrap().push((
-                context.origin(),
-                match data.get(&"aspect".into()).unwrap() {
-                    sunrise_core::nbt::Tag::String(s) => format!("\"{}\"", s.to_string().unwrap()),
-                    other => panic!("expected aspect string, got {other:?}"),
+            let kind = event.kind;
+            let data = event.data;
+            if kind != "mymod:aspect" {
+                return None;
+            }
+            let sunrise_core::nbt::Tag::String(aspect) = data.get(&"aspect".into()).unwrap() else {
+                panic!("expected aspect string");
+            };
+            let aspect = aspect.to_string().unwrap();
+            let count = match aspect.as_str() {
+                "nested" => 2,
+                "plain" => 3,
+                "banner" => 4,
+                _ => 1,
+            };
+            self.0
+                .load
+                .lock()
+                .unwrap()
+                .push((context.origin(), aspect.clone()));
+            let calls = self.0.clone();
+            Some(mod_api::IngredientDefinition::new(
+                vec![
+                    "minecraft:emerald".into(),
+                    "minecraft:lapis_lazuli".into(),
+                    "minecraft:emerald".into(),
+                ],
+                move |_, stack| {
+                    let call = mod_api::content::crash::current_native_call().unwrap();
+                    calls
+                        .matched
+                        .lock()
+                        .unwrap()
+                        .push((aspect.clone(), call.id, call.hook));
+                    stack.count() == count
                 },
-            ));
-            event.items.push("minecraft:emerald".into());
+            ))
+        }
+    }
+
+    struct ShadowedAspect;
+    #[mod_api::__subscriptions]
+    impl mod_api::Hooks for ShadowedAspect {
+        fn ingredient(
+            &self,
+            _: &dyn mod_api::DataLoadContext,
+            _: &mut mod_api::IngredientEvent<'_>,
+        ) -> Option<mod_api::IngredientDefinition> {
+            panic!("later mod was asked after the first ingredient answer");
         }
     }
 
@@ -681,18 +726,18 @@ mod content_tests {
     /// answered too. Source JSON remains intact but cannot supply an answer.
     #[test]
     fn ingredient_hook_hears_each_occurrence_once_per_load_with_its_origin() {
-        let heard = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-        let mods = vec![mod_api::ModEntry::new(
-            "aspects",
-            Box::new(AspectListener(heard.clone())),
-        )];
+        let calls = std::sync::Arc::new(AspectCalls::default());
+        let mods = vec![
+            mod_api::ModEntry::new("aspects", Box::new(AspectListener(calls.clone()))),
+            mod_api::ModEntry::new("shadow", Box::new(ShadowedAspect)),
+        ];
         let items = sunrise_client::items::Items::for_tests(Default::default());
         let recipe = json!({
             "type": "minecraft:crafting_shapeless",
             "ingredients": [
                 {"type": "neoforge:compound", "children": [
-                    {"type": "mymod:aspect", "aspect": "nested"}, "minecraft:stone"]},
-                {"type": "mymod:aspect", "aspect": "plain"}
+                    {"type": "mymod:aspect", "aspect": "nested"},
+                    {"type": "mymod:aspect", "aspect": "plain"}, "minecraft:stone"]}
             ],
             "banner": {"type": "mymod:aspect", "aspect": "banner",
                 "sunrise:resolved_items": ["minecraft:diamond"]},
@@ -704,13 +749,13 @@ mod content_tests {
             let resolved =
                 ResolvedSources::resolve(sources(), &load(EngineDataLoadOrigin::ServerDataLoad))
                     .unwrap();
-            let once = heard.lock().unwrap().clone();
+            let once = calls.load.lock().unwrap().clone();
             assert_eq!(
                 once,
                 [
-                    (server_origin, "\"nested\"".to_owned()),
-                    (server_origin, "\"plain\"".to_owned()),
-                    (server_origin, "\"banner\"".to_owned()),
+                    (server_origin, "nested".to_owned()),
+                    (server_origin, "plain".to_owned()),
+                    (server_origin, "banner".to_owned()),
                 ]
             );
 
@@ -718,7 +763,41 @@ mod content_tests {
             let file = loaded.file();
             assert_eq!(file, &recipe);
             let banner = loaded.parse_ingredient(&file["banner"], &items).unwrap();
-            assert_eq!(banner.order, ["minecraft:emerald"]);
+            assert_eq!(
+                banner.order,
+                ["minecraft:emerald", "minecraft:lapis_lazuli"]
+            );
+            let context = load(EngineDataLoadOrigin::ServerDataLoad)
+                .loop_context(sunrise_world::native_load_context::LoopSide::Server, []);
+            let nested = loaded
+                .parse_ingredient(&file["ingredients"][0], &items)
+                .unwrap();
+            use sunrise_items::items::ItemStack;
+            assert!(nested.test_in(&context, &ItemStack::new("minecraft:emerald", 2)));
+            assert!(nested.test_in(&context, &ItemStack::new("minecraft:emerald", 3)));
+            assert!(!nested.test_in(&context, &ItemStack::new("minecraft:diamond", 3)));
+            {
+                let mut matched = calls.matched.lock().unwrap();
+                assert_eq!(
+                    *matched,
+                    [
+                        ("nested".into(), "aspects", "ingredient_predicate"),
+                        ("nested".into(), "aspects", "ingredient_predicate"),
+                        ("plain".into(), "aspects", "ingredient_predicate"),
+                    ]
+                );
+                matched.clear();
+            }
+            assert_eq!(
+                nested.test_in_guarded(&context, &ItemStack::new("minecraft:emerald", 3), &|| {
+                    calls.matched.lock().unwrap().is_empty()
+                },),
+                None
+            );
+            assert_eq!(
+                *calls.matched.lock().unwrap(),
+                [("nested".into(), "aspects", "ingredient_predicate"),]
+            );
             // Neither standalone parsing nor an identical JSON value outside
             // this document can supply the forged or the real answer.
             assert!(crate::crafting::Ingredient::parse(&file["banner"], &items).is_none());
@@ -739,26 +818,27 @@ mod content_tests {
                 copy,
                 json!({
                     "type": "minecraft:crafting_shapeless",
-                    "ingredients": [["minecraft:emerald", "minecraft:stone"], ["minecraft:emerald"]],
-                    "banner": ["minecraft:emerald"],
+                    "ingredients": [["minecraft:emerald", "minecraft:lapis_lazuli", "minecraft:stone"]],
+                    "banner": ["minecraft:emerald", "minecraft:lapis_lazuli"],
                     "result": {"id": "minecraft:stick", "count": 1}
                 })
             );
             assert_eq!(loaded.file(), &recipe);
-            assert_eq!(*heard.lock().unwrap(), once);
+            assert_eq!(*calls.load.lock().unwrap(), once);
 
-            heard.lock().unwrap().clear();
+            calls.load.lock().unwrap().clear();
             let client =
                 ResolvedSources::resolve(sources(), &load(EngineDataLoadOrigin::ClientPreload))
                     .unwrap();
             assert!(
-                heard
+                calls
+                    .load
                     .lock()
                     .unwrap()
                     .iter()
                     .all(|(origin, _)| *origin == DataLoadOrigin::ClientPreload)
             );
-            assert_eq!(heard.lock().unwrap().len(), 3);
+            assert_eq!(calls.load.lock().unwrap().len(), 3);
             drop(client);
         });
     }
@@ -823,10 +903,10 @@ mod content_tests {
     /// it worked before the pass.
     #[test]
     fn every_slot_the_readers_use_is_answered_by_the_pass() {
-        let heard = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let calls = std::sync::Arc::new(AspectCalls::default());
         let mods = vec![mod_api::ModEntry::new(
             "aspects",
-            Box::new(AspectListener(heard.clone())),
+            Box::new(AspectListener(calls.clone())),
         )];
         let items = sunrise_client::items::Items::for_tests(Default::default());
         let slots = [
@@ -866,7 +946,7 @@ mod content_tests {
                 &load(EngineDataLoadOrigin::ServerDataLoad),
             )
             .unwrap();
-            assert_eq!(heard.lock().unwrap().len(), slots.len() + 2);
+            assert_eq!(calls.load.lock().unwrap().len(), slots.len() + 2);
             let loaded = &resolved.recipes[0];
             let file = loaded.file();
             let parse = |ingredient: &Value| {
@@ -881,10 +961,19 @@ mod content_tests {
             parse(&file["key"]["a"]);
             parse(&file["shapes"]["star"]);
             let projected = normalize_ingredients(loaded, &items).unwrap();
-            assert_eq!(projected["reagent"], json!(["minecraft:emerald"]));
-            assert_eq!(projected["key"]["a"], json!(["minecraft:emerald"]));
-            assert_eq!(projected["shapes"]["star"], json!(["minecraft:emerald"]));
-            assert_eq!(heard.lock().unwrap().len(), slots.len() + 2);
+            assert_eq!(
+                projected["reagent"],
+                json!(["minecraft:emerald", "minecraft:lapis_lazuli"])
+            );
+            assert_eq!(
+                projected["key"]["a"],
+                json!(["minecraft:emerald", "minecraft:lapis_lazuli"])
+            );
+            assert_eq!(
+                projected["shapes"]["star"],
+                json!(["minecraft:emerald", "minecraft:lapis_lazuli"])
+            );
+            assert_eq!(calls.load.lock().unwrap().len(), slots.len() + 2);
         });
     }
 
@@ -1023,9 +1112,11 @@ fn empty_ingredient_network_consumers_exclude_whole_unplaceable_recipes() {
         fn ingredient(
             &self,
             _: &dyn mod_api::DataLoadContext,
-            kind: &str,
-            data: &mod_api::Compound,
+            event: &mut mod_api::IngredientEvent<'_>,
         ) -> Option<mod_api::IngredientDefinition> {
+            let kind = event.kind;
+            (kind == "fixture:predicate")
+                .then(|| mod_api::IngredientDefinition::new(vec![], |_, _| true))
         }
     }
 

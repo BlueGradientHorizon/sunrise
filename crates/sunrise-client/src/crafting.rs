@@ -9,7 +9,11 @@ use crate::{
     items::{ItemStack, Items},
     particles::{DYE_FIREWORK_COLORS, FireworkExplosion, FireworkShape},
 };
-use sunrise_core::nbt::{Compound, JavaString, Tag};
+use mod_api::IngredientPredicate;
+use sunrise_core::{
+    identifier::Identifier,
+    nbt::{JavaString, Tag},
+};
 use sunrise_world::native_load_context::{LoadContext, LoopContext};
 use sunrise_world::{component_patch::Patch, loot::PackOverlay};
 mod snapshots;
@@ -1412,7 +1416,7 @@ pub struct ResolvedRecipe {
 
 struct IngredientAnswer {
     items: Vec<String>,
-    data: Compound,
+    predicate: IngredientPredicate,
 }
 
 impl ResolvedRecipe {
@@ -1423,9 +1427,9 @@ impl ResolvedRecipe {
     /// Parse an occurrence borrowed from this recipe's original file, not
     /// a copy. Only occurrences resolved during this load have hook answers.
     pub(crate) fn parse_ingredient(&self, value: &Value, items: &Items) -> Option<Ingredient> {
-        Ingredient::parse_with(value, items, &|value, kind| {
+        Ingredient::parse_with(value, items, &|value, _| {
             let answer = self.answers.get(&std::ptr::from_ref(value).addr())?;
-            Some((answer.items.clone(), (kind.to_owned(), answer.data.clone())))
+            Some((answer.items.clone(), answer.predicate.clone()))
         })
     }
 
@@ -1613,36 +1617,65 @@ impl ResolvedSources {
                 Some("neoforge:custom_display") => &["base"],
                 Some("neoforge:components" | "neoforge:block_tag") => &[],
                 Some(kind) if kind.contains(':') && !kind.starts_with("minecraft:") => {
-                    let context = listener.ok_or_else(|| {
+                    if Identifier::parse_namespaced(kind).is_none() {
+                        return Err(recipe_refused(
+                            name,
+                            &format!("invalid ingredient kind {kind}"),
+                        ));
+                    }
+                    let unanswered = || {
                         recipe_refused(
                             name,
-                            &format!("ingredient kind {kind} is not registered by any mod"),
+                            &format!("ingredient kind {kind} was not answered by any mod"),
                         )
+                    };
+                    let context = listener.ok_or_else(unanswered)?;
+                    let data = crate::json_nbt::json_to_compound(object).map_err(|error| {
+                        recipe_refused(name, &format!("ingredient kind {kind}: {error}"))
                     })?;
-                    // Custom metadata is opaque. Decode it once for both hooks;
-                    // malformed metadata cannot supply an answer.
-                    let mut items = Vec::new();
-                    let data = crate::json_nbt::json_to_compound(object).ok();
-                    if let Some(data) = &data {
-                        native_hooks::native_ingredient(context, kind, data, &mut items);
-                        mod_api::__private::dedup_keep_order(&mut items);
-                    }
+                    let mut definition = None;
+                    native_hooks::native_ingredient(context, kind, &data, &mut definition);
+                    let definition = definition.ok_or_else(unanswered)?;
+                    // Only dispatch creates Answered, from the installed subscriber table.
+                    let owner = mod_api::__private::mod_index(definition.mod_id)
+                        .expect("ingredient dispatch names an installed mod");
+                    let (mut items, predicate) = mod_api::__private::bind_ingredient_predicate(
+                        definition.mod_id,
+                        owner,
+                        definition.answer,
+                    );
+                    mod_api::__private::dedup_keep_order(&mut items);
                     if items.is_empty() {
                         log::warn!(
                             "recipes: {name}: ingredient kind {kind} matched no items; the recipe cannot be placed"
                         );
                     }
-                    if let Some(data) = data {
-                        answers.insert(
-                            std::ptr::from_ref(value).addr(),
-                            IngredientAnswer { items, data },
-                        );
-                    }
+                    answers.insert(
+                        std::ptr::from_ref(value).addr(),
+                        IngredientAnswer { items, predicate },
+                    );
                     &[]
+                }
+                Some(kind) if !kind.starts_with("minecraft:") => {
+                    return Err(recipe_refused(
+                        name,
+                        &format!("invalid ingredient kind {kind}"),
+                    ));
                 }
                 Some(_) => &[],
                 // A brewing slot's item predicate wraps its ingredient.
-                None => &["item"],
+                None => {
+                    if let Some(kind) = object
+                        .get("neoforge:ingredient_type")
+                        .or_else(|| object.get("type"))
+                    {
+                        return Err(recipe_refused(
+                            name,
+                            &format!("invalid ingredient kind {kind}"),
+                        ));
+                    }
+                    &["item"]
+                }
             };
             for part in parts.iter().filter_map(|key| object.get(*key)) {
                 collect_answers(name, part, listener, answers)?;

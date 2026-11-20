@@ -1,28 +1,40 @@
 //! Allocation-free projection of a live engine stack into an ingredient predicate.
 use mod_api::{__private, IngredientStack};
+use sunrise_core::nbt::Compound;
 use sunrise_items::{
-    item_data::ingredient_components::removed,
-    items::{ItemInfo, ItemStack},
+    item_data::ingredient_components::removed, items::ItemStack, properties::component_int,
 };
 
-#[allow(
-    dead_code,
-    reason = "the recipe matcher switches to bound predicates in the next step"
-)]
 pub(super) fn with_ingredient_stack<R>(
     stack: &ItemStack,
-    info: Option<&ItemInfo>,
+    defaults: Option<&Compound>,
     read: impl FnOnce(IngredientStack<'_>) -> R,
 ) -> R {
-    let damage = stack
-        .carries_component(info, "minecraft:damage")
-        .then(|| stack.effective_damage(info) as u32);
+    let prototype = |id: &str| {
+        defaults?
+            .iter()
+            .find_map(|(key, tag)| key.0.iter().copied().eq(id.encode_utf16()).then_some(tag))
+    };
+    let damage_id = "minecraft:damage";
+    let damage = if stack.carries_component(None, damage_id) {
+        Some(stack.effective_damage(None) as u32)
+    } else if removed(stack, damage_id) {
+        None
+    } else {
+        prototype(damage_id)
+            .and_then(component_int)
+            .map(|damage| damage as u32)
+    };
     read(__private::ingredient_stack(
         &stack.item,
         __private::item_key(&stack.item),
         stack.count,
         damage,
-        &|id| !id.starts_with('!') && stack.carries_component(info, id),
+        &|id| {
+            !id.starts_with('!')
+                && (stack.carries_component(None, id)
+                    || (prototype(id).is_some() && !removed(stack, id)))
+        },
         &|id| removed(stack, id),
         &|id| {
             if id.starts_with('!') {

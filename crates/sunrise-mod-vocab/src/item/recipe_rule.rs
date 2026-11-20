@@ -86,10 +86,10 @@ impl RecipeTemplate {
     }
 }
 
+// no wire: the shape selector can retain an in-process ingredient predicate.
 /// An ingredient that chooses a firework star's explosion shape.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
 pub struct FireworkShapeIngredient {
     /// Shape selected by this ingredient.
     pub shape: FireworkShape,
@@ -121,6 +121,7 @@ pub enum RecipeTrimPattern {
     },
 }
 
+// no wire: the resolved rules can retain in-process ingredient predicates.
 /// The parsed rule of a stonecutting, smithing or special crafting recipe.
 /// These are the same resolved ingredients and rules the game uses, not a
 /// second recipe implementation. Only `Stonecutting` has a fixed output;
@@ -131,7 +132,6 @@ pub enum RecipeTrimPattern {
 /// instead of inventing a vanilla rule.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
 pub enum RecipeRule {
     /// A stonecutter input and fixed result.
     Stonecutting {
