@@ -110,11 +110,11 @@ impl Game<'_> {
             return;
         };
         let g = self.lan.as_ref().unwrap().hub.guest(conn).unwrap();
-        // Each move the player sent put it somewhere (`handleMovePlayer`'s `setPos`).
-        let (id, end) = (g.entity_id as u32, g.position);
-        self.entity_section_walked(id, end, moves.iter().map(|m| m.delta));
-        let g = self.lan.as_ref().unwrap().hub.guest(conn).unwrap();
+        let id = g.entity_id as u32;
         if g.spectator() {
+            // Spectators skip the movement replay and only file its position writes.
+            self.entity_section_walked(id, g.position, moves.iter().map(|m| m.delta));
+            let g = self.lan.as_ref().unwrap().hub.guest(conn).unwrap();
             // ServerPlayer.doTick runs the player's whole tick for a spectator
             // too, unless its box touches an unloaded chunk
             // (`touchingUnloadedChunk`, `guest_body_ticks`): its effects
@@ -218,12 +218,27 @@ impl Game<'_> {
             // was alive then: the hazards below may kill it later in this tick.
             let mut rose = None;
             let mut latest = end;
+            let mut from = start;
             let mut replay = moves.iter().peekable();
             while let Some(accepted) = replay.next() {
                 let movement = vector(accepted.delta);
                 let at = vector(accepted.position);
                 w.player.position = at;
                 w.player.shift_key_down = accepted.sneaking;
+                // File this accepted setPos before its landing or a later move.
+                // In particular, an intervening trample lift can cross a section too.
+                if crate::game::entity_sections::crossed(from.components(), at.components()) {
+                    let mut collected = std::mem::take(&mut w.player.events);
+                    game.entity_section_step(id, from.components(), at.components());
+                    let Some(player) = game.player.as_mut().filter(|p| p.entity_id as u32 == id)
+                    else {
+                        return (collected, None);
+                    };
+                    collected.append(&mut player.events);
+                    player.events = collected;
+                    side = game_side!(game);
+                    w = motion_world!(game, side, player);
+                }
                 let landed = (|| -> sunrise_client::Result<_> {
                     w.set_on_ground_with_movement(accepted.on_ground, false, movement)?;
                     let pos = w.legacy_on_position()?;
@@ -248,6 +263,7 @@ impl Game<'_> {
                 }
                 // handlePlayerPositionChange: an upward move resets the fall distance
                 // after the landing, and its advancement reads the post-landing health.
+                from = w.player.position;
                 if movement.y > 0.0 {
                     w.player.fall_distance = 0.0;
                     rose.get_or_insert((at, !w.player.health.dead_or_dying()));
