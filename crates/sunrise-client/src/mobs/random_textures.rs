@@ -274,6 +274,7 @@ mod tests {
             heightmaps: Default::default(),
             animations: Default::default(),
             villager_hats: Default::default(),
+            frame_models: Default::default(),
             cem: Default::default(),
             random_textures: Default::default(),
             emissive: Default::default(),

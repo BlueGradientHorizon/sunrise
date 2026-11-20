@@ -1420,6 +1420,7 @@ mod tests {
             biome_tags: Default::default(),
             entity_tags: Default::default(),
             villager_hats: Default::default(),
+            frame_models: Default::default(),
             cem: std::sync::RwLock::new(models.clone()),
             random_textures: Default::default(),
             emissive: Default::default(),
