@@ -1,11 +1,12 @@
 //! `chat_recipient`: asked once for each placed receiver before a public line is sent, and a
 //! receiver it hides is sent nothing while the others still get the line.
 use super::native_entity_refs::tests::with_game;
-use mod_api::{ChatRecipientEvent, CommandResult, Flow, Hooks, ServerHost};
+use mod_api::{ChatRecipientEvent, CommandResult, Flow, Hooks, PermissionLevel, ServerHost};
 use std::sync::{Arc, Mutex, atomic::AtomicI32, mpsc};
 use sunrise_client::lan::hub::chat::ChatMessage;
 use sunrise_client::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest};
 use sunrise_client::text::Text;
+use sunrise_core::position::{BlockPos, ChunkPos};
 use sunrise_protocol::packets::{configuration::ClientInformation, play};
 
 type Asked = Arc<Mutex<Vec<(u128, String, String, u128)>>>;
@@ -58,6 +59,30 @@ impl Hooks for Echo {
                 .commands()
                 .run_command_with_output("execute run say nested");
             *self.nested.lock().unwrap() = Some(result);
+        }
+        Flow::Continue
+    }
+}
+
+/// Commands run by a listener must not contribute to the block's result callback.
+struct Queries(Arc<Mutex<Vec<bool>>>);
+
+#[mod_api::__subscriptions]
+impl Hooks for Queries {
+    fn chat_recipient(
+        &self,
+        host: &mut dyn ServerHost,
+        event: &mut ChatRecipientEvent<'_>,
+    ) -> Flow {
+        if event.recipient == 12 {
+            let console = host.commands().run_command("time query gametime");
+            let player = host.players().player_by_name("guest12").unwrap();
+            let entity = player.entity().run_command(
+                host,
+                "time query gametime",
+                PermissionLevel::from_level(2),
+            );
+            self.0.lock().unwrap().extend([console, entity]);
         }
         Flow::Continue
     }
@@ -228,6 +253,20 @@ fn say_and_me_are_asked_per_receiver_and_a_whisper_is_not() {
     });
 }
 
+fn place_say_block(game: &mut super::Game<'_>) -> BlockPos {
+    game.build_registries();
+    game.world
+        .chunks
+        .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
+    game.block_ticks
+        .add_empty_chunk(ChunkPos::new(0, 0))
+        .unwrap();
+    assert!(game.as_console(|game| game.run_command(
+        r#"setblock 5 100 2 command_block[facing=up]{Command:"say block secret",CustomName:"Announcer",conditionMet:1b}"#,
+    )));
+    BlockPos::new(5, 100, 2)
+}
+
 #[test]
 #[ignore = "daily"]
 fn console_and_command_block_say_can_be_hidden_per_receiver() {
@@ -240,16 +279,7 @@ fn console_and_command_block_say_can_be_hidden_per_receiver() {
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
             let (first, second) = two_guests(game);
-            game.build_registries();
-            game.world
-                .chunks
-                .insert((0, 0), Arc::new(sunrise_client::chunk::Chunk::empty(0, 0)));
-            game.block_ticks
-                .add_empty_chunk(sunrise_core::position::ChunkPos::new(0, 0))
-                .unwrap();
-            assert!(game.as_console(|game| game.run_command(
-                r#"setblock 5 100 2 command_block[facing=up]{Command:"say block secret",CustomName:"Announcer",conditionMet:1b}"#,
-            )));
+            let block = place_say_block(game);
             let level = game.level(game.dim.id()).unwrap();
             game.fake_player(level, 14, "robot").unwrap();
             lines(&first);
@@ -258,7 +288,7 @@ fn console_and_command_block_say_can_be_hidden_per_receiver() {
             game.dedicated_console_say("console secret".into());
             assert_eq!(lines(&first), 1);
             assert_eq!(lines(&second), 0);
-            game.command_block_tick(sunrise_core::position::BlockPos::new(5, 100, 2));
+            game.command_block_tick(block);
             assert_eq!(lines(&first), 1);
             assert_eq!(lines(&second), 0);
             game.lan.as_mut().unwrap().hub.update_guest(13, |guest| {
@@ -284,6 +314,36 @@ fn console_and_command_block_say_can_be_hidden_per_receiver() {
                     receiver
                 )),
             );
+        });
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn listener_commands_do_not_count_as_command_block_successes() {
+    let results = Arc::new(Mutex::new(Vec::new()));
+    let mods = vec![mod_api::ModEntry::new(
+        "queries",
+        Box::new(Queries(results.clone())),
+    )]
+    .into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            let _receivers = two_guests(game);
+            game.reset_entity_residency();
+            let pos = place_say_block(game);
+            game.command_block_tick(pos);
+            assert_eq!(
+                *results.lock().unwrap(),
+                [true, true],
+                "both listener queries ran"
+            );
+            let sunrise_client::containers::BlockEntity::CommandBlock(block) =
+                &game.world.block_entities[&(pos.x, pos.y, pos.z)]
+            else {
+                panic!("expected the command block");
+            };
+            assert_eq!(block.success_count, 1, "only the block's /say counts");
         });
     });
 }
