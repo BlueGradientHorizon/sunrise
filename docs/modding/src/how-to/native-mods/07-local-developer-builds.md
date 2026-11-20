@@ -5,7 +5,8 @@ reads a signed `sdk-<commit>` folder on your machine instead of looking for a re
 
 ## Build the SDK from your checkout
 
-Commit the game changes you want the mod to use: the SDK is built for `HEAD`. Use the Rust version
+Commit the game changes you want the mod to use. Every SDK input comes from a temporary checkout
+of `HEAD`, so local edits and untracked files are left out. Use the Rust version
 in `tools/ci/rust-version` with the `wasm32-unknown-unknown` target installed, even for a native mod:
 the SDK builder checks the API source on both targets. For this Linux example you also need Bash,
 Python 3.11 or later, OpenSSL with Ed25519 support, and the ALSA and udev development headers
