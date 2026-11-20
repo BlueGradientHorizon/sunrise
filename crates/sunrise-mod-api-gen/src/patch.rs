@@ -1453,9 +1453,14 @@ struct Narrowing<'a> {
 }
 
 /// The statics std's `thread_local!` declares in `mac`, with their attributes and visibility;
-/// `None` for any other macro, for a bare `thread_local!` when `shadowed` (the module may see
-/// another macro of that name), or when the body doesn't read as statics.
-fn thread_local_statics(mac: &syn::ItemMacro, shadowed: bool) -> Option<Vec<syn::ItemStatic>> {
+/// `None` for any other macro, for one that may not be std's (a bare `thread_local!` unless
+/// `bare_is_std`, `std::thread_local!` unless `std_is_std`), or when the body doesn't read as
+/// statics.
+fn thread_local_statics(
+    mac: &syn::ItemMacro,
+    bare_is_std: bool,
+    std_is_std: bool,
+) -> Option<Vec<syn::ItemStatic>> {
     let segments: Vec<String> = mac
         .mac
         .path
@@ -1463,9 +1468,10 @@ fn thread_local_statics(mac: &syn::ItemMacro, shadowed: bool) -> Option<Vec<syn:
         .iter()
         .map(|segment| segment.ident.to_string())
         .collect();
+    let absolute = mac.mac.path.leading_colon.is_some();
     let standard = match segments.as_slice() {
-        [name] => name == "thread_local" && !shadowed,
-        [std, name] => std == "std" && name == "thread_local",
+        [name] => name == "thread_local" && !absolute && bare_is_std,
+        [std, name] => std == "std" && name == "thread_local" && (absolute || std_is_std),
         _ => false,
     };
     if !standard {
@@ -1548,16 +1554,22 @@ fn mirror(
     // A `thread_local!` names the statics it declares. Only a public one can be re-exported:
     // nothing widens a private one, which a glob would not have brought either. Any other
     // macro invocation may define items syn can't see, which only a glob re-exports.
-    // A bare `thread_local!` is std's unless a `macro_rules!` of that name is in scope, or the
-    // module imports that name or any glob.
-    let shadowed = source.local_macros.contains("thread_local")
-        || source
-            .path_macros(path)
-            .iter()
-            .any(|mac| mac.ident.as_ref().is_some_and(|i| i == "thread_local"))
-        || uses(&items)
+    // Which `thread_local!` is std's: a bare one unless another macro of that name may be in
+    // scope, and `std::thread_local!` unless the module may bind `std` to something else.
+    // `::std::thread_local!` always is. Unresolved, the module keeps the glob.
+    let bare_is_std = !source.local_macros.contains("thread_local")
+        && !macro_may_be_in_scope(source, path, "thread_local")
+        && !uses(&items)
             .iter()
             .any(|item| may_import(&item.tree, "thread_local"));
+    let std_is_std = !uses(&items)
+        .iter()
+        .any(|item| may_import(&item.tree, "std"))
+        && !defined(&items).iter().any(|(ident, _)| ident == "std")
+        && !items.iter().any(|item| {
+            matches!(item, Item::ExternCrate(krate)
+                if krate.rename.as_ref().is_some_and(|(_, name)| name == "std"))
+        });
     let cfgs = |attrs: &[syn::Attribute]| {
         attrs
             .iter()
@@ -1571,7 +1583,7 @@ fn mirror(
         if let Item::Macro(mac) = item
             && mac.ident.is_none()
         {
-            match thread_local_statics(mac, shadowed) {
+            match thread_local_statics(mac, bare_is_std, std_is_std) {
                 // Each static exists under the invocation's conditions and its own.
                 Some(statics) => thread_locals.extend(
                     statics
@@ -1838,6 +1850,28 @@ fn bridge_trait(
             impl #generics #trait_name #args for #owner #args { #declared #defined }
         },
     ))
+}
+
+/// Whether a `macro_rules!` named `name`, exported or not, may be in textual scope in module
+/// `path`: one a module on the path defines, or a `#[macro_use]` child of one, or one a
+/// `#[macro_use] extern crate` brings.
+fn macro_may_be_in_scope(source: &mut Source, path: &str, name: &str) -> bool {
+    fn within(source: &mut Source, module: &str, name: &str) -> bool {
+        let Ok(found) = source.module(module) else {
+            return false;
+        };
+        let items = found.items.clone();
+        items.iter().any(|item| match item {
+            Item::Macro(mac) => mac.ident.as_ref().is_some_and(|ident| ident == name),
+            Item::ExternCrate(krate) => krate.attrs.iter().any(|a| a.path().is_ident("macro_use")),
+            Item::Mod(child) if child.attrs.iter().any(|a| a.path().is_ident("macro_use")) => {
+                within(source, &format!("{module}::{}", child.ident), name)
+            }
+            _ => false,
+        })
+    }
+    let segments: Vec<&str> = path.split("::").collect();
+    (1..=segments.len()).any(|end| within(source, &segments[..end].join("::"), name))
 }
 
 /// Whether `tree` may bring `name` into scope: it binds it, or it has a glob.
@@ -2307,9 +2341,20 @@ mod tests {
         // So may an imported one, or one a glob import brings.
         assert!(glob(&format!("use other::thread_local; {invocation}")));
         assert!(glob(&format!("use other::*; {invocation}")));
+        // An exported one is in textual scope too.
+        assert!(glob(&format!(
+            "#[macro_export] macro_rules! thread_local {{ ($($t:tt)*) => {{}}; }} {invocation}"
+        )));
         // Spelled through std, it is std's whatever else is in scope.
         assert!(!glob(
             "use other::thread_local; std::thread_local! { pub static SHARED: u8 = 0; }"
+        ));
+        // Unless `std` may be something else there; `::std` is always std.
+        assert!(glob(
+            "use other as std; std::thread_local! { pub static SHARED: u8 = 0; }"
+        ));
+        assert!(!glob(
+            "use other as std; ::std::thread_local! { pub static SHARED: u8 = 0; }"
         ));
     }
 
