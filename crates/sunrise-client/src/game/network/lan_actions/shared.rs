@@ -542,6 +542,8 @@ mod tests {
             source: 4,
             entity: None,
             except_entity: None,
+            seed: 0,
+            particles_before: 0,
         };
         let broken = [[1.0, 64.0, -3.0]];
         assert!(super::captured_block_break(&sound, &broken));

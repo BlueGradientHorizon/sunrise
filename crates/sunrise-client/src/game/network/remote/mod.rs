@@ -6385,8 +6385,10 @@ impl Game<'_> {
     /// `Level.tickBlockEntities` on a client: the block entities' animations
     /// and client ticks, and the moving pistons' pushes.
     fn tick_remote_block_entities(&mut self) {
+        // The ticker list's spawners, trial spawners, vaults and mod block entities; the
+        // animated ones, beacons and potent sulfur still tick on their own passes after them.
+        self.tick_client_block_entities();
         self.tick_block_entity_anims();
-        self.tick_remote_spawners();
         self.client_tick_beacons();
         self.tick_remote_potent_sulfur();
         self.with_level(|b, level, ticks| {
@@ -6787,8 +6789,7 @@ impl Game<'_> {
             }));
         }
         // LocalPlayer.sendChanges sends `input.keyPresses`, which an auto-jump's `makeJump` set to
-        // jump for this tick: the server's prediction plays the jump from it. Sent as held, the jump
-        // was the client's alone, and the server saw a jump its keys didn't allow.
+        // jump for this tick: the jump key goes as held in the tick the client jumps.
         let auto_jumped = self.player.as_ref().is_some_and(|p| p.was_auto_jump);
         Ok(Some(input | u8::from(auto_jumped) << 4))
     }

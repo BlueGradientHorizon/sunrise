@@ -286,12 +286,19 @@ def requested_features(metadata: dict, crate: Crate, manifest: dict,
     externs = {dependency["name"]: packages[dependency["pkg"]] for dependency in node["deps"]
                if any(kind["kind"] is None for kind in dependency["dep_kinds"])}
     requested = {}
+    # A dependency only a cfg-gated table names resolves where the cfg applies: nothing to pin on this host,
+    # and the dep writes through as the crate declared it.
+    target_only = {name for target in manifest.get("target", {}).values()
+                   for name in target.get("dependencies", {})}
+    target_only -= set(manifest.get("dependencies", {}))
     for name in normal_dependencies(manifest):
         dependency = externs.get(name.replace("-", "_"))
         if dependency is None or dependency["source"] is None:
             continue
         key = f"{dependency['name']} {dependency['version']}"
         if key not in game:
+            if name in target_only:
+                continue
             raise Refusal("E_FEATURES", f"the game's build does not resolve {key}, which {crate.name} uses")
         requested[name] = (game[key], "default" in game[key] or "default" not in dependency["features"])
     return requested

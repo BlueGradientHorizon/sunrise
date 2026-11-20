@@ -921,6 +921,18 @@ impl Renderer {
             &lightmap_sampler,
             &emission_stats.view,
         );
+        let translucent_model_sampler = device.create_sampler(&terrain_model::TRANSLUCENT_SAMPLER);
+        let translucent_model_group = terrain_group(
+            &device,
+            "Native translucent model resources",
+            &bindings,
+            &globals,
+            &sprite_views,
+            &translucent_model_sampler,
+            &lightmap_view,
+            &lightmap_sampler,
+            &emission_stats.view,
+        );
         let crosshair_group = terrain_group(
             &device,
             "Debug crosshair resources",
@@ -2336,6 +2348,8 @@ impl Renderer {
             fluid_sampler,
             terrain_model_group,
             terrain_model_sampler,
+            translucent_model_group,
+            translucent_model_sampler,
             globals,
             pbr_maps,
             lightmap,
