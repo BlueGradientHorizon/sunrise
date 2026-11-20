@@ -151,7 +151,7 @@ fn native_tick_reply_matrix() {
                     assert_eq!(current.items, items);
                     assert_eq!(current.revision(), revision);
                     assert_eq!(game.world.block_entities.generation(&pos), generation);
-                    assert!(game.world.block_entities.is_asleep(pos));
+                    assert!(game.world.block_entities.is_asleep(&pos));
                     assert!(game.world.modified.is_empty());
                     assert!(
                         effects
