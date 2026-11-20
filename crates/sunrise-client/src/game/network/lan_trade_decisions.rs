@@ -294,7 +294,7 @@ impl Game<'_> {
             if input == Input::Throw && button != 0 && previous.is_none() {
                 throw_amount = gm.slots[2].as_ref().map_or(0, |stack| stack.count);
             }
-            let stored = rules.as_ref().map(|answers| StoredRules(answers));
+            let stored = rules.as_ref().map(StoredRules);
             let run = stored.as_ref().map_or(MerchantRun::Plain, |stored| {
                 MerchantRun::Decided(stored, stacked.as_ref())
             });
