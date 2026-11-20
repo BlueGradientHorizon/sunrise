@@ -815,34 +815,36 @@ impl Game<'_> {
         })
     }
 
-    /// `MinecraftServer.prepareLevels` activates every level's saved tickets:
-    /// a level holding saved `PORTAL` tickets opens with the world and ticks
-    /// while they hold it (`shouldKeepDimensionActive`).
-    pub(super) fn open_saved_portal_levels(&mut self) -> Result<()> {
+    /// `MinecraftServer.createLevels`: open the built-in levels in registry
+    /// order before `prepare_levels`, which waits for their saved tickets.
+    pub(super) fn open_builtin_levels(&mut self) -> Result<()> {
         if self.options.execution_role.is_client() {
             return Ok(());
         }
         let back = self.dim;
+        if matches!(back, Dim::Extra(_)) {
+            self.native_level_opened(back);
+        }
         for dim in [Dim::Overworld, Dim::Nether, Dim::End] {
-            if dim == back || self.levels.parked.contains_key(&dim) {
-                continue;
-            }
-            let save = SaveDir::new(
-                sunrise_client::save::dimension_dir(&self.world_root, dim.id()),
-                self.level_shapes.get(dim.id()),
-                None,
-            );
-            if !save.load_portal_tickets().is_empty() {
+            if dim == back {
+                // The save's starting level is already open. Notify it in registry order.
+                if self.dim != back {
+                    self.enter_level(back)?;
+                }
+                self.native_level_opened(back);
+            } else if !self.levels.parked.contains_key(&dim) {
                 self.enter_level(dim)?;
-                self.enter_level(back)?;
             }
+        }
+        if self.dim != back {
+            self.enter_level(back)?;
         }
         Ok(())
     }
 
     /// `MinecraftServer.prepareLevels`: before the first tick, the chunks the
-    /// open levels' restored tickets hold (forced chunks, a native mod's) are
-    /// loaded (`ChunkLoadCounter`). The first tick then finds them ticking
+    /// built-in levels' restored tickets hold (portal, `/forceload`, and mod
+    /// tickets) are loaded (`ChunkLoadCounter`). The first tick finds them ticking
     /// and unpacks their saved block and fluid ticks at the game time they
     /// were saved at (`startTickingChunk`), not at whichever tick they finish
     /// streaming in.
@@ -1618,13 +1620,6 @@ impl Game<'_> {
         Ok(())
     }
 
-    /// A server's world opened: level.dat is read and no chunk is loaded. The
-    /// mods hear its saved mod list's differences (NeoForge's
-    /// `ModMismatchEvent`), then the level it opens in.
-    pub(super) fn native_world_opened(&mut self, dim: Dim) {
-        self.native_level_opened(dim);
-    }
-
     /// The mods hear `dim`'s level open (`LevelEvent.Load`), on a server.
     pub(super) fn native_level_opened(&mut self, dim: Dim) {
         if self.remote.is_some()
@@ -1988,6 +1983,135 @@ mod tests {
         )
         .unwrap();
         game
+    }
+
+    /// `MinecraftServer.prepareLevels` activates each level's saved tickets and
+    /// waits for their ticking chunks without a player visiting either level.
+    #[test]
+    #[ignore = "daily"]
+    fn built_in_levels_restore_saved_tickets_before_the_first_tick() {
+        use mod_api::{Hooks, ModEntry, Registrar, RegistrationContext, TicketController};
+        use sunrise_client::mod_chunk_tickets::{ModTicket, ModTickets, TicketOwner};
+        use sunrise_client::save::dimension_dir;
+
+        struct Quarry;
+        #[mod_api::__subscriptions]
+        impl Hooks for Quarry {
+            fn register(&self, registrar: &mut dyn Registrar, _: &RegistrationContext) {
+                registrar.register_ticket_controller("quarry", false);
+            }
+        }
+
+        let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
+        let home = tempfile::tempdir().unwrap();
+        let world = home.path().join("world");
+        let mods = vec![ModEntry::new("startup_tickets", Box::new(Quarry))].into();
+        mod_platform::testing::with_mods(mods, || {
+            {
+                let mut resources = None;
+                let mut game = open_game(&mut resources, &root, home.path(), &world);
+                game.save_game_metadata().unwrap();
+            }
+            let nether = Dim::Nether;
+            let end = Dim::End;
+            let commanded_chunk = (4, -5);
+            let controller = TicketController::from_id("startup_tickets:quarry").unwrap();
+            let ticket = ModTicket {
+                controller: controller.slot(),
+                owner: TicketOwner::Block([2, 64, 3]),
+                chunk: (12, -13),
+                natural_spawning: false,
+            };
+            SaveDir::new(dimension_dir(&world, nether.id()), nether.shape(), None)
+                .save_chunk_tickets(&[commanded_chunk].into(), &[])
+                .unwrap();
+            let mut tickets = ModTickets::default();
+            tickets.insert(ticket.clone());
+            SaveDir::new(dimension_dir(&world, end.id()), end.shape(), None)
+                .save_mod_tickets(&tickets, |slot| {
+                    TicketController::from_slot(slot).map(TicketController::id)
+                })
+                .unwrap();
+
+            let mut resources = None;
+            let mut game = open_game(&mut resources, &root, home.path(), &world);
+            game.prepare_levels().unwrap();
+            assert_eq!(game.dim, Dim::Overworld);
+            let nether = game
+                .levels
+                .parked
+                .get(&nether)
+                .expect("Nether open at startup");
+            assert!(nether.streaming.commanded().contains(&commanded_chunk));
+            assert!(crate::game::ticking_chunk(
+                &nether.world,
+                commanded_chunk.0,
+                commanded_chunk.1
+            ));
+            let end = game.levels.parked.get(&end).expect("End open at startup");
+            assert_eq!(
+                end.streaming
+                    .mod_tickets()
+                    .of_controller(controller.slot())
+                    .next(),
+                Some(&ticket)
+            );
+            assert!(crate::game::ticking_chunk(
+                &end.world,
+                ticket.chunk.0,
+                ticket.chunk.1
+            ));
+        });
+    }
+
+    /// `WorldDimensions.BUILTIN_ORDER` is independent of a saved player's dimension.
+    #[test]
+    #[ignore = "daily"]
+    fn built_in_level_load_order_ignores_the_saved_player_dimension() {
+        use mod_api::{Hooks, LevelLoadEvent, ModEntry, ServerHost};
+        use std::sync::{Arc, Mutex};
+
+        struct Observer(Arc<Mutex<Vec<String>>>);
+        #[mod_api::__subscriptions]
+        impl Hooks for Observer {
+            fn level_load(&self, host: &mut dyn ServerHost, event: &mut LevelLoadEvent<'_>) {
+                assert_eq!(host.dimension(), event.dimension);
+                self.0.lock().unwrap().push(event.dimension.to_owned());
+            }
+        }
+
+        let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
+        let home = tempfile::tempdir().unwrap();
+        let world = home.path().join("world");
+        {
+            let mut resources = None;
+            let mut game = open_game(&mut resources, &root, home.path(), &world);
+            game.level.dimension = "minecraft:the_nether".into();
+            game.level.position = Some([0.0, 64.0, 0.0]);
+            game.level.write(&world, game.res.items()).unwrap();
+        }
+
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let mods = vec![ModEntry::new(
+            "startup_order",
+            Box::new(Observer(seen.clone())),
+        )]
+        .into();
+        mod_platform::testing::with_mods(mods, || {
+            let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
+            let mut resources = None;
+            let game = open_game(&mut resources, &root, home.path(), &world);
+            // The owner still starts in their saved dimension; only the hook order changes.
+            assert_eq!(game.dim, Dim::Nether);
+        });
+        assert_eq!(
+            *seen.lock().unwrap(),
+            [
+                "minecraft:overworld",
+                "minecraft:the_nether",
+                "minecraft:the_end"
+            ]
+        );
     }
 
     /// Expected values from the official 26.3 dedicated server restarted on the

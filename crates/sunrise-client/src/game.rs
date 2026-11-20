@@ -6719,8 +6719,7 @@ impl Game<'_> {
         self.streaming.nether_shading =
             facts.cardinal_light == sunrise_world::dimension_type::CardinalLight::Nether;
         self.load_world_state()?;
-        self.native_world_opened(dim);
-        self.open_saved_portal_levels()?;
+        self.open_builtin_levels()?;
         Ok(stack)
     }
     fn finish_close_world(&mut self) -> Result<()> {

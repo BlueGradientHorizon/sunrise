@@ -50,7 +50,8 @@ never names a later open of the same id: it reads as stale, like a handle from a
 A folder that exists under the id is reopened as it was saved, a persistent level after an
 unload or a restart. Nothing reopens a runtime level by itself at the next start: the mod
 reopens what it keeps, and a player saved in a level that was not reopened keeps the usual
-fallback.
+fallback. The built-in Overworld, Nether and End instead fire `level_load` at server startup,
+before `server_started`, even if no player visits them.
 
 Success means queue admission, not apply completion. Apply failures are logged with the
 requesting mod and level id. A failed open rolls back publication and frees the id for retry;
