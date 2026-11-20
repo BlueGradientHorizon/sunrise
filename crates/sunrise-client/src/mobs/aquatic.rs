@@ -18,7 +18,6 @@ use crate::particles::ParticleType;
 use std::f32::consts::PI;
 use sunrise_core::geometry::trig::Mth;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
-use sunrise_world::move_gate::MoveGate;
 
 // Squid animation slots in AnimState.v.
 const TENTACLE_MOVEMENT: usize = 0;
@@ -599,26 +598,27 @@ fn squid_step(m: &mut Mob, client: bool) {
     }
 }
 /// Water travel for axolotls, fish and dolphins.
-pub fn travel_in_water(
+pub(super) fn travel_in_water(
     m: &mut Mob,
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
     input: Vec3,
     events: &mut Vec<MobEvent>,
-) {
-    let species = m.species();
-    let speed = match species {
+    pause: bool,
+) -> Result<(), super::living::TravelTrample> {
+    let speed = match m.species() {
         Species::Axolotl | Species::Dolphin => m.ai.speed,
         _ => 0.01,
     };
     m.move_relative(speed, input);
-    m.do_move(w, level, events, &mut MoveGate::new());
-    m.velocity = Vec3::new(m.velocity.x * 0.9, m.velocity.y * 0.9, m.velocity.z * 0.9);
-    // Axolotl.travelInWater has no fish sinking or generic water gravity.
-    if species != Species::Axolotl && m.ai.target.is_none() {
-        // `Vec3.add(0.0, -0.005, 0.0)`: adding 0.0 turns a -0.0 into 0.0.
-        m.velocity = Vec3::new(m.velocity.x + 0.0, m.velocity.y - 0.005, m.velocity.z + 0.0);
-    }
+    m.travel_move(w, level, events, pause, |m, _, _, _| {
+        m.velocity = Vec3::new(m.velocity.x * 0.9, m.velocity.y * 0.9, m.velocity.z * 0.9);
+        // Axolotl.travelInWater has no fish sinking or generic water gravity.
+        if m.species() != Species::Axolotl && m.ai.target.is_none() {
+            // `Vec3.add(0.0, -0.005, 0.0)`: adding 0.0 turns a -0.0 into 0.0.
+            m.velocity = Vec3::new(m.velocity.x + 0.0, m.velocity.y - 0.005, m.velocity.z + 0.0);
+        }
+    })
 }
 /// FishMoveControl.tick (fish use it instead of the default move control).
 pub fn fish_move_control(m: &mut Mob) {

@@ -21,7 +21,6 @@ use sunrise_core::{
     geometry::Vec3,
     random::{LegacyRandom, RandomSource},
 };
-use sunrise_world::move_gate::MoveGate;
 
 const JUMP: usize = 0;
 const CROAK: usize = 1;
@@ -174,16 +173,18 @@ pub fn tick(m: &mut Mob) {
 /// `Frog.travelInWater`: `moveRelative(getSpeed(), input)`, the move, then
 /// the motion scaled by 0.9. `getSpeed` is the speed the move control stored.
 /// Out of water the usual travel runs.
-pub fn travel(
+pub(super) fn travel(
     m: &mut Mob,
     w: &MobWorld,
     level: &mut DamageLevel<'_>,
     input: Vec3,
     events: &mut Vec<MobEvent>,
-) {
+    pause: bool,
+) -> Result<(), super::living::TravelTrample> {
     m.move_relative(m.ai.speed, input);
-    m.do_move(w, level, events, &mut MoveGate::new());
-    m.velocity = m.velocity.scale(0.9);
+    m.travel_move(w, level, events, pause, |m, _, _, _| {
+        m.velocity = m.velocity.scale(0.9);
+    })
 }
 
 /// `Frog.canEat`: a slime or magma cube of size 1.
