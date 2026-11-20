@@ -1,0 +1,2 @@
+# A compiled guest's particle provider ticks a batch through the wasm boundary (#1158).
+sunrise-client game::wasm_particle_provider_tests::a_wasm_providers_batch_tick_writes_every_particle_and_reads_the_level lib daily wasm-fixture
