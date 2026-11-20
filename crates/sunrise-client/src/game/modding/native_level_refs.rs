@@ -1867,11 +1867,13 @@ mod tests {
             remote_world
                 .chunks
                 .insert((4, 4), Arc::new(Chunk::empty(4, 4)));
+            streamer.paused = false;
             assert!(streamer.set_forced_loaded(&mut remote_world, 4, 4, true));
             assert!(streamer.commanded().contains(&(4, 4)));
             assert!(streamer.forced.contains(&(4, 4)));
             assert!(streamer.set_forced(4, 4, false));
             streamer.remote = false;
+            streamer.paused = true;
 
             let level = game.level(game.dim.id()).unwrap();
             let queued = game.level_chunk_ref(level, [40, -7]).unwrap();
