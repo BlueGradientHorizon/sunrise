@@ -624,11 +624,17 @@ mod tests {
                 let faces = game.model_faces(slot).unwrap();
                 faces
                     .iter()
-                    .filter(|face| face.quad.tint_index >= 0)
-                    .map(|face| face.quad.color)
+                    .map(|face| (face.quad.tint_index, face.quad.color))
                     .collect::<Vec<_>>()
             };
-            let grass = colours("minecraft:grass_block");
+            let tinted = |faces: &[(i32, Option<i32>)]| {
+                faces
+                    .iter()
+                    .filter(|(index, _)| *index >= 0)
+                    .map(|(_, colour)| *colour)
+                    .collect::<Vec<_>>()
+            };
+            let grass = tinted(&colours("minecraft:grass_block"));
             assert!(!grass.is_empty(), "the grass block has a tinted face");
             // `GrassColor.getDefaultColor()` is `get(0.5, 1.0)`: pixel (127, 127) of
             // `colormap/grass.png`, 0x7CBD6B, times white.
@@ -636,8 +642,14 @@ mod tests {
                 grass.iter().all(|c| *c == Some(0xFF7C_BD6Bu32 as i32)),
                 "{grass:x?}"
             );
-            // Stone has no tinted face, so nothing is baked into its colour.
-            assert!(colours("minecraft:stone").is_empty());
+            // Stone has faces and none is tinted, so none carries a colour.
+            let stone = colours("minecraft:stone");
+            assert!(!stone.is_empty());
+            assert!(
+                stone
+                    .iter()
+                    .all(|&(index, colour)| index < 0 && colour.is_none())
+            );
         });
     }
 
