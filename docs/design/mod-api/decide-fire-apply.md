@@ -1,6 +1,6 @@
 # Design: decide, fire, apply
 
-> The native contract below still applies. WebAssembly mods were removed; the parts about guests are history.
+> The native contract below still applies. The WebAssembly guest dispatch route was removed; LAN guest actions still follow this contract.
 > This does not mark the proposed hook migrations as complete.
 > See [transactions](../../modding/src/concepts/transactions.md) for the current native API.
 
@@ -103,7 +103,7 @@ File no issues or PRs from this note.
 
 1. Before code (PR 1), confirm downstream NeoForge menu click, cancellation and transaction contracts from public method/event documentation before assigning counterpart contracts to individual hooks; inventories and class-level coverage do not establish semantics. Finish downstream vanilla oracle/caller fixtures and the accepted token, refusal and rollback requirements on #784. Inventory every generated client-lib target, including targets without explicit annotations.
 2. Add internal typed tokens, mutation generations and action savepoints to the existing coordinator; prove rollback and overlay validation with adversarial fixtures before exposing callbacks.
-3. After #2232, #2244 and #2240 guest restoration prerequisites, migrate menu routes together, coordinating #2318 capacity ownership, #2259 mutable argument write-back and #2249 transaction fixtures. Remove old transports and update generated native bindings and samples.
+3. After the LAN guest swap and restoration prerequisites (#2232, #2244 and #2240), migrate menu routes together, coordinating #2318 capacity ownership, #2259 mutable argument write-back and #2249 transaction fixtures. Remove old transports and update generated native bindings and samples.
 4. Excluding the eight motion value transforms, migrate remaining client-lib targets in bounded slices with their individual read sets and side contracts. Run parity, failure recovery and allocation measurements before closure.
 
 This unblocks the Host-bearing client-lib/menu half of the clean break, and supplies the stale-action foundation for #855 multi-block placement and #731 screen initialization where applicable. It does not settle #781 attachment Data storage, #792 entity storage or #796 identity by itself; those contracts supply identities this mechanism must validate.

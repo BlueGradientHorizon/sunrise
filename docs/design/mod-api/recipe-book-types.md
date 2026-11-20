@@ -1,6 +1,6 @@
 # Design: custom recipe-book settings
 
-> The native contract below still applies. WebAssembly mods were removed; the parts about guests are history.
+> The native contract below still applies. The WebAssembly guest dispatch route was removed.
 > Host and guest player swaps still refer to LAN players.
 > See [recipe book types](../../modding/src/concepts/recipe-book-types.md) for the current native API.
 
