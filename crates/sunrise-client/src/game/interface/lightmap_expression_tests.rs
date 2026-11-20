@@ -2,14 +2,18 @@
 //! game's frames, from the pack's resources to what is drawn: the menu bundle's atlas loads each
 //! shader and resolves its uniforms from the pack's files, the renderer the game builds from it
 //! takes both, and each frame evaluates the programs into the blocks the shaders read. F3's
-//! lightmap chart reads the drawn light texture back; a screenshot shows the sky. Each case runs
-//! in a process of its own (one event loop, its own game resources).
+//! lightmap chart reads the drawn light texture back; a screenshot shows the sky. The expression
+//! context the frames build is rewritten in place, and copied into a pack's particles' own
+//! frame the same way. Each case runs in a process of its own (one event loop, its own game
+//! resources).
 use super::native_entity_refs::tests::{run_fresh_cases, with_client_game};
 use crate::game::native_hooks::particle_count_tests::frame_scene;
 use sunrise_assets::resource_source::{Resource, ResourceSource};
 
 const NAME: &str = "game::lightmap_expression_tests::a_packs_lightmap_draws_its_expression_uniform";
 const CASE: &str = "SUNRISE_LIGHTMAP_EXPRESSION_CASE";
+/// The biome of `frame_scene`'s empty chunk (its biome 0), the camera's.
+const BIOME: &str = "minecraft:badlands";
 
 /// A pack whose lightmap writes its `Tint` expression uniform (0.2, a value a unorm byte holds
 /// exactly: 51) in red and nothing else, with the file that gives it.
@@ -100,7 +104,15 @@ fn a_packs_lightmap_draws_its_expression_uniform() {
     if run_fresh_cases(
         NAME,
         CASE,
-        &["pack", "fullbright", "sky", "outline", "globals", "post"],
+        &[
+            "pack",
+            "fullbright",
+            "sky",
+            "outline",
+            "globals",
+            "post",
+            "particles",
+        ],
     ) {
         return;
     }
@@ -113,6 +125,9 @@ fn a_packs_lightmap_draws_its_expression_uniform() {
     }
     if case == "post" {
         return a_post_effect_reads_poly_globals();
+    }
+    if case == "particles" {
+        return the_particles_frame_keeps_its_strings();
     }
     if case == "outline" {
         // An outline-only modifier is enough to enable expression evaluation.
@@ -132,17 +147,72 @@ fn a_packs_lightmap_draws_its_expression_uniform() {
         assert_eq!(game.gui.atlas.lightmap_expressions.len(), 1);
         let _event_loop = frame_scene(game);
         game.renderer.as_mut().unwrap().fullbright = fullbright;
+        // The expression context's strings, given room up front: every frame rewrites them in
+        // place, so their buffers (address and capacity) are the same after the frames.
+        let context = &mut game.expression_frame;
+        context.dimension = String::with_capacity(64);
+        context.biome = String::with_capacity(64);
+        let buffers = |game: &super::Game<'_>| {
+            let context = &game.expression_frame;
+            [&context.dimension, &context.biome].map(|s| (s.as_ptr(), s.capacity()))
+        };
+        let before = buffers(game);
         let texture = drawn_texture(game);
         if fullbright {
-            // Fullbright keeps the texture white, and nothing is evaluated.
+            // Fullbright keeps the texture white, and nothing is evaluated: no context is
+            // written.
             assert!(!game.reads_pack_expressions());
             assert!(texture.iter().all(|&b| b == 255));
+            assert_eq!(game.expression_frame.dimension, "");
+            assert_eq!(game.expression_frame.biome, "");
         } else {
             assert!(game.reads_pack_expressions());
             for texel in texture.chunks(4) {
                 assert_eq!(texel, [51, 0, 0, 255]);
             }
+            for _ in 0..3 {
+                game.render_with(|renderer, frame| renderer.render(frame))
+                    .unwrap();
+            }
+            assert_eq!(buffers(game), before);
+            let context = &game.expression_frame;
+            assert_eq!(context.dimension, "minecraft:overworld");
+            assert_eq!(context.biome, BIOME);
         }
+    });
+}
+
+/// The particles case: a pack's particles read the same context, which each frame copies into
+/// their registry's own frame, into the strings that frame already has.
+fn the_particles_frame_keeps_its_strings() {
+    with_client_game(|game| {
+        let registry = sunrise_client::particles::polytone::Registry::read(
+            &ResourceSource::indexed(Default::default()),
+            Default::default(),
+            game.pack.assets.registry,
+        );
+        {
+            let mut held = registry.frame.write().unwrap();
+            held.dimension = String::with_capacity(64);
+            held.biome = String::with_capacity(64);
+        }
+        let registry = std::sync::Arc::new(registry);
+        game.pack.polytone_particles = Some(registry.clone());
+        let _event_loop = frame_scene(game);
+        game.screen = super::Screen::Playing;
+        let buffers = || {
+            let held = registry.frame.read().unwrap();
+            [&held.dimension, &held.biome].map(|s| (s.as_ptr(), s.capacity()))
+        };
+        let before = buffers();
+        for _ in 0..3 {
+            game.render_with(|renderer, frame| renderer.render(frame))
+                .unwrap();
+        }
+        assert_eq!(buffers(), before);
+        let held = registry.frame.read().unwrap();
+        assert_eq!(held.dimension, "minecraft:overworld");
+        assert_eq!(held.biome, BIOME);
     });
 }
 

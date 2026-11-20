@@ -34,6 +34,9 @@ methods. These reads use that same role—the active client font—without passi
 an engine font object or requiring a `DrawContext`. They do not draw anything
 and do not expose a full rendering context.
 
+Chat and signs can [substitute inline images](dynamic-textures.md#inline-images-in-chat-and-signs) before their own
+layout. The reads above measure the component you pass, without running that presentation hook.
+
 ## Resolved strings
 
 For vanilla `Component.getString()` behavior, use

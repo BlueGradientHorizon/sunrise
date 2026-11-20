@@ -139,6 +139,7 @@ mod generated {
         include!(concat!(env!("OUT_DIR"), "/dispatch_fixtures_api.rs"));
     }
     include!(concat!(env!("OUT_DIR"), "/mod_api_generated.rs"));
+    pub(super) use self::mod_api::InlineImageReplacement;
     pub(super) use self::mod_api::{
         BlockEntityTickReply, BlockFace, BlockKey, BlockState, CrosshairTarget,
     };

@@ -146,7 +146,7 @@ fn first_line(doc: &str) -> &str {
 
 /// `hooks <text> [--all]`: the search words and whether `--all` was given.
 fn hooks_args(args: &[String]) -> Result<(String, bool), String> {
-    let mut options = Options::new("hooks", args);
+    let mut options = Options::new("hooks", args, &[]);
     let all = options.switch("--all");
     let text = options.positional().join(" ");
     options.finish()?;
@@ -363,9 +363,9 @@ enum Answer {
 
 /// `fits`'s package and builds, as given.
 fn fits_args(args: &[String]) -> Result<(Option<&Path>, Vec<&str>), String> {
-    let mut options = Options::new("fits", args);
+    let mut options = Options::new("fits", args, &["--build"]);
     let builds = options.values("--build")?;
-    let package = options.positional().first().copied().map(Path::new);
+    let package = options.at_most_one()?.map(Path::new);
     options.finish()?;
     Ok((package, builds))
 }
@@ -735,20 +735,9 @@ fn check_targets(native_project: bool, wasm: bool, native: bool) -> Vec<Option<&
 /// What `check` in a mod folder was asked for.
 #[derive(Debug, PartialEq)]
 pub(crate) struct CheckFlags {
-    uses: bool,
-    wasm: bool,
-    native: bool,
-}
-
-pub(crate) fn check_flags(args: &[String]) -> Result<CheckFlags, String> {
-    let mut options = Options::new("check", args);
-    let flags = CheckFlags {
-        uses: options.switch("--uses"),
-        wasm: options.switch("--wasm"),
-        native: options.switch("--native"),
-    };
-    options.finish()?;
-    Ok(flags)
+    pub(crate) uses: bool,
+    pub(crate) wasm: bool,
+    pub(crate) native: bool,
 }
 
 /// `check [--uses] [--wasm] [--native]` in a mod folder: the package rules, `cargo check` for the
@@ -1115,23 +1104,22 @@ mod tests {
             fits_args(&build),
             Ok((Some(Path::new("pack.smod")), vec!["a", "b"]))
         );
-        assert_eq!(
-            check_flags(&argv("--uses --native")),
-            Ok(CheckFlags {
-                uses: true,
-                wasm: false,
-                native: true
-            })
-        );
         for (error, option) in [
             (hooks_args(&argv("spawn --al")).unwrap_err(), "--al"),
             (
                 fits_args(&argv("--bild a")).map(drop).unwrap_err(),
                 "--bild",
             ),
-            (check_flags(&argv("--use")).map(drop).unwrap_err(), "--use"),
+            (
+                fits_args(&argv("a.smod b.smod")).map(drop).unwrap_err(),
+                "b.smod",
+            ),
         ] {
             assert!(error.contains(option), "{error}");
         }
+        // The usage below the diagnostic has dashes of its own: the diagnostic names the separator.
+        let error = hooks_args(&argv("block -- break")).unwrap_err();
+        let refused = error.lines().next().unwrap().split(' ').next_back();
+        assert_eq!(refused, Some("--"), "{error}");
     }
 }

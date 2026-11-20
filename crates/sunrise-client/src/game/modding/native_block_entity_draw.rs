@@ -1287,12 +1287,11 @@ impl Game<'_> {
     /// (no position) in its colour. Resolved once per state in this generation.
     pub(super) fn native_block_state_model(
         &self,
-        state: mod_api::BlockStateId,
+        id: BlockStateId,
     ) -> Result<ModelRef, ModelError> {
-        let id = BlockStateId(state.0);
         let slot = self
             .standalone_geometry
-            .state_slot(state.0, || {
+            .state_slot(id.0, || {
                 use sunrise_client::models::catalog::BakedFace;
                 // An unknown state resolves to no faces, which `state_slot` refuses.
                 let Ok(models) = self

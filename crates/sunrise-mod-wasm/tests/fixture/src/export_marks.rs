@@ -13,6 +13,17 @@ impl ItemPart for Equip {
 pub struct Resistance;
 #[mod_api::sunrise_part]
 impl BlockPart for Resistance {
+    // Declared once per target, the other target's first: the purity mark follows the declaration
+    // that is compiled, not the first one written.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn explosion_resistance(
+        &self,
+        _: &dyn LevelHost,
+        _: &mut ExplosionResistanceEvent<'_>,
+    ) -> Option<f32> {
+        None
+    }
+    #[cfg(target_arch = "wasm32")]
     fn explosion_resistance(
         &self,
         _: &dyn LevelHost,

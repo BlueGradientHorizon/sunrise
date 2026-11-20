@@ -841,10 +841,12 @@ fn load_with_cache(
                             |r| r.take(),
                         )
                         .ok_or_else(|| {
-                            // A mod built before the subscription calls were named for their
-                            // reply passes the import check, then does not know the id it is asked.
+                            // Every failure of the call arrives here alike: a trap, a reply that
+                            // does not decode, or a mod built before the subscription calls were
+                            // named for their reply, which passes the import check and then does
+                            // not know the id it is asked. Only the last is cured by a rebuild.
                             Refusal::Runtime(format!(
-                                "{}: its subscriptions cannot be read: built for an older Sunrise, {}",
+                                "{}: its subscriptions cannot be read: the call failed or its reply did not decode. If it was built for an older Sunrise, {}",
                                 packages[i].manifest.id,
                                 imports::rebuild_advice()
                             ))
