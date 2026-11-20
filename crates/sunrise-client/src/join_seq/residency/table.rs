@@ -1,13 +1,16 @@
 //! A journal-fed index. Every hit is checked against its named storage owner;
 //! there is no owner reconciliation scan or reference back to the game.
 use super::{
-    Change, DimensionKey, Event, Identity, IdentityDetails, Journal, Owner, SavedUuidUpdate,
+    Change, DimensionKey, Event, Identity, IdentityDetails, Journal, Kind, Owner, SavedUuidUpdate,
 };
 
 #[path = "table/uuid_index.rs"]
 mod uuid_index;
 use crate::join_seq::JoinSeq;
-use std::num::NonZeroU32;
+use std::{
+    collections::{BTreeSet, hash_map::Entry},
+    num::NonZeroU32,
+};
 use sunrise_core::fast_hash::FxHashMap;
 use uuid_index::UuidIndex;
 
@@ -53,6 +56,9 @@ struct ResidentRow {
     entry: JoinSeq,
 }
 
+// Lookup membership ordered by admission, not by current section entry.
+type LevelAdmissions = FxHashMap<DimensionKey, BTreeSet<(JoinSeq, NonZeroU32)>>;
+
 /// One game's index, shared by active and parked dimensions through the journal.
 /// Runtime ids are allocated by the game's one counter, not per dimension.
 pub struct EntityTable {
@@ -61,6 +67,7 @@ pub struct EntityTable {
     saved_uuid_updates: Vec<SavedUuidUpdate>,
     uuids: UuidIndex,
     rows: FxHashMap<NonZeroU32, ResidentRow>,
+    level_admissions: LevelAdmissions,
     extracted: FxHashMap<NonZeroU32, Location>,
     lifted: FxHashMap<Owner, usize>,
 }
@@ -73,6 +80,7 @@ impl EntityTable {
             saved_uuid_updates: Vec::new(),
             uuids: UuidIndex::default(),
             rows: FxHashMap::default(),
+            level_admissions: FxHashMap::default(),
             extracted: FxHashMap::default(),
             lifted: FxHashMap::default(),
         }
@@ -126,7 +134,13 @@ impl EntityTable {
         {
             return EntityLookup::Taken;
         }
-        forget_row(&mut self.rows, &mut self.uuids, id, location);
+        forget_row(
+            &mut self.rows,
+            &mut self.uuids,
+            &mut self.level_admissions,
+            id,
+            location,
+        );
         forget(&mut self.extracted, id, location);
         EntityLookup::Missing
     }
@@ -175,12 +189,24 @@ impl EntityTable {
                         );
                     } else {
                         self.uuids.admit(identity.id, row);
+                        if location.owner.kind != Kind::DragonPart {
+                            self.level_admissions
+                                .entry(location.owner.dimension)
+                                .or_default()
+                                .insert((row.admission, identity.id));
+                        }
                     }
                     self.extracted.remove(&identity.id);
                 }
                 Change::Remove(identity) => {
                     let location = location(identity);
-                    forget_row(&mut self.rows, &mut self.uuids, identity.id, location);
+                    forget_row(
+                        &mut self.rows,
+                        &mut self.uuids,
+                        &mut self.level_admissions,
+                        identity.id,
+                        location,
+                    );
                     forget(&mut self.extracted, identity.id, location);
                 }
                 Change::Extract(identity) => {
@@ -275,17 +301,10 @@ impl EntityTable {
     /// Dragon parts are not members of vanilla's entity lookup.
     pub fn level_entities(&mut self, dimension: DimensionKey) -> Vec<u32> {
         self.drain();
-        let mut rows: Vec<_> = self
-            .rows
-            .iter()
-            .filter(|(_, row)| {
-                row.location.owner.dimension == dimension
-                    && row.location.owner.kind != super::Kind::DragonPart
-            })
-            .map(|(id, row)| (row.admission, id.get()))
-            .collect();
-        rows.sort_unstable_by_key(|(admission, _)| *admission);
-        rows.into_iter().map(|(_, id)| id).collect()
+        let Some(admissions) = self.level_admissions.get(&dimension) else {
+            return Vec::new();
+        };
+        admissions.iter().map(|(_, id)| id.get()).collect()
     }
 
     /// Each admitted id's lookup admission, for callers that answer in lookup
@@ -327,6 +346,7 @@ impl EntityTable {
         self.saved_uuid_updates.clear();
         self.uuids = UuidIndex::default();
         self.rows.clear();
+        self.level_admissions.clear();
         self.extracted.clear();
         self.lifted.clear();
     }
@@ -334,6 +354,7 @@ impl EntityTable {
 fn forget_row(
     rows: &mut FxHashMap<NonZeroU32, ResidentRow>,
     uuids: &mut UuidIndex,
+    level_admissions: &mut LevelAdmissions,
     id: NonZeroU32,
     location: Location,
 ) {
@@ -341,6 +362,14 @@ fn forget_row(
         && row.location == location
     {
         uuids.retire(id, row);
+        if location.owner.kind != Kind::DragonPart
+            && let Entry::Occupied(mut level) = level_admissions.entry(location.owner.dimension)
+        {
+            level.get_mut().remove(&(row.admission, id));
+            if level.get().is_empty() {
+                level.remove();
+            }
+        }
         rows.remove(&id);
     }
 }
