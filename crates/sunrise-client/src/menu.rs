@@ -793,7 +793,6 @@ impl Menu {
                     _ => None,
                 },
                 block_pos: None,
-                slot_snapshot: SlotSnapshot::default(),
                 slots,
                 containers,
                 grid_size,
