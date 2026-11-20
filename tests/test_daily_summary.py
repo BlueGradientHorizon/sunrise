@@ -422,20 +422,25 @@ class DailySummaryTests(unittest.TestCase):
         _, out = self.run_summary(Api(jobs), [shard_report()], results=dict(LEGS, **{"sdk-windows-macos": {"result": "cancelled"}}))
         self.assertIn("sdk_green=false", out)
 
-    def test_a_linux_sdk_check_red_is_one_issue_and_fn_replace_check_missing_its_input_files_none(self):
+    def test_a_linux_sdk_check_red_is_one_issue_and_its_readers_missing_their_input_file_none(self):
         probe = "Two mod libraries share the game's exact Rust state"
-        jobs = [j for j in GREEN_JOBS if j["name"] not in ("sdk / build linux", summary.FN_REPLACE_JOB)] + [
+        readers = (summary.FN_REPLACE_JOB, summary.BOOK_QUICKSTART_JOB)
+        jobs = [j for j in GREEN_JOBS if j["name"] not in ("sdk / build linux", *readers)] + [
             job("sdk / build linux", "failure", [probe]),
-            job(summary.FN_REPLACE_JOB, "failure", ["The Linux legs are here"])]
-        api = Api(jobs, issues=[{"number": 6, "title": "Daily: fn-replace-check / fn-replace-check did not complete"}])
+            job(summary.FN_REPLACE_JOB, "failure", ["The Linux legs are here"]),
+            job(summary.BOOK_QUICKSTART_JOB, "failure", ["Run actions/download-artifact@v4", "The Linux legs are here"])]
+        api = Api(jobs, issues=[{"number": 6, "title": "Daily: fn-replace-check / fn-replace-check did not complete"},
+                                {"number": 7, "title": "Daily: book-quickstart / quickstart did not complete"}])
         _, out = self.run_summary(api, [shard_report()], results=dict(
-            LEGS, sdk={"result": "failure"}, **{"fn-replace-check": {"result": "failure"}}))
+            LEGS, sdk={"result": "failure"}, **{"fn-replace-check": {"result": "failure"},
+                                                "book-quickstart": {"result": "failure"}}))
         self.assertEqual(out.splitlines(), ["green=false", "sdk_green=false"])
         created = [body for _, path, body in api.writes if path == "issues"]
         self.assertEqual([body["title"] for body in created], ["Daily: sdk native linkage probe (linux)"])
-        self.assertIn("`fn-replace-check` could not run: it needs this leg's SDK", created[0]["body"])
-        self.assertFalse(any(path.startswith("issues/6") for _, path, _ in api.writes),
-                         "a blocked fn-replace-check neither comments on nor closes its own issue")
+        self.assertIn("`fn-replace-check` and `book-quickstart` could not run: they need this leg's SDK",
+                      created[0]["body"])
+        self.assertFalse(any(path.startswith(("issues/6", "issues/7")) for _, path, _ in api.writes),
+                         "a blocked reader neither comments on nor closes its own issue")
 
     def test_a_failed_linux_fresh_check_with_no_published_sdk_files_one_issue(self):
         # The Linux call's `fresh` failed, so no Linux build job ran and fn-replace-check found no input.
