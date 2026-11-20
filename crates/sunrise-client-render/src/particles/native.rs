@@ -2,8 +2,7 @@
 //! particle, its sprite set, interpolation, rendering and total count limits.
 use super::{Particle, ParticleLevel, ParticleOptions, polytone_gpu};
 use mod_api::{
-    BlockState, LightLayer, ModParticle, ParticleBatch, ParticleFacing, ParticleLevelView,
-    ParticleProvider,
+    BlockState, LightLayer, ModParticle, ParticleFacing, ParticleLevelView, ParticleProvider,
 };
 use std::{collections::BTreeMap, fmt::Debug, sync::Arc, sync::OnceLock};
 
@@ -165,9 +164,17 @@ impl Batch {
                     roll: p.roll,
                 });
             }
-            let mut batch = ParticleBatch::from_vec(std::mem::take(&mut self.views));
+            let mut batch =
+                mod_api::__private::particle_batch_from_vec(std::mem::take(&mut self.views));
             provider.tick(&mut batch, level);
-            self.views = batch.into_vec();
+            self.views = mod_api::__private::particle_batch_into_vec(batch);
+            if self.views.len() != bucket.len() {
+                // A guest handed back a batch of another size: nothing of it can be matched to a particle.
+                for &i in bucket {
+                    particles[i].remove();
+                }
+                continue;
+            }
             for (view, &i) in self.views.iter().zip(bucket) {
                 if let Some(frame) = particles[i].take(view) {
                     set_frame(&mut particles[i], frame);

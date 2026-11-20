@@ -74,14 +74,6 @@ pub enum ParticleFacing {
 pub struct ParticleBatch(Vec<ModParticle>);
 
 impl ParticleBatch {
-    /// A batch of `particles`.
-    pub fn from_vec(particles: Vec<ModParticle>) -> Self {
-        Self(particles)
-    }
-    /// The particles back, for the game to reuse their storage.
-    pub fn into_vec(self) -> Vec<ModParticle> {
-        self.0
-    }
     /// How many particles the batch holds.
     pub fn len(&self) -> usize {
         self.0.len()
@@ -98,6 +90,14 @@ impl ParticleBatch {
     pub fn iter_mut(&mut self) -> std::slice::IterMut<'_, ModParticle> {
         self.0.iter_mut()
     }
+}
+/// A batch of `particles`, built by the game; a mod cannot make or replace one.
+pub fn particle_batch_from_vec(particles: Vec<ModParticle>) -> ParticleBatch {
+    ParticleBatch(particles)
+}
+/// The particles back, for the game to reuse their storage.
+pub fn particle_batch_into_vec(batch: ParticleBatch) -> Vec<ModParticle> {
+    batch.0
 }
 impl<'a> IntoIterator for &'a mut ParticleBatch {
     type Item = &'a mut ModParticle;
@@ -218,8 +218,8 @@ mod tests {
         registry.register("mymod:a".into(), Arc::new(Drift(3.0)));
         let providers = registry.into_providers();
         assert_eq!(providers.len(), 2);
-        let mut a = ParticleBatch::from_vec(vec![particle()]);
-        let mut b = ParticleBatch::from_vec(vec![particle()]);
+        let mut a = particle_batch_from_vec(vec![particle()]);
+        let mut b = particle_batch_from_vec(vec![particle()]);
         providers["mymod:a"].tick(&mut a, &Air);
         providers["mymod:b"].tick(&mut b, &Air);
         let at = |batch: &mut ParticleBatch| batch.get_mut(0).unwrap().position[0];
