@@ -22,6 +22,7 @@ use crate::game::collision_source::Mover;
 use sunrise_client::collisions::{
     EntityCollisions, SceneCollisions, no_collision_empty, with_piston_noclip,
 };
+use sunrise_client::join_seq::Joined;
 use sunrise_client::mobs::Species;
 use sunrise_client::motion::MotionWorld;
 use sunrise_core::geometry::{Aabb, Axis, Direction, ShapeOp, Vec3, border::BorderGeometry};
