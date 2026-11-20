@@ -5,7 +5,7 @@
 //! ```text
 //! bench MIX LEN          one JSON line per entry and copy: median ns per call over 400 batches
 //! check MIX LEN          the wrapping sum of the strings' hashes, which the JVM prints too
-//! bench-create MIX LEN   the same for UTF-8 text made into UTF-16 units (a new Vec) and hashed
+//! bench-create MIX LEN   the same for UTF-8 text made into owned UTF-16 units and hashed
 //! check-create MIX LEN
 //! bench-lookup MIX LEN   ns per `keyed::compound_get` of 64 keys of LEN units, hash known
 //! check-lookup MIX LEN
@@ -176,7 +176,10 @@ fn lookup(timed: bool, strings: &[&[u16]]) {
     let keys = &strings[..64];
     let mut compound = Compound::new();
     for (i, key) in keys.iter().enumerate() {
-        compound.insert(JavaString::from(key.to_vec()), Tag::Int(i as i32));
+        compound.insert(
+            key.iter().copied().collect::<JavaString>(),
+            Tag::Int(i as i32),
+        );
     }
     let hashed: Vec<_> = keys
         .iter()

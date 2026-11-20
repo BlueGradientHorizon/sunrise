@@ -130,6 +130,7 @@ def generate(copies, fill):
     for c in range(copies):
         (src / "copies" / f"copy_{c}").mkdir()
         shutil.copyfile(MODULE, src / "copies" / f"copy_{c}" / "java_string.rs")
+        shutil.copytree(MODULE.with_suffix(""), src / "copies" / f"copy_{c}" / "java_string")
         shutil.copyfile(MAIN, src / "copies" / f"copy_{c}" / "main_hash.rs")
         # `java_strinf` sorts just before `java_string`'s functions.
         (src / "copies" / f"copy_{c}.rs").write_text(
@@ -151,7 +152,7 @@ def generate(copies, fill):
                       f"    s.iter().fold({c + 1}u32, |a, x| a.wrapping_add(copy_{c}::{module}::{entry}(black_box(x)) as u32))"
                       if group not in ("create", "decode") else
                       f"    s.iter().fold({c + 1}u32, |a, x| {{ let (u, h) = copy_{c}::{module}::utf16_with_hash(black_box(x)); "
-                      f"a.wrapping_add(h as u32) + 0 * black_box(u).len() as u32 }})"
+                      f"black_box(u); a.wrapping_add(h as u32) }})"
                       if group == "create" else
                       f"    let mut u: Vec<u16> = Vec::with_capacity(4096);\n"
                       f"    s.iter().fold({c + 1}u32, |a, x| {{ u.clear(); u.extend(black_box(x).encode_utf16()); "
