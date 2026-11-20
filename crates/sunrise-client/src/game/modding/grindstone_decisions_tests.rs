@@ -618,12 +618,18 @@ fn failed_grindstone_listeners_rollback_place_and_take() {
                 game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                     g.carried = Some(sword.clone());
                 });
-                let failures = || [None].into_iter().chain(GuestFailure::ALL.map(Some));
-                for guest in failures() {
+                // With no preceding slot write, the epoch is still current: the wasm
+                // failure itself must refuse the action instead of returning Continue.
+                let failures = [(None, true)].into_iter().chain(
+                    GuestFailure::ALL
+                        .into_iter()
+                        .flat_map(|failure| [(Some(failure), true), (Some(failure), false)]),
+                );
+                for (guest, write_slot) in failures.clone() {
                     let before = game.wasm_dispatch_failures.get();
                     script(Script {
                         place_output: true,
-                        place_write: true,
+                        place_write: write_slot,
                         place_panic: guest.is_none(),
                         guest,
                         ..Script::default()
@@ -636,7 +642,7 @@ fn failed_grindstone_listeners_rollback_place_and_take() {
                     );
                     // A failed createResult does not undo the already placed input.
                     assert_eq!(slot(game, 0), Some(sword.clone()));
-                    assert_eq!(slot(game, 2), None, "{guest:?}");
+                    assert_eq!(slot(game, 2), None, "{guest:?}, slot write: {write_slot}");
                     assert_eq!(inventory(game, 20), 0, "{guest:?}");
                     assert!(game.transactions.is_empty());
 
@@ -651,11 +657,11 @@ fn failed_grindstone_listeners_rollback_place_and_take() {
                 let output = Some(ItemStack::new("minecraft:dirt", 1));
                 assert_eq!(slot(game, 2), output);
 
-                for guest in failures() {
+                for (guest, write_slot) in failures {
                     let before = game.wasm_dispatch_failures.get();
                     let events = game.lan_events.len();
                     script(Script {
-                        take_write: true,
+                        take_write: write_slot,
                         take_panic: guest.is_none(),
                         guest,
                         ..Script::default()
@@ -668,7 +674,7 @@ fn failed_grindstone_listeners_rollback_place_and_take() {
                         before + u64::from(guest.is_some())
                     );
                     assert_eq!(slot(game, 0), Some(sword.clone()));
-                    assert_eq!(slot(game, 2), output, "{guest:?}");
+                    assert_eq!(slot(game, 2), output, "{guest:?}, slot write: {write_slot}");
                     assert_eq!(game.lan.as_ref().unwrap().hub.guests[0].carried, None);
                     assert_eq!(inventory(game, 20), 0, "{guest:?}");
                     assert_eq!(game.lan_events.len(), events);
