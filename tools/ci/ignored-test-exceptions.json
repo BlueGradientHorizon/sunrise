@@ -998,5 +998,13 @@
     "path": "crates/sunrise-client/src/game/blocks/tests/block_entity_items_tests.rs",
     "reason": "run through tools/test_block_entity_item_geometry_parity.py",
     "rationale": "Parity-harness step in tools/ci/ignored-tests/parity-harness.txt; tools/test_block_entity_item_geometry_parity.py writes the cases and the vanilla oracle's answers and sets SUNRISE_BLOCK_ENTITY_ITEM_CASES/_OUT, without which the test panics, so it cannot run as a prepared-resource daily test."
+  },
+  {
+    "package": "sunrise-mod-wasm",
+    "target": "test:library_features",
+    "test": "a_library_is_built_with_the_same_features_in_its_dependents_workspace",
+    "path": "crates/sunrise-mod-wasm/tests/library_features.rs",
+    "reason": "reads the library fixtures' lockfiles, which the wasm-mods workflow writes when it builds them",
+    "rationale": "Run by wasm-mods.yml (tools/ci/ignored-tests/manual-sunrise-mod-wasm.txt) after it builds the library fixtures: the test reads each fixture's Cargo.lock, which is not tracked and exists only after that build, so no daily shard can run it."
   }
 ]

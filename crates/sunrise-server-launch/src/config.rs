@@ -57,6 +57,8 @@ resources = ""               # the prepared game files; empty: resources/ here, 
 restart_on_crash = true      # start the game again when it crashes
 low_memory = false           # true: no transparent huge pages, ~60 MB less idle for ~1 % more tick time
 parallel_tick = false        # reserved: parallel phases are currently disabled in this fork
+droppable_clientbound = 262144  # bytes a second of droppable mod payloads (voice) sent to each player; 0 turns them off
+droppable_serverbound = 16384   # the same, accepted from each player
 
 [backups]
 every = "6h"                 # automatic backups while the server runs: 30m, 6h, 1d...; "0" turns them off
@@ -273,6 +275,11 @@ pub struct Engine {
     pub low_memory: bool,
     /// The game's parallel tick phases (`SUNRISE_PARALLEL_TICK=1`), for hosts that cannot set the variable.
     pub parallel_tick: bool,
+    /// Bytes a second of `Droppable` mod payloads the game sends to each player (docs/hosting.md); 0 turns
+    /// them off.
+    pub droppable_clientbound: u32,
+    /// Bytes a second of `Droppable` mod payloads the game accepts from each player; 0 turns them off.
+    pub droppable_serverbound: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -535,6 +542,8 @@ impl Default for Engine {
             restart_on_crash: true,
             low_memory: false,
             parallel_tick: false,
+            droppable_clientbound: 256 << 10,
+            droppable_serverbound: 16 << 10,
         }
     }
 }
@@ -854,6 +863,8 @@ pub fn render(config: &Config) -> String {
         ("engine", "restart_on_crash"),
         ("engine", "low_memory"),
         ("engine", "parallel_tick"),
+        ("engine", "droppable_clientbound"),
+        ("engine", "droppable_serverbound"),
         ("backups", "every"),
         ("backups", "keep"),
         ("updates", "keep"),

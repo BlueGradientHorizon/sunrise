@@ -139,7 +139,6 @@
   "How fast the right stick turns the view.": "오른쪽 스틱이 시점을 돌리는 속도입니다.",
   "How fast the stick moves the crosshair in inventories.": "인벤토리에서 스틱이 조준선을 움직이는 속도입니다.",
   "How frames reach the screen while VSync is off.": "수직 동기화가 꺼져있을 때 프레임이 화면에 도달하는 방식입니다.",
-  "How frames reach the screen, and the performance overlay.": "프레임이 화면에 도달하는 방식 및 성능 오버레이 설정입니다.",
   "How long a held direction takes between repeats.": "방향을 누르고 있을 때 반복 사이에 걸리는 시간입니다.",
   "How long a held direction waits before it repeats.": "방향을 누르고 있을 때 반복되기까지 기다리는 시간입니다.",
   "How many particles effects spawn.": "생성될 파티클 효과의 수입니다.",

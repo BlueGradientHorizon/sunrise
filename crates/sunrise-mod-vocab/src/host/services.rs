@@ -348,6 +348,25 @@ pub trait RenderAssets {
     }
     /// Side: client.
     /// Published asset/data read: available in Setup, Reloading and World.
+    /// The model of block state `state` as vanilla draws a block state outside the terrain (a
+    /// moving piston block, a falling block, a block display): all the parts its blockstate file
+    /// selects for its properties, weighted alternatives picked at the fixed seed
+    /// `BlockEntityDrawContext::block` uses, tint layers from the block's tint sources without a
+    /// position. Any state: a mod's, vanilla's, a resource pack's. It draws through
+    /// [`WorldDrawContext::draw_model_instances`](crate::WorldDrawContext::draw_model_instances),
+    /// [`InstanceGroupRef`] and `BlockEntityDrawContext::terrain_model`. `ModelError::UnknownModel` for a
+    /// state with no baked model (air, a block drawn by a special renderer) or an id past the
+    /// block state table. Resolve once per distinct state in `client_setup` and again in
+    /// `client_resources_reloaded`, not each frame; the handle goes stale on a reload.
+    fn block_state_model(&self, state: BlockStateId) -> Result<ModelRef, ModelError> {
+        crate::world::phase::unprovided(
+            "RenderAssets::block_state_model",
+            "block_state_model",
+            crate::world::phase::LoadAccess::PublishedResources,
+        )
+    }
+    /// Side: client.
+    /// Published asset/data read: available in Setup, Reloading and World.
     /// Keys of every baked model block state `state` can draw in the published store, in bake
     /// order without repeats: each weighted alternative and each multipart part its properties
     /// select, whichever one a position's seed would pick. Empty for a state no blockstate file

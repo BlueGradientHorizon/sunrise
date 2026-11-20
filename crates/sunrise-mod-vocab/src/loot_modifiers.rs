@@ -111,6 +111,11 @@ impl LootModifierSettings {
 /// Decode validates custom fields once and retains typed immutable state. A bad
 /// file is diagnosed and skipped; it does not suppress other valid instances.
 pub trait GlobalLootModifierSerializer: Send + Sync + 'static {
+    // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
+    #[doc(hidden)]
+    fn __sunrise_marks(&self, _: crate::__private::Sealed) {
+        sunrise_mod_marks::global_loot_modifier_serializer::<Self>();
+    }
     /// Prepare one instance for this owning data load. The instance retains its
     /// implementation and code store while an active roll uses its generation.
     fn decode(
@@ -129,6 +134,11 @@ crate::wire::wire_handlers::handler!(
 /// listener. Priority and condition are captured once when decoding completes;
 /// a metadata failure, including a refused wasm call, refuses that preparation.
 pub trait GlobalLootModifier: Send + Sync + 'static {
+    // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
+    #[doc(hidden)]
+    fn __sunrise_marks(&self, _: crate::__private::Sealed) {
+        sunrise_mod_marks::global_loot_modifier::<Self>();
+    }
     /// Higher priorities run first; the default is `IGlobalLootModifier.DEFAULT_PRIORITY`.
     fn priority(&self) -> Result<i32, LootModifierError> {
         Ok(DEFAULT_PRIORITY)

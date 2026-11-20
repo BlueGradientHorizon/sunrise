@@ -4191,8 +4191,8 @@ pub(crate) mod tests {
         };
         assert!(!trapdoor_ladder(&before));
         assert!(trapdoor_ladder(&after));
-        // A block's friction reads it too; an answer that is NaN or outside 0..=2 keeps the
-        // block's own.
+        // A block's friction reads it too; an answer that is NaN keeps the block's own
+        // and a finite one is used as given.
         let friction = |context: &LoopContext, kind: &str| {
             use sunrise_world::registry::BlockStateId;
             let world = crate::world::World::new(BlockStateId(0), 0);
@@ -4214,7 +4214,7 @@ pub(crate) mod tests {
         assert_eq!(friction(&before, "minecraft:player"), 0.6);
         assert_eq!(friction(&after, "minecraft:player"), 0.98);
         assert_eq!(friction(&after, "minecraft:cow"), 0.6);
-        assert_eq!(friction(&after, "minecraft:item"), 0.6);
+        assert_eq!(friction(&after, "minecraft:item"), 3.0);
         // The edge backoff and the fluid current read it too.
         let movement = |context: &LoopContext| {
             let (mut staying, mut flow) = (false, [0.25, 0.0, 0.0]);

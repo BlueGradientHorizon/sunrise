@@ -1170,6 +1170,8 @@ struct Game<'a> {
     focus_after_run: Option<bool>,
     /// Whether the window currently accepts input method events.
     ime_allowed: bool,
+    /// The character of the key held down, for the input method's echo of it.
+    held_key_text: ime::HeldKeyText,
     /// The candidate window's area last given to the window, in pixels.
     ime_area: Option<[i32; 4]>,
     /// When the window lost focus, while it is still without
@@ -1261,6 +1263,8 @@ struct Game<'a> {
     text_patches: std::cell::RefCell<Vec<sunrise_client::font::Patch>>,
     /// Prepared block-entity copies for this frame, in entity-stream order.
     prepared_model_draws: std::cell::RefCell<Vec<sunrise_client::gfx::PreparedModelDraw>>,
+    /// Scratch for the copies a frame draws through the terrain materials.
+    model_copy_order: Vec<u32>,
     world_geometry: Option<sunrise_client::world_geometry::WorldGeometry>,
     /// `DebugRenderer.renderers`: the ids `debug_renderer_draw` is asked about.
     debug_renderers: Vec<String>,
@@ -8652,29 +8656,39 @@ impl Game<'_> {
         self.evaluate_pack_expressions(polytone_frame.as_ref());
         let polytone_extras = match (&self.pack.polytone_post, &polytone_frame) {
             (Some(post), Some(frame)) => {
-                let view = bob * spin * sunrise_client::camera::view_matrix(yaw, pitch);
-                let globals = sunrise_client::polytone_post::PolyGlobals {
-                    // 26.3's reverse-Z projection, as the world's (and its depth) is.
-                    projection: glam::Mat4::perspective_rh(
-                        fov_degrees.to_radians(),
-                        size[0] as f32 / size[1].max(1) as f32,
-                        depth_far,
-                        0.05,
-                    ),
-                    model_view: view,
-                    sun_angle: sky.sun_angle.to_radians() - std::f32::consts::FRAC_PI_2,
-                    day_time: self.view_day_time().rem_euclid(24000) as f32,
-                    delta_time: delta_ticks,
-                    player: self.player.as_ref().map_or(camera.to_array(), |p| {
-                        [p.position.x, p.position.y, p.position.z]
-                    }),
-                };
-                let (effects, extras) = post.frame(frame, &globals);
+                let (effects, extras) = post.frame(frame);
                 requested_post_effects.extend(effects);
                 Some(extras)
             }
             _ => None,
         };
+        // Polytone's globals (wiki "Extra Shader Uniforms"), built only when something reads
+        // them: here when an installed pack core shader does, and by the post effects when a
+        // pass of theirs does (`Request::poly_globals`, called at most once a frame). The
+        // renderer keeps the bytes in each reading core pipeline's blocks, which write them to
+        // the GPU when that pipeline uploads its blocks for its draw; a post pass writes them
+        // when it draws.
+        let (sun_angle, day_time) = (sky.sun_angle, self.view_day_time());
+        let player = (self.player.as_ref()).map_or(camera.to_array(), |p| {
+            [p.position.x, p.position.y, p.position.z]
+        });
+        let poly_globals = move || sunrise_client::polytone_post::PolyGlobals {
+            // 26.3's reverse-Z projection, as the world's (and its depth) is.
+            projection: glam::Mat4::perspective_rh(
+                fov_degrees.to_radians(),
+                size[0] as f32 / size[1].max(1) as f32,
+                depth_far,
+                0.05,
+            ),
+            model_view: bob * spin * sunrise_client::camera::view_matrix(yaw, pitch),
+            sun_angle: sun_angle.to_radians() - std::f32::consts::FRAC_PI_2,
+            day_time: day_time.rem_euclid(24000) as f32,
+            delta_time: delta_ticks,
+            player,
+        };
+        let post_globals = move || poly_globals().bytes();
+        let core_globals = self.reads_poly_globals().then(poly_globals);
+        self.give_poly_globals(core_globals.as_ref());
         self.view_frustum =
             self.world_view_frustum(camera, [fov_degrees, yaw, pitch], bob * spin, depth_far);
         let billboard_frustum = if self.settings.sunrise.taa {
@@ -8982,6 +8996,7 @@ impl Game<'_> {
                 effects: &requested_post_effects,
                 root: &self.pack.source,
                 extras: polytone_extras.as_ref(),
+                poly_globals: Some(&post_globals),
                 menu_blur_radius: self.settings.menu_blur as f32,
                 // GlobalSettingsUniform.update.
                 globals: sunrise_client::post_chain::Globals {
@@ -9164,6 +9179,22 @@ impl Game<'_> {
         // Pack drops on the resource-pack and Create New World screens.
         if let WindowEvent::DroppedFile(path) = &event {
             self.drop_pack_file(path);
+        }
+        if let WindowEvent::KeyboardInput {
+            event: key_event, ..
+        } = &event
+            && let PhysicalKey::Code(key) = key_event.physical_key
+        {
+            if key_event.state == ElementState::Pressed {
+                // Only a press that finds no field focused can open one.
+                let text = key_event
+                    .text
+                    .as_deref()
+                    .filter(|_| !self.text_field_focused());
+                self.held_key_text.pressed(key, text);
+            } else {
+                self.held_key_text.released(key);
+            }
         }
         // GLFW never hands a field the keys an input method consumes: while a
         // composition is open, and the Enter or Escape that ends it (winit on
@@ -10862,6 +10893,7 @@ impl<'a> Game<'a> {
             unclaimed_modifiers: None,
             focus_after_run: None,
             ime_allowed: false,
+            held_key_text: Default::default(),
             ime_area: None,
             focus_lost: None,
             modifiers: winit::keyboard::ModifiersState::empty(),
@@ -10910,6 +10942,7 @@ impl<'a> Game<'a> {
             dynamic_textures: Default::default(),
             text_patches: Default::default(),
             prepared_model_draws: Default::default(),
+            model_copy_order: Vec::new(),
             world_geometry: Some(Default::default()),
             debug_renderers: Vec::new(),
             debug_renderers_version: None,

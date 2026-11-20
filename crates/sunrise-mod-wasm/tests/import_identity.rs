@@ -108,40 +108,41 @@ fn a_changed_call_the_fixture_uses_refuses_it_by_name() {
 }
 
 /// Every hook, Part method, Part subscription and point the fixture's source implements or
-/// configures, as it is named without its hash, written out by hand from the fixture's sources:
-/// the import section names exactly these, so losing one (or gaining one nothing wrote) fails.
+/// configures, as it is named without its hash and version, written out by hand from the fixture's
+/// sources: the import section names exactly these, so losing one (or gaining one nothing wrote) fails.
 const HOOKS: &[&str] = &[
-    "hook:Hooks::baby_entity_spawn@2",
-    "hook:Hooks::blocks@1",
-    "hook:Hooks::chunk_data_load@1",
-    "hook:Hooks::chunk_data_save@1",
-    "hook:Hooks::client_packet_send@1",
-    "hook:Hooks::entity_interact@2",
-    "hook:Hooks::entity_tick_listened@1",
-    "hook:Hooks::entity_tick_post@1",
-    "hook:Hooks::entity_tick_pre@1",
-    "hook:Hooks::interaction_key_mapping_triggered@2",
-    "hook:Hooks::living_death@2",
-    "hook:Hooks::living_entity_use_item_tick@1",
-    "hook:Hooks::menu_links@1",
-    "hook:Hooks::mob_split@2",
-    "hook:Hooks::movement_input@2",
-    "hook:Hooks::player_stat_award@2",
-    "hook:Hooks::recipe_sources@1",
+    "hook:Hooks::baby_entity_spawn",
+    "hook:Hooks::blocks",
+    "hook:Hooks::chunk_data_load",
+    "hook:Hooks::chunk_data_save",
+    "hook:Hooks::client_packet_send",
+    "hook:Hooks::entity_interact",
+    "hook:Hooks::entity_tick_listened",
+    "hook:Hooks::entity_tick_post",
+    "hook:Hooks::entity_tick_pre",
+    "hook:Hooks::interaction_key_mapping_triggered",
+    "hook:Hooks::living_death",
+    "hook:Hooks::living_entity_use_item_tick",
+    "hook:Hooks::menu_links",
+    "hook:Hooks::mob_split",
+    "hook:Hooks::movement_input",
+    "hook:Hooks::player_stat_award",
+    "hook:Hooks::recipe_sources",
     "hook:Hooks::register",
-    "hook:Hooks::register_commands@2",
-    "hook:Hooks::register_json_animation_types@1",
-    "hook:Hooks::render_gui_pre@1",
-    "hook:Hooks::render_level_stage@1",
-    "hook:Hooks::right_click_block@1",
-    "hook:Hooks::run_mod_command@1",
-    "hook:Hooks::server_started@1",
-    "hook:Hooks::server_stopped@1",
-    "hook:Hooks::server_tick@1",
-    "hook:Hooks::standalone_models@2",
+    "hook:Hooks::register_commands",
+    "hook:Hooks::register_entity_renderers",
+    "hook:Hooks::register_json_animation_types",
+    "hook:Hooks::render_gui_pre",
+    "hook:Hooks::render_level_stage",
+    "hook:Hooks::right_click_block",
+    "hook:Hooks::run_mod_command",
+    "hook:Hooks::server_started",
+    "hook:Hooks::server_stopped",
+    "hook:Hooks::server_tick",
+    "hook:Hooks::standalone_models",
     "hook:Hooks::subscribed",
-    "hook:Hooks::tick_target_millis@1",
-    "hook:Hooks::use_item_on_block@1",
+    "hook:Hooks::tick_target_millis",
+    "hook:Hooks::use_item_on_block",
 ];
 const PARTS: &[&str] = &[
     "part:BlockEntityPart::block_entity_subscribed",
@@ -181,14 +182,20 @@ const POINTS: &[&str] = &[
 fn every_hook_part_and_point_the_fixture_implements_is_imported_and_checked() {
     let (package, _) = fixture();
     let imports = sunrise_imports(&package.module);
+    // A handler trait the fixture sends is marked whole (the next test), not by what it writes.
     let marked: std::collections::BTreeSet<&str> = imports
         .iter()
         .filter(|name| {
             ["hook:", "part:", "point:"]
                 .iter()
                 .any(|kind| name.starts_with(kind))
+                && !name
+                    .strip_prefix("part:")
+                    .is_some_and(|rest| !rest.split("::").next().unwrap().ends_with("Part"))
         })
-        .map(|name| name.split('#').next().unwrap())
+        // Without the hash and a hook's version: a version bump changes neither what the fixture writes
+        // nor what this checks.
+        .map(|name| name.split(['#', '@']).next().unwrap())
         .collect();
     let expected: std::collections::BTreeSet<&str> =
         HOOKS.iter().chain(PARTS).chain(POINTS).copied().collect();
@@ -219,6 +226,48 @@ fn every_hook_part_and_point_the_fixture_implements_is_imported_and_checked() {
             "a changed {name} is not refused by name: {refused:?}"
         );
     }
+}
+
+/// A handler trait a mod implements is one the game may call by any method, so the mod imports
+/// every method of the trait (here `EnergyHandler`, through the API's own `ItemComponentEnergy`
+/// the fixture sends), written or not, and a changed method of it refuses the mod by name. A mod
+/// that implements no handler trait imports none: the library fixture's check, in `real_library`.
+#[test]
+#[ignore = "daily"]
+fn a_sent_handler_imports_every_method_of_its_trait() {
+    test_stack::on_guest_stack(|| {
+        mod_api::__private::initialize().unwrap();
+        let (package, std) = fixture();
+        let imports = sunrise_imports(&package.module);
+        let of = |owner: &str| -> std::collections::BTreeSet<&str> {
+            imports
+                .iter()
+                .filter_map(|name| name.strip_prefix(&format!("part:{owner}::")))
+                .map(|rest| rest.split('#').next().unwrap())
+                .collect()
+        };
+        assert_eq!(
+            of("EnergyHandler"),
+            ["amount", "capacity", "extract", "insert"].into(),
+            "{imports:?}"
+        );
+        let name = imports
+            .iter()
+            .find(|name| name.starts_with("part:EnergyHandler::capacity#"))
+            .unwrap();
+        let mut old = WasmPackage {
+            manifest: package.manifest.clone(),
+            module: changed_import(&package.module, name),
+        };
+        old.manifest.inject.clear();
+        let loaded = load(&std, vec![old]);
+        assert!(loaded.mods.is_empty());
+        let reason = loaded.refused[0].1.to_string();
+        assert!(
+            reason.contains("part:EnergyHandler::capacity") && reason.contains("changed"),
+            "{reason}"
+        );
+    })
 }
 
 /// A mod built before a method was added to the API loads on the game that has it: the table is

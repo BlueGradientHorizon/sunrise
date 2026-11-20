@@ -101,6 +101,7 @@
     "sunrise-telemetry": "sunrise",
     "sunrise-telemetry-server": "sunrise",
     "sunrise-mod-vocab": "engine",
+    "sunrise-mod-marks": "engine",
     "sunrise-engine-slots": "engine"
   },
   "portable": {
@@ -121,6 +122,7 @@
       "sunrise-mod-source",
       "sunrise-mod-runtime",
       "sunrise-mod-vocab",
+      "sunrise-mod-marks",
       "sunrise-mod-api-gen",
       "sunrise-mod-api-macros",
       "sunrise-game-discovery",

@@ -61,12 +61,38 @@ class GateTests(unittest.TestCase):
                 surface_report.gate(config)
 
 
+class FetchTests(unittest.TestCase):
+    """fetch_commit(): shallow only where the checkout already is."""
+
+    def calls(self, shallow, present):
+        made = []
+
+        def git(*args):
+            made.append(args)
+            if args[0] == "rev-parse":
+                return "true\n" if shallow else "false\n"
+            if args[0] == "cat-file" and not present:
+                raise subprocess.CalledProcessError(128, ["git", *args])
+            return ""
+
+        surface_report.fetch_commit("abcd", 2, git)
+        return [args for args in made if args[0] == "fetch"]
+
+    def test_a_shallow_checkout_fetches_shallow(self):
+        self.assertEqual(self.calls(shallow=True, present=False),
+                         [("fetch", "-q", "--no-tags", "--depth", "2", "origin", "abcd")])
+
+    def test_a_full_clone_is_never_fetched_shallow(self):
+        self.assertEqual(self.calls(shallow=False, present=True), [])
+        self.assertEqual(self.calls(shallow=False, present=False), [("fetch", "-q", "--no-tags", "origin", "abcd")])
+
+
 @unittest.skipUnless(shutil.which("bash"), "needs bash for the stub tool")
 class ReportTests(unittest.TestCase):
     """report() against a stub sunrise-stage whose behaviour each test sets."""
 
     def run_report(self, base_export=0, diff_exit=0, gate_on=False, head_export=0, diff_err="",
-                   with_internals=False):
+                   with_internals=False, own_export=None):
         with tempfile.TemporaryDirectory() as directory:
             work = Path(directory)
             tool = work / "sunrise-stage"
@@ -82,21 +108,49 @@ echo "Surface: report"; [ -z "{diff_err}" ] && [ {diff_exit} != 0 ] && echo "bre
 exit {diff_exit}
 """)
             tool.chmod(0o755)
+            # The base's own tool, when a test gives one: it exports with `own_export` as its exit status.
+            own = None
+            if own_export is not None:
+                own_tool = work / "own-stage"
+                own_tool.write_text(f"""#!/bin/bash
+echo "own $@" >> {work}/calls
+[ {own_export} = 0 ] || {{ echo 'sunrise-stage surface: base.rs: older form' >&2; exit 1; }}
+echo '{{}}' > "$3"
+""")
+                own_tool.chmod(0o755)
+                own = lambda: str(own_tool)  # noqa: E731
             (work / "base").mkdir()
             code, text = surface_report.report(str(tool), work / "base", work / "head", work, gate_on,
-                                               with_internals=with_internals)
+                                               with_internals=with_internals, own_base_tool=own)
             return code, text, (work / "calls").read_text()
 
-    def test_a_base_the_head_tool_cannot_read_passes_with_one_line(self):
-        code, text, calls = self.run_report(base_export=1)
+    def test_a_base_the_head_tool_cannot_read_is_exported_by_the_bases_own_tool(self):
+        code, text, calls = self.run_report(base_export=1, own_export=0)
         self.assertEqual(code, 0)
-        self.assertEqual(text, "No surface report: the head's sunrise-stage cannot read the base tree "
-                               "(sunrise-stage surface: unknown key `access`).\n")
-        self.assertNotIn("surface-diff", calls)
+        self.assertTrue(text.startswith("The base was exported by its own sunrise-stage: the head's sunrise-stage "
+                                        "cannot read the base tree (sunrise-stage surface: unknown key `access`).\n"),
+                        text)
+        self.assertIn("Surface: report\n", text)
+        own = [call for call in calls.splitlines() if call.startswith("own ")]
+        self.assertEqual(len(own), 1)
+        self.assertIn("--without-calls", own[0])
+        self.assertIn("surface-diff", calls)
 
-    def test_a_base_surface_of_another_schema_passes_with_one_line(self):
+    def test_a_base_neither_tool_can_read_fails_naming_both(self):
+        code, text, calls = self.run_report(base_export=1, own_export=1)
+        self.assertEqual(code, 1)
+        self.assertEqual(text, "No surface report: the head's sunrise-stage cannot read the base tree "
+                               "(sunrise-stage surface: unknown key `access`), nor can the base's own "
+                               "(sunrise-stage surface: base.rs: older form).\n")
+        self.assertNotIn("surface-diff", calls)
+        # With no base tool to fall back on (a local comparison of two trees), the unreadable base fails too.
+        code, text, _ = self.run_report(base_export=1)
+        self.assertEqual(code, 1)
+        self.assertTrue(text.startswith("No surface report: the head's sunrise-stage cannot read the base tree"), text)
+
+    def test_a_base_surface_of_another_schema_fails_with_one_line(self):
         code, text, _ = self.run_report(diff_exit=2, diff_err="surface schema 1, this tool reads 2")
-        self.assertEqual(code, 0)
+        self.assertEqual(code, 1)
         self.assertTrue(text.startswith("No surface report: the head's sunrise-stage cannot read the base surface "), text)
         self.assertIn("surface schema 1, this tool reads 2", text)
 
@@ -269,7 +323,9 @@ class MainTests(unittest.TestCase):
         code, out, summary = self.run_main(
             base_commit=lambda *a: ("abcd", ""),
             unpack=lambda sha, into: fetched.append(sha),
-            report=lambda *a, **kw: (1, "Surface: breaking\n"))
+            report=lambda *a, **kw: (1, "Surface: breaking\n"),
+            # The checkout's own change notes may carry `landed`; LandedTests covers that pass.
+            landed_notes=lambda head, base: {})
         self.assertEqual((code, fetched), (1, ["abcd"]))
         self.assertRegex(out, r"^Surface: breaking\nBase abcd; fetch \d+\.\ds, total \d+\.\ds\n$")
         self.assertTrue(summary.startswith("### Mod API surface\n\n```text\nSurface: breaking\nBase abcd"))
@@ -282,6 +338,70 @@ class MainTests(unittest.TestCase):
         self.assertEqual(report.call_args.args[1:3], (Path("before"), Path("after")))
         self.assertTrue(report.call_args.kwargs["with_internals"])
         find_base.assert_not_called()
+
+
+@unittest.skipUnless(shutil.which("bash"), "needs bash for the stub tool")
+class LandedTests(unittest.TestCase):
+    SHA = "6" * 40
+
+    def check(self, diff_exit, trees=None, git_text=None):
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            for side in ("head", "base"):
+                notes = work / side / surface_report.NOTES
+                notes.mkdir(parents=True)
+            (work / "head" / surface_report.NOTES / "r61.toml").write_text(
+                f'ids = ["point:a"]\nwhy = "w"\nlanded = "{self.SHA}"\n')
+            (work / "head" / surface_report.NOTES / "own.toml").write_text('ids = ["hook:b"]\nwhy = "w"\n')
+            tool = work / "sunrise-stage"
+            tool.write_text(f"""#!/bin/bash
+echo "$@" >> {work}/calls
+if [ "$1" = surface ]; then echo '{{}}' > "$3"; exit 0; fi
+if [ {diff_exit} != 0 ]; then echo "change note r61.toml names point:a, which did not change" >&2; fi
+exit {diff_exit}
+""")
+            tool.chmod(0o755)
+            shas = surface_report.landed_notes(work / "head", work / "base")
+            fetched = []
+            git_text = git_text or (lambda *a: MERGE if a[0] == "cat-file" else "")
+            code, text = surface_report.landed_check(
+                str(tool), work / "head", work / "base", work, shas,
+                git_text=git_text, fetch=lambda sha, into: fetched.append(sha))
+            calls = (work / "calls").read_text() if (work / "calls").exists() else ""
+            return shas, code, text, calls, fetched
+
+    def test_only_new_notes_that_carry_landed_are_found(self):
+        shas, *_ = self.check(0)
+        self.assertEqual(shas, {self.SHA: ["r61.toml"]})
+
+    def test_a_note_whose_ids_changed_in_that_merge_passes(self):
+        _, code, text, calls, fetched = self.check(0)
+        self.assertEqual(code, 0, text)
+        self.assertEqual(fetched, ["aaaa", self.SHA])
+        self.assertIn(f"--landed {self.SHA}", calls)
+        self.assertNotIn("--gate", calls)
+
+    def test_a_note_whose_ids_did_not_change_there_fails_naming_it(self):
+        _, code, text, _, _ = self.check(1)
+        self.assertEqual(code, 1)
+        self.assertIn(f"r61.toml (landed {self.SHA})", text)
+
+    def test_a_landed_that_is_not_a_full_sha_is_not_returned(self):
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+            for side in ("head", "base"):
+                (work / side / surface_report.NOTES).mkdir(parents=True)
+            for name, value in (("a", "--upload-pack=x"), ("b", "6597e08"), ("c", "G" * 40)):
+                (work / "head" / surface_report.NOTES / f"{name}.toml").write_text(
+                    f'ids = ["x"]\nwhy = "w"\nlanded = "{value}"\n')
+            self.assertEqual(surface_report.landed_notes(work / "head", work / "base"), {})
+
+    def test_a_commit_that_is_not_a_two_parent_merge_fails(self):
+        _, code, text, calls, _ = self.check(
+            0, git_text=lambda *a: SINGLE if a[0] == "cat-file" else "")
+        self.assertEqual(code, 1)
+        self.assertIn("not a merge commit with two parents", text)
+        self.assertNotIn("surface-diff", calls)
 
 
 if __name__ == "__main__":

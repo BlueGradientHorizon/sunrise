@@ -411,10 +411,11 @@ pub trait BlockEntityDrawContext {
     }
     /// Draws the resolved standalone model under `draw`'s pose, as [`Self::model`] places it,
     /// with the terrain's own materials: the block sprites (animated, mipmapped as the options
-    /// set), back faces culled, colour and depth written as opaque terrain, lit by
+    /// set, sampled as vanilla's moving blocks are: linear minification, nearest
+    /// magnification), back faces culled, colour and depth written as opaque terrain, lit by
     /// `draw.light` raised by each quad's own emission. `options` picks the material
     /// (each quad's `solid`, `cutout` or `cutout_mipped`, or one for all: cutout discards
-    /// under alpha 0.1 without mipmaps, cutout-mipped under 0.5 with them), the directional
+    /// under alpha 0.1, cutout-mipped under 0.5), the directional
     /// shading (independent of light), one sprite drawn as another with moved UVs, a UV
     /// shrink, and a `0xRRGGBB` tint on quads with a tint index. What a machine's belts,
     /// shafts and casings draw with. A refusal draws nothing.
@@ -576,14 +577,19 @@ pub trait WorldDrawContext {
     ///
     /// One batch per model. The engine uploads only the instance records on the opaque
     /// and cutout route, and bakes the same prepared geometry on the CPU when a shader
-    /// pack, a copy with an [`Overlay`], or another route cannot take instances. A
+    /// pack, a copy with an [`Overlay`], a [`ModelInstance::color`] other than white, a
+    /// [`ModelInstance::hidden_faces`] or another route cannot take instances. A
     /// `shaders/` pack shades those copies as block entities, with the program that shades
-    /// [`BlockEntityDrawContext::model`]. A model with a translucent face is refused with
-    /// [`InstanceError::Translucent`] and is never drawn as solid.
+    /// [`BlockEntityDrawContext::model`], except the translucent copies below and copies of a
+    /// block state model, which take the terrain model materials. A copy with a colour alpha below `0xFF`, or of a model
+    /// with a translucent face, is drawn in the sorted translucent material vanilla uses for a
+    /// translucent block outside the terrain (`translucent_moving_block`: alpha blended, depth
+    /// tested, depth written, back faces culled), their quads sorted far to near each frame as
+    /// vanilla's `sortOnUpload` does.
     /// Tint is `0xAARRGGBB` and light is [`LightCoords`]: both stay in
     /// vanilla's space, and the engine converts them to the frame. A tint's alpha
     /// multiplies only faces that have a tint index, the same as vanilla's model
-    /// renderer. The view budget is 16,384 copies. Pass at most that many: a longer
+    /// renderer; [`ModelInstance::color`] multiplies every face. The view budget is 16,384 copies. Pass at most that many: a longer
     /// list is refused with [`InstanceError::CapacityExceeded`] before any copy is
     /// examined. On wasm the guest pays for the list it passes, because the runtime
     /// lifts the slice before that check. Within the bound, copies outside the frustum
