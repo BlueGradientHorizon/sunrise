@@ -28,7 +28,6 @@ fn untouched_writeback_runtime_and_mutants() {
     let mut methods =
         format!("fn generated(&mut self, stack: &mut Stack, handled: &mut bool) {{ {generated} }}");
     for name in [
-        "anvil_update",
         "grindstone_place",
         "grindstone_take",
         "menu_button",
@@ -106,9 +105,8 @@ impl ItemBoundary for Game {}
 impl Game {
     fn items(&self) -> &() { &() }
     fn native_generated(&mut self, stack: &mut Stack, handled: &mut bool) { if self.change { stack.0 = 252; } *handled = true; }
-    fn native_anvil_update(&mut self, _: u128, _: i32, _: [i32; 3], stack: &mut Stack, _: &mut bool) { if self.change { stack.0 = 252; } }
-    fn native_grindstone_place(&mut self, a: u128, b: i32, c: [i32; 3], d: &mut Stack, e: &mut bool) { self.native_anvil_update(a,b,c,d,e); }
-    fn native_grindstone_take(&mut self, a: u128, b: i32, c: [i32; 3], d: &mut Stack, e: &mut bool) { self.native_anvil_update(a,b,c,d,e); }
+    fn native_grindstone_place(&mut self, _: u128, _: i32, _: [i32; 3], stack: &mut Stack, _: &mut bool) { if self.change { stack.0 = 252; } }
+    fn native_grindstone_take(&mut self, _: u128, _: i32, _: [i32; 3], stack: &mut Stack, _: &mut bool) { if self.change { stack.0 = 252; } }
     fn native_menu_button(&mut self, _: &str, _: Option<&str>, _: &(), _: Option<&mut Stack>, stack: &mut Option<Stack>) { if self.change { *stack = Some(Stack(252)); } }
     fn native_menu_quick_move(&mut self, _: [i32; 3], _: &mut Stack, _: usize, _: usize, stack: &mut Option<Stack>, handled: &mut bool) { if self.change { *stack = Some(Stack(252)); } *handled = true; }
     METHODS
@@ -121,25 +119,29 @@ fn main() {
         game.generated(&mut stack, &mut handled);
         assert_eq!(stack, Stack(251));
         assert_eq!(handled, !change, "untouched argument must not refuse sibling output");
-        for (index, fire) in [Game::anvil_update, Game::grindstone_place, Game::grindstone_take, Game::menu_button, Game::menu_quick_move].into_iter().enumerate() {
+        type Adapter = fn(&mut Game, &mut Stack, &mut Stack, &mut Option<Stack>, &mut Stack, &mut bool, &mut bool) -> Result<(), InvalidReason>;
+        let adapters: [(&str, Adapter); 4] = [
+            ("grindstone_place", Game::grindstone_place),
+            ("grindstone_take", Game::grindstone_take),
+            ("menu_button", Game::menu_button),
+            ("menu_quick_move", Game::menu_quick_move),
+        ];
+        for (name, fire) in adapters {
             let mut value = Stack(251); let mut entity = Stack(0);
             let mut carried = Some(Stack(251)); let mut cancel = false;
             let mut handled = false;
             VALIDATIONS.store(0, std::sync::atomic::Ordering::Relaxed);
             let result = fire(&mut game, &mut value, &mut entity, &mut carried, &mut stack, &mut cancel, &mut handled);
-            assert_eq!(VALIDATIONS.load(std::sync::atomic::Ordering::Relaxed), usize::from(change));
+            assert_eq!(VALIDATIONS.load(std::sync::atomic::Ordering::Relaxed), usize::from(change), "{name}");
             assert_eq!(value, Stack(251)); assert_eq!(stack, Stack(251)); assert_eq!(carried, Some(Stack(251)));
-            if matches!(index, 1 | 2) && change {
-                assert_eq!(result, Err(InvalidReason::Count));
+            if matches!(name, "grindstone_place" | "grindstone_take") && change {
+                assert_eq!(result, Err(InvalidReason::Count), "{name}");
             } else {
-                assert_eq!(result, Ok(()));
+                assert_eq!(result, Ok(()), "{name}");
             }
-            assert_eq!(cancel, index == 0 && change);
-            if index == 4 { assert_eq!(handled, !change); }
+            assert!(!cancel, "{name}");
+            if name == "menu_quick_move" { assert_eq!(handled, !change, "{name}"); }
         }
-        let mut cancel = false;
-        game.anvil_update(&mut Stack(251), &mut Stack(0), &mut None, &mut Stack(251), &mut cancel, &mut false).unwrap();
-        assert_eq!(cancel, change);
     }
 }
 "#;
@@ -164,7 +166,6 @@ fn main() {
         ),
     ];
     for (name, condition) in [
-        ("anvil_update", "api == original"),
         ("grindstone_place", "api == original"),
         ("grindstone_take", "api == original"),
         ("menu_button", "cursor == original"),

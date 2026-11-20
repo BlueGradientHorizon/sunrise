@@ -7,7 +7,9 @@ pub mod item {
             pub id: i32,
         }
         pub struct AnvilCraftInputs<'a>(std::marker::PhantomData<&'a ()>);
-        pub struct AnvilUpdate;
+        pub struct AnvilUpdateInputs<'a>(std::marker::PhantomData<&'a ()>);
+        #[derive(Clone)]
+        pub struct AnvilUpdateEdits;
         pub struct GrindstonePlace;
         pub struct GrindstoneTake;
         pub struct StackedOnOther;

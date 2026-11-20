@@ -215,6 +215,15 @@ the click, including the result, cursor, inventory and any dropped item. Both ca
 undo the listener's writes. An accepted take is still tentative until the enclosing transaction
 commits.
 
+After the anvil calculates a result with a left input, `anvil_update` lends
+`event.inputs` on both sides: the left and optional right stacks, the optional rename text
+and vanilla's output and costs. Read those values without cloning; they don't change as
+listeners edit `event.edits`. Leave `edits.output` at `StackResult::Keep` to use vanilla's
+output, use `StackResult::Set(Some(stack))` to replace it, or use `StackResult::Set(None)`
+to clear it. The level and material costs start at vanilla's values. Changing only the
+costs doesn't revalidate vanilla's stack. Cancellation or an invalid replacement clears the
+output and both costs.
+
 The server's `anvil_craft_pre` and `anvil_craft_post` both borrow the same pre-take snapshot
 through `event.inputs` (`AnvilCraftInputs<'_>`). Read the optional stacks through `inputs.left`
 and `inputs.right`, and the taken result through `inputs.output`. Clone an individual stack

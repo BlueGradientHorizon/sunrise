@@ -22,9 +22,8 @@ use sunrise_world::native_load_context::{DataLoadOrigin, LoadContext, LoadInputs
 use sunrise_world::native_load_context::{LoopContext, LoopSide};
 mod models;
 pub use models::{
-    AnvilCraftSnapshot, AnvilUpdate, AnvilVanilla, GrindstonePlace, PendingGrindstoneTake,
-    PlanningRules, RuleAnswers, SlotContext, SlotRules, SlotView, StackedClick, StackedOutcome,
-    StoredRules,
+    AnvilCraftSnapshot, AnvilUpdateInputs, GrindstonePlace, PendingGrindstoneTake, PlanningRules,
+    RuleAnswers, SlotContext, SlotRules, SlotView, StackedClick, StackedOutcome, StoredRules,
 };
 mod slot_context;
 pub use slot_context::{SlotSnapshot, apply_menu_slot_rules, lan_container};
@@ -1288,22 +1287,18 @@ impl Menu {
 
     /// `AnvilUpdateEvent`'s question about the result `createResult` made,
     /// or `None` with no left input, where vanilla has no result.
-    pub fn anvil_update(&self) -> Option<AnvilUpdate> {
-        let left = self.state.containers[MAIN][0].clone()?;
-        let right = self.state.containers[MAIN][1].clone();
-        Some(AnvilUpdate::new(
-            left,
-            right,
-            self.state.anvil.name.clone(),
-            &self.anvil_state(),
-        ))
+    pub fn anvil_update(&self) -> Option<(AnvilUpdateInputs<'_>, crate::stations::AnvilResult)> {
+        let inputs = AnvilUpdateInputs {
+            left: self.state.containers[MAIN][0].as_ref()?,
+            right: self.state.containers[MAIN][1].as_ref(),
+            name: self.state.anvil.name.as_deref(),
+        };
+        Some((inputs, self.anvil_state()))
     }
 
-    /// The mods' answer to [`Self::anvil_update`] (see [`AnvilUpdate::answer`]).
-    pub fn anvil_updated(&mut self, update: AnvilUpdate, cancel: bool) {
+    /// Apply the final result of [`Self::anvil_update`] after mod edits.
+    pub fn anvil_updated(&mut self, state: crate::stations::AnvilResult) {
         self.touch();
-        let mut state = self.anvil_state();
-        update.answer(cancel, &mut state);
         self.state.anvil.only_renaming = state.only_renaming;
         self.state.anvil.repair_count = state.repair_item_count_cost;
         self.state.data[0] = state.cost;
@@ -3619,26 +3614,26 @@ pub(crate) mod tests {
         }
     }
 
-    /// `AnvilUpdateEvent`: not asked without a left input, and once per
-    /// `createResult`; a mod's output takes its cost and uses its material
-    /// cost of the right input when taken; a cancel leaves no result at
-    /// cost 0.
+    /// `AnvilUpdateEvent` is not asked without a left input. A replacement
+    /// result uses the supplied level and material costs when taken.
     #[test]
-    fn an_anvil_update_sets_the_result_cost_and_material_or_cancels() {
+    fn an_anvil_update_sets_the_result_cost_and_material() {
         bare_env(|env| {
             let mut menu = Menu::new(Kind::Anvil);
             menu.set_slot(env, 1, stack("diamond", 5));
             assert!(menu.anvil_created());
-            assert_eq!(menu.anvil_update(), None);
+            assert!(menu.anvil_update().is_none());
             menu.set_slot(env, 0, stack("iron_sword", 1));
             assert!(menu.anvil_created());
             assert!(!menu.anvil_created());
-            let mut update = menu.anvil_update().unwrap();
-            assert_eq!((&update.vanilla.output, &update.output), (&None, &None));
-            update.output = stack("netherite_sword", 1);
-            update.xp_cost = 7;
-            update.material_cost = 2;
-            menu.anvil_updated(update.clone(), false);
+            let (inputs, mut result) = menu.anvil_update().unwrap();
+            assert_eq!(Some(inputs.left), stack("iron_sword", 1).as_ref());
+            assert_eq!(inputs.right, stack("diamond", 5).as_ref());
+            assert!(result.result.is_none());
+            result.result = stack("netherite_sword", 1);
+            result.cost = 7;
+            result.repair_item_count_cost = 2;
+            menu.anvil_updated(result);
             assert_eq!(
                 (menu.slot(2), menu.data[0]),
                 (stack("netherite_sword", 1).as_ref(), 7)
@@ -3650,12 +3645,6 @@ pub(crate) mod tests {
                 (menu.slot(0), menu.slot(1)),
                 (None, stack("diamond", 3).as_ref())
             );
-
-            let mut menu = Menu::new(Kind::Anvil);
-            menu.set_slot(env, 0, stack("iron_sword", 1));
-            menu.set_slot(env, 1, stack("diamond", 5));
-            menu.anvil_updated(update, true);
-            assert_eq!((menu.slot(2), menu.data[0]), (None, 0));
         });
     }
 
@@ -3669,11 +3658,11 @@ pub(crate) mod tests {
                     menu.levels = 30;
                     menu.set_slot(env, 0, stack("iron_sword", 1));
                     menu.set_slot(env, 1, stack("diamond", 5));
-                    let mut update = menu.anvil_update().unwrap();
-                    update.output = stack("netherite_sword", 1);
-                    update.xp_cost = cost;
-                    update.material_cost = -2;
-                    menu.anvil_updated(update.clone(), false);
+                    let (_, mut result) = menu.anvil_update().unwrap();
+                    result.result = stack("netherite_sword", 1);
+                    result.cost = cost;
+                    result.repair_item_count_cost = 0;
+                    menu.anvil_updated(result);
                     assert_eq!(menu.data[0], cost);
                     assert_eq!(menu.anvil.repair_count, 0);
                     assert_eq!(menu.slot(2), stack("netherite_sword", 1).as_ref());
@@ -3683,17 +3672,13 @@ pub(crate) mod tests {
                     assert_eq!(menu.slot(0), stack("iron_sword", 1).as_ref());
                     assert_eq!(menu.slot(1), stack("diamond", 5).as_ref());
                     assert_eq!(menu.level_change, 0);
-                    menu.anvil_updated(update, true);
-                    assert_eq!((menu.slot(2), menu.data[0]), (None, 0));
                 }
             }
         });
     }
 
-    /// `AnvilUpdateEvent` on a rename with no right input: asked with the
-    /// text and vanilla's renamed result, which the output and cost start
-    /// at; a mod that only changes the cost keeps vanilla's result, and a
-    /// cancel leaves none.
+    /// `AnvilUpdateEvent` on a rename with no right input: the question
+    /// borrows the text and carries the result that vanilla calculated.
     #[test]
     fn an_anvil_rename_alone_starts_at_vanillas_result() {
         bare_env(|env| {
@@ -3707,32 +3692,14 @@ pub(crate) mod tests {
             let mut menu = renamed();
             let vanilla = (menu.slot(2).cloned(), menu.data[0]);
             assert!(vanilla.0.is_some());
-            let mut update = menu.anvil_update().unwrap();
-            assert_eq!(
-                (update.right.as_ref(), update.name.as_deref()),
-                (None, Some("Edge"))
-            );
-            assert_eq!(
-                (&update.vanilla.output, &update.output),
-                (&vanilla.0, &vanilla.0)
-            );
-            assert_eq!(
-                (update.vanilla.xp_cost, update.xp_cost),
-                (vanilla.1, vanilla.1)
-            );
-            update.xp_cost = 5;
-            menu.anvil_updated(update.clone(), false);
+            let (inputs, mut result) = menu.anvil_update().unwrap();
+            assert_eq!((inputs.right, inputs.name), (None, Some("Edge")));
+            assert_eq!((&result.result, result.cost), (&vanilla.0, vanilla.1));
+            assert!(result.only_renaming);
+            result.cost = 5;
+            menu.anvil_updated(result);
             assert_eq!((menu.slot(2).cloned(), menu.data[0]), (vanilla.0, 5));
-
-            let mut menu = renamed();
-            let mut empty = update.clone();
-            empty.output = None;
-            menu.anvil_updated(empty, false);
-            assert_eq!((menu.slot(2), menu.data[0]), (None, 5));
-
-            let mut menu = renamed();
-            menu.anvil_updated(update, true);
-            assert_eq!((menu.slot(2), menu.data[0]), (None, 0));
+            assert!(menu.anvil.only_renaming);
         });
     }
 
@@ -3773,10 +3740,10 @@ pub(crate) mod tests {
             assert!(menu.rename(env, "Edge"));
             assert_eq!((menu.slot(2).cloned(), menu.data[0]), before);
             assert!(menu.anvil_created(), "createResult ran");
-            let mut update = menu.anvil_update().unwrap();
-            assert_eq!(update.name.as_deref(), Some("Edge"));
-            update.output = stack("golden_sword", 1);
-            menu.anvil_updated(update, false);
+            let (inputs, mut result) = menu.anvil_update().unwrap();
+            assert_eq!(inputs.name, Some("Edge"));
+            result.result = stack("golden_sword", 1);
+            menu.anvil_updated(result);
             assert_eq!(menu.slot(2), stack("golden_sword", 1).as_ref());
         });
     }

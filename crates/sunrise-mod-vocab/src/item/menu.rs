@@ -163,12 +163,12 @@ impl StackedOnOther {
         }
     }
 }
-/// What a listener does to a stack the click found.
+/// Whether a listener keeps the original stack or replaces it.
 #[derive(Clone, Debug, Default, PartialEq)]
 // exhaustive: a stack is left alone or replaced, nothing else
 #[derive(sunrise_mod_api_macros::Wire)]
 pub enum StackResult {
-    /// Leave the stack as the click found it.
+    /// Leave the original stack unchanged.
     #[default]
     Keep,
     /// Replace the stack: `None` empties it.
@@ -190,76 +190,42 @@ pub struct StackedOnOtherResult {
     /// The clicked slot after the click.
     pub clicked: StackResult,
 }
-/// What `AnvilUpdateEvent` asks about once `createResult` made vanilla's
-/// result with a left input, and what the mods may change: the `output`,
-/// its level `cost` and `material_cost`, the units of `right` used (0 or
-/// more than it holds: all of it), each starting at vanilla's.
+/// The inputs and vanilla result of `AnvilMenu.createResult`, borrowed for
+/// the `anvil_update` callback. Edits by earlier listeners do not change these values.
 #[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
-pub struct AnvilUpdate {
-    pub left: ItemStack,
-    pub right: Option<ItemStack>,
-    /// The rename box's text, `None` when the client sent none.
-    pub name: Option<String>,
-    /// Vanilla's result for these inputs (`getVanillaResult`), whatever
-    /// the mods set.
-    pub vanilla: AnvilVanilla,
-    pub output: Option<ItemStack>,
-    /// Signed level cost, preserved as set by `AnvilUpdateEvent.setXpCost`.
-    /// A negative cost prevents taking the result (as does zero), not a level refund.
-    pub xp_cost: i32,
-    pub material_cost: i32,
+// exhaustive: the game builds it with a literal; mods only read it
+// no wire: borrows the converted stacks and rename text for the hook call.
+pub struct AnvilUpdateInputs<'a> {
+    /// The stack in the left input slot. The hook is not asked without one.
+    pub left: &'a ItemStack,
+    /// The stack in the right input slot, if present.
+    pub right: Option<&'a ItemStack>,
+    /// The rename box's text, `None` if the client sent none.
+    pub name: Option<&'a str>,
+    /// The result calculated by vanilla, if any.
+    pub vanilla_output: Option<&'a ItemStack>,
+    /// The level cost calculated by vanilla.
+    pub vanilla_xp_cost: i32,
+    /// The number of material items vanilla would charge from the right slot.
+    pub vanilla_material_cost: i32,
 }
-/// `AnvilUpdateEvent.VanillaResult`: the output, level cost and material
-/// cost `createResult` made.
-#[derive(Clone, Debug, PartialEq)]
-#[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
-pub struct AnvilVanilla {
-    pub output: Option<ItemStack>,
-    pub xp_cost: i32,
-    pub material_cost: i32,
-}
-impl AnvilUpdate {
-    /// The question about `vanilla`, the result `createResult` made from
-    /// these inputs and name: the output, level cost and material cost
-    /// start at its own.
-    pub fn new(
-        left: ItemStack,
-        right: Option<ItemStack>,
-        name: Option<String>,
-        vanilla: &crate::item::stations::AnvilResult,
-    ) -> Self {
-        let vanilla = AnvilVanilla {
-            output: vanilla.result.clone(),
-            xp_cost: vanilla.cost,
-            material_cost: i32::try_from(vanilla.repair_item_count_cost).unwrap_or(i32::MAX),
-        };
-        Self {
-            left,
-            right,
-            name,
-            output: vanilla.output.clone(),
-            xp_cost: vanilla.xp_cost,
-            material_cost: vanilla.material_cost,
-            vanilla,
-        }
-    }
 
-    /// The mods' answer, in place of `result`: a cancel leaves no result at
-    /// cost 0; otherwise their output, signed level cost and nonnegative
-    /// material cost. A changed output is no longer only a rename.
-    pub fn answer(self, cancel: bool, result: &mut crate::item::stations::AnvilResult) {
-        if cancel {
-            *result = crate::item::stations::AnvilResult::default();
-            return;
-        }
-        result.only_renaming &= self.output == self.vanilla.output;
-        result.cost = self.xp_cost;
-        result.repair_item_count_cost = self.material_cost.max(0) as u32;
-        result.result = self.output;
-    }
+/// The shared answer to `anvil_update`. It starts at `Keep` and vanilla's costs.
+/// The game applies the final edits after dispatch; cancellation or an invalid
+/// replacement leaves no output and zero costs.
+#[derive(Clone, Debug, PartialEq)]
+// exhaustive: the game builds it with a literal
+// no wire: staged edits are applied in-process at the end of the hook call.
+pub struct AnvilUpdateEdits {
+    /// Keep vanilla's output, or set a replacement. `Set(None)` clears it.
+    /// A replacement differing from vanilla must be a valid stack.
+    pub output: StackResult,
+    /// Signed level cost. Zero or a negative value prevents taking the result,
+    /// even in creative, and never refunds levels.
+    pub xp_cost: i32,
+    /// Units consumed from the right slot. Negative values clamp to zero;
+    /// zero or a value exceeding the stack consumes all of it on take.
+    pub material_cost: i32,
 }
 /// What `GrindstoneEvent.OnPlaceItem` asks about once the inputs changed,
 /// and what the mods may set: an `output` (none until a mod sets one) and,

@@ -1,0 +1,47 @@
+ids = [
+    "hook:anvil_update",
+    "hook:anvil_update.update",
+    "hook:anvil_update.inputs",
+    "hook:anvil_update.edits",
+    "type:AnvilUpdateEvent.update",
+    "type:AnvilUpdateEvent.inputs",
+    "type:AnvilUpdateEvent.edits",
+    "type:item::menu::AnvilUpdate",
+    "type:item::menu::AnvilUpdate.left",
+    "type:item::menu::AnvilUpdate.right",
+    "type:item::menu::AnvilUpdate.name",
+    "type:item::menu::AnvilUpdate.vanilla",
+    "type:item::menu::AnvilUpdate.output",
+    "type:item::menu::AnvilUpdate.xp_cost",
+    "type:item::menu::AnvilUpdate.material_cost",
+    "type:item::menu::AnvilVanilla",
+    "type:item::menu::AnvilVanilla.output",
+    "type:item::menu::AnvilVanilla.xp_cost",
+    "type:item::menu::AnvilVanilla.material_cost",
+    "handle:item::menu::AnvilUpdate::new",
+    "handle:item::menu::AnvilUpdate::answer",
+    "type:item::stations::AnvilResult",
+    "type:item::stations::AnvilResult.result",
+    "type:item::stations::AnvilResult.cost",
+    "type:item::stations::AnvilResult.repair_item_count_cost",
+    "type:item::stations::AnvilResult.only_renaming",
+    "type:item::menu::AnvilUpdateInputs",
+    "type:item::menu::AnvilUpdateInputs.left",
+    "type:item::menu::AnvilUpdateInputs.right",
+    "type:item::menu::AnvilUpdateInputs.name",
+    "type:item::menu::AnvilUpdateInputs.vanilla_output",
+    "type:item::menu::AnvilUpdateInputs.vanilla_xp_cost",
+    "type:item::menu::AnvilUpdateInputs.vanilla_material_cost",
+    "type:item::menu::AnvilUpdateEdits",
+    "type:item::menu::AnvilUpdateEdits.output",
+    "type:item::menu::AnvilUpdateEdits.xp_cost",
+    "type:item::menu::AnvilUpdateEdits.material_cost",
+]
+why = "Anvil Update now lends an immutable view of the inputs and vanilla result. Only output and costs can be edited, and changing costs no longer revalidates untouched stacks. A rejected output clears the result and both costs."
+migrate = """
+Read `event.update.left/right/name` through `event.inputs.left/right/name`; the right stack and name are already optional references, so drop `.as_ref()` and `.as_deref()` on those fields. Read `event.update.vanilla.output/xp_cost/material_cost` as `event.inputs.vanilla_output/vanilla_xp_cost/vanilla_material_cost`. Clone individual stacks only to retain them after the callback.
+
+Read or write `event.update.xp_cost/material_cost` through `event.edits.xp_cost/material_cost`. Read the current output by matching `&event.edits.output`: `StackResult::Keep` means `event.inputs.vanilla_output`, and `StackResult::Set(stack)` means `stack.as_ref()`. Replace `event.update.output = Some(stack)` with `event.edits.output = StackResult::Set(Some(stack))`, and replace `event.update.output = None` with `StackResult::Set(None)` assigned to that same field. Assign `StackResult::Keep` to restore vanilla output after an earlier edit. Cancellation is unchanged: set `event.cancelled` or return `Flow::Cancel`.
+
+Remove uses of `AnvilUpdate::new`, `AnvilUpdate::answer` and the API `item::stations::AnvilResult`: listeners use the supplied `AnvilUpdateInputs<'_>` and `AnvilUpdateEdits`, and the game applies the final edits. A dispatch fixture can construct those two records directly, starting edits at `StackResult::Keep` and the vanilla XP and material costs from the inputs, then pass `&inputs, &mut edits` before the cancel argument. These call-scoped records have no Wire encoding; retain or encode individual owned fields instead. Rebuild and repack the mod for hook version 2.
+"""

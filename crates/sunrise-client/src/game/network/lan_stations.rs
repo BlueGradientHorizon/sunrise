@@ -410,16 +410,15 @@ impl Game<'_> {
                 gs.kind == StationKind::Anvil && gs.menu.anvil_created() && !cancelled;
             if anvil_created
                 && mod_api::__private::listened(mod_api::HookId::AnvilUpdate)
-                && let Some(mut update) = gs.menu.anvil_update()
+                && let Some((inputs, mut result)) = gs.menu.anvil_update()
             {
                 let (uuid, entity_id) = self
                     .lan
                     .as_ref()
                     .map(|host| (host.hub.guests[gi].uuid, host.hub.guests[gi].entity_id))
                     .unwrap_or((0, 0));
-                let mut cancel = false;
-                self.api_anvil_update(uuid, entity_id, gs.pos, &mut update, &mut cancel);
-                gs.menu.anvil_updated(update, cancel);
+                self.api_anvil_update(uuid, entity_id, gs.pos, inputs, &mut result);
+                gs.menu.anvil_updated(result);
             }
             if recomputed && gs.kind == StationKind::Grindstone && gs.menu.grind_hook {
                 let (uuid, entity_id) = self
