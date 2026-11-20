@@ -1,5 +1,4 @@
-//! Canonical binary encoding for owned API values, including typed payload tokens.
-//! Typed payload bodies are encoded by `PayloadCodec`, not Wire.
+//! Canonical binary encoding for owned API values, including typed network payloads.
 //!
 //! Everything is little-endian and self-delimiting: a length is a `u32` before its items, an
 //! `Option` is a tag byte, an enum is a `u32` case then its fields, a record is its fields in

@@ -205,8 +205,10 @@ fn arc_counts_are_charged_even_for_zero_width_values() {
     use std::sync::Arc;
 
     type Rows = Vec<Vec<Arc<()>>>;
-    let row = vec![Arc::new(()); 4096];
-    // Each row retains 4096 handles and two refcounts per handle: 98,304 bytes on
+    // Sharing here keeps the fixture cheap; the receiver constructs a new Arc per entry.
+    let shared = Arc::new(());
+    let row = vec![shared; 4096];
+    // Each decoded row retains 4096 handles and two refcounts per handle: 98,304 bytes on
     // 64-bit, although the encoded row is only its 4-byte length.
     let rows = vec![row; 100];
     let mut bytes = vec![100, 0, 0, 0];
