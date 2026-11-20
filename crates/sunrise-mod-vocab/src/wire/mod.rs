@@ -76,9 +76,9 @@ impl std::fmt::Display for WireError {
 
 impl std::error::Error for WireError {}
 
+// exhaustive: fields are private; use the codec methods.
 /// A buffer values are written to. Reuse one to keep the allocation.
 #[derive(Default)]
-
 pub struct Writer {
     bytes: Vec<u8>,
     error: Option<WireError>,
@@ -242,8 +242,8 @@ impl<T: Put> Put for [T] {
     }
 }
 
+// exhaustive: fields are private; use the codec methods.
 /// A buffer values are read from.
-
 pub struct Reader<'a> {
     data: &'a [u8],
     depth: u16,

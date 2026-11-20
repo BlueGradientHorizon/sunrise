@@ -1,4 +1,4 @@
-//! The engine API point registry, shared by native and wasm listeners.
+//! The engine API point registry for native listeners.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
@@ -150,6 +150,7 @@ impl Owner {
     }
 }
 
+// exhaustive: construction is private to the listener type.
 /// A function whose signature was checked by the generated listener constructor.
 #[derive(Clone, Copy)]
 pub struct ApiFunction(*const ());
@@ -349,8 +350,8 @@ impl SlotListener {
     }
 }
 
-/// Registers a function or checked endpoint in its place's table, in the same order for native
-/// and wasm owners. The one boundary every listener passes: a table whose places have no site in
+/// Registers a function in its place's table. The one boundary every listener passes:
+/// a table whose places have no site in
 /// this build refuses here, naming the mod and the target, so no listener registers and never runs.
 pub fn register(slot: &SlotListener) -> Result<(), RegisterError> {
     // A place is built from any table and index: one outside its table is refused, not indexed.
@@ -420,8 +421,7 @@ pub fn register(slot: &SlotListener) -> Result<(), RegisterError> {
 }
 
 /// Stops mod `id`'s engine listeners: none of them runs again, whether the slots are
-/// sealed yet or not. A trap that stops a wasm group and the game giving up on a native mod both
-/// end here.
+/// sealed yet or not.
 pub fn stop(id: &str) {
     let mut open = lock();
     if !open.sealed {

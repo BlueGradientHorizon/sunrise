@@ -41,7 +41,7 @@ pub trait BlockEntityPartState: BlockEntityPart + Sized {
     /// The value each block entity of the Part's type keeps.
     type Data: Clone + Send + Sync + crate::wire::Wire + 'static;
     /// Its attachment key, default and codec. The owner declares the key at registration;
-    /// without a codec the value is kept for the session only (and a wasm mod needs one).
+    /// without a codec the value is kept for the session only.
     const DATA: &'static AttachmentType<Self::Data>;
 
     /// The block entity's value, or the default when it has none. Inserts nothing.
@@ -476,7 +476,7 @@ mod tests {
     }
 
     #[test]
-    fn declarations_refuse_sync_copy_on_death_and_codec_less_wasm_state() {
+    fn declarations_refuse_sync_and_copy_on_death() {
         let check = |key: &AttachmentType<i32>| PartStateDeclaration::of(key).check();
         assert_eq!(check(&key(false, false, true)), Ok(()));
         assert_eq!(check(&key(false, false, false)), Ok(()));

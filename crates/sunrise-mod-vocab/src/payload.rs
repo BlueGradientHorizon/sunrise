@@ -8,7 +8,7 @@ pub use registrar::{
 mod typed;
 pub use typed::{PayloadToken, ToClient, ToServer};
 
-use crate::wire::{Reader, Wire, WireError, Writer};
+use crate::wire::Wire;
 use crate::{ClientHost, PlayerRef, ServerHost, Text};
 use std::sync::Arc;
 

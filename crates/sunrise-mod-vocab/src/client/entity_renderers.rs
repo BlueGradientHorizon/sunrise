@@ -5,7 +5,7 @@
 //! keeps the registrations from start and resolves each type's renderer on every resource load, so
 //! a frame hands an entity to the renderer of its type's slot and to no other mod.
 use crate::BlockEntityDrawContext;
-use crate::wire::{Reader, Wire, WireError, Writer};
+use crate::wire::Wire;
 use std::{collections::BTreeMap, sync::Arc};
 
 /// One entity's frame, as `EntityRenderer.extractRenderState` fills an `EntityRenderState`:

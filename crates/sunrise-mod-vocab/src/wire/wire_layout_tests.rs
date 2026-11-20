@@ -340,25 +340,6 @@ fn snapshot_and_reload_records_have_declared_field_bytes() {
     fields(DamageContainer::from(values.clone()), (values,));
     let revision = crate::item::containers::ModRevision::from_snapshot(31, 47);
     fields(revision, (31u64, 47u64));
-    let snapshot = crate::item::containers::ModBlockEntitySnapshot {
-        id: "example:machine".into(),
-        fields: crate::item::containers::ModBlockEntityFields {
-            nbt: Compound::new(),
-            items: vec![None],
-            data: vec![19, -3],
-        },
-        revision,
-        client_update_fields: Some(Compound::new()),
-    };
-    let (decoded,): (crate::item::containers::ModBlockEntitySnapshot,) =
-        decode(ModBlockEntity::from(snapshot));
-    assert_eq!(decoded.id, "example:machine");
-    assert_eq!(decoded.fields.nbt, Compound::new());
-    assert_eq!(decoded.fields.items, vec![None]);
-    assert_eq!(decoded.fields.data, vec![19, -3]);
-    assert_eq!(decoded.revision.identity(), 31);
-    assert_eq!(decoded.revision.changes(), 47);
-    assert_eq!(decoded.client_update_fields, Some(Compound::new()));
     let files = std::collections::BTreeMap::from([(id("example:recipe"), vec![3u8, 5, 7])]);
     fields(
         crate::world::reload::ReloadFiles::new(files.clone()),

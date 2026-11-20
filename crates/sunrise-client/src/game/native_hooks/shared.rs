@@ -2928,8 +2928,6 @@ impl Game<'_> {
             mod_api::__private::key_mappings(),
         );
         let native = self.mods.native.clone();
-        // Wasm proxies are installed in the same dispatch table as native mods. Their rows
-        // need the same live switch and settings page, not a frozen content-only toggle.
         let mut rows: Vec<_> = self
             .settings
             .mods

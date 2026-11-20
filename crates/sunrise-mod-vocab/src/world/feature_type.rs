@@ -18,7 +18,7 @@
 //! generation.
 //!
 //! Feature types run on the worldgen workers.
-use crate::wire::{Reader, Wire, WireError, Writer};
+use crate::wire::Wire;
 use crate::world::datapack_registry::{DatapackEntry, DatapackField};
 use crate::world::structure_type::HeightmapType;
 use crate::{BlockKey, BlockMetadata, BlockState, BlockUpdateFlags, RandomSource};

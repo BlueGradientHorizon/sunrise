@@ -4,7 +4,7 @@
 //! compiled script bundle, a baked lookup table), each file listed with its SHA-512 in the
 //! manifest's `[runtime]` table. The game checks every hash once, when the package opens, and
 //! serves those bytes: a read never hashes again. A mod reads only its own package's files.
-use crate::wire::{Reader, Wire, WireError, Writer};
+use crate::wire::Wire;
 use std::sync::Arc;
 
 /// The game's side of one package's runtime files. A mod reaches it through

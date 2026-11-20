@@ -79,7 +79,7 @@ pub trait Host {
 pub trait ServerHost: Host {
     /// Saves.
     ///
-    /// Not on wasm: it writes
+    /// It writes
     /// files.
     fn save(&mut self, slot: u8);
     /// Sends a text.
@@ -236,7 +236,7 @@ impl EntityRef {
     }
     /// Its file.
     ///
-    /// Not on wasm: it reads a file.
+    /// It reads a file.
     pub fn path(self) -> crate::Outcome<String> {
         Ok(String::new())
     }
@@ -621,8 +621,8 @@ fn each_declaration_aspect_changes_exactly_its_records_hash() {
             "trait methods reordered",
             &[(
                 LIB,
-                "    /// Saves.\n    ///\n    /// Not on wasm: it writes\n    /// files.\n    fn save(&mut self, slot: u8);\n    /// Sends a text.\n    fn send(&mut self, text: Text) -> bool;",
-                "    /// Sends a text.\n    fn send(&mut self, text: Text) -> bool;\n    /// Saves.\n    ///\n    /// Not on wasm: it writes\n    /// files.\n    fn save(&mut self, slot: u8);",
+                "    /// Saves.\n    ///\n    /// It writes\n    /// files.\n    fn save(&mut self, slot: u8);\n    /// Sends a text.\n    fn send(&mut self, text: Text) -> bool;",
+                "    /// Sends a text.\n    fn send(&mut self, text: Text) -> bool;\n    /// Saves.\n    ///\n    /// It writes\n    /// files.\n    fn save(&mut self, slot: u8);",
             )],
             HOOKS,
             &[],
@@ -648,11 +648,11 @@ fn each_declaration_aspect_changes_exactly_its_records_hash() {
             &[],
         ),
         (
-            "a not-on-wasm reason reworded",
+            "a method doc reworded",
             &[(
                 LIB,
-                "/// Not on wasm: it writes\n    /// files.",
-                "/// Not on wasm: it writes to the disk.",
+                "/// It writes\n    /// files.",
+                "/// It writes to the disk.",
             )],
             HOOKS,
             &[],

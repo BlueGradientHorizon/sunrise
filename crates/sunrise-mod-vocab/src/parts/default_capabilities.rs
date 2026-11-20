@@ -1,6 +1,5 @@
 //! Type-bound declarations consumed by the game's default capability providers.
 use super::*;
-use crate::wire::{Reader, Wire, WireError, Writer};
 
 /// A registered item's dynamic slot count. The item type is bound at registration; this
 /// callback runs only for an actual runtime lookup, never to infer whether it is registered.

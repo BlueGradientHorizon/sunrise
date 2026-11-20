@@ -45,7 +45,7 @@
 //! Names assembled inside a macro from outside the mod (`paste!`, `concat_idents!`) never appear
 //! in the source and are out of the scan's reach; the compile catches them. A file that does not
 //! parse, or nests deeper than [`syntax::MAX_NESTING`], cannot be judged ([`ScanError`]), and
-//! neither can any file where the parser cannot have a stack of its own (on wasm). Even a mod
+//! neither can any file where the parser cannot reserve its own stack. Even a mod
 //! judged to fit is compiled on the player's machine against the target build, and that compile
 //! stays the final check. The scan also records the public paths the mod writes each item by:
 //! imported, written out, under an API glob (`prelude::Biome` after `use mod_api::*`), or
@@ -433,7 +433,7 @@ pub enum ScanError {
     /// The file nests brackets, generics or expressions deeper than the scan parses
     /// ([`syntax::MAX_NESTING`]), at this line.
     TooDeep { file: String, line: usize },
-    /// The parser's own stack could not be had (always so on wasm), so the file was not parsed.
+    /// The parser's own stack could not be reserved, so the file was not parsed.
     NoStack { file: String },
     /// The child process that parses first ([`crate::child`]) died, by a signal, an overflow or
     /// a limit on its memory or processor time, while parsing this file (none: before it

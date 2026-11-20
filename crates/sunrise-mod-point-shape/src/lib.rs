@@ -93,7 +93,7 @@ pub struct ApiItems {
     pub listeners: TokenStream,
     /// Its `PointId` variants.
     pub variants: TokenStream,
-    /// Its typed native and wasm dispatch functions.
+    /// Its typed native dispatch functions.
     pub dispatch: TokenStream,
 }
 
@@ -534,7 +534,7 @@ fn unit_result(ty: &Type) -> bool {
 }
 
 /// The type a scalar crosses as in a record: `usize`/`isize` as `u64`/`i64`, one width on every
-/// host and in a wasm guest (whose `usize` is 32-bit); none for a type that crosses as itself.
+/// host; none for a type that is stored as itself.
 pub fn wide(ty: &Type) -> Option<Type> {
     let Type::Path(path) = ty else { return None };
     if path.path.is_ident("usize") {

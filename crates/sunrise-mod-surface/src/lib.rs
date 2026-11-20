@@ -36,9 +36,8 @@
 //! # Hashes
 //!
 //! A record's `hash` is [`contract_hash`] of its contract: every field except `id`, `hash`,
-//! `doc`, `wasm_reason`, `paths`, a hook's `engine` and `counterparts`, a type's `shape` and
-//! `impls`, its `wire` and `wire_form` (how it crosses to wasm, which `shape` and the build's
-//! wasm layout cover), a struct's `constructible` and `non_exhaustive` (which matter only to a
+//! `doc`, `paths`, a hook's `engine` and `counterparts`, a type's `shape`, `impls`, `wire` and
+//! `wire_form`, a struct's `constructible` and `non_exhaustive` (which matter only to a
 //! mod that builds it, judged by the fit test), and its member records. Each
 //! member (a method, field or variant) has its own hash, so adding a method to `Host`, adding a
 //! hook or adding a field to a type mods cannot build changes no existing record's hash. A
@@ -60,10 +59,8 @@
 //! own, like a hook's, and its `doc` and `tests` are outside the hash.
 //!
 //! A trait's `role` says whether mods implement it, call it, or neither: the generator takes it
-//! from the WebAssembly boundary's lists of the traits a mod implements (its exports, with the
-//! handler traits capability keys name) and calls (its imports), resolved to the trait itself,
-//! not its name. A trait on neither list has role `none`. Whether a method is on wasm is hashed
-//! as a boolean; the reason is documentation (`wasm_reason`).
+//! from the vocabulary's role lists, resolved to the trait itself, not its name.
+//! A trait on neither list has role `none`.
 //!
 //! Every member record lists its owner (the trait or type) in `refs`, so
 //! [`Surface::closure`] from a member reaches its owner.
@@ -363,8 +360,8 @@ impl Type {
         fields: Vec<Field>,
         variants: Vec<Variant>,
     ) -> Self {
-        // How a type crosses to wasm is its `shape`'s and the build's wasm layout's: a native mod
-        // cannot observe it, so `wire` and `wire_form` stay out of the hash. Whether a struct can
+        // `shape`, `wire` and `wire_form` describe encoding, not the Rust contract hashed here.
+        // Whether a struct can
         // be built with a literal matters only to a mod that builds it, which the fit test judges
         // from `constructible` itself.
         let struct_like = matches!(

@@ -460,8 +460,7 @@ pub(crate) const PARSER_STACK: usize = 16 << 20;
 pub(crate) enum Unread {
     /// It does not parse, at this line.
     Parse(usize),
-    /// The parser's own stack could not be had, so parsing would risk the caller's: always on
-    /// wasm, which has no threads.
+    /// The parser's own stack could not be reserved.
     NoStack,
 }
 

@@ -1,6 +1,6 @@
 //! Startup registration and portable values for mod crafting recipe kinds.
 use super::*;
-use crate::wire::{Reader, Wire, WireError, Writer};
+use crate::wire::{Reader, Wire, Writer};
 
 /// An owned, untrimmed crafting grid. Cells are row-major; empty cells are None.
 #[derive(Clone, Debug, PartialEq, sunrise_mod_api_macros::Wire)]

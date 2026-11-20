@@ -5,7 +5,7 @@
 //! its model and the layers before it. The game asks for the layers on every resource load, as the
 //! renderers are built again, and resolves each target's layers to the slot its draw reads, so a
 //! frame hands an entity to its own type's layers and to no other mod.
-use crate::wire::{Reader, Wire, WireError, Writer};
+use crate::wire::Wire;
 use crate::{BlockEntityDrawContext, EntityRenderState, PosedParts};
 use std::sync::Arc;
 

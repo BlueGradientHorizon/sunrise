@@ -1,8 +1,7 @@
 //! The Sunrise mod API: the one crate a Sunrise code mod depends on.
 //!
 //! Sunrise is Minecraft: Java Edition 26.3 written in Rust. A code mod is a Rust crate that implements
-//! [`Hooks`], built either natively by the Sunrise launcher or to `mod.wasm` for the game's sandbox. Both
-//! targets use this same API; only the build differs. Add it to your mod's `Cargo.toml` as
+//! [`Hooks`] and builds with the Sunrise mod SDK. Add this API to your mod's `Cargo.toml` as
 //! `sunrise-mod-api` (the library name is `mod_api`).
 //!
 //! The [modding book](https://playsunrise.net/docs/modding) is the guide: start with
@@ -41,9 +40,8 @@
 //! | [`Registrar`] | What a mod declares in [`Hooks::register`]: registry keys, Parts and settings. |
 //! | [`Host`], [`ServerHost`], [`ClientHost`] | The game as a hook sees it, split by side so a call on the wrong side does not compile. |
 //! | [`AttachmentType`] | Data a mod keeps on levels, chunks, entities and other holders. |
-//! | [`Wire`](derive@Wire) | The derive that lets a mod's own values cross to and from a WebAssembly mod. |
+//! | [`Wire`](derive@Wire) | The derive that encodes typed payloads and other values. |
 //!
-//! An item whose documentation says **Not on wasm** is unavailable to WebAssembly mods.
 //!
 //! # Guides in the book
 //!

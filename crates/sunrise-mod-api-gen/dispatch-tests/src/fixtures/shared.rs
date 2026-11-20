@@ -144,7 +144,7 @@ mod generated {
         BlockEntityTickReply, BlockFace, BlockKey, BlockState, CrosshairTarget,
     };
     pub use sunrise_mod_api_macros::__subscriptions;
-    // What `#[__subscriptions]` marks each implemented hook with: these listeners are not built for wasm.
+    // What `#[__subscriptions]` marks each implemented hook with.
     macro_rules! __sunrise_mark {
         ($owner:literal $method:ident) => {};
     }

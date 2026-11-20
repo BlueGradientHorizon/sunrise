@@ -805,23 +805,20 @@ fn a_wire_change_adds_when_a_type_starts_crossing_and_is_conditional_otherwise()
     };
     assert_eq!(
         class_and_lines(&none, &derive),
-        (
-            Class::Additive,
-            vec!["now crosses the wasm boundary".into()]
-        )
+        (Class::Additive, vec!["now implements `Wire`".into()])
     );
     assert_eq!(
         class_and_lines(&derive, &none),
         (
             Class::Conditional,
-            vec!["no longer crosses the wasm boundary: affects wasm mods only".into()]
+            vec!["no longer implements `Wire`: affects users of this encoding".into()]
         )
     );
     assert_eq!(
         class_and_lines(&derive, &via),
         (
             Class::Conditional,
-            vec!["wire form: `derive` → `via:u32`: affects wasm mods only".into()]
+            vec!["wire form: `derive` → `via:u32`: affects users of this encoding".into()]
         )
     );
 }
@@ -1157,7 +1154,7 @@ fn a_struct_gaining_non_exhaustive_is_conditional_whatever_else_changed() {
 }
 
 #[test]
-fn a_wire_layout_change_affects_wasm_mods_only() {
+fn a_wire_layout_change_is_conditional() {
     let at = |shape: &str| {
         let mut s = types(vec![structure("Pos", false, &[("x", "i32")])]);
         s.types[0].shape = Some(shape.into());
@@ -1169,7 +1166,7 @@ fn a_wire_layout_change_affects_wasm_mods_only() {
             "type:Pos",
             ChangeKind::Changed,
             Class::Conditional,
-            vec!["wire layout: `aaaa` → `bbbb`: affects wasm mods only"],
+            vec!["wire layout: `aaaa` → `bbbb`: affects users of this encoding"],
             vec![]
         )
     );

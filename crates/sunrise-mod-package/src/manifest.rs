@@ -1322,7 +1322,7 @@ pub(crate) fn check_file<R: Read>(
         .and_then(|n| n.rsplit_once('.'));
     let executable = extension.is_some_and(|(_, ext)| {
         [
-            "wasm", "exe", "dll", "so", "dylib", "class", "jar", "com", "bat", "cmd", "ps1",
+            "exe", "dll", "so", "dylib", "class", "jar", "com", "bat", "cmd", "ps1",
         ]
         .iter()
         .any(|kind| ext.eq_ignore_ascii_case(kind))
@@ -1346,8 +1346,7 @@ pub(crate) fn check_file<R: Read>(
     }
     let executable = matches!(
         &header,
-        b"\0asm"
-            | b"\x7fELF"
+        b"\x7fELF"
             | b"\xfe\xed\xfa\xce"
             | b"\xce\xfa\xed\xfe"
             | b"\xfe\xed\xfa\xcf"
@@ -2029,12 +2028,11 @@ issues = \"http://example.org/issues\"
         assert_eq!(Package::read(&archive).unwrap().manifest.id, "ruby");
         assert_eq!(Package::read(&dir).unwrap().manifest.id, "ruby");
         let cases: &[(&str, &[u8])] = &[
-            ("mod.wasm", b""),
-            ("./mod.wasm", b"\0asm"),
-            ("MOD.WASM", b""),
-            ("sub/mod.wasm", b""),
-            ("assets/ruby/CODE.WaSm", b""),
-            ("assets/ruby/model.bin", b"\0asm"),
+            ("mod.exe", b""),
+            ("./mod.exe", b"MZ"),
+            ("MOD.EXE", b""),
+            ("sub/mod.exe", b""),
+            ("assets/ruby/CODE.ExE", b""),
             ("assets/ruby/native.bin", b"\x7fELF"),
             ("assets/ruby/windows.bin", b"MZ"),
             ("assets/ruby/mac.bin", b"\xcf\xfa\xed\xfe"),
@@ -2068,7 +2066,7 @@ issues = \"http://example.org/issues\"
             }
             std::fs::remove_file(file).unwrap();
         }
-        assert!(Package::write_files(EXAMPLE, &[("assets/ruby/model.bin", b"\0asm")]).is_err());
+        assert!(Package::write_files(EXAMPLE, &[("assets/ruby/model.bin", b"MZ")]).is_err());
         // Native bundle sources can start with Rust inner attributes, not a script shebang.
         assert!(
             Package::write_files(
@@ -2109,7 +2107,7 @@ issues = \"http://example.org/issues\"
         std::fs::create_dir_all(root.join("assets/ruby")).unwrap();
         std::fs::write(root.join("assets/ruby/icon.png"), b"image").unwrap();
         assert_eq!(Package::read(&root).unwrap().manifest.id, "ruby");
-        std::fs::write(root.join("assets/ruby/icon.png"), b"\0asm").unwrap();
+        std::fs::write(root.join("assets/ruby/icon.png"), b"MZ").unwrap();
         assert!(
             Package::read(&root)
                 .err()
@@ -2134,7 +2132,7 @@ issues = \"http://example.org/issues\"
             check_file(name, 0o100755, || Ok(std::io::Cursor::new(nbt))),
             Err(ContentFileError::Executable(_))
         ));
-        for header in [b"\x7fELF", b"MZ!!", b"\0asm"] {
+        for header in [b"\x7fELF", b"MZ!!", b"\xcf\xfa\xed\xfe"] {
             assert!(matches!(
                 check_file(name, 0o100644, || Ok(std::io::Cursor::new(header))),
                 Err(ContentFileError::Executable(_))
@@ -2193,7 +2191,7 @@ issues = \"http://example.org/issues\"
         let error = Package::read(&dir).err().unwrap();
         assert!(error.contains("unsupported executable"), "{error}");
         std::fs::remove_file(&file).unwrap();
-        for name in ["assets/ruby/mod.wasm", "assets/ruby/nested/link"] {
+        for name in ["assets/ruby/mod.exe", "assets/ruby/nested/link"] {
             let link = dir.join(name);
             std::fs::create_dir_all(link.parent().unwrap()).unwrap();
             symlink("missing", &link).unwrap();

@@ -39,7 +39,6 @@ sunrise-mod-api-gen retained_knockback_entries_apply_hook_edits_cancel_and_deleg
 sunrise-mod-api-gen sunrise_stage_scans_through_its_child test:scan_child daily child-process
 sunrise-mod-api-gen surface::tests::the_real_tree_exports lib daily slow
 sunrise-mod-api-gen surface::tests::the_recipe_placement_protocol_is_pinned_to_the_shapes_it_carries lib daily slow
-sunrise-mod-api-gen surface::tests::the_surface_export_names_the_calls_the_games_table_holds lib daily slow
 sunrise-mod-api-gen tests::fragment_hooks_generate lib daily slow
 sunrise-mod-api-gen tests::new_hook_placeholder_is_reported_then_filled lib daily slow
 sunrise-mod-api-gen tests::only_a_game_hooks_placeholder_body_is_filled lib daily child-process

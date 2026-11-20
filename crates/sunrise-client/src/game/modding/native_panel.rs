@@ -409,7 +409,7 @@ impl Game<'_> {
     }
     /// `panel_search`: the text in mod `mod_id`'s search box, heard as the
     /// player's typing is when its box next draws. Only the mod whose hook or
-    /// part is running (native or wasm alike) and owns the panel can set it.
+    /// part is running and owns the panel can set it.
     pub(in crate::game) fn panel_search(&mut self, mod_id: &str, text: &str) {
         let caller = mod_api::content::crash::current_native_mod();
         self.panel.set_search(caller, mod_id, text);

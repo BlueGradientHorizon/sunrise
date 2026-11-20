@@ -261,7 +261,7 @@ mod tests {
                 assert_eq!(items[0].crafting_remainder.as_deref(), Some("porter:bowl"));
                 assert_eq!(items[0].block.as_deref(), Some("minecraft:stone"));
                 // Invalid output stays visible for an outer host dispatch to refuse
-                // too, rather than being silently lost inside a wasm guest.
+                // too.
                 assert_eq!(blocks[1].id, "unowned:pot");
                 let errors = take_declaration_refusals(&context);
                 assert_eq!(errors.len(), 1);

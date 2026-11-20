@@ -64,7 +64,7 @@ fn inventory(native: &[PackageInfo], content: &[PackageInfo]) -> Vec<PackageInfo
             packages.push(selected.clone());
         }
     }
-    // The code inventory follows the one installed native/wasm dispatch slice;
+    // The code inventory follows the one installed native dispatch slice;
     // content-only packages remain after it in their selected layer order.
     packages.sort_by_key(|p| {
         crate::__private::mods()

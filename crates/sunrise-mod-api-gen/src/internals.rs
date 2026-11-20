@@ -209,7 +209,7 @@ struct Pass {
     /// The conditions of the module being visited.
     cfg: Vec<String>,
     /// Widening only: the items and fields visited are made public and listed nowhere, for a
-    /// lower-crate shape the wasm internals table walks (#589 W).
+    /// lower-crate shape the internals table walks.
     reaching: bool,
     discovery: bool,
 }
@@ -1300,7 +1300,7 @@ impl Pass {
             }
         }
         self.cfg.clear();
-        // Each shape's module path, item and fields, public in the staged copy, so the wasm
+        // Each shape's module path, item and fields, public in the staged copy, so the
         // internals table at the game's root can walk it. The mod API's own types keep theirs.
         let reached: Vec<String> = self
             .entries
@@ -1937,7 +1937,7 @@ union Value { #[cfg(windows)] windows: u32, #[cfg(test)] test_field: u32 }
     }
 
     #[test]
-    fn reachable_lower_shapes_are_transitive_and_widened_for_the_wasm_table() {
+    fn reachable_lower_shapes_are_transitive_and_visible_to_the_staged_table() {
         let fixture = shapes_fixture(
             "use std::time::Duration; struct Game { stack: sunrise_items::ItemStack, external: Duration }\n",
         );

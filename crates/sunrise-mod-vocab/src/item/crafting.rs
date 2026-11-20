@@ -255,7 +255,7 @@ mod empty_candidate_tests {
     use super::*;
 
     #[test]
-    fn empty_custom_predicate_survives_native_wasm_wire() {
+    fn empty_custom_predicate_round_trips_through_wire() {
         use crate::wire::{Reader, Wire, Writer};
         let mut ingredient = Ingredient::of(vec![]);
         ingredient.custom = Some((

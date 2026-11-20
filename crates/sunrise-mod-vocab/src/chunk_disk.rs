@@ -62,20 +62,6 @@ impl ChunkDiskContextWire {
     }
 }
 
-/// One opaque saved binding. Unknown keys retain this envelope unchanged.
-#[derive(Clone, Debug, PartialEq, sunrise_mod_api_macros::Wire)]
-#[non_exhaustive]
-pub struct AttachmentDiskEntryWire {
-    /// Registered attachment namespace.
-    pub namespace: String,
-    /// Registered name within the namespace.
-    pub name: String,
-    /// Schema of this envelope. The current attachment codec uses schema zero.
-    pub schema: u32,
-    /// The persistence envelope, including the encoded value and its policies.
-    pub encoded: Compound,
-}
-
 /// Why a chunk disk job refused, with the failing mod and attachment when known.
 #[derive(Clone, Debug, PartialEq, Eq, sunrise_mod_api_macros::Wire)]
 #[non_exhaustive]
@@ -88,16 +74,6 @@ pub struct ChunkDiskFailure {
     pub reason: String,
 }
 
-/// A worker's publication decision. Refusal never contains a partial store.
-#[derive(Clone, Debug, PartialEq, sunrise_mod_api_macros::Wire)]
-#[non_exhaustive]
-pub enum ChunkDiskResultWire {
-    /// All listeners and budget checks succeeded.
-    Success(Vec<AttachmentDiskEntryWire>),
-    /// Keep the original captured store and the old disk record.
-    Refused(ChunkDiskFailure),
-}
-
 /// A disk callback's shared Host. It has no live backend and is never a
 /// `ServerHost`: live handle methods refuse, and world writes do not compile.
 /// Registry and settings reads use the owning resource generation's snapshot.
@@ -108,7 +84,7 @@ pub trait ChunkDiskHost: Host {
     fn registry(&self, name: &str) -> Option<Arc<[String]>>;
 }
 
-// no wire: a borrowed worker-only Host, carried by a synchronous Wire frame.
+// no wire: a borrowed worker-only Host.
 /// Engine-side capability lasting only for one callback dispatch.
 // hidden: engine-side worker capability, built only by the persistence owner
 #[doc(hidden)]

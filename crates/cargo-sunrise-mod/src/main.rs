@@ -942,7 +942,7 @@ mod tests {
         assert!(error.contains("the texture gems:block/gone"), "{error}");
         assert!(!smod.exists());
         std::fs::write(&model, original).unwrap();
-        let executable = path.join("assets/gems/mod.wasm");
+        let executable = path.join("assets/gems/mod.exe");
         std::fs::write(&executable, b"\0asm").unwrap();
         assert!(
             build_in(&path)

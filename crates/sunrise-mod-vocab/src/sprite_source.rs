@@ -1,7 +1,6 @@
 //! What a mod's own atlas sprite source reads and answers (`sprite_source`).
 use crate::Identifier;
-use crate::wire::{Reader, Wire, WireError, Writer};
-use std::sync::Arc;
+use crate::wire::Wire;
 
 /// The resources of the load that is listing an atlas, read-only (the `ResourceManager`
 /// vanilla's `SpriteSource.run` receives): every selected pack of this load in order, the game's

@@ -8,8 +8,7 @@
 //! keeps the ones that match the typed text, so every mod completes the same way.
 
 use super::command_argument::{CommandSender, CommandSuggestion};
-use crate::wire::{Reader, Wire, WireError, Writer};
-use std::sync::Arc;
+use crate::wire::Wire;
 
 /// One argument the engine parsed before the one being completed: its name from the command's
 /// usage and the text the player wrote for it.

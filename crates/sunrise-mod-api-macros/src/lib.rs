@@ -351,8 +351,7 @@ pub fn sunrise_part(_attribute: TokenStream, input: TokenStream) -> TokenStream 
 /// attribute, naming it. The source tree carries none. The function's head is its cell's one load
 /// and a branch, the same check a mixin build's copy is installed through: while a mod listens
 /// at the head or the return, the cell holds the point's dispatcher, which runs the head
-/// listeners, the body (or the installed copy) and the return listeners. An API listener, native
-/// or wasm, gets the side's host (on a `Game` method) and a record holding a copy of every
+/// listeners, the body (or the installed copy) and the return listeners. An API listener gets the side's host (on a `Game` method) and a record holding a copy of every
 /// parameter as an API value (an engine type `mirror(…)` names as its `mod_api` mirror): the
 /// function runs with the record's by-value and `&T` values, and a `&mut T` parameter's place
 /// gets the record's value back. A type or const parameter is refused, naming it (lifetimes are
@@ -394,9 +393,8 @@ pub fn sunrise_loop(attribute: TokenStream, input: TokenStream) -> TokenStream {
     input
 }
 
-/// Marks a provided trait method that a mod computes from the trait's other methods: the wasm
-/// boundary gives it no call of its own, so its default body runs wherever the trait object lives
-/// and only the methods it calls cross. A method without a default body is refused.
+/// Marks a provided trait method computed from the trait's other methods.
+/// A method without a default body is refused.
 #[proc_macro_attribute]
 pub fn computed_in_mod(attribute: TokenStream, input: TokenStream) -> TokenStream {
     let method = parse_macro_input!(input as syn::TraitItemFn);
@@ -428,8 +426,7 @@ pub fn __subscriptions(_attribute: TokenStream, input: TokenStream) -> TokenStre
 
 /// `if_installed!(host, other_mod, { other_mod::call(); })`: runs the block only where the optional
 /// dependency `other_mod` is installed. A native mod is built with the Cargo feature `other_mod`
-/// only when it is; a wasm mod is built with it and asks the game at the call, since an absent
-/// library's functions trap. One guard for both builds.
+/// only when that dependency is installed.
 #[proc_macro]
 pub fn if_installed(input: TokenStream) -> TokenStream {
     let IfInstalled { host, id, block } = parse_macro_input!(input as IfInstalled);

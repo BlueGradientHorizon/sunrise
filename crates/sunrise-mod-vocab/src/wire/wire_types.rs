@@ -427,35 +427,6 @@ impl Wire for crate::ReductionChange {
     }
 }
 
-impl Wire for crate::ModBlockEntity {
-    layout_fields!("snapshot" => crate::item::containers::ModBlockEntitySnapshot);
-    const MIN: usize = 32;
-    fn put(&self, out: &mut Writer) {
-        out.put(&self.id);
-        out.put(&self.fields.nbt);
-        out.put(&self.fields.items);
-        out.put(&self.fields.data);
-        out.put(&self.revision.identity());
-        out.put(&self.revision.changes());
-        out.put(&self.client_update_fields);
-    }
-    fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
-        Ok(Self {
-            id: input.take()?,
-            fields: crate::item::containers::ModBlockEntityFields {
-                nbt: input.take()?,
-                items: input.take()?,
-                data: input.take()?,
-            },
-            revision: crate::item::containers::ModRevision::from_snapshot(
-                input.take()?,
-                input.take()?,
-            ),
-            client_update_fields: input.take()?,
-        })
-    }
-}
-
 impl Wire for crate::ItemPlace {
     layout_fields!("tag" => u32, "0:PlayerSlot.player" => u128, "0:PlayerSlot.slot" => i32, "1:PlayerHand.player" => u128, "1:PlayerHand.hand" => crate::Hand, "2:PlayerCursor.menu" => crate::MenuRef, "3:BlockEntity.level" => crate::LevelRef, "3:BlockEntity.pos" => [i32;3], "3:BlockEntity.side" => Option<crate::Direction>, "3:BlockEntity.slot" => usize, "4:ItemEntity.id" => u32, "5:EntitySlot.entity" => u32, "5:EntitySlot.slot" => usize, "6:Nested.parent" => Box<crate::ItemPlace>, "6:Nested.slot" => usize, "7:MenuSlot.menu" => crate::MenuRef, "7:MenuSlot.slot" => usize, "8:Mod.provider" => String, "8:Mod.key" => u64, "9:Equipment.entity" => u32, "9:Equipment.slot" => crate::EquipmentSlot, "10:Scratch.0" => u64, "11:Strict.0" => Box<crate::ItemPlace>, "12:OneByOne.0" => Box<crate::ItemPlace>, "13:InfiniteMaterials.player" => u128, "13:InfiniteMaterials.inner" => Box<crate::ItemPlace>, "14:ScratchSlots.0" => u64);
     const MIN: usize = 4;

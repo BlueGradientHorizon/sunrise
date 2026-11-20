@@ -2395,3 +2395,88 @@ fn self_after_a_nested_impl_is_the_outer_impls() {
     let uses = scan_on(wider(), source);
     assert_eq!(entry(&uses, "type:Pos").built, Some(Built::None));
 }
+
+#[test]
+fn legacy_tables_match_either_hash_of_an_unchanged_method_and_function() {
+    const METHOD: &str = "method:Api::act";
+    const FUNCTION: &str = "fn:get";
+    let act = method(
+        METHOD,
+        "fn act(&self) -> Result<(), Error>",
+        &["trait:Api", "type:Error"],
+    );
+    let get = Function::new(
+        FUNCTION,
+        "",
+        FunctionContract {
+            signature: "fn get(&self) -> u8".into(),
+            impl_generics: "<T: Copy>".into(),
+            refs: strings(&["type:Value"]),
+        },
+    );
+    let assemble = |method, functions| {
+        Surface::new(
+            vec![],
+            vec![api_trait("trait:Api", Role::Call, &[], vec![method])],
+            vec![],
+            functions,
+            vec![],
+            vec![],
+            vec![],
+            vec![],
+        )
+    };
+    let intact = assemble(act.clone(), vec![get.clone()]);
+    let changed = assemble(method(METHOD, "fn act(&self)", &["trait:Api"]), vec![]);
+    let expected = Fit::DoesNotFit(vec![
+        Misfit {
+            id: FUNCTION.into(),
+            change: Change::Removed,
+        },
+        Misfit {
+            id: METHOD.into(),
+            change: Change::Changed,
+        },
+    ]);
+    // The first two rows use the published v1/v2 recipe with each former bit value.
+    // The last uses the v3 recipe. Values are independently hashed compact JSON.
+    for (old_method, old_function, schemas) in [
+        (
+            "76bd37f1903f2f7d28199f2318858078",
+            "d82dbe00d23869939148f2bcc5e91b90",
+            &[1, 2][..],
+        ),
+        (
+            "0f10da06557544acfc8f629cfe0471e2",
+            "18aab5558a8e65aa98cf0ce41b0bb9bd",
+            &[1, 2][..],
+        ),
+        (
+            "0c14af5c91006e195b452953b5dbfa1c",
+            "e61664d5cab614b0f96e88892f96bc66",
+            &[3][..],
+        ),
+    ] {
+        for schema in schemas {
+            let table = UsesTable {
+                schema: *schema,
+                made_for: "test".into(),
+                entries: vec![
+                    Entry::plain(METHOD.into(), old_method.into()),
+                    Entry::plain(FUNCTION.into(), old_function.into()),
+                ],
+            };
+            let table = UsesTable::read(&serde_json::to_vec(&table).unwrap()).unwrap();
+            assert_eq!(table.fits(&table.entries, &intact), Fit::Fits);
+            assert_eq!(table.fits(&table.entries, &changed), expected);
+            assert_ne!(
+                UsesTable {
+                    schema: if *schema == 3 { 2 } else { 3 },
+                    ..table.clone()
+                }
+                .fits(&table.entries, &intact),
+                Fit::Fits
+            );
+        }
+    }
+}
