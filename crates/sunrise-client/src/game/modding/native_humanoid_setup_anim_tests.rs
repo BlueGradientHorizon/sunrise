@@ -53,10 +53,7 @@ fn client_humanoid_setup_reaches_body_skinned_and_layer_routes() {
                 let mut skin = skin::Skin::new(&mut models, &mut frame);
                 for route in 0..3 {
                     heard.lock().unwrap().clear();
-                    let mut draw = render::FrameDraw {
-                        capture_model: true,
-                        ..Default::default()
-                    };
+                    let mut draw = render::FrameDraw::new(true);
                     let mut out = Vec::new();
                     match route {
                         0 => render::render_with_frame(

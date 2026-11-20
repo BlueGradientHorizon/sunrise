@@ -816,7 +816,7 @@ mod stubs {
     pub(super) struct MapInfo<'a>(pub &'a ());
     pub(super) struct PlayerRender<'a>(pub &'a ());
     pub(super) trait FrameModel {}
-    pub(super) struct HiddenParts;
+    pub(super) trait FrameModelEdit: FrameModel {}
     pub(super) struct Command;
     pub(super) struct LifecycleContext;
     pub(super) struct Load(pub &'static str);

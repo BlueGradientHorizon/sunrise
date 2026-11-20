@@ -10,9 +10,9 @@ impl Game<'_> {
         &self,
         entity: &MobRender<'_>,
         draw: &mut BlockEntityDraw,
-        hidden: &mut HiddenParts,
+        model: &mut dyn FrameModelEdit,
         canceled: &mut bool,
     ) {
-        self.fire_render_living_pre(entity, draw, hidden, canceled);
+        self.fire_render_living_pre(entity, draw, model, canceled);
     }
 }

@@ -49,7 +49,7 @@ use mod_api::{
     TriState, UsePhase,
 };
 use mod_api::{
-    BlockKey, DebugEntry, DebugRenderer, EffectKey, FrameModel, GuiLayer, HiddenParts,
+    BlockKey, DebugEntry, DebugRenderer, EffectKey, FrameModel, FrameModelEdit, GuiLayer,
     MapDecorationType, ParticleGroup, SkullModel, TaskId, TextureAtlasRegistration,
 };
 pub(crate) use mod_api::{

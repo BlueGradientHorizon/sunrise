@@ -81,10 +81,7 @@ fn frame_model_lends_the_drawn_pose_without_changing_geometry() {
     };
 
     let cpu = |capture_model, layers_only| {
-        let mut frame = FrameDraw {
-            capture_model,
-            ..Default::default()
-        };
+        let mut frame = FrameDraw::new(capture_model);
         let mut out = Vec::new();
         if layers_only {
             let extra = [(
@@ -137,10 +134,7 @@ fn frame_model_lends_the_drawn_pose_without_changing_geometry() {
         let mut models = super::super::skin::SkinModels::default();
         let mut skin_frame = crate::gfx::entity_skin::SkinFrame::default();
         let mut skin = super::super::skin::Skin::new(&mut models, &mut skin_frame);
-        let mut frame = FrameDraw {
-            capture_model,
-            ..Default::default()
-        };
+        let mut frame = FrameDraw::new(capture_model);
         let mut out = Vec::new();
         render_skinned(
             &cow,
