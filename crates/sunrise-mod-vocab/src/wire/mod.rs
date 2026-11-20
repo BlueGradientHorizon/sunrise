@@ -358,13 +358,9 @@ impl<'a> Reader<'a> {
 pub trait Wire: Sized {
     /// Minimum encoded size, used to reject impossible collection lengths.
     const MIN: usize;
-    /// Whether the type's encoding holds a resource handle anywhere in it (an erased handler
-    /// such as `Arc<dyn BlockPart>`): such a value crosses only as a handle into one link
-    /// group's resource scope, so Part state refuses it.
-    // hidden: derived and forwarded by the codecs, read by the part-state declaration.
     /// Encodes this value, recording failures on the writer.
     fn put(&self, out: &mut Writer);
-    /// Consumes owned data when a resource's ownership must cross the boundary.
+    /// Encodes an owned value, using the same format as `put`.
     fn put_owned(self, out: &mut Writer) {
         self.put(out);
     }

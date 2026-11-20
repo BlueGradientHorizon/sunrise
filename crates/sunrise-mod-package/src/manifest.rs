@@ -1322,7 +1322,7 @@ pub(crate) fn check_file<R: Read>(
         .and_then(|n| n.rsplit_once('.'));
     let executable = extension.is_some_and(|(_, ext)| {
         [
-            "exe", "dll", "so", "dylib", "class", "jar", "com", "bat", "cmd", "ps1",
+            "exe", "dll", "so", "dylib", "class", "jar", "com", "bat", "cmd", "ps1", "wasm",
         ]
         .iter()
         .any(|kind| ext.eq_ignore_ascii_case(kind))
@@ -1347,6 +1347,7 @@ pub(crate) fn check_file<R: Read>(
     let executable = matches!(
         &header,
         b"\x7fELF"
+            | b"\0asm"
             | b"\xfe\xed\xfa\xce"
             | b"\xce\xfa\xed\xfe"
             | b"\xfe\xed\xfa\xcf"
@@ -2033,6 +2034,8 @@ issues = \"http://example.org/issues\"
             ("MOD.EXE", b""),
             ("sub/mod.exe", b""),
             ("assets/ruby/CODE.ExE", b""),
+            ("assets/ruby/CODE.WaSm", b""),
+            ("assets/ruby/model.bin", b"\0asm"),
             ("assets/ruby/native.bin", b"\x7fELF"),
             ("assets/ruby/windows.bin", b"MZ"),
             ("assets/ruby/mac.bin", b"\xcf\xfa\xed\xfe"),
@@ -2066,7 +2069,12 @@ issues = \"http://example.org/issues\"
             }
             std::fs::remove_file(file).unwrap();
         }
-        assert!(Package::write_files(EXAMPLE, &[("assets/ruby/model.bin", b"MZ")]).is_err());
+        for (name, bytes) in cases.iter().filter(|(name, _)| name.starts_with("assets/")) {
+            assert!(
+                Package::write_files(EXAMPLE, &[(name, bytes)]).is_err(),
+                "{name}"
+            );
+        }
         // Native bundle sources can start with Rust inner attributes, not a script shebang.
         assert!(
             Package::write_files(

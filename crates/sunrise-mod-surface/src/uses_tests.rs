@@ -628,7 +628,14 @@ fn a_used_hook_whose_version_changed_is_named() {
             entry.version = None;
         }
         if pinned {
-            table.pin_hook_versions(&base().build());
+            let mut surface = base().build();
+            surface.schema = 2;
+            let old_surface = surface.to_json();
+            assert!(matches!(
+                Surface::read(old_surface.as_bytes()),
+                Err(crate::ReadError::Schema(2))
+            ));
+            table.pin_hook_versions(old_surface.as_bytes()).unwrap();
         }
         table
     };
@@ -2428,16 +2435,14 @@ fn legacy_tables_match_either_hash_of_an_unchanged_method_and_function() {
     };
     let intact = assemble(act.clone(), vec![get.clone()]);
     let changed = assemble(method(METHOD, "fn act(&self)", &["trait:Api"]), vec![]);
-    let expected = Fit::DoesNotFit(vec![
-        Misfit {
-            id: FUNCTION.into(),
-            change: Change::Removed,
-        },
-        Misfit {
-            id: METHOD.into(),
-            change: Change::Changed,
-        },
-    ]);
+    let removed = Misfit {
+        id: FUNCTION.into(),
+        change: Change::Removed,
+    };
+    let signature = Misfit {
+        id: METHOD.into(),
+        change: Change::Changed,
+    };
     // The first two rows use the published v1/v2 recipe with each former bit value.
     // The last uses the v3 recipe. Values are independently hashed compact JSON.
     for (old_method, old_function, schemas) in [
@@ -2468,7 +2473,15 @@ fn legacy_tables_match_either_hash_of_an_unchanged_method_and_function() {
             };
             let table = UsesTable::read(&serde_json::to_vec(&table).unwrap()).unwrap();
             assert_eq!(table.fits(&table.entries, &intact), Fit::Fits);
-            assert_eq!(table.fits(&table.entries, &changed), expected);
+            let expected = if *schema == 3 {
+                vec![removed.clone(), signature.clone()]
+            } else {
+                vec![signature.clone()]
+            };
+            assert_eq!(
+                table.fits(&table.entries, &changed),
+                Fit::DoesNotFit(expected)
+            );
             assert_ne!(
                 UsesTable {
                     schema: if *schema == 3 { 2 } else { 3 },
@@ -2479,4 +2492,46 @@ fn legacy_tables_match_either_hash_of_an_unchanged_method_and_function() {
             );
         }
     }
+}
+
+#[test]
+fn only_legacy_tables_defer_lost_impls_with_vanished_api_types_to_the_compile() {
+    let owner = api_type("type:Handle", "", false, vec![]);
+    let still_here = api_type("type:widgets::Visible", "", false, vec![]);
+    let uses = UsesTable {
+        schema: 2,
+        made_for: "baseline".into(),
+        entries: vec![Entry {
+            impls: strings(&["From<widgets::Old>", "From<widgets::Visible>", "Clone"]),
+            ..Entry::plain(owner.id.clone(), owner.hash.clone())
+        }],
+    };
+    let target = Pieces {
+        types: vec![owner, still_here],
+        ..base()
+    }
+    .build();
+    let expected = |names: &[&str]| {
+        Fit::DoesNotFit(
+            names
+                .iter()
+                .map(|name| Misfit {
+                    id: "type:Handle".into(),
+                    change: Change::LostImpl((*name).into()),
+                })
+                .collect(),
+        )
+    };
+    assert_eq!(
+        uses.fits(&uses.entries, &target),
+        expected(&["Clone", "From<widgets::Visible>"])
+    );
+    let uses = UsesTable {
+        schema: USES_SCHEMA,
+        ..uses
+    };
+    assert_eq!(
+        uses.fits(&uses.entries, &target),
+        expected(&["Clone", "From<widgets::Old>", "From<widgets::Visible>"])
+    );
 }

@@ -68,7 +68,6 @@ pub fn generate(root: &Path, out_dir: &Path, target: Target) -> Result<(), Strin
             // engine's `GoalCx` in `mobs/part_goals.rs`.
             ("mod_api_goal_view_generated.rs", generated.goal_view),
         ],
-        Target::Api => return generate_api_parts(root, out_dir),
         Target::Vocab => {
             write_vocab_output(
                 out_dir,

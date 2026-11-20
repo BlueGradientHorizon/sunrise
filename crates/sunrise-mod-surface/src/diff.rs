@@ -359,9 +359,6 @@ pub fn diff(old: &Surface, new: &Surface) -> Diff {
     let free = free_bounds(new);
     let ids: BTreeSet<&String> = before.keys().chain(after.keys()).collect();
     let mut changes: BTreeMap<String, Change> = BTreeMap::new();
-    let legacy = (old.schema == crate::legacy_hash::LEGACY_SURFACE_SCHEMA
-        && new.schema == crate::SCHEMA)
-        .then(|| crate::legacy_hash::LegacyHashes::new(new));
     for id in ids {
         let (kind, lines) = match (before.get(id), after.get(id)) {
             (Some(a), None) => {
@@ -385,12 +382,7 @@ pub fn diff(old: &Surface, new: &Surface) -> Diff {
                 (ChangeKind::Added, vec![line])
             }
             (Some(a), Some(b)) => {
-                let unchanged = a.hash == b.hash
-                    || (a.view == b.view
-                        && legacy
-                            .as_ref()
-                            .and_then(|legacy| legacy.matches(id, &a.hash))
-                            == Some(true));
+                let unchanged = a.hash == b.hash;
                 let mut lines = if unchanged {
                     Vec::new()
                 } else {

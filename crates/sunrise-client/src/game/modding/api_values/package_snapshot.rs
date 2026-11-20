@@ -15,8 +15,6 @@ fn package_snapshot(
     details.homepage.clone_from(&manifest.homepage);
     details.issues.clone_from(&manifest.issues);
     details.icon_path = has_icon.then(|| "icon.png".to_owned());
-    details.runtime =
-        (kind == mod_api::PackageKind::Code).then_some(mod_api::PackageRuntime::Native);
     details.properties = manifest
         .properties
         .iter()
@@ -227,7 +225,7 @@ mod tests {
         assert_eq!(info.homepage(), Some("https://example.org"));
         assert_eq!(info.issues(), None);
         assert_eq!(info.icon_path(), Some("icon.png"));
-        assert_eq!(info.runtime(), Some(mod_api::PackageRuntime::Native));
+        assert_eq!(info.kind(), mod_api::PackageKind::Code);
         let [dependency] = info.dependencies() else {
             panic!("one dependency")
         };
@@ -253,7 +251,6 @@ mod tests {
         let info = native.try_into_api().unwrap();
         assert_eq!(info.kind(), mod_api::PackageKind::Code);
         assert_eq!(info.icon_path(), Some("icon.png"));
-        assert_eq!(info.runtime(), Some(mod_api::PackageRuntime::Native));
         assert_eq!(
             info.property("tier"),
             Some(&mod_api::PropertyValue::Integer(3))

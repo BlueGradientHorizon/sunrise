@@ -140,11 +140,7 @@ impl std::fmt::Display for ReadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Json(error) => write!(f, "surface.json is not a valid surface: {error}"),
-            Self::Schema(schema) => write!(
-                f,
-                "surface schema {schema}, this tool reads {} and {SCHEMA}",
-                legacy_hash::LEGACY_SURFACE_SCHEMA
-            ),
+            Self::Schema(schema) => write!(f, "surface schema {schema}, this tool reads {SCHEMA}"),
             Self::DuplicateId(id) => write!(f, "surface.json lists {id} twice"),
         }
     }
@@ -720,7 +716,7 @@ impl Surface {
         }
         let header: Header =
             serde_json::from_slice(bytes).map_err(|e| ReadError::Json(e.to_string()))?;
-        if ![legacy_hash::LEGACY_SURFACE_SCHEMA, SCHEMA].contains(&header.schema) {
+        if header.schema != SCHEMA {
             return Err(ReadError::Schema(header.schema));
         }
         let surface: Self =

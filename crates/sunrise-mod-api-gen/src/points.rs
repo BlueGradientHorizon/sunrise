@@ -3,7 +3,7 @@
 //! the crates below it. The staging pass ([`stage`]) puts `#[point]` on each in a staged copy of the
 //! game's source, the copy the prebuilt game builds compile;
 //! the generator declares records, copy-in constructors and typed dispatch in
-//! `sunrise_engine_slots`, and mod-facing registration and guest exports in `mod_points`.
+//! `sunrise_engine_slots`, and mod-facing registration in `mod_points`.
 //! `points.json` is the compiled slot catalog. These are build outputs, never committed.
 
 use crate::replace::marked;
@@ -474,7 +474,7 @@ fn scan(root: &Path) -> Result<(Vec<Scanned>, Vec<(String, String)>), String> {
 
 impl Scanned {
     /// This file's points: all of a game-module file's, or the marked ones of a lower crate's.
-    fn points<'a>(&'a self, list: &[(String, String)], wire: &PointTypes) -> Vec<Found<'a>> {
+    fn points<'a>(&'a self, list: &[(String, String)], types: &PointTypes) -> Vec<Found<'a>> {
         let mut out = Vec::new();
         let keep = |found: &Found<'_>| {
             // A staged copy also holds what the replacement pass wrote beside each function.
@@ -500,7 +500,7 @@ impl Scanned {
         );
         for found in &mut out {
             // Only the game's own crate has the conversions a mirror goes through.
-            found.mirrors = mirrors(found.sig, &uses, wire, self.package.is_none());
+            found.mirrors = mirrors(found.sig, &uses, types, self.package.is_none());
             if !replaceable.contains(&found.target()) {
                 found.unreplaceable = Some(
                     crate::replace::signature_exclusion(found.attrs, found.sig).unwrap_or(
@@ -570,12 +570,12 @@ pub(crate) fn imports(items: &[Item], krate: &str) -> Vec<(String, String)> {
     out
 }
 
-/// The leaves of `sig` that name a `mod_api` type in `wire`, or (with `convert`) a [`MIRRORS`]
+/// The leaves of `sig` that name a `mod_api` type in `types`, or (with `convert`) a [`MIRRORS`]
 /// type, through the file's `imports` or in full.
 fn mirrors(
     sig: &syn::Signature,
     imports: &[(String, String)],
-    wire: &PointTypes,
+    types: &PointTypes,
     convert: bool,
 ) -> Vec<(String, String, bool)> {
     let mut found: Vec<(String, String, bool)> = Vec::new();
@@ -593,7 +593,7 @@ fn mirrors(
         if found.iter().any(|(seen, _, _)| *seen == written) {
             continue;
         }
-        if let Some(api) = wire_type(wire, &full) {
+        if let Some(api) = wire_type(types, &full) {
             found.push((written, format!("::{api}"), false));
         } else if let Some((_, api)) = MIRRORS.iter().find(|(path, _)| *path == full)
             && convert
@@ -604,17 +604,17 @@ fn mirrors(
     found
 }
 
-/// The path `wire` lays out the `mod_api` type at `full` under: the same path, or the one type of
+/// The public path of the `mod_api` type at `full`: the same path, or the one type of
 /// that name re-exported elsewhere in `mod_api`.
-fn wire_type<'w>(wire: &'w PointTypes, full: &str) -> Option<&'w str> {
+fn wire_type<'w>(types: &'w PointTypes, full: &str) -> Option<&'w str> {
     if !full.starts_with("mod_api::") {
         return None;
     }
-    if let Some(found) = wire.get(full) {
+    if let Some(found) = types.get(full) {
         return Some(found);
     }
     let name = full.rsplit("::").next()?;
-    let mut named = wire
+    let mut named = types
         .iter()
         .filter(|path| path.rsplit("::").next() == Some(name));
     match (named.next(), named.next()) {
@@ -627,12 +627,12 @@ fn wire_type<'w>(wire: &'w PointTypes, full: &str) -> Option<&'w str> {
 fn all_points<'a>(
     scanned: &'a [Scanned],
     list: &[(String, String)],
-    wire: &PointTypes,
+    types: &PointTypes,
 ) -> Result<Vec<(usize, Found<'a>)>, String> {
     let mut points = Vec::new();
     for (index, file) in scanned.iter().enumerate() {
         points.extend(
-            file.points(list, wire)
+            file.points(list, types)
                 .into_iter()
                 .map(|found| (index, found)),
         );
@@ -660,9 +660,9 @@ pub fn game_points(root: &Path) -> Result<Vec<GamePoint>, String> {
 }
 
 /// [`game_points`] with the `mod_api` types a record may hold.
-pub(crate) fn points_with(root: &Path, wire: &PointTypes) -> Result<Vec<GamePoint>, String> {
+pub(crate) fn points_with(root: &Path, types: &PointTypes) -> Result<Vec<GamePoint>, String> {
     let (scanned, list) = scan(root)?;
-    let mut points = all_points(&scanned, &list, wire)?
+    let mut points = all_points(&scanned, &list, types)?
         .into_iter()
         .map(|(_, found)| point_record(found))
         .collect::<Result<Vec<_>, _>>()?;
@@ -728,17 +728,17 @@ pub fn stage(root: &Path) -> Result<Staged, String> {
 }
 
 /// [`stage`] with the `mod_api` types a record may hold.
-pub(crate) fn stage_with(root: &Path, wire: &PointTypes) -> Result<Staged, String> {
-    stage_with_manifest(root, wire).map(|(staged, _)| staged)
+pub(crate) fn stage_with(root: &Path, types: &PointTypes) -> Result<Staged, String> {
+    stage_with_manifest(root, types).map(|(staged, _)| staged)
 }
 
 /// Rewrite points and collect their unchanged API records from the same source scan.
 pub(crate) fn stage_with_manifest(
     root: &Path,
-    wire: &PointTypes,
+    types: &PointTypes,
 ) -> Result<(Staged, Vec<GamePoint>), String> {
     let (scanned, list) = scan(root)?;
-    let points = all_points(&scanned, &list, wire)?;
+    let points = all_points(&scanned, &list, types)?;
     let mut records = points
         .iter()
         .map(|(_, found)| point_record(found.clone()))
@@ -1097,7 +1097,7 @@ mod tests {
     #[ignore = "daily"]
     fn no_wire_public_values_refuse_before_point_record_emission() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let wire = crate::build::point_types(&root).unwrap();
+        let types = crate::build::point_types(&root).unwrap();
         for name in [
             "EnchantmentEffect",
             "RegistrationData",
@@ -1109,7 +1109,7 @@ mod tests {
                 syn::parse_str(&format!("fn patch(&mut self, value: &{name}) {{}}")).unwrap();
             let imports = vec![(name.to_owned(), format!("mod_api::{name}"))];
             assert!(
-                super::mirrors(&method.sig, &imports, &wire, false).is_empty(),
+                super::mirrors(&method.sig, &imports, &types, false).is_empty(),
                 "{name} must not be admitted by Clone alone"
             );
             let shape = point_shape::shape(quote!(side = "server"), &method.sig).unwrap();
@@ -1121,7 +1121,10 @@ mod tests {
             "mod_api::item::containers::ModRevision",
             "mod_api::client::camera::UseItem",
         ] {
-            assert!(wire.contains(name), "supported public path {name} was lost");
+            assert!(
+                types.contains(name),
+                "supported public path {name} was lost"
+            );
         }
     }
 

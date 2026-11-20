@@ -50,7 +50,6 @@ pub struct ModParticle {
 /// A tick has no `Host` and no level: the engine ticks particles inside the render crate, which
 /// reaches no gameplay. A provider that needs the world reads it in a hook and keeps what it read.
 pub trait ParticleProvider: Send + Sync + 'static {
-    // hidden: it marks the trait's methods as imports of a mod that implements it; nothing calls it.
     /// `Particle.tick`: advance `particle` by one tick. The game has set `previous` and `age`
     /// already and expires the particle once `age` passes `lifetime`; the tick sets `position`,
     /// `frame`, `size`, `rgba`, `lifetime` and `removed`. A number that is not finite expires the

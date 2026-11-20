@@ -396,8 +396,11 @@ fn fits_lines(entry: ChildEntry, args: &[String]) -> Result<Answer, String> {
         if matches!(answer, Fit::Unversioned(_)) && table.schema != USES_SCHEMA {
             let fetched = baseline.get_or_insert_with(|| {
                 let made_for = fetch_build(project, &table.made_for)?;
-                table.pin_hook_versions(&surface_of(&made_for)?);
-                Ok(())
+                let versions = std::fs::read(&made_for.surface)
+                    .map_err(|e| format!("{}: {e}", made_for.surface.display()))?;
+                table
+                    .pin_hook_versions(&versions)
+                    .map_err(|e| e.to_string())
             });
             match fetched {
                 Ok(()) => answer = api(&table),

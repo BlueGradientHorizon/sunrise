@@ -73,7 +73,7 @@ reads source, and what it leaves to the compile, is in
 
 | Field | What it is |
 |---|---|
-| `schema` | The table's schema number (2). A reader also takes schema 1 ([Lists an older tool wrote](#lists-an-older-tool-wrote)). It refuses any other number, unknown fields, repeated ids and a table over 4 MiB. |
+| `schema` | The table's schema number (3). A reader also takes schemas 1 and 2 ([Lists an older tool wrote](#lists-an-older-tool-wrote)). It refuses any other number, unknown fields, repeated ids and a table over 4 MiB. |
 | `made_for` | The build id the hashes come from: the mod's pin. |
 | `entries[].id`, `entries[].hash` | A record the mod uses, and its hash at `made_for`. |
 | `entries[].impls` | A type's trait impls at `made_for`. |
@@ -100,7 +100,11 @@ naming the hooks, never "fits". `native-check` reports it as `no-list` with `why
 
 ### Lists an older tool wrote
 
-A schema 1 list differs in two ways, and packing the mod again with `cargo sunrise-mod build` removes both:
+Schemas 1 and 2 were written by the older scan, which could attribute a mod's own name to the API. The fit check
+accepts the older hashes for unchanged signatures. For those lists only, absent API records and lost impls that
+refer to a removed API type are left to the compiler. Changed signatures and hook versions are still reported.
+
+A schema 1 list also differs in two ways:
 
 - **It holds no hook versions.** `cargo sunrise-mod fits` fetches the `surface.json` of the build the list was
   made for only when a comparison with another build would otherwise be "not known" because a required hook
