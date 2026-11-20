@@ -1,5 +1,5 @@
 //! Admission and world-thread preparation for terrain visibility in the player's level.
-use super::{Job, MeshSettings, Streaming, WorkerContext};
+use super::{Job, MeshSettings, MeshUpload, Streaming, WorkerContext};
 use crate::fast_hash::{FxHashMap, FxHashSet};
 use crate::mesher::{
     ANSWER_BYTES, Lease, MAX_RESIDENT_VISIBILITY_BYTES, PLAN_BYTES, Region, SectionAnswer,
@@ -362,7 +362,7 @@ fn dirty_neighbours(world: &mut World, (x, sy, z): (i32, i32, i32)) {
 #[cfg(test)]
 pub(super) mod tests {
     use super::*;
-    use crate::streaming::{ChunkGenerator, Done, MeshUpload, Proto};
+    use crate::streaming::{ChunkGenerator, Done, Proto};
     use crate::{
         assets::Assets, biome::Biomes, chunk::Chunk, light::LightTables, mesher::MeshTables, models,
     };
@@ -594,7 +594,7 @@ pub(super) mod tests {
                     let mut answer = SectionPlanBuilder::new();
                     if request.key == EAST
                         && capture_input(&request.region, EAST.1).cell([8, 4, 8])
-                            == Ok(SectionCell::State(marker))
+                            == Ok(SectionCell::State(mod_api::BlockStateId(marker.0)))
                     {
                         answer.restrict([0, 4, 8], false, false, 0);
                     }
