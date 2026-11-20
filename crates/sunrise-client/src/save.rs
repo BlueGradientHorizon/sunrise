@@ -1311,15 +1311,26 @@ fn encode_full(
         };
         let Some(section) = section else { continue };
         let layers = if chunk.lit {
-            chunk.stored_light_layers(b).unwrap_or_else(|| {
-                if !shape.has_section(y) {
-                    return [false; 2];
+            if let Some(stored) = chunk.stored_light() {
+                let [sky, block] = stored.presence(b);
+                if let Some([sky_array, block_array]) = stored.saved_arrays(b) {
+                    // `SerializableChunkData.copyOf`: omit empty layers restored from
+                    // section status, but keep materialized arrays, including zero arrays.
+                    [
+                        sky && (sky_array || section.light.any(0xF0)),
+                        block && (block_array || section.light.any(15)),
+                    ]
+                } else {
+                    [sky, block]
                 }
+            } else if shape.has_section(y) {
                 [
                     top_sky.is_some_and(|top| b <= top + 2),
                     section.light.any(15),
                 ]
-            })
+            } else {
+                [false; 2]
+            }
         } else {
             [false; 2]
         };
@@ -1923,11 +1934,12 @@ pub fn decode_proto(
     })
 }
 
-/// Read the stored `SkyLight`/`BlockLight` layers of a chunk saved with
-/// `isLightOn` (`SerializableChunkData.read` + `ThreadedLevelLightEngine`),
-/// so it needs no relighting. A missing sky layer repeats the bottom layer of
-/// the section above it (15 above the highest stored one); a missing block
-/// layer is dark.
+/// Read the `SkyLight`/`BlockLight` byte arrays of a chunk saved with
+/// `isLightOn` (`SerializableChunkData.read`, which queues the arrays via
+/// `ThreadedLevelLightEngine.queueSectionData`). The render cache inherits missing
+/// sky light from the bottom row of the next stored layer above, or gets full
+/// sky above all stored layers. Empty layers omitted by NBT are restored from
+/// published section status when the chunk's light is initialized.
 pub fn load_light(tag: &Tag, chunk: &mut Chunk, sky_light: bool) {
     if tag.get("isLightOn") != Some(&Tag::Byte(1)) {
         return;
@@ -1954,7 +1966,7 @@ pub fn load_light(tag: &Tag, chunk: &mut Chunk, sky_light: bool) {
         };
         *slot = (layer("SkyLight"), layer("BlockLight"));
     }
-    crate::light::light_from_layers(chunk, &layers, sky_light);
+    crate::light::light_from_saved_layers(chunk, &layers, sky_light);
 }
 
 type RegionCache = Mutex<RegionFiles>;
