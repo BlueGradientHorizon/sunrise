@@ -1,0 +1,3 @@
+ids = ["handle:LevelRef::all_entities"]
+why = "The server visits its live entity lookup in admission order without building a list, and can stop after the first match. A refused walk reports a typed error before calling the visitor."
+migrate = "Replace `level.all_entities(host)` with `level.visit_all_entities(host, &mut |entity| { /* use entity */ core::ops::ControlFlow::Continue(()) })`. Return `core::ops::ControlFlow::Break(())` to stop, storing any match in a captured variable. Collect into your own `Vec` only if you still need a list. The result is `Ok(Continue(()))` on completion (including empty) or `Ok(Break(()))` on an early stop; handle `Err(LevelReadError::Stale)` and `Err(LevelReadError::Unavailable)` where you handled `None`."

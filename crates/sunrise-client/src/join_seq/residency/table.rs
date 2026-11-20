@@ -10,6 +10,7 @@ use crate::join_seq::JoinSeq;
 use std::{
     collections::{BTreeSet, hash_map::Entry},
     num::NonZeroU32,
+    ops::Bound::{Excluded, Unbounded},
 };
 use sunrise_core::fast_hash::FxHashMap;
 use uuid_index::UuidIndex;
@@ -296,15 +297,22 @@ impl EntityTable {
         self.uuids.key(id, row).map(|(_, uuid)| uuid)
     }
 
-    /// Candidates in lookup insertion order, independent of family and runtime id.
+    /// Copy the next candidate in lookup insertion order, starting at the first if `after`
+    /// is `None`. The cursor also works after the prior key has left the table.
     /// Extraction/restoration preserves order; removal and re-admission moves to the end.
     /// Dragon parts are not members of vanilla's entity lookup.
-    pub fn level_entities(&mut self, dimension: DimensionKey) -> Vec<u32> {
+    pub fn level_entity_candidate_after(
+        &mut self,
+        dimension: DimensionKey,
+        after: Option<(JoinSeq, NonZeroU32)>,
+    ) -> Option<(JoinSeq, NonZeroU32)> {
         self.drain();
-        let Some(admissions) = self.level_admissions.get(&dimension) else {
-            return Vec::new();
-        };
-        admissions.iter().map(|(_, id)| id.get()).collect()
+        let admissions = self.level_admissions.get(&dimension)?;
+        match after {
+            Some(key) => admissions.range((Excluded(key), Unbounded)).next(),
+            None => admissions.first(),
+        }
+        .copied()
     }
 
     /// Each admitted id's lookup admission, for callers that answer in lookup
@@ -381,7 +389,13 @@ fn forget(map: &mut FxHashMap<NonZeroU32, Location>, id: NonZeroU32, location: L
 
 #[cfg(test)]
 fn collect_level_entities(table: &mut EntityTable, dimension: DimensionKey) -> Vec<u32> {
-    table.level_entities(dimension)
+    let mut after = None;
+    std::iter::from_fn(|| {
+        let key = table.level_entity_candidate_after(dimension, after)?;
+        after = Some(key);
+        Some(key.1.get())
+    })
+    .collect()
 }
 
 #[cfg(test)]

@@ -24,9 +24,10 @@ use super::{
     remote::Remote,
     transactions::After,
 };
+use core::ops::ControlFlow;
 use mod_api::{
     BlockFace, BlockShapeKind, BlockUpdateFlags, ClipBlock, ClipFluid, ClipHit, DimensionKey,
-    EntityRayHit, EntityRef, LevelRef, NeighbourUpdate,
+    EntityRayHit, EntityRef, LevelReadError, LevelRef, NeighbourUpdate,
 };
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_items::items::ItemStack;
@@ -228,13 +229,41 @@ impl Game<'_> {
             .filter_map(|dim| self.level(dim.id()))
             .collect()
     }
-    /// All lookup members of the active server level, without spatial filtering.
-    /// Parts are not lookup members. Refuses remote, stale and parked levels.
-    pub(super) fn level_all_entities(&self, level: LevelRef) -> Option<Vec<EntityRef>> {
-        if self.block_entity_tick_items.is_some() {
-            return self.scoped_level_all_entities(level);
+    /// Visit lookup members of the active server level, without spatial filtering.
+    pub(super) fn level_visit_all_entities(
+        &self,
+        level: LevelRef,
+        visit: &mut dyn FnMut(EntityRef) -> ControlFlow<()>,
+    ) -> Result<ControlFlow<()>, LevelReadError> {
+        if !self.is_logical_server() {
+            return Err(LevelReadError::Unavailable);
         }
-        self.unscoped_level_all_entities(level)
+        if !self.level_handle_current(level) {
+            return Err(LevelReadError::Stale);
+        }
+        if level.dimension() != self.dim.key() {
+            return Err(LevelReadError::Unavailable);
+        }
+
+        let scoped = self.block_entity_tick_items.is_some();
+        // Preflight before exposing any member. The visitor can read this host but cannot
+        // change its membership, so the second pass need not resolve each handle again.
+        if !scoped
+            && self
+                .level_entity_candidates(level)
+                .any(|entity| self.unscoped_native_entity_target(entity).is_none())
+        {
+            return Err(LevelReadError::Unavailable);
+        }
+        for entity in self.level_entity_candidates(level) {
+            if scoped && self.scoped_native_entity_target(entity).is_none() {
+                continue;
+            }
+            if visit(entity).is_break() {
+                return Ok(ControlFlow::Break(()));
+            }
+        }
+        Ok(ControlFlow::Continue(()))
     }
     /// Entities whose bounding boxes intersect this box (`Level.getEntities`).
     /// Face-only contact does not intersect; spectator players are excluded.
@@ -1048,15 +1077,21 @@ pub(super) mod tests {
         game.resolve_parts().map_err(|error| error.to_string())
     }
     use crate::game::api_values::TryIntoApi;
+    use core::ops::ControlFlow;
     use mod_api::__private::game::*;
-    use mod_api::{EntityRef, LevelRef};
+    use mod_api::{EntityRef, LevelReadError, LevelRef};
 
     // Keep the handle and direct Game routes separate when collecting for assertions.
     pub(in crate::game) fn collect_all_entities(
         host: &dyn mod_api::Host,
         level: LevelRef,
-    ) -> Option<Vec<EntityRef>> {
-        level.all_entities(host)
+    ) -> Result<Vec<EntityRef>, LevelReadError> {
+        let mut entities = Vec::new();
+        let _ = level.visit_all_entities(host, &mut |entity| {
+            entities.push(entity);
+            ControlFlow::Continue(())
+        })?;
+        Ok(entities)
     }
 
     pub(in crate::game) fn collect_entities_in(
@@ -1071,8 +1106,13 @@ pub(super) mod tests {
     pub(in crate::game) fn collect_game_all_entities(
         game: &super::Game<'_>,
         level: LevelRef,
-    ) -> Option<Vec<EntityRef>> {
-        game.level_all_entities(level)
+    ) -> Result<Vec<EntityRef>, LevelReadError> {
+        let mut entities = Vec::new();
+        let _ = game.level_visit_all_entities(level, &mut |entity| {
+            entities.push(entity);
+            ControlFlow::Continue(())
+        })?;
+        Ok(entities)
     }
 
     pub(in crate::game) fn collect_game_entities_in(

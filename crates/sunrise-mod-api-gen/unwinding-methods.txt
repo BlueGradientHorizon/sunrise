@@ -566,7 +566,6 @@ level_effects::level_global_level_event
 level_effects::level_level_event
 level_effects::level_play_sound
 level_effects::level_send_particles
-level_entities::level_all_entities
 level_entities::level_award_experience
 level_entities::level_entities_in
 level_entities::level_online_players

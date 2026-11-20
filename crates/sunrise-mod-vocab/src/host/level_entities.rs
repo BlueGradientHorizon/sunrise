@@ -7,12 +7,17 @@ use crate::*;
 #[sunrise_mod_api_macros::host_area]
 pub trait LevelEntitiesBackend {
     /// Side: server.
-    /// Every available member of the server level's entity lookup
-    /// (`ServerLevel.getAllEntities`), including spectators and entities outside
-    /// any spatial query. Dragon parts are not lookup members.
-    /// Returns None on a remote client, for a stale handle or a parked level.
-    /// Returns None while any lookup member is temporarily extracted, rather
-    /// than returning an incomplete list.
+    /// Visit members of the server level's entity lookup (`ServerLevel.getAllEntities`),
+    /// including spectators and entities outside any spatial query. Dragon parts are not
+    /// lookup members. Vehicles being removed are skipped.
+    /// The visitor can read the supplied handle through the host. Return
+    /// `ControlFlow::Break(())` to stop and get `Ok(ControlFlow::Break(()))` from the walk.
+    /// Completion, including an empty walk, returns `Ok(ControlFlow::Continue(()))`.
+    ///
+    /// A stale level returns `LevelReadError::Stale`. A call outside server world access,
+    /// a parked level, or an unavailable member returns `LevelReadError::Unavailable`
+    /// before any visit. In the block-entity item-tick view, unavailable members are
+    /// skipped instead.
     /// Order is lookup admission order, preserved across temporary extraction;
     /// removal and re-admission moves an entity to the end. An entity spawned
     /// during play is admitted as it spawns, even when its id comes later. A
@@ -28,10 +33,15 @@ pub trait LevelEntitiesBackend {
     /// `entity_entering_section`. Entities kept outside the residency families
     /// (lingering potion clouds, lightning bolts, eyes of ender) are not
     /// members.
-    /// Allocates a result buffer, not one allocation per entity; sorting is
-    /// O(n log n), followed by one authoritative handle lookup per candidate.
+    /// The walk does not build a result buffer. Outside the item-tick view it checks
+    /// that all eligible members resolve before invoking the visitor, even if it would
+    /// stop on the first member.
     #[access(WorldOnly)]
-    fn level_all_entities(&self, level: LevelRef) -> Option<Vec<EntityRef>>;
+    fn level_visit_all_entities(
+        &self,
+        level: LevelRef,
+        visit: &mut dyn FnMut(EntityRef) -> core::ops::ControlFlow<()>,
+    ) -> Result<core::ops::ControlFlow<()>, LevelReadError>;
     /// Side: both.
     /// Entities whose bounding boxes intersect this box (`Level.getEntities`).
     /// Face-only contact does not intersect; spectator players are excluded.

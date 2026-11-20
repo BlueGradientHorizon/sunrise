@@ -33,7 +33,7 @@ mod tests {
             collect_entities_in, collect_game_all_entities, collect_game_entities_in, with_game,
         },
     };
-    use sunrise_client::mobs::Mob;
+    use sunrise_client::{join_seq::Joined, mobs::Mob};
 
     #[test]
     #[ignore = "daily"]
@@ -78,6 +78,12 @@ mod tests {
     #[ignore = "daily"]
     fn all_entities_uses_lookup_order_without_bounds_or_parts() {
         with_game(|game| {
+            let _phase = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
+            let level = game.level(game.dim.id()).unwrap();
+            assert_eq!(
+                level.visit_all_entities(game, &mut |_| panic!("empty level invoked the visitor")),
+                Ok(ControlFlow::Continue(()))
+            );
             let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             game.mobs.push(Mob::new(
                 90,
@@ -89,7 +95,6 @@ mod tests {
             dragon.id = 20;
             game.dragon.replace(dragon);
             game.mobs.push(Mob::new(3, kind, Vec3::ZERO, 0.0));
-            let level = game.level(game.dim.id()).unwrap();
             let ids: Vec<_> = collect_game_all_entities(game, level)
                 .unwrap()
                 .into_iter()
@@ -97,12 +102,42 @@ mod tests {
                 .filter(|id| [90, 20, 3].contains(id) || (21..=28).contains(id))
                 .collect();
             assert_eq!(ids, vec![90, 20, 3]);
-            use sunrise_client::join_seq::Joined;
-            let join = game.mobs[0].join_seq();
+
+            // The earlier members still resolve, but no visit may happen before preflight passes.
+            let join = game.mobs[1].join_seq();
             let extracted = game.mobs.extract(join).unwrap();
-            assert_eq!(collect_game_all_entities(game, level), None);
-            game.mobs.put_back(0, extracted);
-            assert!(collect_game_all_entities(game, level).is_some());
+            let mut visits = 0;
+            assert_eq!(
+                level.visit_all_entities(game, &mut |_| {
+                    visits += 1;
+                    ControlFlow::Break(())
+                }),
+                Err(LevelReadError::Unavailable)
+            );
+            assert_eq!(visits, 0);
+            game.mobs.put_back(1, extracted);
+
+            let host: &dyn mod_api::Host = game;
+            assert_eq!(
+                level.visit_all_entities(host, &mut |entity| {
+                    visits += 1;
+                    assert_eq!(entity.id(), 90);
+                    // This read consults residency again, which must not still be borrowed.
+                    assert_eq!(entity.position(host), Some([1.0e12, 64.0, 0.0]));
+                    ControlFlow::Break(())
+                }),
+                Ok(ControlFlow::Break(()))
+            );
+            assert_eq!(visits, 1);
+            {
+                let _setup =
+                    mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::Setup);
+                assert_eq!(
+                    level.visit_all_entities(host, &mut |_| panic!("setup invoked the visitor")),
+                    Err(LevelReadError::Unavailable)
+                );
+            }
+
             assert_eq!(
                 collect_game_all_entities(
                     game,
@@ -111,14 +146,17 @@ mod tests {
                         level.dimension()
                     )
                 ),
-                None
+                Err(LevelReadError::Stale)
             );
             assert_eq!(
                 collect_game_all_entities(game, LevelRef::new(level.epoch(), DimensionKey::NETHER)),
-                None
+                Err(LevelReadError::Unavailable)
             );
             game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
-            assert_eq!(collect_game_all_entities(game, level), None);
+            assert_eq!(
+                collect_game_all_entities(game, level),
+                Err(LevelReadError::Unavailable)
+            );
         });
     }
 

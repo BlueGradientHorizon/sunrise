@@ -52,13 +52,34 @@ handles that resolve, after the ordinary entities and before the players.
 
 ## Walking every entity in a level
 
-`host.level_all_entities(level)` returns the authoritative level's available
-`EntityRef`s without an AABB filter, including spectator players. Unlike
-`level_entities_in`, it does not append the dragon's parts: vanilla's
-`ServerLevel.getAllEntities` iterates the entity lookup, not multipart hit boxes.
-A remote client, stale handle or parked level returns `None`, never a partial
-client-side list. Outside a scoped hook query, an unavailable lookup member makes the query return `None`.
-Inside a scoped hook query, unavailable members are omitted.
+`level.visit_all_entities(host, &mut visit)` visits the authoritative level's
+`EntityRef`s without an AABB filter, including spectator players. Vehicles being
+removed are skipped. Unlike `level.entities_in`, it does not append the dragon's
+parts: vanilla's `ServerLevel.getAllEntities` iterates the entity lookup, not
+multipart hit boxes. The visitor can read the entity through the same host.
+
+Return `ControlFlow::Continue(())` to visit the next entity or
+`ControlFlow::Break(())` to stop. The call returns `Ok(ControlFlow::Continue(()))`
+on completion (including an empty level), or `Ok(ControlFlow::Break(()))` if the
+visitor stopped it. A stale handle returns `LevelReadError::Stale`. A remote client,
+a parked level, or an unavailable lookup member returns `LevelReadError::Unavailable`
+before the visitor runs. The block-entity item-tick view skips unavailable members
+instead. Outside that view, the walk checks all members' availability first, even
+if the visitor would stop on the first one.
+
+```rust,ignore
+use core::ops::ControlFlow;
+
+let mut first = None;
+let _ = level.visit_all_entities(host, &mut |entity| {
+    if let Some(position) = entity.position(host) {
+        first = Some((entity, position));
+        ControlFlow::Break(())
+    } else {
+        ControlFlow::Continue(())
+    }
+})?;
+```
 
 The walk preserves lookup admission order across storage families, including
 removal and re-admission at the end. An entity spawned during play, such as a
@@ -85,9 +106,8 @@ entity was to where it ended (mobs and players are told per write). A block
 piston's push is recorded only while a mod listens to `entity_entering_section`.
 Entities that the engine keeps outside the residency families, such as lingering
 potion clouds, lightning bolts and eyes of ender, are not lookup members at all.
-The call allocates buffers for the result and sorts admission keys; it does not
-allocate an object per entity. Cache the result when doing several passes in one
-hook rather than repeatedly crossing the host boundary.
+The walk uses the existing admission order without allocating a result list. If
+you need a list after the call, collect the handles you need in your visitor.
 
 ## Checking a spawn
 
