@@ -613,43 +613,46 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_tinted_block_state_carries_its_default_tint_in_the_baked_colour() {
-        super::super::native_entity_refs::tests::with_client_game(|game| {
-            let colours = |name: &str| {
-                let state = game.pack.assets.registry.default_state(name).unwrap();
-                let model = game
-                    .native_block_state_model(mod_api::BlockStateId(state.0))
-                    .unwrap();
-                let slot = mod_api::__private::game::Fields::fields(&model).slot;
-                let faces = game.model_faces(slot).unwrap();
-                faces
-                    .iter()
-                    .map(|face| (face.quad.tint_index, face.quad.color))
-                    .collect::<Vec<_>>()
-            };
-            let tinted = |faces: &[(i32, Option<i32>)]| {
-                faces
-                    .iter()
-                    .filter(|(index, _)| *index >= 0)
-                    .map(|(_, colour)| *colour)
-                    .collect::<Vec<_>>()
-            };
-            let grass = tinted(&colours("minecraft:grass_block"));
-            assert!(!grass.is_empty(), "the grass block has a tinted face");
-            // `GrassColor.getDefaultColor()` is `get(0.5, 1.0)`: pixel (127, 127) of
-            // `colormap/grass.png`, 0x7CBD6B, times white.
-            assert!(
-                grass.iter().all(|c| *c == Some(0xFF7C_BD6Bu32 as i32)),
-                "{grass:x?}"
-            );
-            // Stone has faces and none is tinted, so none carries a colour.
-            let stone = colours("minecraft:stone");
-            assert!(!stone.is_empty());
-            assert!(
-                stone
-                    .iter()
-                    .all(|&(index, colour)| index < 0 && colour.is_none())
-            );
-        });
+        crate::game::in_own_process(
+            "game::native_custom_geometry::tests::a_tinted_block_state_carries_its_default_tint_in_the_baked_colour",
+            || {
+                super::super::native_entity_refs::tests::with_client_game(|game| {
+                    let colours = |name: &str| {
+                        let state = game.pack.assets.registry.default_state(name).unwrap();
+                        let model = game.native_block_state_model(state).unwrap();
+                        let slot = mod_api::__private::game::Fields::fields(&model).slot;
+                        let faces = game.model_faces(slot).unwrap();
+                        faces
+                            .iter()
+                            .map(|face| (face.quad.tint_index, face.quad.color))
+                            .collect::<Vec<_>>()
+                    };
+                    let tinted = |faces: &[(i32, Option<i32>)]| {
+                        faces
+                            .iter()
+                            .filter(|(index, _)| *index >= 0)
+                            .map(|(_, colour)| *colour)
+                            .collect::<Vec<_>>()
+                    };
+                    let grass = tinted(&colours("minecraft:grass_block"));
+                    assert!(!grass.is_empty(), "the grass block has a tinted face");
+                    // `GrassColor.getDefaultColor()` is `get(0.5, 1.0)`: pixel (127, 127) of
+                    // `colormap/grass.png`, 0x7CBD6B, times white.
+                    assert!(
+                        grass.iter().all(|c| *c == Some(0xFF7C_BD6Bu32 as i32)),
+                        "{grass:x?}"
+                    );
+                    // Stone has faces and none is tinted, so none carries a colour.
+                    let stone = colours("minecraft:stone");
+                    assert!(!stone.is_empty());
+                    assert!(
+                        stone
+                            .iter()
+                            .all(|&(index, colour)| index < 0 && colour.is_none())
+                    );
+                });
+            },
+        );
     }
 
     #[test]

@@ -176,7 +176,7 @@ This API bakes quads only, not a mod-defined baked result type.
 
 A copy whose colour alpha is below `0xFF` draws every quad in the translucent material described below.
 A model with translucent faces otherwise keeps its per-quad routing: only those faces take the translucent
-material. Copies with a colour other than white, hidden faces or a block state model are baked on the CPU
+material. Copies with a colour other than white, hidden faces, a model with translucent faces or a block state model are baked on the CPU
 instead of drawn as GPU instances; the 16,384-copy budget bounds that cost, and native and wasm are identical.
 `overlay` (the hurt tint) has no effect on a copy on the translucent or block state model route, including any
 opaque faces it holds. `color` (the whole baked block model, multiplied at draw time) and `hidden_faces` (a
