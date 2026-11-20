@@ -30,12 +30,13 @@ or a book and quill closes and sends nothing: no menu close, and no `Serverbound
 Escape saves no pages (only the editor's Done button does). A lectern's book closes the lectern's menu,
 so the client sends `ServerboundContainerClosePacket` with that menu's id.
 
-Only the screen in front closes. A link's or a command's confirmation, a server's resource pack prompt
-or a dialog opened over a book, a lectern or another screen closes alone, as Escape does: the
-confirmation answers no, the pack prompt declines, and the dialog runs its own Escape. The screen under
-it stays open, and a lectern's menu stays open on the server. The death screen, the code of conduct and
-a dialog that Escape cannot close do not close this way. The screen hooks' closing notices fire as they
-do for Escape. It returns `false` when no screen is open, or when the screen in front does not close.
+When a screen opens over another, only the screen in front handles the close. A link's or a command's
+confirmation answers no, a server's resource pack prompt declines, and a dialog runs its own Escape.
+Declining a required pack disconnects instead of returning to the screen underneath. The death
+screen's exit confirmation answers no once its Escape delay has elapsed. The death screen itself,
+the code of conduct and a dialog that Escape cannot close do not close this way. The screen hooks'
+closing notices fire as they do for Escape. It returns `false` when no screen is open or the screen
+in front does not close.
 
 `ClientHost::open_inventory()` does what `key.inventory` does: it opens the player's inventory screen
 locally and sends nothing, because the player's menu is always open on the server. Riding a vehicle
