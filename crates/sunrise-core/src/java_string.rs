@@ -13,6 +13,7 @@
 
 use simd::{WIDE_FROM, fold};
 
+mod latin1;
 mod units;
 pub(crate) use units::{INLINE_CAPACITY, Units};
 
@@ -94,31 +95,13 @@ pub(crate) fn utf16_with_hash(text: &str) -> (Units, i32) {
         let hash = java_string_hash(&heap);
         return (Units::Heap(heap), hash);
     }
-    let mut units;
-    if bytes.iter().all(|&b| b < 0xC4) {
-        // Only ASCII and the two-byte forms of U+0080..U+00FF (C2 or C3, then a continuation): each
-        // non-continuation byte is one unit, worked out from it and the byte after it, so that no
-        // step waits for the one before. The unit is written even for a continuation byte, and the
-        // next unit overwrites it, so a text that ends in a continuation byte writes one past the
-        // last unit, which the truncate drops.
-        units = vec![0u16; text.chars().count() + 1];
-        let mut out = 0;
-        for (i, &b) in bytes.iter().enumerate() {
-            let next = bytes.get(i + 1).copied().unwrap_or(0);
-            units[out] = if b >= 0xC0 {
-                u16::from(b & 3) << 6 | u16::from(next & 0x3F)
-            } else {
-                u16::from(b)
-            };
-            out += usize::from(b & 0xC0 != 0x80);
-        }
-        units.truncate(out);
-    } else {
+    let units = latin1::decode(text).unwrap_or_else(|| {
         // One reservation: an upper bound is faster here than first walking the bytes to
         // count units, and the UTF-16 iterator cannot outgrow it.
-        units = Vec::with_capacity(bytes.len());
+        let mut units = Vec::with_capacity(bytes.len());
         units.extend(text.encode_utf16());
-    }
+        units
+    });
     let hash = java_string_hash(&units);
     (Units::Heap(units), hash)
 }
