@@ -141,6 +141,18 @@ public final class VanillaCameraOracle {
         @Override public boolean isSpectator() { return false; }
     }
 
+    static final class StubCreeper extends net.minecraft.world.entity.monster.Creeper {
+        boolean dead;
+
+        StubCreeper() {
+            super(null, null);
+        }
+
+        @Override public boolean isDeadOrDying() { return dead; }
+        @Override public boolean isSleeping() { return false; }
+        @Override public boolean isDescending() { return false; }
+    }
+
     static final class StubMarker extends Marker {
         StubMarker() {
             super(null, null);
@@ -362,6 +374,13 @@ public final class VanillaCameraOracle {
                 vehicle.set(p, m);
             }
             entity = p;
+        } else if (s.get("kind").getAsString().equals("creeper")) {
+            StubCreeper c = previous instanceof StubCreeper old ? old : make(StubCreeper.class);
+            c.dead = !s.get("dead").isJsonNull();
+            if (c.dead) {
+                c.deathTime = s.get("dead").getAsInt();
+            }
+            entity = c;
         } else {
             entity = previous instanceof StubMarker old ? old : make(StubMarker.class);
         }
