@@ -450,6 +450,10 @@ pub fn prepare<'a>(
     // The generator refuses targets the staged game cannot replace.
     let mut extras = extras(&bundles)?;
     extras.loops = loops;
+    extras.linked = sdk_externs(game, sdk)?
+        .into_iter()
+        .map(|(krate, _)| krate)
+        .collect();
     let generated = api_gen::patch::generate(&source, CRATE, &targets, &extras, &index);
     let refusals: Vec<String> = match &generated {
         Ok(_) => Vec::new(),

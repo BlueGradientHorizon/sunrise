@@ -92,6 +92,9 @@ pub struct Extras {
     /// The identifiers the rows' helpers and bindings use: a lower crate's mirror keeps a module's
     /// `use` only if a copied body or one of these names it.
     pub idents: BTreeSet<String>,
+    /// The crates the patch crates link (`--extern`) besides std: an import from one of them
+    /// resolves in a mirror as it did in the game.
+    pub linked: BTreeSet<String>,
 }
 
 /// Why a target can't be copied out: a named refusal, never a game rebuild.
@@ -1085,7 +1088,11 @@ pub fn generate(
             idents_in(&tree_tokens(tree), &mut used);
             used
         });
-        let body = match mirror(&mut source, source_crate, tree, bridges, used.as_ref()) {
+        let narrowing = used.as_ref().map(|used| Narrowing {
+            used,
+            linked: &extras.linked,
+        });
+        let body = match mirror(&mut source, source_crate, tree, bridges, narrowing.as_ref()) {
             Ok(body) => body,
             Err(why) => {
                 return Err(targets
@@ -1434,6 +1441,17 @@ fn original_path(libraries: &BTreeMap<String, String>, path: &str) -> String {
     }
 }
 
+/// How a lower crate's mirror narrows its modules' imports: only the listed functions' modules
+/// are widened, so an import through the crate's other modules may not resolve from a mirror.
+struct Narrowing<'a> {
+    /// The names the copies and the rows' helpers use: the imports a mirror keeps.
+    used: &'a BTreeSet<String>,
+    /// The crates the patch crate links: in a module with copies, an import from one of them,
+    /// or from std, is kept whatever it names. A copy may call a trait's method without naming
+    /// the trait (`angle.mcos()` from `Mth`), and such an import resolves as it did in the game.
+    linked: &'a BTreeSet<String>,
+}
+
 /// The statics a `thread_local!` item declares, with their attributes and visibility; `None`
 /// for any other macro, or one whose body doesn't read as statics.
 fn thread_local_statics(mac: &syn::ItemMacro) -> Option<Vec<syn::ItemStatic>> {
@@ -1455,13 +1473,24 @@ fn thread_local_statics(mac: &syn::ItemMacro) -> Option<Vec<syn::ItemStatic>> {
         .collect()
 }
 
+/// Whether `item` imports from std or from a crate in `linked`.
+fn imports_from(item: &syn::ItemUse, linked: &BTreeSet<String>) -> bool {
+    match &item.tree {
+        syn::UseTree::Path(path) => {
+            let root = path.ident.to_string();
+            ["std", "core", "alloc"].contains(&root.as_str()) || linked.contains(&root)
+        }
+        _ => false,
+    }
+}
+
 /// The mirror of module `path` and its children in `tree`.
 fn mirror(
     source: &mut Source,
     path: &str,
     tree: &Tree,
     bridges: &[syn::Ident],
-    used: Option<&BTreeSet<String>>,
+    narrowing: Option<&Narrowing<'_>>,
 ) -> Result<proc_macro2::TokenStream, String> {
     let items = source.module(path)?.items.clone();
     let original: syn::Path =
@@ -1574,19 +1603,30 @@ fn mirror(
         quote!(#cfg pub use #original::#ident;)
     });
     let uses = uses(&items).into_iter().filter_map(|item| {
+        let whole = narrowing.is_some_and(|narrowing| {
+            !tree.copies.is_empty() && imports_from(item, narrowing.linked)
+        });
         let mut item = item.clone();
         item.tree = filter_use_tree(item.tree, None, &|name| {
             // A `use` naming a child mirror or a copy would collide with it. In a lower
             // crate, only the listed functions' modules are widened: other private imports
-            // wouldn't resolve, so keep only names the copies and helpers refer to.
-            !reserved.contains(name) && used.is_none_or(|used| used.contains(name))
+            // wouldn't resolve, so keep only names the copies and helpers refer to, and in a
+            // copy's module every import from std and the linked crates ([`Narrowing`]).
+            !reserved.contains(name)
+                && (whole || narrowing.is_none_or(|narrowing| narrowing.used.contains(name)))
         })?;
         Some(item)
     });
     let mut children = Vec::new();
     for (name, child) in &tree.children {
         let ident = format_ident!("{name}");
-        let inner = mirror(source, &format!("{path}::{name}"), child, bridges, used)?;
+        let inner = mirror(
+            source,
+            &format!("{path}::{name}"),
+            child,
+            bridges,
+            narrowing,
+        )?;
         children.push(quote!(pub mod #ident { #inner }));
     }
     // Repeated before the children, which see them by textual scope as the game's did.
@@ -2037,7 +2077,12 @@ mod tests {
             own: BTreeSet::from(["Reserved".to_owned()]),
             ..Tree::default()
         };
-        let out = mirror(&mut source, "fixture", &tree, &[], Some(&used)).unwrap();
+        let linked = BTreeSet::new();
+        let narrowing = Narrowing {
+            used: &used,
+            linked: &linked,
+        };
+        let out = mirror(&mut source, "fixture", &tree, &[], Some(&narrowing)).unwrap();
         let parsed: syn::File = syn::parse2(out).unwrap();
         let imports: Vec<String> = uses(&parsed.items)
             .iter()
@@ -2223,6 +2268,37 @@ mod tests {
     }
 
     #[test]
+    fn a_copys_module_keeps_its_imports_from_std_and_the_linked_crates() {
+        let text = "use sunrise_core::trig::Mth;
+                    use std::fmt::Write;
+                    use unlinked::Thing;
+                    use super::Private;
+                    use crate::helpers::Helper;";
+        let used = BTreeSet::new();
+        let linked = BTreeSet::from(["sunrise_core".to_owned()]);
+        let narrowing = Narrowing {
+            used: &used,
+            linked: &linked,
+        };
+        let imports = |tree: &Tree| {
+            let mut source = source_of("lower::render", text);
+            let out = mirror(&mut source, "lower::render", tree, &[], Some(&narrowing)).unwrap();
+            let parsed: syn::File = syn::parse2(out).unwrap();
+            uses(&parsed.items)
+                .iter()
+                .map(|item| item.tree.to_token_stream().to_string())
+                .collect::<Vec<_>>()
+        };
+        // `angle.mcos()` in a copy needs `Mth` in scope without naming it.
+        assert_eq!(
+            imports(&with_a_copy()),
+            ["sunrise_core :: trig :: Mth", "std :: fmt :: Write"]
+        );
+        // A module with no copy runs no method call: it keeps only what is named.
+        assert!(imports(&Tree::default()).is_empty());
+    }
+
+    #[test]
     #[ignore = "daily"]
     fn support_modules_and_bridges_land_in_the_mirror_their_rows_name() {
         let extras = Extras {
@@ -2241,6 +2317,7 @@ mod tests {
                 member: Some("ticks_until_autosave".into()),
             }],
             idents: BTreeSet::new(),
+            linked: BTreeSet::new(),
             loops: Vec::new(),
         };
         let crate_ = generate_here(
@@ -2277,6 +2354,7 @@ mod tests {
                     ..extras.bridges[0].clone()
                 }],
                 idents: BTreeSet::new(),
+                linked: BTreeSet::new(),
                 loops: Vec::new(),
             },
         )
