@@ -344,7 +344,7 @@ impl Game<'_> {
     }
     /// ClientboundOpenScreenPacket for the menus Sunrise draws.
     pub(in crate::game) fn remote_open_screen(&mut self, p: play::OpenScreen) {
-        if self.remote.as_ref().is_some_and(|r| r.menu.is_some()) {
+        if self.remote.as_ref().and_then(|r| r.menu.as_ref()).is_some() {
             // An in-place open has no intervening ContainerClose packet. Drop
             // the replaced menu's local state, not the screen or pointer grab.
             self.remote_close_local();

@@ -2693,7 +2693,6 @@ impl Game<'_> {
         s.slot_moves.set(&s.screen.slots, slot, pos)
     }
     /// The container slots the open mod screen shows this frame (300.. ids).
-    #[cfg(test)]
     pub(super) fn native_screen_slots(&self) -> Option<Vec<usize>> {
         Some(
             self.shown_native_screen()?
