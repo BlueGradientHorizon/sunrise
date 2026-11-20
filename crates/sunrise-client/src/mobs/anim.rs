@@ -3,8 +3,10 @@
 //! part poses before the model is drawn.
 use super::{Mob, Part, keyframes::AnimationState, living::wrap};
 use crate::fast_hash::{FxHashMap, FxHashSet};
+use mod_api::{HumanoidPart, HumanoidPose};
 use std::collections::HashMap;
 use std::f32::consts::{FRAC_PI_6, PI};
+use std::sync::LazyLock;
 use sunrise_core::geometry::trig::Mth;
 use sunrise_core::use_animation::UseAnimation;
 
@@ -115,6 +117,20 @@ pub(crate) fn key(name: &str) -> u64 {
     h.write_usize(name.len());
     h.finish()
 }
+// Index by HumanoidPart, like PosedParts, but key only mid-animation inputs.
+static HUMANOID_POSE_KEYS: LazyLock<[Option<u64>; HumanoidPart::ALL.len()]> = LazyLock::new(|| {
+    HumanoidPart::ALL.map(|part| match part {
+        HumanoidPart::Head
+        | HumanoidPart::Hat
+        | HumanoidPart::Body
+        | HumanoidPart::RightArm
+        | HumanoidPart::LeftArm
+        | HumanoidPart::RightLeg
+        | HumanoidPart::LeftLeg => Some(key(part.model_name())),
+        _ => None,
+    })
+});
+
 #[derive(Clone, Copy)]
 struct PoseEntry {
     pose: [f32; 9],
@@ -231,6 +247,33 @@ impl Poses {
     pub fn pose(&self, part: &Part) -> [f32; 9] {
         self.pose_of(&part.name).unwrap_or(part.pose)
     }
+    /// Lend the pose for a mod callback only when its base parts have finite
+    /// positions and rotations. Missing parts and noneditable fields are not exposed.
+    pub fn humanoid_pose(&mut self) -> Option<&mut dyn HumanoidPose> {
+        HUMANOID_POSE_KEYS
+            .iter()
+            .flatten()
+            .filter_map(|key| self.map.get(key))
+            .all(|entry| entry.pose[..6].iter().all(|value| value.is_finite()))
+            .then_some(self as &mut dyn HumanoidPose)
+    }
+    fn set_humanoid_vector(&mut self, part: HumanoidPart, start: usize, values: [f32; 3]) -> bool {
+        let Some(entry) = HUMANOID_POSE_KEYS[part as usize].and_then(|key| self.map.get_mut(&key))
+        else {
+            return false;
+        };
+        let mut accepted = 0;
+        for (target, value) in entry.pose[start..start + 3].iter_mut().zip(values) {
+            if value.is_finite() {
+                *target = value;
+                accepted += 1;
+            }
+        }
+        if accepted != 0 {
+            self.changed();
+        }
+        accepted == 3
+    }
     pub fn skip_draw(&mut self, name: &str) {
         if self.skipped.insert(key(name)) {
             self.changed();
@@ -274,7 +317,24 @@ impl Poses {
         !self.hidden.is_empty() && self.hidden.contains(&key(name))
     }
 }
-/// Gameplay's read-only observer at the humanoid mid-setupAnim seam.
+
+impl HumanoidPose for Poses {
+    fn get(&self, part: HumanoidPart) -> Option<[[f32; 3]; 2]> {
+        let key = HUMANOID_POSE_KEYS[part as usize]?;
+        let [x, y, z, x_rot, y_rot, z_rot, ..] = self.map.get(&key)?.pose;
+        Some([[x, y, z], [x_rot, y_rot, z_rot]])
+    }
+
+    fn set_position(&mut self, part: HumanoidPart, position: [f32; 3]) -> bool {
+        self.set_humanoid_vector(part, 0, position)
+    }
+
+    fn set_rotation(&mut self, part: HumanoidPart, rotation: [f32; 3]) -> bool {
+        self.set_humanoid_vector(part, 3, rotation)
+    }
+}
+
+/// Gameplay's callback at the humanoid mid-setupAnim seam.
 /// This library knows only animation inputs and poses, never Game or a Host.
 pub trait HumanoidSetup {
     fn before_arm_pose(&self, mob: &Mob, state: &State<'_>, poses: &mut Poses);
@@ -1174,6 +1234,63 @@ fn player_model_visibility(p: &mut Poses, hidden: u8, spectator: bool) {
         p.visible(part, hidden & (1 << bit) == 0);
     }
 }
+#[cfg(test)]
+mod humanoid_pose_tests {
+    use super::*;
+
+    #[test]
+    fn live_humanoid_pose_refuses_only_invalid_components_and_uneditable_parts() {
+        let mut poses = Poses {
+            map: [
+                ("hat", [1.0, 2.0, 3.0, 0.25, 0.5, 0.75, 1.0, 1.0, 1.0]),
+                ("jacket", [0.0, 1.0, 2.0, 0.0, 0.5, 1.0, 1.0, 1.0, 1.0]),
+            ]
+            .into_iter()
+            .map(|(name, pose)| (key(name), PoseEntry { pose }))
+            .collect(),
+            ..Default::default()
+        };
+        let before = poses.version();
+        let view = poses.humanoid_pose().unwrap();
+        assert_eq!(
+            view.get(HumanoidPart::Hat),
+            Some([[1.0, 2.0, 3.0], [0.25, 0.5, 0.75]])
+        );
+        assert!(!view.set_position(HumanoidPart::Hat, [f32::NAN, 4.0, f32::INFINITY]));
+        assert_ne!(poses.version(), before);
+
+        let before = poses.version();
+        let view = poses.humanoid_pose().unwrap();
+        assert!(!view.set_rotation(HumanoidPart::Hat, [f32::INFINITY, f32::NAN, -0.75]));
+        assert_eq!(
+            view.get(HumanoidPart::Hat),
+            Some([[1.0, 4.0, 3.0], [0.25, 0.5, -0.75]])
+        );
+        assert_ne!(poses.version(), before);
+        assert_eq!(
+            poses.pose_of("hat"),
+            Some([1.0, 4.0, 3.0, 0.25, 0.5, -0.75, 1.0, 1.0, 1.0])
+        );
+
+        let before = poses.version();
+        let view = poses.humanoid_pose().unwrap();
+        assert_eq!(view.get(HumanoidPart::LeftArm), None);
+        assert_eq!(view.get(HumanoidPart::Jacket), None);
+        assert!(!view.set_position(HumanoidPart::LeftArm, [9.0; 3]));
+        assert!(!view.set_rotation(HumanoidPart::Jacket, [9.0; 3]));
+        assert_eq!(poses.pose_of("left_arm"), None);
+        assert_eq!(
+            poses.pose_of("jacket"),
+            Some([0.0, 1.0, 2.0, 0.0, 0.5, 1.0, 1.0, 1.0, 1.0])
+        );
+        assert_eq!(poses.dummy, [0.0; 9]);
+        assert_eq!(poses.version(), before);
+
+        poses.xrot("hat", f32::NAN);
+        assert!(poses.humanoid_pose().is_none());
+    }
+}
+
 #[cfg(test)]
 mod rot_lerp_tests {
     use super::*;

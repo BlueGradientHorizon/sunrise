@@ -661,16 +661,19 @@ setup-animation invocation, after head, walk and riding setup but before arm
 priority and posing. Its read-only `ClientHost` and `event.humanoid` provide both
 held stacks, selected poses and `is_using_item`. `event.partial_tick` and optional
 `event.game_time` are captured for that draw; game time is absent outside a level.
-Use `event.parts.get(HumanoidPart::RightArm)` to read `[position, rotation]`, then
-`set_rotation` or `set_position` to change it. Positions are local texels and
-rotations are radians. A non-finite component is refused while other finite
-components apply; scale and visibility are not changed. Later ITEM, attack,
-crouch, bob and swim animation still apply. Armor stands then replace rotations
-with their saved pose, preserving position edits. Their armor models run the same
-setup independently. A model can animate more than
-once per frame, so listeners must not treat this as a once-per-entity frame
-notification or advance simulation from it. Both callbacks use the same finite
-part snapshot, with no callback or stack snapshot when nobody subscribes.
+`event.parts` borrows the live `HumanoidPose` for the callback. Use
+`event.parts.get(HumanoidPart::RightArm)` to read `[position, rotation]`, then
+`set_rotation` or `set_position` to change it. The head, hat, body, arms and
+legs are editable if present; sleeves, jacket and pants are not. Positions
+are local texels and rotations are radians. A non-finite component is refused
+while other finite components apply immediately, so later listeners see those
+edits. Scale and visibility are not changed. Later ITEM, attack, crouch, bob
+and swim animation still apply. Armor stands then replace rotations with
+their saved pose, preserving position edits. Their armor models run the same
+setup independently. A model can animate more than once per frame, so listeners
+must not treat this as a once-per-entity frame notification or advance simulation
+from it. The hook does not fire when an incoming base-part position or rotation
+is non-finite. When nobody subscribes, there is no callback or held-stack snapshot.
 
 ```json
 { "template": "minecraft:stick", "arm_pose": "toot_horn" }

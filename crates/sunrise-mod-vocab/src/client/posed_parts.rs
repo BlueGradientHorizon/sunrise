@@ -1,8 +1,7 @@
-//! The parts of a humanoid model as vanilla posed them this frame (`HumanoidModel.setupAnim`),
-//! read-only, for a mod drawing on a player or humanoid mob in `render_living_post`,
-//! `render_player_post` or a layer (`register_entity_layers`). The poses are the
-//! [`PartPose`](crate::PartPose)s a baked layer's parts take, so a mod copies them onto its own
-//! tree (`ClientHost::bake_layer`) and draws it where vanilla drew the body.
+//! A humanoid model's parts during `HumanoidModel.setupAnim` and after it is drawn.
+//! `HumanoidPose` lends the intermediate pose to `humanoid_setup_anim`. The final poses
+//! in `render_living_post`, `render_player_post` and entity layers are read-only; a mod
+//! can copy those poses onto its own baked layer and draw it where vanilla drew the body.
 
 /// A part of a humanoid model, by the name vanilla's `PlayerModel` gives it. The outer skin
 /// layer's parts (`Hat`, `Jacket`, the sleeves and the pants) are children of the part they cover.
@@ -260,123 +259,29 @@ impl PosedParts {
     }
 }
 
-/// The seven base humanoid parts at the mid-setupAnim seam. Positions are
-/// local texels and rotations are radians, as for [`crate::PartPose`].
-/// Scale and visibility are deliberately not writable through this view.
-#[derive(Clone, Copy, Debug, PartialEq, sunrise_mod_api_macros::Wire)]
-#[wire(via = HumanoidPartsWire)]
-#[non_exhaustive]
-pub struct HumanoidParts {
-    parts: [Option<[[f32; 3]; 2]>; 7],
-}
+// no wire: lends the live pose of this setup-animation invocation.
+/// The live local pose at the mid-`HumanoidModel.setupAnim` seam, borrowed only
+/// for the listener. The head, hat, body, arms and legs can be posed here if
+/// present. Edits affect this draw only and are visible to later listeners.
+/// Scale and visibility are not writable through this view.
+pub trait HumanoidPose {
+    /// The local [position, rotation] of a base part. Missing parts, sleeves, the
+    /// jacket and pants return `None`.
+    fn get(&self, part: HumanoidPart) -> Option<[[f32; 3]; 2]>;
 
-#[derive(sunrise_mod_api_macros::Wire)]
-struct HumanoidPartsWire {
-    parts: [Option<[[f32; 3]; 2]>; 7],
-}
+    /// Writes local position components in texels. Non-finite components retain
+    /// their previous values. Returns false for a missing or noneditable part,
+    /// or if any component was refused.
+    fn set_position(&mut self, part: HumanoidPart, position: [f32; 3]) -> bool;
 
-impl From<&HumanoidParts> for HumanoidPartsWire {
-    fn from(value: &HumanoidParts) -> Self {
-        Self { parts: value.parts }
-    }
-}
-
-impl TryFrom<HumanoidPartsWire> for HumanoidParts {
-    type Error = &'static str;
-    fn try_from(value: HumanoidPartsWire) -> Result<Self, Self::Error> {
-        Self::new(value.parts).ok_or("non-finite humanoid pose")
-    }
-}
-
-impl HumanoidParts {
-    /// The editable base parts in snapshot order. Outer sleeves/pants/jacket
-    /// inherit their parents; they are not a second set of animation inputs.
-    pub const PARTS: [HumanoidPart; 7] = [
-        HumanoidPart::Head,
-        HumanoidPart::Hat,
-        HumanoidPart::Body,
-        HumanoidPart::RightArm,
-        HumanoidPart::LeftArm,
-        HumanoidPart::RightLeg,
-        HumanoidPart::LeftLeg,
-    ];
-
-    /// Make a finite snapshot, each present part holding [position, rotation].
-    /// A model's absent parts remain absent.
-    pub fn new(parts: [Option<[[f32; 3]; 2]>; 7]) -> Option<Self> {
-        parts
-            .iter()
-            .flatten()
-            .flatten()
-            .flatten()
-            .all(|v| v.is_finite())
-            .then_some(Self { parts })
-    }
-
-    /// The local position and rotation of a base part, if this model has it.
-    pub fn get(&self, part: HumanoidPart) -> Option<[[f32; 3]; 2]> {
-        let index = Self::PARTS.iter().position(|p| *p == part)?;
-        self.parts[index]
-    }
-
-    /// Write local position components. Non-finite components retain their
-    /// previous values; false reports an absent part or any refused component.
-    pub fn set_position(&mut self, part: HumanoidPart, position: [f32; 3]) -> bool {
-        self.set(part, 0, position)
-    }
-
-    /// Write local rotations in radians, with the same component refusal as
+    /// Writes local rotation components in radians, with the same refusals as
     /// [`Self::set_position`]. Finite angles are not clamped.
-    pub fn set_rotation(&mut self, part: HumanoidPart, rotation: [f32; 3]) -> bool {
-        self.set(part, 1, rotation)
-    }
-
-    fn set(&mut self, part: HumanoidPart, field: usize, values: [f32; 3]) -> bool {
-        let Some(index) = Self::PARTS.iter().position(|p| *p == part) else {
-            return false;
-        };
-        let Some(pose) = &mut self.parts[index] else {
-            return false;
-        };
-        let mut accepted = true;
-        for (target, value) in pose[field].iter_mut().zip(values) {
-            if value.is_finite() {
-                *target = value;
-            } else {
-                accepted = false;
-            }
-        }
-        accepted
-    }
+    fn set_rotation(&mut self, part: HumanoidPart, rotation: [f32; 3]) -> bool;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn mid_animation_parts_refuse_components_and_preserve_the_wire_invariant() {
-        use crate::wire::{Reader, Writer};
-        let mut parts = HumanoidParts::new([Some([[1.0, 2.0, 3.0], [0.1, 0.2, 0.3]]); 7]).unwrap();
-        assert!(!parts.set_rotation(HumanoidPart::RightArm, [f32::NAN, -0.5, f32::INFINITY]));
-        assert_eq!(
-            parts.get(HumanoidPart::RightArm).unwrap(),
-            [[1.0, 2.0, 3.0], [0.1, -0.5, 0.3]]
-        );
-        assert!(!parts.set_position(HumanoidPart::Jacket, [0.0; 3]));
-        assert!(parts.set_position(HumanoidPart::Head, [-10000.0, 4.0, 5.0]));
-        let mut writer = Writer::new();
-        writer.put(&parts);
-        assert_eq!(
-            Reader::new(writer.bytes()).take::<HumanoidParts>().unwrap(),
-            parts
-        );
-        let mut bad = HumanoidPartsWire::from(&parts);
-        bad.parts[0].as_mut().unwrap()[0][0] = f32::NEG_INFINITY;
-        let mut writer = Writer::new();
-        writer.put(&bad);
-        assert!(Reader::new(writer.bytes()).take::<HumanoidParts>().is_err());
-    }
 
     #[test]
     fn malformed_hidden_wire_is_refused() {
