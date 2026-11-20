@@ -170,17 +170,13 @@ fn fox_pick_up(level: &mut impl MobLevel, fox_index: usize, item_index: usize) {
         level.spawn_item_own(rest, at, 10);
     }
     // `spitOutItem(getItemBySlot(MAINHAND))`.
-    let (held, look, fox_id) = {
-        let m = &level.parts().mobs[fox_index];
-        (
-            finalize::item_stack(m, Slot::MainHand.index()),
-            m.view_vector(),
-            m.id,
-        )
-    };
+    let held = finalize::item_stack(&level.parts().mobs[fox_index], Slot::MainHand.index());
     if let Some(held) = held {
+        let look = level.parts().mobs[fox_index].view_vector();
         let from = [at[0] + look[0], at[1] + 1.0, at[2] + look[2]];
         level.spawn_item_own(held, from, 40);
+        // A listener on the spawn may have put another mob in this slot: its UUID tags the item.
+        let fox_id = level.parts().mobs[fox_index].id;
         let id = level.mob_uuid(fox_id);
         if let Some(thrown) = level.just_spawned_item() {
             thrown.thrower = Some(id);
@@ -197,4 +193,194 @@ fn fox_pick_up(level: &mut impl MobLevel, fox_index: usize, item_index: usize) {
     // `take(entity, count)` and `entity.discard()`.
     level.take(id, before);
     level.discard_item(item_index);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mob_level::MobParts;
+    use std::sync::Arc;
+    use sunrise_client::{
+        blocks::BlockFacts,
+        entities::ItemEntity,
+        fast_hash::FxHashSet,
+        items::{ItemStack, Items},
+        join_seq::JoinList,
+        mobs::{Anim, Brain, Mob, MobType, Part},
+        world::World,
+    };
+    use sunrise_world::registry::BlockStateId;
+
+    fn kind(id: &str, species: Species) -> Arc<MobType> {
+        Arc::new(MobType {
+            shadow: None,
+            id: id.into(),
+            species,
+            width: 0.6,
+            height: 0.7,
+            eye_height: 0.4,
+            category: "creature".into(),
+            max_health: 10.0,
+            speed: 0.3,
+            flying_speed: 0.02,
+            attack_damage: 2.0,
+            attack_knockback: 0.0,
+            follow_range: 16.0,
+            step_height: 0.6,
+            armor: 0.0,
+            armor_toughness: 0.0,
+            knockback_resistance: 0.0,
+            jump_strength: 0.42,
+            attributes: Default::default(),
+            item_stack_limits: Default::default(),
+            attribute_bounds: Default::default(),
+            gravity: 0.08,
+            safe_fall_distance: 3.0,
+            fall_damage_multiplier: 1.0,
+            water_efficiency: 0.0,
+            water_slowdown: 0.8,
+            air_speed: 0.02,
+            baby_scale: 0.5,
+            head_rot_speed: 10.0,
+            max_head_x_rot: 40.0,
+            max_head_y_rot: 75.0,
+            ambient_interval: 80,
+            flags: Default::default(),
+            model: Arc::new(Part {
+                name: "root".into(),
+                pose: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+                polygons: Vec::new(),
+                children: Vec::new(),
+            }),
+            layers: Default::default(),
+            texture: String::new(),
+            brain: Brain::Passive,
+            anim: Anim::Rabbit,
+            sounds: [""; 3],
+            sound_overrides: Default::default(),
+            food: Arc::default(),
+            tempt: Arc::default(),
+            passenger_attachments: Vec::new(),
+        })
+    }
+
+    fn dropped(stack: ItemStack) -> ItemEntity {
+        let at = Vec3::new(0.5, 64.0, 0.5);
+        ItemEntity {
+            random: sunrise_core::random::LegacyRandom::new(0),
+            attachment_lifetime: Default::default(),
+            fall_distance: 0.0,
+            rotation: [0.0, 0.0],
+            join: Default::default(),
+            no_gravity: false,
+            id: 5,
+            thrower: None,
+            target: None,
+            stack,
+            health: 5,
+            fire_ticks: 0,
+            position: at,
+            previous: at,
+            velocity: Vec3::ZERO,
+            on_ground: true,
+            vertical_collision: false,
+            horizontal_collision: false,
+            age: 0,
+            pickup_delay: 0,
+            bob_offset: 0.0,
+            ticks: 0,
+            needs_sync: false,
+            stuck: Vec3::ZERO,
+            was_touching_water: false,
+        }
+    }
+
+    /// A level where adding the spat-out item lets a listener move the fox away and put a cow in its slot.
+    struct ListenerLevel {
+        mobs: JoinList<Mob>,
+        dropped: JoinList<ItemEntity>,
+        ticked: FxHashSet<u32>,
+        items: Items,
+        facts: BlockFacts,
+        world: World,
+        uuids_asked: Vec<u32>,
+    }
+    impl MobLevel for ListenerLevel {
+        fn parts(&mut self) -> MobParts<'_> {
+            MobParts {
+                mobs: &mut self.mobs,
+                dropped: &mut self.dropped,
+                next_entity: 10,
+                ticked: &self.ticked,
+                items: &self.items,
+                facts: &self.facts,
+                world: &mut self.world,
+            }
+        }
+        fn mob_griefing(&self) -> bool {
+            true
+        }
+        fn entity_grief(&self, _entity: u32, rule: bool) -> bool {
+            rule
+        }
+        fn spawn_item_own(
+            &mut self,
+            _stack: ItemStack,
+            _at: [f64; 3],
+            pickup_delay: u32,
+        ) -> [f64; 3] {
+            if pickup_delay == 40 {
+                self.mobs[0] = Mob::new(9, kind("minecraft:cow", Species::Cow), Vec3::ZERO, 0.0);
+            }
+            [0.0; 3]
+        }
+        fn just_spawned_item(&mut self) -> Option<&mut ItemEntity> {
+            None
+        }
+        fn mob_uuid(&mut self, id: u32) -> [i32; 4] {
+            self.uuids_asked.push(id);
+            [id as i32, 0, 0, 0]
+        }
+        fn play_sound(&mut self, _event: &str, _at: [f64; 3], _volume: f32, _pitch: f32) {}
+        fn on_item_pickup(&mut self, _mob_index: usize, _item: &ItemEntity) {}
+        fn take(&mut self, _collector: u32, _item: ItemEntity) {}
+        fn discard_item(&mut self, index: usize) -> ItemEntity {
+            self.dropped.remove(index)
+        }
+    }
+
+    /// After a spawn listener replaced the fox's slot, the spat item asks the UUID of the mob now there.
+    #[test]
+    fn the_spit_asks_the_uuid_of_the_mob_in_the_slot_after_the_spawn() {
+        let mut fox = Mob::new(
+            1,
+            kind("minecraft:fox", Species::Fox),
+            Vec3::new(0.5, 64.0, 0.5),
+            0.0,
+        );
+        set_item_stack(
+            &mut fox,
+            Slot::MainHand.index(),
+            ItemStack::new("minecraft:stick", 1),
+        );
+        let mut level = ListenerLevel {
+            mobs: [fox].into_iter().collect(),
+            dropped: [dropped(ItemStack::new("minecraft:sweet_berries", 1))]
+                .into_iter()
+                .collect(),
+            ticked: FxHashSet::default(),
+            items: Items::empty(),
+            facts: BlockFacts {
+                states: vec![],
+                air: BlockStateId(0),
+                woods: Default::default(),
+                sign_texts: Default::default(),
+            },
+            world: World::new(BlockStateId(0), 0),
+            uuids_asked: Vec::new(),
+        };
+        fox_pick_up(&mut level, 0, 0);
+        assert_eq!(level.uuids_asked, vec![9]);
+        assert!(level.dropped.is_empty(), "the berries were taken");
+    }
 }
