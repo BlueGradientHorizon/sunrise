@@ -3,8 +3,9 @@
 Exports the surface of the merge base and of the checked-out tree with the head's `sunrise-stage`, diffs them, and
 writes the classified report to the job summary. The base comes from the event: on `pull_request` the checkout is
 GitHub's merge commit, whose first parent is the base; on a dispatch with `pr`, GitHub's compare API gives the merge
-base of that pull request's head and its base branch. Only that one commit is fetched (`--depth 1`), and only its
-`Cargo.toml`, `crates/` and `tools/layering` are unpacked. The engine catalogs are read from source; the workspace
+base of that pull request's head and its base branch. Only that one commit is fetched (`--depth 1`, in CI's shallow
+checkout; a full clone is never fetched shallow), and only its `Cargo.toml`, `crates/` and `tools/layering` are
+unpacked. The engine catalogs are read from source; the workspace
 manifest resolves inherited dependencies for crates with injection points. CI compares points and loops, not
 listed internals. To audit internals too, use --with-internals; --trees BASE HEAD accepts local source trees.
 
@@ -76,8 +77,21 @@ def git(*args: str) -> str:
     return subprocess.run(["git", *args], cwd=ROOT, check=True, capture_output=True, text=True).stdout
 
 
+def fetch_commit(sha: str, depth: int, git_text=git) -> None:
+    """Fetches `sha` with `depth` commits of history. Only a checkout that is already shallow (CI's) is fetched
+    shallow: in a full clone a shallow fetch grafts the commit and its pushes are refused, so there the commit is
+    fetched in full, and not at all when it is already there."""
+    if git_text("rev-parse", "--is-shallow-repository").strip() == "true":
+        git_text("fetch", "-q", "--no-tags", "--depth", str(depth), "origin", sha)
+        return
+    try:
+        git_text("cat-file", "-e", f"{sha}^{{commit}}")
+    except subprocess.CalledProcessError:
+        git_text("fetch", "-q", "--no-tags", "origin", sha)
+
+
 def unpack(sha: str, into: Path, paths=("Cargo.toml", "crates", "tools/layering")) -> None:
-    git("fetch", "-q", "--no-tags", "--depth", "1", "origin", sha)
+    fetch_commit(sha, 1)
     archive = subprocess.Popen(["git", "archive", sha, *paths], cwd=ROOT, stdout=subprocess.PIPE)
     subprocess.run(["tar", "-x", "-C", str(into)], stdin=archive.stdout, check=True)
     if archive.wait() != 0:
