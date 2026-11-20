@@ -1,5 +1,8 @@
-//! The world-text paths for a resource pack's `core/text`: classic `TEXT_POLYGON_OFFSET` and
-//! `TEXT_SEE_THROUGH`. GUI text uses `hud::pack_text`; other world-text variants draw natively.
+//! A resource pack's `core/text` on world text, as vanilla 26.3's `TEXT_POLYGON_OFFSET` and
+//! `TEXT_SEE_THROUGH` draw text displays, name tags and their backgrounds. Only these two
+//! paths and the GUI's text take the pack's shader; the other world text paths, Improved
+//! Transparency's depth-tested text and the native world text with its polygon-offset outline
+//! among them, draw with the native shaders.
 
 use crate::core_shader::{CoreProgram, Glue};
 use std::sync::Arc;
