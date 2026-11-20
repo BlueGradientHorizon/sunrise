@@ -495,10 +495,12 @@ impl Game<'_> {
             out.push(self.fixture_describe(i, t));
             self.fixture_vehicle_items(i, t, &mut out);
         }
-        let log = LOG.with(|log| log.borrow_mut().take()).unwrap_or_default();
-        let event_sounds: Vec<String> = log.iter().filter_map(|l| event_sound(l)).collect();
-        out.extend(log);
-        out.extend(event_sounds);
+        // Each level event's sound right after the event, as the oracle frames its log.
+        for line in LOG.with(|log| log.borrow_mut().take()).unwrap_or_default() {
+            let sound = event_sound(&line);
+            out.push(line);
+            out.extend(sound);
+        }
         for sound in self.audio.capture.take().unwrap_or_default() {
             out.push(format!("S {} {}", floor_pos(sound.position), sound.event));
         }
