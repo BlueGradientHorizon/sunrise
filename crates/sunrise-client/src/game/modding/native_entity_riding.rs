@@ -171,7 +171,7 @@ impl Game<'_> {
     /// Whether any object rides the entity, even one without a handle.
     pub(super) fn entity_is_vehicle(&self, entity: EntityRef) -> Option<bool> {
         Some(match self.riding_read(entity)? {
-            RidingRead::Server(_) => !self.seated_passengers(entity.id()).is_empty(),
+            RidingRead::Server(_) => self.has_seated_passengers(entity.id()),
             RidingRead::Client(remote) => remote.has_passengers(entity.id()),
         })
     }
@@ -667,9 +667,12 @@ impl Game<'_> {
                     .iter()
                     .position(|b| b.id == id)
                     .ok_or(R::NoEntity)?;
-                if self.boat_passengers(id) >= self.boats[index].max_passengers()
-                    || (!force && !self.boat_has_room(index))
-                {
+                let full = if force {
+                    self.seated_passenger_count(id) >= self.boats[index].max_passengers()
+                } else {
+                    !self.boat_has_room(index)
+                };
+                if full {
                     return Err(R::Full);
                 }
             }
@@ -677,10 +680,7 @@ impl Game<'_> {
                 if !self.carts.iter().any(|cart| cart.id == id) {
                     return Err(R::NoEntity);
                 }
-                if self.riding == Some(id)
-                    || self.ridden_by_guest(id)
-                    || !self.seated_passengers(id).is_empty()
-                {
+                if self.has_seated_passengers(id) {
                     return Err(R::Full);
                 }
             }

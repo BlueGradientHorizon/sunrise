@@ -1277,3 +1277,113 @@ fn no_save_rider_is_omitted_from_saved_tree() {
         );
     });
 }
+
+#[test]
+#[ignore = "daily"]
+fn a_general_rider_keeps_minecart_drag_and_pickup_occupied() {
+    use crate::game::minecarts::{CartKind, Minecart};
+    use sunrise_client::{chunk::Chunk, mobs::Mob};
+    with_types(|game| {
+        let at = Vec3::new(8.5, 64.0, 8.5);
+        let cart_id = 5000;
+        let pig_id = 5001;
+        game.world.chunks.insert((0, 0), Chunk::empty(0, 0).into());
+        let registry = game.pack.assets.registry;
+        let stone = registry.default_state("minecraft:stone").unwrap();
+        let rail = registry.default_state("minecraft:powered_rail").unwrap();
+        game.world.set(8, 63, 8, stone).unwrap();
+        game.world.set(8, 64, 8, rail).unwrap();
+        let mut cart = Minecart::new(cart_id, CartKind::Rideable, at);
+        cart.velocity = Vec3::new(0.0, 0.0, 0.25);
+        game.carts.push(cart);
+        game.load_listed(
+            "mymod:robot",
+            None,
+            None,
+            record_tag("mymod:robot", [2, 3, 4, 5], b"rider", Vec::new()),
+        )
+        .unwrap();
+        let rider = game
+            .entity(game.resident_entities.general.rows[0].id)
+            .unwrap();
+        let cart = game.entity(cart_id).unwrap();
+        assert_eq!(game.entity_start_riding(rider, cart, false), Ok(()));
+        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
+        // Exercise the maintained index, not the scan while it is stale after mounting.
+        game.tick_general().unwrap();
+        assert_eq!(cart.is_vehicle(game), Some(true));
+        assert_eq!(cart.passengers(game), Some(vec![rider]));
+        let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
+        // The pig touches the moving cart, but the coincident starting positions
+        // mean it applies no initial push to the cart.
+        game.mobs.push(Mob::new(pig_id, pig, at, 0.0));
+        game.tickets.update(None);
+        game.tick_carts();
+        // The unpowered rail halves the speed. The occupied cart moves at
+        // three quarters of that speed, then uses 0.997 rather than 0.96 drag.
+        assert_eq!(game.carts[0].position.z, at.z + 0.25 * 0.5 * 0.75);
+        assert_eq!(game.carts[0].velocity.z, 0.25 * 0.5 * 0.997);
+        assert_eq!(game.mob_object(pig_id).unwrap().extra.mount, None);
+    });
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_general_rider_fills_a_chest_boat_and_keeps_it_from_being_pushed() {
+    use crate::game::boats::Boat;
+    use sunrise_client::mobs::Mob;
+
+    with_types(|game| {
+        let at = Vec3::new(8.5, 64.0, 8.5);
+        let (full, empty, pig) = (5000, 5001, 5002);
+        game.boats
+            .push(Boat::new(full, "oak".into(), at, 0.0).with_chest());
+        game.boats.push(Boat::new(
+            empty,
+            "oak".into(),
+            at.add_vector(Vec3::new(1.0, 0.0, 0.0)),
+            0.0,
+        ));
+        game.load_listed(
+            "mymod:robot",
+            None,
+            None,
+            record_tag("mymod:robot", [2, 3, 4, 5], b"rider", Vec::new()),
+        )
+        .unwrap();
+        let rider = game
+            .entity(game.resident_entities.general.rows[0].id)
+            .unwrap();
+        let boat = game.entity(full).unwrap();
+        game.entity_start_riding(rider, boat, false).unwrap();
+        let _world = mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
+        game.tick_general().unwrap();
+        assert_eq!(boat.is_vehicle(game), Some(true));
+        assert_eq!(boat.passengers(game), Some(vec![rider]));
+
+        let pig_type = game.res.mob_types().get("minecraft:pig").unwrap().clone();
+        game.mobs.push(Mob::new(
+            pig,
+            pig_type,
+            at.add_vector(Vec3::new(8.0, 0.0, 0.0)),
+            0.0,
+        ));
+        let pig = game.entity(pig).unwrap();
+        for force in [false, true] {
+            assert_eq!(
+                game.entity_start_riding(pig, boat, force),
+                Err(mod_api::StartRidingRefusal::Full),
+            );
+        }
+
+        // Each boat sees the other. The empty one gets the impulse in both
+        // directions of the contact; the boat with the general rider gets none.
+        let pushed = Vec3::new(f64::from(0.05_f32), 0.0, 0.0);
+        for i in [0, 1] {
+            game.boats.update(1, |boat| boat.velocity = Vec3::ZERO);
+            game.boat_contacts(i);
+            assert_eq!(game.boats[0].velocity, Vec3::ZERO);
+            assert_eq!(game.boats[1].velocity, pushed);
+        }
+    });
+}
