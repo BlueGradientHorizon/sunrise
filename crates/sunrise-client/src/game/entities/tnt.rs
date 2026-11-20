@@ -820,6 +820,7 @@ impl Game<'_> {
                     &entity,
                     "minecraft:tnt",
                     at - camera,
+                    Some(at),
                     block,
                     packed,
                     out,

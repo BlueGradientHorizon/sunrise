@@ -18,7 +18,9 @@
 //! through the same guard ([`Game::guarded_entity_draw`]).
 use super::general::GeneralTypeCatalog;
 use super::{
-    Game, host::draw::GameBlockEntityDrawContext, native_block_entity_draw::BlockEntityDraw,
+    Game,
+    host::draw::GameBlockEntityDrawContext,
+    native_block_entity_draw::{BlockEntityDraw, LevelLight},
 };
 use glam::{DVec3, Mat4};
 use mod_api::{BlockEntityDrawContext, EntityRenderState, EntityRenderer};
@@ -330,8 +332,9 @@ impl Game<'_> {
         self.resolve_entity_layers(&rows, registered);
     }
 
-    /// Draws `entity` with `resolved`'s renderer, at `at` relative to the camera (`block` the
-    /// block it stands in), lit by `light` as the entity pass packs it: true when it drew, and the
+    /// Draws `entity` with `resolved`'s renderer at `at` relative to the camera, with
+    /// `world_origin` the same point in the level (`None` for a preview). `block` is the
+    /// item owner's block. `light` is the entity pass's fixed light. True when it drew, and the
     /// type's own drawing is left out. False, with nothing it drew kept, when it fails this frame
     /// and from then until the next resource load resolves it again.
     pub(in crate::game) fn mod_entity_renderer_geometry(
@@ -340,11 +343,16 @@ impl Game<'_> {
         entity: &EntityRenderState,
         entity_type: &str,
         at: DVec3,
+        world_origin: Option<DVec3>,
         block: [i32; 3],
         light: u32,
         out: &mut Vec<Vertex>,
     ) -> bool {
-        let pose = Mat4::from_translation(at.as_vec3());
+        let at = at.as_vec3();
+        let pose = Mat4::from_translation(at);
+        // Centres are posed in f32 camera-relative space. Undo that exact translation
+        // and add the absolute entity origin in f64 before flooring the sample cell.
+        let level_origin = world_origin.map(|origin| origin - at.as_dvec3());
         self.guarded_entity_draw(
             &resolved.failed,
             entity.partial,
@@ -352,6 +360,7 @@ impl Game<'_> {
             block,
             pose,
             light,
+            level_origin,
             out,
             |draw| resolved.inner.submit(entity, draw),
         )
@@ -371,6 +380,7 @@ impl Game<'_> {
         block: [i32; 3],
         pose: Mat4,
         light: u32,
+        level_origin: Option<DVec3>,
         out: &mut Vec<Vertex>,
         submit: impl FnOnce(&mut dyn BlockEntityDrawContext) -> Result<(), String>,
     ) -> bool {
@@ -395,10 +405,16 @@ impl Game<'_> {
             })
         }))
         .unwrap_or_else(|_| Err("it panicked".into()));
-        *out = surface.into_vertices();
         let Err(error) = result else {
+            let light_at = |[x, y, z]| self.world.light(x, y, z);
+            let level = level_origin.map(|origin| LevelLight {
+                origin,
+                light_at: &light_at,
+            });
+            *out = surface.into_vertices_with_light(level.as_ref());
             return true;
         };
+        *out = surface.into_vertices();
         out.truncate(start);
         if !failed.swap(true, Ordering::Relaxed) {
             log::warn!(
@@ -406,5 +422,78 @@ impl Game<'_> {
             );
         }
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sunrise_client::chunk::{Chunk, Light, index};
+
+    #[test]
+    #[ignore = "daily"]
+    fn entity_renderer_samples_the_elements_world_cell_but_a_preview_stays_fixed() {
+        struct LitQuad;
+        impl EntityRenderer for LitQuad {
+            fn submit(
+                &self,
+                _: &EntityRenderState,
+                draw: &mut dyn BlockEntityDrawContext,
+            ) -> Result<(), String> {
+                draw.level_light();
+                draw.translate([0.25, 0.0, 0.0]);
+                assert!(draw.quad(
+                    "block/stone",
+                    [[0.0, 1.0, 0.0], [0.0; 3], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0]],
+                    [0.0, 0.0, 16.0, 16.0],
+                    0xFF_FFFF,
+                ));
+                Ok(())
+            }
+        }
+
+        super::super::native_entity_refs::tests::with_client_game(|game| {
+            let mut chunk = Chunk::empty(0, 1);
+            let mut cells = Box::new([0u8; 4096]);
+            cells[index(11, 64, 4)] = 0x37;
+            let section = chunk.section_index(64).unwrap();
+            Arc::make_mut(&mut chunk.sections[section]).light = Light::packed(cells);
+            game.world.chunks.insert((0, 1), Arc::new(chunk));
+
+            let renderer = Resolved::<dyn EntityRenderer>::new(Arc::new(LitQuad));
+            let entity = mod_api::__private::built::EntityRenderState {
+                id: 1,
+                partial: 0.5,
+                age: 1.5,
+                yaw: 0.0,
+                pitch: 0.0,
+                living: None,
+                tnt_fuse: None,
+                orb_value: None,
+                painting: None,
+                item_frame: None,
+                attachments: None,
+            }
+            .into();
+            let at = DVec3::new(10.875, 64.25, 20.375);
+            let camera = DVec3::new(6.5, 63.0, 25.5);
+            for (world_origin, expected) in [(Some(at), 0x7030), (None, 0x50A0)] {
+                let mut out = Vec::new();
+                assert!(game.mod_entity_renderer_geometry(
+                    &renderer,
+                    &entity,
+                    "test:lit_quad",
+                    at - camera,
+                    world_origin,
+                    [10, 64, 20],
+                    0x50A0,
+                    &mut out,
+                ));
+                assert_eq!(
+                    out.iter().map(|v| v.light).collect::<Vec<_>>(),
+                    [expected; 4]
+                );
+            }
+        });
     }
 }
