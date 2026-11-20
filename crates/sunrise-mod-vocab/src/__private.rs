@@ -71,9 +71,9 @@ pub fn block_hook_inert(hook: HookId, state: BlockState) -> bool {
         .is_some()
 }
 
-/// Resolve a listener's owner once at load, for dispatch through [`mod_index_on`].
+/// Resolve a listener's owner by id, for dispatch through [`mod_index_on`].
 pub fn mod_index(id: &str) -> Option<usize> {
-    crate::mods().iter().position(|entry| entry.id == id)
+    crate::runtime::installed()?.by_id.get(id).copied()
 }
 
 /// Whether a resolved listener's owner is currently enabled.

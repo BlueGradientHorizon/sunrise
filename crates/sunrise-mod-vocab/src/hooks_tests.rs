@@ -639,7 +639,10 @@ fn server_inventory_operations_take_a_server_host(
 fn delayed_tasks_take_a_server_host(
     host: &mut dyn ServerHost,
 ) -> (Result<TaskId, ScheduleError>, bool) {
-    (host.schedule_task(20, 7), host.cancel_task(TaskId(1)))
+    (
+        host.schedule_task(20, Box::new(|_| {})),
+        host.cancel_task(TaskId(1)),
+    )
 }
 
 /// Compile-only: a mod reads a level's dimension type, and registers a dimension with its own.

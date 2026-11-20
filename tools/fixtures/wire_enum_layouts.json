@@ -690,12 +690,6 @@
       "canonical_path": "crate::content::content_declarations::RenderShape"
     },
     {
-      "name": "ScheduleError",
-      "path": "crate::world::scheduler::ScheduleError",
-      "hash": "bd7d79b5cdfd02ab",
-      "canonical_path": "crate::world::scheduler::ScheduleError"
-    },
-    {
       "name": "ScreenOpening",
       "path": "crate::client::types::ScreenOpening",
       "hash": "9ed3c4e52a797d6c",
