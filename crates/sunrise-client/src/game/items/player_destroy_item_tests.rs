@@ -60,7 +60,14 @@ fn take_notice(observer: &Observer, hand: Option<Hand>, item: &str, damage: u32)
         mod_api::__private::item_key_id(notice.original.item()).unwrap(),
         item
     );
-    assert!(notice.original.components().is_some());
+    assert_eq!(
+        notice
+            .original
+            .components()
+            .and_then(|components| components.as_nbt().get(&"minecraft:custom_name".into())),
+        Some(&mod_api::Tag::String("Destruction snapshot".into())),
+        "the snapshot keeps the literal custom name"
+    );
     notice
 }
 
