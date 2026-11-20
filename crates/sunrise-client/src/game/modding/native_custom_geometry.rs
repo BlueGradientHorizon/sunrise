@@ -582,9 +582,8 @@ mod tests {
             // The first copy holds every face; the second lacks the hidden ones.
             assert!(entities.len() > faces * 4, "the whole copy is there");
             assert!(entities.len() < faces * 8, "the hidden faces are absent");
-            // Vertex colours are ABGR: the red channel is at most half of full.
-            assert!(entities.iter().all(|v| v.color & 0xFF <= 0x80));
-            assert!(entities.iter().all(|v| v.color >> 24 == 0xFF));
+            // Vertex colours are ABGR: white times `half_red` (`0xFF80FFFF`) on every face.
+            assert!(entities.iter().all(|v| v.color == 0xFFFF_FF80));
         });
     }
 
