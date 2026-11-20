@@ -72,7 +72,7 @@ impl ResourceHandler<ItemResource> for Storage {
     fn amount(&self, host: &mut dyn ServerHost, slot: usize) -> u32 {
         self.stack(host, slot).map_or(0, |stack| stack.count())
     }
-    fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: &ItemResource) -> u32 {
+    fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: Option<&ItemResource>) -> u32 {
         64
     }
     fn insert_at(

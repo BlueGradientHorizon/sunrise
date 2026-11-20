@@ -34,7 +34,7 @@ impl ResourceHandler<ItemResource> for Empty {
     fn amount(&self, _: &mut dyn ServerHost, _: usize) -> u32 {
         0
     }
-    fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: &ItemResource) -> u32 {
+    fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: Option<&ItemResource>) -> u32 {
         0
     }
     fn insert_at(

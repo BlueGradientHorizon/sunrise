@@ -35,7 +35,7 @@ impl ResourceHandler<Chemical> for Tanks {
             .flatten()
             .map_or(0, |(_, a)| a)
     }
-    fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: &Chemical) -> u32 {
+    fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: Option<&Chemical>) -> u32 {
         100
     }
     fn insert_at(
@@ -135,6 +135,21 @@ fn ranged_checks_constructor_bounds_and_maps_the_single_index() {
 }
 
 #[test]
+fn an_empty_index_is_full_only_when_it_cannot_hold_anything() {
+    let (mut fake, r) = items_host(&["minecraft:stone"]);
+    chest(&mut fake, A, &[Some((&r[0], 64))]);
+    chest(&mut fake, B, &[None]);
+    let occupied = items_at(&mut fake, A);
+    let empty = items_at(&mut fake, B);
+    let host: &mut dyn ServerHost = &mut fake;
+    let combined = CombinedResourceHandler::new(host, vec![Box::new(occupied), Box::new(empty)]);
+    assert!(!is_full(host, &combined));
+
+    fake.level.block_entity(B).items.as_mut().unwrap().limit = 0;
+    assert!(is_full(&mut fake, &combined));
+}
+
+#[test]
 fn insert_stacking_tops_up_a_holding_index_before_an_empty_one() {
     let tanks = Tanks::new(vec![None, Some((HYDROGEN, 10))]);
     let handler: &dyn ResourceHandler<Chemical> = &tanks;
@@ -187,7 +202,7 @@ impl ResourceHandler<Chemical> for Oversized {
     fn amount(&self, _: &mut dyn ServerHost, _: usize) -> u32 {
         u32::MAX
     }
-    fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: &Chemical) -> u32 {
+    fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: Option<&Chemical>) -> u32 {
         1
     }
     fn insert_at(
@@ -241,7 +256,7 @@ impl<R> ResourceHandler<R> for Liar {
     fn amount(&self, _: &mut dyn ServerHost, _: usize) -> u32 {
         0
     }
-    fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: &R) -> u32 {
+    fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: Option<&R>) -> u32 {
         u32::MAX
     }
     fn insert_at(
@@ -417,7 +432,12 @@ fn find_extractable_probes_the_whole_int_amount_and_rolls_back() {
         fn amount(&self, host: &mut dyn ServerHost, index: usize) -> u32 {
             self.0.amount(host, index)
         }
-        fn capacity(&self, host: &mut dyn ServerHost, index: usize, item: &ItemResource) -> u32 {
+        fn capacity(
+            &self,
+            host: &mut dyn ServerHost,
+            index: usize,
+            item: Option<&ItemResource>,
+        ) -> u32 {
             self.0.capacity(host, index, item)
         }
         fn insert_at(
@@ -537,7 +557,12 @@ fn a_caught_bulk_error_does_not_commit_earlier_moves_and_the_sink_sees_the_sourc
         fn amount(&self, host: &mut dyn ServerHost, index: usize) -> u32 {
             self.sink.amount(host, index)
         }
-        fn capacity(&self, host: &mut dyn ServerHost, index: usize, item: &ItemResource) -> u32 {
+        fn capacity(
+            &self,
+            host: &mut dyn ServerHost,
+            index: usize,
+            item: Option<&ItemResource>,
+        ) -> u32 {
             self.sink.capacity(host, index, item)
         }
         fn insert_at(
@@ -668,7 +693,7 @@ fn maximum_batch_moves_without_splitting_a_quantized_handler() {
         fn amount(&self, _: &mut dyn ServerHost, _: usize) -> u32 {
             if self.0 { u32::MAX } else { 0 }
         }
-        fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: &Chemical) -> u32 {
+        fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: Option<&Chemical>) -> u32 {
             u32::MAX
         }
         fn insert_at(

@@ -711,10 +711,12 @@ impl Containers<'_> {
         if !self.accepts(view, slot, stack) {
             return 0;
         }
-        self.slot_stack_limit(view, slot, stack)
+        self.slot_stack_limit(view, slot, Some(stack))
     }
-    fn slot_stack_limit(&self, view: &View, slot: usize, stack: &ItemStack) -> u32 {
-        let capacity = view.slot_limit().min(self.max_stack(stack));
+    fn slot_stack_limit(&self, view: &View, slot: usize, stack: Option<&ItemStack>) -> u32 {
+        let capacity = stack.map_or(view.slot_limit(), |s| {
+            view.slot_limit().min(self.max_stack(s))
+        });
         view.locate(slot)
             .and_then(|(pos, _)| self.world.container_stack_limit(pos))
             .map_or(capacity, |limit| capacity.min(limit))
@@ -728,7 +730,7 @@ impl Containers<'_> {
     }
     fn insertion_room(&self, view: &View, slot: usize, stack: &ItemStack) -> u32 {
         room(
-            self.slot_stack_limit(view, slot, stack),
+            self.slot_stack_limit(view, slot, Some(stack)),
             self.get(view, slot),
             stack,
         )
@@ -1585,7 +1587,7 @@ impl Game<'_> {
     ) -> bool {
         if (0..part.size(self)).all(|slot| {
             part.resource(self, slot).is_some_and(|resource| {
-                part.amount(self, slot) >= part.capacity(self, slot, &resource)
+                part.amount(self, slot) >= part.capacity(self, slot, Some(&resource))
             })
         }) {
             return false;

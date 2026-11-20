@@ -440,19 +440,24 @@ impl Game<'_> {
     }
     /// How many of `stack` slot `slot` of those `at`'s side reaches holds when empty, as
     /// NeoForge's `isValid` and `getCapacityAsLong` answer: none where it may not go in (a
-    /// furnace's output, `canPlaceItem`), else the slot's limit for it.
+    /// furnace's output, `canPlaceItem`), else the slot's limit for it. `None` asks for the
+    /// general slot limit before item-specific rules.
     pub(in crate::game) fn container_capacity(
         &self,
         at: BlockSide,
         slot: usize,
-        stack: &ItemStack,
+        stack: Option<&ItemStack>,
     ) -> u32 {
         let Some(view) = self.capability_view(at) else {
             return 0;
         };
-        view.capability_slots(at.side)
-            .nth(slot)
-            .map_or(0, |slot| self.containers().capacity(&view, slot, stack))
+        view.capability_slots(at.side).nth(slot).map_or(0, |slot| {
+            let containers = self.containers();
+            match stack {
+                Some(stack) => containers.capacity(&view, slot, stack),
+                None => containers.slot_stack_limit(&view, slot, None),
+            }
+        })
     }
     /// Takes up to `max` out of slot `slot` of those `at`'s side reaches, in transaction `tx`;
     /// through a side, only what that side may take (`canTakeItemThroughFace`). What came out.

@@ -1691,12 +1691,12 @@ pub(super) mod tests {
             );
             // The armour slots take what names them for a zombie, one of it; the
             // chestplate is not for the feet, and a sword is not armour at all.
-            assert_eq!(items.capacity(host, 4, &chestplate), 1);
-            assert_eq!(items.capacity(host, 2, &chestplate), 0);
-            assert_eq!(items.capacity(host, 2, &boots), 1);
-            assert_eq!(items.capacity(host, 4, &sword), 0);
+            assert_eq!(items.capacity(host, 4, Some(&chestplate)), 1);
+            assert_eq!(items.capacity(host, 2, Some(&chestplate)), 0);
+            assert_eq!(items.capacity(host, 2, Some(&boots)), 1);
+            assert_eq!(items.capacity(host, 4, Some(&sword)), 0);
             // A hand takes a stack of anything.
-            assert_eq!(items.capacity(host, 0, &sword), 1);
+            assert_eq!(items.capacity(host, 0, Some(&sword)), 1);
 
             // An aborted transaction puts the equipment back.
             let _ = host.transaction(|host, tx| {
@@ -1928,7 +1928,7 @@ pub(super) mod tests {
                 ),
             )
             .unwrap();
-            assert_eq!(items.capacity(host, 39, &helmet), 1);
+            assert_eq!(items.capacity(host, 39, Some(&helmet)), 1);
         });
     }
 
@@ -3044,7 +3044,7 @@ pub(super) mod tests {
         fn amount(&self, _: &mut dyn ServerHost, _: usize) -> u32 {
             self.held.lock().unwrap().as_ref().map_or(0, |(_, n)| *n)
         }
-        fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: &ItemResource) -> u32 {
+        fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: Option<&ItemResource>) -> u32 {
             64
         }
         fn insert_at(
@@ -3194,7 +3194,7 @@ pub(super) mod tests {
             fn amount(&self, _: &mut dyn ServerHost, _: usize) -> u32 {
                 0
             }
-            fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: &ItemResource) -> u32 {
+            fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: Option<&ItemResource>) -> u32 {
                 64
             }
             fn insert_at(
@@ -3508,17 +3508,17 @@ pub(super) mod tests {
                     .capability(host, &ENTITY_ITEMS, ())
                     .unwrap();
                 assert_eq!(items.size(host), 7);
-                assert_eq!(items.capacity(host, 4, &chestplate), 1);
-                assert_eq!(items.capacity(host, 5, &helmet), 1);
+                assert_eq!(items.capacity(host, 4, Some(&chestplate)), 1);
+                assert_eq!(items.capacity(host, 5, Some(&helmet)), 1);
                 assert_eq!(
                     items.capacity(
                         host,
                         4,
-                        &ItemResource::of(
+                        Some(&ItemResource::of(
                             &ItemStack::new("minecraft:iron_sword", 1)
                                 .try_into_api()
                                 .unwrap()
-                        )
+                        ))
                     ),
                     0
                 );

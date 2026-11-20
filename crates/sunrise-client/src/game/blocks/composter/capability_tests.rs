@@ -141,10 +141,10 @@ fn sided_composter_transactions_preserve_literal_chance_and_defer_all_effects() 
                 assert_eq!(input.size(game), 1);
                 assert_eq!(unsided.size(game), 1);
                 assert_eq!(output.size(game), 1);
-                assert_eq!(input.capacity(game, 0, &seeds), 1);
-                assert_eq!(input.capacity(game, 0, &stone), 0);
-                assert_eq!(input.capacity(game, 1, &seeds), 0);
-                assert_eq!(output.capacity(game, 0, &seeds), 0);
+                assert_eq!(input.capacity(game, 0, Some(&seeds)), 1);
+                assert_eq!(input.capacity(game, 0, Some(&stone)), 0);
+                assert_eq!(input.capacity(game, 1, Some(&seeds)), 0);
+                assert_eq!(output.capacity(game, 0, Some(&seeds)), 0);
                 assert_eq!(output.amount(game, 0), 0);
                 assert!(input.resource(game, 0).is_none());
                 quiet(game, &heard);
@@ -253,7 +253,7 @@ fn sided_composter_transactions_preserve_literal_chance_and_defer_all_effects() 
                 );
                 assert_eq!(heard.lock().unwrap().len(), 7);
                 assert!(game.block_ticks.has_block_tick(at, block));
-                assert_eq!(input.capacity(game, 0, &seeds), 0);
+                assert_eq!(input.capacity(game, 0, Some(&seeds)), 0);
                 let start = game.world.game_time;
                 game.world.game_time = start + 19;
                 game.tick_scheduled().unwrap();

@@ -60,7 +60,7 @@ impl<R> ResourceHandler<R> for CombinedResourceHandler<R> {
         self.locate(index)
             .map_or(0, |(handler, at)| handler.amount(host, at))
     }
-    fn capacity(&self, host: &mut dyn ServerHost, index: usize, resource: &R) -> u32 {
+    fn capacity(&self, host: &mut dyn ServerHost, index: usize, resource: Option<&R>) -> u32 {
         self.locate(index)
             .map_or(0, |(handler, at)| handler.capacity(host, at, resource))
     }
@@ -143,7 +143,7 @@ impl<R> ResourceHandler<R> for CombinedResourceHandler<R> {
 ///     fn amount(&self, host: &mut dyn ServerHost, index: usize) -> u32 {
 ///         self.0.amount(host, index)
 ///     }
-///     fn capacity(&self, host: &mut dyn ServerHost, index: usize, resource: &R) -> u32 {
+///     fn capacity(&self, host: &mut dyn ServerHost, index: usize, resource: Option<&R>) -> u32 {
 ///         self.0.capacity(host, index, resource)
 ///     }
 ///     fn is_valid(&self, host: &mut dyn ServerHost, index: usize, resource: &R) -> bool {
@@ -222,7 +222,7 @@ impl<R> ResourceHandler<R> for RangedResourceHandler<R> {
         self.inner(index)
             .map_or(0, |at| self.handler.amount(host, at))
     }
-    fn capacity(&self, host: &mut dyn ServerHost, index: usize, resource: &R) -> u32 {
+    fn capacity(&self, host: &mut dyn ServerHost, index: usize, resource: Option<&R>) -> u32 {
         self.inner(index)
             .map_or(0, |at| self.handler.capacity(host, at, resource))
     }
@@ -273,7 +273,7 @@ impl<R> ResourceHandler<R> for EmptyResourceHandler {
     fn amount(&self, _: &mut dyn ServerHost, _: usize) -> u32 {
         0
     }
-    fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: &R) -> u32 {
+    fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: Option<&R>) -> u32 {
         0
     }
     fn insert_at(&self, _: &mut dyn ServerHost, _: &Transaction, _: usize, _: &R, _: u32) -> u32 {
@@ -308,8 +308,8 @@ impl<R: Clone + PartialEq> ResourceHandler<R> for InfiniteResourceHandler<R> {
     fn amount(&self, _: &mut dyn ServerHost, index: usize) -> u32 {
         if index == 0 { u32::MAX } else { 0 }
     }
-    fn capacity(&self, _: &mut dyn ServerHost, index: usize, resource: &R) -> u32 {
-        if index == 0 && *resource == self.0 {
+    fn capacity(&self, _: &mut dyn ServerHost, index: usize, resource: Option<&R>) -> u32 {
+        if index == 0 && resource.is_none_or(|resource| *resource == self.0) {
             u32::MAX
         } else {
             0
@@ -362,7 +362,7 @@ impl<R> ResourceHandler<R> for VoidingResourceHandler {
     fn amount(&self, _: &mut dyn ServerHost, _: usize) -> u32 {
         0
     }
-    fn capacity(&self, _: &mut dyn ServerHost, index: usize, _: &R) -> u32 {
+    fn capacity(&self, _: &mut dyn ServerHost, index: usize, _: Option<&R>) -> u32 {
         if index == 0 { u32::MAX } else { 0 }
     }
     fn insert_at(
@@ -405,13 +405,12 @@ pub fn is_empty<R>(host: &mut dyn ServerHost, handler: &dyn ResourceHandler<R>) 
     (0..handler.size(host)).all(|index| handler.amount(host, index) == 0)
 }
 
-/// Whether all indices hold a resource up to its capacity (`isFull`); true for no indices.
+/// Whether every index has reached capacity (`isFull`); true for no indices.
+/// An empty index uses its general capacity, so a zero-capacity index is already full.
 pub fn is_full<R>(host: &mut dyn ServerHost, handler: &dyn ResourceHandler<R>) -> bool {
     (0..handler.size(host)).all(|index| {
-        handler.resource(host, index).is_some_and(|resource| {
-            let amount = handler.amount(host, index);
-            amount > 0 && amount >= handler.capacity(host, index, &resource)
-        })
+        let resource = handler.resource(host, index);
+        handler.amount(host, index) >= handler.capacity(host, index, resource.as_ref())
     })
 }
 
@@ -437,7 +436,7 @@ pub fn comparator_signal<R>(host: &mut dyn ServerHost, handler: &dyn ResourceHan
             continue;
         };
         let amount = handler.amount(host, index);
-        let capacity = handler.capacity(host, index, &resource);
+        let capacity = handler.capacity(host, index, Some(&resource));
         if amount > 0 && capacity > 0 {
             fill += (amount as f32 / capacity as f32).min(1.0);
         }

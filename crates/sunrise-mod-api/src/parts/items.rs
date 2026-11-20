@@ -163,7 +163,7 @@ pub mod tests {
         fn amount(&self, _: &mut dyn ServerHost, _: usize) -> u32 {
             0
         }
-        fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: &ItemResource) -> u32 {
+        fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: Option<&ItemResource>) -> u32 {
             0
         }
         fn insert_at(
@@ -209,7 +209,7 @@ pub mod tests {
         fn amount(&self, _: &mut dyn ServerHost, _: usize) -> u32 {
             0
         }
-        fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: &ItemResource) -> u32 {
+        fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: Option<&ItemResource>) -> u32 {
             0
         }
         fn insert_at(
@@ -300,8 +300,17 @@ pub mod tests {
         fn amount(&self, host: &mut dyn ServerHost, _: usize) -> u32 {
             self.0.stack(host).map_or(0, |pouch| pouch.damage())
         }
-        fn capacity(&self, _: &mut dyn ServerHost, _: usize, resource: &ItemResource) -> u32 {
-            if resource.matches(&stick()) { 64 } else { 0 }
+        fn capacity(
+            &self,
+            _: &mut dyn ServerHost,
+            _: usize,
+            resource: Option<&ItemResource>,
+        ) -> u32 {
+            if resource.is_none_or(|item| item.matches(&stick())) {
+                64
+            } else {
+                0
+            }
         }
         fn insert_at(
             &self,
@@ -346,8 +355,13 @@ pub mod tests {
         fn amount(&self, host: &mut dyn ServerHost, index: usize) -> u32 {
             u32::from(self.resource(host, index).is_some())
         }
-        fn capacity(&self, _: &mut dyn ServerHost, _: usize, resource: &ItemResource) -> u32 {
-            u32::from(resource.item() == fixture_item_key("test:pouch"))
+        fn capacity(
+            &self,
+            _: &mut dyn ServerHost,
+            _: usize,
+            resource: Option<&ItemResource>,
+        ) -> u32 {
+            u32::from(resource.is_none_or(|item| item.item() == fixture_item_key("test:pouch")))
         }
         fn insert_at(
             &self,
@@ -411,9 +425,14 @@ pub mod tests {
         fn amount(&self, host: &mut dyn ServerHost, index: usize) -> u32 {
             self.held(host, index)
         }
-        fn capacity(&self, _: &mut dyn ServerHost, index: usize, resource: &ItemResource) -> u32 {
+        fn capacity(
+            &self,
+            _: &mut dyn ServerHost,
+            index: usize,
+            resource: Option<&ItemResource>,
+        ) -> u32 {
             let item = ["minecraft:diamond", "minecraft:stick"][index];
-            if resource.item() == fixture_item_key(item) {
+            if resource.is_none_or(|resource| resource.item() == fixture_item_key(item)) {
                 99
             } else {
                 0
@@ -522,7 +541,7 @@ pub mod tests {
         fn amount(&self, _: &mut dyn ServerHost, _: usize) -> u32 {
             0
         }
-        fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: &ItemResource) -> u32 {
+        fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: Option<&ItemResource>) -> u32 {
             0
         }
         fn insert_at(
@@ -564,12 +583,12 @@ pub mod tests {
         let (sticks, helmet_) = (ItemResource::of(&stick()), ItemResource::of(&helmet()));
         // The main inventory takes a stack of anything; an armour slot only what goes there,
         // a helmet on the head (index 39), not the feet (36).
-        assert_eq!(items.capacity(host, 0, &sticks), 64);
-        assert_eq!(items.capacity(host, 36, &sticks), 0);
-        assert_eq!(items.capacity(host, 39, &helmet_), 1);
-        assert_eq!(items.capacity(host, 36, &helmet_), 0);
-        assert_eq!(items.capacity(host, 40, &helmet_), 1);
-        assert_eq!(items.capacity(host, 39, &sticks), 0);
+        assert_eq!(items.capacity(host, 0, Some(&sticks)), 64);
+        assert_eq!(items.capacity(host, 36, Some(&sticks)), 0);
+        assert_eq!(items.capacity(host, 39, Some(&helmet_)), 1);
+        assert_eq!(items.capacity(host, 36, Some(&helmet_)), 0);
+        assert_eq!(items.capacity(host, 40, Some(&helmet_)), 1);
+        assert_eq!(items.capacity(host, 39, Some(&sticks)), 0);
         assert_eq!(items.amount(host, 3), 10);
         // Into one index, no further: 54 of 60 fill slot 3, and nothing goes elsewhere.
         let insert = |host: &mut dyn ServerHost, index, resource: &ItemResource, amount| {
@@ -694,7 +713,7 @@ pub mod tests {
     }
     #[cfg(test)]
     impl mod_api::prelude::ItemsBackend for Shelf {
-        fn container_capacity(&self, _: BlockSide, slot: usize, _: &ItemStack) -> u32 {
+        fn container_capacity(&self, _: BlockSide, slot: usize, _: Option<&ItemStack>) -> u32 {
             if self.output == Some(slot) {
                 0
             } else {
@@ -847,10 +866,14 @@ pub mod tests {
             &self,
             host: &mut dyn ServerHost,
             index: usize,
-            resource: &ItemResource,
+            resource: Option<&ItemResource>,
         ) -> u32 {
             backend_of(&*host).map_or(0, |backend| {
-                backend.container_capacity(on(SHELF, None), index, &resource.to_stack(1).unwrap())
+                backend.container_capacity(
+                    on(SHELF, None),
+                    index,
+                    resource.map(ItemResource::as_stack),
+                )
             })
         }
         fn insert_at(
@@ -1153,7 +1176,7 @@ pub mod tests {
         fn amount(&self, _: &mut dyn ServerHost, _: usize) -> u32 {
             0
         }
-        fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: &ItemResource) -> u32 {
+        fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: Option<&ItemResource>) -> u32 {
             64
         }
         fn insert_at(
@@ -1503,7 +1526,7 @@ pub mod tests {
         assert!(inspected.is_err());
         assert!(shelf_.slots[1].is_none());
         let handler = here().capability(&mut shelf_, &ITEMS, SHELF, None).unwrap();
-        assert_eq!(handler.capacity(&mut shelf_, 1, &resource), 64);
+        assert_eq!(handler.capacity(&mut shelf_, 1, Some(&resource)), 64);
         let moved = shelf_
             .transaction(|host, tx| Ok::<_, ()>(handler.insert_at(host, tx, 1, &resource, 128)));
         assert_eq!(moved, Ok(1));
@@ -1611,8 +1634,8 @@ pub mod tests {
             fn amount(&self, host: &mut dyn ServerHost, i: usize) -> u32 {
                 u32::from(self.resource(host, i).is_some())
             }
-            fn capacity(&self, _: &mut dyn ServerHost, _: usize, r: &ItemResource) -> u32 {
-                u32::from(r.item() == fixture_item_key("test:bag"))
+            fn capacity(&self, _: &mut dyn ServerHost, _: usize, r: Option<&ItemResource>) -> u32 {
+                u32::from(r.is_none_or(|item| item.item() == fixture_item_key("test:bag")))
             }
             fn insert_at(
                 &self,

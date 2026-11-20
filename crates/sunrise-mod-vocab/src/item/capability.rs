@@ -90,11 +90,11 @@ impl<R> ResourceHandler<R> for Capability<dyn ResourceHandler<R>> {
         self.handler.amount_int(host, index)
     }
 
-    fn capacity(&self, host: &mut dyn ServerHost, index: usize, resource: &R) -> u32 {
+    fn capacity(&self, host: &mut dyn ServerHost, index: usize, resource: Option<&R>) -> u32 {
         self.handler.capacity(host, index, resource)
     }
 
-    fn capacity_int(&self, host: &mut dyn ServerHost, index: usize, resource: &R) -> i32 {
+    fn capacity_int(&self, host: &mut dyn ServerHost, index: usize, resource: Option<&R>) -> i32 {
         self.handler.capacity_int(host, index, resource)
     }
 
@@ -235,9 +235,14 @@ impl ResourceHandler<ItemResource> for GameItems {
             .and_then(|backend| backend.container_stack(self.0, index))
             .map_or(0, |stack| stack.count())
     }
-    fn capacity(&self, host: &mut dyn ServerHost, index: usize, resource: &ItemResource) -> u32 {
+    fn capacity(
+        &self,
+        host: &mut dyn ServerHost,
+        index: usize,
+        resource: Option<&ItemResource>,
+    ) -> u32 {
         backend_of(&*host).map_or(0, |backend| {
-            backend.container_capacity(self.0, index, resource.as_stack())
+            backend.container_capacity(self.0, index, resource.map(ItemResource::as_stack))
         })
     }
     fn insert_at(

@@ -229,7 +229,7 @@ impl ResourceHandler<FluidResource> for ItemComponentFluidTank {
             .filter(|_| index == 0)
             .map_or(0, |held| held.amount)
     }
-    fn capacity(&self, _: &mut dyn ServerHost, index: usize, _: &FluidResource) -> u32 {
+    fn capacity(&self, _: &mut dyn ServerHost, index: usize, _: Option<&FluidResource>) -> u32 {
         if index == 0 { self.capacity } else { 0 }
     }
     fn insert_at(

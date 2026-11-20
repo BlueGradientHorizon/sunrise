@@ -352,7 +352,9 @@ fn storage_rechecks_the_entity_after_an_accepted_write_in_the_same_attempt() {
         let resource =
             ItemResource::of(&ItemStack::new("minecraft:stone", 1).try_into_api().unwrap());
         assert_eq!(
-            mod_api::run_transaction(game, |host, tx| { handler.insert(host, tx, &resource, 65) }),
+            mod_api::run_transaction(game, |host, tx| Ok::<_, ()>(
+                handler.insert(host, tx, &resource, 65)
+            )),
             Ok(64)
         );
         // Slot 2 would take the remainder if the query still saw slot 1 empty.

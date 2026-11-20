@@ -197,7 +197,7 @@ pub mod tests {
         fn amount(&self, host: &mut dyn ServerHost, _: usize) -> u32 {
             self.held(host).map_or(0, |(_, amount)| amount)
         }
-        fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: &Chemical) -> u32 {
+        fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: Option<&Chemical>) -> u32 {
             1000
         }
         fn insert_at(
@@ -429,7 +429,7 @@ pub mod tests {
         fn amount(&self, _: &mut dyn ServerHost, _: usize) -> u32 {
             0
         }
-        fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: &ItemResource) -> u32 {
+        fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: Option<&ItemResource>) -> u32 {
             0
         }
         fn insert_at(
@@ -466,7 +466,7 @@ pub mod tests {
         fn amount(&self, _: &mut dyn ServerHost, _: usize) -> u32 {
             0
         }
-        fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: &ItemResource) -> u32 {
+        fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: Option<&ItemResource>) -> u32 {
             u32::MAX
         }
         fn insert_at(

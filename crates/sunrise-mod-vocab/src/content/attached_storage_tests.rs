@@ -167,7 +167,7 @@ fn capacity_stays_physical_while_validity_refuses_inserts_only() {
         let only_dirt =
             AttachedItems::new(&VALID_ITEMS, CHUNK, 4, 500, accepts_the_chosen).unwrap();
         assert_eq!(
-            only_dirt.capacity(&mut host, 2, &cobble),
+            only_dirt.capacity(&mut host, 2, Some(&cobble)),
             64,
             "the physical limit (the item's stack size), though cobblestone is not valid here"
         );

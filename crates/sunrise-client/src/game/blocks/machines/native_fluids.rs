@@ -325,19 +325,21 @@ impl Game<'_> {
         &self,
         at: BlockSide,
         tank: usize,
-        fluid: &FluidStack,
+        fluid: Option<&FluidStack>,
     ) -> u32 {
         match self.capability_tanks(at) {
-            Some(at) if !game_holds(fluid, &at) => 0,
+            Some(at) if fluid.is_some_and(|fluid| !game_holds(fluid, &at)) => 0,
             Some(FluidAt::Mod(tanks)) => side_tanks(&tanks, at.side)
                 .nth(tank)
                 .filter(|real| tanks.inputs.contains(real))
                 .map_or(0, |real| tanks.tanks[real].max(0).unsigned_abs()),
-            Some(FluidAt::Cauldron(cauldron)) if tank == 0 => fluid
-                .key()
-                .and_then(mod_api::__private::fluid_id)
-                .and_then(|id| cauldron.contents.of_fluid(id))
-                .map_or(0, |(_, content)| content.total),
+            Some(FluidAt::Cauldron(cauldron)) if tank == 0 => fluid.map_or(u32::MAX, |fluid| {
+                fluid
+                    .key()
+                    .and_then(mod_api::__private::fluid_id)
+                    .and_then(|id| cauldron.contents.of_fluid(id))
+                    .map_or(0, |(_, content)| content.total)
+            }),
             _ => 0,
         }
     }
@@ -750,8 +752,8 @@ mod tests {
                     assert_eq!(handler.size(game), 1);
                     assert_eq!(handler.resource(game, 0), Some(syrup.clone()));
                     assert_eq!(handler.amount(game, 0), held);
-                    assert_eq!(handler.capacity(game, 0, &syrup), 3000);
-                    assert_eq!(handler.capacity(game, 0, &water), 1000);
+                    assert_eq!(handler.capacity(game, 0, Some(&syrup)), 3000);
+                    assert_eq!(handler.capacity(game, 0, Some(&water)), 1000);
                 }
                 let handler = handler.unwrap();
                 let extract = |game: &mut Game<'_>, resource: &FluidResource, amount| {
@@ -820,7 +822,7 @@ mod tests {
                 assert_eq!(at(game), block(game, "minecraft:lava_cauldron", None));
                 assert_eq!(handler.resource(game, 0), Some(lava.clone()));
                 assert_eq!(handler.amount(game, 0), 1000);
-                assert_eq!(handler.capacity(game, 0, &lava), 1000);
+                assert_eq!(handler.capacity(game, 0, Some(&lava)), 1000);
                 assert_eq!(insert(game, &syrup, 1000), 0);
                 assert_eq!(extract(game, &lava, 999), 0);
                 assert_eq!(extract(game, &lava, 1000), 1000);
@@ -921,7 +923,7 @@ mod tests {
             &self,
             _: &mut dyn ServerHost,
             index: usize,
-            _: &mod_api::FluidResource,
+            _: Option<&mod_api::FluidResource>,
         ) -> u32 {
             if index < self.reached.len() { 4000 } else { 0 }
         }
@@ -1104,7 +1106,7 @@ mod tests {
                     mod_api::__private::fluid_key("minecraft:empty").unwrap(),
                     1000,
                 ));
-                assert_eq!(source.capacity(game, 0, &empty), 0);
+                assert_eq!(source.capacity(game, 0, Some(&empty)), 0);
                 assert_eq!(
                     game.transaction(|host, tx| Ok::<_, ()>(
                         source.insert_at(host, tx, 0, &empty, 1000)
@@ -1227,7 +1229,7 @@ mod tests {
                 let target = level.capability(game, &FLUIDS, to, None).unwrap();
                 assert_eq!(target.owner(), "fluid_filter_test");
                 for index in 0..2 {
-                    assert_eq!(target.capacity(game, index, &chocolate), 4000);
+                    assert_eq!(target.capacity(game, index, Some(&chocolate)), 4000);
                     assert!(!target.is_valid(game, index, &chocolate));
                     assert_eq!(
                         game.transaction(|host, tx| Ok::<_, ()>(

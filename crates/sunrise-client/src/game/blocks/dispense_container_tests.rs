@@ -75,7 +75,7 @@ impl ResourceHandler<FluidResource> for Jug {
     fn amount(&self, _: &mut dyn ServerHost, _: usize) -> u32 {
         0
     }
-    fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: &FluidResource) -> u32 {
+    fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: Option<&FluidResource>) -> u32 {
         1000
     }
     fn insert_at(

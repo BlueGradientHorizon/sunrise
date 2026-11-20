@@ -154,10 +154,14 @@ pub mod tests {
             &self,
             host: &mut dyn ServerHost,
             index: usize,
-            resource: &FluidResource,
+            resource: Option<&FluidResource>,
         ) -> u32 {
             crate::backend_of(host).map_or(0, |backend| {
-                backend.fluid_tank_capacity(self.at, index, &resource.to_stack(1))
+                backend.fluid_tank_capacity(
+                    self.at,
+                    index,
+                    resource.map(|r| r.to_stack(1)).as_ref(),
+                )
             })
         }
         fn insert_at(
@@ -300,7 +304,7 @@ pub mod tests {
             &self,
             BlockSide { pos, .. }: BlockSide,
             _: usize,
-            _: &FluidStack,
+            _: Option<&FluidStack>,
         ) -> u32 {
             self.tanks
                 .get(&pos)
@@ -471,7 +475,10 @@ pub mod tests {
         world.tank(TANK, None, false);
         let host: &mut dyn ServerHost = &mut world;
         let target = here().capability(host, &FLUIDS, TANK, None).unwrap();
-        assert_eq!(target.capacity(host, 0, &FluidResource::of(&water)), 0);
+        assert_eq!(
+            target.capacity(host, 0, Some(&FluidResource::of(&water))),
+            0
+        );
         assert_eq!(world.moved((SOURCE, None), (TANK, None), 1000), Ok(0));
         assert_eq!(world.held(SOURCE), Some(water));
     }

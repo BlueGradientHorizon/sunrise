@@ -332,11 +332,11 @@ impl ItemStorage for Slots {
             let here = match self.0.resource(host, index) {
                 Some(held) if held == *resource => self
                     .0
-                    .capacity(host, index, resource)
+                    .capacity(host, index, Some(resource))
                     .saturating_sub(self.0.amount(host, index)),
                 Some(_) => 0,
                 None if self.0.is_valid(host, index, resource) => {
-                    self.0.capacity(host, index, resource)
+                    self.0.capacity(host, index, Some(resource))
                 }
                 None => 0,
             };

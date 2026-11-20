@@ -163,9 +163,14 @@ impl ResourceHandler<ItemResource> for ContainerItems {
         self.place(host, index)
             .map_or(0, |place| place.amount(host))
     }
-    fn capacity(&self, host: &mut dyn ServerHost, index: usize, resource: &ItemResource) -> u32 {
+    fn capacity(
+        &self,
+        host: &mut dyn ServerHost,
+        index: usize,
+        resource: Option<&ItemResource>,
+    ) -> u32 {
         match self.place(host, index) {
-            Some(_) => max_stack(host, resource),
+            Some(_) => resource.map_or(u32::MAX, |item| max_stack(host, item)),
             None => 0,
         }
     }
@@ -245,16 +250,26 @@ impl ResourceHandler<ItemResource> for LivingEquipment {
         self.place(host, index)
             .map_or(0, |place| place.amount(host))
     }
-    fn capacity(&self, host: &mut dyn ServerHost, index: usize, resource: &ItemResource) -> u32 {
+    fn capacity(
+        &self,
+        host: &mut dyn ServerHost,
+        index: usize,
+        resource: Option<&ItemResource>,
+    ) -> u32 {
         let Some(slot) = self.slot(host, index) else {
             return 0;
         };
         match Self::armour(slot) {
             // `Mob.canEquip`: only what its `equippable` names for this kind,
             // one of it (`ArmorSlot.getMaxStackSize`).
-            Some(slot) if !equips(host, resource, slot, &kind_of(host, self.entity)) => 0,
-            Some(_) => max_stack(host, resource).min(1),
-            None => max_stack(host, resource),
+            Some(slot)
+                if resource
+                    .is_some_and(|item| !equips(host, item, slot, &kind_of(host, self.entity))) =>
+            {
+                0
+            }
+            Some(_) => resource.map_or(1, |item| max_stack(host, item).min(1)),
+            None => resource.map_or(u32::MAX, |item| max_stack(host, item)),
         }
     }
     fn insert_at(
@@ -268,7 +283,7 @@ impl ResourceHandler<ItemResource> for LivingEquipment {
         let Some(place) = self.place(host, index) else {
             return 0;
         };
-        let limit = self.capacity(host, index, resource);
+        let limit = self.capacity(host, index, Some(resource));
         fill(host, tx, &place, resource, amount, limit)
     }
     fn extract_at(
@@ -390,16 +405,25 @@ impl ResourceHandler<ItemResource> for PlayerItems {
         self.place(host, index)
             .map_or(0, |place| place.amount(host))
     }
-    fn capacity(&self, host: &mut dyn ServerHost, index: usize, resource: &ItemResource) -> u32 {
+    fn capacity(
+        &self,
+        host: &mut dyn ServerHost,
+        index: usize,
+        resource: Option<&ItemResource>,
+    ) -> u32 {
         match index
             .checked_sub(MAIN)
             .and_then(|armour| ARMOUR.get(armour))
         {
-            Some(slot) if !equips(host, resource, slot, "minecraft:player") => 0,
+            Some(slot)
+                if resource.is_some_and(|item| !equips(host, item, slot, "minecraft:player")) =>
+            {
+                0
+            }
             // `ArmorSlot.getMaxStackSize`.
-            Some(_) => max_stack(host, resource).min(1),
+            Some(_) => resource.map_or(1, |item| max_stack(host, item).min(1)),
             _ if index > OFF_HAND => 0,
-            _ => max_stack(host, resource),
+            _ => resource.map_or(u32::MAX, |item| max_stack(host, item)),
         }
     }
     fn insert_at(
@@ -413,7 +437,7 @@ impl ResourceHandler<ItemResource> for PlayerItems {
         let Some(place) = self.place(host, index) else {
             return 0;
         };
-        let limit = self.capacity(host, index, resource);
+        let limit = self.capacity(host, index, Some(resource));
         fill(host, tx, &place, resource, amount, limit)
     }
     fn extract_at(

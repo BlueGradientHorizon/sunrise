@@ -2002,7 +2002,7 @@ mod tests {
             );
             let large = ItemResource::of(&large.try_into_api().unwrap());
             let handler = level.capability(game, &ITEMS, [0, 64, 0], None).unwrap();
-            assert_eq!(handler.capacity(game, 0, &large), 99);
+            assert_eq!(handler.capacity(game, 0, Some(&large)), 99);
             assert_eq!(game.world.container_stack_limit((0, 64, 0)), None);
             let stick =
                 ItemResource::of(&ItemStack::new("minecraft:stick", 1).try_into_api().unwrap());
@@ -2017,12 +2017,12 @@ mod tests {
                     assert!(handler.set_max_stack_size(host, tx, 4));
                     Ok::<_, ()>(())
                 })?;
-                assert_eq!(handler.capacity(host, 0, &stick), 4);
+                assert_eq!(handler.capacity(host, 0, Some(&stick)), 4);
                 Err::<(), ()>(())
             });
             assert_eq!(aborted, Err(()));
-            assert_eq!(handler.capacity(host, 0, &stick), 64);
-            assert_eq!(handler.capacity(host, 0, &large), 99);
+            assert_eq!(handler.capacity(host, 0, Some(&stick)), 64);
+            assert_eq!(handler.capacity(host, 0, Some(&large)), 99);
             assert_eq!(handler.amount(host, 0), 0);
             host.transaction(|host, tx| {
                 assert!(handler.set_max_stack_size(host, tx, 10));
@@ -2030,10 +2030,10 @@ mod tests {
                     assert!(handler.set_max_stack_size(host, tx, 4));
                     Err::<(), ()>(())
                 });
-                assert_eq!(handler.capacity(host, 0, &stick), 10);
+                assert_eq!(handler.capacity(host, 0, Some(&stick)), 10);
                 for invalid in [0, 100, u32::MAX] {
                     assert!(!handler.set_max_stack_size(host, tx, invalid));
-                    assert_eq!(handler.capacity(host, 0, &stick), 10);
+                    assert_eq!(handler.capacity(host, 0, Some(&stick)), 10);
                 }
                 assert!(handler.set_max_stack_size(host, tx, 64));
                 assert_eq!(handler.insert_at(host, tx, 0, &stick, 20), 20);
@@ -2055,8 +2055,8 @@ mod tests {
                 });
             }));
             assert!(panic.is_err());
-            assert_eq!(handler.capacity(host, 0, &stick), 64);
-            assert_eq!(handler.capacity(host, 0, &large), 99);
+            assert_eq!(handler.capacity(host, 0, Some(&stick)), 64);
+            assert_eq!(handler.capacity(host, 0, Some(&large)), 99);
             assert_eq!(handler.amount(host, 0), 0);
             host.transaction(|host, tx| {
                 let pearl = ItemResource::of(

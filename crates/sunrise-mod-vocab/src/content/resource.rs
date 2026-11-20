@@ -511,18 +511,19 @@ pub trait ResourceHandler<R> {
     fn amount_int(&self, host: &mut dyn ServerHost, index: usize) -> i32 {
         self.amount(host, index).min(i32::MAX as u32) as i32
     }
-    /// How much of `resource` index `index` holds when it holds that, whatever it holds now
-    /// (`getCapacityAsLong`). Capacity is not free space or permission to insert: validity,
-    /// current contents and access rules can still refuse it.
-    fn capacity(&self, host: &mut dyn ServerHost, index: usize, resource: &R) -> u32;
+    /// How much of `resource` index `index` can hold, regardless of what it holds now
+    /// (`getCapacityAsLong`). Pass `None` for the index's general capacity. Use `u32::MAX`
+    /// when that general limit is unknown, and 0 when the index can hold nothing. Capacity
+    /// is not free space or permission to insert: contents and access rules can still refuse it.
+    fn capacity(&self, host: &mut dyn ServerHost, index: usize, resource: Option<&R>) -> u32;
     /// The capacity as a signed int, capped at `i32::MAX` (`getCapacityAsInt`).
-    fn capacity_int(&self, host: &mut dyn ServerHost, index: usize, resource: &R) -> i32 {
+    fn capacity_int(&self, host: &mut dyn ServerHost, index: usize, resource: Option<&R>) -> i32 {
         self.capacity(host, index, resource).min(i32::MAX as u32) as i32
     }
     /// Whether `resource` may go in index `index` at all (`isValid`). The default uses capacity;
     /// a handler with separate acceptance rules overrides this and enforces them in `insert_at`.
     fn is_valid(&self, host: &mut dyn ServerHost, index: usize, resource: &R) -> bool {
-        self.capacity(host, index, resource) > 0
+        self.capacity(host, index, Some(resource)) > 0
     }
     /// Puts up to `amount` of `resource` into index `index`: how much went in.
     fn insert_at(
