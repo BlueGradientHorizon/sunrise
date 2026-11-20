@@ -522,8 +522,8 @@ impl Globals {
             i32::from(self.use_rgss).to_le_bytes(),
         ];
         let mut out = [0; 48];
-        for (slot, word) in out.chunks_exact_mut(4).zip(words) {
-            slot.copy_from_slice(&word);
+        for (slot, word) in out.as_chunks_mut::<4>().0.iter_mut().zip(words) {
+            *slot = word;
         }
         out
     }
