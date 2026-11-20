@@ -20,14 +20,13 @@ impl Game<'_> {
         }
     }
 
-    /// Run a vehicle's effects before `Entity.setRemoved`. Keep the entity accessible
-    /// to effects, but don't let those effects start destroying it again.
-    pub(super) fn with_vehicle_removal_effects<R>(
+    /// Run effects before `Entity.setRemoved`. Keep the entity accessible to
+    /// callbacks, but refuse another removal of it while the effects run.
+    pub(super) fn with_removal_preparation(
         &mut self,
         target: Target,
         effects: impl FnOnce(&mut Self),
-        remove: impl FnOnce(&mut Self) -> R,
-    ) -> Option<R> {
+    ) -> Option<()> {
         if self.target_removed(&target) || !self.persist.preparing_vehicle_removals.insert(target) {
             return None;
         }
@@ -36,6 +35,16 @@ impl Game<'_> {
         if let Err(payload) = result {
             std::panic::resume_unwind(payload);
         }
+        Some(())
+    }
+
+    pub(super) fn with_vehicle_removal_effects<R>(
+        &mut self,
+        target: Target,
+        effects: impl FnOnce(&mut Self),
+        remove: impl FnOnce(&mut Self) -> R,
+    ) -> Option<R> {
+        self.with_removal_preparation(target, effects)?;
         self.with_destroying_vehicle(target, remove)
     }
 

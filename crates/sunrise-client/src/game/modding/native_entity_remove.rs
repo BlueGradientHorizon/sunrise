@@ -138,14 +138,29 @@ impl Game<'_> {
     }
     /// A mob leaves the level: its effects act first when it was killed.
     pub(super) fn remove_mob_now(&mut self, id: u32, killed: bool) {
+        self.remove_mob_after(id, killed, |_| {});
+    }
+
+    /// Run the caller's preparation and the killed effects while the mob still resolves.
+    pub(super) fn remove_mob_after(
+        &mut self,
+        id: u32,
+        killed: bool,
+        prepare: impl FnOnce(&mut Self),
+    ) {
         if !self.mobs.iter().any(|m| m.id == id && !m.removed) {
             return;
         }
-        if killed {
-            self.mob_removal_effects(id);
-        }
-        // The effects can call back into removal themselves.
-        if self.mobs.iter().any(|m| m.id == id && !m.removed) {
+        if self
+            .with_removal_preparation(Target::Mob(id), |game| {
+                prepare(game);
+                if killed {
+                    game.mob_removal_effects(id);
+                }
+            })
+            .is_some()
+            && self.mobs.iter().any(|m| m.id == id && !m.removed)
+        {
             self.finish_mob_removal(id);
         }
     }

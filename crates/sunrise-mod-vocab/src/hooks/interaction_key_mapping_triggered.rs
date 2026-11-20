@@ -53,8 +53,8 @@ pub trait Hooks {
     /// canceled keeps riding. Players hear boarding and dismounts by input, `/ride`, hits,
     /// bucking, teleport or spectator mode; mobs hear boarding and dismounts (jockeys,
     /// ravager raiders, `/ride`, hits), including removal cleanup. The departing rider's own
-    /// dismount is asked first, then its direct passengers in boarding order. The removed
-    /// vehicle is no longer a valid handle or query result during these callbacks. A Mob's
+    /// dismount is asked first, then its direct passengers in passenger-list order. The
+    /// removed vehicle is no longer a valid handle or query result during these callbacks. A Mob's
     /// canceled dismount keeps the relationship with a removed boat, cart or mob; each later
     /// dismount asks again.
     /// A resident Mob retries immediately before its next eligible entity tick:
