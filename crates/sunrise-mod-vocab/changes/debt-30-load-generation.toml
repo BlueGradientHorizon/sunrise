@@ -1,10 +1,13 @@
 ids = [
     "method:DataLoadContext::registry",
+    "method:DataLoadContext::fluid_tags",
     "method:DataLoadContext::setting",
     "method:DataLoadContext::mods",
     "trait:LoadReader",
     "method:LoadReader::registry",
+    "method:LoadReader::fluid_tags",
     "method:LoadReader::setting",
+    "type:TestReader.tags",
     "method:LoopContext::registry",
     "method:LoopContext::setting",
     "method:LoopContext::mods",
@@ -16,5 +19,7 @@ ids = [
     "method:WorldgenHost::setting",
     "method:ChunkDiskHost::registry",
 ]
-why = "Load, loop and world-generation contexts lend frozen registry names and settings instead of cloning them per read, and lend the loaded-mod inventory in dispatch order. Chunk disk callbacks borrow registry names from the generation retained by their worker, not the current worldgen publication."
-migrate = "Replace load, loop, worldgen and chunk disk context.registry(name).as_deref() with context.registry(name) (Option<&[String]>). On load, loop and worldgen contexts, replace context.setting(mod_id, key).as_deref() with context.setting(mod_id, key) (Option<&str>); chunk disk's ConfigHost::setting still returns Option<String>. Keep context.mods().ids(), .iter() and .get(id) as before; mods() on load, loop and worldgen contexts now returns &LoadedMods. To keep data past the context borrow, use registry(name).map(<[String]>::to_vec), setting(mod_id, key).map(str::to_owned), or LoadedMods::clone(context.mods()) respectively. If a registry consumer still requires Arc<[String]>, use registry(name).map(Arc::<[String]>::from). LoadReader and LoopReader implementations must return slices and string references into their existing snapshot instead of cloned Arcs or Strings."
+why = "Load, loop and world-generation contexts lend frozen registry names and settings instead of cloning them per read, and lend the loaded-mod inventory in dispatch order. Chunk disk callbacks borrow registry names from the generation retained by their worker, not the current worldgen publication. A load also lends its recipe fluid tags, distinguishing a missing recipe overlay from one with no fluid tags."
+migrate = """Replace load, loop, worldgen and chunk disk context.registry(name).as_deref() with context.registry(name) (Option<&[String]>). On load, loop and worldgen contexts, replace context.setting(mod_id, key).as_deref() with context.setting(mod_id, key) (Option<&str>); chunk disk's ConfigHost::setting still returns Option<String>. Keep context.mods().ids(), .iter() and .get(id) as before; mods() on load, loop and worldgen contexts now returns &LoadedMods. To keep data past the context borrow, use registry(name).map(<[String]>::to_vec), setting(mod_id, key).map(str::to_owned), or LoadedMods::clone(context.mods()) respectively. If a registry consumer still requires Arc<[String]>, use registry(name).map(Arc::<[String]>::from). LoadReader and LoopReader implementations must return slices and string references into their existing snapshot instead of cloned Arcs or Strings.
+
+Replace context.fluid_tags().as_deref() with context.fluid_tags() (Option<&[(String, Arc<[String]>)]>). Handle None for a load without a recipe overlay, separately from Some(&[]) for a loaded but empty table. To retain the table beyond the context borrow, use context.fluid_tags().map(<[_]>::to_vec). FluidIngredient::from_json and SizedFluidIngredient::from_json calls are unchanged. In a LoadReader implementation, keep the recipe table in optional storage and return its borrowed slice (for Option<Arc<_>>, self.tags.as_deref()). For testing::TestReader, replace tags: table with tags: Some(table) for recipe overlays, or tags: None for loads without one."""

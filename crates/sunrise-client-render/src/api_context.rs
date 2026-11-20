@@ -172,6 +172,41 @@ mod tests {
     }
 
     #[test]
+    fn recipe_fluid_tags_distinguish_absence_from_empty_and_lend_ordered_members() {
+        let load = engine::LoadContext::from_settings_snapshot(
+            engine::DataLoadOrigin::ServerDataLoad,
+            Arc::new(engine::LoadInputs::new(
+                Default::default(),
+                Default::default(),
+            )),
+            [],
+            Arc::from([]),
+        );
+        assert_eq!(LoadReader(&load).context().fluid_tags(), None);
+
+        let empty = load.with_fluid_tags(Default::default());
+        assert_eq!(LoadReader(&empty).context().fluid_tags(), Some(&[][..]));
+
+        let populated = load.with_fluid_tags(std::collections::HashMap::from([(
+            "test:tag".into(),
+            vec!["test:still".into(), "test:flowing".into()],
+        )]));
+        let reader = LoadReader(&populated);
+        let view = reader.context();
+        let context: &dyn DataLoadContext = &view;
+        let tags = context.fluid_tags().unwrap();
+        assert!(std::ptr::eq(tags, populated.fluid_tags().unwrap()));
+        let [(name, members)] = tags else {
+            panic!("expected one fluid tag, got {tags:?}");
+        };
+        assert_eq!(name, "test:tag");
+        assert_eq!(members.as_ref(), ["test:still", "test:flowing"]);
+
+        let next = populated.for_load(engine::DataLoadOrigin::ServerDataLoad, []);
+        assert_eq!(LoadReader(&next).context().fluid_tags(), None);
+    }
+
+    #[test]
     fn phase_readers_preserve_origins_sides_and_shared_resource_members() {
         let root = std::env::temp_dir().join(format!(
             "phase-reader-{}-{:?}",
@@ -180,19 +215,13 @@ mod tests {
         ));
         std::fs::create_dir_all(root.join("active")).unwrap();
         std::fs::write(root.join("active/mode"), " captured ").unwrap();
-        let inputs = Arc::new(
-            engine::LoadInputs::new(
-                std::collections::BTreeMap::from([(
-                    "item".into(),
-                    vec!["test:second".into(), "test:first".into()],
-                )]),
-                root.clone(),
-            )
-            .with_fluid_tags(std::collections::HashMap::from([(
-                "test:tag".into(),
-                vec!["test:flowing".into(), "test:still".into()],
-            )])),
-        );
+        let inputs = Arc::new(engine::LoadInputs::new(
+            std::collections::BTreeMap::from([(
+                "item".into(),
+                vec!["test:second".into(), "test:first".into()],
+            )]),
+            root.clone(),
+        ));
         mod_platform::__private::with_test_packages(&["second", "first"], || {
             for (origin, expected) in [
                 (
@@ -204,7 +233,11 @@ mod tests {
                     mod_api::DataLoadOrigin::ClientPreload,
                 ),
             ] {
-                let load = engine::LoadContext::new(origin, inputs.clone(), ["active"]);
+                let base = engine::LoadContext::new(origin, inputs.clone(), ["active"]);
+                let load = base.with_fluid_tags(std::collections::HashMap::from([(
+                    "test:tag".into(),
+                    vec!["test:flowing".into(), "test:still".into()],
+                )]));
                 let reader = LoadReader(&load);
                 let context = reader.context();
                 assert_eq!(context.origin(), expected);
@@ -214,16 +247,8 @@ mod tests {
                 );
                 assert!(std::ptr::eq(
                     context.registry("item").unwrap(),
-                    load.registry("item").unwrap()
+                    base.registry("item").unwrap()
                 ));
-                assert!(Arc::ptr_eq(
-                    &context.fluid_tags().unwrap(),
-                    load.fluid_tags()
-                ));
-                assert_eq!(
-                    context.fluid_tags().unwrap()[0].1.as_ref(),
-                    ["test:flowing", "test:still"]
-                );
                 assert_eq!(context.registry("missing"), None);
                 assert_eq!(context.setting("missing", "key"), None);
                 assert_eq!(context.setting("active", "mode"), Some("captured"));

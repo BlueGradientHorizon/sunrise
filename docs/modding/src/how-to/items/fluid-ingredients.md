@@ -1,6 +1,6 @@
 # Fluid ingredients
 
-Use `FluidIngredient::from_json(json, context)` to parse fluid inputs for your recipe type. Pass the `DataLoadContext` supplied to your data-load hook.
+Use `FluidIngredient::from_json(json, context)` to parse fluid inputs for your recipe type. Pass the `DataLoadContext` supplied to your data-load hook. For direct tag reads, [`DataLoadContext::fluid_tags()`](../../concepts/load-phases.md#load-contexts) lends the recipe pass's table; a load without a recipe overlay returns `None`.
 
 | JSON input | Matches |
 | --- | --- |

@@ -756,10 +756,9 @@ pub trait DataLoadContext {
     /// Resolve a fluid name against this load's registered fluid identities.
     fn fluid_key(&self, id: &str) -> Option<crate::FluidKey>;
 
-    /// The fluid tags this load's resources hold (`data/<ns>/tags/fluid`):
-    /// each tag id to the fluids it names, in the sources' order — what a
-    /// recipe's fluid ingredient resolves its `#tag`s with. `None` where the
-    /// load reads no recipe resources.
+    /// Borrows the recipe pass's fluid tags (`data/<ns>/tags/fluid`), with each
+    /// tag's members in source order. `None` means the load has no recipe
+    /// overlay; `Some(&[])` means the overlay has no fluid tags.
     fn fluid_tags(&self) -> Option<&[(String, Arc<[String]>)]> {
         None
     }
@@ -775,7 +774,8 @@ pub trait DataLoadContext {
 pub trait LoadReader: Sync {
     /// Borrows registry names in ID order.
     fn registry(&self, name: &str) -> Option<&[String]>;
-    /// Fluid tags and their members in source order.
+    /// Borrows recipe fluid tags with members in source order. Returns `None`
+    /// without a recipe overlay, and `Some(&[])` for an empty overlay.
     fn fluid_tags(&self) -> Option<&[(String, Arc<[String]>)]>;
     /// Borrows a captured setting, without file I/O.
     fn setting(&self, mod_id: &str, key: &str) -> Option<&str>;

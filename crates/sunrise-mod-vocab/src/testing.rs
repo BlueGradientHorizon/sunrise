@@ -1014,6 +1014,7 @@ pub fn with_controller_tables<R>(
 // exhaustive: the platform or fixture constructs this process-local record as a complete unit.
 pub struct TestReader {
     pub registries: std::collections::BTreeMap<String, std::sync::Arc<[String]>>,
+    /// `None` models a load without a recipe overlay; `Some` models its tag table.
     pub tags: Option<std::sync::Arc<[(String, std::sync::Arc<[String]>)]>>,
 }
 impl crate::LoadReader for TestReader {

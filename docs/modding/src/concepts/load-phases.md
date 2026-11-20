@@ -97,6 +97,10 @@ in dispatch order. These references live as long as the context borrow; copy the
 must outlive the borrow. Use `DataLoadOrigin` to identify the load origin and `LoopSide` to identify
 the owning side.
 
+`DataLoadContext::fluid_tags()` borrows the recipe pass's fluid-tag table. It returns `None` when
+there is no recipe overlay, `Some(&[])` when that overlay has no fluid tags, and otherwise a slice
+of `(tag ID, members)` pairs with each tag's members in source order.
+
 In World, both client and server hosts expose `registry_entry(registry, id)`,
 `registry_entries(registry)` and `registry_entry_in_tag(&entry, tag)`. These read the
 current side's live registry and merged tags, not pending reload data. Unknown or

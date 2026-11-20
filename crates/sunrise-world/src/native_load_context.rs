@@ -19,10 +19,6 @@ pub enum DataLoadOrigin {
 /// borrow the same registry snapshot instead of scanning it again.
 pub struct LoadInputs {
     registries: BTreeMap<String, Arc<[String]>>,
-    /// The fluid tags a recipe load reads for its ingredients' `#tags`:
-    /// each tag id to its fluids, in the sources' order. Empty until a load
-    /// that reads recipe resources fills them.
-    fluid_tags: Arc<[(String, Arc<[String]>)]>,
     settings_root: PathBuf,
 }
 
@@ -33,18 +29,8 @@ impl LoadInputs {
                 .into_iter()
                 .map(|(name, ids)| (name, ids.into()))
                 .collect(),
-            fluid_tags: Arc::from([]),
             settings_root,
         }
-    }
-    /// The inputs with the fluid `tags` a recipe load reads
-    /// (`data/<ns>/tags/fluid`), each tag's fluids in the sources' order.
-    pub fn with_fluid_tags(mut self, tags: HashMap<String, Vec<String>>) -> Self {
-        self.fluid_tags = tags
-            .into_iter()
-            .map(|(tag, fluids)| (tag, fluids.into()))
-            .collect();
-        self
     }
 }
 
@@ -64,12 +50,6 @@ impl Snapshot {
 
     fn registry(&self, name: &str) -> Option<&[String]> {
         self.inputs.registries.get(name).map(Arc::as_ref)
-    }
-
-    /// The fluid tags the inputs carry, each tag's fluids in the sources'
-    /// order; empty until a load that reads recipe resources fills them.
-    fn fluid_tags(&self) -> &Arc<[(String, Arc<[String]>)]> {
-        &self.inputs.fluid_tags
     }
 
     fn setting(&self, mod_id: &str, key: &str) -> Option<&str> {
@@ -100,6 +80,7 @@ fn shared_settings(
 pub struct LoadContext {
     origin: DataLoadOrigin,
     snapshot: Snapshot,
+    fluid_tags: Option<Arc<[(String, Arc<[String]>)]>>,
 }
 
 impl LoadContext {
@@ -114,6 +95,7 @@ impl LoadContext {
         Self {
             origin,
             snapshot: Snapshot::capture(inputs, mod_ids),
+            fluid_tags: None,
         }
     }
 
@@ -139,10 +121,12 @@ impl LoadContext {
         Self {
             origin,
             snapshot: Snapshot { inputs, settings },
+            fluid_tags: None,
         }
     }
 
-    /// A new owning load of `origin` over this load's registry inputs, with fresh settings.
+    /// A new owning load of `origin` over this load's registry inputs, with
+    /// fresh settings and no recipe fluid tags.
     pub fn for_load<'a>(
         &self,
         origin: DataLoadOrigin,
@@ -151,33 +135,24 @@ impl LoadContext {
         Self::new(origin, self.snapshot.inputs.clone(), mod_ids)
     }
 
-    /// This load over the same registries and settings, with the fluid `tags`
-    /// its recipe pass reads (`data/<ns>/tags/fluid`): what that pass's
-    /// ingredient hooks resolve fluid `#tags` with. A recipe load builds it
-    /// where it knows its overlay; loads that read no recipe resources share
-    /// the inputs as-is, with no tags.
+    /// Attach the recipe pass's fluid tags (`data/<ns>/tags/fluid`), even if
+    /// empty, while sharing this load's existing registry and settings snapshot.
     pub fn with_fluid_tags(&self, tags: HashMap<String, Vec<String>>) -> Self {
-        let inputs = Arc::new(LoadInputs {
-            registries: self.snapshot.inputs.registries.clone(),
-            fluid_tags: tags
-                .into_iter()
-                .map(|(tag, fluids)| (tag, fluids.into()))
-                .collect(),
-            settings_root: self.snapshot.inputs.settings_root.clone(),
-        });
         Self {
             origin: self.origin,
-            snapshot: Snapshot {
-                inputs,
-                settings: self.snapshot.settings.clone(),
-            },
+            snapshot: self.snapshot.clone(),
+            fluid_tags: Some(
+                tags.into_iter()
+                    .map(|(tag, fluids)| (tag, fluids.into()))
+                    .collect(),
+            ),
         }
     }
 
-    /// The fluid tags this load's recipe pass reads: each tag id to its
-    /// fluids, in the sources' order. Empty where no recipe pass filled them.
-    pub fn fluid_tags(&self) -> &Arc<[(String, Arc<[String]>)]> {
-        self.snapshot.fluid_tags()
+    /// Borrows each recipe fluid tag's members in source order. `None` means
+    /// there is no recipe overlay; an empty overlay still returns `Some`.
+    pub fn fluid_tags(&self) -> Option<&[(String, Arc<[String]>)]> {
+        self.fluid_tags.as_deref()
     }
 
     /// Readers of this load's resource generation, with the same captured
