@@ -44,8 +44,8 @@ There is no separate equipment-only type read.
 After the registry is available, resolve the type keys your Part needs once and
 retain them. `host.entity_type_keys()` enumerates built-in and content types in
 registry order, then native general types by declaring mod and type id.
-`key.id(host)` explicitly requests its canonical namespaced name. Name resolution returns an
-owned diagnostic string and can allocate. Persist the name, never the scalar slot.
+`key.id(host)` explicitly pins its canonical namespaced name as `Option<RegistryName>`.
+Persist the name, never the scalar slot.
 For example, retain the zombie key at setup, then compare
 `entity.kind(host) == Some(zombie_key)` in a predicate.
 
@@ -55,6 +55,18 @@ slot.
 This is a clean break from `Option<String>`: callers that need textual names must
 request `.id(host)` explicitly. `UnspawnedMobRef::kind` keeps its separate scoped
 `Identifier`/error contract, and block-entity type reads keep `BlockEntityTypeKey`.
+
+## Pinned registry names
+
+`EntityTypeKey`, `MenuKey` and `EnchantmentKey` return `Option<RegistryName>` from
+`key.id(host)`. `None` means the host has no backend or no name for the slot.
+`GameEventKey::id(host)` returns `Result<RegistryName, GameEventKeyError>` instead.
+
+A `RegistryName` borrows resident text or keeps its registry snapshot alive; it
+holds no registry lock and does not borrow the host. Use `name.as_str()` to borrow
+its text or compare `key.id(host).as_deref() == Some("minecraft:zombie")` without a
+copy. The pinned text remains readable across reloads; it does not reflect a later
+registry publication. To persist just the text, copy it with `name.as_str().to_owned()`.
 
 ## Block states
 

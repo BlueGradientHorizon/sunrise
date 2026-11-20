@@ -98,9 +98,9 @@ pub trait KeysBackend {
     #[access(WorldOnly)]
     fn registry_entry_key_slot(&self, entry: &RegistryEntry) -> Option<u32>;
 
-    /// Side: both. Exact id of an installed game-event slot; invalid keys are refused.
+    /// Side: both. Pin the exact id of an installed game-event slot; invalid keys are refused.
     #[access(Metadata)]
-    fn game_event_key_id(&self, key: GameEventKey) -> Result<String, GameEventKeyError>;
+    fn game_event_key_id(&self, key: GameEventKey) -> Result<RegistryName, GameEventKeyError>;
     /// Side: both.
     /// Borrows the canonical block id from the registry. `None` if the host has no
     /// backend or no name for the slot.
@@ -133,15 +133,18 @@ pub trait KeysBackend {
     #[access(WorldOnly)]
     fn block_entity_type_key_id(&self, key: BlockEntityTypeKey) -> Option<&str>;
     /// Side: both.
-    /// The canonical entity type id retained by the load-owned slot.
+    /// Pins the canonical entity type id without borrowing the host.
+    /// Returns `None` if the host has no backend or no name for the slot.
     #[access(Metadata)]
-    fn entity_type_key_id(&self, key: EntityTypeKey) -> String;
+    fn entity_type_key_id(&self, key: EntityTypeKey) -> Option<RegistryName>;
     /// Side: both.
-    /// The canonical menu type id retained by the load-owned slot.
+    /// Pins the canonical menu type id without borrowing the host.
+    /// Returns `None` if the host has no backend or no name for the slot.
     #[access(Metadata)]
-    fn menu_key_id(&self, key: MenuKey) -> String;
+    fn menu_key_id(&self, key: MenuKey) -> Option<RegistryName>;
     /// Side: both.
-    /// The canonical enchantment id retained by the load-owned slot.
+    /// Pins the canonical enchantment id without borrowing the host.
+    /// Returns `None` if the host has no backend or no name for the slot.
     #[access(Metadata)]
-    fn enchantment_key_id(&self, key: EnchantmentKey) -> String;
+    fn enchantment_key_id(&self, key: EnchantmentKey) -> Option<RegistryName>;
 }

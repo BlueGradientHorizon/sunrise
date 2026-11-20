@@ -188,7 +188,11 @@ mod ordered_key_tests {
             .into_iter()
             .map(|key| super::entity_type_key_id(key).unwrap())
             .collect();
-        assert_eq!(ordered, ["minecraft:pig", "minecraft:zombie", "test:probe"]);
+        let names: Vec<_> = ordered
+            .iter()
+            .map(mod_vocab::RegistryName::as_str)
+            .collect();
+        assert_eq!(names, ["minecraft:pig", "minecraft:zombie", "test:probe"]);
         let first = super::entity_type_keys()[0];
         assert_eq!(
             mod_vocab::__private::parts_installation::validate_entity_type_key(
@@ -222,7 +226,11 @@ mod ordered_key_tests {
             .into_iter()
             .map(|key| super::enchantment_key_id(key).unwrap())
             .collect();
-        assert_eq!(ordered, ["minecraft:mending", "minecraft:sharpness"]);
+        let names: Vec<_> = ordered
+            .iter()
+            .map(mod_vocab::RegistryName::as_str)
+            .collect();
+        assert_eq!(names, ["minecraft:mending", "minecraft:sharpness"]);
     }
 }
 #[cfg(test)]

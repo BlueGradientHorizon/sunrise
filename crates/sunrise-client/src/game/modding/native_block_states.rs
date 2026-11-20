@@ -3,7 +3,7 @@
 use super::Game;
 use mod_api::{
     BlockEntityTypeKey, BlockKey, EffectKey, EnchantmentKey, EntityTypeKey, FluidKey, FluidState,
-    ItemKey, MenuKey, StateConstraint, StateMatchError,
+    ItemKey, MenuKey, RegistryName, StateConstraint, StateMatchError,
 };
 use std::sync::{Arc, Mutex};
 use sunrise_client::command::{Reader, args::Registries, block};
@@ -81,16 +81,16 @@ impl Game<'_> {
         mod_api::__private::enchantment_keys()
     }
     /// The canonical entity type id retained by the load-owned slot.
-    pub(super) fn entity_type_key_id(&self, key: EntityTypeKey) -> String {
-        mod_api::__private::entity_type_key_id(key).expect("invalid entity type key slot")
+    pub(super) fn entity_type_key_id(&self, key: EntityTypeKey) -> Option<RegistryName> {
+        mod_api::__private::entity_type_key_id(key)
     }
     /// The canonical menu type id retained by the load-owned slot.
-    pub(super) fn menu_key_id(&self, key: MenuKey) -> String {
-        mod_api::__private::menu_key_id(key).expect("invalid menu key slot")
+    pub(super) fn menu_key_id(&self, key: MenuKey) -> Option<RegistryName> {
+        mod_api::__private::menu_key_id(key)
     }
     /// The canonical enchantment id retained by the load-owned slot.
-    pub(super) fn enchantment_key_id(&self, key: EnchantmentKey) -> String {
-        mod_api::__private::enchantment_key_id(key).expect("invalid enchantment key slot")
+    pub(super) fn enchantment_key_id(&self, key: EnchantmentKey) -> Option<RegistryName> {
+        mod_api::__private::enchantment_key_id(key)
     }
 
     /// The state `name` names, read as `/setblock` reads a block

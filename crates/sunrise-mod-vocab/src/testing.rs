@@ -622,9 +622,8 @@ impl crate::prelude::EntityIdentityBackend for FakeHost {
     }
 }
 impl crate::prelude::KeysBackend for FakeHost {
-    fn entity_type_key_id(&self, key: crate::EntityTypeKey) -> String {
+    fn entity_type_key_id(&self, key: crate::EntityTypeKey) -> Option<crate::RegistryName> {
         crate::content::registry_keys::entity_type_key_id(key)
-            .expect("fake entity type key belongs to its load")
     }
 
     fn item_key_id(&self, key: crate::ItemKey) -> Option<&str> {

@@ -6,10 +6,19 @@ ids = [
     "handle:EffectKey::id",
     "handle:FluidKey::id",
     "handle:ItemKey::id",
+    "handle:EntityTypeKey::id",
+    "handle:MenuKey::id",
+    "handle:EnchantmentKey::id",
+    "handle:GameEventKey::id",
+    "type:RegistryName",
+    "handle:RegistryName::as_str",
 ]
-why = "Registry-name reads borrow the name already in the registry or biome snapshot instead of allocating. Missing registry metadata returns None rather than panicking, and biome generation errors are unchanged."
+why = "Registry-name reads borrow resident text or pin a registry snapshot instead of allocating a copy. Missing optional registry metadata returns None rather than panicking, and biome and game-event errors are unchanged."
 migrate = """
 For BlockKey, ItemKey, EffectKey, FluidKey and BlockEntityTypeKey, `key.id(host)` changes from `String` to `Option<&str>`. Replace `key.id(host) == "minecraft:stone"` with `key.id(host) == Some("minecraft:stone")`. Use `let Some(name) = key.id(host) else { ... };` to handle an unavailable name, or `key.id(host).map(str::to_owned)` for an owned `Option<String>` to retain beyond the host borrow.
 For DimensionKey, replace `key.id(host).as_deref()` with `key.id(host)`; use `.map(str::to_owned)` only when retaining the result.
 For BiomeKey, `key.id(host)` now returns `Result<&str, BiomeKeyError>`. Use that result directly for an in-scope read; replace an owned result such as `let name: String = key.id(host)?;` with `let name = key.id(host).map(str::to_owned)?;` only if it must outlive the host borrow. Reacquire the key after reload as before.
+For EntityTypeKey, MenuKey and EnchantmentKey, `key.id(host)` changes from `String` to `Option<RegistryName>`. Replace `key.id(host) == "minecraft:zombie"` with `key.id(host).as_deref() == Some("minecraft:zombie")`. Handle `None` if no name is available. For `entity.kind(host).map(|key| key.id(host))`, use `.and_then(|key| key.id(host))` to keep a single Option.
+For GameEventKey, `key.id(host)` changes from `Result<String, GameEventKeyError>` to `Result<RegistryName, GameEventKeyError>` with the same errors. Use `let name = key.id(host)?;` and `name.as_str()` instead of treating the successful result as a String.
+A RegistryName can outlive the host borrow and keeps its text readable across reloads. For any of these keys, when you specifically need a String (for example, to serialize it), use `key.id(host).map(|name| name.as_str().to_owned())`.
 """

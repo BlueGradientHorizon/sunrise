@@ -47,8 +47,8 @@ pub struct EffectKey(pub(crate) u32);
 
 /// An entity type (`minecraft:zombie`) in the built-in entity-type registry, in
 /// registration order. Returned by `EntityRef::kind`; Copy/Eq comparisons do not
-/// allocate. Request `key.id(host)` for its namespaced name (an owned diagnostic
-/// string). A key stays valid until the game exits.
+/// allocate. `key.id(host)` pins its namespaced name, if available, without
+/// copying the text. A key stays valid until the game exits.
 // no wire: the manual scalar codec validates host slots.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 // exhaustive: incoming scalar slots are checked against the host's registry

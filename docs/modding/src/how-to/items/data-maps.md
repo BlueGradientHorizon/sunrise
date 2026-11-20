@@ -173,8 +173,8 @@ key across reload receives an error without panicking the server.
 
 Game events use `GameEventKey`, resolved with `host.game_event_key("minecraft:step")`
 after startup registry completion. The key is load-owned and survives world data
-reloads. `key.id(host)` returns the exact namespaced name or `GameEventKeyError`;
-unknown slots return `InvalidKey` rather than panicking. A `DataMap` whose `Entry`
+reloads. `key.id(host)` returns a pinned [`RegistryName`](../../concepts/registry-keys.md#pinned-registry-names)
+or `GameEventKeyError`; unknown slots return `InvalidKey` rather than panicking. A `DataMap` whose `Entry`
 is `GameEventKey` reads `minecraft:game_event`, including
 `neoforge:vibration_frequencies` (canonical NBT compound with an `Int` `frequency` field). Missing values return
 `Ok(None)`; clients and reads before data installation return
