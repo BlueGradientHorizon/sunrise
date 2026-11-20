@@ -253,4 +253,15 @@ impl Game<'_> {
         self.move_remote_text_display(id, position, rotation);
         self.turn_remote_projectile(id, rotation);
     }
+    /// `handleMoveVehicle`'s `getInterpolation().cancel()` for the mount this
+    /// client drives.
+    pub(in crate::game) fn cancel_driven_mount_interpolation(&mut self, id: u32) {
+        if let Some(h) = self
+            .remote
+            .as_mut()
+            .and_then(|r| r.stepped.get_mut(&(id as i32)))
+        {
+            h.cancel();
+        }
+    }
 }

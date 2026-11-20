@@ -242,7 +242,7 @@ pub(super) struct Lerp {
 /// `SteppedInterpolationHandler.doInterpolate`'s `setPos` and `setRot` on a
 /// mob: its yaw kept continuous (the same turn as vanilla's, without the
 /// wrap that would spin it in the frame between ticks), its pitch clamped.
-fn place_interpolated(m: &mut Mob, at: PosRot) {
+pub(super) fn place_interpolated(m: &mut Mob, at: PosRot) {
     m.position = Vec3::new(at.position[0], at.position[1], at.position[2]);
     m.yaw += wrap_degrees(at.yaw - m.yaw);
     m.head_pitch = (at.pitch % 360.0).clamp(-90.0, 90.0);
@@ -315,17 +315,6 @@ impl Game<'_> {
             Some((at.yaw, at.pitch)),
         ) {
             place_interpolated(m, to);
-        }
-    }
-    /// `handleMoveVehicle`'s `getInterpolation().cancel()` for the mount this
-    /// client drives.
-    pub(super) fn cancel_driven_mount_interpolation(&mut self, id: u32) {
-        if let Some(h) = self
-            .remote
-            .as_mut()
-            .and_then(|r| r.stepped.get_mut(&(id as i32)))
-        {
-            h.cancel();
         }
     }
 }
@@ -1389,166 +1378,6 @@ impl Game<'_> {
             self.reset_creative_contents();
             self.refresh_creative_search_tags();
         }
-    }
-
-    /// Switch to a (possibly new) dimension: a fresh client level.
-    pub(in crate::game) fn enter_remote_dimension(
-        &mut self,
-        spawn: &play::SpawnInfo,
-        keep_world: bool,
-        reason: sunrise_client::level_loading::Reason,
-    ) {
-        // Every level has the sea level its server says (`CommonPlayerSpawnInfo.seaLevel`): the
-        // table may still hold a local world's (a superflat Overworld's).
-        if let Ok(key) = sunrise_core::LevelKey::parse(&spawn.dimension) {
-            sunrise_world::level::register_sea_level(key, spawn.sea_level);
-        }
-        self.track_remote_levels(&spawn.dimension);
-        // The replacement player starts with its inventory menu, even if the
-        // server switched levels without closing the previous container.
-        self.remote_close_local();
-        self.set_screen(Screen::Playing);
-        let Some(r) = self.remote.as_ref() else {
-            return;
-        };
-        // handleRespawn keeps the ClientLevel only for the same level key:
-        // two levels sharing a dimension type are still two levels.
-        let same = keep_world && r.heard_level.as_deref() == Some(spawn.dimension.as_str());
-        let transition_screen = sunrise_client_render::dimension_transition::select(
-            mod_api::__private::dimension_key(&spawn.dimension),
-            r.heard_level
-                .as_deref()
-                .map(mod_api::__private::dimension_key),
-        );
-        if !same {
-            self.forget_all_remote_columns();
-        }
-        let r = self.remote.as_mut().unwrap();
-        // A Sunrise server's bulk edit sends whole columns with the light
-        // from before its relight; any other server's packet light is final.
-        let relight_resent = r.quiet_commands;
-        let format = r.level_format(spawn);
-        let (dimension, shape) = (format.dimension, format.shape);
-        r.chunk_format = format.chunk_format;
-        r.level_facts = format.facts;
-        r.synced_type = format.synced_type;
-        r.dimension = dimension;
-        r.resolve_clocks();
-        self.world.day_time = r.clock_time(r.default_clock);
-        r.level = spawn.dimension.clone();
-        r.level_key = mod_api::__private::dimension_key(&spawn.dimension);
-        r.hashed_seed = spawn.seed;
-        r.game_mode = spawn.game_type;
-        r.flat = spawn.flat;
-        r.loaded_sent = false;
-        // A replacement LevelLoadingScreen starts its bar from nothing (the
-        // first one carries on from the server's start).
-        if self.player.is_some() {
-            self.loading_progress = 0.0;
-        }
-        // startWaitingForNewLevel: `LevelLoadTracker.startClientLoad` and the
-        // `LevelLoadingScreen`.
-        r.level_load.start_client_load(client_millis(), reason);
-        r.level_load.set_transition_screen(transition_screen);
-        // A replacement LocalPlayer has a fresh ambient mood and sendPosition baseline.
-        self.ambience.moodiness = 0.0;
-        r.position_sender = Default::default();
-        r.predictions.clear();
-        self.set_mode_id(spawn.game_type);
-        self.dim = Dim::from_id(&spawn.dimension);
-        self.build_level_environments();
-        self.audio.set_world(&spawn.dimension);
-        // ClientPacketListener.handleLogin / handleRespawn: the server's
-        // Player.getLastDeathLocation, for the recovery compass.
-        self.level.last_death = spawn
-            .last_death
-            .as_ref()
-            .map(|d| (d.dimension.clone(), d.pos));
-        if !same {
-            self.clock.reset_client_level_tick_state();
-            // A new ClientLevel: Minecraft.setLevel stops every sound.
-            self.stop_sounds_for_new_level();
-            let mut streaming = Streaming::new(
-                Arc::new(NoTerrain),
-                self.worker_context(),
-                self.res.threads(),
-            );
-            streaming.remote = true;
-            streaming.radius = self.streaming.radius;
-            self.streaming = streaming;
-            let (time, day, weather) = (
-                self.world.game_time,
-                self.world.day_time,
-                self.world.weather,
-            );
-            self.reset_client_world(spawn.seed);
-            // Entity IDs belong to this ClientLevel, not the connection. A
-            // same-level respawn keeps it; a replacement invalidates handles.
-            self.native_lifecycle_open_started();
-            self.native_lifecycle_world_ready();
-            self.world.shape = shape;
-            self.world.game_time = time;
-            self.world.day_time = day;
-            self.world.weather = weather;
-            self.mobs.clear();
-            self.clear_remote_objects();
-            self.clear_remote_projectiles();
-            self.dropped.clear();
-            self.clear_client_particles();
-            if let Some(r) = self.remote.as_mut() {
-                r.entities.clear();
-                r.passenger_vehicles.clear();
-                r.lerps.clear();
-                r.general.clear();
-                r.cart_lerps.clear();
-                r.stepped.clear();
-                r.head_lerps.clear();
-                r.pending_items.clear();
-                // The entity ids are the old world's; the new dimension's
-                // player entities re-map to their profiles on AddEntity.
-                r.level_players.clear();
-                r.level_player_names.clear();
-                r.level_player_textures.clear();
-                // A new ClientLevel: a new chunk storage, centred on 0, 0.
-                r.chunk_center = (0, 0);
-            }
-            self.clear_lod();
-            self.pending_uploads.clear();
-            if let Some(renderer) = self.renderer.as_mut() {
-                renderer.clear_sections(self.world.layout());
-            }
-            // The new ClientLevel is told before setLevel drops the old one.
-            let old = self
-                .remote
-                .as_mut()
-                .and_then(|r| r.heard_level.replace(spawn.dimension.clone()));
-            self.native_client_level_load(&spawn.dimension);
-            if let Some(old) = old {
-                self.native_client_level_unload(&old);
-            }
-        }
-        self.streaming.relight_resent = relight_resent;
-        let has_sky = self
-            .remote
-            .as_ref()
-            .is_none_or(|r| r.dimension.has_skylight);
-        self.streaming.sky_light = has_sky;
-        self.streaming.nether_shading = self.nether_lighting();
-        // The seed in SpawnInfo is already the hashed one the client's BiomeManager holds.
-        self.streaming.biome_zoom = sunrise_core::biome::BiomeZoom::new(spawn.seed);
-        let player = self.player.as_ref();
-        self.particles
-            .detach_tracking_target(TrackingTarget::LocalPlayer, || {
-                player.map(player_tracking_body)
-            });
-        self.drop_remote_player();
-        // handleLogin / handleRespawn: LocalPlayer.setPortalCooldown, so a
-        // player who arrives standing in a portal gets no overlay from it.
-        self.portals.player.cooldown = spawn.portal_cooldown;
-        if let Some(profile) = self.remote.as_ref().map(|remote| remote.profile) {
-            self.initialize_entity(Holder::Player(profile), "minecraft:player");
-        }
-        self.finish_remote_level();
     }
 
     /// `ClientChunkCache.Storage.inRange`: within the storage around the
@@ -2872,343 +2701,6 @@ impl Game<'_> {
         }
     }
 
-    /// `LocalPlayer.tick`'s `Player.tick` work: input, riding, motion and
-    /// sleep, and the input `sendChanges` sends for it (`None`: nothing ticked).
-    fn tick_local_player(
-        &mut self,
-        entity_collisions: Vec<sunrise_core::geometry::Aabb>,
-        sprint_window: i32,
-    ) -> Result<Option<u8>> {
-        // Player.tick's ItemCooldowns.tick, after Pre and after
-        // handleKeybinds: this path replaces `tick_world`'s for a server's
-        // client (multiplayer and the default single player), so the entries
-        // advance here or the slot stays shaded until the server says the
-        // entry ended. `onCooldownEnded` is the plain ItemCooldowns' no-op on
-        // a client. Ticking it after the keybinds keeps a held use from
-        // trying again a tick before the server's entry ends.
-        self.cooldowns.tick();
-        // Player.tick's sleep counter (the darkening and the wake-up fade).
-        self.sleep_timer = super::tick_sleep_timer(self.sleep_timer, self.sleeping.is_some());
-        if self.player.is_none() {
-            return Ok(None);
-        }
-        // The LevelLoadingScreen takes the input until the level is ready.
-        let loading = self
-            .remote
-            .as_ref()
-            .is_some_and(|r| r.level_load.is_active());
-        let playing = self.screen == Screen::Playing && !loading && !self.dialog_open();
-        let stick = self.pad_move();
-        let mut keys = if playing {
-            self.sample_movement_keys(stick)
-        } else {
-            Keys::default()
-        };
-        // On a server (not this game's own server thread), the stick moves as the keys it sets do
-        // (`KeyboardInput.tick`: 8 directions, full speed). The server only hears those keys
-        // (`ServerboundPlayerInputPacket`), and an anticheat that predicts from them pulls back
-        // a player moving at the stick's own angle and speed.
-        if self.integrated.is_none() && self.server_address().is_some() {
-            keys.analog = None;
-        }
-        let keys = self.mod_movement_keys(keys);
-        let input = u8::from(keys.forward)
-            | u8::from(keys.backward) << 1
-            | u8::from(keys.left) << 2
-            | u8::from(keys.right) << 3
-            | u8::from(keys.jump) << 4
-            | u8::from(keys.shift) << 5
-            | u8::from(keys.sprint) << 6;
-        // LocalPlayer.applyInput and aiStep: watching through another
-        // entity, the player does not move itself; its keys still reach the
-        // server, whose sneak check lets go of the camera.
-        let keys = if self.controls_camera() {
-            keys
-        } else {
-            Keys::default()
-        };
-        // The held lead's end eases from the look at the start of the tick
-        // (`yRotO`/`xRotO`), as the local tick does; `tick` returns before it
-        // reaches its own write when this window is a server client.
-        self.rope_rot_old = (self.yaw, self.pitch);
-        // Entity.rideTick: the vehicle ticks first, then its rider, which moves itself
-        // from where it sat before (`rider_tick`, in the riding branch below, once its
-        // look and the vehicle's fluid shelter are this tick's); positionRider then puts
-        // it on the new seat and changes nothing else.
-        let old_seat = self
-            .riding
-            .filter(|_| self.screen != Screen::Dead)
-            .and_then(|_| self.player.as_ref().map(|p| p.position));
-        let riding = self.screen != Screen::Dead && self.remote_ride(keys, sprint_window)?;
-        // LocalPlayer.isShiftKeyDown is the input's sneak, riding or not: the tick after a
-        // dismount crouches (a passenger never does) on the sneak held to get off.
-        if riding && let Some(p) = self.player.as_mut() {
-            p.shift_key_down = keys.shift;
-        }
-        // The server sends no passenger's position: they sit where their
-        // vehicles are now.
-        self.position_riders();
-        // Entity.getFluidInteractionBox asks the vehicle: a boat afloat shelters
-        // its passenger's eyes (AbstractBoat.modifyPassengerFluidInteractionBox).
-        let boat = self
-            .riding
-            .and_then(|id| self.boats.iter().find(|b| b.id == id))
-            .map(|b| sunrise_client::motion::RiddenBoat {
-                under_water: b.under_water(),
-                max_y: b.bounds().max_position().y,
-            });
-        let Some(player) = self.player.as_mut() else {
-            return Ok(None);
-        };
-        player.fluids.boat = boat;
-        if !riding && !self.replay.playing() {
-            self.previous_position = player.position;
-        }
-        let before = (
-            player.ground.on_ground,
-            [player.velocity.x, player.velocity.y, player.velocity.z],
-            [player.position.x, player.position.y, player.position.z],
-        );
-        let was_flying = player.flying;
-        self.sync_player_body();
-        // LivingEntity.tickDeath: the local player counts its deathTime once
-        // per client tick while dead (the camera's death roll and zoom).
-        if self.screen == Screen::Dead {
-            self.ui.death_time = self.ui.death_time.saturating_add(1);
-        }
-        let sleeping = self.sleeping;
-        if let Some(at) = sleeping.and_then(|head| self.sleeping_position(head))
-            && let Some(player) = self.player.as_mut()
-        {
-            let from = std::mem::replace(&mut player.position, at);
-            if from != at
-                && let Ok(id) = u32::try_from(self.own_entity_id())
-            {
-                self.remote_entity_section_step(id, from, at);
-            }
-        }
-        let walks = self.can_move_local_player();
-        let section_scope = self.player_section_scope();
-        let Some(player) = self.player.as_mut() else {
-            return Ok(None);
-        };
-        let was_gliding = player.fall_flying;
-        let dead = self.screen == Screen::Dead;
-        // LivingEntity.isImmobile: a sleeper lies still, even if its bed's
-        // shape is unavailable here; only the server decides when to wake.
-        if sleeping.is_some() {
-            player.velocity = Vec3::ZERO;
-            player.pitch = 0.0;
-        } else if walks {
-            let side = game_side!(self);
-            let _sections = section_scope.map(|scope| scope.begin(&mut self.native_lifecycle));
-            player.client_side = true;
-            // LivingEntity.checkAutoSpinAttack: a Riptide spin that touches a
-            // mob ends and bounces back; the server deals the hit.
-            player.spin_targets.clear();
-            if player.auto_spin_attack_ticks > 0 {
-                player.spin_targets.extend(
-                    self.mobs
-                        .iter()
-                        .filter(|m| !m.removed)
-                        .map(|m| (m.id, m.bounds())),
-                );
-            }
-            MotionWorld {
-                side: &side,
-                entities: &entity_collisions,
-                player,
-                scene: &mut self.world,
-                assets: &self.pack.assets,
-                collision_binding: self.collision,
-                resources: self.motion,
-                health: &self.health_resources,
-                loop_context: &self.loop_context,
-                damage_hooks: &self.damage_hooks,
-                tag_items: None,
-                block_registries: None,
-            }
-            .controlled_simulation_tick_with_sprint_window(keys, sprint_window)?;
-        } else {
-            // LivingEntity.baseTick counts hurtTime down for a dead or riding
-            // player too (controlled_simulation_tick does it otherwise): left
-            // at 10, the hurt tilt restarted every frame and shook the camera.
-            player.health.advance_clock();
-            if riding && !dead {
-                let side = game_side!(self);
-                let _sections = section_scope.map(|scope| scope.begin(&mut self.native_lifecycle));
-                player.client_side = true;
-                let mut passenger = MotionWorld {
-                    side: &side,
-                    entities: &entity_collisions,
-                    player: &mut *player,
-                    scene: &mut self.world,
-                    assets: &self.pack.assets,
-                    collision_binding: self.collision,
-                    resources: self.motion,
-                    health: &self.health_resources,
-                    loop_context: &self.loop_context,
-                    damage_hooks: &self.damage_hooks,
-                    tag_items: None,
-                    block_registries: None,
-                };
-                // The rider moves from its old seat; the new one is its place after.
-                let seat = passenger.player.position;
-                if let Some(from) = old_seat {
-                    passenger.player.position = from;
-                }
-                passenger.rider_tick(keys.direction())?;
-                sunrise_world::entity_move::EntityMoveWorld::set_position(&mut passenger, seat)?;
-                // LivingEntity.aiStep: a passenger freezes in powder snow too, and the
-                // frostbite overlay shows it (#8156).
-                passenger.passenger_block_effects_tick()?;
-            }
-        }
-        // The server decides fire the window cannot predict (blaze fireballs,
-        // fire aspect, lightning): Entity.isOnFire reads the synched flag, so
-        // the predicted tick's countdown must not end it while it is set.
-        if !player.mod_fire_immune {
-            player.fire_ticks = hold_server_fire(
-                player.fire_ticks,
-                self.remote.as_ref().is_some_and(|r| r.own_on_fire),
-            );
-        }
-        // LocalPlayer.onUpdateAbilities: flight turned on or off (a double
-        // jump, a spectator, landing) is sent to the server.
-        let flying = player.flying;
-        // LocalPlayer.aiStep: a glide this client started is sent to the
-        // server (ServerboundPlayerCommandPacket START_FALL_FLYING).
-        let started_gliding = player.fall_flying && !was_gliding;
-        let events = std::mem::take(&mut player.events);
-        self.previous_eye = self.eye;
-        self.eye += (player.dimensions.eye_height - self.eye) * 0.5;
-        for event in events {
-            match event {
-                sunrise_client::motion::MotionEvent::Emission {
-                    position,
-                    state,
-                    muffled,
-                } => {
-                    let at = [position.x, position.y, position.z];
-                    let sounds = self.own_sound_type(at, state, mod_api::BlockSoundCause::Step);
-                    // Player.playStepSound: muffled under the swim sound in water.
-                    let (volume, pitch) = if muffled {
-                        (sounds.volume * 0.05, sounds.pitch * 0.8)
-                    } else {
-                        (sounds.volume * 0.15, sounds.pitch)
-                    };
-                    self.play_client_player_sound(&sounds.step, volume, pitch);
-                }
-                sunrise_client::motion::MotionEvent::Swim { volume, pitch } => {
-                    self.play_client_player_sound("minecraft:entity.player.swim", volume, pitch);
-                }
-                // Entity.doWaterSplashEffect on the client's own level: the
-                // server's splash skips this player (Player.playSound), and
-                // its particles are the client's own.
-                sunrise_client::motion::MotionEvent::Splash {
-                    high_speed,
-                    volume,
-                    pitch,
-                } => {
-                    let name = if high_speed {
-                        "minecraft:entity.player.splash.high_speed"
-                    } else {
-                        "minecraft:entity.player.splash"
-                    };
-                    self.play_client_player_sound(name, volume, pitch);
-                }
-                sunrise_client::motion::MotionEvent::SplashParticle {
-                    bubble,
-                    position,
-                    velocity,
-                } => {
-                    use sunrise_client::particles::{ParticleOptions, ParticleType};
-                    let kind = if bubble {
-                        ParticleType::Bubble
-                    } else {
-                        ParticleType::Splash
-                    };
-                    self.particles.add(
-                        &ParticleOptions::simple(kind),
-                        [position.x, position.y, position.z],
-                        [velocity.x, velocity.y, velocity.z],
-                    );
-                }
-                sunrise_client::motion::MotionEvent::Chime { volume, pitch } => {
-                    self.play_client_player_sound(
-                        "minecraft:block.amethyst_block.chime",
-                        volume,
-                        pitch,
-                    );
-                }
-                // NetherPortalBlock.entityInside on the client's own level:
-                // the portal overlay and its trigger sound (the server moves
-                // the player).
-                sunrise_client::motion::MotionEvent::PowderSnowMelt { pos } => {
-                    self.powder_snow_melt(pos);
-                }
-                sunrise_client::motion::MotionEvent::InsidePortal { .. } => {
-                    self.client_inside_nether_portal();
-                }
-                // HoneyBlock.maybeDoSlideEffects on the client's own level:
-                // the slide sound, heard here (LocalPlayer.playSound); the
-                // particles come from the server's event 53.
-                sunrise_client::motion::MotionEvent::HoneySlide { sound: true, .. } => {
-                    self.play_client_player_sound("minecraft:block.honey_block.slide", 1.0, 1.0);
-                }
-                // LivingEntity.causeFallDamage and HoneyBlock.fallOn on the
-                // client's own level: the fall and honey sounds are heard here
-                // (LocalPlayer.playSound); the server's copy skips this player
-                // (Player.playSound).
-                sunrise_client::motion::MotionEvent::Fall(event) => self.block_fall(event),
-                _ => {}
-            }
-        }
-        // A stand riding the player follows this move (tickPassenger).
-        self.seat_own_stands();
-        // Other players on this player (possibly through a plugin seat) follow this tick too;
-        // the full pass only when something rides this player.
-        if self
-            .remote
-            .as_ref()
-            .is_some_and(|r| r.has_passengers(r.entity_id as u32))
-        {
-            self.position_riders();
-        }
-        // The server owns health and hunger.
-        self.apply_remote_health();
-        self.tick_avatar(before, false);
-        // LivingEntity.tick: a sleeper's xRot is 0.
-        if sleeping.is_some() {
-            self.pitch = 0.0;
-            self.snap_player_model_pitch();
-        }
-        // The player's own model (third person, the inventory's preview).
-        if !self.replay.playing() {
-            self.tick_player_model();
-        }
-        if !dead {
-            self.remote_tick_using();
-        }
-        if flying != was_flying {
-            self.send(S::PlayerAbilities(play::PlayerAbilitiesRequest {
-                flags: if flying { 2 } else { 0 },
-            }));
-        }
-        if started_gliding {
-            let id = self.remote.as_ref().map_or(0, |r| r.entity_id);
-            self.send(S::PlayerCommand(play::PlayerCommand {
-                id,
-                action: 6,
-                data: 0,
-            }));
-        }
-        // LocalPlayer.sendChanges sends `input.keyPresses`, which an auto-jump's `makeJump` set to
-        // jump for this tick: the jump key goes as held in the tick the client jumps.
-        let auto_jumped = self.player.as_ref().is_some_and(|p| p.was_auto_jump);
-        Ok(Some(input | u8::from(auto_jumped) << 4))
-    }
-
     /// The last `ClientboundPlayerAbilities` the server sent, on a client.
     pub(super) fn remote_abilities(&self) -> Option<&play::PlayerAbilities> {
         self.remote.as_ref()?.abilities.as_ref()
@@ -3868,120 +3360,6 @@ impl Game<'_> {
 
     // remote_use_hands: remote/use.rs
 
-    /// `LivingEntity.updatingUsingItem` on a server client: an item held in
-    /// use (`held_until_released`), and a consumable's eating animation and
-    /// its crumbs until the server's USE_ITEM_COMPLETE. The server sends the
-    /// stack, its hunger and the sounds.
-    fn remote_tick_using(&mut self) {
-        let Some((slot, ticks)) = self.using else {
-            // A mod's use the game reset (the server stopping the use...).
-            self.end_mod_use();
-            return;
-        };
-        let stack = self.stack_in(slot).cloned();
-        // The use stops when the hand no longer holds the item it began with
-        // (ItemStack.isSameItem).
-        let item = stack.as_ref().map(|s| Arc::clone(&s.item));
-        if let Some(r) = self.remote.as_mut() {
-            if ticks == 0 {
-                r.use_item = item;
-            } else if r.use_item != item {
-                self.using = None;
-                self.end_mod_use();
-                return;
-            }
-        }
-        // Another hotbar slot picked: LivingEntity.updatingUsingItem sees a
-        // different stack in the hand. The off hand keeps its item.
-        let in_hand = slot == self.selected || slot == super::shield::OFFHAND_SLOT;
-        // A mod's item: held until the button lets go, counted for the mod.
-        if self.mod_use_tick(slot, ticks, !self.right || !in_hand) {
-            return;
-        }
-        // A client cancel skips this tick's effects; the countdown and release continue.
-        if let Some(s) = stack.as_ref().filter(|_| in_hand)
-            && !self.use_item_ticked(s, ticks)
-        {
-            self.using = Some((slot, ticks.saturating_add(1)));
-            return;
-        }
-        // BrushItem.onUseTick: with no block aimed the use ends (the server
-        // ends it too); a stroke shows its dust. Its sounds are the server's.
-        if stack
-            .as_ref()
-            .is_some_and(|s| &*s.item == "minecraft:brush")
-        {
-            let elapsed = 201i32.wrapping_sub(ticks_left(self.use_duration, ticks));
-            let hit = self.pick().filter(|_| in_hand);
-            if let Some(hit) = &hit
-                && elapsed % 10 == 5
-            {
-                self.brush_dust(hit, slot == super::shield::OFFHAND_SLOT);
-            }
-            if hit.is_none() && in_hand {
-                self.send_action(6);
-            }
-            self.using = hit.and(Some((slot, ticks + 1)));
-            return;
-        }
-        // A bundle's 200-tick use ends with the server's entity event 9, not here.
-        if stack
-            .as_ref()
-            .is_some_and(|s| self.items().get(&s.item).is_some_and(|i| i.bundle))
-        {
-            self.using = in_hand.then_some((slot, ticks + 1));
-            return;
-        }
-        // A drawn bow, a charging crossbow, a raised shield...: held until
-        // the button lets go.
-        if let Some(s) = stack.as_ref().filter(|s| self.held_until_released(s)) {
-            if in_hand && (self.mod_use(s) || self.blocks_attacks(s).is_some()) {
-                self.item_on_use_tick(s, ticks);
-            }
-            self.using = in_hand.then_some((slot, ticks + 1));
-            return;
-        }
-        // A goat horn is held up for its instrument's use duration.
-        if stack
-            .as_ref()
-            .is_some_and(|s| self.res.items().instrument(s).is_some())
-        {
-            self.using = in_hand.then_some((slot, ticks + 1));
-            return;
-        }
-        let consumable = stack.as_ref().and_then(|s| self.consumable(s));
-        let (Some(stack), Some(consumable)) = (stack, consumable) else {
-            self.using = None;
-            return;
-        };
-        // Button release belongs to the next handleKeybinds phase, which
-        // sends RELEASE_USE_ITEM. Do not silently clear a use begun by a
-        // quick press/release between ticks.
-        if !in_hand {
-            self.using = None;
-            return;
-        }
-        // Consumable.startConsuming eats one with no use time at once, without
-        // a use (nor a USE_ITEM_COMPLETE).
-        if consumable.ticks() <= 0 {
-            self.using = None;
-            return;
-        }
-        // Consumable.shouldEmitParticlesAndSounds, as in tick_used_item. The
-        // countdown goes on past zero (LivingEntity.updateUsingItem completes
-        // only on the server) until the server's USE_ITEM_COMPLETE.
-        // getUseItemRemainingTicks: the duration this use started with.
-        let remaining = self.use_duration - ticks as i32;
-        if remaining > 0 && consumable.should_emit(remaining) {
-            // `emit_consume` plays the eat sound and spawns the bites (when the
-            // item has consume particles), as `tick_used_item` does on the
-            // player's own server.
-            self.emit_consume(&consumable, &stack, 5);
-        }
-        self.item_on_use_tick(&stack, ticks);
-        self.using = Some((slot, ticks + 1));
-    }
-
     // remote_complete_using: remote/use.rs
     pub(super) fn request_remote_mining_stop(&mut self) {
         if let Some(r) = self.remote.as_mut() {
@@ -4385,20 +3763,6 @@ impl Game<'_> {
             .collect()
     }
 
-    /// `ClientClockManager.tick`: the clock moves on by the game time that
-    /// passed since its last tick, at its rate. A game time the server sets
-    /// forward (its sync every second) moves the clock with it.
-    fn remote_clock_tick(&mut self) {
-        let Some(r) = self.remote.as_mut() else {
-            return;
-        };
-        let delta = self.world.game_time - r.clock_game_time;
-        r.clock_game_time = self.world.game_time;
-        for clock in r.clocks.values_mut() {
-            let _ = client_level_tick::advance_clock(clock, delta);
-        }
-        self.world.day_time = r.clock_time(r.default_clock);
-    }
     // remote_status: remote/status.rs
 }
 
@@ -4422,7 +3786,7 @@ fn position_packet_pitch(source: f32, change: f32, relative: bool) -> f32 {
 }
 
 /// `Mth.wrapDegrees`.
-fn wrap_degrees(a: f32) -> f32 {
+pub(super) fn wrap_degrees(a: f32) -> f32 {
     let a = a % 360.0;
     if a >= 180.0 {
         a - 360.0
@@ -4436,7 +3800,7 @@ fn wrap_degrees(a: f32) -> f32 {
 /// `LivingEntity.tick`'s body target and `tickHeadTurn` for another player:
 /// the body turns toward where it walks (backwards when walking back), or to
 /// the look while the arm swings, and stays within 50 degrees of the look.
-fn remote_player_head_turn(m: &mut Mob) {
+pub(super) fn remote_player_head_turn(m: &mut Mob) {
     let (dx, dz) = (m.position.x - m.previous.x, m.position.z - m.previous.z);
     let mut target = m.body_yaw;
     if (dx * dx + dz * dz) as f32 > 0.002_500_000_2 {
@@ -4514,7 +3878,7 @@ fn named_hand_operated(name: &str) -> bool {
 }
 
 /// `InteractionHand` on the wire.
-fn hand_id(hand: Hand) -> i32 {
+pub(super) fn hand_id(hand: Hand) -> i32 {
     match hand {
         Hand::Main => 0,
         Hand::Off => 1,
@@ -4524,7 +3888,7 @@ fn hand_id(hand: Hand) -> i32 {
 /// Whether `Item.use` of `info` ends `Minecraft.startUseItem`'s click, so the
 /// off hand gets no turn. `FireworkRocketItem.use` answers SUCCESS while the
 /// player glides (the rocket boosts them) and PASS otherwise.
-fn use_ends_click(info: &sunrise_client::items::ItemInfo, fall_flying: bool) -> bool {
+pub(super) fn use_ends_click(info: &sunrise_client::items::ItemInfo, fall_flying: bool) -> bool {
     item_has_use(info) || (fall_flying && &*info.id == "minecraft:firework_rocket")
 }
 
@@ -4534,7 +3898,7 @@ fn use_ends_click(info: &sunrise_client::items::ItemInfo, fall_flying: bool) -> 
 /// spear starting its charge, `ItemUtils.startUsingInstantly`'s food, drink,
 /// spyglass, shield and goat horn, and the ender eye's SUCCESS_SERVER (the
 /// server's swing source, not this client's).
-fn remote_use_swings(held: &ItemStack, consumable: bool) -> bool {
+pub(super) fn remote_use_swings(held: &ItemStack, consumable: bool) -> bool {
     let id = &*held.item;
     !matches!(
         id,
@@ -4621,7 +3985,7 @@ pub(super) fn item_has_use(info: &sunrise_client::items::ItemInfo) -> bool {
 
 /// The view distance a client asks for: its render distance, which Sunrise
 /// lets go past vanilla's 32 (a vanilla server still caps it at its own).
-fn client_view_distance(render_distance: i32) -> i8 {
+pub(super) fn client_view_distance(render_distance: i32) -> i8 {
     render_distance.clamp(2, i32::from(i8::MAX)) as i8
 }
 
@@ -4991,7 +4355,7 @@ impl Remote {
         })
     }
     /// The kind and last sent position of a tracked server entity.
-    pub(super) fn tracked(&self, id: i32) -> Option<(&str, [f64; 3])> {
+    pub(in crate::game) fn tracked(&self, id: i32) -> Option<(&str, [f64; 3])> {
         self.entities.get(&id).map(|t| (&*t.kind, t.position))
     }
 }
@@ -5047,7 +4411,7 @@ fn snapshot_value(s: &play::AttributeSnapshot) -> f64 {
 }
 
 /// `Util.getMillis` for the level load tracker's timeouts.
-fn client_millis() -> u64 {
+pub(super) fn client_millis() -> u64 {
     static ORIGIN: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
     ORIGIN
         .get_or_init(std::time::Instant::now)
@@ -5065,7 +4429,7 @@ fn chat_after_event(message: &str, ask: impl FnOnce(&mut String, &mut bool)) -> 
 }
 /// `Entity.isOnFire` for the window's player: while the server's flag is set
 /// the predicted tick's countdown never takes `fire_ticks` below 1.
-fn hold_server_fire(fire_ticks: i32, server_on_fire: bool) -> i32 {
+pub(super) fn hold_server_fire(fire_ticks: i32, server_on_fire: bool) -> i32 {
     if server_on_fire {
         fire_ticks.max(1)
     } else {
@@ -5903,7 +5267,7 @@ mod item_use_tick_tests;
 mod movement_input_tests;
 /// `Entity.baseTick`'s fluid update for a mob this window only displays (`fluids`, sampled before
 /// the tick), with the splash it draws, and the block it stands on.
-fn client_fluid_step(
+pub(super) fn client_fluid_step(
     m: &mut sunrise_client::mobs::Mob,
     fluids: Option<sunrise_client::mobs::living::Fluids>,
     standing: Option<String>,
