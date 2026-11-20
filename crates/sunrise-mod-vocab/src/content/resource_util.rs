@@ -423,8 +423,9 @@ pub fn is_valid<R>(
     (0..handler.size(host)).any(|index| handler.is_valid(host, index, resource))
 }
 
-/// Vanilla's container comparator signal: average the fill of all indices, counting an empty
-/// index as zero and an overfilled index as full, then map onto 0..=15.
+/// The vanilla container comparator scale (0..=15), using all indices as the denominator.
+/// Empty and zero-capacity indices contribute 0; each overfilled index contributes at most 1.
+/// With no indices the signal is 0.
 pub fn comparator_signal<R>(host: &mut dyn ServerHost, handler: &dyn ResourceHandler<R>) -> u8 {
     let size = handler.size(host);
     if size == 0 {

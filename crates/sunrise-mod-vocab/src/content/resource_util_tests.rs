@@ -169,6 +169,7 @@ fn the_comparator_reads_0_when_empty_15_when_full_and_vanillas_steps_between() {
     let mut fake = FakeHost::new();
     let host: &mut dyn ServerHost = &mut fake;
     let signal = |host: &mut dyn ServerHost, held| comparator_signal(host, &Tanks::new(held));
+    assert_eq!(signal(&mut *host, vec![]), 0);
     assert_eq!(signal(&mut *host, vec![None, None]), 0);
     assert_eq!(
         signal(
@@ -186,6 +187,19 @@ fn the_comparator_reads_0_when_empty_15_when_full_and_vanillas_steps_between() {
         signal(host, vec![Some((HYDROGEN, u32::MAX)), Some((HYDROGEN, 50))]),
         11
     );
+}
+
+#[test]
+fn the_comparator_counts_an_occupied_zero_capacity_index_as_zero_fill() {
+    let (mut fake, r) = items_host(&["minecraft:stone"]);
+    chest(&mut fake, A, &[Some((&r[0], 64))]);
+    chest(&mut fake, B, &[Some((&r[0], 1))]);
+    fake.level.block_entity(B).items.as_mut().unwrap().limit = 0;
+    let full = items_at(&mut fake, A);
+    let zero_capacity = items_at(&mut fake, B);
+    let host: &mut dyn ServerHost = &mut fake;
+    let tanks = CombinedResourceHandler::new(host, vec![Box::new(full), Box::new(zero_capacity)]);
+    assert_eq!(comparator_signal(host, &tanks), 8);
 }
 
 /// A handler of `size` indices each holding `u32::MAX` of hydrogen in a capacity of 1: amounts
