@@ -304,6 +304,9 @@ mod clone_block_ticks_tests;
 mod clone_dimensions_tests;
 #[path = "game/entities/closest_space.rs"]
 mod closest_space;
+#[cfg(test)]
+#[path = "game/interface/cloud_height_frame_tests.rs"]
+mod cloud_height_frame_tests;
 #[path = "game/interface/code_of_conduct.rs"]
 mod code_of_conduct;
 #[path = "game/entities/collision_source.rs"]
@@ -622,6 +625,9 @@ mod glowing;
 mod golem_defense_tests;
 #[path = "game/mobs/golems.rs"]
 mod golems;
+#[cfg(test)]
+#[path = "game/modding/grindstone_decisions_tests.rs"]
+mod grindstone_decisions_tests;
 #[path = "game/blocks/growth.rs"]
 mod growth;
 #[path = "game/modding/gui_clips.rs"]
