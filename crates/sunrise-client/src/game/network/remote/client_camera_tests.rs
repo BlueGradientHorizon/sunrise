@@ -122,3 +122,86 @@ fn client_camera_entity_returns_to_player_after_removal() {
         assert_eq!(fresh.position(game), None);
     });
 }
+
+#[test]
+#[ignore = "daily"]
+fn a_named_mob_the_server_camera_is_attached_to_shows_no_name_tag() {
+    let witness: serde_json::Value =
+        serde_json::from_str(include_str!("witness/26.3/name_tag_camera.json")).unwrap();
+    let shown = |camera_is_entity: bool| {
+        witness["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|c| c["camera_is_entity"] == camera_is_entity)
+            .unwrap()["name"]
+            .as_bool()
+            .unwrap()
+    };
+    with_client_game(|game| {
+        game.native_lifecycle = NativeLifecycle::default();
+        let (client, _server) = Pipe::pair();
+        game.connect_local(client, "NameCameraTest").unwrap();
+        let spawn = SpawnInfo {
+            dimension_type: 0,
+            dimension: "minecraft:overworld".into(),
+            seed: 0,
+            game_type: 3,
+            previous_game_type: None,
+            debug: false,
+            flat: true,
+            last_death: None,
+            portal_cooldown: 0,
+            sea_level: 63,
+        };
+        game.enter_remote_dimension(&spawn, false, Reason::Other);
+        let remote = game.remote.as_mut().unwrap();
+        remote.logged_in = true;
+        remote.entity_id = 7;
+        game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
+        let creeper = game
+            .remote
+            .as_ref()
+            .unwrap()
+            .builtin
+            .get("minecraft:entity_type")
+            .unwrap()
+            .id("minecraft:creeper")
+            .unwrap();
+        for (id, x, name) in [(31, 10.0, "Attached"), (32, 12.0, "Other")] {
+            game.handle_packet(C::AddEntity(play::AddEntity {
+                id,
+                uuid: id as u128,
+                kind: creeper,
+                position: [x, 64.0, 12.0],
+                velocity: [0.0; 3],
+                pitch: 0,
+                yaw: 0,
+                head_yaw: 0,
+                data: 0,
+            }))
+            .unwrap();
+            let at = game.mobs.iter().position(|m| m.id == id as u32).unwrap();
+            game.mobs[at].custom_name = Some(name.into());
+            game.mobs[at].name_visible = true;
+        }
+        let eye = glam::DVec3::new(11.0, 65.0, 10.0);
+        let mut expected = Vec::new();
+        if shown(true) {
+            expected.push("Attached".to_owned());
+        }
+        if shown(false) {
+            expected.push("Other".to_owned());
+        }
+        expected.sort();
+        let tags = |game: &Game<'_>| {
+            let mut names = game.shown_name_tags(eye);
+            names.sort();
+            names
+        };
+        assert_eq!(tags(game), vec!["Attached".to_owned(), "Other".to_owned()]);
+        game.remote_set_camera(31);
+        assert!(game.hides_as_camera(31), "first person from the creeper");
+        assert_eq!(tags(game), expected);
+    });
+}

@@ -1,0 +1,14 @@
+{
+ "minecraft": "26.3",
+ "how": "tools/oracle_harness-style run of mods/sunrise/src/test/java/dev/sunriselab/parity/VanillaTeamRulesOracle.java (real LivingEntityRenderer.shouldShowName on a Zombie-derived mob, real Camera.entity); inputs: no teams, visible, not discrete/vehicle, distance 5, hud shown; case 0 camera is another entity, case 1 camera is the mob; compile+run as in tools/test_team_rules_parity.py, 2026-11-20",
+ "cases": [
+  {
+   "camera_is_entity": false,
+   "name": true
+  },
+  {
+   "camera_is_entity": true,
+   "name": false
+  }
+ ]
+}
