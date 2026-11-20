@@ -134,6 +134,9 @@ static HUMANOID_POSE_KEYS: LazyLock<[Option<u64>; HumanoidPart::ALL.len()]> = La
 #[derive(Clone, Copy)]
 struct PoseEntry {
     pose: [f32; 9],
+    /// Animation's `ModelPart.visible` is independent of the draw-local bit.
+    base_hidden: bool,
+    frame_hidden: bool,
 }
 
 /// Part poses for one draw, keyed by part name.
@@ -143,10 +146,13 @@ pub struct Poses {
     dummy: [f32; 9],
     /// Parts with `skipDraw` set: their own cubes are not drawn, children are.
     skipped: FxHashSet<u64>,
-    /// Parts with `visible` cleared: neither they nor their children draw.
-    hidden: FxHashSet<u64>,
-    /// Names this content: a fresh number at each change, kept by copies
-    /// ([`Poses::version`]).
+    /// Number of parts with `visible` cleared by animation.
+    base_hidden_count: usize,
+    /// Frame-hidden entries that animation hasn't already hidden.
+    frame_hidden_count: usize,
+    /// Apply frame edits when drawing the body and the layers on its own model.
+    apply_frame_visibility: bool,
+    /// Names the draw state, kept by copies ([`Poses::version`]).
     version: u64,
 }
 /// The next [`Poses::version`].
@@ -197,10 +203,10 @@ impl Poses {
                 .unwrap_or_default(),
         )
     }
-    /// Names the content: two `Poses` with the same version pose every part
-    /// alike (one is a copy of the other, neither changed since). A draw of
-    /// the same model under the same matrix with the same version can reuse
-    /// the first's part matrices (`skin::Skin::draw`).
+    /// Names the draw state: two `Poses` with the same version pose every part
+    /// alike and have the same effective visibility. A draw of the same model
+    /// under the same matrix with the same version can reuse the first's part
+    /// matrices and jobs (`skin::Skin::draw`).
     pub fn version(&self) -> u64 {
         self.version
     }
@@ -212,16 +218,21 @@ impl Poses {
         self.map.clone_from(&other.map);
         self.dummy = other.dummy;
         self.skipped.clone_from(&other.skipped);
-        self.hidden.clone_from(&other.hidden);
+        self.base_hidden_count = other.base_hidden_count;
+        self.frame_hidden_count = other.frame_hidden_count;
+        self.apply_frame_visibility = other.apply_frame_visibility;
         self.version = other.version;
     }
-    /// Refills this for another model, keeping the map and the sets' capacity:
+    /// Refills this for another model, keeping the map and set capacity:
     /// a mob draws its body and every equipment layer each frame.
     pub fn reset(&mut self, model: &Part) {
         fn walk(p: &Part, map: &mut FxHashMap<u64, PoseEntry>) {
             // ModelPart.createPartLookup fills its map with putIfAbsent: the first part keeps a name.
-            map.entry(key(&p.name))
-                .or_insert(PoseEntry { pose: p.pose });
+            map.entry(key(&p.name)).or_insert(PoseEntry {
+                pose: p.pose,
+                base_hidden: false,
+                frame_hidden: false,
+            });
             for c in &p.children {
                 walk(c, map);
             }
@@ -229,7 +240,9 @@ impl Poses {
         self.map.clear();
         self.dummy = [0.0; 9];
         self.skipped.clear();
-        self.hidden.clear();
+        self.base_hidden_count = 0;
+        self.frame_hidden_count = 0;
+        self.apply_frame_visibility = false;
         walk(model, &mut self.map);
         self.changed();
     }
@@ -301,26 +314,76 @@ impl Poses {
     pub fn zrot(&mut self, n: &str, v: f32) {
         self.get(n)[5] = v;
     }
-    /// `ModelPart.visible = v`; a hidden part and its children do not draw.
-    pub fn visible(&mut self, n: &str, v: bool) {
-        let changed = if v {
-            self.hidden.remove(&key(n))
-        } else {
-            self.map.contains_key(&key(n)) && self.hidden.insert(key(n))
+    /// Set `ModelPart.visible`; animation changes the base visibility, not the frame override.
+    pub fn visible(&mut self, name: &str, visible: bool) {
+        let Some(entry) = self.map.get_mut(&key(name)) else {
+            return;
         };
-        if changed {
+        let hidden = !visible;
+        if entry.base_hidden == hidden {
+            return;
+        }
+        entry.base_hidden = hidden;
+        let frame_hidden = usize::from(entry.frame_hidden);
+        if hidden {
+            self.base_hidden_count += 1;
+            self.frame_hidden_count -= frame_hidden;
+        } else {
+            self.base_hidden_count -= 1;
+            self.frame_hidden_count += frame_hidden;
+        }
+        if !self.apply_frame_visibility || !entry.frame_hidden {
             self.changed();
         }
     }
-    pub fn is_hidden(&self, part: &Part) -> bool {
-        self.is_hidden_named(&part.name)
-    }
-    /// `is_hidden` by the part's name.
+    /// Base visibility for animation, without the draw-local overlay.
     pub fn is_hidden_named(&self, name: &str) -> bool {
-        !self.hidden.is_empty() && self.is_hidden_by_key(key(name))
+        self.base_hidden_count != 0
+            && self
+                .map
+                .get(&key(name))
+                .is_some_and(|entry| entry.base_hidden)
+    }
+    /// Edit the draw-local visibility for a part's baked animation key.
+    pub(super) fn set_frame_hidden(&mut self, key: u64, hidden: bool) {
+        let Some(entry) = self.map.get_mut(&key) else {
+            return;
+        };
+        if entry.frame_hidden == hidden {
+            return;
+        }
+        entry.frame_hidden = hidden;
+        if !entry.base_hidden {
+            if hidden {
+                self.frame_hidden_count += 1;
+            } else {
+                self.frame_hidden_count -= 1;
+            }
+            if self.apply_frame_visibility {
+                self.changed();
+            }
+        }
+    }
+    /// Select whether the next draw sees the frame override or only the animated visibility.
+    pub(super) fn apply_frame_visibility(&mut self, apply: bool) {
+        if self.apply_frame_visibility != apply {
+            self.apply_frame_visibility = apply;
+            if self.frame_hidden_count != 0 {
+                self.changed();
+            }
+        }
+    }
+    /// Effective visibility for drawing; an inactive overlay costs no part lookup.
+    pub fn is_hidden(&self, part: &Part) -> bool {
+        self.has_hidden_parts() && self.is_hidden_by_key(key(&part.name))
+    }
+    pub(super) fn has_hidden_parts(&self) -> bool {
+        self.base_hidden_count != 0 || self.apply_frame_visibility && self.frame_hidden_count != 0
     }
     pub(super) fn is_hidden_by_key(&self, key: u64) -> bool {
-        self.hidden.contains(&key)
+        self.map.get(&key).is_some_and(|entry| {
+            entry.base_hidden || self.apply_frame_visibility && entry.frame_hidden
+        })
     }
 }
 

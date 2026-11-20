@@ -1,9 +1,47 @@
-//! Immutable hierarchy and pose keys for the render model selected for a draw.
+//! A draw's selected body, baked hierarchy, and captured pose.
 
-use super::super::{MobType, Part, anim};
+use super::{Atlas, body, cem_key, cem_texture};
 use crate::fast_hash::FxHashMap;
+use crate::mobs::{Mob, MobData, MobType, Part, anim, cem};
 use mod_api::{FrameModel, FrameModelPart};
-use std::sync::Arc;
+use std::{borrow::Cow, sync::Arc};
+
+/// The exact body selected for one draw, borrowing the mob and an owned pack snapshot.
+/// A caller can keep this selection across Pre without holding the pack's read lock.
+pub(super) struct FrameBody<'a> {
+    model_key: Cow<'static, str>,
+    pub(super) model: &'a Arc<Part>,
+    pub(super) custom: Option<&'a cem::CemLayer>,
+    pub(super) texture: Cow<'a, str>,
+}
+
+impl<'a> FrameBody<'a> {
+    pub(super) fn select(mob: &'a Mob, cem: &'a cem::CemModels, atlas: Atlas<'_>) -> Self {
+        let (model_key, texture) = body(mob);
+        let custom = cem.layer(cem_key(&model_key));
+        let model = custom
+            .map(|layer| &layer.model)
+            .unwrap_or_else(|| mob.kind.layer(&model_key).unwrap_or(&mob.kind.model));
+        let texture = cem_texture(custom, &texture, atlas).map_or(texture, Cow::Borrowed);
+        Self {
+            model_key,
+            model,
+            custom,
+            texture,
+        }
+    }
+
+    /// Both names of the body, so overlays on it don't take the `.jem` texture.
+    pub(super) fn keys(&self) -> [&str; 2] {
+        [&self.model_key, cem_key(&self.model_key)]
+    }
+
+    pub(super) fn layout(&self, data: &'a MobData) -> Option<&'a Arc<BakedFrameModel>> {
+        self.custom
+            .map(|layer| &layer.frame_model)
+            .or_else(|| data.frame_models.get(self.model))
+    }
+}
 
 /// One part of a baked frame model. Links are indices into that model's nodes.
 pub struct BakedFrameNode {
@@ -96,7 +134,7 @@ impl BakedFrameModels {
 }
 
 /// The exact body poses kept alive for layer and Post callbacks. Dropping this returns the
-/// poses to the render thread's pool. The shared layout also outlives the CEM read guard.
+/// poses to the render thread's pool. The shared layout also outlives the pack snapshot.
 pub struct FrameModelPose {
     pub(super) layout: Arc<BakedFrameModel>,
     pub(super) poses: anim::PooledPoses,
@@ -104,7 +142,7 @@ pub struct FrameModelPose {
 
 impl FrameModelPose {
     fn view<'a>(&'a self, index: usize, node: &'a BakedFrameNode) -> FrameModelPart<'a> {
-        let mut ancestor = Some(node);
+        let mut ancestor = self.poses.has_hidden_parts().then_some(node);
         let mut visible = true;
         while let Some(current) = ancestor {
             if self.poses.is_hidden_by_key(current.anim_key) {
