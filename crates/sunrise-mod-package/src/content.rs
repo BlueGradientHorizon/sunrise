@@ -62,9 +62,6 @@ pub fn check_path(name: &str) -> Result<(), String> {
 /// The single resource location NeoForge's `RecipePriorityManager` reads in pack order.
 pub const RECIPE_PRIORITIES_PATH: &str = "data/neoforge/recipe_priorities.json";
 
-/// Exact paths shared by all packages because their loader merges the layers.
-const MERGED_RESOURCE_PATHS: &[&str] = &[RECIPE_PRIORITIES_PATH];
-
 /// The shared resource namespace fence for folders and native archives.
 pub(crate) fn check_namespace(name: &str, manifest: &Manifest) -> Result<(), String> {
     let mut parts = name.splitn(3, '/');
@@ -110,7 +107,7 @@ pub(crate) fn check_namespace(name: &str, manifest: &Manifest) -> Result<(), Str
         || (top == "data" && shared && rest.starts_with("tags/"))
         || atlas
         || extension
-        || MERGED_RESOURCE_PATHS.contains(&name);
+        || name == RECIPE_PRIORITIES_PATH;
     if !allowed {
         return Err(format!(
             "{name}: a mod adds files in its own namespaces ({top}/{id}/ and those listed in namespaces), to vanilla and convention (c) tags, to vanilla's atlases, or to declared shared resource paths"
