@@ -265,7 +265,7 @@ fn build_tag(root: JsonInput<'_>, parent_depth: usize) -> Result<Tag, JsonNbtErr
 
 fn validate_tag(root: &Tag) -> Result<(), JsonNbtError> {
     let valid_string = |s: &JavaString| {
-        if char::decode_utf16(s.units().iter().copied()).any(|c| c.is_err()) {
+        if char::decode_utf16(s.0.iter().copied()).any(|c| c.is_err()) {
             Err(JsonNbtError::InvalidString)
         } else {
             Ok(())
@@ -490,19 +490,14 @@ mod tests {
                 panic!("compound")
             };
             assert_eq!(
-                root.keys()
-                    .map(|key| key.units().to_vec())
-                    .collect::<Vec<_>>(),
+                root.keys().map(|key| key.0.clone()).collect::<Vec<_>>(),
                 [vec![66, 66], vec![65, 97]],
             );
             let Some(Tag::Compound(nested)) = root.get(&"BB".into()) else {
                 panic!("compound")
             };
             assert_eq!(
-                nested
-                    .keys()
-                    .map(|key| key.units().to_vec())
-                    .collect::<Vec<_>>(),
+                nested.keys().map(|key| key.0.clone()).collect::<Vec<_>>(),
                 [vec![66, 66], vec![65, 97]],
             );
             assert_eq!(nested.get(&"BB".into()), Some(&Tag::Byte(1)));
@@ -688,13 +683,13 @@ mod tests {
             assert_eq!(tag_to_json(&source), Err(JsonNbtError::NonFinite));
         }
         for source in [
-            Tag::String(JavaString::from(vec![0xd800])),
-            Tag::String(JavaString::from(vec![0xdc00])),
-            Tag::Compound([(JavaString::from(vec![0xdbff]), Tag::Byte(1))].into()),
+            Tag::String(JavaString(vec![0xd800])),
+            Tag::String(JavaString(vec![0xdc00])),
+            Tag::Compound([(JavaString(vec![0xdbff]), Tag::Byte(1))].into()),
         ] {
             assert_eq!(tag_to_json(&source), Err(JsonNbtError::InvalidString));
         }
-        let pair = JavaString::from(vec![0xd83d, 0xde00]);
+        let pair = JavaString(vec![0xd83d, 0xde00]);
         assert_eq!(
             tag_to_json(&Tag::String(pair.clone())).unwrap(),
             json!("😀")

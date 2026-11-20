@@ -36,10 +36,7 @@ fn checked_records_have_declared_field_bytes() {
         ReloadResourceError::from((id("example:bad"), "broken".to_owned())),
         (id("example:bad"), "broken".to_owned()),
     );
-    fields(
-        JavaString::from(vec![65, 0xd800, 90]),
-        (vec![65u16, 0xd800, 90],),
-    );
+    fields(JavaString(vec![65, 0xd800, 90]), (vec![65u16, 0xd800, 90],));
     let mut nbt = Compound::new();
     nbt.insert("answer".into(), Tag::Int(42));
     fields(Components::from(nbt.clone()), (nbt.clone(),));
@@ -667,8 +664,8 @@ fn remaining_enum_payload_fields_keep_tags_and_widths() {
     fields(Tag::Double((-3.75f64).to_bits()), (6u32, -3.75f64));
     fields(Tag::ByteArray(vec![255, 2, 3]), (7u32, vec![255u8, 2, 3]));
     fields(
-        Tag::String(JavaString::from(vec![65, 0xd800])),
-        (8u32, JavaString::from(vec![65, 0xd800])),
+        Tag::String(JavaString(vec![65, 0xd800])),
+        (8u32, JavaString(vec![65, 0xd800])),
     );
     fields(Tag::List(vec![Tag::Int(17)]), (9u32, vec![Tag::Int(17)]));
     fields(Tag::Compound(Compound::new()), (10u32, Compound::new()));

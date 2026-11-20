@@ -112,7 +112,7 @@ fn fix_sign_text(t: &mut Tag) {
     }
     let filtered = stream(t.get("filtered_messages"));
     let lines = stream(t.get("messages"));
-    let empty = Tag::String(sunrise_core::nbt::JavaString::from(
+    let empty = Tag::String(sunrise_core::nbt::JavaString(
         json::text_component_json(&[]),
     ));
     let new: Vec<Tag> = filtered
@@ -961,7 +961,7 @@ pub(super) fn translation_key(component: &Tag) -> Option<String> {
     let Tag::String(s) = component else {
         return None;
     };
-    match json::parse_lenient(s.units())? {
+    match json::parse_lenient(&s.0)? {
         j @ json::Json::Obj(_) => match j.get("translate")? {
             json::Json::Str(k) => Some(String::from_utf16_lossy(k)),
             json::Json::Num(n) => Some(n.clone()),

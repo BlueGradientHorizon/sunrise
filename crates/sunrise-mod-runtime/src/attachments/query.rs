@@ -409,10 +409,7 @@ mod tests {
     #[test]
     fn unpaired_surrogate_lookup_preserves_stored_units() {
         let mut index = AttachmentIndex::default();
-        let key = (
-            sunrise_core::nbt::JavaString::from(vec![0xd800]),
-            "name".into(),
-        );
+        let key = (sunrise_core::nbt::JavaString(vec![0xd800]), "name".into());
         index
             .register(1u32, [(key.clone(), entry(42u32))])
             .into_result();

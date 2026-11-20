@@ -102,9 +102,7 @@ fn axolotl_variant_recipe_codec_matches_exact_names_without_candidate_allocation
                 Tag::List(vec![]),
                 Tag::Compound(Default::default()),
                 Tag::Int(if name == "lucy" { 0 } else { 1 }),
-                Tag::String(sunrise_core::nbt::JavaString::from(vec![
-                    114, 101, 100, 0xd800,
-                ])),
+                Tag::String(sunrise_core::nbt::JavaString(vec![114, 101, 100, 0xd800])),
             ] {
                 stack
                     .data_mut()
@@ -288,7 +286,7 @@ fn axolotl_variant_boundary_refusals_refuse_whole_load() {
         Tag::Double(0.0_f64.to_bits()),
         Tag::List(vec![]),
         Tag::Compound(Default::default()),
-        Tag::String(sunrise_core::nbt::JavaString::from(vec![0xd800])),
+        Tag::String(sunrise_core::nbt::JavaString(vec![0xd800])),
     ] {
         let rule = IngredientRule::Components {
             patch: [(ID.into(), value)].into_iter().collect(),

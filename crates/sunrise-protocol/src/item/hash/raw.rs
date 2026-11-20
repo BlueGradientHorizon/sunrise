@@ -80,7 +80,7 @@ fn typed_data_with<O: Ops>(registry: &str, names: &dyn Names, r: &mut Reader) ->
     tag.remove(&"id".into());
     let mut entries = Vec::with_capacity(tag.len() + 1);
     for (k, v) in &tag {
-        entries.push((O::create_string_units(k.units()), O::from_nbt(v, &[])?));
+        entries.push((O::create_string_units(&k.0), O::from_nbt(v, &[])?));
     }
     entries.push((string_with::<O>("id"), id));
     Some(O::create_map(entries))

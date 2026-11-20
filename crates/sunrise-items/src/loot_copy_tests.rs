@@ -317,7 +317,7 @@ fn copy_custom_data_runs_the_same_ordered_nbt_operations_in_both_evaluators() {
     let opaque = Tag::Compound(
         [
             (
-                sunrise_core::nbt::JavaString::from(vec![0xd800]),
+                sunrise_core::nbt::JavaString(vec![0xd800]),
                 Tag::LongArray(vec![i64::MIN, i64::MAX]),
             ),
             ("bytes".into(), Tag::ByteArray(vec![0, 255])),
