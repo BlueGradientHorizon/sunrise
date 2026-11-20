@@ -315,40 +315,38 @@ pub enum MenuContainer {
     Grid,
     /// A crafting grid's result slot.
     Result,
-    /// The player's inventory, which an ask can be about but the context does not copy
-    /// ([`MenuSlotContext::slot`] reads nothing there).
+    /// The player's inventory. A rule can be asked about one of its slots, but
+    /// [`MenuSlotContext::slot`] does not read them.
     Player,
 }
-/// Who and where a `menu_slot_rules` ask is about: the menu's player, its block entity and
-/// its own containers' slots. The game fills it the same way on the server and on the client's
-/// prediction, once per click plan; mods read it.
-#[derive(Clone, Debug, Default, PartialEq)]
+/// The menu's player, its block entity and a read-only view of its staged slots for one
+/// `menu_slot_rules` ask, on either the server or the predicting client. Read only the slots
+/// needed to answer the rule; the view cannot outlive the ask.
+// no wire: this view borrows the click planner's staged slots.
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
-pub struct MenuSlotContext {
+pub struct MenuSlotContext<'a> {
     /// The UUID of the player whose menu it is; None where no player is known.
     pub player: Option<u128>,
     /// The block entity the menu belongs to; None when the menu is not a block's
     /// (opened by a mod with no block, a vehicle's, the player's own inventory).
     pub pos: Option<[i32; 3]>,
-    /// The menu's own containers' slots as they stand when the click plans, read only (not
-    /// the player's inventory): one entry per [`MenuContainer`] in its order (`Main`, `Grid`,
-    /// `Result`), each in that container's slot order. Read one with [`Self::slot`].
-    pub slots: Vec<Vec<Option<ItemStack>>>,
+    read: &'a dyn Fn(MenuContainer, usize) -> Option<ItemStack>,
 }
-impl MenuSlotContext {
-    /// A context of `player`, the block entity at `pos` and the containers' `slots`, one entry
-    /// per [`MenuContainer`] in its order.
+impl<'a> MenuSlotContext<'a> {
+    /// Lend a read of the menu's staged slots, with the player and block position of this ask.
+    /// The reader returns `None` for empty, absent or unrepresentable slots, including every
+    /// player inventory slot.
     pub fn new(
         player: Option<u128>,
         pos: Option<[i32; 3]>,
-        slots: Vec<Vec<Option<ItemStack>>>,
+        read: &'a dyn Fn(MenuContainer, usize) -> Option<ItemStack>,
     ) -> Self {
-        Self { player, pos, slots }
+        Self { player, pos, read }
     }
-    /// What slot `index` of `container` holds, keyed as the ask names its own slot; None when
-    /// it is empty or the menu has no such slot.
-    pub fn slot(&self, container: MenuContainer, index: usize) -> Option<&ItemStack> {
-        self.slots.get(container as usize)?.get(index)?.as_ref()
+
+    /// Read one slot at its backing index, converting just that stack to an API value.
+    /// Returns `None` if it is empty, absent, cannot be represented, or belongs to `Player`.
+    pub fn slot(&self, container: MenuContainer, index: usize) -> Option<ItemStack> {
+        (self.read)(container, index)
     }
 }
