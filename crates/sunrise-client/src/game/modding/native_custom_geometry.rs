@@ -848,10 +848,11 @@ mod tests {
                 // Subtract world coordinates in f64: each fractional block survives.
                 assert_eq!(staged[0].instance.model[3], [0.25, 0.5, 0.75, 1.0]);
             }
+            // The mod's 65,536 copies: the glass group's 1, this group's 8, three of 16,384 and the rest.
             let sibling = game.create_group(model, 16_384).unwrap();
             let third = game.create_group(model, 16_384).unwrap();
             let fourth = game.create_group(model, 16_384).unwrap();
-            let fifth = game.create_group(model, 16_376).unwrap();
+            let fifth = game.create_group(model, 16_375).unwrap();
             assert_eq!(
                 game.create_group(model, 1),
                 Err(GroupError::CapacityExceeded)
