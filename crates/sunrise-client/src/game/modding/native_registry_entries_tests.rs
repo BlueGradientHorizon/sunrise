@@ -97,6 +97,10 @@ fn generic_entries_follow_real_server_tables_and_atomic_reload() {
         &pack.join("data/registry_entry_test/tags/worldgen/structure/towns.json"),
         r#"{"values":["minecraft:village_plains"]}"#,
     );
+    write(
+        &pack.join("data/registry_entry_test/tags/mob_effect/rejected.json"),
+        r#"{"values":["minecraft:speed","registry_entry_test:missing"]}"#,
+    );
     mod_platform::testing::with_mods(
         vec![ModEntry::new("registry_entry_test", Box::new(RegistryMod))].into(),
         || {
@@ -111,6 +115,13 @@ fn generic_entries_follow_real_server_tables_and_atomic_reload() {
                 );
                 assert_eq!(
                     host(game).registry_entry_in_tag(&step, "registry_entry_test:absent"),
+                    Some(false)
+                );
+                let speed = host(game)
+                    .registry_entry("minecraft:mob_effect", "minecraft:speed")
+                    .unwrap();
+                assert_eq!(
+                    host(game).registry_entry_in_tag(&speed, "registry_entry_test:rejected"),
                     Some(false)
                 );
                 assert_eq!(

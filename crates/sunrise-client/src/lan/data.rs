@@ -123,7 +123,7 @@ const PACK_REGISTRIES: &[&str] = &[
 #[path = "data_pack_registries.rs"]
 mod pack_registries;
 pub use pack_registries::PackRegistryDefinitions;
-use pack_registries::bind_dialog_tags;
+use pack_registries::bind_registry_tags;
 
 /// World overlays key definition files by `registry/id`.
 pub fn is_pack_registry_file(key: &str) -> bool {
@@ -1035,130 +1035,16 @@ impl SyncData {
         let Some(names) = Self::registry_names(builtin, dynamic, key) else {
             return;
         };
-        if key == "minecraft:dialog" {
-            let (bound, _) = bind_dialog_tags(root, overlay, |id| names.contains_key(id));
-            tags.registries.retain(|r| r.registry != key);
-            if !bound.is_empty() {
-                tags.registries.push(RegistryTags {
-                    registry: key.into(),
-                    tags: bound
-                        .into_iter()
-                        .map(|(name, members)| TagEntry {
-                            name,
-                            ids: members.iter().map(|id| names[id.as_str()]).collect(),
-                        })
-                        .collect(),
-                });
-            }
-            return;
-        }
-        let mut files: BTreeMap<String, Vec<Value>> = BTreeMap::new();
-        let mut own = BTreeMap::new();
-        walk(&root.join("tags").join(kind), &mut own, false);
-        for (name, value) in own {
-            Self::add_tag_values(files.entry(qualified(&name)).or_default(), &value);
-        }
-        for (id, packs) in overlay.tag_kind(kind) {
-            for bytes in packs {
-                if let Ok(value) = serde_json::from_slice::<Value>(bytes) {
-                    Self::add_tag_values(files.entry(id.clone()).or_default(), &value);
-                }
-            }
-        }
-        let mut entries = Vec::new();
-        for name in files.keys() {
-            let mut ids = Vec::new();
-            let mut seen = HashSet::new();
-            Self::expand_pack_tag(&files, name, &names, &mut ids, &mut seen);
-            entries.push(TagEntry {
-                name: name.clone(),
-                ids,
-            });
-        }
+        let (bound, _) = bind_registry_tags(root, overlay, kind, |id| names.get(id).copied());
         tags.registries.retain(|r| r.registry != key);
-        if !entries.is_empty() {
+        if !bound.is_empty() {
             tags.registries.push(RegistryTags {
                 registry: key.into(),
-                tags: entries,
+                tags: bound
+                    .into_iter()
+                    .map(|(name, ids)| TagEntry { name, ids })
+                    .collect(),
             });
-        }
-    }
-
-    /// A tag file's values, after `"replace": true` empties the earlier
-    /// ones. A `remove` list follows the values, and a `{"id", "remove":
-    /// true}` entry in `values` removes in order (`TagLoader.EntryWithSource`).
-    fn add_tag_values(entries: &mut Vec<Value>, json: &Value) {
-        if json["replace"].as_bool() == Some(true) {
-            entries.clear();
-        }
-        if let Some(values) = json["values"].as_array() {
-            entries.extend(values.iter().cloned());
-        }
-        if let Some(remove) = json["remove"].as_array() {
-            for r in remove {
-                let mut removal = r.clone();
-                if let Some(obj) = removal.as_object_mut() {
-                    obj.insert("remove".into(), Value::Bool(true));
-                } else {
-                    let id = r.as_str().map(str::to_owned).unwrap_or_default();
-                    removal = serde_json::json!({"id": id, "remove": true});
-                }
-                entries.push(removal);
-            }
-        }
-    }
-
-    /// A tag's entries as registry ids, nested tags expanded once.
-    fn expand_pack_tag(
-        files: &BTreeMap<String, Vec<Value>>,
-        tag: &str,
-        names: &HashMap<&str, i32>,
-        out: &mut Vec<i32>,
-        seen: &mut HashSet<String>,
-    ) {
-        fn resolve(
-            files: &BTreeMap<String, Vec<Value>>,
-            tag: &str,
-            names: &HashMap<&str, i32>,
-            active: &mut HashSet<String>,
-            cache: &mut BTreeMap<String, Vec<i32>>,
-        ) -> Vec<i32> {
-            if let Some(hit) = cache.get(tag) {
-                return hit.clone();
-            }
-            if !active.insert(tag.to_owned()) {
-                return Vec::new();
-            }
-            let mut out = Vec::new();
-            for value in files.get(tag).into_iter().flatten() {
-                let Some(id) = sunrise_world::tag_layers::entry_id(value) else {
-                    continue;
-                };
-                let removes = value["remove"].as_bool() == Some(true);
-                let members = match id.strip_prefix('#') {
-                    Some(reference) => resolve(files, &qualified(reference), names, active, cache),
-                    None => names
-                        .get(qualified(id).as_str())
-                        .copied()
-                        .into_iter()
-                        .collect(),
-                };
-                for member in members {
-                    if removes {
-                        out.retain(|kept| *kept != member);
-                    } else if !out.contains(&member) {
-                        out.push(member);
-                    }
-                }
-            }
-            active.remove(tag);
-            cache.insert(tag.to_owned(), out.clone());
-            out
-        }
-        for id in resolve(files, tag, names, seen, &mut BTreeMap::new()) {
-            if !out.contains(&id) {
-                out.push(id);
-            }
         }
     }
 
@@ -1493,21 +1379,63 @@ mod tests {
     }
 
     #[test]
+    fn pack_tags_reject_unresolved_required_entries() {
+        let root = tempfile::tempdir().unwrap();
+        let registry = "minecraft:mob_effect";
+        let builtin = Builtin {
+            registries: HashMap::from([(
+                registry.into(),
+                sunrise_protocol::registry::Ids::from_names(vec!["minecraft:speed".into()]),
+            )]),
+        };
+        let files = [
+            ("rejected", r#"{"values":["minecraft:speed","test:unknown"]}"#),
+            ("optional_id", r#"{"values":["minecraft:speed",{"id":"test:unknown","required":false}]}"#),
+            ("dependent", r##"{"values":["#test:rejected"]}"##),
+            ("missing_tag", r##"{"values":["minecraft:speed","#test:unknown"]}"##),
+            ("optional_tag", r##"{"values":["minecraft:speed",{"id":"#test:unknown","required":false}]}"##),
+            ("remove_child", r##"{"values":["#test:optional_id"],"remove":["#test:optional_id","#test:unknown"]}"##),
+        ]
+        .map(|(name, json)| (format!("tags/test:mob_effect/{name}"), vec![json.as_bytes().to_vec()]));
+        let mut tags = UpdateTags {
+            registries: Vec::new(),
+        };
+        for count in [files.len(), 1] {
+            SyncData::merge_registry_tags(
+                &mut tags,
+                root.path(),
+                &sunrise_world::loot::PackOverlay::new(&files[..count]),
+                &builtin,
+                &Dynamic::default(),
+                registry,
+                "mob_effect",
+            );
+            let mut received = Dynamic::default();
+            received.add_tags(&tags);
+            for missing in ["test:rejected", "test:dependent", "test:missing_tag"] {
+                assert_eq!(received.tag(registry, missing), None, "{missing}");
+            }
+            let loaded = count == files.len();
+            assert_eq!(tags.registries.len(), usize::from(loaded));
+            assert_eq!(
+                received.tag(registry, "test:optional_id"),
+                loaded.then_some(&[0][..])
+            );
+            assert_eq!(
+                received.tag(registry, "test:optional_tag"),
+                loaded.then_some(&[0][..])
+            );
+            assert_eq!(
+                received.tag(registry, "test:remove_child"),
+                loaded.then_some(&[][..])
+            );
+        }
+    }
+
+    #[test]
     fn included_child_can_be_removed_again() {
         let names = HashMap::from([("test:one", 1)]);
-        let files = BTreeMap::from([
-            (
-                "test:parent".into(),
-                vec![
-                    serde_json::json!("#test:child"),
-                    serde_json::json!({"id":"#test:child","remove":true}),
-                ],
-            ),
-            ("test:child".into(), vec![serde_json::json!("test:one")]),
-        ]);
         let mut out = Vec::new();
-        SyncData::expand_pack_tag(&files, "test:parent", &names, &mut out, &mut HashSet::new());
-        assert!(out.is_empty());
         let files = BTreeMap::from([
             (
                 "parent".into(),

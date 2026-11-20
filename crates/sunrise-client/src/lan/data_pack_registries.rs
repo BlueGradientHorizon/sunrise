@@ -340,6 +340,19 @@ pub(super) fn bind_dialog_tags(
     overlay: &PackOverlay<'_>,
     held: impl Fn(&str) -> bool,
 ) -> (BTreeMap<String, Vec<String>>, BTreeSet<String>) {
+    bind_registry_tags(root, overlay, "dialog", |id| {
+        held(id).then(|| id.to_owned())
+    })
+}
+
+/// Build the stacked tag files against the registry that will publish them.
+/// Only a successfully built tag can satisfy a nested reference.
+pub(super) fn bind_registry_tags<T: Clone + PartialEq>(
+    root: &Path,
+    overlay: &PackOverlay<'_>,
+    kind: &str,
+    lookup: impl Fn(&str) -> Option<T>,
+) -> (BTreeMap<String, Vec<T>>, BTreeSet<String>) {
     struct Member {
         id: String,
         tag: bool,
@@ -392,11 +405,11 @@ pub(super) fn bind_dialog_tags(
         }
     };
     let mut prepared = BTreeMap::new();
-    walk(&root.join("tags/dialog"), &mut prepared, false);
+    walk(&root.join("tags").join(kind), &mut prepared, false);
     for (id, value) in prepared {
         add_file(&id, value);
     }
-    for (id, packs) in overlay.tag_kind("dialog") {
+    for (id, packs) in overlay.tag_kind(kind) {
         for bytes in packs {
             if let Ok(value) = serde_json::from_slice(bytes) {
                 add_file(&id, value);
@@ -461,15 +474,15 @@ pub(super) fn bind_dialog_tags(
             let mut failed = false;
             let mut out = Vec::new();
             for entry in entries {
-                let members: Option<&[String]> = if entry.tag {
+                let value;
+                let members = if entry.tag {
                     bound.get(&entry.id).map(Vec::as_slice)
-                } else if held(&entry.id) {
-                    Some(std::slice::from_ref(&entry.id))
                 } else {
-                    if entry.required && !entry.remove {
+                    value = lookup(&entry.id);
+                    if value.is_none() && entry.required && !entry.remove {
                         unbound.insert(entry.id.clone());
                     }
-                    None
+                    value.as_ref().map(std::slice::from_ref)
                 };
                 if let Some(members) = members {
                     for id in members {
