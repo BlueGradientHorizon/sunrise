@@ -191,7 +191,7 @@ fn entity_draw_order_after_login_and_same_level_respawn() {
             sea_level: 63,
         };
         let mut snapshots = Vec::new();
-        for line in include_str!("../../../../../tools/fixtures/entity-draw-order.txt").lines() {
+        for line in include_str!("entity-draw-order.txt").lines() {
             let words: Vec<_> = line.split_whitespace().collect();
             let packet = match words.as_slice() {
                 ["login", id] => C::Login(play::Login {
