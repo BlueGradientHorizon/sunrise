@@ -323,7 +323,7 @@ fn export_here(root: &Path, options: ExportOptions) -> Result<Export, String> {
     let mut index = crate::index::game(root, &with_providers);
     let boundary = Boundary::read(root, &mut index)?;
     let engine = if options.with_points_and_loops || options.with_internals {
-        let point_types = point_types(&mut index)?;
+        let point_types = crate::build::point_types(root)?;
         Some(crate::source::with_walk_cache(|| {
             engine::collect(root, &point_types, options.with_internals)
         })?)
@@ -1588,36 +1588,4 @@ fn part_records(hooks: &[Hook], traits: &[Trait], notes: &mut Vec<String>) -> Ve
         ));
     }
     out
-}
-
-/// Owned API values usable in native point records. Require both a concrete owned
-/// layout and Clone, since a point can borrow the underlying argument.
-pub(crate) fn point_types(index: &mut Index<'_>) -> Result<BTreeSet<String>, String> {
-    index.add_crate("sunrise_mod_api", "crates/sunrise-mod-api/src");
-    let mut walker = walk::Walker::new(index);
-    let public = walker.public()?;
-    let mut modules = Vec::new();
-    for krate in API_CRATES {
-        if let Ok(found) = walker.all_modules(krate) {
-            modules.extend(found);
-        }
-    }
-    let forms = wire_forms::wire_forms(index, &modules);
-    let mut allowed = BTreeSet::new();
-    for (id, names) in public.paths {
-        let item = index.item(id);
-        let (attrs, generics) = match item {
-            Item::Struct(item) => (&item.attrs, &item.generics),
-            Item::Enum(item) => (&item.attrs, &item.generics),
-            _ => continue,
-        };
-        let derived = derives(attrs);
-        if generics.params.is_empty()
-            && derived.iter().any(|name| name == "Clone" || name == "Copy")
-            && (derived.iter().any(|name| name == "Wire") || forms.contains_key(&id))
-        {
-            allowed.extend(names.into_iter().map(|name| format!("mod_api::{name}")));
-        }
-    }
-    Ok(allowed)
 }

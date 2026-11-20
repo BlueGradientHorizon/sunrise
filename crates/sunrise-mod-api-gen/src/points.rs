@@ -19,7 +19,7 @@ use syn::{ImplItem, Item, Type};
 /// One point, as `points.json` lists it.
 #[derive(Debug, serde::Serialize)]
 pub struct GamePoint {
-    /// Why its API listeners are refused at registration, : the first
+    /// Why its API listeners are refused at registration: the first
     /// parameter with no API type, naming it. Absent when the point has an API record.
     pub api_refusal: Option<String>,
     pub name: String,
@@ -387,8 +387,8 @@ struct Scanned {
     package: Option<PathBuf>,
 }
 
-/// The `mod_api` types a record may hold ([`crate::build::wire_types`]), by path.
-pub type WireTypes = std::collections::BTreeSet<String>;
+/// The `mod_api` types a record may hold ([`crate::build::point_types`]), by path.
+pub type PointTypes = std::collections::BTreeSet<String>;
 
 /// Every file with points: the game module's, then each marked lower crate's that is not built
 /// under the points' own crate.
@@ -474,7 +474,7 @@ fn scan(root: &Path) -> Result<(Vec<Scanned>, Vec<(String, String)>), String> {
 
 impl Scanned {
     /// This file's points: all of a game-module file's, or the marked ones of a lower crate's.
-    fn points<'a>(&'a self, list: &[(String, String)], wire: &WireTypes) -> Vec<Found<'a>> {
+    fn points<'a>(&'a self, list: &[(String, String)], wire: &PointTypes) -> Vec<Found<'a>> {
         let mut out = Vec::new();
         let keep = |found: &Found<'_>| {
             // A staged copy also holds what the replacement pass wrote beside each function.
@@ -575,7 +575,7 @@ pub(crate) fn imports(items: &[Item], krate: &str) -> Vec<(String, String)> {
 fn mirrors(
     sig: &syn::Signature,
     imports: &[(String, String)],
-    wire: &WireTypes,
+    wire: &PointTypes,
     convert: bool,
 ) -> Vec<(String, String, bool)> {
     let mut found: Vec<(String, String, bool)> = Vec::new();
@@ -606,7 +606,7 @@ fn mirrors(
 
 /// The path `wire` lays out the `mod_api` type at `full` under: the same path, or the one type of
 /// that name re-exported elsewhere in `mod_api`.
-fn wire_type<'w>(wire: &'w WireTypes, full: &str) -> Option<&'w str> {
+fn wire_type<'w>(wire: &'w PointTypes, full: &str) -> Option<&'w str> {
     if !full.starts_with("mod_api::") {
         return None;
     }
@@ -627,7 +627,7 @@ fn wire_type<'w>(wire: &'w WireTypes, full: &str) -> Option<&'w str> {
 fn all_points<'a>(
     scanned: &'a [Scanned],
     list: &[(String, String)],
-    wire: &WireTypes,
+    wire: &PointTypes,
 ) -> Result<Vec<(usize, Found<'a>)>, String> {
     let mut points = Vec::new();
     for (index, file) in scanned.iter().enumerate() {
@@ -656,11 +656,11 @@ fn all_points<'a>(
 /// The game's points, by name: every point function of the game module, and the marked ones of
 /// the crates below it. Unmarked targets have no compiled slot.
 pub fn game_points(root: &Path) -> Result<Vec<GamePoint>, String> {
-    points_with(root, &crate::build::wire_types(root)?)
+    points_with(root, &crate::build::point_types(root)?)
 }
 
 /// [`game_points`] with the `mod_api` types a record may hold.
-pub(crate) fn points_with(root: &Path, wire: &WireTypes) -> Result<Vec<GamePoint>, String> {
+pub(crate) fn points_with(root: &Path, wire: &PointTypes) -> Result<Vec<GamePoint>, String> {
     let (scanned, list) = scan(root)?;
     let mut points = all_points(&scanned, &list, wire)?
         .into_iter()
@@ -724,18 +724,18 @@ pub struct Staged {
 /// place, and gives each lower crate with points the points' dependencies. Run on a copy, never
 /// on a working tree: the source tree carries no `#[point]`.
 pub fn stage(root: &Path) -> Result<Staged, String> {
-    stage_with(root, &crate::build::wire_types(root)?)
+    stage_with(root, &crate::build::point_types(root)?)
 }
 
 /// [`stage`] with the `mod_api` types a record may hold.
-pub(crate) fn stage_with(root: &Path, wire: &WireTypes) -> Result<Staged, String> {
+pub(crate) fn stage_with(root: &Path, wire: &PointTypes) -> Result<Staged, String> {
     stage_with_manifest(root, wire).map(|(staged, _)| staged)
 }
 
 /// Rewrite points and collect their unchanged API records from the same source scan.
 pub(crate) fn stage_with_manifest(
     root: &Path,
-    wire: &WireTypes,
+    wire: &PointTypes,
 ) -> Result<(Staged, Vec<GamePoint>), String> {
     let (scanned, list) = scan(root)?;
     let points = all_points(&scanned, &list, wire)?;
@@ -1097,7 +1097,7 @@ mod tests {
     #[ignore = "daily"]
     fn no_wire_public_values_refuse_before_point_record_emission() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let wire = crate::build::wire_types(&root).unwrap();
+        let wire = crate::build::point_types(&root).unwrap();
         for name in [
             "EnchantmentEffect",
             "RegistrationData",
@@ -1339,7 +1339,7 @@ name = 'sunrise-world'
 name = 'sunrise-mod-api-gen'
 ",
         );
-        let error = points_with(&root, &WireTypes::new()).unwrap_err();
+        let error = points_with(&root, &PointTypes::new()).unwrap_err();
         assert!(
             error.contains("sunrise_client::game::a::b_c")
                 && error.contains("sunrise_client::game::a_b::c")
@@ -1348,7 +1348,7 @@ name = 'sunrise-mod-api-gen'
         );
         // Without the second function the same tree is accepted.
         put("crates/sunrise-client/src/game/a_b.rs", "");
-        assert!(points_with(&root, &WireTypes::new()).is_ok());
+        assert!(points_with(&root, &PointTypes::new()).is_ok());
         std::fs::remove_dir_all(&root).unwrap();
     }
 
@@ -1378,17 +1378,17 @@ name = 'sunrise-mod-api-gen'
             "crates/sunrise-client/src/game.rs",
             "impl Game<'_> { fn connect_cancel(&self, (w, h): (f32, f32)) -> Option<(f32, f32)> { None } }",
         );
-        let before = points_with(&root, &WireTypes::new()).unwrap();
+        let before = points_with(&root, &PointTypes::new()).unwrap();
         assert!(before[0].api_refusal.is_some());
         let layout = records(&before);
-        let (_, combined) = stage_with_manifest(&root, &WireTypes::new()).unwrap();
+        let (_, combined) = stage_with_manifest(&root, &PointTypes::new()).unwrap();
         assert_eq!(
             serde_json::to_value(&before).unwrap(),
             serde_json::to_value(&combined).unwrap()
         );
         assert_eq!(layout, records(&combined));
         crate::replace::stage(&root).unwrap();
-        let after = points_with(&root, &WireTypes::new()).unwrap();
+        let after = points_with(&root, &PointTypes::new()).unwrap();
         assert_eq!(
             serde_json::to_value(&before).unwrap(),
             serde_json::to_value(&after).unwrap()
@@ -1526,7 +1526,7 @@ name = 'sunrise-mod-api-gen'
             "crates/sunrise-client-render/src/mesher.rs",
             "pub struct Mesher<'a>(&'a u8);\nimpl Mesher<'_> { #[sunrise_mod_api_macros::replaceable] pub fn mesh(&mut self, chunk: &Chunk) -> usize { 0 } fn face(&self) {} }\n",
         );
-        let points = points_with(&root, &WireTypes::new()).unwrap();
+        let points = points_with(&root, &PointTypes::new()).unwrap();
         let named: Vec<_> = points
             .iter()
             .map(|p| {
@@ -1610,8 +1610,8 @@ name = 'sunrise-mod-api-gen'
                 "the function has no point site: it takes no replacement (function type/const generics)"
             )
         );
-        let (staged, combined) = stage_with_manifest(&root, &WireTypes::new()).unwrap();
-        let after = points_with(&root, &WireTypes::new()).unwrap();
+        let (staged, combined) = stage_with_manifest(&root, &PointTypes::new()).unwrap();
+        let after = points_with(&root, &PointTypes::new()).unwrap();
         // Compare every manifest field and the nonserialized API layout, not just counts.
         for actual in [&combined, &after] {
             assert_eq!(
@@ -1669,7 +1669,7 @@ name = 'sunrise-mod-api-gen'
         assert!(!lock.contains(" \"sunrise-mod-points\","), "{lock}");
         // A second pass finds the attribute and refuses: the source tree never carries one.
         assert!(
-            stage_with(&root, &WireTypes::new())
+            stage_with(&root, &PointTypes::new())
                 .unwrap_err()
                 .contains("already has")
         );
