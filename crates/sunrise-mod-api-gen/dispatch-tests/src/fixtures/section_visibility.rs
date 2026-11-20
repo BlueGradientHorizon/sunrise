@@ -9,20 +9,19 @@ mod stubs {
 }
 
 /// The generated dispatch of `section_visibility` lends each listening mod the same raw input and
-/// an empty batch of its own, and names that mod on the answer it pushed, in mod order; a mod that
-/// pushes nothing leaves no entry.
+/// a single return slot, and names that mod on the answer it returned, in mod order.
 #[test]
 fn each_section_visibility_answer_names_the_mod_that_gave_it() {
     struct Answers(Option<fn() -> SectionVisibility>);
     #[mod_api::__subscriptions]
     impl Hooks for Answers {
-        fn section_visibility(&self, _: &dyn ClientHost, event: &mut SectionVisibilityEvent<'_>) {
+        fn section_visibility(
+            &self,
+            _: &dyn ClientHost,
+            event: &mut SectionVisibilityEvent<'_>,
+        ) -> Option<SectionVisibility> {
             assert_eq!(*event.input, SectionVisibilityInput([16, -64, 32]));
-            assert!(
-                event.answers.is_empty(),
-                "each mod starts from its own batch"
-            );
-            event.answers.extend(self.0.map(|answer| answer()));
+            self.0.map(|answer| answer())
         }
     }
     install(
@@ -45,7 +44,7 @@ fn each_section_visibility_answer_names_the_mod_that_gave_it() {
         &TestHost,
         calls::SectionVisibilityCall {
             input: &input,
-            answers: &mut answers,
+            answers: &mut |answer| answers.push(answer),
         },
     );
     assert_eq!(
@@ -63,8 +62,8 @@ fn each_section_visibility_answer_names_the_mod_that_gave_it() {
     );
 }
 
-/// A listener that unwinds loses its own batch and is skipped by the hook for the session; the
-/// listeners around it still answer, in this dispatch and the next (isolated collector).
+/// A panicking listener delivers no answer, even if its payload also panics when dropped.
+/// The listeners around it still answer, in this dispatch and the next.
 #[test]
 fn a_section_visibility_listener_that_unwinds_loses_only_its_own_answer() {
     struct Answers {
@@ -72,14 +71,28 @@ fn a_section_visibility_listener_that_unwinds_loses_only_its_own_answer() {
         unwinds: bool,
         asked: Arc<Mutex<u32>>,
     }
+    struct PanicOnDrop;
+    impl Drop for PanicOnDrop {
+        fn drop(&mut self) {
+            panic!("the fixture's payload unwinds on drop");
+        }
+    }
     #[mod_api::__subscriptions]
     impl Hooks for Answers {
-        fn section_visibility(&self, _: &dyn ClientHost, event: &mut SectionVisibilityEvent<'_>) {
+        fn section_visibility(
+            &self,
+            _: &dyn ClientHost,
+            event: &mut SectionVisibilityEvent<'_>,
+        ) -> Option<SectionVisibility> {
+            static OTHER: SectionVisibilityInput = SectionVisibilityInput([32, 16, 0]);
+            assert_eq!(*event.input, SectionVisibilityInput([0, 0, 0]));
             *self.asked.lock().unwrap() += 1;
-            event.answers.extend(self.answer.map(|answer| answer()));
+            let answer = self.answer.map(|answer| answer());
             if self.unwinds {
-                panic!("the fixture's listener unwinds");
+                event.input = &OTHER;
+                std::panic::panic_any(PanicOnDrop);
             }
+            answer
         }
     }
     let asked = Arc::new(Mutex::new(0));
@@ -129,7 +142,7 @@ fn a_section_visibility_listener_that_unwinds_loses_only_its_own_answer() {
             &TestHost,
             calls::SectionVisibilityCall {
                 input: &input,
-                answers: &mut answers,
+                answers: &mut |answer| answers.push(answer),
             },
         );
         assert_eq!(answers, healthy, "dispatch {dispatch}");

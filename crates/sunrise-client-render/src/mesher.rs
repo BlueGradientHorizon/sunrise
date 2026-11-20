@@ -16,6 +16,7 @@ pub mod part_tables;
 mod part_tables_tests;
 mod sides;
 mod visibility_plan;
+pub(crate) use visibility_plan::MAX_RESIDENT_VISIBILITY_BYTES;
 pub use visibility_plan::{
     ANSWER_BYTES, Lease, PLAN_BYTES, SectionAnswer, SectionPlanBuilder, SectionVisibilityPlan,
     capture_input, plan_section,
@@ -1439,10 +1440,15 @@ impl Padded {
     #[cfg(test)]
     fn new(region: &[[Option<&Chunk>; 3]; 3], sy: i32) -> Self {
         let mut pad = Self::default();
-        pad.fill(region, sy, &mut Box::new([0; 4096]));
+        pad.fill::<false>(region, sy, &mut Box::new([0; 4096]));
         pad
     }
-    fn fill(&mut self, region: &[[Option<&Chunk>; 3]; 3], sy: i32, own: &mut [u32; 4096]) {
+    fn fill<const MISSING_AS_AIR: bool>(
+        &mut self,
+        region: &[[Option<&Chunk>; 3]; 3],
+        sy: i32,
+        own: &mut [u32; 4096],
+    ) {
         self.blocks.resize(P * P * P, 0);
         self.light.resize(P * P * P, 0);
         let (blocks, light) = (&mut self.blocks, &mut self.light);
@@ -1461,6 +1467,7 @@ impl Padded {
             // Where each chunk column's cells of this layer come from, found once.
             let sources: [[Source; 3]; 3] = std::array::from_fn(|rz| {
                 std::array::from_fn(|rx| match region[rz][rx] {
+                    None if MISSING_AS_AIR => Source::Outside(0),
                     None => Source::Missing,
                     Some(c) => match c.section_at(wy) {
                         Ok(section) => Source::Section(section),
@@ -2168,10 +2175,10 @@ impl Mesher<'_> {
         out: SectionMesh,
         scratch: &mut MeshScratch,
     ) -> SectionMesh {
-        self.mesh_masked(region, sy, out, scratch, &visibility_plan::NoMasks)
+        self.mesh_masked::<_, false>(region, sy, out, scratch, &visibility_plan::NoMasks)
     }
-    /// [`mesh_reusing`](Self::mesh_reusing) under the section's frozen visibility plan
-    /// (`section_visibility`); `None` is exactly `mesh_reusing`.
+    /// Mesh a section prepared for `section_visibility`. The raw snapshot's missing neighbours
+    /// are nonoccluding air, whether the listeners returned a mask or abstained.
     pub fn mesh_planned(
         &mut self,
         region: &[[Option<&Chunk>; 3]; 3],
@@ -2181,16 +2188,18 @@ impl Mesher<'_> {
         plan: Option<&SectionVisibilityPlan>,
     ) -> SectionMesh {
         match plan {
-            None => self.mesh_reusing(region, sy, out, scratch),
+            None => {
+                self.mesh_masked::<_, true>(region, sy, out, scratch, &visibility_plan::NoMasks)
+            }
             Some(plan) if plan.hides_terrain() => {
                 visibility_plan::hidden_terrain(self, region, sy, out)
             }
-            Some(plan) => self.mesh_masked(region, sy, out, scratch, plan),
+            Some(plan) => self.mesh_masked::<_, true>(region, sy, out, scratch, plan),
         }
     }
     /// The mesher's one body: `M` is `NoMasks` on the no-mod path, a constant that compiles
     /// every visibility step out of it.
-    fn mesh_masked<M: visibility_plan::CellMasks>(
+    fn mesh_masked<M: visibility_plan::CellMasks, const MISSING_AS_AIR: bool>(
         &mut self,
         region: &[[Option<&Chunk>; 3]; 3],
         sy: i32,
@@ -2217,22 +2226,13 @@ impl Mesher<'_> {
             return out;
         }
         let own = scratch.own.get_or_insert_with(|| Box::new([0; 4096]));
-        scratch.padded.fill(region, sy, own);
+        scratch.padded.fill::<MISSING_AS_AIR>(region, sy, own);
         if !self.hidden_states.is_empty() {
             for id in &mut scratch.padded.blocks {
                 if self.hidden_states[*id as usize] {
                     *id = 0;
                 }
             }
-        }
-        if M::ACTIVE {
-            visibility_plan::substitute(
-                masks,
-                &mut scratch.padded,
-                &self.tables.info,
-                &mut out,
-                [center.x, base_y, center.z],
-            );
         }
         let pad = &scratch.padded;
         solid_rows(pad, &self.tables.solid, &mut scratch.solid_rows);

@@ -16,6 +16,7 @@ struct Fixture {
     render: RenderAssets,
     visibility: sunrise_world::block_render::FaceVisibility,
     tables: MeshTables,
+    hidden_states: Vec<bool>,
 }
 
 fn fixture() -> Fixture {
@@ -35,6 +36,7 @@ fn fixture() -> Fixture {
         render,
         visibility,
         tables,
+        hidden_states: Vec::new(),
     }
 }
 
@@ -45,7 +47,14 @@ fn state(f: &Fixture, name: &str) -> u32 {
 const BASE: i32 = MIN_Y + 4;
 
 fn mesh(f: &Fixture, chunk: &Chunk, plan: Option<&SectionVisibilityPlan>) -> SectionMesh {
-    let region = [[Some(chunk); 3]; 3];
+    mesh_region(f, &[[Some(chunk); 3]; 3], plan)
+}
+
+fn mesh_region(
+    f: &Fixture,
+    region: &[[Option<&Chunk>; 3]; 3],
+    plan: Option<&SectionVisibilityPlan>,
+) -> SectionMesh {
     let mut mesher = Mesher {
         nether_shading: false,
         shader_pack_lighting: false,
@@ -63,11 +72,11 @@ fn mesh(f: &Fixture, chunk: &Chunk, plan: Option<&SectionVisibilityPlan>) -> Sec
         opaque_ice: false,
         translucent_layers: &[],
         leaf_culling: LeafCullingMode::Off,
-        hidden_states: &[],
+        hidden_states: &f.hidden_states,
         part_tables: Default::default(),
     };
     let mut scratch = MeshScratch::default();
-    mesher.mesh_planned(&region, 0, SectionMesh::default(), &mut scratch, plan)
+    mesher.mesh_planned(region, 0, SectionMesh::default(), &mut scratch, plan)
 }
 
 fn quads(mesh: &SectionMesh) -> usize {
@@ -94,8 +103,11 @@ fn a_face_mask_removes_faces_and_hidden_cells_open_their_neighbours() {
     let f = fixture();
     let one = stone(&f, &[[8, 0, 8]]);
     assert_eq!(quads(&mesh(&f, &one, None)), 6);
-    let all = plan(|b| b.restrict([8, 4, 8], true, true, 63));
-    assert_eq!(quads(&mesh(&f, &one, Some(&all))), 6);
+    let mut keep_all = SectionPlanBuilder::new();
+    keep_all.restrict([8, 4, 8], true, true, 63);
+    let answer = keep_all.finish();
+    assert!(answer.is_none(), "keep-63 changes nothing");
+    assert_eq!(quads(&mesh(&f, &one, None)), 6);
     let no_up = plan(|b| b.restrict([8, 4, 8], true, true, 61));
     assert_eq!(quads(&mesh(&f, &one, Some(&no_up))), 5);
     let two = stone(&f, &[[8, 0, 8], [9, 0, 8]]);
@@ -117,39 +129,196 @@ const ALL_FACES_BUT_WEST: u8 = 0b10_1111;
 
 #[test]
 #[ignore = "daily"]
-fn hide_terrain_keeps_only_block_entities() {
-    let f = fixture();
+fn hide_terrain_composes_with_state_visibility_and_section_geometry() {
+    use mod_api::{SectionGeometry, SectionGeometryContext, SectionQuad};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    #[derive(Default)]
+    struct Geometry(AtomicUsize);
+    impl SectionGeometry for Geometry {
+        fn add(&self, _: [i32; 3], context: &mut dyn SectionGeometryContext) {
+            self.0.fetch_add(1, Ordering::Relaxed);
+            assert!(context.add(
+                "minecraft:block/gold_block",
+                SectionQuad {
+                    positions: [[2., 8., 2.], [2., 8., 3.], [3., 8., 3.], [3., 8., 2.]],
+                    uvs: [[0., 0.], [0., 1.], [1., 1.], [1., 0.]],
+                    color: 0xFFFF_FFFF,
+                    light: [15, 0],
+                    translucent: false,
+                }
+            ));
+        }
+    }
+    let mut f = fixture();
+    let geometry = Arc::new(Geometry::default());
+    f.tables.section_geometry =
+        Arc::new([super::super::mod_geometry::Renderer::new(geometry.clone())]);
     let mut chunk = stone(&f, &[[1, 0, 1]]);
+    let chest = state(&f, "minecraft:chest");
+    let barrel = state(&f, "minecraft:barrel");
+    let glowstone = state(&f, "minecraft:glowstone");
+    let torch = state(&f, "minecraft:torch");
     chunk.set(3, BASE, 3, state(&f, "minecraft:water"));
-    chunk.set(5, BASE, 5, state(&f, "minecraft:chest"));
+    chunk.set(5, BASE, 5, chest);
+    chunk.set(6, BASE, 6, barrel);
+    chunk.set(7, BASE, 7, glowstone);
+    chunk.set(9, BASE, 9, torch);
+    f.hidden_states = vec![false; f.assets.registry.len()];
+    f.hidden_states[barrel as usize] = true;
+    f.hidden_states[glowstone as usize] = true;
+
     let full = mesh(&f, &chunk, None);
     assert!(quads(&full) > 6);
+    assert!(
+        full.solid
+            .chunks_exact(4)
+            .any(|quad| quad[0].pos == [2., 8., 2.])
+    );
+    let hidden_cell = plan(|b| b.restrict([5, 4, 5], false, false, 0));
+    let cell_only = mesh(&f, &chunk, Some(&hidden_cell));
+    assert_eq!(cell_only.block_entities, full.block_entities);
     let hidden = mesh(&f, &chunk, Some(&plan(SectionPlanBuilder::hide_terrain)));
     assert_eq!(quads(&hidden), 0);
+    assert_eq!(
+        geometry.0.load(Ordering::Relaxed),
+        2,
+        "no geometry callback for HideTerrain"
+    );
     assert_eq!(hidden.block_entities, full.block_entities);
-    assert_eq!(hidden.block_entities.len(), 1);
+    assert_eq!(hidden.block_entities, [([5, BASE, 5], chest)]);
+    assert_eq!(hidden.lights, full.lights);
+    assert_eq!(hidden.lights, [([9, BASE, 9], torch)]);
     assert_eq!(hidden.visibility, ALL_VISIBLE);
 }
 
 #[test]
 #[ignore = "daily"]
-fn masked_translucent_faces_stay_in_the_translucent_pass() {
+fn fully_hidden_neighbours_do_not_change_fluid_surface_geometry() {
+    use super::super::TerrainVertex;
+
+    let f = fixture();
+    let water = state(&f, "minecraft:water");
+    let rock = state(&f, "minecraft:stone");
+    for neighbour in [water, rock] {
+        for across_border in [false, true] {
+            let x = if across_border { 15 } else { 7 };
+            let mut centre = Chunk::empty(0, 0);
+            let mut east = Chunk::empty(1, 0);
+            centre.set(x, BASE, 8, water);
+            if across_border {
+                east.set(0, BASE, 8, neighbour);
+            } else {
+                centre.set(x + 1, BASE, 8, neighbour);
+            }
+            let mut region = [[None; 3]; 3];
+            region[1][1] = Some(&centre);
+            region[1][2] = Some(&east);
+            let mut builder = SectionPlanBuilder::new();
+            builder.restrict(
+                [if across_border { 0 } else { x as u8 + 1 }, 4, 8],
+                false,
+                false,
+                0,
+            );
+            let answer = builder.finish();
+            let masked = if across_border {
+                plan_section(None, |d| {
+                    (d == [1, 0, 0]).then_some(answer.as_ref()).flatten()
+                })
+            } else {
+                plan_section(answer.as_ref(), |_| None)
+            };
+            let before = mesh_region(&f, &region, None);
+            let after = mesh_region(&f, &region, masked.as_ref());
+            let surface = |mesh: &SectionMesh| {
+                mesh.translucent
+                    .chunks_exact(4)
+                    .filter(|quad| {
+                        quad.iter().all(|v| v.pos[1] > 4.25)
+                            && quad.iter().any(|v| v.pos[0] == x as f32)
+                            && quad.iter().any(|v| v.pos[0] == x as f32 + 1.0)
+                    })
+                    .flatten()
+                    .copied()
+                    .collect::<Vec<TerrainVertex>>()
+            };
+            let before_surface = surface(&before);
+            assert!(!before_surface.is_empty());
+            assert_eq!(
+                bytemuck::cast_slice::<_, u8>(&surface(&after)),
+                bytemuck::cast_slice::<_, u8>(&before_surface)
+            );
+            let east_face = |mesh: &SectionMesh| {
+                mesh.translucent.chunks_exact(4).any(|quad| {
+                    let at = quad[0].pos[0];
+                    at > x as f32 + 0.5
+                        && at < x as f32 + 1.0
+                        && quad.iter().all(|v| v.pos[0] == at)
+                })
+            };
+            assert!(!east_face(&before));
+            assert!(
+                east_face(&after),
+                "visible water exposes its face beside a hidden neighbour"
+            );
+        }
+    }
+}
+
+#[test]
+#[ignore = "daily"]
+fn a_masked_opening_connects_both_sides_of_an_opaque_wall() {
     let f = fixture();
     let mut chunk = Chunk::empty(0, 0);
-    chunk.set(2, BASE, 2, state(&f, "minecraft:glass"));
-    chunk.set(5, BASE, 2, state(&f, "minecraft:water"));
-    let full = mesh(&f, &chunk, None);
-    let masked = mesh(
-        &f,
-        &chunk,
-        Some(&plan(|b| {
-            b.restrict([2, 4, 2], true, true, 61);
-            b.restrict([5, 4, 2], true, true, 61);
-        })),
+    for y in 0..16 {
+        for z in 0..16 {
+            chunk.set(8, MIN_Y + y, z, state(&f, "minecraft:stone"));
+        }
+    }
+    // VisGraph bits are from * 6 + to, with west = 4 and east = 5.
+    let west_to_east = 1 << (4 * 6 + 5);
+    assert_eq!(mesh(&f, &chunk, None).visibility & west_to_east, 0);
+    let open = plan(|b| b.restrict([8, 8, 8], false, false, 0));
+    assert_eq!(
+        mesh(&f, &chunk, Some(&open)).visibility & west_to_east,
+        west_to_east
     );
-    // Glass and water each lose their up face; what is left stays translucent.
-    assert!(masked.translucent.len() < full.translucent.len());
-    assert_eq!(masked.solid.len(), full.solid.len());
+}
+
+#[test]
+#[ignore = "daily"]
+fn masked_translucent_faces_sort_far_to_near() {
+    use crate::gfx::translucency::{Sorter, quad_center};
+    let f = fixture();
+    let mut chunk = Chunk::empty(0, 0);
+    let ice = state(&f, "minecraft:ice");
+    chunk.set(2, BASE, 2, ice);
+    chunk.set(5, BASE, 2, ice);
+    let tops = plan(|b| {
+        b.restrict([2, 4, 2], true, true, 1 << 1);
+        b.restrict([5, 4, 2], true, true, 1 << 1);
+    });
+    let masked = mesh(&f, &chunk, Some(&tops));
+    assert!(masked.solid.is_empty());
+    let centres: Vec<_> = masked
+        .translucent
+        .chunks_exact(4)
+        .map(|q| quad_center(q[0].pos, q[2].pos))
+        .collect();
+    assert_eq!(centres.len(), 2);
+    let mut sorter = Sorter::default();
+    let indices = sorter.sort(&centres, [0.5, 5.0, 2.5]);
+    assert_eq!(
+        [
+            centres[indices[0] as usize / 4][0],
+            centres[indices[6] as usize / 4][0]
+        ],
+        [5.5, 2.5]
+    );
 }
 
 /// The no-mod path is the mesher of before: no plan meshes byte for byte as `mesh_reusing`, and

@@ -1,38 +1,8 @@
 //! The mesh visibility design's plan rules that need no resources: combining answers, the
 //! border from the neighbours, the cells that stop occluding, the raw input and the no-mod path.
-use super::super::{FluidState, Info, Padded, SectionMesh, Tint, pi};
 use super::*;
 use crate::chunk::{Chunk, MIN_Y};
-
-fn info(block_entity: bool, emission: u8) -> Info {
-    Info {
-        solid: true,
-        full: true,
-        permeable: false,
-        shade: 1.0,
-        emission,
-        tier: 0,
-        emissive: false,
-        fluid: FluidState::EMPTY,
-        model: true,
-        block_entity,
-        tints: [Tint::None; 2],
-        tint_count: 0,
-        colormap: None,
-        offset: None,
-        legacy_solid: false,
-        overlay: false,
-        leaves: false,
-        pane: false,
-        opaque_cube: true,
-        blocks_flow: true,
-        ice: false,
-        opaque_ice: false,
-        sturdy: 0,
-        face: [0; 6],
-        cover: [0.0; 6],
-    }
-}
+use std::sync::Arc;
 
 fn answer(edit: impl FnOnce(&mut SectionPlanBuilder)) -> Option<SectionAnswer> {
     let mut builder = SectionPlanBuilder::new();
@@ -124,36 +94,6 @@ fn only_outer_cells_change_the_neighbours() {
 }
 
 #[test]
-fn a_cell_without_model_or_fluid_turns_to_air_and_keeps_its_block_entity() {
-    let hidden = answer(|b| {
-        b.restrict([2, 3, 4], false, false, 63);
-        b.restrict([5, 5, 5], false, true, 63);
-    })
-    .unwrap();
-    let east = answer(|b| b.restrict([0, 0, 0], false, false, 0)).unwrap();
-    let plan = plan_section(Some(&hidden), |d| (d == [1, 0, 0]).then_some(&east)).unwrap();
-    let mut pad = Padded {
-        blocks: vec![1; P * P * P],
-        light: Vec::new(),
-    };
-    pad.blocks[pi(2, 3, 4)] = 2;
-    let infos = [info(false, 0), info(false, 0), info(true, 7)];
-    let mut out = SectionMesh::default();
-    substitute(&plan, &mut pad, &infos, &mut out, [1, MIN_Y, 2]);
-    assert_eq!(pad.blocks[pi(2, 3, 4)], 0);
-    assert_eq!(pad.blocks[pi(16, 0, 0)], 0, "the neighbour's hidden cell");
-    assert_eq!(
-        pad.blocks[pi(5, 5, 5)],
-        1,
-        "a fluid still drawn keeps the cell"
-    );
-    assert_eq!(pad.blocks[pi(17, 0, 0)], 1, "beyond the one-block border");
-    let world = [16 + 2, MIN_Y + 3, 32 + 4];
-    assert_eq!(out.block_entities, [(world, 2)]);
-    assert_eq!(out.lights, [(world, 2)]);
-}
-
-#[test]
 fn a_cell_with_anything_removed_stops_being_solid() {
     let partial = answer(|b| b.restrict([4, 0, 15], true, true, 0b11_1110)).unwrap();
     let plan = plan_section(Some(&partial), |_| None).unwrap();
@@ -181,33 +121,41 @@ fn a_cell_with_anything_removed_stops_being_solid() {
 }
 
 #[test]
-fn the_no_mod_masks_keep_everything() {
-    const { assert!(!NoMasks::ACTIVE) };
-    assert_eq!(NoMasks.at(0), ALL);
-    assert_eq!(NoMasks.at(P * P * P - 1), ALL);
-}
-
-#[test]
 fn the_raw_input_reads_the_world_and_names_missing_columns() {
     let mut chunk = Chunk::empty(0, 0);
-    chunk.set(15, MIN_Y + 16 + 15, 15, 7);
+    chunk.set(15, MIN_Y + 31, 15, 7);
     let mut east = Chunk::empty(1, 0);
     east.set(0, MIN_Y + 16, 0, 9);
-    // The column and its east neighbour loaded; the rest missing.
-    let mut region: [[Option<&Chunk>; 3]; 3] = [[None; 3]; 3];
-    region[1][1] = Some(&chunk);
-    region[1][2] = Some(&east);
-    let (mut cells, mut light) = (Vec::new(), Vec::new());
-    capture_input(&region, 1, &mut cells, &mut light);
-    assert_eq!(cells.len(), mod_api::SECTION_INPUT_CELLS);
-    assert_eq!(light.len(), mod_api::SECTION_INPUT_CELLS);
-    let at = |local: [i32; 3]| cells[mod_api::SectionVisibilityInput::index(local).unwrap()];
-    // The state is read as stored: a state a mod hides from the mesher still reads as itself.
-    assert_eq!(at([15, 15, 15]), Some(7));
-    assert_eq!(at([16, 0, 0]), Some(9));
-    assert_eq!(at([0, 0, 0]), Some(0));
-    assert_eq!(at([-1, 0, 0]), None, "the west column is missing, not air");
-    assert_eq!(at([16, 0, 16]), None, "the south-east diagonal is missing");
+    east.set_biome_cell(0, 4, 0, 5);
+    let mut region: Region = Default::default();
+    region[1][1] = Some(Arc::new(chunk));
+    region[1][2] = Some(Arc::new(east));
+    let input = capture_input(&region, 1);
+    assert_eq!(
+        input.cell([15, 15, 15]),
+        Ok(SectionCell::State(BlockStateId(7)))
+    );
+    assert_eq!(
+        input.cell([16, 0, 0]),
+        Ok(SectionCell::State(BlockStateId(9)))
+    );
+    assert_eq!(
+        input.biome([16, 0, 0]),
+        Ok(Some(mod_api::__private::biome_id(5)))
+    );
+    assert_eq!(
+        input.cell([0, 0, 0]),
+        Ok(SectionCell::State(BlockStateId(0)))
+    );
+    assert_eq!(input.cell([-1, 0, 0]), Ok(SectionCell::Missing));
+    assert_eq!(input.cell([16, 0, 16]), Ok(SectionCell::Missing));
+    assert_eq!(input.light([16, 0, 16]), Ok([0, 0]));
+    assert_eq!(input.biome([16, 0, 16]), Ok(None));
+    assert_eq!(
+        input.cell([17, 0, 0]),
+        Err(SectionVisibilityRefusal::OutsideInput)
+    );
+    assert_ne!(input.model_seed([15, 0, 0]), input.model_seed([16, 0, 0]));
 }
 
 #[test]
@@ -237,14 +185,26 @@ fn the_api_checks_answers_whole() {
     assert_eq!(V::Keep(many.clone()).check(), Ok(()));
     many.push(cell([0, 0, 0], 0));
     assert_eq!(V::Keep(many).check(), Err(R::TooManyCells { count: 4097 }));
-    assert_eq!(
-        mod_api::SectionVisibilityInput::index([17, 0, 0]),
-        Err(R::OutsideInput)
+    let mut plan = SectionPlanBuilder::new();
+    plan.apply(&V::Keep(vec![cell([0, 0, 0], 61)])).unwrap();
+    assert!(
+        plan.apply(&V::Keep(vec![cell([1, 1, 1], 61), cell([2, 2, 2], 64)]))
+            .is_err()
     );
+    let oversized = V::Keep(vec![cell([2, 2, 2], 0); mod_api::MAX_CELL_RECORDS + 1]);
+    assert!(matches!(
+        plan.apply(&oversized),
+        Err(R::TooManyCells { .. })
+    ));
+    let answer = plan.finish().unwrap();
+    let plan = plan_section(Some(&answer), |_| None).unwrap();
+    assert_eq!(plan.kept([0, 0, 0]) & FACES, 61);
     assert_eq!(
-        mod_api::SectionVisibilityInput::new([0; 3], vec![], vec![]),
-        Err(R::InputSize)
+        plan.kept([1, 1, 1]),
+        ALL,
+        "a bad record refuses the valid prefix"
     );
+    assert_eq!(plan.kept([2, 2, 2]), ALL);
 }
 
 /// Cached answers and frozen plans are charged to the workers' shared in-flight bytes: past the

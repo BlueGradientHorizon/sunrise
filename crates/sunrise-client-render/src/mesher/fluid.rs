@@ -243,8 +243,23 @@ pub(super) fn tesselate<M: CellMasks>(
     let me = at(0);
     let kind = me.fluid.kind();
     let same = |s: &Info| s.fluid.kind().same_family(kind);
-    let neighbor_id = |d: Direction| pad.blocks[(cell + super::OFFSETS[d as usize]) as usize];
+    // Masks gate face eligibility, not `at`: heights, flow and UVs still sample the world.
+    let neighbor_cell = |d: Direction| (cell + super::OFFSETS[d as usize]) as usize;
+    let neighbor_kept = |d: Direction| masks.at(neighbor_cell(d));
+    let neighbor_id = |d: Direction| {
+        if M::ACTIVE && neighbor_kept(d) & (visibility_plan::MODEL | visibility_plan::FLUID) == 0 {
+            0
+        } else {
+            pad.blocks[neighbor_cell(d)]
+        }
+    };
     let neighbor = |d: Direction| &info[neighbor_id(d) as usize];
+    let neighbor_covers = |d: Direction| {
+        same(neighbor(d))
+            && (!M::ACTIVE
+                || neighbor_kept(d) & visibility_plan::FLUID != 0
+                    && neighbor_kept(d) >> d.opposite() as u8 & 1 != 0)
+    };
     let (down, up) = (neighbor(Direction::Down), neighbor(Direction::Up));
     // Empty with no part answering: vanilla's tests alone.
     let hides = !parts.hidden_fluid_faces.is_empty();
@@ -255,19 +270,17 @@ pub(super) fn tesselate<M: CellMasks>(
     let kept = masks.at(cell as usize);
     let faces = kept & visibility_plan::FACES;
     let neighbor_occludes = |d: Direction| {
-        !M::ACTIVE
-            || visibility_plan::occludes(
-                masks.at((cell + super::OFFSETS[d as usize]) as usize),
-                d.opposite() as u8,
-            )
+        !M::ACTIVE || visibility_plan::occludes(neighbor_kept(d), d.opposite() as u8)
     };
     let self_occludes = |d: Direction| {
         occluded_by_self(me, d) && (!M::ACTIVE || kept & visibility_plan::MODEL != 0)
     };
     let should_render = |d: Direction| {
-        faces >> d as u8 & 1 != 0 && !same(neighbor(d)) && !self_occludes(d) && !hidden(d)
+        faces >> d as u8 & 1 != 0 && !neighbor_covers(d) && !self_occludes(d) && !hidden(d)
     };
-    let render_up = faces >> Direction::Up as u8 & 1 != 0 && !same(up) && !hidden(Direction::Up);
+    let render_up = faces >> Direction::Up as u8 & 1 != 0
+        && !neighbor_covers(Direction::Up)
+        && !hidden(Direction::Up);
     let render_down = should_render(Direction::Down)
         && !(neighbor_occludes(Direction::Down) && occluded_by(Direction::Down, MAX_HEIGHT, down));
     let sides = [

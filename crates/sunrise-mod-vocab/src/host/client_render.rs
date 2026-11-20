@@ -38,9 +38,11 @@ pub trait ClientRenderClientHost {
     /// Side: client.
     /// Asks `block_render_visibility` again for every state and, when the answers differ
     /// from those in use, remeshes every loaded section with them. While a mod listens to
-    /// `section_visibility`, every loaded section meshes again and is asked anew. Call it when your answer changes (a toggle key, a scan
-    /// finishing) and once when the player joins, not every frame: a rebuild takes the workers a
-    /// few seconds. With no part answering, nothing is asked and the mesher keeps its no-mod path.
+    /// `section_visibility`, rebuilds meshes in the player's current level and asks about them
+    /// again, except for a first all-air compile with no section geometry contributors. Other
+    /// viewed levels do not call that hook; no NeoForge counterpart has been verified. Call it
+    /// when a decision changes (a toggle key, a scan finishing), not every frame. With no part
+    /// answering or listener, the mesher keeps its no-mod path.
     #[access(WorldOnly)]
     fn refresh_render_visibility(&mut self);
     /// Side: client.

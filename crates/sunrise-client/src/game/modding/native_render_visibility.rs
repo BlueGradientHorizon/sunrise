@@ -9,12 +9,10 @@ impl Game<'_> {
     /// Asks `native_block_render_visibility` again for every state, and the fluid-face parts
     /// for every state and fluid (`resolve_part_tables`), and, when the answers differ from
     /// those in use, remeshes every loaded section with them. While a mod listens to
-    /// `section_visibility`, every loaded section is asked again too. Call it when your answer changes (a toggle key, a scan
-    /// finishing) and once when the player joins, not every frame: a rebuild takes the workers a
-    /// few seconds. With no part answering, nothing is asked and the mesher keeps its no-mod path.
+    /// `section_visibility`, rebuilds the player's level's meshes and prepares their visibility
+    /// again. Call it when a decision changes and when the player joins, not every frame.
     pub(super) fn refresh_render_visibility(&mut self) {
-        // Every loaded section is asked `section_visibility` again; with no mod listening now or
-        // before, nothing happens.
+        // With no section listener now or before, the section policy does not change.
         let listening = mod_api::__private::listened(mod_api::HookId::SectionVisibility);
         self.streaming
             .refresh_section_visibility(&mut self.world, listening);

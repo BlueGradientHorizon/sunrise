@@ -3,7 +3,7 @@
 //!
 //! The game captures the input and asks on the client world thread, never on a meshing worker; the
 //! workers read only the checked answers.
-use crate::BlockStateId;
+use crate::{BiomeId, BlockStateId};
 
 /// Cells along each axis of a [`SectionVisibilityInput`]: the section's 16 and one each side.
 pub const SECTION_INPUT_SIDE: usize = 18;
@@ -15,6 +15,7 @@ pub const MAX_CELL_RECORDS: usize = 4096;
 pub const ALL_FACES: u8 = 0b11_1111;
 
 /// One cell of a [`SectionVisibilityInput`].
+// no wire: a cell is read only from the in-process section snapshot.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum SectionCell {
@@ -28,44 +29,50 @@ pub enum SectionCell {
 }
 
 /// The raw section `section_visibility` reads: the 16-cubed section and a one-block border on
-/// every side (edges and corners too), with its light, captured once on the client world thread
-/// before the section meshes. Read it with [`cell`](Self::cell) and [`light`](Self::light);
-/// nothing beyond the border is available.
+/// every side (edges and corners too), with its light and raw biomes, captured on the client world
+/// thread before the section meshes. Nothing beyond the border is available.
+// no wire: the client thread lends this snapshot directly to native listeners.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct SectionVisibilityInput {
     /// The block position of the section's lowest corner: a multiple of 16 on each axis.
     pub origin: [i32; 3],
-    /// [`SECTION_INPUT_CELLS`] cells, x fastest, then z, then y, from local -1 to 16 on each axis.
-    pub cells: Vec<SectionCell>,
-    /// Each cell's light, in the order of `cells`: sky light in the high four bits, block light
-    /// in the low four. A missing cell reads 0.
-    pub light: Vec<u8>,
+    cells: Box<[SectionCell]>,
+    light: Box<[u8]>,
+    biomes: Box<[Option<BiomeId>]>,
 }
 
 impl SectionVisibilityInput {
-    /// The input of the section at `origin` from its cells and light, in the order
-    /// [`cells`](Self::cells) documents. Refused with
-    /// [`InputSize`](SectionVisibilityRefusal::InputSize) unless both hold
-    /// [`SECTION_INPUT_CELLS`] values.
-    pub fn new(
+    /// The game captures one raw state, packed light and stored biome per position in the halo.
+    #[doc(hidden)]
+    pub fn capture(
         origin: [i32; 3],
-        cells: Vec<SectionCell>,
-        light: Vec<u8>,
-    ) -> Result<Self, SectionVisibilityRefusal> {
-        if cells.len() != SECTION_INPUT_CELLS || light.len() != SECTION_INPUT_CELLS {
-            return Err(SectionVisibilityRefusal::InputSize);
+        mut cell_at: impl FnMut([i32; 3]) -> (SectionCell, u8, Option<BiomeId>),
+    ) -> Self {
+        let mut cells = Vec::with_capacity(SECTION_INPUT_CELLS);
+        let mut light = Vec::with_capacity(SECTION_INPUT_CELLS);
+        let mut biomes = Vec::with_capacity(SECTION_INPUT_CELLS);
+        for y in -1..=16 {
+            for z in -1..=16 {
+                for x in -1..=16 {
+                    let (cell, packed, biome) = cell_at([x, y, z]);
+                    cells.push(cell);
+                    light.push(packed);
+                    biomes.push(biome);
+                }
+            }
         }
-        Ok(Self {
+        Self {
             origin,
-            cells,
-            light,
-        })
+            cells: cells.into_boxed_slice(),
+            light: light.into_boxed_slice(),
+            biomes: biomes.into_boxed_slice(),
+        }
     }
-    /// The index in [`cells`](Self::cells) of `local` (from the section's lowest corner), each
+    /// The index of `local` (from the section's lowest corner), x fastest, then z, then y; each
     /// axis -1 to 16; refused with [`OutsideInput`](SectionVisibilityRefusal::OutsideInput)
     /// beyond that border.
-    pub fn index(local: [i32; 3]) -> Result<usize, SectionVisibilityRefusal> {
+    fn index(local: [i32; 3]) -> Result<usize, SectionVisibilityRefusal> {
         if local.iter().any(|v| !(-1..=16).contains(v)) {
             return Err(SectionVisibilityRefusal::OutsideInput);
         }
@@ -74,25 +81,34 @@ impl SectionVisibilityInput {
     }
     /// The cell at `local` (from the section's lowest corner, -1 to 16 on each axis).
     pub fn cell(&self, local: [i32; 3]) -> Result<SectionCell, SectionVisibilityRefusal> {
-        let index = Self::index(local)?;
-        self.cells
-            .get(index)
-            .copied()
-            .ok_or(SectionVisibilityRefusal::InputSize)
+        Ok(self.cells[Self::index(local)?])
     }
-    /// The sky and block light at `local`, 0 to 15 each.
+    /// The sky and block light at `local`, 0 to 15 each. A missing cell reads `[0, 0]`.
     pub fn light(&self, local: [i32; 3]) -> Result<[u8; 2], SectionVisibilityRefusal> {
-        let index = Self::index(local)?;
-        let packed = *self
-            .light
-            .get(index)
-            .ok_or(SectionVisibilityRefusal::InputSize)?;
+        let packed = self.light[Self::index(local)?];
         Ok([packed >> 4, packed & 15])
+    }
+    /// The raw, stored biome at `local`, before biome zoom and blending; `None` in a missing column.
+    pub fn biome(&self, local: [i32; 3]) -> Result<Option<BiomeId>, SectionVisibilityRefusal> {
+        Ok(self.biomes[Self::index(local)?])
+    }
+    /// The position seed used for seeded block-model selection at `local`.
+    pub fn model_seed(&self, [x, y, z]: [i32; 3]) -> Result<i64, SectionVisibilityRefusal> {
+        Self::index([x, y, z])?;
+        let [ox, oy, oz] = self.origin;
+        Ok(sunrise_core::random::position_seed(
+            sunrise_core::position::BlockPos::new(
+                ox.wrapping_add(x),
+                oy.wrapping_add(y),
+                oz.wrapping_add(z),
+            ),
+        ))
     }
 }
 
 /// What one cell of a section draws. Every field only takes away: a face a neighbour hides stays
 /// hidden, and what one mod hides no other mod brings back.
+// no wire: a cell restriction is part of a native listener's in-process return value.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct CellVisibility {
@@ -127,6 +143,7 @@ impl CellVisibility {
 }
 
 /// A mod's answer for one section in `section_visibility`.
+// no wire: a native listener returns this directly to the client thread.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum SectionVisibility {
@@ -176,13 +193,12 @@ impl SectionVisibility {
 
 /// Why a section visibility read or answer was refused. An answer refused for any of these is
 /// refused whole, logged once with the mod named, and the section draws as if it had not answered.
+// no wire: refusals are local read errors or diagnostics for a native listener's answer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum SectionVisibilityRefusal {
     /// `E_SECTION_VISIBILITY_OUTSIDE_INPUT`: a read beyond the one-block border.
     OutsideInput,
-    /// `E_SECTION_VISIBILITY_INPUT_SIZE`: an input that does not hold 5832 cells and lights.
-    InputSize,
     /// `E_SECTION_VISIBILITY_OUTSIDE_SECTION`: a cell record outside 0 to 15.
     OutsideSection {
         /// The record's position.
@@ -205,6 +221,8 @@ pub enum SectionVisibilityRefusal {
         /// How many were given.
         count: u32,
     },
+    /// `E_SECTION_VISIBILITY_UNKNOWN`: the game does not support this answer variant.
+    Unknown,
     /// `E_SECTION_VISIBILITY_PANIC`: the mod's listener panicked. It is not asked again
     /// during this session.
     Failed,
@@ -215,11 +233,11 @@ impl SectionVisibilityRefusal {
     pub fn code(&self) -> &'static str {
         match self {
             Self::OutsideInput => "E_SECTION_VISIBILITY_OUTSIDE_INPUT",
-            Self::InputSize => "E_SECTION_VISIBILITY_INPUT_SIZE",
             Self::OutsideSection { .. } => "E_SECTION_VISIBILITY_OUTSIDE_SECTION",
             Self::FaceMask { .. } => "E_SECTION_VISIBILITY_FACE_MASK",
             Self::Duplicate { .. } => "E_SECTION_VISIBILITY_DUPLICATE",
             Self::TooManyCells { .. } => "E_SECTION_VISIBILITY_TOO_MANY",
+            Self::Unknown => "E_SECTION_VISIBILITY_UNKNOWN",
             Self::Failed => "E_SECTION_VISIBILITY_PANIC",
         }
     }
@@ -230,7 +248,6 @@ impl std::fmt::Display for SectionVisibilityRefusal {
         let code = self.code();
         match self {
             Self::OutsideInput => write!(f, "{code}: a read beyond the section's one-block border"),
-            Self::InputSize => write!(f, "{code}: the input does not hold 5832 cells"),
             Self::OutsideSection { pos } => write!(f, "{code}: cell {pos:?} is outside 0 to 15"),
             Self::FaceMask { pos, faces } => {
                 write!(f, "{code}: cell {pos:?} keeps faces {faces}, above 63")
@@ -239,6 +256,7 @@ impl std::fmt::Display for SectionVisibilityRefusal {
             Self::TooManyCells { count } => {
                 write!(f, "{code}: {count} cell records, more than 4096")
             }
+            Self::Unknown => write!(f, "{code}: unsupported answer variant"),
             Self::Failed => write!(f, "{code}: the listener panicked"),
         }
     }

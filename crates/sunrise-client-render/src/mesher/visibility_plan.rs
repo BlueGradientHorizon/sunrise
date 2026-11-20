@@ -5,8 +5,11 @@
 //! per section with its one-block border from the neighbours' answers. A meshing worker only
 //! reads that plan: no mod code, world or host reaches it. Without a plan the mesher runs its
 //! `NoMasks` body, in which every step below is a constant and compiles away.
-use super::{ALL_VISIBLE, B, Info, Mesher, P, Padded, SectionMesh, pi};
+use super::{ALL_VISIBLE, B, Mesher, P, Region, SectionMesh, pi};
 use crate::chunk::Chunk;
+use mod_api::{
+    BlockStateId, SectionCell, SectionVisibility, SectionVisibilityInput, SectionVisibilityRefusal,
+};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// The face bits of a cell's kept bits: down, up, north, south, west, east (`Direction` order).
@@ -18,15 +21,13 @@ pub(super) const FLUID: u8 = 1 << 7;
 /// Everything kept: a cell no mod changed.
 const ALL: u8 = 0xFF;
 
-/// The bytes a section's cached [`SectionAnswer`] holds.
-pub const ANSWER_BYTES: usize = 4096;
+/// The maximum bytes held by a combined answer's payload.
+pub const ANSWER_BYTES: usize = 4096 + std::mem::size_of::<SectionAnswer>();
 /// The bytes a section's frozen [`SectionVisibilityPlan`] holds.
 pub const PLAN_BYTES: usize = P * P * P;
 
-/// Bytes of visibility storage charged to the meshing workers' shared in-flight bytes (the ones
-/// added section geometry is counted in, [`MAX_IN_FLIGHT_BYTES`](super::mod_geometry)), given
-/// back when it drops: a cached answer's lease lives as long as the answer, a plan's as long as
-/// the job that carries it.
+/// Bytes of visibility storage charged to the same shared in-flight pool as section geometry.
+/// The bytes are returned on drop, or split off into a longer-lived lease.
 #[derive(Debug)]
 pub struct Lease {
     shared: &'static AtomicUsize,
@@ -39,7 +40,15 @@ impl Lease {
     pub fn charge(bytes: usize) -> Option<Self> {
         Self::charge_in(&super::mod_geometry::IN_FLIGHT, bytes)
     }
-    fn charge_in(shared: &'static AtomicUsize, bytes: usize) -> Option<Self> {
+    /// Move part of a charge to another owner without competing for capacity again.
+    pub(crate) fn split(&mut self, bytes: usize) -> Self {
+        self.bytes -= bytes;
+        Self {
+            shared: self.shared,
+            bytes,
+        }
+    }
+    pub(crate) fn charge_in(shared: &'static AtomicUsize, bytes: usize) -> Option<Self> {
         super::mod_geometry::reserve_in_flight(shared, bytes).then(|| Self { shared, bytes })
     }
 }
@@ -49,6 +58,10 @@ impl Drop for Lease {
         self.shared.fetch_sub(self.bytes, Ordering::AcqRel);
     }
 }
+
+/// Resident answers are charged to that pool too, but can never consume its transient headroom.
+pub(crate) const MAX_RESIDENT_VISIBILITY_BYTES: usize =
+    super::mod_geometry::MAX_IN_FLIGHT_BYTES * 3 / 4;
 
 /// What the mesher reads of a section's visibility, by padded cell index (`pi`).
 pub(super) trait CellMasks {
@@ -123,6 +136,9 @@ impl SectionAnswer {
     /// Whether the cells on the outside of the section differ between two answers (`None` keeps
     /// everything): the neighbours' plans read them, so they must mesh again.
     pub fn border_differs(a: Option<&Self>, b: Option<&Self>) -> bool {
+        if a == b {
+            return false;
+        }
         let at = |answer: Option<&Self>, p| answer.map_or(ALL, |s| s.at(p));
         for y in 0..16 {
             for z in 0..16 {
@@ -161,6 +177,20 @@ impl SectionPlanBuilder {
             cells: Box::new([ALL; 4096]),
             changed: false,
         }
+    }
+    /// Merge one native listener's answer, only after checking every record.
+    pub fn apply(&mut self, answer: &SectionVisibility) -> Result<(), SectionVisibilityRefusal> {
+        answer.check()?;
+        match answer {
+            SectionVisibility::HideTerrain => self.hide_terrain(),
+            SectionVisibility::Keep(cells) => {
+                for cell in cells {
+                    self.restrict(cell.pos, cell.model, cell.fluid, cell.faces);
+                }
+            }
+            _ => return Err(SectionVisibilityRefusal::Unknown),
+        }
+        Ok(())
     }
     /// A mod's `HideTerrain`.
     pub fn hide_terrain(&mut self) {
@@ -268,41 +298,6 @@ pub(super) fn keep_faces(kept: u8, visible: &mut [bool; 6]) {
     }
 }
 
-/// Before the mesher reads the padded cells: a cell drawn not at all (neither model nor fluid)
-/// becomes air, as a hidden state does, so it occludes nothing and its neighbours' faces toward it
-/// show. A hidden cell of the section itself keeps its block entity and its light.
-pub(super) fn substitute(
-    masks: &impl CellMasks,
-    pad: &mut Padded,
-    info: &[Info],
-    out: &mut SectionMesh,
-    [cx, base_y, cz]: [i32; 3],
-) {
-    for y in -1i32..=16 {
-        for z in -1i32..=16 {
-            for x in -1i32..=16 {
-                let cell = pi(x, y, z);
-                if masks.at(cell) & (MODEL | FLUID) != 0 {
-                    continue;
-                }
-                let id = std::mem::take(&mut pad.blocks[cell]);
-                let inside = [x, y, z].iter().all(|v| (0..16).contains(v));
-                if id == 0 || !inside {
-                    continue;
-                }
-                let state = &info[id as usize];
-                let world = [cx * 16 + x, base_y + y, cz * 16 + z];
-                if state.block_entity {
-                    out.block_entities.push((world, id));
-                }
-                if state.emission > 0 {
-                    out.lights.push((world, id));
-                }
-            }
-        }
-    }
-}
-
 /// After the solid rows are read: a cell with anything taken away is no longer solid, so the
 /// section's see-through graph and the enclosed-cell skip err toward drawing what is behind it.
 pub(super) fn open_masked(masks: &impl CellMasks, rows: &mut [u32]) {
@@ -336,7 +331,10 @@ pub(super) fn hidden_terrain(
         section.unpack(&mut own);
         for (index, &id) in own.iter().enumerate() {
             let state = &info[id as usize];
-            if id == 0 || !(state.block_entity || state.emission > 0) {
+            if id == 0
+                || (!mesher.hidden_states.is_empty() && mesher.hidden_states[id as usize])
+                || !(state.block_entity || state.emission > 0)
+            {
                 continue;
             }
             let (x, y, z) = (index as i32 & 15, index as i32 >> 8, index as i32 >> 4 & 15);
@@ -354,38 +352,23 @@ pub(super) fn hidden_terrain(
     out
 }
 
-/// The raw section input `section_visibility` reads, from `region` (the column and its eight
-/// neighbours, as a mesh job holds them): the 18-cubed cells from local -1 to 16, x fastest, then
-/// z, then y, with `None` for a column not loaded, and their light. Above and below the world is
-/// air with the light the column gives it there.
-pub fn capture_input(
-    region: &[[Option<&Chunk>; 3]; 3],
-    sy: i32,
-    cells: &mut Vec<Option<u32>>,
-    light: &mut Vec<u8>,
-) {
-    cells.clear();
-    light.clear();
-    let base_y = region[1][1].map_or(crate::chunk::MIN_Y, Chunk::min_y) + sy * 16;
-    for y in -1i32..=16 {
-        for z in -1i32..=16 {
-            for x in -1i32..=16 {
-                let column =
-                    region[(z.div_euclid(16) + 1) as usize][(x.div_euclid(16) + 1) as usize];
-                let (lx, wy, lz) = (x.rem_euclid(16), base_y + y, z.rem_euclid(16));
-                match column {
-                    Some(chunk) => {
-                        cells.push(Some(chunk.get(lx, wy, lz)));
-                        light.push(chunk.light(lx, wy, lz));
-                    }
-                    None => {
-                        cells.push(None);
-                        light.push(0);
-                    }
-                }
-            }
+/// Lend native listeners a raw view captured from the same region the worker uses, before any
+/// masks are applied. Above and below the world is air with the light the column gives it there.
+pub fn capture_input(region: &Region, sy: i32) -> SectionVisibilityInput {
+    let centre = region[1][1].as_ref().expect("centre chunk");
+    let base_y = centre.min_y() + sy * 16;
+    SectionVisibilityInput::capture([centre.x * 16, base_y, centre.z * 16], |[x, y, z]| {
+        let column = &region[(z.div_euclid(16) + 1) as usize][(x.div_euclid(16) + 1) as usize];
+        let (lx, wy, lz) = (x.rem_euclid(16), base_y + y, z.rem_euclid(16));
+        match column {
+            Some(chunk) => (
+                SectionCell::State(BlockStateId(chunk.get(lx, wy, lz))),
+                chunk.light(lx, wy, lz),
+                Some(mod_api::__private::biome_id(chunk.biome(lx, wy, lz).into())),
+            ),
+            None => (SectionCell::Missing, 0, None),
         }
-    }
+    })
 }
 
 #[cfg(test)]

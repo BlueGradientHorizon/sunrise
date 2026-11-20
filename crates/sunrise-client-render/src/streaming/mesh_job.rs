@@ -44,8 +44,12 @@ pub(super) fn mesh_section(
         biomes: &context.biomes,
         visibility,
     };
-    let plan = settings.visibility.as_deref().map(|frozen| &frozen.plan);
-    let mut mesh = mesher.mesh_planned(&borrow(region), sy, recycled, scratch, plan);
+    let region = borrow(region);
+    let mut mesh = if let Some(prepared) = &settings.visibility {
+        mesher.mesh_planned(&region, sy, recycled, scratch, prepared.plan.as_ref())
+    } else {
+        mesher.mesh_reusing(&region, sy, recycled, scratch)
+    };
     mesh.sort_solid();
     *faces = Some((context.tables.clone(), mesher.visibility));
     mesh

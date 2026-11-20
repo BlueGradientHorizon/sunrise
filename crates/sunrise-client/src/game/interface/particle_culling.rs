@@ -596,7 +596,10 @@ impl Game<'_> {
             .is_some_and(|renderer| renderer.has_section(section))
             && !self.world.dirty_sections.contains(&section)
             && !self.streaming.is_meshing(section)
-            && !self.pending_uploads.iter().any(|(key, _)| *key == section)
+            && !self
+                .pending_uploads
+                .iter()
+                .any(|upload| upload.key == section)
     }
 
     pub(super) fn async_particle_hidden(&self, min: [f64; 3], max: [f64; 3]) -> Option<bool> {
@@ -644,7 +647,10 @@ impl Game<'_> {
                 .is_some_and(|renderer| renderer.has_section(section))
                 && !self.world.dirty_sections.contains(&section)
                 && !self.streaming.is_meshing(section)
-                && !self.pending_uploads.iter().any(|(key, _)| *key == section)
+                && !self
+                    .pending_uploads
+                    .iter()
+                    .any(|upload| upload.key == section)
         })
     }
 
