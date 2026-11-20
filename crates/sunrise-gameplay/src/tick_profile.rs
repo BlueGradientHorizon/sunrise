@@ -60,6 +60,13 @@ pub fn wanted(user: u8) -> bool {
     SPAN_USERS.load(Ordering::Relaxed) & user != 0
 }
 
+/// Held by every test that switches spans: `want_spans` updates the users and the switch in two steps.
+#[cfg(test)]
+pub fn spans_test_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 /// Sample (or stop sampling) the mob ticks this thread runs next, for the report.
 pub fn set_sampling(on: bool) {
     set(REPORT, on);
@@ -209,7 +216,7 @@ mod tests {
     /// Spans stay on while anyone wants them.
     #[test]
     fn spans_stay_on_while_anyone_wants_them() {
-        // Only the mod's bit: other tests may want them as the report meanwhile.
+        let _spans = spans_test_lock();
         want_spans(SPANS_MOD, true);
         assert!(sunrise_client::spans::enabled());
         assert_ne!(SPAN_USERS.load(Ordering::Relaxed) & SPANS_MOD, 0);

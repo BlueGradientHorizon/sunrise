@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Fixed scene on a `state-digest` dedicated server: BINARY RESOURCES TEMPLATE OUT [--detail] [--ticks N] [--sprint] [--fast-step] [--random-ticks] [--no-digest] [--generate] [--coverage]; random ticks are off unless --random-ticks; --coverage adds a village, foxes, dolphins, allays, looting mobs, tridents, a furnace, a brewing stand and the custom spawners, and defaults --ticks to 2500."""
+import gzip
+import json
 import os
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -56,18 +59,102 @@ def held(item_id):
 
 
 VILLAGE = (64, 38)  # bell position (x, z); the players of --coverage stand beside it
+VILLAGE_BEDS = (-8, -6, -4, 4, 6)  # bed x offsets from the bell: CatSpawner needs more than four
 DAY_TIME = 17000  # the run crosses 18000, the siege roll, and the sky stays dark
+SPIT_FOX = 'cov_spit'
+SPIT_FOX_UUID = (24726, 0, 7, 1)
+TRADER_DELAY = 1200  # the saved spawn delay of --coverage: the spawner's first pass, at tick 1200, rolls
+TRADER_FRESH = 24000  # WanderingTraderSpawner's delay after a roll
+
+
+def seed_coverage_world(world):
+    """The saved wandering-trader data of --coverage, so its spawner rolls inside the window."""
+    version = dat_ints(world / 'data' / 'minecraft' / 'weather.dat').get('DataVersion', 0)
+    body = b'\x0a' + name(b'data') + int_tag(b'spawn_delay', TRADER_DELAY) + int_tag(b'spawn_chance', 25) + b'\x00'
+    raw = b'\x0a' + name(b'') + body + int_tag(b'DataVersion', version) + b'\x00'
+    (world / 'data' / 'minecraft' / 'wandering_trader.dat').write_bytes(gzip.compress(raw))
+
+
+def name(text):
+    return struct.pack('>H', len(text)) + text
+
+
+def int_tag(key, value):
+    return b'\x03' + name(key) + struct.pack('>i', value)
+
+
+def dat_ints(path):
+    """The int tags of a gzipped NBT file of ints and compounds (what the trader and weather data hold), flattened."""
+    data, out, at = gzip.decompress(path.read_bytes()), {}, 3
+    while at < len(data):
+        kind = data[at]
+        if kind == 0:
+            at += 1
+            continue
+        size = struct.unpack('>H', data[at + 1:at + 3])[0]
+        key, at = data[at + 3:at + 3 + size].decode(), at + 3 + size
+        if kind == 3:
+            out[key] = struct.unpack('>i', data[at:at + 4])[0]
+            at += 4
+        elif kind == 1:
+            at += 1
+        elif kind != 10:
+            raise SystemExit(f'{path}: tag {kind} not read here')
+    return out
+
+
+def coverage_checks(run, world, owner=None):
+    """After a --coverage run, through `run` (console commands to output; `owner` names the Loyalty trident's player): coverage.txt's lines, the spots missed."""
+    def passed(command):
+        return any('Test passed' in line for line in run([command]))
+    lines, missed = [], []
+
+    def need(label, ok):
+        lines.append(f'{label} {"reached" if ok else "MISSED"}')
+        if not ok:
+            missed.append(label)
+    fox = run([f'data get entity @e[type=fox,tag={SPIT_FOX},limit=1] equipment.mainhand.id'])
+    spitter = ','.join(map(str, SPIT_FOX_UUID))
+    need('fox_spit', passed(f'execute if entity @e[type=minecraft:item,nbt={{Thrower:[I;{spitter}]}}]')
+         or any('has the following entity data' in line and 'minecraft:stick' not in line for line in fox))
+    run(['save-all flush'])
+    trader = dat_ints(world / 'data' / 'minecraft' / 'wandering_trader.dat')
+    lines.append(f'trader spawn_delay={trader.get("spawn_delay")} spawn_chance={trader.get("spawn_chance")}')
+    need('trader_roll', trader.get('spawn_delay') == TRADER_FRESH - TRADER_DELAY)
+    if owner:
+        need('village_cat', passed('execute if entity @e[type=minecraft:cat]'))
+        need('loyalty_return', not passed('execute if entity @e[type=minecraft:trident,tag=cov_loyal]')
+             and any('minecraft:trident' in line for line in run([f'data get entity {owner} Inventory'])))
+    return lines, missed
+
+
+def pickup_stat_check(world, name, uuid):
+    """After the server stopped (a player's stats are written when it leaves): the emerald pickup stat of --coverage."""
+    stats = world / 'players' / 'stats' / f'{uuid}.json'
+    picked = json.loads(stats.read_text()).get('stats', {}).get('minecraft:picked_up', {}) if stats.exists() else {}
+    ok = picked.get('minecraft:emerald') == 3
+    return [f'{name} picked_up {json.dumps(picked, sort_keys=True)}', f'emerald_pickup {"reached" if ok else "MISSED"}'], [] if ok else ['emerald_pickup']
+
+
+def uuid_text(ints):
+    """A UUID's four ints (`data get entity <player> UUID`) as the dashed text stats files are named by."""
+    h = ''.join(f'{v & 0xffffffff:08x}' for v in ints)
+    return f'{h[:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:]}'
 
 
 def coverage_commands():
-    """What wave 2's moves run and the default scene does not; only with --coverage, tick-counted like the rest."""
+    """What wave 2's moves run and the default scene does not; only with --coverage, tick-counted like the rest; coverage_checks says each spot ran."""
     y = Y
     commands = []
-    for k in range(4):  # foxes with items they accept, one already holding an item
+    for k in range(4):  # foxes with items they accept; a summoned fox only loots with CanPickUpLoot
         x = 10 + k * 4
-        commands.append(f'summon minecraft:fox {x}.5 {y} 22.5')
+        commands.append(f'summon minecraft:fox {x}.5 {y} 22.5 {{CanPickUpLoot:1b}}')
         commands.append(item(f'{x + 1}.5', y, '22.5', ['sweet_berries', 'rabbit', 'sweet_berries', 'rabbit'][k], 3 if k == 0 else 1))
-    commands.append(f'summon minecraft:fox 26.5 {y} 22.5 {{{held("apple")}}}')
+    # Food replaces the stick, which the fox spits out with itself as thrower: checked. Invulnerable, so wolves leave it.
+    spitter = ','.join(map(str, SPIT_FOX_UUID))
+    commands.append(f'summon minecraft:fox 26.5 {y} 22.5 {{CanPickUpLoot:1b,Invulnerable:1b,UUID:[I;{spitter}],'
+                    f'Tags:["{SPIT_FOX}"],{held("stick")}}}')
+    commands.append(item('27.5', y, '22.5', 'mushroom_stew'))
     commands.append(f'fill 30 {y - 3} 20 35 {y - 1} 25 minecraft:water')  # a 6x6x3 pool flush with the ground
     for k in range(3):
         commands.append(f'summon minecraft:dolphin {31 + k * 2}.5 {y - 2} 21.5')
@@ -95,15 +182,17 @@ def coverage_commands():
     bottle = 'id:"minecraft:potion",count:1,components:{"minecraft:potion_contents":{potion:"minecraft:water"}}'
     commands.append(f'setblock 50 {y} 44 minecraft:brewing_stand{{Fuel:20b,Items:[{{Slot:0b,{bottle}}},{{Slot:1b,{bottle}}},'
                     f'{{Slot:2b,{bottle}}},{{Slot:3b,id:"minecraft:nether_wart",count:4}},{{Slot:4b,id:"minecraft:blaze_powder",count:4}}]}}')
-    vx, vz = VILLAGE  # a bell, four beds and two workstations make a village the spawners see
+    vx, vz = VILLAGE  # a bell, five claimed beds and two workstations: a village where a cat can spawn
     commands.append(f'setblock {vx} {y} {vz} minecraft:bell[attachment=floor,facing=north]')
-    for x in (vx - 6, vx - 4, vx + 4, vx + 6):
-        commands.append(f'setblock {x} {y} {vz - 2} minecraft:red_bed[facing=north,part=foot]')
-        commands.append(f'setblock {x} {y} {vz - 3} minecraft:red_bed[facing=north,part=head]')
+    for x in VILLAGE_BEDS:
+        commands.append(f'setblock {vx + x} {y} {vz - 2} minecraft:red_bed[facing=north,part=foot]')
+        commands.append(f'setblock {vx + x} {y} {vz - 3} minecraft:red_bed[facing=north,part=head]')
     commands.append(f'setblock {vx} {y} {vz + 4} minecraft:lectern[facing=south]')
     commands.append(f'setblock {vx + 2} {y} {vz + 4} minecraft:composter')
-    for dx in (-2, 0, 2):
-        commands.append(f'summon minecraft:villager {vx + dx}.5 {y} {vz + 1}.5')
+    for k, x in enumerate(VILLAGE_BEDS):  # CatSpawner counts beds that living villagers hold as home
+        home = f'{{value:{{pos:[I;{vx + x},{y},{vz - 3}],dimension:"minecraft:overworld"}}}}'
+        commands.append(f'summon minecraft:villager {vx - 4 + 2 * k}.5 {y} {vz + 2}.5 '
+                        f'{{PersistenceRequired:1b,Brain:{{memories:{{"minecraft:home":{home}}}}}}}')
     commands += ['gamerule mob_griefing true', 'gamerule spawn_mobs true', 'gamerule spawn_monsters true',
                  'gamerule spawn_wandering_traders true', 'gamerule spawn_patrols true', f'time set {DAY_TIME}']
     return commands
@@ -222,14 +311,17 @@ def main():
     prepare_dir(run_dir)
     shutil.copytree(template / 'world', run_dir / 'world')
     (run_dir / 'world' / 'session.lock').unlink(missing_ok=True)
+    coverage = '--coverage' in sys.argv
+    if coverage:
+        seed_coverage_world(run_dir / 'world')
     digest = out / 'digest.txt'
     server = Server(binary, resources, run_dir, scratch_env(home, None if '--no-digest' in sys.argv else digest, '--detail' in sys.argv), freeze=True)
-    timings = {}
+    timings, missed = {}, []
     try:
         server.wait_for('Done (')
         server.run(['forceload query'])
         time.sleep(3)
-        server.run(scene_commands('--random-ticks' in sys.argv, '--coverage' in sys.argv))
+        server.run(scene_commands('--random-ticks' in sys.argv, coverage))
         before = server.game_time()
         start = time.time()
         if '--sprint' in sys.argv:
@@ -242,11 +334,16 @@ def main():
             while server.game_time() < before + ticks:
                 time.sleep(0.05)
         timings['step_seconds'] = time.time() - start
+        if coverage:
+            lines, missed = coverage_checks(server.run, run_dir / 'world')
+            (out / 'coverage.txt').write_text('\n'.join(lines) + '\n')
     finally:
         server.stop()
         shutil.rmtree(home, ignore_errors=True)
     (out / 'timings.txt').write_text(f'{timings}\n')
     print(out, timings)
+    if missed:
+        raise SystemExit(f'--coverage missed: {", ".join(missed)} (see {out / "coverage.txt"})')
 
 
 if __name__ == '__main__':
