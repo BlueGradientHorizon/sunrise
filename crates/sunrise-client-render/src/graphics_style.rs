@@ -118,9 +118,9 @@ pub fn panel(batch: &mut HudBatch, atlas: &HudAtlas, [x, y, w, h]: [f32; 4], in_
 /// The search field and other wells: vanilla's text field, highlighted while focused.
 pub fn well(batch: &mut HudBatch, atlas: &HudAtlas, [x, y, w, h]: [f32; 4], focused: bool) {
     let sprite = if focused {
-        "gui/sprites/widget/text_field_highlighted"
+        "widget/text_field_highlighted"
     } else {
-        "gui/sprites/widget/text_field"
+        "widget/text_field"
     };
     ui::nine_slice(batch, atlas, sprite, x, y, w, h, WHITE);
 }
@@ -130,7 +130,7 @@ pub fn scroller(batch: &mut HudBatch, atlas: &HudAtlas, track: [f32; 4], thumb: 
     ui::nine_slice(
         batch,
         atlas,
-        "gui/sprites/widget/scroller_background",
+        "widget/scroller_background",
         x,
         y,
         w,
@@ -138,16 +138,7 @@ pub fn scroller(batch: &mut HudBatch, atlas: &HudAtlas, track: [f32; 4], thumb: 
         WHITE,
     );
     let [x, y, w, h] = thumb;
-    ui::nine_slice(
-        batch,
-        atlas,
-        "gui/sprites/widget/scroller",
-        x,
-        y,
-        w,
-        h,
-        WHITE,
-    );
+    ui::nine_slice(batch, atlas, "widget/scroller", x, y, w, h, WHITE);
 }
 /// `text` cut to `width` with an ellipsis, as a long name gives way to its control: the HUD
 /// kit's `fit::ellipsize`.
@@ -162,10 +153,10 @@ pub fn checkbox(
     (lit, live): (bool, bool),
 ) {
     let sprite = match (on, lit && live) {
-        (true, true) => "gui/sprites/widget/checkbox_selected_highlighted",
-        (true, false) => "gui/sprites/widget/checkbox_selected",
-        (false, true) => "gui/sprites/widget/checkbox_highlighted",
-        (false, false) => "gui/sprites/widget/checkbox",
+        (true, true) => "widget/checkbox_selected_highlighted",
+        (true, false) => "widget/checkbox_selected",
+        (false, true) => "widget/checkbox_highlighted",
+        (false, false) => "widget/checkbox",
     };
     let tint = if live { WHITE } else { muted() };
     let top = y + ((ROW - 17.0) / 2.0).floor();
@@ -193,9 +184,9 @@ pub fn button_with_room(
 ) {
     let [x, y, w, h] = rect;
     let sprite = match (live, hover) {
-        (false, _) => "gui/sprites/widget/button_disabled",
-        (true, true) => "gui/sprites/widget/button_highlighted",
-        (true, false) => "gui/sprites/widget/button",
+        (false, _) => "widget/button_disabled",
+        (true, true) => "widget/button_highlighted",
+        (true, false) => "widget/button",
     };
     ui::nine_slice(batch, atlas, sprite, x, y, w, h, WHITE);
     let color = if live { WHITE } else { muted() };
@@ -284,9 +275,131 @@ pub fn cost_color(cost: Cost) -> u32 {
     hex(cost.rgb(), 255)
 }
 
+/// An atlas of vanilla's widget sprites from `assets/minecraft/textures/gui/sprites/widget/`, as a pack lays them out.
+#[cfg(test)]
+pub(crate) fn widget_atlas() -> HudAtlas {
+    let root = tempfile::tempdir().unwrap();
+    let assets = root.path().join("assets/minecraft");
+    std::fs::create_dir_all(assets.join("atlases")).unwrap();
+    std::fs::write(
+        assets.join("atlases/gui.json"),
+        r#"{"sources":[{"type":"minecraft:directory","prefix":"","source":"gui/sprites"}]}"#,
+    )
+    .unwrap();
+    let widgets = assets.join("textures/gui/sprites/widget");
+    std::fs::create_dir_all(&widgets).unwrap();
+    for (name, w, h) in [
+        ("checkbox", 17, 17),
+        ("checkbox_highlighted", 17, 17),
+        ("checkbox_selected", 17, 17),
+        ("checkbox_selected_highlighted", 17, 17),
+        ("button", 200, 20),
+        ("button_highlighted", 200, 20),
+        ("button_disabled", 200, 20),
+        ("text_field", 200, 20),
+        ("text_field_highlighted", 200, 20),
+        ("scroller", 6, 32),
+        ("scroller_background", 6, 32),
+    ] {
+        let file = std::fs::File::create(widgets.join(format!("{name}.png"))).unwrap();
+        let mut encoder = png::Encoder::new(file, w, h);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        let pixels = vec![255; (w * h * 4) as usize];
+        let mut writer = encoder.write_header().unwrap();
+        writer.write_image_data(&pixels).unwrap();
+    }
+    HudAtlas::build(&sunrise_assets::resource_source::ResourceSource::directory(
+        root.path().to_owned(),
+    ))
+    .unwrap()
+}
+
+/// Whether `batch` drew a quad over the whole of vanilla's GUI sprite `id`.
+#[cfg(test)]
+pub(crate) fn drew_sprite(batch: &HudBatch, atlas: &HudAtlas, id: &str) -> bool {
+    let r = atlas
+        .gui_rect(id)
+        .unwrap_or_else(|| panic!("{id} is in the atlas"));
+    let has = |uv: [f32; 2]| batch.vertices.iter().any(|v| v.uv == uv);
+    has([r.u0, r.v0]) && has([r.u1, r.v1])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every painter draws the vanilla sprite its state names, so none comes out blank (#3715).
+    #[test]
+    fn each_widget_draws_vanilla_s_sprite_for_its_state() {
+        let atlas = widget_atlas();
+        let rect = [10.0, 20.0, 100.0, 20.0];
+        let label = Text::empty();
+        let draws: [(&str, fn(&mut HudBatch, &HudAtlas)); 11] = [
+            ("widget/checkbox", |b, a| {
+                checkbox(b, a, 100.0, 0.0, false, (false, true))
+            }),
+            ("widget/checkbox_highlighted", |b, a| {
+                checkbox(b, a, 100.0, 0.0, false, (true, true))
+            }),
+            ("widget/checkbox_selected", |b, a| {
+                checkbox(b, a, 100.0, 0.0, true, (false, true))
+            }),
+            ("widget/checkbox_selected_highlighted", |b, a| {
+                checkbox(b, a, 100.0, 0.0, true, (true, true))
+            }),
+            ("widget/button", |b, a| {
+                button(
+                    b,
+                    a,
+                    [10.0, 20.0, 100.0, 20.0],
+                    &Text::empty(),
+                    (false, true, false),
+                )
+            }),
+            ("widget/button_highlighted", |b, a| {
+                button(
+                    b,
+                    a,
+                    [10.0, 20.0, 100.0, 20.0],
+                    &Text::empty(),
+                    (true, true, false),
+                )
+            }),
+            ("widget/button_disabled", |b, a| {
+                button(
+                    b,
+                    a,
+                    [10.0, 20.0, 100.0, 20.0],
+                    &Text::empty(),
+                    (false, false, false),
+                )
+            }),
+            ("widget/text_field", |b, a| {
+                well(b, a, [10.0, 20.0, 100.0, 20.0], false)
+            }),
+            ("widget/text_field_highlighted", |b, a| {
+                well(b, a, [10.0, 20.0, 100.0, 20.0], true)
+            }),
+            ("widget/scroller_background", |b, a| {
+                scroller(b, a, [0.0, 0.0, 6.0, 200.0], [0.0, 0.0, 6.0, 40.0])
+            }),
+            ("widget/scroller", |b, a| {
+                scroller(b, a, [0.0, 0.0, 6.0, 200.0], [0.0, 0.0, 6.0, 40.0])
+            }),
+        ];
+        for (id, draw) in draws {
+            let mut batch = HudBatch::scratch([640, 480]);
+            draw(&mut batch, &atlas);
+            assert!(drew_sprite(&batch, &atlas, id), "{id} drawn");
+        }
+        let mut batch = HudBatch::scratch([640, 480]);
+        cycler(&mut batch, &atlas, rect, &label, (false, true));
+        assert!(
+            drew_sprite(&batch, &atlas, "widget/button"),
+            "the cycler's button drawn"
+        );
+    }
 
     fn atlas() -> HudAtlas {
         HudAtlas::build(&sunrise_assets::resource_source::ResourceSource::directory(
