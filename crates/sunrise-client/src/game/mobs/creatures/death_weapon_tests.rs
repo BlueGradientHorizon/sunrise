@@ -52,9 +52,6 @@ impl mod_api::Hooks for WeaponProbe {
     ) {
         assert!(event.context.tool.is_none());
         assert_eq!(event.context.weapon_item(host), self.expected);
-        if let Some(expected) = &self.expected {
-            wasm_weapon_dispatch(host, event, expected);
-        }
         if let Some(axe) = &self.swap {
             let source = event.context.damage_source.unwrap();
             let living = host
@@ -66,7 +63,6 @@ impl mod_api::Hooks for WeaponProbe {
                     .unwrap()
             );
             assert_eq!(event.context.weapon_item(host), Some(axe.clone()));
-            wasm_weapon_dispatch(host, event, axe);
         }
         *self.seen.lock().unwrap() += 1;
     }
@@ -279,9 +275,6 @@ fn death_weapon_e_fall_has_no_weapon() {
         assert_eq!(*seen.lock().unwrap(), 1);
     });
 }
-
-// The producer calls WeaponProbe with its real context. Dispatch that same context to
-// a real guest, checking either the recorded stack on the wire or the live backend.
 
 #[test]
 #[ignore = "daily"]

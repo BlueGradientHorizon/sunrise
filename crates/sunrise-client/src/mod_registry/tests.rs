@@ -314,3 +314,47 @@ fn a_mod_the_player_put_there_is_never_replaced() {
     );
     fs::remove_dir_all(&home).unwrap();
 }
+
+/// A native package can declare only registries too; the browser must inspect the package,
+/// rather than treat that capability list as proof that it contains no code.
+#[test]
+fn code_packages_never_reach_the_content_browser_install_path() {
+    let manifest = format!(
+        "id = 'ruby'\nname = 'Ruby'\nversion = '1.0'\napi = '0.2'\nside = 'both'\ncapabilities = ['registries']\n[native]\ngame = '26.3'\nsunrise = '{}'\n",
+        "a".repeat(40),
+    );
+    let bytes = sunrise_mod_package::Package::write_files(
+        &manifest,
+        &[
+            (
+                "Cargo.toml",
+                b"[package]\nname = 'ruby'\nversion = '1.0.0'\n",
+            ),
+            ("src/lib.rs", b"// No code needed for the fixture.\n"),
+        ],
+    )
+    .unwrap();
+    let index = registry("1.0", &bytes, "file:///ruby.smod");
+    let home = scratch("code");
+    let error = install(&index, &home, "ruby", &serve(bytes.clone())).unwrap_err();
+    assert!(error.contains("code mods"), "{error}");
+    assert!(!home.join("sunrise-mods/ruby.smod").exists());
+    assert!(!home.join("mod-browser/downloads/ruby.smod.part").exists());
+    assert!(!home.join(MANIFEST).exists());
+
+    // A code package installed through the launcher is not silently replaced by content.
+    fs::create_dir_all(home.join("sunrise-mods")).unwrap();
+    fs::write(home.join("sunrise-mods/ruby.smod"), &bytes).unwrap();
+    fs::write(home.join(MANIFEST), serde_json::json!({"entries": [{
+        "source": "sunrise", "project": "ruby", "version": "1.0", "file": "sunrise-mods/ruby.smod"
+    }]}).to_string()).unwrap();
+    let content = ruby("1.1");
+    let index = registry("1.1", &content, "file:///ruby.smod");
+    let error = install(&index, &home, "ruby", &serve(content)).unwrap_err();
+    assert!(error.contains("code mods"), "{error}");
+    assert_eq!(
+        fs::read(home.join("sunrise-mods/ruby.smod")).unwrap(),
+        bytes
+    );
+    fs::remove_dir_all(home).unwrap();
+}

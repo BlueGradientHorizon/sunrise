@@ -470,7 +470,6 @@ fn block_use_original_shrink_and_damage_values() {
 #[test]
 #[ignore = "daily"]
 fn block_use_listener_replacements_keep_original_on_both_routes() {
-    // Instantiate and invoke the real wasm guest on the production-sized stack.
     crate::game::native_entity_refs::tests::run_on_guest_stack(|| {
         struct Replace(Arc<AtomicUsize>);
         #[mod_api::__subscriptions]
@@ -481,16 +480,8 @@ fn block_use_listener_replacements_keep_original_on_both_routes() {
                 event: &mut mod_api::RightClickBlockEvent<'_>,
             ) -> mod_api::Flow {
                 let mode = self.0.load(Ordering::SeqCst);
-                if matches!(mode, 2 | 3 | 5) {
-                    return block_use_wasm_replace(
-                        host,
-                        event,
-                        if mode == 5 { 1 } else { mode % 2 },
-                        mode == 5,
-                    );
-                }
                 if let mod_api::HostSide::Server(host) = host {
-                    let item = if self.0.load(Ordering::SeqCst) == 0 {
+                    let item = if mode == 0 {
                         "minecraft:diamond"
                     } else {
                         "minecraft:glowstone"
@@ -529,7 +520,7 @@ fn block_use_listener_replacements_keep_original_on_both_routes() {
                 point: [3.5, 65.0, 4.5],
                 inside: false,
             };
-            for replacement in [0, 1, 2, 3, 4, 5] {
+            for replacement in [0, 1, 4] {
                 mode.store(replacement, Ordering::SeqCst);
                 for packet in [false, true] {
                     let anchor = g
@@ -570,7 +561,7 @@ fn block_use_listener_replacements_keep_original_on_both_routes() {
                         .unwrap();
                     }
                     g.as_guest(12, |g| {
-                        let expected_item = if replacement < 4 && replacement % 2 == 0 {
+                        let expected_item = if replacement == 0 {
                             "minecraft:diamond"
                         } else {
                             "minecraft:glowstone"

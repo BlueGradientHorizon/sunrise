@@ -227,6 +227,7 @@ mod tests {
         assert_eq!(info.homepage(), Some("https://example.org"));
         assert_eq!(info.issues(), None);
         assert_eq!(info.icon_path(), Some("icon.png"));
+        assert_eq!(info.runtime(), Some(mod_api::PackageRuntime::Native));
         let [dependency] = info.dependencies() else {
             panic!("one dependency")
         };
@@ -252,6 +253,7 @@ mod tests {
         let info = native.try_into_api().unwrap();
         assert_eq!(info.kind(), mod_api::PackageKind::Code);
         assert_eq!(info.icon_path(), Some("icon.png"));
+        assert_eq!(info.runtime(), Some(mod_api::PackageRuntime::Native));
         assert_eq!(
             info.property("tier"),
             Some(&mod_api::PropertyValue::Integer(3))

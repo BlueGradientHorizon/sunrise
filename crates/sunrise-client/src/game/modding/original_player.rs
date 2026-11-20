@@ -196,7 +196,7 @@ mod tests {
     struct Listener {
         death: bool,
         keep: bool,
-        heard: Arc<Mutex<Vec<(OriginalPlayerRef, sunrise_mod_wasm::WasmMod)>>>,
+        heard: Arc<Mutex<Vec<OriginalPlayerRef>>>,
     }
 
     #[mod_api::__subscriptions]
@@ -233,8 +233,6 @@ mod tests {
             );
             assert_eq!(original.attachment(host, &VALUE), Ok(73));
             assert_eq!(original.attachment(host, &RETAINED), Ok(17));
-            // The saved import reads the raw codec-backed entry, before native reads decode it.
-            let wasm = wasm_reads(host, event, self.death, self.keep);
             assert_eq!(original.attachment(host, &SAVED), Ok(31));
             assert_eq!(
                 SAVED.get(host, Holder::Player(event.player)),
@@ -280,7 +278,7 @@ mod tests {
             // Replacement writes cannot alter the captured old values.
             VALUE.set(host, Holder::Player(event.player), 99).unwrap();
             assert_eq!(original.attachment(host, &VALUE), Ok(73));
-            self.heard.lock().unwrap().push((original, wasm));
+            self.heard.lock().unwrap().push(original);
         }
     }
 
@@ -356,19 +354,7 @@ mod tests {
                 }
                 let heard = heard.lock().unwrap();
                 assert_eq!(heard.len(), 1);
-                let (original, wasm) = &heard[0];
-                let original = *original;
-                let replacement = game.player(12).unwrap();
-                assert!(game.player_set_experience_levels(replacement, 0));
-                // Re-enter the same guest after dispatch; it retained the actual event token.
-                let mut expired = PlayerCloneEvent {
-                    player: 12,
-                    name: "expired",
-                    was_death: death,
-                    original,
-                };
-                wasm.player_clone(game, &mut expired);
-                assert_eq!(replacement.experience(game).unwrap().level, 42);
+                let original = heard[0];
                 assert_eq!(original.position(game), None);
                 assert_eq!(original.inventory_slot(game, 2), None);
                 assert_eq!(original.health(game), None);

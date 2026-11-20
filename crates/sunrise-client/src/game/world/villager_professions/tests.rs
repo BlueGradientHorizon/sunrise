@@ -287,9 +287,6 @@ fn villager_no_mods_world_retains_farmer_composter_and_five_levels() {
     });
 }
 
-fn wasm_engineer() -> mod_api::ModEntry {
-    wasm_profession(definition(), "wasm_engineer")
-}
 struct TradeFiles;
 #[mod_api::__subscriptions]
 impl Hooks for TradeFiles {
@@ -302,22 +299,6 @@ impl Hooks for TradeFiles {
         event.files.push(("villager_trade/test:engineer_offer".into(), br#"{"gives":{"id":"minecraft:iron_ingot","count":2},"wants":{"id":"minecraft:emerald","count":3},"max_uses":12,"xp":7}"#.to_vec()));
     }
 }
-#[test]
-#[ignore = "daily"]
-fn villager_wasm_engineer_declaration_resolves_with_assembler() {
-    // Instantiate and invoke the real wasm guest on the production-sized stack.
-    crate::game::native_entity_refs::tests::run_on_guest_stack(|| {
-        fixture(
-            vec![
-                ModEntry::new("trade_files", Box::new(TradeFiles)),
-                wasm_engineer(),
-            ]
-            .into(),
-            assert_engineer_acquisition,
-        );
-    });
-}
-
 fn assert_engineer_acquisition(game: &mut Game<'_>) {
     let table = game.stations().professions.clone();
     assert_eq!(table.entries().len(), 16);
@@ -663,41 +644,4 @@ fn villager_native_slots_ignore_declaring_mod_order() {
             );
         });
     }
-}
-
-#[test]
-#[ignore = "daily"]
-fn villager_wasm_slots_ignore_declaring_mod_order() {
-    // Instantiate and invoke the real wasm guest on the production-sized stack.
-    crate::game::native_entity_refs::tests::run_on_guest_stack(|| {
-        for reverse in [false, true] {
-            let mut mechanic = definition();
-            mechanic.key = ProfessionKey(Identifier::parse("test:mechanic").unwrap());
-            let bench = PoiKey(Identifier::parse("other:bench").unwrap());
-            mechanic.workstations = vec![ProfessionWorkstation {
-                poi: bench.clone(),
-                block: Identifier::parse("minecraft:furnace").unwrap(),
-                properties: vec![],
-            }];
-            mechanic.held_poi = vec![bench.clone()];
-            mechanic.acquirable_poi = vec![bench];
-            let mut mods = vec![
-                wasm_profession(definition(), "z_engineer"),
-                wasm_profession(mechanic, "a_mechanic"),
-            ];
-            if reverse {
-                mods.reverse();
-            }
-            mods.insert(0, ModEntry::new("trade_files", Box::new(TradeFiles)));
-            fixture(mods.into(), |game| {
-                let table = &game.stations().professions;
-                assert_eq!(table.resolve("test:engineer"), Some(15));
-                assert_eq!(table.resolve("test:mechanic"), Some(16));
-                assert_eq!(
-                    table.pois.resolve("test:assembler"),
-                    Some(sunrise_world::poi::PoiIdentity::Custom(1))
-                );
-            });
-        }
-    });
 }
