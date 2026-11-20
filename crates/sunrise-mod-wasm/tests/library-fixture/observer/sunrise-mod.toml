@@ -6,8 +6,3 @@ side = "both"
 capabilities = ["registries"]
 [dependencies]
 wasm_test_library = "0.1.0"
-
-[wasm]
-sha512 = "cfc9feacf9f47bb46a58b7159f86fa26ab9ed99fa2d8baafcba71ed2ca55e6d79271443cb186956349f58a9f00dbde0a8dd58f7e9935bdb90691b7ec337e6976"
-toolchain = "1.99.1 58cf8f9c35b355199727627d07ae34a4e2846d67"
-linked = { wasm_test_library = "5f02a70f66b182e2cf9e1d79a0d1530338464a41d7a7628be71f2ee0ef3fbd7b21ed4ed22fd0414194c37989dd8fc8c438dec2c0848cd2aba6cb70d6fb48c605" }

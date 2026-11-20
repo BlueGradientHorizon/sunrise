@@ -5,7 +5,3 @@ description = "Shared library fixture."
 api = "0.2"
 side = "both"
 capabilities = ["registries"]
-
-[wasm]
-sha512 = "56dca637b30749e64eece066cdf26a9c4d2ddfc90b5cc1048bb9e0c841043a22889d4f70c234a6cd00d3d83bffd9f8e9235e3f96dc8fbe102d49296f75e7621f"
-toolchain = "1.99.1 58cf8f9c35b355199727627d07ae34a4e2846d67"
