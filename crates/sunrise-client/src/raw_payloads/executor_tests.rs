@@ -266,7 +266,6 @@ fn handler_error_or_epoch_cancellation_publishes_no_staged_work_or_replies() {
 
 #[test]
 fn main_root_blocks_later_network_delivery_and_keeps_its_ingress_charge() {
-    mod_platform::__private::initialize().unwrap();
     for cancel in [None, Some(Mode::Reconfigure), Some(Mode::Cancel)] {
         with_case(
             Mode::Success,
