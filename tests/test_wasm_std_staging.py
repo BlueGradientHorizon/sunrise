@@ -24,7 +24,7 @@ class WasmStdStagingTests(unittest.TestCase):
         build = workflow["jobs"]["build"]
         tools = next(step for step in build["steps"] if step.get("name") == "Workflow-owned validation tools")
         self.assertIn("tools/ci/rust-version", tools["with"]["sparse-checkout"].splitlines())
-        for matrix in build["strategy"]["matrix"]["include"]:
+        for matrix in build["strategy"]["matrix"]["include"] + workflow["jobs"]["musl"]["strategy"]["matrix"]["include"]:
             with self.subTest(platform=matrix["name"]):
                 runner = {"os": "macOS" if matrix.get("mac") else "Windows" if matrix["name"].startswith("windows") else "Linux",
                           "environment": "github-hosted"}
@@ -33,7 +33,8 @@ class WasmStdStagingTests(unittest.TestCase):
                 self.assertTrue(expression_value(condition, {"runner": runner}, matrix={"musl": False, **matrix}))
 
     def test_every_matrix_packer_reads_the_download_directory(self):
-        job = yaml.safe_load((ROOT / ".github/workflows/game-build.yml").read_text())["jobs"]["build"]
+        jobs = yaml.safe_load((ROOT / ".github/workflows/game-build.yml").read_text())["jobs"]
+        job = jobs["build"]
         download, = [step for step in job["steps"]
                      if step.get("uses", "").startswith("actions/download-artifact@")
                      and step.get("with", {}).get("name") == "wasm-std"]
@@ -41,7 +42,7 @@ class WasmStdStagingTests(unittest.TestCase):
         target = re.search(r"^target=(\S+)$", alpine, re.M)[1]
         musl_bin = re.search(r'^bin="([^"]+)"$', alpine, re.M)[1].replace("$target", target)
         self.assertRegex(alpine, r'package\s+\\\s*"\$bin/sunrise-client"')
-        for matrix in job["strategy"]["matrix"]["include"]:
+        for matrix in job["strategy"]["matrix"]["include"] + jobs["musl"]["strategy"]["matrix"]["include"]:
             with self.subTest(target=matrix["name"]):
                 env = {"BIN": resolve(job["env"]["BIN"], matrix, {})}
                 destination = resolve(download["with"]["path"], matrix, env)

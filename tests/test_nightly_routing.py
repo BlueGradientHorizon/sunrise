@@ -11,7 +11,7 @@ import tempfile
 import textwrap
 import unittest
 
-from tests.test_ci_runners import jobs, runs_on
+from tests.test_ci_runners import jobs
 from tests.test_ci_concurrency import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,30 +34,17 @@ RUNNERS = {
 class NightlyRoutingTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("node"), "Node evaluates GitHub's JavaScript-style expressions")
     def test_real_matrix_routes_both_trust_levels(self):
-        text = GAME.read_text()
-        workflow_jobs = dict(jobs(text))
-        self.assertIn("needs: exporters", workflow_jobs["build"])
-        expressions = re.findall(r"^\s*runs-on:\s*\$\{\{(.*?)\}\}\s*$", text, re.M)
-        self.assertEqual(len(expressions), 3)
-        smoke = workflow_jobs["linux-smoke"]
-        smoke_if = re.search(r"^\s*if:\s*\$\{\{(.*?)\}\}\s*$", smoke, re.M).group(1)
-        block = text.split("        include:\n", 1)[1].split("    runs-on:", 1)[0]
-        rows = []
-        for line in block.splitlines():
-            found = re.match(r"\s*(- )?(\w+): ([^#]+)", line)
-            if not found:
-                continue
-            new, key, value = found.groups()
-            if new:
-                rows.append({})
-            if rows:
-                value = value.strip()
-                rows[-1][key] = {"true": True, "false": False}.get(value, value)
-        self.assertEqual({row["name"] for row in rows}, {"linux", "linux-musl", "windows", "windows-arm64", "macos", "macos-x64"})
+        game = yaml.safe_load(GAME.read_text())["jobs"]
+        expressions = {name: game[name]["runs-on"][3:-2] for name in ("exporters", "build", "musl", "linux-smoke")}
+        smoke = game["linux-smoke"]
+        smoke_if = smoke["if"][3:-2]
+        rows = [row for job in ("build", "musl") for row in game[job]["strategy"]["matrix"]["include"]]
+        self.assertEqual({row["name"] for row in rows}, RUNNERS.keys())
         linux = next(row for row in rows if row["name"] == "linux")
-        self.assertIn(f"name: {linux['asset']}", smoke, "smoke must download the hosted producer's archive")
-        self.assertIn(f"/hosted-linux/{linux['dir']}", smoke)
-        self.assertIn("needs: legs", smoke)
+        download = next(step for step in smoke["steps"] if step.get("uses", "").startswith("actions/download-artifact@"))
+        self.assertEqual(download["with"]["name"], linux["asset"], "smoke must download the hosted producer's archive")
+        self.assertIn(f"/hosted-linux/{linux['dir']}", str(smoke["steps"]))
+        self.assertEqual(smoke["needs"], "legs")
         script = """const fs = require('fs');
 const state = JSON.parse(fs.readFileSync(0, 'utf8'));
 // Actions returns an empty string for absent context properties, not undefined.
@@ -86,22 +73,22 @@ console.log(JSON.stringify(eval(expression)));
                 variables.update({"NIGHTLY_LINUX_RUNNER": '"dyna-large"', "NIGHTLY_EXPORTERS_RUNNER": '"dyna-large"', "NIGHTLY_BOOKKEEPING_RUNNER": '"dyna-small"'})
             with self.subTest(configured=configured, disabled=disabled, trusted=trusted, dyna=dyna, blacksmith=blacksmith):
                 # Exporters: Dyna's runner for an untrusted build when it is configured, else GitHub's.
-                self.assertEqual(evaluate(expressions[0], {}, trusted), "dyna-large" if override and not trusted else "ubuntu-latest")
+                self.assertEqual(evaluate(expressions["exporters"], {}, trusted), "dyna-large" if override and not trusted else "ubuntu-latest")
                 expected_bookkeeping = "dyna-small" if override else ("ubuntu-latest" if disabled else ["self-hosted", "linux", "sunrise-light"])
                 self.assertEqual(evaluate(bookkeeping, {}, trusted), expected_bookkeeping)
                 self.assertEqual(evaluate(smoke_if, {}, trusted), not trusted and override)
                 if not trusted and override:
-                    self.assertEqual(evaluate(expressions[2], {}, trusted), "dyna-large")
+                    self.assertEqual(evaluate(expressions["linux-smoke"], {}, trusted), "dyna-large")
                 for row in rows:
                     if row["name"] in {"linux", "linux-musl"}:
                         self.assertEqual(row["os"], "ubuntu-22.04", "shipped Linux binaries keep the documented libc baseline")
                     # Every leg on its Blacksmith machine, or with BLACKSMITH=off on GitHub's.
                     expected = RUNNERS[row["name"]][blacksmith == "off"]
                     with self.subTest(entry=row["name"]):
-                        self.assertEqual(evaluate(expressions[1], row, trusted), expected)
+                        job = "musl" if row.get("musl") else "build"
+                        self.assertEqual(evaluate(expressions[job], row, trusted), expected)
         # A leg built for another CPU is started there, by a job on that CPU's runner that downloads its untested
         # archive and uploads it under its own name with the leg's marker; legs waits for that job.
-        game = yaml.load(text, Loader=yaml.BaseLoader)["jobs"]
         started = {"macos-x64": ("macos-x64-intel", "macos-15-intel"),
                    "windows-arm64": ("windows-arm64-native", "windows-11-vs2026-arm")}
         self.assertEqual({row["name"] for row in rows if row.get("started_elsewhere")}, set(started))
@@ -129,13 +116,13 @@ console.log(JSON.stringify(eval(expression)));
                     self.assertLess(download, start)
                     self.assertLess(start, upload)
 
-        timeout = re.search(r"^\s*timeout-minutes:\s*\$\{\{(.*?)\}\}", workflow_jobs["build"], re.M).group(1)
         for repository, trusted, row in itertools.product(["sunrise-org/sunrise", "horizon-rust/horizon"], [False, True], rows):
             with self.subTest(repository=repository, trusted=trusted, entry=row["name"]):
                 if repository == "sunrise-org/sunrise":
                     expected = 100 if row.get("mac") or row.get("musl") else 60
                 else:
                     expected = 60 if row.get("mac") else 40
+                timeout = game["musl" if row.get("musl") else "build"]["timeout-minutes"][3:-2]
                 self.assertEqual(evaluate(timeout, row, trusted, repository), expected)
 
     @unittest.skipUnless(shutil.which("node"), "Node evaluates GitHub's JavaScript-style expressions")
@@ -148,7 +135,7 @@ console.log(JSON.stringify(eval(expression)));
 const matrix = s.matrix, inputs = s.inputs, github = s.github;
 console.log(JSON.stringify(Boolean(eval(s.expression))));
 """
-        legs = {"linux": {}, "linux-musl": {}, "windows": {}, "windows-arm64": {}, "macos": {"mac": True}, "macos-x64": {"mac": True}}
+        legs = {"linux": {}, "windows": {}, "windows-arm64": {}, "macos": {"mac": True}, "macos-x64": {"mac": True}}
         for repository, kind in itertools.product(["sunrise-org/sunrise", "horizon-rust/horizon"], ["nightly", "snapshot", "release"]):
             for absent in [None, *legs]:
                 if absent is None:
@@ -164,6 +151,7 @@ console.log(JSON.stringify(Boolean(eval(s.expression))));
                     ran = subprocess.run(["bash", "-c", decide], cwd=folder, capture_output=True, text=True,
                                          env={**os.environ, "REPOSITORY": repository, "KIND": kind, "GITHUB_OUTPUT": str(output)})
                     self.assertEqual(ran.returncode == 0, expected, ran.stdout)
+                    self.assertNotIn("linux-musl", ran.stdout)
                     self.assertEqual(output.exists() and output.read_text() == "complete=true\n", expected)
 
     def test_every_shipped_glibc_program_is_checked_by_workflow_owned_tools(self):

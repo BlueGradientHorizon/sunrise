@@ -11,6 +11,7 @@
     nightly.py prune-builds [--days 7]   deletes the nightly/build-<date>-<n> branches older than that, but the
                                    newest and any a published nightly points to (Ludovic, 2026-10-27)
     nightly.py keep-source <sha> <date>  tags the nightly's commit nightly-source/<date>-<short>, for good
+    nightly.py report-musl-failure <kind> <step>  files a bug for the failed manual-download job, deduped by step
     nightly.py sdk-archives        the assets the SDK's packing legs make (tools/prebuilt_game.py gather), one per line
     nightly.py sdk-assets          every asset a complete sdk-<sha> release holds: those, sdk.json and the signed sums
     nightly.py sdk-index <sha> <out>     writes sdk-<sha>'s sdk.json to <out>, checked against its SHA256SUMS
@@ -58,6 +59,7 @@ else:  # run as tools/ci/nightly.py: its folder is on the path
 DATED = re.compile(r"^nightly-(\d{4}-\d{2}-\d{2})$")
 TITLE_DATE = re.compile(r"Nightly (\d{4}-\d{2}-\d{2})")
 SOURCE_TAG = "nightly-source/"
+MUSL_NOTE = "The optional musl Linux archive follows separately if its build, signing and upload succeed."
 # Load from the trusted workflow checkout before pick() switches to a possibly older green tree.
 SUNRISE_PLAYERS = Path(__file__).with_name("nightly-players.md").read_text().strip()
 
@@ -117,7 +119,7 @@ def notes(today: str, chosen: Ref, main: Ref, picked: list[dict], left_out: list
     fork = train.REPO == "sunrise-org/sunrise"
     parts = [SUNRISE_PLAYERS if fork else train.PLAYERS,
              f"Nightly {today} · {chosen.sha[:7]}: {built}, built from `{chosen.name}` ({chosen.sha}).",
-             source_line(today, chosen.sha)]
+             source_line(today, chosen.sha), MUSL_NOTE]
     if not fork:
         parts.append(PLAYERS)
     if not shown and not picked:
@@ -429,7 +431,7 @@ def pick_snapshot() -> None:
     with open("nightly-notes.md", "w") as f:
         f.write(f"Snapshot {today} · {sha[:7]}: main at {sha}, built to test it after merge. Not a Nightly: no "
                 "launcher offers or updates to it; a developer installs it with "
-                f"`sunrise-launcher install {tag}`. Its SDK is the release sdk-{sha}.\n\n{train.DISCLAIMER}\n")
+                f"`sunrise-launcher install {tag}`. Its SDK is the release sdk-{sha}.\n\n{MUSL_NOTE}\n\n{train.DISCLAIMER}\n")
     output(build=str(build).lower(), sha=sha, short=sha[:7], source="main", date=today, version=f"snapshot-{today}",
            nightly=f"{today} {sha[:7]}", source_tag="", tag=tag, sdk=str(sdk).lower())
     print(f"{'build' if build else f'skip ({tag} is already published)'}: {tag} {sha}")
@@ -541,6 +543,24 @@ def keep_source(sha: str, today: str) -> None:
     print(f"tagged {sha[:7]} `{tag}`")
 
 
+def report_musl_failure(kind: str, step: str) -> None:
+    """One open bug per channel and failure step, like the daily's deduped leg failures."""
+    title = f"{kind.capitalize()}: musl {step} failed"
+    repo = os.environ["GITHUB_REPOSITORY"]
+    run = f"{os.environ['GITHUB_SERVER_URL']}/{repo}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+    print(f"::warning::{title}: {run}")
+    if os.environ.get("DRY_RUN") != "false" or os.environ.get("GITHUB_REF") != "refs/heads/main":
+        return
+    pages = train.gh_json("api", "--paginate", f"repos/{repo}/issues?state=open&labels=bug&per_page=100")
+    if any(issue["title"] == title and "pull_request" not in issue for page in pages for issue in page):
+        return
+    body = ("> 🤖 Filed by Aria's agent swarm, Dyna, not by Aria.\n\n"
+            f"The optional musl Linux `{step}` step failed on the {kind} channel. "
+            f"See [the workflow run]({run}/attempts/{os.environ['GITHUB_RUN_ATTEMPT']}). "
+            "The regular release does not depend on this step.")
+    gh("issue", "create", "--repo", repo, "--label", "bug", "--title", title, "--body", body)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -563,6 +583,9 @@ def main() -> None:
     keep = sub.add_parser("keep-source")
     keep.add_argument("sha")
     keep.add_argument("date")
+    musl = sub.add_parser("report-musl-failure")
+    musl.add_argument("kind", choices=["nightly", "snapshot"])
+    musl.add_argument("step", choices=["build", "sign", "verify", "attach", "sign or attach"])
     args = ap.parse_args()
     if args.cmd == "pick":
         if args.kind == "snapshot":
@@ -589,6 +612,8 @@ def main() -> None:
         prune_snapshots(args.days)
     elif args.cmd == "keep-source":
         keep_source(args.sha, args.date)
+    elif args.cmd == "report-musl-failure":
+        report_musl_failure(args.kind, args.step)
     else:
         prune(args.days)
 

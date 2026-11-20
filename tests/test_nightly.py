@@ -1,5 +1,9 @@
 import datetime as dt
 import json
+import os
+import shutil
+import subprocess
+import tempfile
 import unittest
 from unittest import mock
 from pathlib import Path
@@ -125,6 +129,9 @@ class NightlyTests(unittest.TestCase):
         text = notes(chosen=nightly.Ref("main", sha, None))
         self.assertIn(f"Source: commit {sha}, kept for good as the tag `nightly-source/2026-10-28-0c02067`", text)
 
+    def test_notes_tell_manual_downloaders_the_musl_archive_follows(self):
+        self.assertIn("The optional musl Linux archive follows separately", notes())
+
     def test_the_source_tag_outlives_every_prune(self):
         tag = nightly.source_tag("2026-10-20", "a" * 40)
         self.assertEqual(nightly.stale([{"tagName": tag, "isPrerelease": True}], dt.date(2026, 11, 28), 7), [])
@@ -163,11 +170,128 @@ class ScheduledTests(unittest.TestCase):
         self.assertIn("### Not merged yet (2)\n- Fix 1 (#1) by dev1, at h1, picked by kacpherek", text)
         self.assertIn("### Left out (1)", text)
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
+
+
+class MuslAttachmentTests(unittest.TestCase):
+    def setUp(self):
+        from tests.test_ci_concurrency import yaml
+
+        self.jobs = yaml.safe_load((WORKFLOWS / "nightly-build.yml").read_text())["jobs"]
+        self.game = yaml.safe_load((WORKFLOWS / "game-build.yml").read_text())["jobs"]
+        self.attach = self.jobs["musl-attach"]
+
+    def test_musl_is_not_a_transitive_dependency_of_sign_or_publish(self):
+        pending = ["sign", "publish"]
+        seen = set()
+        while pending:
+            name = pending.pop()
+            if name not in seen:
+                seen.add(name)
+                needs = self.jobs[name].get("needs", [])
+                pending.extend([needs] if isinstance(needs, str) else needs)
+        self.assertEqual(seen, {"pick", "exporters", "build", "complete", "sign", "publish"})
+        self.assertEqual(self.jobs["build"]["needs"], ["pick", "exporters"])
+        self.assertEqual(self.jobs["musl-build"]["needs"], ["pick", "exporters"])
+        for call, part in (("exporters", "exporters"), ("build", "game"), ("musl-build", "musl")):
+            self.assertEqual(self.jobs[call]["uses"], "./.github/workflows/game-build.yml")
+            self.assertEqual(self.jobs[call]["with"]["part"], part)
+            self.assertEqual(self.game[part if part != "game" else "build"]["if"], f"inputs.part == '{part}'")
+        self.assertTrue(all(not row.get("musl") for row in self.game["build"]["strategy"]["matrix"]["include"]))
+        self.assertEqual([row["name"] for row in self.game["musl"]["strategy"]["matrix"]["include"]], ["linux-musl"])
+
+    def test_the_release_environment_attaches_only_after_successful_publication(self):
+        self.assertEqual(set(self.attach["needs"]), {"pick", "publish", "musl-build"})
+        self.assertIn("needs.publish.result == 'success'", self.attach["if"])
+        self.assertEqual(self.attach["environment"], self.jobs["sign"]["environment"])
+        self.assertIn("'release'", self.attach["environment"])
+        self.assertEqual(self.attach["env"]["TAG"], "${{ needs.pick.outputs.tag }}")
+        self.assertEqual(self.attach["steps"][1]["with"], {"name": "musl-archive", "path": "musl"})
+
+    @unittest.skipUnless(os.name == "posix" and shutil.which("openssl") and shutil.which("sha256sum"),
+                         "the hosted signing steps use Bash, OpenSSL and sha256sum")
+    def test_musl_signs_and_uploads_only_its_own_checksums_and_archive(self):
+        sign, verify, upload = (step["run"] for step in self.attach["steps"][2:])
+        script_root = WORKFLOWS.parents[1]
+        archive = "sunrise-linux-musl-x86_64.tar.gz"
+        for kind, tag in (("nightly", "nightly"), ("snapshot", "snapshot-2026-11-04-0123456")):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as folder:
+                root = Path(folder)
+                (root / "musl").mkdir()
+                (root / "musl" / archive).write_bytes(b"musl archive")
+                (root / "tools").symlink_to(script_root / "tools", target_is_directory=True)
+                env = dict(os.environ, KIND=kind, ALSO_FOR=f"{kind}-2026-11-04-0123456", TAG=tag, ARCHIVE=archive,
+                           DRY_RUN="true", EPHEMERAL="yes", GITHUB_REPOSITORY="sunrise-org/sunrise",
+                           SHA="0123456789abcdef", RELEASE_ID="123", CURRENT_ID="123")
+
+                def shell(script, **overrides):
+                    return subprocess.run(["bash", "-e", "-o", "pipefail", "-c", script], cwd=root,
+                                          env=dict(env, **overrides), text=True, capture_output=True)
+
+                result = shell(sign)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                # Isolate Cargo, but verify the hashes before the workflow renames the sums for publication.
+                result = shell('cargo() { printf "%s\\n" "$*" >> verified; (cd musl && sha256sum -c SHA256SUMS); }\n' + verify)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                channel, version = (root / "verified").read_text().splitlines()
+                self.assertIn(f"--tag {kind} --only {archive} --key ", channel)
+                self.assertIn(f"--tag {env['ALSO_FOR']} --signature SHA256SUMS.v2.sig --only {archive} --key ", version)
+                self.assertTrue((root / "musl/SHA256SUMS-musl.sig").stat().st_size)
+                self.assertTrue((root / "musl/SHA256SUMS-musl.v2.sig").stat().st_size)
+                self.assertFalse((root / "musl/SHA256SUMS").exists())
+                stub = '''
+gh() {
+  case "$1:$2" in
+    api:*/releases/tags/*) echo "$CURRENT_ID" ;;
+    api:*/git/ref/tags/*) echo "$SHA" ;;
+    release:upload) printf '%s\\n' "$@" >> uploaded ;;
+    *) return 9 ;;
+  esac
+}
+'''
+                dry = shell(stub + upload)
+                self.assertEqual(dry.returncode, 0, dry.stderr)
+                self.assertIn(f"Would append to {tag}", dry.stdout)
+                stale = shell(stub + upload, DRY_RUN="false", CURRENT_ID="124")
+                self.assertNotEqual(stale.returncode, 0, stale.stdout)
+                self.assertFalse((root / "uploaded").exists())
+                result = shell(stub + upload, DRY_RUN="false")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual((root / "uploaded").read_text().splitlines(), [
+                    "release", "upload", tag, "musl/SHA256SUMS-musl", "musl/SHA256SUMS-musl.sig",
+                    "musl/SHA256SUMS-musl.v2.sig", "release", "upload", tag, f"musl/{archive}",
+                ])
+
+    def test_musl_failures_file_one_bug_per_step_without_release_writes(self):
+        job = self.jobs["musl-failure"]
+        self.assertEqual(job["permissions"], {"contents": "read", "issues": "write"})
+        for name in ("musl-build", "musl-attach"):
+            self.assertIn(name, job["needs"])
+            for result in ("failure", "cancelled"):
+                self.assertIn(f"needs.{name}.result == '{result}'", job["if"])
+        env = dict(DRY_RUN="false", GITHUB_REF="refs/heads/main", GITHUB_SERVER_URL="https://github.com",
+                   GITHUB_REPOSITORY="sunrise-org/sunrise", GITHUB_RUN_ID="12345", GITHUB_RUN_ATTEMPT="2")
+        with mock.patch.dict(os.environ, env, clear=True), mock.patch.object(nightly.train, "gh_json") as query, \
+                mock.patch.object(nightly, "gh") as gh:
+            query.return_value = [[]]
+            for step in ("build", "sign", "attach"):
+                nightly.report_musl_failure("nightly", step)
+            self.assertEqual(gh.call_count, 3)
+            for step, call in zip(("build", "sign", "attach"), gh.call_args_list):
+                *args, body = call.args
+                self.assertEqual(args, ["issue", "create", "--repo", "sunrise-org/sunrise", "--label", "bug",
+                                        "--title", f"Nightly: musl {step} failed", "--body"])
+                self.assertTrue(body.startswith("> 🤖 Filed by Aria's agent swarm, Dyna, not by Aria.\n\n"))
+                self.assertIn(f"`{step}` step failed", body)
+                self.assertIn("/actions/runs/12345/attempts/2", body)
+            query.return_value = [[], [{"title": "Nightly: musl build failed"}]]
+            nightly.report_musl_failure("nightly", "build")
+            self.assertEqual(gh.call_count, 3)
+            query.reset_mock()
+            with mock.patch.dict(os.environ, DRY_RUN="true"):
+                nightly.report_musl_failure("nightly", "attach")
+            query.assert_not_called()
+            self.assertEqual(gh.call_count, 3)
 
 
 class FirstNightlyTests(unittest.TestCase):
@@ -464,3 +588,7 @@ class SdkPairTests(unittest.TestCase):
                         if repo == "sunrise-org/sunrise":
                             state.assert_not_called()
                             requested.assert_not_called()
+
+
+if __name__ == "__main__":
+    unittest.main()
