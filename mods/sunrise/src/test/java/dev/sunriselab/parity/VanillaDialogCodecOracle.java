@@ -1,6 +1,7 @@
 package dev.sunriselab.parity;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -14,11 +15,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import net.minecraft.ReportedException;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.TagParser;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.contents.TranslatableContents;
+import net.minecraft.resources.Identifier;
 import net.minecraft.resources.RegistryDataLoader;
 import net.minecraft.resources.RegistryOps;
 import net.minecraft.server.RegistryLayer;
@@ -32,6 +35,7 @@ import net.minecraft.server.packs.PathPackResources;
 import net.minecraft.server.packs.repository.PackSource;
 import net.minecraft.server.packs.repository.ServerPacksSource;
 import net.minecraft.server.packs.resources.MultiPackResourceManager;
+import net.minecraft.tags.TagKey;
 import net.minecraft.tags.TagLoader;
 
 /**
@@ -93,6 +97,15 @@ public final class VanillaDialogCodecOracle {
                     Files.createDirectories(path.getParent());
                     Files.writeString(path, new Gson().toJson(file.getValue()));
                 }
+                if (one.has("tag_chain")) {
+                    int length = one.get("tag_chain").getAsInt();
+                    Path tags = root.resolve("data/test/tags/dialog/chain");
+                    Files.createDirectories(tags);
+                    for (int i = 0; i < length; i++) {
+                        String value = i + 1 == length ? "test:leaf" : String.format("#test:chain/%05d", i + 1);
+                        Files.writeString(tags.resolve(String.format("%05d.json", i)), "{\"values\":[\"" + value + "\"]}");
+                    }
+                }
                 var packs = new ArrayList<>(repo.openAllSelected());
                 packs.add(new PathPackResources(new PackLocationInfo("test", Component.literal("t"), PackSource.WORLD, Optional.empty()), root));
                 var resources = new MultiPackResourceManager(PackType.SERVER_DATA, packs);
@@ -102,8 +115,20 @@ public final class VanillaDialogCodecOracle {
                 JsonObject line = new JsonObject();
                 line.addProperty("name", one.get("name").getAsString());
                 try {
-                    RegistryDataLoader.load(resources, context, RegistryDataLoader.WORLD_REGISTRIES, Runnable::run).join();
+                    var registries = RegistryDataLoader.load(resources, context, RegistryDataLoader.WORLD_REGISTRIES, Runnable::run).join();
                     line.addProperty("accept", true);
+                    if (one.has("observe_tags")) {
+                        var dialogs = registries.lookupOrThrow(Registries.DIALOG);
+                        var tags = new JsonObject();
+                        for (var name : one.getAsJsonArray("observe_tags")) {
+                            var tag = TagKey.create(Registries.DIALOG, Identifier.parse(name.getAsString()));
+                            var entries = new JsonArray();
+                            dialogs.get(tag).orElseThrow().stream().forEach(holder ->
+                                entries.add(holder.unwrapKey().orElseThrow().identifier().toString()));
+                            tags.add(name.getAsString(), entries);
+                        }
+                        line.add("round_trip", tags);
+                    }
                 } catch (RuntimeException error) {
                     Throwable cause = error.getCause() != null ? error.getCause() : error;
                     if (!(cause instanceof ReportedException reported)) throw error;

@@ -347,52 +347,6 @@ pub(super) fn bind_dialog_tags(
         remove: bool,
     }
 
-    fn resolve(
-        name: &str,
-        files: &BTreeMap<String, Vec<Member>>,
-        bound: &mut BTreeMap<String, Option<Vec<String>>>,
-        active: &mut BTreeSet<String>,
-        held: &dyn Fn(&str) -> bool,
-        unbound: &mut BTreeSet<String>,
-    ) -> Option<Vec<String>> {
-        if let Some(out) = bound.get(name) {
-            return out.clone();
-        }
-        let entries = files.get(name)?;
-        if !active.insert(name.to_owned()) {
-            return None;
-        }
-        let mut failed = false;
-        let mut out = Vec::new();
-        for entry in entries {
-            let members = if entry.tag {
-                resolve(&entry.id, files, bound, active, held, unbound)
-            } else if held(&entry.id) {
-                Some(vec![entry.id.clone()])
-            } else {
-                if entry.required && !entry.remove {
-                    unbound.insert(entry.id.clone());
-                }
-                None
-            };
-            if let Some(members) = members {
-                for id in members {
-                    if entry.remove {
-                        out.retain(|member| *member != id);
-                    } else if !out.contains(&id) {
-                        out.push(id);
-                    }
-                }
-            } else {
-                failed |= entry.required && !entry.remove;
-            }
-        }
-        active.remove(name);
-        let out = (!failed).then_some(out);
-        bound.insert(name.to_owned(), out.clone());
-        out
-    }
-
     let mut files = BTreeMap::<String, Vec<Member>>::new();
     let mut add_file = |id: &str, value: Value| {
         let Ok(id) = Identifier::parse(id) else {
@@ -449,24 +403,92 @@ pub(super) fn bind_dialog_tags(
             }
         }
     }
-    let (mut bound, mut unbound) = (BTreeMap::new(), BTreeSet::new());
-    for name in files.keys() {
-        resolve(
-            name,
-            &files,
-            &mut bound,
-            &mut BTreeSet::new(),
-            &held,
-            &mut unbound,
-        );
+    let indices: BTreeMap<&str, usize> = files
+        .keys()
+        .enumerate()
+        .map(|(i, k)| (k.as_str(), i))
+        .collect();
+    let mut dependencies = vec![Vec::new(); files.len()];
+    let mut work = Vec::new();
+    let mut seen = BTreeSet::new();
+    // TagLoader.build uses DependencySorter.orderByDependencies: add every
+    // required edge before considering optional ones. Reject cycle-closing
+    // edges without changing the order of members within a tag.
+    for required in [true, false] {
+        for (from, entries) in files.values().enumerate() {
+            for entry in entries
+                .iter()
+                .filter(|e| e.tag && (e.required && !e.remove) == required)
+            {
+                let Some(&to) = indices.get(entry.id.as_str()) else {
+                    continue;
+                };
+                work.clear();
+                seen.clear();
+                work.push(to);
+                let mut closes_cycle = false;
+                while let Some(node) = work.pop() {
+                    if node == from {
+                        closes_cycle = true;
+                        break;
+                    }
+                    if seen.insert(node) {
+                        work.extend(dependencies[node].iter().copied());
+                    }
+                }
+                if !closes_cycle {
+                    dependencies[from].push(to);
+                }
+            }
+        }
     }
-    (
-        bound
-            .into_iter()
-            .filter_map(|(name, members)| Some((name, members?)))
-            .collect(),
-        unbound,
-    )
+
+    let files: Vec<_> = files.iter().collect();
+    let mut scheduled = vec![false; files.len()];
+    let mut stack = Vec::new();
+    let (mut bound, mut unbound) = (BTreeMap::new(), BTreeSet::new());
+    for root in 0..files.len() {
+        stack.push((root, false));
+        while let Some((index, ready)) = stack.pop() {
+            if !ready {
+                if !std::mem::replace(&mut scheduled[index], true) {
+                    stack.push((index, true));
+                    stack.extend(dependencies[index].iter().rev().map(|&dep| (dep, false)));
+                }
+                continue;
+            }
+            let (name, entries) = files[index];
+            let mut failed = false;
+            let mut out = Vec::new();
+            for entry in entries {
+                let members: Option<&[String]> = if entry.tag {
+                    bound.get(&entry.id).map(Vec::as_slice)
+                } else if held(&entry.id) {
+                    Some(std::slice::from_ref(&entry.id))
+                } else {
+                    if entry.required && !entry.remove {
+                        unbound.insert(entry.id.clone());
+                    }
+                    None
+                };
+                if let Some(members) = members {
+                    for id in members {
+                        if entry.remove {
+                            out.retain(|member| member != id);
+                        } else if !out.contains(id) {
+                            out.push(id.clone());
+                        }
+                    }
+                } else {
+                    failed |= entry.required && !entry.remove;
+                }
+            }
+            if !failed {
+                bound.insert(name.clone(), out);
+            }
+        }
+    }
+    (bound, unbound)
 }
 
 fn check_network_nbt(tag: &Tag) -> Result<(), String> {
@@ -1047,7 +1069,7 @@ mod tests {
         }
         for case in fixture["packs"].as_array().unwrap() {
             let name = case["name"].as_str().unwrap();
-            let files: Vec<(String, Vec<Vec<u8>>)> = case["files"]
+            let mut files: Vec<(String, Vec<Vec<u8>>)> = case["files"]
                 .as_object()
                 .unwrap()
                 .iter()
@@ -1068,12 +1090,38 @@ mod tests {
                     (key, vec![serde_json::to_vec(value).unwrap()])
                 })
                 .collect();
+            if let Some(length) = case["tag_chain"].as_u64() {
+                files.extend((0..length).map(|i| {
+                    let value = if i + 1 == length {
+                        "test:leaf".into()
+                    } else {
+                        format!("#test:chain/{:05}", i + 1)
+                    };
+                    (
+                        format!("tags/test:dialog/chain/{i:05}"),
+                        vec![serde_json::to_vec(&json!({"values": [value]})).unwrap()],
+                    )
+                }));
+            }
             let result = load_dialogs(&files);
             let accept = case["accept"].as_bool().unwrap();
             if result.is_ok() != accept {
                 wrong.push(format!(
                     "{name}: vanilla accept={accept}, Sunrise {result:?}"
                 ));
+            }
+            if let (Ok(entries), Some(expected)) = (result, case["round_trip"].as_object()) {
+                let root = tempfile::tempdir().unwrap();
+                let held: BTreeSet<_> = entries
+                    .iter()
+                    .map(|((namespace, path), _, _)| format!("{namespace}:{path}"))
+                    .collect();
+                let (bound, _) = bind_dialog_tags(root.path(), &PackOverlay::new(&files), |id| {
+                    held.contains(id)
+                });
+                for (tag, members) in expected {
+                    assert_eq!(json!(bound.get(tag)), *members, "{name}: {tag}");
+                }
             }
         }
         assert!(

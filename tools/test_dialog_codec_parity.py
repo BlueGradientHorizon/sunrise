@@ -36,7 +36,8 @@ def main():
          lab.ROOT / 'mods/sunrise/src/test/java', '-cp', str(jars['server']) + os.pathsep + dependencies,
          '-d', classes, oracle], 'compile-java')
     answers = build / 'answers.jsonl'
-    run(['java', '-Xmx1g', '-Djava.awt.headless=true', '-cp',
+    # Vanilla's recursive DependencySorter needs a larger stack for the deep tag chain.
+    run(['java', '-Xmx1g', '-Xss32m', '-Djava.awt.headless=true', '-cp',
          os.pathsep.join([str(classes), str(jars['server']), dependencies]),
          'dev.sunriselab.parity.VanillaDialogCodecOracle', FIXTURE, answers], 'oracle')
     recorded = json.loads(FIXTURE.read_text(encoding='utf-8'))
