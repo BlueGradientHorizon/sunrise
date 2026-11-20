@@ -1090,19 +1090,16 @@ mod tests {
             ) -> Flow {
                 if event.kind == "minecraft:item" {
                     let opener = host.player(123).unwrap();
-                    let stone = ItemStack::new("minecraft:stone", 64)
-                        .try_into_api()
-                        .unwrap();
-                    assert_eq!(
-                        opener
-                            .with_inventory(host, |view| view
-                                .iter()
-                                .map(|(slot, stack)| Some((slot, stack.project()?)))
-                                .collect::<Option<Vec<_>>>())
-                            .flatten(),
-                        Some((0..36).map(|slot| (slot, stone.clone())).collect()),
-                        "the listener sees the opener's full inventory after cursor reinsertion"
-                    );
+                    let stone = mod_api::__private::item_key("minecraft:stone").unwrap();
+                    opener.with_inventory(host, |view| {
+                        let mut slots = view.iter();
+                        for expected in 0..36 {
+                            let (slot, stack) = slots.next().unwrap();
+                            assert_eq!((slot, stack.item(), stack.count()), (expected, stone, 64),
+                                "the listener sees the opener's full inventory after cursor reinsertion");
+                        }
+                        assert!(slots.next().is_none());
+                    }).unwrap();
                     opener.set_inventory_slot(host, 3, None).unwrap();
                     self.0.lock().unwrap().push("drop");
                 }

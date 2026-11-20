@@ -93,7 +93,7 @@ impl<'a> ItemStackView<'a> {
     /// Lend an existing API value, including one synthesized for the current call.
     pub fn from_stack(stack: &'a ItemStack) -> Self {
         Self {
-            metadata: (stack.item, stack.count, stack.damage),
+            metadata: stack.read_metadata(),
             projection: StackProjection::Borrowed(stack),
         }
     }
@@ -319,6 +319,9 @@ impl ItemStack {
             damage,
             components: None,
         }
+    }
+    pub(crate) fn read_metadata(&self) -> StackMetadata {
+        (self.item, self.count, self.damage)
     }
     /// The process-local identity of this item.
     pub fn item(&self) -> ItemKey {

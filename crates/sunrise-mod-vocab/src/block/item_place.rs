@@ -903,8 +903,15 @@ fn infinite_moved(
     }
     let had = host
         .player(player)
-        .and_then(|player| player.inventory(host))
-        .is_some_and(|items| items.iter().any(|held| resource.matches(held)));
+        .and_then(|player| {
+            player.with_inventory(host, |inventory| {
+                (0..36).filter_map(|slot| inventory.get(slot)).any(|held| {
+                    held.item() == resource.item()
+                        && held.project().is_some_and(|stack| resource.matches(&stack))
+                })
+            })
+        })
+        .unwrap_or(false);
     if !had {
         ItemPlace::PlayerSlot { player, slot: 0 }.insert(host, tx, resource, 1);
     }

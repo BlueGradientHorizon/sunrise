@@ -363,15 +363,15 @@ mod owner {
                 Err(())
             });
             assert!(aborted.is_err());
-            assert_eq!(
-                player
-                    .with_inventory(game, |view| view
-                        .iter()
-                        .map(|(slot, stack)| Some((slot, stack.project()?)))
-                        .collect::<Option<Vec<_>>>())
-                    .flatten(),
-                Some(vec![(0, stone)])
-            );
+            player
+                .with_inventory(game, |view| {
+                    let mut slots = view.iter();
+                    let (slot, stack) = slots.next().unwrap();
+                    assert_eq!(slot, 0);
+                    assert_eq!(stack.project(), Some(stone));
+                    assert!(slots.next().is_none());
+                })
+                .unwrap();
 
             game.lan
                 .as_mut()

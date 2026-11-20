@@ -1129,6 +1129,51 @@ impl PlayerRef {
     pub fn uuid(self) -> u128 {
         self.uuid
     }
+
+    /// Read the player's current inventory by vanilla `Inventory.getItem` numbers: 0 to 35
+    /// main (0 to 8 hotbar), 36 feet, 37 legs, 38 chest, 39 head, 40 offhand, 41 body, 42 saddle.
+    /// The view is read-only and valid only in `read`. Use [`InventoryView::get`] for one slot
+    /// or [`InventoryView::iter`] for nonempty slots in ascending order. Project a stack only
+    /// to read its component patch or retain it.
+    ///
+    /// Returns `Some` of the callback's result even when the inventory is empty. Returns
+    /// `None` without calling it if the player is stale or unavailable. On the client only
+    /// the local player's inventory is available, including its local predictions.
+    pub fn with_inventory<R>(
+        self,
+        host: &dyn Host,
+        read: impl for<'a> FnOnce(InventoryView<'a>) -> R,
+    ) -> Option<R> {
+        let mut read = Some(read);
+        let mut result = None;
+        crate::backend_of(host)?.player_inventory_slots(self, &mut |view| {
+            if let Some(read) = read.take() {
+                result = Some(read(view));
+            }
+        })?;
+        result
+    }
+
+    /// Read the player's ender chest by vanilla slot number, 0 to 26, the `Slot` numbers
+    /// in the player's saved `EnderItems`. If the chest is open, this reads the live slots.
+    /// The view is read-only and valid only in `read`.
+    ///
+    /// Returns `Some` of the callback's result even when the chest is empty. Returns
+    /// `None` without calling it on a client or if the player is stale or unavailable.
+    pub fn with_ender_chest<R>(
+        self,
+        host: &dyn Host,
+        read: impl for<'a> FnOnce(InventoryView<'a>) -> R,
+    ) -> Option<R> {
+        let mut read = Some(read);
+        let mut result = None;
+        crate::backend_of(host)?.player_ender_chest(self, &mut |view| {
+            if let Some(read) = read.take() {
+                result = Some(read(view));
+            }
+        })?;
+        result
+    }
 }
 
 impl From<PlayerRef> for EntityRef {

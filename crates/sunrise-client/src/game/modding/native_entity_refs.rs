@@ -2681,18 +2681,15 @@ pub(super) mod tests {
                 .update_guest(12, |guest| guest.motion = Some(Box::new(motion)))
                 .unwrap();
             let player = game.player(12).unwrap();
-            assert_eq!(
-                player
-                    .with_inventory(game, |view| view
-                        .iter()
-                        .take_while(|(slot, _)| *slot < 36)
-                        .map(|(_, stack)| stack.project())
-                        .collect::<Option<Vec<_>>>())
-                    .flatten(),
-                Some(vec![crate::game::api_values::test_snapshot(
-                    &ItemStack::new("minecraft:stone", 1)
-                )])
-            );
+            player
+                .with_inventory(game, |view| {
+                    let mut slots = view.iter();
+                    let (slot, stack) = slots.next().unwrap();
+                    let stone = mod_api::__private::item_key("minecraft:stone").unwrap();
+                    assert_eq!((slot, stack.item(), stack.count()), (0, stone, 1));
+                    assert!(slots.next().is_none());
+                })
+                .unwrap();
             let guest_living = game.living(player.fields().entity).unwrap();
             let host: &dyn mod_api::Host = game;
             assert_eq!(

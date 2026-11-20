@@ -918,7 +918,6 @@ player_interaction::player_within_entity_reach
 player_inventory::player_drop_stack
 player_inventory::player_ender_chest
 player_inventory::player_give_stack
-player_inventory::player_inventory
 player_inventory::player_inventory_slots
 player_inventory::player_selected_slot
 player_inventory::player_set_ender_chest_slot

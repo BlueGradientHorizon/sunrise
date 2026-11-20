@@ -113,25 +113,23 @@ fn client_player_reads_answer_from_the_local_players_copy() {
         let mut stack = sunrise_client::items::ItemStack::new("minecraft:diamond_pickaxe", 1);
         stack.damage = 7;
         game.inventory.fill(None);
-        game.inventory[3] = Some(stack.clone());
+        game.inventory[3] = Some(stack);
         game.inventory[8] = Some(sunrise_client::items::ItemStack::new("minecraft:stone", 12));
-        assert_eq!(
-            player
-                .with_inventory(game, |view| view
-                    .iter()
-                    .take_while(|(slot, _)| *slot < 36)
-                    .map(|(_, stack)| stack.project())
-                    .collect::<Option<Vec<_>>>())
-                .flatten(),
-            Some(
-                vec![
-                    stack,
-                    sunrise_client::items::ItemStack::new("minecraft:stone", 12)
-                ]
-                .try_into_api()
-                .unwrap()
-            )
-        );
+        player
+            .with_inventory(game, |view| {
+                let mut slots = view.iter();
+                let (slot, pickaxe) = slots.next().unwrap();
+                let expected = mod_api::__private::item_key("minecraft:diamond_pickaxe").unwrap();
+                assert_eq!(
+                    (slot, pickaxe.item(), pickaxe.count(), pickaxe.damage()),
+                    (3, expected, 1, 7)
+                );
+                let (slot, stone) = slots.next().unwrap();
+                let expected = mod_api::__private::item_key("minecraft:stone").unwrap();
+                assert_eq!((slot, stone.item(), stone.count()), (8, expected, 12));
+                assert!(slots.next().is_none());
+            })
+            .unwrap();
 
         // Another player: the client isn't sent their state.
         let epoch = player.entity().epoch();
@@ -139,6 +137,6 @@ fn client_player_reads_answer_from_the_local_players_copy() {
         assert_eq!(other.game_mode(game), None);
         assert_eq!(other.food(game), None);
         assert_eq!(other.selected_slot(game), None);
-        assert_eq!(other.inventory(game), None);
+        assert_eq!(other.with_inventory(game, |_| ()), None);
     });
 }
