@@ -1299,19 +1299,20 @@ impl super::Game<'_> {
         pos: [i32; 3],
         value: &mut crate::menu::GrindstonePlace,
         cancel: &mut bool,
-    ) {
+    ) -> Result<(), crate::game::transactions::decision::InvalidReason> {
         let Ok(mut api) = value.try_into_api() else {
-            return;
+            return Ok(());
         };
         let original = api.clone();
         self.native_grindstone_place(player, entity, pos, &mut api, cancel);
         if api == original {
-            return;
+            return Ok(());
         }
-        match api.try_into_engine(self.items()) {
-            Ok(result) => *value = result,
-            Err(_) => *cancel = true,
-        }
+        // An answer that is no stack is refused, never read as a cancel.
+        *value = api
+            .try_into_engine(self.items())
+            .map_err(|_| crate::game::transactions::decision::InvalidReason::Count)?;
+        Ok(())
     }
     pub(in crate::game) fn api_grindstone_take(
         &mut self,
@@ -1320,19 +1321,20 @@ impl super::Game<'_> {
         pos: [i32; 3],
         value: &mut crate::menu::GrindstoneTake,
         cancel: &mut bool,
-    ) {
+    ) -> Result<(), crate::game::transactions::decision::InvalidReason> {
         let Ok(mut api) = value.try_into_api() else {
-            return;
+            return Ok(());
         };
         let original = api.clone();
         self.native_grindstone_take(player, entity, pos, &mut api, cancel);
         if api == original {
-            return;
+            return Ok(());
         }
-        match api.try_into_engine(self.items()) {
-            Ok(result) => *value = result,
-            Err(_) => *cancel = true,
-        }
+        // An answer that is no stack is refused, never read as a cancel.
+        *value = api
+            .try_into_engine(self.items())
+            .map_err(|_| crate::game::transactions::decision::InvalidReason::Count)?;
+        Ok(())
     }
     pub(in crate::game) fn api_anvil_craft_pre(
         &mut self,
@@ -2911,6 +2913,10 @@ pub(in crate::game) fn register_game_keys(ids: impl IntoIterator<Item = String>)
             .map(|def| sunrise_client_core::potions::namespaced(def.id)),
         |id| sunrise_client_core::potions::effect(id).map(|def| def.index),
     )
+    .unwrap();
+    mod_api::__private::validate_effect_part_owners(|id| {
+        sunrise_client_core::potions::effect(id)?.owner
+    })
     .unwrap();
     if let Some(types) = sunrise_client_core::block_entity_types::current() {
         // Registration just replaced the mod snapshot, but the process-wide engine
