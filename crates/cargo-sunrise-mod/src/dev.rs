@@ -217,6 +217,7 @@ pub(crate) fn native_sdk(cache: &Path, build: &str) -> Result<NativeSdk, String>
 /// What a native build made.
 pub(crate) struct Built {
     binary: PathBuf,
+    crate_name: String,
     libraries: Vec<PathBuf>,
     records: Vec<Library>,
     /// Revision for the package manifest: checked for mixins, inherited when they are unused.
@@ -289,11 +290,9 @@ pub(crate) fn build(project: &Path, update_lock: bool) -> Result<Built, String> 
         format!("{error}{hint}Build log: {}", log.display())
     };
 
-    let registry = {
-        let project =
-            sunrise_native_build::api::Project::read(&bundle).map_err(|e| e.to_string())?;
-        matches!(Route::of(&[project]), Route::Registry)
-    };
+    let cargo = sunrise_native_build::api::Project::read(&bundle).map_err(|e| e.to_string())?;
+    let crate_name = cargo.crate_name();
+    let registry = matches!(Route::of(&[cargo]), Route::Registry);
     if registry {
         println!("Compiling the crates.io dependencies of {id}, as `cargo build` would");
         if update_lock || !project.join("Cargo.lock").exists() {
@@ -345,6 +344,7 @@ pub(crate) fn build(project: &Path, update_lock: bool) -> Result<Built, String> 
     println!("Built {}\nBuild log: {}", library.display(), log.display());
     Ok(Built {
         binary,
+        crate_name,
         libraries,
         records,
         mixins,
@@ -434,6 +434,7 @@ pub(crate) fn run(
         .arg(&resources)
         .args(args)
         .env("SUNRISE_HOME", &home)
+        .env("SUNRISE_LOG_STDERR", &built.crate_name)
         // A session file handed to this process is the caller's: the game would read and delete it.
         .env_remove("SUNRISE_SESSION_FILE");
     #[cfg(target_os = "linux")]
