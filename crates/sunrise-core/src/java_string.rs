@@ -6,9 +6,9 @@
 //! `unsafe`. Each unit is weighted by its power of 31 straight from a table (a power of 31 modulo
 //! 2^32, since wrapping multiplication and addition are a ring), so the units of a block are
 //! independent sums and no multiplication waits for another: the same value as `h = 31 * h + c`,
-//! summed in another order. Small x86-64 inputs use scalar powers; other targets use the plain loop. This module
-//! depends on nothing else in the crate, so that `tools/string_hash_kit` can time byte-identical
-//! copies of it.
+//! summed in another order. Short UTF-16 inputs and targets without SSE2 use the plain loop.
+//! This module depends on nothing else in the crate, so that `tools/string_hash_kit` can time
+//! byte-identical copies of it.
 
 use simd::{WIDE_FROM, fold};
 
@@ -18,10 +18,13 @@ pub(crate) use units::{INLINE_CAPACITY, Units};
 /// `String.hashCode` of a string's UTF-16 units.
 #[inline]
 pub fn java_string_hash(units: &[u16]) -> i32 {
-    if units.is_empty() {
-        return 0;
+    #[cfg(target_arch = "x86_64")]
+    if units.len() >= WIDE_FROM {
+        return simd::fold_wide_utf16(units) as i32;
     }
-    fold(0, units) as i32
+    units.iter().fold(0i32, |hash, &unit| {
+        hash.wrapping_mul(31).wrapping_add(i32::from(unit))
+    })
 }
 
 /// Widen bytes already known to be ASCII, folding inline keys in the same pass.
@@ -281,6 +284,12 @@ mod simd {
             };
         }
         fold_wide(hash, units)
+    }
+
+    /// Keep the wide path's register and stack setup out of the inline UTF-16 loop.
+    #[inline(never)]
+    pub(super) fn fold_wide_utf16(units: &[u16]) -> u32 {
+        fold_wide(0, units)
     }
 
     /// Sixteen units or more: vector steps.
