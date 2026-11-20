@@ -57,10 +57,10 @@ impl Game<'_> {
         true
     }
 
-    /// `ServerPlayer.closeContainer` of a guest's menu: every menu they have open closes through
-    /// the path a disconnect and a `stillValid` failure use, then their client is told. Refuses
-    /// clients, stale menus, a player swapped in for a turn, and the inventory menu (window 0),
-    /// which is never closed. While a click action is active, true accepts a close at commit.
+    /// `ServerPlayer.closeContainer` of a guest's menu: queue the client's close before
+    /// running normal server teardown. Refuses clients, stale menus, a guest with a pending
+    /// disconnect or an active turn, and the inventory menu (window 0). While a click action
+    /// is active, true accepts a close at commit.
     pub(super) fn menu_close_container(&mut self, menu: MenuRef) -> bool {
         let window = menu.fields().window;
         if !self.is_logical_server() || window == 0 {
@@ -69,7 +69,7 @@ impl Game<'_> {
         let Some(guest) = self.native_menu_guest(menu) else {
             return false;
         };
-        if self.lan_acting == Some(guest.conn) {
+        if guest.disconnect_pending || self.lan_acting == Some(guest.conn) {
             return false;
         }
         self.request_menu_close(guest.conn, window, guest.menu_generation);
@@ -1085,6 +1085,18 @@ mod tests {
                 .unwrap();
             let menu = game.player_container_menu(player).unwrap();
             assert_ne!(menu.container_id(game), Some(0));
+            game.lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .update(0, |guest| guest.disconnect_pending = true);
+            assert!(!menu.close_container(game), "disconnect owns the teardown");
+            assert_eq!(game.player_container_menu(player), Some(menu));
+            let hub = &mut game.lan.as_mut().unwrap().hub;
+            assert_eq!(hub.guests[0].carried.as_ref(), Some(&stone));
+            hub.guests
+                .update(0, |guest| guest.disconnect_pending = false);
             assert!(menu.close_container(game));
             let guest = &game.lan.as_ref().unwrap().hub.guests[0];
             assert!(guest.menu.is_none(), "the menu is gone");

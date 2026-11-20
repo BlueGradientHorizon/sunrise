@@ -200,14 +200,12 @@ pub trait MenusClientBackendMut {
 #[sunrise_mod_api_macros::host_area]
 pub trait MenusBackendMut {
     /// Side: server.
-    /// Close a player's open menu as `ServerPlayer.closeContainer` does, running the normal
-    /// lifecycle once: the container's lid, a vehicle's or a trade's stand-in, the crafting,
-    /// station and mount menus, the carried stack back to the inventory,
-    /// `player_container_close`, then the client's window closed (`ContainerClose`). Refuses
-    /// stale menus, clients, a player whose state is swapped in for a turn, and the player's own
-    /// inventory menu, which is never closed. During a click action, true accepts a request
-    /// to close that same window at commit; an aborted action leaves it open. A client closes
-    /// its own screen with `close`.
+    /// Close a player's open menu as `ServerPlayer.closeContainer` does. The server queues
+    /// `ContainerClose`, then removes the menu, returns the carried stack to the inventory,
+    /// and fires `player_container_close`. Refuses stale menus, clients, a player whose state
+    /// is swapped in for a turn, a pending disconnect, and the player's own inventory menu.
+    /// During a click action, true accepts a request to close that same window at commit; an
+    /// aborted action leaves it open. A client closes its own screen with `close`.
     #[access(WorldOnly)]
     fn menu_close_container(&mut self, menu: MenuRef) -> bool;
     /// Side: server.
