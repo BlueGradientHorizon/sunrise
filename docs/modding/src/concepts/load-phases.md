@@ -129,6 +129,10 @@ reload cover common setup, client setup is `client_setup`, dedicated setup is `s
 and dependencies express intermod ordering. Load complete is the edge after initial Config and before
 `server_about_to_start`, not a hook.
 
+`DataLoadOrigin` and `LoopSide` describe the local load or loop, not data to encode. Read them
+through `DataLoadContext::origin()` and `LoopContext::side()` as before; if a payload needs such
+a fact, map it into a field of your own [Wire record](wire-types.md).
+
 FML's file and path APIs (`ModList` file reads, config full paths, the game directory, update URLs) are
 replaced on purpose; [FML loader APIs and their Sunrise routes](../reference/fml-loader-apis.md) lists each one.
 
