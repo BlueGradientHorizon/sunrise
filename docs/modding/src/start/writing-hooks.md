@@ -47,6 +47,11 @@ fn player_logged_in(&self, host: &mut dyn ServerHost, event: &mut PlayerLoggedIn
 - Handles in the event (a player, an entity, a level) have their own methods: reads take the host, writes take a
   server host.
 
+The engine declares the parameters of each hook in vocabulary types in
+`crates/sunrise-mod-vocab/src/hooks/`. The listener method and event come from that declaration.
+When adding a hook to the engine, give its game function the generated `fire::<Name>Call`
+carrier rather than copying the parameter list. See [Adding a hook](https://github.com/sunrise-org/sunrise/blob/main/docs/mod-api/adding-a-hook.md).
+
 ## Order between mods
 
 Mods run in dependency order: a mod after the mods it depends on. A hook method may carry
