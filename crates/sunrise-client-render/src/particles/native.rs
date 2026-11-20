@@ -273,7 +273,11 @@ impl ParticleLevelView for ProviderLevel<'_, '_> {
 #[cfg(test)]
 pub(super) mod tests {
     use super::super::*;
-    use mod_api::{ModParticle, ParticleBatch, ParticleLevelView, ParticleProvider};
+    use crate::chunk::{Chunk, Light};
+    use mod_api::{
+        BlockState, LightLayer, ModParticle, ParticleBatch, ParticleFacing, ParticleLevelView,
+        ParticleProvider,
+    };
     use std::sync::Arc;
     use {
         sunrise_core::nbt::Tag,
@@ -359,6 +363,8 @@ pub(super) mod tests {
             &HashMap::new(),
             &HashSet::new(),
         );
+        // The game's table of block states; the providers here read none of them.
+        e.block_states = Some(Arc::new(Vec::<BlockState>::new()));
         e.mod_sets.insert(
             "example:orbit".into(),
             ModSet {
@@ -591,6 +597,195 @@ pub(super) mod tests {
         tick_one(&mut e, &mut p, &level);
         assert!(p.removed);
     }
+    /// Hands back a batch of another size, as only a guest's raw bytes could.
+    struct Replacing;
+    impl ParticleProvider for Replacing {
+        fn tick(&self, particles: &mut ParticleBatch, _: &dyn ParticleLevelView) {
+            *particles = mod_api::__private::particle_batch_from_vec(Vec::new());
+        }
+    }
+    #[test]
+    fn a_batch_handed_back_at_another_size_expires_its_particles() {
+        let scene = Scene::new();
+        let level = scene.level();
+        let mut e = engine();
+        let mut p = provided(&mut e, Arc::new(Replacing));
+        p.lifetime = 20;
+        let at = p.position;
+        tick_one(&mut e, &mut p, &level);
+        assert!(p.removed);
+        assert_eq!(p.position, at);
+    }
+    /// Reads the batch's two nonfinite-length quaternions.
+    #[test]
+    fn a_quaternion_with_an_infinite_squared_length_expires_the_particle() {
+        let scene = Scene::new();
+        let level = scene.level();
+        let mut e = engine();
+        let facings = [
+            ParticleFacing::Fixed([1.0e30, 0.0, 0.0, 0.0]),
+            ParticleFacing::Fixed([f32::NAN, 0.0, 0.0, 1.0]),
+            ParticleFacing::Fixed([0.0; 4]),
+        ];
+        for facing in facings {
+            struct Set(ParticleFacing);
+            impl ParticleProvider for Set {
+                fn tick(&self, particles: &mut ParticleBatch, _: &dyn ParticleLevelView) {
+                    for particle in particles {
+                        particle.facing = self.0;
+                    }
+                }
+            }
+            let mut p = provided(&mut e, Arc::new(Set(facing)));
+            tick_one(&mut e, &mut p, &level);
+            assert!(p.removed, "{facing:?}");
+        }
+    }
+    /// A particle drawn at `center` by a provider's facing and roll, as the renderer builds it.
+    fn drawn(
+        facing: ParticleFacing,
+        roll: f32,
+        center: [f64; 3],
+        base: glam::Quat,
+    ) -> Vec<[f32; 3]> {
+        struct Pose(ParticleFacing, f32, [f64; 3]);
+        impl ParticleProvider for Pose {
+            fn tick(&self, particles: &mut ParticleBatch, _: &dyn ParticleLevelView) {
+                for particle in particles {
+                    particle.position = self.2;
+                    particle.previous = self.2;
+                    particle.size = 1.0;
+                    particle.facing = self.0;
+                    particle.roll = self.1;
+                }
+            }
+        }
+        let scene = Scene::new();
+        let level = scene.level();
+        let mut e = engine();
+        let mut p = provided(&mut e, Arc::new(Pose(facing, roll, center)));
+        p.lifetime = 20;
+        tick_one(&mut e, &mut p, &level);
+        e.particles.push(p);
+        let mut vertices = Vec::new();
+        e.render(DVec3::ZERO, base, 0.5, &|_| 0, &mut vertices);
+        assert_eq!(vertices.len(), 4);
+        vertices.iter().map(|v| v.pos).collect()
+    }
+    #[test]
+    fn a_providers_fixed_facing_and_roll_turn_the_drawn_quad() {
+        // Lying flat facing up, then rolled: the roll interpolates from 0 (the previous tick's)
+        // to 1 over the tick, so half a tick in it is 0.5 radians.
+        let flat = std::f32::consts::FRAC_1_SQRT_2;
+        let corners = drawn(
+            ParticleFacing::Fixed([-flat, 0.0, 0.0, flat]),
+            1.0,
+            [0.0; 3],
+            glam::Quat::IDENTITY,
+        );
+        assert!(corners.iter().all(|c| c[1].abs() < 1.0e-6), "{corners:?}");
+        let s = corners[0][0].hypot(corners[0][2]) / std::f32::consts::SQRT_2;
+        let (sin, cos) = 0.5f32.sin_cos();
+        for (cx, cy) in [(s, s), (-s, s), (-s, -s), (s, -s)] {
+            let want = [cx * cos - cy * sin, -(cx * sin + cy * cos)];
+            assert!(
+                corners
+                    .iter()
+                    .any(|c| (c[0] - want[0]).abs() < 1.0e-5 && (c[2] - want[1]).abs() < 1.0e-5),
+                "{want:?} not in {corners:?}"
+            );
+        }
+    }
+    #[test]
+    fn a_providers_around_y_facing_ignores_the_cameras_pitch() {
+        let pitched = glam::Quat::from_rotation_x(std::f32::consts::FRAC_PI_2);
+        let around = drawn(ParticleFacing::AroundY, 0.0, [0.0, 0.0, -4.0], pitched);
+        assert!(around.iter().all(|c| c[2] == -4.0), "{around:?}");
+        let camera = drawn(ParticleFacing::Camera, 0.0, [0.0, 0.0, -4.0], pitched);
+        assert!(
+            camera.iter().any(|c| (c[2] + 4.0).abs() > 0.5),
+            "{camera:?}"
+        );
+    }
+    #[test]
+    fn a_second_tick_reuses_the_batch_storage() {
+        let scene = Scene::new();
+        let level = scene.level();
+        let mut e = engine();
+        let probe = Arc::new(Probe::default());
+        let mut all: Vec<Particle> = (0..3).map(|_| provided(&mut e, probe.clone())).collect();
+        let tick = |e: &mut ParticleEngine, all: &mut Vec<Particle>| {
+            for p in all.iter_mut() {
+                p.lifetime = 20;
+                e.tick_particle(p, &level);
+            }
+            e.tick_providers(all, &level);
+        };
+        tick(&mut e, &mut all);
+        let shape = |e: &ParticleEngine| {
+            (
+                e.batch.views.as_ptr(),
+                e.batch.views.capacity(),
+                e.batch.buckets.len(),
+                e.batch.buckets[0].as_ptr(),
+                e.batch.buckets[0].capacity(),
+            )
+        };
+        let warm = shape(&e);
+        tick(&mut e, &mut all);
+        assert_eq!(shape(&e), warm);
+        assert_eq!(probe.0.load(std::sync::atomic::Ordering::Relaxed), 6);
+    }
+    #[test]
+    fn a_provider_does_not_run_while_the_game_has_no_block_state_table() {
+        let scene = Scene::new();
+        let level = scene.level();
+        let mut e = engine();
+        let probe = Arc::new(Probe::default());
+        let mut p = provided(&mut e, probe.clone());
+        p.lifetime = 20;
+        e.set_block_states(None);
+        tick_one(&mut e, &mut p, &level);
+        assert_eq!(probe.0.load(std::sync::atomic::Ordering::Relaxed), 0);
+        assert_eq!(p.position, [1.0; 3]);
+        assert!(!p.removed);
+    }
+    /// The provider's view reads a chunk's states by engine state id and its stored light: a
+    /// stone block and a lit section in a loaded chunk, and the chunks and heights without one.
+    #[test]
+    #[ignore = "daily"]
+    fn the_providers_level_view_reads_the_loaded_chunks_states_and_light() {
+        let root = crate::mesher::mod_tint_tests::resources().expect("prepared resources");
+        let assets = crate::assets::Assets::load(&root).unwrap();
+        let values = crate::mesher::mod_tint_tests::tint_values(assets.registry);
+        let stone = assets.registry.default_state("minecraft:stone").unwrap();
+        let mut scene = Scene::new();
+        let mut chunk = Chunk::empty(0, 0);
+        chunk.set(1, 64, 3, stone.0);
+        let section = chunk.section_index(64).unwrap();
+        // Sky 11 over block 4 everywhere in the section.
+        Arc::make_mut(&mut chunk.sections[section]).light = Light::packed(Box::new([0xB4; 4096]));
+        scene.world.chunks.insert((0, 0), Arc::new(chunk));
+        let level = scene.level();
+        let view = super::ProviderLevel {
+            level: &level,
+            states: &values.states,
+        };
+        assert_eq!(
+            view.block_state([1, 64, 3]),
+            values.states[stone.0 as usize]
+        );
+        assert_eq!(view.block_state([2, 64, 3]), values.states[0]);
+        assert_ne!(view.block_state([1, 64, 3]), view.block_state([2, 64, 3]));
+        assert_eq!(view.brightness(LightLayer::Sky, [1, 64, 3]), 11);
+        assert_eq!(view.brightness(LightLayer::Block, [1, 64, 3]), 4);
+        // Another chunk is not loaded: the stored light of none, full sky.
+        assert_eq!(view.brightness(LightLayer::Sky, [100, 64, 3]), 15);
+        assert_eq!(view.brightness(LightLayer::Block, [100, 64, 3]), 0);
+        // Above and below the loaded chunk's column.
+        assert_eq!(view.brightness(LightLayer::Sky, [1, 10_000, 3]), 15);
+        assert_eq!(view.brightness(LightLayer::Sky, [1, -10_000, 3]), 0);
+    }
     #[test]
     fn a_type_resolves_to_its_provider_at_load_and_other_types_stay_declarative() {
         let dir =
@@ -626,7 +821,7 @@ pub(super) mod tests {
             )
             .unwrap();
         // The declared spawn values seed it, and its sprite is drawn by frame from the set.
-        assert!(orbit.controller.is_some());
+        assert!(orbit.provided.is_some());
         assert_eq!((orbit.lifetime, orbit.size), (7, 0.3));
         assert_eq!(orbit.set, Some(e.mod_sets["mymod:orbit"].set));
         let plain = e
@@ -637,7 +832,7 @@ pub(super) mod tests {
                 3,
             )
             .unwrap();
-        assert!(plain.controller.is_none());
+        assert!(plain.provided.is_none());
         assert!(matches!(plain.behaviour, Behaviour::Mod { .. }));
         let _ = std::fs::remove_dir_all(dir);
     }

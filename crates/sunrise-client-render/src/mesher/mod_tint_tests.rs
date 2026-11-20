@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use sunrise_assets::resource_source::ResourceRoot;
 use sunrise_world::registry::BlockRegistry;
 
-pub(super) fn resources() -> Option<std::path::PathBuf> {
+pub(crate) fn resources() -> Option<std::path::PathBuf> {
     let root = std::env::var_os("SUNRISE_TEST_RESOURCES")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| {
@@ -20,7 +20,7 @@ pub(super) fn resources() -> Option<std::path::PathBuf> {
 }
 
 // Independent API fixture for the air, stone and two leaf states exercised below.
-pub(super) fn tint_values(registry: &BlockRegistry) -> ModTintValues {
+pub(crate) fn tint_values(registry: &BlockRegistry) -> ModTintValues {
     use sunrise_mod_runtime::block_definitions::BlockDefinition;
     mod_platform::__private::part_tests::install_parts_fixture(&[]).unwrap();
     let empty = BTreeMap::new();
