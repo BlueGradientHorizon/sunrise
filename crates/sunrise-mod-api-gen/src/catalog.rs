@@ -99,6 +99,16 @@ pub enum StackCount {
     Trim,
 }
 
+/// How a registration collector exposes its append-only output.
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RegistrationAppend {
+    /// Generate an event method that stages one entry.
+    Register,
+    /// The vocabulary crate supplies the event methods in an inherent impl.
+    Custom,
+}
+
 /// One hook point: a moment the game tells mods about.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Hook {
@@ -121,6 +131,8 @@ pub struct Hook {
     pub owner: Option<String>,
     /// Validate a collector's edits at the per-listener ownership boundary.
     pub collect_validator: Option<String>,
+    /// Hide the output vector of a registration collector behind append-only methods.
+    pub registration_append: Option<RegistrationAppend>,
     /// The inert answer for a disabled content owner's subscribed block Part: Rust statements
     /// setting the answer, or `signal` to report engine inactivity separately from listener output.
     pub inert: Option<String>,
@@ -291,6 +303,7 @@ struct ModApiEntry {
     answered_by: Option<AnsweredBy>,
     owner: Option<String>,
     collect_validator: Option<String>,
+    registration_append: Option<RegistrationAppend>,
     isolate: Option<bool>,
     output_validator: Option<String>,
 }
@@ -416,6 +429,7 @@ impl Hook {
             answered_by_mod,
             owner: api.owner,
             collect_validator: api.collect_validator,
+            registration_append: api.registration_append,
             inert: entry.inert,
             isolate,
             output_validator: api.output_validator,
@@ -678,6 +692,7 @@ impl Declared {
                             "answered_by",
                             "owner",
                             "collect_validator",
+                            "registration_append",
                             "isolate",
                             "output_validator",
                         ] {
@@ -861,6 +876,7 @@ impl Hook {
             answered_by_mod: false,
             owner: None,
             collect_validator: None,
+            registration_append: None,
             inert: None,
             isolate: false,
             output_validator: None,
