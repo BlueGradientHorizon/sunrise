@@ -46,16 +46,20 @@ pub trait CraftingRemainders: crate::LoopContext {
     fn default_remainder(&self, cell: u32) -> Option<crate::ItemStack>;
 }
 
-/// A mod's typed crafting serializer and pure matching callbacks.
-/// Register through Hooks::register with its RegistrationContext. Callback failures refuse
-/// the file or craft; do not panic. The engine retains the decoded value with its
-/// serializer for the lifetime of the loaded recipe generation.
+/// A mod's JSON crafting serializer and pure matching callbacks.
+///
+/// Use `register_crafting_recipe_serializer` in `Hooks::register`. The loader
+/// retains each decoded value with its owning serializer for the recipe generation.
+/// The value stays in process and needs no `Wire` implementation. Refuse invalid
+/// inputs through the callback's return value rather than panicking.
 pub trait CraftingRecipeKind: Send + Sync + 'static {
-    /// Mod-owned recipe data decoded once and borrowed by subsequent callbacks.
+    /// Mod-owned recipe data decoded once per generation and borrowed by callbacks.
     type Value: Send + Sync + 'static;
-    /// Decode the JSON object with its type field removed.
+    /// Decode a recipe JSON object with its `type` field removed.
+    /// Return an error to skip a malformed recipe without refusing other files.
     fn decode(&self, json: &str) -> Result<Self::Value, String>;
-    /// Write the decoded value for Sunrise client synchronization.
+    /// Write an equivalent JSON object for Sunrise client synchronization.
+    /// The game supplies the registered serializer ID as `type` and applies the packet limits.
     fn write(&self, value: &Self::Value) -> Result<String, String>;
     /// Whether this value matches the owned grid snapshot. The context reads the
     /// owning frozen resource generation; unavailable tags should not match.
@@ -206,9 +210,11 @@ impl dyn Registrar + '_ {
         self.add_recipe_serializer(name, "minecraft:crafting", handler);
     }
 }
-/// Startup operations for registered crafting kinds.
+/// Startup operations for crafting and read-only recipe serializers.
 pub trait RecipeSerializersRegistrar {
-    /// Register one serializer owner for a recipe type.
+    /// Register the engine's native serializer owner for a recipe type.
+    /// Mods use `register_crafting_recipe_serializer` or `register_read_only_recipe_serializer`
+    /// on `dyn Registrar` to supply a typed implementation.
     fn add_recipe_serializer(
         &mut self,
         name: &str,

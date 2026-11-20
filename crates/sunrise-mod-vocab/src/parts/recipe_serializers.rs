@@ -1,13 +1,19 @@
 //! Read-only serializers share registration and native values with crafting serializers.
 use super::*;
-/// A serializer for a separately registered, mod-read recipe type.
-/// The engine publishes its source JSON through recipes_of_type and never matches it.
+/// A JSON serializer for a separately registered recipe type that the mod reads.
+///
+/// Use `register_read_only_recipe_serializer` in `Hooks::register`. The game
+/// publishes the source JSON through `recipes_of_type` and never matches it.
+/// The loader retains each decoded value with its owning serializer for the
+/// recipe generation. The value stays in process and needs no `Wire` implementation.
 pub trait RecipeSerializer: Send + Sync + 'static {
-    /// Mod-owned recipe data retained with the serializer for the loaded generation.
+    /// Mod-owned recipe data decoded once per generation and borrowed when writing JSON.
     type Value: Send + Sync + 'static;
-    /// Decode the JSON object without type; a refusal skips this known recipe alone.
+    /// Decode a recipe JSON object with its `type` field removed.
+    /// Return an error to skip a malformed recipe without refusing other files.
     fn decode(&self, json: &str) -> Result<Self::Value, String>;
-    /// Write the decoded value for synchronization.
+    /// Write an equivalent JSON object for Sunrise client synchronization.
+    /// The game supplies the registered serializer ID as `type` and applies the packet limits.
     fn write(&self, value: &Self::Value) -> Result<String, String>;
 }
 struct ReadOnly<S>(S);
@@ -62,7 +68,8 @@ impl dyn Registrar + '_ {
         self.add_recipe_serializer(name, recipe_type, handler);
     }
     /// Register an object-preserving JSON serializer for a mod-read machine recipe type.
-    /// Declare recipe_type with register_recipe_type first (or elsewhere at startup).
+    /// The compact JSON object without `type` is limited to 1 MiB minus four bytes.
+    /// Declare `recipe_type` with `register_recipe_type` at startup, in either order.
     pub fn register_raw_recipe_serializer(&mut self, name: &str, recipe_type: &str) {
         self.register_read_only_recipe_serializer(name, recipe_type, Raw);
     }
