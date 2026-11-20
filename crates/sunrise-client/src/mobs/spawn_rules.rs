@@ -48,8 +48,8 @@ pub trait SpawnLevel {
     /// adventure player that close.
     fn player_near(&self, x: f64, y: f64, z: f64, distance: f64) -> bool;
     /// `MobSpawnEvent.SpawnPlacementCheck`: what the check answers once
-    /// `vanilla`, the type's own predicate, has run. Only the game's level
-    /// tells mods.
+    /// `vanilla`, the result of the type's vanilla or registered predicates,
+    /// is known. Only the game's level tells mods.
     fn placement_check(
         &self,
         _entity: &str,
@@ -317,11 +317,31 @@ pub fn check_spawn_rules<L: SpawnLevel>(
         return false;
     }
     let [x, y, z] = at;
-    let vanilla = match l.mob_data().mod_spawns.get(entity) {
-        Some(rule) => mod_predicate(rule, l, reason, random, x, y, z),
+    let allowed = match l.mob_data().mod_spawns.get(entity) {
+        Some(row) => {
+            let pos = BlockPos::new(x, y, z);
+            let mut ctx = SpawnContext {
+                level: SpawnLevelView(l),
+                rng: random,
+                pos,
+            };
+            match &row.predicates {
+                data::SpawnPredicates::Replacement(predicate) => {
+                    predicate.test(row.kind, &mut ctx, reason, pos)
+                }
+                data::SpawnPredicates::Combined { original, or, and } => {
+                    let original = match original {
+                        Some(predicate) => predicate.test(row.kind, &mut ctx, reason, pos),
+                        None => placement_predicate(s, l, reason, ctx.rng, x, y, z),
+                    };
+                    (original || or.iter().any(|p| p.test(row.kind, &mut ctx, reason, pos)))
+                        && and.iter().all(|p| p.test(row.kind, &mut ctx, reason, pos))
+                }
+            }
+        }
         None => placement_predicate(s, l, reason, random, x, y, z),
     };
-    l.placement_check(entity, reason, at, vanilla)
+    l.placement_check(entity, reason, at, allowed)
 }
 
 struct SpawnLevelView<'a, L>(&'a L);
@@ -402,39 +422,6 @@ impl<L, R: RandomSource> mod_api::RandomSource for SpawnContext<'_, L, R> {
     }
 }
 
-/// A mod type's spawn predicate (`SpawnPlacements.Data.predicate`): the ground
-/// tag, the biome tag, then the light, which draws last as vanilla's do.
-fn mod_predicate<L: SpawnLevel>(
-    rule: &mod_api::SpawnPlacementRule,
-    l: &L,
-    reason: Reason,
-    random: &mut impl RandomSource,
-    x: i32,
-    y: i32,
-    z: i32,
-) -> bool {
-    use mod_api::SpawnLight as Light;
-    let pos = BlockPos::new(x, y, z);
-    let mut context = SpawnContext {
-        level: SpawnLevelView(l),
-        rng: random,
-        pos,
-    };
-    rule.spawnable_on
-        .as_deref()
-        .is_none_or(|on| context.level().block_in_tag(pos.offset(0, -1, 0), on))
-        && rule
-            .biome_tag
-            .as_deref()
-            .is_none_or(|biome| context.level().biome_in_tag(pos, biome))
-        && match rule.light {
-            Light::Dark => ignores_light(reason) || context.is_dark_enough_to_spawn(),
-            Light::Bright => {
-                ignores_light(reason) || context.level().is_bright_enough_to_spawn(pos)
-            }
-            _ => true,
-        }
-}
 /// The type's spawn predicate (`SpawnPlacements.Data.predicate`).
 fn placement_predicate<L: SpawnLevel>(
     s: Species,
@@ -446,7 +433,6 @@ fn placement_predicate<L: SpawnLevel>(
     z: i32,
 ) -> bool {
     use Species as S;
-    let below = |l: &L| name(l, x, y - 1, z).to_owned();
     match s {
         S::Axolotl => tag(l, "minecraft:axolotls_spawnable_on", x, y - 1, z),
         S::Cod | S::Pufferfish | S::Salmon | S::Dolphin | S::Squid => surface_water(l, x, y, z),
@@ -561,7 +547,7 @@ fn placement_predicate<L: SpawnLevel>(
         }
         S::Ocelot => random.next_int_bound(3).unwrap_or(0) != 0,
         S::Parrot => tag(l, "minecraft:parrots_spawnable_on", x, y - 1, z) && bright(l, x, y, z),
-        S::Hoglin | S::Piglin => below(l) != "minecraft:nether_wart_block",
+        S::Hoglin | S::Piglin => name(l, x, y - 1, z) != "minecraft:nether_wart_block",
         S::Pillager => l.block_light(x, y, z) <= 8 && mob_rules(s, l, reason, x, y, z),
         S::PolarBear => {
             if l.biome_tag("minecraft:polar_bears_spawn_on_alternate_blocks", x, y, z) {
@@ -605,7 +591,9 @@ fn placement_predicate<L: SpawnLevel>(
             y < l.sea_level() + 4 && tag(l, "minecraft:sand", x, y - 1, z) && bright(l, x, y, z)
         }
         S::Wolf => tag(l, "minecraft:wolves_spawnable_on", x, y - 1, z) && bright(l, x, y, z),
-        S::ZombifiedPiglin => !l.peaceful() && below(l) != "minecraft:nether_wart_block",
+        S::ZombifiedPiglin => {
+            !l.peaceful() && name(l, x, y - 1, z) != "minecraft:nether_wart_block"
+        }
         S::Fox => tag(l, "minecraft:foxes_spawnable_on", x, y - 1, z) && bright(l, x, y, z),
         S::Bogged
         | S::CaveSpider
@@ -889,13 +877,18 @@ mod light_draw_tests {
     }
 }
 
-/// A mod type's spawn rule (`RegisterSpawnPlacementsEvent`) answers the
-/// type's placement and spawn predicate in place of its template species'.
+/// Native registrations answer the type's geometry and predicate without
+/// changing the template species or bypassing the placement-check hook.
 #[cfg(test)]
 mod mod_spawn_rule_tests {
     use super::*;
     use crate::blocks::{RenderShape, Sounds, StateFacts};
-    use mod_api::{SpawnLight, SpawnPlacementRule, SpawnPlacementType};
+    use data::Placement;
+    use mod_api::__private::{SpawnPlacementDeclaration, parts_installation::entity_type_key};
+    use mod_api::{
+        EntityTypeKey, Heightmap, SpawnPlacementOperation, SpawnPlacementPredicate,
+        SpawnPlacementType,
+    };
     use std::{cell::RefCell, sync::Arc};
     use sunrise_core::random::LegacyRandom;
 
@@ -965,7 +958,7 @@ mod mod_spawn_rule_tests {
         hook: Option<bool>,
     }
     impl Flat {
-        fn new(rules: &[(&str, SpawnPlacementRule)]) -> Self {
+        fn new(declarations: &[SpawnPlacementDeclaration]) -> Self {
             let facts = BlockFacts {
                 states: vec![
                     state("minecraft:air", false),
@@ -977,9 +970,13 @@ mod mod_spawn_rule_tests {
                 sign_texts: Default::default(),
             };
             let mut data = data::MobData::fallback(&facts);
-            for (id, rule) in rules {
-                data.register_mod_spawn(id, rule);
-            }
+            data.vanilla_spawn_placements = Some(["minecraft:zombie".to_owned()].into());
+            data.placements
+                .insert("minecraft:zombie".to_owned(), Placement::OnGround);
+            data.install_spawn_placements(declarations, |id| {
+                matches!(id, "minecraft:zombie" | "ruby:ghoul" | "ruby:floater")
+            })
+            .unwrap();
             Self {
                 facts,
                 data,
@@ -1061,22 +1058,35 @@ mod mod_spawn_rule_tests {
         }
     }
 
-    fn rule(light: SpawnLight) -> SpawnPlacementRule {
-        SpawnPlacementRule {
-            placement: SpawnPlacementType::OnGround,
-            heightmap: mod_api::Heightmap::OceanFloor,
-            spawnable_on: Some("test:ghoul_ground".to_owned()),
-            light,
-            biome_tag: Some("test:haunted".to_owned()),
+    fn ghoul(predicate: impl SpawnPlacementPredicate) -> SpawnPlacementDeclaration {
+        SpawnPlacementDeclaration {
+            id: "ruby:ghoul".to_owned(),
+            kind: entity_type_key(0),
+            mod_id: "ruby",
+            placement: Some(SpawnPlacementType::OnGround),
+            heightmap: Some(Heightmap::OceanFloor),
+            predicate: Arc::new(predicate),
+            operation: SpawnPlacementOperation::Replace,
         }
     }
 
-    /// Ground, biome and light each refuse on their own, and the rule's
-    /// light replaces the template's: a zombie needs the dark, the ghoul
-    /// that declared `Bright` spawns in daylight on the same spot.
+    fn bright_ghoul(
+        _kind: EntityTypeKey,
+        ctx: &mut dyn SpawnPlacementContext,
+        reason: Reason,
+        pos: BlockPos,
+    ) -> bool {
+        ctx.level()
+            .block_in_tag(pos.offset(0, -1, 0), "test:ghoul_ground")
+            && ctx.level().biome_in_tag(pos, "test:haunted")
+            && (reason == Reason::TrialSpawner || ctx.level().is_bright_enough_to_spawn(pos))
+    }
+
+    /// Ground, biome and light each refuse on their own. The ghoul's callback
+    /// passes in daylight at the same spot where its zombie template fails.
     #[test]
     fn the_rule_checks_ground_biome_and_light_in_place_of_the_templates_predicate() {
-        let mut level = Flat::new(&[("ruby:ghoul", rule(SpawnLight::Bright))]);
+        let mut level = Flat::new(&[ghoul(bright_ghoul)]);
         let on_grass = [0, 1, 0];
         assert!(level.check("ruby:ghoul", Reason::Natural, on_grass));
         assert!(
@@ -1099,7 +1109,11 @@ mod mod_spawn_rule_tests {
 
     #[test]
     fn a_dark_rule_needs_the_dark_a_monster_needs() {
-        let mut level = Flat::new(&[("ruby:ghoul", rule(SpawnLight::Dark))]);
+        let mut level = Flat::new(&[ghoul(
+            |_: EntityTypeKey, ctx: &mut dyn SpawnPlacementContext, reason: Reason, _: BlockPos| {
+                reason == Reason::TrialSpawner || ctx.is_dark_enough_to_spawn()
+            },
+        )]);
         let on_grass = [0, 1, 0];
         level.sky = 0;
         assert!(level.check("ruby:ghoul", Reason::Natural, on_grass));
@@ -1133,7 +1147,7 @@ mod mod_spawn_rule_tests {
     /// answer as `default_result`; it may overturn it either way.
     #[test]
     fn the_per_check_hook_hears_the_rules_answer() {
-        let mut level = Flat::new(&[("ruby:ghoul", rule(SpawnLight::Bright))]);
+        let mut level = Flat::new(&[ghoul(bright_ghoul)]);
         level.hook = Some(true);
         assert!(level.check("ruby:ghoul", Reason::Natural, [5, 2, 0]));
         level.hook = Some(false);
@@ -1143,13 +1157,18 @@ mod mod_spawn_rule_tests {
 
     #[test]
     fn a_declared_placement_type_and_heightmap_replace_the_species_ones() {
-        let anywhere = SpawnPlacementRule {
-            placement: SpawnPlacementType::NoRestrictions,
-            spawnable_on: None,
-            biome_tag: None,
-            ..rule(SpawnLight::Any)
-        };
-        let level = Flat::new(&[("ruby:floater", anywhere)]);
+        use super::super::spawn_selection::Heightmap as Surface;
+        let level = Flat::new(&[SpawnPlacementDeclaration {
+            id: "ruby:floater".to_owned(),
+            kind: entity_type_key(1),
+            mod_id: "ruby",
+            placement: Some(SpawnPlacementType::NoRestrictions),
+            heightmap: Some(Heightmap::OceanFloor),
+            predicate: Arc::new(
+                |_: EntityTypeKey, _: &mut dyn SpawnPlacementContext, _: Reason, _: BlockPos| true,
+            ),
+            operation: SpawnPlacementOperation::And,
+        }]);
         // Mid-air with nothing below: no restrictions allows it, a zombie's
         // `ON_GROUND` does not, and the same type on grass is fine.
         assert!(is_spawn_position_ok(
@@ -1176,10 +1195,14 @@ mod mod_spawn_rule_tests {
             1,
             0
         ));
-        assert_eq!(level.data.heightmap("ruby:floater"), "OCEAN_FLOOR");
+        assert_eq!(
+            level.data.placement("ruby:floater"),
+            Placement::NoRestrictions
+        );
+        assert_eq!(level.data.heightmap("ruby:floater"), Surface::OceanFloor);
         assert_eq!(
             level.data.heightmap("ruby:undeclared"),
-            "MOTION_BLOCKING_NO_LEAVES"
+            Surface::MotionBlockingNoLeaves
         );
     }
 }

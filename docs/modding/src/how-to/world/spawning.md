@@ -9,29 +9,56 @@ Use spawn hooks to accept or reject a spawn, edit a mob before finalization, or 
 | Just before `finalizeSpawn` | `finalize_spawn` | `Flow::Cancel`, `spawn_cancelled`, a new `difficulty`, edits to `mob`, a new `group` |
 | Each tick, before a mob's `checkDespawn` | `mob_despawn` | `Despawn::{Default, Allow, Deny}` |
 
-## Saying where a mod mob spawns
+## Registering a spawn predicate
 
-`Registrar::register_spawn_placement(path, rule)` is NeoForge's `RegisterSpawnPlacementsEvent`: during registration a mod gives its entity type a `SpawnPlacementRule`, and the game's own spawn checks answer from it for that type, wherever they run (natural spawning, chunk generation, spawners, patrols, sieges, reinforcements).
+Use `Registrar::register_spawn_placement` in `Hooks::register` (NeoForge's
+`RegisterSpawnPlacementsEvent`). The entity type key may name your own type, a vanilla type,
+or a type another mod provides. For a type with no spawn placement yet, give both a placement
+and a heightmap; the first predicate becomes the original, whatever operation you pass.
 
 ```rust,ignore
-r.register_spawn_placement("ghoul", mod_api::SpawnPlacementRule {
-    placement: mod_api::SpawnPlacementType::OnGround,
-    heightmap: mod_api::Heightmap::MotionBlockingNoLeaves,
-    spawnable_on: Some("mymod:ghoul_ground".to_owned()), // a block tag the block below is in
-    light: mod_api::SpawnLight::Dark,              // Any, Dark (a monster's) or Bright (an animal's)
-    biome_tag: Some("mymod:haunted".to_owned()),         // a biome tag the spot's biome is in
-}).unwrap();
+use mod_api::{
+    BlockPos, EntityTypeKey, Heightmap, SpawnPlacementContext, SpawnPlacementOperation,
+    SpawnPlacementType, SpawnReason,
+};
+use std::sync::Arc;
+
+let kind = r.entity_type_key("mymod:ghoul");
+let _ = r.register_spawn_placement(
+    kind,
+    Some(SpawnPlacementType::OnGround),
+    Some(Heightmap::MotionBlockingNoLeaves),
+    Arc::new(|_: EntityTypeKey, ctx: &mut dyn SpawnPlacementContext, reason: SpawnReason, pos: BlockPos| {
+        ctx.level().block_in_tag(pos.offset(0, -1, 0), "mymod:ghoul_ground")
+            && ctx.level().biome_in_tag(pos, "mymod:haunted")
+            && (reason == SpawnReason::TrialSpawner || ctx.is_dark_enough_to_spawn())
+    }),
+    SpawnPlacementOperation::Replace,
+);
 ```
 
-The placement type is `SpawnPlacements.isSpawnPositionOk`'s first check, and the rule stands in for the type's spawn predicate: every field that is set must hold, and a trial spawner ignores `light`. A type with no declaration keeps its template's rules. The game resolves the declarations once at load, so a check reads one table and never walks the mods. A tag is a namespaced name written without `#`; an id outside the mod's namespace, a bad tag or a second declaration of the same type refuses the mods at startup, and a type no content file defines refuses the resource load.
+For a type with an existing placement, use `None` for both options with `And` or `Or`.
+The original runs first, then any `Or` predicates until one passes. Only if one of those
+passes do the `And` predicates run, stopping at the first failure. Each list runs in
+registration order. If any registration replaces an existing predicate, only the last
+replacement runs, even if there are later `And` or `Or` registrations. Each `Replace` can
+also change either geometry option; `None` keeps the previous value. The placement checks where
+the type stands, while the heightmap tells natural spawning and chunk generation which surface to find.
 
-The native predicate interface, `SpawnPlacementContext`, lends a read-only `SpawnPlacementLevel`
-and the check's live `RandomSource` for one call. Level reads never load chunks or write to the
-world. Use namespaced block and biome tags without `#`. The brightness and darkness helpers do not
-check the spawn reason: a predicate that wants vanilla's trial-spawner light bypass skips the light
-test for `SpawnReason::TrialSpawner`. The darkness helper draws from the same stream as `context.random()`.
+The registrar records a startup refusal for an unavailable key, even if you ignore the returned error.
+At resource load, a registration for an unloaded type
+or with invalid geometry options refuses loading, naming the mod and entity type. If a mod registers
+spawn predicates, the prepared resources must include vanilla's spawn placement data.
 
-`mob_spawn_placement_check` is the separate per-check moment: it runs after the rule and is told its answer as `default_result`, so you can override it for one position.
+`SpawnPlacementContext` lends a read-only `SpawnPlacementLevel` and the caller's live
+`RandomSource` for one call. Level reads never load chunks or write to the world. Use namespaced
+block and biome tags without `#`. The brightness and darkness helpers do not check the spawn reason:
+for vanilla's trial-spawner light bypass, skip the light test when the reason is
+`SpawnReason::TrialSpawner`. The darkness helper draws from the same stream as `ctx.random()`.
+
+`mob_spawn_placement_check` still receives the predicate result as `default_result` and can override
+it for one check. An ordinary spawner with custom spawn rules bypasses this check. A trial spawner
+checks its custom rules after the placement check. Commands and spawn eggs still do not run it.
 
 ## Saved display and utility entities
 

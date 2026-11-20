@@ -1,3 +1,16 @@
-ids = ["trait:SpawnPlacementLevel", "trait:SpawnPlacementContext"]
-why = "Native spawn predicates can read the level without loading chunks or writing to it and can draw from the check's live random stream. The darkness test uses that same stream."
-migrate = "Existing placement declarations need no changes. In a native spawn predicate, use `context.level()` for block, tag and light reads and `context.random()` for random draws. Use `context.is_dark_enough_to_spawn()` for the monster darkness test at the checked position. If the predicate keeps vanilla's trial-spawner light bypass, short-circuit the light test when the reason is `SpawnReason::TrialSpawner`."
+ids = [
+    "method:SpawnPlacementsRegistrar::declare_spawn_placement",
+    "method:SpawnPlacementsRegistrar::register_spawn_placement",
+    "type:SpawnPlacementRule",
+    "type:SpawnLight",
+    "type:SpawnPlacementType",
+    "type:SpawnPlacementError",
+    "type:SpawnPlacementOperation",
+    "trait:SpawnPlacementPredicate",
+    "method:SpawnPlacementPredicate::test",
+    "trait:SpawnPlacementLevel",
+    "trait:SpawnPlacementContext",
+    "hook:mob_spawn_placement_check",
+]
+why = "Spawn placement registration takes a typed entity key and a native predicate instead of light, biome and ground fields. Mods can extend the predicate for a vanilla or modded entity type or replace it; the predicates borrow the checked level and its live random stream. Placement types and registration errors no longer need a Wire form."
+migrate = "Replace `r.declare_spawn_placement(path, SpawnPlacementRule { placement, heightmap, spawnable_on, light, biome_tag })` with `let kind = r.entity_type_key(id); r.register_spawn_placement(kind, Some(placement), Some(heightmap), Arc::new(predicate), SpawnPlacementOperation::Replace)`. Use the full entity id (for an old bare path, use `your_mod:path`). The first registration of a type with no vanilla entry needs both geometry options. In the predicate `(kind: EntityTypeKey, ctx: &mut dyn SpawnPlacementContext, reason: SpawnReason, pos: BlockPos) -> bool`, replace `spawnable_on` with `ctx.level().block_in_tag(pos.offset(0, -1, 0), tag)` and `biome_tag` with `ctx.level().biome_in_tag(pos, tag)`; omit absent conditions. Replace `SpawnLight::Any` with no light condition, `Dark` with `ctx.is_dark_enough_to_spawn()`, and `Bright` with `ctx.level().is_bright_enough_to_spawn(pos)`. Short-circuit a light condition when `reason == SpawnReason::TrialSpawner` to preserve the old bypass. Draw extra randomness from `ctx.random()`. To add a condition to an existing predicate rather than replace it, pass `None` for both geometry options and use `And` (require it) or `Or` (try it after the original fails). Update matches on `InvalidId`, `InvalidTag` and `Duplicate`: the registrar now only returns `InvalidEntityType` for an unavailable key. Request a valid key before registering; the resource loader reports missing types and invalid geometry options. Do not encode `SpawnPlacementType` or `SpawnPlacementError` with Wire; use them directly in native registration. `mob_spawn_placement_check` needs no listener changes: `default_result` still reports the predicate answer after all composition and short-circuiting."

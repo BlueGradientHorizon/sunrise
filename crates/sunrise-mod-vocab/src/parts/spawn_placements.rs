@@ -1,40 +1,58 @@
 use super::*;
-/// An entity type's spawn rule, declared in code (NeoForge's
-/// `RegisterSpawnPlacementsEvent`): the type's id (`mymod:ghoul`) and its rule.
-/// The game resolves it once, at load, into the tables its spawn checks read.
-#[derive(Clone, Debug, PartialEq)]
-// exhaustive: only registration builds it; the game reads it
-#[derive(sunrise_mod_api_macros::Wire)]
+use crate::{
+    EntityTypeKey, Heightmap, SpawnPlacementError, SpawnPlacementOperation,
+    SpawnPlacementPredicate, SpawnPlacementType,
+};
+
+/// One spawn predicate registration, in mod registration order. The game
+/// resolves the declarations at resource load before running spawn checks.
+#[doc(hidden)]
+// no wire: contains a native callback.
 pub struct SpawnPlacementDeclaration {
-    /// The entity type the rule belongs to.
+    /// The canonical id of the entity type.
     pub id: String,
-    /// Where, how bright and in which biomes the type may spawn.
-    pub rule: crate::SpawnPlacementRule,
+    /// The registrar key to give the predicate.
+    pub kind: EntityTypeKey,
+    /// The mod that registered the predicate, for load refusals.
+    pub mod_id: &'static str,
+    /// Where the type stands, if the registration sets it.
+    pub placement: Option<SpawnPlacementType>,
+    /// Which surface the spawner finds, if the registration sets it.
+    pub heightmap: Option<Heightmap>,
+    /// The native predicate to run for the type.
+    pub predicate: Arc<dyn SpawnPlacementPredicate>,
+    /// How to combine this predicate with those already registered.
+    pub operation: SpawnPlacementOperation,
 }
 
-/// The spawn rules mods declared.
+/// The spawn predicates mods registered, in registration order.
+#[doc(hidden)]
 pub fn spawn_placement_declarations() -> &'static [SpawnPlacementDeclaration] {
     installed().map_or(&[], |installed| &installed.spawn_placements)
 }
 
 /// Registrar operations for spawn placements.
 pub trait SpawnPlacementsRegistrar {
-    /// Declare where the mod's entity type `path` may spawn (NeoForge's
-    /// `RegisterSpawnPlacementsEvent`): its placement type, heightmap and a
-    /// rule of a ground block tag, light and biome tag. The vanilla spawn
-    /// rules (`SpawnPlacements.isSpawnPositionOk` and `checkSpawnRules`) then
-    /// answer from the rule for the type, wherever the game checks a spawn:
-    /// natural spawning, chunk generation, spawners, patrols, sieges and
-    /// reinforcements. Code that must decide per check is the separate
-    /// `mob_spawn_placement_check` hook, which still hears the rule's answer.
+    /// Register a native predicate for `kind` (NeoForge's `RegisterSpawnPlacementsEvent`).
+    /// The first registration for a type without a vanilla entry must supply both `placement`
+    /// and `heightmap`; its predicate becomes the original regardless of `operation`.
+    /// For an existing entry, only `Replace` may supply either option, and `None` keeps
+    /// that field unchanged.
     ///
-    /// Resolved once, at load: an id outside the mod's manifest-owned namespaces, a tag that is
-    /// not a namespaced name or a second declaration of the same type refuses
-    /// the mods, naming the mod; a type no content file defines refuses the
-    /// resource load, naming the type.
+    /// The last replacement runs alone, even if later registrations add `Or` or `And`
+    /// predicates. Otherwise the original runs first, then the `Or` predicates until
+    /// one passes, then the `And` predicates until one fails. Each list runs in registration
+    /// order, and no `And` runs if neither the original nor an `Or` passed.
+    ///
+    /// An unavailable registrar key returns [`SpawnPlacementError::InvalidEntityType`].
+    /// A type that does not load or an invalid choice of metadata refuses resource loading,
+    /// naming the mod and type. `mob_spawn_placement_check` still sees the resulting answer.
     fn register_spawn_placement(
         &mut self,
-        path: &str,
-        rule: crate::SpawnPlacementRule,
-    ) -> Result<(), crate::SpawnPlacementError>;
+        kind: EntityTypeKey,
+        placement: Option<SpawnPlacementType>,
+        heightmap: Option<Heightmap>,
+        predicate: Arc<dyn SpawnPlacementPredicate>,
+        operation: SpawnPlacementOperation,
+    ) -> Result<(), SpawnPlacementError>;
 }

@@ -974,11 +974,11 @@ pub enum SpawnCheck {
     Fail,
 }
 
-/// Where a mod entity type stands to spawn (`SpawnPlacementType`):
+/// Where an entity type stands to spawn (`SpawnPlacementType`):
 /// `SpawnPlacements.isSpawnPositionOk`'s first check.
+// no wire: only used to register native spawn predicates.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
 pub enum SpawnPlacementType {
     /// `ON_GROUND`: a block that is valid to spawn on below, free room at the feet and the head.
     OnGround,
@@ -1020,53 +1020,60 @@ pub trait SpawnPlacementContext {
     fn is_dark_enough_to_spawn(&mut self) -> bool;
 }
 
-/// How bright a spot a mod entity type needs to spawn.
+/// How a native spawn predicate composes with a type's existing predicate.
+/// For a type not previously registered, the first predicate is the original
+/// whatever operation is specified.
+// no wire: only used to register native spawn predicates.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
-pub enum SpawnLight {
-    /// Any light level.
-    Any,
-    /// Dark enough for a monster (`Monster.isDarkEnoughToSpawn`: sky light, block light
-    /// and the dimension's monster light test, which draw from the level's random).
-    Dark,
-    /// Bright enough for an animal (`Animal.isBrightEnoughToSpawn`: light above 8).
-    Bright,
+pub enum SpawnPlacementOperation {
+    /// Require this predicate as well as a passing original or `Or` predicate.
+    And,
+    /// Try this predicate if the original and earlier `Or` predicates failed.
+    Or,
+    /// Evaluate only this predicate, bypassing the original and all `And` and `Or` predicates.
+    /// If several replacements are registered, only the last is evaluated.
+    Replace,
 }
 
-/// A mod entity type's spawn rule, declared with
-/// [`Registrar::register_spawn_placement`](SpawnPlacementsRegistrar::register_spawn_placement):
-/// the arguments of NeoForge's `RegisterSpawnPlacementsEvent.register` as data. Every field
-/// must hold for a spawn to pass; a trial spawner ignores `light`, as for vanilla types.
-#[derive(Clone, Debug, PartialEq)]
-// exhaustive: a mod builds it with a literal; the game reads it
-#[derive(sunrise_mod_api_macros::Wire)]
-pub struct SpawnPlacementRule {
-    /// Where the type stands (`SpawnPlacementType`).
-    pub placement: SpawnPlacementType,
-    /// The heightmap natural spawning and chunk generation find the surface with.
-    pub heightmap: Heightmap,
-    /// A block tag (`minecraft:animals_spawnable_on`, no `#`) the block below must be in.
-    pub spawnable_on: Option<String>,
-    /// How bright the spot must be.
-    pub light: SpawnLight,
-    /// A biome tag (no `#`) the spot's biome must be in.
-    pub biome_tag: Option<String>,
+/// A native spawn predicate called with the type key, position, reason and
+/// the check's read-only level and live random stream. A closure or function
+/// with the same signature can be registered directly.
+pub trait SpawnPlacementPredicate: Send + Sync + 'static {
+    /// Whether this check passes. Use the lent random stream for any draws.
+    fn test(
+        &self,
+        kind: EntityTypeKey,
+        ctx: &mut dyn SpawnPlacementContext,
+        reason: SpawnReason,
+        pos: BlockPos,
+    ) -> bool;
 }
 
-/// Why a spawn placement declaration was refused
-/// ([`Registrar::register_spawn_placement`](SpawnPlacementsRegistrar::register_spawn_placement)).
+impl<F> SpawnPlacementPredicate for F
+where
+    F: Fn(EntityTypeKey, &mut dyn SpawnPlacementContext, SpawnReason, BlockPos) -> bool
+        + Send
+        + Sync
+        + 'static,
+{
+    fn test(
+        &self,
+        kind: EntityTypeKey,
+        ctx: &mut dyn SpawnPlacementContext,
+        reason: SpawnReason,
+        pos: BlockPos,
+    ) -> bool {
+        self(kind, ctx, reason, pos)
+    }
+}
+
+/// A refusal from [`SpawnPlacementsRegistrar::register_spawn_placement`].
+// no wire: only returned by the native spawn predicate registrar.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(sunrise_mod_api_macros::Wire)]
 pub enum SpawnPlacementError {
-    /// The entity type's id is invalid, empty, or in a namespace the declaring
-    /// mod does not own.
-    InvalidId,
-    /// A tag is not a namespaced tag name (write it without `#`).
-    InvalidTag,
-    /// Another declaration already covers the entity type.
-    Duplicate,
+    /// The entity type key is not available in this registrar.
+    InvalidEntityType,
 }
 
 /// What a mod answers a despawn check (`MobDespawnEvent.Result`).
