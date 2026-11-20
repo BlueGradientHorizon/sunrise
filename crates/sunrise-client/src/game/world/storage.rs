@@ -3,7 +3,7 @@
 //! player's `PlayerEnderChestContainer`, saved as `EnderItems`).
 use super::Game;
 use sunrise_client::{
-    containers::{BlockEntity, ChestHalf, is_chest_block},
+    containers::{BlockEntity, is_chest_block},
     items::ItemStack,
     text::Text,
 };
@@ -553,6 +553,7 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sunrise_client::containers::ChestHalf;
 
     /// `ChestBlockEntity`'s opener counter plays the block's own hinge
     /// sound: a copper chest's, by weather state, not the wooden chest's.
