@@ -260,7 +260,7 @@ class EngineCatalogGateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             work = Path(directory)
             for name, records in (("base", old), ("head", new)):
-                (work / f"{name}.json").write_text(json.dumps({"schema": 2, "hash": name, "engine_items": records}))
+                (work / f"{name}.json").write_text(json.dumps({"schema": 3, "hash": name, "engine_items": records}))
             if notes:
                 changes = work / "head" / surface_report.NOTES
                 changes.mkdir(parents=True)
