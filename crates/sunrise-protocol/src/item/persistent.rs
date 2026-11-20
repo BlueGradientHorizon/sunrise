@@ -180,7 +180,6 @@ pub fn component_id(name: &str) -> Option<i32> {
 
 /// Decode every own patch entry without prototype merging or persistence conversion.
 pub fn template_value(stack: &Stack, names: &dyn Names) -> Result<ValueTemplate> {
-    let _nested = super::Nested::enter()?;
     if stack.count == 0 || stack.item <= 0 {
         return Err(Error::new(
             "item template must have a non-air item and nonzero count",
@@ -192,6 +191,7 @@ pub fn template_value(stack: &Stack, names: &dyn Names) -> Result<ValueTemplate>
         .ok_or_else(|| Error::new("item template registry id has no name"))?;
     let mut patch: Patch = Vec::with_capacity(stack.added.len() + stack.removed.len());
     for (kind, value) in &stack.added {
+        let _nested = super::Nested::enter()?;
         let name = component_name(*kind)
             .ok_or_else(|| Error::new(format!("unknown pinned component type {kind}")))?;
         set_patch(
@@ -555,5 +555,33 @@ mod tests {
                 "{error}"
             );
         }
+    }
+    #[test]
+    fn component_chains_up_to_the_readers_depth_convert_on_a_network_stack() {
+        let chain = |bundles: usize| {
+            let mut template = stone(vec![]);
+            for _ in 0..bundles {
+                template = stone(vec![(
+                    "minecraft:bundle_contents".into(),
+                    Some(bundle_of(template)),
+                )]);
+            }
+            template
+        };
+        let convert = |bundles: usize| {
+            std::thread::Builder::new()
+                .stack_size(2 << 20)
+                .spawn(move || {
+                    let top = chain(bundles);
+                    let stack =
+                        template_from_parts(&top.item, top.count, &top.patch, &registry_id)?;
+                    Ok::<_, Error>(template_value(&stack, &Registry).unwrap() == top)
+                })
+                .unwrap()
+                .join()
+                .unwrap()
+        };
+        assert!(convert(crate::item::MAX_NESTING as usize).unwrap());
+        assert!(convert(crate::item::MAX_NESTING as usize + 1).is_err());
     }
 }

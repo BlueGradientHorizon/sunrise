@@ -248,18 +248,6 @@ pub fn template_from_parts(
     patch: &[(String, Option<Value>)],
     ids: &dyn Ids,
 ) -> Result<Stack> {
-    template_stack(item, count, patch, ids, 0)
-}
-fn template_stack(
-    item: &str,
-    count: i32,
-    patch: &[(String, Option<Value>)],
-    ids: &dyn Ids,
-    depth: u32,
-) -> Result<Stack> {
-    if depth >= 64 {
-        return Err(err("component template nesting exceeds 64"));
-    }
     if count == 0 || item == "minecraft:air" {
         return Err(err("empty native template"));
     }
@@ -273,7 +261,7 @@ fn template_stack(
         if let Some(value) = value {
             stack
                 .added
-                .push((kind, component_at(kind, value, ids, depth + 1)?));
+                .push((kind, component_from_value(kind, value, ids)?));
         } else {
             stack.removed.push(kind);
         }
@@ -286,10 +274,9 @@ fn template(w: &mut Writer, v: &Value, ids: &dyn Ids, depth: u32) -> Result<()> 
     };
     template_body(w, t, ids, depth)
 }
+/// `depth` counts the components enclosing this template, as the stream reader counts them:
+/// a component inside the template is encoded at the same depth and is the one that adds a level.
 fn template_body(w: &mut Writer, t: &Template, ids: &dyn Ids, depth: u32) -> Result<()> {
-    if depth >= 64 {
-        return Err(err("component template nesting exceeds 64"));
-    }
     if t.count == 0 || t.item == "minecraft:air" {
         return Err(err("empty native template"));
     }
@@ -312,7 +299,7 @@ fn template_body(w: &mut Writer, t: &Template, ids: &dyn Ids, depth: u32) -> Res
         if let Some(value) = value {
             let kind = patch_kind(name, ids)?;
             w.varint(kind);
-            encode(kind, value, w, ids, depth + 1)?;
+            encode(kind, value, w, ids, depth)?;
         }
     }
     for (name, value) in effective_patch(&t.patch) {
@@ -333,18 +320,12 @@ pub fn component_from_tag(kind: i32, value: &Tag, ids: &dyn Ids) -> Result<Compo
     component_from_value(kind, &value, ids)
 }
 pub fn component_from_value(kind: i32, value: &Value, ids: &dyn Ids) -> Result<Component> {
-    component_at(kind, value, ids, 0)
-}
-fn component_at(kind: i32, value: &Value, ids: &dyn Ids, depth: u32) -> Result<Component> {
-    if depth >= 64 {
-        return Err(err("component nesting exceeds 64"));
-    }
     if let Some(name) = crate::item::custom::name(kind) {
         patch_kind(name, ids)?;
         return Ok(Component::Nbt(value.to_tag().map_err(err)?));
     }
     let mut w = Writer::new();
-    encode(kind, value, &mut w, ids, depth)?;
+    encode(kind, value, &mut w, ids, 0)?;
     if !matches!(kind,0..=4|6|9..=13|17..=21|30|45|47|48|50..=53|55..=58|63|65|69..=72|74|75|109)
         || matches!(
             (kind, value),
@@ -547,13 +528,55 @@ fn predicate(w: &mut Writer, v: &Value, ids: &dyn Ids, depth: u32) -> Result<()>
     Ok(())
 }
 fn encode(kind: i32, v: &Value, w: &mut Writer, ids: &dyn Ids, depth: u32) -> Result<()> {
-    if depth >= 64 {
-        return Err(err("component nesting exceeds 64"));
+    if depth >= crate::item::MAX_NESTING {
+        return Err(err(format!(
+            "component nesting exceeds {}",
+            crate::item::MAX_NESTING
+        )));
     }
     if let Some(name) = crate::item::custom::name(kind) {
         patch_kind(name, ids)?;
         return nbt(w, v);
     }
+    // Keep the large leaf dispatcher out of recursive template and predicate frames.
+    match kind {
+        14 | 15 => {
+            if matches!(v, Value::List(_)) {
+                sequence(w, list(v)?, |w, v| predicate(w, v, ids, depth))?;
+            } else {
+                w.varint(1);
+                predicate(w, v, ids, depth)?;
+            }
+        }
+        25 | 80 => template(w, v, ids, depth + 1)?,
+        51 | 52 => sequence(w, list(v)?, |w, v| template(w, v, ids, depth + 1))?,
+        76 => {
+            for k in ["back", "left", "right", "front"] {
+                optional(w, field(v, k), |w, v| template(w, v, ids, depth + 1))?;
+            }
+        }
+        77 => {
+            let Value::Container(slots) = v else {
+                return Err(err("expected dense canonical container"));
+            };
+            if slots.len() > 256 {
+                return Err(err("container exceeds 256 slots"));
+            }
+            w.varint(slots.len() as i32);
+            for slot in slots {
+                w.bool(slot.is_some());
+                if let Some(t) = slot {
+                    template_body(w, t, ids, depth + 1)?;
+                }
+            }
+        }
+        _ => return encode_leaf(kind, v, w, ids),
+    }
+    Ok(())
+}
+
+#[inline(never)]
+fn encode_leaf(kind: i32, v: &Value, w: &mut Writer, ids: &dyn Ids) -> Result<()> {
     match kind {
         // These codecs travel as their persistent NBT, including named registry references.
         0 | 22 | 49 | 59 | 61 | 68 | 81 | 82 => nbt(w, v)?,
@@ -599,14 +622,6 @@ fn encode(kind: i32, v: &Value, w: &mut Writer, ids: &dyn Ids, depth: u32) -> Re
             for (k, v) in entries {
                 w.varint(id(ids, "minecraft:enchantment", k)?);
                 w.varint(int(v)?);
-            }
-        }
-        14 | 15 => {
-            if matches!(v, Value::List(_)) {
-                sequence(w, list(v)?, |w, v| predicate(w, v, ids, depth))?;
-            } else {
-                w.varint(1);
-                predicate(w, v, ids, depth)?;
             }
         }
         16 => sequence(w, list(v)?, |w, v| {
@@ -670,7 +685,6 @@ fn encode(kind: i32, v: &Value, w: &mut Writer, ids: &dyn Ids, depth: u32) -> Re
                 consume(w, v, ids)
             })?;
         }
-        25 | 80 => template(w, v, ids, depth + 1)?,
         26 => {
             w.f32(float(need(v, "seconds")?)?);
             optional(w, field(v, "cooldown_group"), |w, v| {
@@ -776,7 +790,6 @@ fn encode(kind: i32, v: &Value, w: &mut Writer, ids: &dyn Ids, depth: u32) -> Re
         }
         46 | 75 | 91 | 96 | 97 | 114..=116 | 121 => w.varint(named(v, DYES)?),
         47 => w.i32(int(v)?),
-        51 | 52 => sequence(w, list(v)?, |w, v| template(w, v, ids, depth + 1))?,
         53 => {
             optional(w, field(v, "potion"), |w, v| {
                 w.varint(id(ids, "minecraft:potion", v)?);
@@ -892,26 +905,6 @@ fn encode(kind: i32, v: &Value, w: &mut Writer, ids: &dyn Ids, depth: u32) -> Re
             w.varint(named(need(v, "color")?, DYES)?);
             Ok(())
         })?,
-        76 => {
-            for k in ["back", "left", "right", "front"] {
-                optional(w, field(v, k), |w, v| template(w, v, ids, depth + 1))?;
-            }
-        }
-        77 => {
-            let Value::Container(slots) = v else {
-                return Err(err("expected dense canonical container"));
-            };
-            if slots.len() > 256 {
-                return Err(err("container exceeds 256 slots"));
-            }
-            w.varint(slots.len() as i32);
-            for slot in slots {
-                w.bool(slot.is_some());
-                if let Some(t) = slot {
-                    template_body(w, t, ids, depth + 1)?;
-                }
-            }
-        }
         78 => {
             let entries = map(v)?;
             w.varint(entries.len() as i32);

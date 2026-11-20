@@ -194,6 +194,22 @@ impl Component {
         if let Some(value) = O::special_component(id, self, names) {
             return value;
         }
+        // Recursive stream schemas must not keep the leaf conversion's frame on the stack.
+        match self {
+            Self::Stacks(stacks) => {
+                let list = stacks
+                    .iter()
+                    .map(|s| O::template(s, names))
+                    .collect::<Option<Vec<_>>>()?;
+                Some(O::create_list(list))
+            }
+            Self::Raw(bytes) => raw::code_with::<O>(id, bytes, names),
+            _ => self.code_leaf::<O>(id, names),
+        }
+    }
+
+    #[inline(never)]
+    fn code_leaf<O: Ops>(&self, id: i32, names: &dyn Names) -> Option<O::Value> {
         Some(match self {
             Self::Int(v) => match id {
                 kind::RARITY => pick_with::<O>(&RARITY, *v)?,
@@ -367,13 +383,6 @@ impl Component {
                 )
                 .build()
             }
-            Self::Stacks(stacks) => {
-                let mut list = Vec::with_capacity(stacks.len());
-                for s in stacks {
-                    list.push(O::template(s, names)?);
-                }
-                O::create_list(list)
-            }
             Self::Fireworks { flight, explosions } => {
                 // `ExtraCodecs.UNSIGNED_BYTE` is `Codec.BYTE`: a byte tag.
                 let rec = or_default_with::<O, _>(
@@ -464,7 +473,7 @@ impl Component {
                 self.write(id, &mut writer);
                 raw::code_with::<O>(id, &writer.data, names)?
             }
-            Self::Raw(bytes) => raw::code_with::<O>(id, bytes, names)?,
+            Self::Raw(_) | Self::Stacks(_) => return None,
         })
     }
 
