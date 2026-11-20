@@ -33,20 +33,26 @@ pub fn spawn_placement_declarations() -> &'static [SpawnPlacementDeclaration] {
 
 /// Registrar operations for spawn placements.
 pub trait SpawnPlacementsRegistrar {
-    /// Register a native predicate for `kind` (NeoForge's `RegisterSpawnPlacementsEvent`).
-    /// The first registration for a type without a vanilla entry must supply both `placement`
-    /// and `heightmap`; its predicate becomes the original regardless of `operation`.
-    /// For an existing entry, only `Replace` may supply either option, and `None` keeps
-    /// that field unchanged.
+    /// Register a native predicate in `Hooks::register` (NeoForge's
+    /// `RegisterSpawnPlacementsEvent.register`). Request `kind` from `r.entity_type_key`
+    /// with the full registry id, such as `mymod:ghoul` or `minecraft:zombie`.
     ///
-    /// The last replacement runs alone, even if later registrations add `Or` or `And`
-    /// predicates. Otherwise the original runs first, then the `Or` predicates until
-    /// one passes, then the `And` predicates until one fails. Each list runs in registration
-    /// order, and no `And` runs if neither the original nor an `Or` passed.
+    /// If the type has no vanilla entry, its first registration needs both `placement`
+    /// (where it may stand) and `heightmap` (how natural spawning and chunk generation
+    /// find the surface). Its predicate becomes the original regardless of `operation`.
+    /// For an existing entry, only [`SpawnPlacementOperation::Replace`] may supply either
+    /// field; `None` keeps that field's current value, including earlier changes.
     ///
-    /// An unavailable registrar key returns [`SpawnPlacementError::InvalidEntityType`].
-    /// A type that does not load or an invalid choice of metadata refuses resource loading,
-    /// naming the mod and type. `mob_spawn_placement_check` still sees the resulting answer.
+    /// If an existing entry was replaced, only the last replacement runs, even if
+    /// later registrations add `Or` or `And` predicates. Otherwise the original runs
+    /// first, then `Or` predicates until one passes. If the original or any `Or` passed,
+    /// `And` predicates run until one fails. Each list runs in registration order.
+    /// Predicates share the caller's live random stream. Where `mob_spawn_placement_check`
+    /// fires, it sees the effective answer after those predicates and their draws.
+    ///
+    /// An unavailable key returns [`SpawnPlacementError::InvalidEntityType`] and records
+    /// a registration refusal. Unloaded types, invalid combinations of metadata, and
+    /// missing vanilla spawn placement data refuse resource loading, naming the mod and type.
     fn register_spawn_placement(
         &mut self,
         kind: EntityTypeKey,

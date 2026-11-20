@@ -967,15 +967,16 @@ pub enum Spawner {
 pub enum SpawnCheck {
     /// `SUCCEED`: the check passes.
     Succeed,
-    /// `DEFAULT`: vanilla's own answer stands.
+    /// `DEFAULT`: keep the check's own answer, including the effective predicate result
+    /// for a placement check.
     #[default]
     Default,
     /// `FAIL`: the check fails.
     Fail,
 }
 
-/// Where an entity type stands to spawn (`SpawnPlacementType`):
-/// `SpawnPlacements.isSpawnPositionOk`'s first check.
+/// Where an entity type may stand (`SpawnPlacementType`), checked by
+/// `SpawnPlacements.isSpawnPositionOk` separately from its spawn predicate.
 // no wire: only used to register native spawn predicates.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
@@ -1004,16 +1005,18 @@ pub trait SpawnPlacementLevel {
     fn sky_light(&self, pos: BlockPos) -> i32;
     /// The block light at `pos` (`LightLayer.BLOCK`).
     fn block_light(&self, pos: BlockPos) -> i32;
-    /// `Animal.isBrightEnoughToSpawn` at `pos`, without any spawn-reason bypass.
+    /// `Animal.isBrightEnoughToSpawn` at `pos`, without any spawn-reason bypass or random draws.
     fn is_bright_enough_to_spawn(&self, pos: BlockPos) -> bool;
 }
 
-/// The level and live random stream lent for one spawn predicate call. Predicates
-/// decide whether to skip the raw light tests for [`SpawnReason::TrialSpawner`].
+/// The level and live random stream lent for one spawn predicate call.
+/// To preserve the vanilla trial-spawner light bypass, test [`SpawnReason::TrialSpawner`]
+/// before calling either light helper. The helpers themselves do not check the reason.
 pub trait SpawnPlacementContext {
     /// The read-only level for this check. Reads never load chunks or write to the level.
     fn level(&self) -> &dyn SpawnPlacementLevel;
-    /// The caller's live random stream. Draws advance it in the order they are made.
+    /// The caller's live random stream, not a copy. Draws advance it in call order and
+    /// are kept even if this predicate or a later check rejects the spawn.
     fn random(&mut self) -> &mut dyn RandomSource;
     /// `Monster.isDarkEnoughToSpawn` at the checked position, without any spawn-reason
     /// bypass. It draws from the same stream as [`Self::random`].
@@ -1030,14 +1033,15 @@ pub enum SpawnPlacementOperation {
     And,
     /// Try this predicate if the original and earlier `Or` predicates failed.
     Or,
-    /// Evaluate only this predicate, bypassing the original and all `And` and `Or` predicates.
-    /// If several replacements are registered, only the last is evaluated.
+    /// Replace an existing entry's predicate, bypassing the original and all `And` and `Or`
+    /// predicates. Only the last replacement is evaluated. A replacement can change either
+    /// placement or heightmap; a field it omits retains its current value.
     Replace,
 }
 
-/// A native spawn predicate called with the type key, position, reason and
-/// the check's read-only level and live random stream. A closure or function
-/// with the same signature can be registered directly.
+/// A native spawn predicate for an entity type, reason and block position. Register a
+/// [`Send`] and [`Sync`] function or closure with the same signature, or implement this trait.
+/// Use the lent level and random stream to decide the result; do not depend on call counts.
 pub trait SpawnPlacementPredicate: Send + Sync + 'static {
     /// Whether this check passes. Use the lent random stream for any draws.
     fn test(
@@ -1067,12 +1071,14 @@ where
     }
 }
 
-/// A refusal from [`SpawnPlacementsRegistrar::register_spawn_placement`].
+/// An immediate refusal from [`SpawnPlacementsRegistrar::register_spawn_placement`].
+/// Resource-load refusals are reported separately, after the game resolves the registrations.
 // no wire: only returned by the native spawn predicate registrar.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum SpawnPlacementError {
-    /// The entity type key is not available in this registrar.
+    /// The entity type key is not available in this registrar. The call also records
+    /// a registration refusal, even if the returned error is ignored.
     InvalidEntityType,
 }
 
