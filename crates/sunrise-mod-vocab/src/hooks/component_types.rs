@@ -7,8 +7,10 @@ pub trait Hooks {
         side = "both",
         contract = "collect",
         out = "types",
+        registration_append = "register",
         context = "registration",
-        neoforge = "RegisterEvent"
+        neoforge = "RegisterEvent",
+        version = 2
     )]
     fn component_types();
 }

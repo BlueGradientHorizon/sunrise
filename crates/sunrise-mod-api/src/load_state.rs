@@ -599,7 +599,9 @@ mod tests {
                 cx: &RegistrationContext,
                 event: &mut ComponentTypesEvent<'_>,
             ) {
-                *event.types = probe(cx);
+                for answer in probe(cx) {
+                    event.register(answer);
+                }
             }
         }
 
