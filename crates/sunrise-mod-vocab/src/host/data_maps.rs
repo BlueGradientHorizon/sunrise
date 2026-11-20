@@ -10,21 +10,19 @@ pub trait DataMapsBackend {
     /// Side: both.
     /// Entry `entry` (its full registry id, `minecraft:pig`) of registry `registry`: its value
     /// in data map `map`, before the map decodes it: the merged JSON the server's data packs
-    /// and mods' files gave it, as NBT. `Ok(None)` where it has none.
+    /// and mods' files gave it, as NBT borrowed from this backend. `Ok(None)` where it has none.
     #[access(PublishedResources)]
     fn data_map_value(
         &self,
         registry: &str,
         entry: &str,
         map: &str,
-    ) -> Result<Option<Tag>, DataMapError>;
+    ) -> Result<Option<&Tag>, DataMapError>;
     /// Side: both.
     /// Every entry data map `map` of registry `registry` gives a value, with that value as
     /// `data_map_value` answers it, in id order (`IRegistryExtension.getDataMap`).
+    /// The rows are borrowed from this backend.
     #[access(PublishedResources)]
-    fn data_map_entries(
-        &self,
-        registry: &str,
-        map: &str,
-    ) -> Result<Vec<(String, Tag)>, DataMapError>;
+    fn data_map_entries(&self, registry: &str, map: &str)
+    -> Result<&[(String, Tag)], DataMapError>;
 }

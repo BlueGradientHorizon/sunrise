@@ -16,6 +16,7 @@ use super::Game;
 use super::data_map_json::to_tag;
 pub use mod_api::game::DataMapType;
 use serde_json::Value;
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use sunrise_core::nbt::Tag;
@@ -176,11 +177,11 @@ pub(crate) struct DataMaps {
 }
 
 /// `minecraft:` for an id written without a namespace.
-fn full_id(id: &str) -> String {
+fn full_id(id: &str) -> Cow<'_, str> {
     if id.contains(':') {
-        id.to_owned()
+        Cow::Borrowed(id)
     } else {
-        format!("minecraft:{id}")
+        Cow::Owned(format!("minecraft:{id}"))
     }
 }
 
@@ -208,9 +209,9 @@ fn entry_value<'a>(
 /// One file over what earlier files made of the type: `replace` clears it,
 /// `values` attach (a tag to every entry in it), then `remove` takes entries
 /// away, as `DataMapFile` is applied. False when the file isn't a data map.
-fn apply_file(
+fn apply_file<'file>(
     map: &mut BTreeMap<String, Value>,
-    file: &Value,
+    file: &'file Value,
     registry: &str,
     registries: &dyn MapRegistries,
     conditions: &sunrise_world::conditions::LoadConditions,
@@ -232,7 +233,7 @@ fn apply_file(
     }
     let mut unknown = BTreeSet::new();
     // The members of a tag or the entry itself, if the registry holds it.
-    let mut members = |key: &str| -> Vec<String> {
+    let mut members = |key: &'file str| -> Vec<Cow<'file, str>> {
         match key.strip_prefix('#') {
             // A tag's members go through the same membership check the entry
             // does: a tag naming an id the registry doesn't hold publishes
@@ -240,24 +241,29 @@ fn apply_file(
             Some(tag) => registries
                 .tag(registry, &full_id(tag))
                 .into_iter()
-                .filter(|member| {
-                    let held = registries.contains(registry, member);
-                    if !held {
-                        unknown.insert(member.clone());
+                .filter_map(|member| {
+                    if registries.contains(registry, &member) {
+                        Some(Cow::Owned(member))
+                    } else {
+                        unknown.insert(Cow::Owned(member));
+                        None
                     }
-                    held
                 })
                 .collect(),
-            None if registries.contains(registry, &full_id(key)) => vec![full_id(key)],
             None => {
-                unknown.insert(full_id(key));
-                Vec::new()
+                let id = full_id(key);
+                if registries.contains(registry, &id) {
+                    vec![id]
+                } else {
+                    unknown.insert(id);
+                    Vec::new()
+                }
             }
         }
     };
     for (key, value) in decoded {
         for entry in members(key) {
-            map.insert(entry, value.clone());
+            map.insert(entry.into_owned(), value.clone());
         }
     }
     for removal in root
@@ -269,7 +275,7 @@ fn apply_file(
         // An entry or `{"key": entry}`, as `DataMapEntry.Removal` reads it.
         let key = removal.as_str().or_else(|| removal["key"].as_str());
         for entry in key.map(&mut members).unwrap_or_default() {
-            map.remove(&entry);
+            map.remove(entry.as_ref());
         }
     }
     if !unknown.is_empty() {
@@ -441,10 +447,10 @@ impl DataMaps {
         registry: &str,
         type_id: &str,
         entry: &str,
-    ) -> Result<Option<Tag>, mod_api::DataMapError> {
+    ) -> Result<Option<&Tag>, mod_api::DataMapError> {
         let map = self.map(registry, type_id)?;
         match map.rows.binary_search_by(|(id, _)| id.as_str().cmp(entry)) {
-            Ok(index) => Ok(Some(map.rows[index].1.clone())),
+            Ok(index) => Ok(Some(&map.rows[index].1)),
             Err(_) if map.invalid.contains(entry) => Err(mod_api::DataMapError::Undecodable),
             Err(_) => Ok(None),
         }
@@ -456,12 +462,12 @@ impl DataMaps {
         &self,
         registry: &str,
         type_id: &str,
-    ) -> Result<Vec<(String, Tag)>, mod_api::DataMapError> {
+    ) -> Result<&[(String, Tag)], mod_api::DataMapError> {
         let map = self.map(registry, type_id)?;
         if !map.invalid.is_empty() {
             return Err(mod_api::DataMapError::Undecodable);
         }
-        Ok(map.rows.clone())
+        Ok(&map.rows)
     }
 }
 
@@ -497,7 +503,7 @@ impl Game<'_> {
         registry: &str,
         entry: &str,
         map: &str,
-    ) -> Result<Option<Tag>, mod_api::DataMapError> {
+    ) -> Result<Option<&Tag>, mod_api::DataMapError> {
         self.loaded_data_maps()?
             .value(registry, map, &full_id(entry))
     }
@@ -506,7 +512,7 @@ impl Game<'_> {
         &self,
         registry: &str,
         map: &str,
-    ) -> Result<Vec<(String, Tag)>, mod_api::DataMapError> {
+    ) -> Result<&[(String, Tag)], mod_api::DataMapError> {
         self.loaded_data_maps()?.entries(registry, map)
     }
 }
@@ -535,7 +541,7 @@ mod tests {
             )]));
             assert_eq!(
                 maps.value("minecraft:item", "test:map", "minecraft:stick"),
-                Ok(Some(Tag::Int(7)))
+                Ok(Some(&Tag::Int(7)))
             );
             assert_eq!(
                 maps.value("minecraft:item", "test:map", "minecraft:air"),
@@ -568,7 +574,7 @@ mod tests {
                 "neoforge:villager_compostables",
                 "minecraft:wheat_seeds"
             ),
-            Ok(Some(Tag::compound([(
+            Ok(Some(&Tag::compound([(
                 "can_villager_compost",
                 Tag::Byte(1)
             )])))
@@ -669,11 +675,11 @@ mod tests {
             |registry: &str, type_id: &str, entry: &str| maps.value(registry, type_id, entry);
         assert_eq!(
             value("minecraft:item", "mymod:fuel", "minecraft:coal"),
-            Ok(Some(Tag::Int(1600)))
+            Ok(Some(&Tag::Int(1600)))
         );
         assert_eq!(
             value("minecraft:item", "mymod:fuel", "minecraft:stick"),
-            Ok(Some(Tag::Compound(
+            Ok(Some(&Tag::Compound(
                 [("burn".into(), Tag::Long(3_000_000_000))]
                     .into_iter()
                     .collect()
@@ -720,8 +726,8 @@ mod tests {
         let f = files(&[(
             "data_maps/test:entity_type/weight",
             &[json!({"values": {
-                "minecraft:pig": 3,
-                "#minecraft:skeletons": 5,
+                "pig": 3,
+                "#skeletons": 5,
                 "minecraft:missing": 9
             }})],
         )]);
@@ -734,21 +740,26 @@ mod tests {
             &registries,
         );
         let value = |entry| maps.value("minecraft:entity_type", "test:weight", entry);
-        assert_eq!(value("minecraft:pig"), Ok(Some(Tag::Int(3))));
-        assert_eq!(value("minecraft:stray"), Ok(Some(Tag::Int(5))));
+        let pig = value("minecraft:pig").unwrap().unwrap();
+        assert_eq!(pig, &Tag::Int(3));
+        assert_eq!(value("minecraft:stray"), Ok(Some(&Tag::Int(5))));
         assert_eq!(value("minecraft:cow"), Ok(None));
         // An id the registry doesn't hold is skipped.
         assert_eq!(value("minecraft:missing"), Ok(None));
         // A tag member the registry doesn't hold is skipped with the plain ids.
         assert_eq!(value("minecraft:ghost"), Ok(None));
+        let entries = maps
+            .entries("minecraft:entity_type", "test:weight")
+            .unwrap();
         assert_eq!(
-            maps.entries("minecraft:entity_type", "test:weight"),
-            Ok(vec![
+            entries,
+            &[
                 ("minecraft:pig".to_owned(), Tag::Int(3)),
                 ("minecraft:skeleton".to_owned(), Tag::Int(5)),
                 ("minecraft:stray".to_owned(), Tag::Int(5)),
-            ])
+            ]
         );
+        assert!(std::ptr::eq(pig, &entries[0].1));
         assert_eq!(maps.registries(), ["minecraft:entity_type"]);
     }
 

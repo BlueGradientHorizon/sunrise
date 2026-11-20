@@ -534,7 +534,7 @@ fn with_membership_fixture(run: impl FnOnce(&mut crate::game::Game<'_>, &Path)) 
         },
     );
 }
-fn weights(game: &crate::game::Game<'_>) -> Vec<(String, Tag)> {
+fn weights<'game>(game: &'game crate::game::Game<'_>) -> &'game [(String, Tag)] {
     game.world_tables
         .as_ref()
         .unwrap()
@@ -548,7 +548,7 @@ fn data_map_first_open_uses_staged_membership() {
     with_membership_fixture(|game, _| {
         assert_eq!(
             weights(game),
-            vec![("registry_test:fire".into(), Tag::Int(11))]
+            &[("registry_test:fire".to_owned(), Tag::Int(11))]
         );
     });
 }
@@ -563,9 +563,9 @@ fn data_map_reload_add_uses_staged_membership() {
         assert!(game.run_command("reload"));
         assert_eq!(
             weights(game),
-            vec![
-                ("registry_test:fire".into(), Tag::Int(11)),
-                ("registry_test:ice".into(), Tag::Int(17))
+            &[
+                ("registry_test:fire".to_owned(), Tag::Int(11)),
+                ("registry_test:ice".to_owned(), Tag::Int(17)),
             ]
         );
     });
@@ -589,9 +589,9 @@ fn data_map_later_enabled_layer_uses_staged_membership() {
         assert!(game.run_command("datapack enable \"file/later\" last"));
         assert_eq!(
             weights(game),
-            vec![
-                ("registry_test:fire".into(), Tag::Int(11)),
-                ("registry_test:ice".into(), Tag::Int(17))
+            &[
+                ("registry_test:fire".to_owned(), Tag::Int(11)),
+                ("registry_test:ice".to_owned(), Tag::Int(17)),
             ]
         );
     });

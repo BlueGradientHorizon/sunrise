@@ -61,10 +61,13 @@ load conditions (`WithConditions`): it counts only when they hold. A top-level
 ```
 
 Read an entry with its key's `data` (`item.data(host, &Emc)`, `entity_type.data(host, &map)`),
-from any hook with a host. A registry without a typed key is read by name:
-`data_map_value(host, "minecraft:worldgen/biome", "minecraft:plains", "mymod:heat")` gives the
-raw `Tag`, and `data_map_entries(host, registry, map)` the whole map, every entry with a value in
-id order (`IRegistryExtension.getDataMap`). The answers are:
+from any hook with a host. A typed read still returns an owned decoded value. To read raw
+data by name, use `data_map_value(host, "minecraft:worldgen/biome", "minecraft:plains", "mymod:heat")`
+for an `Option<&Tag>`, or `data_map_entries(host, registry, map)` for a
+`&[(String, Tag)]` with every entry/value pair in id order (`IRegistryExtension.getDataMap`).
+A bare entry id such as `plains` uses the `minecraft` namespace. Both reads borrow from the
+host's published data, not the lookup strings. Keep registry ids or keys and read again with
+the next host, or copy the data you need to keep. A point read answers:
 
 - `Ok(Some(value))`: the merged value. The newest file wins, a `#tag` gives every entry in it the
   value, `replace` drops what earlier files set and `remove` takes entries away.
@@ -74,6 +77,8 @@ id order (`IRegistryExtension.getDataMap`). The answers are:
 - `Err(DataMapError::Unavailable)`: no maps are loaded here. Data maps live on the server (the
   single player server thread included) and are not synced to clients, so a client returns
   this error, as does a server before its world's data first loads.
+
+A whole-map read fails with `Undecodable` if any entry cannot be represented as NBT.
 
 The server merges every map when its data loads: a world's first open and every `/reload`. A
 read sees the last load whole, never part of one, and a value a reload drops is gone at once.
