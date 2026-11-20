@@ -78,7 +78,9 @@ launcher or sent to a registry.
 - anything else: a folder holding `sdk-<build id>/` folders, and `nightly/` or `nightly-<date>/` folders with their
   `sdk.json` for Nightly names. The launcher also reads game releases' folders there, for their build ids.
 
-Every SDK base is checked the same way, against Sunrise's signature. The launcher's own copies are described in
+Every SDK base is checked the same way, against Sunrise's signature. For a [local SDK built from a
+checkout](../../how-to/native-mods/07-local-developer-builds.md), a debug build of the mod tool can also check
+against the public key set in `SUNRISE_SDK_TRUSTED_KEY`. The launcher's own copies are described in
 [Cache and disk](../../how-to/native-mods/10-cache-and-disk.md).
 
 `internals add`, `inject add`, `inject update`, and pin changes that need catalogs read `internals.json` and
