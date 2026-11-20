@@ -128,12 +128,46 @@ fn encode_into(units: &[u16], dst: &mut [u8]) {
 /// sequence starts, a continuation byte that isn't `10xxxxxx`, or a sequence cut off at the end.
 #[inline]
 pub fn decode(bytes: &[u8]) -> Option<Vec<u16>> {
+    if bytes.len() >= 256 {
+        return decode_ascii_blocks(bytes);
+    }
     if bytes.is_ascii() {
         return Some(bytes.iter().map(|&b| u16::from(b)).collect());
     }
-    // Every unit takes at least one byte, so `bytes` never holds more units than bytes: the vector's room is
-    // never exceeded, and no zero-fill has to be written over.
+    decode_units(Vec::with_capacity(bytes.len()), bytes)
+}
+
+/// Long inputs' ASCII stretches decode a 256-byte block at a time: the block is tested all-ASCII in whole
+/// words OR-reduced to one test, and a clean block widens straight into the vector's room, so the first
+/// mixed block (or a mixed tail) hands the rest to [`decode_units`] with the clean prefix kept. Short
+/// inputs stay with `decode`'s one-test scan, where the block machinery would only add checks.
+#[inline]
+fn decode_ascii_blocks(bytes: &[u8]) -> Option<Vec<u16>> {
     let mut units = Vec::with_capacity(bytes.len());
+    let (blocks, tail) = bytes.as_chunks::<256>();
+    let mut ascii = 0;
+    let mut mixed = false;
+    for block in blocks {
+        if !all_ascii(block) {
+            mixed = true;
+            break;
+        }
+        units.extend(block.iter().map(|&b| u16::from(b)));
+        ascii += 256;
+    }
+    if !mixed && all_ascii(tail) {
+        units.extend(tail.iter().map(|&b| u16::from(b)));
+        return Some(units);
+    }
+    decode_units(units, &bytes[ascii..])
+}
+
+/// Every unit takes at least one byte, so `bytes` never holds more units than the room `units` was given:
+/// its capacity is never exceeded, and no zero-fill has to be written over. Inlined into both callers (one
+/// per copy in the speed kit): out of line, the copies' identical loops would be merged by the linker and
+/// land at the same address, and the kit could no longer average over their placements.
+#[inline(always)]
+fn decode_units(mut units: Vec<u16>, bytes: &[u8]) -> Option<Vec<u16>> {
     let mut i = 0;
     // One sequence at a time, specialised by its lead byte's class: each branch predicts the string's own mix
     // (a uniform stretch runs one branch to the end), which is where HotSpot's per-byte loop beats a block
@@ -199,6 +233,17 @@ fn unit(b0: u8, b1: u8, b2: u8) -> u16 {
     let three = (u16::from(b0 & 0x0f) << 12) | (u16::from(b1 & 0x3f) << 6) | u16::from(b2 & 0x3f);
     let wide = std::hint::select_unpredictable(b0 < 0xe0, two, three);
     std::hint::select_unpredictable(b0 < 0x80, u16::from(b0), wide)
+}
+
+/// Whether every byte is ASCII, whole words OR-reduced to one test (how `is_ascii` reads a slice, so it
+/// vectorizes) and the last few bytes one at a time.
+#[inline(always)]
+fn all_ascii(bytes: &[u8]) -> bool {
+    let (words, rest) = bytes.as_chunks::<8>();
+    let words = words
+        .iter()
+        .fold(0u64, |high, &w| high | u64::from_le_bytes(w));
+    (words & 0x8080_8080_8080_8080) == 0 && rest.iter().all(|&b| b < 0x80)
 }
 
 #[cfg(test)]
