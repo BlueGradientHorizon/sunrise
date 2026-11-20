@@ -2420,7 +2420,10 @@ impl HudBatch {
         for v in vertices {
             v.depth = (max - v.depth) / (max - min).max(f32::EPSILON);
         }
-        let [x0, y0, x1, y1] = clip.map(|v| (v * self.scale).max(0.0) as u32);
+        // The scissor holds whole pixels: the min edges round down and the max edges up, so a
+        // pixel the bounds touch is inside it.
+        let [x0, y0, x1, y1] = clip.map(|v| (v * self.scale).max(0.0));
+        let [x0, y0, x1, y1] = [x0.floor(), y0.floor(), x1.ceil(), y1.ceil()].map(|v| v as u32);
         let clip = [x0, y0, x1.saturating_sub(x0), y1.saturating_sub(y0)];
         // Separate previews clear depth independently, even if their scissors match.
         if glint > start {
@@ -6376,6 +6379,27 @@ texture=wide",
                 .iter()
                 .all(|v| v.depth.is_finite() && (0.0..=1.0).contains(&v.depth))
         );
+    }
+
+    /// The depth scissor takes every pixel the bounds touch: a face reaching x = 4.75 (9.5 at
+    /// scale 2) keeps the pixel centred at 9.25, the min edges round down, whole numbers stay.
+    #[test]
+    fn a_depth_scissor_rounds_its_max_edges_up() {
+        let mut batch = HudBatch::scratch([640, 480]);
+        batch.scale = 2.0;
+        let start = batch.vertices.len();
+        batch.quad_3d(
+            [
+                [1.25, 2.0, 0.0],
+                [1.25, 6.5, 0.0],
+                [4.75, 6.5, 1.0],
+                [4.75, 2.0, 1.0],
+            ],
+            [[0.0; 2]; 4],
+            u32::MAX,
+        );
+        batch.depth_since(start, [1.25, 2.0, 4.75, 6.5]);
+        assert_eq!(batch.runs(), vec![(0..6, Blend::Depth([2, 4, 8, 9]))]);
     }
 
     #[test]
