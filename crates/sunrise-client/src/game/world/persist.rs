@@ -1731,6 +1731,8 @@ impl Game<'_> {
         }
         self.pending_vehicle = None;
         self.riding = Some(id);
+        // `PlayerList.placeNewPlayer` boards the saved vehicle through `startRiding`, so `addPassenger` places it.
+        self.seat_player(id);
     }
     /// A mob's entity tag with the mobs riding it under `Passengers`.
     pub(super) fn mob_tree_nbt(&mut self, i: usize) -> Tag {
