@@ -396,7 +396,7 @@ impl GameLevel<'_> {
     /// `native_is_valid_bonemeal_target`, after it did: set `success` to grow
     /// it this time. Vanilla draws the level's random here
     /// (`isBonemealSuccess(Level, RandomSource, BlockPos, BlockState)`), so
-    /// draw from `native_level_random` to keep vanilla's order.
+    /// draw through the level host's `with_random` to keep vanilla's order.
     /// Authoritative servers only.
     #[inline(always)]
     pub(in crate::game) fn native_is_bonemeal_success(

@@ -343,8 +343,8 @@ set. `Some(true)` accepts that state, `Some(false)` rejects it, and `None` keeps
 It does not select a bed or anchor's stand-up position; `respawn_position` handles those.
 
 `LevelHost` has no random access: a draw from a read-only hook inside a level write would shift the level's random sequence away from vanilla's order. A hook that may draw is given a `LevelRandomHost`.
-`LevelRandomHost` provides vanilla's `Level.random` so
-mod draws come in vanilla's order. `LevelTicksHost` adds scheduling through
+`LevelRandomHost` lends vanilla's live `Level.random` through `host.with_random(|random| ...)`
+so mod draws come in vanilla's order ([Randomness](randomness.md)). `LevelTicksHost` adds scheduling through
 `schedule_block_tick` and `schedule_fluid_tick`, while
 `LevelWriteHost` adds random access, `set_block`, `set_block_property`, `play_sound` and
 `send_particles` and `level_event` (`levelEvent`, queued in order with the write's own events).

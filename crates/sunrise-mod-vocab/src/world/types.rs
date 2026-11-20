@@ -1605,16 +1605,12 @@ pub trait LevelRandomHost: LevelHost {
     fn attachments(&mut self) -> &mut dyn AttachmentStore {
         unimplemented!("LevelRandomHost::attachments")
     }
-    /// A copy of the level's random stream through `native_level_random`, or None on a
-    /// non-authoritative level. Draw with `with_random`, which stores it back.
-    fn random(&mut self) -> Option<LegacyRandomSource> {
-        unimplemented!("LevelRandomHost::random")
-    }
-    /// Replace the level's random stream with `random`, one `random` gave and the mod drew from.
-    /// False on a non-authoritative level.
-    fn set_random(&mut self, _random: LegacyRandomSource) -> bool {
-        unimplemented!("LevelRandomHost::set_random")
-    }
+    /// Lend the level's live random stream (`Level.getRandom`) to `draw` for this call.
+    /// A host that cannot lend the stream declines by not running `draw`, as the default
+    /// implementation does. A host that runs it preserves all draws on normal return and
+    /// restores the stream, including its cached Gaussian, if it unwinds.
+    /// Listeners request draws with `host.with_random(|random| ...)`.
+    fn lend_random(&mut self, _draw: RandomDraw<'_>) {}
 }
 
 /// What a hit's listener may do beyond reading and drawing the level's random: play level
@@ -1623,8 +1619,8 @@ pub trait LevelRandomHost: LevelHost {
 /// and `living_use_totem`. It writes no block and schedules no tick.
 ///
 /// A sound is queued at the call, and its seed is drawn then from the level's sound-seed
-/// stream, never from [`LevelRandomHost::random`]. An entity's random is the entity's own
-/// stream (`Entity.getRandom`), advanced in listener order, so the hit's continuation sees
+/// stream, never from the level's [draw stream](LevelRandomHost::lend_random). An entity's
+/// own stream (`Entity.getRandom`) advances in listener order, so the hit's continuation sees
 /// the draws. A hit lends its attacker where the game applies a melee hit (the attacking player or mob,
 /// for player → mob, mob → mob and mob → player) and no entity at any other damage site
 /// (environment, projectiles, explosions, potions and the like); any other entity, a stale

@@ -15,14 +15,22 @@ Wherever the game has a random stream a mod may draw from, you get a `&mut dyn R
 | `GroundLevel::random` | The tree decorator's random |
 | The tree-grow hook's random | The tree's own random |
 | `GoalContext::random` | The mob's own random |
-| `with_random(\|random\| ...)` on a level | The level's random, stored back after the closure |
+| `host.with_random(\|random\| ...)` on a restricted level host | A scoped borrow of the level's live random |
+| `level.with_random(host, \|random\| ...)` on a `LevelRef` | The named level's random |
 
 A draw moves the game's own stream, in vanilla's order, so your draws shift vanilla's later ones
 exactly as a Java mod's would. You need no import to call these methods on a `dyn RandomSource`.
 
 ```rust,ignore
 let roll = goal_context.random().next_int_bound(20);
+// In a hook with a LevelRandomHost, HitHost, or LevelWriteHost:
+let level_roll = host.with_random(|random| random.next_int_bound(20));
 ```
+
+A restricted host returns `None` without calling the closure if it cannot lend the stream.
+The closure cannot take the random with it or reseed it. On unwinding, the stream goes back to
+where it was before the closure, including its cached Gaussian. On a transactional
+`LevelWriteHost`, successful draws are also rolled back if the transaction aborts.
 
 ## Your own seeded stream
 

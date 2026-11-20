@@ -1,19 +1,5 @@
 use super::*;
 
-/// Server-level helpers for native mods.
-impl GameLevel<'_> {
-    /// This level's own random (vanilla's `Level.random`): the stream
-    /// `native_level_random(dimension)` hands a server hook, for a world hook
-    /// that draws as a vanilla block does (`isBonemealSuccess`), so the mod's
-    /// draws shift vanilla's as a Java mod's would. `None` where this level
-    /// isn't the server's copy.
-    pub(in crate::game) fn native_level_random(
-        &mut self,
-    ) -> Option<&mut sunrise_core::random::LegacyRandom> {
-        self.native_authoritative.then_some(&mut self.world.random)
-    }
-}
-
 /// Helpers for native mods, kept as stable as the hook points.
 // Native mods use these; nothing in Sunrise does.
 impl Game<'_> {
@@ -41,8 +27,7 @@ impl Game<'_> {
         }
     }
     /// Replace the random of the server level `level` names with `random`,
-    /// a stream `native_level_random` gave and the mod drew from. False where
-    /// that gives `None`.
+    /// a stream `level_random` gave and the mod drew from. False where that gives `None`.
     pub(in crate::game) fn level_set_random(
         &mut self,
         level: LevelRef,

@@ -51,6 +51,31 @@ pub trait RandomSource {
     }
 }
 
+/// A one-shot draw requested by `with_random`. A level host can run it with the live stream or
+/// decline by leaving it unrun; it cannot keep the callback past the call.
+// no wire: the callback is borrowed from the caller's stack.
+// exhaustive: only the scoped adapter can construct a request.
+pub struct RandomDraw<'a>(&'a mut dyn FnMut(&mut dyn RandomSource));
+
+impl RandomDraw<'_> {
+    /// Consume this request, giving the caller scoped access to `random`.
+    pub fn run(self, random: &mut dyn RandomSource) {
+        (self.0)(random);
+    }
+}
+
+pub(crate) fn with_random_draw<T>(
+    draw: impl FnOnce(&mut dyn RandomSource) -> T,
+    lend: impl FnOnce(RandomDraw<'_>),
+) -> Option<T> {
+    let mut draw = Some(draw);
+    let mut result = None;
+    lend(RandomDraw(&mut |random| {
+        result = draw.take().map(|draw| draw(random));
+    }));
+    result
+}
+
 /// Vanilla's `LegacyRandomSource`: the generator Java's `Random` is, seeded by the mod.
 ///
 /// It crosses the API by value as the level's random (`level_random`, `level_set_random`) and is
@@ -113,6 +138,23 @@ impl RandomSource for LegacyRandomSource {
 mod tests {
     use super::*;
     use crate::wire::{Reader, Writer};
+    use crate::{BlockEntityRef, Compound, LevelHost, LevelRandomHost};
+
+    #[test]
+    fn a_host_without_a_stream_declines_without_running_the_draw() {
+        struct Empty;
+        impl LevelHost for Empty {
+            fn block_entity_data(&self, _: BlockEntityRef) -> Option<Compound> {
+                None
+            }
+        }
+        impl LevelRandomHost for Empty {}
+
+        let host: &mut dyn LevelRandomHost = &mut Empty;
+        let mut called = false;
+        assert_eq!(host.with_random(|_| called = true), None);
+        assert!(!called);
+    }
 
     #[test]
     fn a_bound_below_one_answers_zero_and_draws_nothing() {

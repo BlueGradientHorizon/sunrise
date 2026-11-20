@@ -72,8 +72,7 @@ pub trait LevelTickingBackendMut {
     fn level_block_random_tick(&mut self, level: LevelRef, pos: [i32; 3]) -> bool;
     /// Side: server.
     /// Replace the random of the server level `level` names with `random`,
-    /// a stream `native_level_random` gave and the mod drew from. False where
-    /// that gives `None`.
+    /// a stream `level_random` gave and the mod drew from. False where that gives `None`.
     #[access(WorldOnly)]
     fn level_set_random(&mut self, level: LevelRef, random: LegacyRandomSource) -> bool;
 }

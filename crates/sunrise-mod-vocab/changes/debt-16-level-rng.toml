@@ -1,0 +1,9 @@
+ids = [
+    "method:LevelRandomHost::random",
+    "method:LevelRandomHost::set_random",
+    "method:LevelRandomHost::lend_random",
+    "type:RandomDraw",
+    "handle:RandomDraw::run",
+]
+why = "Restricted level hosts now lend the live level random stream instead of letting listeners copy or replace its state. A draw that unwinds restores the seed and cached Gaussian. A transactional level write keeps the original state for rollback."
+migrate = "Replace `let mut rng = host.random()?; let roll = rng.next_int_bound(bound); host.set_random(rng);` with `let roll = host.with_random(|rng| rng.next_int_bound(bound))?;` on `dyn LevelRandomHost`, `dyn HitHost`, or `dyn LevelWriteHost`. There is no way to reseed the level; use `LegacyRandomSource::new(seed)` for your own independent stream. If you implement a test host, replace its `random` and `set_random` methods with `fn lend_random(&mut self, draw: RandomDraw<'_>)` and use `draw.run(&mut self.rng)` for a loan; restore the original stream on unwind. Omit `lend_random` to decline every draw."

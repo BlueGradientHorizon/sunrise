@@ -82,6 +82,16 @@ pub(super) struct OpenTransactions {
 }
 
 impl OpenTransactions {
+    /// Keep the full pre-draw state from the first draw at this depth.
+    pub(super) fn keep_level_random(
+        &mut self,
+        before: impl FnOnce() -> sunrise_core::random::LegacyRandom,
+    ) {
+        if let Some(level) = self.last_mut() {
+            level.level_random.get_or_insert_with(before);
+        }
+    }
+
     pub(super) fn journal_modifier_changes(&mut self, id: u32, changes: ModifierChanges) {
         if let Some(level) = self.last_mut() {
             level.modifier_changes.entry(id).or_default().merge(changes);
@@ -1233,16 +1243,9 @@ impl Game<'_> {
             block.replay_removal = true;
         }
     }
-    pub(super) fn journal_set_level_random(&mut self, random: sunrise_core::random::LegacyRandom) {
-        self.journal_level_random();
-        *self.world.random = random;
-    }
     pub(super) fn journal_level_random(&mut self) {
-        if let Some(level) = self.transactions.last_mut() {
-            level
-                .level_random
-                .get_or_insert_with(|| (*self.world.random).clone());
-        }
+        self.transactions
+            .keep_level_random(|| (*self.world.random).clone());
     }
     pub(super) fn journal_orb_merge(
         &mut self,

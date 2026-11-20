@@ -1736,7 +1736,7 @@ still go on each event or registrar.
 - Bone meal on a mod block, the `BonemealableBlock` three questions a block nothing in Sunrise knows one for
   answers itself: `is_valid_bonemeal_target(state, valid)` says whether the block takes bone meal (`Some(false)` refuses it even where its template takes it, `None` leaves the
   template's; asked on both sides, as vanilla asks it, so a client predicts the use); `is_bonemeal_success(state, success)` is
-  `isBonemealSuccess`, drawn from `native_level_random()` to keep vanilla's order; and `perform_bonemeal(state)`
+  `isBonemealSuccess`, drawn through the level host's `with_random` to keep vanilla's order; and `perform_bonemeal(state)`
   is the growth itself, with `native_set_block`/`native_set_block_property`. The meal is used up and the growth
   particles and sound follow as vanilla's do, whether or not the roll grows the block, from a player's bone meal, a
   dispenser's and, on a crop, a villager's. A block that answers nothing keeps the `BonemealableBlock` its template gives it.
