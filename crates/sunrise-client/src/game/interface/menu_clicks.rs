@@ -175,6 +175,20 @@ impl Game<'_> {
             &dyn Fn(usize) -> Option<usize>,
         ) -> Option<bool>,
     ) -> bool {
+        self.menu_session_with_game(|_, menu, env, to_menu| run(menu, env, to_menu))
+    }
+
+    /// Like `menu_session`, with read-only access to connection state before
+    /// deciding whether to keep the prediction.
+    pub(super) fn menu_session_with_game(
+        &mut self,
+        run: impl FnOnce(
+            &Self,
+            &mut sunrise_client::menu::Menu,
+            &sunrise_client::menu::Env,
+            &dyn Fn(usize) -> Option<usize>,
+        ) -> Option<bool>,
+    ) -> bool {
         use sunrise_client::menu::{Env, Kind, Menu};
         #[derive(Clone, Copy)]
         struct Map {
@@ -522,6 +536,12 @@ impl Game<'_> {
             menu.set_player_item(40, self.offhand.clone());
         }
         menu.settle(&env);
+        // A server's client menu never works out its crafting result (`on_client`): the crafting
+        // menus' result slot (InventoryMenu's and CraftingMenu's slot 0, which `game_of` doesn't
+        // map) holds what the server's ContainerSetSlot put there. Another menu's slot 0 is its own.
+        if matches!(kind, Kind::Inventory | Kind::Crafting) && self.remote.is_some() {
+            menu.set_slot(&env, 0, self.craft_result());
+        }
         if kind == Kind::Loom
             && let Some((selected, patterns)) = station_menu
         {
@@ -580,7 +600,7 @@ impl Game<'_> {
             menu.anvil.seen_input = before[0].clone();
             menu.anvil.screen = true;
         }
-        let outcome = run(&mut menu, &env, &to_menu);
+        let outcome = run(self, &mut menu, &env, &to_menu);
         let made = maps.made.take();
         match outcome {
             None => return false,

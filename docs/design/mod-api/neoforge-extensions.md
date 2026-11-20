@@ -50,7 +50,7 @@ same facts is `StateFacts` in `crates/sunrise-items/src/blocks.rs`.
 
 | Method | Verdict | Sunrise | Notes |
 | --- | --- | --- | --- |
-| `getFriction(state, level, pos, entity)` | Covered | `BlockPart::friction` (`hooks/friction.rs`) | Asked where an entity on the block reads its friction, with the entity's id and type and the position, from the block's own value; an answer that is not finite or is outside `0..=2` is dropped. Players, mobs, armor stands, items, experience orbs, boats and leads. The part answers from its inputs, without the level. |
+| `getFriction(state, level, pos, entity)` | Covered | `BlockPart::friction` (`hooks/friction.rs`), `LevelRef::friction` | Reads a state's friction in a borrowed level view, optionally for an entity. The state need not occupy the position, so a part can ask for a material's answer there. Recursive cycles are refused, and any finite answer is used as given and a non-finite one keeps the state's own value. Players, mobs, armor stands, items, experience orbs, boats and leads. |
 | `hasDynamicLightEmission(state)` | Covered | `BlockProperties.dynamic_light` → `StateFacts.dynamic_light` | Content data, per block, not per state: it sits on the block's row, so every state of a declared block is asked and a block with mixed states pays for all of them. An undeclared block is never asked, where NeoForge's declaration only gates a chunk's first lighting. |
 | `getLightEmission(state, level, pos)` | Covered | `BlockPart::light_emission` (`hooks/light_emission.rs`), for a block declaring `dynamic_light` | Asked with the position as a chunk comes in, as an edit sets the block and at `LevelRef::check_light` (`LevelLightEngine.checkBlock`), where vanilla's engine reads emission again, only on the thread that owns the level. A client also asks again for the sections a server's light update changed, at most once per cell per update, a Sunrise addition. Not asked for the block's own rendered light, ambient occlusion or the spawn rule, which take the state's light, nor from a light worker. The answer is clamped to 15 at the engine, where NeoForge clamps only its light manager's stored value. Without `dynamic_light`, `BlockProperties.light` is static. |
 | `ignitedByLava(state, level, pos, direction)` | Covered | `BlockPart::ignited_by_lava` (`hooks/ignited_by_lava.rs`) | Asked from the face toward the air lava would light, where `LavaFluid.isFlammable` reads it; with no answer the template's `IGNITED_BY_LAVA` state flag (`StateFacts`) decides. No content field sets it. |
@@ -152,7 +152,7 @@ which is the same place NeoForge's item components live. Reads are on `host` (`h
 | `createEntity(level, entity, stack)` | Missing | — | Same. |
 | `onEntityItemUpdate(stack, itemEntity)` | Missing | — | No per-item dropped-entity tick. [#1039](https://github.com/arismoko/horizon/issues/1039). |
 | `doesSneakBypassUse(stack, level, pos, player)` | Missing | — | No sneak-bypass query. |
-| `canEquip(stack, slot, entity)` | Covered | `ItemPart::can_equip` (`hooks/can_equip.rs`) | Starts as the stack's own `equippable` component's answer (slot and `allowed_entities`); the part sets it either way, with a read-only `Host` and the entity as a `LivingRef`. Asked for the player's armour slots (both menus), a dispenser's equip and a mob's pickup. The wasm generator supports a retained stack per guest instance and token-based borrowed asks; missing prepared exports refuse at load/registration. One dispense, menu input scope, or one mob’s pickup attempt shares its preparation across candidates. Scoped source revisions and identity generations invalidate stale asks and apply preconditions; no-listener paths convert nothing and add no entity lookup. Target type, position, living health/status and physical equipment reads reuse prepared values; other Host reads can allocate. |
+| `canEquip(stack, slot, entity)` | Covered | `ItemPart::can_equip` (`hooks/can_equip.rs`) | Starts as the stack's own `equippable` component's answer (slot and `allowed_entities`); the part sets it either way, with a read-only `Host` and the entity as a `LivingRef`. Asked for the player's armour slots (both menus), a dispenser's equip and a mob's pickup. Native dispatch borrows the prepared stack, slot name and entity-kind name for each ask. One dispense, menu input scope, or one mob’s pickup attempt shares its preparation across candidates. The former WebAssembly route retained one stack per guest instance, used borrowed-stack tokens, and refused missing prepared exports at load or registration. Scoped source revisions and identity generations invalidate stale asks and apply preconditions; no-listener paths convert nothing and add no entity lookup. Target type, position, living health/status and physical equipment reads reuse prepared values; other Host reads can allocate. |
 | `getEquipmentSlot(stack)` | Covered | `ItemResource::equippable_slot`, `host.item_equippable_slot` | Read from the effective `equippable` component. |
 | `onEntitySwing(stack, entity, hand)` | Covered | `ItemPart::on_entity_swing` (`hooks/item_attack.rs`) | Runs where `LivingEntity.swing` starts, on both sides; a cancel starts no swing (no animation, no packet). |
 | `getDamage(stack)` | Covered | `ItemStack::damage` | The stack's numeric damage override. |
@@ -298,8 +298,8 @@ cargo test -p sunrise-client --lib game::native_hooks::on_block_placed_by_tests:
 
 Menu types are content data (`MenuType` in `crates/sunrise-mod-package/src/content.rs`, files under
 `data/<id>/sunrise/menu/`), and the game's own menu engine opens them (`menu::Kind::Mod`). A `MenuPart` can answer
-slot rules and whether a player's block menu stays open (`menu_still_valid`, vanilla's `stillValid`), not
-construct a menu.
+slot rules and whether a player's mod menu stays open, with or without a backing block (`menu_still_valid`,
+vanilla's `stillValid`), not construct a menu.
 
 | Method | Verdict | Sunrise | Notes |
 | --- | --- | --- | --- |
@@ -381,7 +381,7 @@ invalidate just the changed chunk (#1300).
 | `IShearable.spawnShearedDrop(level, pos, drop)` | **Covered, engine-side** | The game spawns each returned drop one block above the entity with the sheep's random nudge, posts the shear game event and damages the shears. Not overridable per part. |
 
 Vanilla's shearable species (sheep, mooshroom, snow golem, bogged, copper golem, sulfur cube) keep their own
-shearing when no part answers. Entity parts are native-only, so wasm mods do not have these methods yet.
+shearing when no part answers. Mods use these methods through native [entity Parts](../../modding/src/concepts/parts/entity-parts-and-mob-goals.md#spawn-groups-and-shearing).
 
 ## IFallableExtension: falling tick
 
@@ -413,7 +413,7 @@ These are model-registration counterparts, not object-extension methods (#3430).
 
 | NeoForge | Verdict | Sunrise route |
 | --- | --- | --- |
-| `ModelEvent.RegisterStandalone.register` | **Covered for quad results** | Client `standalone_models` contract version 2 retains plain file ids in `models` and adds `forms: Vec<StandaloneModelForm>` on the same hook, with `RegistrationContext` on native and wasm. |
+| `ModelEvent.RegisterStandalone.register` | **Covered for quad results** | The native client `standalone_models` hook takes `RegistrationContext`; it supports plain file ids in `models` and [bake-time standalone forms](../../modding/src/how-to/client/model-drawing.md#bake-time-standalone-forms) in `forms`. |
 | `SimpleUnbakedStandaloneModel` with a `ModelState` | **Covered for quad results** | `Rotated { id, model, turns, uvlock }` uses the blockstate baker's centered negative XYZ quarter-turns and inverse face UV transform; no draw-pose substitution. |
 | `UnbakedStandaloneModel.resolveDependencies` and quad composition | **Covered for declared file dependencies** | `Combined { id, parts }` loads all sources and their transitive dependencies, concatenates their quads and publishes one `ModelRef`. A missing dependency drops the entire form and logs its registering mod. |
 | Mod-defined baked result type `T` | **Out of scope** | Sunrise's standalone result is baked quads, not arbitrary mod-owned objects. |

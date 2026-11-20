@@ -372,6 +372,14 @@ impl Station {
         self.start = 0;
         self.scroll = 0.0;
     }
+    /// Clear state tied to the previous `UpdateRecipes` table.
+    pub(in crate::game) fn reset_stonecutter_generation(&mut self) {
+        self.stone = Default::default();
+        self.selected = None;
+        self.result = None;
+        self.scrolling = false;
+        self.stonecutter_changed();
+    }
     /// `StonecutterScreen.isScrollBarActive`.
     fn stonecutter_scrolls(&self) -> bool {
         self.inputs[0].is_some() && self.stone.recipes.len() > 12
@@ -964,6 +972,7 @@ impl Game<'_> {
     /// (`ExperienceOrb.award`), then level event 1042, the grindstone's sound
     /// for everyone around.
     pub(super) fn grindstone_taken(&mut self, pos: [i32; 3], amount: i32) {
+        self.journal_level_random();
         let xp = stations::grindstone_xp_roll(amount, &mut self.world.random);
         self.grindstone_award(pos, xp);
     }
@@ -973,7 +982,7 @@ impl Game<'_> {
         if xp > 0 {
             self.spawn_orbs(pos.map(|v| f64::from(v) + 0.5), xp);
         }
-        self.level_event_at(1042, pos, 0);
+        self.after_commit(super::transactions::After::GrindstoneEvent(pos));
     }
     fn play_at(&mut self, sound: &str, pos: [i32; 3], volume: f32, pitch: f32) {
         let at = [
@@ -1427,7 +1436,7 @@ impl Game<'_> {
         size: (f32, f32),
         dst: (f32, f32),
     ) {
-        if let Some(mut r) = atlas.sprites.get(name).copied() {
+        if let Some(mut r) = atlas.gui_rect(name).copied() {
             let (du, dv) = ((r.u1 - r.u0) / r.w as f32, (r.v1 - r.v0) / r.h as f32);
             r.u0 += src.0 * du;
             r.v0 += src.1 * dv;
@@ -2114,14 +2123,15 @@ impl Game<'_> {
                 _ => serde_json::Value::Null,
             };
         };
-        let recipes = &self.stations().recipes.stonecutting;
+        let recipes = &self.station_recipes().stonecutting;
         serde_json::json!({
             "costs": s.offers.costs,
             "clues": s.offers.clues.iter().map(|c| c.as_ref().map(|(e, l)| format!("{e} {l}"))).collect::<Vec<_>>(),
             "bookcases": s.bookcases,
             "anvil_cost": s.anvil.cost,
             "result": s.result.as_ref().map(|r| format!("{} x{}", r.item, r.count)),
-            "recipes": s.stone.recipes.iter().map(|&i| recipes[i].id.clone()).collect::<Vec<_>>(),
+            "recipes": s.stone.recipes.iter().map(|&i| &recipes[i].id).collect::<Vec<_>>(),
+            "recipe_results": s.stone.recipes.iter().map(|&i| recipes[i].result.item.as_ref()).collect::<Vec<_>>(),
             "selected": s.selected,
         })
     }
@@ -2297,7 +2307,7 @@ impl Game<'_> {
     ) {
         for (i, (at, stack)) in layout.slots.iter().enumerate() {
             let selected = layout.selected == Some(i);
-            let sprite = |name: &str| format!("gui/sprites/container/bundle/{name}");
+            let sprite = |name: &str| format!("container/bundle/{name}");
             // Each draw takes the atlas on its own: the item's needs `&mut self`.
             sunrise_client::ui::nine_slice(
                 batch,
@@ -2355,9 +2365,9 @@ impl Game<'_> {
         }
         let [bx, by] = layout.bar;
         let fill_sprite = if layout.full {
-            "gui/sprites/container/bundle/bundle_progressbar_full"
+            "container/bundle/bundle_progressbar_full"
         } else {
-            "gui/sprites/container/bundle/bundle_progressbar_fill"
+            "container/bundle/bundle_progressbar_fill"
         };
         sunrise_client::ui::nine_slice(
             batch,
@@ -2372,7 +2382,7 @@ impl Game<'_> {
         sunrise_client::ui::nine_slice(
             batch,
             atlas,
-            "gui/sprites/container/bundle/bundle_progressbar_border",
+            "container/bundle/bundle_progressbar_border",
             bx,
             by,
             96.0,

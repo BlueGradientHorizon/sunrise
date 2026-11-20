@@ -1112,7 +1112,9 @@ impl Game<'_> {
                     "size": m.extra.size,
                     "leash": m.extra.leash.map(|h| format!("{h:?}")),
                     "tame": m.extra.tame,
-                    "sitting": m.extra.sitting,
+                    // TamableAnimal.isInSittingPose, what this side draws: a server's client
+                    // has only that bit of DATA_FLAGS_ID, never the saved order to sit.
+                    "sitting": m.extra.sitting_pose,
                     "temper": if sunrise_client::mobs::equine::is_equine(m.species()) {
                         sunrise_client::mobs::equine::temper(m)
                     } else { i32::from(m.extra.variant3) },
@@ -4622,6 +4624,7 @@ impl Game<'_> {
         let mut deflections: Vec<(u32, [f64; 3])> = Vec::new();
         let mut arrow_events = Vec::new();
         let mut shoot_events = Vec::new();
+        let mut lava_hurt_bullets = Vec::new();
         let mut trails = Vec::new();
         let mut bubble_tops = Vec::new();
         let mut snow_contacts = Vec::new();
@@ -4800,6 +4803,9 @@ impl Game<'_> {
                     }
                     if let Some(at) = p.take_shoot_event() {
                         shoot_events.push((p.owner, p.guest, [at.x, at.y, at.z]));
+                    }
+                    if p.take_lava_hurt() {
+                        lava_hurt_bullets.push(p.position.components());
                     }
                     // AbstractHurtingProjectile.tick ends with createParticleTrail.
                     if super::remote_projectiles::has_smoke_trail(&p.kind) {
@@ -4981,6 +4987,11 @@ impl Game<'_> {
                 game.projectile_shoot_event(owner, guest, at);
             });
         }
+        // ShulkerBullet.hurtServer's sound and crits, then Entity.lavaHurt's burn.
+        for at in lava_hurt_bullets {
+            self.shulker_bullet_hurt(at);
+            self.lava_hurt_sound(at);
+        }
         self.smoke_trails(trails);
         self.dragon_breath_trails();
         for pos in bubble_tops {
@@ -5009,6 +5020,7 @@ impl Game<'_> {
             });
             let _ = swept;
             projectiles.update(i, |p| self.sweep_projectile_inside(p));
+            projectiles.update(i, |p| self.lava_mark_hurt(p));
         }
         self.creatures.projectiles.restore(
             projectiles,
@@ -6886,11 +6898,8 @@ impl Game<'_> {
         // PiglinAi.mobInteract: hand over barter currency to admire.
         if self.mobs[index].alive() && held.as_ref().is_some_and(|h| self.give_piglin(index, h)) {
             self.swing_arm();
-            if !creative && let Some(stack) = self.stack_in_mut(selected).as_mut() {
-                stack.count -= 1;
-                if stack.count == 0 {
-                    *self.stack_in_mut(selected) = None;
-                }
+            if !creative {
+                self.consume_player_slot(selected, 1);
             }
             return Ok(true);
         }
@@ -7553,14 +7562,8 @@ impl Game<'_> {
                 self.audio.play(&name, Some(feet), volume, pitch);
             }
         }
-        if consume
-            && !creative
-            && let Some(stack) = self.stack_in_mut(selected).as_mut()
-        {
-            stack.count -= 1;
-            if stack.count == 0 {
-                *self.stack_in_mut(selected) = None;
-            }
+        if consume && !creative {
+            self.consume_player_slot(selected, 1);
         }
         if let Some(g) = give {
             let mut stack = ItemStack {
@@ -7791,14 +7794,7 @@ impl Game<'_> {
         let pitch = 0.4 / (self.world.random.next_float() * 0.4 + 0.8);
         self.audio.play(sound, Some(eye), 0.5, pitch);
         self.swing_arm();
-        if !self.creative
-            && let Some(s) = self.held_mut().as_mut()
-        {
-            s.count -= 1;
-            if s.count == 0 {
-                *self.held_mut() = None;
-            }
-        }
+        self.consume_held();
         if kind == ProjectileKind::Egg
             && let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone())
         {
@@ -8223,8 +8219,9 @@ impl Game<'_> {
         for mob in &self.mobs {
             self.living_geometry::<PRECHECK>(mob, &frame, out);
         }
-        // What follows isn't a tracked mob: close the last one's span.
+        // Close the last tracked mob's span before the remaining world entities.
         self.mark_motion(out.len(), 0);
+        self.general_entity_geometry(camera, alpha, out);
         self.elder_apparition_geometry(alpha, out);
         self.spawner_geometry(camera, alpha, out);
         let live = self.creatures.projectiles.iter().map(|a| {
@@ -8706,6 +8703,9 @@ impl Game<'_> {
 mod mob_griefing_tests;
 
 #[cfg(test)]
+mod control_mobs_sitting_tests;
+
+#[cfg(test)]
 mod living_visibility_tests;
 
 #[cfg(test)]
@@ -8887,9 +8887,9 @@ pub(in crate::game) fn local_difficulty_in(
 #[path = "../../entities/tests/leash_without_item_criterion_tests.rs"]
 mod leash_without_item_criterion_tests;
 #[cfg(test)]
-mod pending_birth_tests;
+mod pending_birth_matrix_tests;
 #[cfg(test)]
-mod pending_birth_wasm_tests;
+mod pending_birth_tests;
 
 #[cfg(test)]
 #[path = "../../entities/tests/leash_without_item_postbaseline_controls.rs"]
