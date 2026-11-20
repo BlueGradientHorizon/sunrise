@@ -3,8 +3,8 @@
 //! click event an action makes of them (`Action.createAction`).
 use crate::text::Text;
 use serde_json::{Value, json};
-use std::num::NonZeroUsize;
-use sunrise_core::nbt::Tag;
+use std::{cell::RefCell, num::NonZeroUsize};
+use sunrise_core::{identifier::Identifier, nbt::Tag};
 
 /// `CommonDialogData` and the type's own fields.
 #[derive(Clone, Debug)]
@@ -167,12 +167,6 @@ pub enum InputValue {
 fn text(t: &Tag) -> Text {
     crate::scoreboard::comp_text(&crate::scoreboard::tag_to_json(t))
 }
-fn string(t: Option<&Tag>) -> Option<String> {
-    match t? {
-        Tag::String(s) => Some(s.to_string_lossy()),
-        _ => None,
-    }
-}
 fn number(t: Option<&Tag>) -> Option<f64> {
     Some(match t? {
         Tag::Byte(v) => f64::from(*v),
@@ -184,33 +178,12 @@ fn number(t: Option<&Tag>) -> Option<f64> {
         _ => return None,
     })
 }
-fn int(t: &Tag, key: &str, default: i32) -> i32 {
-    number(t.get(key)).map_or(default, |v| v as i32)
-}
-fn boolean(t: &Tag, key: &str, default: bool) -> bool {
-    number(t.get(key)).map_or(default, |v| v != 0.0)
-}
-fn list(t: Option<&Tag>) -> &[Tag] {
-    match t {
-        Some(Tag::List(items)) => items,
-        _ => &[],
-    }
-}
 /// A registry name without its default namespace.
 fn path(id: &str) -> &str {
     id.strip_prefix("minecraft:").unwrap_or(id)
 }
 
 impl Button {
-    /// `ActionButton.CODEC`.
-    fn parse(t: &Tag) -> Option<Self> {
-        Some(Self {
-            label: text(t.get("label")?),
-            tooltip: t.get("tooltip").map(text),
-            width: int(t, "width", 150),
-            action: t.get("action").and_then(Action::parse),
-        })
-    }
     /// `NoticeDialog.DEFAULT_ACTION`.
     fn ok() -> Self {
         Self {
@@ -222,43 +195,7 @@ impl Button {
     }
 }
 
-impl Click {
-    /// `ClickEvent.CODEC`, from its `action` (a click event in a component)
-    /// or `type` (an action) field.
-    pub fn parse(t: &Tag, kind: &str) -> Option<Self> {
-        let s = |key| string(t.get(key));
-        Some(match path(kind) {
-            // ClickEvent.OpenUrl's url is an ExtraCodecs.UNTRUSTED_URI.
-            "open_url" => {
-                Self::OpenUrl(s("url").filter(|url| crate::component::untrusted_http_url(url))?)
-            }
-            "run_command" => Self::RunCommand(s("command")?),
-            "suggest_command" => Self::SuggestCommand(s("command")?),
-            "show_dialog" => Self::ShowDialog(t.get("dialog")?.clone()),
-            "change_page" => Self::ChangePage(int(t, "page", 1)),
-            "copy_to_clipboard" => Self::CopyToClipboard(s("value")?),
-            "custom" => Self::Custom {
-                id: s("id")?,
-                payload: t.get("payload").cloned(),
-            },
-            _ => return None,
-        })
-    }
-}
-
 impl Action {
-    /// `Action.CODEC`, dispatched on `type`.
-    fn parse(t: &Tag) -> Option<Self> {
-        let kind = string(t.get("type"))?;
-        Some(match path(&kind) {
-            "dynamic/run_command" => Self::RunCommand(string(t.get("template"))?),
-            "dynamic/custom" => Self::Custom {
-                id: string(t.get("id"))?,
-                additions: t.get("additions").cloned(),
-            },
-            other => Self::Static(Click::parse(t, other)?),
-        })
-    }
     /// `createAction`: the click event, given each input's key, control and value.
     pub fn click(&self, inputs: &[Input], values: &[InputValue]) -> Option<Click> {
         let values = || inputs.iter().zip(values);
@@ -327,75 +264,6 @@ fn escape(s: &str) -> String {
 }
 
 impl Control {
-    /// `InputControl.MAP_CODEC`, dispatched on `type`.
-    fn parse(t: &Tag) -> Option<Self> {
-        let label = || t.get("label").map(text);
-        Some(match path(&string(t.get("type"))?) {
-            "text" => {
-                let initial = string(t.get("initial")).unwrap_or_default();
-                let max_length = int(t, "max_length", 32);
-                // TextInput: the default text may not be longer than the length.
-                if initial.encode_utf16().count() > max_length.max(0) as usize {
-                    return None;
-                }
-                Self::Text {
-                    width: int(t, "width", 200),
-                    label: label()?,
-                    label_visible: boolean(t, "label_visible", true),
-                    initial,
-                    max_length,
-                    multiline: t.get("multiline").map(|m| {
-                        let get = |key| number(m.get(key)).map(|v| v as i32);
-                        (get("max_lines"), get("height"))
-                    }),
-                }
-            }
-            "boolean" => Self::Boolean {
-                label: label()?,
-                initial: boolean(t, "initial", false),
-                on_true: string(t.get("on_true")).unwrap_or_else(|| "true".into()),
-                on_false: string(t.get("on_false")).unwrap_or_else(|| "false".into()),
-            },
-            "single_option" => {
-                // SingleOptionInput.Entry.CODEC: a full entry or just its id.
-                let options: Vec<_> = list(t.get("options"))
-                    .iter()
-                    .map(|o| match o {
-                        Tag::String(id) => Some((id.to_string_lossy(), None, false)),
-                        o => Some((
-                            string(o.get("id"))?,
-                            o.get("display").map(text),
-                            boolean(o, "initial", false),
-                        )),
-                    })
-                    .collect::<Option<_>>()?;
-                // A non-empty list with at most one initial entry.
-                if options.is_empty() || options.iter().filter(|o| o.2).count() > 1 {
-                    return None;
-                }
-                Self::SingleOption {
-                    width: int(t, "width", 200),
-                    options,
-                    label: label()?,
-                    label_visible: boolean(t, "label_visible", true),
-                }
-            }
-            "number_range" => {
-                let float = |key| number(t.get(key)).map(|v| v as f32);
-                Self::NumberRange {
-                    width: int(t, "width", 200),
-                    label: label()?,
-                    label_format: string(t.get("label_format"))
-                        .unwrap_or_else(|| "options.generic_value".into()),
-                    start: float("start")?,
-                    end: float("end")?,
-                    initial: float("initial"),
-                    step: float("step"),
-                }
-            }
-            _ => return None,
-        })
-    }
     /// The value it starts with.
     pub fn initial(&self) -> InputValue {
         match self {
@@ -535,180 +403,603 @@ pub fn number_string(v: f32) -> String {
     }
 }
 
-impl Body {
-    /// `DialogBody.DIALOG_BODY_CODEC`.
-    fn parse(t: &Tag) -> Option<Self> {
-        let message = |t: &Tag| -> Option<(Text, i32)> {
-            // PlainMessage.CODEC: the full form or just its contents.
-            match t {
-                Tag::Compound(_) if t.get("contents").is_some() => {
-                    Some((text(t.get("contents")?), int(t, "width", 200)))
-                }
-                t => Some((text(t), 200)),
-            }
-        };
-        Some(match path(&string(t.get("type"))?) {
-            "plain_message" => {
-                let (contents, width) = message(t)?;
-                Self::Message { contents, width }
-            }
-            "item" => Self::Item {
-                item: t.get("item")?.clone(),
-                description: t.get("description").and_then(message),
-                show_decorations: boolean(t, "show_decorations", true),
-                show_tooltip: boolean(t, "show_tooltip", true),
-                width: int(t, "width", 16),
-                height: int(t, "height", 16),
-            },
+/// Where a dialog is read from: a data pack's JSON at world open, or the NBT a
+/// server sends. Each reads a value as the matching `DynamicOps` does
+/// (`JsonOps`, `NbtOps`), so one decoder serves both.
+pub(crate) trait Source: Sized {
+    /// An object's field. A JSON `null` is an absent field (`JsonOps`' `MapLike`).
+    fn get(&self, key: &str) -> Option<&Self>;
+    fn is_map(&self) -> bool;
+    fn list(&self) -> Option<&[Self]>;
+    fn string(&self) -> Option<String>;
+    fn boolean(&self) -> Option<bool>;
+    /// `Number.intValue`.
+    fn int(&self) -> Option<i32>;
+    /// `Number.floatValue`.
+    fn float(&self) -> Option<f32>;
+    fn tag(&self) -> Tag;
+}
+
+impl Source for Tag {
+    fn get(&self, key: &str) -> Option<&Self> {
+        Tag::get(self, key)
+    }
+    fn is_map(&self) -> bool {
+        matches!(self, Tag::Compound(_))
+    }
+    fn list(&self) -> Option<&[Self]> {
+        match self {
+            Tag::List(items) => Some(items),
+            _ => None,
+        }
+    }
+    fn string(&self) -> Option<String> {
+        match self {
+            Tag::String(s) => Some(s.to_string_lossy()),
+            _ => None,
+        }
+    }
+    /// `NbtOps.getBooleanValue`: any number but zero.
+    fn boolean(&self) -> Option<bool> {
+        number(Some(self)).map(|n| n != 0.0)
+    }
+    fn int(&self) -> Option<i32> {
+        Some(match self {
+            Tag::Byte(v) => i32::from(*v),
+            Tag::Short(v) => i32::from(*v),
+            Tag::Int(v) => *v,
+            Tag::Long(v) => *v as i32,
+            // `Mth.floor`.
+            Tag::Float(v) => f32::from_bits(*v).floor() as i32,
+            Tag::Double(v) => f64::from_bits(*v).floor() as i32,
             _ => return None,
         })
     }
+    fn float(&self) -> Option<f32> {
+        number(Some(self)).map(|v| v as f32)
+    }
+    fn tag(&self) -> Tag {
+        self.clone()
+    }
 }
 
-/// Read top-level scalars in their original format. JSON numbers and booleans can
-/// otherwise become indistinguishable after conversion to NBT.
-enum Scalars<'a> {
-    Json(&'a Value),
-    Nbt(&'a Tag),
+impl Source for Value {
+    fn get(&self, key: &str) -> Option<&Self> {
+        Value::get(self, key).filter(|v| !v.is_null())
+    }
+    fn is_map(&self) -> bool {
+        self.is_object()
+    }
+    fn list(&self) -> Option<&[Self]> {
+        self.as_array().map(Vec::as_slice)
+    }
+    fn string(&self) -> Option<String> {
+        self.as_str().map(str::to_owned)
+    }
+    /// `JsonOps.getBooleanValue`: a JSON boolean, never a number.
+    fn boolean(&self) -> Option<bool> {
+        self.as_bool()
+    }
+    /// `LazilyParsedNumber.intValue`: the integer part's low 32 bits.
+    fn int(&self) -> Option<i32> {
+        let n = self.as_number()?;
+        Some(match (n.as_i64(), n.as_u64()) {
+            (Some(v), _) => v as i32,
+            (_, Some(v)) => v as i32,
+            _ => n.as_f64()?.trunc() as i128 as i32,
+        })
+    }
+    fn float(&self) -> Option<f32> {
+        self.as_number()?.as_f64().map(|v| v as f32)
+    }
+    fn tag(&self) -> Tag {
+        crate::lan::data::json_to_nbt(self)
+    }
 }
 
-impl Scalars<'_> {
-    fn field<T>(
-        &self,
-        key: &'static str,
-        default: T,
-        json: impl FnOnce(&Value) -> Option<T>,
-        nbt: impl FnOnce(&Tag) -> Option<T>,
-    ) -> Result<T, &'static str> {
-        match self {
-            Self::Json(value) => value.get(key).map(json),
-            Self::Nbt(value) => value.get(key).map(nbt),
+/// A dialog another entry or the registry holds (`Dialog.CODEC`'s holder).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Reference {
+    /// A registry id, with its namespace.
+    Id(String),
+    /// A `#` tag, without the `#`.
+    Tag(String),
+}
+
+/// What a dialog's fields are read with: the text codec of the source (strict
+/// at world open, lenient for a packet) and the items the world has.
+struct Reader<'a, S> {
+    text: &'a dyn Fn(&S) -> Option<Text>,
+    item: &'a dyn Fn(&str) -> bool,
+    references: RefCell<Vec<Reference>>,
+}
+
+/// The path of a failing field: its name, then the path inside it.
+fn at(key: &str, inner: String) -> String {
+    match inner.chars().next() {
+        None => key.to_owned(),
+        Some('[') => format!("{key}{inner}"),
+        _ => format!("{key}.{inner}"),
+    }
+}
+/// A field the codec defaults when absent (`optionalFieldOf`). A field that is
+/// there and unreadable fails; it is never defaulted.
+fn optional<S: Source, T>(
+    t: &S,
+    key: &str,
+    read: impl FnOnce(&S) -> Result<T, String>,
+) -> Result<Option<T>, String> {
+    t.get(key)
+        .map(read)
+        .transpose()
+        .map_err(|inner| at(key, inner))
+}
+/// A field the codec requires (`fieldOf`).
+fn required<S: Source, T>(
+    t: &S,
+    key: &str,
+    read: impl FnOnce(&S) -> Result<T, String>,
+) -> Result<T, String> {
+    optional(t, key, read)?.ok_or_else(|| key.to_owned())
+}
+/// A list's members, each read or the list refused with the member's path.
+fn members<S: Source, T>(
+    t: &S,
+    mut read: impl FnMut(&S) -> Result<T, String>,
+) -> Result<Vec<T>, String> {
+    t.list()
+        .ok_or_default()?
+        .iter()
+        .enumerate()
+        .map(|(i, member)| read(member).map_err(|inner| at(&format!("[{i}]"), inner)))
+        .collect()
+}
+/// `ExtraCodecs.intRange`.
+fn ranged<S: Source>(t: &S, low: i32, high: i32) -> Result<i32, String> {
+    t.int().filter(|n| (low..=high).contains(n)).ok_or_default()
+}
+fn boolean<S: Source>(t: &S) -> Result<bool, String> {
+    t.boolean().ok_or_default()
+}
+fn string<S: Source>(t: &S) -> Result<String, String> {
+    t.string().ok_or_default()
+}
+fn float<S: Source>(t: &S) -> Result<f32, String> {
+    t.float().ok_or_default()
+}
+/// `StringTemplate.isValidVariableName`, over UTF-16 units as Java reads them.
+fn variable_name(name: &str) -> bool {
+    name.encode_utf16().all(|unit| {
+        unit == u16::from(b'_') || sunrise_core::java_character::is_letter_or_digit(unit)
+    })
+}
+/// `Identifier.CODEC`.
+fn identifier(id: &str) -> bool {
+    Identifier::parse(id).is_ok()
+}
+/// `ExtraCodecs.CHAT_STRING`.
+fn chat_string(s: &str) -> bool {
+    s.chars()
+        .all(|c| c != '\u{a7}' && c >= ' ' && c != '\u{7f}')
+}
+/// `ParsedTemplate.CODEC`: `StringTemplate.fromString` accepts a string with at
+/// least one `$(name)`, each name valid and closed.
+fn template(s: &str) -> bool {
+    let mut rest = s;
+    let mut variables = 0;
+    while let Some(at) = rest.find("$(") {
+        let Some(end) = rest[at + 2..].find(')') else {
+            return false;
+        };
+        if !variable_name(&rest[at + 2..at + 2 + end]) {
+            return false;
         }
-        .unwrap_or(Some(default))
-        .ok_or(key)
+        variables += 1;
+        rest = &rest[at + 3 + end..];
     }
-
-    fn integer(&self, key: &'static str, default: i32, max: i32) -> Result<i32, &'static str> {
-        let bounded = |value: f64| {
-            ((1.0..=f64::from(max)).contains(&value) && value.fract() == 0.0)
-                .then_some(value as i32)
-        };
-        self.field(
-            key,
-            default,
-            |v| v.as_f64().and_then(bounded),
-            |v| number(Some(v)).and_then(bounded),
-        )
-    }
+    variables > 0
 }
 
-impl Dialog {
-    /// `Dialog.DIRECT_CODEC`; refuse invalid network or in-process dialog payloads
-    /// before any of their values reach the screen.
-    pub fn parse(t: &Tag) -> Option<Self> {
-        Self::decode(t, Scalars::Nbt(t)).ok()
+impl<S: Source> Reader<'_, S> {
+    fn text(&self, t: &S) -> Result<Text, String> {
+        (self.text)(t).ok_or_default()
     }
 
-    /// Use the same dialog decoder at pack admission, preserving JSON scalar types.
-    pub(crate) fn decode_pack(t: &Tag, value: &Value) -> Result<Self, &'static str> {
-        Self::decode(t, Scalars::Json(value))
-    }
-
-    fn decode(t: &Tag, scalars: Scalars<'_>) -> Result<Self, &'static str> {
-        let flag = |key| {
-            scalars.field(key, true, Value::as_bool, |v| {
-                number(Some(v)).map(|n| n != 0.0)
-            })
-        };
-        let pause = flag("pause")?;
-        let after = |value: &str| match value {
-            "close" => Some(AfterAction::Close),
-            "none" => Some(AfterAction::None),
-            "wait_for_response" => Some(AfterAction::WaitForResponse),
-            _ => None,
-        };
-        let after_action = scalars.field(
-            "after_action",
-            AfterAction::Close,
-            |v| v.as_str().and_then(after),
-            |v| string(Some(v)).as_deref().and_then(after),
-        )?;
+    /// `Dialog.DIRECT_CODEC`, dispatched on `type`.
+    fn dialog(&self, t: &S) -> Result<Dialog, String> {
+        if !t.is_map() {
+            return Err(String::new());
+        }
+        let kind = required(t, "type", string)?;
+        let pause = optional(t, "pause", boolean)?.unwrap_or(true);
+        let after_action = optional(t, "after_action", |v| match string(v)?.as_str() {
+            "close" => Ok(AfterAction::Close),
+            "none" => Ok(AfterAction::None),
+            "wait_for_response" => Ok(AfterAction::WaitForResponse),
+            _ => Err(String::new()),
+        })?
+        .unwrap_or(AfterAction::Close);
+        // CommonDialogData: a dialog that pauses must unpause after an action.
         if pause && after_action == AfterAction::None {
-            return Err("after_action: cannot be none when pause is true");
+            return Err("after_action: cannot be none when pause is true".into());
         }
         let columns = || {
-            let n = scalars.integer("columns", 2, i32::MAX)?;
-            usize::try_from(n)
-                .ok()
-                .and_then(NonZeroUsize::new)
-                .ok_or("columns")
+            let n = optional(t, "columns", |v| ranged(v, 1, i32::MAX))?.unwrap_or(2);
+            NonZeroUsize::new(n as usize).ok_or_else(|| "columns".to_owned())
         };
-        let button = |key| t.get(key).and_then(Button::parse);
-        let kind = match path(&string(t.get("type")).ok_or("type")?) {
-            "notice" => Kind::Notice(match t.get("action") {
-                Some(b) => Button::parse(b).ok_or("action")?,
-                None => Button::ok(),
-            }),
+        let width = || -> Result<i32, String> {
+            Ok(optional(t, "button_width", |v| ranged(v, 1, 1024))?.unwrap_or(150))
+        };
+        let button = |key| optional(t, key, |v| self.button(v));
+        let kind = match path(&kind) {
+            "notice" => Kind::Notice(button("action")?.unwrap_or_else(Button::ok)),
             "confirmation" => Kind::Confirmation {
-                yes: button("yes").ok_or("yes")?,
-                no: button("no").ok_or("no")?,
+                yes: required(t, "yes", |v| self.button(v))?,
+                no: required(t, "no", |v| self.button(v))?,
             },
             "multi_action" => Kind::MultiAction {
-                actions: list(t.get("actions"))
-                    .iter()
-                    .map(Button::parse)
-                    .collect::<Option<Vec<_>>>()
-                    .filter(|a| !a.is_empty())
-                    .ok_or("actions")?,
-                exit: button("exit_action"),
+                actions: required(t, "actions", |v| {
+                    members(v, |b| self.button(b)).and_then(|actions| {
+                        (!actions.is_empty()).then_some(actions).ok_or_default()
+                    })
+                })?,
+                exit: button("exit_action")?,
                 columns: columns()?,
             },
             "server_links" => Kind::ServerLinks {
-                exit: button("exit_action"),
+                exit: button("exit_action")?,
                 columns: columns()?,
-                button_width: scalars.integer("button_width", 150, 1024)?,
+                button_width: width()?,
             },
             "dialog_list" => Kind::DialogList {
-                dialogs: t.get("dialogs").ok_or("dialogs")?.clone(),
+                dialogs: required(t, "dialogs", |v| self.holders(v))?,
                 entries: Vec::new(),
-                exit: button("exit_action"),
+                exit: button("exit_action")?,
                 columns: columns()?,
-                button_width: scalars.integer("button_width", 150, 1024)?,
+                button_width: width()?,
             },
-            _ => return Err("type"),
+            _ => return Err("type".into()),
         };
         // DialogBody.COMPACT_LIST_CODEC: one body, or a list of them.
-        // A body or input it cannot read fails the whole dialog.
-        let body = match t.get("body") {
-            Some(Tag::List(items)) => items
-                .iter()
-                .map(Body::parse)
-                .collect::<Option<_>>()
-                .ok_or("body")?,
-            Some(one) => vec![Body::parse(one).ok_or("body")?],
-            None => Vec::new(),
-        };
-        let inputs = list(t.get("inputs"))
-            .iter()
-            .map(|i| {
-                Some(Input {
-                    key: string(i.get("key"))?,
-                    control: Control::parse(i)?,
-                })
-            })
-            .collect::<Option<_>>()
-            .ok_or("inputs")?;
-        Ok(Self {
+        let body = optional(t, "body", |v| match v.list() {
+            Some(_) => members(v, |b| self.body(b)),
+            None => Ok(vec![self.body(v)?]),
+        })?
+        .unwrap_or_default();
+        let inputs = optional(t, "inputs", |v| members(v, |i| self.input(i)))?.unwrap_or_default();
+        Ok(Dialog {
             kind,
-            title: text(t.get("title").ok_or("title")?),
-            external_title: t.get("external_title").map(text),
-            can_close_with_escape: flag("can_close_with_escape")?,
+            title: required(t, "title", |v| self.text(v))?,
+            external_title: optional(t, "external_title", |v| self.text(v))?,
+            can_close_with_escape: optional(t, "can_close_with_escape", boolean)?.unwrap_or(true),
             pause,
             after_action,
             body,
             inputs,
         })
     }
+
+    /// `Dialog.CODEC`: an id of the dialog registry, or the dialog itself.
+    fn holder(&self, t: &S) -> Result<Tag, String> {
+        match t.string() {
+            Some(id) if identifier(&id) => {
+                self.references
+                    .borrow_mut()
+                    .push(Reference::Id(qualified(&id)));
+            }
+            Some(_) => return Err(String::new()),
+            None => {
+                self.dialog(t)?;
+            }
+        }
+        Ok(t.tag())
+    }
+
+    /// `Dialog.LIST_CODEC`: a `#tag`, or one holder, or a list of them.
+    fn holders(&self, t: &S) -> Result<Tag, String> {
+        match t.string().as_deref().and_then(|s| s.strip_prefix('#')) {
+            Some(tag) if identifier(tag) => {
+                self.references
+                    .borrow_mut()
+                    .push(Reference::Tag(qualified(tag)));
+                Ok(t.tag())
+            }
+            Some(_) => Err(String::new()),
+            None if t.list().is_some() => {
+                members(t, |holder| self.holder(holder))?;
+                Ok(t.tag())
+            }
+            None => self.holder(t),
+        }
+    }
+
+    /// `ActionButton.CODEC`.
+    fn button(&self, t: &S) -> Result<Button, String> {
+        if !t.is_map() {
+            return Err(String::new());
+        }
+        Ok(Button {
+            label: required(t, "label", |v| self.text(v))?,
+            tooltip: optional(t, "tooltip", |v| self.text(v))?,
+            width: optional(t, "width", |v| ranged(v, 1, 1024))?.unwrap_or(150),
+            action: optional(t, "action", |v| self.action(v))?,
+        })
+    }
+
+    /// `Action.CODEC`, dispatched on `type`.
+    fn action(&self, t: &S) -> Result<Action, String> {
+        if !t.is_map() {
+            return Err(String::new());
+        }
+        let kind = required(t, "type", string)?;
+        Ok(match path(&kind) {
+            "dynamic/run_command" => Action::RunCommand(required(t, "template", |v| {
+                string(v).and_then(|s| template(&s).then_some(s).ok_or_default())
+            })?),
+            "dynamic/custom" => Action::Custom {
+                id: required(t, "id", |v| {
+                    string(v).and_then(|s| identifier(&s).then_some(s).ok_or_default())
+                })?,
+                additions: optional(t, "additions", |v| {
+                    v.is_map().then(|| v.tag()).ok_or_default()
+                })?,
+            },
+            kind => Action::Static(self.click(t, kind)?),
+        })
+    }
+
+    /// `ClickEvent.CODEC`, from its `action` (a click event in a component)
+    /// or `type` (an action) field.
+    fn click(&self, t: &S, kind: &str) -> Result<Click, String> {
+        let command = || {
+            required(t, "command", |v| {
+                string(v).and_then(|s| chat_string(&s).then_some(s).ok_or_default())
+            })
+        };
+        Ok(match kind {
+            // ClickEvent.OpenUrl's url is an ExtraCodecs.UNTRUSTED_URI.
+            "open_url" => Click::OpenUrl(required(t, "url", |v| {
+                string(v).and_then(|url| {
+                    crate::component::untrusted_http_url(&url)
+                        .then_some(url)
+                        .ok_or_default()
+                })
+            })?),
+            "run_command" => Click::RunCommand(command()?),
+            "suggest_command" => Click::SuggestCommand(command()?),
+            "show_dialog" => Click::ShowDialog(required(t, "dialog", |v| self.holder(v))?),
+            "change_page" => Click::ChangePage(required(t, "page", |v| ranged(v, 1, i32::MAX))?),
+            "copy_to_clipboard" => Click::CopyToClipboard(required(t, "value", string)?),
+            "custom" => Click::Custom {
+                id: required(t, "id", |v| {
+                    string(v).and_then(|s| identifier(&s).then_some(s).ok_or_default())
+                })?,
+                payload: t.get("payload").map(S::tag),
+            },
+            _ => return Err("type".into()),
+        })
+    }
+
+    /// `Input.CODEC`: its key, and `InputControl.MAP_CODEC` dispatched on `type`.
+    fn input(&self, t: &S) -> Result<Input, String> {
+        if !t.is_map() {
+            return Err(String::new());
+        }
+        let kind = required(t, "type", string)?;
+        let key = required(t, "key", |v| {
+            string(v).and_then(|s| variable_name(&s).then_some(s).ok_or_default())
+        })?;
+        let label = || required(t, "label", |v| self.text(v));
+        let label_visible = || -> Result<bool, String> {
+            Ok(optional(t, "label_visible", boolean)?.unwrap_or(true))
+        };
+        let width = || -> Result<i32, String> {
+            Ok(optional(t, "width", |v| ranged(v, 1, 1024))?.unwrap_or(200))
+        };
+        let control = match path(&kind) {
+            "text" => {
+                let initial = optional(t, "initial", string)?.unwrap_or_default();
+                let max_length =
+                    optional(t, "max_length", |v| ranged(v, 1, i32::MAX))?.unwrap_or(32);
+                // TextInput: the default text may not be longer than the length.
+                if initial.encode_utf16().count() > max_length as usize {
+                    return Err("initial".into());
+                }
+                Control::Text {
+                    width: width()?,
+                    label: label()?,
+                    label_visible: label_visible()?,
+                    initial,
+                    max_length,
+                    multiline: optional(t, "multiline", |m| {
+                        if !m.is_map() {
+                            return Err(String::new());
+                        }
+                        Ok((
+                            optional(m, "max_lines", |v| ranged(v, 1, i32::MAX))?,
+                            optional(m, "height", |v| ranged(v, 1, 512))?,
+                        ))
+                    })?,
+                }
+            }
+            "boolean" => Control::Boolean {
+                label: label()?,
+                initial: optional(t, "initial", boolean)?.unwrap_or(false),
+                on_true: optional(t, "on_true", string)?.unwrap_or_else(|| "true".into()),
+                on_false: optional(t, "on_false", string)?.unwrap_or_else(|| "false".into()),
+            },
+            "single_option" => {
+                // SingleOptionInput.Entry.CODEC: a full entry or just its id.
+                let options = required(t, "options", |v| {
+                    members(v, |o| match o.string() {
+                        Some(id) => Ok((id, None, false)),
+                        None if o.is_map() => Ok((
+                            required(o, "id", string)?,
+                            optional(o, "display", |v| self.text(v))?,
+                            optional(o, "initial", boolean)?.unwrap_or(false),
+                        )),
+                        None => Err(String::new()),
+                    })
+                })?;
+                // A non-empty list with at most one initial entry.
+                if options.is_empty() || options.iter().filter(|o| o.2).count() > 1 {
+                    return Err("options".into());
+                }
+                Control::SingleOption {
+                    width: width()?,
+                    options,
+                    label: label()?,
+                    label_visible: label_visible()?,
+                }
+            }
+            "number_range" => {
+                let start = required(t, "start", float)?;
+                let end = required(t, "end", float)?;
+                let initial = optional(t, "initial", float)?;
+                // `Float.MIN_VALUE` up to `Float.MAX_VALUE`.
+                let step = optional(t, "step", |v| {
+                    float(v).and_then(|s| {
+                        (s >= f32::from_bits(1) && s <= f32::MAX)
+                            .then_some(s)
+                            .ok_or_default()
+                    })
+                })?;
+                // The initial value lies between the ends, whichever is lower.
+                if let Some(initial) = initial {
+                    let (initial, start, end) =
+                        (f64::from(initial), f64::from(start), f64::from(end));
+                    // `Math.min` and `Math.max` are NaN when either end is.
+                    let (low, high) = match start.is_nan() || end.is_nan() {
+                        true => (f64::NAN, f64::NAN),
+                        false => (start.min(end), start.max(end)),
+                    };
+                    if initial < low || initial > high {
+                        return Err("initial".into());
+                    }
+                }
+                Control::NumberRange {
+                    width: width()?,
+                    label: label()?,
+                    label_format: optional(t, "label_format", string)?
+                        .unwrap_or_else(|| "options.generic_value".into()),
+                    start,
+                    end,
+                    initial,
+                    step,
+                }
+            }
+            _ => return Err("type".into()),
+        };
+        Ok(Input { key, control })
+    }
+
+    /// `PlainMessage.CODEC`: the full form or just its contents.
+    fn message(&self, t: &S) -> Result<(Text, i32), String> {
+        let full = || -> Result<(Text, i32), String> {
+            Ok((
+                required(t, "contents", |v| self.text(v))?,
+                optional(t, "width", |v| ranged(v, 1, 1024))?.unwrap_or(200),
+            ))
+        };
+        full().or_else(|error| self.text(t).map(|text| (text, 200)).map_err(|_| error))
+    }
+
+    /// `DialogBody.DIALOG_BODY_CODEC`, dispatched on `type`.
+    fn body(&self, t: &S) -> Result<Body, String> {
+        if !t.is_map() {
+            return Err(String::new());
+        }
+        let kind = required(t, "type", string)?;
+        Ok(match path(&kind) {
+            "plain_message" => {
+                let (contents, width) = self.message(t)?;
+                Body::Message { contents, width }
+            }
+            "item" => Body::Item {
+                item: required(t, "item", |v| self.stack(v))?,
+                description: optional(t, "description", |v| self.message(v))?,
+                show_decorations: optional(t, "show_decorations", boolean)?.unwrap_or(true),
+                show_tooltip: optional(t, "show_tooltip", boolean)?.unwrap_or(true),
+                width: optional(t, "width", |v| ranged(v, 1, 256))?.unwrap_or(16),
+                height: optional(t, "height", |v| ranged(v, 1, 256))?.unwrap_or(16),
+            },
+            _ => return Err("type".into()),
+        })
+    }
+
+    /// `ItemStackTemplate.CODEC`: an item's id, or `id`, `count` and `components`.
+    fn stack(&self, t: &S) -> Result<Tag, String> {
+        let item = |id: &S| {
+            string(id).map(|id| qualified(&id)).and_then(|id| {
+                (identifier(&id) && id != "minecraft:air" && (self.item)(&id))
+                    .then_some(())
+                    .ok_or_default()
+            })
+        };
+        if t.is_map() {
+            required(t, "id", item)?;
+            optional(t, "count", |v| ranged(v, 1, 99))?;
+            // The persistent component patch itself is not decoded yet.
+            optional(t, "components", |v| {
+                v.is_map().then_some(()).ok_or_default()
+            })?;
+        } else {
+            item(t)?;
+        }
+        Ok(t.tag())
+    }
+}
+
+/// An id with its namespace.
+fn qualified(id: &str) -> String {
+    if id.contains(':') {
+        id.to_owned()
+    } else {
+        format!("minecraft:{id}")
+    }
+}
+
+/// `Option::ok_or_else(String::new)`: a value no field name can add to.
+trait OkOrDefault<T> {
+    fn ok_or_default(self) -> Result<T, String>;
+}
+impl<T> OkOrDefault<T> for Option<T> {
+    fn ok_or_default(self) -> Result<T, String> {
+        self.ok_or_else(String::new)
+    }
+}
+
+impl Dialog {
+    /// `Dialog.DIRECT_CODEC` on what a server sends: nothing of an invalid
+    /// dialog reaches the screen.
+    pub fn parse(t: &Tag) -> Option<Self> {
+        let reader = Reader {
+            text: &|t: &Tag| Some(text(t)),
+            item: &|_| true,
+            references: RefCell::default(),
+        };
+        reader.dialog(t).ok()
+    }
+
+    /// `Dialog.DIRECT_CODEC` on a data pack's file at world open, with the
+    /// dialogs it names: the path of the failing field, or the dialog.
+    pub(crate) fn decode_pack(
+        value: &Value,
+        registries: &crate::command::Registries,
+        item: &dyn Fn(&str) -> bool,
+    ) -> Result<(Self, Vec<Reference>), String> {
+        let reader = Reader {
+            text: &|t: &Value| {
+                crate::text_grammar::build(t, registries, false)
+                    .map(|json| crate::scoreboard::comp_text(&json))
+            },
+            item,
+            references: RefCell::default(),
+        };
+        let dialog = reader.dialog(value)?;
+        Ok((dialog, reader.references.into_inner()))
+    }
+
     /// `onCancel`: what Escape (or closing it) does.
     pub fn on_cancel(&self) -> Option<&Action> {
         match &self.kind {
@@ -813,7 +1104,7 @@ impl Dialog {
             "title": self.title.plain(),
             "body": self.body.iter().map(|b| match b {
                 Body::Message { contents, .. } => contents.plain(),
-                Body::Item { item, .. } => string(item.get("id")).unwrap_or_default(),
+                Body::Item { item, .. } => item.get("id").and_then(Source::string).unwrap_or_default(),
             }).collect::<Vec<_>>(),
             "inputs": inputs,
             "buttons": self.buttons().iter().map(|b| b.label.plain()).collect::<Vec<_>>(),
@@ -923,10 +1214,52 @@ mod tests {
     }
 
     #[test]
+    fn a_packet_dialog_with_a_malformed_nested_member_is_refused() {
+        let button = |extra: (&str, Tag)| Tag::compound([("label", s("L")), extra]);
+        let multi = |actions: Vec<Tag>| {
+            Tag::compound([
+                ("type", s("minecraft:multi_action")),
+                ("title", s("T")),
+                ("actions", Tag::List(actions)),
+            ])
+        };
+        // `NbtOps` reads any number as a boolean and floors a float to an int.
+        let kept = multi(vec![button(("width", Tag::Double(150.9f64.to_bits())))]);
+        assert_eq!(
+            Dialog::parse(&kept).unwrap().buttons()[0].width,
+            150,
+            "a double width is floored"
+        );
+        for wrong in [
+            ("width", s("wide")),
+            ("width", Tag::Int(0)),
+            ("action", s("run")),
+            (
+                "action",
+                Tag::compound([("type", s("minecraft:run_command"))]),
+            ),
+        ] {
+            assert!(
+                Dialog::parse(&multi(vec![
+                    button(("width", Tag::Int(20))),
+                    button(wrong.clone())
+                ]))
+                .is_none(),
+                "{wrong:?}"
+            );
+        }
+    }
+
+    #[test]
     fn open_url_actions_take_only_web_links() {
         let open = |url: &str| {
             let action = Tag::compound([("type", s("minecraft:open_url")), ("url", s(url))]);
-            Action::parse(&action).and_then(|a| a.click(&[], &[]))
+            let reader = Reader {
+                text: &|t: &Tag| Some(text(t)),
+                item: &|_| true,
+                references: RefCell::default(),
+            };
+            reader.action(&action).ok().and_then(|a| a.click(&[], &[]))
         };
         assert_eq!(
             open("https://example.com/a"),

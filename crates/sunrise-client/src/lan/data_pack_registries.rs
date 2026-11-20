@@ -1,7 +1,11 @@
 //! Winning definitions for the synchronized registries that read world packs.
 use super::{PACK_REGISTRIES, condition_filter, json_to_nbt, synchronized_entries};
+use crate::dialog::Reference;
 use serde_json::Value;
-use std::{collections::BTreeMap, path::Path};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::Path,
+};
 use sunrise_core::{
     identifier::Identifier,
     nbt::{Compound, Tag},
@@ -62,6 +66,7 @@ impl PackRegistryDefinitions {
     ) -> (Self, Result<(), String>) {
         let mut definitions = Self::default();
         let mut errors = BTreeMap::<_, BTreeMap<_, _>>::new();
+        let mut dialog_references = Vec::new();
         for &registry in PACK_REGISTRIES {
             let kind = registry.trim_start_matches("minecraft:");
             let entries = definitions.entries.entry(registry).or_default();
@@ -92,16 +97,21 @@ impl PackRegistryDefinitions {
                         .map_err(|error| error.to_string())?;
                     let file = format!("data/{}/{kind}/{}.json", id.namespace(), id.path());
                     if overlay.conditions.allows_file_isolated(&value, &file)? {
-                        *definition = Some((
+                        let decoded = if registry == "minecraft:dialog" {
+                            let (decoded, references) =
+                                decode_dialog(value, text_registries, defaults)?;
+                            dialog_references.push(references);
+                            decoded
+                        } else {
                             decode_definition(
                                 registry,
                                 &id.to_string(),
                                 value,
                                 text_registries,
                                 &sound_exists,
-                            )?,
-                            true,
-                        ));
+                            )?
+                        };
+                        *definition = Some((decoded, true));
                     }
                     Ok(())
                 };
@@ -200,6 +210,56 @@ impl PackRegistryDefinitions {
                 }
             }
         }
+        // RegistryDataLoader.validateRegistry: every dialog a winner names is bound.
+        let dialogs = definitions.entries.get("minecraft:dialog");
+        let held: BTreeSet<String> = dialogs
+            .into_iter()
+            .flatten()
+            .filter(|(_, entry)| entry.is_some())
+            .map(|((namespace, path), _)| format!("{namespace}:{path}"))
+            .chain(
+                synchronized_entries(
+                    &resources.join("data/minecraft"),
+                    resources,
+                    "minecraft:dialog",
+                    overlay,
+                )
+                .into_iter()
+                .filter(|(key, ..)| !dialogs.is_some_and(|d| d.contains_key(key)))
+                .map(|((namespace, path), ..)| format!("{namespace}:{path}")),
+            )
+            .collect();
+        let tags: BTreeSet<String> = overlay
+            .tag_kind("dialog")
+            .map(|(id, _)| id)
+            .chain(
+                sunrise_world::json_folder::read(&resources.join("data/minecraft/tags/dialog"))
+                    .into_iter()
+                    .flat_map(|folder| {
+                        folder
+                            .files
+                            .iter()
+                            .map(|file| format!("minecraft:{}", file.name))
+                            .collect::<Vec<_>>()
+                    }),
+            )
+            .collect();
+        let (mut unbound, mut unbound_tags) = (BTreeSet::new(), BTreeSet::new());
+        for reference in dialog_references.into_iter().flatten() {
+            match reference {
+                Reference::Id(id) if !held.contains(&id) => unbound.insert(id),
+                Reference::Tag(tag) if !tags.contains(&tag) => unbound_tags.insert(tag),
+                _ => false,
+            };
+        }
+        for (what, names) in [("values", unbound), ("tags", unbound_tags)] {
+            if !names.is_empty() {
+                errors.entry("minecraft:dialog").or_default().insert(
+                    format!("(unbound {what})"),
+                    format!("unbound {what} in registry: {names:?}"),
+                );
+            }
+        }
         if errors.is_empty() {
             return (definitions, Ok(()));
         }
@@ -291,6 +351,125 @@ fn check_network_nbt(tag: &Tag) -> Result<(), String> {
     sunrise_protocol::buf::check_network_nbt(tag).map_err(|error| format!("network {error}"))
 }
 
+/// A winning dialog definition: `Dialog.DIRECT_CODEC` over the file, and the
+/// dialogs it names, which the registry must hold (`decode_pack`).
+fn decode_dialog(
+    value: Value,
+    text_registries: &crate::command::Registries,
+    defaults: &ItemDefaults,
+) -> Result<(Definition, Vec<crate::dialog::Reference>), String> {
+    let decode_text = |field: &str, value: &Value| {
+        crate::text_grammar::build(value, text_registries, false)
+            .ok_or_else(|| format!("{field}: invalid JSON text component"))
+    };
+    let string = |value: &str| Tag::String(value.into());
+    use crate::dialog::{AfterAction, Dialog, Kind};
+    // RegistryDataLoader refuses the load on one bad entry, so a transient
+    // component inside a dialog joins the other collected registry errors.
+    sunrise_world::item_defaults::validate_dialog(&value)?;
+    let source = json_to_nbt(&value);
+    let (dialog, references) = Dialog::decode_pack(&value, text_registries, &|id| {
+        defaults.entries().contains_key(id)
+    })
+    .map_err(|field| format!("invalid dialog field {field}"))?;
+    let mut fields = Compound::from([(
+        "title".into(),
+        json_to_nbt(&decode_text("title", &value["title"])?),
+    )]);
+    if dialog.external_title.is_some() && !value["external_title"].is_null() {
+        fields.insert(
+            "external_title".into(),
+            json_to_nbt(&decode_text("external_title", &value["external_title"])?),
+        );
+    }
+    for (name, enabled) in [
+        ("pause", dialog.pause),
+        ("can_close_with_escape", dialog.can_close_with_escape),
+    ] {
+        if !enabled {
+            fields.insert(name.into(), Tag::Byte(0));
+        }
+    }
+    match dialog.after_action {
+        AfterAction::Close => {}
+        action => {
+            fields.insert(
+                "after_action".into(),
+                string(if matches!(action, AfterAction::None) {
+                    "none"
+                } else {
+                    "wait_for_response"
+                }),
+            );
+        }
+    }
+    // Nested codecs remain #3067. Keep only the fields the dialog reader consumed.
+    let (kind, children, exit, columns, width): (_, &[&str], _, _, _) = match dialog.kind {
+        Kind::Notice(_) => ("notice", &["action"], false, None, None),
+        Kind::Confirmation { .. } => ("confirmation", &["yes", "no"], false, None, None),
+        Kind::MultiAction { exit, columns, .. } => (
+            "multi_action",
+            &["actions"],
+            exit.is_some(),
+            Some(columns),
+            None,
+        ),
+        Kind::ServerLinks {
+            exit,
+            columns,
+            button_width,
+        } => (
+            "server_links",
+            &[],
+            exit.is_some(),
+            Some(columns),
+            Some(button_width),
+        ),
+        Kind::DialogList {
+            dialogs,
+            exit,
+            columns,
+            button_width,
+            ..
+        } => {
+            fields.insert("dialogs".into(), dialogs);
+            (
+                "dialog_list",
+                &[],
+                exit.is_some(),
+                Some(columns),
+                Some(button_width),
+            )
+        }
+    };
+    fields.insert("type".into(), string(&format!("minecraft:{kind}")));
+    for (name, value) in [
+        (
+            "columns",
+            columns.map(|n| n.get() as i32).filter(|n| *n != 2),
+        ),
+        ("button_width", width.filter(|n| *n != 150)),
+    ] {
+        if let Some(value) = value {
+            fields.insert(name.into(), Tag::Int(value));
+        }
+    }
+    let keys = children
+        .iter()
+        .copied()
+        .chain((!dialog.body.is_empty()).then_some("body"))
+        .chain((!dialog.inputs.is_empty()).then_some("inputs"))
+        .chain(exit.then_some("exit_action"));
+    for name in keys {
+        if let Some(value) = source.get(name) {
+            fields.insert(name.into(), value.clone());
+        }
+    }
+    let encoded = Tag::Compound(fields);
+    check_network_nbt(&encoded)?;
+    Ok((Definition::Encoded(encoded), references))
+}
+
 fn decode_definition(
     registry: &str,
     id: &str,
@@ -312,109 +491,6 @@ fn decode_definition(
         }
     };
     let encoded = match registry {
-        "minecraft:dialog" => {
-            use crate::dialog::{AfterAction, Dialog, Kind};
-            // RegistryDataLoader refuses the load on one bad entry, so a transient
-            // component inside a dialog joins the other collected registry errors.
-            sunrise_world::item_defaults::validate_dialog(&value)?;
-            let source = json_to_nbt(&value);
-            let dialog = Dialog::decode_pack(&source, &value)
-                .map_err(|field| format!("invalid dialog field {field}"))?;
-            let mut fields = Compound::from([(
-                "title".into(),
-                json_to_nbt(&decode_text("title", &value["title"])?),
-            )]);
-            if dialog.external_title.is_some() && !value["external_title"].is_null() {
-                fields.insert(
-                    "external_title".into(),
-                    json_to_nbt(&decode_text("external_title", &value["external_title"])?),
-                );
-            }
-            for (name, enabled) in [
-                ("pause", dialog.pause),
-                ("can_close_with_escape", dialog.can_close_with_escape),
-            ] {
-                if !enabled {
-                    fields.insert(name.into(), Tag::Byte(0));
-                }
-            }
-            match dialog.after_action {
-                AfterAction::Close => {}
-                action => {
-                    fields.insert(
-                        "after_action".into(),
-                        string(if matches!(action, AfterAction::None) {
-                            "none"
-                        } else {
-                            "wait_for_response"
-                        }),
-                    );
-                }
-            }
-            // Nested codecs remain #3067. Keep only the fields the dialog reader consumed.
-            let (kind, children, exit, columns, width): (_, &[&str], _, _, _) = match dialog.kind {
-                Kind::Notice(_) => ("notice", &["action"], false, None, None),
-                Kind::Confirmation { .. } => ("confirmation", &["yes", "no"], false, None, None),
-                Kind::MultiAction { exit, columns, .. } => (
-                    "multi_action",
-                    &["actions"],
-                    exit.is_some(),
-                    Some(columns),
-                    None,
-                ),
-                Kind::ServerLinks {
-                    exit,
-                    columns,
-                    button_width,
-                } => (
-                    "server_links",
-                    &[],
-                    exit.is_some(),
-                    Some(columns),
-                    Some(button_width),
-                ),
-                Kind::DialogList {
-                    dialogs,
-                    exit,
-                    columns,
-                    button_width,
-                    ..
-                } => {
-                    fields.insert("dialogs".into(), dialogs);
-                    (
-                        "dialog_list",
-                        &[],
-                        exit.is_some(),
-                        Some(columns),
-                        Some(button_width),
-                    )
-                }
-            };
-            fields.insert("type".into(), string(&format!("minecraft:{kind}")));
-            for (name, value) in [
-                (
-                    "columns",
-                    columns.map(|n| n.get() as i32).filter(|n| *n != 2),
-                ),
-                ("button_width", width.filter(|n| *n != 150)),
-            ] {
-                if let Some(value) = value {
-                    fields.insert(name.into(), Tag::Int(value));
-                }
-            }
-            let keys = children
-                .iter()
-                .copied()
-                .chain((!dialog.body.is_empty()).then_some("body"))
-                .chain((!dialog.inputs.is_empty()).then_some("inputs"))
-                .chain(exit.then_some("exit_action"));
-            for name in keys {
-                if let Some(value) = source.get(name) {
-                    fields.insert(name.into(), value.clone());
-                }
-            }
-            Tag::Compound(fields)
-        }
         "minecraft:dimension_type" => {
             sunrise_world::dimension_type::DimensionFacts::decode_pack_definition(id, &value)?
         }
@@ -728,6 +804,8 @@ mod tests {
         "body/component/duplicate_after_namespace",
         "body/component/remove_and_removal_namespace",
         "body/component/invalid_key_chars",
+        "body/component/not_transient_only",
+        "body/component/bad_nested_text",
         "text_show_item/unknown_key",
         "text_show_item/wrong_type",
         "text_show_item/removal_number",
@@ -741,7 +819,6 @@ mod tests {
     /// recorded by `tools/test_dialog_codec_parity.py`.
     #[test]
     fn dialog_admission_answers_as_the_real_codecs_do() {
-        use sunrise_world::loot::PackOverlay;
         let fixture: Value = serde_json::from_str(include_str!(
             "../../../../tools/fixtures/dialog_codec_cases.json"
         ))
@@ -750,7 +827,12 @@ mod tests {
         for case in fixture["cases"].as_array().unwrap() {
             let name = case["name"].as_str().unwrap();
             let accept = case["accept"].as_bool().unwrap();
-            if COMPONENT_PATCH_CASES.contains(&name) {
+            // Cross-entry references are the packs' cases below.
+            if COMPONENT_PATCH_CASES.contains(&name)
+                || name.contains("unknown_id")
+                || name.contains("unknown_tag")
+                || name.ends_with("second_unknown")
+            {
                 continue;
             }
             let files = [(
@@ -775,6 +857,17 @@ mod tests {
         }
         for case in fixture["packs"].as_array().unwrap() {
             let name = case["name"].as_str().unwrap();
+            // Tag members and click events inside text name dialogs too; those
+            // belong to tag admission and to the text decoder.
+            if [
+                "pack/tag_unknown_member",
+                "pack/show_dialog_in_text_missing",
+                "pack/show_dialog_in_text_inline_bad",
+            ]
+            .contains(&name)
+            {
+                continue;
+            }
             let files: Vec<(String, Vec<Vec<u8>>)> = case["files"]
                 .as_object()
                 .unwrap()

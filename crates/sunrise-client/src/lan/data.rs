@@ -2404,7 +2404,7 @@ mod transient_dialog_tests {
     #[test]
     fn a_dialog_naming_a_transient_component_refuses_the_registry_load() {
         let root = tempfile::tempdir().unwrap();
-        std::fs::write(root.path().join("items.json"), b"{}").unwrap();
+        std::fs::write(root.path().join("items.json"), br#"{"minecraft:stone":{}}"#).unwrap();
         let defaults = sunrise_world::item_defaults::read(root.path()).unwrap();
         let files = [
             (
