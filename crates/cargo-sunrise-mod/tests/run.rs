@@ -102,13 +102,6 @@ fn content_run_keeps_the_previous_package_on_jar_refusal_and_starts_with_the_sta
     };
     let run = || run_with(&[]);
 
-    // The tool reads `--resources` for a native mod only: for this one it is refused, not dropped.
-    let refused = run_with(&["--resources", "."]);
-    assert!(!refused.status.success(), "{refused:?}");
-    let error = String::from_utf8(refused.stderr).unwrap();
-    assert!(error.contains("--resources"), "{error}");
-    assert!(!project.join("launched").exists());
-
     let refused = run();
     assert!(!refused.status.success(), "{refused:?}");
     let error = String::from_utf8(refused.stderr).unwrap();
@@ -120,6 +113,14 @@ fn content_run_keeps_the_previous_package_on_jar_refusal_and_starts_with_the_sta
     assert_eq!(fs::read(&output).unwrap(), previous);
 
     fs::write(source.join(format!("{SHA512}.jar")), b"abc").unwrap();
+
+    // The tool reads `--resources` for a native mod only: for this one it is refused, not dropped.
+    let refused = run_with(&["--resources", "."]);
+    assert!(!refused.status.success(), "{refused:?}");
+    let error = String::from_utf8(refused.stderr).unwrap();
+    assert!(error.contains("--resources"), "{error}");
+    assert!(!project.join("launched").exists());
+
     let ran = run();
     assert!(ran.status.success(), "{ran:?}");
     assert!(project.join("launched").is_file());

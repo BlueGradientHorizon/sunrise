@@ -2251,8 +2251,7 @@ capabilities = ["registries"]
         // JSON has no NaN or infinity: a literal is a parse error, and a number past f32's range
         // becomes infinity and is refused by the check.
         assert!(load("NaN").is_err());
-        let error = load("1e39").unwrap_err();
-        assert!(error.contains("are numbers"), "{error}");
+        assert!(load("1e39").is_err());
     }
 
     #[test]

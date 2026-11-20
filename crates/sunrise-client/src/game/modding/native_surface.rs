@@ -543,7 +543,8 @@ mod tests {
                     0.19882648232869793_f64,
                     1,
                 ),
-                // A finite answer is used as given, whatever its size or sign.
+                // A finite answer is read as given, whatever its size or sign; travel then clamps it to
+                // 0..=1.
                 (
                     "minecraft:orange_wool",
                     1.5_f32,
