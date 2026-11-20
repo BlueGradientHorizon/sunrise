@@ -14,6 +14,7 @@ use dispatch::{args, args_os};
 
 mod allay_interaction_fixture;
 mod ambient_fixture;
+mod anvil_name_fixture;
 mod arrow_probe;
 mod audio_attributes_fixture;
 /// Sound-engine fakes the audio probes share.
@@ -134,6 +135,7 @@ mod zombie_cure_sound_probe;
 
 probes! {
     ambient_fixture,
+    anvil_name_fixture,
     arrow_probe,
     audio_attributes_fixture,
     auto_jump_probe,

@@ -484,7 +484,7 @@ pub fn anvil_result(
         }
     }
     match name {
-        Some(n) if !n.trim().is_empty() => {
+        Some(n) if !sunrise_core::java_character::is_blank(n) => {
             if n != hover_name {
                 naming_cost = 1;
                 price += 1;

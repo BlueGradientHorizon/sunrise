@@ -316,7 +316,7 @@ cargo = [
   { package = "sunrise-client", target = "lib", filter = "game::extras::mouse_tweaks::" },
 ]
 harnesses = [
-  "menu_click", "container_*", "storage_menu", "vehicle_container", "carrier_inventory", "simple_container",
+  "menu_click", "anvil_name", "container_*", "storage_menu", "vehicle_container", "carrier_inventory", "simple_container",
   "recipe*", "ghost_recipe", "place_recipe", "machine_recipe_placement", "crafting_priority", "merchant_crafted",
   "enchanting", "screen_layout", "hotbar",
 ]
