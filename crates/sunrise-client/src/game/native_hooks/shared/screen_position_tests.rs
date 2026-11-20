@@ -115,7 +115,7 @@ fn slotless_screen_draw_sees_full_width_updates_only_for_its_window() {
                 let (pipe, _server) = Pipe::pair();
                 game.connect_local(pipe, "Slotless").unwrap();
                 let remote = game.remote.as_mut().unwrap();
-                remote.registries.menu_extra_revision = LIVE_DATA_REVISION;
+                Arc::make_mut(&mut remote.registries).menu_extra_revision = LIVE_DATA_REVISION;
                 Arc::make_mut(&mut remote.builtin).registries.insert(
                     "minecraft:menu".into(),
                     sunrise_protocol::registry::Ids::from_names(

@@ -525,7 +525,8 @@ fn a_hidden_slot_leaves_the_screen_and_comes_back_where_put() {
             assert_eq!(game.slot_at(&batch, 560.0, 295.0), None);
             assert!(!geometry(game).1.iter().any(|(id, _)| *id == 300));
             assert_eq!(game.native_screen_slots(), Some(vec![301]));
-            assert_eq!(game.native_screen_slot_count(), Some(1));
+            // The 36 player slots and the remaining visible container slot.
+            assert_eq!(game.slot_count(), 37);
             assert_eq!(game.native_screen_slot(0), None);
 
             // Shown again where the mod puts it.
