@@ -1,4 +1,4 @@
-//! Registered raw custom-payload vocabulary shared by native and wasm mods.
+//! Registered raw custom-payload vocabulary.
 #[path = "payload/registrar.rs"]
 mod registrar;
 pub use registrar::{
@@ -8,7 +8,6 @@ pub use registrar::{
 mod typed;
 pub use typed::{PayloadToken, ToClient, ToServer};
 
-use crate::wire::{Reader, Wire, WireError, Writer};
 use crate::{ClientHost, PlayerRef, ServerHost, Text};
 use std::sync::Arc;
 
@@ -294,9 +293,6 @@ pub enum PayloadHandleError {
         holder: PayloadBusy,
     },
 }
-
-crate::wire::wire_handlers::handler!(dyn IPayloadHandler, "IPayloadHandler");
-crate::wire::wire_handlers::handler!(dyn PayloadWork, "PayloadWork");
 
 /// One receiving owner for a registered id and direction, never an all-mod broadcast.
 /// Return `Failed` when application decoding fails. For a typed or declared payload the session

@@ -905,30 +905,14 @@ impl Renderer {
             &lightmap_sampler,
             &emission_stats.view,
         );
-        let terrain_model_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("Native cutout model (unmipped)"),
-            lod_max_clamp: 0.0,
-            ..fluid::SAMPLER
-        });
+        let terrain_model_sampler = device.create_sampler(&terrain_model::MOVING_BLOCK_SAMPLER);
         let terrain_model_group = terrain_group(
             &device,
-            "Native cutout model resources",
+            "Native model resources",
             &bindings,
             &globals,
             &sprite_views,
             &terrain_model_sampler,
-            &lightmap_view,
-            &lightmap_sampler,
-            &emission_stats.view,
-        );
-        let translucent_model_sampler = device.create_sampler(&terrain_model::TRANSLUCENT_SAMPLER);
-        let translucent_model_group = terrain_group(
-            &device,
-            "Native translucent model resources",
-            &bindings,
-            &globals,
-            &sprite_views,
-            &translucent_model_sampler,
             &lightmap_view,
             &lightmap_sampler,
             &emission_stats.view,
@@ -2348,8 +2332,6 @@ impl Renderer {
             fluid_sampler,
             terrain_model_group,
             terrain_model_sampler,
-            translucent_model_group,
-            translucent_model_sampler,
             globals,
             pbr_maps,
             lightmap,

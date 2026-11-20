@@ -897,6 +897,7 @@ mod tests {
             &registry,
             &mut sprites,
             |_, _| Some(base),
+            |_| false,
         );
         assert!(!connected.is_empty());
         crate::native_emissive::load(root.source(), &mut sprites);

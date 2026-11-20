@@ -552,7 +552,9 @@ pub(super) fn emit<'a>(
             if collect_cancel && name == "cancel" {
                 continue;
             }
-            let mutable_entity = ty.to_token_stream().to_string() == "& mut ModBlockEntity";
+            let ty_tokens = ty.to_token_stream().to_string();
+            let mutable_entity = ty_tokens == "& mut ModBlockEntity";
+            let optional_mutable_entity = ty_tokens == "Option < & mut ModBlockEntity >";
             // An answered collect hook's mods each push plain entries into their own batch;
             // dispatch, not the mod, names the mod on each.
             let batch_entry =
@@ -564,6 +566,8 @@ pub(super) fn emit<'a>(
                     .flatten();
             let field_ty = if mutable_entity {
                 syn::parse_quote!(ModBlockEntityView<'_>)
+            } else if optional_mutable_entity {
+                syn::parse_quote!(Option<ModBlockEntityView<'_>>)
             } else if let Some(entry) = batch_entry {
                 syn::parse_quote!(&mut Vec<#entry>)
             } else {
@@ -605,6 +609,8 @@ pub(super) fn emit<'a>(
                 write_back.push_str(&format!("*{name} = {event}.{name};"));
             } else if mutable_entity {
                 inits.push(format!("{name}: ModBlockEntityView::new({name})"));
+            } else if optional_mutable_entity {
+                inits.push(format!("{name}: {name}.map(ModBlockEntityView::new)"));
             } else if batch_entry.is_some() {
                 inits.push(format!("{name}: &mut {batch}"));
             } else if hook.event_per_listener
@@ -1011,8 +1017,7 @@ pub(super) fn emit<'a>(
             }
             None => format!("super::entered(HookId::{hook_id}, \"{name}\")"),
         };
-        // A listener refused by the phase gate (#3123) answers what a refused wasm call answers
-        // (`wire::refusal_value`), and the event fields it may have written are put back from a
+        // A listener refused by the phase gate restores event fields from a
         // snapshot taken before its call. Outside `World` only (`contained`); in `World` the
         // call is the plain one.
         let snapshot = fresh_name("snapshot", &mut used);
@@ -1020,7 +1025,7 @@ pub(super) fn emit<'a>(
         let mut snaps: Vec<String> = Vec::new();
         let mut restores: Vec<String> = Vec::new();
         // A `&mut dyn Trait` field is a registrar or a draw surface: its effects stand, as the
-        // effects of a refused wasm listener's earlier calls do, and it has no value to copy.
+        // surface has no whole value to copy.
         for (field, by_reference) in rollback
             .iter()
             .filter(|(field, _)| !surfaces.contains(field))
@@ -1066,11 +1071,11 @@ pub(super) fn emit<'a>(
                 restores.join(" ")
             )
         };
-        let refused_value = crate::wire::refusal_value(
-            result.trim() == "-> Flow",
-            "Flow::Continue",
-            "Default::default()",
-        );
+        let refused_value = if result.trim() == "-> Flow" {
+            "Flow::Continue"
+        } else {
+            "Default::default()"
+        };
         let run = |expression: &str| {
             format!(
                 "match super::runtime::refusable(contained, || {expression}) {{ Ok(answer) => answer, Err(refusal) => {{ {restore_statement}refusal.report(); {refused_value} }} }}"

@@ -1347,16 +1347,30 @@ impl Game<'_> {
     ) {
         self.fire_screen_tooltip(call);
     }
-    /// A player pressed a mod container's button (`clickMenuButton`), on
-    /// the server. The block entity is out of the world during the call;
-    /// mods may change it and the clicking player's carried stack.
+    /// A player pressed a mod menu's button (`clickMenuButton`), on the
+    /// server. The block entity is out of the world during the call when the
+    /// menu has one; blockless menus pass None. Mods may change it and the
+    /// clicking player's carried stack.
     pub(in crate::game) fn native_menu_button(
         &mut self,
+        menu: &str,
+        block: Option<&str>,
         context: &mod_api::item::menu::MenuButtonContext,
-        entity: &mut ModBlockEntity,
+        entity: Option<&mut ModBlockEntity>,
         carried: &mut Option<mod_api::ItemStack>,
     ) {
-        self.fire_menu_button(context, entity, carried);
+        self.fire_menu_button(menu, block, context, entity, carried);
+    }
+    /// Whether the owner of this menu accepts button `id`. The active menu's owner
+    /// decides its own IDs; the game does not impose a shared numeric range.
+    pub(in crate::game) fn native_menu_button_valid(
+        &self,
+        menu: &str,
+        block: Option<&str>,
+        id: i32,
+        accepted: &mut bool,
+    ) {
+        self.fire_menu_button_valid(menu, block, id, accepted);
     }
     /// A player shift-clicked slot `slot` of the menu of the mod block
     /// entity at `pos` (`AbstractContainerMenu.quickMoveStack`, the method a
@@ -3693,7 +3707,7 @@ impl Game<'_> {
     /// tracking the other entities the same pass paired. The engine is still
     /// walking its tracker: read the game and send payloads, but don't spawn,
     /// remove or teleport entities from here. No player's state is swapped in.
-    /// Server-side. Named injections request `hook_version = 2`.
+    /// Server-side.
     pub(in crate::game) fn native_player_start_tracking(
         &mut self,
         player: u128,
@@ -3717,8 +3731,7 @@ impl Game<'_> {
     /// next tracking pass. The entity is not necessarily still there, and a
     /// player who left is gone. As in `player_start_tracking`, the engine is
     /// walking its tracker: don't spawn, remove or teleport entities from
-    /// here. No player's state is swapped in. Server-side. Named injections
-    /// request `hook_version = 2`.
+    /// here. No player's state is swapped in. Server-side.
     pub(in crate::game) fn native_player_stop_tracking(
         &mut self,
         player: u128,
@@ -4614,9 +4627,6 @@ impl Game<'_> {
     /// `datapacks/` is in that world's folder (`saves/<world>/datapacks`).
     /// The folder the game runs in (`--player-dir` moves a player's options
     /// and servers only, not the instance). Nothing is created.
-    ///
-    /// Not on wasm: a path in the game's file system, which a wasm mod has none of; a wasm mod
-    /// reads its own data and assets through reload listeners.
     pub(in crate::game) fn instance_dir(&self) -> PathBuf {
         Self::game_dir()
     }

@@ -1587,11 +1587,11 @@ impl Game<'_> {
         camera: glam::DVec3,
         alpha: f64,
         out: &mut Vec<Vertex>,
+        run: std::ops::Range<usize>,
     ) {
         // The stands' models posed on the GPU path (`mobs::skin`), when it runs this frame.
         let skinning = self.skinning();
-        for a in self
-            .armor_stands
+        for a in self.armor_stands[run]
             .iter()
             .filter(|a| !self.hides_as_camera(a.id))
         {
