@@ -8,6 +8,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use sunrise_mod_package::native_route::{self, Requirement};
 
 const IDENTITY: &str = "sunrise-prebuilt.json";
 #[cfg(test)]
@@ -93,13 +94,16 @@ pub fn project_refusal(project: &api::Project<'_>) -> Option<Refusal> {
         {
             return Some(Refusal::Features { mod_id: mod_id() });
         }
-        for (_, dependencies) in project.dependency_tables() {
+        for (_, dependencies) in native_route::dependency_tables(&project.cargo) {
             for (key, value) in dependencies {
                 let krate = value
                     .get("package")
                     .and_then(toml::Value::as_str)
                     .unwrap_or(key);
-                if !api::PACKAGES.iter().any(|(package, _)| *package == krate) {
+                if !native_route::PACKAGES
+                    .iter()
+                    .any(|(package, _)| *package == krate)
+                {
                     continue;
                 }
                 let own_features = value
@@ -516,7 +520,7 @@ pub fn rustc_with(rust: &dyn Toolchain, search: &[&Path], edition: &str) -> Comm
 
 /// How an instance's native mods are built against the prebuilt game: chosen once, from the whole
 /// set of mods, and never changed after a failure (SDK design §1).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Route {
     /// Every mod is API-only: build its own dylib from the package's API metadata.
     /// The engine archive is never read.
@@ -532,16 +536,17 @@ pub enum Route {
 impl Route {
     /// The route of the set `projects`: the strongest one any of its mods needs.
     pub fn of(projects: &[api::Project<'_>]) -> Self {
-        if projects.iter().any(registry_dependency) {
-            Self::Registry
-        } else if projects
+        projects
             .iter()
-            .any(|project| changes_game(project).is_some())
-        {
-            Self::Engine
-        } else {
-            Self::Api
-        }
+            .map(|project| {
+                match native_route::requirement(&project.bundle.manifest, &project.cargo) {
+                    Requirement::Api => Self::Api,
+                    Requirement::Engine(_) => Self::Engine,
+                    Requirement::Registry(_) => Self::Registry,
+                }
+            })
+            .max()
+            .unwrap_or(Self::Api)
     }
 
     /// The route's name in the SDK's input list (`sdk.json`'s `inputs.routes`): which slices
@@ -560,55 +565,6 @@ impl Route {
             Self::Engine | Self::Registry => "prebuilt",
         }
     }
-}
-
-/// How `project` reaches into the game's own code, which ties it to exactly the build it was made
-/// for: a `[native]` table row (named by its table), or game internals (`internals`); `None` for
-/// a mod on the mod API alone.
-pub fn changes_game(project: &api::Project<'_>) -> Option<&'static str> {
-    let manifest = &project.bundle.manifest;
-    // Every row kind by name: a new one does not compile until it is routed here.
-    if let Some(native) = &manifest.native {
-        let sunrise_mod_package::manifest::Native {
-            game: _,
-            sunrise: _,
-            mixins: _,
-            mixin,
-            module,
-            bridge,
-            state,
-            r#loop,
-        } = native;
-        for (empty, table) in [
-            (mixin.is_empty(), "[[native.mixin]]"),
-            (module.is_empty(), "[[native.module]]"),
-            (bridge.is_empty(), "[[native.bridge]]"),
-            (state.is_empty(), "[[native.state]]"),
-            (r#loop.is_empty(), "[[native.loop]]"),
-        ] {
-            if !empty {
-                return Some(table);
-            }
-        }
-    }
-    let facade = project
-        .api_dependencies()
-        .iter()
-        .any(|(_, package)| *package == "internals");
-    (internals::needed(manifest) || facade).then_some("internals")
-}
-
-/// Whether `project` depends on a crate that is not one of the game's own packages.
-fn registry_dependency(project: &api::Project<'_>) -> bool {
-    project.dependency_tables().any(|(_, dependencies)| {
-        dependencies.iter().any(|(key, value)| {
-            let name = value
-                .get("package")
-                .and_then(toml::Value::as_str)
-                .unwrap_or(key);
-            !api::PACKAGES.iter().any(|(package, _)| *package == name)
-        })
-    })
 }
 
 /// Creates `out`, a build folder directly under `builds`, itself directly under the native work
@@ -727,8 +683,8 @@ pub fn compile(
     let deps = game.join("deps");
     let sdk = identity(game)?;
     let mut libraries = std::collections::HashMap::new();
-    for (package, name) in api::PACKAGES {
-        if package != api::INTERNALS_PACKAGE {
+    for (package, name) in native_route::PACKAGES {
+        if package != native_route::INTERNALS_PACKAGE {
             libraries.insert(name, library(&deps, name)?);
         }
     }
@@ -1447,8 +1403,10 @@ mod tests {
         }
         assert_eq!(route(&[&api_only, &registry]), Route::Registry);
         // What ties a mod to its exact build is named by its table.
-        let tie =
-            |bundle: &super::super::Bundle| changes_game(&api::Project::read(bundle).unwrap());
+        let tie = |bundle: &super::super::Bundle| {
+            let project = api::Project::read(bundle).unwrap();
+            native_route::changes_game(&bundle.manifest, &project.cargo)
+        };
         let ties: Vec<_> = engine.iter().map(tie).collect();
         assert_eq!(
             ties,
