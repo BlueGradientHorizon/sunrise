@@ -78,23 +78,27 @@ impl crate::game::Game<'_> {
             return;
         };
         let built = r.level_environments.get(name).filter(|e| e.json == *json);
+        if let Some(e) = built
+            && same_stacks(e.stacks.as_ref(), stacks.as_ref())
+        {
+            r.level_environment = e.own.clone();
+            r.level_pack_environment = e.pack.clone();
+            return;
+        }
         let own = match built {
             Some(e) => e.own.clone(),
             None => Environment::with_type(self.res.environment_of(name), json).map(Arc::new),
         };
-        let pack = match built.filter(|e| same_stacks(e.stacks.as_ref(), stacks.as_ref())) {
-            Some(e) => e.pack.clone(),
-            None => stacks
-                .as_ref()
-                .and_then(|e| match name.as_str() {
-                    "minecraft:overworld" => Some(&e[0]),
-                    "minecraft:the_nether" => Some(&e[1]),
-                    "minecraft:the_end" => Some(&e[2]),
-                    _ => None,
-                })
-                .and_then(|base| Environment::with_type(base, json))
-                .map(Arc::new),
-        };
+        let pack = stacks
+            .as_ref()
+            .and_then(|e| match name.as_str() {
+                "minecraft:overworld" => Some(&e[0]),
+                "minecraft:the_nether" => Some(&e[1]),
+                "minecraft:the_end" => Some(&e[2]),
+                _ => None,
+            })
+            .and_then(|base| Environment::with_type(base, json))
+            .map(Arc::new);
         r.level_environments.insert(
             name.clone(),
             LevelEnvironments {
