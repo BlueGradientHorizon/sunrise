@@ -13,8 +13,10 @@ mod exact;
 mod gameplay;
 pub(crate) mod ops;
 mod raw;
-use super::{Component, FireworkExplosion, Hashed, Stack, WirePatch, component as kind};
-use crate::hash_ops::{HashCode, HashOps};
+use super::{
+    Component, FireworkExplosion, Hashed, Stack, WirePatch, component as kind, persistent,
+};
+use crate::hash_ops::HashCode;
 use ops::{Ops, Record};
 
 /// Registry names for the ids a component holds.
@@ -158,38 +160,24 @@ fn enchantments_with<O: Ops>(list: &[(i32, i32)], names: &dyn Names) -> Option<O
     }
     Some(O::create_map(entries))
 }
-/// `ItemStackTemplate.CODEC` (the map form): the item, a count that is absent
-/// at 1 and a `DataComponentPatch.CODEC` that is absent when empty.
-fn template_record_with<O: Ops>(s: &Stack, names: &dyn Names) -> Option<O::Value> {
-    let rec = Record::<O>::new().field("id", entry_with::<O>(names, "minecraft:item", s.item)?);
-    let rec = or_default_with::<O, _>(rec, "count", s.count, 1, O::create_int(s.count));
-    let mut patch = Vec::new();
-    for (k, c) in &s.added {
-        patch.push((
-            entry_with::<O>(names, "minecraft:data_component_type", *k)?,
-            c.code_with::<O>(*k, names)?,
-        ));
-    }
-    for k in &s.removed {
-        let name = names.name("minecraft:data_component_type", *k)?;
-        patch.push((string_with::<O>(&format!("!{name}")), O::empty_map()));
-    }
-    Some(
-        if patch.is_empty() {
-            rec
-        } else {
-            rec.field("components", O::create_map(patch))
-        }
-        .build(),
-    )
-}
-
 impl Component {
     pub fn code(&self, id: i32, names: &dyn Names) -> Option<HashCode> {
-        self.code_with::<HashOps>(id, names)
+        let name = persistent::component_name(id)?;
+        if !sunrise_world::component_value::is_persistent(name) {
+            return None;
+        }
+        let value = persistent::component_value_named(id, name, self, names).ok()?;
+        let hash = match value.to_component_tag_with(name, persistent::is_native_component) {
+            Ok(tag) => {
+                sunrise_core::nbt::discard_tag(tag);
+                ops::Values::hash(&value)
+            }
+            Err(_) => None,
+        };
+        value.discard();
+        hash
     }
-    /// The component's `Codec` form hashed (`TypedDataComponent.encodeValue(hashOps)`),
-    /// or `None` when Sunrise cannot build that form.
+    /// Decode the retained stream value, preserving native-only state.
     pub(crate) fn code_with<O: Ops>(&self, id: i32, names: &dyn Names) -> Option<O::Value> {
         if let Some(value) = O::special_component(id, self, names) {
             return value;
@@ -319,7 +307,11 @@ impl Component {
                     O::create_boolean(*hide),
                 );
                 let mut list = Vec::with_capacity(hidden.len());
+                let mut seen = std::collections::HashSet::new();
                 for h in hidden {
+                    if !seen.insert(*h) {
+                        continue;
+                    }
                     list.push(entry_with::<O>(names, "minecraft:data_component_type", *h)?);
                 }
                 if list.is_empty() {
@@ -504,11 +496,10 @@ impl Hashed {
         Self {
             item: stack.item,
             count: stack.count,
-            added: added
-                .iter()
+            added: super::effective_sets(added, removed)
                 .filter_map(|(id, c)| Some((*id, c.hash(*id, names)?)))
                 .collect(),
-            removed: removed.clone(),
+            removed: super::effective_removals(removed).collect(),
         }
     }
 }
@@ -532,7 +523,11 @@ mod tests {
                 "minecraft:instrument" => &["minecraft:ponder_goat_horn"],
                 "minecraft:banner_pattern" => &["minecraft:creeper"],
                 "minecraft:painting_variant" => &["minecraft:kebab"],
-                "minecraft:item" => &["minecraft:arrow", "minecraft:firework_rocket"],
+                "minecraft:item" => &[
+                    "minecraft:air",
+                    "minecraft:firework_rocket",
+                    "minecraft:arrow",
+                ],
                 "minecraft:data_component_type" => {
                     return match id {
                         k::DAMAGE => Some("minecraft:damage"),
@@ -830,7 +825,7 @@ mod tests {
             (
                 "charged",
                 k::CHARGED_PROJECTILES,
-                C::Stacks(vec![Stack::new(0, 1), fireworks_template.clone()]),
+                C::Stacks(vec![Stack::new(2, 1), fireworks_template.clone()]),
                 -1839603258,
             ),
             (
@@ -869,9 +864,11 @@ mod tests {
     #[test]
     fn a_hashed_stack_carries_each_hashable_component_and_the_removed_ones() {
         let mut stack = Stack::new(1, 2);
+        stack.added.push((k::DAMAGE, C::Int(1)));
         stack.added.push((k::DAMAGE, C::Int(5)));
+        stack.added.push((k::RARITY, C::Int(1)));
         stack.added.push((42, C::Raw(vec![0])));
-        stack.removed.push(k::RARITY);
+        stack.removed.extend([k::RARITY, k::RARITY]);
         assert_eq!(
             Hashed::create(&stack, &Table),
             Hashed {

@@ -1,6 +1,6 @@
 //! Current pinned component codecs with explicit registry callbacks.
 //! Canonical values retain stream-only state; persistent encoding is a read-only projection.
-use super::{Component, Names, Stack};
+use super::{Component, Names, Stack, effective_removals, effective_sets};
 use crate::{Error, Result, buf::Reader};
 use sunrise_core::nbt::Tag;
 use sunrise_world::component_value::{Patch, Template as ValueTemplate, Value};
@@ -31,145 +31,9 @@ impl Names for NameLookup<'_> {
     }
 }
 
-/// DataComponents' registration order, from the pinned 26.3 registry report.
-const COMPONENTS: [&str; 122] = [
-    "minecraft:custom_data",
-    "minecraft:max_stack_size",
-    "minecraft:max_damage",
-    "minecraft:damage",
-    "minecraft:unbreakable",
-    "minecraft:use_effects",
-    "minecraft:custom_name",
-    "minecraft:minimum_attack_charge",
-    "minecraft:damage_type",
-    "minecraft:item_name",
-    "minecraft:item_model",
-    "minecraft:lore",
-    "minecraft:rarity",
-    "minecraft:enchantments",
-    "minecraft:can_place_on",
-    "minecraft:can_break",
-    "minecraft:attribute_modifiers",
-    "minecraft:custom_model_data",
-    "minecraft:tooltip_display",
-    "minecraft:repair_cost",
-    "minecraft:creative_slot_lock",
-    "minecraft:enchantment_glint_override",
-    "minecraft:intangible_projectile",
-    "minecraft:food",
-    "minecraft:consumable",
-    "minecraft:use_remainder",
-    "minecraft:use_cooldown",
-    "minecraft:damage_resistant",
-    "minecraft:tool",
-    "minecraft:weapon",
-    "minecraft:attack_range",
-    "minecraft:enchantable",
-    "minecraft:equippable",
-    "minecraft:repairable",
-    "minecraft:glider",
-    "minecraft:tooltip_style",
-    "minecraft:death_protection",
-    "minecraft:blocks_attacks",
-    "minecraft:piercing_weapon",
-    "minecraft:kinetic_weapon",
-    "minecraft:attack_animation",
-    "minecraft:interact_animation",
-    "minecraft:additional_trade_cost",
-    "minecraft:block_transformer",
-    "minecraft:villager_food",
-    "minecraft:stored_enchantments",
-    "minecraft:dye",
-    "minecraft:dyed_color",
-    "minecraft:map_id",
-    "minecraft:map_decorations",
-    "minecraft:map_post_processing",
-    "minecraft:charged_projectiles",
-    "minecraft:bundle_contents",
-    "minecraft:potion_contents",
-    "minecraft:potion_duration_scale",
-    "minecraft:suspicious_stew_effects",
-    "minecraft:writable_book_content",
-    "minecraft:written_book_content",
-    "minecraft:trim",
-    "minecraft:debug_stick_state",
-    "minecraft:entity_data",
-    "minecraft:bucket_entity_data",
-    "minecraft:block_entity_data",
-    "minecraft:instrument",
-    "minecraft:provides_trim_material",
-    "minecraft:ominous_bottle_amplifier",
-    "minecraft:jukebox_playable",
-    "minecraft:provides_banner_patterns",
-    "minecraft:recipes",
-    "minecraft:lodestone_tracker",
-    "minecraft:firework_explosion",
-    "minecraft:fireworks",
-    "minecraft:profile",
-    "minecraft:note_block_sound",
-    "minecraft:banner_patterns",
-    "minecraft:base_color",
-    "minecraft:pot_decorations",
-    "minecraft:container",
-    "minecraft:block_state",
-    "minecraft:bees",
-    "minecraft:sulfur_cube_content",
-    "minecraft:lock",
-    "minecraft:container_loot",
-    "minecraft:break_sound",
-    "minecraft:compostable",
-    "minecraft:cooking_fuel",
-    "minecraft:brewing_fuel",
-    "minecraft:mob_visibility",
-    "minecraft:villager/variant",
-    "minecraft:wolf/variant",
-    "minecraft:wolf/sound_variant",
-    "minecraft:wolf/collar",
-    "minecraft:fox/variant",
-    "minecraft:salmon/size",
-    "minecraft:parrot/variant",
-    "minecraft:tropical_fish/pattern",
-    "minecraft:tropical_fish/base_color",
-    "minecraft:tropical_fish/pattern_color",
-    "minecraft:mooshroom/variant",
-    "minecraft:rabbit/variant",
-    "minecraft:pig/variant",
-    "minecraft:pig/sound_variant",
-    "minecraft:cow/variant",
-    "minecraft:cow/sound_variant",
-    "minecraft:chicken/variant",
-    "minecraft:chicken/sound_variant",
-    "minecraft:zombie_nautilus/variant",
-    "minecraft:frog/variant",
-    "minecraft:horse/variant",
-    "minecraft:painting/variant",
-    "minecraft:llama/variant",
-    "minecraft:axolotl/variant",
-    "minecraft:cat/variant",
-    "minecraft:cat/sound_variant",
-    "minecraft:cat/collar",
-    "minecraft:sheep/color",
-    "minecraft:shulker/color",
-    "minecraft:provides_pottery_pattern",
-    "minecraft:sign_text_front",
-    "minecraft:sign_text_back",
-    "minecraft:waxed",
-    "minecraft:cushion/color",
-];
-/// Built-in registry enumeration excludes process-installed native components.
-pub const BUILTIN_COMPONENT_COUNT: usize = COMPONENTS.len();
-pub fn builtin_component_name(kind: i32) -> Option<&'static str> {
-    usize::try_from(kind)
-        .ok()
-        .and_then(|kind| COMPONENTS.get(kind))
-        .copied()
-}
-pub fn builtin_component_id(name: &str) -> Option<i32> {
-    COMPONENTS
-        .iter()
-        .position(|candidate| *candidate == name)
-        .map(|id| id as i32)
-}
+pub use sunrise_world::component_value::types::{
+    BUILTIN_COMPONENT_COUNT, builtin_component_id, builtin_component_name,
+};
 /// Trusted canonical values may also refer to an installed native component.
 pub fn component_name(kind: i32) -> Option<&'static str> {
     builtin_component_name(kind).or_else(|| super::custom::name(kind))
@@ -178,7 +42,7 @@ pub fn component_id(name: &str) -> Option<i32> {
     builtin_component_id(name).or_else(|| super::custom::id(name))
 }
 
-/// Decode every own patch entry without prototype merging or persistence conversion.
+/// Decode the effective own patch, without prototype merging or persistence conversion.
 pub fn template_value(stack: &Stack, names: &dyn Names) -> Result<ValueTemplate> {
     if stack.count == 0 || stack.item <= 0 {
         return Err(Error::new(
@@ -190,39 +54,37 @@ pub fn template_value(stack: &Stack, names: &dyn Names) -> Result<ValueTemplate>
         .filter(|name| name != "minecraft:air")
         .ok_or_else(|| Error::new("item template registry id has no name"))?;
     let mut patch: Patch = Vec::with_capacity(stack.added.len() + stack.removed.len());
-    for (kind, value) in &stack.added {
+    for (kind, value) in effective_sets(&stack.added, &stack.removed) {
         let _nested = super::Nested::enter()?;
         let name = component_name(*kind)
             .ok_or_else(|| Error::new(format!("unknown pinned component type {kind}")))?;
-        set_patch(
-            &mut patch,
-            name,
-            Some(component_value(*kind, value, names)?),
-        );
+        patch.push((
+            name.to_owned(),
+            Some(component_value_named(*kind, name, value, names)?),
+        ));
     }
-    for kind in &stack.removed {
-        let name = component_name(*kind)
+    for kind in effective_removals(&stack.removed) {
+        let name = component_name(kind)
             .ok_or_else(|| Error::new(format!("unknown removed pinned component type {kind}")))?;
-        set_patch(&mut patch, name, None);
+        patch.push((name.to_owned(), None));
     }
     patch.sort_by(|a, b| a.0.cmp(&b.0));
     Ok(ValueTemplate::new(item, stack.count, patch))
 }
-fn set_patch(patch: &mut Patch, name: &str, value: Option<Value>) {
-    if let Some((_, old)) = patch.iter_mut().find(|(key, _)| key == name) {
-        *old = value;
-    } else {
-        patch.push((name.to_owned(), value));
-    }
-}
-
 /// The actual canonical value, not an opaque stream cache or a component hash.
 pub fn component_value(kind: i32, value: &Component, names: &dyn Names) -> Result<Value> {
-    if component_name(kind).is_none() {
-        return Err(Error::new(format!("unknown pinned component type {kind}")));
-    }
+    let name = component_name(kind)
+        .ok_or_else(|| Error::new(format!("unknown pinned component type {kind}")))?;
+    component_value_named(kind, name, value, names)
+}
+pub(super) fn component_value_named(
+    kind: i32,
+    name: &str,
+    value: &Component,
+    names: &dyn Names,
+) -> Result<Value> {
     value.code_with::<super::hash::ops::Values>(kind, names)
-        .ok_or_else(|| Error::new(format!("cannot decode complete value of component {kind}: invalid payload or missing registry name")))
+        .ok_or_else(|| Error::new(format!("cannot decode complete value of component {name}: invalid payload or missing registry name")))
 }
 /// `None` is a deliberately transient component; errors do not modify the value.
 pub fn component_to_tag(kind: i32, value: &Component, names: &dyn Names) -> Result<Option<Tag>> {
@@ -231,10 +93,14 @@ pub fn component_to_tag(kind: i32, value: &Component, names: &dyn Names) -> Resu
     if !sunrise_world::component_value::is_persistent(name) {
         return Ok(None);
     }
-    component_value(kind, value, names)?
-        .to_component_tag(name)
-        .map(Some)
-        .map_err(Error::new)
+    let value = component_value_named(kind, name, value, names)?;
+    let projected = value.to_component_tag_with(name, is_native_component);
+    value.discard();
+    projected.map(Some).map_err(Error::new)
+}
+
+pub(super) fn is_native_component(name: &str) -> bool {
+    super::custom::id(name).is_some()
 }
 
 pub(crate) fn special_value(
@@ -613,21 +479,108 @@ mod tests {
         assert!(error.contains("creative_slot_lock"), "{error}");
     }
     #[test]
-    fn retained_custom_data_refuses_overdeep_trees_for_values_and_hashes() {
-        use sunrise_world::component_value::MAX_TREE_DEPTH;
-        let mut tag = Tag::Compound(Default::default());
-        for _ in 1..MAX_TREE_DEPTH {
-            tag = Tag::compound([("a", tag)]);
-        }
-        let admitted = Component::Nbt(tag);
-        assert!(component_value(0, &admitted, &Registry).is_ok());
-        assert!(admitted.hash(0, &Registry).is_some());
-        let Component::Nbt(tag) = admitted else {
-            unreachable!()
+    fn saved_presence_predicate_reconstructs_as_a_type_not_a_component_value() {
+        use crate::item::component as k;
+        let source = Tag::compound([(
+            "predicates",
+            Tag::compound([(
+                "minecraft:creative_slot_lock",
+                Tag::Compound(Default::default()),
+            )]),
+        )]);
+        let Component::Raw(bytes) =
+            component_from_tag(k::CAN_BREAK, &source, &registry_id).unwrap()
+        else {
+            panic!("can_break uses a predicate stream");
         };
-        let refused = Component::Nbt(Tag::compound([("a", tag)]));
-        assert!(component_value(0, &refused, &Registry).is_err());
-        assert!(refused.hash(0, &Registry).is_none());
+        // One block predicate with no block/state/NBT/exact tests, one partial
+        // test, false discriminator, creative_slot_lock, empty compound.
+        assert_eq!(bytes, [1, 0, 0, 0, 0, 1, 0, 20, 10, 0]);
+        let mut r = Reader::new(&bytes);
+        let component = Component::read(k::CAN_BREAK, &mut r).unwrap();
+        assert_eq!(r.remaining(), 0);
+        assert_eq!(
+            component_to_tag(k::CAN_BREAK, &component, &Registry).unwrap(),
+            Some(source)
+        );
+    }
+
+    #[test]
+    fn bundle_source_reconstructs_more_than_1024_templates() {
+        use crate::item::component as k;
+        let source = Tag::List(vec![Tag::String("minecraft:stone".into()); 1025]);
+        let Component::Stacks(items) =
+            component_from_tag(k::BUNDLE_CONTENTS, &source, &registry_id).unwrap()
+        else {
+            panic!("bundle contents reconstructs as templates");
+        };
+        assert_eq!(items.len(), 1025);
+        assert!(items.iter().all(|item| item.item == 1 && item.count == 1));
+    }
+
+    #[test]
+    fn tooltip_wire_values_keep_hidden_types_in_first_seen_order() {
+        use crate::item::component as k;
+        let mut r = Reader::new(&[0, 3, 3, 20, 3]);
+        let component = Component::read(k::TOOLTIP_DISPLAY, &mut r).unwrap();
+        let hidden = Tag::List(vec![
+            Tag::String("minecraft:damage".into()),
+            Tag::String("minecraft:creative_slot_lock".into()),
+        ]);
+        assert_eq!(
+            component_to_tag(k::TOOLTIP_DISPLAY, &component, &Registry).unwrap(),
+            Some(Tag::compound([("hidden_components", hidden)]))
+        );
+        // Hash from the pinned Java codec for the two-type sequenced set.
+        assert_eq!(
+            component.hash(k::TOOLTIP_DISPLAY, &Registry),
+            Some(1575522631)
+        );
+    }
+
+    #[test]
+    fn live_hashes_reject_values_the_saved_codecs_cannot_encode() {
+        use crate::item::component as k;
+        assert_eq!(Component::Int(-1).hash(k::DAMAGE, &Registry), None);
+        assert_eq!(
+            Component::Raw(vec![1, 1, 0x40, 0, 0, 0]).hash(5, &Registry),
+            None
+        );
+        for count in [-1, 100] {
+            let bundle = Component::Stacks(vec![Stack::new(1, count)]);
+            assert_eq!(bundle.hash(k::BUNDLE_CONTENTS, &Registry), None);
+        }
+    }
+
+    #[test]
+    fn template_hash_uses_last_wire_entries_and_omits_transients() {
+        use crate::item::component as k;
+        let mut w = Writer::new();
+        w.varint(1); // one bundle template
+        w.varint(1); // stone
+        w.varint(1); // count
+        w.varint(4); // set entries
+        w.varint(3); // removals
+        for (kind, value) in [
+            (k::DAMAGE, 1),
+            (k::DAMAGE, 7),
+            (k::REPAIR_COST, 9),
+            (k::MAP_POST_PROCESSING, 1),
+        ] {
+            w.varint(kind);
+            w.varint(value);
+        }
+        for kind in [k::REPAIR_COST, k::CREATIVE_SLOT_LOCK, k::REPAIR_COST] {
+            w.varint(kind);
+        }
+        let mut r = Reader::new(&w.data);
+        let component = Component::read(k::BUNDLE_CONTENTS, &mut r).unwrap();
+        assert_eq!(r.remaining(), 0);
+        // Pinned Java BundleContents.CODEC for stone with damage=7 and !repair_cost.
+        assert_eq!(
+            component.hash(k::BUNDLE_CONTENTS, &Registry),
+            Some(848228328)
+        );
     }
     #[test]
     fn a_registry_id_at_the_top_of_the_range_is_refused_not_wrapped() {

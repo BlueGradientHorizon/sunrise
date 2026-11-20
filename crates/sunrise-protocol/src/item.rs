@@ -333,8 +333,9 @@ impl Component {
         use component::*;
         match kind {
             CHARGED_PROJECTILES | BUNDLE_CONTENTS => {
-                let n = r.count(1024)?;
-                let mut stacks = Vec::with_capacity(n);
+                // Each template needs bytes; the codec has no item-count cap.
+                let n = r.count(r.remaining())?;
+                let mut stacks = Vec::with_capacity(n.min(1024));
                 for _ in 0..n {
                     stacks.push(Template::read(r)?);
                 }
@@ -815,6 +816,26 @@ impl PartialEq for WirePatch {
     fn eq(&self, _: &Self) -> bool {
         true
     }
+}
+
+// The stream reads every set before every removal, into one map. Walking the
+// retained wire groups must give the same last-entry result.
+fn effective_sets<'a>(
+    sets: &'a [(i32, Component)],
+    removals: &'a [i32],
+) -> impl Iterator<Item = &'a (i32, Component)> {
+    sets.iter().enumerate().filter_map(|(index, entry)| {
+        let kind = entry.0;
+        (!removals.contains(&kind) && !sets[index + 1..].iter().any(|(later, _)| *later == kind))
+            .then_some(entry)
+    })
+}
+
+fn effective_removals(removals: &[i32]) -> impl Iterator<Item = i32> + '_ {
+    removals
+        .iter()
+        .enumerate()
+        .filter_map(|(index, kind)| (!removals[index + 1..].contains(kind)).then_some(*kind))
 }
 
 /// A non-empty item stack.

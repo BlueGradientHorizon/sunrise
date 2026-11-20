@@ -1431,6 +1431,12 @@ pub fn compare_nbt(expected: &Tag, actual: Option<&Tag>) -> bool {
     }
 }
 
+/// Run the next recursive step over a materialized tree without a binary-read depth limit.
+#[doc(hidden)]
+pub fn with_tree_stack<T>(step: impl FnOnce() -> T) -> T {
+    stacker::maybe_grow(64 * 1024, 1024 * 1024, step)
+}
+
 #[path = "nbt_snbt.rs"]
 mod snbt;
 pub use snbt::{

@@ -361,7 +361,6 @@ pub(super) fn code_with<O: Ops>(kind: i32, bytes: &[u8], names: &dyn Names) -> O
         // RegistryFixedCodec refuses direct painting holders, but stream values remain real values.
         109 => match r.varint().ok()? {
             id if id < 0 => return None,
-            0 if !O::STREAM_VALUES => return None,
             0 => O::stream_only(
                 Record::<O>::new()
                     .field("width", int_with::<O>(r)?)

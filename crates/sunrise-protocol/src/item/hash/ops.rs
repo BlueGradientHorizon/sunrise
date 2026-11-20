@@ -1,4 +1,4 @@
-//! Operations for the single component-schema traversal: hashes or actual values.
+//! Build typed codec values from streams, then hash their validated persistent form.
 use super::{Names, Stack};
 use crate::hash_ops::{HashCode, HashOps};
 use sunrise_core::nbt::Tag;
@@ -7,7 +7,6 @@ use sunrise_world::component_value::Value;
 pub(crate) trait Ops: Sized {
     type Value: Clone;
     type Container;
-    const STREAM_VALUES: bool = false;
     fn empty_map() -> Self::Value;
     fn create_byte(v: i8) -> Self::Value;
     fn create_int(v: i32) -> Self::Value;
@@ -19,8 +18,8 @@ pub(crate) trait Ops: Sized {
     fn create_int_list(v: &[i32]) -> Self::Value;
     fn create_map(v: Vec<(Self::Value, Self::Value)>) -> Self::Value;
     fn create_list(v: impl IntoIterator<Item = Self::Value>) -> Self::Value;
-    /// `None` when the tree is nested deeper than a conversion may recurse.
     fn from_nbt(v: &Tag, bools: &[&str]) -> Option<Self::Value>;
+    fn saved_component(name: &str, tag: &Tag) -> Option<Self::Value>;
     fn template(stack: &Stack, names: &dyn Names) -> Option<Self::Value>;
     fn special_component(
         _: i32,
@@ -43,74 +42,84 @@ pub(crate) trait Ops: Sized {
     ) -> Option<()>;
     fn container_build(slots: Self::Container) -> Self::Value;
 }
-impl Ops for HashOps {
-    type Value = HashCode;
-    type Container = Vec<HashCode>;
-    fn empty_map() -> HashCode {
-        HashOps::empty_map()
+pub(crate) struct Values;
+impl Values {
+    /// The saved codec has already validated this tree. Retain the types that NBT
+    /// alone can't represent, notably `Codec.BOOL` versus `Codec.BYTE`.
+    pub(super) fn hash(value: &Value) -> Option<HashCode> {
+        sunrise_core::nbt::with_tree_stack(|| Self::hash_with_stack(value))
     }
-    fn create_byte(v: i8) -> HashCode {
-        HashOps::create_byte(v)
+
+    fn hash_with_stack(value: &Value) -> Option<HashCode> {
+        use Value::*;
+        Some(match value {
+            Empty => HashOps::empty(),
+            Byte(v) => HashOps::create_byte(*v),
+            Short(v) => HashOps::create_short(*v),
+            Int(v) => HashOps::create_int(*v),
+            Long(v) => HashOps::create_long(*v),
+            Float(v) => HashOps::create_float(*v),
+            Double(v) => HashOps::create_double(*v),
+            Bool(v) => HashOps::create_boolean(*v),
+            String(v) => HashOps::create_string_units(v),
+            ByteArray(v) => HashOps::create_byte_list(v),
+            IntArray(v) => HashOps::create_int_list(v),
+            LongArray(v) => HashOps::create_long_list(v),
+            List(v) | Set(v) => {
+                HashOps::create_list(v.iter().map(Self::hash).collect::<Option<Vec<_>>>()?)
+            }
+            Map(v) => HashOps::create_map(
+                v.iter()
+                    .map(|(k, v)| Some((Self::hash(k)?, Self::hash(v)?)))
+                    .collect::<Option<_>>()?,
+            ),
+            Template(t) => Self::template_hash(t)?,
+            Container(slots) => HashOps::create_list(
+                slots
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(slot, item)| Some((slot, item.as_ref()?)))
+                    .map(|(slot, item)| {
+                        Some(HashOps::create_map(vec![
+                            (
+                                HashOps::create_string("slot"),
+                                HashOps::create_int(slot as i32),
+                            ),
+                            (HashOps::create_string("item"), Self::template_hash(item)?),
+                        ]))
+                    })
+                    .collect::<Option<Vec<_>>>()?,
+            ),
+            _ => return None,
+        })
     }
-    fn create_int(v: i32) -> HashCode {
-        HashOps::create_int(v)
-    }
-    fn create_f32(v: f32) -> HashCode {
-        HashOps::create_f32(v)
-    }
-    fn create_double(v: u64) -> HashCode {
-        HashOps::create_double(v)
-    }
-    fn create_boolean(v: bool) -> HashCode {
-        HashOps::create_boolean(v)
-    }
-    fn create_string(v: &str) -> HashCode {
-        HashOps::create_string(v)
-    }
-    fn create_string_units(v: &[u16]) -> HashCode {
-        HashOps::create_string_units(v)
-    }
-    fn create_int_list(v: &[i32]) -> HashCode {
-        HashOps::create_int_list(v)
-    }
-    fn create_map(v: Vec<(HashCode, HashCode)>) -> HashCode {
-        HashOps::create_map(v)
-    }
-    fn create_list(v: impl IntoIterator<Item = HashCode>) -> HashCode {
-        HashOps::create_list(v)
-    }
-    fn from_nbt(v: &Tag, bools: &[&str]) -> Option<HashCode> {
-        sunrise_core::nbt::within_depth(v, sunrise_world::component_value::MAX_TREE_DEPTH)
-            .then(|| HashOps::from_nbt(v, bools))
-    }
-    fn template(stack: &Stack, names: &dyn Names) -> Option<HashCode> {
-        super::template_record_with::<Self>(stack, names)
-    }
-    fn container_new(_: usize) -> Self::Container {
-        Vec::new()
-    }
-    fn container_slot(
-        slots: &mut Self::Container,
-        slot: usize,
-        item: Option<HashCode>,
-    ) -> Option<()> {
-        if let Some(item) = item {
-            slots.push(
-                Record::<Self>::new()
-                    .field("slot", Self::create_int(slot as i32))
-                    .field("item", item)
-                    .build(),
-            );
+
+    fn template_hash(template: &sunrise_world::component_value::Template) -> Option<HashCode> {
+        use sunrise_world::component_value::{effective_patch, is_persistent};
+        let mut record =
+            crate::hash_ops::RecordHash::new().field("id", HashOps::create_string(&template.item));
+        if template.count != 1 {
+            record = record.field("count", HashOps::create_int(template.count));
         }
-        Some(())
-    }
-    fn container_build(slots: Self::Container) -> HashCode {
-        Self::create_list(slots)
+        let entries: Vec<_> = effective_patch(&template.patch)
+            .filter(|(name, _)| is_persistent(name))
+            .map(|(name, value)| {
+                Some(match value {
+                    Some(value) => (HashOps::create_string(name), Self::hash(value)?),
+                    None => (
+                        HashOps::create_string(&format!("!{name}")),
+                        HashOps::empty_map(),
+                    ),
+                })
+            })
+            .collect::<Option<_>>()?;
+        if !entries.is_empty() {
+            record = record.field("components", HashOps::create_map(entries));
+        }
+        Some(record.build())
     }
 }
-pub(crate) struct Values;
 impl Ops for Values {
-    const STREAM_VALUES: bool = true;
     type Value = Value;
     type Container = Vec<Option<sunrise_world::component_value::Template>>;
     fn empty_map() -> Value {
@@ -155,7 +164,15 @@ impl Ops for Values {
         Value::List(v.into_iter().collect())
     }
     fn from_nbt(v: &Tag, bools: &[&str]) -> Option<Value> {
-        Value::from_nbt(v, bools).ok()
+        Some(Value::from_nbt(v, bools))
+    }
+    fn saved_component(name: &str, tag: &Tag) -> Option<Value> {
+        sunrise_world::component_value::source::from_component_tag_with(
+            name,
+            tag,
+            crate::item::persistent::is_native_component,
+        )
+        .ok()
     }
     fn template(stack: &Stack, names: &dyn Names) -> Option<Value> {
         crate::item::persistent::template_value(stack, names)

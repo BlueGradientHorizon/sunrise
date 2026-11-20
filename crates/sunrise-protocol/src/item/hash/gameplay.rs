@@ -252,13 +252,17 @@ fn partial_predicate_with<O: Ops>(
     r: &mut Reader,
     names: &dyn Names,
 ) -> Option<(O::Value, O::Value)> {
-    let registry = if boolean_with::<O>(r)? {
+    let concrete = boolean_with::<O>(r)?;
+    let registry = if concrete {
         "minecraft:data_component_predicate_type"
     } else {
         "minecraft:data_component_type"
     };
     let key = entry_with::<O>(names, registry, int_with::<O>(r)?)?;
     let tag = r.nbt().ok()?;
+    if !concrete {
+        return matches!(tag, sunrise_core::nbt::Tag::Compound(_)).then(|| (key, O::empty_map()));
+    }
     // The nested `components` of an item predicate (`container`,
     // `bundle_contents`) are component values as NBT: `exact` hashes them by
     // each component's codec.
@@ -628,7 +632,6 @@ pub(super) fn code_with<O: Ops>(kind: i32, r: &mut Reader, names: &dyn Names) ->
         // encoded (vanilla's client would throw), so only a reference hashes.
         66 => match int_with::<O>(r)? {
             id if id < 0 => return None,
-            0 if !O::STREAM_VALUES => return None,
             0 => O::stream_only(
                 Record::<O>::new()
                     .field("sound_event", sound_with::<O>(r, names)?.code)

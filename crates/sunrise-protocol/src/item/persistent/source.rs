@@ -1,5 +1,5 @@
 //! Canonical values to the pinned stream codec, with explicit registry lookup.
-use super::{Ids, builtin_component_id, component_name};
+use super::{Ids, builtin_component_id, component_name, is_native_component};
 use crate::item::{Component, Stack};
 use crate::{
     Error, Result,
@@ -317,11 +317,21 @@ fn template_body(w: &mut Writer, t: &Template, ids: &dyn Ids, depth: u32) -> Res
 /// Persistent input is normalized below protocol before registry admission.
 pub fn component_from_tag(kind: i32, value: &Tag, ids: &dyn Ids) -> Result<Component> {
     let name = component_name(kind).ok_or_else(|| err("unknown component type"))?;
-    let value =
-        sunrise_world::component_value::source::from_component_tag(name, value).map_err(err)?;
-    component_from_value(kind, &value, ids)
+    let value = sunrise_world::component_value::source::from_component_tag_with(
+        name,
+        value,
+        is_native_component,
+    )
+    .map_err(err)?;
+    let component = component_from_value(kind, &value, ids);
+    value.discard();
+    component
 }
 pub fn component_from_value(kind: i32, value: &Value, ids: &dyn Ids) -> Result<Component> {
+    let name = component_name(kind).ok_or_else(|| err(format!("unknown component type {kind}")))?;
+    component_from_value_named(kind, value, ids).map_err(|error| err(format!("{name}: {error}")))
+}
+fn component_from_value_named(kind: i32, value: &Value, ids: &dyn Ids) -> Result<Component> {
     if let Some(name) = crate::item::custom::name(kind) {
         patch_kind(name, ids)?;
         return Ok(Component::Nbt(value.to_tag().map_err(err)?));
@@ -514,15 +524,12 @@ fn predicate(w: &mut Writer, v: &Value, ids: &dyn Ids, depth: u32) -> Result<()>
             w.bool(true);
             w.varint(id);
             nbt(w, v)?;
-        } else if let Some(id) = ids.id("minecraft:data_component_type", &name) {
-            w.bool(false);
-            w.varint(id);
-            let tag = v.to_tag().map_err(err)?;
-            let value = sunrise_world::component_value::source::from_component_tag(&name, &tag)
-                .map_err(err)?;
-            nbt(w, &value)?;
         } else {
-            return Err(err(format!("unknown component predicate {name}")));
+            let kind = patch_kind(&name, ids)?;
+            map(v).map_err(|error| err(format!("{name}: {error}")))?;
+            w.bool(false);
+            w.varint(kind);
+            write_tag(w, &Tag::Compound(Default::default()))?;
         }
     }
     Ok(())

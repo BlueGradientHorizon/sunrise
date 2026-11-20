@@ -45,9 +45,12 @@ pub fn parse_snbt_argument(text: &str) -> Result<(Tag, usize), SnbtError> {
     Parser::new(Input::Utf8(text)).parse()
 }
 
-/// One value in a Java string; its cursor counts UTF-16 code units.
+/// One persistent value in a Java string; its cursor counts UTF-16 code units.
+/// Unlike the UTF-8 command parser, this does not impose a nesting limit.
 pub fn parse_snbt_utf16(text: &[u16]) -> Result<(Tag, usize), SnbtError> {
-    Parser::new(Input::Utf16(text)).parse()
+    let mut parser = Parser::new(Input::Utf16(text));
+    parser.max_depth = usize::MAX;
+    parser.parse()
 }
 
 /// One value and its byte count, with a printable error for non-command callers.
@@ -87,6 +90,7 @@ struct Parser<'a> {
     input: Input<'a>,
     cursor: usize,
     depth: usize,
+    max_depth: usize,
     collect_suggestions: bool,
     suggestion_cursor: usize,
     suggestions: Vec<String>,
@@ -100,6 +104,7 @@ impl<'a> Parser<'a> {
             input,
             cursor: 0,
             depth: 0,
+            max_depth: 512,
             collect_suggestions: false,
             suggestion_cursor: 0,
             suggestions: Vec::new(),
@@ -239,30 +244,23 @@ impl<'a> Parser<'a> {
             .ok()
             .map(|value| value.to_ascii_lowercase())
     }
-    fn enter(&mut self) -> Result<(), SnbtError> {
-        // The shared NBT boundary already limits containers to 512. Count builtin
-        // calls too: deeply nested bool(...) must not overflow the native stack.
-        if self.depth >= 512 {
+    fn descend(
+        &mut self,
+        parse: impl FnOnce(&mut Self) -> Result<Tag, SnbtError>,
+    ) -> Result<Tag, SnbtError> {
+        if self.depth >= self.max_depth {
             return Err(self.error("arguments.nbtpath.too_deep"));
         }
         self.depth += 1;
-        Ok(())
+        let result = super::with_tree_stack(|| parse(self));
+        self.depth -= 1;
+        result
     }
     fn value(&mut self) -> Result<Tag, SnbtError> {
         self.skip();
         match self.peek() {
-            Some(0x7b) => {
-                self.enter()?;
-                let value = self.compound();
-                self.depth -= 1;
-                value
-            }
-            Some(0x5b) => {
-                self.enter()?;
-                let value = self.list();
-                self.depth -= 1;
-                value
-            }
+            Some(0x7b) => self.descend(Self::compound),
+            Some(0x5b) => self.descend(Self::list),
             Some(0x22 | 0x27) => self.string().map(Tag::String),
             Some(0x2b | 0x2d | 0x2e | 0x30..=0x39) => {
                 // FloatLiteral | IntegerLiteral: a float that fails anywhere, including
@@ -404,19 +402,29 @@ impl<'a> Parser<'a> {
         if self.eat(b'}') {
             return Ok(Tag::Compound(values));
         }
-        loop {
+        let result = (|| loop {
             let key = self.string()?;
             if key.0.is_empty() {
                 return Err(self.error("snbt.parser.empty_key"));
             }
             self.expect(b':')?;
-            values.insert(key, self.value()?);
+            if let Some(previous) = values.insert(key, self.value()?) {
+                super::discard_tag(previous);
+            }
             if self.eat(b'}') {
-                return Ok(Tag::Compound(values));
+                return Ok(());
             }
             self.expect(b',')?;
             if self.eat(b'}') {
-                return Ok(Tag::Compound(values));
+                return Ok(());
+            }
+        })();
+        let tag = Tag::Compound(values);
+        match result {
+            Ok(()) => Ok(tag),
+            Err(error) => {
+                super::discard_tag(tag);
+                Err(error)
             }
         }
     }
@@ -439,21 +447,28 @@ impl<'a> Parser<'a> {
             self.cursor = start;
         }
         let mut values = Vec::new();
-        if !self.eat(b']') {
-            loop {
-                values.push(if let Some(kind) = typed {
-                    self.integer(Some(kind))?
-                } else {
-                    self.value()?
-                });
-                if self.eat(b']') {
-                    break;
-                }
-                self.expect(b',')?;
-                if self.eat(b']') {
-                    break;
+        let result = (|| {
+            if !self.eat(b']') {
+                loop {
+                    values.push(if let Some(kind) = typed {
+                        self.integer(Some(kind))?
+                    } else {
+                        self.value()?
+                    });
+                    if self.eat(b']') {
+                        break;
+                    }
+                    self.expect(b',')?;
+                    if self.eat(b']') {
+                        break;
+                    }
                 }
             }
+            Ok(())
+        })();
+        if let Err(error) = result {
+            super::discard_tag(Tag::List(values));
+            return Err(error);
         }
         Ok(match typed {
             Some(0) => Tag::ByteArray(
@@ -696,10 +711,7 @@ impl<'a> Parser<'a> {
         let start = self.cursor;
         let word = self.unquoted()?;
         if self.eat(b'(') {
-            self.enter()?;
-            let result = self.arguments(&word);
-            self.depth -= 1;
-            return result;
+            return self.descend(|this| this.arguments(&word));
         }
         if word.eq_ignore_ascii_case("true") {
             Ok(Tag::Byte(1))
@@ -715,51 +727,55 @@ impl<'a> Parser<'a> {
     }
     fn arguments(&mut self, word: &str) -> Result<Tag, SnbtError> {
         let mut arguments = Vec::new();
-        if !self.eat(b')') {
-            loop {
-                arguments.push(self.value()?);
-                if self.eat(b')') {
-                    break;
+        let result = (|| {
+            if !self.eat(b')') {
+                loop {
+                    arguments.push(self.value()?);
+                    if self.eat(b')') {
+                        break;
+                    }
+                    self.expect(b',')?;
+                    if self.eat(b')') {
+                        break;
+                    }
                 }
-                self.expect(b',')?;
-                if self.eat(b')') {
-                    break;
+            }
+            match (word, arguments.as_slice()) {
+                ("bool", [value]) => {
+                    let value = match value {
+                        Tag::Byte(v) => f64::from(*v),
+                        Tag::Short(v) => f64::from(*v),
+                        Tag::Int(v) => f64::from(*v),
+                        Tag::Long(v) => *v as f64,
+                        Tag::Float(v) => f64::from(f32::from_bits(*v)),
+                        Tag::Double(v) => f64::from_bits(*v),
+                        _ => return Err(self.error("snbt.parser.expected_number_or_boolean")),
+                    };
+                    Ok(Tag::Byte(i8::from(value != 0.0)))
+                }
+                ("uuid", [Tag::String(value)]) => {
+                    let value = value
+                        .to_string()
+                        .ok()
+                        .and_then(|value| crate::text::parse_java_uuid(&value))
+                        .ok_or_else(|| self.error("snbt.parser.expected_string_uuid"))?;
+                    Ok(Tag::IntArray(vec![
+                        (value >> 96) as u32 as i32,
+                        (value >> 64) as u32 as i32,
+                        (value >> 32) as u32 as i32,
+                        value as u32 as i32,
+                    ]))
+                }
+                ("uuid", [_]) => Err(self.error("snbt.parser.expected_string_uuid")),
+                _ => {
+                    let mut error = self.error("snbt.parser.no_such_operation");
+                    error.args.push(format!("{word}/{}", arguments.len()));
+                    Err(error)
                 }
             }
-        }
-        match (word, arguments.as_slice()) {
-            ("bool", [value]) => {
-                let value = match value {
-                    Tag::Byte(v) => f64::from(*v),
-                    Tag::Short(v) => f64::from(*v),
-                    Tag::Int(v) => f64::from(*v),
-                    Tag::Long(v) => *v as f64,
-                    Tag::Float(v) => f64::from(f32::from_bits(*v)),
-                    Tag::Double(v) => f64::from_bits(*v),
-                    _ => return Err(self.error("snbt.parser.expected_number_or_boolean")),
-                };
-                Ok(Tag::Byte(i8::from(value != 0.0)))
-            }
-            ("uuid", [Tag::String(value)]) => {
-                let value = value
-                    .to_string()
-                    .ok()
-                    .and_then(|value| crate::text::parse_java_uuid(&value))
-                    .ok_or_else(|| self.error("snbt.parser.expected_string_uuid"))?;
-                Ok(Tag::IntArray(vec![
-                    (value >> 96) as u32 as i32,
-                    (value >> 64) as u32 as i32,
-                    (value >> 32) as u32 as i32,
-                    value as u32 as i32,
-                ]))
-            }
-            ("uuid", [_]) => Err(self.error("snbt.parser.expected_string_uuid")),
-            _ => {
-                let mut error = self.error("snbt.parser.no_such_operation");
-                error.args.push(format!("{word}/{}", arguments.len()));
-                Err(error)
-            }
-        }
+        })();
+        super::discard_tag(Tag::List(arguments));
+        result
     }
 }
 fn integer_value(value: Tag) -> i64 {

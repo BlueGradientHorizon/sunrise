@@ -61,7 +61,6 @@ fn shape(name: &str) -> Option<Shape> {
         | "jukebox_playable"
         | "painting/variant" => Shape::of(&TEXT_BOOLS),
         "use_effects" => Shape::of(&["can_sprint", "interact_vibrations"]),
-        "tooltip_display" => Shape::of(&["hide_tooltip"]),
         "food" => Shape::of(&["can_always_eat"]),
         "consumable" => {
             Shape::of(&["has_consume_particles", "directional_particles"]).with(&EFFECT)
@@ -87,11 +86,6 @@ fn shape(name: &str) -> Option<Shape> {
             bool_lists: &["flags"],
             ..Shape::plain()
         },
-        "container"
-        | "bundle_contents"
-        | "charged_projectiles"
-        | "use_remainder"
-        | "sulfur_cube_content" => Shape::plain().stacks(),
         // The rest hold no boolean (`custom_data` and the entity and block entity
         // data are raw NBT, which is hashed as it is).
         _ => Shape::plain(),
@@ -114,6 +108,18 @@ fn components_with<O: Ops>(map: &Compound, names: &dyn Names) -> Option<O::Value
             None => {
                 let short = key.strip_prefix("minecraft:")?;
                 match (short, value) {
+                    // Saved nested templates and sequenced sets need the codec's
+                    // effective entries, not a walk of the unnormalized NBT.
+                    (
+                        "container"
+                        | "bundle_contents"
+                        | "charged_projectiles"
+                        | "use_remainder"
+                        | "sulfur_cube_content"
+                        | "pot_decorations"
+                        | "tooltip_display",
+                        _,
+                    ) => O::saved_component(&key, value)?,
                     // `enchantment_glint_override` is a bare `Codec.BOOL`.
                     ("enchantment_glint_override", Tag::Byte(b)) => O::create_boolean(*b != 0),
                     _ => walk_with::<O>(value, &shape(short)?, names)?,

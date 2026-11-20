@@ -1,11 +1,8 @@
 //! Immutable component codec values shared by item templates and protocol codecs.
-use sunrise_core::nbt::{JavaString, Tag};
+use sunrise_core::nbt::{JavaString, Tag, with_tree_stack};
 pub mod source;
+pub mod types;
 pub use source::from_component_tag;
-
-/// The deepest list/compound nesting a tag tree may have in a conversion:
-/// `NbtAccounter.MAX_STACK_DEPTH`, the most binary NBT reads.
-pub const MAX_TREE_DEPTH: usize = 512;
 
 /// `ComponentSerialization.CODEC` collapses an unstyled literal with no siblings.
 /// Borrow the compact form so source and stream traversal share it.
@@ -14,7 +11,7 @@ pub fn compact_text_tag(mut value: &Tag) -> &Tag {
         match value {
             Tag::List(values) if values.len() == 1 => value = &values[0],
             Tag::Compound(fields) if fields.len() == 1 => match fields.iter().next() {
-                Some((key, text @ Tag::String(_))) if key.0 == [116, 101, 120, 116] => {
+                Some((key, text @ Tag::String(_))) if key.0.as_slice() == [116, 101, 120, 116] => {
                     return text;
                 }
                 _ => return value,
@@ -112,7 +109,16 @@ impl PartialEq for Value {
             (IntArray(a), IntArray(b)) => a == b,
             (LongArray(a), LongArray(b)) => a == b,
             (List(a), List(b)) => a == b,
-            (Map(a), Map(b)) => a.len() == b.len() && a.iter().all(|entry| b.contains(entry)),
+            (Map(a), Map(b)) => {
+                effective_map(a).all(|(key, value)| {
+                    b.iter()
+                        .rev()
+                        .find(|entry| &entry.0 == key)
+                        .is_some_and(|entry| &entry.1 == value)
+                }) && b
+                    .iter()
+                    .all(|(key, _)| a.iter().any(|entry| &entry.0 == key))
+            }
             (Set(a), Set(b)) => a.iter().all(|v| b.contains(v)) && b.iter().all(|v| a.contains(v)),
             (Template(a), Template(b)) => a == b,
             (Container(a), Container(b)) => a == b,
@@ -121,6 +127,13 @@ impl PartialEq for Value {
         }
     }
 }
+/// Like an NBT compound, a canonical map retains the last value for a key.
+fn effective_map(entries: &[(Value, Value)]) -> impl Iterator<Item = &(Value, Value)> {
+    entries.iter().enumerate().filter_map(|(index, entry)| {
+        (!entries[index + 1..].iter().any(|later| later.0 == entry.0)).then_some(entry)
+    })
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Projection {
     /// Opaque values may contain templates; each outermost template validates its own saved codec.
@@ -134,12 +147,9 @@ impl Value {
     pub fn string(value: &str) -> Self {
         Self::String(value.encode_utf16().collect())
     }
-    /// Refuses a tree nested deeper than [`MAX_TREE_DEPTH`] before converting any of it.
-    pub fn from_nbt(tag: &Tag, bool_keys: &[&str]) -> Result<Self, String> {
-        if !sunrise_core::nbt::within_depth(tag, MAX_TREE_DEPTH) {
-            return Err(format!("NBT nesting exceeds {MAX_TREE_DEPTH}"));
-        }
-        Ok(Self::convert_nbt(tag, bool_keys))
+    /// Convert an already materialized tree; binary NBT read limits do not apply here.
+    pub fn from_nbt(tag: &Tag, bool_keys: &[&str]) -> Self {
+        Self::convert_nbt(tag, bool_keys)
     }
     fn convert_nbt(tag: &Tag, bool_keys: &[&str]) -> Self {
         match tag {
@@ -154,8 +164,15 @@ impl Value {
             Tag::ByteArray(v) => Self::ByteArray(v.clone()),
             Tag::IntArray(v) => Self::IntArray(v.clone()),
             Tag::LongArray(v) => Self::LongArray(v.clone()),
-            Tag::List(v) => Self::List(v.iter().map(|v| Self::convert_nbt(v, bool_keys)).collect()),
-            Tag::Compound(v) => Self::Map(
+            Tag::List(v) => with_tree_stack(|| {
+                Self::List(v.iter().map(|v| Self::convert_nbt(v, bool_keys)).collect())
+            }),
+            Tag::Compound(v) => Self::convert_compound(v, bool_keys),
+        }
+    }
+    fn convert_compound(v: &sunrise_core::nbt::Compound, bool_keys: &[&str]) -> Self {
+        with_tree_stack(|| {
+            Self::Map(
                 v.iter()
                     .map(|(k, v)| {
                         let value = match v {
@@ -171,33 +188,69 @@ impl Value {
                         (Self::String(k.0.clone()), value)
                     })
                     .collect(),
-            ),
+            )
+        })
+    }
+
+    /// Release an owned materialized value without recursive container drops.
+    pub fn discard(self) {
+        let mut pending = vec![self];
+        while let Some(value) = pending.pop() {
+            match value {
+                Self::List(values) | Self::Set(values) => pending.extend(values),
+                Self::Map(entries) => {
+                    pending.extend(entries.into_iter().flat_map(|(key, value)| [key, value]))
+                }
+                Self::Template(template) => {
+                    pending.extend(template.patch.into_iter().filter_map(|(_, value)| value))
+                }
+                Self::Container(slots) => {
+                    pending.extend(slots.into_iter().flatten().flat_map(|template| {
+                        template.patch.into_iter().filter_map(|(_, value)| value)
+                    }))
+                }
+                Self::StreamOnly(value) => pending.push(*value),
+                _ => {}
+            }
         }
     }
+
     /// A read-only encoding error leaves the value available to the caller.
     pub fn to_tag(&self) -> Result<Tag, String> {
-        self.tag(Projection::Tree, 0)
+        self.tag(Projection::Tree)
     }
     /// Project to the named saved codec, refusing stream-only values and tags it cannot decode.
     pub fn to_component_tag(&self, name: &str) -> Result<Tag, String> {
-        let tag = self.tag(Projection::Codec, 0)?;
-        source::from_component_tag(name, &tag)?;
-        Ok(tag)
+        self.to_component_tag_with(name, |_| false)
+    }
+    /// As above, with the owning registry's installed native types.
+    pub fn to_component_tag_with(
+        &self,
+        name: &str,
+        is_native: fn(&str) -> bool,
+    ) -> Result<Tag, String> {
+        let tag = self
+            .tag(Projection::Codec)
+            .map_err(|error| format!("{name}: {error}"))?;
+        match source::from_component_tag_with(name, &tag, is_native) {
+            Ok(value) => {
+                value.discard();
+                Ok(tag)
+            }
+            Err(error) => {
+                sunrise_core::nbt::discard_tag(tag);
+                Err(error)
+            }
+        }
     }
     /// Presentation may inspect inline stream holders without claiming they persist.
     pub fn presentation_tag(&self) -> Result<Tag, String> {
-        self.tag(Projection::Presentation, 0)
+        self.tag(Projection::Presentation)
     }
-    fn tag(&self, projection: Projection, depth: usize) -> Result<Tag, String> {
-        if depth > MAX_TREE_DEPTH
-            || depth == MAX_TREE_DEPTH
-                && matches!(
-                    self,
-                    Self::List(_) | Self::Set(_) | Self::Map(_) | Self::Container(_)
-                )
-        {
-            return Err(format!("value nesting exceeds {MAX_TREE_DEPTH}"));
-        }
+    fn tag(&self, projection: Projection) -> Result<Tag, String> {
+        with_tree_stack(|| self.tag_with_stack(projection))
+    }
+    fn tag_with_stack(&self, projection: Projection) -> Result<Tag, String> {
         Ok(match self {
             Self::Empty => Tag::End,
             Self::Byte(v) => Tag::Byte(*v),
@@ -213,20 +266,23 @@ impl Value {
             Self::LongArray(v) => Tag::LongArray(v.clone()),
             Self::List(v) | Self::Set(v) => Tag::List(
                 v.iter()
-                    .map(|v| v.tag(projection, depth + 1))
+                    .map(|v| v.tag(projection))
                     .collect::<Result<_, _>>()?,
             ),
             Self::Map(v) => Tag::Compound(
+                // The compound's string keys identify the effective entries; don't
+                // project overwritten values (they need not have a saved form).
                 v.iter()
-                    .map(|(k, v)| {
-                        let Self::String(k) = k else {
-                            return Err("component map key is not a string".into());
-                        };
-                        Ok((JavaString(k.clone()), v.tag(projection, depth + 1)?))
+                    .map(|(key, value)| match key {
+                        Self::String(key) => Ok((key, value)),
+                        _ => Err("component map key is not a string".to_owned()),
                     })
+                    .collect::<Result<std::collections::BTreeMap<_, _>, _>>()?
+                    .into_iter()
+                    .map(|(k, v)| Ok((JavaString(k.clone()), v.tag(projection)?)))
                     .collect::<Result<_, String>>()?,
             ),
-            Self::Template(v) => v.tag(projection, depth)?,
+            Self::Template(v) => v.tag(projection)?,
             Self::Container(slots) => Tag::List(
                 slots
                     .iter()
@@ -235,15 +291,13 @@ impl Value {
                         item.as_ref().map(|item| {
                             Ok(Tag::compound([
                                 ("slot", Tag::Int(slot as i32)),
-                                ("item", item.tag(projection, depth + 2)?),
+                                ("item", item.tag(projection)?),
                             ]))
                         })
                     })
                     .collect::<Result<_, String>>()?,
             ),
-            Self::StreamOnly(v) if projection == Projection::Presentation => {
-                v.tag(projection, depth + 1)?
-            }
+            Self::StreamOnly(v) if projection == Projection::Presentation => v.tag(projection)?,
             Self::StreamOnly(_) => return Err("inline holder has no persistent encoding".into()),
         })
     }
@@ -251,12 +305,9 @@ impl Value {
 impl Template {
     /// Project the own patch to its saved form, omitting transients without changing the template.
     pub fn to_tag(&self) -> Result<Tag, String> {
-        self.tag(Projection::Tree, 0)
+        self.tag(Projection::Tree)
     }
-    fn tag(&self, projection: Projection, depth: usize) -> Result<Tag, String> {
-        if depth >= MAX_TREE_DEPTH {
-            return Err(format!("value nesting exceeds {MAX_TREE_DEPTH}"));
-        }
+    fn tag(&self, projection: Projection) -> Result<Tag, String> {
         let children = if projection == Projection::Presentation {
             projection
         } else {
@@ -271,14 +322,13 @@ impl Template {
             if projection != Projection::Presentation && !is_persistent(name) {
                 continue;
             }
-            if depth + 1 >= MAX_TREE_DEPTH {
-                return Err(format!("value nesting exceeds {MAX_TREE_DEPTH}"));
-            }
             patch.push(match value {
-                Some(value) => (name.as_str().into(), value.tag(children, depth + 2)?),
-                None if depth + 2 >= MAX_TREE_DEPTH => {
-                    return Err(format!("value nesting exceeds {MAX_TREE_DEPTH}"));
-                }
+                Some(value) => (
+                    name.as_str().into(),
+                    value
+                        .tag(children)
+                        .map_err(|error| format!("{name}: {error}"))?,
+                ),
                 None => (
                     format!("!{name}").as_str().into(),
                     Tag::Compound(Default::default()),
@@ -293,17 +343,24 @@ impl Template {
         }
         let tag = Tag::Compound(fields.into_iter().collect());
         if projection == Projection::Tree {
-            source::template_from_tag(&tag)?;
+            match source::template_from_tag(&tag) {
+                Ok(template) => Value::Template(Box::new(template)).discard(),
+                Err(error) => {
+                    sunrise_core::nbt::discard_tag(tag);
+                    return Err(error);
+                }
+            }
         }
         Ok(tag)
     }
 }
 /// The pinned component types that intentionally have no persistent codec.
 pub fn is_persistent(name: &str) -> bool {
-    !matches!(
-        name.strip_prefix("minecraft:").unwrap_or(name),
-        "map_post_processing" | "creative_slot_lock" | "additional_trade_cost"
-    )
+    if name.contains(':') {
+        !crate::item_defaults::is_transient_component(name)
+    } else {
+        !crate::item_defaults::is_transient_component(&format!("minecraft:{name}"))
+    }
 }
 
 #[cfg(test)]
@@ -320,6 +377,27 @@ mod tests {
         assert_ne!(
             Value::List(vec![Value::Int(1), Value::Int(2)]),
             Value::List(vec![Value::Int(2), Value::Int(1)])
+        );
+    }
+    #[test]
+    fn map_equality_and_projection_use_the_last_entry_for_each_key() {
+        let key = Value::string("a");
+        let duplicate = Value::Map(vec![
+            (key.clone(), Value::Int(0)),
+            (key.clone(), Value::Int(1)),
+        ]);
+        let right = Value::Map(vec![(key.clone(), Value::Int(1))]);
+        let other = Value::Map(vec![
+            (key, Value::Int(1)),
+            (Value::string("b"), Value::Int(2)),
+        ]);
+        assert_eq!(duplicate, right);
+        assert_eq!(right, duplicate);
+        assert_ne!(duplicate, other);
+        assert_ne!(other, duplicate);
+        assert_eq!(
+            duplicate.to_tag().unwrap(),
+            Tag::compound([("a", Tag::Int(1))])
         );
     }
     #[test]
