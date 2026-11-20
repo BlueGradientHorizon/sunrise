@@ -195,16 +195,30 @@ pub enum LayerGeometry {
         argument: Value,
     },
 }
+/// Tints computed for an ordinary layer, or a palette shared by special submissions.
+#[derive(Clone, Debug)]
+pub enum LayerTints {
+    Owned(Vec<i32>),
+    Shared(Arc<[i32]>),
+}
+impl LayerTints {
+    fn as_slice(&self) -> &[i32] {
+        match self {
+            Self::Owned(tints) => tints,
+            Self::Shared(tints) => tints,
+        }
+    }
+}
 /// `ItemStackRenderState.LayerRenderState`.
 #[derive(Clone, Debug)]
 pub struct LayerRender {
     pub geometry: LayerGeometry,
-    pub tints: Vec<i32>,
+    pub tints: LayerTints,
     pub foil: FoilType,
     /// `applyTransform`: the display transform, then the local transform.
     pub matrix: Mat4,
     /// `particleMaterial` (atlas sprite name).
-    pub particle: String,
+    pub particle: Arc<str>,
     pub uses_block_light: bool,
     /// Untransformed extents (quad corners or the special model's parts).
     pub extents: Arc<Vec<Vec3>>,
@@ -382,6 +396,7 @@ impl ItemRenderState {
                 let color = if run.tint_index >= 0 {
                     layer
                         .tints
+                        .as_slice()
                         .get(run.tint_index as usize)
                         .copied()
                         .unwrap_or(-1)
@@ -524,6 +539,7 @@ fn submit_quads(
         let color = if q.tint_index >= 0 {
             layer
                 .tints
+                .as_slice()
                 .get(q.tint_index as usize)
                 .copied()
                 .unwrap_or(-1)
@@ -1083,7 +1099,7 @@ impl ItemRenderer {
             }
             layers.push(LayerRender {
                 geometry,
-                tints: layer.tints,
+                tints: LayerTints::Owned(layer.tints),
                 foil: layer.foil,
                 matrix: glam_matrix(&baked.layer_matrix(
                     layer.display_transform,
@@ -1091,7 +1107,7 @@ impl ItemRenderer {
                     &layer.transform,
                 )),
                 uses_block_light: baked.uses_block_light,
-                particle: sprite_name(&baked.particle.sprite).to_owned(),
+                particle: Arc::from(sprite_name(&baked.particle.sprite)),
                 extents,
                 display,
             });
@@ -1750,10 +1766,10 @@ mod tests {
                     },
                     argument: Value::Null,
                 },
-                tints: Vec::new(),
+                tints: LayerTints::Owned(Vec::new()),
                 foil: FoilType::None,
                 matrix: Mat4::from_translation(Vec3::new(0.0, 2.0, 0.0)),
-                particle: String::new(),
+                particle: Arc::from(""),
                 uses_block_light: false,
                 display: DisplayContext::Ground,
                 extents: Arc::new(vec![

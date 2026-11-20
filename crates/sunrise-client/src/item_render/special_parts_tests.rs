@@ -484,7 +484,7 @@ fn a_registered_special_model_draws_its_renderers_resource_models() {
                 .iter()
                 .all(|q| q.color == 0xFFCC_2211)
         );
-        assert_eq!(two.layers[0].particle, "spt:item/flour");
+        assert_eq!(two.layers[0].particle.as_ref(), "spt:item/flour");
         assert!(!two.uses_block_light());
         assert!(
             two.animated,

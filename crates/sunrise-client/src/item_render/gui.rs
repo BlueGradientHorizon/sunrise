@@ -295,7 +295,7 @@ impl DrawnKey {
                 super::LayerGeometry::Quads(baked) if layer.foil == super::FoilType::None => {
                     Some((
                         Arc::as_ptr(baked) as usize,
-                        layer.tints.clone(),
+                        layer.tints.as_slice().to_vec(),
                         layer.matrix.to_cols_array().map(f32::to_bits),
                         layer.uses_block_light,
                     ))

@@ -1,6 +1,7 @@
 //! Baking special model nodes at load and preparing their recipes at draw time.
 use super::{
-    ItemRenderState, ItemRenderer, LayerGeometry, LayerRender, corners, glam_matrix, sprite_name,
+    ItemRenderState, ItemRenderer, LayerGeometry, LayerRender, LayerTints, corners, glam_matrix,
+    sprite_name,
 };
 use glam::Vec3;
 use mod_api::{
@@ -198,14 +199,14 @@ impl ItemRenderer {
                 warn_unknown_part_once(unknown);
                 vec![part(
                     MISSING_MODEL,
-                    Vec::new(),
+                    Arc::default(),
                     sunrise_assets::math::Mat4::IDENTITY,
                 )]
             }
             None => parts
                 .iter()
                 .map(|p| match &p.content {
-                    SpecialContent::Model(model) => part(model, p.tints.clone(), p.pose),
+                    SpecialContent::Model(model) => part(model, p.tints.as_slice().into(), p.pose),
                     SpecialContent::Stack { stack, display } => PreparedPart {
                         content: PreparedContent::Stack {
                             stack: stack.clone(),
@@ -268,11 +269,11 @@ impl ItemRenderer {
                     tints,
                 } => layers.push(LayerRender {
                     geometry: LayerGeometry::Quads(geometry.clone()),
-                    tints: tints.clone(),
+                    tints: LayerTints::Shared(tints.clone()),
                     foil,
                     matrix,
                     uses_block_light: base.uses_block_light,
-                    particle: sprite_name(&base.particle.sprite).to_owned(),
+                    particle: Arc::from(sprite_name(&base.particle.sprite)),
                     extents: extents.clone(),
                     display,
                 }),
@@ -348,7 +349,7 @@ enum PreparedContent {
     Model {
         geometry: Arc<BakedItemModel>,
         extents: Arc<Vec<Vec3>>,
-        tints: Vec<i32>,
+        tints: Arc<[i32]>,
     },
     /// A stack, resolved when the item is drawn, so what it draws moves with its own models.
     Stack {
