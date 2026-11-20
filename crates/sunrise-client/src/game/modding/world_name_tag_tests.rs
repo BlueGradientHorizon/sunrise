@@ -122,14 +122,15 @@ fn a_label_hides_behind_a_wall_unless_it_is_see_through() {
         assert!(!world.is_empty() && through.is_empty());
         let empty = pixels(game, &[], &[]);
         assert_ne!(pixels(game, &world, &[]), empty, "visible without a wall");
-        // An alpha under 26 draws no text; 26 does. `exact_light` has no effect without
-        // `see_through`.
-        let faded_glyphs = |game: &mut super::Game<'_>, alpha| {
-            let options = NameTagOptions::new(false, false, 0x00).with_faded_alpha(alpha);
-            labels(game, [0.5, 70.0, 0.5], &text, options).1[0].len()
+        // An alpha under 26 draws no text (its fragments are discarded); 26 does. `exact_light`
+        // has no effect without `see_through`.
+        let faded = |game: &mut super::Game<'_>, alpha| {
+            let options = NameTagOptions::new(false, false, 0xF0).with_faded_alpha(alpha);
+            let copy = labels(game, [0.5, 70.0, 0.5], &text, options).1[0].clone();
+            pixels(game, &copy, &[])
         };
-        assert_eq!(faded_glyphs(game, 25), 0);
-        assert!(faded_glyphs(game, 26) > 0);
+        assert_eq!(faded(game, 25), empty);
+        assert_ne!(faded(game, 26), empty);
         let plain = NameTagOptions::new(false, true, 0x00);
         assert_eq!(
             bytes(&labels(game, [0.5, 70.0, 0.5], &text, plain.with_exact_light()).1[0]),
