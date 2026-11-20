@@ -785,6 +785,7 @@ mod tests {
                     None,
                     None,
                     false,
+                    None,
                 )],
                 || {
                     super::super::native_entity_refs::tests::with_client_game(|game| {
