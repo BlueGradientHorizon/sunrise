@@ -75,6 +75,7 @@ impl SpecialModelRenderer for Pan {
 
 /// Bridge the fixture's two synthetic items to the recipe consumer, without booting a game.
 struct PanEnv<'r>(&'r ItemRenderer, FakeHost);
+impl ItemDrawEnv for PanEnv<'_> {}
 impl ItemEnv for PanEnv<'_> {
     fn special_model_parts(
         &self,

@@ -952,6 +952,7 @@ fn draw_presets(
 /// The item environment of the layer icons: only the grass colormap is needed
 /// (`minecraft:grass` tint of the grass block), as the inventory draws it.
 struct GrassEnv<'a>(&'a ItemRenderer);
+impl item_render::ItemDrawEnv for GrassEnv<'_> {}
 impl ItemEnv for GrassEnv<'_> {
     fn grass_color(&self, temperature: f64, downfall: f64) -> i32 {
         self.0.grass_color(temperature, downfall)

@@ -165,6 +165,10 @@ impl ItemSink for Vec<ItemQuad> {
     }
 }
 
+/// Client drawing services in addition to the asset resolver's host services.
+pub trait ItemDrawEnv: ItemEnv {}
+impl ItemDrawEnv for sunrise_assets::item_model::NoEnv {}
+
 /// Data special renderers read from the game (registries, skins).
 pub trait SpecialHost {
     /// The banner atlas texture of a banner pattern (`entity/banner/<asset>`).
@@ -1005,7 +1009,7 @@ impl ItemRenderer {
         owner: Option<&OwnerState>,
         level: Option<&LevelState>,
         seed: i32,
-        env: &dyn ItemEnv,
+        env: &dyn ItemDrawEnv,
     ) -> ItemRenderState {
         self.resolve_with_rule(stack, display, owner, level, seed, env, None)
     }
@@ -1020,7 +1024,7 @@ impl ItemRenderer {
         owner: Option<&OwnerState>,
         level: Option<&LevelState>,
         seed: i32,
-        env: &dyn ItemEnv,
+        env: &dyn ItemDrawEnv,
         rule: Option<usize>,
     ) -> ItemRenderState {
         let ctx = Context {
@@ -1064,7 +1068,7 @@ impl ItemRenderer {
         layers: &mut Vec<LayerRender>,
         ancestor: &StackAncestor<'_>,
         ctx: &Context<'_>,
-        env: &dyn ItemEnv,
+        env: &dyn ItemDrawEnv,
         rule: Option<usize>,
         remaining: &mut usize,
     ) -> ControlFlow<(), RenderLayerFlags> {

@@ -59,6 +59,8 @@ impl Game<'_> {
     }
 }
 
+impl item_render::ItemDrawEnv for Env<'_, '_> {}
+
 impl ItemEnv for Env<'_, '_> {
     fn item_model_property(&self, property: &str, stack: &StackView) -> bool {
         if !mod_api::__private::listened(mod_api::HookId::ItemModelProperty) {
