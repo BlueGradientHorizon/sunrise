@@ -84,7 +84,6 @@ pub struct MenuButtonContext {
 #[cfg(test)]
 mod menu_button_context_tests {
     use super::MenuButtonContext;
-    use crate::Wire;
     use crate::wire::{Reader, Writer};
 
     #[test]
