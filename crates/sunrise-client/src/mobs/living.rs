@@ -366,12 +366,103 @@ impl MobWorld<'_> {
         })
     }
 }
-type TravelTail = dyn FnOnce(&mut Mob, &MobWorld, &mut DamageLevel<'_>, &mut Vec<MobEvent>) + Send;
+type TravelFinish = fn(&mut Mob, &MobWorld, &mut DamageLevel<'_>, &mut Vec<MobEvent>);
+
+/// Only travel's own scalar inputs survive the move. Keeping them inline in
+/// the tick's pause slot avoids allocating a continuation on a trample.
+enum TravelTail {
+    Fixed(TravelFinish),
+    Air {
+        friction: f32,
+        stop_gliding: bool,
+    },
+    Fluid {
+        falling: bool,
+        old_y: f64,
+        gravity: f64,
+        water_slow: Option<f32>,
+    },
+    Flying {
+        drag: f64,
+    },
+    FallFlying {
+        before: f64,
+    },
+}
+
+impl TravelTail {
+    fn finish(
+        self,
+        mob: &mut Mob,
+        w: &MobWorld,
+        level: &mut DamageLevel<'_>,
+        events: &mut Vec<MobEvent>,
+    ) {
+        match self {
+            Self::Fixed(finish) => finish(mob, w, level, events),
+            Self::Air {
+                friction,
+                stop_gliding,
+            } => {
+                mob.finish_air_travel(w, friction);
+                if stop_gliding {
+                    mob.extra.fall_flying = false;
+                }
+            }
+            Self::Fluid {
+                falling,
+                old_y,
+                gravity,
+                water_slow,
+            } => {
+                mob.finish_fluid_travel(w, falling, old_y, gravity, water_slow);
+            }
+            Self::Flying { drag } => {
+                mob.velocity = Vec3::new(
+                    mob.velocity.x * drag,
+                    mob.velocity.y * drag,
+                    mob.velocity.z * drag,
+                );
+            }
+            Self::FallFlying { before } => {
+                if mob.horizontal_collision {
+                    let damage = ((before
+                        - (mob.velocity.x * mob.velocity.x + mob.velocity.z * mob.velocity.z)
+                            .sqrt())
+                        * 10.0
+                        - 3.0) as f32;
+                    if damage > 0.0 {
+                        let monster = super::ai::is_monster(mob.species());
+                        let sound = match (monster, damage as i32 > 4) {
+                            (true, true) => "entity.hostile.big_fall",
+                            (true, false) => "entity.hostile.small_fall",
+                            (false, true) => "entity.generic.big_fall",
+                            (false, false) => "entity.generic.small_fall",
+                        };
+                        if !mob.silent {
+                            events.push(MobEvent::Sound(
+                                sound,
+                                [mob.position.x, mob.position.y, mob.position.z],
+                                1.0,
+                                1.0,
+                            ));
+                        }
+                        mob.damage(
+                            level,
+                            damage,
+                            super::Damage::of(super::DamageKind::FlyIntoWall),
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
 
 /// An authoritative move stopped inside `Entity.move`, and the remaining travel.
 pub struct TravelTrample {
     movement: MoveTrample,
-    tail: Box<TravelTail>,
+    tail: TravelTail,
 }
 
 impl std::fmt::Debug for TravelTrample {
@@ -396,7 +487,7 @@ impl TravelTrample {
     ) {
         mob.finish_trample_fall(w, level, events, self.movement.trample);
         mob.finish_move(w, level, self.movement.wanted, self.movement.moved, events);
-        (self.tail)(mob, w, level, events);
+        self.tail.finish(mob, w, level, events);
     }
 }
 
@@ -1723,36 +1814,7 @@ impl Mob {
             self.yaw,
             self.effective_gravity(),
         );
-        self.travel_move(w, level, events, pause, move |mob, _, level, events| {
-            if mob.horizontal_collision {
-                let damage = ((before
-                    - (mob.velocity.x * mob.velocity.x + mob.velocity.z * mob.velocity.z).sqrt())
-                    * 10.0
-                    - 3.0) as f32;
-                if damage > 0.0 {
-                    let monster = super::ai::is_monster(mob.species());
-                    let sound = match (monster, damage as i32 > 4) {
-                        (true, true) => "entity.hostile.big_fall",
-                        (true, false) => "entity.hostile.small_fall",
-                        (false, true) => "entity.generic.big_fall",
-                        (false, false) => "entity.generic.small_fall",
-                    };
-                    if !mob.silent {
-                        events.push(MobEvent::Sound(
-                            sound,
-                            [mob.position.x, mob.position.y, mob.position.z],
-                            1.0,
-                            1.0,
-                        ));
-                    }
-                    mob.damage(
-                        level,
-                        damage,
-                        super::Damage::of(super::DamageKind::FlyIntoWall),
-                    );
-                }
-            }
-        })
+        self.travel_move_with(w, level, events, pause, TravelTail::FallFlying { before })
     }
     /// LivingEntity.travelFlying: no gravity, `0.91F` drag in the air,
     /// `0.8F` in water and 0.5 in lava. A happy ghast swims as fast as it
@@ -1805,13 +1867,7 @@ impl Mob {
             (air_speed, f64::from(0.91_f32))
         };
         self.move_relative(speed, input);
-        self.travel_move(w, level, events, pause, move |mob, _, _, _| {
-            mob.velocity = Vec3::new(
-                mob.velocity.x * drag,
-                mob.velocity.y * drag,
-                mob.velocity.z * drag,
-            );
-        })
+        self.travel_move_with(w, level, events, pause, TravelTail::Flying { drag })
     }
 
     /// Continue immediately unless `fallOn` needs the owning level. Only an
@@ -1822,19 +1878,25 @@ impl Mob {
         level: &mut DamageLevel<'_>,
         events: &mut Vec<MobEvent>,
         pause: bool,
-        tail: impl FnOnce(&mut Mob, &MobWorld, &mut DamageLevel<'_>, &mut Vec<MobEvent>)
-        + Send
-        + 'static,
+        tail: TravelFinish,
+    ) -> Result<(), TravelTrample> {
+        self.travel_move_with(w, level, events, pause, TravelTail::Fixed(tail))
+    }
+
+    fn travel_move_with(
+        &mut self,
+        w: &MobWorld,
+        level: &mut DamageLevel<'_>,
+        events: &mut Vec<MobEvent>,
+        pause: bool,
+        tail: TravelTail,
     ) -> Result<(), TravelTrample> {
         if let Some(movement) =
             self.move_until_trample(w, level, events, &mut MoveGate::new(), pause)
         {
-            return Err(TravelTrample {
-                movement,
-                tail: Box::new(tail),
-            });
+            return Err(TravelTrample { movement, tail });
         }
-        tail(self, w, level, events);
+        tail.finish(self, w, level, events);
         Ok(())
     }
     fn block_friction(&self, w: &MobWorld) -> f32 {
@@ -1912,12 +1974,16 @@ impl Mob {
             self.fall_distance = 0.0;
             self.velocity = Self::climbable_velocity(self.velocity);
         }
-        self.travel_move(w, level, events, pause, move |mob, w, _, _| {
-            mob.finish_air_travel(w, friction);
-            if stop_gliding {
-                mob.extra.fall_flying = false;
-            }
-        })
+        self.travel_move_with(
+            w,
+            level,
+            events,
+            pause,
+            TravelTail::Air {
+                friction,
+                stop_gliding,
+            },
+        )
     }
 
     fn finish_air_travel(&mut self, w: &MobWorld, friction: f32) {
@@ -1992,9 +2058,18 @@ impl Mob {
             self.move_relative(0.02, input);
             None
         };
-        self.travel_move(w, level, events, pause, move |mob, w, _, _| {
-            mob.finish_fluid_travel(w, falling, old_y, gravity, water_slow);
-        })
+        self.travel_move_with(
+            w,
+            level,
+            events,
+            pause,
+            TravelTail::Fluid {
+                falling,
+                old_y,
+                gravity,
+                water_slow,
+            },
+        )
     }
 
     fn finish_fluid_travel(
