@@ -294,6 +294,11 @@ impl Mixer {
         };
         i as u32 + 1
     }
+    /// Some sound has effects (`SoundPlay::effects`), or a reverb's tail is still ringing.
+    fn effects_heard(&self) -> bool {
+        self.channels.values().any(|c| !c.fx.bypassed())
+            || self.reverbs.buses.iter().any(|b| !b.idle())
+    }
 }
 /// A sound the player could have heard (`SoundEventListener.onPlaySound`):
 /// what the subtitle overlay needs.
@@ -924,10 +929,12 @@ fn mix_with_effects(
 }
 /// [`mix`] over `data` in pieces of at most [`MAX_MIX_FRAMES`] frames: the reverbs' send buffer
 /// was sized for that when the mixer was made, so mixing never allocates, however large a buffer
-/// the device asks for. One piece, the whole buffer, for every usual buffer size.
+/// the device asks for. One piece, the whole buffer, for every usual buffer size, and whenever no
+/// sound has effects and no reverb is ringing: then nothing uses the send buffer, and the output
+/// is the one `mix` it was before effects existed.
 fn mix_pieces(mixer: &mut Mixer, data: &mut [f32], channels: usize, rate: u32) {
     let most = MAX_MIX_FRAMES * channels.max(1);
-    if data.len() <= most {
+    if data.len() <= most || !mixer.effects_heard() {
         return mix(mixer, data, channels, rate);
     }
     for piece in data.chunks_mut(most) {
@@ -3333,6 +3340,32 @@ mod tests {
         listen(&mut m, 0.1);
         let idle = m.reverbs.buses.each_ref().map(reverb::Reverb::idle);
         assert_eq!(idle, [false, true, true]);
+    }
+
+    #[test]
+    fn a_huge_buffer_without_effects_mixes_as_one_buffer() {
+        // 20,000 frames in one device buffer, too loud for the limiter only near the end: with no
+        // effects it is one `mix` limited as a whole, bit for bit, not two pieces limited apart.
+        let loud = || {
+            let mut m = Mixer::default();
+            let samples = sine(440.0)
+                .iter()
+                .enumerate()
+                .map(|(i, s)| if i < 18_000 { *s } else { s * 6.0 })
+                .collect();
+            m.channels
+                .insert(1, channel(samples, None, [0.0, 0.0, 2.0], true));
+            m
+        };
+        let mut pieces = vec![0.0; 2 * 20_000];
+        mix_pieces(&mut loud(), &mut pieces, 2, 48_000);
+        let mut whole = vec![0.0; 2 * 20_000];
+        mix(&mut loud(), &mut whole, 2, 48_000);
+        assert!(whole.iter().any(|s| *s != 0.0));
+        assert_eq!(
+            pieces.iter().map(|s| s.to_bits()).collect::<Vec<_>>(),
+            whole.iter().map(|s| s.to_bits()).collect::<Vec<_>>()
+        );
     }
 
     #[test]
