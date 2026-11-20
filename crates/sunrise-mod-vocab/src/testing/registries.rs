@@ -118,9 +118,15 @@ impl crate::Tags for FakeRegistries {
         Self::resolved_item_id(item)?;
         Some(false)
     }
-    fn items(&self, _: crate::TagKey) -> Option<Vec<crate::ItemKey>> {
-        crate::parts::installed()?.resolved_items.get()?;
-        Some(Vec::new())
+    fn items(&self, _: crate::TagKey) -> crate::ItemTagMembers {
+        if crate::parts::installed()
+            .and_then(|parts| parts.resolved_items.get())
+            .is_some()
+        {
+            crate::ItemTagMembers::Missing
+        } else {
+            crate::ItemTagMembers::Unavailable
+        }
     }
     fn fluids(&self, _: crate::TagKey) -> Option<Vec<crate::FluidKey>> {
         crate::parts::resolved_fluids().get()?;
