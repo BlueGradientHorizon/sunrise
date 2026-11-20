@@ -1824,35 +1824,48 @@ impl super::Game<'_> {
 
     pub(in crate::game) fn api_menu_button(
         &mut self,
+        menu: &str,
+        block: Option<&str>,
         context: &mod_api::item::menu::MenuButtonContext,
-        entity: &mut crate::containers::ModBlockEntity,
+        entity: Option<&mut crate::containers::ModBlockEntity>,
         carried: &mut Option<EngineStack>,
     ) {
         if !mod_api::__private::has_part_hook(mod_api::HookId::MenuButton) {
             return;
         }
-        let (Ok(mut api), Ok(mut cursor)) = (entity.try_into_api(), carried.try_into_api()) else {
+        let mut api_entity = match entity.as_deref().map(TryIntoApi::try_into_api).transpose() {
+            Ok(entity) => entity,
+            Err(_) => return,
+        };
+        let Ok(mut cursor) = carried.try_into_api() else {
             return;
         };
-        let revision = api.revision();
+        let revision = api_entity.as_ref().map(|entity| entity.revision());
         let original = cursor.clone();
-        self.native_menu_button(context, &mut api, &mut cursor);
-        let cursor = if cursor == original {
-            Ok(None)
-        } else {
-            cursor
-                .try_into_engine(self.items())
-                .map(Some)
-                .map_err(|_| BlockEntitySnapshotError::InvalidStack)
-        };
-        if let Ok(Some(cursor)) = finish_block_entity_writeback(
-            entity,
-            &api,
-            revision,
-            self.items(),
-            "menu_button",
-            cursor,
-        ) {
+        self.native_menu_button(menu, block, context, api_entity.as_mut(), &mut cursor);
+        // The outer Option means whether the callback changed the cursor; the inner one is its
+        // new value. `Some(None)` is an explicit consume, while `None` leaves it untouched.
+        let cursor: Result<Option<Option<EngineStack>>, BlockEntitySnapshotError> =
+            if cursor == original {
+                Ok(None)
+            } else {
+                cursor
+                    .try_into_engine(self.items())
+                    .map(Some)
+                    .map_err(|_| BlockEntitySnapshotError::InvalidStack)
+            };
+        if let (Some(entity), Some(api), Some(revision)) = (entity, api_entity.as_ref(), revision) {
+            if let Ok(Some(cursor)) = finish_block_entity_writeback(
+                entity,
+                api,
+                revision,
+                self.items(),
+                "menu_button",
+                cursor,
+            ) {
+                *carried = cursor;
+            }
+        } else if let Ok(Some(cursor)) = cursor {
             *carried = cursor;
         }
     }

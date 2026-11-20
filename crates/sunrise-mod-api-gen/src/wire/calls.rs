@@ -660,6 +660,9 @@ fn reborrow(types: &Types<'_>, ty: &Ty, place: &str) -> Option<String> {
 /// Writes a borrowed record tree directly in ordinary Wire order, without cloning its data.
 pub(super) fn snapshot(types: &Types<'_>, ty: &Ty, place: &str) -> Option<String> {
     Some(match ty {
+        Ty::Named(d) if types.defs[*d].view.is_some() => {
+            format!("({place}).__wire_put_snapshot(w);")
+        }
         Ty::Named(d) if types.defs[*d].lifetimes != 0 => {
             let fields = types.defs[*d].borrowed.fields()?;
             fields
@@ -755,6 +758,23 @@ pub(super) fn writeback_fields(
         if let Ty::Named(d) = inner
             && frame_cases(types, *d).is_some()
         {
+            continue;
+        }
+        if let Ty::Option(optional) = &f.ty
+            && let Ty::Named(d) = &**optional
+            && let Some(view) = &types.defs[*d].view
+        {
+            if mutable && view.mutable {
+                own.push(Writeback {
+                    local,
+                    path: format!("{name}.{}", f.rust),
+                    owned: format!("Option<{}>", rust_ty(types, &view.snapshot, false)),
+                    reference: false,
+                    optional: true,
+                    view: true,
+                    append: false,
+                });
+            }
             continue;
         }
         if let Ty::Named(d) = inner
@@ -921,6 +941,21 @@ fn borrowed_prepared(
             let _ = send;
             continue;
         }
+        // An optional view owns its snapshot for the callback, then lends the view to the event.
+        if let Ty::Option(optional) = &f.ty
+            && let Ty::Named(view_def) = &**optional
+            && let Some(view) = &types.defs[*view_def].view
+        {
+            let pointee = rust_ty(types, &view.pointee, false);
+            writeln!(
+                read,
+                "let mut {local}_held: Option<{pointee}> = input.take()?; let mut {local} = {local}_held.as_mut().map({}::new);",
+                types.defs[*view_def].rust
+            )
+            .unwrap();
+            build.push(format!("{}: {local}", f.rust));
+            continue;
+        }
         // A slice of borrowed strings borrows a local list of them, read as owned strings.
         if let Ty::List(item, List::Slice) = &f.ty
             && matches!(**item, Ty::Str(Str::Borrowed))
@@ -954,6 +989,8 @@ fn borrowed_prepared(
     for leaf in writeback_fields(types, def, name, mutable)? {
         if leaf.append {
             write!(back, "out.put({name}.__wire_changes());").unwrap();
+        } else if leaf.optional && leaf.view {
+            write!(back, "out.put_opt({}.as_ref());", leaf.path).unwrap();
         } else if leaf.optional {
             write!(back, "out.put_opt({}.as_deref());", leaf.path).unwrap();
         } else if leaf.view {

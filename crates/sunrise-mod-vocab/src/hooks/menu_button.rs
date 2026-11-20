@@ -2,14 +2,16 @@
 // catalog-order: 0031
 
 pub trait Hooks {
-    /// A player pressed a mod container's button (`clickMenuButton`), on
-    /// the server. The block entity is out of the world during the call;
-    /// mods may change it and the clicking player's carried stack.
+    /// A player pressed a mod menu's button (`clickMenuButton`), on the
+    /// server. `entity` is the block entity backing the menu when there is
+    /// one, out of the world during the call; it is None for a blockless
+    /// menu. Mods may change it and the clicking player's carried stack.
     #[hook(
+        version = 2,
         side = "server",
         contract = "listen",
-        scope = "block_entity",
-        key = "entity",
+        scope = "menu",
+        key = "menu",
         neoforge = "none (NeoForge has no such event; vanilla AbstractContainerMenu.clickMenuButton)"
     )]
     fn menu_button();

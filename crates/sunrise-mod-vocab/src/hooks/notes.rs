@@ -1579,7 +1579,9 @@ And `/damage` on a mob `by` one entity `from` another with a melee damage type g
 one, where vanilla gives the `by` one.
 
 
-`menu_button` handles a mod container's button (`AbstractContainerMenu.clickMenuButton(Player, int)`) on the server, for single player and LAN guests. It exposes the player identity, button, block entity and mutable carried stack, so a widget outside the slots can take or give what the player carries.
+`menu_button_valid` asks the owner of the active menu whether it accepts a button ID. The owner chooses its IDs; there is no shared range. Only an accepted ID reaches `menu_button`.
+
+`menu_button` handles a mod menu's button (`AbstractContainerMenu.clickMenuButton(Player, int)`) on the server, for single player and LAN guests. It is routed to the active menu type's owner and exposes the player identity, button, optional block position, optional backing block entity and mutable carried stack, so a widget outside the slots can take or give what the player carries. A blockless menu supplies None for the position and entity.
 
 - `native_block_entity_sync(pos)`, which sends the block and its update tag to clients again
   (`Level.sendBlockUpdated`): with the level's block changes, to the players who see its chunk, once per position
@@ -2847,7 +2849,7 @@ registration path.
   The screen goes with the menu type, as a `RegisterMenuScreensEvent` screen does, whatever opened the menu: a block's use or `player_open_mod_menu` from an item's use, an entity or a command. Each hook names the mod block whose menu it is (`block`, `None` without one); on a vanilla type only that block's mod's part hears them.
 
 - Buttons, tooltips and item icons on mod screens: `screen_click` and `screen_tooltip` (the client), `menu_button`
-  (a button press on the server, on the mod block entity) and the helpers `native_item`, `native_screen_title`, `LevelRef::block`,
+  (a button press on the server, on the menu type, with an optional backing block entity) and the helpers `native_item`, `native_screen_title`, `LevelRef::block`,
   `LevelRef::block_property` and `native_cursor`. A mod inserts items through the block's item capability,
   `level.capability(host, &ITEMS, pos, side)`.
 - `menu.click_button(host, button)`, on a client `MenuRef`, presses button `button` of the open menu as a click on one of its buttons does
