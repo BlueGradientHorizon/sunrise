@@ -175,10 +175,24 @@ fn check_command_accepts_an_update_without_shipping_history_or_the_icon_again() 
     );
 
     manifest(root, "2.0.0");
+    let manifest_path = root.join("sunrise-mod.toml");
+    let source = fs::read_to_string(&manifest_path).unwrap();
+    fs::write(
+        manifest_path,
+        format!("{source}\n[dependencies]\nfixture_missing_dep = '^2'\n"),
+    )
+    .unwrap();
     let output = success(run(
         root,
         &["publish", "--registry", checkout, "--out", out],
     ));
+    assert!(
+        output.lines().any(|line| line
+            .trim_start()
+            .strip_prefix("- ")
+            .is_some_and(|bullet| bullet.contains("fixture_missing_dep") && bullet.contains("^2"))),
+        "{output}"
+    );
     let staged_entry = fs::read_to_string(root.join(out).join(ENTRY)).unwrap();
     let new: Entry = toml::from_str(&staged_entry).unwrap();
     assert_eq!(new.versions[0].version, "2.0.0");
