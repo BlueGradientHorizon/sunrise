@@ -166,6 +166,7 @@ mod tests {
         Hook { y: f64, health: f32 },
         Lift(u32, f64, Option<mod_api::BlockState>),
         Write(mod_api::BlockState),
+        GameEvent([f64; 3], Option<u32>, Option<mod_api::BlockState>),
         Fall(f32, f64, mod_api::BlockState),
     }
 
@@ -210,6 +211,20 @@ mod tests {
                 assert_eq!(level.block_state(FIELD), Some(event.new));
                 self.0.lock().unwrap().push(Moment::Write(event.new));
             }
+        }
+        fn vanilla_game_event(
+            &self,
+            _: &mut dyn ServerHost,
+            event: &mut VanillaGameEventEvent<'_>,
+        ) -> Flow {
+            if event.event == "minecraft:block_change" {
+                self.0.lock().unwrap().push(Moment::GameEvent(
+                    event.pos,
+                    event.cause,
+                    event.affected_state,
+                ));
+            }
+            Flow::Continue
         }
         fn living_incoming_damage(
             &self,
@@ -475,6 +490,9 @@ mod tests {
                         use crate::game::api_values::TryIntoApi;
                         state.try_into_api().unwrap()
                     };
+                // With no trample listener, this pins the 26.3 order from
+                // FarmlandBlock.turnToBaseBlock and fallOn. The farmland's top is
+                // 15/16 high; replacing it with a full cube raises both bodies to 64.
                 let mut expected = Vec::new();
                 if choice != Choice::Absent {
                     expected.push(Moment::Hook {
@@ -495,6 +513,11 @@ mod tests {
                 }
                 if converted {
                     expected.push(Moment::Write(api_state(floor)));
+                    expected.push(Moment::GameEvent(
+                        [1.5, 63.5, 1.5],
+                        Some(LANDING),
+                        Some(api_state(floor)),
+                    ));
                 }
                 if damage != 0.0 {
                     expected.push(Moment::Fall(damage, y_after, api_state(floor)));
@@ -507,18 +530,20 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn an_allowing_listener_keeps_the_player_landing_order() {
-        let baseline = land(WALKING, Choice::Absent);
-        let allowed = land(WALKING, Choice::Allow);
-        assert_eq!(allowed[1..], baseline);
+    fn player_and_mob_trampling_without_a_listener_follow_vanilla_order() {
+        for body in [WALKING, Body::Pig] {
+            land(body, Choice::Absent);
+        }
     }
 
     #[test]
     #[ignore = "daily"]
-    fn an_allowing_listener_keeps_the_mob_landing_order_and_lifts_all_bodies() {
-        let baseline = land(Body::Pig, Choice::Absent);
-        let allowed = land(Body::Pig, Choice::Allow);
-        assert_eq!(allowed[1..], baseline);
+    fn an_allowing_listener_keeps_the_player_and_mob_landing_order() {
+        for body in [WALKING, Body::Pig] {
+            let baseline = land(body, Choice::Absent);
+            let allowed = land(body, Choice::Allow);
+            assert_eq!(allowed[1..], baseline);
+        }
     }
 
     #[test]
