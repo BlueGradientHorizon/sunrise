@@ -1170,6 +1170,8 @@ struct Game<'a> {
     focus_after_run: Option<bool>,
     /// Whether the window currently accepts input method events.
     ime_allowed: bool,
+    /// The character of the key held down, for the input method's echo of it.
+    held_key_text: ime::HeldKeyText,
     /// The candidate window's area last given to the window, in pixels.
     ime_area: Option<[i32; 4]>,
     /// When the window lost focus, while it is still without
@@ -9178,6 +9180,22 @@ impl Game<'_> {
         if let WindowEvent::DroppedFile(path) = &event {
             self.drop_pack_file(path);
         }
+        if let WindowEvent::KeyboardInput {
+            event: key_event, ..
+        } = &event
+            && let PhysicalKey::Code(key) = key_event.physical_key
+        {
+            if key_event.state == ElementState::Pressed {
+                // Only a press that finds no field focused can open one.
+                let text = key_event
+                    .text
+                    .as_deref()
+                    .filter(|_| !self.text_field_focused());
+                self.held_key_text.pressed(key, text);
+            } else {
+                self.held_key_text.released(key);
+            }
+        }
         // GLFW never hands a field the keys an input method consumes: while a
         // composition is open, and the Enter or Escape that ends it (winit on
         // Windows still sends that one right after `Ime::Commit`).
@@ -10875,6 +10893,7 @@ impl<'a> Game<'a> {
             unclaimed_modifiers: None,
             focus_after_run: None,
             ime_allowed: false,
+            held_key_text: Default::default(),
             ime_area: None,
             focus_lost: None,
             modifiers: winit::keyboard::ModifiersState::empty(),
