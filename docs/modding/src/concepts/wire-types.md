@@ -2,9 +2,10 @@
 
 `mod_api::wire::{Wire, Reader, Writer, WireError}` defines the codec used by
 [typed payload tokens](../how-to/client/networking.md#typed-payloads) and
-[recipe placement and recipe-book sync](../crafting-recipe-kinds.md). Derive `mod_api::Wire` explicitly on a type
-that needs this encoding. The build never adds the derive. Every field of a derived type must also
-implement `Wire`.
+[recipe placement and recipe-book sync](../crafting-recipe-kinds.md). Typed payload bodies
+use `PayloadCodec`, not `Wire`. Derive `mod_api::Wire` explicitly on a type that needs
+this encoding. The build never adds the derive. Every field of a derived type must
+also implement `Wire`.
 
 ```rust,ignore
 #[derive(mod_api::Wire)]
