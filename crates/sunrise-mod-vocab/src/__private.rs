@@ -236,21 +236,9 @@ pub mod built {
     pub fn model_ref(generation: u64, slot: u32) -> crate::ModelRef {
         crate::ModelRef(generation, slot)
     }
-    /// An empty baked model copy the game fills field by field.
-    pub fn baked_model_view() -> crate::BakedModelView {
-        crate::BakedModelView {
-            ambient_occlusion: true,
-            particle: None,
-            quads: Vec::new(),
-        }
-    }
     /// What a mod may still create of its dynamic textures: `images` and `bytes` of pixels left.
     pub fn dynamic_texture_budget(images: u32, bytes: u64) -> crate::DynamicTextureBudget {
         crate::DynamicTextureBudget { images, bytes }
-    }
-    /// Wrap a slot of the baked model store's published generation.
-    pub fn baked_model_key(generation: u64, slot: u32) -> crate::BakedModelKey {
-        crate::BakedModelKey(generation, slot)
     }
     /// Wrap a slot in the pipeline set's published generation.
     pub fn render_pipeline_ref(generation: u64, slot: u32) -> crate::RenderPipelineRef {

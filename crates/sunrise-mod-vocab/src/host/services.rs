@@ -362,11 +362,11 @@ pub trait RenderAssets {
     /// Published asset/data read: available in Setup, Reloading and World.
     /// Keys of every baked model `state` can draw in the current published generation, in bake
     /// order without repeats: each weighted alternative and each multipart part its properties
-    /// select, whichever one a position's seed would pick. A valid state with no baked binding
-    /// returns an empty list. A state the live block-state index lacks (a block it does not
-    /// hold, or an ordinal past the block's states) returns `ModelError::UnknownModel`.
-    /// Cache keys until the next `model_baking_completed`.
-    fn block_state_models(&self, state: BlockState) -> Result<Vec<BakedModelKey>, ModelError> {
+    /// select, whichever one a position's seed would pick. Borrow the list from this generation;
+    /// a valid state with no baked binding has no keys. A state the live block-state index lacks
+    /// (a block it does not hold, or an ordinal past the block's states) returns
+    /// `ModelError::UnknownModel`. Retain the keys until the next `model_baking_completed`.
+    fn block_state_models(&self, state: BlockState) -> Result<BakedModelKeys<'_>, ModelError> {
         crate::world::phase::unprovided(
             "RenderAssets::block_state_models",
             "block_state_models",
@@ -375,11 +375,11 @@ pub trait RenderAssets {
     }
     /// Side: client.
     /// Published asset/data read: available in Setup, Reloading and World.
-    /// A copy of the baked model `key` names: its quads and sprites as the mesher draws them.
-    /// `ModelError::StaleModel` once a successful resource reload has superseded the key's
-    /// generation; `ModelError::UnknownModel` for a slot the store lacks. Each call copies the
-    /// model's quads, so read the ones a mod needs once per `model_baking_completed`.
-    fn baked_model(&self, key: BakedModelKey) -> Result<BakedModelView, ModelError> {
+    /// Borrow the baked model `key` names: its geometry and sprite names, before draw-time
+    /// tints, lighting or material selection. `ModelError::StaleModel` once a successful resource
+    /// reload supersedes the key's generation; `ModelError::UnknownModel` for a slot the store
+    /// lacks. Retain the key and borrow the model when reading its quads, without copying them.
+    fn baked_model(&self, key: BakedModelKey) -> Result<BakedModelView<'_>, ModelError> {
         crate::world::phase::unprovided(
             "RenderAssets::baked_model",
             "baked_model",

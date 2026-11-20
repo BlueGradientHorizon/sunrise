@@ -1,5 +1,4 @@
-//! The copy a mod reads of a baked model (`RenderAssets::baked_model`): every quad field as the
-//! mesher holds it, the particle named by its atlas layer.
+//! Geometry a mod borrows from a baked model, before resolving its draw-time state.
 use super::*;
 use crate::models::catalog::BakedFace;
 use sunrise_assets::{bake::ModelQuad, model::Material};
@@ -31,73 +30,75 @@ fn quad(facing: FaceDirection, cull: Option<FaceDirection>, sprite: &str) -> Mod
 }
 
 #[test]
-fn a_view_copies_each_quad_and_names_the_particle_sprite() {
+fn a_view_lends_quads_in_bake_order_with_baked_argb_separate_from_tint() {
+    let mut top = quad(
+        FaceDirection::Up,
+        Some(FaceDirection::Up),
+        "minecraft:block/stone",
+    );
+    top.color = Some(0xc012_3456u32 as i32);
+    top.tint_index = 3;
+    top.render_type = Some(sunrise_assets::bake::RenderType::Translucent);
+    let mut west = quad(FaceDirection::West, None, "minecraft:block/dirt");
+    west.tint_index = -1;
     let model = BakedModel {
         ambient_occlusion: false,
         particle: Some(3),
         faces: vec![
-            BakedFace::new(
-                quad(
-                    FaceDirection::Up,
-                    Some(FaceDirection::Up),
-                    "minecraft:block/stone",
-                ),
-                3,
-                true,
-                false,
-                None,
-            ),
-            BakedFace::new(
-                quad(FaceDirection::West, None, "minecraft:block/dirt"),
-                4,
-                true,
-                false,
-                None,
-            ),
+            BakedFace::new(top, 3, false, true, None),
+            BakedFace::new(west, 4, true, false, None),
         ],
         cube: None,
     };
-    let view = view(&model, |layer| {
-        assert_eq!(layer, 3);
-        Some("minecraft:block/stone".into())
-    });
+    let particle = String::from("minecraft:block/stone");
+    let view = built::baked_model_view(false, Some(&particle), &model);
     assert!(!view.ambient_occlusion);
-    assert_eq!(view.particle.as_deref(), Some("minecraft:block/stone"));
-    assert_eq!(view.quads.len(), 2);
-    let top = &view.quads[0];
-    assert_eq!(top.positions, model.faces[0].quad.positions);
-    assert_eq!(top.uvs, model.faces[0].quad.uv);
+    let named = view.particle.unwrap();
+    assert_eq!(named, "minecraft:block/stone");
+    assert!(std::ptr::eq(named, particle.as_str()));
+
+    let mut quads = view.quads();
+    let top = quads.next().unwrap();
+    assert_eq!(
+        top.positions,
+        &[
+            [0.0, 1.0, 0.0],
+            [0.0, 1.0, 1.0],
+            [1.0, 1.0, 1.0],
+            [1.0, 1.0, 0.0]
+        ],
+    );
+    assert_eq!(top.uvs, &[[0.0, 0.0], [0.0, 1.0], [1.0, 1.0], [1.0, 0.0]]);
+    let baked_top = &model.faces[0].quad;
+    assert!(std::ptr::eq(top.positions, &baked_top.positions));
+    assert!(std::ptr::eq(top.uvs, &baked_top.uv));
+    assert!(std::ptr::eq(top.sprite, baked_top.material.sprite.as_str()));
     assert_eq!(top.sprite, "minecraft:block/stone");
     assert_eq!(top.facing, Direction::Up);
     assert_eq!(top.cull, Some(Direction::Up));
-    assert_eq!(top.tint_index, 0);
+    assert_eq!(top.tint_index, 3);
+    assert_eq!(top.baked_argb, Some(0xc012_3456));
     assert!(!top.shade);
     assert_eq!(top.light_emission, 7);
-    assert_eq!(view.quads[1].facing, Direction::West);
-    assert_eq!(view.quads[1].cull, None);
-    assert_eq!(view.quads[1].sprite, "minecraft:block/dirt");
+    let west = quads.next().unwrap();
+    assert_eq!(west.facing, Direction::West);
+    assert_eq!(west.cull, None);
+    assert_eq!(west.sprite, "minecraft:block/dirt");
+    assert_eq!(west.tint_index, -1);
+    assert_eq!(west.baked_argb, None);
+    assert!(quads.next().is_none());
 }
 
 #[test]
-fn a_model_without_a_named_particle_sprite_has_none() {
+fn a_model_can_have_no_quads() {
     let model = BakedModel {
         ambient_occlusion: true,
-        particle: Some(9),
+        particle: None,
         faces: Vec::new(),
         cube: None,
     };
-    let view = view(&model, |_| None);
-    assert_eq!(view.particle, None);
-    assert!(view.quads.is_empty());
-    let none = BakedModel {
-        particle: None,
-        ..model
-    };
-    assert_eq!(view_of(&none).particle, None);
-}
-
-fn view_of(model: &BakedModel) -> BakedModelView {
-    view(model, |_| panic!("no particle layer to name"))
+    let view = built::baked_model_view(true, None, &model);
+    assert!(view.quads().next().is_none());
 }
 
 #[test]

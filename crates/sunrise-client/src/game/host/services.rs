@@ -126,7 +126,7 @@ impl RenderAssets for Game<'_> {
         );
         self.native_model(id)
     }
-    fn block_state_models(&self, state: BlockState) -> Result<Vec<BakedModelKey>, ModelError> {
+    fn block_state_models(&self, state: BlockState) -> Result<BakedModelKeys<'_>, ModelError> {
         mod_api::__private::check_access(
             "block_state_models",
             mod_api::__private::LoadAccess::PublishedResources,
@@ -146,10 +146,7 @@ impl RenderAssets for Game<'_> {
             .map_err(|_| ModelError::UnknownModel)?;
         self.native_block_state_model(state)
     }
-    fn baked_model(
-        &self,
-        key: mod_api::BakedModelKey,
-    ) -> Result<mod_api::BakedModelView, ModelError> {
+    fn baked_model(&self, key: BakedModelKey) -> Result<BakedModelView<'_>, ModelError> {
         mod_api::__private::check_access(
             "baked_model",
             mod_api::__private::LoadAccess::PublishedResources,

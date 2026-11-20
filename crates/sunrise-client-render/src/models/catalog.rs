@@ -143,6 +143,8 @@ pub struct StateModels {
     /// By state id: its definition in `choices` and the models it selects.
     states: Vec<Option<(usize, SelectedModels)>>,
     single_models: Vec<Option<u32>>,
+    /// In bake order without repeats, for bindings not covered by `single_models`.
+    alternative_models: Vec<Option<Box<[u32]>>>,
     /// Every transformed model once, with the variant it was baked from.
     baked: Vec<(Variant, BakedModel)>,
     /// Standalone models by id: their index in `baked`.
@@ -486,21 +488,46 @@ impl StateModels {
         }
         // Every variant of every definition was baked above.
         let choices: Vec<_> = choices.iter().map(|c| c.map(|v| index[&key(v)])).collect();
-        let single_models = states
-            .iter()
-            .map(|state| {
-                let (choice, selected) = state.as_ref()?;
-                choices[*choice].single_variant(selected).copied()
-            })
-            .collect();
-        Ok(Self {
+        Ok(Self::with_baked(choices, states, baked))
+    }
+
+    fn with_baked(
+        choices: Vec<CompiledChoices<u32>>,
+        states: Vec<Option<(usize, SelectedModels)>>,
+        baked: Vec<(Variant, BakedModel)>,
+    ) -> Self {
+        let mut single_models = Vec::with_capacity(states.len());
+        let mut alternative_models = Vec::with_capacity(states.len());
+        for state in &states {
+            let Some((definition, selected)) = state else {
+                single_models.push(None);
+                alternative_models.push(None);
+                continue;
+            };
+            let choice = &choices[*definition];
+            let single = choice.single_variant(selected).copied();
+            single_models.push(single);
+            if single.is_some() {
+                alternative_models.push(None);
+                continue;
+            }
+            let mut slots = Vec::new();
+            let listed = choice.each_alternative(selected, |&slot| {
+                if !slots.contains(&slot) {
+                    slots.push(slot);
+                }
+            });
+            alternative_models.push(listed.ok().map(|()| slots.into_boxed_slice()));
+        }
+        Self {
             choices,
             bounds: OnceLock::new(),
             states,
             single_models,
+            alternative_models,
             baked,
             standalone: BTreeMap::new(),
-        })
+        }
     }
     /// Bakes `names`, models no blockstate needs to name (vanilla's
     /// standalone models, NeoForge's `ModelEvent.RegisterStandalone`), as
@@ -610,17 +637,12 @@ impl StateModels {
     /// Slots of every baked model `state` can select, in bake order without repeats: each
     /// weighted alternative and each selected multipart part (`CompiledChoices::each_alternative`).
     /// `None` for a state no definition binds.
-    pub fn state_slots(&self, state: BlockStateId) -> Option<Vec<u32>> {
-        let (choice, selected) = self.state(state)?;
-        let mut slots = Vec::new();
-        self.choices[*choice]
-            .each_alternative(selected, |&slot| {
-                if !slots.contains(&slot) {
-                    slots.push(slot);
-                }
-            })
-            .ok()?;
-        Some(slots)
+    pub fn state_slots(&self, state: BlockStateId) -> Option<&[u32]> {
+        let index = state.0 as usize;
+        match self.single_models.get(index)? {
+            Some(slot) => Some(std::slice::from_ref(slot)),
+            None => self.alternative_models[index].as_deref(),
+        }
     }
     pub fn collect(
         &self,
