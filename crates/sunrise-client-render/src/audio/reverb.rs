@@ -189,6 +189,7 @@ impl Reverb {
                 }
             }
         }
+        self.lp.iter_mut().for_each(super::fx::flush_tiny);
         self.idle = !fed && loudest < SILENT;
     }
 }

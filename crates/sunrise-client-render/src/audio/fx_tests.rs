@@ -178,3 +178,41 @@ fn a_send_reaches_only_the_buses_it_is_sent_to() {
     assert_eq!(fx.begin(480, RATE).sent, [true, false, true]);
     assert_eq!(fx.begin(480, RATE).sent, [false, false, true]);
 }
+
+#[test]
+fn filter_and_send_state_rings_down_to_zero_not_to_subnormals() {
+    let mut e = SoundEffects::NONE;
+    e.lowpass = 1000.0;
+    e.highpass = 40.0;
+    e.room = 1.0;
+    e.reverb_lowpass = 200.0;
+    let mut fx = VoiceFx {
+        target: e,
+        ..VoiceFx::default()
+    };
+    // A click, then silence, a 10 ms buffer at a time.
+    let mut click = 1.0;
+    for _ in 0..200 {
+        let mut glide = fx.begin(480, RATE);
+        let state = [
+            fx.lowpass[0].ic1,
+            fx.lowpass[0].ic2,
+            fx.highpass[0].ic1,
+            fx.highpass[0].ic2,
+            fx.send_lp,
+        ];
+        assert!(
+            state.iter().all(|s| *s == 0.0 || s.abs() >= TINY),
+            "{state:?}"
+        );
+        for _ in 0..480 {
+            fx.frame(&mut glide, &mut [click, click], true);
+            click = 0.0;
+        }
+    }
+    fx.begin(480, RATE);
+    assert_eq!(
+        (fx.lowpass[0], fx.highpass[0], fx.send_lp),
+        (Svf::default(), Svf::default(), 0.0)
+    );
+}

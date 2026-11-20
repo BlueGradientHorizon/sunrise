@@ -11,6 +11,18 @@ use mod_api::SoundEffects;
 pub(super) const OPEN_CUTOFF: f32 = 20_000.0;
 /// The filters' damping: `1 / Q` of a Butterworth response, flat with no peak.
 const DAMPING: f32 = std::f32::consts::SQRT_2;
+/// Recursive state below this (-300 dB) is flushed to zero once a buffer: a filter or a loop
+/// ringing down in silence would otherwise reach subnormal numbers, which some processors
+/// handle many times slower, inside the output callback.
+const TINY: f32 = 1e-15;
+
+/// `state` flushed to zero if it has rung down below [`TINY`].
+#[inline]
+pub(super) fn flush_tiny(state: &mut f32) {
+    if state.abs() < TINY {
+        *state = 0.0;
+    }
+}
 
 /// What one buffer's frames glide between: the voice's effects as the mixer applies them.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -112,6 +124,12 @@ impl SvfCoefficients {
 }
 
 impl Svf {
+    /// Its state flushed to zero where it has rung down below [`TINY`].
+    fn flush(&mut self) {
+        flush_tiny(&mut self.ic1);
+        flush_tiny(&mut self.ic2);
+    }
+
     /// One sample through it: its `(low-pass, high-pass)` outputs.
     #[inline]
     fn run(&mut self, x: f32, c: SvfCoefficients) -> (f32, f32) {
@@ -224,16 +242,22 @@ impl VoiceFx {
         };
         let lowpass = at.lowpass_mix != 0.0 || target.lowpass_mix != 0.0;
         let highpass = at.highpass_mix != 0.0 || target.highpass_mix != 0.0;
-        if !lowpass {
+        if lowpass {
+            self.lowpass.iter_mut().for_each(Svf::flush);
+        } else {
             self.lowpass = [Svf::default(); 2];
         }
-        if !highpass {
+        if highpass {
+            self.highpass.iter_mut().for_each(Svf::flush);
+        } else {
             self.highpass = [Svf::default(); 2];
         }
         let sent: [bool; BUSES] =
             std::array::from_fn(|i| at.send[i] != 0.0 || target.send[i] != 0.0);
         let sends = sent.contains(&true);
-        if !sends {
+        if sends {
+            flush_tiny(&mut self.send_lp);
+        } else {
             self.send_lp = 0.0;
         }
         // The buffer ends exactly on the target, whatever rounding the steps carry.

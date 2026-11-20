@@ -146,3 +146,14 @@ fn a_send_of_silence_lets_the_tail_die_away() {
     }
     assert!(reverb.idle());
 }
+
+#[test]
+fn the_loop_low_pass_rings_down_to_zero_not_to_subnormals() {
+    let mut reverb = Reverb::new(ROOMS[2]);
+    let mut out = [0.0; 8];
+    reverb.run(&[0.0; 4], true, &mut out, 2, RATE);
+    // Loop state ringing down far below hearing while a sound still sends, all but silent.
+    reverb.lp = [1e-20; LINES];
+    reverb.run(&[1e-30, 0.0, 0.0, 0.0], true, &mut out, 2, RATE);
+    assert_eq!(reverb.lp, [0.0; LINES]);
+}
