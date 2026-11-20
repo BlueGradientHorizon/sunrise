@@ -213,7 +213,7 @@ def landed_check(tool: str, head: Path, base: Path, work: Path, shas: dict[str, 
         folder = work / f"landed-{sha}"
         try:
             # Two commits deep, so the merge's parents are known.
-            git_text("fetch", "-q", "--no-tags", "--depth", "2", "origin", sha)
+            fetch_commit(sha, 2, git_text)
             parent = merge_parent(git_text("cat-file", "-p", sha))
         except (OSError, subprocess.CalledProcessError) as error:
             return 1, text + f"Landed check failed for {who}: the merge could not be fetched: {error}.\n"
