@@ -133,6 +133,7 @@ fn native_tick_reply_matrix() {
                         ..Default::default()
                     };
                     let entity = ModBlockEntity::new("tick_reply_fixture:no_ticker".into(), data);
+                    assert!(entity.numeric_id().is_some());
                     let revision = entity.revision();
                     game.world
                         .block_entities

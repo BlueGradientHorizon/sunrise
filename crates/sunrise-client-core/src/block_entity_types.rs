@@ -233,11 +233,6 @@ pub fn current() -> Option<&'static BlockEntityTypes> {
     TYPES.get()
 }
 
-/// The numeric wire ID of the registered type `id` (none before startup installs the table).
-pub fn numeric_id(id: &str) -> Option<u32> {
-    current()?.numeric_id(id)
-}
-
 /// The frozen metadata for a type, or `None` for an unknown type or before installation.
 pub fn registered(id: &str) -> Option<RegisteredBlockEntityType> {
     current()?.registered(id)
