@@ -222,6 +222,39 @@ fn a_landed_note_is_checked_only_against_its_own_merge() {
 
 #[test]
 #[ignore = "daily"]
+fn a_merges_own_notes_cover_its_diff_without_being_held_to_it() {
+    let dir = folder();
+    let sha = "6597e0855f562498319f093afcf2ed1ea8d717cb";
+    let gated = [
+        "--notes",
+        "changes",
+        "--base-notes",
+        "base",
+        "--landed",
+        sha,
+        "--gate",
+    ];
+    // fn:spawn's removal, with no note at all, is breaking and unnoted.
+    let (code, _, err) = run(dir.path(), &gated);
+    assert_eq!(code, 1);
+    assert!(
+        err.contains("breaking change without a change note: fn:spawn"),
+        "{err}"
+    );
+    // The merge's own note covers it; one naming an unchanged id is coverage, not stale.
+    note(
+        dir.path(),
+        "changes",
+        "own.toml",
+        "ids = [\"fn:spawn\", \"fn:keep\"]\nwhy = \"Then.\"\n",
+    );
+    let (code, out, err) = run(dir.path(), &gated);
+    assert_eq!(code, 0, "{err}");
+    assert!(out.contains("Then."), "{out}");
+}
+
+#[test]
+#[ignore = "daily"]
 fn sdk_note_scope_ignores_engine_ids_but_checks_api_ids() {
     let dir = folder();
     note(

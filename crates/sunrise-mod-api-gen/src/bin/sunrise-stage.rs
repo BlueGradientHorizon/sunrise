@@ -19,7 +19,9 @@
 //! print what changed between two surface exports, breaking changes first. `--notes` attaches
 //! the change notes of DIR (`crates/sunrise-mod-vocab/changes`) whose file names are not in
 //! `--base-notes` (the base tree's folder; required with `--notes`). For an SDK comparison,
-//! `--api-notes-only` excludes engine ids from note attachment and stale-id checking. Exits 1 when a new note
+//! `--api-notes-only` excludes engine ids from note attachment and stale-id checking. `--landed SHA` attaches
+//! the notes that carry `landed = "SHA"`, held to this diff, and the notes with no `landed`, as coverage only:
+//! DIR is then that merge's own new notes plus the late ones. Exits 1 when a new note
 //! names an id that did not change, or with `--gate` when a breaking change has no note; 2 when
 //! an input cannot be read or the options are wrong.
 use mod_source::mod_uses;
@@ -243,12 +245,15 @@ fn surface_diff(args: &[PathBuf]) -> ! {
         // Without the base's notes every older note would read as new, and stale.
         let base = base_notes.unwrap_or_else(|| fail("--notes needs --base-notes"));
         let found = notes::read(dir, base).unwrap_or_else(|e| fail(e));
+        // The notes of one merge are checked against that merge's diff, and no other's.
+        let wanted = landed
+            .and_then(|sha| sha.to_str())
+            .map(str::to_ascii_lowercase);
         for mut file in found {
-            // The notes of one merge are checked against that merge's diff, and no other's.
-            let wanted = landed
-                .and_then(|sha| sha.to_str())
-                .map(str::to_ascii_lowercase);
-            if file.landed != wanted {
+            // With `--landed`, the notes folder is that merge's own notes plus the late ones for it: its own
+            // count as coverage, as they did when it merged, and only the late ones are held to the diff.
+            let coverage = wanted.is_some() && file.landed.is_none();
+            if file.landed != wanted && !coverage {
                 continue;
             }
             if api_notes_only {
@@ -256,11 +261,14 @@ fn surface_diff(args: &[PathBuf]) -> ! {
                     !matches!(id.split_once(':'), Some(("point" | "loop" | "internal", _)))
                 });
             }
-            for id in diff.attach(&file.note, &file.ids) {
-                stale.push(format!(
-                    "change note {} names {id}, which did not change",
-                    file.note.file
-                ));
+            let unchanged = diff.attach(&file.note, &file.ids);
+            if !coverage {
+                stale.extend(unchanged.into_iter().map(|id| {
+                    format!(
+                        "change note {} names {id}, which did not change",
+                        file.note.file
+                    )
+                }));
             }
         }
     }

@@ -22,7 +22,8 @@ names.
 A new note that carries `landed = "<merge sha>"` is retroactive: it is left out of the comparison above and checked
 against that merge instead. The merge and its first parent are fetched and exported (each by its own commit's tool
 when the head's cannot read it), and `surface-diff --landed` attaches the note and fails when an id did not change there.
-That costs two exports, only on a pull request that adds such a note. A merge that does not have two parents, or a
+The notes that merge brought itself count as coverage there too, so the comparison lists as unnoted only what no note
+covers, then or now. That costs two exports, only on a pull request that adds such a note. A merge that does not have two parents, or a
 tree that cannot be exported, fails naming the note and the sha.
 """
 
@@ -231,7 +232,7 @@ def landed_notes(head: Path, base: Path) -> dict[str, list[str]]:
     return found
 
 
-def landed_check(tool: str, head: Path, base: Path, work: Path, shas: dict[str, list[str]], *,
+def landed_check(tool: str, head: Path, work: Path, shas: dict[str, list[str]], *,
                  git_text=None, fetch=None, own_tool: Callable[[str], str] | None = None) -> tuple[int, str]:
     """Check each merge's notes against that merge's first parent and the merge; (exit code, text)."""
     git_text, fetch = git_text or git, fetch or unpack
@@ -254,11 +255,18 @@ def landed_check(tool: str, head: Path, base: Path, work: Path, shas: dict[str, 
                 fetch(commit, folder / name)
         except (OSError, subprocess.CalledProcessError) as error:
             return 1, text + f"Landed check failed for {who}: a tree could not be fetched: {error}.\n"
+        # The merge's own notes (new against its first parent) with this pull request's notes for it: the
+        # former count as coverage, the latter are checked.
+        notes, merged = folder / "notes", folder / "head" / NOTES
+        shutil.copytree(merged, notes) if merged.is_dir() else notes.mkdir()
+        (folder / "base" / NOTES).mkdir(parents=True, exist_ok=True)
+        for name in files:
+            shutil.copy2(head / NOTES / name, notes / name)
         # Both are older trees: each falls back to its own commit's tool when this one refuses it.
         sub_code, sub_text = report(tool, folder / "base", folder / "head", folder, False,
                                     own_base_tool=(lambda: own_tool(parent)) if own_tool else None,
                                     own_head_tool=(lambda: own_tool(sha)) if own_tool else None,
-                                    notes=(head / NOTES, base / NOTES), landed=sha)
+                                    notes=(notes, folder / "base" / NOTES), landed=sha)
         if sub_code != 0:
             code = 1
         text += f"Landed {who}, first parent {parent}:\n{sub_text}"
@@ -326,7 +334,7 @@ def main(argv=None) -> int:
                 code, text = report(tool, base, ROOT, work, gate_on, with_internals=args.with_internals,
                                     own_base_tool=lambda: own(sha))
                 if shas := landed_notes(ROOT, base):
-                    landed_code, landed_text = landed_check(tool, ROOT, base, work, shas, own_tool=own)
+                    landed_code, landed_text = landed_check(tool, ROOT, work, shas, own_tool=own)
                     code, text = code or landed_code, text + landed_text
                 text += f"Base {sha}; fetch {fetched:.1f}s, total {time.monotonic() - started:.1f}s\n"
             else:

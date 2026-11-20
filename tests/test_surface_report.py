@@ -415,8 +415,15 @@ echo "{\\"by\\": \\"$(cat "$2/marker")\\"}" > "$3"
                 (into / "marker").write_text(commit)
 
             git = lambda *a: MERGE if a[0] == "cat-file" else ""  # noqa: E731
+            # This checkout: the switch file and the late note for the base merge.
+            checkout = folder / "checkout"
+            (checkout / "tools/ci").mkdir(parents=True)
+            shutil.copy2(ROOT / "tools/ci/surface.toml", checkout / "tools/ci/surface.toml")
+            (checkout / surface_report.NOTES).mkdir(parents=True)
+            (checkout / surface_report.NOTES / "n.toml").write_text(f'ids = ["x"]\nwhy = "w"\nlanded = "{sha}"\n')
             code, out, _ = self.run_main(tool=str(head_tool), base_commit=lambda *a: (sha, ""), unpack=unpack,
-                                         git=git, base_tool=base_tool, landed_notes=lambda head, base: {sha: ["n.toml"]})
+                                         git=git, base_tool=base_tool, ROOT=checkout,
+                                         landed_notes=lambda head, base: {sha: ["n.toml"]})
             self.assertEqual(code, 0, out)
             self.assertEqual(built, [sha, "aaaa"])
             exports = [json.loads(line)["by"] for line in (folder / "compared").read_text().splitlines()]
@@ -466,6 +473,7 @@ if [ "$1" = surface ]; then
   echo '{{"by": "head"}}' > "$3"; exit 0
 fi
 cat "$2" "$3" > {work}/compared
+while [ $# -gt 0 ]; do case "$1" in --notes) ls "$2" > {work}/notes-given;; --base-notes) ls "$2" > {work}/base-notes-given;; esac; shift; done
 if [ {diff_exit} != 0 ]; then echo "change note r61.toml names point:a, which did not change" >&2; fi
 exit {diff_exit}
 """)
@@ -474,15 +482,21 @@ exit {diff_exit}
             fetched = []
 
             def fetch(sha, into):
-                # Each fetched tree names its commit, for the exporters to read.
+                # Each fetched tree names its commit, for the exporters to read; the merge brings a note of its own.
                 fetched.append(sha)
                 (into / "marker").write_text(sha)
+                if sha == self.SHA:
+                    (into / surface_report.NOTES).mkdir(parents=True)
+                    (into / surface_report.NOTES / "then.toml").write_text('ids = ["point:b"]\nwhy = "w"\n')
 
             git_text = git_text or (lambda *a: MERGE if a[0] == "cat-file" else "")
             code, text = surface_report.landed_check(
-                str(tool), work / "head", work / "base", work, shas, git_text=git_text, fetch=fetch,
+                str(tool), work / "head", work, shas, git_text=git_text, fetch=fetch,
                 own_tool=own_tool and (lambda sha: own_tool(sha, work)))
             calls = (work / "calls").read_text() if (work / "calls").exists() else ""
+            for given in ("notes", "base-notes"):
+                if (work / f"{given}-given").exists():
+                    calls += f"{given} " + (work / f"{given}-given").read_text().replace("\n", " ") + " "
             if (work / "compared").exists():
                 calls += "compared " + (work / "compared").read_text().replace("\n", " ")
             return shas, code, text, calls, fetched
@@ -497,6 +511,10 @@ exit {diff_exit}
         self.assertEqual(fetched, ["aaaa", self.SHA])
         self.assertIn(f"--landed {self.SHA}", calls)
         self.assertNotIn("--gate", calls)
+        # The diff is given the merge's own notes, as coverage, beside this pull request's late note for it, against
+        # its first parent's notes; not the pull request's other new notes.
+        self.assertIn("notes r61.toml then.toml ", calls)
+        self.assertIn("base-notes  ", calls)
 
     def test_a_note_whose_ids_did_not_change_there_fails_naming_it(self):
         _, code, text, _, _ = self.check(1)
