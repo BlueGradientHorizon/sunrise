@@ -1359,11 +1359,10 @@ impl Game<'_> {
     /// order they joined the level (`EntityLookup.byId`, which
     /// `LevelExtractor.extractVisibleEntities` follows), whatever their family.
     pub(super) fn ordered_draw_runs(&self, runs: &mut Vec<DrawRun>) {
-        // A visible body can still draw fire when the model is hidden; a first-person body
-        // can draw into the shadow pass only.
-        let local_player = (self.player.is_some()
-            && (self.own_body_in_view() || self.player_model_shown()))
-        .then(|| self.resident_entities.local_player.join());
+        // A first-person body can draw into the shadow pass only.
+        let local_player = self
+            .player_model_shown()
+            .then(|| self.resident_entities.local_player.join());
         draw_runs(
             entity_lists_of!(self),
             || self.entity_handles(),

@@ -1,0 +1,9 @@
+login 4321
+add 91 minecraft:zombie
+position
+frame
+add 40 minecraft:tnt
+respawn
+add 3 minecraft:cow
+position
+frame

@@ -949,45 +949,6 @@ struct TickScratch {
     later: Vec<BlockPos>,
 }
 
-/// The camera and visibility used by entity fire billboards in this frame.
-#[derive(Clone, Copy)]
-struct FlameView<'a> {
-    camera: glam::DVec3,
-    yaw: f32,
-    frusta: Option<&'a sunrise_client::gfx::JoinedFrusta>,
-}
-
-impl FlameView<'_> {
-    fn contains(self, at: Vec3, width: f32, height: f32) -> bool {
-        self.frusta.is_none_or(|view| {
-            sunrise_client::fire_render::in_view(
-                view,
-                self.camera,
-                [at.x, at.y, at.z],
-                width,
-                height,
-            )
-        })
-    }
-
-    fn emit(self, game: &Game<'_>, at: Vec3, width: f32, height: f32, out: &mut Vec<Vertex>) {
-        sunrise_client::fire_render::flames(
-            [at.x, at.y, at.z],
-            width,
-            height,
-            self.camera,
-            self.yaw,
-            &game.gui.atlas.sprites,
-            game.world.light(
-                at.x.floor() as i32,
-                at.y.floor() as i32,
-                at.z.floor() as i32,
-            ),
-            out,
-        );
-    }
-}
-
 struct Game<'a> {
     /// Shared with an integrated server; `collision` and `motion` borrow from it.
     res: Arc<Resources>,
@@ -5457,6 +5418,8 @@ impl Game<'_> {
     pub(super) const MOTION_MOVING_BLOCK: u64 = 6 << 32;
     /// The player's own model (third person, and a shader pack's shadow pass).
     pub(super) const MOTION_OWN_PLAYER: u64 = 7 << 32;
+    /// The local player's flame vertices are tracked separately from the body run.
+    const MOTION_OWN_PLAYER_FIRE: u64 = Self::MOTION_OWN_PLAYER | 1;
     /// The entity whose geometry starts at vertex `start` (0: none), for frame
     /// generation to follow its own motion. Each run lasts until the next mark.
     pub(super) fn mark_motion(&self, start: usize, id: u64) {
@@ -5466,27 +5429,6 @@ impl Game<'_> {
         let posed = self.skin_frame.borrow().vertices;
         self.entity_motion_posed.borrow_mut().push(posed);
     }
-    fn entity_flame_view<'a>(
-        &self,
-        camera: glam::DVec3,
-        frusta: Option<&'a sunrise_client::gfx::JoinedFrusta>,
-    ) -> FlameView<'a> {
-        let yaw = if self.camera_type == sunrise_client::camera::CameraType::ThirdPersonFront {
-            self.yaw + 180.0
-        } else {
-            self.yaw
-        };
-        // Packs may move vertices or draw from another camera. The guarded
-        // billboard frustum covers TAA's jitter without changing model culling.
-        let frusta =
-            frusta.filter(|_| self.pack_ids.is_none() && self.native_shaders.picked.is_empty());
-        FlameView {
-            camera,
-            yaw,
-            frusta,
-        }
-    }
-
     /// ItemEntityRenderer: items bob and spin; blocks render as small cubes.
     fn entity_geometry(
         &mut self,
@@ -5519,7 +5461,21 @@ impl Game<'_> {
         // One scan for both passes that draw them (block entities below and the
         // overlay near the end of this function).
         let cracks = self.cracks(camera);
-        let fire = self.entity_flame_view(camera, billboard_frustum.as_ref());
+        let fire_yaw = if self.camera_type == sunrise_client::camera::CameraType::ThirdPersonFront {
+            self.yaw + 180.0
+        } else {
+            self.yaw
+        };
+        // Packs may move vertices or draw from another camera. The guarded
+        // billboard frustum covers TAA's jitter without changing model culling.
+        let fire_view = billboard_frustum
+            .as_ref()
+            .filter(|_| self.pack_ids.is_none() && self.native_shaders.picked.is_empty());
+        let fire_visible = |position, width, height| {
+            fire_view.is_none_or(|view| {
+                sunrise_client::fire_render::in_view(view, camera, position, width, height)
+            })
+        };
         laps.lap("eg_prep");
         for item in &self.dropped {
             if item.fire_ticks > 0
@@ -5528,9 +5484,23 @@ impl Game<'_> {
                     .unwrap_or(true)
             {
                 let at = item.previous.lerp(item.position, alpha);
-                if fire.contains(at, 0.25, 0.25) {
-                    fire.emit(self, at, 0.25, 0.25, &mut out);
+                if !fire_visible([at.x, at.y, at.z], 0.25, 0.25) {
+                    continue;
                 }
+                sunrise_client::fire_render::flames(
+                    [at.x, at.y, at.z],
+                    0.25,
+                    0.25,
+                    camera,
+                    fire_yaw,
+                    &self.gui.atlas.sprites,
+                    self.world.light(
+                        at.x.floor() as i32,
+                        at.y.floor() as i32,
+                        at.z.floor() as i32,
+                    ),
+                    &mut out,
+                );
             }
         }
         laps.lap("eg_fire_items");
@@ -5538,9 +5508,23 @@ impl Game<'_> {
             if stand.is_on_fire() && !stand.marker {
                 let scale = if stand.small { 0.5 } else { 1.0 };
                 let at = stand.render_position(alpha);
-                if fire.contains(at, 0.5 * scale, 1.975 * scale) {
-                    fire.emit(self, at, 0.5 * scale, 1.975 * scale, &mut out);
+                if !fire_visible([at.x, at.y, at.z], 0.5 * scale, 1.975 * scale) {
+                    continue;
                 }
+                sunrise_client::fire_render::flames(
+                    [at.x, at.y, at.z],
+                    0.5 * scale,
+                    1.975 * scale,
+                    camera,
+                    fire_yaw,
+                    &self.gui.atlas.sprites,
+                    self.world.light(
+                        at.x.floor() as i32,
+                        at.y.floor() as i32,
+                        at.z.floor() as i32,
+                    ),
+                    &mut out,
+                );
             }
         }
         laps.lap("eg_fire_stands");
@@ -5564,8 +5548,8 @@ impl Game<'_> {
             use entity::DrawFamily as F;
             let range = run.range.clone();
             match run.family {
-                F::Mob => self.mob_run_geometry(&mob_frame, fire, range, &mut out),
-                F::LocalPlayer => self.local_player_geometry(fire, &mut out),
+                F::Mob => self.mob_run_geometry(&mob_frame, range, &mut out),
+                F::LocalPlayer => self.local_player_geometry(camera, &mut out),
                 F::Item => {
                     // `ItemEntityRenderer`.
                     self.mark_entity(out.len(), "minecraft:item");
@@ -5634,6 +5618,65 @@ impl Game<'_> {
         self.other_creature_geometry(camera, alpha, &mut out);
         self.mark_motion(out.len(), 0);
         laps.lap("eg_other_creatures");
+        // These billboards stay in their later pass, outside the ordered body runs.
+        for m in self.drawn_mobs() {
+            // Blaze.isOnFire: a charged blaze burns.
+            let blazing = m.species() == sunrise_client::mobs::Species::Blaze && m.extra.flag;
+            if (m.is_on_fire() || blazing) && !m.removed {
+                let at = m.previous.lerp(m.position, alpha);
+                if !fire_visible([at.x, at.y, at.z], m.width(), m.height()) {
+                    continue;
+                }
+                self.mark_entity(out.len(), &m.kind.id);
+                sunrise_client::fire_render::flames(
+                    [at.x, at.y, at.z],
+                    m.width(),
+                    m.height(),
+                    camera,
+                    fire_yaw,
+                    &self.gui.atlas.sprites,
+                    self.world.light(
+                        at.x.floor() as i32,
+                        at.y.floor() as i32,
+                        at.z.floor() as i32,
+                    ),
+                    &mut out,
+                );
+            }
+        }
+        if self.own_body_in_view()
+            && let Some(p) = &self.player
+            && p.is_on_fire()
+            && !(p.spectator || self.own_render_canceled())
+        {
+            let feet = self
+                .previous_position
+                .lerp(p.position, self.clock.camera_fraction());
+            if fire_visible(
+                [feet.x, feet.y, feet.z],
+                p.dimensions.width,
+                p.dimensions.height,
+            ) {
+                self.mark_player(out.len(), false);
+                self.mark_motion(out.len(), Self::MOTION_OWN_PLAYER_FIRE);
+                sunrise_client::fire_render::flames(
+                    [feet.x, feet.y, feet.z],
+                    p.dimensions.width,
+                    p.dimensions.height,
+                    camera,
+                    fire_yaw,
+                    &self.gui.atlas.sprites,
+                    self.world.light(
+                        feet.x.floor() as i32,
+                        feet.y.floor() as i32,
+                        feet.z.floor() as i32,
+                    ),
+                    &mut out,
+                );
+                self.mark_motion(out.len(), 0);
+            }
+        }
+        laps.lap("eg_fire_living");
         self.mark_entity(out.len(), "minecraft:evoker_fangs");
         self.fangs_geometry(camera, alpha, &mut out);
         self.block_item_display_geometry(camera, alpha, &mut out);

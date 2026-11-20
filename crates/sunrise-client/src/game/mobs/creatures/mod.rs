@@ -8215,38 +8215,24 @@ impl Game<'_> {
     pub(in crate::game) fn mob_run_geometry(
         &self,
         frame: &MobDrawFrame<'_>,
-        fire: super::FlameView<'_>,
         range: std::ops::Range<usize>,
         out: &mut Vec<Vertex>,
     ) {
         if frame.precheck {
-            self.mob_run::<true>(&frame.living, fire, range, out);
+            self.mob_run::<true>(&frame.living, range, out);
         } else {
-            self.mob_run::<false>(&frame.living, fire, range, out);
+            self.mob_run::<false>(&frame.living, range, out);
         }
     }
 
     fn mob_run<const PRECHECK: bool>(
         &self,
         frame: &LivingFrame<'_>,
-        fire: super::FlameView<'_>,
         range: std::ops::Range<usize>,
         out: &mut Vec<Vertex>,
     ) {
         for mob in &self.mobs[range] {
             self.living_geometry::<PRECHECK>(mob, frame, out);
-            // Blaze.isOnFire: a charged blaze burns. The billboard has its own visibility
-            // test, independent of model culling, but the render pre hook still cancels it.
-            let blazing = mob.species() == Species::Blaze && mob.extra.flag;
-            if (mob.is_on_fire() || blazing) && !mob.removed && !self.render_canceled(mob.id) {
-                let at = mob.previous.lerp(mob.position, frame.alpha);
-                if fire.contains(at, mob.width(), mob.height()) {
-                    // The flames don't track the model's motion.
-                    self.mark_motion(out.len(), 0);
-                    self.mark_entity(out.len(), &mob.kind.id);
-                    fire.emit(self, at, mob.width(), mob.height(), out);
-                }
-            }
         }
     }
 
@@ -8258,8 +8244,7 @@ impl Game<'_> {
         out: &mut Vec<Vertex>,
     ) {
         let frame = self.begin_mob_geometry(camera, alpha);
-        let fire = self.entity_flame_view(camera, None);
-        self.mob_run_geometry(&frame, fire, 0..self.mobs.len(), out);
+        self.mob_run_geometry(&frame, 0..self.mobs.len(), out);
         self.mark_motion(out.len(), 0);
         self.other_creature_geometry(camera, alpha, out);
     }

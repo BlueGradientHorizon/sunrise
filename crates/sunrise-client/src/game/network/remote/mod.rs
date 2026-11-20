@@ -2620,6 +2620,9 @@ impl Game<'_> {
                 player.map(player_tracking_body)
             });
         self.drop_remote_player();
+        // handleLogin / handleRespawn: ClientLevel.addEntity admits the local player
+        // now, before the position packet creates its motion body.
+        self.resident_entities.local_player.renew();
         // handleLogin / handleRespawn: LocalPlayer.setPortalCooldown, so a
         // player who arrives standing in a portal gets no overlay from it.
         self.portals.player.cooldown = spawn.portal_cooldown;
@@ -6208,7 +6211,6 @@ impl Game<'_> {
                 self.take_carried_attributes(&mut player)?;
                 self.hook.discard();
                 self.player_state.attachments.retire();
-                self.resident_entities.local_player.renew();
                 self.player = Some(player);
                 self.bind_local_player_residency();
                 self.input_player_replaced();

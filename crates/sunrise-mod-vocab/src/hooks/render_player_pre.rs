@@ -10,9 +10,11 @@ pub trait Hooks {
     /// `hidden.hide_named(name)`) leaves only that part out of the vanilla model this frame (after
     /// Skin Customization), as a mod drawing its own outer skin layer does: a hidden part takes its
     /// children with it (the hat goes with the head), while its armour, held items and other
-    /// layers, the cape among them, keep every part.
+    /// layers, the cape among them, keep every part. The pair wraps this player's living hooks
+    /// at the player's slot in level join order, for local and remote players alike.
     #[hook(
         side = "client",
+        version = 2,
         contract = "cancel",
         out = "canceled",
         neoforge = "RenderPlayerEvent.Pre",

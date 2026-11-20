@@ -17,10 +17,11 @@ pub trait Hooks {
     /// GPU: a hidden part takes its children with it and leaves the layers drawn on the model itself
     /// (`getParentModel()`: a villager's type, profession and level, a spider's eyes), while its
     /// armour, held items and other layers keep every part. An entity is drawn afresh each frame:
-    /// `draw.keep()` does nothing here.
+    /// `draw.keep()` does nothing here. Among submitted bodies, this hook follows the entities'
+    /// level join order, including this window's player at its own slot rather than after the mobs.
     #[hook(
         side = "client",
-        version = 2,
+        version = 3,
         contract = "cancel",
         out = "canceled",
         neoforge = "RenderLivingEvent.Pre",

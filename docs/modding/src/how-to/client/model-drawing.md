@@ -314,6 +314,9 @@ Each mob and player in view gets the render hook pair once a frame, NeoForge's
 4. `render_living_post(entity, parts, draw)`;
 5. `render_player_post(player, who, parts, draw)`, for a player only.
 
+This is the order within one entity. Across submitted bodies, the hooks run in level join order,
+including the local player at its admission slot rather than after the other players and mobs.
+
 The order today: the model and the layers are drawn before the post hooks; the entity's name tag, leash, flames
 and shadow are drawn in the frame's later passes, after them. The reference draws the leash and the name tag
 before the post (and queues the flames and the shadow after it): tracked in #3915. A type with a registered

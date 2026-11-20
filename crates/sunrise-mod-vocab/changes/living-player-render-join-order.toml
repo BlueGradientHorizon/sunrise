@@ -1,0 +1,3 @@
+ids = ["hook:render_living_pre", "hook:render_living_post", "hook:render_player_pre", "hook:render_player_post"]
+why = "The local player's body is submitted in level join order alongside other players and mobs."
+migrate = "Treat each entity's pre and post hooks as a pair. Do not assume the local player's pair runs after the other players or mobs."

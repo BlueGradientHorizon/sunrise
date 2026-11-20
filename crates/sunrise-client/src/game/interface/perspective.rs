@@ -787,29 +787,17 @@ impl Game<'_> {
     pub(super) fn own_body_visible(&self) -> bool {
         body_visible(self.own_invisible(), self.own_team())
     }
-    /// The local player's submission in the ordered entity pass, including its fire.
+    /// The local player's body in the ordered entity pass.
     pub(super) fn local_player_geometry(
         &self,
-        fire: super::FlameView<'_>,
+        camera: glam::DVec3,
         out: &mut Vec<sunrise_client_render::render_geometry::Vertex>,
     ) {
         let body_in_view = self.own_body_in_view();
         let start = out.len();
         self.mark_player(start, !body_in_view);
         self.mark_motion(start, Self::MOTION_OWN_PLAYER);
-        self.player_model_geometry(fire.camera, self.own_player_alpha(), out);
-        if body_in_view
-            && let Some(p) = &self.player
-            && p.is_on_fire()
-            && !(p.spectator || self.own_render_canceled())
-        {
-            let feet = self
-                .previous_position
-                .lerp(p.position, self.clock.camera_fraction());
-            if fire.contains(feet, p.dimensions.width, p.dimensions.height) {
-                fire.emit(self, feet, p.dimensions.width, p.dimensions.height, out);
-            }
-        }
+        self.player_model_geometry(camera, self.own_player_alpha(), out);
         // A native pack's shadow pass alone gets the first-person model (no per-entity draws).
         if self.pack_ids.is_none() && !body_in_view {
             self.shadow_only_vertices

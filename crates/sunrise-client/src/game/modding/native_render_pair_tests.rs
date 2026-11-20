@@ -133,9 +133,7 @@ fn two_entities_are_asked_in_the_draw_queues_order() {
     let heard = Arc::default();
     with_pair(&heard, |game| {
         game.pack_ids = Some(Default::default());
-        let mut zombie = mob(game, "minecraft:zombie", 91, 0.0);
-        zombie.fire_ticks = 20;
-        game.mobs.push(zombie);
+        game.mobs.push(mob(game, "minecraft:zombie", 91, 0.0));
         admit_own_player(game, false);
         game.mobs.push(mob(game, "minecraft:cow", 92, 2.0));
         let (out, ..) = game.entity_geometry(CAMERA, 1.0, None, Vec::new());
@@ -160,15 +158,110 @@ fn two_entities_are_asked_in_the_draw_queues_order() {
             [(1 << 32) | 91, Game::MOTION_OWN_PLAYER, (1 << 32) | 92]
         );
         assert!(tracked[0].0 < tracked[1].0 && tracked[1].0 < tracked[2].0);
-        let &(flame_start, _) = motion
-            .iter()
-            .find(|&&(start, id)| id == 0 && (tracked[0].0 + 1..tracked[1].0).contains(&start))
-            .expect("the zombie's fire follows its model and has no motion id");
         let spans = game.entity_spans.borrow();
-        assert!(spans.iter().any(|span| span.start == flame_start));
         let local = spans.iter().find(|span| span.player).unwrap();
         assert_eq!(local.start, tracked[1].0);
         assert!(!local.hidden);
+    });
+}
+
+/// Exercise the real packet and draw paths; the parity harness reads the same scene
+/// and compares these submitted body IDs with the vanilla renderer's dispatch order.
+#[test]
+#[ignore = "daily"]
+fn entity_draw_order_after_login_and_same_level_respawn() {
+    use sunrise_client::camera::CameraType;
+    use sunrise_protocol::packets::play::{self, Clientbound as C};
+
+    super::native_entity_refs::tests::with_client_game(|game| {
+        let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
+        game.connect_local(pipe, "Steve").unwrap();
+        let builtin = game.remote.as_ref().unwrap().builtin.clone();
+        let types = builtin.get("minecraft:entity_type").unwrap();
+        let spawn = play::SpawnInfo {
+            dimension_type: 0,
+            dimension: "minecraft:overworld".into(),
+            seed: 1,
+            game_type: 0,
+            previous_game_type: None,
+            debug: false,
+            flat: false,
+            last_death: None,
+            portal_cooldown: 0,
+            sea_level: 63,
+        };
+        let mut snapshots = Vec::new();
+        for line in include_str!("../../../../../tools/fixtures/entity-draw-order.txt").lines() {
+            let words: Vec<_> = line.split_whitespace().collect();
+            let packet = match words.as_slice() {
+                ["login", id] => C::Login(play::Login {
+                    player_id: id.parse().unwrap(),
+                    hardcore: false,
+                    levels: vec![spawn.dimension.clone()],
+                    max_players: 20,
+                    chunk_radius: 8,
+                    simulation_distance: 8,
+                    reduced_debug_info: false,
+                    show_death_screen: true,
+                    limited_crafting: false,
+                    spawn: spawn.clone(),
+                    online_mode: false,
+                    enforces_secure_chat: false,
+                }),
+                ["respawn"] => C::Respawn(play::Respawn {
+                    spawn: spawn.clone(),
+                    keep: 0,
+                }),
+                ["add", id, kind] => {
+                    let id: i32 = id.parse().unwrap();
+                    C::AddEntity(play::AddEntity {
+                        id,
+                        uuid: id as u128,
+                        kind: types.id(kind).unwrap(),
+                        position: [id as f64 % 5.0, 321.0, 0.5],
+                        velocity: [0.0; 3],
+                        pitch: 0,
+                        yaw: 0,
+                        head_yaw: 0,
+                        data: 0,
+                    })
+                }
+                ["position"] => C::PlayerPosition(play::PlayerPosition {
+                    teleport: 1,
+                    position: [0.5, 321.0, 0.5],
+                    delta: [0.0; 3],
+                    yaw: 0.0,
+                    pitch: 0.0,
+                    relatives: 0,
+                }),
+                ["frame"] => {
+                    game.camera_type = CameraType::ThirdPersonBack;
+                    game.tick_player_model();
+                    game.entity_geometry(glam::DVec3::new(0.5, 321.0, -4.5), 1.0, None, Vec::new());
+                    // The render pass marks every submitted body for frame generation. Read
+                    // nonempty spans, not the planner's list, so a changed submit loop fails too.
+                    let ids: Vec<_> = game
+                        .entity_motion
+                        .borrow()
+                        .windows(2)
+                        .filter(|w| w[0].1 != 0 && w[0].0 < w[1].0)
+                        .map(|w| {
+                            if w[0].1 == Game::MOTION_OWN_PLAYER {
+                                game.own_entity_id() as u32
+                            } else {
+                                w[0].1 as u32
+                            }
+                        })
+                        .collect();
+                    println!("entity-draw-order: {ids:?}");
+                    snapshots.push(ids);
+                    continue;
+                }
+                _ => panic!("unknown scene operation: {line}"),
+            };
+            game.handle_packet(packet).unwrap();
+        }
+        assert_eq!(snapshots, [vec![4321, 91], vec![91, 40, 4321, 3]]);
     });
 }
 
@@ -177,11 +270,9 @@ fn two_entities_are_asked_in_the_draw_queues_order() {
 fn a_canceled_living_pre_skips_the_model_and_the_post_hook() {
     let heard: Arc<Mutex<Heard>> = Arc::default();
     with_pair(&heard, |game| {
-        let mut burning = mob(game, "minecraft:zombie", 91, 0.0);
-        burning.fire_ticks = 20;
-        game.mobs.push(burning);
+        game.mobs.push(mob(game, "minecraft:zombie", 91, 0.0));
         let drawn = mob_frame(game);
-        assert!(drawn.len() > 4, "its model and flame, beside the marker");
+        assert!(drawn.len() > 4, "its model, beside the marker");
         events(&heard);
         heard.lock().unwrap().cancel_living.push(91);
         let canceled = mob_frame(game);
@@ -189,7 +280,7 @@ fn a_canceled_living_pre_skips_the_model_and_the_post_hook() {
         assert_eq!(
             canceled.len(),
             4,
-            "the marker alone, no model or flame: {}",
+            "the marker alone, no model: {}",
             canceled.len()
         );
         assert_eq!(markers(&canceled), 4);

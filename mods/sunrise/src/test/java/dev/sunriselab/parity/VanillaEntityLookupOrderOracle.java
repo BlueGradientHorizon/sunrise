@@ -8,7 +8,7 @@ import net.minecraft.world.level.entity.EntityLookup;
 
 /** Observe the real lookup, without constructing a world or entity subclasses. */
 public final class VanillaEntityLookupOrderOracle {
-    private static EntityAccess entity(int id) {
+    static EntityAccess entity(int id) {
         return (EntityAccess) Proxy.newProxyInstance(EntityAccess.class.getClassLoader(),
             new Class<?>[] {EntityAccess.class}, (proxy, method, args) -> switch (method.getName()) {
                 case "getId" -> id;
