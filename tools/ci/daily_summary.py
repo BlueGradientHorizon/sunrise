@@ -18,7 +18,8 @@ identity, kind, panic location, policy file), then:
   `Daily: update the machine sample for the mod API change`);
 - a failed check of the SDK a leg just built (SDK_CHECKS: the native linkage probe, the API-source check): one issue
   per check and platform, `Daily: sdk <check> (<platform>)`, closed only by a run in which that step passed; when a
-  Linux SDK leg failed, fn-replace-check's missing input is said on that leg's issue, not filed again;
+  Linux SDK leg failed, the missing input of the legs that read it (fn-replace-check, book-quickstart) is said on that
+  leg's issue, not filed again;
 - a test (or leg) green again: closes its open issue with a comment.
 A job cancelled before any of its steps ran (one still waiting for a runner) never ran, so it is neither red nor
 green, and nor is a leg whose call was cancelled with only such jobs: nothing is filed or closed for it. A run cancelled
@@ -94,14 +95,16 @@ SDK_CHECKS = {
     "The starter mod checks against the API source alone, host and wasm32": "API-source check",
 }
 SDK_CHECK = "sdk-check"
-# fn-replace-check reads the Linux legs' SDK: when one of those failed, its only failures are the missing input, which
-# the Linux leg's own issue already accounts for.
+# The legs that read the Linux legs' SDK: when one of those failed, a reader whose only failures are the missing input
+# is accounted for by the Linux leg's own issue.
 LINUX_SDK_JOBS = ("sdk / build linux", "sdk / build linux-server")
 # The Linux legs' call's own result, kept apart from the sdk leg's (PART_OF): its `fresh` can fail with no published
 # SDK to reuse, and then no Linux build job runs at all.
 LINUX_SDK_CALL = "sdk (Linux legs)"
 FN_REPLACE_JOB = "fn-replace-check / fn-replace-check"
-FN_REPLACE_INPUT_STEPS = ("Run actions/download-artifact@v4", "The Linux legs are here")
+BOOK_QUICKSTART_JOB = "book-quickstart / quickstart"
+LINUX_SDK_READERS = (FN_REPLACE_JOB, BOOK_QUICKSTART_JOB)
+LINUX_SDK_INPUT_STEPS = ("Run actions/download-artifact@v4", "The Linux legs are here")
 # A pull request merged on its own (`Merge pull request #N from`) or as a rollup's member (`Merge #N at <sha>`).
 MERGE = re.compile(r"^Merge (?:pull request #(\d+) from |#(\d+) at )")
 MAX_PAGES = 100
@@ -311,7 +314,7 @@ def verdicts(jobs, reports, results, legs, parity_report, all_legs):
     linux_sdk_red = {job["name"] for job in jobs if job["name"] in LINUX_SDK_JOBS and not job_green(job, fresh_ok)}
     if results.get(LINUX_SDK_CALL, {}).get("result", "success") != "success":
         linux_sdk_red.add("sdk")  # the leg's own item (its failed `fresh`, say) is the Linux legs' too
-    fn_replace_blocked = False
+    blocked = []  # the legs that read the Linux SDK and failed only for its missing input
     # The wasm std comparison needs both builds: one that failed is the item, not the comparison it skipped.
     std_build_failed = any(job["name"].startswith(WASM_STD_BUILD) and job["conclusion"] in ("failure", "cancelled", "timed_out")
                            and not never_started(job) for job in jobs)
@@ -362,8 +365,8 @@ def verdicts(jobs, reports, results, legs, parity_report, all_legs):
                        "panic": None, "policy": None, "leg": job["name"]} for step in steps if step in SDK_CHECKS]
             if outside := [step for step in steps if step not in SDK_CHECKS]:
                 unfinished.append((job["name"], job["conclusion"], outside, "failed outside its checks"))
-        elif job["name"] == FN_REPLACE_JOB and linux_sdk_red and steps and set(steps) <= set(FN_REPLACE_INPUT_STEPS):
-            fn_replace_blocked = True  # not green, and the Linux SDK leg's item says why
+        elif job["name"] in LINUX_SDK_READERS and linux_sdk_red and steps and set(steps) <= set(LINUX_SDK_INPUT_STEPS):
+            blocked.append(job["name"].split(" / ", 1)[0])  # not green, and the Linux SDK leg's item says why
         else:
             unfinished.append((job["name"], job["conclusion"], steps, "failed at the steps named"))
     for job in jobs:
@@ -379,7 +382,7 @@ def verdicts(jobs, reports, results, legs, parity_report, all_legs):
     for leg in legs:
         result = results.get(leg, {}).get("result", "missing")
         accounted = any(item["leg"].split(" / ", 1)[0] == leg for item in tests) or any(
-            entry[0].split(" / ", 1)[0] == leg for entry in unfinished) or (leg == "fn-replace-check" and fn_replace_blocked)
+            entry[0].split(" / ", 1)[0] == leg for entry in unfinished) or leg in blocked
         if leg in unstarted:
             continue
         if leg == PARITY:
@@ -416,12 +419,13 @@ def verdicts(jobs, reports, results, legs, parity_report, all_legs):
             unfinished.append((leg, result, [], "did not complete, and no job or test of it says why"))
         elif result == "success" and not accounted:
             green_legs.add(leg)  # a whole leg that reported and passed closes its leg-level issue
-    if fn_replace_blocked:
-        blocked = "`fn-replace-check` could not run: it needs this leg's SDK"
+    if blocked:
+        note = (" and ".join(f"`{leg}`" for leg in blocked) + " could not run: "
+                + ("it needs" if len(blocked) == 1 else "they need") + " this leg's SDK")
         for item in tests:
             if item["leg"] in linux_sdk_red:
-                item["blocks"] = blocked
-        unfinished = [(leg, conclusion, steps, f"{reason}. {blocked}" if leg in linux_sdk_red else reason)
+                item["blocks"] = note
+        unfinished = [(leg, conclusion, steps, f"{reason}. {note}" if leg in linux_sdk_red else reason)
                       for leg, conclusion, steps, reason in unfinished]
     green = legs_green(legs, jobs, results, tests, unfinished) and not tests and not unfinished
     failing = {(item["package"], item["test"]) for item in tests}
