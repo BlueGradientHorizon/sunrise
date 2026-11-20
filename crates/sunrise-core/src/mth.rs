@@ -57,6 +57,9 @@ mod tests {
             (-1, 0, 2, 2)
         );
         assert_eq!((floor_f32(-0.5), ceil_f32(0.25)), (-1, 1));
+        for (value, expected) in [(0.0_f32, 0), (-0.0_f32, 0), (2.0_f32, 2)] {
+            assert_eq!((floor_f32(value), ceil_f32(value)), (expected, expected));
+        }
         assert_eq!((floor(-3e9), ceil(-3e9)), (i32::MIN, i32::MIN));
         assert_eq!((floor(3e9), ceil(3e9)), (i32::MAX, i32::MAX));
         assert_eq!(floor(f64::from(i32::MIN) - 0.5), i32::MIN);
