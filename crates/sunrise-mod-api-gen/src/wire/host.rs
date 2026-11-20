@@ -108,6 +108,7 @@ fn frame(surface: &mut super::Surface<'_>) -> Result<String, String> {
         writeln!(methods, "pub fn set_{name}(&mut self, v: &(dyn {path} + '_)) {{ self.{name} = Some((unsafe {{ std::mem::transmute(v as *const (dyn {path} + '_)) }}, false)); }} pub fn set_{name}_mut(&mut self, v: &mut (dyn {path} + '_)) {{ self.{name} = Some((unsafe {{ std::mem::transmute(v as *mut (dyn {path} + '_)) }}, true)); }}").unwrap();
         for mutable in [false, true] {
             let mut choices = Vec::new();
+            let mut access = String::new();
             let mut tried: Vec<(String, bool)> = Vec::new();
             for sub in super::imports() {
                 if super::REACHED.iter().any(|(o, ..)| o == sub) {
@@ -161,6 +162,12 @@ fn frame(surface: &mut super::Surface<'_>) -> Result<String, String> {
                     let source = snake(holder);
                     let source_mut = method.receiver == Some(true);
                     let filter = if source_mut { ".filter(|(_,m)|*m)" } else { "" };
+                    // Refuse before even probing the accessor in the overlap check. The native
+                    // accessor may unwind when called outside its phase.
+                    if let Some(level) = &method.access {
+                        let operation = &method.name;
+                        writeln!(access, "if self.{source}{filter}.is_some() && !mod_api::__private::access_allowed({operation:?}, mod_api::__private::LoadAccess::{level}) {{ return Err(ServeError::Phase {{ operation: {operation:?}, phase: mod_api::__private::current_phase() }}); }}").unwrap();
+                    }
                     let s = if source_mut { "mut " } else { "" };
                     let m = if mutable { "mut " } else { "" };
                     tried.push((source.clone(), mutable || source_mut));
@@ -191,7 +198,7 @@ fn frame(surface: &mut super::Surface<'_>) -> Result<String, String> {
             };
             let expr = choices.join(".or_else(|| ");
             let expr = format!("{expr}{}", ")".repeat(choices.len().saturating_sub(1)));
-            writeln!(methods, "pub unsafe fn {name}{suffix}(&self) -> Result<&'static {m}dyn {path}, ServeError> {{ {overlap}{expr}.ok_or(ServeError::Missing(\"{name}\")) }}", suffix=if mutable {"_mut"} else {""}, m=if mutable {"mut "} else {""}).unwrap();
+            writeln!(methods, "pub unsafe fn {name}{suffix}(&self) -> Result<&'static {m}dyn {path}, ServeError> {{ {access}{overlap}{expr}.ok_or(ServeError::Missing(\"{name}\")) }}", suffix=if mutable {"_mut"} else {""}, m=if mutable {"mut "} else {""}).unwrap();
         }
     }
     check_one_source_per_chain(surface, &chains)?;
