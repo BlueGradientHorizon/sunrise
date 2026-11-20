@@ -405,7 +405,7 @@ mod owner_save_tests {
     #[ignore = "daily"]
     fn a_vexs_first_tick_falls_and_then_saves_no_gravity() {
         use crate::mobs::world::with_test_world;
-        if !with_test_world(&[], |w, _| {
+        with_test_world(&[], |w, _| {
             for with_gravity in [true, false] {
                 let mut vex = vex();
                 register(&mut vex);
@@ -436,9 +436,7 @@ mod owner_save_tests {
             assert!(vex.no_gravity, "the tick's end set the flag");
             let saved = mob_to_nbt(&vex, [0; 4], None, None, |_| None, &Default::default());
             assert_eq!(saved.get("NoGravity"), Some(&Tag::Byte(1)));
-        }) {
-            return;
-        }
+        });
     }
 
     /// `Level.getEntity(uuid)` for the test: `Game` answers this with
