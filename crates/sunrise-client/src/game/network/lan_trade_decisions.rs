@@ -324,10 +324,8 @@ impl Game<'_> {
                 _ => None,
             });
             let player_slots = (0..36)
-                .filter_map(|slot| {
-                    (menu.player_item(slot) != guest.inventory[slot].as_ref())
-                        .then(|| (slot, menu.player_item(slot).cloned()))
-                })
+                .filter(|&slot| menu.player_item(slot) != guest.inventory[slot].as_ref())
+                .map(|slot| (slot, menu.player_item(slot).cloned()))
                 .collect();
             let offhand = (menu.player_item(40) != guest.offhand.as_ref())
                 .then(|| menu.player_item(40).cloned());
@@ -578,7 +576,7 @@ impl Game<'_> {
         let Some(open) = host.play.get_mut(&conn).map(|p| &mut p.merchant) else {
             return;
         };
-        if !open.as_ref().is_some_and(|gm| gm.window == window) {
+        if open.as_ref().is_none_or(|gm| gm.window != window) {
             return;
         }
         let mut gm = open.take().expect("matching window");
