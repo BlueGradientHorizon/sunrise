@@ -11,17 +11,14 @@ use super::{
 use crate::game::{
     api_values::TryIntoApi,
     decided_action::Epoch,
-    transactions::{
-        After,
-        decision::{InvalidReason, Reply},
-    },
+    transactions::{After, decision::Reply},
 };
 use mod_api::item::menu::AnvilCraftInputs;
 use std::cell::{Cell, RefCell};
 use sunrise_client::{
     containers::BlockEntity,
     items::ItemStack,
-    menu::{GrindstonePlaceEdits, Kind, Menu, PendingGrindstoneTake},
+    menu::{GrindstonePlaceEdits, GrindstoneTakeEdits, Kind, Menu},
 };
 use sunrise_core::random::RandomSource;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
@@ -330,7 +327,7 @@ impl Game<'_> {
             if let Some(take) = taken {
                 if take_listened && let Some((actor, (route, _), _)) = admission {
                     let read = gs.menu.mutation_stamp();
-                    let answer = RefCell::new(None::<PendingGrindstoneTake>);
+                    let answer = RefCell::new(None::<GrindstoneTakeEdits>);
                     let listener_cancelled = Cell::new(false);
                     let applied = {
                         let menu = RefCell::new(&mut *gs.menu);
@@ -343,42 +340,36 @@ impl Game<'_> {
                             // nothing the take read has changed.
                             |game| fresh(game) && menu.borrow().mutation_stamp() == read,
                             |game| {
-                                let mut take = take;
                                 let mut cancel = false;
-                                if let Err(reason) = game.api_grindstone_take(
+                                let edits = match game.api_grindstone_take(
                                     uuid,
                                     entity_id,
                                     pos,
-                                    &mut take,
+                                    &take,
                                     &mut cancel,
                                 ) {
-                                    return Reply::Invalid(reason);
-                                }
+                                    Ok(edits) => edits,
+                                    Err(reason) => return Reply::Invalid(reason),
+                                };
                                 if cancel {
                                     listener_cancelled.set(true);
                                     return Reply::Cancel;
                                 }
-                                if take.xp < -1
-                                    || take.new_top.as_ref().is_some_and(|s| s.count < 1)
-                                    || take.new_bottom.as_ref().is_some_and(|s| s.count < 1)
-                                {
-                                    return Reply::Invalid(InvalidReason::Plan);
-                                }
-                                *answer.borrow_mut() = Some(take);
+                                *answer.borrow_mut() = Some(edits);
                                 Reply::Allow
                             },
                             |game| {
-                                let Some(take) = answer.take() else {
+                                let Some(edits) = answer.take() else {
                                     return;
                                 };
-                                if take.xp < 0 {
+                                if edits.xp < 0 {
                                     let amount = take.vanilla_amount(&game.menu_env());
                                     game.grindstone_taken(pos, amount);
                                 } else {
-                                    game.grindstone_award(pos, take.xp.unsigned_abs());
+                                    game.grindstone_award(pos, edits.xp.unsigned_abs());
                                 }
                                 menu.borrow_mut()
-                                    .grindstone_take_inputs(&game.menu_env(), take);
+                                    .grindstone_take_inputs(&game.menu_env(), edits);
                             },
                         )
                     };
@@ -391,7 +382,11 @@ impl Game<'_> {
                     cancelled = true;
                     commit_click = false;
                 } else {
-                    ground_xp = gs.menu.grindstone_taken(&self.menu_env(), take, false);
+                    ground_xp = gs.menu.grindstone_taken(
+                        &self.menu_env(),
+                        &take,
+                        GrindstoneTakeEdits::initial(take.xp),
+                    );
                 }
             }
             // A cancelled take runs no createResult: the inputs are untouched.

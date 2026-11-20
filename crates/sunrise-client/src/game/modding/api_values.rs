@@ -1181,32 +1181,6 @@ impl TryIntoApi for crate::menu::AnvilCraftSnapshot {
         ))
     }
 }
-impl TryIntoApi for crate::menu::PendingGrindstoneTake {
-    type Api = mod_api::item::menu::GrindstoneTake;
-    type Error = StackReadError;
-    fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
-        Ok(mod_api::item::menu::GrindstoneTake {
-            top: self.top.try_into_api()?,
-            bottom: self.bottom.try_into_api()?,
-            xp: self.xp,
-            new_top: self.new_top.try_into_api()?,
-            new_bottom: self.new_bottom.try_into_api()?,
-        })
-    }
-}
-impl TryIntoEngine for mod_api::item::menu::GrindstoneTake {
-    type Engine = crate::menu::PendingGrindstoneTake;
-    type Error = StackWriteError;
-    fn try_into_engine(&self, items: &Items) -> Result<Self::Engine, Self::Error> {
-        Ok(crate::menu::PendingGrindstoneTake {
-            top: self.top.try_into_engine(items)?,
-            bottom: self.bottom.try_into_engine(items)?,
-            xp: self.xp,
-            new_top: self.new_top.try_into_engine(items)?,
-            new_bottom: self.new_bottom.try_into_engine(items)?,
-        })
-    }
-}
 
 impl super::Game<'_> {
     pub(in crate::game) fn api_anvil_update(
@@ -1306,22 +1280,40 @@ impl super::Game<'_> {
         player: u128,
         entity: i32,
         pos: [i32; 3],
-        value: &mut crate::menu::PendingGrindstoneTake,
+        take: &crate::menu::PendingGrindstoneTake,
         cancel: &mut bool,
-    ) -> Result<(), crate::game::transactions::decision::InvalidReason> {
-        let Ok(mut api) = value.try_into_api() else {
-            return Ok(());
+    ) -> Result<crate::menu::GrindstoneTakeEdits, InvalidReason> {
+        use mod_api::item::menu::{GrindstoneTakeEdits, GrindstoneTakeInputs};
+
+        let Ok([top, bottom]) = [take.top.as_ref(), take.bottom.as_ref()].try_into_api() else {
+            return Ok(crate::menu::GrindstoneTakeEdits::initial(take.xp));
         };
-        let original = api.clone();
-        self.native_grindstone_take(player, entity, pos, &mut api, cancel);
-        if api == original {
-            return Ok(());
-        }
-        // An answer that is no stack is refused, never read as a cancel.
-        *value = api
+        let inputs = GrindstoneTakeInputs {
+            top: top.as_ref(),
+            bottom: bottom.as_ref(),
+        };
+        let mut edits = GrindstoneTakeEdits {
+            xp: take.xp,
+            new_top: None,
+            new_bottom: None,
+        };
+        self.native_grindstone_take(player, entity, pos, &inputs, &mut edits, cancel);
+
+        // Invalid replacements refuse the click, even if the listener also cancelled.
+        let [new_top, new_bottom] = [edits.new_top, edits.new_bottom]
             .try_into_engine(self.items())
-            .map_err(|_| crate::game::transactions::decision::InvalidReason::Count)?;
-        Ok(())
+            .map_err(|_| InvalidReason::Count)?;
+        if *cancel {
+            return Ok(crate::menu::GrindstoneTakeEdits::initial(take.xp));
+        }
+        if edits.xp < -1 {
+            return Err(InvalidReason::Plan);
+        }
+        Ok(crate::menu::GrindstoneTakeEdits {
+            xp: edits.xp,
+            new_top,
+            new_bottom,
+        })
     }
 }
 

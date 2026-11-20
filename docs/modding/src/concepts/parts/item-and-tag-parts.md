@@ -215,12 +215,19 @@ result and award. Only the replacement stack is checked as a write; the borrowed
 An invalid replacement or an uncancelled XP below `-1` refuses the answer. A cancel or refusal
 leaves no result.
 
-`grindstone_take` can replace the two inputs and the experience award. Cancelling a take
-keeps the click that took the result but skips the input replacement and experience. Refusing a
-take (for example, because the backing block changed or the answer is invalid) instead restores
-the click, including the result, cursor, inventory and any dropped item. Both cancel and refusal
-undo the listener's writes. An accepted take is still tentative until the enclosing transaction
-commits.
+`grindstone_take` lends the pre-take stacks as `event.inputs.top` and `event.inputs.bottom`.
+These optional references do not change when listeners edit the answer. Set a valid
+`event.edits.new_top` or `event.edits.new_bottom` to leave a stack in that slot; both start
+at `None` (empty the slot). `event.edits.xp` starts with the award set on place or `-1`
+for vanilla's award from the pre-take stacks. Set a nonnegative value to give that much
+experience.
+
+Cancelling a take keeps the click that took the result but skips input replacement,
+experience and sound. An invalid remainder refuses the click even if the listener cancels;
+XP below `-1` refuses an uncancelled answer. A refusal, including a stale read or a failing
+listener, restores the result, inputs, cursor, inventory and any dropped item. Both cancel and
+refusal undo the listener's writes. An accepted take is still tentative until the enclosing
+transaction commits.
 
 After the anvil calculates a result with a left input, `anvil_update` lends
 `event.inputs` on both sides: the left and optional right stacks, the optional rename text

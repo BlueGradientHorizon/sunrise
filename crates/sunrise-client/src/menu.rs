@@ -22,9 +22,9 @@ use sunrise_world::native_load_context::{DataLoadOrigin, LoadContext, LoadInputs
 use sunrise_world::native_load_context::{LoopContext, LoopSide};
 mod models;
 pub use models::{
-    AnvilCraftSnapshot, AnvilUpdateInputs, GrindstonePlaceEdits, PendingGrindstoneTake,
-    PlanningRules, RuleAnswers, SlotContext, SlotRules, SlotView, StackedClick, StackedOutcome,
-    StoredRules,
+    AnvilCraftSnapshot, AnvilUpdateInputs, GrindstonePlaceEdits, GrindstoneTakeEdits,
+    PendingGrindstoneTake, PlanningRules, RuleAnswers, SlotContext, SlotRules, SlotView,
+    StackedClick, StackedOutcome, StoredRules,
 };
 mod slot_context;
 pub use slot_context::{SlotSnapshot, apply_menu_slot_rules, lan_container};
@@ -1329,33 +1329,28 @@ impl Menu {
         }
     }
 
-    /// The rest of a taken grindstone result's `onTake` once the mods
-    /// answered `grind_take`: cancelled, the inputs stay and nothing is
-    /// given. Otherwise the inputs become `new_top` and `new_bottom`, and
-    /// the experience is the mods' `xp` when 0 or more (returned, given as
-    /// is) or vanilla's (`ground`, rolled by the caller).
+    /// Finish a deferred `onTake` outside the take listener's decided action.
+    /// Stage the experience for the caller: an exact award is returned as-is,
+    /// or `ground` holds the vanilla amount from before the inputs were replaced.
     pub fn grindstone_taken(
         &mut self,
         env: &Env,
-        take: PendingGrindstoneTake,
-        cancel: bool,
+        take: &PendingGrindstoneTake,
+        edits: GrindstoneTakeEdits,
     ) -> Option<i32> {
         self.touch();
-        if cancel {
-            return None;
-        }
-        if take.xp < 0 {
+        if edits.xp < 0 {
             self.state.ground = Some(take.vanilla_amount(env));
         }
-        let xp = (take.xp >= 0).then_some(take.xp);
-        self.grindstone_take_inputs(env, take);
+        let xp = (edits.xp >= 0).then_some(edits.xp);
+        self.grindstone_take_inputs(env, edits);
         xp
     }
 
-    /// Replace the inputs and run `slotsChanged`, after the server has awarded experience.
-    pub fn grindstone_take_inputs(&mut self, env: &Env, take: PendingGrindstoneTake) {
-        self.put(env, 0, take.new_top);
-        self.put(env, 1, take.new_bottom);
+    /// Replace the inputs and run `slotsChanged` using the admitted remainders.
+    pub fn grindstone_take_inputs(&mut self, env: &Env, edits: GrindstoneTakeEdits) {
+        self.put(env, 0, edits.new_top);
+        self.put(env, 1, edits.new_bottom);
     }
 
     /// `AnvilMenu.setItemName` (`ServerboundRenameItemPacket`): false when
@@ -3747,46 +3742,39 @@ pub(crate) mod tests {
     }
 
     /// `GrindstoneEvent`: a placed output with its experience is what the
-    /// take reports; the take's answer sets the inputs and the experience,
-    /// and a cancelled take keeps the inputs and gives nothing.
+    /// take reports; the admitted remainder edits set the inputs after the take.
     #[test]
     fn grindstone_events_set_the_result_the_inputs_and_the_experience() {
         bare_env(|env| {
-            let grindstone = || {
-                let mut menu = Menu::new(Kind::Grindstone);
-                menu.grind_hook = true;
-                menu.set_slot(env, 0, stack("iron_sword", 1));
-                menu.set_slot(env, 1, stack("iron_sword", 1));
-                menu.grindstone_placed(
-                    GrindstonePlaceEdits {
-                        output: stack("stick", 1),
-                        xp: 5,
-                    },
-                    false,
-                );
-                menu.click(env, 2, 0, Input::Pickup).unwrap();
-                menu
-            };
-            let mut menu = grindstone();
+            let mut menu = Menu::new(Kind::Grindstone);
+            menu.grind_hook = true;
+            menu.set_slot(env, 0, stack("iron_sword", 1));
+            menu.set_slot(env, 1, stack("iron_sword", 1));
+            menu.grindstone_placed(
+                GrindstonePlaceEdits {
+                    output: stack("stick", 1),
+                    xp: 5,
+                },
+                false,
+            );
+            menu.click(env, 2, 0, Input::Pickup).unwrap();
             assert_eq!(menu.carried, stack("stick", 1));
-            let mut take = menu.grind_take.take().unwrap();
+            let take = menu.grind_take.take().unwrap();
             assert_eq!(
                 (&take.top, &take.bottom, take.xp),
                 (&stack("iron_sword", 1), &stack("iron_sword", 1), 5)
             );
             // The inputs wait for the mods.
             assert_eq!(menu.slot(0), stack("iron_sword", 1).as_ref());
-            take.new_top = stack("dirt", 1);
-            assert_eq!(menu.grindstone_taken(env, take.clone(), false), Some(5));
+            let edits = GrindstoneTakeEdits {
+                new_top: stack("dirt", 1),
+                ..GrindstoneTakeEdits::initial(take.xp)
+            };
+            assert_eq!(menu.grindstone_taken(env, &take, edits), Some(5));
             assert_eq!(
                 (menu.slot(0), menu.slot(1)),
                 (stack("dirt", 1).as_ref(), None)
             );
-
-            let mut menu = grindstone();
-            let take = menu.grind_take.take().unwrap();
-            assert_eq!(menu.grindstone_taken(env, take, true), None);
-            assert_eq!(menu.slot(1), stack("iron_sword", 1).as_ref());
             assert_eq!(menu.ground, None);
 
             let mut menu = Menu::new(Kind::Grindstone);

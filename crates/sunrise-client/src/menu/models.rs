@@ -104,17 +104,13 @@ impl Default for GrindstonePlaceEdits {
     }
 }
 
-/// A grindstone result taken, as `GrindstoneEvent.OnTakeItem` reports it:
-/// the inputs, the experience (-1 for vanilla's, or what OnPlaceItem set)
-/// and what the inputs hold afterwards (empty, as vanilla's).
+/// The pre-take inputs and initial experience of a deferred grindstone result take.
 #[derive(Clone, Debug, PartialEq)]
-// exhaustive: the game builds it with a literal; mods only read it
 pub struct PendingGrindstoneTake {
     pub top: Option<ItemStack>,
     pub bottom: Option<ItemStack>,
+    /// `-1` for vanilla's award, or the amount set when the result was placed.
     pub xp: i32,
-    pub new_top: Option<ItemStack>,
-    pub new_bottom: Option<ItemStack>,
 }
 
 impl PendingGrindstoneTake {
@@ -125,6 +121,25 @@ impl PendingGrindstoneTake {
             self.top.as_ref(),
             self.bottom.as_ref(),
         )
+    }
+}
+
+/// The admitted experience and replacements for a taken grindstone result.
+pub struct GrindstoneTakeEdits {
+    /// `-1` for the award from the pre-take inputs, or a nonnegative amount.
+    pub xp: i32,
+    pub new_top: Option<ItemStack>,
+    pub new_bottom: Option<ItemStack>,
+}
+
+impl GrindstoneTakeEdits {
+    /// Finish the take without listener edits: keep the initial award and empty both slots.
+    pub fn initial(xp: i32) -> Self {
+        Self {
+            xp,
+            new_top: None,
+            new_bottom: None,
+        }
     }
 }
 

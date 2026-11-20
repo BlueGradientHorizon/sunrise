@@ -196,11 +196,10 @@ pub struct State {
     /// The anvil result taken while `anvil_hook` is set, as it was before
     /// crafting.
     pub anvil_craft: Option<AnvilCraftSnapshot>,
-    /// The caller fires `GrindstoneEvent.OnTakeItem` for a taken grindstone
-    /// result: its `onTake` waits in `grind_take` for `grindstone_taken`.
+    /// Defer a grindstone result's `onTake` to the caller, which can dispatch
+    /// `GrindstoneEvent.OnTakeItem` before applying the experience and replacements.
     pub grind_hook: bool,
-    /// The grindstone result taken while `grind_hook` is set, with its
-    /// inputs as they were.
+    /// The pre-take inputs and initial experience for a deferred `onTake`.
     pub grind_take: Option<PendingGrindstoneTake>,
     /// `GrindstoneEvent.OnPlaceItem`'s experience for the result now in the
     /// slot, or -1 for vanilla's.

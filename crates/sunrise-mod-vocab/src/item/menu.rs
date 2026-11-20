@@ -254,17 +254,31 @@ pub struct GrindstonePlaceEdits {
     /// values below `-1` are refused unless cancelled.
     pub xp: i32,
 }
-/// A grindstone result taken, as `GrindstoneEvent.OnTakeItem` reports it:
-/// the inputs, the experience (-1 for vanilla's, or what OnPlaceItem set)
-/// and what the inputs hold afterwards (empty, as vanilla's).
+/// The input stacks before the grindstone result was taken, borrowed for the
+/// `grindstone_take` callback. Edits by earlier listeners do not change this snapshot.
 #[derive(Clone, Debug, PartialEq)]
 // exhaustive: the game builds it with a literal; mods only read it
-#[derive(sunrise_mod_api_macros::Wire)]
-pub struct GrindstoneTake {
-    pub top: Option<ItemStack>,
-    pub bottom: Option<ItemStack>,
+// no wire: borrows the converted pre-take stacks for the hook call.
+pub struct GrindstoneTakeInputs<'a> {
+    /// The stack in the top input slot before the take, if present.
+    pub top: Option<&'a ItemStack>,
+    /// The stack in the bottom input slot before the take, if present.
+    pub bottom: Option<&'a ItemStack>,
+}
+
+/// The shared answer to `grindstone_take`. Both remainders start at `None`
+/// and the game validates the final answer before applying any of it.
+#[derive(Clone, Debug, PartialEq)]
+// exhaustive: the game builds it with a literal
+// no wire: staged edits are applied in-process at the end of the hook call.
+pub struct GrindstoneTakeEdits {
+    /// Experience to award, initially what `grindstone_place` set or `-1` for
+    /// vanilla's award. Set a nonnegative amount to override it. Values below
+    /// `-1` are refused unless the take is cancelled.
     pub xp: i32,
+    /// A valid replacement for the top input, or `None` to empty the slot.
     pub new_top: Option<ItemStack>,
+    /// A valid replacement for the bottom input, or `None` to empty the slot.
     pub new_bottom: Option<ItemStack>,
 }
 /// The anvil inputs and result before the take. Both `anvil_craft_pre` and

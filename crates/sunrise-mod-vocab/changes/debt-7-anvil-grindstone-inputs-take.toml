@@ -1,0 +1,31 @@
+ids = [
+    "hook:grindstone_take",
+    "hook:grindstone_take.take",
+    "hook:grindstone_take.inputs",
+    "hook:grindstone_take.edits",
+    "type:GrindstoneTakeEvent",
+    "type:GrindstoneTakeEvent.take",
+    "type:GrindstoneTakeEvent.inputs",
+    "type:GrindstoneTakeEvent.edits",
+    "type:item::menu::GrindstoneTake",
+    "type:item::menu::GrindstoneTake.top",
+    "type:item::menu::GrindstoneTake.bottom",
+    "type:item::menu::GrindstoneTake.xp",
+    "type:item::menu::GrindstoneTake.new_top",
+    "type:item::menu::GrindstoneTake.new_bottom",
+    "type:item::menu::GrindstoneTakeInputs",
+    "type:item::menu::GrindstoneTakeInputs.top",
+    "type:item::menu::GrindstoneTakeInputs.bottom",
+    "type:item::menu::GrindstoneTakeEdits",
+    "type:item::menu::GrindstoneTakeEdits.xp",
+    "type:item::menu::GrindstoneTakeEdits.new_top",
+    "type:item::menu::GrindstoneTakeEdits.new_bottom",
+]
+why = "Grindstone Take lends a read-only snapshot from before the take and stages only the experience and input remainders. Existing input stacks no longer have to pass write validation, and an invalid remainder refuses the click before either input can be replaced."
+migrate = """
+Use `&mut GrindstoneTakeEvent<'_>` in the listener. Replace `event.take.top.as_ref()` and `event.take.bottom.as_ref()` with `event.inputs.top` and `event.inputs.bottom`. The stacks are optional references; don't assign to them. Use `.cloned()` on a field to keep its stack after the callback. To set the items that remain after the take, use `event.edits.new_top` and `event.edits.new_bottom` in place of `event.take.new_top` and `event.take.new_bottom`. Leave a field at `None` to empty that slot, or assign `Some(valid_stack)` to replace it. Invalid remainders refuse the whole click even if you cancel.
+
+Read and write `event.edits.xp` instead of `event.take.xp`. It still starts at the award set by `grindstone_place` or at `-1` for vanilla's award. Set a nonnegative award to override it; XP below `-1` refuses an uncancelled answer. `event.cancelled` or `Flow::Cancel` still keeps the click but skips the remainder replacements, experience and sound.
+
+If you construct a dispatch fixture, replace the old `mod_api::item::menu::GrindstoneTake` with `GrindstoneTakeInputs<'_>` (borrowing your optional stacks) and `GrindstoneTakeEdits { xp, new_top: None, new_bottom: None }`, and pass `&inputs, &mut edits` before the cancel argument. These call-scoped records have no Wire encoding; retain or encode individual owned fields instead. Rebuild and repack the mod for hook version 3.
+"""

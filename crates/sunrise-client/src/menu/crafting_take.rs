@@ -73,8 +73,6 @@ impl Menu {
                     top: self.state.containers[MAIN][0].clone(),
                     bottom: self.state.containers[MAIN][1].clone(),
                     xp: self.state.grind_xp,
-                    new_top: None,
-                    new_bottom: None,
                 });
                 return;
             }

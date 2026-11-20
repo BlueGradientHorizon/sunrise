@@ -13,7 +13,9 @@ pub mod item {
         pub struct GrindstonePlaceInputs<'a>(std::marker::PhantomData<&'a ()>);
         #[derive(Clone)]
         pub struct GrindstonePlaceEdits;
-        pub struct GrindstoneTake;
+        pub struct GrindstoneTakeInputs<'a>(std::marker::PhantomData<&'a ()>);
+        #[derive(Clone)]
+        pub struct GrindstoneTakeEdits;
         pub struct StackedOnOther;
         pub struct StackedOnOtherResult;
     }
