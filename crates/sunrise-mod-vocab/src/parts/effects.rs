@@ -7,6 +7,7 @@ type EffectTicks = HashMap<Box<str>, Vec<Attached<dyn MobEffectPart>>>;
 /// Parts subscribed to effect ticks, frozen after effect keys and owners resolve.
 #[doc(hidden)]
 #[derive(Default)]
+#[non_exhaustive]
 pub struct ResolvedEffectTicks(OnceLock<EffectTicks>);
 
 pub(crate) fn resolved_effects() -> &'static OnceLock<sunrise_mod_runtime::registry_keys::Effects> {
