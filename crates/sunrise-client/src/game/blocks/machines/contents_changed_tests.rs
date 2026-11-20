@@ -656,7 +656,7 @@ fn default_items_notifies_for_committed_mod_container_writes() {
             changes.0.lock().unwrap().clear();
             assert_eq!(
                 game.transaction(|host, tx| {
-                    assert_eq!(items.insert(host, tx, 0, &stick, 32), 32);
+                    assert_eq!(items.insert_at(host, tx, 0, &stick, 32), 32);
                     Err::<(), _>(())
                 }),
                 Err(())
@@ -667,9 +667,9 @@ fn default_items_notifies_for_committed_mod_container_writes() {
 
             assert_eq!(
                 game.transaction(|host, tx| {
-                    assert_eq!(items.insert(host, tx, 0, &stick, 32), 32);
+                    assert_eq!(items.insert_at(host, tx, 0, &stick, 32), 32);
                     host.transaction(|host, inner| {
-                        assert_eq!(items.insert(host, inner, 1, &stick, 32), 32);
+                        assert_eq!(items.insert_at(host, inner, 1, &stick, 32), 32);
                         Ok::<_, ()>(())
                     })?;
                     assert!(changes.0.lock().unwrap().is_empty());
