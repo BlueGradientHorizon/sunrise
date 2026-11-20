@@ -73,7 +73,7 @@ pub trait PlayerInteractionBackendMut {
     /// hooks** with this player. Sunrise's sites all share this one answer, unlike NeoForge's
     /// break progress, which skips the block override. Nothing requires `pos` to hold `state`. On
     /// a server a connected or fake player can be asked; on a client only the local player. None
-    /// for a stale handle or player, a dead server player, a level other than the one in place,
+    /// for a stale handle or player, an unknown block state, a dead server player, a level other than the one in place,
     /// a player the client has no state for, and a call from inside either harvest hook
     /// (`can_harvest_block`, `player_harvest_check`), even when asking about a different state.
     #[access(WorldOnly)]
