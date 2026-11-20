@@ -10,8 +10,8 @@ use crate::{BlockState, LightLayer};
 use std::{collections::BTreeMap, sync::Arc};
 
 /// One particle of a provider's type, as its tick reads and writes it: the fields of vanilla's
-/// `Particle` a `tick` moves. Plain numbers, so a tick allocates nothing, and one value for
-/// native and wasm mods alike.
+/// `Particle` a `tick` moves. The record has no heap-owned fields and is the same on native and
+/// wasm; see [`ParticleBatch`] for dispatch costs.
 #[derive(Clone, Debug, PartialEq)]
 // exhaustive: the game builds it for each tick and a mod only edits its fields
 #[derive(sunrise_mod_api_macros::Wire)]
@@ -70,13 +70,14 @@ pub enum ParticleFacing {
     Fixed([f32; 4]),
 }
 
-/// The particles of one provider's batch, in a fixed number and order: a tick edits them through
-/// [`ParticleBatch::get_mut`], [`ParticleBatch::iter_mut`] or a `for` loop, and cannot add or
-/// remove one (`ModParticle::removed` expires a particle). The game builds the batch: the
-/// helpers that fill it and take it back are internal, and a batch that came back at another
-/// size expires its particles. On a native mod the game reuses one batch's storage from tick to
-/// tick, so a warm tick allocates nothing; a wasm tick decodes a new batch from the guest's
-/// reply, which allocates.
+/// The particles of one provider's batch. Edit them through [`ParticleBatch::get_mut`],
+/// [`ParticleBatch::iter_mut`] or a `for` loop: those methods preserve the batch's length and
+/// order. Set [`ModParticle::removed`] to expire a particle. The helpers that build the batch
+/// and take it back are internal. If a callback returns a different length, the game expires
+/// the batch's particles.
+///
+/// Native dispatch reuses its batch storage once it has enough capacity. Wasm dispatch decodes
+/// a new batch from the guest's reply, which allocates.
 #[derive(Clone, Debug, PartialEq)]
 // exhaustive: its field is private; the game builds it
 #[derive(sunrise_mod_api_macros::Wire)]
@@ -100,7 +101,7 @@ impl ParticleBatch {
         self.0.iter_mut()
     }
 }
-/// A batch of `particles`, built by the game; a mod cannot make or replace one.
+/// Internal constructor: wrap the game's `particles` for a provider tick.
 pub fn particle_batch_from_vec(particles: Vec<ModParticle>) -> ParticleBatch {
     ParticleBatch(particles)
 }

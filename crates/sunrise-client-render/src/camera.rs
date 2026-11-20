@@ -191,9 +191,11 @@ pub mod joml {
                 w,
             }
         }
-        /// `Quaternionf.rotateZ(angle)`: this quaternion, then a turn about Z.
-        pub fn rotate_z(self, angle: f32) -> Self {
-            let (sin, cos) = Self::half_turn(angle);
+        /// `Quaternionf.rotateZ(angle)` for provider roll, with HotSpot's `Math.sin`.
+        pub(crate) fn rotate_z(self, angle: f32) -> Self {
+            let half = angle * 0.5;
+            let sin = sunrise_core::jmath::sin(f64::from(half)) as f32;
+            let cos = cos_from_sin(sin, half);
             Self {
                 x: self.x * cos + self.y * sin,
                 y: self.y * cos - self.x * sin,

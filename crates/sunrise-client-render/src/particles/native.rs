@@ -782,6 +782,24 @@ pub(super) mod tests {
         );
     }
     #[test]
+    fn a_providers_camera_facing_rotates_the_quad_by_the_camera_then_the_interpolated_roll() {
+        let corners = drawn(
+            ParticleFacing::Camera,
+            &[4.1, 4.5],
+            [3.25, -1.5, 2.75],
+            glam::Quat::from_xyzw(0.5, -0.5, 0.5, 0.5),
+        );
+        assert_eq!(
+            corners,
+            [
+                [3.765367, -1.5, 1.4330349],
+                [4.566965, -1.5, 3.265367],
+                [2.734633, -1.5, 4.066965],
+                [1.9330349, -1.5, 2.234633],
+            ]
+        );
+    }
+    #[test]
     fn a_providers_around_y_facing_takes_the_cameras_y_and_w_and_rolls_from_the_last_tick() {
         // The camera's pitch and roll components (x and z) do not reach the quad, and the
         // particle is off the camera's axes, so a yaw taken from its direction would differ.
@@ -990,6 +1008,7 @@ pub(super) mod tests {
     #[test]
     fn the_providers_level_view_reads_the_loaded_chunks_states() {
         mod_platform::testing::with_mods(Vec::new().into(), || {
+            mod_platform::__private::part_tests::install_parts_fixture(&[]).unwrap();
             mod_api::__private::resolve_block_keys(["minecraft:air", "minecraft:stone"], |_| {
                 sunrise_mod_runtime::block_definitions::BlockDefinition::new(&[&BTreeMap::new()], 0)
                     .map_err(|error| format!("{error:?}"))
