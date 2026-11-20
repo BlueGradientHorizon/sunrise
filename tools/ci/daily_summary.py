@@ -16,10 +16,10 @@ identity, kind, panic location, policy file), then:
   why each run stopped as its verdict file says (signal or exit status, memory peak and limit, wall time, the tests
   still running past 60 s; stopped_text); a leg whose red asks for an action is titled as that action (ACTIONS:
   `Daily: update the machine sample for the mod API change`);
-- a failed check of the SDK a leg just built (SDK_CHECKS: the native linkage probe, the API-source check): one issue
-  per check and platform, `Daily: sdk <check> (<platform>)`, closed only by a run in which that step passed; when a
-  Linux SDK leg failed, the missing input of the legs that read it (fn-replace-check, book-quickstart) is said on that
-  leg's issue, not filed again;
+- a failed check of the SDK a leg just built (SDK_CHECKS: the native linkage probe, the API-source check, the source
+  stage): one issue per check and platform, `Daily: sdk <check> (<platform>)`, closed only by a run in which that step
+  passed; when a Linux SDK leg failed, the missing input of the legs that read it (fn-replace-check, book-quickstart) is
+  said on that leg's issue, not filed again;
 - a test (or leg) green again: closes its open issue with a comment.
 A job cancelled before any of its steps ran (one still waiting for a runner) never ran, so it is neither red nor
 green, and nor is a leg whose call was cancelled with only such jobs: nothing is filed or closed for it. A run cancelled
@@ -93,6 +93,7 @@ SDK_BUILD = "sdk / build "
 SDK_CHECKS = {
     "Two mod libraries share the game's exact Rust state": "native linkage probe",
     "The starter mod checks against the API source alone, host and wasm32": "API-source check",
+    "The source stages with this commit's build data": "source stage",
 }
 SDK_CHECK = "sdk-check"
 # The legs that read the Linux legs' SDK: when one of those failed, a reader whose only failures are the missing input

@@ -477,6 +477,21 @@ class DailySummaryTests(unittest.TestCase):
                               ["Daily: fn-replace-check / fn-replace-check did not complete",
                                "Daily: sdk / build linux-server did not complete"])
 
+    def test_a_source_stage_failure_is_its_own_issue_and_holds_the_sdk(self):
+        step = "The source stages with this commit's build data"
+        jobs = [j for j in GREEN_JOBS if j["name"] != "sdk / build linux"] + [job("sdk / build linux", "failure", [step])]
+        api = Api(jobs)
+        _, out = self.run_summary(api, [shard_report()], results=dict(LEGS, sdk={"result": "failure"}))
+        self.assertEqual(out.splitlines(), ["green=false", "sdk_green=false"])
+        created = [body for _, path, body in api.writes if path == "issues"]
+        self.assertEqual([body["title"] for body in created], ["Daily: sdk source stage (linux)"])
+        self.assertIn(step, created[0]["body"])
+
+    def test_every_sdk_check_is_a_step_of_the_sdk_build(self):
+        workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/prebuilt-game-build.yml").read_text()
+        for step in summary.SDK_CHECKS:
+            self.assertEqual(workflow.count(f"- name: {step}\n"), 1, step)
+
     def test_an_sdk_check_issue_closes_only_when_its_step_passed(self):
         title = "Daily: sdk API-source check (linux)"
         step = "The starter mod checks against the API source alone, host and wasm32"
