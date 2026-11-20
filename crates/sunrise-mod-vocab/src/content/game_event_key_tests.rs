@@ -30,10 +30,11 @@ impl crate::host::data_maps::DataMapsBackend for Maps {
         registry: &str,
         entry: &str,
         map: &str,
-    ) -> Result<Option<Tag>, DataMapError> {
+    ) -> Result<Option<&Tag>, DataMapError> {
+        static STEP_FREQUENCY: Tag = Tag::Int(7);
         assert_eq!(registry, "minecraft:game_event");
         assert_eq!(map, "neoforge:vibration_frequencies");
-        Ok((entry == "minecraft:step").then_some(Tag::Int(7)))
+        Ok((entry == "minecraft:step").then_some(&STEP_FREQUENCY))
     }
 }
 impl Host for Maps {

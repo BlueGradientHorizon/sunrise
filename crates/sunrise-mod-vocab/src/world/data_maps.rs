@@ -2,9 +2,8 @@
 //! server's data packs and mods' files gave a registry entry, after every pack was applied.
 use crate::{
     Backend, BiomeKey, BlockEntityTypeKey, BlockKey, DataMapType, EffectKey, EnchantmentKey,
-    EntityTypeKey, FluidKey, Host, ItemKey, NoBackend, ProfessionKey,
+    EntityTypeKey, FluidKey, Host, ItemKey, NoBackend, ProfessionKey, Tag,
 };
-use sunrise_core::nbt::Tag;
 
 /// A data map a mod registers and reads, typed (NeoForge's `DataMapType<R, T>`): its id, the
 /// registry its entries are in (through [`DataMap::Entry`]), and how a value decodes.
@@ -16,11 +15,13 @@ use sunrise_core::nbt::Tag;
 ///
 /// Register a mod-defined map in `data_map_types` with [`DataMap::ty`], then read an entry's value with its
 /// key's `data` ([`ItemKey::data`], [`EntityTypeKey::data`]...), or by name with
-/// [`data_map_value`] and [`data_map_entries`] for a registry without a typed key. A value arrives as the NBT form of the JSON a file
-/// held: a whole number is an `Int`, or a `Long` past `i32`, a fraction a `Double`, a boolean a
-/// `Byte`, an object a `Compound` and an array a `List`. Integers outside signed
-/// 64-bit range and `null` at any nesting depth return [`DataMapError::Undecodable`]
-/// rather than changing the value. Fractional/exponent JSON tokens use the parser's
+/// [`data_map_value`] and [`data_map_entries`]. Typed key reads return owned decoded values;
+/// reads by name borrow raw NBT from the host.
+/// A value arrives as the NBT form of the JSON a file held: a whole number is an `Int`, or
+/// a `Long` past `i32`, a fraction a `Double`, a boolean a `Byte`, an object a `Compound`
+/// and an array a `List`. Integers outside signed 64-bit range and `null` at any nesting
+/// depth return [`DataMapError::Undecodable`] rather than changing the value.
+/// Fractional/exponent JSON tokens use the parser's
 /// `f64` value; empty and heterogeneous arrays retain their elements.
 ///
 /// ```
@@ -46,7 +47,7 @@ use sunrise_core::nbt::Tag;
 pub trait DataMap {
     /// The registry entries the map attaches values to: one of the [`DataMapEntry`] keys.
     type Entry: DataMapEntry;
-    /// The value an entry holds.
+    /// The owned result of decoding an entry's borrowed tag.
     type Value;
     /// The map's id, `mod_id:name`, not in the `minecraft` namespace, as registered.
     fn id(&self) -> &str;
@@ -92,7 +93,9 @@ macro_rules! typed_entries {
             /// packs and mods' files left it: the newest file wins, a `#tag` entry gives every
             /// entry in the tag its value, `replace` and `remove` apply, and conditional files
             /// and values count only when their conditions hold. `Ok(None)` where the map
-            /// gives this entry no value.
+            /// gives this entry no value. A present value is decoded into an owned `M::Value`
+            /// that can outlive the host borrow. A refused decode is [`DataMapError::Undecodable`],
+            /// not an absent value.
             ///
             /// Server side: the server merges the maps when its data loads, on a world's first
             /// open and after every `/reload`, and a read sees the last load whole, never a mix
@@ -177,7 +180,7 @@ impl ProfessionKey {
 }
 
 /// Why a data map read has no answer. An entry the map gives no value is `Ok(None)`, not one of
-/// these.
+/// these. An empty map yields an empty slice from [`data_map_entries`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
@@ -185,10 +188,11 @@ pub enum DataMapError {
     /// No data maps are loaded here: a client (data maps are not synced to clients), a server
     /// before its world's data first loads, or a host with no game behind it.
     Unavailable,
-    /// No mod registered the map for the entry's registry in the current data load
+    /// Neither the engine nor a mod registered the map for this registry in the current load
     /// (`data_map_types`).
     UnknownType,
-    /// The entry's value is not one the map's [`DataMap::decode`] takes.
+    /// The value could not be represented as NBT, or a typed read's [`DataMap::decode`]
+    /// refused it.
     Undecodable,
     /// The key is expired, belongs to another world, or was never issued by this generation.
     InvalidKey,
@@ -209,34 +213,40 @@ fn data<M: DataMap>(
     let id = entry::Entry::id(entry, backend)?;
     let registry = <M::Entry as entry::Entry>::REGISTRY;
     match backend.data_map_value(registry, &id, map.id())? {
-        Some(value) => map
-            .decode(&value)
-            .map(Some)
-            .ok_or(DataMapError::Undecodable),
+        Some(value) => map.decode(value).map(Some).ok_or(DataMapError::Undecodable),
         None => Ok(None),
     }
 }
 
-/// Entry `entry` (its full id, `minecraft:pig`) of registry `registry`: its raw value in data
-/// map `map` (`IRegistryExtension.getData`), for a registry without a typed key, read as a
-/// key's `data` reads it. The value is the map's NBT, not yet decoded.
-pub fn data_map_value(
-    host: &dyn Host,
+/// Entry `entry` of registry `registry`: its raw NBT value in data map `map`
+/// (`IRegistryExtension.getData`). A bare entry id uses the `minecraft` namespace.
+/// `Ok(None)` means the map has no value for this entry. A host without loaded maps, an
+/// unknown map type, or a value that cannot be represented as NBT returns a [`DataMapError`].
+///
+/// The tag borrows from the host's published data, not the lookup IDs. Use `Option::cloned`
+/// only if you need the raw value after the host borrow ends.
+pub fn data_map_value<'host>(
+    host: &'host dyn Host,
     registry: &str,
     entry: &str,
     map: &str,
-) -> Result<Option<Tag>, DataMapError> {
+) -> Result<Option<&'host Tag>, DataMapError> {
     let backend = crate::backend_of(host).ok_or_else(DataMapError::no_backend)?;
     backend.data_map_value(registry, entry, map)
 }
 
-/// Every entry of `registry` that data map `map` gives a value, with that value, in id order
-/// (`IRegistryExtension.getDataMap`): the whole merged map of the last data load.
-pub fn data_map_entries(
-    host: &dyn Host,
+/// The whole published data map `map` of `registry`, sorted by entry ID
+/// (`IRegistryExtension.getDataMap`). A known empty map yields an empty slice; unavailable
+/// maps or an unknown type return a [`DataMapError`], not an empty slice. If any value
+/// cannot be represented as NBT, the whole read returns [`DataMapError::Undecodable`].
+///
+/// The slice borrows from the host's published data, not the lookup IDs. Iterate by
+/// reference, or call `to_vec` only if you need all the rows after that borrow ends.
+pub fn data_map_entries<'host>(
+    host: &'host dyn Host,
     registry: &str,
     map: &str,
-) -> Result<Vec<(String, Tag)>, DataMapError> {
+) -> Result<&'host [(String, Tag)], DataMapError> {
     let backend = crate::backend_of(host).ok_or_else(DataMapError::no_backend)?;
     backend.data_map_entries(registry, map)
 }
@@ -245,34 +255,42 @@ pub fn data_map_entries(
 mod tests {
     use super::*;
 
-    /// A host whose data maps hold `test:emc` for items, coal at 10 and a stick at a string,
-    /// and `test:hardness` for blocks, stone at 3; every other read answers no value.
-    struct Maps;
+    /// A host with two registered maps. The stick's EMC has the wrong NBT type.
+    struct Maps {
+        emc: [(String, Tag); 2],
+        hardness: [(String, Tag); 1],
+    }
+    impl Maps {
+        fn new() -> Self {
+            Self {
+                emc: [
+                    ("test:coal".into(), Tag::Int(10)),
+                    ("test:stick".into(), Tag::String("ten".into())),
+                ],
+                hardness: [("test:stone".into(), Tag::Long(3))],
+            }
+        }
+    }
     impl crate::host::data_maps::DataMapsBackend for Maps {
         fn data_map_value(
             &self,
             registry: &str,
             entry: &str,
             map: &str,
-        ) -> Result<Option<Tag>, DataMapError> {
-            match (registry, map, entry) {
-                ("minecraft:item", "test:emc", "test:coal") => Ok(Some(Tag::Int(10))),
-                ("minecraft:item", "test:emc", "test:stick") => Ok(Some(Tag::String("ten".into()))),
-                ("minecraft:item", "test:emc", _) => Ok(None),
-                ("minecraft:block", "test:hardness", "test:stone") => Ok(Some(Tag::Long(3))),
-                ("minecraft:block", "test:hardness", _) => Ok(None),
-                _ => Err(DataMapError::UnknownType),
-            }
+        ) -> Result<Option<&Tag>, DataMapError> {
+            Ok(self
+                .data_map_entries(registry, map)?
+                .iter()
+                .find_map(|(id, value)| (id.as_str() == entry).then_some(value)))
         }
         fn data_map_entries(
             &self,
             registry: &str,
             map: &str,
-        ) -> Result<Vec<(String, Tag)>, DataMapError> {
+        ) -> Result<&[(String, Tag)], DataMapError> {
             match (registry, map) {
-                ("minecraft:block", "test:hardness") => {
-                    Ok(vec![("test:stone".into(), Tag::Long(3))])
-                }
+                ("minecraft:item", "test:emc") => Ok(&self.emc),
+                ("minecraft:block", "test:hardness") => Ok(&self.hardness),
                 _ => Err(DataMapError::UnknownType),
             }
         }
@@ -343,13 +361,14 @@ mod tests {
 
     #[test]
     fn a_read_decodes_the_value_and_tells_no_value_from_a_refusal() {
-        assert_eq!(ItemKey(0).data(&Maps, &Emc), Ok(Some(10)));
-        assert_eq!(BlockKey(0).data(&Maps, &Hardness), Ok(Some(3)));
-        assert_eq!(ItemKey(2).data(&Maps, &Emc), Ok(None));
-        assert_eq!(BlockKey(1).data(&Maps, &Hardness), Ok(None));
-        assert_eq!(ItemKey(1).data(&Maps, &Emc), Err(DataMapError::Undecodable));
+        let maps = Maps::new();
+        assert_eq!(ItemKey(0).data(&maps, &Emc), Ok(Some(10)));
+        assert_eq!(BlockKey(0).data(&maps, &Hardness), Ok(Some(3)));
+        assert_eq!(ItemKey(2).data(&maps, &Emc), Ok(None));
+        assert_eq!(BlockKey(1).data(&maps, &Hardness), Ok(None));
+        assert_eq!(ItemKey(1).data(&maps, &Emc), Err(DataMapError::Undecodable));
         assert_eq!(
-            ItemKey(0).data(&Maps, &Unregistered),
+            ItemKey(0).data(&maps, &Unregistered),
             Err(DataMapError::UnknownType)
         );
         assert_eq!(ItemKey(0).data(&Bare, &Emc), Err(DataMapError::Unavailable));
@@ -373,14 +392,18 @@ mod tests {
 
     #[test]
     fn a_read_by_name_reaches_the_whole_map() {
-        assert_eq!(
-            data_map_value(&Maps, "minecraft:block", "test:stone", "test:hardness"),
-            Ok(Some(Tag::Long(3)))
-        );
-        assert_eq!(
-            data_map_entries(&Maps, "minecraft:block", "test:hardness"),
-            Ok(vec![("test:stone".into(), Tag::Long(3))])
-        );
+        let maps = Maps::new();
+        let (value, entries) = {
+            let registry = String::from("minecraft:block");
+            let entry = String::from("test:stone");
+            let map = String::from("test:hardness");
+            (
+                data_map_value(&maps, &registry, &entry, &map),
+                data_map_entries(&maps, &registry, &map).unwrap(),
+            )
+        };
+        assert_eq!(value, Ok(Some(&Tag::Long(3))));
+        assert_eq!(entries, &[("test:stone".to_owned(), Tag::Long(3))]);
         assert_eq!(
             data_map_entries(&Bare, "minecraft:block", "test:hardness"),
             Err(DataMapError::Unavailable)
