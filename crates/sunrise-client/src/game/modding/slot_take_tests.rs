@@ -182,7 +182,7 @@ impl BlockEntityPart for Pot {
                 let items = level
                     .capability(host, &ITEMS, [LINK.0, LINK.1, LINK.2], None)
                     .unwrap();
-                LINK_INSERTED.set(items.insert(host, &tx, 0, &ItemResource::of(event.taken), 1));
+                LINK_INSERTED.set(items.insert_at(host, &tx, 0, &ItemResource::of(event.taken), 1));
                 panic!("a linked write failed");
             }
             TakeScript::RefillGrid | TakeScript::ReplacePickAllCursor => {}
