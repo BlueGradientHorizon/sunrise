@@ -244,6 +244,7 @@ mod tests {
     /// A recording that ends without `capture_end` (the capture failed to start, or shutdown) leaves spans off.
     #[test]
     fn a_dropped_recording_turns_spans_off() {
+        let _spans = tick_profile::spans_test_lock();
         drop(Recording::start(1));
         assert!(!tick_profile::wanted(tick_profile::SPANS_REPORT));
     }
