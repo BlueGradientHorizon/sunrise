@@ -6,11 +6,10 @@ snapshots. This is a read-only view of the merged tags used by the current loot
 evaluator. The context supplies only its snapshot, tags and selected random.
 
 Resolve an `Identifier` with `context.tags().key(&id)`, retain the resulting `TagKey`,
-and call `is_in_tag(item, tag)` for item membership. `items(tag)` returns
-`ItemTagMembers::Missing` for an absent tag, `ItemTagMembers::Members(keys)` for a
-loaded tag (possibly empty), or `ItemTagMembers::Unavailable` if a required mapping
-is not available. `blocks(tag)` and `fluids(tag)` return ordered members by key,
-an empty list for an unknown tag, or `None` if a mapping is unavailable. There is
+and call `is_in_tag(item, tag)` for item membership. The `items(tag)`, `blocks(tag)`
+and `fluids(tag)` methods return `TagMembers::Missing` if a tag is absent,
+`TagMembers::Members(keys)` for a loaded tag's ordered members (possibly empty),
+or `TagMembers::Unavailable` if a required key mapping is not available. There is
 no operation to enumerate every tag. A retained key keeps its identity across
 reloads, but its members come from the current evaluation's tables.
 

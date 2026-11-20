@@ -17,21 +17,23 @@ impl TagKey {
     }
 }
 
-/// The result of reading one item tag from the current authoritative snapshot.
+/// The result of reading one registry tag from the current authoritative snapshot.
 #[derive(Clone, Debug, PartialEq, Eq)]
 // exhaustive: the lookup can only find a tag, miss it, or be unavailable.
-pub enum ItemTagMembers {
+pub enum TagMembers<K> {
     /// The snapshot has no tag of this name.
     Missing,
     /// The loaded tag's members in vanilla's order. The list may be empty.
-    Members(Vec<ItemKey>),
+    Members(Vec<K>),
     /// The snapshot or a required key mapping is unavailable. No partial list is returned.
     Unavailable,
 }
 
 /// Read merged block, item and fluid tags without borrowing the game's registry structs.
-/// A client reads the tags its server sent. [`Tags::items`] distinguishes absent tags
-/// from loaded empty tags; the membership predicate treats both as false.
+/// A client reads the tags its server sent. The list methods distinguish absent tags
+/// from loaded empty tags, and report unavailable until that registry's authoritative tags
+/// are applied or if a member key cannot be resolved. A retained tag key reads the current
+/// snapshot on each call, including after reload.
 pub trait Tags {
     /// Resolve a validated name once. The name need not currently have members;
     /// retain its key across reloads. None if the runtime cannot allocate a name slot.
@@ -51,30 +53,24 @@ pub trait Tags {
             crate::world::phase::LoadAccess::Metadata,
         )
     }
-    /// Read the current item tag, including unrequested vanilla items, in vanilla's order.
-    /// An absent tag is [`ItemTagMembers::Missing`], not a loaded empty list.
-    /// Before the authoritative item tags are applied, or if a required key mapping
-    /// cannot be resolved, the result is [`ItemTagMembers::Unavailable`]. A retained
-    /// key reads the current snapshot on each call, including after reload.
-    fn items(&self, _tag: TagKey) -> ItemTagMembers {
+    /// Read the current item tag in vanilla's order, including unrequested vanilla items.
+    fn items(&self, _tag: TagKey) -> TagMembers<ItemKey> {
         crate::world::phase::unprovided(
             "Tags::items",
             "tags_items",
             crate::world::phase::LoadAccess::Metadata,
         )
     }
-    /// Fluid members in vanilla's order. Unknown tags are empty;
-    /// unavailable authoritative tags or fluid mappings answer None.
-    fn fluids(&self, _tag: TagKey) -> Option<Vec<FluidKey>> {
+    /// Read the current fluid tag in vanilla's order.
+    fn fluids(&self, _tag: TagKey) -> TagMembers<FluidKey> {
         crate::world::phase::unprovided(
             "Tags::fluids",
             "tags_fluids",
             crate::world::phase::LoadAccess::Metadata,
         )
     }
-    /// Block members in vanilla's order, including unrequested vanilla blocks.
-    /// Unknown tags are empty; unavailable authoritative tags or block mappings answer None.
-    fn blocks(&self, _tag: TagKey) -> Option<Vec<BlockKey>> {
+    /// Read the current block tag in vanilla's order, including unrequested vanilla blocks.
+    fn blocks(&self, _tag: TagKey) -> TagMembers<BlockKey> {
         crate::world::phase::unprovided(
             "Tags::blocks",
             "tags_blocks",

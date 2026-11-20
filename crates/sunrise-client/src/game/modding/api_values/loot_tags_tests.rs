@@ -33,8 +33,8 @@ impl ModLootFunction for TagReader {
             .key(&mod_api::Identifier::parse("test:ingredients").unwrap())
             .unwrap();
         stack.count = match tags.items(tag) {
-            mod_api::ItemTagMembers::Members(members) if members.is_empty() => 1,
-            mod_api::ItemTagMembers::Members(members) => {
+            mod_api::TagMembers::Members(members) if members.is_empty() => 1,
+            mod_api::TagMembers::Members(members) => {
                 assert_eq!(
                     members
                         .iter()
@@ -44,8 +44,8 @@ impl ModLootFunction for TagReader {
                 );
                 2
             }
-            mod_api::ItemTagMembers::Missing => 0,
-            mod_api::ItemTagMembers::Unavailable => panic!("loot has a loaded item table"),
+            mod_api::TagMembers::Missing => 0,
+            mod_api::TagMembers::Unavailable => panic!("loot has a loaded item table"),
         };
         Ok(stack)
     }
@@ -65,7 +65,7 @@ impl mod_api::ModLootCondition for TagReader {
             .key(&mod_api::Identifier::parse("test:missing").unwrap())
             .unwrap();
         assert_eq!(tags.is_in_tag(stick, missing), Some(false));
-        assert_eq!(tags.items(missing), mod_api::ItemTagMembers::Missing);
+        assert_eq!(tags.items(missing), mod_api::TagMembers::Missing);
         Ok(holds)
     }
 }

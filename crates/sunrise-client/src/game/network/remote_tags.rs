@@ -113,7 +113,7 @@ impl Game<'_> {
 mod tests {
     use crate::game::native_entity_refs::tests::with_client_game;
     use mod_api::{
-        Hooks, HostSide, Identifier, ItemTagMembers, ModEntry, TagsUpdateCause, TagsUpdatedEvent,
+        Hooks, HostSide, Identifier, ModEntry, TagMembers, TagsUpdateCause, TagsUpdatedEvent,
     };
     use mod_platform::__private::part_tests::block_key;
     use std::sync::{Arc, Mutex};
@@ -127,9 +127,9 @@ mod tests {
     #[derive(Debug, PartialEq)]
     struct Seen {
         cause: TagsUpdateCause,
-        items: ItemTagMembers,
-        empty_items: ItemTagMembers,
-        fluids: Option<usize>,
+        items: TagMembers<mod_api::ItemKey>,
+        empty_items: TagMembers<mod_api::ItemKey>,
+        fluids: TagMembers<mod_api::FluidKey>,
         stone_in_block_tag: Option<bool>,
         dirt_in_block_tag: Option<bool>,
         stick_in_item_tag: Option<bool>,
@@ -151,7 +151,7 @@ mod tests {
                 cause: event.cause,
                 items: tags.items(key("test:items")),
                 empty_items: tags.items(key("test:empty_items")),
-                fluids: tags.fluids(key("test:fluids")).map(|keys| keys.len()),
+                fluids: tags.fluids(key("test:fluids")),
                 stone_in_block_tag: host.block_in_tag(block_key("minecraft:stone"), "test:blocks"),
                 dirt_in_block_tag: host.block_in_tag(block_key("minecraft:dirt"), "test:blocks"),
                 stick_in_item_tag: tags.is_in_tag(stick.unwrap(), key("test:items")),
@@ -228,7 +228,7 @@ mod tests {
                 let empty_tag =
                     mod_api::__private::tag_key(&Identifier::parse("test:empty_items").unwrap())
                         .unwrap();
-                assert_eq!(mod_api::Tags::items(game, tag), ItemTagMembers::Unavailable);
+                assert_eq!(mod_api::Tags::items(game, tag), TagMembers::Unavailable);
                 let item_reads = |game: &super::Game<'_>| {
                     let reader = LoopReader(&game.loop_context);
                     let view = reader.context();
@@ -256,11 +256,12 @@ mod tests {
                 assert!(game.native_tag_items().is_none());
 
                 game.handle_packet(login()).unwrap();
+                let lava = mod_api::__private::fluid_key("minecraft:lava").unwrap();
                 let received = TagsUpdateCause::ClientPacketReceived {
                     integrated_server: false,
                 };
                 assert_eq!(seen.lock().unwrap()[0].stone_in_block_tag, Some(true));
-                assert_eq!(seen.lock().unwrap()[0].items, ItemTagMembers::Unavailable);
+                assert_eq!(seen.lock().unwrap()[0].items, TagMembers::Unavailable);
                 assert_eq!(item_reads(game), (None, None, None));
 
                 game.handle_packet(C::UpdateTags(UpdateTags {
@@ -271,7 +272,7 @@ mod tests {
                 }))
                 .unwrap();
                 assert_eq!(item_reads(game), (Some(false), Some(0), None));
-                assert_eq!(seen.lock().unwrap()[1].items, ItemTagMembers::Missing);
+                assert_eq!(seen.lock().unwrap()[1].items, TagMembers::Missing);
 
                 game.handle_packet(C::UpdateTags(update(
                     &builtin,
@@ -290,9 +291,9 @@ mod tests {
                     seen.lock().unwrap()[2],
                     Seen {
                         cause: received,
-                        items: ItemTagMembers::Members(vec![potion, stick]),
-                        empty_items: ItemTagMembers::Members(vec![]),
-                        fluids: Some(1),
+                        items: TagMembers::Members(vec![potion, stick]),
+                        empty_items: TagMembers::Members(vec![]),
+                        fluids: TagMembers::Members(vec![lava]),
                         stone_in_block_tag: Some(true),
                         dirt_in_block_tag: Some(true),
                         stick_in_item_tag: Some(true),
@@ -316,19 +317,16 @@ mod tests {
                     ],
                 )))
                 .unwrap();
-                assert_eq!(
-                    mod_api::Tags::items(game, empty_tag),
-                    ItemTagMembers::Missing
-                );
+                assert_eq!(mod_api::Tags::items(game, empty_tag), TagMembers::Missing);
                 let seen = seen.lock().unwrap();
                 assert_eq!(seen.len(), 5);
                 assert_eq!(
                     seen[4],
                     Seen {
                         cause: received,
-                        items: ItemTagMembers::Missing,
-                        empty_items: ItemTagMembers::Missing,
-                        fluids: Some(1),
+                        items: TagMembers::Missing,
+                        empty_items: TagMembers::Missing,
+                        fluids: TagMembers::Members(vec![lava]),
                         stone_in_block_tag: Some(false),
                         dirt_in_block_tag: Some(true),
                         stick_in_item_tag: Some(false),

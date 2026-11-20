@@ -114,11 +114,8 @@ fn reload_conditions_read_candidate_registries_and_bound_tags() {
                 };
                 let empty = key("empty");
                 let flag = key("flag");
-                assert_eq!(
-                    item_tags(game, empty),
-                    mod_api::ItemTagMembers::Members(vec![])
-                );
-                assert_eq!(item_tags(game, flag), mod_api::ItemTagMembers::Missing);
+                assert_eq!(item_tags(game, empty), mod_api::TagMembers::Members(vec![]));
+                assert_eq!(item_tags(game, flag), mod_api::TagMembers::Missing);
                 let answers = |game: &crate::game::Game<'_>| {
                     ["registered", "empty", "absent"].map(|name| {
                         game.recipes()
@@ -145,7 +142,7 @@ fn reload_conditions_read_candidate_registries_and_bound_tags() {
                 assert_eq!(answers(game), [true, false, true]);
                 assert_eq!(
                     item_tags(game, flag),
-                    mod_api::ItemTagMembers::Members(vec![
+                    mod_api::TagMembers::Members(vec![
                         mod_api::__private::item_key("minecraft:stick").unwrap(),
                         mod_api::__private::item_key("minecraft:flint").unwrap(),
                     ])
@@ -159,7 +156,7 @@ fn reload_conditions_read_candidate_registries_and_bound_tags() {
                     .unwrap();
                 assert!(game.run_command("reload"));
                 assert_eq!(answers(game), [false, true, true]);
-                assert_eq!(item_tags(game, empty), mod_api::ItemTagMembers::Missing);
+                assert_eq!(item_tags(game, empty), mod_api::TagMembers::Missing);
                 assert_eq!(
                     game.mods
                         .load_condition_candidate

@@ -1,3 +1,0 @@
-ids = ["method:Tags::items"]
-why = "An item tag with no members is still loaded. Tags::items now distinguishes it from a tag the current authoritative snapshot does not contain."
-migrate = "Match ItemTagMembers::Members(keys) for the ordered member list, ItemTagMembers::Missing for an absent tag, and ItemTagMembers::Unavailable when the snapshot or a key mapping is not ready. An empty Members list is not Missing. Tags::is_in_tag is unchanged."

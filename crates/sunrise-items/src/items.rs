@@ -608,7 +608,7 @@ pub struct Items {
     /// Item tags in vanilla's order (`TagLoader`: file order, nested tags in
     /// place, first occurrence kept), the order `TagSlotDisplay` resolves.
     pub item_tag_order: HashMap<String, Vec<String>>,
-    item_tags_loaded: bool,
+    tags_loaded: [bool; 3],
     /// Block tags in the same order.
     pub block_tag_order: HashMap<String, Vec<String>>,
     /// Fluid tags in the same order.
@@ -1319,7 +1319,7 @@ impl Items {
             item_tags: load_tags(root, "item", overlay)?,
             fluid_tags: load_tags(root, "fluid", overlay)?,
             item_tag_order: load_tag_lists(root, "item", overlay)?,
-            item_tags_loaded: true,
+            tags_loaded: [true; 3],
             block_tag_order: load_tag_lists(root, "block", overlay)?,
             fluid_tag_order: load_tag_lists(root, "fluid", overlay)?,
             songs: load_songs(root, overlay),
@@ -1416,24 +1416,21 @@ impl Items {
     /// An item table with only tags, for unit tests of item rules.
     #[cfg(any(test, feature = "test-support"))]
     pub fn for_tests(item_tags: HashMap<String, HashSet<String>>) -> Self {
-        Self {
-            item_tag_order: item_tags
-                .iter()
-                .map(|(k, v)| (k.clone(), v.iter().cloned().collect()))
+        let mut table = Self::empty();
+        table.set_tags(
+            TagRegistry::Item,
+            item_tags
+                .into_iter()
+                .map(|(tag, values)| (tag, values.into_iter().collect()))
                 .collect(),
-            item_tags,
-            item_tags_loaded: true,
-            ..Self::empty()
-        }
+        );
+        table
     }
     /// Replace one registry's tags with `tags`, each tag's members in order.
     pub fn set_tags(&mut self, registry: TagRegistry, tags: HashMap<String, Vec<String>>) {
         let (sets, order) = match registry {
             TagRegistry::Block => (&mut self.block_tags, &mut self.block_tag_order),
-            TagRegistry::Item => {
-                self.item_tags_loaded = true;
-                (&mut self.item_tags, &mut self.item_tag_order)
-            }
+            TagRegistry::Item => (&mut self.item_tags, &mut self.item_tag_order),
             TagRegistry::Fluid => (&mut self.fluid_tags, &mut self.fluid_tag_order),
         };
         *sets = tags
@@ -1441,6 +1438,7 @@ impl Items {
             .map(|(tag, members)| (tag.clone(), members.iter().cloned().collect()))
             .collect();
         *order = tags;
+        self.tags_loaded[registry as usize] = true;
         if registry == TagRegistry::Block {
             let names = self.block_state_names();
             self.rebuild_block_tag_flags(names);
@@ -1454,9 +1452,9 @@ impl Items {
     pub fn fluid_in_tag(&self, tag: &str, fluid: &str) -> bool {
         self.fluid_tags.get(tag).is_some_and(|s| s.contains(fluid))
     }
-    /// Whether an authoritative item tag table has been installed, even if it is empty.
-    pub fn item_tags_loaded(&self) -> bool {
-        self.item_tags_loaded
+    /// Whether this registry's authoritative tag table has been installed, even if empty.
+    pub fn tags_loaded(&self, registry: TagRegistry) -> bool {
+        self.tags_loaded[registry as usize]
     }
     /// A loaded tag's members in `TagLoader` order, or `None` for a tag that isn't loaded.
     pub fn tag_members(&self, registry: TagRegistry, tag: &str) -> Option<&[String]> {

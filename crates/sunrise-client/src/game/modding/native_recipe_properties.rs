@@ -46,7 +46,7 @@ impl Game<'_> {
         }
         let tags = self
             .native_tag_items()
-            .filter(|items| items.item_tags_loaded())
+            .filter(|items| items.tags_loaded(sunrise_items::items::TagRegistry::Item))
             .map(|items| {
                 // Match the registry that binds ItemKeys, not the raw pack entries: absent
                 // optional names must not count as members or leave gaps in their indices.

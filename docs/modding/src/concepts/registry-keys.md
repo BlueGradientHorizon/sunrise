@@ -351,16 +351,18 @@ A bare name uses the `minecraft` namespace; an invalid name refuses the mod at l
 not require it to have any members. Item, block and fluid tags share one name table; the
 membership method chooses the registry. Reload replaces membership, not key identity.
 `tags.is_in_tag(item_key, tag_key)` tests merged item membership. It returns `Some(false)`
-for either an absent tag or a loaded empty tag. `tags.items(tag_key)` tells them apart:
-`ItemTagMembers::Missing` means the tag is absent; `ItemTagMembers::Members(keys)` gives the
-loaded members in vanilla's order, possibly none. `ItemTagMembers::Unavailable` means the
-authoritative item tags have not been applied or a member key cannot be resolved. It never
-returns a partial list. Clients read only the tags sent by their server.
+for either an absent tag or a loaded empty tag. Use `tags.items(tag_key)`,
+`tags.blocks(tag_key)` or `tags.fluids(tag_key)` to tell them apart. Each returns a
+`TagMembers<K>` for the registry's key type:
 
-`tags.blocks(tag_key)` and `tags.fluids(tag_key)` return registered keys in vanilla's member
-order, an empty list for an unknown tag, or `None` when the tags or a mapping are unavailable.
-Block enumeration includes blocks no mod requested. Key resolution itself can be refused if
-the runtime cannot allocate a name slot. No lookup stringifies a retained key.
+- `Missing`: the loaded table has no tag by this name.
+- `Members(keys)`: the loaded tag's keys in vanilla's order. The list can be empty.
+- `Unavailable`: that registry's authoritative tag table has not been applied, or a member
+  key cannot be resolved. The query never returns partial membership.
+
+Clients read only the tags their server sent. Item and block enumeration includes keys no
+mod requested. Key resolution itself can be refused if the runtime cannot allocate a name
+slot. No lookup stringifies a retained key.
 The engine `TagRegistry`, `StackData`, `StackView` and `DisplayContext` are not API types.
 
 ## Scoped Parts
