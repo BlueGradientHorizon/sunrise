@@ -143,12 +143,12 @@ impl Game<'_> {
         world_block_entity_data(world, self.pack.assets.registry, self.res.items(), entity)
     }
 
-    /// The vanilla lock's item predicate, if present on a loaded block entity.
-    pub(super) fn block_entity_lock(&self, entity: BlockEntityRef) -> Option<Compound> {
+    /// The resident lock, independent of the block entity's synthesized save payload.
+    pub(super) fn block_entity_lock(&self, entity: BlockEntityRef) -> Option<&Compound> {
         let (world, _) = self.native_block_entity_target(entity)?;
         let [x, y, z] = entity.fields().position;
         match world.block_lock((x, y, z))? {
-            Tag::Compound(lock) => Some(lock.clone()),
+            Tag::Compound(lock) => Some(lock),
             _ => None,
         }
     }
@@ -1337,9 +1337,17 @@ mod tests {
             guest.kind = sunrise_client::lan::guest::GuestKind::Network;
             game.lan.as_mut().unwrap().hub.guests.insert(0, guest);
             assert!(player.open_menu(game, chest).unwrap());
+            assert_eq!(chest.lock(game), None);
+            assert!(chest.set_lock(game, Some(Compound::new())).unwrap());
+            assert_eq!(chest.lock(game), Some(&Compound::new()));
             let stick_lock = compound("{items:\"minecraft:stick\"}");
             assert!(chest.set_lock(game, Some(stick_lock.clone())).unwrap());
-            assert_eq!(chest.lock(game), Some(stick_lock));
+            let lock = chest.lock(game).unwrap();
+            assert_eq!(lock, &stick_lock);
+            let Some(Tag::Compound(resident)) = game.world.block_lock((0, 64, 0)) else {
+                panic!("the lock was not stored with the block entity");
+            };
+            assert!(std::ptr::eq(lock, resident));
             assert!(!player.open_menu(game, chest).unwrap());
             {
                 let value = Some(sunrise_client::items::ItemStack::new("minecraft:stick", 1));
@@ -1361,6 +1369,7 @@ mod tests {
                     .update(0, |g| g.inventory[0] = value);
             }
             assert!(chest.set_lock(game, None).unwrap());
+            assert_eq!(chest.lock(game), None);
             assert!(player.open_menu(game, chest).unwrap());
             assert!(player.open_menu(game, furnace).unwrap());
 

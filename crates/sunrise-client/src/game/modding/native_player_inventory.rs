@@ -44,6 +44,23 @@ fn numbered(
         .collect()
 }
 
+/// The authority refusals shared by writes to a server player's own state.
+pub(super) enum PlayerWriteRefusal {
+    Stale,
+    Client,
+    Dead,
+}
+
+impl From<PlayerWriteRefusal> for PlayerDataRefusal {
+    fn from(error: PlayerWriteRefusal) -> Self {
+        match error {
+            PlayerWriteRefusal::Stale => Self::Stale,
+            PlayerWriteRefusal::Client => Self::Client,
+            PlayerWriteRefusal::Dead => Self::Dead,
+        }
+    }
+}
+
 impl Game<'_> {
     /// `Inventory.getItem` for every slot that holds something.
     pub(super) fn player_inventory_slots(
@@ -60,13 +77,13 @@ impl Game<'_> {
 
     /// Why a write to this player's inventory, ender chest, hands or saved data is refused
     /// before it starts: a client, a handle with no online player, a dead player.
-    pub(super) fn player_write_gate(&self, player: PlayerRef) -> Result<(), PlayerDataRefusal> {
+    pub(super) fn player_write_gate(&self, player: PlayerRef) -> Result<(), PlayerWriteRefusal> {
         if self.remote.is_some() {
-            return Err(PlayerDataRefusal::Client);
+            return Err(PlayerWriteRefusal::Client);
         }
         match self.player_handle_read(player) {
-            None => Err(PlayerDataRefusal::Stale),
-            Some(PlayerRead::Guest(g)) if g.dead => Err(PlayerDataRefusal::Dead),
+            None => Err(PlayerWriteRefusal::Stale),
+            Some(PlayerRead::Guest(g)) if g.dead => Err(PlayerWriteRefusal::Dead),
             Some(_) => Ok(()),
         }
     }
