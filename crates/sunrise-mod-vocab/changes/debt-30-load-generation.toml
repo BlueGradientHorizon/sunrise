@@ -1,0 +1,17 @@
+ids = [
+    "method:DataLoadContext::registry",
+    "method:DataLoadContext::setting",
+    "method:DataLoadContext::mods",
+    "trait:LoadReader",
+    "method:LoadReader::registry",
+    "method:LoadReader::setting",
+    "method:LoopContext::registry",
+    "method:LoopContext::setting",
+    "method:LoopContext::mods",
+    "trait:LoopReader",
+    "method:LoopReader::registry",
+    "method:LoopReader::setting",
+    "method:WorldgenHost::mods",
+]
+why = "Load and loop contexts lend frozen registry names and settings instead of cloning them per read. Load, loop and world-generation contexts lend the same loaded-mod inventory in dispatch order."
+migrate = "Replace load and loop context.registry(name).as_deref() with context.registry(name) (Option<&[String]>), and context.setting(mod_id, key).as_deref() with context.setting(mod_id, key) (Option<&str>). Keep context.mods().ids(), .iter() and .get(id) as before; mods() on load, loop and world-generation contexts now returns &LoadedMods. To keep data past the context borrow, use registry(name).map(<[String]>::to_vec), setting(mod_id, key).map(str::to_owned), or LoadedMods::clone(context.mods()) respectively. LoadReader and LoopReader implementations must return slices and string references into their existing snapshot instead of cloned Arcs or Strings."
