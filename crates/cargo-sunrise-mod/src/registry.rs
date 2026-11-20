@@ -28,7 +28,7 @@ fn lines(errors: Vec<String>) -> String {
 
 pub fn main(args: &[String]) -> Result<(), String> {
     let command = format!("registry {}", args.first().map_or("", String::as_str));
-    let mut options = Options::new(&command, args.get(1..).unwrap_or_default());
+    let mut options = Options::new(&command, args.get(1..).unwrap_or_default()).usage(USAGE);
     match args.first().map(String::as_str) {
         Some("build") => {
             let (files, out) = (options.value("--files")?, options.value("--out")?);

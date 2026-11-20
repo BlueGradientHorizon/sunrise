@@ -228,7 +228,7 @@ fn std_member(target_dir: &Path, toolchain: &Toolchain) -> Result<Vec<u8>, Strin
 fn wasm_std_args(args: &[String]) -> Result<(&str, Option<&str>), String> {
     let mut options = Options::new("wasm-std", args);
     let catalog = options.value("--catalog")?;
-    let out = options.positional().first().copied();
+    let out = options.at_most_one()?;
     options.finish()?;
     let out = out.ok_or("cargo sunrise-mod wasm-std <out.wasm>")?;
     Ok((out, catalog))

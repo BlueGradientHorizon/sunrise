@@ -26,7 +26,7 @@ const COMMANDS: &[Command] = &[
         name: "run",
         everyday: true,
         usage: "run [--game <sunrise-client>] [--resources <folder>] [--jars <dir>] [-- <game args>]",
-        summary: "Builds the mod, then starts the game with it; --jars selects a folder of original Java jars named by SHA-512.",
+        summary: "Builds the mod, then starts the game with it; --game names the game for a content mod, --resources the prepared resources for a native mod (which runs on its pinned SDK's game), and --jars selects a folder of original Java jars named by SHA-512.",
     },
     Command {
         name: "check",
@@ -85,7 +85,7 @@ const COMMANDS: &[Command] = &[
     Command {
         name: "registry",
         everyday: false,
-        usage: "registry build|review|check|list",
+        usage: "registry build|review|check|list|release|page",
         summary: "The registry repository's CI steps.",
     },
     Command {
