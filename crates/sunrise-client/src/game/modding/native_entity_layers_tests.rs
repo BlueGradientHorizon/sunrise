@@ -7,7 +7,7 @@ use super::entity_type_rows::EntityTypeRows;
 use super::native_entity_layers::LayerRegistration;
 use mod_api::{
     BlockEntityDrawContext, EntityLayers, EntityRenderLayer, EntityRenderState, EntityRenderer,
-    LayerTarget, PlayerModel, PosedParts,
+    LayerTarget, PlayerModel, FrameModel,
 };
 use std::{
     collections::BTreeMap,
@@ -65,7 +65,7 @@ impl EntityRenderLayer for Raised {
     fn submit(
         &self,
         entity: &EntityRenderState,
-        _: Option<&PosedParts>,
+        _: Option<&dyn FrameModel>,
         draw: &mut dyn BlockEntityDrawContext,
     ) -> Result<(), String> {
         let call = self.calls.fetch_add(1, Ordering::Relaxed);

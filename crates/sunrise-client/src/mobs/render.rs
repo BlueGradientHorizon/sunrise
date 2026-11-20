@@ -1478,7 +1478,7 @@ pub struct FrameDraw {
     /// Parts to omit from the body and the layers on its own model.
     pub hidden: mod_api::HiddenParts,
     /// Whether the post hooks or mod layers need the posed parts.
-    pub capture_parts: bool,
+    pub capture_model: bool,
     /// The humanoid pose from the draw, when requested.
     pub parts: Option<mod_api::PosedParts>,
 }
@@ -2912,7 +2912,7 @@ mod tests {
             let mut out = Vec::new();
             let mut frame = FrameDraw {
                 hidden,
-                capture_parts: true,
+                capture_model: true,
                 ..Default::default()
             };
             render_with_frame(

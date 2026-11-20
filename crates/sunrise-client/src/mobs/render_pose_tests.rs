@@ -6,7 +6,7 @@ fn posed_parts_are_the_poses_the_draw_made_and_change_nothing() {
     let draw = |mob: &Mob, keep: bool| {
         let mut out = Vec::new();
         let mut frame = FrameDraw {
-            capture_parts: keep,
+            capture_model: keep,
             ..Default::default()
         };
         render_with_frame(
@@ -59,7 +59,7 @@ fn posed_parts_are_the_poses_the_draw_made_and_change_nothing() {
     let mut frame = crate::gfx::entity_skin::SkinFrame::default();
     let mut skin = super::super::skin::Skin::new(&mut models, &mut frame);
     let mut skinned = FrameDraw {
-        capture_parts: true,
+        capture_model: true,
         ..Default::default()
     };
     render_skinned(
@@ -75,7 +75,7 @@ fn posed_parts_are_the_poses_the_draw_made_and_change_nothing() {
     );
     assert_eq!(skinned.parts, Some(parts), "the GPU path");
     let mut layered = FrameDraw {
-        capture_parts: true,
+        capture_model: true,
         ..Default::default()
     };
     render_layers(

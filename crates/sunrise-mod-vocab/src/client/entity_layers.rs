@@ -5,7 +5,7 @@
 //! its model and the layers before it. The game asks for the layers on every resource load, as the
 //! renderers are built again, and resolves each target's layers to the slot its draw reads, so a
 //! frame hands an entity to its own type's layers and to no other mod.
-use crate::{BlockEntityDrawContext, EntityRenderState, PosedParts};
+use crate::{BlockEntityDrawContext, EntityRenderState, FrameModel};
 use std::sync::Arc;
 
 /// A player model, as a player's skin chooses it: each has a renderer of its own, and a layer added
@@ -53,7 +53,7 @@ pub trait EntityRenderLayer: Send + Sync + 'static {
     fn submit(
         &self,
         entity: &EntityRenderState,
-        parts: Option<&PosedParts>,
+        model: Option<&dyn FrameModel>,
         draw: &mut dyn BlockEntityDrawContext,
     ) -> Result<(), String>;
 }

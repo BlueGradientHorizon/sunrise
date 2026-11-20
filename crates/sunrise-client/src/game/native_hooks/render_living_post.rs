@@ -7,9 +7,9 @@ impl Game<'_> {
     pub(in crate::game) fn native_render_living_post(
         &self,
         entity: &MobRender<'_>,
-        parts: Option<&PosedParts>,
+        model: Option<&dyn FrameModel>,
         draw: &mut BlockEntityDraw,
     ) {
-        self.fire_render_living_post(entity, parts, draw);
+        self.fire_render_living_post(entity, model, draw);
     }
 }

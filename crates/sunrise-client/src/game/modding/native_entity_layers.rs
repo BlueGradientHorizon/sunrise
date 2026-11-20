@@ -14,7 +14,7 @@ use super::{
 use glam::DVec3;
 use mod_api::{
     __private::game::RegistrationContextNew, EntityLayers, EntityRenderLayer, EntityRenderer,
-    LayerTarget, PlayerModel, PosedParts, RegistrationContext,
+    LayerTarget, PlayerModel, FrameModel, RegistrationContext,
 };
 use std::{
     collections::{BTreeMap, HashMap},
@@ -215,7 +215,7 @@ impl Game<'_> {
         mob: &Mob,
         id: u32,
         layers: &Layers,
-        parts: Option<&PosedParts>,
+        model: Option<&dyn FrameModel>,
         partial: f32,
         camera: DVec3,
         light: u32,
@@ -239,7 +239,7 @@ impl Game<'_> {
                 light,
                 None,
                 out,
-                |draw| layer.inner.submit(&entity, parts, draw),
+                |draw| layer.inner.submit(&entity, model, draw),
             );
         }
     }

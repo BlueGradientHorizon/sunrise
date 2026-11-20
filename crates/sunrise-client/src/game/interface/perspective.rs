@@ -828,7 +828,7 @@ impl Game<'_> {
         let layers = self.mod_layers(m);
         let mut frame_draw = FrameDraw {
             hidden,
-            capture_parts: listened || layers.is_some(),
+            capture_model: listened || layers.is_some(),
             ..Default::default()
         };
         // A spectator still draws its own model in third person: the poses'
@@ -860,7 +860,7 @@ impl Game<'_> {
                 out,
             );
         }
-        let parts = frame_draw.parts;
+        let model = frame_draw.model();
         // AvatarRenderer.shouldRenderLayers: a spectator draws no layers.
         if sunrise_client::mobs::render::layers_shown(m) {
             let chest = self.armor[1].as_ref().map(|s| &*s.item);
@@ -887,7 +887,7 @@ impl Game<'_> {
             self.mod_layer_geometry(
                 m,
                 Some(who),
-                parts,
+                model,
                 layers,
                 alpha as f32,
                 camera,
@@ -896,7 +896,7 @@ impl Game<'_> {
             );
         }
         // The post hooks, whether or not the layers drew (a spectator draws none).
-        self.mod_render_post(m, Some(who), parts, alpha as f32, camera, packed, out);
+        self.mod_render_post(m, Some(who), model, alpha as f32, camera, packed, out);
         // LivingEntity.isCurrentlyGlowing: the Glowing effect.
         let vanilla = self
             .potions

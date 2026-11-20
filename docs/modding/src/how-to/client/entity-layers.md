@@ -21,7 +21,7 @@ impl EntityRenderLayer for Halo {
     fn submit(
         &self,
         _entity: &EntityRenderState,
-        _parts: Option<&PosedParts>,
+        _model: Option<&dyn FrameModel>,
         draw: &mut dyn BlockEntityDrawContext,
     ) -> Result<(), String> {
         // In the entity's frame: at its feet, turned with its body. Any atlas sprite will do:

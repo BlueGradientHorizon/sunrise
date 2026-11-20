@@ -8,9 +8,9 @@ impl Game<'_> {
         &self,
         player: &MobRender<'_>,
         who: &PlayerRender<'_>,
-        parts: Option<&PosedParts>,
+        model: Option<&dyn FrameModel>,
         draw: &mut BlockEntityDraw,
     ) {
-        self.fire_render_player_post(player, who, parts, draw);
+        self.fire_render_player_post(player, who, model, draw);
     }
 }

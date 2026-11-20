@@ -259,7 +259,7 @@ impl Game<'_> {
     ) {
         let added = self.mod_layers(mob);
         let mut frame_draw = FrameDraw {
-            capture_parts: added.is_some(),
+            capture_model: added.is_some(),
             ..Default::default()
         };
         // A mod's renderer for the type draws in place of the model only: the mods' layers
@@ -288,7 +288,7 @@ impl Game<'_> {
         self.mod_layer_geometry(
             mob,
             None,
-            frame_draw.parts,
+            frame_draw.model(),
             added,
             partial,
             camera,

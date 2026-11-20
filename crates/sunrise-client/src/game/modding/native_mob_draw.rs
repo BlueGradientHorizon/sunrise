@@ -12,7 +12,7 @@ pub use mod_api::game::{MobRender, PlayerRender};
 
 use super::{Game, native_block_entity_draw::BlockEntityDraw};
 use glam::{DVec3, Mat4};
-use mod_api::{EntityRenderState, HiddenParts, HookId, PosedParts};
+use mod_api::{EntityRenderState, HiddenParts, HookId, FrameModel};
 use std::cell::RefCell;
 use sunrise_client::{
     block_entity_render::diffuse_lights,
@@ -246,7 +246,7 @@ impl Game<'_> {
         &self,
         mob: &Mob,
         who: Option<PlayerRender<'_>>,
-        parts: Option<PosedParts>,
+        model: Option<&dyn FrameModel>,
         layers: Option<super::native_entity_layers::Layers>,
         partial: f32,
         camera: DVec3,
@@ -256,8 +256,7 @@ impl Game<'_> {
         if let Some(layers) = layers {
             let local = who.as_ref().is_some_and(|who| who.local);
             let id = render_id(mob.id, local, self.own_entity_id());
-            let parts = parts.as_ref();
-            self.registered_layer_geometry(mob, id, &layers, parts, partial, camera, light, out);
+            self.registered_layer_geometry(mob, id, &layers, model, partial, camera, light, out);
         }
     }
     /// The mods' post hooks for `mob`, whose pre hooks weren't canceled: `render_living_post`,
@@ -269,7 +268,7 @@ impl Game<'_> {
         &self,
         mob: &Mob,
         who: Option<PlayerRender<'_>>,
-        parts: Option<PosedParts>,
+        model: Option<&dyn FrameModel>,
         partial: f32,
         camera: DVec3,
         light: u32,
@@ -281,11 +280,11 @@ impl Game<'_> {
         }
         let local = who.as_ref().is_some_and(|who| who.local);
         self.mod_entity_draw(mob, local, partial, camera, light, out, |render, draw| {
-            self.native_render_living_post(render, parts.as_ref(), draw);
+            self.native_render_living_post(render, model, draw);
         });
         if let Some(who) = &who {
             self.mod_entity_draw(mob, local, partial, camera, light, out, |render, draw| {
-                self.native_render_player_post(render, who, parts.as_ref(), draw);
+                self.native_render_player_post(render, who, model, draw);
             });
         }
     }

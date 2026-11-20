@@ -54,7 +54,7 @@ fn client_humanoid_setup_reaches_body_skinned_and_layer_routes() {
                 for route in 0..3 {
                     heard.lock().unwrap().clear();
                     let mut draw = render::FrameDraw {
-                        capture_parts: true,
+                        capture_model: true,
                         ..Default::default()
                     };
                     let mut out = Vec::new();

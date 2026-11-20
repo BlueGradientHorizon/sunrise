@@ -6,7 +6,7 @@
 use super::Game;
 use mod_api::{
     BlockEntityDrawContext, EntityRenderLayer, EntityRenderState, EntityRenderer, Hooks,
-    LayerTarget, Pose, PosedParts, RegisterEntityLayersEvent, RegisterEntityRenderersEvent,
+    LayerTarget, Pose, FrameModel, RegisterEntityLayersEvent, RegisterEntityRenderersEvent,
     RegistrationContext, RenderLivingPostEvent, RenderLivingPreEvent,
 };
 use std::sync::{
@@ -81,10 +81,10 @@ impl EntityRenderLayer for Layer {
     fn submit(
         &self,
         entity: &EntityRenderState,
-        parts: Option<&PosedParts>,
+        model: Option<&dyn FrameModel>,
         draw: &mut dyn BlockEntityDrawContext,
     ) -> Result<(), String> {
-        let event = format!("layer {} parts {}", entity.id, parts.is_some());
+        let event = format!("layer {} parts {}", entity.id, model.is_some());
         self.0.lock().unwrap().events.push(event);
         raised_quad(draw, 200.0);
         Ok(())

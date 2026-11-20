@@ -158,7 +158,7 @@ impl Game<'_> {
         let (mut skinned, added) = (None, self.mod_layers(mob));
         let mut frame_draw = FrameDraw {
             hidden,
-            capture_parts: listened || added.is_some(),
+            capture_model: listened || added.is_some(),
             ..Default::default()
         };
         if posable {
@@ -217,7 +217,7 @@ impl Game<'_> {
                 );
             }
         }
-        let parts = frame_draw.parts;
+        let model = frame_draw.model();
         // HDR output: mobs that are light shine by their kind, as blocks do (entity.wgsl
         // fs_hdr_mark); a tier's window lifts only their bright texels.
         if let Some(tier) = match mob.species() {
@@ -260,9 +260,9 @@ impl Game<'_> {
                 let skin = (skinning && silhouette_on_gpu).then_some(&mut skinned);
                 self.mob_block_geometry(mob, camera, alpha, packed, skin, out);
             }
-            self.mod_layer_geometry(mob, who, parts, added, alpha as f32, camera, packed, out);
+            self.mod_layer_geometry(mob, who, model, added, alpha as f32, camera, packed, out);
         }
-        self.mod_render_post(mob, who, parts, alpha as f32, camera, packed, out);
+        self.mod_render_post(mob, who, model, alpha as f32, camera, packed, out);
         if let Some(rgb) = outline {
             self.mark_outline(&out[entity_start..], rgb);
             if let Some(((first, _, _), _)) = skinned {
