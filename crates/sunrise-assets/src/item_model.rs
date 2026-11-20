@@ -378,7 +378,7 @@ impl ClientItem {
     pub fn decode(value: &Value) -> Result<Self> {
         let m = object(value)?;
         Ok(Self {
-            model: ItemModelNode::decode(required(m, "model")?)?,
+            model: ItemModelNode::decode_with(required(m, "model")?, registered_special_type)?,
             hand_animation_on_swap: get(m, "hand_animation_on_swap").map_or(Ok(true), boolean)?,
             oversized_in_gui: get(m, "oversized_in_gui").map_or(Ok(false), boolean)?,
             swap_animation_scale: get(m, "swap_animation_scale").map_or(Ok(1.0), float)?,
@@ -456,8 +456,15 @@ pub struct SwitchCase {
     pub model: ItemModelNode,
 }
 
+type SpecialTypeLookup = fn(&Value) -> Result<Option<SpecialModelSlot>>;
+
 impl ItemModelNode {
     pub fn decode(v: &Value) -> Result<Self> {
+        Self::decode_with(v, registered_special_type)
+    }
+
+    fn decode_with(v: &Value, lookup: SpecialTypeLookup) -> Result<Self> {
+        let decode = |node| Self::decode_with(node, lookup);
         let m = object(v)?;
         let kind = ident(required(m, "type")?)?;
         if kind == "minecraft:condition" {
@@ -466,8 +473,8 @@ impl ItemModelNode {
                 return Ok(Self::Condition {
                     transformation: optional_transformation(m)?,
                     property: ConditionProperty::Custom(property),
-                    on_true: Box::new(Self::decode(required(m, "on_true")?)?),
-                    on_false: Box::new(Self::decode(required(m, "on_false")?)?),
+                    on_true: Box::new(decode(required(m, "on_true")?)?),
+                    on_false: Box::new(decode(required(m, "on_false")?)?),
                 });
             }
         }
@@ -487,19 +494,19 @@ impl ItemModelNode {
             "minecraft:composite" => Self::Composite {
                 models: list(required(m, "models")?)?
                     .iter()
-                    .map(Self::decode)
+                    .map(decode)
                     .collect::<Result<_>>()?,
                 transformation: optional_transformation(m)?,
             },
             "minecraft:condition" if foreign::property_is_foreign(m)? => foreign::wrap(
-                Self::decode(required(m, "on_false")?)?,
+                decode(required(m, "on_false")?)?,
                 optional_transformation(m)?,
             ),
             "minecraft:condition" => Self::Condition {
                 transformation: optional_transformation(m)?,
                 property: ConditionProperty::decode(m)?,
-                on_true: Box::new(Self::decode(required(m, "on_true")?)?),
-                on_false: Box::new(Self::decode(required(m, "on_false")?)?),
+                on_true: Box::new(decode(required(m, "on_true")?)?),
+                on_false: Box::new(decode(required(m, "on_false")?)?),
             },
             // A mod's registered property is read per stack; no case matches any other foreign one.
             "minecraft:select"
@@ -507,7 +514,7 @@ impl ItemModelNode {
                     && !is_select_property(&ident(required(m, "property")?)?) =>
             {
                 // No case can match a property Sunrise cannot read.
-                let fallback = get(m, "fallback").map(Self::decode).transpose()?;
+                let fallback = get(m, "fallback").map(decode).transpose()?;
                 foreign::wrap(fallback.unwrap_or(Self::Empty), optional_transformation(m)?)
             }
             "minecraft:select" => {
@@ -515,7 +522,7 @@ impl ItemModelNode {
                 let property = SelectProperty::decode(m)?;
                 let cases = list(required(m, "cases")?)?
                     .iter()
-                    .map(|c| SwitchCase::decode(&property, c))
+                    .map(|c| SwitchCase::decode(&property, c, lookup))
                     .collect::<Result<Vec<_>>>()?;
                 if cases.is_empty() {
                     return Err(err("empty case list"));
@@ -532,7 +539,7 @@ impl ItemModelNode {
                     property,
                     cases,
                     fallback: get(m, "fallback")
-                        .map(|f| Self::decode(f).map(Box::new))
+                        .map(|f| decode(f).map(Box::new))
                         .transpose()?,
                 }
             }
@@ -546,7 +553,7 @@ impl ItemModelNode {
                         let e = object(e)?;
                         Ok((
                             float(required(e, "threshold")?)?,
-                            Self::decode(required(e, "model")?)?,
+                            decode(required(e, "model")?)?,
                         ))
                     })
                     .collect::<Result<Vec<_>>>()?;
@@ -554,7 +561,7 @@ impl ItemModelNode {
                 entries.sort_by(|a, b| f64::from(a.0).total_cmp(&f64::from(b.0)));
                 if foreign_property {
                     // A property Sunrise cannot read is 0.
-                    let fallback = get(m, "fallback").map(Self::decode).transpose()?;
+                    let fallback = get(m, "fallback").map(decode).transpose()?;
                     let chosen = last_index_less_or_equal(&entries, 0.0)
                         .map(|i| entries.swap_remove(i).1)
                         .or(fallback);
@@ -569,7 +576,7 @@ impl ItemModelNode {
                     scale: get(m, "scale").map_or(Ok(1.0), float)?,
                     entries,
                     fallback: get(m, "fallback")
-                        .map(|f| Self::decode(f).map(Box::new))
+                        .map(|f| decode(f).map(Box::new))
                         .transpose()?,
                 }
             }
@@ -580,7 +587,7 @@ impl ItemModelNode {
                 // A type a mod registered, vanilla's included, is drawn by its renderer; any other
                 // type that isn't vanilla's is an error naming it (`SpecialModel::decode`), so the
                 // item draws the missing model.
-                match registered_special_type(model)? {
+                match lookup(model)? {
                     Some(slot) => Self::RegisteredSpecial {
                         base,
                         transformation,
@@ -612,7 +619,7 @@ impl ItemModelNode {
                     None => Vec::new(),
                     Some(models) => object(models)?
                         .iter()
-                        .map(|(name, node)| Ok((name.clone(), Self::decode(node)?)))
+                        .map(|(name, node)| Ok((name.clone(), decode(node)?)))
                         .collect::<Result<_>>()?,
                 },
             },
@@ -661,7 +668,7 @@ fn registered_special_type(model: &Value) -> Result<Option<SpecialModelSlot>> {
     )?)?))
 }
 impl SwitchCase {
-    fn decode(property: &SelectProperty, v: &Value) -> Result<Self> {
+    fn decode(property: &SelectProperty, v: &Value, lookup: SpecialTypeLookup) -> Result<Self> {
         let m = object(v)?;
         let when = required(m, "when")?;
         // `compactListCodec`: a list, or one value; the list must not be empty.
@@ -675,7 +682,7 @@ impl SwitchCase {
                 .into_iter()
                 .map(|v| property.decode_value(v))
                 .collect::<Result<_>>()?,
-            model: ItemModelNode::decode(required(m, "model")?)?,
+            model: ItemModelNode::decode_with(required(m, "model")?, lookup)?,
         })
     }
 }
