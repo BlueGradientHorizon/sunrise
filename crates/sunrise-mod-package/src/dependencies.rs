@@ -197,17 +197,27 @@ pub fn build_dependencies(
         .collect()
 }
 
-/// Project a package's manifest rows into a code-only link inventory.
-/// Only an installed, known content target is excluded; an unresolved required
-/// row can still be a missing library and must reach the link check.
-pub fn link_dependencies(
+/// The libraries a built wasm artifact pins by hash. Even an optional or
+/// side-filtered manifest row is a physical requirement once the artifact
+/// links that library. Unpinned rows stay in the separate logical graph.
+pub fn wasm_link_dependencies(
     manifest: &crate::Manifest,
-    side: Side,
-    is_content: impl Fn(&str) -> bool,
+    wasm: &crate::manifest::Wasm,
 ) -> Vec<Dependency> {
-    from_manifest(&manifest.dependencies, side)
-        .into_iter()
-        .filter(|dep| !is_content(&dep.id))
+    wasm.linked()
+        .keys()
+        .map(|id| Dependency {
+            id: id.clone(),
+            requirement: manifest
+                .dependencies
+                .get(id)
+                .map_or(VersionReq::STAR, |row| row.details().version),
+            optional: false,
+            side: Side::Both,
+            reason: None,
+            url: None,
+            order: mod_vocab::DependencyOrder::After,
+        })
         .collect()
 }
 
@@ -1079,7 +1089,6 @@ mod tests {
                     .unwrap();
             assert_eq!(resolved.order, [1, 0]);
             assert!(resolved.effective.permits("behaviour", "data"));
-            assert!(link_dependencies(&dependent, Side::Client, |id| id == "data").is_empty());
         }
     }
 

@@ -13,10 +13,10 @@ Requirements use Cargo semver syntax and are checked against each installed mod'
 `version`, not its Cargo package version. That version is semver, checked when the manifest is read,
 so a mod whose version isn't semver never loads, whatever requirement a dependent states. Content-only mods use these declarations to validate their
 requirements and, by default, load their layers after dependencies. Native and wasm packages can
-depend on content-only packages without linking anything from them. A dependency between code
-packages also requires a same-target API library. Missing required dependencies, incompatible versions
-and cycles refuse resolution with the mods named. An absent optional dependency is permitted; an
-installed optional dependency must match its requirement.
+depend on content-only packages without linking anything from them. Code libraries link only
+within one target. Missing required dependencies, incompatible versions and cycles refuse logical
+resolution with the mods named. An absent optional dependency is permitted in the logical graph;
+an installed optional dependency must match its requirement.
 
 A standalone build wires only the code projects it is given. Other requirements stay in
 `sunrise-mod.toml` and are checked against the installed packages at install and startup.
@@ -36,12 +36,11 @@ before checking it: an integrated server is client, a dedicated server is server
 or `"none"` changes listener/content dispatch, not compiler staging or actual imports.
 
 The instance's `sunrise-mods/dependency-overrides.toml` can drop a logical constraint/dispatch edge
-or make it a warning. A removed dependency row no longer lets a Part attach to that package's
-effect or block entity type. This policy cannot fabricate a code library or bypass native Cargo
-or wasm ABI/hash/toolchain checks.
-A code dependency still links dependency-first or is refused by name. Selected content and loaded
-native/wasm code share one rule resolver; warnings and every applied override appear on both affected
-installed Mods rows, alongside any failed/off status.
+or make it a warning, including for a required content package that isn't installed. A removed row
+no longer lets a Part attach to that package's effect or block entity type. The policy cannot
+remove a native linked library or compiled package requirement, or a wasm pin or import.
+Selected content and loaded native/wasm code share one rule resolver; warnings and every applied
+override appear on both affected installed Mods rows, alongside any failed/off status.
 
 Native builds add a path dependency for each supplied library using the mod ID as the Cargo alias
 and the target's actual Cargo package name. Optional code libraries use a Cargo feature named

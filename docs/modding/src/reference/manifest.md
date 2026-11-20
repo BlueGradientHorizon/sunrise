@@ -143,16 +143,16 @@ key or alternate optional spelling.
 
 Side is the **installation**, not the logical side executing a hook: an integrated server
 belongs to the client installation, a dedicated server to the server installation.
-Inactive declarations are excluded before missing/version/order checks and code dependency
-selection. A missing required dependency, incompatible installed version or dispatch cycle
+Inactive declarations are excluded before logical missing/version/order checks.
+A missing required dependency, incompatible installed version or dispatch cycle
 refuses loading; an absent optional dependency is ignored. Content, native and wasm manifests
 share the installed-set rule resolver, including mixed content/code relationships.
 
-**Sunrise addition: physical linking is separate from dispatch policy.** A dependency from
-a code package to another code package also declares an API library requirement. A content-only
-target has no Cargo alias or wasm library. `before`, `none`, and instance overrides do not remove
-Cargo/wasm imports, reverse compiler staging, bypass ABI/hash/toolchain checks, or manufacture a
-missing library. Physical libraries still resolve dependency-first or refuse by name.
+**Sunrise addition: physical linking is separate from dispatch policy.** Builds can link the code
+packages they are given; a manifest-only row does not make a library. A content-only target has no
+Cargo alias or wasm library. At startup, native library imports and the compiled package inventory,
+or wasm pins and imports, establish physical requirements. `before`, `none`, side filters, and instance
+overrides cannot remove those requirements or bypass ABI, hash, or toolchain checks.
 See [Dependencies between mods](../concepts/dependencies.md).
 
 Top-level `[properties]` holds free-form values other mods read: strings, integers, floats and booleans only,
