@@ -128,52 +128,36 @@ fn encode_into(units: &[u16], dst: &mut [u8]) {
 /// sequence starts, a continuation byte that isn't `10xxxxxx`, or a sequence cut off at the end.
 #[inline]
 pub fn decode(bytes: &[u8]) -> Option<Vec<u16>> {
-    if bytes.len() >= 256 {
-        return decode_ascii_blocks(bytes);
-    }
-    if bytes.is_ascii() {
-        return Some(bytes.iter().map(|&b| u16::from(b)).collect());
-    }
-    decode_units(Vec::with_capacity(bytes.len()), bytes)
-}
-
-/// Long inputs' ASCII stretches decode a 256-byte block at a time: the block is tested all-ASCII in whole
-/// words OR-reduced to one test, and a clean block widens straight into the vector's room, so the first
-/// mixed block (or a mixed tail) hands the rest to [`decode_units`] with the clean prefix kept. Short
-/// inputs stay with `decode`'s one-test scan, where the block machinery would only add checks.
-#[inline]
-fn decode_ascii_blocks(bytes: &[u8]) -> Option<Vec<u16>> {
-    let mut units = Vec::with_capacity(bytes.len());
-    let (blocks, tail) = bytes.as_chunks::<256>();
-    let mut ascii = 0;
-    let mut mixed = false;
-    for block in blocks {
-        if !all_ascii(block) {
-            mixed = true;
-            break;
-        }
-        units.extend(block.iter().map(|&b| u16::from(b)));
-        ascii += 256;
-    }
-    if !mixed && all_ascii(tail) {
-        units.extend(tail.iter().map(|&b| u16::from(b)));
+    // ASCII, the common text, widens in one pass that also ORs the bytes together; the OR's top bit then says
+    // whether any byte wasn't ASCII. Testing first and widening after reads the input twice, which the speed
+    // kit's ASCII rows measured at about a tenth of the time. Other text keeps the vector's room for the
+    // per-sequence loop.
+    let mut high = 0;
+    let mut units: Vec<u16> = bytes
+        .iter()
+        .map(|&b| {
+            high |= b;
+            u16::from(b)
+        })
+        .collect();
+    if high < 0x80 {
         return Some(units);
     }
-    decode_units(units, &bytes[ascii..])
+    units.clear();
+    decode_units(units, bytes)
 }
 
 /// Every unit takes at least one byte, so `bytes` never holds more units than the room made for them: the room
-/// is `units`' capacity (the callers reserved `bytes.len()`), brought into use once, and the loops store into
+/// is `units`' capacity (`decode` reserved `bytes.len()`), brought into use once, and the loops store into
 /// it by index. A `push` per unit tests the capacity, stores the length back and keeps a growth call in the
 /// loop: more instructions and one more branch in every pass, which the speed kit's 1024-unit rows of
-/// non-ASCII text measured at 4% to 12% of the time. Inlined into both callers (one per copy in the speed
+/// non-ASCII text measured at 4% to 12% of the time. Inlined into `decode` (one per copy in the speed
 /// kit): out of line, the copies' identical loops would be merged by the linker and land at the same
 /// address, and the kit could no longer average over their placements.
 #[inline(always)]
 fn decode_units(mut units: Vec<u16>, bytes: &[u8]) -> Option<Vec<u16>> {
-    let base = units.len();
-    units.resize(base + bytes.len(), 0);
-    let out = &mut units[base..];
+    units.resize(bytes.len(), 0);
+    let out = &mut units[..];
     let mut o = 0;
     let mut i = 0;
     // One sequence at a time, specialised by its lead byte's class: each branch predicts the string's own mix
@@ -219,7 +203,7 @@ fn decode_units(mut units: Vec<u16>, bytes: &[u8]) -> Option<Vec<u16>> {
         o += 1;
         i += size;
     }
-    units.truncate(base + o);
+    units.truncate(o);
     Some(units)
 }
 
@@ -245,17 +229,6 @@ fn unit(b0: u8, b1: u8, b2: u8) -> u16 {
     let three = (u16::from(b0 & 0x0f) << 12) | (u16::from(b1 & 0x3f) << 6) | u16::from(b2 & 0x3f);
     let wide = std::hint::select_unpredictable(b0 < 0xe0, two, three);
     std::hint::select_unpredictable(b0 < 0x80, u16::from(b0), wide)
-}
-
-/// Whether every byte is ASCII, whole words OR-reduced to one test (how `is_ascii` reads a slice, so it
-/// vectorizes) and the last few bytes one at a time.
-#[inline(always)]
-fn all_ascii(bytes: &[u8]) -> bool {
-    let (words, rest) = bytes.as_chunks::<8>();
-    let words = words
-        .iter()
-        .fold(0u64, |high, &w| high | u64::from_le_bytes(w));
-    (words & 0x8080_8080_8080_8080) == 0 && rest.iter().all(|&b| b < 0x80)
 }
 
 #[cfg(test)]
