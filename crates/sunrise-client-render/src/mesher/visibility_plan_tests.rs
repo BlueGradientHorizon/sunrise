@@ -162,40 +162,30 @@ fn the_raw_input_reads_the_world_and_names_missing_columns() {
 fn the_api_checks_answers_whole() {
     use mod_api::{CellVisibility, SectionVisibility as V, SectionVisibilityRefusal as R};
     let cell = |pos, faces| CellVisibility::new(pos, true, true, faces);
-    assert_eq!(V::Keep(vec![cell([0, 0, 0], 63)]).check(), Ok(()));
-    assert_eq!(V::HideTerrain.check(), Ok(()));
+    assert_eq!(V::keep([cell([0, 0, 0], 63)]).unwrap().check(), Ok(()));
+    assert_eq!(V::hide_terrain().check(), Ok(()));
+    let invalid = V::keep([cell([1, 1, 1], 61), cell([2, 2, 2], 64)]).unwrap();
     assert_eq!(
-        V::Keep(vec![cell([1, 1, 1], 61), cell([2, 2, 2], 64)]).check(),
+        invalid.check(),
         Err(R::FaceMask {
             pos: [2, 2, 2],
             faces: 64
         })
     );
     assert_eq!(
-        V::Keep(vec![cell([1, 1, 1], 0), cell([1, 1, 1], 1)]).check(),
+        V::keep([cell([1, 1, 1], 0), cell([1, 1, 1], 1)])
+            .unwrap()
+            .check(),
         Err(R::Duplicate { pos: [1, 1, 1] })
     );
     assert_eq!(
-        V::Keep(vec![cell([16, 0, 0], 0)]).check(),
+        V::keep([cell([16, 0, 0], 0)]).unwrap().check(),
         Err(R::OutsideSection { pos: [16, 0, 0] })
     );
-    let mut many: Vec<_> = (0..4096u32)
-        .map(|i| cell([(i & 15) as u8, (i >> 8) as u8, (i >> 4 & 15) as u8], 0))
-        .collect();
-    assert_eq!(V::Keep(many.clone()).check(), Ok(()));
-    many.push(cell([0, 0, 0], 0));
-    assert_eq!(V::Keep(many).check(), Err(R::TooManyCells { count: 4097 }));
     let mut plan = SectionPlanBuilder::new();
-    plan.apply(&V::Keep(vec![cell([0, 0, 0], 61)])).unwrap();
-    assert!(
-        plan.apply(&V::Keep(vec![cell([1, 1, 1], 61), cell([2, 2, 2], 64)]))
-            .is_err()
-    );
-    let oversized = V::Keep(vec![cell([2, 2, 2], 0); mod_api::MAX_CELL_RECORDS + 1]);
-    assert!(matches!(
-        plan.apply(&oversized),
-        Err(R::TooManyCells { .. })
-    ));
+    plan.apply(&V::keep([cell([0, 0, 0], 61)]).unwrap())
+        .unwrap();
+    assert!(plan.apply(&invalid).is_err());
     let answer = plan.finish().unwrap();
     let plan = plan_section(Some(&answer), |_| None).unwrap();
     assert_eq!(plan.kept([0, 0, 0]) & FACES, 61);

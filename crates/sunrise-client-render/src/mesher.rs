@@ -2175,10 +2175,11 @@ impl Mesher<'_> {
         out: SectionMesh,
         scratch: &mut MeshScratch,
     ) -> SectionMesh {
-        self.mesh_masked::<_, false>(region, sy, out, scratch, &visibility_plan::NoMasks)
+        self.mesh_masked::<_, false>(region, sy, out, scratch, &visibility_plan::NoMasks, 0)
     }
     /// Mesh a section prepared for `section_visibility`. The raw snapshot's missing neighbours
-    /// are nonoccluding air, whether the listeners returned a mask or abstained.
+    /// are nonoccluding air, whether the listeners returned a mask or abstained. `visibility_bytes`
+    /// is this section's preparation charge against its shared section-geometry ceiling.
     pub fn mesh_planned(
         &mut self,
         region: &[[Option<&Chunk>; 3]; 3],
@@ -2186,15 +2187,23 @@ impl Mesher<'_> {
         out: SectionMesh,
         scratch: &mut MeshScratch,
         plan: Option<&SectionVisibilityPlan>,
+        visibility_bytes: usize,
     ) -> SectionMesh {
         match plan {
-            None => {
-                self.mesh_masked::<_, true>(region, sy, out, scratch, &visibility_plan::NoMasks)
-            }
+            None => self.mesh_masked::<_, true>(
+                region,
+                sy,
+                out,
+                scratch,
+                &visibility_plan::NoMasks,
+                visibility_bytes,
+            ),
             Some(plan) if plan.hides_terrain() => {
                 visibility_plan::hidden_terrain(self, region, sy, out)
             }
-            Some(plan) => self.mesh_masked::<_, true>(region, sy, out, scratch, plan),
+            Some(plan) => {
+                self.mesh_masked::<_, true>(region, sy, out, scratch, plan, visibility_bytes)
+            }
         }
     }
     /// The mesher's one body: `M` is `NoMasks` on the no-mod path, a constant that compiles
@@ -2206,6 +2215,7 @@ impl Mesher<'_> {
         mut out: SectionMesh,
         scratch: &mut MeshScratch,
         masks: &M,
+        visibility_bytes: usize,
     ) -> SectionMesh {
         out.clear();
         let center = region[1][1].expect("centre chunk");
@@ -2220,7 +2230,7 @@ impl Mesher<'_> {
                     self.blend_radius,
                     [center.x, center.z, base_y],
                 );
-                mod_geometry::add(self, &mut tints, &mut out);
+                mod_geometry::add(self, &mut tints, &mut out, visibility_bytes);
                 out.finish_sprite_layers();
             }
             return out;
@@ -2444,7 +2454,7 @@ impl Mesher<'_> {
             }
         }
         if !self.tables.section_geometry.is_empty() {
-            mod_geometry::add(self, &mut tints, &mut out);
+            mod_geometry::add(self, &mut tints, &mut out, visibility_bytes);
         }
         out.finish_sprite_layers();
         out

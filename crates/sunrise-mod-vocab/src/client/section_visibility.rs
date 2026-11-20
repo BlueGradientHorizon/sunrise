@@ -9,7 +9,7 @@ use crate::{BiomeId, BlockStateId};
 pub const SECTION_INPUT_SIDE: usize = 18;
 /// Cells in a [`SectionVisibilityInput`]: 18 cubed, edges and corners included.
 pub const SECTION_INPUT_CELLS: usize = SECTION_INPUT_SIDE * SECTION_INPUT_SIDE * SECTION_INPUT_SIDE;
-/// The most cell records one [`SectionVisibility::Keep`] may hold: one per cell of a section.
+/// The most cell records one [`SectionVisibility::keep`] may hold: one per cell of a section.
 pub const MAX_CELL_RECORDS: usize = 4096;
 /// A face mask with every face kept: bits down, up, north, south, west, east (0 to 5).
 pub const ALL_FACES: u8 = 0b11_1111;
@@ -146,28 +146,52 @@ impl CellVisibility {
 // no wire: a native listener returns this directly to the client thread.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
-pub enum SectionVisibility {
-    /// The section draws, with these cells changed, each named at most once and at most
-    /// [`MAX_CELL_RECORDS`] of them. `Keep(vec![])` changes nothing.
-    Keep(Vec<CellVisibility>),
-    /// None of the section's terrain draws: no block model, fluid or section geometry quads,
-    /// and it hides nothing behind it. Block entities that draw themselves, entities and
-    /// collision are untouched.
-    HideTerrain,
+pub struct SectionVisibility {
+    cells: Option<Vec<CellVisibility>>,
 }
 
 impl SectionVisibility {
+    /// The section draws, with these cells restricted. Each cell may be named once, and an empty
+    /// list changes nothing. Refuses the first record past [`MAX_CELL_RECORDS`] without keeping
+    /// it or reading the rest. The answer owns bounded storage, not the iterator's allocation.
+    pub fn keep(
+        cells: impl IntoIterator<Item = CellVisibility>,
+    ) -> Result<Self, SectionVisibilityRefusal> {
+        let mut cells = cells.into_iter().peekable();
+        let mut kept = if cells.peek().is_some() {
+            Vec::with_capacity(MAX_CELL_RECORDS)
+        } else {
+            Vec::new()
+        };
+        for cell in cells {
+            if kept.len() == MAX_CELL_RECORDS {
+                return Err(SectionVisibilityRefusal::TooManyCells {
+                    count: (MAX_CELL_RECORDS + 1) as u32,
+                });
+            }
+            kept.push(cell);
+        }
+        Ok(Self { cells: Some(kept) })
+    }
+
+    /// None of the section's terrain draws: no block model, fluid or section geometry quads,
+    /// and it hides nothing behind it. Block entities that draw themselves, entities and
+    /// collision are untouched.
+    pub fn hide_terrain() -> Self {
+        Self { cells: None }
+    }
+
+    /// Cell restrictions, or `None` when all terrain is hidden.
+    pub fn cells(&self) -> Option<&[CellVisibility]> {
+        self.cells.as_deref()
+    }
+
     /// Checks the answer as the game does before it uses any of it: the first fault refuses the
     /// whole answer, and the game then keeps the section as if this mod had not answered.
     pub fn check(&self) -> Result<(), SectionVisibilityRefusal> {
-        let Self::Keep(cells) = self else {
+        let Some(cells) = self.cells() else {
             return Ok(());
         };
-        if cells.len() > MAX_CELL_RECORDS {
-            return Err(SectionVisibilityRefusal::TooManyCells {
-                count: u32::try_from(cells.len()).unwrap_or(u32::MAX),
-            });
-        }
         let mut seen = [0u64; MAX_CELL_RECORDS / 64];
         for cell in cells {
             let [x, y, z] = cell.pos;
@@ -218,11 +242,9 @@ pub enum SectionVisibilityRefusal {
     },
     /// `E_SECTION_VISIBILITY_TOO_MANY`: more than [`MAX_CELL_RECORDS`] records.
     TooManyCells {
-        /// How many were given.
+        /// How many were read before stopping.
         count: u32,
     },
-    /// `E_SECTION_VISIBILITY_UNKNOWN`: the game does not support this answer variant.
-    Unknown,
     /// `E_SECTION_VISIBILITY_PANIC`: the mod's listener panicked. It is not asked again
     /// during this session.
     Failed,
@@ -237,7 +259,6 @@ impl SectionVisibilityRefusal {
             Self::FaceMask { .. } => "E_SECTION_VISIBILITY_FACE_MASK",
             Self::Duplicate { .. } => "E_SECTION_VISIBILITY_DUPLICATE",
             Self::TooManyCells { .. } => "E_SECTION_VISIBILITY_TOO_MANY",
-            Self::Unknown => "E_SECTION_VISIBILITY_UNKNOWN",
             Self::Failed => "E_SECTION_VISIBILITY_PANIC",
         }
     }
@@ -256,7 +277,6 @@ impl std::fmt::Display for SectionVisibilityRefusal {
             Self::TooManyCells { count } => {
                 write!(f, "{code}: {count} cell records, more than 4096")
             }
-            Self::Unknown => write!(f, "{code}: unsupported answer variant"),
             Self::Failed => write!(f, "{code}: the listener panicked"),
         }
     }
@@ -269,24 +289,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn an_answer_with_more_than_one_record_per_cell_is_refused() {
-        let cells = |count: usize| {
-            SectionVisibility::Keep(
-                (0..count)
-                    .map(|i| {
-                        CellVisibility::hidden([
-                            (i & 15) as u8,
-                            (i >> 4 & 15) as u8,
-                            (i >> 8) as u8,
-                        ])
-                    })
-                    .collect(),
-            )
+    fn an_oversized_answer_stops_reading_at_the_first_extra_cell() {
+        let cell = |i: usize| {
+            CellVisibility::hidden([(i & 15) as u8, (i >> 4 & 15) as u8, (i >> 8) as u8])
         };
-        assert_eq!(cells(MAX_CELL_RECORDS).check(), Ok(()));
+        let full = SectionVisibility::keep((0..MAX_CELL_RECORDS).map(cell)).unwrap();
+        assert_eq!(full.cells().unwrap().len(), MAX_CELL_RECORDS);
+        let mut supplied = (0..).map(cell);
         assert_eq!(
-            cells(MAX_CELL_RECORDS + 1).check(),
+            SectionVisibility::keep(&mut supplied),
             Err(SectionVisibilityRefusal::TooManyCells { count: 4097 }),
         );
+        assert_eq!(supplied.next(), Some(cell(MAX_CELL_RECORDS + 1)));
     }
 }

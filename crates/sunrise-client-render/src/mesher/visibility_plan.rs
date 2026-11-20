@@ -181,14 +181,12 @@ impl SectionPlanBuilder {
     /// Merge one native listener's answer, only after checking every record.
     pub fn apply(&mut self, answer: &SectionVisibility) -> Result<(), SectionVisibilityRefusal> {
         answer.check()?;
-        match answer {
-            SectionVisibility::HideTerrain => self.hide_terrain(),
-            SectionVisibility::Keep(cells) => {
-                for cell in cells {
-                    self.restrict(cell.pos, cell.model, cell.fluid, cell.faces);
-                }
+        if let Some(cells) = answer.cells() {
+            for cell in cells {
+                self.restrict(cell.pos, cell.model, cell.fluid, cell.faces);
             }
-            _ => return Err(SectionVisibilityRefusal::Unknown),
+        } else {
+            self.hide_terrain();
         }
         Ok(())
     }
@@ -223,7 +221,7 @@ impl SectionPlanBuilder {
 /// anything: the section meshes on the no-plan path, as it would with no mod.
 pub fn plan_section<'a>(
     own: Option<&SectionAnswer>,
-    neighbour: impl Fn([i32; 3]) -> Option<&'a SectionAnswer>,
+    mut neighbour: impl FnMut([i32; 3]) -> Option<&'a SectionAnswer>,
 ) -> Option<SectionVisibilityPlan> {
     let mut cells: Option<Box<[u8]>> = None;
     let mut hide_terrain = false;

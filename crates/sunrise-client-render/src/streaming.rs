@@ -323,7 +323,7 @@ pub enum Done {
     /// decoration wrote into them.
     Decorated(i32, i32, Box<[Proto; 9]>, Vec<usize>, FinalWrites),
     Lit(i32, i32, Vec<crate::chunk::Light>, u64),
-    Meshed(i32, i32, i32, SectionMesh, u64),
+    Meshed(MeshUpload),
     Saved(Vec<((i32, i32), Proto)>),
     /// A proto chunk back from `Job::LightView`, with its view.
     LightView(i32, i32, Proto, Option<Chunk>),
@@ -497,6 +497,7 @@ pub struct MeshUpload {
     pub key: (i32, i32, i32),
     pub mesh: SectionMesh,
     seq: u64,
+    halo: Option<Arc<section_visibility::HaloAnswers>>,
 }
 
 /// An update paused before removing its out-of-range live chunks.
@@ -1128,7 +1129,15 @@ impl<G: ChunkGenerator> Jobs<G> {
                     sy,
                     recycled,
                 );
-                Done::Meshed(x, sy, z, mesh, seq)
+                Done::Meshed(MeshUpload {
+                    key: (x, sy, z),
+                    mesh,
+                    seq,
+                    halo: settings
+                        .visibility
+                        .as_ref()
+                        .and_then(|prepared| prepared.halo.clone()),
+                })
             }
         };
         Some(done)
@@ -1688,7 +1697,8 @@ impl Streaming {
                 && world.chunks.contains_key(&(upload.key.0, upload.key.2))
                 && !self.meshing.contains_key(&upload.key)
                 && !self.waiting.contains(&upload.key)
-                && !world.dirty_sections.contains(&upload.key))
+                && !world.dirty_sections.contains(&upload.key)
+                && self.section_visibility.halo_current(world, upload))
     }
     pub fn is_lit(&self, x: i32, z: i32) -> bool {
         self.lit.contains(&(x, z))
@@ -1947,10 +1957,10 @@ impl Streaming {
                     let snapshot = self.light_snapshots.remove(&(x, z)).unwrap_or(u64::MAX);
                     self.apply_lit(world, x, z, sections, snapshot);
                 }
-                Done::Meshed(x, sy, z, mesh, seq) => {
+                Done::Meshed(upload) => {
                     self.mesh_jobs = self.mesh_jobs.saturating_sub(1);
-                    let key = (x, sy, z);
-                    let upload = MeshUpload { key, mesh, seq };
+                    let MeshUpload { key, seq, .. } = upload;
+                    let (x, _, z) = key;
                     if self.meshing.get(&key) != Some(&seq) {
                         resume.stale.push(upload);
                         continue;
@@ -2321,6 +2331,9 @@ impl Streaming {
             self.mesh_columns_scratch = columns;
             return (uploads, removed);
         }
+        if self.section_visibility.listening {
+            self.section_visibility.begin_meshing(world);
+        }
         // Meshing once the column and its neighbours are lit, and the column
         // is within the render distance (`in_view_distance`, the columns
         // vanilla draws). Sections set aside past it come back
@@ -2341,7 +2354,7 @@ impl Streaming {
             self.waiting.retain(|&(x, sy, z)| {
                 let back = ranges.in_view(x, z);
                 if back {
-                    world.dirty_sections.insert((x, sy, z));
+                    world.dirty_sections.insert_mesh((x, sy, z));
                 }
                 !back
             });
@@ -2358,7 +2371,11 @@ impl Streaming {
             if !self.ranges().in_view(x, z) {
                 world.dirty_sections.take_column(x, z);
                 for sy in sections.iter().map(|sy| sy as i32) {
-                    self.waiting.insert((x, sy, z));
+                    let key = (x, sy, z);
+                    if self.section_visibility.listening {
+                        self.section_visibility.defer_mesh(world, key);
+                    }
+                    self.waiting.insert(key);
                 }
                 continue;
             }
@@ -2427,7 +2444,9 @@ impl Streaming {
             let center = (self.center_y - world.layout().min_y()).div_euclid(16);
             let taken = sections.take_near(&mut budget, center);
             if !sections.is_empty() {
-                world.dirty_sections.insert_column_mask((x, z), sections);
+                world
+                    .dirty_sections
+                    .insert_mesh_column_mask((x, z), sections);
             }
             let mut taken = taken.iter().map(|sy| sy as i32);
             while let Some(sy) = taken.next() {
@@ -2444,7 +2463,7 @@ impl Streaming {
                     let Some(lease) = SectionPreparation::admit() else {
                         // Do not capture a region or ask a mod until the whole preparation fits.
                         for sy in std::iter::once(sy).chain(taken) {
-                            world.dirty_sections.insert((x, sy, z));
+                            world.dirty_sections.insert_mesh((x, sy, z));
                         }
                         budget = 0;
                         break;
@@ -2468,6 +2487,7 @@ impl Streaming {
                         key,
                         mesh,
                         seq: self.sequence,
+                        halo: None,
                     });
                     continue;
                 }

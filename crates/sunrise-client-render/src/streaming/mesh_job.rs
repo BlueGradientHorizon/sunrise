@@ -46,7 +46,14 @@ pub(super) fn mesh_section(
     };
     let region = borrow(region);
     let mut mesh = if let Some(prepared) = &settings.visibility {
-        mesher.mesh_planned(&region, sy, recycled, scratch, prepared.plan.as_ref())
+        mesher.mesh_planned(
+            &region,
+            sy,
+            recycled,
+            scratch,
+            prepared.plan.as_ref(),
+            super::section_visibility::REQUEST_BYTES,
+        )
     } else {
         mesher.mesh_reusing(&region, sy, recycled, scratch)
     };

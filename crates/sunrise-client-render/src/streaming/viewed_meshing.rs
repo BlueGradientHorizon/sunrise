@@ -577,11 +577,36 @@ mod tests {
         streaming.insert_remote(&mut player, column.clone());
         streaming.refresh_section_visibility(&mut player, true);
         streaming.update(&mut player);
+        let mut asked_for_stone = false;
         for request in streaming.take_visibility_requests() {
+            asked_for_stone |= request.key == (0, 0, 0);
             let mut answer = SectionPlanBuilder::new();
             answer.hide_terrain();
             streaming.submit_visibility_answer(&mut player, request, answer.finish());
         }
+        assert!(
+            asked_for_stone,
+            "the current level's stone section must be asked"
+        );
+        let player_faces = (0..100).find_map(|_| {
+            let (uploads, _) = streaming.update(&mut player);
+            let faces = uploads
+                .iter()
+                .find(|upload| {
+                    upload.key == (0, 0, 0) && streaming.can_publish_mesh(&player, upload)
+                })
+                .map(|upload| upload.mesh.solid.len() / 4);
+            streaming.free(uploads);
+            if faces.is_none() {
+                streaming.wait(Duration::from_millis(20));
+            }
+            faces
+        });
+        assert_eq!(
+            player_faces,
+            Some(0),
+            "the player's stone mesh was suppressed"
+        );
         let mut world = level();
         world.chunks.insert((0, 0), Arc::new(column));
         let pool = Pool::new(1, "viewed-visibility");

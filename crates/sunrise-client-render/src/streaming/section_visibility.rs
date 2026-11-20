@@ -14,11 +14,14 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 const SNAPSHOT_BYTES: usize = SECTION_INPUT_CELLS
     * (size_of::<SectionCell>() + size_of::<u8>() + size_of::<Option<BiomeId>>());
 const WORKER_BYTES: usize = PLAN_BYTES + size_of::<Region>() + size_of::<FrozenPlan>();
-const REQUEST_BYTES: usize = SNAPSHOT_BYTES
+const HALO_BYTES: usize = size_of::<HaloAnswers>();
+const CACHE_BYTES: usize = ANSWER_BYTES + size_of::<HeldAnswer>() - size_of::<SectionAnswer>();
+pub(super) const REQUEST_BYTES: usize = SNAPSHOT_BYTES
     + MAX_CELL_RECORDS * size_of::<CellVisibility>()
     + size_of::<VisibilityRequest>()
     + WORKER_BYTES
-    + ANSWER_BYTES;
+    + HALO_BYTES
+    + CACHE_BYTES;
 static RESIDENT_BYTES: AtomicUsize = AtomicUsize::new(0);
 
 /// Section visibility state for the player's current level.
@@ -29,6 +32,7 @@ pub struct SectionPreparation {
     pub(super) guard_uploads: bool,
     pending: Vec<VisibilityRequest>,
     answers: FxHashMap<(i32, i32, i32), HeldAnswer>,
+    capacity_waiting: FxHashSet<(i32, i32, i32)>,
     /// The mods and refusal codes already logged since the last refresh.
     pub refusals: FxHashSet<(&'static str, &'static str)>,
     logged_capacity: bool,
@@ -36,20 +40,29 @@ pub struct SectionPreparation {
 
 struct HeldAnswer {
     answer: SectionAnswer,
+    border_seq: u64,
+    current: bool,
     _lease: Lease,
     resident: &'static AtomicUsize,
 }
 
 impl Drop for HeldAnswer {
     fn drop(&mut self) {
-        self.resident.fetch_sub(ANSWER_BYTES, Ordering::AcqRel);
+        self.resident.fetch_sub(CACHE_BYTES, Ordering::AcqRel);
     }
+}
+
+/// The versions of the neighbour answers used by a mesh. Zero means no cached answer was read.
+pub(super) struct HaloAnswers {
+    versions: [u64; 27],
+    _lease: Lease,
 }
 
 /// Prepared alongside the hook input; keeps the same resources and budget until the worker ends.
 pub struct FrozenPlan {
     pub(crate) plan: Option<SectionVisibilityPlan>,
     pub(super) context: Arc<WorkerContext>,
+    pub(super) halo: Option<Arc<HaloAnswers>>,
     _lease: Lease,
 }
 
@@ -76,21 +89,32 @@ impl SectionPreparation {
     fn replace_answer(
         &mut self,
         key: (i32, i32, i32),
+        seq: u64,
         answer: Option<SectionAnswer>,
         lease: &mut Lease,
         resident: &'static AtomicUsize,
     ) -> bool {
-        let before = self.answers.get(&key).map(|held| &held.answer);
-        let border_changed = SectionAnswer::border_differs(before, answer.as_ref());
+        self.capacity_waiting.remove(&key);
+        let before = self.answers.get(&key);
+        let border_changed =
+            SectionAnswer::border_differs(before.map(|held| &held.answer), answer.as_ref());
+        // A reader may already have dropped its completed mesh while this answer was stale;
+        // let it compile again even if the newly checked border is identical.
+        let remesh_readers =
+            border_changed || before.is_some_and(|held| !held.current || answer.is_none());
         if let Some(answer) = answer {
             if let Some(old) = self.answers.get_mut(&key) {
                 // Reuse the old resident charge. The new answer was staged with the request's
                 // charge and replacing it cannot fail, even when the resident pool is full.
                 old.answer = answer;
+                old.current = true;
+                if border_changed {
+                    old.border_seq = seq;
+                }
             } else if resident
                 .try_update(Ordering::AcqRel, Ordering::Acquire, |used| {
-                    (used + ANSWER_BYTES <= MAX_RESIDENT_VISIBILITY_BYTES)
-                        .then_some(used + ANSWER_BYTES)
+                    (used + CACHE_BYTES <= MAX_RESIDENT_VISIBILITY_BYTES)
+                        .then_some(used + CACHE_BYTES)
                 })
                 .is_ok()
             {
@@ -98,14 +122,17 @@ impl SectionPreparation {
                     key,
                     HeldAnswer {
                         answer,
-                        _lease: lease.split(ANSWER_BYTES),
+                        border_seq: seq,
+                        current: true,
+                        _lease: lease.split(CACHE_BYTES),
                         resident,
                     },
                 );
             } else {
+                self.capacity_waiting.insert(key);
                 if !self.logged_capacity {
                     log::warn!(
-                        "Sunrise: section_visibility: resident visibility budget exhausted; new masks are refused (E_SECTION_VISIBILITY_CAPACITY)"
+                        "Sunrise: section_visibility: resident visibility budget exhausted; new masks wait for room (E_SECTION_VISIBILITY_CAPACITY)"
                     );
                     self.logged_capacity = true;
                 }
@@ -114,7 +141,58 @@ impl SectionPreparation {
         } else {
             self.answers.remove(&key);
         }
-        border_changed
+        remesh_readers
+    }
+
+    fn retry_masks(&mut self, resident: &AtomicUsize, dirty: &mut crate::world::DirtySections) {
+        if self.capacity_waiting.is_empty() {
+            return;
+        }
+        let slots =
+            (MAX_RESIDENT_VISIBILITY_BYTES - resident.load(Ordering::Acquire)) / CACHE_BYTES;
+        for key in self.capacity_waiting.extract_if(|_| true).take(slots) {
+            dirty.insert_mesh(key);
+        }
+    }
+
+    pub(super) fn begin_meshing(&mut self, world: &mut World) {
+        for ((x, z), sections) in world.dirty_sections.visibility_edits() {
+            for sy in sections.iter() {
+                if let Some(held) = self.answers.get_mut(&(x, sy as i32, z)) {
+                    held.current = false;
+                }
+            }
+        }
+        self.retry_masks(&RESIDENT_BYTES, &mut world.dirty_sections);
+    }
+
+    pub(super) fn defer_mesh(&mut self, world: &mut World, key: (i32, i32, i32)) {
+        self.capacity_waiting.remove(&key);
+        // An out-of-view section won't re-prepare until it re-enters the mesh range. Do not
+        // leave its stale answer in the way of a still visible reader at the edge.
+        if self.answers.get(&key).is_some_and(|answer| !answer.current) {
+            self.answers.remove(&key);
+            dirty_neighbours(world, key);
+        }
+    }
+
+    pub(super) fn halo_current(&self, world: &World, upload: &MeshUpload) -> bool {
+        let Some(halo) = &upload.halo else {
+            return true;
+        };
+        let (x, y, z) = upload.key;
+        halo.versions.iter().enumerate().all(|(i, &seq)| {
+            if seq == 0 {
+                return true;
+            }
+            let i = i as i32;
+            let key = (x + i % 3 - 1, y + i / 9 - 1, z + i / 3 % 3 - 1);
+            !world.dirty_sections.visibility_edited(key)
+                && self
+                    .answers
+                    .get(&key)
+                    .is_some_and(|held| held.current && held.border_seq == seq)
+        })
     }
 }
 
@@ -174,22 +252,30 @@ impl Streaming {
         }
         if self
             .section_visibility
-            .replace_answer(key, answer, &mut lease, &RESIDENT_BYTES)
+            .replace_answer(key, seq, answer, &mut lease, &RESIDENT_BYTES)
         {
             dirty_neighbours(world, key);
         }
         let answers = &self.section_visibility.answers;
+        let mut versions = [0; 27];
         let plan = plan_section(
             answers.get(&key).map(|held| &held.answer),
             |[dx, dy, dz]| {
-                answers
-                    .get(&(x + dx, sy + dy, z + dz))
-                    .map(|held| &held.answer)
+                let held = answers.get(&(x + dx, sy + dy, z + dz))?;
+                versions[((dy + 1) * 9 + (dz + 1) * 3 + dx + 1) as usize] = held.border_seq;
+                Some(&held.answer)
             },
         );
+        let halo = versions.iter().any(|&seq| seq != 0).then(|| {
+            Arc::new(HaloAnswers {
+                versions,
+                _lease: lease.split(HALO_BYTES),
+            })
+        });
         settings.visibility = Some(Arc::new(FrozenPlan {
             plan,
             context,
+            halo,
             _lease: lease.split(WORKER_BYTES),
         }));
         let job = Job::Mesh(x, sy, z, region, seq, settings);
@@ -205,6 +291,7 @@ impl Streaming {
         }
         state.listening = listening;
         state.guard_uploads = true;
+        world.dirty_sections.track_visibility_edits(listening);
         self.reload_sections(world);
     }
 
@@ -212,6 +299,7 @@ impl Streaming {
         let state = &mut self.section_visibility;
         state.pending.clear();
         state.answers.clear();
+        state.capacity_waiting.clear();
         state.refusals.clear();
         state.logged_capacity = false;
     }
@@ -229,6 +317,7 @@ impl Streaming {
         for (x, z) in columns {
             for sy in 0..world.layout().sections() as i32 {
                 self.section_visibility.answers.remove(&(x, sy, z));
+                self.section_visibility.capacity_waiting.remove(&(x, sy, z));
             }
             Self::dirty_visibility_columns(world, x, z);
         }
@@ -259,7 +348,7 @@ fn dirty_neighbours(world: &mut World, (x, sy, z): (i32, i32, i32)) {
             for dy in -1..=1 {
                 let ny = sy + dy;
                 if (dx, dy, dz) != (0, 0, 0) && (0..sections).contains(&ny) {
-                    world.dirty_sections.insert((x + dx, ny, z + dz));
+                    world.dirty_sections.insert_mesh((x + dx, ny, z + dz));
                 }
             }
         }
@@ -331,13 +420,13 @@ pub(super) mod tests {
     fn resident_capacity_does_not_stall_replacement_or_clear() {
         use crate::mesher::SectionPlanBuilder;
         static RESIDENT: AtomicUsize =
-            AtomicUsize::new(MAX_RESIDENT_VISIBILITY_BYTES - ANSWER_BYTES);
-        static SHARED: AtomicUsize = AtomicUsize::new(MAX_RESIDENT_VISIBILITY_BYTES - ANSWER_BYTES);
+            AtomicUsize::new(MAX_RESIDENT_VISIBILITY_BYTES - CACHE_BYTES);
+        static SHARED: AtomicUsize = AtomicUsize::new(MAX_RESIDENT_VISIBILITY_BYTES - CACHE_BYTES);
         let mut state = SectionPreparation::default();
         let mut lease = Lease::charge_in(&SHARED, REQUEST_BYTES).unwrap();
         let mut builder = SectionPlanBuilder::new();
         builder.hide_terrain();
-        assert!(state.replace_answer(CENTRE, builder.finish(), &mut lease, &RESIDENT));
+        assert!(state.replace_answer(CENTRE, 1, builder.finish(), &mut lease, &RESIDENT));
         drop(lease);
         assert_eq!(
             RESIDENT.load(Ordering::Acquire),
@@ -347,23 +436,43 @@ pub(super) mod tests {
             Lease::charge_in(&SHARED, REQUEST_BYTES).expect("cache leaves room before capture");
         let mut builder = SectionPlanBuilder::new();
         builder.restrict([0, 0, 0], true, true, 61);
-        assert!(state.replace_answer(CENTRE, builder.finish(), &mut lease, &RESIDENT));
+        assert!(state.replace_answer(CENTRE, 2, builder.finish(), &mut lease, &RESIDENT));
         let stored = &state.answers[&CENTRE].answer;
         assert!(!stored.hides_terrain());
         assert_eq!(
             RESIDENT.load(Ordering::Acquire),
             MAX_RESIDENT_VISIBILITY_BYTES
         );
-        assert!(state.replace_answer(CENTRE, None, &mut lease, &RESIDENT));
+        let waiting = (1, 0, 0);
+        let mut builder = SectionPlanBuilder::new();
+        builder.hide_terrain();
+        assert!(!state.replace_answer(waiting, 3, builder.finish(), &mut lease, &RESIDENT));
+        let mut dirty = crate::world::DirtySections::default();
+        state.retry_masks(&RESIDENT, &mut dirty);
+        assert!(
+            !dirty.contains(&waiting),
+            "a full cache does not re-ask every frame"
+        );
+        assert!(state.replace_answer(CENTRE, 4, None, &mut lease, &RESIDENT));
         assert!(!state.answers.contains_key(&CENTRE));
+        state.retry_masks(&RESIDENT, &mut dirty);
+        assert!(
+            dirty.contains(&waiting),
+            "a freed slot schedules a fresh answer"
+        );
+        let mut builder = SectionPlanBuilder::new();
+        builder.hide_terrain();
+        assert!(state.replace_answer(waiting, 5, builder.finish(), &mut lease, &RESIDENT));
+        assert!(state.answers[&waiting].answer.hides_terrain());
+        state.answers.clear();
         drop(lease);
         assert_eq!(
             RESIDENT.load(Ordering::Acquire),
-            MAX_RESIDENT_VISIBILITY_BYTES - ANSWER_BYTES
+            MAX_RESIDENT_VISIBILITY_BYTES - CACHE_BYTES
         );
         assert_eq!(
             SHARED.load(Ordering::Acquire),
-            MAX_RESIDENT_VISIBILITY_BYTES - ANSWER_BYTES
+            MAX_RESIDENT_VISIBILITY_BYTES - CACHE_BYTES
         );
     }
 
@@ -449,6 +558,110 @@ pub(super) mod tests {
 
     #[test]
     #[ignore = "daily"]
+    fn a_neighbours_interior_edit_stops_a_mesh_using_its_old_border_answer() {
+        use crate::mesher::{SectionPlanBuilder, capture_input};
+        use mod_api::SectionCell;
+
+        const EAST: (i32, i32, i32) = (1, 0, 0);
+        let (mut world, mut streaming, stone) = fixture();
+        let base = world.bottom_y();
+        let marker = streaming
+            .shared
+            .context
+            .read()
+            .unwrap()
+            .assets
+            .registry
+            .default_state("minecraft:cobblestone")
+            .unwrap();
+        let mut centre = Chunk::empty(0, 0);
+        centre.set(15, base + 4, 8, stone);
+        let mut east = Chunk::empty(1, 0);
+        east.set(0, base + 4, 8, stone);
+        east.set(8, base + 4, 8, marker.0);
+        streaming.insert_remote(&mut world, centre);
+        streaming.insert_remote(&mut world, east);
+        streaming.refresh_section_visibility(&mut world, true);
+
+        let centre_faces = |world: &mut World, streaming: &mut Streaming| {
+            for _ in 0..200 {
+                let (uploads, _) = streaming.update(world);
+                for request in streaming.take_visibility_requests() {
+                    let mut answer = SectionPlanBuilder::new();
+                    if request.key == EAST
+                        && capture_input(&request.region, EAST.1).cell([8, 4, 8])
+                            == Ok(SectionCell::State(marker))
+                    {
+                        answer.restrict([0, 4, 8], false, false, 0);
+                    }
+                    streaming.submit_visibility_answer(world, request, answer.finish());
+                }
+                let faces = uploads
+                    .iter()
+                    .find(|upload| {
+                        upload.key == CENTRE && streaming.can_publish_mesh(world, upload)
+                    })
+                    .map(|upload| upload.mesh.solid.len() / 4);
+                streaming.free(uploads);
+                if let Some(faces) = faces {
+                    return faces;
+                }
+                streaming.wait(Duration::from_millis(20));
+            }
+            panic!("the centre never had a current mesh");
+        };
+        assert_eq!(centre_faces(&mut world, &mut streaming), 6);
+
+        world.dirty_sections.insert_mesh(CENTRE);
+        streaming.update(&mut world);
+        let request = streaming
+            .take_visibility_requests()
+            .into_iter()
+            .find(|request| request.key == CENTRE)
+            .expect("centre selected");
+        let seq = request.seq;
+        streaming.submit_visibility_answer(&mut world, request, None);
+        // Same light behaviour and away from all borders: only the east section's raw input
+        // changes. Its listener will no longer hide the stone on the border.
+        world.set(24, base + 4, 8, BlockStateId(stone)).unwrap();
+        assert!(!world.dirty_sections.contains(&CENTRE));
+        assert!(world.dirty_sections.contains(&EAST));
+
+        let completed = (0..200)
+            .find_map(|_| {
+                let (uploads, _) = streaming.update(&mut world);
+                let completed = uploads
+                    .iter()
+                    .find(|upload| upload.key == CENTRE && upload.seq == seq)
+                    .map(|upload| {
+                        (
+                            upload.mesh.solid.len() / 4,
+                            streaming.can_publish_mesh(&world, upload),
+                        )
+                    });
+                streaming.free(uploads);
+                if completed.is_none() {
+                    streaming.wait(Duration::from_millis(20));
+                }
+                completed
+            })
+            .expect("the centre worker finished before the east answer was collected");
+        assert_eq!(
+            completed,
+            (6, false),
+            "the old six-face mesh must not publish"
+        );
+        let east = streaming
+            .take_visibility_requests()
+            .into_iter()
+            .find(|request| request.key == EAST)
+            .expect("the east answer is still outstanding");
+        streaming.submit_visibility_answer(&mut world, east, None);
+        assert_eq!(centre_faces(&mut world, &mut streaming), 5);
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn an_accepted_mesh_cannot_publish_after_policy_resource_or_column_changes() {
         use crate::mesher::SectionPlanBuilder;
 
@@ -469,10 +682,12 @@ pub(super) mod tests {
         };
         // Drive the mailbox in a fixed order rather than depending on which worker finishes first.
         let completed = |streaming: &Streaming, seq| {
-            streaming
-                .shared
-                .done
-                .send(Done::Meshed(0, 0, 0, Default::default(), seq));
+            streaming.shared.done.send(Done::Meshed(MeshUpload {
+                key: CENTRE,
+                mesh: Default::default(),
+                seq,
+                halo: None,
+            }));
         };
         let upload = |world: &mut World, streaming: &mut Streaming| -> MeshUpload {
             let uploads = streaming.update(world).0;
@@ -507,6 +722,7 @@ pub(super) mod tests {
         let mut resource_a = resource_a;
         streaming.section_visibility.replace_answer(
             CENTRE,
+            seq_a,
             builder.finish(),
             &mut resource_a.lease,
             &RESIDENT_BYTES,

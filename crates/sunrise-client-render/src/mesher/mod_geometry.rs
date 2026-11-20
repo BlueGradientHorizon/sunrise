@@ -84,7 +84,7 @@ pub(super) fn reserve_in_flight(shared: &AtomicUsize, bytes: usize) -> bool {
         .is_ok()
 }
 
-/// What is left of one section's budget, shared by its own blocks and every renderer.
+/// What is left of one section's budget, shared by visibility, its own blocks and every renderer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct Budget {
     pub(super) quads: usize,
@@ -92,8 +92,8 @@ pub(super) struct Budget {
 }
 
 impl Budget {
-    /// What a section whose mesh is `out` so far has left.
-    pub(super) fn left_after(out: &SectionMesh) -> Self {
+    /// What a section whose mesh is `out` and reserved visibility is `visibility_bytes` has left.
+    pub(super) fn left_after(out: &SectionMesh, visibility_bytes: usize) -> Self {
         let vertices = out.solid.len() + out.translucent.len();
         let sources = out.solid_sources.len() + out.translucent_sources.len();
         let bytes = vertices * size_of::<TerrainVertex>()
@@ -101,7 +101,9 @@ impl Budget {
             + sources * size_of::<TerrainSource>();
         Self {
             quads: MAX_QUADS.saturating_sub(vertices / 4),
-            bytes: MAX_SECTION_BYTES.saturating_sub(bytes),
+            bytes: MAX_SECTION_BYTES
+                .saturating_sub(bytes)
+                .saturating_sub(visibility_bytes),
         }
     }
 
@@ -267,7 +269,12 @@ impl Drop for Batch<'_> {
 
 /// Asks every renderer to add the quads of the section `tints` is set up for, and adds them to
 /// `out` after the section's own blocks. A renderer's quads are taken whole or refused whole.
-pub(super) fn add(mesher: &Mesher<'_>, tints: &mut Tints<'_>, out: &mut SectionMesh) {
+pub(super) fn add(
+    mesher: &Mesher<'_>,
+    tints: &mut Tints<'_>,
+    out: &mut SectionMesh,
+    visibility_bytes: usize,
+) {
     let [cx, cz, base_y] = tints.origin;
     let origin = [cx * 16, base_y, cz * 16];
     let region = Region {
@@ -275,7 +282,7 @@ pub(super) fn add(mesher: &Mesher<'_>, tints: &mut Tints<'_>, out: &mut SectionM
         tints: RefCell::new(tints),
         nether: mesher.nether_shading,
     };
-    let mut budget = Budget::left_after(out);
+    let mut budget = Budget::left_after(out, visibility_bytes);
     for renderer in mesher.tables.section_geometry.iter() {
         if renderer.failed.load(Ordering::Relaxed) {
             continue;

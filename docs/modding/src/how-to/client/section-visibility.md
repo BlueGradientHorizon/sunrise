@@ -10,7 +10,7 @@ fn section_visibility(&self, _: &dyn ClientHost, event: &mut SectionVisibilityEv
     -> Option<SectionVisibility>
 {
     if event.input.origin[1] > self.cut_above {
-        return Some(SectionVisibility::HideTerrain);
+        return Some(SectionVisibility::hide_terrain());
     }
     let mut cells = Vec::new();
     for y in 0..16 {
@@ -23,7 +23,7 @@ fn section_visibility(&self, _: &dyn ClientHost, event: &mut SectionVisibilityEv
             }
         }
     }
-    Some(SectionVisibility::Keep(cells))
+    SectionVisibility::keep(cells).ok()
 }
 ```
 
@@ -38,9 +38,9 @@ beyond the border with `SectionVisibilityRefusal::OutsideInput`.
 
 ## What the answer does
 
-- `HideTerrain`: none of the section's block models, fluids or section geometry quads draw, and the section hides
-  nothing behind it. Block entities that draw themselves, entities and collision are untouched.
-- `Keep(cells)`: each `CellVisibility` names a cell (0 to 15 on each axis) and whether its model and its fluid
+- `SectionVisibility::hide_terrain()`: none of the section's block models, fluids or section geometry quads draw,
+  and the section hides nothing behind it. Block entities that draw themselves, entities and collision are untouched.
+- `SectionVisibility::keep(cells)`: each `CellVisibility` names a cell (0 to 15 on each axis) and whether its model and its fluid
   draw, and a face mask: bit 0 down, 1 up, 2 north, 3 south, 4 west, 5 east, 63 for all.
 
 Answers only take away. A face mask removes faces after the normal culling and never shows a face the game
@@ -52,19 +52,20 @@ is combined with the others' by intersection: no mod brings back what another hi
 
 ## Bounds and refusals
 
-Each registration returns at most one answer. Return `None` to leave the section alone. The game checks
-an answer whole before it uses any of it. More than 4096 cell records
-(`E_SECTION_VISIBILITY_TOO_MANY`), a cell outside 0 to 15 (`E_SECTION_VISIBILITY_OUTSIDE_SECTION`), a face mask
-above 63 (`E_SECTION_VISIBILITY_FACE_MASK`) or a cell named twice (`E_SECTION_VISIBILITY_DUPLICATE`) refuses that
-mod's answer for the section, logged once per mod and code, and the section draws as if the mod had not answered.
+Each registration returns at most one answer. Return `None` to leave the section alone. The `keep` constructor
+returns `E_SECTION_VISIBILITY_TOO_MANY` at the first record past one section's worth, without collecting the
+rest. The game checks a returned answer whole: an out-of-section cell (`E_SECTION_VISIBILITY_OUTSIDE_SECTION`),
+a face mask above 63 (`E_SECTION_VISIBILITY_FACE_MASK`) or a cell named twice (`E_SECTION_VISIBILITY_DUPLICATE`)
+is logged once per mod and code, and the section draws as if the mod had not answered.
 A listener that panics (`E_SECTION_VISIBILITY_PANIC`) is switched off for this hook for the session, alone: the
 other listeners are asked as before and the level is remeshed without it, so no mask it gave earlier remains
 in a cached answer or can publish from a queued mesh.
 
 The snapshots, frozen plans and cached masks share a memory budget with section geometry. A section waits
 for room before it captures anything or asks a listener. Cached answers have a separate ceiling within that
-budget: at the ceiling a new mask is refused (`E_SECTION_VISIBILITY_CAPACITY`), but an existing mask can
-still be replaced or cleared. `SectionVisibility::check` is the same per-answer check, for a mod's own tests.
+budget: at the ceiling a section meshes without its new mask (`E_SECTION_VISIBILITY_CAPACITY`) and is asked again
+when room frees up. An existing mask can still be replaced or cleared. Section geometry counts visibility storage
+against its per-section byte ceiling. `SectionVisibility::check` is the same per-answer check, for a mod's own tests.
 
 ## When it is asked
 
