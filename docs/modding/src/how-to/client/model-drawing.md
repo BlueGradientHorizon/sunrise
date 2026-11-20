@@ -174,12 +174,13 @@ This API bakes quads only, not a mod-defined baked result type.
 - `hidden_faces` (bits 0 to 5: down, up, north, south, west, east) leaves out the faces whose
   `cull` side is set, so a structure of many copies can drop the sides its neighbours cover.
 
-A copy whose colour alpha is below `0xFF`, or of a model with a translucent face, is drawn in
-the translucent material described below. Copies with a colour other than white, hidden faces or a
-block state model are baked on the CPU instead of drawn as GPU instances; the 16,384-copy budget
-bounds that cost, and native and wasm are identical. `overlay` (the hurt tint) has no effect on a
-translucent copy or on a block state model. A colour and hidden faces are Sunrise's own: vanilla's
-model drawing has neither.
+A copy whose colour alpha is below `0xFF` draws every quad in the translucent material described below.
+A model with translucent faces otherwise keeps its per-quad routing: only those faces take the translucent
+material. Copies with a colour other than white, hidden faces or a block state model are baked on the CPU
+instead of drawn as GPU instances; the 16,384-copy budget bounds that cost, and native and wasm are identical.
+`overlay` (the hurt tint) has no effect on a copy on the translucent or block state model route, including any
+opaque faces it holds. `color` (the whole baked block model, multiplied at draw time) and `hidden_faces` (a
+cull mask the caller supplies) are Sunrise's options for mod copies.
 
 `block_state_model(state)` (on `RenderAssets`) resolves a block state as one model: the parts
 its blockstate file selects for its properties, weighted alternatives at the fixed seed
