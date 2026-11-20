@@ -421,6 +421,9 @@ pub mod tests {
                 self.tanks = tanks;
             }
         }
+        fn transaction_current(&self) -> Option<Transaction> {
+            self.journal.current()
+        }
         fn transaction_depth(&self, tx: &Transaction) -> Option<u32> {
             self.journal.depth_of(tx)
         }
@@ -484,7 +487,7 @@ pub mod tests {
     }
 
     #[test]
-    pub(crate) fn a_fluid_move_tries_again_with_what_the_target_took_and_loses_nothing() {
+    pub(crate) fn a_fluid_move_commits_only_the_destination_count_the_source_can_supply_exactly() {
         game_thread();
         let water = |amount| {
             FluidStack::new(
@@ -494,17 +497,17 @@ pub mod tests {
         };
         type Setup = fn(&mut GameTank, &mut GameTank);
         let cases: [(&str, Setup, u32); 6] = [
-            // Half of each offer: no request is ever taken whole, so nothing moves.
-            ("half of each offer", |_, t| t.halving = true, 0),
+            // Each successful extraction matches the half that was inserted: 500, 250, …, 1.
+            ("half of each offer", |_, t| t.halving = true, 999),
             (
                 "half of each offer, from quarters",
                 |s, t| (s.quarters, t.halving) = (true, true),
-                0,
+                750,
             ),
             (
                 "half of each offer, from a drain-only tank",
                 |s, t| (s.fills, t.halving) = (false, true),
-                0,
+                999,
             ),
             // Half its room: moves of 500, 250, then 125, which quarters can't give.
             (
@@ -517,8 +520,8 @@ pub mod tests {
                 |s, t| (s.fills, t.half_room) = (false, true),
                 999,
             ),
-            // One less than asked: the 999 it gives all go in.
-            ("a source giving one less", |s, _| s.short = true, 999),
+            // It probes as available for 999 but cannot supply 999 after that much was inserted.
+            ("a source giving one less", |s, _| s.short = true, 0),
         ];
         for (case, setup, moves) in cases {
             let mut world = TankWorld::default();

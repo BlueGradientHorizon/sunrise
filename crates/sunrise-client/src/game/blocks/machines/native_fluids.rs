@@ -565,8 +565,8 @@ mod tests {
             let flags = BlockUpdateFlags::NEIGHBORS;
             assert_eq!(game.level_set_block(level, from, full, flags), Ok(true));
             assert_eq!(game.level_set_block(level, to, one, flags), Ok(true));
-            // The target has room for two levels: the bucket the source first gives doesn't
-            // fit, so the move is undone and tried again with what fit, two levels' worth.
+            // The source probes a bucket; the target accepts two levels, which the source
+            // can extract exactly.
             let host: &mut dyn ServerHost = game;
             let source = level.capability(host, &FLUIDS, from, None).unwrap();
             let target = level.capability(host, &FLUIDS, to, None).unwrap();
@@ -576,6 +576,24 @@ mod tests {
             assert_eq!(moved, Ok(667));
             assert_eq!(game.world.block(from[0], from[1], from[2]), one);
             assert_eq!(game.world.block(to[0], to[1], to[2]), full);
+
+            // Into empty, one level costs 333 mB, but the full source gives its top
+            // level only for 334 mB. A mismatch must restore both cauldrons.
+            let empty = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:cauldron")
+                .unwrap();
+            assert_eq!(game.level_set_block(level, from, full, flags), Ok(true));
+            assert_eq!(game.level_set_block(level, to, empty, flags), Ok(true));
+            let host: &mut dyn ServerHost = game;
+            let moved = host.transaction(|host, tx| {
+                move_resources(host, &source, &target, |_| true, 500, Some(tx))
+            });
+            assert_eq!(moved, Ok(0));
+            assert_eq!(game.world.block(from[0], from[1], from[2]), full);
+            assert_eq!(game.world.block(to[0], to[1], to[2]), empty);
         });
     }
 

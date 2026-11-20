@@ -833,6 +833,9 @@ pub mod tests {
                 self.slots = slots;
             }
         }
+        fn transaction_current(&self) -> Option<Transaction> {
+            self.journal.current()
+        }
     }
 
     #[cfg(test)]

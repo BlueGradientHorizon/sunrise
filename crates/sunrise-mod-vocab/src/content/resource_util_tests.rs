@@ -513,6 +513,68 @@ fn stacking_moves_each_allowed_resource_into_an_existing_stack() {
 }
 
 #[test]
+fn each_extractability_probe_starts_with_unchanged_storage() {
+    struct Probe(Capability<dyn ResourceHandler<ItemResource>>);
+
+    impl ResourceHandler<ItemResource> for Probe {
+        fn size(&self, host: &mut dyn ServerHost) -> usize {
+            self.0.size(host)
+        }
+        fn resource(&self, host: &mut dyn ServerHost, slot: usize) -> Option<ItemResource> {
+            self.0.resource(host, slot)
+        }
+        fn amount(&self, host: &mut dyn ServerHost, slot: usize) -> u32 {
+            self.0.amount(host, slot)
+        }
+        fn capacity(
+            &self,
+            host: &mut dyn ServerHost,
+            slot: usize,
+            r: Option<&ItemResource>,
+        ) -> u32 {
+            self.0.capacity(host, slot, r)
+        }
+        fn insert_at(
+            &self,
+            _: &mut dyn ServerHost,
+            _: &Transaction,
+            _: usize,
+            _: &ItemResource,
+            _: u32,
+        ) -> u32 {
+            0
+        }
+        fn extract_at(
+            &self,
+            host: &mut dyn ServerHost,
+            tx: &Transaction,
+            slot: usize,
+            r: &ItemResource,
+            amount: u32,
+        ) -> u32 {
+            if slot == 0 {
+                assert_eq!(self.0.extract_at(host, tx, slot, r, amount), 3);
+                return 0;
+            }
+            if self.0.amount(host, 0) == 3 {
+                self.0.extract_at(host, tx, slot, r, amount)
+            } else {
+                0
+            }
+        }
+    }
+
+    let (mut fake, r) = items_host(&["minecraft:stone", "minecraft:dirt"]);
+    chest(&mut fake, A, &[Some((&r[0], 3)), Some((&r[1], 5))]);
+    let probe = Probe(items_at(&mut fake, A));
+    assert_eq!(
+        find_extractable_resource(&mut fake, &probe, |_| true, None),
+        Some(r[1].clone())
+    );
+    assert_eq!(counts(&fake, A), [3, 5]);
+}
+
+#[test]
 fn extract_first_only_takes_the_selected_resource_and_commits_its_root() {
     let (mut fake, r) = items_host(&["minecraft:stone", "minecraft:dirt"]);
     let (stone, dirt) = (&r[0], &r[1]);

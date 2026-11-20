@@ -1,6 +1,9 @@
 ids = [
     "fn:move_resources",
     "trait:ResourceHandler",
+    "type:Overanswered",
+    "type:Overanswered.owner",
+    "method:ResourceHandler::capacity",
     "method:ResourceHandler::insert",
     "method:ResourceHandler::extract",
     "method:ResourceHandler::insert_any",
@@ -8,5 +11,5 @@ ids = [
     "method:ResourceHandler::insert_at",
     "method:ResourceHandler::extract_at",
 ]
-why = "ResourceHandler now follows NeoForge’s preferred slot-less overload names. Indexed insert/extract become insert_at/extract_at; insert_any/extract_any become insert/extract. Transfer helpers and stock wrappers live in resource_util, and writes accept an optional enclosing transaction."
-migrate = "Rename indexed calls and impl methods to insert_at/extract_at, and slot-less calls and overrides from insert_any/extract_any to insert/extract. Import mod_api::resource_util::move_resources and pass Some(tx) for an enclosing transaction or None to open one. Rebuild native mods against the updated SDK."
+why = "ResourceHandler follows NeoForge’s preferred slot-less names and general-capacity query. Slot-less writes return a typed error instead of reserving an out-of-range count. The move helpers and stock wrappers live in resource_util; moves accept composed handlers and roll back the whole move on an overanswer."
+migrate = "Rename indexed calls and impl methods to insert_at/extract_at, and slot-less calls and overrides from insert_any/extract_any to insert/extract. Handle Result on slot-less writes. Pass Some(&resource) for resource-specific capacity and None for a general limit; return u32::MAX if the general limit is unknown. Handle Overanswered.owner as optional. Import mod_api::resource_util::move_resources and pass Some(tx) for the current transaction or None to open a root. Rebuild native mods against the updated SDK."

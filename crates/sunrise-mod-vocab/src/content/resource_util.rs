@@ -10,7 +10,7 @@ use std::ops::Range;
 /// first handler's from 0. An insert or extract without an index asks each handler in turn, so
 /// each places it its own way.
 // no wire: a mod-side handler, invoked where it was built; never crosses the boundary.
-// exhaustive: its fields are private, so mods cannot build or destructure it
+#[non_exhaustive]
 pub struct CombinedResourceHandler<R> {
     handlers: Vec<(Box<dyn ResourceHandler<R>>, usize)>,
     size: usize,
@@ -178,7 +178,7 @@ impl<R> ResourceHandler<R> for CombinedResourceHandler<R> {
 /// }
 /// ```
 // no wire: a mod-side handler, invoked where it was built; never crosses the boundary.
-// exhaustive: its fields are private, so mods cannot build or destructure it
+#[non_exhaustive]
 pub struct RangedResourceHandler<R> {
     handler: Box<dyn ResourceHandler<R>>,
     range: Range<usize>,
@@ -260,7 +260,7 @@ impl<R> ResourceHandler<R> for RangedResourceHandler<R> {
 /// that reaches nothing.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 // no wire: a mod-side handler, invoked where it was built; never crosses the boundary.
-// exhaustive: a unit marker
+#[non_exhaustive]
 pub struct EmptyResourceHandler;
 
 impl<R> ResourceHandler<R> for EmptyResourceHandler {
@@ -288,7 +288,7 @@ impl<R> ResourceHandler<R> for EmptyResourceHandler {
 /// extract of it is taken whole, and anything else is refused. A creative tank.
 #[derive(Clone, Debug, PartialEq)]
 // no wire: a mod-side handler, invoked where it was built; never crosses the boundary.
-// exhaustive: its fields are private, so mods cannot build or destructure it
+#[non_exhaustive]
 pub struct InfiniteResourceHandler<R>(R);
 
 impl<R> InfiniteResourceHandler<R> {
@@ -349,7 +349,7 @@ impl<R: Clone + PartialEq> ResourceHandler<R> for InfiniteResourceHandler<R> {
 /// trash can.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 // no wire: a mod-side handler, invoked where it was built; never crosses the boundary.
-// exhaustive: a unit marker
+#[non_exhaustive]
 pub struct VoidingResourceHandler;
 
 impl<R> ResourceHandler<R> for VoidingResourceHandler {
@@ -541,17 +541,16 @@ fn probe_extractable<R>(
     handler: &dyn ResourceHandler<R>,
     filter: impl Fn(&R) -> bool,
 ) -> Option<R> {
-    let probe: Result<std::convert::Infallible, _> = host.transaction(|host, tx| {
-        Err((0..handler.size(host)).find_map(|index| {
-            let amount = u32::try_from(handler.amount_int(host, index)).ok()?;
-            let resource = handler
-                .resource(host, index)
-                .filter(|r| amount != 0 && filter(r))?;
-            let answer = handler.extract_at(host, tx, index, &resource, amount);
-            (answer > 0 && answer <= amount).then_some(resource)
-        }))
-    });
-    probe.err().flatten()
+    (0..handler.size(host)).find_map(|index| {
+        let amount = u32::try_from(handler.amount_int(host, index)).ok()?;
+        let resource = handler
+            .resource(host, index)
+            .filter(|r| amount != 0 && filter(r))?;
+        let probe: Result<std::convert::Infallible, _> = host
+            .transaction(|host, tx| Err(handler.extract_at(host, tx, index, &resource, amount)));
+        let answer = probe.unwrap_err();
+        (answer > 0 && answer <= amount).then_some(resource)
+    })
 }
 
 /// Validates an optional enclosing transaction before opening any new journal. A stale token
