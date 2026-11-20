@@ -1782,9 +1782,9 @@ pub(in crate::game) mod tests {
     /// when the returned guard drops. Bind the guard before the game.
     pub(in crate::game) fn isolated_server_game<'a>(
         resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
-    ) -> (Published, Box<Game<'a>>) {
+    ) -> (Published, Game<'a>) {
         let published = Published(sunrise_client::save::level_mods::block_namespaces());
-        (published, Box::new(build_server_game(resources, true)))
+        (published, build_server_game(resources, true))
     }
 
     fn build_server_game<'a>(

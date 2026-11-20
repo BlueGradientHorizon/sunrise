@@ -11,18 +11,17 @@ use sunrise_client::items::ItemStack;
 use sunrise_core::position::ChunkPos;
 
 fn game(resources: &mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'_> {
-    let mut game = server_game(resources);
-    set_up(&mut game);
-    game
+    set_up(server_game(resources))
 }
 
-fn set_up(game: &mut Game<'_>) {
+fn set_up(mut game: Game<'_>) -> Game<'_> {
     game.build_registries();
     game.set_allow_commands(true);
     game.block_ticks
         .add_empty_chunk(ChunkPos::new(0, 0))
         .unwrap();
     assert!(game.run_command("fill 0 99 0 15 99 15 stone"));
+    game
 }
 
 /// `ServerPlayerGameMode.useItemOn` on the block's top face.
@@ -175,9 +174,9 @@ fn block_drops_on_keeps_the_pop() {
 fn harvest_game<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
     table: serde_json::Value,
-) -> (crate::game::game_tests::tests::Published, Box<Game<'a>>) {
-    let (published, mut game) = isolated_server_game(resources);
-    set_up(&mut game);
+) -> (crate::game::game_tests::tests::Published, Game<'a>) {
+    let (published, game) = isolated_server_game(resources);
+    let mut game = set_up(game);
     game.player = Some(
         sunrise_client::motion::PlayerMotion::new(
             game.motion,
