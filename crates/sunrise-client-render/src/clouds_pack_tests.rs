@@ -264,7 +264,7 @@ const JAVA_TEXTURES: &[(&str, u32, u32, &[[u32; 2]])] = &[
 /// the float vanilla took (1.2207031e-4f, 2^-13 exactly): narrowed first and added to the game
 /// time's remainder in float, as vanilla adds them, it ties to the remainder itself; summed in
 /// double it would round up a float step.
-const JAVA_FRAMES: &[(u32, bool, i32, [f64; 3], i64, f64)] = &[
+const JAVA_FRAMES: &[JavaFrame] = &[
     (0xFFFF_FFFF, true, 1, [37.25, 200.5, -5.5], 12345, 0.37),
     (0x00FF_0001, false, 1, [-3.75, 194.0, 30.125], 0, 0.0),
     (0xFE7F_80FF, true, 2, [0.5, 150.25, 0.5], 999_999, 0.99),
@@ -479,10 +479,32 @@ const JAVA: &[Case] = &[
     },
 ];
 
-/// The input a frame gives Sunrise: the ARGB colour as `environment` gives it (each channel over
-/// 255).
-fn java_input<'a>(texture: &'a (u32, u32, Vec<bool>), frame: usize) -> Input<'a> {
-    let (argb, fancy, range, camera, time, partial) = JAVA_FRAMES[frame];
+/// A frame of a Java dump: the ARGB colour, fancy, the range, the camera, the game time and the
+/// partial tick.
+type JavaFrame = (u32, bool, i32, [f64; 3], i64, f64);
+
+/// A texture of [`JAVA_TEXTURES`] by name: its width, height and filled cells.
+fn java_texture(name: &str) -> (u32, u32, Vec<bool>) {
+    let (_, w, h, cells) = JAVA_TEXTURES
+        .iter()
+        .find(|(texture, ..)| *texture == name)
+        .expect("a texture");
+    let mut filled = vec![false; (*w * *h) as usize];
+    for [x, y] in *cells {
+        filled[(y * w + x) as usize] = true;
+    }
+    (*w, *h, filled)
+}
+
+/// The input a frame gives Sunrise at a cloud height: the ARGB colour as `environment` gives it
+/// (each channel over 255).
+fn java_input<'a>(
+    texture: &'a (u32, u32, Vec<bool>),
+    frames: &[JavaFrame],
+    frame: usize,
+    height: f32,
+) -> Input<'a> {
+    let (argb, fancy, range, camera, time, partial) = frames[frame];
     let channel = |shift: u32| ((argb >> shift) & 0xFF) as f32 / 255.0;
     Input {
         texture,
@@ -493,7 +515,7 @@ fn java_input<'a>(texture: &'a (u32, u32, Vec<bool>), frame: usize) -> Input<'a>
         range,
         fast: !fancy,
         color: [channel(16), channel(8), channel(0), channel(24)],
-        height: CLOUD_HEIGHT,
+        height,
     }
 }
 
@@ -503,16 +525,8 @@ fn java_input<'a>(texture: &'a (u32, u32, Vec<bool>), frame: usize) -> Input<'a>
 #[test]
 fn faces_and_cloud_info_are_vanillas_byte_for_byte() {
     for case in JAVA {
-        let (_, w, h, cells) = JAVA_TEXTURES
-            .iter()
-            .find(|(name, ..)| *name == case.texture)
-            .expect("a texture");
-        let mut filled = vec![false; (*w * *h) as usize];
-        for [x, y] in *cells {
-            filled[(y * w + x) as usize] = true;
-        }
-        let texture = (*w, *h, filled);
-        let input = java_input(&texture, case.frame);
+        let texture = java_texture(case.texture);
+        let input = java_input(&texture, JAVA_FRAMES, case.frame, CLOUD_HEIGHT);
         let what = format!("{} frame {}", case.texture, case.frame);
         let got: Vec<u8> = faces(&input).iter().map(|&b| b as i8 as u8).collect();
         assert_eq!(got, case.faces, "{what}: faces");
@@ -524,8 +538,8 @@ fn faces_and_cloud_info_are_vanillas_byte_for_byte() {
 
 /// The frames of [`JAVA_HEIGHT`]: the ARGB colour, fancy, the range, the camera, the game time and
 /// the partial tick, in a world whose datapack sets the overworld's `minecraft:visual/cloud_height`
-/// to 250 (`.local/evidence/clouds-height`).
-const JAVA_HEIGHT_FRAMES: &[(u32, bool, i32, [f64; 3], i64, f64)] = &[
+/// to 250 (dumped by a temporary bench-mod hook, not kept in the tree).
+const JAVA_HEIGHT_FRAMES: &[JavaFrame] = &[
     (0xFFFF_FFFF, true, 1, [37.25, 255.5, -5.5], 12345, 0.37),
     (0x00FF_0001, false, 1, [-3.75, 251.0, 30.125], 0, 0.0),
     (0xFE7F_80FF, true, 2, [0.5, 150.25, 0.5], 999_999, 0.99),
@@ -583,26 +597,9 @@ const JAVA_HEIGHT: &[Case] = &[
 #[test]
 fn faces_and_cloud_info_follow_a_datapacks_cloud_height() {
     assert_eq!(250.0f32.to_bits(), 1_132_068_864);
-    let (_, w, h, cells) = JAVA_TEXTURES[0];
-    let mut filled = vec![false; (w * h) as usize];
-    for [x, y] in cells {
-        filled[(y * w + x) as usize] = true;
-    }
-    let texture = (w, h, filled);
     for case in JAVA_HEIGHT {
-        let (argb, fancy, range, camera, time, partial) = JAVA_HEIGHT_FRAMES[case.frame];
-        let channel = |shift: u32| ((argb >> shift) & 0xFF) as f32 / 255.0;
-        let input = Input {
-            texture: &texture,
-            uv: [0.0; 2],
-            camera: glam::DVec3::from_array(camera),
-            time,
-            partial_tick: partial,
-            range,
-            fast: !fancy,
-            color: [channel(16), channel(8), channel(0), channel(24)],
-            height: 250.0,
-        };
+        let texture = java_texture(case.texture);
+        let input = java_input(&texture, JAVA_HEIGHT_FRAMES, case.frame, 250.0);
         let what = format!("frame {}", case.frame);
         let got: Vec<u8> = faces(&input).iter().map(|&b| b as i8 as u8).collect();
         assert_eq!(got, case.faces, "{what}: faces");
