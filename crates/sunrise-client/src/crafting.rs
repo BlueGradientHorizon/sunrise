@@ -1410,6 +1410,17 @@ pub struct ResolvedRecipe {
     pub resolved: Arc<Value>,
 }
 
+#[cfg(test)]
+impl ResolvedRecipe {
+    pub(crate) fn fixture(name: String, file: Arc<Value>) -> Self {
+        Self {
+            name,
+            resolved: file.clone(),
+            file,
+        }
+    }
+}
+
 /// The recipes one load reads, each mod ingredient resolved exactly once
 /// (`Ingredient::resolve`): the tables and the network copy of a server load
 /// all read this, so the `ingredient` hook hears each occurrence once per load.
@@ -1496,7 +1507,7 @@ impl ResolvedSources {
                     crate::stations::ParsedStationRecipe::parse(
                         qualified(&recipe.name),
                         &recipe.resolved,
-                        items,
+                        |value| Ingredient::parse(value, items),
                     )
                 })
                 .collect()
@@ -2502,17 +2513,9 @@ mod tests {
     /// snapshot carries the same cells and result as crafting.
     #[test]
     fn recipes_of_type_lists_only_what_the_game_parsed() {
-        let recipe = |s: &str| {
-            let file = Arc::new(serde_json::from_str::<Value>(s).unwrap());
-            (file.clone(), file)
-        };
         let named = |name: &str, s: &str| {
-            let (file, resolved) = recipe(s);
-            ResolvedRecipe {
-                name: format!("mymod:{name}"),
-                file,
-                resolved,
-            }
+            let file = Arc::new(serde_json::from_str::<Value>(s).unwrap());
+            ResolvedRecipe::fixture(format!("mymod:{name}"), file)
         };
         let mut sources = ResolvedSources {
             recipes: vec![
@@ -2555,11 +2558,7 @@ mod tests {
         mod_platform::testing::with_recipe_types(&["example:machine"], || {
             let named = |name: &str, json: &str| {
                 let file = Arc::new(serde_json::from_str::<Value>(json).unwrap());
-                ResolvedRecipe {
-                    name: name.into(),
-                    resolved: file.clone(),
-                    file,
-                }
+                ResolvedRecipe::fixture(name.into(), file)
             };
             let mut sources = ResolvedSources {
                 recipes: vec![
@@ -2679,11 +2678,7 @@ mod tests {
         let template = r#"{"id":"minecraft:diamond","count":2,"components":{"minecraft:custom_data":{"rule":1}}}"#;
         let named = |name: &str, json: String| {
             let file = Arc::new(serde_json::from_str::<Value>(&json).unwrap());
-            ResolvedRecipe {
-                name: name.into(),
-                resolved: file.clone(),
-                file,
-            }
+            ResolvedRecipe::fixture(name.into(), file)
         };
         let sources = ResolvedSources {
             recipes: vec![
@@ -2789,11 +2784,7 @@ mod tests {
                     let mut v: Value = serde_json::from_str(json).unwrap();
                     v["type"] = format!("minecraft:{kind}").into();
                     let file = Arc::new(v);
-                    ResolvedRecipe {
-                        name: format!("test:{kind}"),
-                        resolved: file.clone(),
-                        file,
-                    }
+                    ResolvedRecipe::fixture(format!("test:{kind}"), file)
                 })
                 .collect(),
             ..ResolvedSources::default()

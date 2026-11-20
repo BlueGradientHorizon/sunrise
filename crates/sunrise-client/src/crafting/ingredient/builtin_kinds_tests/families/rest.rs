@@ -1325,11 +1325,7 @@ fn custom_model_data_recipe_decodes_ordered_lists_and_matches_without_allocating
             "type": "minecraft:crafting_shaped", "pattern": ["A"],
             "key": {"A": ingredient}, "result": {"id": "minecraft:diamond", "count": 2}
         }));
-        ResolvedRecipe {
-            name: name.into(),
-            file: file.clone(),
-            resolved: file,
-        }
+        ResolvedRecipe::fixture(name.into(), file)
     };
     let sources = ResolvedSources {
         recipes: vec![named("fixture:model", source.clone())],

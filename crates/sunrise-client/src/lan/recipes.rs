@@ -1065,11 +1065,9 @@ fn empty_ingredient_network_consumers_exclude_whole_unplaceable_recipes() {
             .map(|(name, value)| {
                 let text = value.to_string().into_boxed_str();
                 let value = Arc::new(value);
-                sources.recipes.push(ResolvedRecipe {
-                    name: name.clone(),
-                    file: value.clone(),
-                    resolved: value,
-                });
+                sources
+                    .recipes
+                    .push(ResolvedRecipe::fixture(name.clone(), value));
                 (name, text)
             })
             .collect();
