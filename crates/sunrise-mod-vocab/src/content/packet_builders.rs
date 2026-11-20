@@ -133,7 +133,7 @@ fn lp_vec3(pos: [f64; 3], w: &mut Writer) {
     w.u8((buffer >> 8) as u8);
     w.i32((buffer >> 16) as i32);
     if partial {
-        w.var_int((scale >> 2) as i32);
+        w.varint((scale >> 2) as i32);
     }
 }
 
@@ -172,8 +172,8 @@ impl ServerboundPlayPacket {
         finite(p, "yaw", [f64::from(yaw)])?;
         finite(p, "pitch", [f64::from(pitch)])?;
         build(p, |w| {
-            w.var_int(hand);
-            w.var_int(sequence);
+            w.varint(hand);
+            w.varint(sequence);
             w.f32(yaw);
             w.f32(pitch);
             Ok(())
@@ -195,15 +195,15 @@ impl ServerboundPlayPacket {
         ordinal(p, "face", face, 5)?;
         finite(p, "cursor", cursor.map(f64::from))?;
         build(p, |w| {
-            w.var_int(hand);
+            w.varint(hand);
             position(p, pos, w)?;
-            w.var_int(face);
+            w.varint(face);
             for v in cursor {
                 w.f32(v);
             }
             w.bool(inside);
             w.bool(world_border);
-            w.var_int(sequence);
+            w.varint(sequence);
             Ok(())
         })
     }
@@ -219,10 +219,10 @@ impl ServerboundPlayPacket {
         ordinal(p, "action", action, 8)?;
         ordinal(p, "direction", direction, 5)?;
         build(p, |w| {
-            w.var_int(action);
+            w.varint(action);
             position(p, pos, w)?;
             w.u8(direction as u8);
-            w.var_int(sequence);
+            w.varint(sequence);
             Ok(())
         })
     }
@@ -238,8 +238,8 @@ impl ServerboundPlayPacket {
         ordinal(p, "hand", hand, 1)?;
         finite(p, "location", location)?;
         build(p, |w| {
-            w.var_int(entity);
-            w.var_int(hand);
+            w.varint(entity);
+            w.varint(hand);
             lp_vec3(location, w);
             w.bool(sneaking);
             Ok(())
@@ -248,7 +248,7 @@ impl ServerboundPlayPacket {
     /// The attack form of entity interaction. In 26.3 this carries only the entity ID.
     pub fn attack(entity: i32) -> Result<ServerboundPlayPacket, PacketBuildError> {
         build("attack", |w| {
-            w.var_int(entity);
+            w.varint(entity);
             Ok(())
         })
     }
@@ -269,7 +269,7 @@ impl ServerboundPlayPacket {
         include_data: bool,
     ) -> Result<ServerboundPlayPacket, PacketBuildError> {
         build("pick_item_from_entity", |w| {
-            w.var_int(entity);
+            w.varint(entity);
             w.bool(include_data);
             Ok(())
         })
@@ -296,7 +296,7 @@ impl ServerboundPlayPacket {
                 // The validated 384 UTF-16 units imply at most 384 * 3 UTF-8 bytes.
                 w.string(line);
             }
-            w.var_int(i32::from(front));
+            w.varint(i32::from(front));
             Ok(())
         })
     }
