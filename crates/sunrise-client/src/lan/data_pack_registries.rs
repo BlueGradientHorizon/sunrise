@@ -1028,9 +1028,7 @@ mod tests {
     /// recorded by `tools/test_dialog_codec_parity.py`.
     #[test]
     fn dialog_admission_answers_as_the_real_codecs_do() {
-        let fixture: Value =
-            serde_json::from_str(include_str!("../../tests/fixtures/dialog_codec_cases.json"))
-                .unwrap();
+        let fixture: Value = serde_json::from_str(DIALOG_FIXTURE).unwrap();
         let mut wrong = Vec::new();
         for case in fixture["cases"].as_array().unwrap() {
             let name = case["name"].as_str().unwrap();
