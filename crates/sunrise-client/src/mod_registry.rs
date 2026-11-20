@@ -174,7 +174,7 @@ pub fn install(
     let _lock = sunrise_mod_package::install_lock::lock_home(home)
         .map_err(|e| format!("cannot lock mod browser in {}: {e}", home.display()))?;
     let mut list = Installed::load(home)?;
-    let ours = list.position(id);
+    let ours = list.single(id)?;
     let old_file = ours.and_then(|i| list.entries[i]["file"].as_str().map(str::to_owned));
     // A missing file does not relinquish the launcher's native pin or change its kind.
     if (ours.is_some() && old_file.as_deref() != Some(relative.as_str()))
