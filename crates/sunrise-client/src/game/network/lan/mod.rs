@@ -2407,7 +2407,29 @@ impl Game<'_> {
                     }
                 }
                 HostEvent::Packet(conn, packet) => {
+                    let hidden_inventory_swap = matches!(
+                        packet.as_ref(),
+                        play::Serverbound::ContainerClick(click)
+                            if click.input == lan::menu::input::SWAP
+                                && matches!(click.button, 0..=8 | 40)
+                                && self.lan.as_ref().and_then(|host| host.hub.guest(conn))
+                                    .and_then(|guest| guest.menu.as_ref()).is_some_and(|menu| {
+                                        menu.window == click.container
+                                            && menu.player_slots() == 0
+                                            && usize::try_from(click.slot)
+                                                .is_ok_and(|slot| slot < menu.slot_count())
+                                    })
+                    );
                     self.lan_guest_packet(conn, *packet);
+                    // A full resend omits these slots, and an unchanged server inventory
+                    // cannot correct a predicted swap through its usual delta broadcast.
+                    if hidden_inventory_swap
+                        && let Some(host) = self.lan.as_mut()
+                        && let Some(gi) = host.hub.guests.connection_index(conn)
+                        && !host.hub.guests[gi].disconnect_pending
+                    {
+                        host.hub.send_inventory(gi);
+                    }
                     if self
                         .lan
                         .as_ref()

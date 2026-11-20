@@ -1607,6 +1607,101 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
+    fn refused_swap_resends_the_menu_and_undisplayed_hotbar() {
+        sunrise_client::containers::with_mod_menu_types(
+            [(
+                MOD_MENU.into(),
+                "status_package".into(),
+                1,
+                0,
+                vec![],
+                vec![],
+                None,
+                None,
+                false,
+            )],
+            || {
+                with_game(|game| {
+                    let (rx, key) = mod_menu_guest(game);
+                    let held = ItemStack::new("minecraft:stone", 5);
+                    let stored = ItemStack::new("minecraft:dirt", 2);
+                    game.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+                        g.sender.menu_extra_rev = sunrise_protocol::menu_extra::LIVE_DATA_REVISION;
+                        g.inventory[2] = Some(held.clone());
+                    });
+                    let player = game.player(123).unwrap();
+                    let window = player
+                        .open_mod_menu(
+                            game,
+                            key,
+                            mod_api::Text::literal("Panel"),
+                            vec![],
+                            vec![],
+                            None,
+                            MenuReplace::CloseFirst,
+                        )
+                        .unwrap()
+                        .unwrap();
+                    let host: &mut dyn ServerHost = game;
+                    host.menu_set_items(
+                        123,
+                        window,
+                        vec![Some(stored.clone().try_into_api().unwrap())],
+                    )
+                    .unwrap();
+                    sent(&rx);
+
+                    // This native menu has no click listener, so it keeps its stack even
+                    // though the client predicted a swap with the undisplayed hotbar.
+                    let click = S::ContainerClick(play::ContainerClick {
+                        container: window,
+                        state: 0,
+                        slot: 0,
+                        button: 2,
+                        input: sunrise_client::lan::menu::input::SWAP,
+                        changed: vec![],
+                        carried: None,
+                    });
+                    let host = game.lan.take().unwrap();
+                    let host = game
+                        .lan_process_events(
+                            host,
+                            [sunrise_client::lan::hub::HostEvent::Packet(
+                                1,
+                                Box::new(click),
+                            )],
+                            &[],
+                            [0.0; 3],
+                        )
+                        .unwrap();
+                    let packets = sent(&rx);
+                    let [
+                        C::ContainerSetContent(menu),
+                        C::ContainerSetContent(inventory),
+                    ] = &packets[..]
+                    else {
+                        panic!(
+                            "expected corrections for the menu and backing inventory, got {packets:?}"
+                        );
+                    };
+                    assert_eq!((menu.container, menu.items.len()), (window, 1));
+                    assert_eq!((inventory.container, inventory.items.len()), (0, 46));
+                    assert_eq!(
+                        host.hub.stack_from_network(menu.items[0].as_ref().unwrap()),
+                        stored
+                    );
+                    assert_eq!(
+                        host.hub
+                            .stack_from_network(inventory.items[38].as_ref().unwrap()),
+                        held
+                    );
+                });
+            },
+        );
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn blockless_menu_data_is_committed_to_only_its_live_generation() {
         use mod_api::{ContainerOpenedEvent, MenuDataRefusal, OpenMenuError};
         use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
