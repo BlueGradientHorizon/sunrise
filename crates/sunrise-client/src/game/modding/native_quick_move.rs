@@ -377,7 +377,7 @@ impl Game<'_> {
         }
     }
 
-    /// `mod_menu_quick_move` as one decided action, with the slot rules' answers asked before it.
+    /// Route a mod menu quick move as one decided action, after asking the slot rules.
     /// `Some((handled, asked))`: the decision stood (a mod took the click), or no mod did and the
     /// action was cancelled with every write of the listeners undone, so the game routes the
     /// click (`handled` false), or the slot's rules refused the pickup before any mod was asked;
