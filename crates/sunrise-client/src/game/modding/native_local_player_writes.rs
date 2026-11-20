@@ -256,17 +256,29 @@ mod tests {
                 let player = game.player.as_ref().unwrap();
                 assert!(player.ground.on_ground);
                 assert_eq!(player.health.health(), health);
-                let played_fall_sound = player.events.iter().any(|event| {
-                    matches!(
-                        event,
-                        MotionEvent::Fall(FallEvent::Sound {
-                            sound: SceneSound::SmallFall,
-                            ..
-                        })
-                    )
-                });
-                assert_eq!(played_fall_sound, !reset);
+                if reset {
+                    assert!(!player.events.iter().any(|event| {
+                        matches!(
+                            event,
+                            MotionEvent::Fall(
+                                FallEvent::Sound { .. } | FallEvent::BlockFallSound { .. }
+                            )
+                        )
+                    }));
+                } else {
+                    assert!(player.events.iter().any(|event| {
+                        matches!(
+                            event,
+                            MotionEvent::Fall(FallEvent::Sound {
+                                sound: SceneSound::SmallFall,
+                                ..
+                            })
+                        )
+                    }));
+                }
             }
+            game.player = None;
+            assert_eq!(local.reset_fall_distance(game), Ok(false));
         });
     }
 
