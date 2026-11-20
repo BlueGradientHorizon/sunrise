@@ -2659,7 +2659,7 @@ impl Hub {
         let closed = g
             .menu
             .as_ref()
-            .and_then(|menu| menu.native_closed(g.uuid, &mut g.native_menu));
+            .and_then(|menu| menu.native_closed(g.uuid, g.menu_generation, &mut g.native_menu));
         self.native_menu_events.extend(closed);
         // A held player a proxy dropped keeps, in the log, how its connection really ended
         // (an unreadable packet, a reset): the drop says only that it was dropped.

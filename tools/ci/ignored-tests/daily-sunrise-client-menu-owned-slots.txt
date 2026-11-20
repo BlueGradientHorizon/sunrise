@@ -1,4 +1,5 @@
 sunrise-client game::native_menus::owned_slots_tests::a_click_copies_into_an_owned_slot_and_syncs_without_consuming_the_cursor lib daily resources
+sunrise-client game::native_menus::owned_slots_tests::abort_after_replacement_restores_only_committed_contents_to_the_old_close lib daily resources
 sunrise-client game::native_menus::owned_slots_tests::an_item_opened_menu_has_two_empty_owned_slots_with_individual_caps lib daily resources
 sunrise-client game::native_menus::owned_slots_tests::closing_discards_owned_slots_unless_the_listener_returns_their_contents lib daily resources
 sunrise-client game::native_menus::owned_slots_tests::the_part_closes_the_menu_when_the_opening_stack_leaves_its_hand lib daily resources

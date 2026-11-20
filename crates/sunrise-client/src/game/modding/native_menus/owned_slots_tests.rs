@@ -258,6 +258,62 @@ fn closing_discards_owned_slots_unless_the_listener_returns_their_contents() {
 
 #[test]
 #[ignore = "daily"]
+fn abort_after_replacement_restores_only_committed_contents_to_the_old_close() {
+    with_owned_menu(true, |game, _rx, key| {
+        let (_, old) = open(game, key);
+        let player = game.player(123).unwrap();
+        let stick =
+            mod_api::ItemStack::of(mod_api::__private::item_key("minecraft:stick").unwrap());
+        let resource = ItemResource::of(&stick);
+        let old_slot = ItemPlace::MenuSlot { menu: old, slot: 1 };
+        let host: &mut dyn ServerHost = game;
+        host.transaction(|host, tx| {
+            assert_eq!(old_slot.insert(host, tx, &resource, 2), 2);
+            Ok::<_, ()>(())
+        })
+        .unwrap();
+
+        let aborted: Result<(), ()> = host.transaction(|host, tx| {
+            assert_eq!(old_slot.insert(host, tx, &resource, 1), 1);
+            player
+                .open_mod_menu(
+                    host,
+                    key,
+                    mod_api::Text::literal("Replacement"),
+                    Vec::new(),
+                    Vec::new(),
+                    None,
+                    Some(Hand::Off),
+                    MenuReplace::InPlace,
+                )
+                .unwrap()
+                .unwrap();
+            let new = player.container_menu(host).unwrap();
+            let new_slot = ItemPlace::MenuSlot { menu: new, slot: 1 };
+            assert_eq!(new_slot.insert(host, tx, &resource, 4), 4);
+            Err(())
+        });
+        assert_eq!(aborted, Err(()));
+        let new = game.player_container_menu(player).unwrap();
+        assert_eq!(old.slot(game, 1), None);
+        assert_eq!(new.slot(game, 1), Some(None), "no leakage between windows");
+        game.run_native_menu_events();
+        let guest = &game.lan.as_ref().unwrap().hub.guests[0];
+        assert_eq!(
+            guest
+                .inventory
+                .iter()
+                .flatten()
+                .cloned()
+                .collect::<Vec<_>>(),
+            [ItemStack::new("minecraft:stick", 2)],
+            "the old close returned only the committed value"
+        );
+    });
+}
+
+#[test]
+#[ignore = "daily"]
 fn the_part_closes_the_menu_when_the_opening_stack_leaves_its_hand() {
     with_owned_menu(false, |game, rx, key| {
         let (window, menu) = open(game, key);

@@ -162,6 +162,7 @@ impl Menu {
     pub(super) fn native_closed(
         &self,
         uuid: u128,
+        generation: u64,
         native_menu: &mut Vec<Option<ItemStack>>,
     ) -> Option<NativeMenuEvent> {
         if self.slots != Slots::Native {
@@ -176,6 +177,7 @@ impl Menu {
         Some(NativeMenuEvent::Closed {
             uuid,
             window: self.window,
+            generation,
             opening_hand: self.opening_item.as_ref().map(|(hand, _)| *hand),
             owned_slots,
         })
@@ -272,6 +274,8 @@ pub enum NativeMenuEvent {
     Closed {
         uuid: u128,
         window: i32,
+        /// The window instance, for rolling back writes made before this pending close.
+        generation: u64,
         opening_hand: Option<Hand>,
         owned_slots: Vec<Option<ItemStack>>,
     },

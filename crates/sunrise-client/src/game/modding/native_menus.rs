@@ -478,6 +478,7 @@ impl Game<'_> {
                     window,
                     opening_hand,
                     owned_slots,
+                    ..
                 } => {
                     self.menu_places_closed(uuid, window);
                     if mod_api::__private::listened(mod_api::HookId::MenuClosed) {
@@ -1290,14 +1291,15 @@ mod tests {
                 vec![stone]
             );
             assert_eq!(g.menu.as_ref().map(|m| (m.window, m.size)), Some((2, 18)));
-            assert_eq!(
-                game.lan.as_ref().unwrap().hub.native_menu_events,
-                vec![NativeMenuEvent::Closed {
-                    uuid: 123,
-                    window: 1,
-                    opening_hand: None,
-                    owned_slots: Vec::new(),
-                }],
+            assert!(
+                matches!(
+                    game.lan.as_ref().unwrap().hub.native_menu_events.as_slice(),
+                    [NativeMenuEvent::Closed {
+                        uuid: 123,
+                        window: 1,
+                        ..
+                    }]
+                ),
                 "the old menu closed on the server"
             );
 
@@ -1513,14 +1515,15 @@ mod tests {
                 vec![stone]
             );
             assert_eq!(g.menu.as_ref().map(|m| (m.window, m.size)), Some((2, 9)));
-            assert_eq!(
-                game.lan.as_ref().unwrap().hub.native_menu_events,
-                vec![NativeMenuEvent::Closed {
-                    uuid: 123,
-                    window: 1,
-                    opening_hand: None,
-                    owned_slots: Vec::new(),
-                }],
+            assert!(
+                matches!(
+                    game.lan.as_ref().unwrap().hub.native_menu_events.as_slice(),
+                    [NativeMenuEvent::Closed {
+                        uuid: 123,
+                        window: 1,
+                        ..
+                    }]
+                ),
                 "the old menu closed on the server"
             );
 

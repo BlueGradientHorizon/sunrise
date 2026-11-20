@@ -629,7 +629,7 @@ impl Hub {
             g.send(&C::ContainerClose(play::ContainerClose {
                 container: menu.window,
             }));
-            menu.native_closed(g.uuid, &mut g.native_menu)
+            menu.native_closed(g.uuid, g.menu_generation, &mut g.native_menu)
         });
         self.native_menu_events.extend(closed);
     }
@@ -651,7 +651,9 @@ impl Hub {
                 if !g.menu.as_ref().is_some_and(|m| m.window == window) {
                     return None;
                 }
-                g.menu.take()?.native_closed(g.uuid, &mut g.native_menu)
+                g.menu
+                    .take()?
+                    .native_closed(g.uuid, g.menu_generation, &mut g.native_menu)
             })
             .flatten();
         self.native_menu_events.extend(closed);
