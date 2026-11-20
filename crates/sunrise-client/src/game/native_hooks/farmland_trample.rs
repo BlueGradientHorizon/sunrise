@@ -165,6 +165,7 @@ mod tests {
     #[derive(Debug, PartialEq)]
     enum Moment {
         Hook { y: f64, health: f32 },
+        CropRemoved(mod_api::BlockState),
         Lift(u32, f64, Option<mod_api::BlockState>),
         Write(mod_api::BlockState),
         GameEvent([f64; 3], Option<u32>, Option<mod_api::BlockState>),
@@ -284,7 +285,18 @@ mod tests {
                 assert_eq!(level.block_state(host, LISTENER_WRITE), Some(stone));
             }
             match self.0 {
-                Choice::Cancel => Flow::Cancel,
+                Choice::Cancel => {
+                    let crop = [FIELD[0], FIELD[1] + 1, FIELD[2]];
+                    assert!(matches!(
+                        level.destroy_block(host, crop, true, None, false),
+                        Ok(None)
+                    ));
+                    assert!(level.remove_block(host, crop, false));
+                    let state = level.block_state(host, crop).unwrap();
+                    // The outer trace assertion distinguishes cancellation from a trapped assertion.
+                    self.1.lock().unwrap().push(Moment::CropRemoved(state));
+                    Flow::Cancel
+                }
                 Choice::AvoidSneak => {
                     if entity.is_shift_key_down(host).unwrap() || entity.is_crouching(host).unwrap()
                     {
@@ -459,10 +471,14 @@ mod tests {
                     game.mobs.push(other);
                     game.entity_section_joined(id, [x, LANDING_Y, 1.5]);
                 }
+                let drops = game.dropped.len();
                 if player {
                     game.guest_server_tick(1, true);
                 } else {
                     game.tick_creature_entities().unwrap();
+                }
+                if choice == Choice::Cancel {
+                    assert_eq!(game.dropped.len(), drops);
                 }
                 let (landing_y, health) = if player {
                     let g = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
@@ -515,6 +531,9 @@ mod tests {
                         y: LANDING_Y,
                         health: initial_health,
                     });
+                }
+                if choice == Choice::Cancel {
+                    expected.push(Moment::CropRemoved(api_state(air)));
                 }
                 if converted || choice == Choice::ReplaceDuringLift {
                     let following = if choice == Choice::ReplaceDuringLift {
