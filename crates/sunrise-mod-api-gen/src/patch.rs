@@ -1452,14 +1452,23 @@ struct Narrowing<'a> {
     linked: &'a BTreeSet<String>,
 }
 
-/// The statics a `thread_local!` item declares, with their attributes and visibility; `None`
-/// for any other macro, or one whose body doesn't read as statics.
-fn thread_local_statics(mac: &syn::ItemMacro) -> Option<Vec<syn::ItemStatic>> {
-    let path = &mac.mac.path;
-    let named = path.segments.last()?.ident == "thread_local"
-        && (path.segments.len() == 1
-            || (path.segments.len() == 2 && path.segments[0].ident == "std"));
-    if !named {
+/// The statics std's `thread_local!` declares in `mac`, with their attributes and visibility;
+/// `None` for any other macro, for a bare `thread_local!` when `shadowed` (the module may see
+/// another macro of that name), or when the body doesn't read as statics.
+fn thread_local_statics(mac: &syn::ItemMacro, shadowed: bool) -> Option<Vec<syn::ItemStatic>> {
+    let segments: Vec<String> = mac
+        .mac
+        .path
+        .segments
+        .iter()
+        .map(|segment| segment.ident.to_string())
+        .collect();
+    let standard = match segments.as_slice() {
+        [name] => name == "thread_local" && !shadowed,
+        [std, name] => std == "std" && name == "thread_local",
+        _ => false,
+    };
+    if !standard {
         return None;
     }
     syn::parse2::<syn::File>(mac.mac.tokens.clone())
@@ -1473,14 +1482,12 @@ fn thread_local_statics(mac: &syn::ItemMacro) -> Option<Vec<syn::ItemStatic>> {
         .collect()
 }
 
-/// Whether `item` imports from std or from a crate in `linked`.
-fn imports_from(item: &syn::ItemUse, linked: &BTreeSet<String>) -> bool {
-    match &item.tree {
-        syn::UseTree::Path(path) => {
-            let root = path.ident.to_string();
-            ["std", "core", "alloc"].contains(&root.as_str()) || linked.contains(&root)
-        }
-        _ => false,
+impl Narrowing<'_> {
+    /// Whether a path starting at `root` resolves from a mirror as it did in the game: `std`
+    /// and `core`, which every crate has, or a crate the patch crate links. (`alloc` is not in
+    /// a crate's extern prelude, and the patch crate declares no `extern crate alloc`.)
+    fn resolves(&self, root: &syn::Ident) -> bool {
+        root == "std" || root == "core" || self.linked.contains(&root.to_string())
     }
 }
 
@@ -1541,35 +1548,45 @@ fn mirror(
     // A `thread_local!` names the statics it declares. Only a public one can be re-exported:
     // nothing widens a private one, which a glob would not have brought either. Any other
     // macro invocation may define items syn can't see, which only a glob re-exports.
+    // A bare `thread_local!` is std's unless a `macro_rules!` of that name is in scope, or the
+    // module imports that name or any glob.
+    let shadowed = source.local_macros.contains("thread_local")
+        || source
+            .path_macros(path)
+            .iter()
+            .any(|mac| mac.ident.as_ref().is_some_and(|i| i == "thread_local"))
+        || uses(&items)
+            .iter()
+            .any(|item| may_import(&item.tree, "thread_local"));
+    let cfgs = |attrs: &[syn::Attribute]| {
+        attrs
+            .iter()
+            .filter(|attr| attr.path().is_ident("cfg"))
+            .cloned()
+            .collect::<Vec<_>>()
+    };
     let mut glob = false;
     let mut thread_locals = Vec::new();
     for item in &items {
         if let Item::Macro(mac) = item
             && mac.ident.is_none()
         {
-            match thread_local_statics(mac) {
-                Some(statics) => thread_locals.extend(statics),
+            match thread_local_statics(mac, shadowed) {
+                // Each static exists under the invocation's conditions and its own.
+                Some(statics) => thread_locals.extend(
+                    statics
+                        .into_iter()
+                        .filter(|item| matches!(item.vis, syn::Visibility::Public(_)))
+                        .map(|item| {
+                            let mut cfg = cfgs(&mac.attrs);
+                            cfg.extend(cfgs(&item.attrs));
+                            (item.ident, cfg)
+                        }),
+                ),
                 None => glob = true,
             }
         }
     }
-    let thread_locals: Vec<(syn::Ident, Vec<syn::Attribute>)> = thread_locals
-        .into_iter()
-        .filter(|item| matches!(item.vis, syn::Visibility::Public(_)))
-        .map(|item| (item.ident, item.attrs))
-        .filter(|(_, attrs)| {
-            !attrs
-                .iter()
-                .any(|a| a.to_token_stream().to_string().contains("test"))
-        })
-        .map(|(ident, attrs)| {
-            let cfg = attrs
-                .into_iter()
-                .filter(|attr| attr.path().is_ident("cfg"))
-                .collect();
-            (ident, cfg)
-        })
-        .collect();
     public.extend(thread_locals.iter().map(|(ident, _)| ident.to_string()));
     // One `pub use` brings every namespace a name has: `pub mod render;` beside
     // `pub fn render` is one re-export, under the cfg either item is compiled under.
@@ -1603,17 +1620,17 @@ fn mirror(
         quote!(#cfg pub use #original::#ident;)
     });
     let uses = uses(&items).into_iter().filter_map(|item| {
-        let whole = narrowing.is_some_and(|narrowing| {
-            !tree.copies.is_empty() && imports_from(item, narrowing.linked)
-        });
         let mut item = item.clone();
-        item.tree = filter_use_tree(item.tree, None, &|name| {
+        item.tree = filter_use_tree(item.tree, None, None, &|name, root| {
             // A `use` naming a child mirror or a copy would collide with it. In a lower
             // crate, only the listed functions' modules are widened: other private imports
             // wouldn't resolve, so keep only names the copies and helpers refer to, and in a
             // copy's module every import from std and the linked crates ([`Narrowing`]).
             !reserved.contains(name)
-                && (whole || narrowing.is_none_or(|narrowing| narrowing.used.contains(name)))
+                && narrowing.is_none_or(|narrowing| {
+                    narrowing.used.contains(name)
+                        || (!tree.copies.is_empty() && narrowing.resolves(root))
+                })
         })?;
         Some(item)
     });
@@ -1823,23 +1840,43 @@ fn bridge_trait(
     ))
 }
 
+/// Whether `tree` may bring `name` into scope: it binds it, or it has a glob.
+fn may_import(tree: &syn::UseTree, name: &str) -> bool {
+    match tree {
+        syn::UseTree::Path(path) => may_import(&path.tree, name),
+        syn::UseTree::Group(group) => group.items.iter().any(|item| may_import(item, name)),
+        syn::UseTree::Name(binding) => binding.ident == name,
+        syn::UseTree::Rename(rename) => rename.rename == name,
+        syn::UseTree::Glob(_) => true,
+    }
+}
+
 /// Filter individual bindings, preserving paths and unnameable imports that can affect resolution.
+/// `keep` is asked about each binding with the first segment of its path (`sunrise_core` for
+/// `sunrise_core::trig::Mth`, in a group or not): `root` is that segment once a branch has one.
 fn filter_use_tree(
     tree: syn::UseTree,
     prefix: Option<&syn::Ident>,
-    keep: &impl Fn(&str) -> bool,
+    root: Option<&syn::Ident>,
+    keep: &impl Fn(&str, &syn::Ident) -> bool,
 ) -> Option<syn::UseTree> {
     use syn::UseTree::*;
     match tree {
         Path(mut path) => {
-            path.tree = Box::new(filter_use_tree(*path.tree, Some(&path.ident), keep)?);
+            let root = root.unwrap_or(&path.ident).clone();
+            path.tree = Box::new(filter_use_tree(
+                *path.tree,
+                Some(&path.ident),
+                Some(&root),
+                keep,
+            )?);
             Some(Path(path))
         }
         Group(mut group) => {
             group.items = group
                 .items
                 .into_iter()
-                .filter_map(|item| filter_use_tree(item, prefix, keep))
+                .filter_map(|item| filter_use_tree(item, prefix, root, keep))
                 .collect();
             (!group.items.is_empty()).then_some(Group(group))
         }
@@ -1849,11 +1886,11 @@ fn filter_use_tree(
             } else {
                 &name.ident
             };
-            keep(&binding.to_string()).then_some(tree)
+            keep(&binding.to_string(), root.unwrap_or(&name.ident)).then_some(tree)
         }
-        Rename(ref rename) => {
-            (rename.rename == "_" || keep(&rename.rename.to_string())).then_some(tree)
-        }
+        Rename(ref rename) => (rename.rename == "_"
+            || keep(&rename.rename.to_string(), root.unwrap_or(&rename.ident)))
+        .then_some(tree),
         Glob(_) => Some(tree),
     }
 }
@@ -2226,6 +2263,57 @@ mod tests {
     }
 
     #[test]
+    fn a_thread_local_static_is_re_exported_under_its_invocations_conditions_and_its_own() {
+        let mut source = source_of(
+            "lower::anim",
+            "#[cfg(unix)]
+             thread_local! {
+                 pub static SHARED: Cell<u8> = Cell::new(0);
+                 #[cfg(not(test))]
+                 /// Documented.
+                 pub static RELEASED: Cell<u8> = Cell::new(0);
+             }",
+        );
+        let out = mirror(&mut source, "lower::anim", &with_a_copy(), &[], None)
+            .unwrap()
+            .to_string()
+            .replace(' ', "");
+        assert!(
+            out.contains("#[cfg(unix)]pubuse::lower::anim::SHARED;"),
+            "{out}"
+        );
+        assert!(
+            out.contains("#[cfg(unix)]#[cfg(not(test))]pubuse::lower::anim::RELEASED;"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn a_thread_local_that_may_not_be_stds_keeps_the_glob() {
+        let glob = |text: &str| {
+            let mut source = source_of("lower::anim", text);
+            mirror(&mut source, "lower::anim", &with_a_copy(), &[], None)
+                .unwrap()
+                .to_string()
+                .replace(' ', "")
+                .contains("pubuse::lower::anim::*;")
+        };
+        let invocation = "thread_local! { pub static SHARED: u8 = 0; }";
+        assert!(!glob(invocation));
+        // A `macro_rules!` of that name may expand to anything.
+        assert!(glob(&format!(
+            "macro_rules! thread_local {{ ($($t:tt)*) => {{ pub fn made() {{}} }}; }} {invocation}"
+        )));
+        // So may an imported one, or one a glob import brings.
+        assert!(glob(&format!("use other::thread_local; {invocation}")));
+        assert!(glob(&format!("use other::*; {invocation}")));
+        // Spelled through std, it is std's whatever else is in scope.
+        assert!(!glob(
+            "use other::thread_local; std::thread_local! { pub static SHARED: u8 = 0; }"
+        ));
+    }
+
+    #[test]
     fn a_name_in_two_namespaces_is_re_exported_once() {
         let mut source = source_of(
             "sunrise_client::mobs",
@@ -2271,6 +2359,8 @@ mod tests {
     fn a_copys_module_keeps_its_imports_from_std_and_the_linked_crates() {
         let text = "use sunrise_core::trig::Mth;
                     use std::fmt::Write;
+                    use {sunrise_core::lerp::Lerp, super::Hidden};
+                    use alloc::vec::Vec;
                     use unlinked::Thing;
                     use super::Private;
                     use crate::helpers::Helper;";
@@ -2290,9 +2380,15 @@ mod tests {
                 .collect::<Vec<_>>()
         };
         // `angle.mcos()` in a copy needs `Mth` in scope without naming it.
+        // In a group too, without the group's imports through the crate's own modules. `alloc`
+        // is not a root the patch crate has.
         assert_eq!(
             imports(&with_a_copy()),
-            ["sunrise_core :: trig :: Mth", "std :: fmt :: Write"]
+            [
+                "sunrise_core :: trig :: Mth",
+                "std :: fmt :: Write",
+                "{ sunrise_core :: lerp :: Lerp }"
+            ]
         );
         // A module with no copy runs no method call: it keeps only what is named.
         assert!(imports(&Tree::default()).is_empty());
