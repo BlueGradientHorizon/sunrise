@@ -1073,11 +1073,12 @@ mod tests {
                     .unwrap()
                     .into_iter()
                     .filter_map(|entity| host.item_entity(entity))
-                    .filter_map(|item| item.stack(host))
-                    .filter(|stack| {
-                        mod_api::__private::item_key_id(stack.item())
-                            .unwrap()
-                            .ends_with("mushroom")
+                    .filter(|item| {
+                        item.with_stack(host, |stack| {
+                            mod_api::__private::item_key_id(stack.item())
+                                .unwrap()
+                                .ends_with("mushroom")
+                        }) == Some(true)
                     })
                     .count();
                 self.seen.lock().unwrap().push(SeenConversion {

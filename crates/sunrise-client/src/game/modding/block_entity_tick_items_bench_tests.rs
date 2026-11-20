@@ -18,14 +18,16 @@ fn unscoped_item_entity_reads() {
         for round in 0..260 {
             let start = Instant::now();
             for _ in 0..10_000 {
-                black_box(game.item_entity_stack(black_box(item)));
+                black_box(game.item_entity_stack(black_box(item), &mut |stack| {
+                    black_box(stack.count());
+                }));
             }
             if round >= 20 {
                 times.push(start.elapsed().as_nanos());
             }
         }
         times.sort_unstable();
-        assert_eq!(game.item_entity_stack(item).unwrap().count, 5);
+        assert_eq!(item.with_stack(game, |stack| stack.count()), Some(5));
         println!(
             "ITEM_READ_BENCH scope=none reads=10000 samples={} median_ns={} p95_ns={} p99_ns={}",
             times.len(),

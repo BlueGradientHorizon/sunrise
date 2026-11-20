@@ -134,8 +134,8 @@ whose commit triggered them. Explicit mod notices issued during a transaction ru
 
 `ItemPlace::EntitySlot { entity, slot }` addresses an entity inventory slot, like
 NeoForge's `Capabilities.Item.ENTITY`. Read and write it like any other item place.
-Reading or writing a minecart's slots unpacks its loot table without a player,
-as vanilla's `getChestVehicleItem` does.
+A read uses the resident slots, or the vehicle's live menu slots if open. It does not unpack
+pending loot or load chunks. Writes to a minecart's slots unpack its loot table without a player.
 
 The player `set_inventory_slot`, `set_ender_chest_slot`, `give_stack` and
 `set_persistent_data` writes use the open transaction journal. Aborting restores

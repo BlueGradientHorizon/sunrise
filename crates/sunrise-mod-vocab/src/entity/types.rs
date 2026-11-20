@@ -225,7 +225,7 @@ impl LivingRef {
         read: impl for<'a> FnOnce(ItemStackView<'a>) -> R,
     ) -> Option<R> {
         let backend = crate::backend_of(host)?;
-        read_living_stack(read, |lend| backend.living_equipment(self, slot, lend))
+        read_stack_view(read, |lend| backend.living_equipment(self, slot, lend))
     }
 
     /// Read `hand` (`LivingEntity.getItemInHand`): the selected main-hand slot or the off hand.
@@ -237,7 +237,7 @@ impl LivingRef {
         read: impl for<'a> FnOnce(ItemStackView<'a>) -> R,
     ) -> Option<R> {
         let backend = crate::backend_of(host)?;
-        read_living_stack(read, |lend| backend.living_hand_item(self, hand, lend))
+        read_stack_view(read, |lend| backend.living_hand_item(self, hand, lend))
     }
 
     /// Read the living attacker's weapon (`DamageSource.getWeaponItem`): the stack kept for a
@@ -250,11 +250,11 @@ impl LivingRef {
         read: impl for<'a> FnOnce(ItemStackView<'a>) -> R,
     ) -> Option<R> {
         let backend = crate::backend_of(host)?;
-        read_living_stack(read, |lend| backend.living_weapon_item(self, lend))
+        read_stack_view(read, |lend| backend.living_weapon_item(self, lend))
     }
 }
 
-fn read_living_stack<R>(
+fn read_stack_view<R>(
     read: impl for<'a> FnOnce(ItemStackView<'a>) -> R,
     lend: impl FnOnce(&mut dyn for<'a> FnMut(ItemStackView<'a>)) -> Option<()>,
 ) -> Option<R> {
@@ -763,6 +763,20 @@ impl ItemEntityRef {
     /// The same entity as an [`EntityRef`].
     pub fn entity(self) -> EntityRef {
         self.0
+    }
+    /// Read `ItemEntity.getItem` on the server, without copying the stack. During a mod
+    /// block-entity tick this sees the latest proposed replacement, if any.
+    ///
+    /// Returns `Some` of `read`'s result, or `None` without calling it if the handle is stale,
+    /// the stack is unavailable or the item has a proposed removal. Use
+    /// [`ItemStackView::project`] to read components or keep an owned stack past the callback.
+    pub fn with_stack<R>(
+        self,
+        host: &dyn Host,
+        read: impl for<'a> FnOnce(ItemStackView<'a>) -> R,
+    ) -> Option<R> {
+        let backend = crate::backend_of(host)?;
+        read_stack_view(read, |lend| backend.item_entity_stack(self, lend))
     }
 }
 

@@ -62,7 +62,8 @@ pub enum ItemPlace {
     },
     /// Slot `slot` of the inventory of entity `entity` in the level in place: a chest or hopper
     /// minecart's, a chest boat's, or a chested donkey's, mule's or llama's
-    /// (`Capabilities.Item.ENTITY` through `forHandlerIndex`).
+    /// (`Capabilities.Item.ENTITY` through `forHandlerIndex`). Reads use resident slots,
+    /// including the live vehicle menu's slots while it is open, without unpacking loot.
     EntitySlot {
         /// The entity's network id.
         entity: u32,
@@ -485,7 +486,8 @@ pub(crate) fn warn_broken(owner: Option<&'static str>, at: &dyn Debug) {
 }
 
 impl ItemPlace {
-    /// The stack here, if any (`getResource` and `getAmount`).
+    /// The stack here, if any (`getResource` and `getAmount`). Reading a native place
+    /// does not load chunks, initialize the player or unpack a vehicle's pending loot.
     pub fn stack(&self, host: &mut dyn ServerHost) -> Option<ItemStack> {
         // The wrappers are undone in a loop, not by recursion: a mod may nest them as deep as
         // it likes without the stack growing.

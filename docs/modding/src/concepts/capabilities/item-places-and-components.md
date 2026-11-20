@@ -5,6 +5,10 @@ slot, hand or cursor, a block entity's slot, an item entity, an entity's invento
 a menu slot, or a stack inside another item (`ItemPlace::Nested`). For storage you manage,
 register a `PlaceProvider` with `r.place_provider` and use `ItemPlace::Mod`.
 
+A native-place read uses storage already present: it does not load chunks, initialize a player
+or unpack pending loot. For a dropped item narrowed to an `ItemEntityRef`, use
+[`with_stack`](../../how-to/world/block-entity-item-drops.md) to inspect it without copying it.
+
 ## Item capabilities
 
 Register an item's capability with

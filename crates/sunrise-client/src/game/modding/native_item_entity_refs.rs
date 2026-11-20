@@ -1,6 +1,10 @@
 //! Dropped-item handles for native server mods.
-use super::{Game, commands::Target};
-use mod_api::{EntityRef, ItemEntityRef};
+use super::{
+    Game,
+    api_values::{project_stack, stack_read_metadata},
+    commands::Target,
+};
+use mod_api::{EntityRef, ItemEntityRef, ItemStackView};
 use sunrise_client::{
     items::ItemStack,
     lan::playerdata::{ints_uuid, uuid_ints},
@@ -21,12 +25,24 @@ impl Game<'_> {
         self.native_item_entity_index(item).map(|_| item)
     }
 
-    /// `ItemEntity.getItem`: the complete stack, or None if unavailable.
-    pub(super) fn item_entity_stack(&self, item: ItemEntityRef) -> Option<ItemStack> {
-        if self.block_entity_tick_items.is_some() {
-            return self.scoped_item_entity_stack(item);
-        }
-        self.unscoped_item_entity_stack(item)
+    /// Lend `ItemEntity.getItem`. Encode components only when the reader projects the view.
+    pub(super) fn item_entity_stack(
+        &self,
+        item: ItemEntityRef,
+        read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
+    ) -> Option<()> {
+        let Target::Item(id) = self.unscoped_native_entity_target(item.entity())? else {
+            return None;
+        };
+        let stack = if self.block_entity_tick_items.is_some() {
+            self.scoped_item_entity_stack(id)
+        } else {
+            self.unscoped_item_entity_stack(id)
+        }?;
+        let metadata = stack_read_metadata(stack).ok()?;
+        let project = |metadata| project_stack(stack, metadata).ok();
+        read(ItemStackView::resident(metadata, &project));
+        Some(())
     }
     /// Writes a nonempty complete stack using `ItemEntity.setItem`. Empty
     /// stacks are refused: vanilla discards the item on its next tick. To
@@ -152,10 +168,13 @@ mod tests {
             let entity = game.entity(game.dropped[0].id).unwrap();
             let item = game.item_entity(entity).unwrap();
             assert_eq!(item.entity(), entity);
-            let read = item.stack(game).unwrap();
             assert_eq!(
-                (read.item().id(game).as_str(), read.count(), read.damage()),
-                ("minecraft:diamond_pickaxe", 1, 17)
+                item.with_stack(game, |read| (
+                    read.item().id(game),
+                    read.count(),
+                    read.damage()
+                )),
+                Some(("minecraft:diamond_pickaxe".to_owned(), 1, 17))
             );
             let mut changed = stack;
             changed.damage = 21;
@@ -203,6 +222,7 @@ mod tests {
                 entity.id(),
             ));
             assert_eq!(stale.age(game), None);
+            assert!(stale.with_stack(game, |_| ()).is_none());
             assert!(!stale.set_target(game, Some(target)));
             let mut empty = item
                 .with_stack(game, |stack| stack.project())

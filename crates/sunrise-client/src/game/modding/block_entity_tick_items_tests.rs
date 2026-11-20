@@ -30,6 +30,9 @@ impl BlockEntityPart for Consume {
         let first = host.entity(FIRST.load(Ordering::Relaxed)).unwrap();
         let second = host.entity(SECOND.load(Ordering::Relaxed)).unwrap();
         let item = host.item_entity(first).unwrap();
+        let second_item = host.item_entity(second).unwrap();
+        assert_eq!(item.with_stack(host, |stack| stack.count()), Some(5));
+        assert_eq!(second_item.with_stack(host, |stack| stack.count()), Some(3));
         let stack = ItemStack::new("minecraft:stone", 2).try_into_api().unwrap();
         let case = std::env::var("ROW4_NATIVE_CASE").unwrap();
         if case == "unchanged" {
@@ -74,6 +77,7 @@ impl BlockEntityPart for Consume {
         assert!(second.discard(host));
         assert!(host.entity(second.id()).is_none());
         assert!(host.item_entity(second).is_none());
+        assert!(second_item.with_stack(host, |_| ()).is_none());
         assert!(
             ItemPlace::ItemEntity { id: second.id() }
                 .stack(host)
@@ -108,16 +112,17 @@ impl BlockEntityPart for Observe {
             return;
         }
         let first = host.entity(FIRST.load(Ordering::Relaxed)).unwrap();
-        assert_eq!(
-            host.item_entity(first)
-                .unwrap()
-                .with_stack(host, |stack| stack.count())
-                .unwrap(),
-            2
-        );
+        let item = host.item_entity(first).unwrap();
+        assert_eq!(item.with_stack(host, |stack| stack.count()), Some(2));
         assert!(host.entity(SECOND.load(Ordering::Relaxed)).is_none());
         if case == "later_remove" {
             assert!(first.discard(host));
+            assert!(item.with_stack(host, |_| ()).is_none());
+            assert!(
+                ItemPlace::ItemEntity { id: first.id() }
+                    .stack(host)
+                    .is_none()
+            );
         }
     }
 }

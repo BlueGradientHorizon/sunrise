@@ -1936,11 +1936,10 @@ mod tests {
                 Flow::Cancel
             }
             fn item_toss(&self, host: &mut dyn ServerHost, event: &mut ItemTossEvent) -> Flow {
-                let potion = event.item.stack(host).is_some_and(|stack| {
-                    mod_api::__private::item_key_id(stack.item())
-                        .is_some_and(|id| id == "minecraft:potion")
+                let potion = event.item.with_stack(host, |stack| {
+                    mod_api::__private::item_key_id(stack.item()) == Some("minecraft:potion")
                 });
-                if potion {
+                if potion == Some(true) {
                     let level = host.level("minecraft:overworld").unwrap();
                     self.drops
                         .lock()

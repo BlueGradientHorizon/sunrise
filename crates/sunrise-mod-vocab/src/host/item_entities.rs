@@ -16,9 +16,14 @@ pub trait ItemEntitiesHost {
 #[sunrise_mod_api_macros::host_area]
 pub trait ItemEntitiesBackend {
     /// Side: server.
-    /// `ItemEntity.getItem`: the complete stack, or None if unavailable.
+    /// Lend `ItemEntity.getItem` once, as in [`ItemEntityRef::with_stack`].
     #[access(WorldOnly)]
-    fn item_entity_stack(&self, item: ItemEntityRef) -> Option<ItemStack>;
+    #[manual_handle]
+    fn item_entity_stack(
+        &self,
+        item: ItemEntityRef,
+        read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
+    ) -> Option<()>;
     /// Side: server.
     /// The signed pickup delay; the legacy infinite sentinel reads as vanilla's
     /// 32767. None also covers a stored value outside i32.
