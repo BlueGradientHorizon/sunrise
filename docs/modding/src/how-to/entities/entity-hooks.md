@@ -89,10 +89,9 @@ the branch, the values the game resolved before any. Cancellation skips
 the invocation — the branch, its nested move and the flying vertical damping
 included — without undoing what the tick already did (input processing, the
 player's swim steering). The move the branch ends in still fires `entity_move`,
-so a travel replacement can meet a move veto. A panicking or trapped listener
-keeps the resolved values, not an earlier replacement, and is disabled for this
-hook for the session; its other hooks remain enabled. Native and wasm listeners
-share this contract.
+so a travel replacement can meet a move veto. A panicking listener keeps the
+resolved values, not an earlier replacement, and is disabled for this hook for
+the session; its other hooks remain enabled.
 
 ## Teleport hooks
 
