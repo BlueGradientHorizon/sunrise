@@ -1,0 +1,15 @@
+ids = [
+    "handle:BiomeKey::id",
+    "handle:BlockEntityTypeKey::id",
+    "handle:BlockKey::id",
+    "handle:DimensionKey::id",
+    "handle:EffectKey::id",
+    "handle:FluidKey::id",
+    "handle:ItemKey::id",
+]
+why = "Registry-name reads borrow the name already in the registry or biome snapshot instead of allocating. Missing registry metadata returns None rather than panicking, and biome generation errors are unchanged."
+migrate = """
+For BlockKey, ItemKey, EffectKey, FluidKey and BlockEntityTypeKey, `key.id(host)` changes from `String` to `Option<&str>`. Replace `key.id(host) == "minecraft:stone"` with `key.id(host) == Some("minecraft:stone")`. Use `let Some(name) = key.id(host) else { ... };` to handle an unavailable name, or `key.id(host).map(str::to_owned)` for an owned `Option<String>` to retain beyond the host borrow.
+For DimensionKey, replace `key.id(host).as_deref()` with `key.id(host)`; use `.map(str::to_owned)` only when retaining the result.
+For BiomeKey, `key.id(host)` now returns `Result<&str, BiomeKeyError>`. Use that result directly for an in-scope read; replace an owned result such as `let name: String = key.id(host)?;` with `let name = key.id(host).map(str::to_owned)?;` only if it must outlive the host borrow. Reacquire the key after reload as before.
+"""

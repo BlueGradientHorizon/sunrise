@@ -31,8 +31,7 @@ impl Game<'_> {
     pub(super) fn fluid_key(&self, id: &str) -> Option<FluidKey> {
         mod_api::__private::fluid_key(id)
     }
-    /// The canonical block id retained by the load-owned registration slot. An invalid slot
-    /// is a boundary error.
+    /// Borrows the canonical block id if the name is available.
     pub(super) fn block_key_id(&self, key: BlockKey) -> Option<&str> {
         mod_api::__private::block_key_id(key)
     }

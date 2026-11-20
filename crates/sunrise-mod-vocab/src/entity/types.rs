@@ -280,7 +280,7 @@ pub enum ModifierLifetime {
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
 pub struct ActiveEffect {
-    /// The effect's load-owned registry key; `id.id(host)` reads its canonical name.
+    /// The effect's load-owned registry key; `id.id(host)` borrows its canonical name if available.
     pub id: EffectKey,
     /// The ticks left; -1 is infinite.
     pub duration: i32,

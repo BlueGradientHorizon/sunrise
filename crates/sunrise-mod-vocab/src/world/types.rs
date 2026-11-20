@@ -8,7 +8,7 @@ use crate::*;
 pub struct UnresolvedFluid(pub(crate) u64);
 
 /// A dimension (`minecraft:the_nether`), as the game's table numbers it: a `LevelRef`'s identity.
-/// A key stays the same dimension until the game exits; `key.id(host)` gives the name.
+/// A key stays the same dimension until the game exits; `key.id(host)` borrows the name.
 // no wire: decoding validates the u32 slot with DimensionKey::from_slot on the host.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 // exhaustive: its field is private, so only the game's table creates a key
@@ -325,7 +325,7 @@ impl LevelRef {
     pub fn generation(self) -> u32 {
         self.generation
     }
-    /// The level's dimension. `level.dimension().id(host)` gives its name.
+    /// The level's dimension. `level.dimension().id(host)` borrows its name.
     pub fn dimension(self) -> DimensionKey {
         self.dimension
     }

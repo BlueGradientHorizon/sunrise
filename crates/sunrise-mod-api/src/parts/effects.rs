@@ -117,6 +117,8 @@ pub mod tests {
         mod_api::impl_host_areas!(Table);
         assert_eq!(keys[0].id(&Table), Some("minecraft:speed"));
         assert_eq!(keys[1].id(&Table), Some("key_test:later"));
+        let unissued = mod_vocab::__private::parts_installation::effect_key(u32::MAX);
+        assert_eq!(unissued.id(&Table), None);
         struct NoGame;
         impl Host for NoGame {}
         mod_api::impl_host_areas!(NoGame);

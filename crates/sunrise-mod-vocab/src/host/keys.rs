@@ -88,7 +88,7 @@ pub trait KeysHost {
 #[doc(hidden)]
 #[sunrise_mod_api_macros::host_area]
 pub trait KeysBackend {
-    /// Side: server. Canonical biome id in the installed world generation.
+    /// Side: server. Borrows the canonical biome id from the installed world generation.
     /// A token from another world or reload returns `BiomeKeyError::WrongGeneration`.
     #[access(WorldOnly)]
     fn biome_key_id(&self, key: BiomeKey) -> Result<&str, BiomeKeyError>;
@@ -102,31 +102,34 @@ pub trait KeysBackend {
     #[access(Metadata)]
     fn game_event_key_id(&self, key: GameEventKey) -> Result<String, GameEventKeyError>;
     /// Side: both.
-    /// The canonical block id retained by the load-owned registration slot. An invalid slot
-    /// is a boundary error.
+    /// Borrows the canonical block id from the registry. `None` if the host has no
+    /// backend or no name for the slot.
     #[access(Metadata)]
     fn block_key_id(&self, key: BlockKey) -> Option<&str>;
     /// Side: both.
-    /// The canonical item id retained by the load-owned registration slot.
+    /// Borrows the canonical item id from the registry. `None` if the host has no
+    /// backend or no name for the slot.
     #[access(Metadata)]
     fn item_key_id(&self, key: ItemKey) -> Option<&str>;
     /// Side: both. Current numeric item registry id, unavailable before completion.
     #[access(Metadata)]
     fn item_registry_id(&self, key: ItemKey) -> Option<u32>;
     /// Side: both.
-    /// The canonical effect id retained by the load-owned registration slot.
+    /// Borrows the canonical effect id from the registry. `None` if the host has no
+    /// backend or no name for the slot.
     #[access(Metadata)]
     fn effect_key_id(&self, key: EffectKey) -> Option<&str>;
     /// Side: both. Registered MobEffect.getCategory(); unavailable before registry completion.
     #[access(Metadata)]
     fn effect_category(&self, key: EffectKey) -> Option<EffectCategory>;
     /// Side: both.
-    /// The canonical fluid id of a key from the completed registry, `minecraft:water`. An
-    /// invalid slot is a boundary error.
+    /// Borrows the canonical fluid id, such as `minecraft:water`, from the completed registry.
+    /// `None` if the host has no backend or no name for the slot.
     #[access(Metadata)]
     fn fluid_key_id(&self, key: FluidKey) -> Option<&str>;
     /// Side: both.
-    /// The canonical block entity type id retained by the load-owned slot.
+    /// Borrows the canonical block entity type id from the registry. `None` if the host
+    /// has no backend or no name for the slot.
     #[access(WorldOnly)]
     fn block_entity_type_key_id(&self, key: BlockEntityTypeKey) -> Option<&str>;
     /// Side: both.

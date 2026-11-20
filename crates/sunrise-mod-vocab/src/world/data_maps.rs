@@ -196,7 +196,7 @@ pub enum DataMapError {
     UnknownType,
     /// The entry's value is not one the map's [`DataMap::decode`] takes.
     Undecodable,
-    /// The key is expired, belongs to another world, or was never issued by this generation.
+    /// The key has no registry name in this host, or belongs to another world or generation.
     InvalidKey,
 }
 impl NoBackend for DataMapError {
@@ -354,6 +354,7 @@ mod tests {
         assert_eq!(ItemKey(0).data(&Maps, &Emc), Ok(Some(10)));
         assert_eq!(BlockKey(0).data(&Maps, &Hardness), Ok(Some(3)));
         assert_eq!(ItemKey(2).data(&Maps, &Emc), Ok(None));
+        assert_eq!(ItemKey(3).data(&Maps, &Emc), Err(DataMapError::InvalidKey));
         assert_eq!(BlockKey(1).data(&Maps, &Hardness), Ok(None));
         assert_eq!(ItemKey(1).data(&Maps, &Emc), Err(DataMapError::Undecodable));
         assert_eq!(

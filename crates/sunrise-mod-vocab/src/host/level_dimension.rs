@@ -13,7 +13,8 @@ pub trait LevelDimensionBackend {
     #[access(WorldOnly)]
     fn level_logical_height(&self, level: LevelRef) -> Option<i32>;
     /// Side: both.
-    /// The name of a dimension's key.
+    /// Borrows the canonical dimension id. `None` if the host has no backend or
+    /// the slot was never issued.
     #[access(Metadata)]
     fn dimension_key_id(&self, key: DimensionKey) -> Option<&str>;
     /// Side: both.

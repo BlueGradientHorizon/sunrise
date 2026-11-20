@@ -707,7 +707,7 @@ pub fn effect_index(key: EffectKey) -> Option<usize> {
         .flatten()
 }
 
-/// Canonical diagnostic name, unavailable until the process effect registry is resolved.
+/// Canonical name of a resolved effect slot, if present.
 pub fn effect_id(key: EffectKey) -> Option<&'static str> {
     crate::parts::resolved_effects().get()?.names.id(key.0)
 }

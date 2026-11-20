@@ -159,8 +159,9 @@ keep vanilla's own lists. A block the maps don't name keeps vanilla's behaviour.
 yet.
 
 `host.biome_key("minecraft:plains")` resolves a `BiomeKey` in the installed
-server world registry. Its `id(host)` returns `Ok(canonical_id)`, and
-`data(host, &map)` reads maps whose `DataMap::Entry` is `BiomeKey`, including
+server world registry. Its `id(host)` borrows the canonical name from the installed snapshot
+(`Result<&str, BiomeKeyError>`). `data(host, &map)` returns an owned value from maps whose
+`DataMap::Entry` is `BiomeKey`, including
 `neoforge:villager_types` in `minecraft:worldgen/biome`. Missing entries return
 `Ok(None)`. Lookup returns `None` on clients and before world data is installed;
 data maps there return `DataMapError::Unavailable`. Reacquire biome keys after

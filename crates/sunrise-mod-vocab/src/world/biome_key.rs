@@ -10,7 +10,9 @@ use std::collections::BTreeMap;
 pub struct BiomeKey(pub(crate) u32, pub(crate) u64);
 
 impl BiomeKey {
-    /// This entry's canonical id, or a named refusal from the receiving world's snapshot.
+    /// Borrows this entry's canonical id from the receiving world's snapshot.
+    /// Returns [`BiomeKeyError::Unavailable`] without a server world registry and
+    /// [`BiomeKeyError::WrongGeneration`] for a stale, foreign or unissued key.
     pub fn id(self, host: &dyn Host) -> Result<&str, BiomeKeyError> {
         crate::backend_of(host)
             .ok_or(BiomeKeyError::Unavailable)?

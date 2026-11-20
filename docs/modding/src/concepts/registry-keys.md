@@ -9,8 +9,9 @@ Request existing entries inside `Hooks::register` with `r.block_key(id)`,
 - An unknown request refuses the load with the requesting mod and canonical ID, even if
   you never attach the key to a Part.
 - Keys are opaque `u32` slots, not engine numeric IDs.
-- `key.id(host)` returns an owned canonical `String` for diagnostics. It needs a game-backed
-  host; an invalid slot is a boundary error, not an empty name.
+- `key.id(host)` returns a borrowed canonical name (`Option<&str>`). It returns `None` if the
+  host has no backend or no name for the slot. Compare with `Some("minecraft:stone")`, and copy
+  with `.map(str::to_owned)` only if you need to keep the name after releasing the host borrow.
 
 Keys identify entries for the running mod load, not persistent data. Persist canonical identifiers
 and property strings rather than registration slots or state ordinals. Reload preserves key identity;
@@ -121,10 +122,10 @@ work on the client and the server.
 ```rust
 fn resolve(host: &dyn mod_api::Host) {
     if let Some(block) = host.block_key("minecraft:stone") {
-        assert_eq!(block.id(host), "minecraft:stone");
+        assert_eq!(block.id(host), Some("minecraft:stone"));
     }
     if let Some(effect) = host.effect_key("minecraft:speed") {
-        assert_eq!(effect.id(host), "minecraft:speed");
+        assert_eq!(effect.id(host), Some("minecraft:speed"));
     }
     assert!(host.block_key("test:missing_block").is_none());
     assert!(host.effect_key("test:missing_effect").is_none());
