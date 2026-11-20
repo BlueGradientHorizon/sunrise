@@ -31,9 +31,9 @@ is divided by the workload's operations.
 
 The two sizes of the tick workloads show a cost that grows faster than the count: the cost per mob or hopper at
 2,048 against 128. In the fan-out workloads the last part of the name is the number of listeners. Each
-listener increments its own thread-local counter. The benchmark checks that each listener ran once per dispatch
-and uses the sum of the observed counts as its checksum. Even the rare event is repeated to measure dispatch;
-world and mod setup, counter allocation, and verification are outside the measured region.
+listener increments its own thread-local counter. The benchmark checks that each listener's total matches the
+number of dispatches and uses the sum of the observed counts as its checksum. Even the rare event is repeated
+to measure dispatch; world and mod setup, counter allocation, and verification are outside the measured region.
 
 Three metrics per workload:
 
@@ -54,8 +54,8 @@ A series also starts again, with no step flagged, when the CPU model, the Rust v
 changes: counts taken on either side of such a change are not compared. Whether instruction counts are the same on
 two CPU models is not verified; the runs that measured the noise were on one.
 
-Not measured yet: chunk meshing, the render frame, packet encoding and handling, a point or replaced function call, registry and tag lookups. Allocated bytes are not recorded, only the
-number of allocator calls.
+Not measured yet: chunk meshing, the render frame, packet encoding and handling, a replaced function call,
+and registry and tag lookups. Allocated bytes are not recorded, only the number of allocator calls.
 
 Most of a run is building the release executable. A follow-up is to measure an executable that main's own builds
 already produce, so that a run costs only the measuring and can follow every merge.

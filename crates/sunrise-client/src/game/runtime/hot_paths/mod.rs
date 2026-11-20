@@ -4,9 +4,9 @@
 //! they did and the wall time. Each measured region is bracketed by Callgrind requests
 //! (`sunrise_threads::callgrind`), so the same run under Valgrind gives the instructions of each
 //! region; setup is never counted. `SUNRISE_HOT_PATHS_ONLY=a,b` keeps the workloads whose names
-//! start with one of the prefixes. With `SUNRISE_HOT_PATHS_MODS=native` the executable
-//! (`sunrise-hot-paths-game`) has installed the legacy entity tick listener; `fanout-N` instead
-//! installs N separately registered native listeners for the fan-out workloads.
+//! start with one of the prefixes. In single-listener mode (`SUNRISE_HOT_PATHS_MODS=native`),
+//! `sunrise-hot-paths-game` installs one entity tick listener. `fanout-N` instead installs N
+//! separately registered native listeners for the fan-out workloads.
 //!
 //! A workload builds its own world on a server `Game`, as the component harnesses do. Nothing is
 //! compared with vanilla here: the checksum only shows that two runs did the same work.
