@@ -151,6 +151,15 @@ impl JavaString {
     }
 }
 
+/// Bytes reserved on the heap by this NBT string, excluding allocator overhead.
+/// Inline values and string literals do not own any heap storage.
+pub fn java_string_heap_bytes(value: &JavaString) -> usize {
+    match &value.0 {
+        Units::Heap(units) => units.capacity() * size_of::<u16>(),
+        Units::Static(_) | Units::Inline { .. } => 0,
+    }
+}
+
 impl JavaKey for JavaString {
     fn java_hash(&self) -> i32 {
         java_string_hash(self.units())
