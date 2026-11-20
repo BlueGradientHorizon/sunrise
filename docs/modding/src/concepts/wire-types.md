@@ -42,10 +42,10 @@ named-child-tuple containers, so one part can consume several JSON levels.
 Hand-written recursive `Wire` implementations must enforce their own stack contract; the
 reader cannot police code outside its codec.
 
-Wire does not own a borrowed value's destructor. Constructing an arbitrarily deep
-Rust tree and then dropping it can overflow a thread independently of Wire.
-Use explicit work stacks when disposing of hostile trees (`discard_tag` for NBT),
-and do not transfer arbitrarily deep owned Rust trees to an encoder.
+Encoding borrows the input (`writer.put(&value)`); the caller still owns it.
+Constructing an arbitrarily deep Rust tree and then dropping it can overflow a
+thread independently of Wire. Use explicit work stacks when disposing of hostile
+trees (`discard_tag` for NBT).
 
 ## Checked representations
 
