@@ -1087,7 +1087,7 @@ impl Game<'_> {
 
     /// The guest opened a crafting table (`CraftingTableBlock.getMenuProvider`).
     pub(super) fn lan_open_crafting(&mut self, conn: u32, pos: [i32; 3]) {
-        if !self.guest_may_open(conn, "minecraft:crafting", Some(pos)) {
+        if self.guest_may_open(conn, "minecraft:crafting", Some(pos)) != Some(true) {
             return;
         }
         // ServerPlayer.openMenu closes the menu that was open.
@@ -2098,6 +2098,7 @@ mod recipe_check_tests {
             .unwrap();
             let station: &'static ModMenuType = Box::leak(Box::new(ModMenuType {
                 id: "test:station",
+                owner: "test",
                 slots: 10,
                 player_inventory: true,
                 data_slots: 0,

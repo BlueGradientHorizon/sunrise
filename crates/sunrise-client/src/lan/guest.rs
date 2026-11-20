@@ -1145,7 +1145,9 @@ impl Guest {
         let slot = 36 + self.selected;
         self.menu_sent[slot] = self.menu_slot(slot);
         let told = self.inventory.get(self.selected).cloned().flatten();
-        if let Some(m) = self.menu.as_mut() {
+        if let Some(m) = self.menu.as_mut()
+            && m.player_slots() != 0
+        {
             let at = m.size + 27 + self.selected;
             if m.sent.len() <= at {
                 m.sent.resize(at + 1, None);

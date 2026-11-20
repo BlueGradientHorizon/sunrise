@@ -14,6 +14,7 @@ fn open_mod_menu(game: &mut Game<'_>) -> ((i32, i32, i32), MenuSnapshot, sync::S
     let pos = (3, 64, 5);
     let kind = Box::leak(Box::new(ModMenuType {
         id: "review:menu",
+        owner: "review",
         slots: 3,
         player_inventory: true,
         data_slots: 0,

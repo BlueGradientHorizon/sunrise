@@ -33,6 +33,8 @@ pub fn mod_container_insert_allowed(
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ModMenuType {
     pub id: &'static str,
+    /// Package ID, which need not match the menu's namespace.
+    pub owner: &'static str,
     pub slots: usize,
     /// Whether this menu appends the player's main inventory and hotbar.
     pub player_inventory: bool,
@@ -89,9 +91,10 @@ impl ModCrafting {
 
 static MOD_MENU_TYPES: std::sync::OnceLock<Vec<ModMenuType>> = std::sync::OnceLock::new();
 
-/// One menu type as [`register_mod_menu_types`] takes it: `(id, slots, data
+/// One menu type as [`register_mod_menu_types`] takes it: `(id, owner, slots, data
 /// slots, results, crafting, links, player inventory)`.
 pub type ModMenuTypeEntry = (
+    String,
     String,
     usize,
     usize,
@@ -105,14 +108,17 @@ fn menu_types(menus: impl IntoIterator<Item = ModMenuTypeEntry>) -> Vec<ModMenuT
     menus
         .into_iter()
         .map(
-            |(id, slots, data_slots, results, crafting, links, player_inventory)| ModMenuType {
-                id: Box::leak(id.into_boxed_str()),
-                slots,
-                player_inventory,
-                data_slots,
-                results,
-                crafting,
-                links,
+            |(id, owner, slots, data_slots, results, crafting, links, player_inventory)| {
+                ModMenuType {
+                    id: Box::leak(id.into_boxed_str()),
+                    owner: Box::leak(owner.into_boxed_str()),
+                    slots,
+                    player_inventory,
+                    data_slots,
+                    results,
+                    crafting,
+                    links,
+                }
             },
         )
         .collect()

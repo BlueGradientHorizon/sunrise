@@ -96,26 +96,39 @@ fn slotless_screen_draw_sees_full_width_updates_only_for_its_window() {
         menu_extra::{DATA_CHANNEL, DataSlot, LIVE_DATA_REVISION},
         packets::{
             configuration::CustomPayload,
-            play::{Clientbound as C, ContainerClose},
+            play::{Clientbound as C, ContainerClose, OpenScreen},
         },
     };
     sunrise_client::containers::with_mod_menu_types(
-        [(PACK.into(), 0, 2, Vec::new(), None, None, false)],
+        [(
+            PACK.into(),
+            "test".into(),
+            0,
+            2,
+            Vec::new(),
+            None,
+            None,
+            false,
+        )],
         || {
             with_listener(|game, seen| {
                 let (pipe, _server) = Pipe::pair();
                 game.connect_local(pipe, "Slotless").unwrap();
-                game.remote.as_mut().unwrap().registries.menu_extra_revision = LIVE_DATA_REVISION;
-                let key = (i32::MIN, 0, 0);
-                let open = |game: &mut Game<'_>, window| {
-                    game.remote
-                        .as_mut()
-                        .unwrap()
-                        .menu
-                        .set(Some((window, PACK.into())));
-                    game.open_native_screen(key, None, window, PACK, None);
-                    game.screen = Screen::Inventory;
-                    game.container = Some(key);
+                let remote = game.remote.as_mut().unwrap();
+                remote.registries.menu_extra_revision = LIVE_DATA_REVISION;
+                Arc::make_mut(&mut remote.builtin).registries.insert(
+                    "minecraft:menu".into(),
+                    sunrise_protocol::registry::Ids::from_names(
+                        ["minecraft:anvil", PACK].map(str::to_owned).to_vec(),
+                    ),
+                );
+                let open = |game: &mut Game<'_>, window, menu| {
+                    game.handle_packet(C::OpenScreen(OpenScreen {
+                        container: window,
+                        menu,
+                        title: sunrise_core::nbt::Tag::String("Test".into()),
+                    }))
+                    .unwrap();
                 };
                 let receive = |game: &mut Game<'_>, window, index, value| {
                     game.handle_packet(C::CustomPayload(CustomPayload {
@@ -133,25 +146,32 @@ fn slotless_screen_draw_sees_full_width_updates_only_for_its_window() {
                     let mut batch = HudBatch::scratch([200, 200]);
                     assert!(game.draw_native_screen(&mut batch, 0.0, 0.0));
                 };
-                open(game, 1);
+                open(game, 1, 0); // Anvil
+                assert!(game.station.is_some());
+                assert!(!game.slots().is_empty());
+                game.cursor = (25.0, 40.0);
+                open(game, 2, 1); // No intervening close packet.
+                assert_eq!(game.screen, Screen::Inventory);
+                assert_eq!(game.cursor, (25.0, 40.0));
+                assert!(game.station.is_none());
                 assert!(game.slots().is_empty());
                 assert_eq!(game.slot_count(), 0);
                 assert_eq!(Game::inventory_screen_slot(PACK, 0), None);
-                receive(game, 1, 0, -80_000);
-                receive(game, 1, 1, 3);
+                receive(game, 2, 0, -80_000);
+                receive(game, 2, 1, 3);
                 draw(game);
-                receive(game, 1, 2, 9);
-                receive(game, 1, 0, i32::MAX);
+                receive(game, 2, 2, 9);
+                receive(game, 2, 0, i32::MAX);
                 draw(game);
-                open(game, 2);
-                receive(game, 1, 0, 8);
+                open(game, 3, 1);
+                receive(game, 2, 0, 8);
                 draw(game);
-                receive(game, 2, 0, -17);
-                receive(game, 2, 1, i32::MIN);
+                receive(game, 3, 0, -17);
+                receive(game, 3, 1, i32::MIN);
                 draw(game);
-                game.handle_packet(C::ContainerClose(ContainerClose { container: 2 }))
+                game.handle_packet(C::ContainerClose(ContainerClose { container: 3 }))
                     .unwrap();
-                receive(game, 2, 1, 18);
+                receive(game, 3, 1, 18);
                 assert!(game.shown_native_screen().is_none());
                 assert_eq!(
                     seen.lock().unwrap().data,
@@ -306,7 +326,16 @@ fn a_mod_blocks_menu_of_a_vanilla_type_gets_the_types_screen_on_both_sides() {
 #[ignore = "daily"]
 fn a_mod_menu_opened_without_a_block_gets_its_types_screen() {
     sunrise_client::containers::with_mod_menu_types(
-        [(PACK.into(), 9, 0, Vec::new(), None, None, true)],
+        [(
+            PACK.into(),
+            "test".into(),
+            9,
+            0,
+            Vec::new(),
+            None,
+            None,
+            true,
+        )],
         || {
             with_listener(|game, seen| {
                 let key = (i32::MIN, 0, 0);

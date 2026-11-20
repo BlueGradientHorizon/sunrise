@@ -594,8 +594,11 @@ impl Hub {
                 carried,
             });
             menu.sent = items;
+            let inventory_included = menu.player_slots() != 0;
             g.send(&packet);
-            g.inventory_told();
+            if inventory_included {
+                g.inventory_told();
+            }
         });
     }
 

@@ -2053,6 +2053,7 @@ pub(crate) mod tests {
         );
         let t: &'static ModMenuType = Box::leak(Box::new(ModMenuType {
             id: "test:station",
+            owner: "test",
             slots: 5,
             player_inventory: true,
             data_slots: 0,
@@ -2183,6 +2184,7 @@ pub(crate) mod tests {
         );
         let t: &'static ModMenuType = Box::leak(Box::new(ModMenuType {
             id: "test:station",
+            owner: "test",
             slots: 6,
             player_inventory: true,
             data_slots: 0,

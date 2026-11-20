@@ -344,10 +344,9 @@ impl Game<'_> {
     }
     /// ClientboundOpenScreenPacket for the menus Sunrise draws.
     pub(in crate::game) fn remote_open_screen(&mut self, p: play::OpenScreen) {
-        // A new RecipeBookComponent owns fresh ghost slots and an overlay,
-        // even when the server replaces a menu without a close packet.
-        self.recipe_ui.reset_screen();
-        self.mod_screen = None;
+        // Replace the previous menu's local state, not the screen or pointer grab.
+        // An in-place open has no intervening ContainerClose packet.
+        self.remote_close_local();
         let menu = self
             .remote
             .as_ref()
@@ -468,7 +467,6 @@ impl Game<'_> {
             r.set_menu_title(Some(title));
         }
         self.craft_size = if menu == "minecraft:crafting" { 3 } else { 2 };
-        self.container = None;
         if let Some(entity) = entity {
             // The clicked block shows the menu when it holds that container;
             // an ender chest's or a double chest's slots are no one block's,

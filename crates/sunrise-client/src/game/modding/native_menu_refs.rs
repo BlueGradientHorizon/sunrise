@@ -90,15 +90,10 @@ impl Game<'_> {
         let open = guest
             .menu
             .as_ref()
-            .filter(|m| m.slots == sunrise_client::lan::menu::Slots::Native && m.mod_type.is_some())
+            .filter(|m| m.slots == Slots::Native)
             .ok_or(Unsupported)?;
-        let (namespace, _) = open.registry_id.split_once(':').ok_or(Unsupported)?;
-        let caller = mod_api::content::crash::current_native_mod().ok_or(WrongOwner)?;
-        if caller != namespace
-            && !mod_api::LoadedMods::new()
-                .get(caller)
-                .is_some_and(|package| package.namespaces().any(|owned| owned == namespace))
-        {
+        let kind = open.mod_type.ok_or(Unsupported)?;
+        if mod_api::content::crash::current_native_mod() != Some(kind.owner) {
             return Err(WrongOwner);
         }
         let &before = open.blockless_data.get(index).ok_or(InvalidIndex)?;

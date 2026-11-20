@@ -87,6 +87,7 @@ fn setup(game: &mut Game<'_>) -> &'static ModMenuType {
     .unwrap();
     static MENU_TYPE: std::sync::LazyLock<ModMenuType> = std::sync::LazyLock::new(|| ModMenuType {
         id: "test:lending",
+        owner: "test",
         slots: 37,
         player_inventory: true,
         data_slots: 0,

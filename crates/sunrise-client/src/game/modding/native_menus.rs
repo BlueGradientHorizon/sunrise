@@ -146,7 +146,7 @@ impl Game<'_> {
         // A live handle of a connected player; a fake player has no connection.
         let guest = self
             .online_player_record(player)
-            .filter(|g| !g.dead)
+            .filter(|g| !g.dead && !g.disconnect_pending)
             .ok_or(OpenMenuError::PlayerUnavailable)?;
         let revision = if !data.is_empty() || !kind.player_inventory || kind.slots == 0 {
             menu_extra::LIVE_DATA_REVISION
@@ -164,12 +164,21 @@ impl Game<'_> {
             .and_then(|host| host.hub.registry_id("minecraft:menu", &id))
             .ok_or(OpenMenuError::NotModMenu)?;
         // The mods may stop the menu, as for a block's.
-        if !self.guest_may_open(conn, &id, pos) {
+        if !self
+            .guest_may_open(conn, &id, pos)
+            .ok_or(OpenMenuError::PlayerUnavailable)?
+        {
             return Ok(None);
         }
+        if !self
+            .online_player_record(player)
+            .is_some_and(|g| g.conn == conn && !g.dead && !g.disconnect_pending)
+        {
+            return Err(OpenMenuError::PlayerUnavailable);
+        }
+        self.close_for_open(conn, replace);
         let pos = pos.map(|[x, y, z]| (x, y, z));
         let hidden = self.native_hidden_slots(&id, pos, kind.slots);
-        self.close_for_open(conn, replace);
         let gi = self
             .guest_index(conn)
             .ok_or(OpenMenuError::PlayerUnavailable)?;
@@ -1321,7 +1330,16 @@ mod tests {
     /// registering first nor touches the one-shot process table.
     fn with_mod_menu_game(test: impl FnOnce(&mut Game<'_>)) {
         sunrise_client::containers::with_mod_menu_types(
-            [(MOD_MENU.into(), 9, 0, Vec::new(), None, None, true)],
+            [(
+                MOD_MENU.into(),
+                "status_package".into(),
+                9,
+                0,
+                Vec::new(),
+                None,
+                None,
+                true,
+            )],
             || with_game(test),
         );
     }
@@ -1357,8 +1375,22 @@ mod tests {
         // What the mods heard, in order.
         static HEARD: Mutex<Vec<String>> = Mutex::new(Vec::new());
         struct Listen;
+        #[mod_api::sunrise_part]
+        impl mod_api::MenuPart for Listen {
+            fn screen(
+                &self,
+                _: &dyn mod_api::Host,
+                _: &mut mod_api::ScreenEvent<'_>,
+            ) -> Option<mod_api::Screen> {
+                HEARD.lock().unwrap().push("layout".to_owned());
+                None
+            }
+        }
         #[mod_api::__subscriptions]
         impl mod_api::Hooks for Listen {
+            fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+                r.menu_part(MOD_MENU, Listen);
+            }
             fn player_container_open(
                 &self,
                 _: &mut dyn ServerHost,
@@ -1422,6 +1454,7 @@ mod tests {
                 heard(),
                 [
                     "close minecraft:generic_9x3".to_owned(),
+                    "layout".to_owned(),
                     format!("open {MOD_MENU}")
                 ]
             );
@@ -1581,15 +1614,25 @@ mod tests {
         use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
         use sunrise_protocol::menu_extra::{DATA_CHANNEL, DataSlot, LIVE_DATA_REVISION};
 
-        struct Veto(Arc<AtomicBool>);
+        struct Veto {
+            cancel: Arc<AtomicBool>,
+            disconnect: Arc<AtomicBool>,
+        }
         #[mod_api::__subscriptions]
         impl mod_api::Hooks for Veto {
             fn container_opened(
                 &self,
-                _: &mut dyn ServerHost,
+                host: &mut dyn ServerHost,
                 _: &mut ContainerOpenedEvent<'_>,
             ) -> mod_api::Flow {
-                if self.0.load(Relaxed) {
+                if self.disconnect.load(Relaxed) {
+                    let player = host.players().acting_player().unwrap();
+                    assert_eq!(
+                        player.disconnect(host, mod_api::Text::literal("leaving")),
+                        Ok(true)
+                    );
+                }
+                if self.cancel.load(Relaxed) {
                     mod_api::Flow::Cancel
                 } else {
                     mod_api::Flow::Continue
@@ -1597,8 +1640,15 @@ mod tests {
             }
         }
         let veto = Arc::new(AtomicBool::new(false));
-        let mods: mod_api::Mods =
-            vec![mod_api::ModEntry::new("veto", Box::new(Veto(veto.clone())))].into();
+        let disconnect = Arc::new(AtomicBool::new(false));
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+            "veto",
+            Box::new(Veto {
+                cancel: veto.clone(),
+                disconnect: disconnect.clone(),
+            }),
+        )]
+        .into();
         let updates = |packets: Vec<C>| {
             packets
                 .into_iter()
@@ -1612,7 +1662,16 @@ mod tests {
         };
         mod_platform::testing::with_mods(mods, || {
             sunrise_client::containers::with_mod_menu_types(
-                [(MOD_MENU.into(), 0, 2, Vec::new(), None, None, false)],
+                [(
+                    MOD_MENU.into(),
+                    "status_package".into(),
+                    0,
+                    2,
+                    Vec::new(),
+                    None,
+                    None,
+                    false,
+                )],
                 || {
                     with_game(|game| {
                         let (rx, key) = mod_menu_guest(game);
@@ -1657,6 +1716,33 @@ mod tests {
                         veto.store(true, Relaxed);
                         assert_eq!(show(game, vec![-80_000, 0]), Ok(None));
                         veto.store(false, Relaxed);
+                        game.lan
+                            .as_mut()
+                            .unwrap()
+                            .hub
+                            .guests
+                            .update(0, |g| g.disconnect_pending = true);
+                        assert_eq!(
+                            show(game, vec![-80_000, 0]),
+                            Err(OpenMenuError::PlayerUnavailable)
+                        );
+                        game.lan
+                            .as_mut()
+                            .unwrap()
+                            .hub
+                            .guests
+                            .update(0, |g| g.disconnect_pending = false);
+                        game.lan.as_mut().unwrap().hub.guests.push(guest(2));
+                        game.as_guest(1, |game| {
+                            game.as_guest(2, |game| {
+                                assert_eq!(
+                                    show(game, vec![-80_000, 0]),
+                                    Err(OpenMenuError::PlayerUnavailable)
+                                );
+                            })
+                            .unwrap();
+                        })
+                        .unwrap();
                         assert_eq!(
                             game.menu_kind(game.menu(123, old).unwrap()),
                             Some(Some("minecraft:generic_9x3".into()))
@@ -1691,13 +1777,35 @@ mod tests {
                                 },
                             ]
                         );
-                        assert_eq!(
-                            menu.set_data_slot(game, 0, 12),
-                            Err(MenuDataRefusal::WrongOwner)
-                        );
+                        {
+                            // The menu's namespace is not its package identity.
+                            let _guard = mod_api::content::crash::enter_native_mod(
+                                mod_api::content::crash::ModCall {
+                                    id: "minecraft",
+                                    hook: "test",
+                                    part: None,
+                                },
+                            );
+                            assert_eq!(
+                                menu.set_data_slot(game, 0, 12),
+                                Err(MenuDataRefusal::WrongOwner)
+                            );
+                        }
+                        // A full resend of this window has no hotbar slots, so a pending
+                        // inventory update must remain pending.
+                        let hub = &mut game.lan.as_mut().unwrap().hub;
+                        hub.guests.update(0, |g| {
+                            assert_eq!(g.menu_sent[36], None);
+                            g.inventory[0] = Some(ItemStack::new("minecraft:stone", 1));
+                        });
+                        hub.resend_menu(1, window, &game.world);
+                        assert_eq!(hub.guests[0].menu_sent[36], None);
+                        assert!(sent(&rx).iter().any(|p| matches!(p,
+                            C::ContainerSetContent(p) if p.container == window && p.items.is_empty()
+                        )));
                         let _guard = mod_api::content::crash::enter_native_mod(
                             mod_api::content::crash::ModCall {
-                                id: "minecraft",
+                                id: "status_package",
                                 hook: "test",
                                 part: None,
                             },
@@ -1771,6 +1879,21 @@ mod tests {
                         );
                         assert!(player.container_menu(game).unwrap().close_container(game));
                         assert!(updates(sent(&rx)).is_empty());
+
+                        let old = open(game, 3, "before disconnect", MenuReplace::CloseFirst);
+                        sent(&rx);
+                        disconnect.store(true, Relaxed);
+                        assert_eq!(
+                            show(game, vec![1, 2]),
+                            Err(OpenMenuError::PlayerUnavailable)
+                        );
+                        let guest = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
+                        assert!(guest.disconnect_pending);
+                        assert_eq!(guest.menu.as_ref().map(|m| m.window), Some(old));
+                        assert!(!sent(&rx).iter().any(|packet| matches!(
+                            packet,
+                            C::OpenScreen(_) | C::ContainerClose(_)
+                        )));
                     })
                 },
             );

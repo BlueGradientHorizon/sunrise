@@ -6092,6 +6092,7 @@ mod tests {
         let mod_type: &'static crate::containers::ModMenuType =
             Box::leak(Box::new(crate::containers::ModMenuType {
                 id: "test:kept",
+                owner: "test",
                 slots: 27,
                 player_inventory: true,
                 data_slots: 0,

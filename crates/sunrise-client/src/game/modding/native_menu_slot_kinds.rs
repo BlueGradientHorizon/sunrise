@@ -227,6 +227,7 @@ mod tests {
         use sunrise_client::containers::{ModCrafting, ModLinks};
         let content = ModMenuType {
             id: "test:roles",
+            owner: "test",
             slots: 8,
             player_inventory: true,
             data_slots: 0,

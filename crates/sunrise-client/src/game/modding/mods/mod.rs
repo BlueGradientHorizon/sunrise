@@ -1376,8 +1376,8 @@ fn register_menu_types(
 ) -> sunrise_client::Result<()> {
     use sunrise_client::containers;
     let menus = sunrise_client::mod_content::menu_types(mods);
-    menu_books::validate_registered(&menus)?;
-    let set = containers::register_mod_menu_types(menus.iter().map(|m| {
+    menu_books::validate_registered(&menus.iter().map(|&(menu, _)| menu).collect::<Vec<_>>())?;
+    let set = containers::register_mod_menu_types(menus.iter().map(|&(m, owner)| {
         let results = m.results.iter().map(|&r| usize::from(r)).collect();
         let crafting = m.crafting.map(|c| containers::ModCrafting {
             grid: c.grid.into(),
@@ -1390,6 +1390,7 @@ fn register_menu_types(
         });
         (
             m.id.clone(),
+            owner.to_owned(),
             m.slots.into(),
             m.data_slots.into(),
             results,
@@ -1402,7 +1403,7 @@ fn register_menu_types(
         && containers::mod_menu_types()
             .iter()
             .map(|m| m.id)
-            .ne(menus.iter().map(|m| m.id.as_str()))
+            .ne(menus.iter().map(|(m, _)| m.id.as_str()))
     {
         log::warn!("Sunrise: the mods' menu types changed; restart the game to use them");
     }

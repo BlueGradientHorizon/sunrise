@@ -98,6 +98,7 @@ impl Hooks for PotMod {
 fn pot_type() -> &'static ModMenuType {
     Box::leak(Box::new(ModMenuType {
         id: MENU,
+        owner: "test",
         slots: SLOTS,
         player_inventory: true,
         data_slots: 0,

@@ -620,7 +620,8 @@ fn a_replaced_block_entity_makes_an_admitted_quick_move_stale() {
 
 /// A content mod's menu type, the one the depot's container opens (`depot_container`).
 const DEPOT_MENU: &str = "movemod:depot_menu";
-const STATUS_MENU: &str = "movemod:status_menu";
+// Use a prepared protocol ID for this fixture's registered content menu.
+const STATUS_MENU: &str = "minecraft:generic_9x2";
 
 /// Makes the depot at `POS` a mod container whose menu is `DEPOT_MENU`, so `mod_menu_at(POS)`
 /// names it.
@@ -648,10 +649,62 @@ fn depot_container(game: &mut crate::game::Game<'_>) {
 
 #[test]
 #[ignore = "daily"]
+fn a_quick_move_cannot_reach_a_player_slot_omitted_from_the_menu() {
+    sunrise_client::containers::with_mod_menu_types(
+        [(
+            "minecraft:generic_9x1".into(),
+            "movemod".into(),
+            9,
+            0,
+            Vec::new(),
+            None,
+            None,
+            false,
+        )],
+        || {
+            with_mod(|| {
+                with_guests(|game| {
+                    let window = open_depot(game);
+                    game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
+                        guest.inventory[9] = Some(ItemStack::new("minecraft:stone", 10));
+                    });
+                    script(Script {
+                        take: true,
+                        ..Script::default()
+                    });
+                    game.lan_guest_packet(12, container_click(window, 9, 1));
+                    assert_eq!(DISPATCHES.get(), 0);
+                    assert_eq!(inventory(game, 9), 10);
+                })
+            })
+        },
+    );
+}
+
+#[test]
+#[ignore = "daily"]
 fn a_code_opened_menus_button_reaches_a_blocks_menu_button_only_for_its_menu_type() {
     let menus = [
-        (DEPOT_MENU.into(), 9, 0, Vec::new(), None, None, true),
-        (STATUS_MENU.into(), 0, 0, Vec::new(), None, None, false),
+        (
+            DEPOT_MENU.into(),
+            "movemod".into(),
+            9,
+            0,
+            Vec::new(),
+            None,
+            None,
+            true,
+        ),
+        (
+            STATUS_MENU.into(),
+            "movemod".into(),
+            0,
+            0,
+            Vec::new(),
+            None,
+            None,
+            false,
+        ),
     ];
     sunrise_client::containers::with_mod_menu_types(menus, || {
         with_mod(|| {
@@ -714,17 +767,33 @@ fn a_code_opened_menus_button_reaches_a_blocks_menu_button_only_for_its_menu_typ
                 assert_eq!(BUTTON_ENTITIES.get(), 2);
                 // A slotless, code-opened menu routes by its live menu owner. A position hint
                 // does not lend an entity; only Slots::Block does.
-                let window = open_native_menu(game);
                 game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    let menu = guest.menu.as_mut().unwrap();
-                    menu.pos = Some(POS);
-                    menu.registry_id = STATUS_MENU.into();
-                    menu.mod_type = sunrise_client::containers::mod_menu_type(STATUS_MENU);
-                    menu.size = 0;
-                    guest.native_menu.clear();
+                    guest.brand = "sunrise".into();
+                    guest.sender.menu_extra_rev = sunrise_protocol::menu_extra::LIVE_DATA_REVISION;
                 });
-                let guest = game.lan.as_ref().unwrap().hub.guest(12).unwrap();
-                assert_eq!(guest.menu.as_ref().unwrap().slot_count(), 0);
+                let player = game.player(12).unwrap();
+                let key = mod_api::__private::menu_keys()
+                    .into_iter()
+                    .find(|key| {
+                        mod_api::__private::menu_key_id(*key).as_deref() == Some(STATUS_MENU)
+                    })
+                    .unwrap();
+                let window = player
+                    .open_mod_menu(
+                        game,
+                        key,
+                        mod_api::Text::literal("Status"),
+                        vec![],
+                        vec![],
+                        Some([POS.0, POS.1, POS.2]),
+                        mod_api::MenuReplace::InPlace,
+                    )
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(
+                    player.container_menu(game).unwrap().slot_count(game),
+                    Some(0)
+                );
                 button(game, window, 3);
                 assert_eq!(
                     BUTTONS.get(),

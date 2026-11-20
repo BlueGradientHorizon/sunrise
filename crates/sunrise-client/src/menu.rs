@@ -4040,6 +4040,7 @@ pub(crate) mod tests {
     fn slot_rules_are_told_the_player_the_block_and_the_other_slots() {
         let kind = Kind::Mod(Box::leak(Box::new(crate::containers::ModMenuType {
             id: "test:context",
+            owner: "test",
             slots: 2,
             player_inventory: true,
             data_slots: 0,
@@ -4076,6 +4077,7 @@ pub(crate) mod tests {
         STILL_VALID_ASKED.set(0);
         let kind = Kind::Mod(Box::leak(Box::new(crate::containers::ModMenuType {
             id: "test:rules",
+            owner: "test",
             slots: 1,
             player_inventory: true,
             data_slots: 0,
@@ -4366,6 +4368,7 @@ pub(crate) mod tests {
         let mod_type: &'static crate::containers::ModMenuType =
             Box::leak(Box::new(crate::containers::ModMenuType {
                 id: "test:rules",
+                owner: "test",
                 slots: 27,
                 player_inventory: true,
                 data_slots: 0,
@@ -4567,6 +4570,7 @@ pub(crate) mod tests {
     fn mod_menu() -> Kind {
         Kind::Mod(Box::leak(Box::new(crate::containers::ModMenuType {
             id: "test:press",
+            owner: "test",
             slots: 4,
             player_inventory: true,
             data_slots: 0,
@@ -4675,6 +4679,7 @@ pub(crate) mod tests {
     pub(crate) fn mod_crafting_table() -> Kind {
         Kind::Mod(Box::leak(Box::new(crate::containers::ModMenuType {
             id: "test:station",
+            owner: "test",
             slots: 10,
             player_inventory: true,
             data_slots: 0,
