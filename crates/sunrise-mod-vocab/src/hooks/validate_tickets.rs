@@ -14,7 +14,8 @@ pub trait Hooks {
         side = "server",
         contract = "listen",
         neoforge = "LoadingValidationCallback",
-        cancellable = false
+        cancellable = false,
+        version = 2
     )]
     fn validate_tickets();
 }
