@@ -934,7 +934,7 @@ mod tests {
             Hashed::create(&stack, &Table),
             Err(StackHashError::Component(k::DAMAGE))
         );
-        let mut w = crate::buf::Writer::new();
+        let mut w = ::sunrise_core::vanilla_bytes::Writer::new();
         crate::item::DelimitedSlot::write(&Some(stack), &mut w);
         let kept = crate::item::DelimitedSlot::read(&mut crate::buf::Reader::new(&w.data))
             .unwrap()
