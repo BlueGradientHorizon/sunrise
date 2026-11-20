@@ -1,6 +1,6 @@
 //! `cargo sunrise-mod check <file>`: what the registry checks of a submission,
 //! run anywhere: its kind's own checks (docs/modding/src/reference/registry-index.md), its signature
-//! when given a key, and for a `.smod` whether it runs WebAssembly code or is content only.
+//! when given a key, and for a `.smod` whether it contains native source or only content.
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::path::Path;

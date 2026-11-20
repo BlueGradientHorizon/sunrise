@@ -13,8 +13,6 @@ use sunrise_protocol::payload_negotiation::Phase;
 pub(super) struct Deferred {
     epoch: Arc<Epoch>,
     prepared: Prepared,
-    #[cfg(test)]
-    probe_server_reply: bool,
 }
 const _: () = assert!(std::mem::size_of::<Deferred>() <= 256);
 impl Deferred {
@@ -88,8 +86,6 @@ impl Game<'_> {
         self.after_commit(super::transactions::After::Payload(Deferred {
             epoch,
             prepared,
-            #[cfg(test)]
-            probe_server_reply: endpoint.side() == Side::Server && id.0 == "raw_probe:receipt",
         }));
         Ok(PayloadAccepted::Queued)
     }

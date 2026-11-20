@@ -315,10 +315,9 @@ pub struct TypeContract {
     pub kind: TypeKind,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub generics: String,
-    /// It crosses the WebAssembly boundary: it derives `Wire` or has a `Wire` impl. Outside the
-    /// hash, with `wire_form`: a native mod cannot observe how a type crosses.
+    /// It derives `Wire` or has a `Wire` impl. The encoding is outside the Rust contract hash.
     pub wire: bool,
-    /// How it crosses: `derive` (its Rust fields), `fields` (a hand-written impl's declared
+    /// Its encoding: `derive` (its Rust fields), `fields` (a hand-written impl's declared
     /// `layout_fields!`), `via:<type>` (as another type), or `manual` (a hand-written impl that
     /// declares no layout).
     #[serde(default, skip_serializing_if = "Option::is_none")]
