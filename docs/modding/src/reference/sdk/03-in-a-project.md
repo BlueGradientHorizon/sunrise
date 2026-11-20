@@ -57,9 +57,9 @@ that has one.
 ## `.sunrise/sdk/`
 
 In a code mod, `new`, `build`, `build --wasm`, `check`, `hooks`, `fits` and `update` fetch the pinned build's SDK
-into `.sunrise/sdk/` when the folder is missing or holds another build, after the [checks](01-release.md#how-a-download-is-checked).
-It holds `sdk.json`, `surface.json`, the unpacked API source under `api/`, and `build`, a file naming the build. That
-file is written last, so a fetch that stopped partway is fetched again by the next command.
+into `.sunrise/sdk/` after the [checks](01-release.md#how-a-download-is-checked). It holds `sdk.json`,
+`surface.json`, the unpacked API source under `api/`, and `build`, a stamp written only after the fetch finishes.
+The tool fetches again if the stamp is missing or if the pinned build or trusted SDK keys have changed.
 
 `fits` and `update` fetch no SDK for a mod made for exactly one build: its manifest says so before one is needed. Any of these commands makes a fresh clone of a mod work, `check` included, since it fetches before Cargo
 reads the path. An editor needs that first command too: until it runs, `sunrise-mod-api`'s path does not exist.
