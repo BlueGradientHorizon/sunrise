@@ -146,8 +146,9 @@ pub trait ParticleProvider: Send + Sync + 'static {
     /// tick, native and wasm alike, with the whole batch. The game has set `previous` and `age`
     /// on each already and expires a particle once `age` passes `lifetime`; the tick sets
     /// `position`, `frame`, `size`, `rgba`, `lifetime`, `removed`, `facing` and `roll`. A number
-    /// that is not finite expires the particle. A tick edits the batch's particles and cannot
-    /// add or remove one. Not called when no particle of the type is alive.
+    /// that is not finite expires the particle. Batch iteration preserves length and order.
+    /// Set `removed` to expire a particle. If a callback returns a different length, the engine
+    /// expires the batch's particles. Not called when no particle of the type is alive.
     fn tick(&self, particles: &mut ParticleBatch, level: &dyn ParticleLevelView);
 }
 

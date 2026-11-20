@@ -51,9 +51,9 @@ named by its id (`mymod:spark`), its sprite set and spawn values are the declara
 
 The game calls `ParticleProvider::tick(&self, particles: &mut ParticleBatch, level: &dyn ParticleLevelView)`
 once per type per tick, after it has aged the particles, with every live particle of the type; it is not called
-when none is alive, and a registered provider with no particle alive is not visited. Iterate the batch
-(`for particle in particles`): the public API lets a tick edit particles, not add or remove them (`removed` expires one).
-Only the engine builds the batch. If a callback returns a different length, the engine expires that batch's particles.
+when none is alive, and a registered provider with no particle alive is not visited. Batch iteration
+(`for particle in particles`) preserves length and order. Set `removed` to expire a particle. If a callback
+returns a different length, the engine expires the batch's particles.
 
 Each `ModParticle` carries the particle's pose and look: `position`, `previous`, `velocity`, `size`, `rgba`, `frame`,
 `state` (four numbers kept from tick to tick), a `facing` and a `roll`. `facing` is `Camera` (vanilla's
@@ -69,8 +69,8 @@ without skylight always reads zero on the sky layer. Currently, an absent chunk 
 reads full sky where present and no block light; below a loaded column both layers read zero. The client light storage
 for padding sections and unloaded borders is tracked in [#2761](https://github.com/sunrise-org/sunrise/issues/2761).
 
-On a native mod the game reuses one batch's storage, so a warm tick allocates nothing. A wasm mod's tick receives a
-copy of the batch and its reply is decoded into a new one, which allocates; the same call and fields serve both.
+Native dispatch reuses its batch storage once it has enough capacity. Wasm dispatch decodes a new batch from
+the guest's reply, which allocates.
 
 ## Client fireworks
 

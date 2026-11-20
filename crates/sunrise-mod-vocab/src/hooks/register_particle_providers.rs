@@ -59,9 +59,9 @@ write. `facing` is `Camera` (vanilla's `LOOKAT_XYZ`), `AroundY` (`LOOKAT_Y`: the
 interpolated from the previous tick's (no turn is drawn while it is zero), and a roll beyond half of `f32::MAX` expires the
 particle. `state` is four numbers that stay with the particle, zero at spawn; it is the only per-particle data,
 since every particle of a type shares the one provider. `tick` is one call per type per tick with every live
-particle of the type, for native and wasm mods alike (a native tick allocates nothing once warm, the game reusing one batch's storage; a wasm tick decodes a new batch from
-the guest's reply and so allocates), and is not
-called when none is alive. A tick has no `Host`, since the engine ticks particles below gameplay, but it reads the
+particle of the type, for native and wasm mods alike, and is not called when none is alive. Native dispatch
+reuses its batch storage once it has enough capacity. Wasm dispatch decodes a new batch from the guest's reply,
+which allocates. A tick has no `Host`, since the engine ticks particles below gameplay, but it reads the
 level through `ParticleLevelView`: `block_state(pos)` and `brightness(layer, pos)`, both read-only. Light follows
 what the render level stores and the sky layer always reads zero in a dimension without skylight. The game asks for
 block states and builds the view only when a provider has a particle to tick; a registered provider with none alive
