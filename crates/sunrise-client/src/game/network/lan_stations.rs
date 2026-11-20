@@ -19,7 +19,7 @@ use std::cell::{Cell, RefCell};
 use sunrise_client::{
     containers::BlockEntity,
     items::ItemStack,
-    menu::{AnvilCraft, GrindstonePlace, GrindstoneTake, Kind, Menu},
+    menu::{AnvilCraftSnapshot, GrindstonePlace, Kind, Menu, PendingGrindstoneTake},
 };
 use sunrise_core::random::RandomSource;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
@@ -312,7 +312,7 @@ impl Game<'_> {
             if let Some(take) = taken {
                 if take_listened && let Some((actor, (route, _), _)) = admission {
                     let read = gs.menu.mutation_stamp();
-                    let answer = RefCell::new(None::<GrindstoneTake>);
+                    let answer = RefCell::new(None::<PendingGrindstoneTake>);
                     let listener_cancelled = Cell::new(false);
                     let applied = {
                         let menu = RefCell::new(&mut *gs.menu);
@@ -704,7 +704,7 @@ impl Game<'_> {
         &mut self,
         conn: u32,
         gs: &mut GuestStation,
-        craft: Option<&AnvilCraft>,
+        craft: Option<&AnvilCraftSnapshot>,
     ) {
         let change = std::mem::take(&mut gs.menu.level_change);
         if change != 0 {

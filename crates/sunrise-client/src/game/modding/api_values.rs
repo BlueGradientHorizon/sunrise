@@ -1193,7 +1193,7 @@ impl TryIntoEngine for mod_api::item::stations::AnvilResult {
         })
     }
 }
-impl TryIntoApi for crate::menu::AnvilCraft {
+impl TryIntoApi for crate::menu::AnvilCraftSnapshot {
     type Api = mod_api::item::menu::AnvilCraft;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
@@ -1205,10 +1205,10 @@ impl TryIntoApi for crate::menu::AnvilCraft {
     }
 }
 impl TryIntoEngine for mod_api::item::menu::AnvilCraft {
-    type Engine = crate::menu::AnvilCraft;
+    type Engine = crate::menu::AnvilCraftSnapshot;
     type Error = StackWriteError;
     fn try_into_engine(&self, items: &Items) -> Result<Self::Engine, Self::Error> {
-        Ok(crate::menu::AnvilCraft {
+        Ok(crate::menu::AnvilCraftSnapshot {
             left: self.left.try_into_engine(items)?,
             right: self.right.try_into_engine(items)?,
             output: self.output.try_into_engine(items)?,
@@ -1241,7 +1241,7 @@ impl TryIntoEngine for mod_api::item::menu::GrindstonePlace {
         })
     }
 }
-impl TryIntoApi for crate::menu::GrindstoneTake {
+impl TryIntoApi for crate::menu::PendingGrindstoneTake {
     type Api = mod_api::item::menu::GrindstoneTake;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
@@ -1255,10 +1255,10 @@ impl TryIntoApi for crate::menu::GrindstoneTake {
     }
 }
 impl TryIntoEngine for mod_api::item::menu::GrindstoneTake {
-    type Engine = crate::menu::GrindstoneTake;
+    type Engine = crate::menu::PendingGrindstoneTake;
     type Error = StackWriteError;
     fn try_into_engine(&self, items: &Items) -> Result<Self::Engine, Self::Error> {
-        Ok(crate::menu::GrindstoneTake {
+        Ok(crate::menu::PendingGrindstoneTake {
             top: self.top.try_into_engine(items)?,
             bottom: self.bottom.try_into_engine(items)?,
             xp: self.xp,
@@ -1359,7 +1359,7 @@ impl super::Game<'_> {
         player: u128,
         entity: i32,
         pos: [i32; 3],
-        value: &mut crate::menu::GrindstoneTake,
+        value: &mut crate::menu::PendingGrindstoneTake,
         cancel: &mut bool,
     ) -> Result<(), crate::game::transactions::decision::InvalidReason> {
         let Ok(mut api) = value.try_into_api() else {
@@ -1381,7 +1381,7 @@ impl super::Game<'_> {
         player: u128,
         name: &str,
         pos: [i32; 3],
-        value: &crate::menu::AnvilCraft,
+        value: &crate::menu::AnvilCraftSnapshot,
         cancel: &mut bool,
     ) {
         if let Ok(api) = value.try_into_api() {
@@ -1393,7 +1393,7 @@ impl super::Game<'_> {
         player: u128,
         name: &str,
         pos: [i32; 3],
-        value: &crate::menu::AnvilCraft,
+        value: &crate::menu::AnvilCraftSnapshot,
     ) {
         if let Ok(api) = value.try_into_api() {
             self.native_anvil_craft_post(player, name, pos, &api);

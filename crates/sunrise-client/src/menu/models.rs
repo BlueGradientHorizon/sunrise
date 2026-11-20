@@ -166,7 +166,7 @@ pub struct GrindstonePlace {
 /// and what the inputs hold afterwards (empty, as vanilla's).
 #[derive(Clone, Debug, PartialEq)]
 // exhaustive: the game builds it with a literal; mods only read it
-pub struct GrindstoneTake {
+pub struct PendingGrindstoneTake {
     pub top: Option<ItemStack>,
     pub bottom: Option<ItemStack>,
     pub xp: i32,
@@ -174,7 +174,7 @@ pub struct GrindstoneTake {
     pub new_bottom: Option<ItemStack>,
 }
 
-impl GrindstoneTake {
+impl PendingGrindstoneTake {
     /// `GrindstoneMenu.getExperienceAmount`, before the server rolls Level.random.
     pub fn vanilla_amount(&self, env: &Env<'_>) -> i32 {
         crate::stations::grindstone_xp_base(
@@ -189,7 +189,7 @@ impl GrindstoneTake {
 /// taken, before the crafting changed anything.
 #[derive(Clone, Debug, PartialEq)]
 // exhaustive: the game builds it with a literal; mods only read it
-pub struct AnvilCraft {
+pub struct AnvilCraftSnapshot {
     pub left: Option<ItemStack>,
     pub right: Option<ItemStack>,
     pub output: ItemStack,

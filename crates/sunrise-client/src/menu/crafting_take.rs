@@ -69,7 +69,7 @@ impl Menu {
         }
         if self.state.slots[s].role == Role::GrindResult {
             if self.state.grind_hook {
-                self.state.grind_take = Some(GrindstoneTake {
+                self.state.grind_take = Some(PendingGrindstoneTake {
                     top: self.state.containers[MAIN][0].clone(),
                     bottom: self.state.containers[MAIN][1].clone(),
                     xp: self.state.grind_xp,
@@ -91,7 +91,7 @@ impl Menu {
         }
         if self.state.slots[s].role == Role::CombineResult && self.state.kind == Kind::Anvil {
             if self.state.anvil_hook {
-                self.state.anvil_craft = Some(AnvilCraft {
+                self.state.anvil_craft = Some(AnvilCraftSnapshot {
                     left: self.state.containers[MAIN][0].clone(),
                     right: self.state.containers[MAIN][1].clone(),
                     output: taken.clone(),

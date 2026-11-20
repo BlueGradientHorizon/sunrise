@@ -22,8 +22,9 @@ use sunrise_world::native_load_context::{DataLoadOrigin, LoadContext, LoadInputs
 use sunrise_world::native_load_context::{LoopContext, LoopSide};
 mod models;
 pub use models::{
-    AnvilCraft, AnvilUpdate, AnvilVanilla, GrindstonePlace, GrindstoneTake, PlanningRules,
-    RuleAnswers, SlotContext, SlotRules, SlotView, StackedClick, StackedOutcome, StoredRules,
+    AnvilCraftSnapshot, AnvilUpdate, AnvilVanilla, GrindstonePlace, PendingGrindstoneTake,
+    PlanningRules, RuleAnswers, SlotContext, SlotRules, SlotView, StackedClick, StackedOutcome,
+    StoredRules,
 };
 mod slot_context;
 pub use slot_context::{SlotSnapshot, apply_menu_slot_rules, lan_container};
@@ -1343,7 +1344,7 @@ impl Menu {
     pub fn grindstone_taken(
         &mut self,
         env: &Env,
-        take: GrindstoneTake,
+        take: PendingGrindstoneTake,
         cancel: bool,
     ) -> Option<i32> {
         self.touch();
@@ -1359,7 +1360,7 @@ impl Menu {
     }
 
     /// Replace the inputs and run `slotsChanged`, after the server has awarded experience.
-    pub fn grindstone_take_inputs(&mut self, env: &Env, take: GrindstoneTake) {
+    pub fn grindstone_take_inputs(&mut self, env: &Env, take: PendingGrindstoneTake) {
         self.put(env, 0, take.new_top);
         self.put(env, 1, take.new_bottom);
     }

@@ -195,13 +195,13 @@ pub struct State {
     pub anvil_hook: bool,
     /// The anvil result taken while `anvil_hook` is set, as it was before
     /// crafting.
-    pub anvil_craft: Option<AnvilCraft>,
+    pub anvil_craft: Option<AnvilCraftSnapshot>,
     /// The caller fires `GrindstoneEvent.OnTakeItem` for a taken grindstone
     /// result: its `onTake` waits in `grind_take` for `grindstone_taken`.
     pub grind_hook: bool,
     /// The grindstone result taken while `grind_hook` is set, with its
     /// inputs as they were.
-    pub grind_take: Option<GrindstoneTake>,
+    pub grind_take: Option<PendingGrindstoneTake>,
     /// `GrindstoneEvent.OnPlaceItem`'s experience for the result now in the
     /// slot, or -1 for vanilla's.
     pub(super) grind_xp: i32,
