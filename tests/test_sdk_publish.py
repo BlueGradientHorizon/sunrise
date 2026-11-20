@@ -28,7 +28,7 @@ class SdkPublishTests(unittest.TestCase):
 
     def test_a_snapshot_publishes_its_sdk_only_when_it_is_no_dry_run(self):
         job = load("release.yml")["jobs"]["snapshot-sdk-publish"]
-        self.assertEqual(job["with"]["publish"], "${{ needs.decide.outputs.dry_run != 'true' }}")
+        self.assertEqual(job["with"]["publish"], "${{ needs.decide.outputs.publish == 'true' }}")
         self.assertIn("needs.snapshot-sdk.outputs.needed == 'true'", job["if"])
 
 

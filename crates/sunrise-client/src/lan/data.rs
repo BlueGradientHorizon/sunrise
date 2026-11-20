@@ -123,6 +123,7 @@ const PACK_REGISTRIES: &[&str] = &[
 #[path = "data_pack_registries.rs"]
 mod pack_registries;
 pub use pack_registries::PackRegistryDefinitions;
+use pack_registries::bind_dialog_tags;
 
 /// World overlays key definition files by `registry/id`.
 pub fn is_pack_registry_file(key: &str) -> bool {
@@ -197,6 +198,7 @@ pub struct SyncData {
     pub commands: Option<super::commands::CommandTree>,
     /// ClientboundUpdateRecipesPacket's payload.
     pub recipes: Vec<u8>,
+    pub stonecutter_buttons: Arc<super::recipes::StonecutterButtons>,
     pub advancements: super::advancements::ServerAdvancements,
     /// The registry ids of the particle types effects show, looked up once (`effect_meta`).
     effect_particle_ids: std::sync::Mutex<super::effect_meta::ParticleTypeIds>,
@@ -424,6 +426,7 @@ impl SyncData {
             features: Vec::new(),
             commands: None,
             recipes: Vec::new(),
+            stonecutter_buttons: Arc::default(),
             advancements: super::advancements::ServerAdvancements::load(
                 Path::new(""),
                 &sunrise_world::loot::PackOverlay::NONE,
@@ -573,6 +576,7 @@ impl SyncData {
             Some(packed.clone())
         } else {
             let text_registries = crate::command::Registries {
+                items: defaults.entries().keys().cloned().collect(),
                 entity_types: builtin
                     .get("minecraft:entity_type")
                     .map_or_else(Vec::new, |ids| ids.names.clone()),
@@ -781,6 +785,7 @@ impl SyncData {
                 super::commands::CommandTree::load(resources)
             }),
             recipes: Vec::new(),
+            stonecutter_buttons: Arc::default(),
             advancements: match kept.filter(|_| same_files) {
                 Some(kept) => kept.advancements.clone(),
                 None => {
@@ -805,13 +810,11 @@ impl SyncData {
             },
             packed_registries: packed,
         };
-        sync.recipes = startup::time("sync.update_recipes", || {
-            super::recipes::update_recipes(
-                &sync.advancements.recipes,
-                &sync,
-                &sources.property_additions,
-            )
+        let (recipes, buttons) = startup::time("sync.update_recipes", || {
+            super::recipes::update_recipes(&sync.advancements.recipes, &sync, sources)
         });
+        sync.recipes = recipes;
+        sync.stonecutter_buttons = Arc::new(buttons);
         overlay.conditions.check_errors()?;
         Ok(sync)
     }
@@ -1032,6 +1035,23 @@ impl SyncData {
         let Some(names) = Self::registry_names(builtin, dynamic, key) else {
             return;
         };
+        if key == "minecraft:dialog" {
+            let (bound, _) = bind_dialog_tags(root, overlay, |id| names.contains_key(id));
+            tags.registries.retain(|r| r.registry != key);
+            if !bound.is_empty() {
+                tags.registries.push(RegistryTags {
+                    registry: key.into(),
+                    tags: bound
+                        .into_iter()
+                        .map(|(name, members)| TagEntry {
+                            name,
+                            ids: members.iter().map(|id| names[id.as_str()]).collect(),
+                        })
+                        .collect(),
+                });
+            }
+            return;
+        }
         let mut files: BTreeMap<String, Vec<Value>> = BTreeMap::new();
         let mut own = BTreeMap::new();
         walk(&root.join("tags").join(kind), &mut own, false);
@@ -1289,6 +1309,13 @@ mod tests {
     ) -> Vec<((String, String), Tag, bool)> {
         let root = tempfile::tempdir().unwrap();
         std::fs::write(root.path().join("items.json"), b"{}").unwrap();
+        for ((namespace, path), value, _) in &entries {
+            let file = root
+                .path()
+                .join(format!("data/{namespace}/{key}/{path}.json"));
+            std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+            std::fs::write(file, value.to_string()).unwrap();
+        }
         let defaults = sunrise_world::item_defaults::read(root.path()).unwrap();
         let registries = PackRegistryDefinitions::load(
             root.path(),
@@ -1357,6 +1384,7 @@ mod tests {
             &sunrise_world::loot::PackOverlay {
                 files: &files,
                 conditions: &conditions,
+                ..sunrise_world::loot::PackOverlay::default()
             },
             &BTreeMap::new(),
             &Default::default(),
@@ -1404,6 +1432,7 @@ mod tests {
                 &sunrise_world::loot::PackOverlay {
                     files: &files,
                     conditions: &conditions,
+                    ..sunrise_world::loot::PackOverlay::default()
                 },
                 &BTreeMap::new(),
                 &Default::default(),
@@ -2404,7 +2433,7 @@ mod transient_dialog_tests {
     #[test]
     fn a_dialog_naming_a_transient_component_refuses_the_registry_load() {
         let root = tempfile::tempdir().unwrap();
-        std::fs::write(root.path().join("items.json"), b"{}").unwrap();
+        std::fs::write(root.path().join("items.json"), br#"{"minecraft:stone":{}}"#).unwrap();
         let defaults = sunrise_world::item_defaults::read(root.path()).unwrap();
         let files = [
             (
@@ -2427,6 +2456,7 @@ mod transient_dialog_tests {
             &sunrise_world::loot::PackOverlay {
                 files: &files,
                 conditions: &conditions,
+                ..sunrise_world::loot::PackOverlay::default()
             },
             &BTreeMap::new(),
             &Default::default(),

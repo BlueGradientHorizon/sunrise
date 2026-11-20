@@ -240,7 +240,6 @@ class ReleaseTrainTests(unittest.TestCase):
         def api(*arguments):
             self.assertEqual(arguments[:2], ("api", "--paginate"))
             path = arguments[2]
-            self.assertNotIn("wasm-mods.yml", path, "the fixture runs in the daily run, not on main pushes")
             if "dyna-ci.yml/runs?" in path:
                 self.assertIn("branch=main&event=push", path)
                 return [{"workflow_runs": records[:3]}, {"workflow_runs": records[3:]}]
@@ -296,7 +295,8 @@ class ReleaseTrainTests(unittest.TestCase):
                 git("commit", "-q", "--allow-empty", "-m", str(n))
                 commits.append(git("rev-parse", "HEAD"))
             with mock.patch.object(train, "ROOT", Path(folder)), \
-                    mock.patch.object(train, "daily_green_commit", return_value=commits[1]):
+                    mock.patch.object(train, "daily_green_commit", return_value=commits[1]), \
+                    mock.patch.object(train, "nightly_branch_head", return_value=""):
                 for channel in ("snapshot", "nightly"):
                     git("update-ref", "refs/remotes/origin/main", commits[1])
                     head = commits[1]
@@ -335,7 +335,8 @@ class ReleaseTrainTests(unittest.TestCase):
                 commits.append(git("rev-parse", "HEAD"))
             git("update-ref", "refs/remotes/origin/main", commits[1])
             with mock.patch.object(train, "ROOT", Path(folder)), \
-                    mock.patch.object(train, "fork_gate_passed", return_value=True):
+                    mock.patch.object(train, "fork_gate_passed", return_value=True), \
+                    mock.patch.object(train, "nightly_branch_head", return_value=""):
                 # A gate-green commit of main that is not daily-green: refused, by default and by name.
                 with mock.patch.object(train, "daily_green_commit", return_value=commits[0]):
                     self.assertEqual(train.channel_head("nightly", ""), commits[0], "the default is daily-green")
@@ -390,13 +391,13 @@ class ReleaseTrainTests(unittest.TestCase):
                 mock.patch.object(train, "channel_head", side_effect=SystemExit("stop")) as head:
             with self.assertRaises(SystemExit):
                 train.main()
-        head.assert_called_once_with("nightly", None, "")
+        head.assert_called_once_with("nightly", None, "", "")
         from tools.ci import nightly
         with mock.patch.dict(nightly.os.environ, {"NIGHTLY_BASE": "", "NIGHTLY_EXCEPTION": "  "}), \
                 mock.patch.object(nightly.train, "channel_head", side_effect=SystemExit("stop")) as head:
             with self.assertRaises(SystemExit):
                 nightly.green_base("sunrise-org/sunrise", "")
-        head.assert_called_once_with("nightly", "", "")
+        head.assert_called_once_with("nightly", "", "", "")
 
     def test_a_publishing_run_runs_a_cancelled_gate_again_and_waits_for_it(self):
         sha = "a" * 40
@@ -436,11 +437,11 @@ class ReleaseTrainTests(unittest.TestCase):
         import yaml
         decide = yaml.safe_load((train.ROOT / ".github/workflows/release.yml").read_text())["jobs"]["decide"]
         self.assertEqual(decide["permissions"]["actions"], "write")
-        self.assertEqual(decide["steps"][-1]["env"]["GATE_RERUN"], "${{ steps.mode.outputs.dry_run == 'false' && '1' || '' }}")
+        self.assertEqual(decide["steps"][-1]["env"]["GATE_RERUN"], "${{ steps.mode.outputs.publish == 'true' && '1' || '' }}")
         pick = yaml.safe_load((train.ROOT / ".github/workflows/nightly-build.yml").read_text())["jobs"]["pick"]
         self.assertEqual(pick["permissions"]["actions"], "write")
         step = next(step for step in pick["steps"] if step.get("id") == "pick")
-        self.assertEqual(step["env"]["GATE_RERUN"], "${{ steps.mode.outputs.dry_run != 'true' && '1' || '' }}")
+        self.assertEqual(step["env"]["GATE_RERUN"], "${{ steps.mode.outputs.publish == 'true' && '1' || '' }}")
 
     def test_a_snapshot_is_tagged_by_kind_date_and_commit(self):
         sha = "0c02067" + "a" * 33

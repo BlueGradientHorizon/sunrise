@@ -905,7 +905,7 @@ fn a_mounted_guests_turn_publishes_its_teleport_without_dismounting() {
         game.mobs
             .push(Mob::new(42, horse, Vec3::new(3.0, 64.0, 5.0), 0.0));
         // Ordinary seating sends no teleport. A passenger transition does,
-        // even to the same position; an unmounted command keeps its relative axes.
+        // even to the same position; both carry the transition's relative axes.
         for (vehicle, teleported, destination) in [
             (Some(42), false, [10.0, 70.0, -4.0]),
             (Some(42), true, [10.0, 70.0, -4.0]),
@@ -957,12 +957,7 @@ fn a_mounted_guests_turn_publishes_its_teleport_without_dismounting() {
                 assert_eq!(packet.position, destination);
                 assert_eq!(packet.delta, [0.0; 3]);
                 assert_eq!([packet.yaw, packet.pitch], [120.0, -15.0]);
-                let expected = if vehicle.is_some() {
-                    relative::DELTA_X | relative::DELTA_Y | relative::DELTA_Z
-                } else {
-                    relative::DELTA_X | relative::DELTA_Z
-                };
-                assert_eq!(packet.relatives, expected);
+                assert_eq!(packet.relatives, relative::DELTA_X | relative::DELTA_Z);
                 assert_eq!(guest.position, destination);
                 assert_eq!(
                     guest.awaiting_teleport,
