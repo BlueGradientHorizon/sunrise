@@ -108,7 +108,7 @@ fn map(t: &Tag, f: impl Fn(&Tag) -> Result<Value>) -> Result<Value> {
     };
     Ok(Value::Map(
         v.iter()
-            .map(|(k, v)| Ok((Value::String(k.0.clone()), f(v)?)))
+            .map(|(k, v)| Ok((Value::String(k.units().to_vec()), f(v)?)))
             .collect::<Result<_>>()?,
     ))
 }
@@ -218,7 +218,7 @@ fn string_value(t: &Tag) -> Result<Value> {
     let Tag::String(s) = t else {
         return Err("expected string".into());
     };
-    Ok(Value::String(s.0.clone()))
+    Ok(Value::String(s.units().to_vec()))
 }
 fn unit(_: &Tag) -> Result<Value> {
     Ok(Value::Map(vec![]))
@@ -931,7 +931,7 @@ fn profile(t: &Tag) -> Result<Value> {
                     };
                     for v in values {
                         out.push(Value::Map(vec![
-                            (Value::string("name"), Value::String(k.0.clone())),
+                            (Value::string("name"), Value::String(k.units().to_vec())),
                             (Value::string("value"), string_value(v)?),
                         ]));
                     }
@@ -998,7 +998,7 @@ fn only_fields(t: &Tag, allowed: &[&str]) -> Result<()> {
     for k in entries.keys() {
         if !allowed
             .iter()
-            .any(|a| k.0.iter().copied().eq(a.encode_utf16()))
+            .any(|a| k.units().iter().copied().eq(a.encode_utf16()))
         {
             return Err(format!("unknown predicate field {}", k.to_string_lossy()));
         }
@@ -1089,7 +1089,7 @@ fn predicate_value(t: &Tag, native_templates: bool) -> Result<Value> {
                     } else {
                         predicate_value(v, native_templates)?
                     };
-                    Ok((Value::String(k.0.clone()), value))
+                    Ok((Value::String(k.units().to_vec()), value))
                 })
                 .collect::<Result<_>>()?,
         )),
@@ -1172,7 +1172,7 @@ fn validate_source(name: &str, t: &Tag) -> Result<()> {
     }
     fn string_limit(t: &Tag, max: usize) -> Result<()> {
         if let Tag::String(v) = t {
-            if v.0.len() > max {
+            if v.units().len() > max {
                 return Err(format!("component string exceeds {max}"));
             }
         } else if let Tag::Compound(_) = t {
