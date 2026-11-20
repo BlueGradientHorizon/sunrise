@@ -5,6 +5,14 @@ use std::collections::BTreeMap;
 /// The fixture: path below the root, and text.
 const FILES: &[(&str, &str)] = &[
     (
+        "Cargo.toml",
+        "[workspace]\nmembers = [\"engine-fixture\"]\n",
+    ),
+    (
+        "engine-fixture/Cargo.toml",
+        "[package]\nname = \"engine-package\"\n[lib]\nname = \"engine_library\"\n",
+    ),
+    (
         "crates/sunrise-mod-api/src/lib.rs",
         "pub use mod_vocab::*;\n",
     ),
@@ -312,6 +320,10 @@ const MOVE: &str = "<move>";
 
 /// The export of the fixture with `edits` (file, from, to) applied.
 fn export_fixture(edits: &[(&str, &str, &str)], hooks: &str) -> Export {
+    try_export_fixture(edits, hooks).unwrap()
+}
+
+fn try_export_fixture(edits: &[(&str, &str, &str)], hooks: &str) -> Result<Export, String> {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
     for (path, text) in FILES {
@@ -334,10 +346,46 @@ fn export_fixture(edits: &[(&str, &str, &str)], hooks: &str) -> Export {
     }
     let catalog = Catalog::parse(&[("hooks/ping.rs".into(), hooks.into())]).unwrap();
     let mut index = crate::index::game(root, &[]);
-    build(root, &mut index, &catalog.hooks, &boundary()).unwrap()
+    build(root, &mut index, &catalog.hooks, &boundary())
 }
 
 const LIB: &str = "crates/sunrise-mod-vocab/src/lib.rs";
+
+#[test]
+fn a_signature_cannot_hide_a_workspace_type_behind_an_import() {
+    let edited = "use engine_library::Secret as Imported;\npub fn leak() -> Imported { unimplemented!() }\n/// A colour.";
+    let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
+        .err()
+        .expect("the leak must fail the export");
+    assert_eq!(
+        error,
+        "mod_api::leak: `engine_library::Secret` names a workspace crate outside the mod API type index"
+    );
+}
+
+#[test]
+fn a_public_reexport_cannot_name_a_workspace_type_outside_the_seam() {
+    let edited = "pub use engine_library::Secret as Leaked;\n/// A colour.";
+    let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
+        .err()
+        .expect("the re-export must fail the export");
+    assert_eq!(
+        error,
+        "mod_api::Leaked: `engine_library::Secret` names a workspace crate outside the mod API type index"
+    );
+}
+
+#[test]
+fn a_wire_layout_cannot_hide_a_workspace_type_behind_private_storage() {
+    let edited = "#[derive(Wire)] struct Private(engine_library::Secret);\n#[derive(Wire)] pub struct Leaked(Private);\n/// A colour.";
+    let error = try_export_fixture(&[(LIB, "/// A colour.", edited)], HOOKS)
+        .err()
+        .expect("the embedded type must fail the export");
+    assert_eq!(
+        error,
+        "mod_api::Private: `engine_library::Secret` names a workspace crate outside the mod API type index"
+    );
+}
 
 fn hashes(export: &Export) -> BTreeMap<String, String> {
     export
@@ -1060,10 +1108,7 @@ fn the_recipe_placement_protocol_is_pinned_to_the_shapes_it_carries() {
     expand::expand_modules(&mut index, &modules);
     let forms = wire_forms::wire_forms(&mut index, &modules);
     let ids = HashMap::new();
-    let mut layouts = mod_source::layouts::Layouts::new(rust::GameWires {
-        forms: &forms,
-        ids: &ids,
-    });
+    let mut layouts = mod_source::layouts::Layouts::new(rust::GameWires::new(&forms, &ids, None));
     let mut keys = Vec::new();
     for (krate, module, name) in [
         (

@@ -16,13 +16,13 @@ mod walk;
 mod wire_forms;
 
 use crate::catalog::{self, Catalog};
-use crate::index::{Found, Index, ItemId};
+use crate::index::{Found, Index, ItemId, OutsideSeam};
 use mod_source::layouts::Layouts;
 use mod_source::layouts::{WireForm, derives, param_names};
 use mod_surface::shape::{ShapeError, Shapes};
 use mod_surface::*;
 use quote::ToTokens;
-use rust::{GameWires, Paths, print};
+use rust::{ExternalTypes, GameWires, Paths, print};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 use syn::visit_mut::VisitMut;
@@ -367,6 +367,8 @@ fn has_attr(attrs: &[syn::Attribute], name: &str) -> bool {
 struct Writer<'p, 'a> {
     index: &'p mut Index<'a>,
     public: &'p HashMap<ItemId, Vec<String>>,
+    external: &'p ExternalTypes<'p>,
+    item: ItemId,
 }
 
 impl<'a> Writer<'_, 'a> {
@@ -377,6 +379,7 @@ impl<'a> Writer<'_, 'a> {
             module,
             params: params.to_vec(),
             refs: BTreeSet::new(),
+            check: Some((self.external, self.item)),
         }
     }
 
@@ -654,8 +657,9 @@ pub(crate) fn build(
         }
     }
     notes.extend(expand::expand_modules(index, &expanded));
+    let outside = OutsideSeam::read(root)?;
     let mut walker = walk::Walker::new(index);
-    let public = walker.public()?;
+    let public = walker.public(&outside)?;
     notes.extend(public.notes.iter().cloned());
     // Inherent items and impls live in any module of the crate that defines the type.
     let mut crates: BTreeSet<&'static str> = BTreeSet::from(["mod_api", "sunrise_mod_api"]);
@@ -684,10 +688,7 @@ pub(crate) fn build(
             "{count} impl blocks on {kind}: no record kind for their items"
         ));
     }
-    let mut writer = Writer {
-        index,
-        public: &nameable,
-    };
+    let external = ExternalTypes::new(&outside);
     let mut queue: Vec<(ItemId, Vec<String>)> = public
         .items
         .iter()
@@ -718,7 +719,13 @@ pub(crate) fn build(
         let path = path.join("::");
         let paths = public.paths.get(&id).cloned().unwrap_or_default();
         let module = id.module;
-        let item = writer.index.item(id).clone();
+        let item = index.item(id).clone();
+        let mut writer = Writer {
+            index,
+            public: &nameable,
+            external: &external,
+            item: id,
+        };
         let mut named: Vec<String> = Vec::new();
         let owner = match &item {
             Item::Trait(_) => format!("trait:{path}"),
@@ -828,21 +835,20 @@ pub(crate) fn build(
         }
     }
 
-    let macros = macros(root, writer.index, &public.macros, &mut notes)?;
+    external.finish(index)?;
+    let macros = macros(root, index, &public.macros, &mut notes)?;
 
     // Shapes, over every type the crossing types contain.
-    let mut layouts = Layouts::new(GameWires {
-        forms: &forms,
-        ids: &nameable,
-    });
+    let mut layouts = Layouts::new(GameWires::new(&forms, &nameable, Some(&external)));
     let keys: Vec<Option<String>> = pending
         .iter()
         .map(|record| {
             (record.contract.wire && record.contract.kind != TypeKind::Alias)
-                .then(|| layouts.key(writer.index, record.item))
+                .then(|| layouts.key(index, record.item))
         })
         .collect();
-    layouts.finish(writer.index);
+    layouts.finish(index);
+    external.finish(index)?;
     let mut shapes = Shapes::new(&layouts.table);
     let mut types = Vec::new();
     for (record, key) in pending.into_iter().zip(keys) {
