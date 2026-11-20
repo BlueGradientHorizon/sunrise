@@ -1,6 +1,6 @@
-//! A client mod's audio streams (`AudioClientHost::open_push_audio_stream`): PCM the mod makes, played by
-//! the game's mixer in place of an Ogg file (NeoForge's `SoundInstance.getStream`, vanilla's
-//! `AudioStream`), on a pool of their own that never takes one of vanilla's streaming slots.
+//! A client mod's audio streams: PCM the mod makes, played by the game's mixer in place of an
+//! Ogg file (NeoForge's `SoundInstance.getStream`, vanilla's `AudioStream`), on a pool of their
+//! own that never takes one of vanilla's streaming slots.
 use super::types::SoundSource;
 use crate::EntityRef;
 use std::sync::Arc;
@@ -15,6 +15,31 @@ pub const AUDIO_STREAM_RATE_MIN: u32 = 8_000;
 pub const AUDIO_STREAM_RATE_MAX: u32 = 48_000;
 /// The capacity of an async push stream's queue, in milliseconds of source audio.
 pub const AUDIO_STREAM_RING_MAX_MS: u32 = 1_000;
+
+/// A native source of PCM owned by the mixer. Its worker calls [`read`](Self::read) serially
+/// on demand, never in the device callback or while holding mixer or pool locks.
+///
+/// The source runs in-process, with no `Host` or world borrow and no reentry into the game.
+/// Reads must do bounded, nonblocking work: do not wait on I/O, another thread or a tick.
+// no wire: the mixer owns and calls this native source in-process.
+pub trait AudioStream: Send + 'static {
+    /// Fill at most `pcm.len() / channels` whole frames of interleaved signed 16-bit PCM in the
+    /// stream's [`StreamSpec`] format. The buffer is cleared before each call. Report only
+    /// frames supplied; a count larger than the offered buffer stops the stream.
+    fn read(&mut self, pcm: &mut [i16]) -> AudioRead;
+}
+
+/// What a pull source supplied in one [`AudioStream::read`].
+// no wire: a native source returns this directly to the mixer worker.
+// exhaustive: a read either supplies frames or ends the source.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AudioRead {
+    /// The number of whole interleaved frames written, not the number of samples. A short read
+    /// plays what is ready; zero is temporary silence. The worker retries on later demand.
+    Frames(usize),
+    /// Permanently out of PCM. The mixer drains ready audio before stopping the stream.
+    Eof,
+}
 
 /// Where a stream is heard. Positions are in the client's current level.
 // exhaustive: mods build every form and the mixer matches them without a wildcard
@@ -42,14 +67,14 @@ pub enum AudioStreamState {
     /// positional stream after the listener changed dimension, until the next `set_placement`.
     /// The audio is still consumed, so no latency builds up.
     Unplaced,
-    /// Over: `stop` was called, the handle was dropped, or the game's sound output went away (a
-    /// device that could not be opened again). It never plays again. What a stream reads when a
-    /// call to the game was refused.
+    /// Over: the pull source ended and its PCM drained or it reported too many frames,
+    /// `stop` was called, the handle was dropped, or the game's sound output went away.
+    /// It never plays again. What a stream reads when a call to the game was refused.
     #[default]
     Stopped,
 }
 
-/// What a stream is opened with (`open_push_audio_stream`).
+/// The format, placement and volume used to open an audio stream.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
@@ -60,7 +85,7 @@ pub struct StreamSpec {
     /// 1 or 2. Only mono is positioned, as OpenAL does: a stereo stream takes only
     /// [`StreamPlacement::Flat`].
     pub channels: u8,
-    /// The rate of the samples pushed, in Hz, from [`AUDIO_STREAM_RATE_MIN`] to
+    /// The rate of the source PCM, in Hz, from [`AUDIO_STREAM_RATE_MIN`] to
     /// [`AUDIO_STREAM_RATE_MAX`]. The mixer resamples to the output's.
     pub rate: u32,
     /// Where it is heard.
@@ -119,7 +144,7 @@ pub enum SpecFault {
     Position,
 }
 
-/// Why `open_push_audio_stream` opened nothing.
+/// Why a request to open an audio stream opened nothing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 #[derive(sunrise_mod_api_macros::Wire)]
@@ -136,6 +161,8 @@ pub enum AudioRefusal {
     ModStreamLimit,
     /// [`AUDIO_STREAMS_TOTAL`] streams are open across every mod: stop one first.
     TooManyStreams,
+    /// The pull worker could not start or admit this source.
+    WorkerUnavailable,
 }
 impl std::fmt::Display for AudioRefusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -151,6 +178,7 @@ impl std::fmt::Display for AudioRefusal {
             Self::TooManyStreams => {
                 write!(f, "{AUDIO_STREAMS_TOTAL} audio streams are already open")
             }
+            Self::WorkerUnavailable => f.write_str("the audio pull worker cannot accept a source"),
         }
     }
 }
@@ -180,7 +208,7 @@ pub trait AudioStreamSource: Send + Sync + 'static {
     /// is not taken). Returns the frames accepted, which falls short of the frames offered when
     /// the ring is full, or when another thread is pushing to the same stream at that moment
     /// (the ring has one producer: that push returns 0 and drops nothing already queued): the
-    /// rest is refused, never delayed.
+    /// rest is refused, never delayed. A pull stream accepts no pushes.
     fn push(&self, samples: &[i16]) -> u32;
     /// Moves the stream; false, changing nothing, for a stereo stream and a placement other than
     /// `Flat`, for a position that is not finite or lies past 30 million blocks, and once the
@@ -196,11 +224,11 @@ pub trait AudioStreamSource: Send + Sync + 'static {
     fn stop(&self);
 }
 
-/// A stream a mod opened with `open_push_audio_stream`: push PCM and the game plays it.
+/// The controls for an open mod audio stream, with push access for async streams.
 ///
 /// Keep the handle while the stream should play. Dropping it stops the stream, as [`stop`]
-/// does. It is `Send`: a mod may push from any thread, a `Network`-thread payload handler
-/// included, and the audio never waits for a tick.
+/// does. It is `Send`: a mod may push to an async stream from any thread, a `Network`-thread
+/// payload handler included, and the audio never waits for a tick.
 ///
 /// [`stop`]: AudioStreamRef::stop
 // exhaustive: its field is private, so mods cannot build or destructure it
@@ -222,7 +250,7 @@ impl AudioStreamRef {
     ///
     /// A push writes straight into the ring made when the stream opened: it never blocks,
     /// allocates or waits for a tick. Only one thread can push at a time: an overlapping push
-    /// accepts nothing and returns 0.
+    /// accepts nothing and returns 0. A pull stream always returns 0.
     pub fn push(&self, samples: &[i16]) -> u32 {
         self.source.push(samples)
     }

@@ -5,11 +5,20 @@ ids = [
     "type:SpecFault",
     "type:SpecFault.Prebuffer",
     "type:AudioRefusal",
+    "type:AudioRefusal.WorkerUnavailable",
     "type:AudioStreamState",
     "type:AudioStreamState.Buffering",
+    "type:AudioStreamState.Stopped",
+    "trait:AudioStream",
+    "method:AudioStream::read",
+    "type:AudioRead",
+    "type:AudioRead.Frames",
+    "type:AudioRead.Eof",
     "trait:AudioStreamSource",
     "method:AudioStreamSource::buffered_ms",
+    "method:AudioStreamSource::push",
     "handle:AudioStreamRef::buffered_ms",
+    "handle:AudioStreamRef::push",
 ]
-why = "Async streams play the first available frame without waiting for a watermark. Their queue is bounded to one second of source PCM; a dry queue plays silence without closing the stream. Playing now means open and placed, not necessarily audible."
-migrate = "Remove `spec.prebuffer_ms` assignments, `.with_prebuffer_ms(ms)`, imports of `AUDIO_STREAM_PREBUFFER_MIN_MS` and `AUDIO_STREAM_PREBUFFER_MAX_MS`, and `SpecFault::Prebuffer` match arms. Remove `stream.buffered_ms()` polling and `buffered_ms` methods on `AudioStreamSource` implementations; keep any needed jitter buffer with the async producer, call `stream.push(&samples)` when ready, and use the returned accepted frame count to drop or retry the refused suffix. `AUDIO_STREAM_RING_MAX_MS` describes capacity only, not a target. Remove the `AudioStreamState::Buffering` branch and use `Playing` only to tell that a stream is open and placed, even when muted or dry. Do not use the old encoded layout of `StreamSpec`, `AudioStreamState`, `SpecFault` or `AudioRefusal`."
+why = "Async streams play the first available frame without waiting for a watermark. Their queue is bounded to one second of source PCM; a dry queue plays silence without closing the stream. Playing now means open and placed, not necessarily audible. A native pull source instead supplies PCM on a worker as the mixer needs it, then drains on EOF."
+migrate = "Remove `spec.prebuffer_ms` assignments, `.with_prebuffer_ms(ms)`, imports of `AUDIO_STREAM_PREBUFFER_MIN_MS` and `AUDIO_STREAM_PREBUFFER_MAX_MS`, and `SpecFault::Prebuffer` match arms. Remove `stream.buffered_ms()` polling and `buffered_ms` methods on `AudioStreamSource` implementations; keep any needed jitter buffer with the async producer, call `stream.push(&samples)` when ready, and use the returned accepted frame count to drop or retry the refused suffix. `AUDIO_STREAM_RING_MAX_MS` describes capacity only, not a target. Remove the `AudioStreamState::Buffering` branch and use `Playing` only to tell that a stream is open and placed, even when muted or dry. For a native pull source, move PCM generation out of the tick and implement `AudioStream::read(&mut self, pcm: &mut [i16]) -> AudioRead`. Write interleaved PCM and return `AudioRead::Frames(whole_frame_count)`; return `Frames(0)` to retry later, or `AudioRead::Eof` to drain and stop. Do not call `push` on a pull stream; it returns zero. Handle `AudioRefusal::WorkerUnavailable` like any open refusal. Do not use the old encoded layout of `StreamSpec`, `AudioStreamState`, `SpecFault` or `AudioRefusal`."

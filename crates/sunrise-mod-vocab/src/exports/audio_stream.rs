@@ -3,6 +3,6 @@ pub use client::audio_stream::{
     AUDIO_STREAMS_TOTAL,
 };
 pub use client::audio_stream::{
-    AudioRefusal, AudioStreamRef, AudioStreamSource, AudioStreamState, SpecFault, StreamPlacement,
-    StreamSpec,
+    AudioRead, AudioRefusal, AudioStream, AudioStreamRef, AudioStreamSource, AudioStreamState,
+    SpecFault, StreamPlacement, StreamSpec,
 };

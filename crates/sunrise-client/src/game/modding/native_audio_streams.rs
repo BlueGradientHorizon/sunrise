@@ -22,7 +22,7 @@ impl Game<'_> {
             return Err(AudioRefusal::OnServer);
         }
         self.audio
-            .open_stream(calling_mod()?, spec)
+            .open_stream(calling_mod()?, spec, None)
             .map(AudioStreamRef::new)
     }
     /// Places every entity-following stream at its entity, or leaves it unplaced where the client

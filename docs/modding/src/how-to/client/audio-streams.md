@@ -42,7 +42,13 @@ Sunrise Extras has a "Mod audio streams" switch (Sound section), on by default. 
 
 - `Playing`: open and placed (or flat), even if muted or out of samples.
 - `Unplaced`: open, but at a place nobody hears (below).
-- `Stopped`: `stop` was called, the handle dropped, or the game's sound output went away (a device that could not be opened again). It never plays again; open a new stream once the output is back (`open_push_audio_stream` answers `NoOutput` until then). Changing the output device does not stop streams.
+- `Stopped`: `stop` was called, the handle dropped, a pull source ended and its PCM drained or it reported too many frames, or the game's sound output went away (a device that could not be opened again). It never plays again; open a new stream once the output is back (`NoOutput` until then). Changing the output device does not stop streams.
+
+## Native pull sources
+
+Implement `AudioStream::read(&mut self, pcm: &mut [i16]) -> AudioRead` to generate or decode PCM on demand. The mixer owns the source and a shared worker calls it serially, off the device callback. Do only bounded, nonblocking work: no waiting for I/O or locks, no `Host` or world borrow, and no calls back into the game.
+
+Write interleaved samples in the stream's format and return `AudioRead::Frames(n)` for the number of whole frames written, not the number of samples. The worker clears the buffer before lending it. A short read plays the available PCM; `Frames(0)` is temporary silence and the worker tries again on later demand. Return `AudioRead::Eof` when no more PCM will arrive; the mixer plays the last frame for its full duration and then stops. Pull streams advance even when muted or unplaced, and their handles do not accept pushes. Opening a pull source can also return `AudioRefusal::WorkerUnavailable` if the worker cannot start or take the source.
 
 ## Async queue and overflow
 

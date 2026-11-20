@@ -1,21 +1,21 @@
-//! Mods' audio streams (`ClientHost::open_push_audio_stream`) in the mixer: a pool of their own
-//! (never vanilla's streaming slots), each a fixed ring a mod pushes PCM into from any thread and
-//! the output callback reads, resampled to the device rate.
+//! Mods' audio streams have their own pool (never vanilla's streaming slots). Each fixed PCM
+//! ring is filled by an async producer or the pool's pull worker, and drained by the mixer.
 //!
-//! Who touches what:
-//! - A mod thread touches only its stream's own atomics: `push` writes the ring, the controls
-//!   write the volume and the placement. None of it takes a lock the callback takes.
-//! - The callback touches the mixer's voices: it reads each ring, the volume and the placement
-//!   (a seqlock, so it never waits for a writer) and allocates nothing.
-//! - The main thread owns the pool: it opens, caps, follows entities, unplaces and reaps. The
-//!   ring is allocated before the mixer is locked, and freed after a stopped stream's voice has
-//!   left the mixer: a handle holds only a weak reference to its ring.
+//! - A mod thread pushes PCM or sets the volume and placement without taking the mixer lock.
+//! - The callback reads PCM and the latest placement (a seqlock) and requests more pull PCM
+//!   for the next buffer. It does not allocate or call the source.
+//! - The main thread opens, caps, follows entities, unplaces and reaps streams. It allocates
+//!   rings before locking the mixer. Push handles hold only weak references to the rings.
+//! - The worker owns, calls and drops admitted native sources without taking either lock.
+mod pull;
+
 use super::{Basis, Mixer, distance_gain};
 use mod_api::{
     AUDIO_STREAM_RATE_MAX, AUDIO_STREAM_RATE_MIN, AUDIO_STREAM_RING_MAX_MS, AUDIO_STREAMS_PER_MOD,
-    AUDIO_STREAMS_TOTAL, AudioRefusal, AudioStreamSource, AudioStreamState, EntityRef, SpecFault,
-    StreamPlacement, StreamSpec,
+    AUDIO_STREAMS_TOTAL, AudioRefusal, AudioStream, AudioStreamSource, AudioStreamState, EntityRef,
+    SpecFault, StreamPlacement, StreamSpec,
 };
+use pull::{Demand, PullJob, Worker};
 use std::sync::{
     Arc, Mutex, MutexGuard, Weak,
     atomic::{
@@ -100,6 +100,7 @@ pub(super) struct Control {
     closed: AtomicBool,
     /// Another thread is pushing: this push is refused, which keeps the ring single-producer.
     pushing: AtomicBool,
+    pull: Option<Arc<Demand>>,
     /// The placement as set. Writers (a mod's `set_placement`, the frame's entity follow, a
     /// level change) take it for the whole of a change, so the newest always wins; the callback
     /// never does.
@@ -115,6 +116,14 @@ const POSITIONAL: u8 = 1;
 const PLACED: u8 = 2;
 
 impl Control {
+    fn stop(&self) {
+        if !self.closed.swap(true, AcqRel)
+            && let Some(pull) = &self.pull
+        {
+            pull.wake.signal();
+        }
+    }
+
     fn publish(&self, _held: &MutexGuard<'_, Held>, view: View) {
         let start = self.sequence.load(Relaxed);
         self.sequence.store(start + 1, Relaxed);
@@ -247,16 +256,19 @@ fn check_placement(channels: u8, placement: &StreamPlacement) -> Result<(), Spec
 /// whatever handles the mod keeps.
 pub(super) struct StreamHandle {
     control: Arc<Control>,
-    ring: Weak<Ring>,
+    push_ring: Option<Weak<Ring>>,
 }
 
 impl AudioStreamSource for StreamHandle {
     fn push(&self, samples: &[i16]) -> u32 {
+        let Some(ring) = &self.push_ring else {
+            return 0;
+        };
         let c = &*self.control;
         if c.closed.load(Acquire) || c.pushing.swap(true, Acquire) {
             return 0;
         }
-        let accepted = match self.ring.upgrade() {
+        let accepted = match ring.upgrade() {
             Some(ring) => {
                 let channels = ring.channels;
                 let (tail, _, free) = ring.producer_window();
@@ -299,7 +311,7 @@ impl AudioStreamSource for StreamHandle {
         }
     }
     fn stop(&self) {
-        self.control.closed.store(true, Release);
+        self.control.stop();
     }
 }
 impl Drop for StreamHandle {
@@ -324,17 +336,41 @@ pub(super) struct StreamVoice {
 /// The main thread's list of open streams, with the caps. Shared by every `Audio` on one output.
 #[derive(Default)]
 pub(super) struct StreamPool {
-    controls: Mutex<Vec<Arc<Control>>>,
+    state: Mutex<PoolState>,
     /// How many controls there are, so that with no stream open the main thread's calls and the
     /// tick take no lock at all.
     open: AtomicUsize,
+}
+
+#[derive(Default)]
+struct PoolState {
+    controls: Vec<Arc<Control>>,
+    worker: Option<Worker>,
     /// The output went away (a failed reopen): no stream opens until it is back.
-    lost: AtomicBool,
+    lost: bool,
+}
+
+impl PoolState {
+    fn close_all(&self) {
+        for control in &self.controls {
+            control.closed.store(true, Release);
+        }
+    }
+}
+
+impl Drop for StreamPool {
+    fn drop(&mut self) {
+        let state = self.state.get_mut().unwrap_or_else(|e| e.into_inner());
+        state.close_all();
+        if let Some(worker) = state.worker.take() {
+            worker.shutdown();
+        }
+    }
 }
 
 impl StreamPool {
-    fn controls(&self) -> MutexGuard<'_, Vec<Arc<Control>>> {
-        self.controls.lock().unwrap_or_else(|e| e.into_inner())
+    fn state(&self) -> MutexGuard<'_, PoolState> {
+        self.state.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     /// Whether no stream is open: the lock-free test every call that has nothing to do starts with.
@@ -349,6 +385,7 @@ impl StreamPool {
         mixer: &Mutex<Mixer>,
         owner: &str,
         spec: &StreamSpec,
+        source: Option<Box<dyn AudioStream>>,
     ) -> Result<Arc<dyn AudioStreamSource>, AudioRefusal> {
         let fault = |fault| Err(AudioRefusal::BadSpec(fault));
         if !matches!(spec.channels, 1 | 2) {
@@ -366,21 +403,23 @@ impl StreamPool {
         if let Err(f) = check_placement(spec.channels, &spec.placement) {
             return fault(f);
         }
-        if self.lost.load(Acquire) {
+        self.reap(mixer);
+        let mut state = self.state();
+        if state.lost {
             return Err(AudioRefusal::NoOutput);
         }
-        self.reap(mixer);
-        let mut controls = self.controls();
-        if controls.len() >= AUDIO_STREAMS_TOTAL as usize {
+        if state.controls.len() >= AUDIO_STREAMS_TOTAL as usize {
             return Err(AudioRefusal::TooManyStreams);
         }
-        if controls.iter().filter(|c| c.owner == owner).count() >= AUDIO_STREAMS_PER_MOD as usize {
+        if state.controls.iter().filter(|c| c.owner == owner).count()
+            >= AUDIO_STREAMS_PER_MOD as usize
+        {
             return Err(AudioRefusal::ModStreamLimit);
         }
         let channels = spec.channels as usize;
         let ring_frames = (spec.rate * AUDIO_STREAM_RING_MAX_MS / 1000) as usize;
         let ring = Arc::new(Ring::new(ring_frames, channels));
-        let control = Arc::new(Control {
+        let mut control = Control {
             channels,
             rate: spec.rate,
             category: spec.category.index(),
@@ -389,15 +428,45 @@ impl StreamPool {
             volume: AtomicU32::new(spec.volume.to_bits()),
             closed: AtomicBool::new(false),
             pushing: AtomicBool::new(false),
+            pull: None,
             held: Mutex::new(Held::Flat),
             sequence: AtomicU64::new(0),
             flags: AtomicU8::new(0),
             position: Default::default(),
-        });
+        };
+        let (control, push_ring) = if let Some(source) = source {
+            let worker = match &mut state.worker {
+                Some(worker) => worker,
+                slot @ None => match Worker::start() {
+                    Ok(worker) => slot.insert(worker),
+                    Err(refusal) => {
+                        drop(state);
+                        return Err(refusal);
+                    }
+                },
+            };
+            let demand = Arc::new(worker.demand());
+            control.pull = Some(demand.clone());
+            let control = Arc::new(control);
+            if let Err(job) = worker.admit(PullJob {
+                control: control.clone(),
+                demand,
+                ring: ring.clone(),
+                source,
+            }) {
+                drop(state);
+                drop(job);
+                return Err(AudioRefusal::WorkerUnavailable);
+            }
+            (control, None)
+        } else {
+            (Arc::new(control), Some(Arc::downgrade(&ring)))
+        };
         control.place(&spec.placement);
+        // If the mixer cannot accept the voice, this handle closes the job on its worker.
         let handle = StreamHandle {
             control: control.clone(),
-            ring: Arc::downgrade(&ring),
+            push_ring,
         };
         let voice = StreamVoice {
             control: control.clone(),
@@ -418,8 +487,8 @@ impl StreamPool {
             Ok(mut mixer) => mixer.streams.push(voice),
             Err(_) => return Err(AudioRefusal::NoOutput),
         }
-        controls.push(control);
-        self.open.store(controls.len(), Relaxed);
+        state.controls.push(control);
+        self.open.store(state.controls.len(), Relaxed);
         Ok(Arc::new(handle))
     }
 
@@ -429,7 +498,8 @@ impl StreamPool {
         if self.idle() {
             return;
         }
-        let mut controls = self.controls();
+        let mut state = self.state();
+        let controls = &mut state.controls;
         let before = controls.len();
         controls.retain(|c| !c.closed.load(Acquire));
         self.open.store(controls.len(), Relaxed);
@@ -459,7 +529,7 @@ impl StreamPool {
         if self.idle() {
             return;
         }
-        for control in self.controls().iter() {
+        for control in &self.state().controls {
             control.follow(&mut resolve);
         }
     }
@@ -470,7 +540,7 @@ impl StreamPool {
         if self.idle() {
             return;
         }
-        for control in self.controls().iter() {
+        for control in &self.state().controls {
             control.unplace();
         }
     }
@@ -478,12 +548,42 @@ impl StreamPool {
     /// The output went away (or came back): its streams stop, and none opens until it is back.
     #[cfg(any(feature = "audio", test))]
     pub(super) fn output_lost(&self, lost: bool) {
-        self.lost.store(lost, Release);
+        let mut state = self.state();
+        state.lost = lost;
         if lost {
-            for control in self.controls().iter() {
-                control.closed.store(true, Release);
+            state.close_all();
+            if let Some(worker) = &state.worker {
+                worker.wake();
             }
         }
+    }
+}
+
+/// After consuming a whole output buffer, ask for enough source frames for the next one,
+/// including interpolation's lookahead. One wake suffices for the pool's shared worker.
+pub(super) fn request_pull(streams: &[StreamVoice], output_frames: usize, rate: u32) {
+    if output_frames == 0 {
+        return;
+    }
+    let mut worker = None;
+    for voice in streams {
+        let control = &voice.control;
+        if let Some(pull) = &control.pull
+            && !control.closed.load(Acquire)
+            && !pull.eof.load(Acquire)
+        {
+            let frames = (output_frames as u64)
+                .saturating_mul(u64::from(control.rate))
+                .div_ceil(u64::from(rate))
+                .saturating_add(1);
+            let capacity = voice.ring.samples.len() / voice.ring.channels;
+            pull.frames
+                .store(frames.min(capacity as u64) as usize, Release);
+            worker = Some(&pull.wake);
+        }
+    }
+    if let Some(worker) = worker {
+        worker.signal();
     }
 }
 
@@ -512,6 +612,9 @@ pub(super) fn mix(
         let ch = ring.channels;
         let len = ring.samples.len() as u64;
         let head = ring.head.load(Relaxed);
+        // EOF orders every prior publication. Read it before the tail so an EOF snapshot
+        // cannot miss the producer's last frames.
+        let eof = c.pull.as_ref().is_some_and(|pull| pull.eof.load(Acquire));
         let tail = ring.tail.load(Acquire);
         let mut avail = (tail - head) / ch as u64;
         let mut taken = 0u64;
@@ -526,6 +629,9 @@ pub(super) fn mix(
         };
         if !voice.primed {
             if avail == 0 {
+                if eof {
+                    c.stop();
+                }
                 continue;
             }
             voice.current = frame_at(0);
@@ -603,47 +709,50 @@ pub(super) fn mix(
             } else {
                 voice.fraction += step * output_frames as f64 - wanted as f64;
             }
-            ring.head.store(head + taken * ch as u64, Release);
-            continue;
-        }
-        'output: for frame in out.chunks_exact_mut(channels) {
-            // Look for a source frame only when the output needs it. If none is queued, leave
-            // the rest silent and start again with the next frame that arrives.
-            while voice.fraction >= 1.0 {
-                if avail == 0 {
-                    voice.primed = false;
-                    break 'output;
+        } else {
+            'output: for frame in out.chunks_exact_mut(channels) {
+                // Look for a source frame only when the output needs it. If none is queued, leave
+                // the rest silent and start again with the next frame that arrives.
+                while voice.fraction >= 1.0 {
+                    if avail == 0 {
+                        voice.primed = false;
+                        break 'output;
+                    }
+                    voice.current = frame_at(taken);
+                    taken += 1;
+                    avail -= 1;
+                    voice.fraction -= 1.0;
                 }
-                voice.current = frame_at(taken);
-                taken += 1;
-                avail -= 1;
-                voice.fraction -= 1.0;
-            }
-            // Interpolate between source frames. With no next frame yet, hold the last one
-            // for the rest of its duration.
-            let now = if voice.fraction > 0.0 && avail > 0 {
-                let next = frame_at(taken);
-                let t = voice.fraction as f32;
-                [
-                    voice.current[0] + (next[0] - voice.current[0]) * t,
-                    voice.current[1] + (next[1] - voice.current[1]) * t,
-                ]
-            } else {
-                voice.current
-            };
-            if channels >= 2 {
-                frame[0] += now[0] * left;
-                frame[1] += now[1] * right;
-            } else {
-                frame[0] += if ch > 1 {
-                    (now[0] + now[1]) * 0.5
+                // Interpolate between source frames. With no next frame yet, hold the last one
+                // for the rest of its duration.
+                let now = if voice.fraction > 0.0 && avail > 0 {
+                    let next = frame_at(taken);
+                    let t = voice.fraction as f32;
+                    [
+                        voice.current[0] + (next[0] - voice.current[0]) * t,
+                        voice.current[1] + (next[1] - voice.current[1]) * t,
+                    ]
                 } else {
-                    now[0]
-                } * mono;
+                    voice.current
+                };
+                if channels >= 2 {
+                    frame[0] += now[0] * left;
+                    frame[1] += now[1] * right;
+                } else {
+                    frame[0] += if ch > 1 {
+                        (now[0] + now[1]) * 0.5
+                    } else {
+                        now[0]
+                    } * mono;
+                }
+                voice.fraction += step;
             }
-            voice.fraction += step;
         }
-        ring.head.store(head + taken * ch as u64, Release);
+        let head = head + taken * ch as u64;
+        ring.head.store(head, Release);
+        if eof && head == tail && (!voice.primed || voice.fraction >= 1.0) {
+            c.stop();
+        }
     }
 }
 
@@ -676,7 +785,7 @@ mod tests {
             owner: &str,
             spec: &StreamSpec,
         ) -> Result<Arc<dyn AudioStreamSource>, AudioRefusal> {
-            self.pool.open(&self.mixer, owner, spec)
+            self.pool.open(&self.mixer, owner, spec, None)
         }
         /// The next `frames` of stereo output at 48 kHz.
         fn play(&self, frames: usize) -> Vec<f32> {
@@ -992,9 +1101,10 @@ mod tests {
             .open_stream(
                 "mod",
                 &spec().with_placement(StreamPlacement::At([0.0, 0.0, 1.0])),
+                None,
             )
             .unwrap();
-        let flat = audio.open_stream("mod", &spec()).unwrap();
+        let flat = audio.open_stream("mod", &spec(), None).unwrap();
         for stream in [&positional, &flat] {
             stream.push(&half(2_000));
         }
@@ -1021,6 +1131,7 @@ mod tests {
             .open_stream(
                 "mod",
                 &spec().with_placement(StreamPlacement::Entity(entity)),
+                None,
             )
             .unwrap();
         let heard = |audio: &Audio| {
