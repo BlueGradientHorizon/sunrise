@@ -225,18 +225,11 @@ impl Game<'_> {
                     width,
                     initial,
                     max_length,
-                    multiline: Some((max_lines, _)),
+                    multiline: Some((max_lines, height)),
                     ..
                 } => {
-                    // TextInputHandler: the `MultiLineEditBox` with its limits.
-                    let height = text_height(Some((*max_lines, None)));
-                    let height = match &i.control {
-                        Control::Text {
-                            multiline: Some((_, Some(h))),
-                            ..
-                        } => *h as f32,
-                        _ => height,
-                    };
+                    // TextInputHandler.addControl takes an explicit height before computing a default.
+                    let height = text_height(Some((*max_lines, *height)));
                     let mut edit = MultiLineEdit::new(font, 0.0, 0.0, *width as f32, height);
                     edit.set_character_limit((*max_length).max(0) as usize);
                     if let Some(lines) = max_lines {

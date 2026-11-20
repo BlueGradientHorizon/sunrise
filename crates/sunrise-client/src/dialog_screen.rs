@@ -211,9 +211,10 @@ fn item(
 pub fn text_height(multiline: Option<(Option<i32>, Option<i32>)>) -> f32 {
     match multiline {
         None => 20.0,
-        Some((max_lines, height)) => {
-            height.unwrap_or_else(|| (9 * max_lines.unwrap_or(4) + 8).min(512)) as f32
-        }
+        Some((max_lines, height)) => height.map_or_else(
+            || (9 * i64::from(max_lines.unwrap_or(4)) + 8).min(512) as f32,
+            |height| height as f32,
+        ),
     }
 }
 
@@ -684,7 +685,8 @@ mod tests {
         assert_eq!(text_height(Some((Some(10), None))), 98.0);
         // Never over 512; a height wins over the lines.
         assert_eq!(text_height(Some((Some(100), None))), 512.0);
-        assert_eq!(text_height(Some((Some(2), Some(70)))), 70.0);
+        assert_eq!(text_height(Some((Some(i32::MAX), None))), 512.0);
+        assert_eq!(text_height(Some((Some(i32::MAX), Some(70)))), 70.0);
     }
 
     #[test]
