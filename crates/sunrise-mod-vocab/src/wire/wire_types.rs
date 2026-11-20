@@ -248,18 +248,6 @@ impl Wire for crate::FileToIdConverter {
             .map_err(|_| WireError::Invalid("invalid file converter"))
     }
 }
-impl Wire for crate::ReloadResourceError {
-    layout_fields!("id" => crate::Identifier, "message" => String);
-    const MIN: usize = 12;
-    fn put(&self, out: &mut Writer) {
-        if out.ordinary_only() {
-            out.put(&<(crate::Identifier, String)>::from(self));
-        }
-    }
-    fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
-        Ok(Self::from(input.take::<(crate::Identifier, String)>()?))
-    }
-}
 
 impl Wire for crate::BlockStateRange {
     layout_fields!("first" => crate::BlockState, "len" => u32);

@@ -1975,8 +1975,8 @@ and `/datapack` changes, after pack selection. The `&dyn Host` beside the event 
 access at registration, as `AddServerReloadListenersEvent.getRegistryAccess` does. Register an
 `Arc<impl ServerReloadListener>`
 with a unique `Identifier` and `FileToIdConverter::json("machines")`, or `::new("machines", ".bin")`
-for another suffix. The listener's `ServerReloadContext` lists converted IDs and reads their
-bytes from `data/*/machines/`, including a mod's packaged files and later selected datapack
+for another suffix. The listener's `ServerReloadContext` lends converted IDs and bytes from
+`data/*/machines/`, including a mod's packaged files and later selected datapack
 overrides. A file `data/other/machines/heavy/press.json` becomes `other:heavy/press`: the directory
 and extension are removed, subdirectories preserved, and all namespaces included. It cannot
 read assets, other directories, or filesystem paths. Converter directories have no leading or
@@ -1995,12 +1995,13 @@ skips one that will not parse, carrying the rest through. Returning `Err` from `
 any preparation, registration or ordering error — aborts the whole reload: all pending actions
 are dropped without running and the old mod data and vanilla function library are kept. A
 panic in `prepare` or an apply is not recovered: it stops the server, and the crash
-report names the listener and the mod that registered it. The error names the namespaced
-listener and, for file errors, resource ID; world open fails, and `/reload` reports the
-failure. A failed `/datapack` change also preserves the selected packs on disk.
+report names the listener and the mod that registered it. Wrap the original error in
+`ReloadResourceError::new(id, cause)` to keep its source chain; `resource()` borrows the
+resource ID and `std::error::Error::source` exposes the cause. The diagnostic names the
+listener and the resource; world open fails, and `/reload` reports the failure. A failed `/datapack` change also preserves the selected packs on disk.
 
-`event.listeners.add_dependency(first, second)` orders named listeners. Both names must
-already be registered; unknown names fail immediately, and cycles fail after registration.
+`event.listeners.add_dependency(first, second)` orders named listeners. `ReloadOrderError` retains the
+IDs as typed variants: unknown names fail immediately, and cycles fail after registration.
 `VanillaServerListeners::functions()` names Sunrise's function-library listener; `first()` and
 `last()` are ordering boundaries. These anchors and dependency ends use `Identifier`. Mod
 listeners run after vanilla by default, in registration order; an explicit dependency before
@@ -2080,8 +2081,8 @@ assembled — the player changed resource packs, pressed F3+T, or a server sent 
 after the selection is known and before the reload's assets are staged. The `&dyn ClientHost`
 beside the event is the client read host. Register an `Arc<impl ClientReloadListener>` with a
 unique `Identifier` and the same converters as the server side
-(`FileToIdConverter::json("ui")`). The listener's `ClientReloadContext` lists converted IDs and
-reads their bytes from `assets/*/ui/` with resource-pack overrides already resolved: a selected
+(`FileToIdConverter::json("ui")`). The listener's `ClientReloadContext` lends converted IDs and
+bytes from `assets/*/ui/` with resource-pack overrides already resolved: a selected
 pack's file wins over the mod's packaged one, and a pack added later wins over both. A file
 `assets/my_mod/ui/theme.json` becomes `my_mod:theme`. It cannot read data files, other
 directories, or filesystem paths. Files resolve like vanilla resource packs: every file

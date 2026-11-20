@@ -43,11 +43,11 @@ impl VanillaServerListeners {
 
 /// Selected server data files for one converter, with pack overrides resolved.
 /// Keys have their directory and extension removed. This cannot read assets or
-/// filesystem paths. Its fields are private so the view can grow.
+/// filesystem paths. IDs and bytes are borrowed from this view.
 // exhaustive: its fields are private, so mods cannot build or destructure it
-#[derive(sunrise_mod_api_macros::Wire)]
+// no wire: a local prepare view of the winning server data files.
 pub struct ServerReloadContext {
-    pub(crate) files: ReloadFiles,
+    files: ReloadFiles,
 }
 impl ServerReloadContext {
     pub(crate) fn new(files: ReloadFiles) -> Self {
@@ -80,8 +80,9 @@ pub trait ServerReloadListener: Send + Sync + 'static {
     /// As vanilla's `SimpleJsonResourceReloadListener.scanDirectory`, a
     /// listener that parses its files logs and skips one that won't parse,
     /// carrying the rest through; returning `Err` aborts the whole reload and
-    /// keeps every listener's previous data. A panic in `prepare` or the
-    /// returned apply is not recovered: it stops the server, and the crash
+    /// keeps every listener's previous data. Attach the original error to the
+    /// file's ID with [`ReloadResourceError::new`] to preserve its cause.
+    /// A panic in `prepare` or the returned apply stops the server; the crash
     /// report names the listener and the mod that registered it.
     fn prepare(
         &self,

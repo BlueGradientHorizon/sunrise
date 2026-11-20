@@ -26,6 +26,14 @@ listeners cannot read `assets/`. Client listeners return the same once-only acti
 the game thread after the new packs are published. Packaged assets also participate in the game's
 normal resource packs.
 
+Both prepare contexts lend converted IDs through `context.list()` and bytes through
+`context.read(&id)`. These views and reload errors stay in-process, not on `Wire`. To abort on
+an invalid file, return `Err(ReloadResourceError::new(id, cause))` with the original error, not
+its message. `error.resource()` borrows the failing resource ID, and
+`std::error::Error::source(&error)` exposes its original cause. Registration still returns typed
+`ReloadOrderError` values for dependency and listener failures. No listener applies until every
+prepare succeeds.
+
 Outside a listener, `host.resource(pack_type, &identifier)` reads one file from the selected
 stack: `PackType::ServerData` takes `mymod:machines/furnace.json` from `data/`, and
 `PackType::ClientResources` takes `mymod:models/block/furnace.json` from `assets/`. As with

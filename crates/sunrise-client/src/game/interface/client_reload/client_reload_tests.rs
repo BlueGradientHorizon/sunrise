@@ -114,7 +114,9 @@ fn stage_reads_the_merged_assets_and_apply_publishes_after_all_prepares() {
 }
 
 #[test]
-fn a_listener_error_keeps_every_previous_state() {
+fn a_listener_error_retains_its_cause_and_discards_pending_applies() {
+    use std::error::Error as _;
+
     struct Failing;
     #[derive(Debug)]
     struct NotAHat;
@@ -159,6 +161,13 @@ fn a_listener_error_keeps_every_previous_state() {
         error.to_string(),
         "reload listener test_mod:failing: test_mod:broken: not a hat"
     );
+    let resource_error = error
+        .source()
+        .unwrap()
+        .downcast_ref::<ReloadResourceError>()
+        .unwrap();
+    assert_eq!(resource_error.resource(), &id("test_mod:broken"));
+    assert!(resource_error.source().unwrap().is::<NotAHat>());
     assert_eq!(
         listener.seen.lock().unwrap().as_slice(),
         ["test_mod:top={}"]
