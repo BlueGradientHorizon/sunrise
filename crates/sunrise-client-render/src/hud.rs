@@ -4092,6 +4092,15 @@ mod tests {
                 matches!(atlas.gui_lookup(id), Some(GuiSprite::Missing)),
                 "{id}"
             );
+            assert!(
+                atlas.find_inline_sprite("minecraft:gui", id).is_none(),
+                "{id}"
+            );
+            assert_eq!(
+                atlas.inline_sprite("minecraft:gui", id),
+                Some(atlas.sprites[MISSING_SPRITE]),
+                "{id}"
+            );
         }
         assert!(atlas.gui_rect("demo:item/model_only").is_none());
         assert!(atlas.sprites.contains_key("demo:item/model_only"));
