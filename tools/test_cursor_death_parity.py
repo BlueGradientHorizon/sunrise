@@ -33,6 +33,7 @@ SCRIPT = [
     ('prediction-slot', ['click-predicted Alice 0 37 minecraft:diamond_pickaxe[damage=6,!tool] -']),
     ('prediction-cursor', ['click-predicted Alice 0 37 - minecraft:diamond_pickaxe[damage=5]']),
     ('prediction-return', [f'click-predicted Alice 0 37 {PICKAXE} -']),
+    ('prediction-cleanup', ['menus off', 'cmd Alice item replace entity @s hotbar.1 with minecraft:air']),
     # Hotbar slot 0 is the inventory menu's slot 36.
     ('pickup', ['pickup Alice 36']),
     ('death', ['cmd Alice kill @s']),
