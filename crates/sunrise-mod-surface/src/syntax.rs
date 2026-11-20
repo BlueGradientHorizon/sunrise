@@ -355,8 +355,16 @@ impl<'a, 't> Visit<'a> for Reader<'t> {
 
     fn visit_expr_for_loop(&mut self, e: &'a syn::ExprForLoop) {
         let outer = self.bindings.len();
+        for attr in &e.attrs {
+            self.visit_attribute(attr);
+        }
+        if let Some(label) = &e.label {
+            self.visit_label(label);
+        }
+        self.visit_pat(&e.pat);
+        self.visit_expr(&e.expr);
         self.bind_untied(&e.pat);
-        visit::visit_expr_for_loop(self, e);
+        self.visit_block(&e.body);
         self.bindings.truncate(outer);
     }
 
