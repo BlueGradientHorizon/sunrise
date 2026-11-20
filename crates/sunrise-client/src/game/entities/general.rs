@@ -686,15 +686,16 @@ pub struct RiderIndex {
     stamp: Option<sunrise_client::join_seq::ListStamp>,
     length: usize,
     mounts: u64,
-    /// Each row's first rider's place; `None` carries none.
+    /// Each vehicle's first general rider. Places at and above `length` are
+    /// foreign vehicles, with no corresponding general row.
     pub(super) first_child: Vec<Option<usize>>,
     /// Each rider's next sibling's place on the same vehicle.
     pub(super) next_sibling: Vec<Option<usize>>,
     /// Each vehicle's latest rider of the ongoing rebuild.
     last_child: Vec<Option<usize>>,
-    /// Each row's place by id, for the rebuild's edge pass.
+    /// A general row or foreign vehicle's place by id.
     places: FxHashMap<u32, usize>,
-    boarded: Vec<usize>,
+    boarded: Vec<(usize, u32)>,
     pub(super) ticked: Vec<bool>,
     pub(super) pending: Vec<(usize, Option<u32>)>,
     pub(super) foreign_parents: Vec<(usize, i64, usize)>,
@@ -739,16 +740,20 @@ impl RiderIndex {
             self.places.insert(row.id, place);
         }
         self.boarded.clear();
+        self.boarded.extend(
+            rows.iter()
+                .enumerate()
+                .filter_map(|(place, row)| Some((place, row.mount?))),
+        );
         self.boarded
-            .extend(rows.iter().enumerate().filter_map(|(place, row)| {
-                row.mount
-                    .is_some_and(|vehicle| self.places.contains_key(&vehicle))
-                    .then_some(place)
-            }));
-        self.boarded
-            .sort_unstable_by_key(|&place| (rows[place].vehicle_order, rows[place].id));
-        for &place in &self.boarded {
-            let vehicle_place = self.places[&rows[place].mount.unwrap()];
+            .sort_unstable_by_key(|&(place, _)| (rows[place].vehicle_order, rows[place].id));
+        for &(place, vehicle) in &self.boarded {
+            let vehicle_place = *self.places.entry(vehicle).or_insert_with(|| {
+                let place = self.first_child.len();
+                self.first_child.push(None);
+                self.last_child.push(None);
+                place
+            });
             match self.last_child[vehicle_place] {
                 // The chain's tail takes the new rider; the head opens it.
                 Some(tail) => self.next_sibling[tail] = Some(place),
@@ -777,11 +782,8 @@ impl Game<'_> {
             return None;
         }
         if store.riders.is_fresh(&store.rows, store.mount_writes) {
-            return store
-                .riders
-                .places
-                .get(&id)
-                .map(|&place| &store.rows[place]);
+            let &place = store.riders.places.get(&id)?;
+            return store.rows.get(place);
         }
         store.rows.iter().find(|row| row.id == id)
     }
