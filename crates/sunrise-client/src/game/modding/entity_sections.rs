@@ -47,16 +47,9 @@ use std::collections::hash_map::Entry;
 #[path = "entity_sections/tests.rs"]
 mod tests;
 
-/// `SectionPos.blockToSectionCoord(Mth.floor(v))`: `Mth.floor` truncates (saturating, NaN to 0,
-/// as Java's cast does) and steps down for a negative fraction with Java's wrapping `int`.
+/// `SectionPos.blockToSectionCoord(Mth.floor(v))`.
 fn section_coord(v: f64) -> i32 {
-    let truncated = v as i32;
-    let block = if v < f64::from(truncated) {
-        truncated.wrapping_sub(1)
-    } else {
-        truncated
-    };
-    block >> 4
+    sunrise_core::mth::floor(v) >> 4
 }
 
 fn section_of([x, y, z]: [f64; 3]) -> [i32; 3] {
