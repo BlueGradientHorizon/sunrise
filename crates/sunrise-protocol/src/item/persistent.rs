@@ -542,21 +542,14 @@ mod tests {
     }
     #[test]
     fn component_chains_up_to_the_readers_depth_convert_on_a_network_stack() {
-        let chain = |bundles: usize| {
-            let mut template = stone(vec![]);
-            for _ in 0..bundles {
-                template = stone(vec![(
-                    "minecraft:bundle_contents".into(),
-                    Some(bundle_of(template)),
-                )]);
-            }
-            template
-        };
-        let convert = |bundles: usize| {
+        let convert = |levels: usize, name: &'static str, wrap: fn(ValueTemplate) -> Value| {
             std::thread::Builder::new()
                 .stack_size(2 << 20)
                 .spawn(move || {
-                    let top = chain(bundles);
+                    let mut top = stone(vec![]);
+                    for _ in 0..levels {
+                        top = stone(vec![(name.into(), Some(wrap(top)))]);
+                    }
                     let stack =
                         template_from_parts(&top.item, top.count, &top.patch, &registry_id)?;
                     Ok::<_, Error>(template_value(&stack, &Registry).unwrap() == top)
@@ -565,8 +558,17 @@ mod tests {
                 .join()
                 .unwrap()
         };
-        assert!(convert(crate::item::MAX_NESTING as usize).unwrap());
-        assert!(convert(crate::item::MAX_NESTING as usize + 1).is_err());
+        let max = crate::item::MAX_NESTING as usize;
+        for (name, wrap) in [
+            (
+                "minecraft:bundle_contents",
+                bundle_of as fn(ValueTemplate) -> Value,
+            ),
+            ("minecraft:use_remainder", |t| Value::Template(Box::new(t))),
+        ] {
+            assert!(convert(max, name, wrap).unwrap(), "{name}");
+            assert!(convert(max + 1, name, wrap).is_err(), "{name}");
+        }
     }
     #[test]
     fn persistent_projection_refuses_what_the_saved_codec_refuses() {
