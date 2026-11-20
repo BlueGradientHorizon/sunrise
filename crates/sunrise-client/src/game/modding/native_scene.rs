@@ -4,10 +4,10 @@
 //! projected into the GUI with their own depth, as the smithing screen draws
 //! its armour stand.
 use super::Game;
-use super::native_block_entity_draw::{BlockEntityDraw, place_turning};
+use super::native_block_entity_draw::BlockEntityDraw;
 use glam::{Mat4, Vec3};
 use mod_api::SceneView;
-use sunrise_client::{block_entity_render::diffuse_lights, hud::HudBatch, mesher::Vertex};
+use sunrise_client::{block_entity_render::diffuse_lights, hud::HudBatch};
 use sunrise_world::level::data::state_flags;
 /// Prepared scene data. Entity fields remain borrowed for the duration of the draw.
 pub(super) struct SceneBlock<'a> {
@@ -178,10 +178,7 @@ impl Game<'_> {
                 self.native_block_entity_submit(block.pos, name, block.state, &entity, &mut draw);
                 // Its text's new glyphs upload with this screen's batch.
                 batch.patches.append(&mut self.text_patches.borrow_mut());
-                let time = draw.animation();
-                let (drawn, spins) = draw.into_turning();
-                let mut placed: Vec<Vertex> = Vec::with_capacity(drawn.len());
-                place_turning(&drawn, &spins, time, at, &mut placed);
+                let placed = draw.into_placed(at);
                 for q in placed.as_chunks::<4>().0 {
                     let corners = q.each_ref().map(|v| Vec3::from_array(v.pos));
                     let [nx, ny, nz, w] = q[0].normal;
