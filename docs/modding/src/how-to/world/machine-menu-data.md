@@ -39,7 +39,8 @@ This method does not resize: an absent index returns `Ok(false)`. Both methods u
 same silent storage write target and journal; call `set_changed` explicitly if needed. Transactions retain their
 ordinary behavior; an aborted outer transaction restores the vector that existed
 before its first write, including writes committed by children. The normal menu
-broadcast delivers committed changes to viewers.
+broadcast delivers committed changes to viewers. To draw those values on the client, see
+[Draw a progress bar and a fuel gauge](../client/menu-gauges.md).
 
 The public handle resolves one entity's lifecycle generation as well as its level
 and position. Removal, replacement and chunk reload make it stale; in-place data

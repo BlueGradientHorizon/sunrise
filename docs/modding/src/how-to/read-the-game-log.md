@@ -1,0 +1,28 @@
+# Find your mod's diagnostics
+
+Start with `logs/latest.log` in the game's **home**, not the world or mod project folder.
+For a default `cargo sunrise-mod run`, that's
+`target/sunrise-mod/run/home/logs/latest.log` inside your project. Otherwise check the
+home set by `--home` or `SUNRISE_HOME`; without either, the client uses the `sunrise`
+directory in the platform's data folder. A dedicated server logs under its game directory.
+On the client, `--player-dir` overrides the log location.
+
+The game logger writes `INFO`, `WARN` and `ERROR` records. For targets that don't
+start with `sunrise`, it prefixes the message with the record's target in brackets:
+the Rust module path by default, not the mod ID from the manifest. For example:
+
+```text
+[14:03:12] [Server thread/INFO]: [mymod::machine] Loaded machine recipes
+```
+
+Look in the file rather than the terminal: the game logger echoes only targets that
+start with `sunrise` to stderr, without the target prefix. It drops `DEBUG` and
+`TRACE`; no setting or environment variable (including `RUST_LOG`) enables them.
+Until [#3677](https://github.com/sunrise-org/sunrise/issues/3677) is fixed, native mods
+built with the prebuilt SDK don't reach the game logger through `log` macros.
+
+For a loading problem players should see, call
+`RegistrationContext::warn("mymod.warn.optional_integration", &["other_mod"])` in
+`Hooks::register`. Put the key in your mod's language files, with a `%s` for the
+argument. This records a [loading warning](../concepts/registration-and-diagnostics.md#loading-warnings)
+that the Mods screen can show without refusing the mod.

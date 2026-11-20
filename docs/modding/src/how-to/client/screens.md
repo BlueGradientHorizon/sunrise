@@ -78,6 +78,9 @@ the panel. Both carry `origin: [f32; 2]`, the panel's top-left; tooltip `at`
 remains relative to that origin. Use these values for hover regions and layout:
 they reflect this frame's resize and panel positioning, not a cached window size.
 
+To draw a sprite from synchronized menu data, see
+[Draw a progress bar and a fuel gauge](menu-gauges.md).
+
 ## Replacing a mod container slot's tooltip
 
 `MenuPart::screen_tooltip` runs for a hovered filled slot as well

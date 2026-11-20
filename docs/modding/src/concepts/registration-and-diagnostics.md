@@ -14,6 +14,8 @@ complete, call `cx.refuse("reason")` and return. The registration error path rep
 
 ## Loading warnings
 
+For log locations and filtering, see [Find your mod's diagnostics](../how-to/read-the-game-log.md).
+
 A problem that should not stop your mod, such as a missing optional integration or a setting it
 corrected, is a warning: `cx.warn("mymod.warn.no_jei", &["jei"])` inside `Hooks::register`
 (NeoForge's `ModLoadingIssue.warning`).
