@@ -13,5 +13,5 @@ pub use payload::{
     PayloadProtocol, PayloadRegistrar, PayloadSendError, PayloadWork, PayloadWorkStatus,
     RegisterClientPayloadHandlersEvent, RegisterPayloadHandlersEvent,
 };
-pub use payload::{PAYLOAD_DROPPABLE_MARKER, PayloadBusy, PayloadDropCounts, PayloadHandleError};
+pub use payload::{PAYLOAD_DROPPABLE_MARKER, PayloadDropCounts, PayloadHandleError};
 pub use payload::{PayloadDelivery, PayloadToken, ToClient, ToServer};

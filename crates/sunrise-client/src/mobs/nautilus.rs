@@ -173,16 +173,12 @@ pub(super) fn travel(
     input: Vec3,
     events: &mut Vec<MobEvent>,
     pause: bool,
-) -> Result<bool, super::living::TravelTrample> {
-    if !m.fluids.in_water {
-        return Ok(false);
-    }
+) -> Result<(), super::living::TravelTrample> {
     let speed = m.ai.speed;
     m.move_relative(speed, input);
     m.travel_move(w, level, events, pause, |m, _, _, _| {
         m.velocity = Vec3::new(m.velocity.x * 0.9, m.velocity.y * 0.9, m.velocity.z * 0.9);
-    })?;
-    Ok(true)
+    })
 }
 /// `tickRidden` and `getRiddenInput`: turn half way to the rider, swim along
 /// their look, faster in water (`getRiddenSpeed`), and dash on the jump.

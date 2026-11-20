@@ -123,6 +123,45 @@ with `menu_quick_move` is asked the pickup rule before that hook. A click asks o
 take, the all-or-nothing check and a shift-click the parts leave to the game reuse that answer, so the server and
 the client's prediction ask the same number of times.
 
+## Taking from a slot
+
+`menu_slot_take` is `Slot.onTake` for a mod menu type open on your block entity: heard on the server after a player
+took a stack out of one of the block's own slots, once per take. It refuses nothing (`may_pickup` above refuses); a
+result slot uses it to give experience, unlock a recipe or use up its inputs, through the `Host`. `item_crafted` and
+`item_smelted` stay the crafting grid's and the furnaces' events and are never heard for a mod menu.
+
+```rust,ignore
+struct PotOutput;
+#[mod_api::sunrise_part]
+impl mod_api::BlockPart for PotOutput {}
+#[mod_api::sunrise_part]
+impl mod_api::BlockEntityPart for PotOutput {
+    fn menu_slot_take(
+        &self,
+        _: &mut dyn mod_api::ServerHost,
+        event: &mut mod_api::MenuSlotTakeEvent<'_>,
+    ) {
+        // Slot 6 is the result: each item taken uses up one input from slot 0.
+        if event.slot == 6 && let Some(input) = event.entity.items[0].take() {
+            event.entity.items[0] = input.shrink(event.taken.count());
+        }
+    }
+}
+```
+
+`taken` is a copy of what left the slot and `left` what the slot holds afterwards (`None` when it was emptied). A
+click hands over what it took: all of the slot or half of it rounded up to an empty cursor, all of a result onto a
+matching cursor, the slot's stack on a hotbar or offhand swap, each throw, and each slot a double-click's pick-all
+took from (with the part taken). A shift-click hands over the amount it moved, and a shift-click on a crafting result
+is heard once for each craft it repeats. An exchange of the cursor and the slot, putting a stack in, a drag, a creative
+clone and a refused take are not takes. Taking from a linked container or from the player's inventory does not notify
+the block behind the menu. When `menu_quick_move` handles a shift-click, its move is heard before the click commits.
+Each take runs before the next iteration, so a listener can refill a crafting grid and the next iteration sees it.
+
+The take and the listeners are one action: what a listener writes through the `Host` stays when it returns, and if one
+panics or traps its writes are undone and so is the take, the slot and the cursor going back as they were. The block
+entity is out of the world during the call, as in `menu_button`. Nothing is asked when no mod listens.
+
 ## Crafted-by processing for held stacks
 
 After delivering an item into a menu slot or onto the cursor, server-side code can use the

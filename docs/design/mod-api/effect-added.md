@@ -1,5 +1,9 @@
 # Design: effect added
 
+> Historical: this design predates the removal of WebAssembly mods.
+> See [the mod API reference](../../modding/src/reference/api.md) for the current native API.
+> The proposed native-and-guest acceptance case below is historical.
+
 **Accepted with changes** for [#835](https://github.com/arismoko/horizon/issues/835), per the [maintainer decision](https://github.com/arismoko/horizon/pull/2329#issuecomment-6729847069). This remains a provisional design, not an implemented contract. The [additional requirement](https://github.com/arismoko/horizon/pull/2329#issuecomment-6729860519) withholds adoption of the pre-apply Added moment until the public NeoForge 26.3 contract is verified.
 
 ## Evidence and vanilla moment

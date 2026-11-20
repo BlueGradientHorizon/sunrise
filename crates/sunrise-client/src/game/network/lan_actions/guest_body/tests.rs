@@ -9,6 +9,8 @@ use sunrise_protocol::packets::configuration::ClientInformation;
 
 #[path = "tests/fall_reset.rs"]
 mod fall_reset;
+#[path = "tests/travel.rs"]
+mod travel;
 
 fn guest(entity_id: i32) -> Guest {
     let (sender, _) = mpsc::channel();

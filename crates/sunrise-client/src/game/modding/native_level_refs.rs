@@ -413,6 +413,14 @@ impl Game<'_> {
                 .unwrap_or(false)
         }
     }
+    fn mod_ticket_streaming_mut(&mut self, dim: super::Dim) -> Option<&mut Streaming> {
+        if dim == self.dim {
+            Some(&mut self.streaming)
+        } else {
+            self.levels.parked_streaming_of_mut(dim.id())
+        }
+    }
+
     /// The mods validate the chunk tickets `dim`'s level loaded from its save,
     /// controller by controller (`LoadingValidationCallback.validateTickets`),
     /// and the survivors take hold. Tickets a mod added since the load (in
@@ -420,7 +428,10 @@ impl Game<'_> {
     /// without a validator keeps all of its tickets. Nothing is built while no
     /// mod listens.
     pub(super) fn validate_mod_chunk_tickets(&mut self, dim: super::Dim) {
-        let mut loaded = self.streaming.take_loaded_tickets();
+        let Some(streaming) = self.mod_ticket_streaming_mut(dim) else {
+            return;
+        };
+        let mut loaded = streaming.take_loaded_tickets();
         if !loaded.is_empty() && mod_api::__private::listened(mod_api::HookId::ValidateTickets) {
             let mut controllers: Vec<u32> = loaded.iter().map(|t| t.controller).collect();
             controllers.sort_unstable();
@@ -442,8 +453,10 @@ impl Game<'_> {
                 loaded.extend(own.into_iter().filter(|t| !removed.contains(t)));
             }
         }
-        for ticket in loaded {
-            self.streaming.set_mod_forced(ticket, true);
+        if let Some(streaming) = self.mod_ticket_streaming_mut(dim) {
+            for ticket in loaded {
+                streaming.set_mod_forced(ticket, true);
+            }
         }
     }
     /// The chunk ticket of `controller` for `owner` on `chunk`
@@ -2731,17 +2744,23 @@ mod tests {
     fn validation_sees_the_saved_tickets_not_ones_added_after_the_load() {
         with_machines(|game| {
             let level = game.level(game.dim.id()).unwrap();
+            let owner = mod_api::TicketOwner::Block([1, 64, 1]);
+            let live = game.level_chunk_ref(level, [5, 5]).unwrap();
+            {
+                let _guard = in_mod("machines");
+                assert!(game.chunk_set_mod_forced(live, quarry(), owner, true, false));
+            }
             let tickets = vec![saved("machines:quarry", [1, 64, 1], (7, 7))];
             game.streaming.load_forced(Default::default(), tickets);
             // `level_load` runs after the load: its hold is the same owner's.
             let fresh = game.level_chunk_ref(level, [6, 6]).unwrap();
             {
                 let _guard = in_mod("machines");
-                let owner = mod_api::TicketOwner::Block([1, 64, 1]);
                 assert!(game.chunk_set_mod_forced(fresh, quarry(), owner, true, false));
             }
             game.validate_mod_chunk_tickets(game.dim);
             assert!(!game.streaming.forced.contains(&(7, 7)), "saved one pruned");
+            assert!(game.streaming.forced.contains(&(5, 5)), "live one kept");
             assert!(game.streaming.forced.contains(&(6, 6)), "fresh one kept");
         });
     }
