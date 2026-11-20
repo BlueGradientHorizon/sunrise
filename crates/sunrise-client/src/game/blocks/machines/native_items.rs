@@ -209,8 +209,7 @@ impl Game<'_> {
             return;
         }
         let slot_only = match view.kind {
-            // Plain item slots: no state beside the slot changes. Vanilla containers defer
-            // their implicit notice; mod-owned storage writes remain silent.
+            // Plain item slots: no state beside the slot changes.
             Kind::Generic | Kind::Shulker | Kind::Mod => true,
             // State beside the slot: filling an empty input restarts a furnace's cooking; an
             // insert into an empty hopper sets its cooldown; a jukebox's disc starts its song;
@@ -229,9 +228,9 @@ impl Game<'_> {
             self.journal_block_entity(part);
         }
     }
-    /// Game-held vanilla containers coalesce their implicit notice at the root commit.
+    /// Default capability writes to engine-managed containers notify once at root commit.
     fn view_told(&mut self, view: &View) {
-        if matches!(view.kind, Kind::Composter(_) | Kind::Mod) {
+        if matches!(view.kind, Kind::Composter(_)) {
             return;
         }
         for &(pos, _) in &view.parts {
