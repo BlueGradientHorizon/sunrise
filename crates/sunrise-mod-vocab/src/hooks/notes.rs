@@ -1991,9 +1991,15 @@ already be registered; unknown names fail immediately, and cycles fail after reg
 `VanillaServerListeners::functions()` names Sunrise's function-library listener; `first()` and
 `last()` are ordering boundaries. These anchors and dependency ends use `Identifier`. Mod
 listeners run after vanilla by default, in registration order; an explicit dependency before
-`functions()` works without a false cycle. Use these anchors rather than their string values. The read-only `get_registry`,
-`get_graph` and `get_last_vanilla_listener` give the registered names, the dependency edges and
-the vanilla anchor's name, by value (NeoForge's give the objects; a mod keeps its own listener's
+`functions()` works without a false cycle. Use these anchors rather than their string values.
+`event.listeners.get_registry().iter()` borrows the registered names in registration order,
+including the boundaries. `event.listeners.get_graph().iter()` borrows `(first, second)`
+name pairs in edge insertion order. These views borrow the registration in progress: copy
+only the IDs you need to keep or use after registering another listener or dependency.
+`event.listeners.get_last_vanilla_listener()` borrows the effective default anchor: the
+built-in global loot modifier listener is registered after the function library and becomes
+the anchor. Use `VanillaServerListeners::functions()` to target the function library itself.
+The reads give names, not the listener objects NeoForge exposes (a mod keeps its own listener's
 `Arc`, and its name is the one it registered it under). `prepare` returns
 `Box<dyn ReloadApply>`; `<dyn ReloadApply>::new(move || ...)` makes one from a closure. Sunrise does not expose NeoForge's condition
 context here.
@@ -2067,8 +2073,8 @@ directories, or filesystem paths. Files resolve like vanilla resource packs: eve
 except `lang/*.json` is delivered as the exact bytes of the winning pack's file, while
 language files arrive key-wise merged across the packs, as vanilla loads them.
 
-Prepare and apply semantics, error handling, crash attribution, dependency ordering and the
-read-only registry views are the [server listener's](#server-data-reload-listeners):
+Prepare and apply semantics, error handling, crash attribution and dependency ordering match
+those of [server listeners](#server-data-reload-listeners). Client registry reads return owned IDs.
 `ClientReloadListener::prepare` parses without changing live state and returns a `ReloadApply`;
 all prepares finish before any apply, a prepare, registration or ordering error aborts the
 reload and keeps every listener's previous assets, and a panic names the listener and its

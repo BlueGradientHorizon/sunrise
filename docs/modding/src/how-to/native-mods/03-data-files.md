@@ -3,11 +3,18 @@
 A mod has one top-level `data/` tree and one `assets/` tree, with the same namespace and
 content checks as a content mod. They are normal pack resources, not a second native-only data folder.
 [Server data reload listeners](https://github.com/sunrise-org/sunrise/blob/main/crates/sunrise-mod-vocab/src/hooks/notes.rs#L2008) register through
-`Hooks::add_server_reload_listeners`. Their `ServerReloadContext` lists namespaced IDs and reads the
-winning bytes from selected datapacks and the mod's own `data/`. Parse once in prepare and publish in
-apply, not on the tick. Server listener applies run before `data_pack_files`. A later refusal
-keeps the old engine tables and Parts, but cannot undo effects of listeners or hooks that already
-ran. Contributions share a list, so a failed file cannot be attributed to a particular mod.
+`Hooks::add_server_reload_listeners`. During registration, use `event.listeners.get_registry().iter()`
+to read names in registration order and `event.listeners.get_graph().iter()` to read dependency pairs
+`(first, second)`. Both lend IDs from the registry, so clone only the names you need after the borrow ends.
+`event.listeners.get_last_vanilla_listener()` borrows the effective ordering anchor (the built-in global
+loot modifier listener). Use `VanillaServerListeners::functions()` to order against the function library
+itself.
+
+A listener's `ServerReloadContext` lists namespaced IDs and reads the winning bytes from selected
+datapacks and the mod's own `data/`. Parse once in prepare and publish in apply, not on the tick.
+Server listener applies run before `data_pack_files`. A later refusal keeps the old engine tables and
+Parts, but cannot undo effects of listeners or hooks that already ran. Contributions share a list,
+so a failed file cannot be attributed to a particular mod.
 The original pack trees remain separate from the launcher's code-only horizon-mixins input.
 
 Client-side asset reads use [client asset reload listeners](https://github.com/sunrise-org/sunrise/blob/main/crates/sunrise-mod-vocab/src/hooks/notes.rs#L2102); server
