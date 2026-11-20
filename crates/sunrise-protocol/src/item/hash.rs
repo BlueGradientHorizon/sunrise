@@ -869,6 +869,26 @@ mod tests {
     }
 
     #[test]
+    fn repeated_enchantment_levels_keep_first_key_order_and_last_values() {
+        let entries = C::Enchantments(vec![(1, 0), (0, 1), (1, 2), (0, 3)]);
+        let effective = C::Enchantments(vec![(1, 2), (0, 3)]);
+        let value = persistent::component_value(k::ENCHANTMENTS, &entries, &Table).unwrap();
+        let ids = |registry: &str, name: &str| match (registry, name) {
+            ("minecraft:enchantment", "minecraft:sharpness") => Some(0),
+            ("minecraft:enchantment", "minecraft:protection") => Some(1),
+            _ => None,
+        };
+        assert_eq!(
+            persistent::component_from_value(k::ENCHANTMENTS, &value, &ids).unwrap(),
+            effective
+        );
+        assert_eq!(
+            entries.hash(k::ENCHANTMENTS, &Table),
+            effective.hash(k::ENCHANTMENTS, &Table)
+        );
+    }
+
+    #[test]
     fn a_hashed_stack_uses_effective_sets_and_refuses_an_incomplete_patch() {
         let mut stack = Stack::new(1, 2);
         stack.added.push((k::DAMAGE, C::Int(1)));

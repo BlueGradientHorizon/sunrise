@@ -798,7 +798,6 @@ fn template_tag(t: &Tag, source: Source) -> Result<Template> {
         let Tag::Compound(c) = c else {
             return Err("template components are not a map".into());
         };
-        let mut entries = std::collections::HashMap::with_capacity(c.len());
         for (name, value) in c {
             let name = name.to_string_lossy();
             let (remove, name) = name
@@ -817,9 +816,9 @@ fn template_tag(t: &Tag, source: Source) -> Result<Template> {
             } else {
                 Some(component_tag(&name, value, source)?)
             };
-            entries.insert(name, value);
+            patch.push((name, value));
         }
-        patch.extend(entries);
+        super::normalize_map(&mut patch, |(name, _)| name);
     }
     Ok(Template { item, count, patch })
 }
@@ -1059,15 +1058,16 @@ fn component_leaf(name: &str, id: &str, t: &Tag, source: Source) -> Result<Value
             let Tag::Compound(entries) = t else {
                 return Err("enchantments are not a map".into());
             };
-            let mut out = std::collections::HashMap::with_capacity(entries.len());
+            let mut out = Vec::with_capacity(entries.len());
             for (k, v) in entries {
                 let key = identifier(&k.to_string_lossy())?;
                 let level = integer(v)?;
                 if !(1..=255).contains(&level) {
                     return Err("enchantment level outside 1..255".into());
                 }
-                out.insert(key, Value::Int(level));
+                out.push((key, Value::Int(level)));
             }
+            super::normalize_map(&mut out, |(key, _)| key);
             Value::Map(
                 out.into_iter()
                     .map(|(key, value)| (Value::string(&key), value))
@@ -1421,15 +1421,16 @@ fn exact_components(t: &Tag, source: Source) -> Result<Value> {
     let Tag::Compound(entries) = t else {
         return Err("expected component map".into());
     };
-    let mut out = std::collections::HashMap::with_capacity(entries.len());
+    let mut out = Vec::with_capacity(entries.len());
     for (k, v) in entries {
         let name = identifier(&k.to_string_lossy())?;
         if !super::is_persistent(&name) {
             return Err(format!("{name} has no persistent codec"));
         }
         let value = component_tag(&name, v, source)?;
-        out.insert(name, value);
+        out.push((name, value));
     }
+    super::normalize_map(&mut out, |(key, _)| key);
     Ok(Value::Map(
         out.into_iter()
             .map(|(key, value)| (Value::string(&key), value))

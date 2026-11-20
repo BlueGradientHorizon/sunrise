@@ -164,21 +164,12 @@ impl Ops for Values {
         Value::IntArray(v.to_vec())
     }
     fn create_map(mut v: Vec<(Value, Value)>) -> Value {
-        if v.len() <= 1 {
-            return Value::Map(v);
-        }
-        let mut entries = std::collections::HashMap::with_capacity(v.len());
-        for (mut key, value) in v.drain(..) {
-            let Value::String(units) = &mut key else {
+        sunrise_world::component_value::normalize_map(&mut v, |(key, _)| {
+            let Value::String(units) = key else {
                 unreachable!("all stream codec maps have string keys");
             };
-            entries.insert(std::mem::take(units), value);
-        }
-        v.extend(
-            entries
-                .into_iter()
-                .map(|(key, value)| (Value::String(key), value)),
-        );
+            units.as_slice()
+        });
         Value::Map(v)
     }
     fn create_record(fields: Vec<(Value, Value)>) -> Value {

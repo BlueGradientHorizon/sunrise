@@ -146,6 +146,47 @@ impl PartialEq for Value {
         }
     }
 }
+/// Keep the first position of each key and the last value for that key, in
+/// expected linear time. Stream and saved-codec builders use this before
+/// passing the resulting ordered map to either encoder.
+#[doc(hidden)]
+pub fn normalize_map<T, K: Eq + std::hash::Hash + ?Sized>(
+    entries: &mut Vec<T>,
+    key: impl Fn(&T) -> &K,
+) {
+    if entries.len() <= 1 {
+        return;
+    }
+    use std::collections::hash_map::Entry;
+    const KEEP: usize = usize::MAX;
+    const DISCARD: usize = usize::MAX - 1;
+    let mut positions = None;
+    {
+        let mut first = std::collections::HashMap::with_capacity(entries.len());
+        for (index, entry) in entries.iter().enumerate() {
+            match first.entry(key(entry)) {
+                Entry::Vacant(key) => {
+                    key.insert(index);
+                }
+                Entry::Occupied(key) => {
+                    let positions = positions.get_or_insert_with(|| vec![KEEP; entries.len()]);
+                    positions[*key.get()] = index;
+                    positions[index] = DISCARD;
+                }
+            }
+        }
+    }
+    let Some(positions) = positions else { return };
+    // One key's last position cannot be another key's first position.
+    for (first, &last) in positions.iter().enumerate() {
+        if last < DISCARD {
+            entries.swap(first, last);
+        }
+    }
+    let mut positions = positions.into_iter();
+    entries.retain(|_| positions.next().expect("one position per entry") != DISCARD);
+}
+
 /// Like an NBT compound, a canonical map retains the last value for a key.
 fn effective_map(entries: &[(Value, Value)]) -> impl Iterator<Item = &(Value, Value)> {
     entries.iter().enumerate().filter_map(|(index, entry)| {
