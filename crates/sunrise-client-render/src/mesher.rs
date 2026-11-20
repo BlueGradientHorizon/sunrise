@@ -2174,7 +2174,9 @@ impl Mesher<'_> {
     ) -> SectionMesh {
         match plan {
             None => self.mesh_reusing(region, sy, out, scratch),
-            Some(plan) if plan.hides_terrain() => visibility_plan::hidden_terrain(self, region, sy, out),
+            Some(plan) if plan.hides_terrain() => {
+                visibility_plan::hidden_terrain(self, region, sy, out)
+            }
             Some(plan) => self.mesh_masked(region, sy, out, scratch, plan),
         }
     }
@@ -2216,9 +2218,13 @@ impl Mesher<'_> {
             }
         }
         if M::ACTIVE {
-            visibility_plan::substitute(masks, &mut scratch.padded, &self.tables.info, &mut out, [
-                center.x, base_y, center.z,
-            ]);
+            visibility_plan::substitute(
+                masks,
+                &mut scratch.padded,
+                &self.tables.info,
+                &mut out,
+                [center.x, base_y, center.z],
+            );
         }
         let pad = &scratch.padded;
         solid_rows(pad, &self.tables.solid, &mut scratch.solid_rows);
@@ -2269,7 +2275,8 @@ impl Mesher<'_> {
                         continue;
                     }
                     let kept = masks.at(cell);
-                    if state.fluid.kind() != FluidKind::Empty && kept & visibility_plan::FLUID != 0 {
+                    if state.fluid.kind() != FluidKind::Empty && kept & visibility_plan::FLUID != 0
+                    {
                         let start = [out.solid.len(), out.translucent.len()];
                         let water = tints.water(x, y, z);
                         let shade = (
