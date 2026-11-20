@@ -183,30 +183,9 @@ pub(crate) fn poisoned(hook: generated::HookId, id: &str) -> bool {
     })
 }
 
-thread_local! {
-    // Travel runs on the authoritative game thread. Keep only the current tick's
-    // refusals, allocating nothing unless a listener actually produces malformed output.
-    static OUTPUT_REFUSALS: std::cell::RefCell<std::collections::HashSet<(u16, &'static str)>> =
-        std::cell::RefCell::new(std::collections::HashSet::new());
-}
-
-pub(crate) fn reset_output_refusals() {
-    OUTPUT_REFUSALS.with(|refusals| refusals.borrow_mut().clear());
-}
-
 pub(crate) fn first_output_refusal(hook: generated::HookId, id: &'static str) -> bool {
-    OUTPUT_REFUSALS.with(|refusals| refusals.borrow_mut().insert((hook as u16, id)))
-}
-
-#[test]
-fn output_refusal_diagnostics_are_once_per_listener_per_tick() {
-    let hook = generated::HookId::LivingTravel;
-    reset_output_refusals();
-    assert!(first_output_refusal(hook, "first"));
-    assert!(!first_output_refusal(hook, "first"));
-    assert!(first_output_refusal(hook, "second"));
-    reset_output_refusals();
-    assert!(first_output_refusal(hook, "first"));
+    crate::dispatch_scope::backend()
+        .is_none_or(|backend| (backend.diagnostics.first_output_refusal)(hook, id))
 }
 
 /// The process-wide list in dispatch order, or an empty list before installation.
