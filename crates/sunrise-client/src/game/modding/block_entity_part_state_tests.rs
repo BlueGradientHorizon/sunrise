@@ -424,7 +424,6 @@ fn item_slot_writes_save_but_menu_data_is_transient() {
     });
 }
 
-/// What the attachment index answers for `entity`'s `PROGRESS`, without the handle check.
 #[test]
 #[ignore = "daily"]
 fn a_nested_item_write_marks_the_level_written_not_the_level_committing() {
@@ -493,6 +492,7 @@ fn a_nested_item_write_marks_the_level_written_not_the_level_committing() {
     });
 }
 
+/// What the attachment index answers for `entity`'s `PROGRESS`, without the handle check.
 fn indexed(game: &Game<'_>, entity: BlockEntityRef) -> Option<i32> {
     use mod_api::AttachmentQueries;
     let host: &dyn mod_api::Host = game;
