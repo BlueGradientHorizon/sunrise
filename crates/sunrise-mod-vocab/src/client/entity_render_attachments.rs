@@ -113,7 +113,10 @@ impl EntityRenderAttachments {
 }
 
 impl Wire for Snapshot {
-    crate::wire::layout_fields!("fields" => Vec<(String, String, Vec<u8>)>);
+    crate::wire::layout_fields!(
+        ordinary_only "ordered-render-attachment-nbt:v1";
+        "fields" => Vec<(String, String, Vec<u8>)>,
+    );
     const MIN: usize = 4;
 
     fn put(&self, out: &mut Writer) {

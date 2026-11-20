@@ -252,6 +252,7 @@ fn typed_static_strings_and_unmetered_documents_are_refused() {
     ordinary_only(&Text::literal("owned text"));
     ordinary_only(&serde_json::json!({"field": []}));
     ordinary_only(&serde_json::Map::<String, serde_json::Value>::new());
+    ordinary_only(&crate::LegacyRandomSource::new(42)); // a #[wire(via = ...)] conversion
     assert_eq!(
         decode_payload::<String>(&[1, 0, 0, 0, b'a']),
         Ok("a".to_owned())
@@ -265,17 +266,86 @@ fn typed_static_strings_and_unmetered_documents_are_refused() {
 #[test]
 fn sparse_maps_must_fit_their_retained_backing_storage() {
     use std::collections::BTreeMap;
-    type Maps = Vec<BTreeMap<[u8; 1024], ()>>;
+    type Maps = Vec<BTreeMap<u8, Option<[u8; 2048]>>>;
 
-    // Each single-entry map retains a full B-tree node, not one key-sized slot.
-    let single = BTreeMap::from([([0; 1024], ())]);
-    let mut bytes = vec![0x20, 3, 0, 0]; // 800 maps, all with one key and a zero-width value.
-    let mut one = vec![1, 0, 0, 0];
-    one.resize(1028, 0);
-    bytes.extend(one.repeat(800));
+    // The thousand map nodes alone have room for eleven 2 KiB values each. The
+    // absent values in the body need only one tag byte apiece.
+    let single = BTreeMap::from([(1u8, None::<[u8; 2048]>)]);
+    let mut bytes = vec![0xe8, 3, 0, 0];
+    bytes.extend([1, 0, 0, 0, 1, 0].repeat(1000));
     assert_eq!(
-        encode_payload(&vec![single; 800], bytes.len()),
+        encode_payload(&vec![single; 1000], bytes.len()),
         Err(WireError::Budget)
     );
     assert_eq!(decode_payload::<Maps>(&bytes), Err(WireError::Budget));
+}
+
+#[test]
+fn nbt_containers_share_the_remaining_typed_depth() {
+    use crate::Tag;
+
+    // An enclosing Box consumes one of the 64 levels. The 64th one is a
+    // single-element NBT list; the end tag itself is not a container.
+    let links = usize::from(PAYLOAD_MAX_DEPTH - 1);
+    let tree = Box::new((0..links).fold(Tag::End, |inner, _| Tag::List(vec![inner])));
+    let mut bytes = [9, 0, 0, 0, 1, 0, 0, 0].repeat(links);
+    bytes.extend([0; 4]);
+    assert_eq!(encode_payload(&tree, bytes.len()).unwrap(), bytes);
+    assert_eq!(decode_payload::<Box<Tag>>(&bytes).as_ref(), Ok(&tree));
+
+    let over = Box::new(Tag::List(vec![*tree]));
+    let bytes = [&[9, 0, 0, 0, 1, 0, 0, 0], bytes.as_slice()].concat();
+    assert_eq!(encode_payload(&over, bytes.len()), Err(WireError::Depth));
+    assert_eq!(decode_payload::<Box<Tag>>(&bytes), Err(WireError::Depth));
+    assert!(Reader::decode::<Box<Tag>>(&bytes).is_ok());
+}
+
+#[test]
+fn checked_decoders_do_not_share_the_raw_representations_fingerprint() {
+    assert_ne!(
+        payload_schema::<crate::EntityTypeKey>(),
+        payload_schema::<u32>()
+    );
+    assert_ne!(
+        payload_schema::<serde_json::Map<String, serde_json::Value>>(),
+        payload_schema::<serde_json::Value>()
+    );
+    assert_ne!(payload_schema::<&str>(), payload_schema::<String>());
+    assert_ne!(
+        payload_schema::<crate::ModelPart>(),
+        payload_schema::<String>()
+    );
+}
+
+#[test]
+fn the_checked_entry_points_cap_the_whole_body() {
+    #[derive(Debug, PartialEq)]
+    struct RawBytes(usize);
+    impl Wire for RawBytes {
+        const MIN: usize = 0;
+        fn describe(_: &mut WireSchema) -> u64 {
+            WireSchema::leaf("test:raw-bytes")
+        }
+        fn put(&self, out: &mut Writer) {
+            let block = [0; 4096];
+            for _ in 0..self.0 / block.len() {
+                out.put_bytes(&block);
+            }
+            out.put_bytes(&block[..self.0 % block.len()]);
+        }
+        fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
+            input
+                .take_bytes(input.rest().len())
+                .map(|bytes| Self(bytes.len()))
+        }
+    }
+    let limit = PAYLOAD_DECODE_BUDGET;
+    let mut bytes = encode_payload(&RawBytes(limit), usize::MAX).unwrap();
+    assert_eq!(decode_payload(&bytes), Ok(RawBytes(limit)));
+    bytes.push(0);
+    assert_eq!(
+        encode_payload(&RawBytes(limit + 1), usize::MAX),
+        Err(WireError::Length)
+    );
+    assert_eq!(decode_payload::<RawBytes>(&bytes), Err(WireError::Length));
 }

@@ -4,7 +4,7 @@ use crate::text::{Text, TextForm};
 
 impl Wire for Text {
     const MIN: usize = TextForm::MIN;
-    layout_via!(TextForm, "validated-text-node-table");
+    layout_via!(TextForm, "validated-text-node-table:v1", ordinary_only);
     fn put(&self, out: &mut Writer) {
         // Rebuilding the tree from its node table cannot charge the payload budget.
         if !out.ordinary_only() {

@@ -1,10 +1,10 @@
 # Wire types
 
 `mod_api::wire::{Wire, Reader, Writer, WireError}` defines the codec used by
-[typed payload tokens](../how-to/client/networking.md#typed-payloads) and
-[recipe placement and recipe-book sync](../crafting-recipe-kinds.md). Typed payload bodies
-use `PayloadCodec`, not `Wire`. Derive `mod_api::Wire` explicitly on a type that needs
-this encoding. The build never adds the derive. Every field of a derived type must
+[typed payload tokens and bodies](../how-to/client/networking.md#typed-payloads) and
+[recipe placement and recipe-book sync](../crafting-recipe-kinds.md). A typed body is one
+bounded Wire value with no extra envelope; raw channels carry caller-supplied bytes.
+Derive `mod_api::Wire` explicitly on a type that needs this encoding. The build never adds the derive. Every field of a derived type must
 also implement `Wire`.
 
 ```rust,ignore
@@ -29,16 +29,16 @@ entering level 33; the writer records the same error. Always check `Writer::erro
 before sending its bytes. This is a transport budget for unbounded mod-defined
 trees, including ingredients, item places, loot vehicles and recipe slot displays.
 
-Typed payloads use the same encoding with their own limits. They count list, present
-option and box levels, not records, and enforce `PAYLOAD_MAX_DEPTH`. String and list
-lengths are bounded by `PAYLOAD_MAX_STRING_BYTES` and `PAYLOAD_MAX_LIST_ENTRIES`.
-The reader and writer both charge `PAYLOAD_DECODE_BUDGET` for decoded storage, apart
-from the transport's byte limit. A failed encode is never queued.
+Typed payloads use the same encoding with their own limits. They count lists, present
+options, boxes, shared pointers, NBT containers and explicit recursion, not derived record
+frames, against `PAYLOAD_MAX_DEPTH`. String and list lengths are bounded by
+`PAYLOAD_MAX_STRING_BYTES` and `PAYLOAD_MAX_LIST_ENTRIES`. The reader and writer both
+charge `PAYLOAD_DECODE_BUDGET` for decoded storage, separately from the 8 MiB body cap.
+A failed encode is never queued.
 
-Vanilla trees are not restricted by that structural budget: NBT `Tag` uses an
-explicit work stack with **512** nested containers; `Text` crosses as the existing
-validated flat `TextForm` table, preserving its **512** component-depth contract.
-Text's layout identity is the flat table's identity.
+Ordinary Wire keeps the NBT `Tag` limit of **512** containers and the `Text` limit of
+**512** nested components. `Text` crosses as the validated flat `TextForm` table in
+ordinary Wire; it is not admitted to typed payloads.
 
 JSON-backed `serde_json::Value`, JSON maps and `ModelPart` also refuse beyond
 32 JSON containers. Their encoders preflight the in-memory tree iteratively
@@ -60,7 +60,10 @@ from `Compound::into_values()` for each `Tag::Compound`; drop leaf tags as you g
 Use `#[wire(via = String)]` (or another `Wire` type) when a checked constructor owns
 validation. Implement `From<&YourType> for String` and `TryFrom<String> for YourType`.
 The derive writes the representation and maps a failed conversion to
-`WireError::Invalid`. Its layout is the representation's layout.
+`WireError::Invalid`. Its layout is the representation's layout. The conversion can
+allocate outside Wire's budget, so this form is available only to ordinary Wire. For a
+checked typed payload, implement `Wire` explicitly, bound any storage the codec itself
+allocates, and give a different validation contract its own versioned identity.
 
 ## Layout identity
 

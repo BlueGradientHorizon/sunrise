@@ -48,12 +48,16 @@ pub(crate) fn expand(mut input: DeriveInput) -> syn::Result<TokenStream> {
             impl #imp #w::Wire for #name #ty #clause {
                 const MIN: usize = <#via as #w::Wire>::MIN;
                 fn describe(schema: &mut #w::WireSchema) -> u64 where Self: 'static {
+                    schema.ordinary_only();
                     schema.named::<Self>(|schema| <#via as #w::Wire>::describe(schema))
                 }
                 fn put(&self, out: &mut #w::Writer) {
-                    out.put(&<#via as ::core::convert::From<&Self>>::from(self));
+                    if out.ordinary_only() {
+                        out.put(&<#via as ::core::convert::From<&Self>>::from(self));
+                    }
                 }
                 fn take(input: &mut #w::Reader<'_>) -> ::core::result::Result<Self, #w::WireError> {
+                    input.ordinary_only()?;
                     <Self as ::core::convert::TryFrom<#via>>::try_from(input.take::<#via>()?)
                         .map_err(|_| #w::WireError::Invalid(::core::stringify!(#name)))
                 }

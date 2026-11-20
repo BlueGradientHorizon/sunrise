@@ -5,6 +5,17 @@ use crate::{
     EntityTypeKey, FluidKey, IntGameRuleKey, ItemKey, MenuKey, TagKey, UnresolvedFluid,
 };
 
+impl Wire for EntityTypeKey {
+    layout_via!(u32, "registered-entity-type-slot:v1");
+    const MIN: usize = <u32 as Wire>::MIN;
+    fn put(&self, out: &mut Writer) {
+        out.put(&u32::from(self));
+    }
+    fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
+        Self::try_from(input.take::<u32>()?).map_err(|_| WireError::Invalid("EntityTypeKey"))
+    }
+}
+
 impl Wire for crate::ItemResource {
     layout_fields!("stack" => crate::ItemStack);
     const MIN: usize = crate::ItemStack::MIN;
@@ -753,7 +764,7 @@ impl crate::wire::Wire for crate::Tag {
     }
 }
 impl crate::wire::Wire for serde_json::Value {
-    layout_via!(String, "validated-json-value");
+    layout_via!(String, "validated-json-value:v1", ordinary_only);
     const MIN: usize = 4;
     fn put(&self, out: &mut crate::wire::Writer) {
         if !out.ordinary_only() {
@@ -968,7 +979,7 @@ impl crate::wire::Wire for crate::LevelDimension {
     }
 }
 impl crate::wire::Wire for serde_json::Map<String, serde_json::Value> {
-    layout_via!(String, "validated-json-object");
+    layout_via!(String, "validated-json-object:v1", ordinary_only);
     const MIN: usize = 4;
     fn put(&self, out: &mut crate::wire::Writer) {
         if !out.ordinary_only() {

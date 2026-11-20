@@ -59,7 +59,7 @@ pub(super) fn take<T: serde::de::DeserializeOwned>(input: &mut Reader<'_>) -> Re
 
 impl Wire for crate::ModelPart {
     const MIN: usize = String::MIN;
-    layout_via!(String, "validated-model-part-json");
+    layout_via!(String, "validated-model-part-json:v1", ordinary_only);
     fn put(&self, out: &mut Writer) {
         if !out.ordinary_only() {
             return;
@@ -87,7 +87,7 @@ impl Wire for crate::ModelPart {
 
 impl Wire for crate::MeshDefinition {
     const MIN: usize = String::MIN;
-    layout_via!(String, "validated-mesh-definition-json");
+    layout_via!(String, "validated-mesh-definition-json:v1", ordinary_only);
     fn put(&self, out: &mut Writer) {
         if out.ordinary_only() {
             out.put_str(&String::from(self));

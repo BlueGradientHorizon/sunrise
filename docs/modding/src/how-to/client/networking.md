@@ -61,9 +61,9 @@ little-endian numbers and lengths; it is not the vanilla packet codec. Use a raw
 when another implementation requires a specific byte format.
 
 Use owned `String` fields, not `&'static str`: the network codec never interns incoming text.
-Wire forms backed by a separate parser or an unmetered tree conversion (such as `ModelPart`,
-JSON values, or `Text`) are refused in typed payloads. Send bounded owned fields and convert
-explicitly where you need those types.
+The registrar refuses channels that use static strings or Wire forms backed by a separate
+parser or an unmetered tree conversion (such as `ModelPart`, JSON values, or `Text`), even in
+nested fields. Send bounded owned fields and convert explicitly where you need those types.
 
 Derive `Wire` for the value, register it in `Hooks::register`, and keep the token the
 registrar returns:
@@ -137,6 +137,9 @@ fn register(r: &mut dyn Registrar) {
   type has another encoding is refused at join when the payload is required; when both sides
   declared it `optional()`, it is absent and a send returns `UnsupportedPeer`. A body that kept
   its encoding (for example, a record of `u8` and `bool`) still negotiates with the old codec.
+  The fingerprint describes the negotiated encoding, not what a field or variant means.
+  If you reorder fields or variants that have the same encoding, or reuse a position for a
+  different meaning, bump the registrar's application version even if the fingerprint is unchanged.
 - **Named errors.** `PayloadSendError::StaleToken` for a token the registrar did not hand out
   as it claims (forged, from another load, read as another type, or its mod off);
   `EncodeFailed` for a value the peer could not decode (a bound or the allocation budget),

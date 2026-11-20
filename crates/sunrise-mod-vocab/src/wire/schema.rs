@@ -9,9 +9,19 @@ use std::any::TypeId;
 #[derive(Default)]
 pub struct WireSchema {
     ancestors: Vec<TypeId>,
+    ordinary_only: bool,
 }
 
 impl WireSchema {
+    /// Mark a form that requires an unmetered conversion; used by Wire's derives.
+    #[doc(hidden)]
+    pub fn ordinary_only(&mut self) {
+        self.ordinary_only = true;
+    }
+
+    pub(crate) fn admits_payload(&self) -> bool {
+        !self.ordinary_only
+    }
     /// A format with no child fields. Use a distinct versioned name for a different encoding.
     pub const fn leaf(name: &str) -> u64 {
         let mut hash = 0xcbf2_9ce4_8422_2325u64;

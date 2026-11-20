@@ -1,5 +1,5 @@
 //! Stack-independent traversal of the vanilla NBT tree in the shared Wire format.
-use super::{Reader, WireError, Writer};
+use super::{PAYLOAD_MAX_DEPTH, Reader, WireError, Writer};
 use crate::Tag;
 use sunrise_core::nbt::{Compound, JavaString, discard_tag};
 
@@ -11,6 +11,18 @@ enum WriteFrame<'a> {
 }
 
 pub(super) fn put(tag: &Tag, out: &mut Writer) {
+    let start = out.depth;
+    put_tree(tag, out, start);
+    out.depth = start;
+}
+
+fn put_tree(tag: &Tag, out: &mut Writer, start: u16) {
+    let bounded = out.payload.is_some();
+    let limit = if bounded {
+        usize::from(PAYLOAD_MAX_DEPTH - start)
+    } else {
+        CONTAINERS
+    };
     // One iterator per ancestor, never one allocation per value or one slot
     // per sibling. Even a wide compound uses only its bounded ancestor stack.
     let mut frames: [Option<WriteFrame<'_>>; CONTAINERS] = [const { None }; CONTAINERS];
@@ -18,7 +30,7 @@ pub(super) fn put(tag: &Tag, out: &mut Writer) {
     let mut current = tag;
     loop {
         let tag = current;
-        if matches!(tag, Tag::List(_) | Tag::Compound(_)) && len >= CONTAINERS {
+        if matches!(tag, Tag::List(_) | Tag::Compound(_)) && len >= limit {
             out.fail(WireError::Depth);
             return;
         }
@@ -92,6 +104,9 @@ pub(super) fn put(tag: &Tag, out: &mut Writer) {
             if len == 0 {
                 return;
             }
+            if bounded {
+                out.depth = start + len as u16;
+            }
             let next = match frames[len - 1].as_mut().unwrap() {
                 WriteFrame::List(values) => values.next(),
                 WriteFrame::Map(values) => values.next().map(|(key, value)| {
@@ -115,11 +130,21 @@ enum Frame {
 }
 
 pub(super) fn take(input: &mut Reader<'_>) -> Result<Tag, WireError> {
+    let start = input.depth;
+    let bounded = input.budget.is_some();
+    let limit = if bounded {
+        usize::from(PAYLOAD_MAX_DEPTH - start)
+    } else {
+        CONTAINERS
+    };
     let mut frames = Vec::new();
     let result = (|| {
         loop {
+            if bounded {
+                input.depth = start + frames.len() as u16;
+            }
             let code = input.take::<u32>()?;
-            if (code == 9 || code == 10) && frames.len() >= CONTAINERS {
+            if (code == 9 || code == 10) && frames.len() >= limit {
                 return Err(WireError::Depth);
             }
             let mut value = match code {
@@ -147,6 +172,9 @@ pub(super) fn take(input: &mut Reader<'_>) -> Result<Tag, WireError> {
                     input.charge_with(|budget| budget.compound(len))?;
                     if len != 0 {
                         input.charge::<Frame>(4)?;
+                        if bounded {
+                            input.depth += 1;
+                        }
                         let key = input.take()?;
                         frames.push(Frame::Map(len, Compound::new(), key));
                         continue;
@@ -158,6 +186,9 @@ pub(super) fn take(input: &mut Reader<'_>) -> Result<Tag, WireError> {
                 other => return Err(WireError::Tag(other)),
             };
             loop {
+                if bounded {
+                    input.depth = start + frames.len() as u16;
+                }
                 match frames.last_mut() {
                     None => return Ok(value),
                     Some(Frame::List(left, values)) => {
@@ -189,6 +220,7 @@ pub(super) fn take(input: &mut Reader<'_>) -> Result<Tag, WireError> {
             }
         }
     })();
+    input.depth = start;
     for frame in frames {
         match frame {
             Frame::List(_, values) => discard_tag(Tag::List(values)),

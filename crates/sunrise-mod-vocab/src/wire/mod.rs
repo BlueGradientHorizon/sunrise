@@ -1,4 +1,5 @@
-//! Canonical binary encoding for owned API values, including typed network payloads.
+//! Canonical binary encoding for owned API values, including typed payload tokens and bodies.
+//! A typed body is one bounded Wire value with no envelope; raw channels use caller-supplied bytes.
 //!
 //! Everything is little-endian and self-delimiting: a length is a `u32` before its items, an
 //! `Option` is a tag byte, an enum is a `u32` case then its fields, a record is its fields in
@@ -8,8 +9,8 @@
 //! never an allocation larger than the input can back.
 //!
 //! Derive [`Wire`](crate::Wire) on types that cross a target boundary. The derive encodes
-//! fields in declaration order; checked constructors can use `#[wire(via = T)]`.
-//! Hand-written implementations declare how they cross with `layout_fields!` or `layout_via!`.
+//! fields in declaration order; ordinary Wire can use checked constructors via `#[wire(via = T)]`.
+//! Hand-written codecs implement [`Wire::describe`] with [`WireSchema`].
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::hash::Hash;
 use std::sync::Arc;
@@ -200,6 +201,36 @@ impl Writer {
             self.bytes.extend_from_slice(text.as_bytes());
         }
     }
+    fn put_slice<T: Put>(&mut self, items: &[T], min: usize) {
+        self.payload_nested(|out| {
+            if out.payload.is_some() {
+                let Some(len) = out.list_len(items.len()) else {
+                    return;
+                };
+                let Some(size) = min
+                    .checked_mul(items.len())
+                    .and_then(|size| size.checked_add(4))
+                else {
+                    out.fail(WireError::Length);
+                    return;
+                };
+                if !out.can_fit(size) || !out.charge::<T>(items.len()) {
+                    return;
+                }
+                // When the count itself needs growth, reserve for the known minimum too.
+                // Otherwise let the next value reserve its actual size (e.g. a long string).
+                if out.bytes.capacity() - out.bytes.len() < 4 {
+                    out.bytes.reserve(size);
+                }
+                out.bytes.extend_from_slice(&len.to_le_bytes());
+            } else {
+                out.put_len(items.len());
+            }
+            for item in items {
+                out.put(item);
+            }
+        });
+    }
     /// A length or count.
     pub fn put_len(&mut self, len: usize) {
         if let Some(len) = self.list_len(len) {
@@ -292,7 +323,9 @@ impl Writer {
         }
         true
     }
-    pub(crate) fn ordinary_only(&mut self) -> bool {
+    /// Refuse bounded encoding before invoking an unmetered conversion.
+    #[doc(hidden)]
+    pub fn ordinary_only(&mut self) -> bool {
         if self.payload.is_some() {
             self.fail(UNBOUNDED_PAYLOAD_FORM);
             return false;
@@ -330,8 +363,9 @@ impl Put for str {
 
 impl Wire for &str {
     const MIN: usize = 4;
-    fn describe(_: &mut WireSchema) -> u64 {
-        WireSchema::leaf("process-interned-utf8:u32-le-length")
+    fn describe(schema: &mut WireSchema) -> u64 {
+        schema.ordinary_only();
+        WireSchema::leaf("process-interned-utf8:u32-le-length:v1")
     }
     fn put(&self, out: &mut Writer) {
         if out.ordinary_only() {
@@ -346,14 +380,7 @@ impl Wire for &str {
 
 impl<T: Put> Put for [T] {
     fn put_to(&self, out: &mut Writer) {
-        out.payload_nested(|out| {
-            if out.charge::<T>(self.len()) {
-                out.put_len(self.len());
-                for item in self {
-                    out.put(item);
-                }
-            }
-        });
+        out.put_slice(self, 0);
     }
 }
 
@@ -518,7 +545,9 @@ impl<'a> Reader<'a> {
             None => Ok(()),
         }
     }
-    pub(crate) fn ordinary_only(&self) -> Result<(), WireError> {
+    /// Refuse bounded decoding before invoking an unmetered conversion.
+    #[doc(hidden)]
+    pub fn ordinary_only(&self) -> Result<(), WireError> {
         if self.budget.is_some() {
             return Err(UNBOUNDED_PAYLOAD_FORM);
         }
@@ -557,7 +586,7 @@ pub trait Wire: Sized {
     /// Internal list codec; primitive numbers override this with a contiguous codec.
     #[doc(hidden)]
     fn put_list(items: &[Self], out: &mut Writer) {
-        Put::put_to(items, out);
+        out.put_slice(items, Self::MIN);
     }
     // hidden: internal Vec decoding specialization for contiguous numeric payloads
     #[doc(hidden)]
@@ -915,6 +944,9 @@ impl<T: Wire, const N: usize> Wire for [T; N] {
         }
     }
     fn take(input: &mut Reader<'_>) -> Result<Self, WireError> {
+        if input.budget.is_some() && Self::MIN > input.rest().len() {
+            return Err(WireError::Eof);
+        }
         input.charge::<T>(N)?;
         let mut items = Vec::with_capacity(N);
         for _ in 0..N {
@@ -1044,11 +1076,13 @@ impl Wire for std::time::Duration {
 
 // The same declarations feed the runtime fingerprint and the SDK surface generator.
 macro_rules! layout_fields {
-    ($($field:literal => $ty:ty),* $(,)?) => {
+    ($($availability:ident $contract:literal;)? $($field:literal => $ty:ty),* $(,)?) => {
         fn describe(schema: &mut $crate::wire::WireSchema) -> u64 {
             use $crate::wire::WireSchema;
+            $(schema.$availability();)?
             schema.named::<Self>(|schema| {
                 let hash = WireSchema::leaf("wire-layout-v1");
+                $(let hash = WireSchema::mix(hash, WireSchema::leaf($contract));)?
                 $(
                     // Explicit enum tags are part of the bytes; field and variant names are not.
                     let hash = if let Some((tag, _)) = $field.split_once(':') {
@@ -1065,9 +1099,10 @@ macro_rules! layout_fields {
 }
 pub(crate) use layout_fields;
 macro_rules! layout_via {
-    ($ty:ty, $contract:literal) => {
+    ($ty:ty, $contract:literal $(, $availability:ident)?) => {
         fn describe(schema: &mut $crate::wire::WireSchema) -> u64 {
             use $crate::wire::WireSchema;
+            $(schema.$availability();)?
             schema.named::<Self>(|schema| {
                 WireSchema::mix(
                     WireSchema::leaf($contract),

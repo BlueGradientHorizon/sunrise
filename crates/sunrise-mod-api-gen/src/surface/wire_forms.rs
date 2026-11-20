@@ -46,11 +46,16 @@ fn layout_fields(tokens: proc_macro2::TokenStream) -> Option<Vec<(String, Type)>
             Ok(Self(name.value(), input.parse()?))
         }
     }
-    let pairs = syn::parse::Parser::parse2(
-        syn::punctuated::Punctuated::<Pair, syn::Token![,]>::parse_terminated,
-        tokens,
-    )
-    .ok()?;
+    let fields = |input: syn::parse::ParseStream| {
+        // A contract prefix affects admission, not the ordinary encoded fields.
+        if input.peek(syn::Ident) {
+            input.parse::<syn::Ident>()?;
+            input.parse::<syn::LitStr>()?;
+            input.parse::<syn::Token![;]>()?;
+        }
+        syn::punctuated::Punctuated::<Pair, syn::Token![,]>::parse_terminated(input)
+    };
+    let pairs = syn::parse::Parser::parse2(fields, tokens).ok()?;
     Some(pairs.into_iter().map(|Pair(n, t)| (n, t)).collect())
 }
 
@@ -74,6 +79,10 @@ fn impl_form(items: &[syn::ImplItem], module: usize) -> WireForm {
                     if !input.is_empty() {
                         input.parse::<syn::Token![,]>()?;
                         input.parse::<syn::LitStr>()?;
+                        if !input.is_empty() {
+                            input.parse::<syn::Token![,]>()?;
+                            input.parse::<syn::Ident>()?;
+                        }
                     }
                     Ok(ty)
                 };
