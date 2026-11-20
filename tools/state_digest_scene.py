@@ -62,6 +62,7 @@ VILLAGE = (64, 38)  # bell position (x, z); the players of --coverage stand besi
 VILLAGE_BEDS = (-8, -6, -4, 4, 6)  # bed x offsets from the bell: CatSpawner needs more than four
 DAY_TIME = 17000  # the run crosses 18000, the siege roll, and the sky stays dark
 SPIT_FOX = 'cov_spit'
+SPIT_FOX_UUID = (24726, 0, 7, 1)
 TRADER_DELAY = 1200  # the saved spawn delay of --coverage: the spawner's first pass, at tick 1200, rolls
 TRADER_FRESH = 24000  # WanderingTraderSpawner's delay after a roll
 
@@ -113,7 +114,9 @@ def coverage_checks(run, world, owner=None):
         if not ok:
             missed.append(label)
     fox = run([f'data get entity @e[type=fox,tag={SPIT_FOX},limit=1] equipment.mainhand.id'])
-    need('fox_spit', any('minecraft:mushroom_stew' in line or 'minecraft:bowl' in line for line in fox))
+    spitter = ','.join(map(str, SPIT_FOX_UUID))
+    need('fox_spit', passed(f'execute if entity @e[type=minecraft:item,nbt={{Thrower:[I;{spitter}]}}]')
+         or any('has the following entity data' in line and 'minecraft:stick' not in line for line in fox))
     run(['save-all flush'])
     trader = dat_ints(world / 'data' / 'minecraft' / 'wandering_trader.dat')
     lines.append(f'trader spawn_delay={trader.get("spawn_delay")} spawn_chance={trader.get("spawn_chance")}')
@@ -147,8 +150,10 @@ def coverage_commands():
         x = 10 + k * 4
         commands.append(f'summon minecraft:fox {x}.5 {y} 22.5 {{CanPickUpLoot:1b}}')
         commands.append(item(f'{x + 1}.5', y, '22.5', ['sweet_berries', 'rabbit', 'sweet_berries', 'rabbit'][k], 3 if k == 0 else 1))
-    # Only food replacing the stick, which the fox spits out, puts the stew (or, eaten, its bowl) in its mouth: checked.
-    commands.append(f'summon minecraft:fox 26.5 {y} 22.5 {{CanPickUpLoot:1b,Tags:["{SPIT_FOX}"],{held("stick")}}}')
+    # Food replaces the stick, which the fox spits out with itself as thrower: checked. Invulnerable, so wolves leave it.
+    spitter = ','.join(map(str, SPIT_FOX_UUID))
+    commands.append(f'summon minecraft:fox 26.5 {y} 22.5 {{CanPickUpLoot:1b,Invulnerable:1b,UUID:[I;{spitter}],'
+                    f'Tags:["{SPIT_FOX}"],{held("stick")}}}')
     commands.append(item('27.5', y, '22.5', 'mushroom_stew'))
     commands.append(f'fill 30 {y - 3} 20 35 {y - 1} 25 minecraft:water')  # a 6x6x3 pool flush with the ground
     for k in range(3):
