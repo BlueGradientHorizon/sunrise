@@ -456,23 +456,6 @@ jobs:
           path: dist/${{ matrix.server_asset }}
           if-no-files-found: error
           retention-days: 3
-      # Cargo's --timings reports of this leg's release builds: which units the build waits on (the Nightly's legs
-      # take most of its time). A report, never a release asset: in a folder named for the leg, which the publish
-      # job's download takes but never uploads.
-      - name: The build's timings, by leg
-        if: ${{ !cancelled() }}
-        continue-on-error: true
-        run: |
-          mkdir -p "$RUNNER_TEMP/cargo-timings/${{ matrix.name }}"
-          cp target/cargo-timings/cargo-timing-*.html "$RUNNER_TEMP/cargo-timings/${{ matrix.name }}/"
-      - uses: actions/upload-artifact@v7
-        if: ${{ !cancelled() }}
-        continue-on-error: true
-        with:
-          name: cargo-timings-${{ matrix.name }}
-          path: ${{ runner.temp }}/cargo-timings
-          if-no-files-found: warn
-          retention-days: 7
       # The leg's last step: legs below counts a leg as built only once this marker exists. A leg built for another
       # CPU gets its marker from the job that started its programs there.
       - name: This leg built
@@ -488,6 +471,23 @@ jobs:
       - name: The signing keychain, locked again
         if: always() && runner.os == 'macOS' && vars.MACOS_SIGN_IDENTITY != '' && inputs.developer_id
         run: packaging/macos/keychain.sh lock
+      # Cargo's --timings reports of this leg's release builds: which units the build waits on (the Nightly's legs
+      # take most of its time). A report, never a release asset, and after the leg's marker so a stalled upload
+      # cannot keep the leg from counting as built.
+      - name: The build's timings, by leg
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: |
+          mkdir -p "$RUNNER_TEMP/cargo-timings/${{ matrix.name }}"
+          cp target/cargo-timings/cargo-timing-*.html "$RUNNER_TEMP/cargo-timings/${{ matrix.name }}/"
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        with:
+          name: cargo-timings-${{ matrix.name }}
+          path: ${{ runner.temp }}/cargo-timings
+          if-no-files-found: warn
+          retention-days: 7
 
   # Whether the build is complete: every required leg left its marker. An optional leg (build's continue-on-error)
   # that failed, timed out or was cancelled drops out alike; a cancelled run stops here.
