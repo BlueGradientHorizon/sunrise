@@ -56,30 +56,30 @@ impl Game<'_> {
         &self,
         entity: EntityRef,
     ) -> Result<Option<PushReaction>, LevelReadError> {
-        use super::api_values::TryIntoApi;
-        use super::entity::Entity;
+        use super::api_values::api_push_reaction;
+        use super::entity::{Entity, with_entity};
         use super::general::general_type_catalog;
 
         let target = self.native_entity_read_target(entity);
-        if let Some(Target::Stand(id)) = target {
-            let stand = self.armor_stands.iter().find(|stand| stand.id == id);
-            return Ok(stand.map(|stand| stand.get_piston_push_reaction().try_into_api().unwrap()));
-        }
-        if let Some(Target::General(id)) = target {
-            return Ok(self
-                .resident_entities
-                .general
-                .row(id)
-                .map(|row| general_type_catalog().piston_push_reaction(row.type_slot)));
+        if let Some(handle) = target.and_then(|_| self.native_walk_entity(entity.id())) {
+            let reaction = with_entity!(self, handle, row => row.get_piston_push_reaction());
+            return Ok(Some(api_push_reaction(reaction)));
         }
         if let Some(row) = self.native_client_general(entity) {
-            return Ok(Some(
-                general_type_catalog().piston_push_reaction(row.type_slot),
-            ));
+            // A tracked general row has no Entity body; both sides use its declared type.
+            let reaction = general_type_catalog().piston_push_reaction(row.type_slot);
+            return Ok(Some(api_push_reaction(reaction)));
+        }
+        if target.is_none()
+            && self.native_lifecycle.epoch() == Some(entity.epoch())
+            && let Some((_, mob)) = self.mob_in_other_level(entity.id())
+        {
+            return Ok(Some(api_push_reaction(mob.get_piston_push_reaction())));
         }
         Ok(self
             .native_kind_for_physical_read(entity, target)
             .map(|kind| match kind {
+                // These kinds have no Entity body for the engine's piston to push.
                 "minecraft:marker"
                 | "minecraft:interaction"
                 | "minecraft:block_display"
@@ -166,6 +166,7 @@ mod tests {
             game.spawn_entity(11, "minecraft:armor_stand", [0.0; 3], [0.0; 3]);
             game.spawn_entity(12, "minecraft:item_frame", [0.0; 3], [0.0; 3]);
             game.spawn_entity(13, "minecraft:leash_knot", [0.0; 3], [0.0; 3]);
+            game.spawn_entity(14, "minecraft:block_display", [0.0; 3], [0.0; 3]);
             game.armor_stands.push(ArmorStand::new(11, Vec3::ZERO, 0.0));
             assert_eq!(read(game, 11), (PushPull, false));
             game.armor_stands.update(0, |stand| stand.marker = true);
@@ -173,6 +174,7 @@ mod tests {
             assert_eq!(read(game, 11), (IgnoreEntity, false));
             assert_eq!(read(game, 12), (PushPull, true));
             assert_eq!(read(game, 13), (PushPull, false));
+            assert_eq!(read(game, 14), (IgnoreEntity, false));
 
             let stale = EntityRef::new(mod_api::WorldEpoch::new(0), 11);
             assert_eq!(stale.piston_push_reaction(game), Ok(None));
