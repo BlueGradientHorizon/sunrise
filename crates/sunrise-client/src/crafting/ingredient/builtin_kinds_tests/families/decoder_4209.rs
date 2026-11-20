@@ -210,12 +210,9 @@ fn use_effects_component_recipe_decodes_defaults_bounds_and_matches() {
     }
     // Unknown Java string keys are ignored, not lossy-decoded into known fields.
     let tag = Tag::Compound(
-        [(
-            sunrise_core::nbt::JavaString::from(vec![0xd800]),
-            Tag::Int(1),
-        )]
-        .into_iter()
-        .collect(),
+        [(sunrise_core::nbt::JavaString(vec![0xd800]), Tag::Int(1))]
+            .into_iter()
+            .collect(),
     );
     stack
         .data_mut()

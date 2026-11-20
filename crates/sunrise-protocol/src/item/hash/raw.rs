@@ -81,7 +81,7 @@ fn typed_with_id(id: HashCode, tag: &sunrise_core::nbt::Compound) -> HashCode {
         .iter()
         .map(|(k, v)| {
             (
-                HashOps::create_string_units(k.units()),
+                HashOps::create_string_units(&k.0),
                 HashOps::from_nbt(v, &[]),
             )
         })

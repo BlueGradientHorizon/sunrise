@@ -2,9 +2,10 @@
 
 `mod_api::wire::{Wire, Reader, Writer, WireError}` defines the codec used by
 [typed payload tokens](../how-to/client/networking.md#typed-payloads) and
-[recipe placement and recipe-book sync](../crafting-recipe-kinds.md). Derive `mod_api::Wire` explicitly on a type
-that needs this encoding. The build never adds the derive. Every field of a derived type must also
-implement `Wire`.
+[recipe placement and recipe-book sync](../crafting-recipe-kinds.md). Typed payload bodies
+use `PayloadCodec`, not `Wire`. Derive `mod_api::Wire` explicitly on a type that needs
+this encoding. The build never adds the derive. Every field of a derived type must
+also implement `Wire`.
 
 ```rust,ignore
 #[derive(mod_api::Wire)]
@@ -50,8 +51,9 @@ reader cannot police code outside its codec.
 
 Encoding borrows the input (`writer.put(&value)`); the caller still owns it.
 Constructing an arbitrarily deep Rust tree and then dropping it can overflow a
-thread independently of Wire. Use explicit work stacks when disposing of hostile
-trees (`discard_tag` for NBT).
+thread independently of Wire. To dispose of deeply nested NBT, pop tags from
+an explicit work stack. Push the children of each `Tag::List` and the values
+from `Compound::into_values()` for each `Tag::Compound`; drop leaf tags as you go.
 
 ## Checked representations
 
@@ -66,7 +68,8 @@ A type's layout describes the fields, enum cases and child types that Wire reads
 The derive declares the layout from the Rust fields. Layouts do not include Rust type paths.
 They feed the SDK's surface digests and `Wire::describe`, which provides the fingerprint used
 in typed payload negotiation. `payload_schema::<T>()` computes that fingerprint; it is not
-written into the payload body. Changing the encoding changes the negotiated fingerprint.
+written into the payload body. A different byte format or validation contract needs a
+different negotiated fingerprint, even if the two formats have some bytes in common.
 
 ## Hand-written implementations
 
@@ -74,9 +77,10 @@ The derive handles this automatically and is preferred. A hand-written implement
 supply `put`, `take`, `MIN` and `describe`. For a new encoding, use a versioned `WireSchema::leaf`
 and combine it with the fingerprints of its parts using `WireSchema::mix`. Use
 `WireSchema::named::<Self>` when describing recursive fields so the walk can recognize a
-reference to an ancestor. If the implementation delegates completely to an existing encoding,
-its `describe` can delegate to the same type.
+reference to an ancestor. An implementation that delegates both encoding and validation
+can delegate `describe` to that type too.
 
 A hand decoder owns tag validation and bounds for any storage it allocates itself. Decode
-indirections through their `Wire` types so they count against the typed-payload limits. Keep
-validation at the checked constructor boundary.
+indirections through their `Wire` types so they count against the typed-payload limits. Use
+`Reader::nested` and `Writer::nested` around explicit recursion in a handwritten codec.
+Keep validation at the checked constructor boundary.

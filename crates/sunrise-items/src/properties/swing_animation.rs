@@ -24,7 +24,7 @@ impl SwingAnimationType {
         .into_iter()
         .find_map(|(name, kind)| {
             value
-                .units()
+                .0
                 .iter()
                 .copied()
                 .eq(name.encode_utf16())

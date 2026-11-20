@@ -207,7 +207,7 @@ fn container_loot_component_recipe_decodes_validates_and_matches() {
     for units in [vec![0xd800], vec![0xdc00], vec![0xd83d, 0xde00]] {
         let value = Tag::compound([(
             "loot_table",
-            Tag::String(sunrise_core::nbt::JavaString::from(units)),
+            Tag::String(sunrise_core::nbt::JavaString(units)),
         )]);
         assert!(
             sunrise_command::item::decoded_component_value(
@@ -481,7 +481,7 @@ fn lodestone_tracker_component_recipes_decode_validate_and_match() {
     }
     for units in [vec![0xd800], vec![0xdc00], vec![0xd83d, 0xde00]] {
         let invalid = target(
-            Tag::String(sunrise_core::nbt::JavaString::from(units)),
+            Tag::String(sunrise_core::nbt::JavaString(units)),
             Tag::IntArray(vec![1, -2, 3]),
         );
         assert!(

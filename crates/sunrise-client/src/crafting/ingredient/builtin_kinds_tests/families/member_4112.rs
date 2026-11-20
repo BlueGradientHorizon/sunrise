@@ -185,9 +185,9 @@ fn note_block_sound_component_defaults_removal_and_strict_matching() {
         for value in [
             Tag::Int(0),
             Tag::String("fixture:".into()),
-            Tag::String(sunrise_core::nbt::JavaString::from(vec![0xd800])),
-            Tag::String(sunrise_core::nbt::JavaString::from(vec![0xdc00])),
-            Tag::String(sunrise_core::nbt::JavaString::from(vec![0xd83d, 0xde00])),
+            Tag::String(sunrise_core::nbt::JavaString(vec![0xd800])),
+            Tag::String(sunrise_core::nbt::JavaString(vec![0xdc00])),
+            Tag::String(sunrise_core::nbt::JavaString(vec![0xd83d, 0xde00])),
         ] {
             stack
                 .data_mut()

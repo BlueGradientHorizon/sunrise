@@ -100,7 +100,7 @@ fn parrot_variant_recipe_codec_presence_strictness_and_borrowed_matching() {
         for value in [
             Tag::String(if name == "gray" { "blue" } else { "gray" }.into()),
             Tag::Int(0),
-            Tag::String(sunrise_core::nbt::JavaString::from(vec![
+            Tag::String(sunrise_core::nbt::JavaString(vec![
                 98, 108, 117, 101, 0xd800,
             ])),
         ] {
@@ -238,7 +238,7 @@ fn rollup_rejection_and_absence_matrix_4222() {
         Tag::End,
         Tag::Byte(0),
         Tag::List(vec![]),
-        Tag::String(sunrise_core::nbt::JavaString::from(vec![0xd800])),
+        Tag::String(sunrise_core::nbt::JavaString(vec![0xd800])),
         Tag::String("unknown".into()),
     ] {
         stack

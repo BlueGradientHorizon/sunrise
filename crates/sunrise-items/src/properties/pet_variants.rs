@@ -34,7 +34,7 @@ pub fn decode(registry: &str, value: &Tag, registries: &Registries) -> Result<Ta
     if !entries
         .ids
         .iter()
-        .any(|id| canonical.units().iter().copied().eq(id.encode_utf16()))
+        .any(|id| canonical.0.iter().copied().eq(id.encode_utf16()))
     {
         return Err(format!(
             "Failed to get element {} from registry {registry}",

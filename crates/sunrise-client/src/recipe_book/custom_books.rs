@@ -197,7 +197,7 @@ fn read_flags(value: &Tag) -> Option<BookFlags> {
 }
 
 fn utf8_len(id: &JavaString) -> usize {
-    char::decode_utf16(id.units().iter().copied())
+    char::decode_utf16(id.0.iter().copied())
         .map(|c| c.map_or(3, char::len_utf8))
         .sum()
 }
@@ -208,7 +208,7 @@ fn encoded_within(tag: &Tag, budget: usize) -> bool {
     fn string(s: &JavaString) -> usize {
         // Java's modified UTF-8: two bytes of length, then one to three bytes a unit.
         2 + s
-            .units()
+            .0
             .iter()
             .map(|&u| match u {
                 0x01..=0x7F => 1,

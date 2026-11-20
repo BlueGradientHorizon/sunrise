@@ -1,5 +1,8 @@
 # Registered payloads and the typed-payload design
 
+> The native registration, token checks and ordered transport below still apply.
+> See [typed networking](../../modding/src/how-to/client/networking.md) for the current native API.
+
 The registered **raw** transport implements [#2882](https://github.com/arismoko/horizon/issues/2882).
 Typed registration and token binding over it are [below](#typed-registration-and-tokens-813-step-4b-1);
 configuration snapshots remain work for [#813](https://github.com/arismoko/horizon/issues/813).
@@ -60,10 +63,18 @@ modified views; they do not modify the original view. Duplicate protocol/id
 registrations, invalid ownership or versions, and missing receiving handlers are
 refused. An id grants no authority merely because a caller constructs a `PayloadId`.
 
-A callback receives its connection's `IPayloadContext`, not a broadcast event.
-Native handlers run or return `PayloadHandleError::Failed(message)`; `PayloadWork::run`
-still returns `Result<(), String>`. Scheduled main-thread work keeps its place and
-original ingress reservation until it finishes. Phase changes and disconnect cancel old work.
+The native handler receives opaque `PayloadBytes` and the real connection's
+`IPayloadContext`, not a broadcast event. Dispatch selects the registered owner.
+
+Handlers return `Result<(), PayloadHandleError>`. Application failures must use
+`PayloadHandleError::Failed(message)` explicitly; `PayloadWork::run` still returns
+`Result<(), String>`. Native panics and disabled owners are failures. There is no
+handler retry result.
+
+Each connection holds the receiving turn until the main root publishes or rolls
+back. Later deliveries stay in order and keep their original ingress credit.
+Disconnect or phase replacement cancels work from the old epoch and wakes a
+dedicated receiver waiting for that turn.
 
 ## Admission, sending, and context
 
@@ -199,12 +210,13 @@ channels still carry the caller's bytes; use them to speak a different encoding.
 
 `encode_payload(&value, limit)` uses the transport's byte limit. `decode_payload::<T>(body)`
 reads exactly one value and refuses trailing bytes. Both return `WireError`. The
-bounded payload path counts indirections (lists, present options and boxes), not
-records; its limit is `PAYLOAD_MAX_DEPTH`. The string byte and collection count caps
-are `PAYLOAD_MAX_STRING_BYTES` and `PAYLOAD_MAX_LIST_ENTRIES`. The writer charges the
-same `PAYLOAD_DECODE_BUDGET` as the reader before a body is sent; a reader checks a
-collection's length and budget before reserving it. Ordinary Wire readers and writers
-keep their own limits.
+bounded payload path counts indirections (lists, present options and boxes) and
+explicit `Reader::nested` / `Writer::nested` frames, not derived record frames; its
+limit is `PAYLOAD_MAX_DEPTH`. The string byte and collection count caps are
+`PAYLOAD_MAX_STRING_BYTES` and `PAYLOAD_MAX_LIST_ENTRIES`. Both directions charge
+`PAYLOAD_DECODE_BUDGET`, including storage for shared ownership. Writer resets do
+not erase the enclosing ceiling, spent budget or first failure. Ordinary Wire
+readers and writers keep their own limits.
 
 ## Typed registration and tokens (#813 step 4b-1)
 
@@ -292,9 +304,9 @@ snapshots, stale-update rejection, revision-gap handling and visibility-loss cle
 with #796's world/dimension, residency join, full-before-delta ordering, bounded assembly
 and rollback proofs.
 
-Acceptance for those future layers must exercise the real
-integrated, LAN, and dedicated routes: exact typed decoding, mismatched/optional
-peers, invalid tokens, malformed structured values, sender identity, ordered
-application, next-turn replies, root rollback, stale epochs, and resource
-pressure with progress after drain. Raw transport tests do not prove the unfinished
-configuration-snapshot or attachment contracts.
+Acceptance for those future layers must exercise the real integrated, LAN, and
+dedicated routes: exact typed decoding, mismatched/optional peers, invalid tokens,
+malformed structured values, sender identity, ordered application, next-turn
+replies, root rollback, stale epochs, and resource pressure with progress after
+drain. Raw transport tests do not prove the unfinished configuration-snapshot or
+attachment contracts.

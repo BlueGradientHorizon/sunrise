@@ -6,7 +6,8 @@ mod worldgen;
 pub use hash::{seed_from_hash, seed_from_hash_utf16};
 pub use owner::{EntityPositional, EntityRandom, LevelPositional, LevelRandom};
 pub use positional::{
-    LegacyPositionalRandom, PositionalRandom, XoroshiroPositionalRandom, position_seed,
+    LegacyPositionalRandom, PositionalRandom, XoroshiroPositionalRandom, java_string_hash,
+    position_seed,
 };
 pub use worldgen::{WorldgenPositional, WorldgenRandom, WorldgenSource, slime_chunk_random};
 

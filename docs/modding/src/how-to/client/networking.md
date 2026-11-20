@@ -60,6 +60,11 @@ A typed payload sends a value of your own type on a registered channel. Its body
 little-endian numbers and lengths; it is not the vanilla packet codec. Use a raw channel
 when another implementation requires a specific byte format.
 
+Use owned `String` fields, not `&'static str`: the network codec never interns incoming text.
+Wire forms backed by a separate parser or an unmetered tree conversion (such as `ModelPart`,
+JSON values, or `Text`) are refused in typed payloads. Send bounded owned fields and convert
+explicitly where you need those types.
+
 Derive `Wire` for the value, register it in `Hooks::register`, and keep the token the
 registrar returns:
 

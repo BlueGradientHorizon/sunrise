@@ -1,5 +1,9 @@
 # Registered raw custom payload transport
 
+> The native transport below still applies. Former WebAssembly guest dispatch
+> and its busy retries are historical.
+> See [registered payloads](../modding/src/how-to/client/networking.md) for the current native API.
+
 This is the raw transport below the typed payload work in #813, implementing
 #2882. The codec prerequisite is #2951. Names and contracts are based on
 NeoForge 26.3's public payload API and the room's written clean-room specification;
@@ -22,9 +26,9 @@ ownership, nonblank versions, duplicate protocol/id registrations and receiving
 handlers once, then freeze. A common registration occupies both protocols.
 Dispatch selects the one registered owner, not every loaded mod.
 
-Native and wasm expose the same declarations, handlers and results. API aggregates
+Native handlers use these declarations and results. API aggregates
 explicitly derive Wire; registration-only trait-object storage is not an API data
-value. The raw body crosses Wire as a length followed by contiguous bytes.
+value. The Wire representation of the raw body is a length followed by contiguous bytes.
 
 ## Connection admission and identity
 
@@ -96,11 +100,20 @@ callback shortcuts.
 `IPayloadHandler::handle` returns `Result<(), PayloadHandleError>`, with explicit
 `Failed(String)` for application and execution failures. Native panics and disabled
 owners remain failures. `PayloadWork::run` retains its `Result<(), String>` contract.
+
 Physical ingress reservations follow payloads and work as they move to the main
 thread. A connection-owned receiving turn spans main-thread root publication or
 rollback. Pooled server receivers advance queued payloads on their existing tick;
 dedicated client and configuration receivers wait for the active root to finish.
-Disconnect and phase replacement cancel pending work from the old epoch.
+Disconnect and phase replacement cancel pending work from the old epoch and wake
+those receivers even if the root is still held.
+
+### Historical WebAssembly retries
+
+The former guest runtime used `Busy { payload, holder }` when contention prevented
+a callback from starting. That result retained the body and a holder snapshot.
+The transport retried at the head of the receive queue under the original ingress
+reservation and 60-second deadline; nested cross-group calls refused immediately.
 
 ## Acceptance and the amendment to #813
 
@@ -113,6 +126,14 @@ connection framing bounds above.
 Exercise integrated single-player, two remote players, LAN and
 dedicated paths. Check sender attribution, ordering, next-turn replies, rollback,
 epoch invalidation, optional vanilla admission, required mismatch, duplicate load
-refusal, generic-send bypass and named decode failures. Native handlers must
-exercise the real transport. The author supplies prepared-data self-check evidence;
-review is static. The lane lead separately orders independent network test commands.
+refusal, generic-send bypass and named decode failures. Exercise the real native
+transport. The author supplies prepared-data self-check evidence; review is static.
+The lane lead separately orders independent network test commands.
+
+### Historical guest acceptance
+
+The removed `wasm-mods` job used a compiled guest fixture on the CONFIGURATION
+connection thread, before the Play I/O pool, to test the guest-entry thread
+restriction. It held known packs and the serving Game thread while expecting two
+transformed replies. Allocation measurements for a 1 MiB guest transfer were a
+separate check, not a zero-copy guarantee. Neither is a current fixture requirement.

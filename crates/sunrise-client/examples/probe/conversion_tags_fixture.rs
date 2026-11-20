@@ -34,10 +34,7 @@ pub fn main() {
                 let Tag::String(tag) = tag else {
                     panic!("not a string")
                 };
-                tag.units()
-                    .iter()
-                    .map(|unit| format!("{unit:04x}"))
-                    .collect()
+                tag.0.iter().map(|unit| format!("{unit:04x}")).collect()
             })
             .collect();
         encoded.sort();

@@ -1,4 +1,5 @@
-//! Canonical binary encoding for owned API values, including typed network payloads.
+//! Canonical binary encoding for owned API values, including typed payload tokens.
+//! Typed payload bodies are encoded by `PayloadCodec`, not Wire.
 //!
 //! Everything is little-endian and self-delimiting: a length is a `u32` before its items, an
 //! `Option` is a tag byte, an enum is a `u32` case then its fields, a record is its fields in
@@ -200,10 +201,6 @@ impl Writer {
             self.bytes.extend_from_slice(text.as_bytes());
         }
     }
-    /// A list of `u16`: its count, then each item, in one pass (the bytes of `Vec<u16>`'s own form).
-    pub(crate) fn put_u16s(&mut self, items: &[u16]) {
-        u16::put_list(items, self);
-    }
     /// A length or count.
     pub fn put_len(&mut self, len: usize) {
         if let Some(len) = self.list_len(len) {
@@ -239,6 +236,7 @@ impl Writer {
         }
     }
     /// Encodes a borrowed value unless an earlier write failed.
+    /// The caller keeps ownership and is responsible for disposing of the value.
     pub fn put<T: Put + ?Sized>(&mut self, value: &T) {
         if self.error.is_none() {
             value.put_to(self);
@@ -440,23 +438,6 @@ impl<'a> Reader<'a> {
         self.budget = inner.budget;
         value
     }
-    /// A list of `u16` written by [`Writer::put_u16s`]. Check the length against the remaining
-    /// bytes first and let the caller collect straight into its destination storage.
-    pub(crate) fn take_u16s(
-        &mut self,
-    ) -> Result<impl ExactSizeIterator<Item = u16> + use<'a>, WireError> {
-        self.payload_nested(|input| {
-            let len = input.take_len(2)?;
-            input.charge::<u16>(len)?;
-            let bytes = input.take_bytes(len * 2)?;
-            Ok(bytes
-                .as_chunks::<2>()
-                .0
-                .iter()
-                .copied()
-                .map(u16::from_le_bytes))
-        })
-    }
     /// A normal Wire list, with its element cap checked before allocating storage. `read`
     /// may impose a shared payload budget across its elements without a second list codec.
     pub fn list_with<T: Wire>(
@@ -564,8 +545,8 @@ pub trait Wire: Sized {
     /// Minimum encoded size, used to reject impossible collection lengths.
     const MIN: usize;
     /// Describes this codec's structural layout, independently of any particular value.
-    /// Derives describe their fields in encoding order. A manual codec must describe (and
-    /// version) any bytes it writes differently, so payload peers can reject a mismatch.
+    /// Derives describe their fields in encoding order. A manual codec must distinguish
+    /// changes to both the byte format and validation, so payload peers can reject a mismatch.
     fn describe(schema: &mut WireSchema) -> u64
     where
         Self: 'static;
