@@ -1,0 +1,2 @@
+sunrise-client game::mod_menu_decisions_tests::a_guest_failure_aborts_menu_clicked_and_scoped_menu_quick_move lib daily resources
+sunrise-client game::stacked_on_other_tests::a_guest_failure_aborts_item_stacked_on_other_without_falling_back lib daily resources

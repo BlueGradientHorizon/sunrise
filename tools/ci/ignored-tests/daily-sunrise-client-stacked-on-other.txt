@@ -1,7 +1,6 @@
 # The item_stacked_on_other decision tests use prepared resources.
 sunrise-client game::stacked_on_other_tests::a_cancelled_handled_click_sets_the_stacks_and_a_bad_stack_refuses_it lib daily resources
 sunrise-client game::stacked_on_other_tests::a_failed_click_undoes_what_the_listener_wrote_and_applies_nothing lib daily resources
-sunrise-client game::stacked_on_other_tests::a_guest_failure_aborts_item_stacked_on_other_without_falling_back lib daily resources
 sunrise-client game::stacked_on_other_tests::a_lan_hub_click_is_decided_the_same_way lib daily resources
 sunrise-client game::stacked_on_other_tests::a_lan_inventory_click_is_decided_the_same_way lib daily resources
 sunrise-client game::stacked_on_other_tests::a_listener_that_panics_after_a_committed_write_is_undone_and_the_next_click_works lib daily resources
