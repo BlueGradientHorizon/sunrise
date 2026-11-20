@@ -8991,6 +8991,7 @@ impl Game<'_> {
                 range: self.settings.cloud_range,
                 fast: self.settings.clouds == "fast",
                 color: sky.cloud_color,
+                height: sky.cloud_height,
             }),
             entities: &entities,
             static_block_entities: &static_block_entities,
