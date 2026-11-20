@@ -1,32 +1,30 @@
 # Drawing an item with a special model renderer
 
-Use `register_special_model_renderer` (NeoForge's `RegisterSpecialModelRendererEvent`) for an item
-whose ordinary item model cannot describe its drawing, such as a skillet with moving food.
-Register a factory for a `minecraft:special` model type before client resources load.
+Use `register_special_model_renderer` (NeoForge's `RegisterSpecialModelRendererEvent`) when an
+ordinary item model cannot describe the drawing. Register a factory for a `minecraft:special`
+type. For each node of that type, the factory decodes its configuration and bakes a renderer
+at client resource load. The renderer implements vanilla's `SpecialModelRenderer` split: extract
+an argument from the item being drawn, then submit geometry.
 
 ## Decode, bake, then draw
 
-`SpecialModelFactory::new(decode, bake)` pairs a decoder and a baker. The decoder receives
-`SpecialModelConfig`, the fields of the inline `model` object except `type`. The baker consumes
-that typed configuration and can retain geometry leases from `bake_model` (a selected pack model)
-or `bake_geometry` (custom `SpecialModelQuad`s referencing atlas sprites). Each model node has
-its own baked renderer; a reload makes new instances and leases.
-
-On each draw, `extract_argument` receives the `ClientHost` and a borrowed `SpecialModelStack`.
-Its `item()`, `count()` and `get(&descriptor)` read only what you ask for, including inherited
-components unless removed by the stack. If the node came from a bundle's selected item, this
-is that item, not the bundle. `submit` receives the typed argument and the current display context,
-level game time (if in a world) and partial tick. Drawing does not decode or bake models again,
-and it does not keep answers between draws.
-
-This example uses serde's `derive` feature:
+This native mod's skillet always draws the pan. It adds food one model pixel above the pan when
+the stack contains more than one item. Keep your `mod_api` dependency and add serde with its
+`derive` feature.
 
 ```rust,ignore
-use mod_api::*;
+use mod_api::{
+    ClientHost, Hooks, RegisterSpecialModelRendererEvent, RegistrationContext,
+    SpecialModelCollector, SpecialModelContext, SpecialModelFactory, SpecialModelGeometry,
+    SpecialModelRenderer, SpecialModelStack, SpecialModelTints,
+};
 
 #[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct SkilletConfig {
-    food_height: f32,
+    pan: String,
+    food: String,
+    food_height_pixels: i32,
 }
 
 struct Skillet {
@@ -50,17 +48,23 @@ impl SpecialModelRenderer for Skillet {
     ) -> Result<(), String> {
         collector.submit_geometry(&self.pan, SpecialModelTints::Untinted)?;
         if *show_food {
-            collector.with_pose(
-                [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, self.food_height, 0.0, 0.0, 1.0, 0.0],
-                |child| child.submit_geometry(&self.food, SpecialModelTints::Untinted),
-            )?;
+            let pose = [
+                1.0, 0.0, 0.0, 0.0,
+                0.0, 1.0, 0.0, self.food_height,
+                0.0, 0.0, 1.0, 0.0,
+            ];
+            collector.with_pose(pose, |child| {
+                child.submit_geometry(&self.food, SpecialModelTints::Untinted)
+            })?;
         }
         Ok(())
     }
 }
 
+pub struct SkilletMod;
+
 #[mod_api::sunrise_mod]
-impl Hooks for MyMod {
+impl Hooks for SkilletMod {
     fn register_special_model_renderer(
         &self,
         _context: &RegistrationContext,
@@ -69,49 +73,87 @@ impl Hooks for MyMod {
         event.renderers.register(
             "example:skillet".into(),
             SpecialModelFactory::new(
-                |config| config.decode::<SkilletConfig>(),
-                |config, bake| Ok(Skillet {
-                    pan: bake.bake_model("example:item/skillet_pan")?,
-                    food: bake.bake_model("example:item/skillet_food")?,
-                    food_height: config.food_height,
-                }),
+                |fields| fields.decode::<SkilletConfig>(),
+                |config, bake| {
+                    Ok(Skillet {
+                        pan: bake.bake_model(&config.pan)?,
+                        food: bake.bake_model(&config.food)?,
+                        food_height: config.food_height_pixels as f32 / 16.0,
+                    })
+                },
             ),
         );
     }
 }
 ```
 
-The item definition names the registered type and a `base` model:
+Put the definition in `assets/example/items/skillet.json` and the referenced models in
+`assets/example/models/item/`. The decoder receives the fields of the inline `model` object
+other than `type`. Here the three fields are required; the `base` is not part of the config.
 
 ```json
-{"model": {"type": "minecraft:special", "base": "example:item/skillet",
-  "model": {"type": "example:skillet", "food_height": 0.0625}}}
+{
+  "model": {
+    "type": "minecraft:special",
+    "base": "example:item/skillet",
+    "model": {
+      "type": "example:skillet",
+      "pan": "example:item/skillet_pan",
+      "food": "example:item/skillet_food",
+      "food_height_pixels": 1
+    }
+  }
+}
 ```
 
-## What to submit
+Use `bake_model` for geometry from the selected packs or `bake_geometry` for your own
+`SpecialModelQuad`s referencing item or block atlas sprites. Keep the resulting geometry leases
+on the renderer. Do not look up or rebake models during `submit`.
 
-- `submit_geometry(&lease, tints)` draws a lease from this resource load. Use `Untinted`,
-  `Uniform(0xAARRGGBB)` for every quad, or `Indexed(Arc<[u32]>)` for a shared palette by quad
-  tint index. With an indexed palette, unindexed quads and missing entries draw white.
-- `with_pose(transform, |child| ...)` lends a collector under a finite row-major 3×4 affine.
-  The current pose multiplies the child transform on the left; on return, the parent pose is
-  unchanged. Model space is in blocks from the model's corner (element coordinates divided by 16).
-- `submit_stack(&stack, ItemDisplayContext::Fixed)` resolves a nested item's own models, tints
-  and foil, using its display transform. The current pose places its centre. A cycle, an
-  unreadable stack or exhausting `MAX_NESTED_STACK_PARTS` refuses the enclosing layer.
+`extract_argument` runs for each draw, even for an unchanged stack. It gets a `ClientHost` and a
+borrowed `SpecialModelStack`: `item()`, `count()` and `get(&descriptor)` read only what you need.
+Component reads include item defaults unless the stack overrides or removes them. If a bundle
+selects the item, this is the selected stack, not the bundle. `submit` receives the argument and
+the actual `SpecialModelContext`, with the display context, optional level game time and partial
+tick. The game does not cache the renderer's draw output.
 
-The game draws the geometry with the `base` model's GUI light, particle and display transforms,
-plus the node's own `transformation`. It carries the outer stack's foil and the draw's packed
-light, overlay and outline through the ordinary item draw path.
+## Submit geometry and nested stacks
 
-## Registrations and refusals
+- `submit_geometry(&lease, tints)` submits baked geometry under the current pose. Use
+  `SpecialModelTints::Untinted`, `Uniform(argb)` for every quad, or `Indexed(palette)` with a
+  shared `Arc<[u32]>` indexed by quad tint index. Colors are packed ARGB. With an indexed
+  palette, an unindexed quad or a missing entry draws white before lighting.
+- `with_pose(transform, |child| ...)` lends a collector at a child pose. The transform is a
+  row-major 3×4 affine; the current pose multiplies it on the left, and the composed pose must
+  be finite. Model space is in blocks from the model's corner (element coordinates divided by
+  16). When the callback returns, subsequent submissions on the parent use the unchanged
+  parent pose. Submit directly on the parent when no local transform is needed.
+- `submit_stack(&stack, ItemDisplayContext::Fixed)` resolves an item stack with its own models,
+  display transform, tints and foil in the specified context. The current pose places its
+  centre. Cycles and an exhausted `MAX_NESTED_STACK_PARTS` budget refuse the enclosing layer;
+  the budget is shared by all nested expansions in that item draw.
 
-The last registration of a fully qualified type (`namespace:path`) wins, including replacements
-for vanilla types. Unknown types, errors and panics during decode or bake refuse the enclosing
-item definition. The item draws the missing model instead; the game does not try a lower pack.
+The special node's `base` supplies its display transforms, particle and GUI light; any node
+`transformation` also applies. Geometry submitted directly uses the outer item's foil. The
+engine carries packed light, overlay and outline through the ordinary item draw path, so the
+mod does not pass those values to the collector.
 
-A draw error, panic, or invalid pose or geometry submission rolls back the whole special layer.
-The offending type is logged and disabled until client resources reload. Unreadable input or a
-nested refusal also rolls back the enclosing layer, even if a mod ignores the nested error, but
-it does not disable the enclosing renderer. Only the outermost refused special layer draws a
-missing model; unrelated layers of a composite item still draw.
+## Reloads and failures
+
+Registration runs once at client startup, not on reload. Use a fully qualified name
+(`namespace:path`); an invalid name is logged and skipped. The last registration of a type wins,
+including replacements for vanilla types. Each resource load decodes the winning definitions,
+bakes new renderer instances and leases, and starts with no disabled types. Submit only leases
+from the current load. Item states already resolved before a reload retain their baked geometry
+and can finish drawing it.
+
+An unknown type or an error or panic in decode or bake refuses the enclosing item definition.
+That item draws the missing model; the other definitions still load and the game does not try a
+lower pack's definition.
+
+A callback error or panic, an invalid pose, or a lease from the wrong resource load rolls back the
+entire special layer and disables the offending type until resources reload. Unreadable input or
+a nested refusal also rolls back the enclosing layer, including its earlier submissions, without
+disabling the enclosing renderer. Ignoring a collector error does not make the layer commit;
+propagate it with `?`. The outermost refused layer draws the missing model; unrelated item
+layers still draw normally.

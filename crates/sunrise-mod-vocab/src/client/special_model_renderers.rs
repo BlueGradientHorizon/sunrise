@@ -2,9 +2,10 @@
 //! `register_special_model_renderer` (NeoForge's `RegisterSpecialModelRendererEvent` and
 //! vanilla's `SpecialModelRenderer`).
 //!
-//! A factory decodes and bakes each `minecraft:special` model node that names its type. The
-//! resulting renderer extracts its own argument and submits geometry or nested item stacks,
-//! with the node's `base` display transforms, particle and GUI light.
+//! At client startup, register a [`SpecialModelFactory`] for each namespaced type. Each resource
+//! load decodes and bakes every `minecraft:special` model node that names that type. On each draw,
+//! the baked renderer extracts an argument from the selected stack and submits geometry or nested
+//! stacks through a [`SpecialModelCollector`]. The game owns the surrounding draw state.
 use crate::{ClientHost, Component, ItemDisplayContext, ItemKey, ItemStack};
 use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
@@ -49,9 +50,12 @@ type BakeSpecialModel = dyn for<'a> Fn(
     + Sync;
 
 impl SpecialModelFactory {
-    /// Pair a decoder with the bake function consuming its typed output. For each model node
-    /// naming this type, the game decodes and then bakes once while loading client resources.
-    /// The baked renderer can retain decoded fields or geometry for the lifetime of that load.
+    /// Pair a decoder with the bake function that consumes its typed output. For each model node
+    /// naming this type, the game decodes and then bakes once per client resource load. The
+    /// resulting renderer owns any configuration or geometry it needs during drawing.
+    ///
+    /// A decode or bake error or panic refuses the enclosing item definition, not the whole
+    /// resource load. The game does not try a lower pack's definition.
     pub fn new<C: 'static, R: SpecialModelRenderer>(
         decode: impl for<'a> Fn(SpecialModelConfig<'a>) -> Result<C, String> + Send + Sync + 'static,
         bake: impl Fn(C, &dyn SpecialModelBakeContext) -> Result<R, String> + Send + Sync + 'static,
@@ -83,7 +87,8 @@ impl SpecialModelFactory {
 /// The resources and item quad baker available to a special model factory during baking.
 pub trait SpecialModelBakeContext {
     /// Bake a model from the selected packs into a lease, or report that it could not be baked.
-    /// This uses the model's geometry, not its item display transforms.
+    /// Only its geometry is used; the special node's `base` supplies display transforms, particle
+    /// and GUI light. Bake new leases on reload rather than reusing an old one.
     fn bake_model(&self, model: &str) -> Result<SpecialModelGeometry, String>;
 
     /// Bake custom quads against the selected packs' item and block atlas sprites. A missing
@@ -126,7 +131,9 @@ impl SpecialModelQuad {
 }
 
 // no wire: a process-local lease on baked quads and extents for one client resource load.
-/// A lease on baked item geometry. Cloning the lease retains the geometry without rebaking it.
+/// A lease on baked item geometry. Cloning retains the geometry without rebaking it. Submit this
+/// lease only in the resource load in which it was baked; already resolved item states keep
+/// their geometry across reloads.
 #[derive(Clone)]
 pub struct SpecialModelGeometry(Arc<dyn Any + Send + Sync>);
 
@@ -145,7 +152,8 @@ impl SpecialModelGeometry {
 }
 
 // no wire: a borrowed view of the stack being drawn and its effective component reader.
-/// The stack that selected a special model layer, read without copying its component patch.
+/// The stack that selected the layer, read without copying its component patch. For a layer of
+/// a bundle's selected item, this is the selected stack, not the bundle.
 #[derive(Clone, Copy)]
 #[non_exhaustive]
 pub struct SpecialModelStack<'a> {
@@ -206,7 +214,7 @@ pub enum SpecialModelTints {
 pub const MAX_NESTED_STACK_PARTS: usize = 64;
 
 // no wire: timing and display state for a single local draw callback.
-/// Where the item is drawn and when.
+/// The actual display context and frame time for this draw, even when the stack has not changed.
 #[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub struct SpecialModelContext {
@@ -236,7 +244,8 @@ impl SpecialModelContext {
 }
 
 // no wire: a scoped borrow of the current item layer's submission destination.
-/// Submits a special model layer. Only a successful draw commits its submissions.
+/// Submits a special model layer in order. A refusal discards everything submitted through this
+/// collector, including geometry submitted by nested stacks.
 #[non_exhaustive]
 pub struct SpecialModelCollector<'a>(&'a mut dyn SpecialModelSubmission);
 
@@ -247,9 +256,10 @@ impl<'a> SpecialModelCollector<'a> {
         Self(sink)
     }
 
-    /// Submit within a child pose, without changing the outer pose. `transform` is a finite
-    /// row-major 3×4 affine in block units; the current pose multiplies it on the left. The
-    /// model space starts at the model's corner (element coordinates divided by 16).
+    /// Submit within a child pose, without changing the outer pose. `transform` is a row-major
+    /// 3×4 affine in block units; the current pose multiplies it on the left. The model space
+    /// starts at the model's corner (element coordinates divided by 16). A non-finite composed
+    /// pose or an error from the child callback refuses the whole layer.
     pub fn with_pose(
         &mut self,
         transform: [f32; 12],
@@ -262,8 +272,9 @@ impl<'a> SpecialModelCollector<'a> {
     }
 
     /// Submit a geometry lease from this resource load under the current pose and tints.
-    /// The enclosing layer supplies the display transform, particle, GUI light and foil;
-    /// world drawing supplies packed light, overlay and outline as for other item geometry.
+    /// The `base` model supplies display transforms, particle and GUI light; the item's layer
+    /// supplies its foil. The engine applies the draw's packed light, overlay and outline as
+    /// it does for ordinary item geometry.
     pub fn submit_geometry(
         &mut self,
         geometry: &SpecialModelGeometry,
@@ -272,9 +283,10 @@ impl<'a> SpecialModelCollector<'a> {
         self.0.submit_geometry(geometry, tints)
     }
 
-    /// Draw another stack under the current pose, with its own display transform, tints and
-    /// foil. A nested refusal (including unreadable stacks, cycles and the shared expansion
-    /// budget) discards this whole layer even if the returned error is ignored.
+    /// Draw another stack under the current pose, which places its centre. The nested item
+    /// uses its own display transform, tints and foil. A nested refusal (including unreadable
+    /// input, cycles and the shared [`MAX_NESTED_STACK_PARTS`] budget) discards the whole layer
+    /// even if the returned error is ignored.
     pub fn submit_stack(
         &mut self,
         stack: &ItemStack,
@@ -351,11 +363,12 @@ pub trait SpecialModelRenderer: Send + Sync + 'static {
         stack: &SpecialModelStack<'_>,
     ) -> Self::Argument;
 
-    /// Submit this draw's geometry in order. Returning `Err`, panicking in either callback or
-    /// making an invalid geometry/pose submission discards the layer and disables this type
-    /// until resources reload. Unreadable input or a nested refusal discards the enclosing layer
-    /// without disabling its renderer. Only the outermost refused layer draws a missing model;
-    /// unrelated layers still draw normally.
+    /// Submit the geometry and stacks for this draw in order. A submission fault, including a
+    /// callback error, panic in either callback or invalid geometry or pose, discards the layer
+    /// and disables the offending type until resources reload. Unreadable input or a nested
+    /// refusal discards the enclosing layer without disabling it. Use `?` to propagate the
+    /// collector's errors. Only the outermost refused layer draws a missing model; unrelated
+    /// layers are left intact.
     fn submit(
         &self,
         argument: &Self::Argument,
@@ -367,10 +380,10 @@ pub trait SpecialModelRenderer: Send + Sync + 'static {
 /// The special model renderer registry `register_special_model_renderer` hands out: NeoForge's
 /// `RegisterSpecialModelRendererEvent`.
 pub trait SpecialModelRenderers {
-    /// `register(location, codec)`: `factory` decodes and bakes every special model node of
-    /// type `kind` (`mymod:skillet`), including replacements for builtins. Last registration
-    /// wins, as in NeoForge; the game logs both mods' ids. An id that is not
-    /// `<namespace>:<path>` is logged and left out.
+    /// The counterpart of NeoForge's `register(location, codec)`: `factory` decodes and bakes
+    /// each special model node of type `kind` (`mymod:skillet`). The last registration wins,
+    /// including replacements for builtins; the game logs both owners. An id that is not
+    /// `<namespace>:<path>` is logged and skipped.
     fn register(&mut self, kind: String, factory: SpecialModelFactory);
 }
 
@@ -421,7 +434,7 @@ impl SpecialModelRendererRegistry {
             .map(|(kind, owner)| (kind.as_str(), *owner))
     }
 
-    /// Each type's factory, the last registration of a type winning, and the
+    /// Consume the registry into its winning factories, keyed by type, and the list of
     /// registrations that replaced an earlier one.
     pub fn into_renderers(
         self,

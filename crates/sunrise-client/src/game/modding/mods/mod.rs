@@ -546,9 +546,9 @@ pub(super) fn register_select_item_model_properties(role: ExecutionRole) {
 /// animation files may name them.
 /// Block-state
 /// definition types (`native_register_block_state_models`), so blockstate files naming one get
-/// the models the mod picks; and special item model renderers
-/// (`native_register_special_model_renderer`), so special models of their types draw what the
-/// mod answers.
+/// the models the mod picks; and special item model factories
+/// (`native_register_special_model_renderer`), so each special model node of a registered type
+/// bakes its own renderer.
 pub(super) fn register_resource_sources(role: ExecutionRole) {
     if !role.is_client() {
         return;
