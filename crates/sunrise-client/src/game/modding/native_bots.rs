@@ -97,7 +97,7 @@ impl Game<'_> {
         if let Some([x, y, z]) = input.velocity {
             body.velocity = Vec3::new(x, y, z);
         }
-        // Game.sync_player_body's part that depends on the blocks, as the replay does.
+        // Game.sync_player_body's part that depends on the blocks.
         body.nudge = crate::game::closest_space_nudge(
             &body,
             &self.world,

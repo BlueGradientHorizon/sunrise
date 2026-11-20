@@ -321,6 +321,25 @@ mod tests {
         assert_ne!(s.extras.mouse_tweaks_wheel, before);
     }
 
+    /// #3202: smooth chat moves a line in, but the indicator bar colours its left edge whether
+    /// it slides or not, so the row is live and toggles with smooth chat off.
+    #[test]
+    fn the_message_indicator_toggles_while_smooth_chat_is_off() {
+        let mut s = Settings::default();
+        assert!(!s.extras.chat_animation, "smooth chat starts off");
+        assert!(s.extras.chat_indicator, "the indicator starts on");
+        let row = ExtraRow::Item(Item::ChatIndicator);
+        assert!(rows_of(&s).iter().find(|r| r.id == row).unwrap().live);
+        let mut shell = Shell::<ExtrasScreen>::default();
+        let at = shell.point_at(&s, SIZE, row);
+        assert!(
+            !shell
+                .click(&mut s, at, SIZE, false, false, false)
+                .is_empty()
+        );
+        assert!(!s.extras.chat_indicator);
+    }
+
     /// The sort key binds instead of cycling; the wheel leaves it be.
     #[test]
     fn the_key_row_waits_for_a_key() {
@@ -683,5 +702,49 @@ mod tests {
         );
         screen.slide(&mut s, ExtraRow::Added(1, 4), 0.25);
         assert_eq!(*section.volume.lock().unwrap(), 0.25);
+    }
+
+    /// A switch row shows its state on screen: vanilla's empty check box while off, the ticked one
+    /// once a click turns it on (#3715).
+    #[test]
+    fn a_switch_row_draws_the_check_box_of_its_state() {
+        use crate::graphics_style::{drew_sprite, widget_atlas};
+        let section = with_section();
+        let atlas = widget_atlas();
+        crate::hud::take_gui_sprite_misses();
+        let mut s = Settings::default();
+        let mut shell = Shell::<ExtrasScreen>::default();
+        shell.set_search("test.section.switch");
+        let switch = ExtraRow::Added(1, 0);
+        let frame = |shell: &mut Shell<ExtrasScreen>, s: &Settings| {
+            let mut batch = crate::hud::HudBatch::scratch([1708, 960]);
+            shell.draw_test_frame(
+                s,
+                &mut batch,
+                &atlas,
+                (0.0, 0.0),
+                false,
+                None,
+                &mut |_, _| {},
+            );
+            crate::widgets::end_frame(1);
+            let drew = |ids: [&str; 2]| ids.iter().any(|id| drew_sprite(&batch, &atlas, id));
+            let off = drew(["widget/checkbox", "widget/checkbox_highlighted"]);
+            let on = drew([
+                "widget/checkbox_selected",
+                "widget/checkbox_selected_highlighted",
+            ]);
+            (off, on)
+        };
+        assert_eq!(frame(&mut shell, &s), (true, false), "off: the empty box");
+        let at = shell.point_at(&s, SIZE, switch);
+        assert!(
+            !shell
+                .click(&mut s, at, SIZE, false, false, false)
+                .is_empty()
+        );
+        assert!(*section.on.lock().unwrap());
+        assert_eq!(frame(&mut shell, &s), (false, true), "on: the ticked box");
+        assert_eq!(crate::hud::take_gui_sprite_misses(), Vec::<String>::new());
     }
 }

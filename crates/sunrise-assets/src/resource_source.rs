@@ -1,7 +1,6 @@
 //! Open resource layers, shared by asset packs and passive mod data.
 //! Archive layers retain one reader and never materialize their entries.
 //! Diverges from upstream: asset and passive jar-data layers share this source.
-#[cfg(not(target_arch = "wasm32"))]
 use crate::zip::Zip;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
@@ -57,15 +56,17 @@ fn copy_resource_bytes(
 
 enum Storage {
     Directory(PathBuf),
-    #[cfg(not(target_arch = "wasm32"))]
     Archive(Zip),
     Prefix {
         source: ResourceSource,
         prefix: String,
     },
-    /// The winning files by name, and for the names several layers provide, every layer's file,
-    /// lowest first ([`ResourceSource::stack`]).
-    Index(BTreeMap<String, Resource>, BTreeMap<String, Vec<Resource>>),
+    /// Winning files and any retained file or named source stacks, lowest layer first.
+    Index(
+        BTreeMap<String, Resource>,
+        BTreeMap<String, Vec<Resource>>,
+        Arc<[(String, ResourceSource)]>,
+    ),
 }
 
 /// A winning resource keeps its source alive; merged resources keep only their
@@ -117,7 +118,6 @@ impl std::fmt::Debug for ResourceSource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let kind = match self.0.as_ref() {
             Storage::Directory(_) => "Directory",
-            #[cfg(not(target_arch = "wasm32"))]
             Storage::Archive(_) => "Archive",
             Storage::Prefix { .. } => "Prefix",
             Storage::Index(..) => "Index",
@@ -299,11 +299,10 @@ impl ResourceSource {
                 .collect()
         }
         match self.0.as_ref() {
-            #[cfg(not(target_arch = "wasm32"))]
             Storage::Archive(archive) => {
                 collect(archive.names().filter(|name| stays_inside(name)), top)
             }
-            Storage::Index(files, _) => collect(files.keys().map(String::as_str), top),
+            Storage::Index(files, ..) => collect(files.keys().map(String::as_str), top),
             _ => collect(
                 self.list(&format!("{top}/")).iter().map(String::as_str),
                 top,
@@ -314,7 +313,7 @@ impl ResourceSource {
         Self(Arc::new(storage), Arc::default())
     }
     pub fn indexed(files: BTreeMap<String, Resource>) -> Self {
-        Self::from(Storage::Index(files, BTreeMap::new()))
+        Self::from(Storage::Index(files, BTreeMap::new(), Arc::from([])))
     }
     /// An index that also keeps, for each name in `layers`, the file of every layer that
     /// provides it, lowest first: what [`ResourceSource::stack`] gives.
@@ -322,14 +321,28 @@ impl ResourceSource {
         files: BTreeMap<String, Resource>,
         layers: BTreeMap<String, Vec<Resource>>,
     ) -> Self {
-        Self::from(Storage::Index(files, layers))
+        Self::from(Storage::Index(files, layers, Arc::from([])))
+    }
+    /// Retain the named sources below the flattened index, lowest layer first.
+    pub fn indexed_with_sources(
+        files: BTreeMap<String, Resource>,
+        sources: Arc<[(String, ResourceSource)]>,
+    ) -> Self {
+        Self::from(Storage::Index(files, BTreeMap::new(), sources))
+    }
+    /// The original named sources, when this index represents a composed pack.
+    pub fn named_sources(&self) -> &[(String, ResourceSource)] {
+        match self.0.as_ref() {
+            Storage::Index(.., sources) => sources,
+            _ => &[],
+        }
     }
     /// Every layer's file of `name`, lowest first, the winning one last: where the source was
     /// made from layers ([`ResourceSource::indexed_with_layers`]) their files, else the one
     /// file. Empty where there is none.
     pub fn stack(&self, name: &str) -> Vec<Resource> {
         match self.0.as_ref() {
-            Storage::Index(files, layers) => match layers.get(name) {
+            Storage::Index(files, layers, _) => match layers.get(name) {
                 Some(layers) => layers.clone(),
                 None => files.get(name).cloned().into_iter().collect(),
             },
@@ -340,7 +353,7 @@ impl ResourceSource {
     /// The layers of the names an index keeps them for ([`ResourceSource::indexed_with_layers`]).
     pub fn layers(&self) -> Option<&BTreeMap<String, Vec<Resource>>> {
         match self.0.as_ref() {
-            Storage::Index(_, layers) => Some(layers),
+            Storage::Index(_, layers, _) => Some(layers),
             _ => None,
         }
     }
@@ -354,7 +367,14 @@ impl ResourceSource {
             .collect();
         index.extend(files);
         let layers = self.layers().cloned().unwrap_or_default();
-        Self(Arc::new(Storage::Index(index, layers)), self.1.clone())
+        let sources = match self.0.as_ref() {
+            Storage::Index(.., sources) => sources.clone(),
+            _ => Arc::from([]),
+        };
+        Self(
+            Arc::new(Storage::Index(index, layers, sources)),
+            self.1.clone(),
+        )
     }
     /// A value computed once for this generation and shared by every clone of the source and
     /// every source `extended` from it: the first caller makes it, the rest wait for it and take
@@ -371,12 +391,10 @@ impl ResourceSource {
     pub fn directory(root: PathBuf) -> Self {
         Self::from(Storage::Directory(root))
     }
-    #[cfg(not(target_arch = "wasm32"))]
     pub fn archive(path: &Path) -> io::Result<Self> {
         Ok(Self::opened_archive(Zip::open(path)?))
     }
     /// Share an archive that was already opened while discovering its metadata.
-    #[cfg(not(target_arch = "wasm32"))]
     pub fn opened_archive(archive: Zip) -> Self {
         Self::from(Storage::Archive(archive))
     }
@@ -409,10 +427,9 @@ impl ResourceSource {
         }
         match self.0.as_ref() {
             Storage::Directory(root) => sunrise_core::prepared_files::read(&root.join(name)),
-            #[cfg(not(target_arch = "wasm32"))]
             Storage::Archive(archive) => archive.read(name),
             Storage::Prefix { source, prefix } => source.read(&format!("{prefix}{name}")),
-            Storage::Index(files, _) => files
+            Storage::Index(files, ..) => files
                 .get(name)
                 .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, name.to_owned()))?
                 .read(),
@@ -426,10 +443,9 @@ impl ResourceSource {
         }
         match self.0.as_ref() {
             Storage::Directory(root) => root.join(name).is_file().then(|| root.clone()),
-            #[cfg(not(target_arch = "wasm32"))]
             Storage::Archive(_) => None,
             Storage::Prefix { source, prefix } => source.folder_of(&format!("{prefix}{name}")),
-            Storage::Index(files, _) => match &files.get(name)?.0 {
+            Storage::Index(files, ..) => match &files.get(name)?.0 {
                 ResourceStorage::File { source, name } => source.folder_of(name),
                 ResourceStorage::Bytes(_) => None,
             },
@@ -449,12 +465,11 @@ impl ResourceSource {
             ));
         }
         match self.0.as_ref() {
-            #[cfg(not(target_arch = "wasm32"))]
             Storage::Archive(archive) => archive.copy_to(name, out, budget).map(|_| ()),
             Storage::Prefix { source, prefix } => {
                 source.copy_to(&format!("{prefix}{name}"), out, budget)
             }
-            Storage::Index(files, _) => match &files
+            Storage::Index(files, ..) => match &files
                 .get(name)
                 .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, name.to_owned()))?
                 .0
@@ -485,10 +500,9 @@ impl ResourceSource {
             Storage::Directory(root) => {
                 sunrise_core::prepared_files::read_head(&root.join(name), max)
             }
-            #[cfg(not(target_arch = "wasm32"))]
             Storage::Archive(archive) => archive.read_head(name, max),
             Storage::Prefix { source, prefix } => source.read_head(&format!("{prefix}{name}"), max),
-            Storage::Index(files, _) => match &files
+            Storage::Index(files, ..) => match &files
                 .get(name)
                 .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, name.to_owned()))?
                 .0
@@ -514,10 +528,9 @@ impl ResourceSource {
                     path.is_file()
                 }
             }
-            #[cfg(not(target_arch = "wasm32"))]
             Storage::Archive(archive) => archive.contains(name),
             Storage::Prefix { source, prefix } => source.contains(&format!("{prefix}{name}")),
-            Storage::Index(files, _) => files.contains_key(name),
+            Storage::Index(files, ..) => files.contains_key(name),
         }
     }
     /// Read only when the complete resource fits the limit. Bounds actual bytes
@@ -533,12 +546,11 @@ impl ResourceSource {
             Storage::Directory(root) => {
                 sunrise_core::prepared_files::read_head(&root.join(name), max.saturating_add(1))?
             }
-            #[cfg(not(target_arch = "wasm32"))]
             Storage::Archive(archive) => return archive.read_limited(name, max),
             Storage::Prefix { source, prefix } => {
                 return source.read_limited(&format!("{prefix}{name}"), max);
             }
-            Storage::Index(files, _) => match &files
+            Storage::Index(files, ..) => match &files
                 .get(name)
                 .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, name.to_owned()))?
                 .0
@@ -580,7 +592,6 @@ impl ResourceSource {
                 out.sort();
                 out
             }
-            #[cfg(not(target_arch = "wasm32"))]
             Storage::Archive(archive) => archive
                 .names()
                 .filter(|name| name.starts_with(prefix) && stays_inside(name))
@@ -594,7 +605,7 @@ impl ResourceSource {
                 .into_iter()
                 .filter_map(|name| name.strip_prefix(base).map(str::to_owned))
                 .collect(),
-            Storage::Index(files, _) => files
+            Storage::Index(files, ..) => files
                 .range(prefix.to_owned()..)
                 .map_while(|(name, _)| name.starts_with(prefix).then(|| name.clone()))
                 .collect(),
@@ -663,7 +674,6 @@ impl ResourceSource {
             Storage::Directory(root) => {
                 metadata_fingerprint(&fs::metadata(root.join(name)).ok()?).ok()
             }
-            #[cfg(not(target_arch = "wasm32"))]
             Storage::Archive(archive) => {
                 let key = Arc::as_ptr(&self.0) as usize;
                 let fingerprint = match archives.get(&key) {
@@ -682,7 +692,7 @@ impl ResourceSource {
             Storage::Prefix { source, prefix } => {
                 source.file_fingerprint(&format!("{prefix}{name}"), archives)
             }
-            Storage::Index(files, _) => match &files.get(name)?.0 {
+            Storage::Index(files, ..) => match &files.get(name)?.0 {
                 ResourceStorage::File { source, name } => source.file_fingerprint(name, archives),
                 ResourceStorage::Bytes(bytes) => {
                     let mut hash = DefaultHasher::new();

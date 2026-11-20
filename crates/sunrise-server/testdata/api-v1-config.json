@@ -13,6 +13,8 @@
           "webhook": "(set)"
         },
         "engine": {
+          "droppable_clientbound": 262144,
+          "droppable_serverbound": 16384,
           "low_memory": false,
           "parallel_tick": false,
           "path": "",
