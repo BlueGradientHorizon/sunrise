@@ -16,11 +16,20 @@ pub trait Hooks {
     /// block's lower north-west corner, in blocks; `draw` also has the partial
     /// tick, the game time and the block's light.
     #[hook(
+        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_block_entity_submit",
+        receiver = "read",
+        dispatch = "flat",
         side = "client",
         contract = "listen",
         scope = "block_entity",
         key = "block",
         neoforge = "EntityRenderersEvent.RegisterRenderers"
     )]
-    fn block_entity_submit();
+    fn block_entity_submit(
+        pos: [i32; 3],
+        block: &str,
+        state: BlockState,
+        entity: &ModBlockEntity,
+        draw: &mut dyn BlockEntityDrawContext,
+    );
 }

@@ -47,11 +47,13 @@ layer neither a mod nor vanilla has, or whose texture is empty. Skull types are 
 startup. Placed skull blocks of a mod type are not drawn by this hook: a mod block declaring that
 it is a skull is not covered yet."#]
     #[hook(
+        receiver = "associated",
+        dispatch = "flat",
         side = "client",
         contract = "collect",
         out = "models",
         context = "registration",
         neoforge = "EntityRenderersEvent.CreateSkullModels"
     )]
-    fn create_skull_models();
+    fn create_skull_models(models: &mut Vec<SkullModel>);
 }

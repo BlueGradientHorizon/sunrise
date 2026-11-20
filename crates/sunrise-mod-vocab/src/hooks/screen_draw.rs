@@ -21,6 +21,9 @@ pub trait Hooks {
     /// `origin` is the panel's top-left in the same coordinates. The pointer may
     /// be outside the panel; use these frame values rather than caching a size.
     #[hook(
+        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_screen_draw",
+        receiver = "read",
+        dispatch = "api_carrier",
         version = 3,
         side = "client",
         contract = "listen",

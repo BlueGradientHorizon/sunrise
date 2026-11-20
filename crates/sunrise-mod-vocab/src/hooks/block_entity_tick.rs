@@ -22,11 +22,16 @@ pub trait Hooks {
     /// including accepted item writes, while aborted Host transactions stay aborted.
     /// The default `Changed` retains full checked write-back.
     #[hook(
+        dispatch = "flat",
         side = "server",
         contract = "listen",
         scope = "block_entity",
         key = "entity",
         neoforge = "none (vanilla BlockEntityTicker; NeoForge adds no event or extension for it)"
     )]
-    fn block_entity_tick();
+    fn block_entity_tick(
+        reply: &mut mod_api::BlockEntityTickReply,
+        pos: [i32; 3],
+        entity: &mut ModBlockEntity,
+    );
 }

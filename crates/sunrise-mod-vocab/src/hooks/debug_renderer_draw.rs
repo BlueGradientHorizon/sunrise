@@ -7,10 +7,16 @@ pub trait Hooks {
     /// view, so nothing outlives a frame. A renderer that is not active is never asked, and neither is
     /// one without a world to draw in. Client-side.
     #[hook(
+        receiver = "read",
+        dispatch = "flat",
         side = "client",
         contract = "listen",
         neoforge = "RegisterDebugRenderersEvent (registration only; no per-frame event)",
         cancellable = false
     )]
-    fn debug_renderer_draw();
+    fn debug_renderer_draw(
+        id: &str,
+        view: &mod_api::WorldRenderView,
+        draw: &mut dyn WorldDrawContext,
+    );
 }

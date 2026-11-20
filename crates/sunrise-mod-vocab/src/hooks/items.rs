@@ -12,11 +12,14 @@ pub trait Hooks {
     /// manifest (bare paths use its mod ID). Unowned namespaces refuse registration.
     /// Asked once at start, on every side.
     #[hook(
+        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_items",
+        receiver = "associated",
+        dispatch = "flat",
         side = "both",
         contract = "collect",
         out = "items",
         context = "registration",
         neoforge = "RegisterEvent"
     )]
-    fn items();
+    fn items(items: &mut Vec<mod_api::Item>);
 }

@@ -12,11 +12,18 @@ pub trait Hooks {
     /// material costs are clamped to zero. Both sides: the server's menu,
     /// and a server's client menu with the local player.
     #[hook(
+        dispatch = "flat",
         side = "both",
         contract = "cancel",
         out = "cancel",
         neoforge = "AnvilUpdateEvent",
         cancellable = true
     )]
-    fn anvil_update();
+    fn anvil_update(
+        player: u128,
+        player_entity_id: i32,
+        pos: [i32; 3],
+        update: &mut mod_api::item::menu::AnvilUpdate,
+        cancel: &mut bool,
+    );
 }

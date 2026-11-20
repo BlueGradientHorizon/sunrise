@@ -16,5 +16,10 @@ pub trait Hooks {
         target = "sunrise_client_lib::crafting::native_hooks::native_ingredient_test",
         neoforge = "ICustomIngredient"
     )]
-    fn ingredient_test();
+    fn ingredient_test(
+        kind: &str,
+        data: &sunrise_core::nbt::Compound,
+        stack: &mod_api::ItemStack,
+        accept: &mut bool,
+    );
 }

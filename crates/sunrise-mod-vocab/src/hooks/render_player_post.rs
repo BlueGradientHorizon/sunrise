@@ -8,10 +8,17 @@ pub trait Hooks {
     /// `render_living_post` gets, None when the living pre hook was canceled. The player's name tag, leash,
     /// flames and shadow are drawn after it, as `render_living_post` says.
     #[hook(
+        receiver = "read",
+        dispatch = "flat",
         side = "client",
         contract = "listen",
         neoforge = "RenderPlayerEvent.Post",
         cancellable = false
     )]
-    fn render_player_post();
+    fn render_player_post(
+        player: &MobRender<'_>,
+        who: &PlayerRender<'_>,
+        parts: Option<&PosedParts>,
+        draw: &mut dyn BlockEntityDrawContext,
+    );
 }

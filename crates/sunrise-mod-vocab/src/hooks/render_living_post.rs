@@ -15,10 +15,16 @@ pub trait Hooks {
     /// the renderer in the model's place, so it changes with #3915 and not before. For a player,
     /// its `render_player_post` follows.
     #[hook(
+        receiver = "read",
+        dispatch = "flat",
         side = "client",
         contract = "listen",
         neoforge = "RenderLivingEvent.Post",
         cancellable = false
     )]
-    fn render_living_post();
+    fn render_living_post(
+        entity: &MobRender<'_>,
+        parts: Option<&PosedParts>,
+        draw: &mut dyn BlockEntityDrawContext,
+    );
 }

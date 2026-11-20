@@ -15,10 +15,11 @@ pub trait Hooks {
 
 - **`console_line(host, event)`**: every line of the server's log, for a mod that mirrors the console elsewhere (a Discord console channel) or audits it. Paper has no event for this; plugins add a Log4j appender to the root logger. Lines are collected from every thread while a mod listens and handed over on the server thread at the next tick's start, so a listener may use the host. Each line is kept to 8192 bytes of message and 128 of thread name (cut at a character boundary), at most 4096 lines wait between two ticks, and the oldest are dropped, so the queue holds at most about 34 MB. A line logged inside the hook is not heard again, so a listener that logs what it hears does not feed itself."#]
     #[hook(
+        dispatch = "flat",
         side = "server",
         contract = "listen",
         neoforge = "none (NeoForge has no log event; mods add a Log4j appender)",
         paper = "none (plugins add a Log4j appender)"
     )]
-    fn console_line();
+    fn console_line(level: &str, thread: &str, message: &str);
 }

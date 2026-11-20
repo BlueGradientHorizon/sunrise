@@ -37,11 +37,13 @@ are texels, +y down and the front towards -z; convert the mob's frame with scale
 `[1.0, -1.0, -1.0]` then translation `[0.0, -1.501, 0.0]`, as `LivingEntityRenderer` does.
 The sprite is the entity texture ID and the tint is `0xRRGGBB`."#]
     #[hook(
+        receiver = "associated",
+        dispatch = "flat",
         side = "client",
         contract = "collect",
         out = "layers",
         context = "registration",
         neoforge = "EntityRenderersEvent.RegisterLayerDefinitions"
     )]
-    fn register_layer_definitions();
+    fn register_layer_definitions(layers: &mut Vec<(String, LayerDefinition)>);
 }

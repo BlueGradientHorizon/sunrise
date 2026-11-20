@@ -12,11 +12,19 @@ pub trait Hooks {
     /// children with it (the hat goes with the head), while its armour, held items and other
     /// layers, the cape among them, keep every part.
     #[hook(
+        receiver = "read",
+        dispatch = "flat",
         side = "client",
         contract = "cancel",
         out = "canceled",
         neoforge = "RenderPlayerEvent.Pre",
         cancellable = true
     )]
-    fn render_player_pre();
+    fn render_player_pre(
+        player: &MobRender<'_>,
+        who: &PlayerRender<'_>,
+        draw: &mut dyn BlockEntityDrawContext,
+        hidden: &mut HiddenParts,
+        canceled: &mut bool,
+    );
 }

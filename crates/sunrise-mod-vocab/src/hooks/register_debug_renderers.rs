@@ -30,11 +30,13 @@ mod is asked about every id, so a mod ignores ids it does not own. Output clears
 title or connect screens ask no renderer, so nothing stays after leaving a world. A renderer that
 is not active is never asked, so with none active a view only compares the selection's version."#]
     #[hook(
+        receiver = "associated",
+        dispatch = "flat",
         side = "client",
         contract = "collect",
         out = "renderers",
         context = "registration",
         neoforge = "RegisterDebugRenderersEvent"
     )]
-    fn register_debug_renderers();
+    fn register_debug_renderers(renderers: &mut Vec<DebugRenderer>);
 }

@@ -32,6 +32,8 @@ pub trait Hooks {
     /// equipment are retained outside traversal; other Host reads can allocate.
     /// A client without this mod predicts vanilla here; the server corrects it.
     #[hook(
+        receiver = "read",
+        dispatch = "flat",
         side = "both",
         version = 2,
         contract = "listen",
@@ -42,5 +44,11 @@ pub trait Hooks {
         cancellable = false,
         neoforge = "IItemExtension.canEquip"
     )]
-    fn can_equip();
+    fn can_equip(
+        stack: &mod_api::ItemStack,
+        slot: &str,
+        entity: LivingRef,
+        kind: &str,
+        can_equip: &mut bool,
+    );
 }

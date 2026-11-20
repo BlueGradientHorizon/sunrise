@@ -18,6 +18,8 @@ pub trait Hooks {
     /// mod-owned storage do not emit `contents_changed`; use an explicit `set_changed`
     /// notice or seed in a provider that owns the accepted write.
     #[hook(
+        receiver = "associated",
+        dispatch = "flat",
         side = "server",
         contract = "replace",
         out = "allowed",
@@ -25,5 +27,10 @@ pub trait Hooks {
         key = "entity",
         neoforge = "none (vanilla Container.canPlaceItem; the item capability wraps this decision)"
     )]
-    fn can_place_item();
+    fn can_place_item(
+        entity: &ModBlockEntity,
+        slot: usize,
+        stack: &mod_api::ItemStack,
+        allowed: &mut Option<bool>,
+    );
 }

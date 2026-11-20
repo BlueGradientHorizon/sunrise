@@ -7,6 +7,7 @@ pub trait Hooks {
     /// set `feature` to another key to grow that one. Server-side.
     /// Mods can use `level.random()` to access the growth random source.
     #[hook(
+        dispatch = "flat",
         side = "server",
         contract = "cancel",
         out = "cancel",
@@ -14,5 +15,10 @@ pub trait Hooks {
         cancellable = true,
         target = "sunrise_client::game::native_hooks::block_grow_feature::GameLevel<'_>::native_block_grow_feature"
     )]
-    fn block_grow_feature();
+    fn block_grow_feature(
+        dimension: LevelDimension,
+        pos: BlockPos,
+        feature: &mut Option<String>,
+        cancel: &mut bool,
+    );
 }

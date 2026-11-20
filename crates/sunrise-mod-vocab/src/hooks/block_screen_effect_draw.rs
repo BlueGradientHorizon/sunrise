@@ -15,6 +15,7 @@ pub trait Hooks {
 
 With no `custom_draw` set the hook is never asked, so a mod that only listens here draws nothing."#]
     #[hook(
+        receiver = "read",
         side = "client",
         contract = "listen",
         neoforge = "CustomBlockScreenEffectRenderer",

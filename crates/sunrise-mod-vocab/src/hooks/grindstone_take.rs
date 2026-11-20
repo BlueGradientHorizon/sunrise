@@ -18,6 +18,7 @@ pub trait Hooks {
     /// that changed and was restored still makes the take stale. Accepted writes and experience
     /// remain tentative until the outermost transaction commits. Server-side.
     #[hook(
+        dispatch = "flat",
         side = "server",
         contract = "cancel",
         out = "cancel",
@@ -25,5 +26,11 @@ pub trait Hooks {
         cancellable = true,
         version = 2
     )]
-    fn grindstone_take();
+    fn grindstone_take(
+        player: u128,
+        player_entity_id: i32,
+        pos: [i32; 3],
+        take: &mut mod_api::item::menu::GrindstoneTake,
+        cancel: &mut bool,
+    );
 }

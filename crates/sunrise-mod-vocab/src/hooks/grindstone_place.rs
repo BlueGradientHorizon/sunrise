@@ -13,6 +13,7 @@ pub trait Hooks {
     /// every write the listener made. A backing block that changed and was restored still
     /// makes the place stale. Server-side.
     #[hook(
+        dispatch = "flat",
         side = "server",
         contract = "cancel",
         out = "cancel",
@@ -20,5 +21,11 @@ pub trait Hooks {
         cancellable = true,
         version = 2
     )]
-    fn grindstone_place();
+    fn grindstone_place(
+        player: u128,
+        player_entity_id: i32,
+        pos: [i32; 3],
+        place: &mut mod_api::item::menu::GrindstonePlace,
+        cancel: &mut bool,
+    );
 }

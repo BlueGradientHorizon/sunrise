@@ -23,6 +23,8 @@ pub trait Hooks {
     /// This is not the one-time attachment notice `block_entity_on_load`, nor
     /// the client sync payload `block_entity_update_tag`.
     #[hook(
+        receiver = "read",
+        dispatch = "flat",
         side = "server",
         contract = "listen",
         event_per_listener = true,
@@ -32,5 +34,11 @@ pub trait Hooks {
         neoforge = "none (vanilla BlockEntity.saveAdditional; NeoForge adds no event for this moment)",
         version = 2
     )]
-    fn block_entity_save_additional();
+    fn block_entity_save_additional(
+        id: mod_api::BlockEntityTypeKey,
+        entity: BlockEntityRef,
+        pos: [i32; 3],
+        level: LevelRef,
+        tag: &mut Compound,
+    );
 }

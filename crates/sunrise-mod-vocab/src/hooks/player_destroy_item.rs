@@ -9,9 +9,11 @@ pub trait Hooks {
     /// The player's state is swapped in. Once for each break, on a server; a
     /// creative player and the host of a LAN world are not heard.
     #[hook(
+        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_player_destroy_item",
+        dispatch = "flat",
         side = "server",
         contract = "listen",
         neoforge = "none (NeoForge's PlayerDestroyItemEvent carries the original stack and a hand, which armour has not; this hook only listens and names the slot instead. Bukkit's PlayerItemBreakEvent)"
     )]
-    fn player_destroy_item();
+    fn player_destroy_item(player: u128, name: &str, item: &str, slot: &str);
 }

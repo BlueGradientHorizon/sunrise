@@ -83,10 +83,12 @@ projectiles come in follow-ups of #860. A renderer that returns an `Err` or pani
 the error and asked no more until the next resource load resolves it again. What it drew that frame is
 dropped, and until then its type draws as it would without one."#]
     #[hook(
+        receiver = "associated",
+        dispatch = "flat",
         side = "client",
         contract = "listen",
         context = "registration",
         neoforge = "EntityRenderersEvent.RegisterRenderers"
     )]
-    fn register_entity_renderers();
+    fn register_entity_renderers(renderers: &mut dyn EntityRenderers);
 }

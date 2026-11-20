@@ -13,6 +13,8 @@ pub trait Hooks {
     /// Dispatch is by `item` id. This event has no stack: the decision is from
     /// the item and level, not held-stack components.
     #[hook(
+        receiver = "read",
+        dispatch = "flat",
         side = "both",
         contract = "replace",
         scope = "item",
@@ -21,5 +23,9 @@ pub trait Hooks {
         target = "sunrise_client::game::native_hooks::placement_context::GameLevel<'_>::native_placement_context",
         neoforge = "none (vanilla BlockItem.updatePlacementContext)"
     )]
-    fn placement_context();
+    fn placement_context(
+        item: &str,
+        context: &PlacementContext,
+        answer: &mut Option<Option<mod_api::PlacementContext>>,
+    );
 }

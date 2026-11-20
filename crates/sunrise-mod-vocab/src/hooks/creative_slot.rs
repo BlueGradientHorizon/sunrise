@@ -16,11 +16,20 @@ pub trait Hooks {
     /// creative player gets other ways (middle-click pick block, `/give`).
     /// Server-side, for every player of the world.
     #[hook(
+        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_creative_slot",
+        dispatch = "flat",
         side = "server",
         contract = "cancel",
         out = "cancel",
         cancellable = true,
         neoforge = "none (vanilla ServerGamePacketListenerImpl.handleSetCreativeModeSlot; NeoForge adds no event or extension for it)"
     )]
-    fn creative_slot();
+    fn creative_slot(
+        player: u128,
+        name: &str,
+        slot: i32,
+        item: &str,
+        count: i32,
+        cancel: &mut bool,
+    );
 }

@@ -9,6 +9,7 @@ pub trait Hooks {
     /// draw from `native_level_random` to keep vanilla's order.
     /// Authoritative servers only.
     #[hook(
+        dispatch = "flat",
         side = "server",
         contract = "collect",
         out = "success",
@@ -17,5 +18,10 @@ pub trait Hooks {
         target = "sunrise_client::game::native_hooks::base::GameLevel<'_>::native_is_bonemeal_success",
         neoforge = "none (vanilla BonemealableBlock.isBonemealSuccess; NeoForge adds no event or extension for it)"
     )]
-    fn is_bonemeal_success();
+    fn is_bonemeal_success(
+        dimension: LevelDimension,
+        pos: BlockPos,
+        state: BlockState,
+        success: &mut bool,
+    );
 }

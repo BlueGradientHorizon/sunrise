@@ -19,10 +19,12 @@ pub trait Hooks {
     /// with `data_map_value` and `data_map_entries`. Server-side, not synced
     /// to clients.
     #[hook(
+        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_data_map_types",
+        dispatch = "flat",
         side = "server",
         contract = "collect",
         out = "types",
         neoforge = "RegisterDataMapTypesEvent"
     )]
-    fn data_map_types();
+    fn data_map_types(types: &mut Vec<DataMapType>);
 }

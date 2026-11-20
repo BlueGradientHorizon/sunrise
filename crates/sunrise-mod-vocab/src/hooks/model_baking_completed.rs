@@ -20,6 +20,7 @@ the next `model_baking_completed`, when the old ones answer `ModelError::StaleMo
 and leaves them valid. It gives no view of the baked geometry and edits nothing (that is #861). A dedicated server never
 fires it."#]
     #[hook(
+        dispatch = "flat",
         side = "client",
         contract = "listen",
         cancellable = false,

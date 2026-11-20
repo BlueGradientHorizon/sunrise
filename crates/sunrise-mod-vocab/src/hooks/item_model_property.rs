@@ -34,9 +34,16 @@ mod registers in `register_special_model_renderer`; one of a type no mod registe
 its item draws the missing model."#]
     /// `bundle_selected` is the runtime bundle selection index; -1 means none.
     #[hook(
+        receiver = "read",
+        dispatch = "flat",
         side = "client",
         contract = "listen",
         neoforge = "RegisterConditionalItemModelPropertyEvent"
     )]
-    fn item_model_property();
+    fn item_model_property(
+        property: &str,
+        stack: &mod_api::ItemStack,
+        bundle_selected: i32,
+        value: &mut bool,
+    );
 }

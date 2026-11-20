@@ -13,5 +13,5 @@ pub trait Hooks {
         target = "mod_api::chunk_disk::native_chunk_data_load",
         neoforge = "ChunkDataEvent.Load"
     )]
-    fn chunk_data_load();
+    fn chunk_data_load(data: &mut ChunkDiskData);
 }

@@ -18,6 +18,8 @@ pub trait Hooks {
     /// that are no edit of the text (dyeing, glow ink, waxing, `/data`,
     /// `/setblock`, mods' `native_with_mod_block_entity`).
     #[hook(
+        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_sign_changed",
+        dispatch = "api_carrier",
         side = "server",
         contract = "cancel",
         out = "cancel",
@@ -41,6 +43,9 @@ pub trait Hooks {
     /// drops the entire form and logs its registering mod. Resolve the results through
     /// `RenderAssets::model` after `model_baking_completed`, just like plain ids.
     #[hook(
+        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_standalone_models",
+        receiver = "associated",
+        dispatch = "flat",
         side = "client",
         contract = "collect",
         out = "forms",
@@ -49,5 +54,8 @@ pub trait Hooks {
         context = "registration",
         neoforge = "ModelEvent.RegisterStandalone"
     )]
-    fn standalone_models();
+    fn standalone_models(
+        models: &mut Vec<String>,
+        forms: &mut Vec<mod_api::Answered<mod_api::StandaloneModelForm>>,
+    );
 }

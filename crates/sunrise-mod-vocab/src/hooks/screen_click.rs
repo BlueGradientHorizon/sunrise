@@ -11,6 +11,9 @@ pub trait Hooks {
     /// `MenuPart` hears a button for that type, including a menu opened
     /// without a block.
     #[hook(
+        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_screen_click",
+        receiver = "read",
+        dispatch = "flat",
         version = 2,
         side = "client",
         contract = "replace",
@@ -19,5 +22,12 @@ pub trait Hooks {
         key = "menu",
         neoforge = "none (see screen)"
     )]
-    fn screen_click();
+    fn screen_click(
+        menu: &str,
+        block: Option<&str>,
+        data: &[i32],
+        at: [f32; 2],
+        right: bool,
+        button: &mut Option<i32>,
+    );
 }

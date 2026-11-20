@@ -44,11 +44,13 @@ load), and each particle carries its group's handle, so a spawn, a tick and a dr
 up by name and scan no mod. Live provider-driven particles are dropped when resources reload, in
 a group as in the built-in one."#]
     #[hook(
+        receiver = "associated",
+        dispatch = "flat",
         side = "client",
         contract = "collect",
         out = "groups",
         context = "registration",
         neoforge = "RegisterParticleGroupsEvent"
     )]
-    fn register_particle_groups();
+    fn register_particle_groups(groups: &mut Vec<ParticleGroup>);
 }

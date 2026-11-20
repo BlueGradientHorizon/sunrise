@@ -7,10 +7,12 @@ pub trait Hooks {
     /// so a mod ignores ids it does not own. Draw with the drawing context; `draw.size()` is
     /// the GUI size. Client-side.
     #[hook(
+        receiver = "read",
+        dispatch = "flat",
         side = "client",
         contract = "listen",
         neoforge = "RenderGuiLayerEvent.Pre, RenderGuiLayerEvent.Post",
         cancellable = false
     )]
-    fn gui_layer_draw();
+    fn gui_layer_draw(layer: &str, draw: &mut dyn DrawContext);
 }

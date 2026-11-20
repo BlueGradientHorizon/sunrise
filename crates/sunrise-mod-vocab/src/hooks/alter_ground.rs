@@ -40,5 +40,11 @@ pub trait Hooks {
         target = "mod_api::world::ground::native_alter_ground",
         neoforge = "AlterGroundEvent"
     )]
-    fn alter_ground();
+    fn alter_ground(
+        logs: &[[i32; 3]],
+        leaves: &[[i32; 3]],
+        roots: &[[i32; 3]],
+        positions: &[[i32; 3]],
+        provider: &mut GroundProvider,
+    );
 }

@@ -15,9 +15,11 @@ pub trait Hooks {
     /// (horse, pig...) or a vehicle carrying only a mob. Server-side, in the
     /// level the vehicle is in.
     #[hook(
+        target = "sunrise_client::game::native_hooks::base::Game<'_>::native_vehicle_moved",
+        dispatch = "flat",
         side = "server",
         contract = "listen",
         neoforge = "none (NeoForge has no vehicle move event; EntityTickEvent covers the tick)"
     )]
-    fn vehicle_moved();
+    fn vehicle_moved(player: Option<u128>, kind: &str, from: [f64; 3], to: [f64; 3]);
 }
