@@ -36,6 +36,14 @@ impl IPayloadContext for UnusedContext {
     ) -> Result<mod_api::PayloadAccepted, mod_api::PayloadSendError> {
         panic!("busy payload staged a reply")
     }
+    fn send_to(
+        &mut self,
+        _: &[mod_api::PlayerRef],
+        _: &mod_api::PayloadId,
+        _: mod_api::PayloadBytes,
+    ) -> Result<u32, mod_api::PayloadSendError> {
+        unreachable!()
+    }
     fn disconnect(&mut self, _: mod_api::Text) {
         panic!("busy payload staged a disconnect")
     }

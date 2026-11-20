@@ -27,16 +27,16 @@ impl Game<'_> {
         if fields.generation != self.standalone_geometry.generation() {
             return Err(TerrainModelError::Model(ModelError::StaleModel));
         }
-        let model = self
+        let faces = self
             .standalone_geometry
             .instance_slot(fields.slot)
-            .and_then(|_| self.pack.render.model_catalog.model_by_slot(fields.slot))
+            .and_then(|_| self.model_faces(fields.slot))
             .ok_or(TerrainModelError::Model(ModelError::UnknownModel))?;
         let light = self.native_draw_light(draw);
         let layers = &self.pack.render.sprite_layers;
         draw_terrain_model(
             draw,
-            &model.faces,
+            faces,
             light,
             |name| {
                 layers
@@ -73,6 +73,8 @@ fn engine_options(options: TerrainModelOptions<'_>) -> NativeModelRenderOptions<
         }),
         uv_shrink_ratio: options.uv_shrink_ratio,
         tint: options.tint,
+        color: options.color,
+        ..Default::default()
     }
 }
 
@@ -200,11 +202,17 @@ mod tests {
     }
 
     #[test]
-    fn a_translucent_quad_refuses_the_models_materials_but_not_a_chosen_one() {
+    fn a_translucent_quad_takes_the_translucent_material_under_the_models_and_a_chosen_one_wins() {
         let faces = [face(None, -1), face(Some(RenderType::Translucent), -1)];
         let (result, vertices) = drawn(&faces, TerrainModelOptions::default());
-        assert_eq!(result, Err(TerrainModelError::Refused));
-        assert!(vertices.is_empty());
+        assert_eq!(result, Ok(()));
+        assert_eq!(
+            materials(&vertices),
+            [
+                TERRAIN_MODEL_SOLID_OVERLAY,
+                sunrise_client::gfx::TERRAIN_MODEL_TRANSLUCENT_OVERLAY
+            ]
+        );
         let (result, vertices) = drawn(
             &faces,
             TerrainModelOptions::default().with_material(TerrainMaterial::Cutout),

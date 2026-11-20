@@ -139,7 +139,6 @@
   "How fast the right stick turns the view.": "Jak rychle pravá páčka otáčí pohled.",
   "How fast the stick moves the crosshair in inventories.": "Jak rychle páčka pohybuje zaměřovačem v inventářích.",
   "How frames reach the screen while VSync is off.": "Jak se snímky dostanou na obrazovku, když je VSync vypnutá.",
-  "How frames reach the screen, and the performance overlay.": "Jak se snímky dostanou na obrazovku a překryvný výkon.",
   "How long a held direction takes between repeats.": "Jak dlouho držený směr trvá mezi opakováními.",
   "How long a held direction waits before it repeats.": "Jak dlouho držený směr čeká, než se zopakuje.",
   "How many particles effects spawn.": "Kolik částic se vytvoří.",

@@ -139,7 +139,6 @@
   "How fast the right stick turns the view.": "რამდენად სწრაფად აბრუნებს მარჯვენა ჩხირი ხედვას.",
   "How fast the stick moves the crosshair in inventories.": "რამდენად სწრაფად მოძრაობს ჩხირი მიზანს ინვენტარებში.",
   "How frames reach the screen while VSync is off.": "როგორ აღწევს ჩარჩოები ეკრანზე, როდესაც VSync გამორთულია.",
-  "How frames reach the screen, and the performance overlay.": "როგორ აღწევს ჩარჩოები ეკრანზე და შესრულების გადაფარვა.",
   "How long a held direction takes between repeats.": "რამდენი დრო გადის დაჭერილი მიმართულების გამეორებებს შორის.",
   "How long a held direction waits before it repeats.": "რამდენ ხანს ელოდება დაჭერილი მიმართულება, სანამ გამეორდება.",
   "How many particles effects spawn.": "რამდენი ნაწილაკების ეფექტი წარმოიქმნება.",

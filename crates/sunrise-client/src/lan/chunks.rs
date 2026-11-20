@@ -858,13 +858,6 @@ impl ChunkEncoder {
             }
         }
     }
-    /// Whether the state holds a fluid (water, lava, or a waterlogged block).
-    pub fn has_fluid(&self, state: u32) -> bool {
-        self.coder
-            .flags
-            .get(state as usize)
-            .is_some_and(|f| f & FLUID != 0)
-    }
     pub fn is_air(&self, state: u32) -> bool {
         self.coder
             .flags
