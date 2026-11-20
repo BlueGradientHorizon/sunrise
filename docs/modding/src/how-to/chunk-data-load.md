@@ -8,8 +8,10 @@ not fire this hook. The callback uses `event.data.get(&KEY)` and
 For example, reading disk value 8 and setting 9 publishes 9 on success.
 
 The worker host supplies only the job identity and immutable resource reads.
-`registry(name)` lends `Option<&[String]>` in registry ID order from the worker's captured
-generation; `ConfigHost::setting` still returns an owned `Option<String>` from that snapshot.
+`registry(name)` lends `Option<&[String]>` in registry ID order from the frozen generation
+retained by the worker. `None` means that generation has no such registry. Use the slice within
+the callback, or copy it if it must outlive the callback. Neither metadata getter reads files;
+`ConfigHost::setting` still returns an owned `Option<String>` from the same snapshot.
 The host has no live backend and is not a `ServerHost`.
 Every typed value needs a persistence codec and must implement `Wire`.
 Unknown bounded attachment entries are preserved opaquely.

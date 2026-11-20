@@ -75,12 +75,14 @@ pub struct ChunkDiskFailure {
 
 /// A disk callback's shared Host. It has no live backend and is never a
 /// `ServerHost`: live handle methods refuse, and world writes do not compile.
-/// Registry and settings reads use the owning resource generation's snapshot.
+/// Registry and settings reads use the frozen resource generation retained by
+/// the disk worker. Neither getter reads files. The inherited
+/// [`ConfigHost::setting`](prelude::ConfigHost::setting) still returns an owned `Option<String>`.
 pub trait ChunkDiskHost: Host {
     /// Captured world, dimension, chunk, representation and phase.
     fn job(&self) -> ChunkDiskContextWire;
-    /// Borrows registry names in ID order from the worker's captured generation,
-    /// or returns `None` if the registry is unavailable.
+    /// Borrows registry names in ID order for the lifetime of the host borrow,
+    /// or returns `None` if the registry is unavailable in the captured generation.
     fn registry(&self, name: &str) -> Option<&[String]>;
 }
 

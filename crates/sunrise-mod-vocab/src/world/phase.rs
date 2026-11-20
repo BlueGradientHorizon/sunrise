@@ -726,8 +726,10 @@ impl RegistrationContext {
     }
 }
 
-/// A data load's read-only view. The owning loader supplies its origin and
-/// metadata; reading already-loaded data never creates this context.
+/// A data load's read-only view. The loader freezes the metadata for this
+/// resource generation before dispatch. The metadata getters lend that data
+/// without file I/O. Copy data only if it must outlive the context borrow.
+/// Reading already-loaded data never creates this context.
 ///
 /// ```compile_fail
 /// use mod_api::{DataLoadContext, Host};
@@ -750,7 +752,8 @@ pub trait DataLoadContext {
     /// The phase selected at the owning load boundary.
     fn origin(&self) -> DataLoadOrigin;
 
-    /// Borrows registry names in ID order from this resource generation.
+    /// Borrows registry names in ID order, or returns `None` if the registry
+    /// is unavailable.
     fn registry(&self, name: &str) -> Option<&[String]>;
 
     /// Resolve a fluid name against this load's registered fluid identities.
@@ -763,21 +766,22 @@ pub trait DataLoadContext {
         None
     }
 
-    /// Borrows a setting captured for this generation, without file I/O.
+    /// Borrows a captured setting, or returns `None` if it was not captured.
     fn setting(&self, mod_id: &str, key: &str) -> Option<&str>;
 
     /// Borrows the loaded-mod inventory in dispatch order.
     fn mods(&self) -> &LoadedMods;
 }
 
-/// Immutable resource-generation reads supplied by an owning loader.
+/// Immutable resource-generation reads supplied by an owning loader. Return
+/// borrows into the captured data; the getters must not read files.
 pub trait LoadReader: Sync {
-    /// Borrows registry names in ID order.
+    /// Borrows registry names in ID order, or returns `None` if unavailable.
     fn registry(&self, name: &str) -> Option<&[String]>;
-    /// Borrows recipe fluid tags with members in source order. Returns `None`
-    /// without a recipe overlay, and `Some(&[])` for an empty overlay.
+    /// Borrows recipe fluid tags with members in source order. Return `None`
+    /// without a recipe overlay and `Some(&[])` when it has no fluid tags.
     fn fluid_tags(&self) -> Option<&[(String, Arc<[String]>)]>;
-    /// Borrows a captured setting, without file I/O.
+    /// Borrows a captured setting, or returns `None` if it was not captured.
     fn setting(&self, mod_id: &str, key: &str) -> Option<&str>;
 }
 
@@ -828,7 +832,8 @@ impl DataLoadContext for OwningLoad<'_> {
 /// player-list loop: the side, registries, settings, mod list and authoritative item
 /// tags. A loop without a tag-bearing snapshot (for example, the sound engine) returns
 /// `None` from tag reads even after world tags sync. The side that owns the loop builds
-/// this view; its answers never change while held.
+/// this view; its answers never change while held. Metadata getters return borrows
+/// tied to this context and do no file I/O.
 ///
 /// ```compile_fail
 /// use mod_api::{Host, LoopContext};
@@ -867,17 +872,19 @@ pub trait LoopContext {
     /// The side whose loop fires the hook.
     fn side(&self) -> LoopSide;
 
-    /// Borrows registry names in ID order from this resource generation.
+    /// Borrows registry names in ID order, or returns `None` if the registry
+    /// is unavailable.
     fn registry(&self, name: &str) -> Option<&[String]>;
 
-    /// Borrows a setting captured for this generation, without file I/O.
+    /// Borrows a captured setting, or returns `None` if it was not captured.
     fn setting(&self, mod_id: &str, key: &str) -> Option<&str>;
 
     /// Borrows the loaded-mod inventory in dispatch order.
     fn mods(&self) -> &LoadedMods;
 }
 
-/// Immutable resource-generation reads supplied by an owning loop.
+/// Immutable resource-generation reads supplied by an owning loop. Return
+/// borrows into the captured metadata; the getters must not read files.
 pub trait LoopReader: Sync {
     /// Authoritative membership, unavailable until this reader has tag inputs.
     fn item_is_in_tag(&self, item: crate::ItemKey, tag: crate::TagKey) -> Option<bool> {
@@ -899,9 +906,9 @@ pub trait LoopReader: Sync {
         let _ = (set, item);
         false
     }
-    /// Borrows registry names in ID order.
+    /// Borrows registry names in ID order, or returns `None` if unavailable.
     fn registry(&self, name: &str) -> Option<&[String]>;
-    /// Borrows a captured setting, without file I/O.
+    /// Borrows a captured setting, or returns `None` if it was not captured.
     fn setting(&self, mod_id: &str, key: &str) -> Option<&str>;
 }
 
@@ -956,11 +963,11 @@ impl LoopContext for OwningLoop<'_> {
 
 /// The view of a hook fired while a feature generates, where no game is at
 /// hand: on a worldgen worker thread, or on the server thread when a sapling
-/// grows. It carries the server's registries, its settings and the mod list;
-/// the server builds it once per resource generation, a hook never builds one,
-/// and its answers never change while it is held. There are no writes, no
-/// level or entity handles and no transaction: what the generating region
-/// holds is the hook's own arguments.
+/// grows. It lends the server's registries, settings and mod list from the
+/// frozen resource generation. The metadata borrows are tied to this host
+/// and the getters do no file I/O. There are no writes, no level or entity
+/// handles and no transactions: the hook's arguments provide access to the
+/// generating region.
 ///
 /// ```compile_fail
 /// use mod_api::{Host, WorldgenHost};
@@ -975,11 +982,11 @@ impl LoopContext for OwningLoop<'_> {
 /// }
 /// ```
 pub trait WorldgenHost {
-    /// Borrows registry names in ID order from this resource generation, or `None`
-    /// if the registry is unavailable.
+    /// Borrows registry names in ID order, or returns `None` if the registry
+    /// is unavailable.
     fn registry(&self, name: &str) -> Option<&[String]>;
 
-    /// Borrows a setting captured for this generation, without file I/O.
+    /// Borrows a captured setting, or returns `None` if it was not captured.
     fn setting(&self, mod_id: &str, key: &str) -> Option<&str>;
 
     /// Borrows the loaded-mod inventory in dispatch order.
