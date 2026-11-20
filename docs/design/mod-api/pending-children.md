@@ -1,5 +1,10 @@
 # Design: pending children
 
+> Historical: this design predates the removal of WebAssembly mods; the current native API is documented
+> in [`PendingChildrenEdits`](../../../crates/sunrise-mod-vocab/src/entity/pending_children.rs). The
+> native lease and ownership rules remain; the original guest bindings, trap cases and dual-target
+> proposal below are historical.
+
 Implemented collection contract for [#825](https://github.com/arismoko/horizon/issues/825): the engine owns an action-local ordered collection of fully constructed, unspawned children. Listeners borrow editors; the engine validates and consumes the final collection exactly once at the original insertion boundary. The implementation status below distinguishes the shipped collection from the transaction-coordinator work still outstanding. The evidence and acceptance matrix record the original design investigation, not executed verification of the implementation.
 
 ## Evidence and limits
@@ -76,7 +81,7 @@ Expected implementation outcomes below are fixtures to write, not tests already 
 ## Implementation status
 
 **This is staged work.** `mob_split` and `baby_entity_spawn` now hand their listeners the engine-owned
-list described here, natively and through wasm. The pieces that need a transaction coordinator wait for
+list described here. The pieces that need a transaction coordinator wait for
 [#784](https://github.com/arismoko/horizon/issues/784), which is not in main: outer rollback of a vetoed
 listener's Host writes and per-child join recovery. Until it lands, a veto or a stale refusal spawns no
 child but cannot undo what a listener wrote through the host. #825 stays open for that stage.
@@ -84,8 +89,7 @@ child but cannot undo what a listener wrote through the host. #825 stays open fo
 What is built:
 
 - **Hooks.** `edits` (`&dyn PendingChildrenEdits`) and the action's `dimension` replace the old count and
-  kind string; each callback gets its list with `edits.children()`. The wasm bindings are generated from
-  the same declarations.
+  kind string; each callback gets its list with `edits.children()`.
 - **Construction first.** A split constructs every child, with its yaw draw, before the hook; breeding
   calls the hook after the baby is built and has inherited, before finalization and insertion.
 - **Operations.** `len`, `child`, `construct`, `append`, `replace` and `remove`, plus `set_position`,
@@ -93,10 +97,10 @@ What is built:
   refusals. A split holds at most 64 children, breeding one baby that must stay a baby.
 - **One listener per lease.** Entering any next listener (including a different nested hook) ends the
   previous listener's leases, so a list, child or ownership token kept from an earlier listener answers
-  `Expired`. This holds for native and wasm listeners alike.
+  `Expired`.
 - **Consumed once.** After dispatch the list is frozen and validated (kind, dimension, finite position and
-  yaw, baby state, species size), and the survivors join in order. A cancel, an emptied list, a trapped wasm
-  listener, a parent or world that changed under the listener (a parent's position, kind, age, love,
+  yaw, baby state, species size), and the survivors join in order. A cancel, an emptied list,
+  a parent or world that changed under the listener (a parent's position, kind, age, love,
   variant, colour or tameness differs from what the baby was built from), or an invalid final child spawns
   nothing and replays nothing. Cancelling keeps the construction draws and the parent's death; breeding's
   veto leaves both parents at age 6000 and love 0 with no experience, statistic or hearts.

@@ -1,5 +1,10 @@
 # Design: section meshing
 
+> Historical: this design predates the removal of WebAssembly mods; the current native API is documented
+> in [`add_section_geometry`](../../../crates/sunrise-mod-vocab/src/hooks/add_section_geometry.rs).
+> This is the supported section-geometry hook, not the proposed `SectionMeshPlan` . The guest stores,
+> quotas and test gates below are historical.
+
 Proposal for [#1508](https://github.com/arismoko/horizon/issues/1508), requiring
 maintainer approval before code. Implementation follows R2 GPU instancing
 ([#808](https://github.com/arismoko/horizon/issues/808)); this page does not claim

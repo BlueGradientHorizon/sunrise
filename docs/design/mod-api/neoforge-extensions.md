@@ -381,7 +381,7 @@ invalidate just the changed chunk (#1300).
 | `IShearable.spawnShearedDrop(level, pos, drop)` | **Covered, engine-side** | The game spawns each returned drop one block above the entity with the sheep's random nudge, posts the shear game event and damages the shears. Not overridable per part. |
 
 Vanilla's shearable species (sheep, mooshroom, snow golem, bogged, copper golem, sulfur cube) keep their own
-shearing when no part answers. Entity parts are native-only, so wasm mods do not have these methods yet.
+shearing when no part answers. Mods use these methods through native [entity Parts](../../modding/src/concepts/parts/entity-parts-and-mob-goals.md#spawn-groups-and-shearing).
 
 ## IFallableExtension: falling tick
 
@@ -413,7 +413,7 @@ These are model-registration counterparts, not object-extension methods (#3430).
 
 | NeoForge | Verdict | Sunrise route |
 | --- | --- | --- |
-| `ModelEvent.RegisterStandalone.register` | **Covered for quad results** | Client `standalone_models` contract version 2 retains plain file ids in `models` and adds `forms: Vec<StandaloneModelForm>` on the same hook, with `RegistrationContext` on native and wasm. |
+| `ModelEvent.RegisterStandalone.register` | **Covered for quad results** | The native client `standalone_models` hook takes `RegistrationContext`; it supports plain file ids in `models` and [bake-time standalone forms](../../modding/src/how-to/client/model-drawing.md#bake-time-standalone-forms) in `forms`. |
 | `SimpleUnbakedStandaloneModel` with a `ModelState` | **Covered for quad results** | `Rotated { id, model, turns, uvlock }` uses the blockstate baker's centered negative XYZ quarter-turns and inverse face UV transform; no draw-pose substitution. |
 | `UnbakedStandaloneModel.resolveDependencies` and quad composition | **Covered for declared file dependencies** | `Combined { id, parts }` loads all sources and their transitive dependencies, concatenates their quads and publishes one `ModelRef`. A missing dependency drops the entire form and logs its registering mod. |
 | Mod-defined baked result type `T` | **Out of scope** | Sunrise's standalone result is baked quads, not arbitrary mod-owned objects. |

@@ -1,5 +1,10 @@
 # Design: multi-block placement
 
+> Historical: this design predates the removal of WebAssembly mods; the current native API is documented
+> in [`entity_place`](../../../crates/sunrise-mod-vocab/src/hooks/entity_place.rs). The native hook
+> covers single and multi-block proposals. Guest-trap acceptance and updates to guest consumers are
+> historical; they do not apply to LAN players.
+
 Proposed contract for [#855](https://github.com/arismoko/horizon/issues/855), not an implemented feature. This replaces the fixed placement preview. The decisions below require review before implementation.
 
 ## Evidence and limits

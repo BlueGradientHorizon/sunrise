@@ -1,5 +1,9 @@
 # Registered raw custom payload transport
 
+> Historical: this design predates the removal of WebAssembly mods; the current native API is documented
+> in [registered payloads](../modding/src/how-to/client/networking.md). The registered transport and
+> ordered retry contract remain; the guest contention source and compiled fixture below are historical.
+
 This is the raw transport below the typed payload work in #813, implementing
 #2882. The codec prerequisite is #2951. Names and contracts are based on
 NeoForge 26.3's public payload API and the room's written clean-room specification;
@@ -22,9 +26,9 @@ ownership, nonblank versions, duplicate protocol/id registrations and receiving
 handlers once, then freeze. A common registration occupies both protocols.
 Dispatch selects the one registered owner, not every loaded mod.
 
-Native and wasm expose the same declarations, handlers and results. API aggregates
+Native handlers use these declarations and results. API aggregates
 explicitly derive Wire; registration-only trait-object storage is not an API data
-value. The raw body crosses Wire as a length followed by contiguous bytes.
+value. The Wire representation of the raw body is a length followed by contiguous bytes.
 
 ## Connection admission and identity
 
@@ -96,18 +100,19 @@ callback shortcuts.
 `IPayloadHandler::handle` returns `Result<(), PayloadHandleError>`, with explicit
 `Failed(String)` for application and execution failures. Native panics and disabled
 owners remain failures. `PayloadWork::run` retains its `Result<(), String>` contract.
-Guest-group contention instead returns `Busy { payload, holder }` before the handler
-starts, returning the same owned body and a resolved `PayloadBusy` snapshot (shared
-owner/export/thread names and elapsed held milliseconds).
+`Busy { payload, holder }` means the handler did not start. It returns the same
+owned body and a resolved `PayloadBusy` snapshot (owner/export/thread names and
+elapsed held milliseconds). The removed guest runtime originally used this result
+for group contention.
 
 The connection transport must requeue busy input at its head, preserving both
 payload and ordinary gameplay ordering, the original ingress lease and accounting,
 and the original payload deadline. Existing queue byte budgets bound retained
-memory. The deadline is 60 seconds, exceeding the largest guest execution budget;
-retries never renew it. Deadline expiry reports the held mod/export/thread/duration.
-Disconnect and protocol/epoch replacement cancel pending retries. Nested cross-group
-calls refuse immediately rather than waiting. This is the caller's contract, not
-queueing performed by the handler itself; it adds no detached retry worker.
+memory. Retries never renew the 60-second deadline. Deadline expiry reports the held
+mod/export/thread/duration. Disconnect and protocol/epoch replacement cancel pending
+retries. This is the transport's contract, not queueing performed by the handler
+itself; it adds no detached retry worker. The original guest design chose a deadline
+longer than its execution budget and refused nested cross-group calls immediately.
 
 Busy retries retain the existing 16 MiB physical ingress reservations across work
 and main-thread moves. One connection-owned receiving turn spans MAIN root
@@ -126,17 +131,14 @@ connection framing bounds above.
 Exercise integrated single-player, two remote players, LAN and
 dedicated paths. Check sender attribution, ordering, next-turn replies, rollback,
 epoch invalidation, optional vanilla admission, required mismatch, duplicate load
-refusal, generic-send bypass and named decode failures. Native and wasm must both
-exercise the real transport. Measure allocations for a 1 MiB wasm transfer; do not
-claim zero-copy across Wire. The author supplies prepared-data self-check evidence;
-review is static. The lane lead separately orders independent network test commands.
+refusal, generic-send bypass and named decode failures. Exercise the real native
+transport. The author supplies prepared-data self-check evidence; review is static.
+The lane lead separately orders independent network test commands.
 
-The `wasm-mods` fixture job runs
-`game::payload_transport::wasm_config_tests::compiled_guest_runs_on_configuration_connection_thread`
-by exact name and requires one passing test. It loads this run's compiled fixture,
-negotiates payloads over TCP with the actual LAN connection, and holds known packs
-and the serving Game thread while requiring two transformed, guest-counted replies.
-This keeps dispatch in CONFIGURATION on `sunrise-lan-conn`, before the Play I/O pool:
-the existing guest-entry `check_current()` rejects a default-stack connection thread
-instead of producing the expected replies. Its isolated child uses fresh game and
-launcher homes and a scratch game directory/current working directory.
+### Historical guest acceptance
+
+The removed `wasm-mods` job used a compiled guest fixture on the CONFIGURATION
+connection thread, before the Play I/O pool, to test the guest-entry thread
+restriction. It held known packs and the serving Game thread while expecting two
+transformed replies. Allocation measurements for a 1 MiB guest transfer were a
+separate check, not a zero-copy guarantee. Neither is a current fixture requirement.

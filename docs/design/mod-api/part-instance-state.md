@@ -1,5 +1,10 @@
 # Design: Part instance state
 
+> Historical: this design predates the removal of WebAssembly mods; the current native API is documented
+> in [block-entity types](../../modding/src/concepts/parts/block-entity-types.md). Use typed
+> attachments for persistent per-instance state. The old cross-target state proposal and its guest
+> acceptance requirements are historical; persistence and Wire are separate contracts.
+
 **Accepted with changes** as a provisional design by the [maintainer decision](https://github.com/arismoko/horizon/pull/2328#issuecomment-6729846956). The requirements below must be satisfied before code. Attachments are owned by the world-visibility lead; that lead replaces the earlier attachment owner.
 
 Design for [#796](https://github.com/arismoko/horizon/issues/796), jointly defining the state binding needed by [#781](https://github.com/arismoko/horizon/issues/781). This is not an implemented guarantee. The acceptance is conditional on the requirements below.

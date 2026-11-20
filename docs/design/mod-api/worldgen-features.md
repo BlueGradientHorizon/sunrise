@@ -1,5 +1,10 @@
 # Design: worldgen features and placers
 
+> Historical: this design predates the removal of WebAssembly mods; the current native API is documented
+> in [feature types](../../modding/src/how-to/world/feature-types.md). The current native `FeatureType`
+> does not implement the proposed custom modifier registrar. Guest workers, quotas, traps and
+> dual-target acceptance below are historical.
+
 Provisional answer to [#815](https://github.com/arismoko/horizon/issues/815): register feature implementations and placement modifiers once, decode their configured instances with the shared typed codec foundation, and execute both through one scoped target-access boundary. This is a proposal, not an implemented API or authority to close the issue. Structure-type registration remains separate.
 
 ## Vanilla and NeoForge evidence

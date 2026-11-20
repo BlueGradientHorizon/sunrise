@@ -1,5 +1,10 @@
 # Design: custom recipe-book settings
 
+> Historical: this design predates the removal of WebAssembly mods; the current native API is documented
+> in [recipe book types](../../modding/src/concepts/recipe-book-types.md). Native declaration and Wire
+> rules remain. The old guest registration and transport are historical; host and guest player swaps
+> still refer to LAN players.
+
 Design for [#1023](https://github.com/arismoko/horizon/issues/1023).
 Storage, registration, player settings handles and negotiated synchronization
 are implemented. This is a Sunrise design; vanilla 26.3 is the reference for the
@@ -15,7 +20,7 @@ write. It leaves every other book untouched, synchronizes changed flags and
 notifies the existing `player_recipe_book_settings_change` moment once.
 That notification now carries `RecipeBookIdentity`: one of the four vanilla
 identities or `Custom(RecipeBookTypeKey)`, never a fabricated vanilla ordinal.
-The values explicitly derive `Wire` and share the generated native/wasm boundary.
+The values explicitly derive `Wire`.
 
 A client mod reads `PlayerRef::synced_recipe_book_settings` and submits intent
 with `PlayerRef::request_recipe_book_settings` through a `ClientHost`. Engine
@@ -38,8 +43,7 @@ a winner. Freeze the registry when registration finishes, before loading player
 state or negotiating connections. Late registration returns an explicit frozen
 registry error. Resource reload does not reopen it.
 
-Declarations are shared content on server and client. Native and wasm use the
-same declaration, validation, limits and generated boundary contract. A client
+Declarations are shared content on server and client. A client
 must register a key to negotiate it; a server-only declaration can retain state
 but cannot make an unmodified client display a book. Reads belong on a player's
 recipe-book settings handle with `&dyn Host`; authoritative writes take
@@ -62,8 +66,7 @@ include the declaring mod, supplied ID and rule and refuse installation even
 if ignored. Keep the returned key (`mod_api::item::recipe_book::RecipeBookTypeKey`)
 for screen bindings. `as_str()` returns its stable identity and `is_registered()`
 checks membership in this process's installed registry. No public unchecked
-constructor exists. Native and wasm share the same registrar method through
-the generated Wire boundary; the key explicitly derives `Wire`.
+constructor exists. The key explicitly derives `Wire`.
 
 For Java-compatible flat persistence, call
 `r.recipe_book_type_with_fields(id, open_field, filtering_field)` instead. Both
@@ -309,8 +312,7 @@ amplification without leaving a lost resnapshot or pending UI intent unresolved.
 menu's top edge (`from: Menu`) or below the window's centre (`from: ScreenCentre`, vanilla's
 `height / 2` with integer division, so `leftPos + 5, height / 2 - 49` is `x: 5.0, y: -49.0`).
 Like vanilla's screen-specific button positions, this is space the screen author must keep
-clear of slots and labels. Both native and wasm declarations carry the same optional value
-over Wire.
+clear of slots and labels. The optional value is part of the Wire declaration.
 
 Without an anchor, the client tries an external right, left, then above-menu
 gutter, rejecting positions covered by the overlay panel. Menus wider than 176
@@ -334,8 +336,7 @@ During shared registration,
 menu to a registered book, a recipe type and its existing typed `Screen` value. The menu namespace
 must belong to the registering mod. Duplicate bindings and unknown books refuse
 installation even when the registration error is ignored. The declaration is
-frozen with the other registrations and explicitly derives `Wire`, for the
-same native and wasm transport.
+frozen with the other registrations and explicitly derives `Wire`.
 
 `RecipeBookLayout` declares one of four destination maps:
 
@@ -383,8 +384,8 @@ refuses its declaration load rather than guessing ingredients from its icons.
 
 The shared Wire boundary allows 32 structural record levels, including the
 category, display-entry and placement-info envelope. Nested ingredient shapes
-must fit that complete envelope; the native validator and wasm boundary use the
-same codec and refuse excess depth with `WireError`. Opaque NBT has its separate,
+must fit that complete envelope; the codec refuses excess depth with `WireError`.
+Opaque NBT has its separate,
 iterative vanilla limit of 512 container levels; it does not spend one structural
 level per NBT container. Wide, shallow cooking grids do not consume extra depth.
 

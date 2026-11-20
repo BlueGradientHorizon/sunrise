@@ -1,5 +1,10 @@
 # Design: resource-backed special item renderers
 
+> Historical: this design predates the removal of WebAssembly mods; the current native API is documented
+> in [special item renderers](../../modding/src/how-to/client/special-item-renderers.md). The current
+> native renderer uses `register_special_model_renderer` . The old guest exports, teardown, fuel and
+> target-parity gates below are historical.
+
 Provisional answer to [#876](https://github.com/arismoko/horizon/issues/876):
 what resource-backed baked geometry and typed stack-derived state may a special
 renderer submit? Geometry belongs in resources; callbacks select and pose baked

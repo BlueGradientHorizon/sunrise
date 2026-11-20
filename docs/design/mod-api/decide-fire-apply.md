@@ -1,5 +1,9 @@
 # Design: decide, fire, apply
 
+> Historical: this design predates the removal of WebAssembly mods; the current native API is documented
+> in [transactions](../../modding/src/concepts/transactions.md). The accepted native decide/fire/apply
+> contract remains; the guest failure cases, parity fixtures and prerequisites below are historical.
+
 **Status: accepted with changes** by the [maintainer decision](https://github.com/arismoko/horizon/issues/784#issuecomment-6729846827), combining both review views. Implementation status: stage 3b is built for three hooks. `item_stacked_on_other` takes a `HostSide` and a typed answer, and `menu_quick_move` and `menu_clicked` run as decided actions. The other hooks and routes named below are not migrated, and the route evidence and the freshness read set of a decided menu action are still incomplete (the backing holder's generation and every admission input). The requirements below stay the contract for the rest.
 
 Contract for [#784](https://github.com/arismoko/horizon/issues/784), for Ari's review and decision on the issue. This is a documentation proposal, not implemented behavior. The named question is the decision token and stale-apply semantics across client-lib and menus.

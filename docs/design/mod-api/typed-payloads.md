@@ -1,5 +1,10 @@
 # Registered payloads and the typed-payload design
 
+> Historical: this design predates the removal of WebAssembly mods; the current native API is documented
+> in [typed networking](../../modding/src/how-to/client/networking.md). Native registration, token
+> checks and the transport's ordered retry contract remain; guest dispatch and fixtures below are
+> historical.
+
 The registered **raw** transport implements [#2882](https://github.com/arismoko/horizon/issues/2882).
 Typed registration and token binding over it are [below](#typed-registration-and-tokens-813-step-4b-1);
 configuration snapshots remain work for [#813](https://github.com/arismoko/horizon/issues/813).
@@ -60,22 +65,21 @@ modified views; they do not modify the original view. Duplicate protocol/id
 registrations, invalid ownership or versions, and missing receiving handlers are
 refused. An id grants no authority merely because a caller constructs a `PayloadId`.
 
-Native and wasm use the same declarations, opaque `PayloadBytes`, handlers, and
-results. A callback receives the real connection's `IPayloadContext`, not a
-broadcast event. Dispatch selects the one registered owner.
+The native handler receives opaque `PayloadBytes` and the real connection's
+`IPayloadContext`, not a broadcast event. Dispatch selects the registered owner.
 
 Handlers return `Result<(), PayloadHandleError>`. Application failures must use
 `PayloadHandleError::Failed(message)` explicitly; `PayloadWork::run` still returns
 `Result<(), String>`. Native panics and disabled owners are real failures, not busy
-results. A wasm group that is occupied returns `Busy { payload, holder }` before
-starting the callback, preserving the exact owned `PayloadBytes` and cheaply shared
-holder names (`owner`, `export`, `thread`) plus `held_millis`.
+results. `Busy { payload, holder }` means the callback did not start and preserves
+the exact owned `PayloadBytes`, cheaply shared holder names (`owner`, `export`,
+`thread`), and `held_millis`. The original guest runtime used it for occupied groups.
 
 The receiving transport, not the handler, retains busy bytes at the connection's
 head so later input cannot overtake them. Retries retain original ingress credit,
 queue budget and the original 60-second payload deadline; they do not renew the
 deadline or consume another lease. Phase changes and disconnect cancel old work.
-Nested cross-group calls refuse immediately rather than wait. Busy snapshots are
+The former guest runtime refused nested cross-group calls rather than waiting. Busy snapshots are
 formatted only when a diagnostic is needed, not on each retry.
 
 ## Admission, sending, and context
@@ -269,7 +273,7 @@ fn register(r: &mut dyn Registrar) {
 | Sending | `ToServer::send(host: &mut dyn ClientHost, &value)` goes through `ClientHost::send_payload_to_server`; `ToClient::send(host: &mut dyn ServerHost, player, &value)` through `PlayerRef::send_payload`; `reply(context, &value)` on either through `IPayloadContext::reply`. Each returns the raw send's results. The encoder refuses what the peer's decoder would refuse (`EncodeFailed` naming the id) before any bytes are queued, its allocation budget included: the writer charges `PAYLOAD_DECODE_BUDGET` by the reader's rules, with 64-bit sizes on every target. A wrong direction does not compile: a `ToServer` has no send to a player |
 | Receiving | The adapter runs `decode_payload::<T>(body)`. A body that is not one `T` (a negative length, a count past its bound, nesting past 64, a trailing byte) fails the session by name, as a raw handler's error does, with no callback and nothing reserved before the bound is checked. A callback that panics is disabled for every connection, raw or typed: the transaction rolls back, no reply goes out, the session closes and a later message for it is refused without running it |
 | Load refusals | Two owners of one id refuse load, naming the first. A typed id has one declaration: declaring it again in another protocol, typed or raw, refuses load, so a token's protocol is the only one its id exists in and a send in the other phase is `WrongProtocol`. The refused registration's token names load 0 and is always stale |
-| Wasm | The same declarations, adapter and tokens: the guest decodes and runs its handler; the token crosses the Wire ABI as data and the host checks it as it does a native one |
+| Historical guest route | The guest decoded and ran its handler; the token crossed the Wire ABI and the host checked it like a native token. That dispatch route no longer exists. |
 | Cost | Registration and reading a token as a type walk the schema. A declared payload with no traffic makes no codec call; a send or reply checks its token with two `u64` compares and one table lookup, with no schema walk and no allocation before it encodes |
 
 ## Remaining typed work in #813
@@ -289,7 +293,7 @@ codecs must check signed lengths, overflow, remaining bytes, cumulative allocati
 depth, discriminants, and registry references before allocating; require complete
 consumption. Per-schema bounds must not silently reinstate a lower generic transport
 ceiling. Native arbitrary allocation/process-aborting panics cannot be sandboxed.
-Errors and wasm traps must abort the active transaction and discard staged sends.
+Errors must abort the active transaction and discard staged sends. The removed guest route also treated traps as aborts.
 
 Configuration snapshots still need revisioned atomic publication and acknowledgement
 before admission, without overwriting local config files. They use this transport; they

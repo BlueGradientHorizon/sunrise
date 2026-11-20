@@ -1,5 +1,9 @@
 # Design: general entity types
 
+> Historical: this design predates the removal of WebAssembly mods; the current native API is documented
+> in [entity rendering](../../modding/src/how-to/client/entity-renderers.md). The native entity
+> registry and renderer remain; the guest tick and renderer stages and tests below are historical.
+
 Provisional answer to [#792](https://github.com/arismoko/horizon/issues/792): register a type once, store each instance in a game-owned general entity row, and dispatch its catalog-generated EntityPart behavior through a resolved type slot. The row owns identity, residency, persistence and tracking. It must never create a throwable or other template entity. This is a proposal for Ari's decision on the issue, not implemented API or a closure claim.
 
 ## Implemented stage 2 API
