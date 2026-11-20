@@ -339,12 +339,25 @@ pub(super) struct LitElement {
     centre: Vec3,
 }
 
-/// The level's light for `LitElement`s: the block's corner and the cached
-/// `light_at` lookup the particle renderer reads (`Game::particle_geometry`).
+/// The level's light for `LitElement`s, using the cached lookup the particle renderer reads.
 pub(super) struct LevelLight<'a> {
     pub(super) elements: &'a [LitElement],
-    pub(super) corner: [i32; 3],
+    pub(super) origin: DVec3,
     pub(super) light_at: &'a dyn Fn([i32; 3]) -> u8,
+}
+
+impl LevelLight<'_> {
+    fn sample(&self, centre: Vec3) -> Option<u32> {
+        let absolute = (self.origin + centre.as_dvec3()).floor();
+        if !absolute.cmpge(DVec3::splat(f64::from(i32::MIN))).all()
+            || !absolute.cmple(DVec3::splat(f64::from(i32::MAX))).all()
+        {
+            return None;
+        }
+        Some(vertex_light((self.light_at)(
+            absolute.as_ivec3().to_array(),
+        )))
+    }
 }
 
 /// Writes onto `vertices` (the ones `level.elements` and `spins` start in) the
@@ -367,12 +380,9 @@ pub(super) fn light_elements(
             continue;
         }
         let centre = turn.map_or(e.centre, |s| s.turn(time).transform_point3(e.centre));
-        let cell = [
-            level.corner[0] + centre.x.floor() as i32,
-            level.corner[1] + centre.y.floor() as i32,
-            level.corner[2] + centre.z.floor() as i32,
-        ];
-        let light = vertex_light((level.light_at)(cell));
+        let Some(light) = level.sample(centre) else {
+            continue;
+        };
         if let Some(lit) = vertices.get_mut(e.start..e.end) {
             for v in lit {
                 v.light = light;
@@ -1013,7 +1023,7 @@ impl Game<'_> {
                     } else {
                         let level = LevelLight {
                             elements: &entry.lit,
-                            corner: pos,
+                            origin: corner,
                             light_at: &light_at,
                         };
                         place_turning(
@@ -1068,7 +1078,7 @@ impl Game<'_> {
             if !lit.is_empty() {
                 let level = LevelLight {
                     elements: &lit,
-                    corner: pos,
+                    origin: corner,
                     light_at: &light_at,
                 };
                 let drawn = &mut draw.vertices[start..];
@@ -3298,7 +3308,7 @@ mod tests {
         };
         let level = LevelLight {
             elements: &draw.lit,
-            corner: anchor,
+            origin: DVec3::from_array(anchor.map(f64::from)),
             light_at: &light_at,
         };
         let mut out = Vec::new();
