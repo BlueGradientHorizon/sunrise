@@ -157,6 +157,11 @@ mod tests {
         crate::game::native_entity_refs::tests::with_game(|game| {
             use sunrise_client::mobs::Mob;
             use sunrise_core::geometry::Vec3;
+            game.build_registries();
+            game.player = Some(
+                sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 8.5))
+                    .unwrap(),
+            );
             let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             for (id, order) in [(74, 2), (72, 0)] {
                 let mut m = Mob::new(id, pig.clone(), Vec3::ZERO, 0.0);
@@ -189,6 +194,11 @@ mod tests {
         crate::game::native_guest_turn_tests::with_guests(|game| {
             use sunrise_client::mobs::Mob;
             use sunrise_core::geometry::Vec3;
+            game.build_registries();
+            game.player = Some(
+                sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 8.5))
+                    .unwrap(),
+            );
             let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             let (vehicle, rider) = (90, 91);
             game.mobs.push(Mob::new(vehicle, pig.clone(), Vec3::ZERO, 0.0));
@@ -216,6 +226,46 @@ mod tests {
                 .map(|(_, id, _)| id)
                 .collect();
             assert_eq!(aboard, vec![12, rider, own]);
+        });
+    }
+
+    /// `Entity.positionRider` picks the attachment by the passenger's index in `getPassengers`: the
+    /// own player behind a guest and a pig sits in the third seat of a happy ghast, 1.7 south of it.
+    #[test]
+    #[ignore = "daily"]
+    fn the_own_player_in_the_third_seat_of_a_happy_ghast_sits_there() {
+        crate::game::native_guest_turn_tests::with_guests(|game| {
+            use sunrise_client::mobs::Mob;
+            use sunrise_core::geometry::Vec3;
+            game.build_registries();
+            game.player = Some(
+                sunrise_client::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 8.5))
+                    .unwrap(),
+            );
+            let ghast = game.res.mob_types().get("minecraft:happy_ghast").unwrap().clone();
+            let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
+            let (vehicle, rider) = (90, 91);
+            game.mobs.push(Mob::new(vehicle, ghast, Vec3::new(8.5, 64.0, 8.5), 0.0));
+            let order = game.boarding_order(vehicle, 12, true);
+            let dimension = game.dim.id().to_owned();
+            game.lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .update_guest(12, |g| {
+                    g.dimension = dimension;
+                    g.vehicle = Some(vehicle);
+                    g.vehicle_order = order;
+                })
+                .unwrap();
+            let mut pig = Mob::new(rider, pig, Vec3::ZERO, 0.0);
+            pig.extra.mount = Some(vehicle);
+            game.mobs.push(pig);
+            game.seat_mob(rider);
+            game.start_riding(vehicle);
+            game.position_rider();
+            let at = game.player.as_ref().unwrap().position;
+            assert_eq!((at.x, at.z), (8.5, 8.5 - 1.7), "the third seat, not the first");
         });
     }
 

@@ -3,6 +3,8 @@
 sunrise-client game::advancements::icons::tests::advancement_icons_reach_local_and_remote_ui_surfaces lib daily game-boot
 sunrise-client game::api_values::loot_values::query_tests::queried_ability_parts_grant_and_deny lib daily game-boot
 sunrise-client game::api_values::read_stack_tests::draw_consumers_render_nonresident_stacks lib daily game-boot
+sunrise-client game::boarding::tests::the_own_player_boards_behind_a_guest_and_a_pig lib daily resources
+sunrise-client game::boarding::tests::the_own_player_in_the_third_seat_of_a_happy_ghast_sits_there lib daily resources
 sunrise-client game::commands::modprofile::tests::modprofile_state_and_report_side_effects lib daily child-process
 sunrise-client game::commands::selector_bounds_tests::actual_selector_uses_body_overlap_but_distance_stays_at_the_origin lib daily game-boot
 sunrise-client game::commands::world_cmds::allay_owner_damage_tests::allay_owner_adapters_compare_the_actual_player_uuid lib daily game-boot
@@ -50,9 +52,12 @@ sunrise-client game::maps::tests::map_on_banner_in_adventure_mode_honours_can_pl
 sunrise-client game::mods::tests::a_shared_missing_jar_stops_native_load_and_refuses_each_content_mod_row lib daily child-process
 sunrise-client game::mods::tests::content_overlay_validates_dependencies_and_orders_layers lib daily child-process
 sunrise-client game::mods::tests::native_content_follows_the_build_and_misplaced_content_follows_its_selection lib daily child-process
+sunrise-client game::mounts::ride_dismount_tests::a_click_on_a_full_happy_ghast_seats_no_fifth_rider lib daily resources
 sunrise-client game::mounts::ride_dismount_tests::a_click_on_a_harnessed_ghast_keeps_the_players_view lib daily resources
+sunrise-client game::mounts::ride_dismount_tests::a_mob_on_a_ghastling_sits_at_the_scaled_seat lib daily resources
 sunrise-client game::mounts::ride_dismount_tests::a_mob_that_boards_a_happy_ghast_after_its_player_takes_the_next_seat lib daily resources
 sunrise-client game::mounts::ride_dismount_tests::a_ride_mount_keeps_the_players_view lib daily resources
+sunrise-client game::mounts::sneak_dismount_tests::a_destroyed_vehicle_asks_once_to_let_its_local_rider_go lib daily resources
 sunrise-client game::mounts::tests::a_camel_husk_keeps_itself_once_clicked lib daily game-boot
 sunrise-client game::mounts::tests::a_chest_on_a_donkey_or_mule_plays_its_own_sound_at_full_volume lib daily game-boot
 sunrise-client game::mounts::tests::feeding_a_mount_draws_from_its_own_random_and_posts_eat lib daily game-boot

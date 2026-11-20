@@ -231,7 +231,7 @@ impl Game<'_> {
                 rider_is_animal,
             )
         } else if vehicle.species() == Species::HappyGhast {
-            riders::happy_ghast_attachment(seat)
+            riders::passenger_attachment_at(vehicle, seat)
         } else {
             riders::passenger_attachment_at(vehicle, seat)
         }
