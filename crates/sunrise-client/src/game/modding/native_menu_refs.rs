@@ -60,18 +60,19 @@ impl Game<'_> {
     /// `ServerPlayer.closeContainer` of a guest's menu: every menu they have open closes through
     /// the path a disconnect and a `stillValid` failure use, then their client is told. Refuses
     /// clients, stale menus, a player swapped in for a turn, and the inventory menu (window 0),
-    /// which is never closed.
+    /// which is never closed. While a click action is active, true accepts a close at commit.
     pub(super) fn menu_close_container(&mut self, menu: MenuRef) -> bool {
-        if !self.is_logical_server() || menu.fields().window == 0 {
+        let window = menu.fields().window;
+        if !self.is_logical_server() || window == 0 {
             return false;
         }
-        let Some(conn) = self.native_menu_guest(menu).map(|guest| guest.conn) else {
+        let Some(guest) = self.native_menu_guest(menu) else {
             return false;
         };
-        if self.lan_acting == Some(conn) {
+        if self.lan_acting == Some(guest.conn) {
             return false;
         }
-        self.guest_close_menus_and_tell(conn);
+        self.request_menu_close(guest.conn, window, guest.menu_generation);
         true
     }
 

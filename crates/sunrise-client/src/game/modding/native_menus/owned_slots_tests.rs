@@ -17,7 +17,8 @@ use sunrise_protocol::packets::play::{
 
 thread_local! {
     static SCRIPTED_CLICK: std::cell::Cell<Option<Flow>> = const { std::cell::Cell::new(None) };
-    static WINDOW_REQUEST: std::cell::Cell<Option<MenuKey>> = const { std::cell::Cell::new(None) };
+    static WINDOW_REQUEST: std::cell::Cell<Option<(MenuKey, bool)>> = const { std::cell::Cell::new(None) };
+    static CLOSE_NOTICES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     static LOCK_FIRST_SLOT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
@@ -56,7 +57,7 @@ impl MenuPart for Part {
     }
 
     fn menu_clicked(&self, host: &mut dyn ServerHost, event: &mut MenuClickedEvent<'_>) -> Flow {
-        if let Some(key) = WINDOW_REQUEST.get() {
+        if let Some((key, by_handle)) = WINDOW_REQUEST.get() {
             let title = mod_api::Text::literal("Would replace the current menu");
             assert_eq!(
                 host.open_menu(
@@ -73,7 +74,12 @@ impl MenuPart for Part {
                 player.open_mod_menu(host, mod_api::ModMenuOpen::new(key, title)),
                 Err(mod_api::OpenMenuError::ClickInProgress)
             );
-            host.close_menu(event.uuid);
+            if by_handle {
+                let menu = player.container_menu(host).unwrap();
+                assert!(menu.close_container(host));
+            } else {
+                host.close_menu(event.uuid);
+            }
             assert!(
                 host.menu(event.uuid, event.window).is_some(),
                 "close is deferred"
@@ -112,6 +118,7 @@ impl Hooks for Listener {
     }
 
     fn menu_closed(&self, host: &mut dyn ServerHost, event: &mut MenuClosedEvent<'_>) {
+        CLOSE_NOTICES.set(CLOSE_NOTICES.get() + 1);
         if !self.return_contents {
             return;
         }
@@ -808,27 +815,58 @@ fn send_scoped_click(
 #[test]
 #[ignore = "daily"]
 fn a_click_refuses_opens_and_closes_only_on_commit() {
-    with_owned_menu(false, |game, rx, key| {
-        let (window, menu) = open(game, key);
-        sent(&rx);
-        WINDOW_REQUEST.set(Some(key));
-        let seal = game.transaction_open();
-        click(game, window, 0);
-        assert_eq!(game.menu(123, window), Some(menu));
-        assert!(sent(&rx).is_empty());
-        game.transaction_close(&seal, false);
-        assert_eq!(game.menu(123, window), Some(menu));
-        assert!(sent(&rx).is_empty());
-        click(game, window, 0);
-        WINDOW_REQUEST.set(None);
-        assert!(game.menu(123, window).is_none());
-        let packets = sent(&rx);
-        assert!(
-            packets
-                .iter()
-                .any(|p| matches!(p, C::ContainerClose(p) if p.container == window))
-        );
-        assert!(!packets.iter().any(|p| matches!(p, C::OpenScreen(_))));
+    with_owned_menu(true, |game, rx, key| {
+        for by_handle in [false, true] {
+            let (window, menu) = open(game, key);
+            let stored = ItemStack::new("minecraft:stick", 3);
+            let carried = ItemStack::new("minecraft:dirt", 2);
+            let hub = &mut game.lan.as_mut().unwrap().hub;
+            hub.guests.update(0, |g| {
+                g.inventory.fill(None);
+                g.native_menu[1] = Some(stored.clone());
+                g.carried = Some(carried.clone());
+            });
+            hub.resend_menu(1, window, &game.world);
+            sent(&rx);
+            CLOSE_NOTICES.set(0);
+            WINDOW_REQUEST.set(Some((key, by_handle)));
+
+            let seal = game.transaction_open();
+            click(game, window, 0);
+            assert_eq!(game.menu(123, window), Some(menu));
+            assert!(sent(&rx).is_empty());
+            game.transaction_close(&seal, false);
+            game.run_native_menu_events();
+            assert_eq!(game.menu(123, window), Some(menu));
+            let guest = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
+            assert_eq!(guest.native_menu, [None, Some(stored.clone())]);
+            assert_eq!(guest.carried, Some(carried.clone()));
+            assert!(guest.inventory.iter().all(Option::is_none));
+            assert!(sent(&rx).is_empty());
+            assert_eq!(CLOSE_NOTICES.get(), 0);
+
+            click(game, window, 0);
+            WINDOW_REQUEST.set(None);
+            assert!(game.menu(123, window).is_none());
+            let guest = game.lan.as_ref().unwrap().hub.guest(1).unwrap();
+            assert!(guest.carried.is_none());
+            assert!(guest.native_menu.is_empty());
+            assert_eq!(
+                guest.inventory.iter().flatten().collect::<Vec<_>>(),
+                [&carried, &stored],
+                "the close returned the cursor and detached owned inputs once"
+            );
+            assert_eq!(CLOSE_NOTICES.get(), 1);
+            let packets = sent(&rx);
+            assert_eq!(
+                packets
+                    .iter()
+                    .filter(|p| matches!(p, C::ContainerClose(p) if p.container == window))
+                    .count(),
+                1
+            );
+            assert!(!packets.iter().any(|p| matches!(p, C::OpenScreen(_))));
+        }
     });
 }
 

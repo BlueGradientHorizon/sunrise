@@ -14,8 +14,8 @@ pub trait Hooks {
     /// No player's state is swapped in. Use their current `PlayerRef::container_menu` or the
     /// native menu's UUID and window to reach its slots and cursor. Host writes are kept if
     /// the action succeeds. An unhandled click applies the default in the same transaction;
-    /// a stale, refused or failed action rolls back the transaction. The action refuses opens; a
-    /// [`ServerHost::close_menu`] request closes the native window only after commit.
+    /// a stale, refused or failed action rolls back the transaction. The action refuses opens.
+    /// [`ServerHost::close_menu`] and [`MenuRef::close_container`] close only after commit.
     #[hook(
         side = "server",
         contract = "cancel",

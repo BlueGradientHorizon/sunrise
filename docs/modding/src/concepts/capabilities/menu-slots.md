@@ -302,8 +302,9 @@ The client still predicts the default action. After an override or refusal the s
 cursor and any predicted swap target omitted from the menu. A display-only menu has no default moves.
 
 A click action cannot replace a screen: `open_menu` returns `Ok(None)` and `PlayerRef::open_mod_menu`
-returns `OpenMenuError::ClickInProgress`. `close_menu` waits for a successful commit, and
-`menu_set_items` changes roll back without sending a packet if the action aborts.
+returns `OpenMenuError::ClickInProgress`. `close_menu` and `MenuRef::close_container` wait for a
+successful commit. An abort leaves the window and its items in place and sends no close packet.
+`menu_set_items` changes also roll back without sending a packet if the action aborts.
 
 `menu_quick_move` v3 runs as one action too. An invalid answer, or a Host write to a player's inventory, cursor or
 menu storage, refuses that move instead of falling back to the game's routing. An answer's optional remainder

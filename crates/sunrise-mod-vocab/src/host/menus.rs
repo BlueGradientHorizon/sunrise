@@ -205,7 +205,9 @@ pub trait MenusBackendMut {
     /// station and mount menus, the carried stack back to the inventory,
     /// `player_container_close`, then the client's window closed (`ContainerClose`). Refuses
     /// stale menus, clients, a player whose state is swapped in for a turn, and the player's own
-    /// inventory menu, which is never closed. A client closes its own screen with `close`.
+    /// inventory menu, which is never closed. During a click action, true accepts a request
+    /// to close that same window at commit; an aborted action leaves it open. A client closes
+    /// its own screen with `close`.
     #[access(WorldOnly)]
     fn menu_close_container(&mut self, menu: MenuRef) -> bool;
     /// Side: server.

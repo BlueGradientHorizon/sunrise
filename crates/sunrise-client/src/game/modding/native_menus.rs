@@ -269,18 +269,13 @@ impl Game<'_> {
     /// stages the close for its current window and sends it only once the transaction commits.
     pub(super) fn close_menu(&mut self, uuid: u128) {
         if let Some(conn) = self.native_conn(uuid)
-            && let Some(open) = self
-                .lan
+            && let Some(guest) = self.lan.as_ref().and_then(|host| host.hub.guest(conn))
+            && let Some(open) = guest
+                .menu
                 .as_ref()
-                .and_then(|host| host.hub.guest(conn))
-                .and_then(|g| g.menu.as_ref())
                 .filter(|m| m.slots == sunrise_client::lan::menu::Slots::Native)
         {
-            if self.menu_click_in_progress(conn) {
-                self.reply_menu_click(conn, super::lan_menus::ClickReply::Close(open.window));
-            } else {
-                self.guest_close_menus_and_tell(conn);
-            }
+            self.request_menu_close(conn, open.window, guest.menu_generation);
         }
     }
 }

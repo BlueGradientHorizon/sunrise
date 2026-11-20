@@ -77,6 +77,21 @@ impl super::Game<'_> {
         }
     }
 
+    /// Close the admitted window through the same generation-checked path whether it
+    /// can close immediately or a click transaction must publish it at commit.
+    pub(super) fn request_menu_close(&mut self, conn: u32, window: i32, generation: u64) {
+        let reply = MenuClickReply {
+            conn,
+            generation,
+            reply: ClickReply::Close(window),
+        };
+        if self.menu_click_in_progress(conn) {
+            self.after_commit(super::transactions::After::MenuClick(Box::new(reply)));
+        } else {
+            self.publish_menu_click(reply);
+        }
+    }
+
     pub(super) fn publish_menu_click(&mut self, reply: MenuClickReply) {
         use sunrise_protocol::packets::play::{Clientbound as C, SetPlayerInventory};
         let MenuClickReply {

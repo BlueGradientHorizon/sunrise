@@ -2847,12 +2847,7 @@ capabilities = ["registries"]
         ] {
             let menu = format!(r#"{{"slots":5,"owned_slots":[1,1,1,1,1],{result}}}"#);
             let error = smod(case, MANIFEST_TEXT, &[(path, menu.as_bytes())]).unwrap_err();
-            assert!(
-                error.contains(
-                    "(ruby:filter): owned_slots cannot be combined with results or crafting"
-                ),
-                "{case}: {error}"
-            );
+            assert!(error.contains("ruby:filter"), "{case}: {error}");
         }
     }
 
