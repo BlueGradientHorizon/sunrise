@@ -1367,7 +1367,7 @@ impl Streaming {
     pub fn take_remote_columns(world: &mut World, gone: &FxHashSet<(i32, i32)>) -> Vec<Arc<Chunk>> {
         let mut chunks = Vec::with_capacity(gone.len());
         for key in gone {
-            chunks.extend(world.chunks.remove(key));
+            chunks.extend(world.unload_chunk(*key));
         }
         chunks
     }
