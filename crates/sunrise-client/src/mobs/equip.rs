@@ -101,7 +101,7 @@ pub fn equippable<'a>(
         return Some(Equippable {
             slot: SLOT_NAMES
                 .into_iter()
-                .find(|name| slot.0.iter().copied().eq(name.encode_utf16()))?,
+                .find(|name| slot.units().iter().copied().eq(name.encode_utf16()))?,
             allowed: tag
                 .get("allowed_entities")
                 .map_or(Allowed::Any, Allowed::Holders),
@@ -140,11 +140,11 @@ fn holds(holder: &Tag, entity: &str, tags: &HashMap<String, HashSet<String>>) ->
     let Tag::String(holder) = holder else {
         return false;
     };
-    match holder.0.split_first() {
+    match holder.units().split_first() {
         Some((&hash, tag)) if hash == u16::from(b'#') => tags
             .iter()
             .any(|(name, members)| names(tag, name) && members.contains(entity)),
-        _ => names(&holder.0, entity),
+        _ => names(holder.units(), entity),
     }
 }
 

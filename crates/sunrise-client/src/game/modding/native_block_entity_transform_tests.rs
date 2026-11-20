@@ -200,7 +200,7 @@ fn place_block(
         ("bits".into(), Tag::Float(0x7fc00001)),
         (
             "utf16".into(),
-            Tag::String(sunrise_core::nbt::JavaString(vec![0xd800])),
+            Tag::String(sunrise_core::nbt::JavaString::from(vec![0xd800])),
         ),
     ]
     .into();

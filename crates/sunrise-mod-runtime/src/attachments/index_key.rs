@@ -43,7 +43,10 @@ pub(super) trait Lookup {
 }
 impl Lookup for AttachmentKey {
     fn units(&self) -> (Units<'_>, Units<'_>) {
-        (Units::Saved(self.0.0.iter()), Units::Saved(self.1.0.iter()))
+        (
+            Units::Saved(self.0.units().iter()),
+            Units::Saved(self.1.units().iter()),
+        )
     }
 }
 pub(super) struct Named<'a>(pub &'a str, pub &'a str);
@@ -118,9 +121,15 @@ mod tests {
         assert!(lookup == &Named("namespace", "name") as &dyn Lookup);
         assert!(lookup != &Named("namespace", "different") as &dyn Lookup);
         assert!(lookup != &Named("different", "name") as &dyn Lookup);
-        let unpaired = (sunrise_core::nbt::JavaString(vec![0xd800]), "name".into());
+        let unpaired = (
+            sunrise_core::nbt::JavaString::from(vec![0xd800]),
+            "name".into(),
+        );
         assert!(&unpaired as &dyn Lookup != &Named("\u{fffd}", "name") as &dyn Lookup);
-        let same_units = (sunrise_core::nbt::JavaString(vec![0xd800]), "name".into());
+        let same_units = (
+            sunrise_core::nbt::JavaString::from(vec![0xd800]),
+            "name".into(),
+        );
         assert!(&unpaired as &dyn Lookup == &same_units as &dyn Lookup);
     }
 }

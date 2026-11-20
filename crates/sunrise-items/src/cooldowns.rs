@@ -51,7 +51,7 @@ impl UseCooldown {
         };
         let field = |name: &str| {
             c.iter()
-                .find(|(key, _)| key.0.iter().copied().eq(name.encode_utf16()))
+                .find(|(key, _)| key.units().iter().copied().eq(name.encode_utf16()))
                 .map(|(_, value)| value)
         };
         let seconds = sunrise_world::datafix::dynamic::as_number(field("seconds")?)?.float_value();

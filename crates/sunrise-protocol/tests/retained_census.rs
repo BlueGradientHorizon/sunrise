@@ -49,7 +49,7 @@ fn assert_charge<T>(
     let charged = charge(&value);
     if let Some(expected) = expected_live {
         assert_eq!(observed, expected, "{case}: live retained storage");
-        assert_eq!(charged, expected, "{case}: exact empty-storage charge");
+        assert_eq!(charged, expected, "{case}: exact retained-storage charge");
     } else {
         assert!(
             observed > 0,
@@ -86,6 +86,28 @@ fn opaque_map_charges_cover_independently_observed_live_layouts() {
         OwnedHeap::owned_heap_bytes,
         Some(0),
     );
+    assert_charge(
+        "inline JavaString",
+        || JavaString::from("short"),
+        OwnedHeap::owned_heap_bytes,
+        Some(0),
+    );
+    assert_charge(
+        "static JavaString",
+        || sunrise_core::nbt_key!("long literal").text().clone(),
+        OwnedHeap::owned_heap_bytes,
+        Some(0),
+    );
+    assert_charge(
+        "heap JavaString with spare capacity",
+        || {
+            let mut text = JavaString::from("short");
+            text.units_mut().reserve_exact(95);
+            text
+        },
+        OwnedHeap::owned_heap_bytes,
+        Some(200),
+    );
     assert_covers_live_layout("populated NBT compound", || {
         (0..4096)
             .map(|i| (JavaString::from(i.to_string().as_str()), Tag::Int(i)))
@@ -96,12 +118,14 @@ fn opaque_map_charges_cover_independently_observed_live_layouts() {
         for i in 0..64 {
             let mut inner = sunrise_core::nbt::Compound::new();
             for j in 0..31 {
-                let mut units = Vec::with_capacity(100);
+                let mut text = JavaString::default();
+                let units = text.units_mut();
+                units.reserve_exact(100);
                 units.push(j);
                 let mut bytes = Vec::with_capacity(1000);
                 bytes.push(42);
                 let mut children = Vec::with_capacity(20);
-                children.push(Tag::String(JavaString(units)));
+                children.push(Tag::String(text));
                 children.push(Tag::ByteArray(bytes));
                 inner.insert(
                     JavaString::from(j.to_string().as_str()),

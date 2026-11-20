@@ -299,7 +299,10 @@ fn brewing_fuel_codec_compiles_recipes_and_borrows_live_values() {
         Tag::compound([("uses", Tag::Int(-2))]),
         Tag::compound([
             ("uses", Tag::Int(-2)),
-            ("speed_multiplier", Tag::String(JavaString(vec![0xd800]))),
+            (
+                "speed_multiplier",
+                Tag::String(JavaString::from(vec![0xd800])),
+            ),
         ]),
         Tag::compound([
             ("uses", Tag::Int(-2)),
@@ -588,7 +591,7 @@ fn compostable_layers_compile_real_recipes_and_match_borrowed_values() {
     }
     let malformed = Tag::compound([(
         "layers",
-        Tag::String(sunrise_core::nbt::JavaString(vec![0xd800])),
+        Tag::String(sunrise_core::nbt::JavaString::from(vec![0xd800])),
     )]);
     assert!(
         sunrise_command::item::decoded_component_value(

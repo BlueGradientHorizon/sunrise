@@ -699,7 +699,7 @@ fn fix_block_state_tag(v: Tag) -> Tag {
 }
 
 fn is_strictly_valid_json(v: &Tag) -> bool {
-    matches!(v, Tag::String(s) if json::parse_strict(&s.0).is_some())
+    matches!(v, Tag::String(s) if json::parse_strict(s.units()).is_some())
 }
 
 fn fix_display(s: &mut Stack, mut d: Tag, hide_flags: i32) -> Tag {
@@ -725,7 +725,7 @@ fn fix_display(s: &mut Stack, mut d: Tag, hide_flags: i32) -> Tag {
     if let Some(loc) = as_str(d.get("LocName")) {
         s.set_component(
             "minecraft:item_name",
-            Tag::String(JavaString(json::translatable_component_json(&loc))),
+            Tag::String(JavaString::from(json::translatable_component_json(&loc))),
         );
     }
     if s.is("minecraft:filled_map") {
@@ -1167,7 +1167,10 @@ fn datafix_names_follow_java_hashmap_tree_order() {
 #[cfg(test)]
 #[test]
 fn profile_keeps_distinct_unpaired_surrogate_property_names() {
-    let names = [JavaString(vec![0xd800]), JavaString(vec![0xd801])];
+    let names = [
+        JavaString::from(vec![0xd800]),
+        JavaString::from(vec![0xd801]),
+    ];
     let input = Tag::compound([(
         "Properties",
         Tag::compound(names.iter().cloned().zip(

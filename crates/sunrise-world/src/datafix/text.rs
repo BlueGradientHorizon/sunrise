@@ -27,7 +27,7 @@ fn unflatten(v: &mut Tag) {
     let Tag::String(s) = v else {
         return;
     };
-    if let Some(parsed) = json::parse_lenient(&s.0)
+    if let Some(parsed) = json::parse_lenient(s.units())
         && let Some(tag) = json::to_nbt(&parsed)
     {
         *v = tag;
@@ -68,7 +68,10 @@ fn legacy_hover_event(v: &mut Tag) {
             ("action", string("show_text")),
             (
                 "contents",
-                Tag::compound([("text", Tag::String(sunrise_core::nbt::JavaString(text)))]),
+                Tag::compound([(
+                    "text",
+                    Tag::String(sunrise_core::nbt::JavaString::from(text)),
+                )]),
             ),
         ])
     };
