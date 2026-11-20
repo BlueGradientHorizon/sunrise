@@ -556,6 +556,7 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::game::native_entity_refs::tests::collect_entities_in;
     use mod_api::ServerHost;
 
     #[test]
@@ -581,8 +582,7 @@ mod tests {
                 let level = host.level(event.dimension).unwrap();
                 if event.kind != "minecraft:eye_of_ender" {
                     assert!(
-                        level
-                            .entities_in(host, [4.0, 63.0, 4.0], [6.0, 66.0, 6.0])
+                        collect_entities_in(host, level, [4.0, 63.0, 4.0], [6.0, 66.0, 6.0])
                             .unwrap()
                             .contains(&entity)
                     );
@@ -618,9 +618,8 @@ mod tests {
                     kinds.map(|kind| (kind.to_owned(), false))
                 );
                 let level = game.level("minecraft:overworld").unwrap();
-                let handles = level
-                    .entities_in(game, [4.0, 63.0, 4.0], [6.0, 66.0, 6.0])
-                    .unwrap();
+                let handles =
+                    collect_entities_in(game, level, [4.0, 63.0, 4.0], [6.0, 66.0, 6.0]).unwrap();
                 assert_eq!(handles.len(), 5);
                 let mut chunks =
                     game.entity_chunks(&std::collections::HashSet::from([(0, 0)]), true);
@@ -629,8 +628,7 @@ mod tests {
                 assert_eq!(saved.len(), 5);
                 game.native_leaves_flush();
                 assert!(
-                    level
-                        .entities_in(game, [4.0, 63.0, 4.0], [6.0, 66.0, 6.0])
+                    collect_entities_in(game, level, [4.0, 63.0, 4.0], [6.0, 66.0, 6.0])
                         .unwrap()
                         .is_empty()
                 );
@@ -646,9 +644,8 @@ mod tests {
                         .chain(kinds.into_iter().map(|k| (k.to_owned(), true)))
                         .collect::<Vec<_>>()
                 );
-                let reloaded = level
-                    .entities_in(game, [4.0, 63.0, 4.0], [6.0, 66.0, 6.0])
-                    .unwrap();
+                let reloaded =
+                    collect_entities_in(game, level, [4.0, 63.0, 4.0], [6.0, 66.0, 6.0]).unwrap();
                 assert_eq!(reloaded.len(), 5);
                 assert!(handles.iter().all(|e| e.kind(game).is_none()));
                 assert!(

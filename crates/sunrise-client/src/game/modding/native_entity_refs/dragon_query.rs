@@ -27,7 +27,12 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::game::{dragon::Dragon, native_entity_refs::tests::with_game};
+    use crate::game::{
+        dragon::Dragon,
+        native_entity_refs::tests::{
+            collect_entities_in, collect_game_all_entities, collect_game_entities_in, with_game,
+        },
+    };
     use sunrise_client::mobs::Mob;
 
     #[test]
@@ -85,8 +90,7 @@ mod tests {
             game.dragon.replace(dragon);
             game.mobs.push(Mob::new(3, kind, Vec3::ZERO, 0.0));
             let level = game.level(game.dim.id()).unwrap();
-            let ids: Vec<_> = game
-                .level_all_entities(level)
+            let ids: Vec<_> = collect_game_all_entities(game, level)
                 .unwrap()
                 .into_iter()
                 .map(|e| e.id())
@@ -96,22 +100,25 @@ mod tests {
             use sunrise_client::join_seq::Joined;
             let join = game.mobs[0].join_seq();
             let extracted = game.mobs.extract(join).unwrap();
-            assert_eq!(game.level_all_entities(level), None);
+            assert_eq!(collect_game_all_entities(game, level), None);
             game.mobs.put_back(0, extracted);
-            assert!(game.level_all_entities(level).is_some());
+            assert!(collect_game_all_entities(game, level).is_some());
             assert_eq!(
-                game.level_all_entities(LevelRef::new(
-                    mod_api::WorldEpoch::new(level.epoch().get() + 1),
-                    level.dimension()
-                )),
+                collect_game_all_entities(
+                    game,
+                    LevelRef::new(
+                        mod_api::WorldEpoch::new(level.epoch().get() + 1),
+                        level.dimension()
+                    )
+                ),
                 None
             );
             assert_eq!(
-                game.level_all_entities(LevelRef::new(level.epoch(), DimensionKey::NETHER)),
+                collect_game_all_entities(game, LevelRef::new(level.epoch(), DimensionKey::NETHER)),
                 None
             );
             game.options.execution_role = crate::game::execution_role::ExecutionRole::Client;
-            assert_eq!(game.level_all_entities(level), None);
+            assert_eq!(collect_game_all_entities(game, level), None);
         });
     }
 
@@ -126,12 +133,12 @@ mod tests {
             game.dragon.replace(dragon);
             let level = game.level(game.dim.id()).unwrap();
             // Parts start at the origin, away from the dragon's own body.
-            let ids = game
-                .level_entities_in(level, [-10.0, -1.0, -10.0], [10.0, 10.0, 10.0])
-                .unwrap()
-                .into_iter()
-                .map(|e| e.id())
-                .collect::<Vec<_>>();
+            let ids =
+                collect_game_entities_in(game, level, [-10.0, -1.0, -10.0], [10.0, 10.0, 10.0])
+                    .unwrap()
+                    .into_iter()
+                    .map(|e| e.id())
+                    .collect::<Vec<_>>();
             assert_eq!(ids.first(), Some(&12));
             // This test pins only the ordinary/parts boundary, not part order.
             let mut parts = ids[1..].to_vec();
@@ -149,7 +156,7 @@ mod tests {
                 .push(Mob::new(12, kind, Vec3::new(5.0, 64.0, 5.0), 0.0));
             let level = game.level(game.dim.id()).unwrap();
             let query = |game: &Game<'_>, lo, hi| {
-                game.level_entities_in(level, lo, hi)
+                collect_game_entities_in(game, level, lo, hi)
                     .unwrap()
                     .into_iter()
                     .map(|e| e.id())
@@ -213,8 +220,7 @@ mod tests {
             game.dragon.as_mut().unwrap().position = Vec3::new(0.0, 200.0, 0.0);
             let level = game.level("minecraft:overworld").unwrap();
             let ids = |host: &dyn Host, min, max| {
-                level
-                    .entities_in(host, min, max)
+                collect_entities_in(host, level, min, max)
                     .map(|found| found.into_iter().map(|e| e.id()).collect::<Vec<_>>())
             };
             // Order: the tracked pig, the dragon once, the window's own player, then the

@@ -1049,6 +1049,41 @@ pub(super) mod tests {
     }
     use crate::game::api_values::TryIntoApi;
     use mod_api::__private::game::*;
+    use mod_api::{EntityRef, LevelRef};
+
+    // Keep the handle and direct Game routes separate when collecting for assertions.
+    pub(in crate::game) fn collect_all_entities(
+        host: &dyn mod_api::Host,
+        level: LevelRef,
+    ) -> Option<Vec<EntityRef>> {
+        level.all_entities(host)
+    }
+
+    pub(in crate::game) fn collect_entities_in(
+        host: &dyn mod_api::Host,
+        level: LevelRef,
+        min: [f64; 3],
+        max: [f64; 3],
+    ) -> Option<Vec<EntityRef>> {
+        level.entities_in(host, min, max)
+    }
+
+    pub(in crate::game) fn collect_game_all_entities(
+        game: &super::Game<'_>,
+        level: LevelRef,
+    ) -> Option<Vec<EntityRef>> {
+        game.level_all_entities(level)
+    }
+
+    pub(in crate::game) fn collect_game_entities_in(
+        game: &super::Game<'_>,
+        level: LevelRef,
+        min: [f64; 3],
+        max: [f64; 3],
+    ) -> Option<Vec<EntityRef>> {
+        game.level_entities_in(level, min, max)
+    }
+
     /// Isolate declarations and frozen registries without changing another test's resources.
     pub(in crate::game) fn run_fresh_cases(name: &str, flag: &str, cases: &[&str]) -> bool {
         run_fresh_cases_at_once(name, flag, cases, 1)
@@ -2961,9 +2996,8 @@ pub(super) mod tests {
             assert!(game.entity(0).is_none());
             game.armor_stands
                 .push(ArmorStand::new(12, Vec3::new(1.0, 0.0, 0.0), 0.0));
-            let found = game
-                .level_entities_in(level, [0.0, 0.0, -1.0], [0.8, 1.0, 1.0])
-                .unwrap();
+            let found =
+                collect_game_entities_in(game, level, [0.0, 0.0, -1.0], [0.8, 1.0, 1.0]).unwrap();
             assert_eq!(found.len(), 1);
             assert_eq!(game.entity_position(found[0]), Some([1.0, 0.0, 0.0]));
             assert_eq!(
@@ -2973,12 +3007,13 @@ pub(super) mod tests {
                 Some("minecraft:armor_stand")
             );
             assert!(
-                game.level_entities_in(level, [0.0, 0.0, -1.0], [0.75, 1.0, 1.0])
+                collect_game_entities_in(game, level, [0.0, 0.0, -1.0], [0.75, 1.0, 1.0])
                     .unwrap()
                     .is_empty()
             );
             assert!(
-                game.level_entities_in(
+                collect_game_entities_in(
+                    game,
                     LevelRef::new(WorldEpoch::new(0), game.dim.key()),
                     [0.0; 3],
                     [2.0; 3]
@@ -4651,8 +4686,7 @@ pub(super) mod tests {
             game.spawn_entity(16, "minecraft:pig", [40.0, 0.0, 0.0], [0.0; 3]);
             let level = game.level("minecraft:overworld").unwrap();
             let ids = |host: &dyn Host, level: LevelRef, min, max| {
-                level
-                    .entities_in(host, min, max)
+                collect_entities_in(host, level, min, max)
                     .map(|found| found.into_iter().map(|e| e.id()).collect::<Vec<_>>())
             };
             // The tracked pig, then the window's own player; the other pig is far away.
@@ -4739,8 +4773,7 @@ pub(super) mod tests {
             );
             let level = game.level("minecraft:overworld").unwrap();
             let ids = |host: &dyn Host, level: LevelRef, min, max| {
-                level
-                    .entities_in(host, min, max)
+                collect_entities_in(host, level, min, max)
                     .map(|found| found.into_iter().map(|e| e.id()).collect::<Vec<_>>())
             };
             // Entity-list order: the pig, then the other players, then the window's own.
@@ -4783,8 +4816,7 @@ pub(super) mod tests {
             game.spawn_entity(15, "minecraft:pig", [2.0, 0.0, 0.0], [0.0; 3]);
             let level = game.level("minecraft:overworld").unwrap();
             let ids = |host: &dyn Host, level: LevelRef, min, max| {
-                level
-                    .entities_in(host, min, max)
+                collect_entities_in(host, level, min, max)
                     .map(|found| found.into_iter().map(|e| e.id()).collect::<Vec<_>>())
             };
             // Mod code chooses the bounds: one that is not finite is refused, never panics,

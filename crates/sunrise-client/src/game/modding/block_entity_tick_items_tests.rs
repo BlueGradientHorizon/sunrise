@@ -1,4 +1,4 @@
-use super::api_values::TryIntoApi;
+use super::{api_values::TryIntoApi, native_entity_refs::tests::collect_all_entities};
 use mod_api::{
     BlockEntityPart, BlockEntityTickEvent, BlockPart, EntityLeaveLevelEvent, Hooks,
     HostTransaction, ItemPlace, Registrar, ServerHost,
@@ -80,7 +80,7 @@ impl BlockEntityPart for Consume {
                 .is_none()
         );
         let level = host.level("minecraft:overworld").unwrap();
-        assert!(!level.all_entities(host).unwrap().contains(&second));
+        assert!(!collect_all_entities(host, level).unwrap().contains(&second));
         if case == "removed" {
             assert!(level.remove_block(host, event.pos, false));
         }

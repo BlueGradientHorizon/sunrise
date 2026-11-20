@@ -78,6 +78,7 @@ mod tests {
     use crate::game::{
         Game,
         api_values::TryIntoApi,
+        native_entity_refs::tests::collect_entities_in,
         viewed_worlds::tests::{client, close, column, layered, open, run, spawn},
     };
     use mod_api::{
@@ -229,7 +230,10 @@ mod tests {
         );
         assert_eq!(state(&game, viewed, POCKET), Some(0));
         assert_eq!(viewed.fluid_state(&game, POCKET), None);
-        assert_eq!(viewed.entities_in(&game, [0.0; 3], [16.0; 3]), None);
+        assert_eq!(
+            collect_entities_in(&game, viewed, [0.0; 3], [16.0; 3]),
+            None
+        );
     }
 
     /// The server's close, and a Respawn, end the handle: it and `host.level` answer None until
