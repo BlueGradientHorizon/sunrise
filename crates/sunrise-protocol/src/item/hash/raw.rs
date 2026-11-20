@@ -78,15 +78,12 @@ fn typed_data_with<O: Ops>(registry: &str, names: &dyn Names, r: &mut Reader) ->
     };
     // `stripId` leaves the data without its own id; the codec writes the type's.
     tag.remove(&"id".into());
-    Some(typed_with_id_with::<O>(id, &tag))
-}
-fn typed_with_id_with<O: Ops>(id: O::Value, tag: &sunrise_core::nbt::Compound) -> O::Value {
-    let mut entries: Vec<(O::Value, O::Value)> = tag
-        .iter()
-        .map(|(k, v)| (O::create_string_units(&k.0), O::from_nbt(v, &[])))
-        .collect();
+    let mut entries = Vec::with_capacity(tag.len() + 1);
+    for (k, v) in &tag {
+        entries.push((O::create_string_units(&k.0), O::from_nbt(v, &[])?));
+    }
     entries.push((string_with::<O>("id"), id));
-    O::create_map(entries)
+    Some(O::create_map(entries))
 }
 /// A list written as a count and its elements, hashed as a list.
 fn list_with<O: Ops>(
@@ -117,7 +114,11 @@ pub(super) fn template_code_with<O: Ops>(r: &mut Reader, names: &dyn Names) -> O
 /// `ByteBufCodecs.fixedSizeList(4)` of text components.
 fn four_texts_with<O: Ops>(r: &mut Reader) -> Option<(Vec<Tag>, O::Value)> {
     let tags: Vec<Tag> = (0..4).map(|_| r.nbt().ok()).collect::<Option<_>>()?;
-    let code = O::create_list(tags.iter().map(text_with::<O>));
+    let code = O::create_list(
+        tags.iter()
+            .map(text_with::<O>)
+            .collect::<Option<Vec<_>>>()?,
+    );
     Some((tags, code))
 }
 
@@ -253,7 +254,7 @@ fn holder_or_with<O: Ops>(
 /// `TrimMaterial.DIRECT_CODEC`.
 pub(super) fn trim_material_with<O: Ops>(r: &mut Reader) -> Option<O::Value> {
     let palette = string_with::<O>(&r.string(32767).ok()?);
-    let description = text_with::<O>(&r.nbt().ok()?);
+    let description = text_with::<O>(&r.nbt().ok()?)?;
     Some(
         Record::<O>::new()
             .field("palette_id", palette)
@@ -264,7 +265,7 @@ pub(super) fn trim_material_with<O: Ops>(r: &mut Reader) -> Option<O::Value> {
 /// `TrimPattern.DIRECT_CODEC` (`decal` is always written).
 fn trim_pattern_with<O: Ops>(r: &mut Reader) -> Option<O::Value> {
     let asset = string_with::<O>(&r.string(32767).ok()?);
-    let description = text_with::<O>(&r.nbt().ok()?);
+    let description = text_with::<O>(&r.nbt().ok()?)?;
     let decal = r.bool().ok()?;
     Some(
         Record::<O>::new()
@@ -279,7 +280,7 @@ fn instrument_with<O: Ops>(r: &mut Reader, names: &dyn Names) -> Option<O::Value
     let sound = super::gameplay::sound_with::<O>(r, names)?.code;
     let (duration, range) = (r.f32().ok()?, r.f32().ok()?);
     let damage = r.varint().ok()?;
-    let description = text_with::<O>(&r.nbt().ok()?);
+    let description = text_with::<O>(&r.nbt().ok()?)?;
     let rec = Record::<O>::new()
         .field("sound_event", sound)
         .field("use_duration", O::create_f32(duration))
@@ -314,7 +315,7 @@ pub(super) fn code_with<O: Ops>(kind: i32, bytes: &[u8], names: &dyn Names) -> O
         // Persistent codecs only: the stream form is the codec's NBT.
         // intangible_projectile, map_decorations, debug_stick_state, recipes,
         // lock (an `ItemPredicate`) and container_loot.
-        22 | 49 | 59 | 68 | 81 | 82 => O::from_nbt(&r.nbt().ok()?, &[]),
+        22 | 49 | 59 | 68 | 81 | 82 => O::from_nbt(&r.nbt().ok()?, &[])?,
         // `Codec.FLOAT`: minimum_attack_charge, potion_duration_scale.
         7 | 54 => float_with::<O>(r)?,
         // `Identifier.CODEC`: tooltip_style, note_block_sound.
@@ -368,11 +369,11 @@ pub(super) fn code_with<O: Ops>(kind: i32, bytes: &[u8], names: &dyn Names) -> O
                     .field("asset_id", string_with::<O>(&r.string(32767).ok()?))
                     .optional(
                         "title",
-                        optional_with::<O>(r, |r| Some(text_with::<O>(&r.nbt().ok()?)))?,
+                        optional_with::<O>(r, |r| text_with::<O>(&r.nbt().ok()?))?,
                     )
                     .optional(
                         "author",
-                        optional_with::<O>(r, |r| Some(text_with::<O>(&r.nbt().ok()?)))?,
+                        optional_with::<O>(r, |r| text_with::<O>(&r.nbt().ok()?))?,
                     )
                     .build(),
             )?,
@@ -381,7 +382,7 @@ pub(super) fn code_with<O: Ops>(kind: i32, bytes: &[u8], names: &dyn Names) -> O
         // `TypedEntityData` (entity_data, block_entity_data) and `CustomData`.
         60 => typed_data_with::<O>("minecraft:entity_type", names, r)?,
         62 => typed_data_with::<O>("minecraft:block_entity_type", names, r)?,
-        61 => O::from_nbt(&r.nbt().ok()?, &[]),
+        61 => O::from_nbt(&r.nbt().ok()?, &[])?,
         // `BlockItemStateProperties`: a string map.
         78 => {
             let n = r.count(r.remaining()).ok()?;

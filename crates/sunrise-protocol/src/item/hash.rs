@@ -88,7 +88,7 @@ fn pick_with<O: Ops>(table: &[&str], id: i32) -> Option<O::Value> {
         .map(|n| string_with::<O>(n))
 }
 /// `ComponentSerialization.CODEC`.
-fn text_with<O: Ops>(tag: &sunrise_core::nbt::Tag) -> O::Value {
+fn text_with<O: Ops>(tag: &sunrise_core::nbt::Tag) -> Option<O::Value> {
     O::from_nbt(
         sunrise_world::component_value::compact_text_tag(tag),
         &TEXT_BOOLS,
@@ -222,10 +222,15 @@ impl Component {
             Self::Unit if id == kind::CREATIVE_SLOT_LOCK => return None,
             Self::Unit => O::empty_map(),
             Self::Bool(v) => O::create_boolean(*v),
-            Self::Text(t) => text_with::<O>(t),
-            Self::Nbt(t) => O::from_nbt(t, &[]),
+            Self::Text(t) => text_with::<O>(t)?,
+            Self::Nbt(t) => O::from_nbt(t, &[])?,
             Self::Ident(s) => string_with::<O>(s),
-            Self::Lore(lines) => O::create_list(lines.iter().map(text_with::<O>)),
+            Self::Lore(lines) => O::create_list(
+                lines
+                    .iter()
+                    .map(text_with::<O>)
+                    .collect::<Option<Vec<_>>>()?,
+            ),
             Self::Enchantments(list) => enchantments_with::<O>(list, names)?,
             Self::AttackRange(v) => {
                 const FIELDS: [(&str, f32); 6] = [
@@ -361,18 +366,15 @@ impl Component {
                 let rec = if b.pages.is_empty() {
                     rec
                 } else {
-                    rec.field(
-                        "pages",
-                        O::create_list(b.pages.iter().enumerate().map(|(i, p)| {
-                            filterable_with::<O>(
-                                text_with::<O>(p),
-                                b.pages_filtered
-                                    .get(i)
-                                    .and_then(Option::as_ref)
-                                    .map(text_with::<O>),
-                            )
-                        })),
-                    )
+                    let mut pages = Vec::with_capacity(b.pages.len());
+                    for (i, page) in b.pages.iter().enumerate() {
+                        let filtered = match b.pages_filtered.get(i).and_then(Option::as_ref) {
+                            Some(value) => Some(text_with::<O>(value)?),
+                            None => None,
+                        };
+                        pages.push(filterable_with::<O>(text_with::<O>(page)?, filtered));
+                    }
+                    rec.field("pages", O::create_list(pages))
                 };
                 or_default_with::<O, _>(
                     rec,

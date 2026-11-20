@@ -591,4 +591,21 @@ mod tests {
             .to_string();
         assert!(error.contains("creative_slot_lock"), "{error}");
     }
+    #[test]
+    fn retained_custom_data_refuses_overdeep_trees_for_values_and_hashes() {
+        use sunrise_world::component_value::MAX_TREE_DEPTH;
+        let mut tag = Tag::Compound(Default::default());
+        for _ in 1..MAX_TREE_DEPTH {
+            tag = Tag::compound([("a", tag)]);
+        }
+        let admitted = Component::Nbt(tag);
+        assert!(component_value(0, &admitted, &Registry).is_ok());
+        assert!(admitted.hash(0, &Registry).is_some());
+        let Component::Nbt(tag) = admitted else {
+            unreachable!()
+        };
+        let refused = Component::Nbt(Tag::compound([("a", tag)]));
+        assert!(component_value(0, &refused, &Registry).is_err());
+        assert!(refused.hash(0, &Registry).is_none());
+    }
 }

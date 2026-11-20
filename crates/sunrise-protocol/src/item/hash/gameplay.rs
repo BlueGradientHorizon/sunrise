@@ -372,7 +372,7 @@ pub(super) fn code_with<O: Ops>(kind: i32, r: &mut Reader, names: &dyn Names) ->
                         "display",
                         Record::<O>::new()
                             .field("type", string_with::<O>("override"))
-                            .field("value", text_with::<O>(&r.nbt().ok()?))
+                            .field("value", text_with::<O>(&r.nbt().ok()?)?)
                             .build(),
                     ),
                     _ => return None,
@@ -632,7 +632,7 @@ pub(super) fn code_with<O: Ops>(kind: i32, r: &mut Reader, names: &dyn Names) ->
             0 => O::stream_only(
                 Record::<O>::new()
                     .field("sound_event", sound_with::<O>(r, names)?.code)
-                    .field("description", text_with::<O>(&r.nbt().ok()?))
+                    .field("description", text_with::<O>(&r.nbt().ok()?)?)
                     .field("length_in_seconds", O::create_f32(float_with::<O>(r)?))
                     .field("comparator_output", O::create_int(int_with::<O>(r)?))
                     .build(),

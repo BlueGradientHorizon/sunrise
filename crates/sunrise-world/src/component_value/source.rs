@@ -81,7 +81,7 @@ fn boolean(t: &Tag) -> Result<Value> {
     Ok(Value::Bool(number(t)? != 0.0))
 }
 fn text(t: &Tag) -> Result<Value> {
-    Ok(Value::from_nbt(super::compact_text_tag(t), TEXT_BOOLS))
+    Ok(Value::convert_nbt(super::compact_text_tag(t), TEXT_BOOLS))
 }
 fn list(t: &Tag, f: impl Fn(&Tag) -> Result<Value>) -> Result<Value> {
     let values = match t {
@@ -334,8 +334,16 @@ fn resolvable(t: &Tag, f: impl Fn(&Tag) -> Result<Value>) -> Result<Value> {
     }
 }
 
+/// The one bound on every source tree, checked before any recursive conversion of it.
+fn check_depth(t: &Tag) -> Result<()> {
+    if !sunrise_core::nbt::within_depth(t, super::MAX_TREE_DEPTH) {
+        return Err(format!("NBT nesting exceeds {}", super::MAX_TREE_DEPTH));
+    }
+    Ok(())
+}
 /// `ItemStackTemplate.CODEC`: source admission, not the signed native stream codec.
 pub fn template_from_tag(t: &Tag) -> Result<Template> {
+    check_depth(t)?;
     template_tag(t, false)
 }
 fn template_tag(t: &Tag, native_templates: bool) -> Result<Template> {
@@ -444,19 +452,80 @@ fn predicate(t: &Tag, native_templates: bool) -> Result<Value> {
 /// Decode the actual component codec's schema and remove its Java defaults.
 /// Registry identifiers remain names; the caller validates them against its snapshot.
 pub fn from_component_tag(id: &str, t: &Tag) -> Result<Value> {
-    component_tag(id, t, false)
+    check_depth(t)?;
+    component_tag(&identifier(id)?, t, false)
 }
 /// Datafix output represents native stacks, whose template counts are not bounded by CODEC.
 pub fn from_upgraded_component_tag(id: &str, t: &Tag) -> Result<Value> {
-    component_tag(id, t, true)
+    check_depth(t)?;
+    component_tag(&identifier(id)?, t, true)
 }
 fn component_tag(id: &str, t: &Tag, native_templates: bool) -> Result<Value> {
-    let id = identifier(id)?;
-    if !native_templates && !super::is_persistent(&id) {
+    if !native_templates && !super::is_persistent(id) {
         return Err(format!("{id} has no persistent codec"));
     }
-    let name = id.strip_prefix("minecraft:").unwrap_or(&id);
+    let name = id.strip_prefix("minecraft:").unwrap_or(id);
     validate_source(name, t)?;
+    // Recursive template and predicate paths do not carry the large leaf dispatcher's frame.
+    Ok(match name {
+        "lock" => {
+            let value = item_predicate(t, native_templates)?;
+            let tag = if native_templates {
+                value.presentation_tag()?
+            } else {
+                value.to_tag()?
+            };
+            Value::from_nbt(&tag, &[])?
+        }
+        "use_remainder" | "sulfur_cube_content" => template(t, native_templates)?,
+        "can_place_on" | "can_break" => {
+            if let Tag::List(v) = t {
+                match v.len() {
+                    0 => return Err("empty adventure predicate".into()),
+                    1 => predicate(&v[0], native_templates)?,
+                    _ => list(t, |v| predicate(v, native_templates))?,
+                }
+            } else {
+                predicate(t, native_templates)?
+            }
+        }
+        "charged_projectiles" | "bundle_contents" => list(t, |v| template(v, native_templates))?,
+        "pot_decorations" => record(t, |r| {
+            for k in ["back", "left", "right", "front"] {
+                r.optional(k, |v| template(v, native_templates))?;
+            }
+            Ok(())
+        })?,
+        "container" => {
+            let Tag::List(entries) = t else {
+                return Err("container is not a slot list".into());
+            };
+            if entries.len() > 256 {
+                return Err("container source exceeds 256 entries".into());
+            }
+            let mut slots = vec![];
+            for e in entries {
+                let Value::Int(slot) = int(e.get("slot").ok_or("missing container slot")?)? else {
+                    unreachable!()
+                };
+                if !(0..256).contains(&slot) {
+                    return Err("container slot outside 0..255".into());
+                }
+                let item = template_tag(
+                    e.get("item").ok_or("missing container item")?,
+                    native_templates,
+                )?;
+                slots.resize_with(slots.len().max(slot as usize + 1), || None);
+                slots[slot as usize] = Some(item);
+            }
+            Value::Container(slots)
+        }
+        _ => return component_leaf(name, id, t),
+    })
+}
+
+#[inline(never)]
+fn component_leaf(name: &str, id: &str, t: &Tag) -> Result<Value> {
     Ok(match name {
         "creative_slot_lock" => unit(t)?,
         "map_post_processing" | "additional_trade_cost" => int(t)?,
@@ -464,7 +533,7 @@ fn component_tag(id: &str, t: &Tag, native_templates: bool) -> Result<Value> {
             if !matches!(t, Tag::Compound(_)) {
                 return Err("custom data is not a compound".into());
             }
-            Value::from_nbt(t, &[])
+            Value::convert_nbt(t, &[])
         }
         "intangible_projectile" => unit(t)?,
         "map_decorations" => map(t, |v| {
@@ -492,15 +561,6 @@ fn component_tag(id: &str, t: &Tag, native_templates: bool) -> Result<Value> {
             )
         }
         "recipes" => list(t, ident)?,
-        "lock" => {
-            let value = item_predicate(t, native_templates)?;
-            let tag = if native_templates {
-                value.presentation_tag()?
-            } else {
-                value.to_tag()?
-            };
-            Value::from_nbt(&tag, &[])
-        }
         "container_loot" => record(t, |r| {
             r.required("loot_table", ident)?;
             r.default("seed", Value::Long(0), |v| {
@@ -603,7 +663,6 @@ fn component_tag(id: &str, t: &Tag, native_templates: bool) -> Result<Value> {
             r.b("has_consume_particles", true)?;
             r.list("on_consume_effects", consume_effect)
         })?,
-        "use_remainder" | "sulfur_cube_content" => template(t, native_templates)?,
         "use_cooldown" => record(t, |r| {
             r.required("seconds", float)?;
             r.optional("cooldown_group", ident)
@@ -704,17 +763,6 @@ fn component_tag(id: &str, t: &Tag, native_templates: bool) -> Result<Value> {
             r.required("targeting_entity_types", holder_set)?;
             r.required("visibility", float)
         })?,
-        "can_place_on" | "can_break" => {
-            if let Tag::List(v) = t {
-                match v.len() {
-                    0 => return Err("empty adventure predicate".into()),
-                    1 => predicate(&v[0], native_templates)?,
-                    _ => list(t, |v| predicate(v, native_templates))?,
-                }
-            } else {
-                predicate(t, native_templates)?
-            }
-        }
         "attribute_modifiers" => list(t, attribute_entry)?,
         "custom_model_data" => record(t, |r| {
             r.list("floats", float)?;
@@ -741,7 +789,6 @@ fn component_tag(id: &str, t: &Tag, native_templates: bool) -> Result<Value> {
             }
             Ok(())
         })?,
-        "charged_projectiles" | "bundle_contents" => list(t, |v| template(v, native_templates))?,
         "potion_contents" => {
             if matches!(t, Tag::String(_)) {
                 Value::Map(vec![(Value::string("potion"), ident(t)?)])
@@ -786,7 +833,7 @@ fn component_tag(id: &str, t: &Tag, native_templates: bool) -> Result<Value> {
                 return Err("typed data not a compound".into());
             };
             entries.insert("id".into(), id);
-            Value::from_nbt(&v, &[])
+            Value::convert_nbt(&v, &[])
         }
         "lodestone_tracker" => record(t, |r| {
             r.optional("target", |v| {
@@ -831,41 +878,11 @@ fn component_tag(id: &str, t: &Tag, native_templates: bool) -> Result<Value> {
                 r.required("color", string_value)
             })
         })?,
-        "pot_decorations" => record(t, |r| {
-            for k in ["back", "left", "right", "front"] {
-                r.optional(k, |v| template(v, native_templates))?;
-            }
-            Ok(())
-        })?,
-        "container" => {
-            let Tag::List(entries) = t else {
-                return Err("container is not a slot list".into());
-            };
-            if entries.len() > 256 {
-                return Err("container source exceeds 256 entries".into());
-            }
-            let mut slots = vec![];
-            for e in entries {
-                let Value::Int(slot) = int(e.get("slot").ok_or("missing container slot")?)? else {
-                    unreachable!()
-                };
-                if !(0..256).contains(&slot) {
-                    return Err("container slot outside 0..255".into());
-                }
-                let item = template_tag(
-                    e.get("item").ok_or("missing container item")?,
-                    native_templates,
-                )?;
-                slots.resize_with(slots.len().max(slot as usize + 1), || None);
-                slots[slot as usize] = Some(item);
-            }
-            Value::Container(slots)
-        }
         "block_state" => map(t, string_value)?,
         "bees" => list(t, |v| {
             record(v, |r| {
                 r.required("entity_data", |v| {
-                    component_tag("minecraft:entity_data", v, native_templates)
+                    component_leaf("entity_data", "minecraft:entity_data", v)
                 })?;
                 r.required("ticks_in_hive", int)?;
                 r.required("min_ticks_in_hive", int)
@@ -874,7 +891,7 @@ fn component_tag(id: &str, t: &Tag, native_templates: bool) -> Result<Value> {
         "sign_text_front" | "sign_text_back" => sign_text(t)?,
         "profile" => profile(t)?,
         "blocks_attacks" => blocks_attacks(t)?,
-        _ if !id.starts_with("minecraft:") => Value::from_nbt(t, &[]),
+        _ if !id.starts_with("minecraft:") => Value::convert_nbt(t, &[]),
         _ => return Err(format!("unknown component codec {id}")),
     })
 }
@@ -1077,7 +1094,7 @@ fn predicate_value(t: &Tag, native_templates: bool) -> Result<Value> {
                 .collect::<Result<_>>()?,
         )),
         Tag::List(_) => list(t, |v| predicate_value(v, native_templates)),
-        _ => Ok(Value::from_nbt(t, &[])),
+        _ => Ok(Value::convert_nbt(t, &[])),
     }
 }
 fn item_predicate(t: &Tag, native_templates: bool) -> Result<Value> {
@@ -1627,5 +1644,58 @@ mod tests {
             assert!(from_component_tag(id, &Tag::compound([(field, float(0))])).is_ok());
             assert!(from_component_tag(id, &Tag::compound([(field, float(0x8000_0000))])).is_err());
         }
+    }
+    #[test]
+    fn trees_nested_past_the_nbt_depth_are_refused_before_conversion() {
+        let nested = |levels: usize| {
+            let mut tag = Tag::Compound(Default::default());
+            for _ in 1..levels {
+                tag = Tag::compound([("a", tag)]);
+            }
+            tag
+        };
+        let convert = |levels: usize| {
+            std::thread::Builder::new()
+                .stack_size(2 << 20)
+                .spawn(move || from_component_tag("minecraft:custom_data", &nested(levels)).is_ok())
+                .unwrap()
+                .join()
+                .unwrap()
+        };
+        assert!(convert(super::super::MAX_TREE_DEPTH));
+        assert!(!convert(super::super::MAX_TREE_DEPTH + 1));
+        let mut value = Value::List(Vec::new());
+        for _ in 1..super::super::MAX_TREE_DEPTH {
+            value = Value::List(vec![value]);
+        }
+        assert!(value.to_tag().is_ok());
+        assert!(Value::List(vec![value]).to_tag().is_err());
+        assert!(Value::from_nbt(&nested(super::super::MAX_TREE_DEPTH + 1), &[]).is_err());
+
+        // A source template and its own patch add two NBT containers. Exercise
+        // that path at the tree limit, not only the generic tag walker.
+        let tag_chain = |levels| {
+            let mut tag = Tag::String("minecraft:stone".into());
+            for _ in 0..levels {
+                tag = Tag::compound([
+                    ("id", Tag::String("minecraft:stone".into())),
+                    (
+                        "components",
+                        Tag::compound([("minecraft:use_remainder", tag)]),
+                    ),
+                ]);
+            }
+            tag
+        };
+        let convert_templates = |levels| {
+            std::thread::Builder::new()
+                .stack_size(2 << 20)
+                .spawn(move || super::template_from_tag(&tag_chain(levels)).is_ok())
+                .unwrap()
+                .join()
+                .unwrap()
+        };
+        assert!(convert_templates(super::super::MAX_TREE_DEPTH / 2));
+        assert!(!convert_templates(super::super::MAX_TREE_DEPTH / 2 + 1));
     }
 }

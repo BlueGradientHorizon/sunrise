@@ -5,7 +5,7 @@ use crate::{
     Error, Result,
     buf::{Reader, Writer},
 };
-use sunrise_core::nbt::Tag;
+use sunrise_core::nbt::{self, Tag};
 use sunrise_world::component_value::{Template, Value, effective_patch};
 
 fn err(s: impl Into<String>) -> Error {
@@ -135,7 +135,12 @@ fn sequence(
     Ok(())
 }
 fn nbt(w: &mut Writer, v: &Value) -> Result<()> {
-    w.nbt(&v.to_tag().map_err(err)?);
+    write_tag(w, &v.to_tag().map_err(err)?)
+}
+
+fn write_tag(w: &mut Writer, tag: &Tag) -> Result<()> {
+    let bytes = nbt::write_network(tag, nbt::Limits::default()).map_err(|e| err(e.to_string()))?;
+    w.bytes(&bytes);
     Ok(())
 }
 fn sound(w: &mut Writer, v: &Value, ids: &dyn Ids) -> Result<()> {
@@ -421,8 +426,7 @@ fn typed(w: &mut Writer, v: &Value, registry: &str, ids: &dyn Ids) -> Result<()>
         return Err(err("typed data not a map"));
     };
     entries.remove(&sunrise_core::nbt::JavaString::from("id"));
-    w.nbt(&tag);
-    Ok(())
+    write_tag(w, &tag)
 }
 fn filterable(w: &mut Writer, v: &Value, text: bool) -> Result<()> {
     let raw = need(v, "raw")?;
@@ -488,8 +492,7 @@ fn predicate(w: &mut Writer, v: &Value, ids: &dyn Ids, depth: u32) -> Result<()>
         if n != s.len() {
             return Err(err("trailing predicate SNBT"));
         }
-        w.nbt(&tag);
-        Ok(())
+        write_tag(w, &tag)
     })?;
     let exact = field(v, "components").map(map).transpose()?.unwrap_or(&[]);
     w.varint(exact.len() as i32);

@@ -152,10 +152,15 @@ fn walk_with<O: Ops>(tag: &Tag, shape: &Shape, names: &dyn Names) -> Option<O::V
                         O::create_boolean(*b != 0)
                     }
                     Tag::List(items) if shape.bool_lists.contains(&name.as_str()) => {
-                        O::create_list(items.iter().map(|t| match t {
-                            Tag::Byte(b) => O::create_boolean(*b != 0),
-                            other => O::from_nbt(other, &[]),
-                        }))
+                        O::create_list(
+                            items
+                                .iter()
+                                .map(|t| match t {
+                                    Tag::Byte(b) => Some(O::create_boolean(*b != 0)),
+                                    other => O::from_nbt(other, &[]),
+                                })
+                                .collect::<Option<Vec<_>>>()?,
+                        )
                     }
                     _ => walk_with::<O>(value, shape, names)?,
                 };
@@ -163,6 +168,6 @@ fn walk_with<O: Ops>(tag: &Tag, shape: &Shape, names: &dyn Names) -> Option<O::V
             }
             O::create_map(entries)
         }
-        other => O::from_nbt(other, &[]),
+        other => O::from_nbt(other, &[])?,
     })
 }
