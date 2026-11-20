@@ -7091,6 +7091,47 @@ mod noai_species_step_tests {
         );
         assert!(ran, "vanilla data is missing");
     }
+
+    /// A saved NoAI bee with an extreme hive and anger deadline ticks without overflowing.
+    #[test]
+    #[ignore = "daily"]
+    fn a_saved_noai_bee_with_extreme_hive_and_anger_ticks() {
+        use sunrise_core::nbt::Tag;
+        let ran = crate::mobs::world::with_test_world(&[], |w, types| {
+            let kind = Arc::new(types.types["minecraft:bee"].clone());
+            let fresh = Mob::new(1, kind.clone(), Vec3::new(2.5, 64.0, 8.5), 0.0);
+            let mut saved = crate::entity_nbt::mob_to_nbt(
+                &fresh,
+                [1, 2, 3, 4],
+                None,
+                None,
+                |_| None,
+                &Default::default(),
+            );
+            let Tag::Compound(map) = &mut saved else {
+                panic!("a mob saves a compound");
+            };
+            map.insert("NoAI".into(), Tag::Byte(1));
+            map.insert(
+                "hive_pos".into(),
+                Tag::IntArray(vec![i32::MIN, 64, i32::MIN]),
+            );
+            map.insert("anger_end_time".into(), Tag::Long(i64::MAX));
+            let mob_types = std::collections::HashMap::from([(kind.id.clone(), kind)]);
+            let mut bee = crate::entity_nbt::mob_from_nbt(&saved, &mob_types, 1, None).unwrap();
+            assert!(bee.no_ai);
+            bee.age = 19;
+            let mut w = w.clone();
+            w.game_time = -1;
+            assert!(super::super::bee::angry(&bee, &w));
+            let (mut level, mut events) = (crate::health::TestLevel::new(0), Vec::new());
+            assert!(tick(&mut bee, &w, &mut level.level(), &mut events));
+            let b = super::super::bee::get(&bee).unwrap();
+            assert_eq!(b.hive, None, "a hive 2^31 blocks away is too far");
+            assert_eq!(b.anger_end, i64::MAX);
+        });
+        assert!(ran, "vanilla data is missing");
+    }
 }
 
 #[cfg(test)]
