@@ -51,8 +51,16 @@ pub fn template_value(stack: &Stack, names: &dyn Names) -> Result<ValueTemplate>
     }
     let item = names
         .name("minecraft:item", stack.item)
-        .filter(|name| name != "minecraft:air")
         .ok_or_else(|| Error::new("item template registry id has no name"))?;
+    let item = match sunrise_world::component_value::source::normalized_identifier(&item)
+        .map_err(Error::new)?
+    {
+        std::borrow::Cow::Borrowed(_) => item,
+        std::borrow::Cow::Owned(normalized) => normalized,
+    };
+    if item == "minecraft:air" {
+        return Err(Error::new("air is not a template item"));
+    }
     let mut patch: Patch = Vec::with_capacity(stack.added.len() + stack.removed.len());
     let (sets, removals) = effective_wire_patch(&stack.added, &stack.removed);
     for (kind, value) in sets {
