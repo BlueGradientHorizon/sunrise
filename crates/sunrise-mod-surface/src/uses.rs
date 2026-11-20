@@ -13,9 +13,11 @@
 //! - a tuple struct's field (`X.0`) counts only where the parser ties the read to `X`: `X(..).0`,
 //!   `v.0` where `v` is bound by `let v: X`, `let v = X(..)` or a parameter `v: X` (through `&`
 //!   and `&mut`), `self.0` in a method of an impl for `X`, and each position a pattern
-//!   `X(a, b, ..)` lists before its `..`. A position read anywhere else (on a tuple, a closure's
-//!   untyped argument, another field, a method's result, in a macro body) counts for no struct;
-//!   the compile against the target build judges it.
+//!   `X(a, b, ..)` lists before its `..`. A qualified `X` counts for no API field if it can be
+//!   proved to name a mod-local type or tuple constructor (`local::Pos`), or a tuple enum variant
+//!   (`Shape::Pos`). Paths the scan cannot place keep their API candidates. A position read anywhere else (on a
+//!   tuple, a closure's untyped argument, another field, a method's result, in a macro body)
+//!   counts for no struct; the compile against the target build judges it.
 //!
 //! For each struct the source names it also records how the mod builds it, read with a Rust
 //! parser ([`crate::syntax`]): [`Built::Full`] where a struct literal or call lists its fields
@@ -74,10 +76,12 @@
 //! entries. [`UsesTable::read`] refuses an unknown schema, malformed JSON, repeated ids and
 //! documents over [`MAX_USES_BYTES`] with a typed [`UsesError`].
 use crate::scan::{self, Token};
-use crate::syntax::{self, How, Syntax};
+use crate::syntax::{self, How, Namespace, Syntax};
 use crate::{MacroKind, Role, Surface, Type, TypeKind, leaf};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
+use std::ops::Range;
+use std::path::Path;
 
 /// What a mod's manifest says that the list depends on.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -397,6 +401,10 @@ struct FileFacts<'t> {
     impls: Vec<(usize, Option<usize>)>,
     /// The names some `use` in the file binds.
     imported: BTreeSet<&'t str>,
+    /// Per module: each name bound by `use` (`*` for globs). It identifies an import only
+    /// when the binding is unique and unconditional, directly in the module. Block imports
+    /// and conditional imports can prevent a proof but cannot establish one.
+    module_imported: Vec<BTreeMap<&'t str, Option<usize>>>,
     /// What the parser reads of the file.
     syntax: Syntax<'t>,
     /// Tokens inside a macro call's delimiters or a `macro_rules!` body, which the parser does
@@ -494,9 +502,14 @@ impl std::fmt::Display for ScanError {
 
 impl std::error::Error for ScanError {}
 
-/// The `use` statements a file's tokens hold: each import, whether each token is in one, and
-/// whether one holds a macro metavariable.
-type UseStatements<'t> = (Vec<(Vec<&'t str>, &'t str)>, Vec<bool>, bool);
+/// The `use` statements a file's tokens hold: each import, each statement's first token and
+/// range of imports, whether each token is in one, and whether one holds a macro metavariable.
+type UseStatements<'t> = (
+    Vec<(Vec<&'t str>, &'t str)>,
+    Vec<(usize, Range<usize>)>,
+    Vec<bool>,
+    bool,
+);
 
 /// A file's tokens, each with its line and its first byte, and its `use` statements; or why it
 /// cannot be judged before it is parsed.
@@ -522,7 +535,8 @@ fn checked_tokens<'t>(
 
 /// A file's facts, or why it cannot be judged.
 fn file_facts<'t>(file: &str, text: &'t str) -> Result<FileFacts<'t>, ScanError> {
-    let (tokens, starts, (imports, in_use, use_metavariable)) = checked_tokens(file, text)?;
+    let (tokens, starts, (imports, statements, in_use, use_metavariable)) =
+        checked_tokens(file, text)?;
     let syntax = syntax::read(text).map_err(|unread| match unread {
         syntax::Unread::Parse(line) => ScanError::Parse {
             file: file.to_owned(),
@@ -545,6 +559,18 @@ fn file_facts<'t>(file: &str, text: &'t str) -> Result<FileFacts<'t>, ScanError>
         .filter(|(_, local)| *local != "*")
         .map(|(_, local)| *local)
         .collect();
+    let mut module_imported = vec![BTreeMap::new(); syntax.scopes.len()];
+    for (at, range) in statements {
+        let byte = starts[at];
+        let bindings = &mut module_imported[syntax.module_at(byte)];
+        let direct = syntax.direct_uses.contains(&byte);
+        for i in range {
+            bindings
+                .entry(imports[i].1)
+                .and_modify(|import| *import = None)
+                .or_insert(direct.then_some(i));
+        }
+    }
     Ok(FileFacts {
         tokens,
         starts,
@@ -555,6 +581,7 @@ fn file_facts<'t>(file: &str, text: &'t str) -> Result<FileFacts<'t>, ScanError>
         enclosing,
         impls,
         imported,
+        module_imported,
         syntax,
         in_macro,
         imports,
@@ -574,6 +601,7 @@ fn file_facts<'t>(file: &str, text: &'t str) -> Result<FileFacts<'t>, ScanError>
 fn use_statements<'t>(file: &str, tokens: &Tokens<'t>) -> Result<UseStatements<'t>, ScanError> {
     let mut in_use = vec![false; tokens.len()];
     let mut imports = Vec::new();
+    let mut statements = Vec::new();
     let mut use_metavariable = false;
     let mut at = 0;
     while at < tokens.len() {
@@ -600,6 +628,7 @@ fn use_statements<'t>(file: &str, tokens: &Tokens<'t>) -> Result<UseStatements<'
                     });
                 }
             }
+            let first_import = imports.len();
             let mut start = at + 1;
             while start < end {
                 if punct(tokens, start, b':') {
@@ -608,7 +637,7 @@ fn use_statements<'t>(file: &str, tokens: &Tokens<'t>) -> Result<UseStatements<'
                 start = use_tree(tokens, start, end, &mut Vec::new(), &mut imports);
             }
             // `a::b::{self}` binds `b`, and `{self as x}` binds `x`, both to `a::b`.
-            for (path, local) in imports.iter_mut() {
+            for (path, local) in &mut imports[first_import..] {
                 if path.len() >= 2 && path.last() == Some(&"self") {
                     path.pop();
                     if *local == "self" {
@@ -616,11 +645,12 @@ fn use_statements<'t>(file: &str, tokens: &Tokens<'t>) -> Result<UseStatements<'
                     }
                 }
             }
+            statements.push((at, first_import..imports.len()));
             at = end;
         }
         at += 1;
     }
-    Ok((imports, in_use, use_metavariable))
+    Ok((imports, statements, in_use, use_metavariable))
 }
 
 /// Which tokens lie inside a macro body: one sweep over the bodies by where they start.
@@ -824,8 +854,8 @@ struct ModFacts<'t> {
     item_aliases: BTreeSet<&'t str>,
     /// Every other name the mod defines: traits, associated types.
     others: BTreeSet<&'t str>,
-    /// Names some `macro_rules!` or some `use` that does not start at an API root binds: a
-    /// standard or API macro or attribute of that name may be another.
+    /// Names a `macro_rules!`, an external dependency alias, or a `use` that does not start
+    /// at an API root binds: a standard or API macro or attribute of that name may be another.
     rebound: BTreeSet<&'t str>,
     /// Some glob outside the API and the mod (`use dep::*;`) or a `#[macro_use]` may bring in
     /// macros of any name.
@@ -876,6 +906,9 @@ fn mod_facts<'t>(files: &[FileFacts<'t>], api_prefixes: &BTreeSet<String>) -> Mo
     let mut imported = BTreeSet::new();
     for file in files {
         facts.rebound.extend(file.macro_rules.iter().copied());
+        facts
+            .rebound
+            .extend(file.syntax.extern_aliases.iter().copied());
         facts.rebound_all |= file
             .attributes
             .iter()
@@ -1102,6 +1135,7 @@ const STD_DERIVES: &[&str] = &[
 /// standard ones and the API's own, less every name something in the mod may rebind.
 struct Trusted<'s> {
     roots: &'s BTreeSet<&'s str>,
+    local_modules: &'s BTreeSet<&'s str>,
     /// By kind, the API's own macro names.
     api_macros: BTreeSet<&'s str>,
     api_attributes: BTreeSet<&'s str>,
@@ -1135,8 +1169,15 @@ impl Trusted<'_> {
                         || api.contains(name)
                         || (matches!(kind, Named::Macro) && *name == "macro_rules"))
             }
-            [root, .., name] if self.roots.contains(root) => api.contains(name),
-            [root, .., name] if matches!(*root, "std" | "core" | "alloc") => std.contains(name),
+            [root, .., _] if self.local_modules.contains(root) || self.rebound.contains(root) => {
+                false
+            }
+            [root, .., name] if self.roots.contains(root) => {
+                !self.rebound_all && api.contains(name)
+            }
+            [root, .., name] if matches!(*root, "std" | "core" | "alloc") => {
+                !self.rebound_all && std.contains(name)
+            }
             [root, ..] => {
                 matches!(kind, Named::Attribute)
                     && matches!(*root, "rustfmt" | "clippy" | "diagnostic")
@@ -1348,6 +1389,7 @@ impl<'s> Index<'s> {
         let macros = &self.surface.macros;
         Trusted {
             roots: &module.roots,
+            local_modules: &module.modules,
             api_macros: macros
                 .iter()
                 .filter(|m| {
@@ -1387,6 +1429,70 @@ struct Resolved<'s> {
     aliased: bool,
 }
 
+type ModuleScope = (usize, usize);
+
+/// Ordinary `mod name;` links reachable from a conventional crate root. A path override,
+/// expansion or ambiguous link means the file names don't prove where the files are mounted.
+#[derive(Default)]
+struct FileModules<'t> {
+    roots: BTreeSet<usize>,
+    children: BTreeMap<(ModuleScope, &'t str), usize>,
+}
+
+impl<'t> FileModules<'t> {
+    fn new(files: &[FileFacts<'t>], sources: &[(&str, &str)], certain: &[bool]) -> Self {
+        if files.iter().zip(certain).any(|(file, certain)| {
+            !certain
+                || file.attributes.iter().any(|(open, close)| {
+                    (*open + 1..*close).any(|at| ident(&file.tokens, at) == Some("path"))
+                })
+        }) {
+            return Self::default();
+        }
+        let paths: BTreeMap<&Path, usize> = sources
+            .iter()
+            .enumerate()
+            .map(|(i, (path, _))| (Path::new(path), i))
+            .collect();
+        if paths.len() != sources.len() {
+            return Self::default();
+        }
+        let mut tree = Self::default();
+        let mut pending = Vec::new();
+        for (root, stem) in [("src/lib.rs", "lib"), ("src/main.rs", "main")] {
+            if let Some(&file) = paths.get(Path::new(root))
+                && !files.iter().any(|file| file.syntax.modules.contains(stem))
+            {
+                tree.roots.insert(file);
+                pending.push(((file, 0), Path::new("src").to_owned()));
+            }
+        }
+        let mut mounted = tree.roots.clone();
+        while let Some((scope @ (file, module), dir)) = pending.pop() {
+            for (&name, &inline) in &files[file].syntax.scopes[module].children {
+                let child_dir = dir.join(name);
+                if let Some(inline) = inline {
+                    pending.push(((file, inline), child_dir));
+                    continue;
+                }
+                let flat = paths.get(dir.join(format!("{name}.rs")).as_path());
+                let index = paths.get(child_dir.join("mod.rs").as_path());
+                if flat.is_some() && index.is_some() {
+                    continue;
+                }
+                if let Some(&child) = flat.or(index) {
+                    if !mounted.insert(child) {
+                        return Self::default();
+                    }
+                    tree.children.insert((scope, name), child);
+                    pending.push(((child, 0), child_dir));
+                }
+            }
+        }
+        tree
+    }
+}
+
 /// What names mean across the mod: the facts of every file, which files nothing the scan cannot
 /// follow may change, and each name's API ids, kept as they are worked out.
 struct Resolver<'a, 's, 't> {
@@ -1395,6 +1501,12 @@ struct Resolver<'a, 's, 't> {
     files: &'a [FileFacts<'t>],
     /// Per file: whether nothing the scan cannot follow may change what names mean there.
     certain: Vec<bool>,
+    /// Unlike unqualified names, a qualified path can be judged in an inline module, or in
+    /// the presence of globs that cannot take its name away from a concrete definition.
+    qualified_certain: Vec<bool>,
+    /// The literal `mod_api` root can name only the API crate; aliases are not proof.
+    api_root_certain: bool,
+    file_modules: FileModules<'t>,
     /// Per file: the `type` aliases of an API item, which define no type of the mod's own.
     api_aliases: Vec<BTreeSet<&'t str>>,
     /// The API modules some file imports with a glob, `mod_api::` left out.
@@ -1403,7 +1515,12 @@ struct Resolver<'a, 's, 't> {
 }
 
 impl<'a, 's, 't> Resolver<'a, 's, 't> {
-    fn new(index: &'a Index<'s>, module: &'a ModFacts<'t>, files: &'a [FileFacts<'t>]) -> Self {
+    fn new(
+        index: &'a Index<'s>,
+        module: &'a ModFacts<'t>,
+        files: &'a [FileFacts<'t>],
+        sources: &[(&str, &str)],
+    ) -> Self {
         let trusted = index.trusted(module);
         // A file brought in by `include!` (under any name: `use std::include as inc;`, which
         // the folder reader refuses) is part of its includer's scope: with one anywhere, no
@@ -1423,23 +1540,37 @@ impl<'a, 's, 't> Resolver<'a, 's, 't> {
             .iter()
             .map(|file| file.use_metavariable || !trusted.followed(file))
             .collect();
-        let certain = files
+        let qualified_certain: Vec<bool> = files
             .iter()
             .zip(&opaque)
-            .map(|(file, opaque)| {
-                !included
-                    && !opaque
-                    && trusted.file(file)
+            .map(|(file, opaque)| !included && !opaque && trusted.file(file))
+            .collect();
+        let certain = files
+            .iter()
+            .zip(&qualified_certain)
+            .map(|(file, certain)| {
+                *certain
                     && !file.syntax.inline_modules
                     && !file.imports.iter().any(|(_, local)| *local == "*")
             })
             .collect();
+        let file_modules = FileModules::new(files, sources, &qualified_certain);
+        let api_root_certain = qualified_certain.iter().all(|&certain| certain)
+            && !module.modules.contains("mod_api")
+            && !module.rebound.contains("mod_api")
+            && !module.bound.contains_key("mod_api")
+            && !module.types.contains("mod_api")
+            && !module.item_aliases.contains("mod_api")
+            && !module.others.contains("mod_api");
         let mod_globs = files.iter().flat_map(|f| api_globs(f, module)).collect();
         let mut resolver = Resolver {
             index,
             module,
             files,
             certain,
+            qualified_certain,
+            api_root_certain,
+            file_modules,
             api_aliases: Vec::new(),
             mod_globs,
             memo: BTreeMap::new(),
@@ -1482,6 +1613,147 @@ impl<'a, 's, 't> Resolver<'a, 's, 't> {
             && file.syntax.defines.contains(name)
             && !self.api_aliases[index].contains(name)
             && !file.imported.contains(name)
+    }
+
+    /// Whether a qualified path is demonstrably a local type or constructor in its namespace.
+    /// Follow only declared module edges; imports and aliases may lead back to the API.
+    fn qualified_own(
+        &self,
+        index: usize,
+        byte: usize,
+        path: &[&str],
+        namespace: Namespace,
+    ) -> bool {
+        let resolve = || {
+            if !self.qualified_certain[index] {
+                return None;
+            }
+            let (name, mut prefix) = path.split_last()?;
+            let file = &self.files[index];
+            let mut scope = (index, file.syntax.module_at(byte));
+            // Source paths alone don't tell us how Cargo mounted a non-root source file.
+            // Stay in its inline modules unless the walk starts at a known crate root.
+            let crate_root = self.file_modules.roots.contains(&index);
+            match prefix {
+                ["crate", rest @ ..] => {
+                    if !crate_root {
+                        return None;
+                    }
+                    scope.1 = 0;
+                    prefix = rest;
+                }
+                ["self", rest @ ..] => prefix = rest,
+                ["super", ..] => {
+                    while let ["super", rest @ ..] = prefix {
+                        if scope.1 == 0 {
+                            return None;
+                        }
+                        scope.1 = file.syntax.scopes[scope.1].parent;
+                        prefix = rest;
+                    }
+                }
+                [first, ..] => {
+                    let module = &file.syntax.scopes[scope.1];
+                    let imports = &file.module_imported[scope.1];
+                    if module.block_items
+                        || module.type_params.contains(first)
+                        || imports.contains_key(first)
+                        || imports.contains_key("*")
+                    {
+                        return None;
+                    }
+                }
+                [] => return None,
+            }
+            while let Some((first, rest)) = prefix.split_first() {
+                let (file, module) = scope;
+                let facts = &self.files[file];
+                let declared = &facts.syntax.scopes[module];
+                if namespace == Namespace::Value
+                    && rest.is_empty()
+                    && !facts.module_imported[module].contains_key(first)
+                    && declared
+                        .tuple_variants
+                        .get(first)
+                        .is_some_and(|v| v.contains(name))
+                {
+                    return Some(true);
+                }
+                scope = match declared.children.get(first)? {
+                    Some(inline) => (file, *inline),
+                    None if crate_root => (*self.file_modules.children.get(&(scope, first))?, 0),
+                    None => return None,
+                };
+                prefix = rest;
+            }
+            let (file, module) = scope;
+            let facts = &self.files[file];
+            let declared = &facts.syntax.scopes[module];
+            let names = match namespace {
+                Namespace::Type => &declared.types,
+                Namespace::Value => &declared.tuple_constructors,
+            };
+            Some(names.contains(name) && !facts.module_imported[module].contains_key(name))
+        };
+        resolve().unwrap_or(false)
+    }
+
+    /// Prove an API variant in the value namespace through `mod_api` or a direct, unshadowed
+    /// import in this module. A same-named enum or import elsewhere says nothing about this path.
+    fn api_variant(&self, index: usize, byte: usize, path: &[&str], rooted: bool) -> bool {
+        let [first, rest @ .., variant] = path else {
+            return false;
+        };
+        if !self.api_root_certain {
+            return false;
+        }
+        let file = &self.files[index];
+        let at = file.syntax.module_at(byte);
+        let declared = &file.syntax.scopes[at];
+        let imports = &file.module_imported[at];
+        if !rooted
+            && (declared.block_items
+                || declared.type_params.contains(first)
+                || declared.type_params.contains("mod_api")
+                || imports.contains_key("*")
+                || imports.contains_key("mod_api"))
+        {
+            return false;
+        }
+        let owner = if *first == "mod_api" {
+            rest.join("::")
+        } else if !rooted
+            && let Some(Some(import)) = imports.get(first)
+            && let ["mod_api", prefix @ ..] = &file.imports[*import].0[..]
+        {
+            prefix
+                .iter()
+                .chain(rest)
+                .copied()
+                .collect::<Vec<_>>()
+                .join("::")
+        } else {
+            return false;
+        };
+        self.index
+            .by_name
+            .get(variant)
+            .into_iter()
+            .flatten()
+            .any(|id| {
+                let Some(ty) = self
+                    .index
+                    .owners
+                    .get(id)
+                    .and_then(|o| self.index.types.get(o.as_str()))
+                else {
+                    return false;
+                };
+                ty.contract.kind == TypeKind::Enum
+                    && (ty.id.strip_prefix("type:") == Some(owner.as_str())
+                        || ty.paths.contains(&owner))
+                    && ty.variants.iter().any(|v| v.id == *id && !v.contract.named)
+            })
     }
 
     /// Each API path (`mod_api::` left out) a path written in a file may be: through an API
@@ -1742,9 +2014,8 @@ impl<'s, 't> Walk<'_, '_, 's, 't> {
     }
 
     /// Every tuple struct field the parser ties a read to ([`syntax::TupleField`]), with the
-    /// struct's name read as for a build: `Self` through the impl it stands in, an unqualified
-    /// name the mod's own type defines nothing of the API's, and a variant (`Shape::Pos(a, ..)`)
-    /// is no struct.
+    /// struct's name read through the impl's target for `Self`. Skip a name only when it is
+    /// known to name the mod's own type or constructor, or an enum variant.
     fn tuple_fields(&mut self) {
         let Walk {
             resolver,
@@ -1757,19 +2028,41 @@ impl<'s, 't> Walk<'_, '_, 's, 't> {
         let file = &files[index];
         for field in &file.syntax.tuple_fields {
             let place = (path, field.line);
-            let (name, unqualified) = match &field.path[..] {
+            // The struct's path as written, or the impl's target for `Self`; a leading empty name
+            // is a leading `::`.
+            let namespace = field.tie.namespace;
+            let (written, rooted): (&[&'t str], bool) = match &field.tie.path[..] {
                 ["Self"] => match resolver.impl_at(index, field.byte) {
-                    Some(Some(target)) => (*target.last().unwrap_or(&"Self"), target.len() == 1),
+                    Some(Some(target)) => match &target[..] {
+                        ["", rest @ ..] => (rest, true),
+                        target => (target, false),
+                    },
                     _ => continue,
                 },
-                [.., last] => (*last, field.path.len() == 1 && !field.rooted),
-                [] => continue,
+                path => (path, field.tie.rooted),
             };
+            let Some(&name) = written.last() else {
+                continue;
+            };
+            let unqualified = written.len() == 1 && !rooted;
             resolver.lookup(name);
             let resolver: &Resolver<'_, 's, 't> = resolver;
             let resolved = &resolver.memo[name];
-            if (unqualified && !resolved.aliased && resolver.own_in(index, name))
-                || (!resolved.aliased && resolver.is_member(&field.path, field.rooted))
+            let top = &file.syntax.scopes[0];
+            let owns_unqualified = unqualified
+                && !resolved.aliased
+                && resolver.own_in(index, name)
+                && (namespace == Namespace::Type
+                    || (!top.block_items
+                        && !top.block_values
+                        && top.tuple_constructors.contains(name)));
+            if resolved.ids.is_empty()
+                || owns_unqualified
+                || (!unqualified
+                    && !rooted
+                    && resolver.qualified_own(index, field.byte, written, namespace))
+                || (namespace == Namespace::Value
+                    && resolver.api_variant(index, field.byte, written, rooted))
             {
                 continue;
             }
@@ -2072,7 +2365,7 @@ pub(crate) fn uses<'t>(
         .map(|(file, text)| file_facts(file, text))
         .collect::<Result<_, _>>()?;
     let module = mod_facts(&files, &index.api_prefixes);
-    let mut resolver = Resolver::new(&index, &module, &files);
+    let mut resolver = Resolver::new(&index, &module, &files, &sources);
     let mut found = Found {
         direct: BTreeMap::new(),
         building: BTreeMap::new(),
