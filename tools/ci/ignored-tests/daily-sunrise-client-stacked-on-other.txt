@@ -12,6 +12,7 @@ sunrise-client game::stacked_on_other_tests::families::a_workstation_menu_decide
 sunrise-client game::stacked_on_other_tests::families::an_outer_abort_restores_the_furnace_with_the_cursor_for_place_and_take lib daily resources
 sunrise-client game::stacked_on_other_tests::families::the_crafting_table_menu_decides_the_pickup lib daily resources
 sunrise-client game::stacked_on_other_tests::families::the_furnace_menu_decides_the_pickup lib daily resources
+sunrise-client game::stacked_on_other_tests::families::the_menu_path_asks_rules_for_the_handled_replacement lib daily resources
 sunrise-client game::stacked_on_other_tests::families::the_mount_menu_decides_the_pickup lib daily resources
 sunrise-client game::stacked_on_other_tests::families::the_trading_menu_decides_the_pickup lib daily resources
 sunrise-client game::stacked_on_other_tests::without_a_listener_the_click_is_plain_and_nothing_is_decided lib daily resources

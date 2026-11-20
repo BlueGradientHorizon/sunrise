@@ -3098,8 +3098,8 @@ pub(crate) mod tests {
 
     #[test]
     fn a_handled_replacement_goes_through_the_clicked_slots_rules() {
-        with_menu(Kind::Grindstone, |env, menu| {
-            menu.creative = false;
+        bare_env(|env| {
+            let mut menu = Menu::new(Kind::Grindstone);
             let handled = |clicked| StackedOutcome {
                 canceled: true,
                 handled: true,
@@ -3127,6 +3127,36 @@ pub(crate) mod tests {
             menu.click(&env, 0, 0, Input::Pickup).unwrap();
             assert!(outcome.refused.get());
             assert_eq!(menu.slot(0), None);
+        });
+    }
+
+    #[test]
+    fn a_handled_replacement_cannot_skip_a_potion_slots_take_effects() {
+        bare_env(|env| {
+            let mut menu = Menu::new(Kind::Brewing);
+            menu.brewed_potion_hook = true;
+            let potion = stack("potion", 1);
+            menu.set_slot(env, 0, potion.clone());
+            let answer = StackedOutcome {
+                canceled: true,
+                handled: true,
+                clicked: Some(None),
+                carried: Some(potion.clone()),
+                ..StackedOutcome::default()
+            };
+            let handled = Env {
+                stacked: Some(&answer),
+                ..*env
+            };
+            menu.click(&handled, 0, 0, Input::Pickup).unwrap();
+            assert_eq!(menu.slot(0), potion.as_ref());
+            assert_eq!(menu.carried, None);
+            assert!(menu.brewed_potion_takes.is_empty());
+
+            menu.click(env, 0, 0, Input::Pickup).unwrap();
+            assert_eq!(menu.slot(0), None);
+            assert_eq!(menu.carried, potion);
+            assert_eq!(menu.brewed_potion_takes, [stack("potion", 1).unwrap()]);
         });
     }
 

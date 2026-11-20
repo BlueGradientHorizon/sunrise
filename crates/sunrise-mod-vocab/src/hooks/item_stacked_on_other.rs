@@ -6,8 +6,9 @@ pub trait Hooks {
     /// skips the bundle override, and a cancelled click that is also `handled` is done, with the
     /// stacks `result` sets (a cancelled click not `handled` goes on to the plain pickup; setting
     /// a stack on any other answer refuses the click). A stack set for the clicked slot goes
-    /// through that slot's rules: a result slot, a stack its `mayPlace` or size refuses, or a
-    /// removal its `mayPickup` refuses refuses the click. A write through the `Host` to what the
+    /// through its pickup, placement and size rules using the actual replacement stack.
+    /// A replacement cannot change a result slot or take a stack from a brewing potion slot:
+    /// it would skip the slot's take effects. A write through the `Host` to what the
     /// click read makes it stale: the click is refused and every write is undone. A panic or an
     /// invalid answer does the same. A refused click changes nothing.
     #[hook(
