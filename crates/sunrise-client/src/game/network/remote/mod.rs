@@ -1380,70 +1380,6 @@ impl Game<'_> {
 
     // tick_remote..tick_remote_player,tick_remote_block_entities: remote/tick.rs
 
-    /// `Level.tickBlockEntities` on a client: the block entities' animations
-    /// and client ticks, and the moving pistons' pushes.
-    fn tick_remote_block_entities(&mut self) {
-        // The ticker list's spawners, trial spawners, vaults and mod block entities; the
-        // animated ones, beacons and potent sulfur still tick on their own passes after them.
-        self.tick_client_block_entities();
-        self.tick_block_entity_anims();
-        self.client_tick_beacons();
-        self.tick_remote_potent_sulfur();
-        self.with_level(|b, level, ticks| {
-            b.client_tick_block_entities(level, ticks);
-        });
-        let pushes = std::mem::take(&mut self.block_ticks.piston_pushes);
-        self.push_piston_entities(pushes);
-        self.sync_moving_pistons();
-    }
-
-    /// The local player's `LocalPlayer.tick`, once the client has loaded. The
-    /// input `sendChanges` sends after the block entities ticked, if it runs.
-    fn tick_remote_own_player(&mut self) -> Result<Option<u8>> {
-        let entity_collisions = self.entity_collisions(Mover::Player);
-        // Those added before it tick before it: their pushes reach this move.
-        let pushed = self.remote_pushes(true);
-        let sprint_window = self.settings.sprint_window;
-        if self.player.is_none() {
-            return Ok(None);
-        }
-        // LocalPlayer.tick and sendChanges run once the client has loaded (hasClientLoaded),
-        // wherever the player is: a chunk that hasn't come yet has no blocks here, as vanilla's
-        // empty chunk has none, so the player falls through it until the chunk comes.
-        if !self.remote.as_ref().is_some_and(|r| r.loaded_sent) {
-            return Ok(None);
-        }
-        // LocalPlayer.tick reaches Player.tick only once the client has loaded; its
-        // endpoints bracket that work alone, also on the death screen, not the level
-        // pass before it.
-        let player = (mod_api::__private::listened(mod_api::HookId::PlayerTickPre)
-            || mod_api::__private::listened(mod_api::HookId::PlayerTickPost))
-        .then(|| self.local_player())
-        .flatten();
-        // The entities that tick before the player pushed it before its tick began, so
-        // before Pre.
-        self.apply_remote_push(pushed);
-        if let Some(player) = player {
-            self.native_player_tick_pre(mod_api::__private::PlayerTickPreCall { player });
-        }
-        self.native_local_player_fit_sizes();
-        let result = self.tick_local_player(entity_collisions, sprint_window);
-        // `EntityEvent.Size` for the pose the tick set.
-        self.native_local_player_size();
-        if let Some(player) = player {
-            self.native_player_tick_post(mod_api::__private::PlayerTickPostCall { player });
-        }
-        // The entities added after the player tick after it, so after Post: `Entity.push`
-        // adds each to the player's deltaMovement during their tick, from where they and
-        // the player ended it. A velocity or teleport the server sends before the next
-        // tick replaces that deltaMovement, push included
-        // (`ClientPacketListener.handleSetEntityMotion`, `handleMovePlayer`), so the push
-        // lands on the velocity now, not on the next move.
-        let after = self.remote_pushes(false);
-        self.apply_remote_push(after);
-        result
-    }
-
     /// `Entity.push`'s share of the other entities' ticks: added to the local
     /// player's deltaMovement, unless it lies dead, sleeps or rides.
     fn apply_remote_push(&mut self, pushed: Vec3) {
@@ -1462,45 +1398,6 @@ impl Game<'_> {
 
     // tick_remote_guardian_eyes: remote/tick.rs
 
-    /// Humanoid held arm poses, once the tick has set equipment and use state.
-    pub(in crate::game) fn tick_remote_arm_poses(&mut self) {
-        for i in 0..self.mobs.len() {
-            let m = &self.mobs[i];
-            if !sunrise_client::mobs::anim::extracts_humanoid(m) {
-                continue;
-            }
-            // Extraction also runs while the world is frozen: derive the use
-            // animation from the current equipment rather than last tick's state.
-            if &*m.kind.id != "minecraft:player" {
-                let slot = if m.extra.using_off_hand {
-                    sunrise_items::equipment::OFFHAND
-                } else {
-                    sunrise_items::equipment::MAINHAND
-                };
-                let animation = (m.extra.using_item > 0)
-                    .then(|| m.extra.slot_stack(slot))
-                    .flatten()
-                    .map_or_else(Default::default, |stack| self.item_use_animation(stack));
-                self.mobs[i].extra.use_animation = animation;
-            }
-            let m = &self.mobs[i];
-            let poses = self.held_arm_poses(m.id, m);
-            let charge_duration = (&*m.kind.id != "minecraft:player").then(|| {
-                let using_slot = if m.extra.using_off_hand {
-                    sunrise_items::equipment::OFFHAND
-                } else {
-                    sunrise_items::equipment::MAINHAND
-                };
-                m.extra
-                    .slot_stack(using_slot)
-                    .map_or(25, |stack| Self::charge_ticks(stack).max(1)) as i32
-            });
-            self.mobs[i].extra.held_arm_pose = poses;
-            if let Some(duration) = charge_duration {
-                self.mobs[i].extra.ints[5] = duration;
-            }
-        }
-    }
     // tick_remote_entities: remote/tick.rs
 
     /// `AbstractMinecartRenderer.newExtractState`: sample the same weighted
