@@ -289,10 +289,10 @@ class SummaryTests(unittest.TestCase):
 class MainTests(unittest.TestCase):
     """main(): the base it fetches, what it prints, what it writes to the job summary."""
 
-    def run_main(self, event="pull_request", pr="", argv=(), **patches):
+    def run_main(self, event="pull_request", pr="", argv=(), tool="/no/tool", **patches):
         with tempfile.TemporaryDirectory() as directory:
             summary_file = Path(directory) / "summary.md"
-            env = {"SUNRISE_STAGE_TOOL": "/no/tool", "EVENT": event, "PR": pr,
+            env = {"SUNRISE_STAGE_TOOL": tool, "EVENT": event, "PR": pr,
                    "GITHUB_STEP_SUMMARY": str(summary_file), "RUNNER_TEMP": directory}
             with mock.patch.dict(os.environ, env), contextlib.redirect_stdout(io.StringIO()) as out, \
                     contextlib.ExitStack() as stack:
@@ -338,12 +338,75 @@ class MainTests(unittest.TestCase):
         self.assertEqual(report.call_args.args[1:3], (Path("before"), Path("after")))
         self.assertTrue(report.call_args.kwargs["with_internals"])
         find_base.assert_not_called()
-        # A base the head's tool cannot read falls back to the base tree's own tool, built from that tree.
-        with mock.patch.object(surface_report, "report", return_value=(0, "")) as report, \
-             mock.patch.object(surface_report, "tree_tool", return_value="/before/stage") as tree_tool:
-            self.run_main(argv=["--trees", "before", "after"])
-            self.assertEqual(report.call_args.kwargs["own_base_tool"](), "/before/stage")
-        tree_tool.assert_called_once_with(Path("before"))
+
+    @unittest.skipUnless(shutil.which("bash"), "needs bash for the stub tools")
+    def test_local_audit_builds_the_bases_own_tool_only_when_asked(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            (folder / "base").mkdir()
+            (folder / "head").mkdir()
+            # The head's tool refuses the base tree; the base's own exports it.
+            head_tool, own_tool = folder / "head-stage", folder / "own-stage"
+            head_tool.write_text(f"""#!/bin/bash
+echo "head $@" >> {folder}/calls
+if [ "$1" = surface ]; then
+  case "$2" in *base) echo 'sunrise-stage surface: unknown key `access`' >&2; exit 1;; esac
+  echo '{{}}' > "$3"; exit 0
+fi
+echo "Surface: report"
+""")
+            own_tool.write_text(f"""#!/bin/bash
+echo "own $@" >> {folder}/calls
+echo '{{}}' > "$3"
+""")
+            head_tool.chmod(0o755)
+            own_tool.chmod(0o755)
+            trees = ["--trees", str(folder / "base"), str(folder / "head")]
+            built = []
+
+            def tree_tool(tree, work):
+                built.append(tree)
+                return str(own_tool)
+
+            def audit(*flags):
+                return self.run_main(argv=[*trees, *flags], tool=str(head_tool), tree_tool=tree_tool)
+
+            # Source only by default: nothing of the base's is built, and the report fails naming why.
+            code, out, _ = audit()
+            self.assertEqual(code, 1)
+            self.assertTrue(out.startswith("No surface report: the head's sunrise-stage cannot read the base tree "
+                                           "(sunrise-stage surface: unknown key `access`)."), out)
+            self.assertEqual(built, [])
+            # Asked to, the base tree's own tool exports it and the diff runs on that export.
+            code, out, _ = audit("--build-base-tool")
+            self.assertEqual(code, 0, out)
+            self.assertEqual(built, [folder / "base"])
+            self.assertTrue(out.startswith("The base was exported by its own sunrise-stage"), out)
+            self.assertIn("Surface: report\n", out)
+            calls = (folder / "calls").read_text().splitlines()
+            self.assertEqual([call.split()[:3] for call in calls if call.startswith("own ")],
+                             [["own", "surface", str(folder / "base")]])
+            self.assertTrue(any(call.startswith("head surface-diff") for call in calls), calls)
+
+    def test_each_base_tool_build_gets_its_own_copy(self):
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            work = folder / "work"
+            work.mkdir()
+
+            def cargo(command, cwd, **_):
+                binary = folder / "target/surface-base/debug/sunrise-stage"
+                binary.parent.mkdir(parents=True, exist_ok=True)
+                binary.write_text(str(cwd))
+                return subprocess.CompletedProcess(command, 0, "", "")
+
+            with mock.patch.object(surface_report, "ROOT", folder), \
+                 mock.patch.object(surface_report.subprocess, "run", cargo):
+                first = surface_report.tree_tool(Path("one"), work)
+                second = surface_report.tree_tool(Path("two"), work)
+            # A later build of another tree replaces the shared binary, never a copy an audit already holds.
+            self.assertNotEqual(first, second)
+            self.assertEqual((Path(first).read_text(), Path(second).read_text()), ("one", "two"))
 
 
 @unittest.skipUnless(shutil.which("bash"), "needs bash for the stub tool")
