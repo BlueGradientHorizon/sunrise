@@ -63,6 +63,7 @@ fn menu_button_optional_entity_and_carried_stack_use_checked_wire_writeback() {
     let mut carried = Some(mod_api::ItemStack::new(item, 2).unwrap());
     let mut event = MenuButtonEvent {
         menu: "test:menu",
+        block: None,
         context: &context,
         entity: Some(mod_api::ModBlockEntityView::new(&mut entity)),
         carried: &mut carried,
@@ -75,6 +76,7 @@ fn menu_button_optional_entity_and_carried_stack_use_checked_wire_writeback() {
     let mut carried = Some(mod_api::ItemStack::new(item, 5).unwrap());
     let mut event = MenuButtonEvent {
         menu: "test:menu",
+        block: None,
         context: &context,
         entity: None,
         carried: &mut carried,
@@ -89,6 +91,7 @@ fn menu_button_optional_entity_and_carried_stack_use_checked_wire_writeback() {
     let mut carried = Some(mod_api::ItemStack::new(item, 8).unwrap());
     let mut event = MenuButtonEvent {
         menu: "test:menu",
+        block: None,
         context: &context,
         entity: Some(mod_api::ModBlockEntityView::new(&mut entity)),
         carried: &mut carried,
