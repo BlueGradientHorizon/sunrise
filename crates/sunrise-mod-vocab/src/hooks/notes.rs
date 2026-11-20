@@ -631,7 +631,7 @@ handle, an entity the client doesn't track and a level it doesn't show:
 - `level.day_time(host)`: the synchronized Overworld clock in ticks (counting past 24000), advanced at the
   server-supplied rate while the client level runs. This remains the Overworld clock in the End, even though
   the sky uses the End's own default clock. Only a handle for the level the client shows can read it.
-- `living.equipment(host, slot)`, `hand_item`, `effect`, `effects`, `potion_affected` (`hasEffect`), `health` and `max_health`, for the local player.
+- `living.with_equipment(host, slot, read)`, `with_hand_item`, `effect`, `effects`, `potion_affected` (`hasEffect`), `health` and `max_health`, for the local player.
   Another entity's equipment, effects and health stay server reads, and so does every write.
 - `player.last_death_location(host)`, for the local player: the position the login and respawn packets carried.
 - `player.with_inventory(host, read)` lends a read-only inventory view in vanilla slot order (0 to 35 main, 36 to 42 equipment). Read item, count and damage directly; use `stack.project()` only for components or to retain an owned stack. It returns `None` without calling `read` for a stale or unavailable player; on a client only the local player's inventory is available.
@@ -726,10 +726,14 @@ handle, an entity the client doesn't track and a level it doesn't show:
   and `remove_entity_ticket(uuid, chunk, natural_spawning)` remove the one kind they name and leave the other. A removed ticket never
   forces its chunk and is left out of the next save.
 - `host.living(entity)` gives a `LivingRef` for a mob, a player, an armor stand or the dragon (vanilla's
-  `LivingEntity`); `living.entity()` goes back. `living.equipment(host, EquipmentSlot::Head)` and `hand_item(host,
-  Hand::Main)` read its equipment (an empty slot reads as `None`); `set_equipment(host, slot, stack)` puts a stack in a
-  slot as `LivingEntity.setItemSlot` does (None or air empties it), and `set_hand_item(host, hand, stack)` puts one in
-  a hand as `LivingEntity.setItemInHand` does (the main hand's or the off hand's slot, written as `set_equipment` writes it). Mobs store all eight slots (`Mob::equipment_stacks` reads them as a `sunrise_items::equipment::Equipment`); players (the host and guests) hold an `Equipment` for body and saddle beside their own hand and armor fields, and save through its `read` / `write`. A player's
+  `LivingEntity`); `living.entity()` goes back. `living.with_equipment(host, EquipmentSlot::Head, read)` and
+  `living.with_hand_item(host, Hand::Main, read)` lend a single stack. An empty or unavailable slot returns `None`
+  without running `read`. Use `stack.project()` in the callback only for components or to keep an owned copy.
+  `living.with_weapon_item(host, read)` lends the living attacker's weapon on the server (the active Riptide stack
+  when present, otherwise its main hand). `set_equipment(host, slot, stack)` puts a stack in a slot as
+  `LivingEntity.setItemSlot` does (None or air empties it), and `set_hand_item(host, hand, stack)` puts one in a hand
+  as `LivingEntity.setItemInHand` does (the main hand's or the off hand's slot, written as `set_equipment` writes it).
+  Mobs store all eight slots; players (the host and guests) keep body and saddle beside their hand and armor fields. A player's
   `body` and `saddle` are kept and saved in the `equipment` compound as vanilla does, and dropped on death, but nothing
   renders or sends them. Armor stands and the dragon hold all eight slots in the same `Equipment`, saved in `equipment`
   (omitted when empty). A stand keeps a body or saddle a mod writes (`setItemSlot` stores it; `ArmorStand.canUseSlot`

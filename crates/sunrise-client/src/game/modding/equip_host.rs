@@ -1,24 +1,21 @@
 //! Read-only equipment host: cached target facts, ordinary game reads elsewhere.
 use super::Game;
 use mod_api::__private::game::BackendRefOf;
-use mod_api::{Backend, BackendRef, EquipReadRow, EquipmentSlot, Host, ItemStack};
+use mod_api::{Backend, BackendRef, EquipReadRow, EquipmentSlot, Host, ItemStackView};
 pub(in crate::game) struct EquipHost<'g, 'a> {
     pub(in crate::game) game: &'g Game<'a>,
     pub(in crate::game) row: &'g EquipReadRow,
 }
 impl EquipHost<'_, '_> {
-    pub(in crate::game) fn equipment(&self, slot: EquipmentSlot) -> Option<ItemStack> {
-        let index = match slot {
-            EquipmentSlot::MainHand => 0,
-            EquipmentSlot::OffHand => 1,
-            EquipmentSlot::Feet => 2,
-            EquipmentSlot::Legs => 3,
-            EquipmentSlot::Chest => 4,
-            EquipmentSlot::Head => 5,
-            EquipmentSlot::Body => 6,
-            EquipmentSlot::Saddle => 7,
-        };
-        self.row.equipment[index].clone()
+    pub(in crate::game) fn with_equipment(
+        &self,
+        slot: EquipmentSlot,
+        read: &mut dyn for<'a> FnMut(ItemStackView<'a>),
+    ) -> Option<()> {
+        read(ItemStackView::from_stack(
+            self.row.equipment[slot as usize].as_ref()?,
+        ));
+        Some(())
     }
 }
 impl Host for EquipHost<'_, '_> {

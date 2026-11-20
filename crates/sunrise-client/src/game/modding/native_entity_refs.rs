@@ -2717,8 +2717,10 @@ pub(super) mod tests {
                 Some(ItemStack::new("minecraft:iron_horse_armor", 1))
             ));
             assert_eq!(
-                game.living_equipment(living, EquipmentSlot::Saddle),
-                Some(saddle.clone())
+                game.living_equipment_stack(living, EquipmentSlot::Saddle)
+                    .map(|stack| stack.project())
+                    .as_deref(),
+                Some(&saddle)
             );
             assert_eq!(
                 game.lan.as_ref().unwrap().hub.guests[0]
@@ -2728,7 +2730,10 @@ pub(super) mod tests {
                 Some("minecraft:iron_horse_armor")
             );
             assert!(game.living_set_equipment(living, EquipmentSlot::Saddle, None));
-            assert_eq!(game.living_equipment(living, EquipmentSlot::Saddle), None);
+            assert!(
+                game.living_equipment_stack(living, EquipmentSlot::Saddle)
+                    .is_none()
+            );
             // The host's own previous mode, which no guest's change may touch.
             game.previous_mode = Some(sunrise_client::command::args::GameMode::Adventure);
             assert_eq!(game.player_previous_game_mode(player), Some(None));

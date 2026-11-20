@@ -284,13 +284,12 @@ fn client_handle_reads_answer_from_the_clients_copy() {
             item: stone,
         }))
         .unwrap();
-        let held = living.hand_item(game, Hand::Main).unwrap();
         assert_eq!(
-            (
+            living.with_hand_item(game, Hand::Main, |held| (
                 mod_api::__private::item_key_id(held.item()).unwrap(),
-                held.count()
-            ),
-            ("minecraft:stone", 3)
+                held.count(),
+            )),
+            Some(("minecraft:stone", 3))
         );
         assert_eq!(
             living.with_equipment(game, EquipmentSlot::Head, |_| ()),

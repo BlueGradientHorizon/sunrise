@@ -635,10 +635,12 @@ pub(super) fn game_forwarders(root: &Path) -> Result<String, String> {
                         "living_health" => Some(("living.entity()", "self.row.health")),
                         "living_max_health" => Some(("living.entity()", "self.row.max_health")),
                         "living_alive" => Some(("living.entity()", "self.row.alive")),
-                        "living_equipment" => Some(("living.entity()", "self.equipment(slot)")),
+                        "living_equipment" => {
+                            Some(("living.entity()", "self.with_equipment(slot, read)"))
+                        }
                         "living_hand_item" => Some((
                             "living.entity()",
-                            "self.equipment(match hand { Hand::Main => EquipmentSlot::MainHand, Hand::Off => EquipmentSlot::OffHand })",
+                            "self.with_equipment(crate::game::native_living_refs::hand_slot(hand), read)",
                         )),
                         _ => None,
                     };

@@ -1058,11 +1058,12 @@ mod tests {
                 let outcome = host.entity(event.converted);
                 let weapon = outcome
                     .and_then(|entity| host.living(entity))
-                    .and_then(|living| living.equipment(host, EquipmentSlot::MainHand))
-                    .map(|stack| {
-                        mod_api::__private::item_key_id(stack.item())
-                            .unwrap()
-                            .to_string()
+                    .and_then(|living| {
+                        living.with_equipment(host, EquipmentSlot::MainHand, |stack| {
+                            mod_api::__private::item_key_id(stack.item())
+                                .unwrap()
+                                .to_string()
+                        })
                     });
                 let mushrooms = host
                     .level("minecraft:overworld")

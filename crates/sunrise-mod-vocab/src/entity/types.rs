@@ -208,6 +208,64 @@ impl LivingRef {
     pub fn id(self) -> u32 {
         self.0.id()
     }
+
+    /// Read the stack in `slot` (`LivingEntity.getItemBySlot`). Players, mobs, armor stands
+    /// and the dragon store all eight slots. An armor stand's body and saddle slots are storage
+    /// only: vanilla's `canUseSlot` refuses them for interaction. On the client only the local
+    /// player's copy is available.
+    ///
+    /// Returns `Some` of `read`'s result, or `None` without calling it if the slot is empty or
+    /// unavailable or the handle is stale. This does not load chunks or change equipment.
+    /// The view is valid only during `read`; use [`ItemStackView::project`] to get an owned
+    /// copy with components.
+    pub fn with_equipment<R>(
+        self,
+        host: &dyn Host,
+        slot: EquipmentSlot,
+        read: impl for<'a> FnOnce(ItemStackView<'a>) -> R,
+    ) -> Option<R> {
+        let backend = crate::backend_of(host)?;
+        read_living_stack(read, |lend| backend.living_equipment(self, slot, lend))
+    }
+
+    /// Read `hand` (`LivingEntity.getItemInHand`): the selected main-hand slot or the off hand.
+    /// The view, return value and availability follow [`Self::with_equipment`].
+    pub fn with_hand_item<R>(
+        self,
+        host: &dyn Host,
+        hand: Hand,
+        read: impl for<'a> FnOnce(ItemStackView<'a>) -> R,
+    ) -> Option<R> {
+        let backend = crate::backend_of(host)?;
+        read_living_stack(read, |lend| backend.living_hand_item(self, hand, lend))
+    }
+
+    /// Read the living attacker's weapon (`DamageSource.getWeaponItem`): the stack kept for a
+    /// player's active Riptide spin if present, otherwise the live main hand. Server-side only.
+    /// The view and return value follow [`Self::with_equipment`]. For the recorded projectile
+    /// weapon of a death, use [`LootDrops::weapon_item`] instead.
+    pub fn with_weapon_item<R>(
+        self,
+        host: &dyn Host,
+        read: impl for<'a> FnOnce(ItemStackView<'a>) -> R,
+    ) -> Option<R> {
+        let backend = crate::backend_of(host)?;
+        read_living_stack(read, |lend| backend.living_weapon_item(self, lend))
+    }
+}
+
+fn read_living_stack<R>(
+    read: impl for<'a> FnOnce(ItemStackView<'a>) -> R,
+    lend: impl FnOnce(&mut dyn for<'a> FnMut(ItemStackView<'a>)) -> Option<()>,
+) -> Option<R> {
+    let mut read = Some(read);
+    let mut result = None;
+    lend(&mut |view| {
+        if let Some(read) = read.take() {
+            result = Some(read(view));
+        }
+    })?;
+    result
 }
 
 impl From<LivingRef> for EntityRef {
