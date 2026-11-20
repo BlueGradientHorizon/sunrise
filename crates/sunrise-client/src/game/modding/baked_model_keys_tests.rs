@@ -37,14 +37,12 @@ impl Hooks for Reader {
             assets.block_state_models(BlockStateRecord::new(stone.block(), u16::MAX).into()),
             assets.block_state_models(BlockStateRecord::new(unknown, 0).into()),
         ]);
-        read.log_keys.push(
-            ["x", "y"].map(|axis| {
-                let state = host
-                    .block_state_id(&format!("minecraft:oak_log[axis={axis}]"))
-                    .expect("an oak log state");
-                assets.block_state_models(state)
-            }),
-        );
+        read.log_keys.push(["x", "y"].map(|axis| {
+            let state = host
+                .block_state_id(&format!("minecraft:oak_log[axis={axis}]"))
+                .expect("an oak log state");
+            assets.block_state_models(state)
+        }));
         read.keys.push(keys);
         read.views.push(views);
     }
