@@ -1001,12 +1001,7 @@ impl Game<'_> {
         self.apply_drink_effects(stack);
         self.post_entity_event("minecraft:drink", sunrise_client::mobs::Who::Player);
         if !self.creative && self.stack_in(slot) == Some(stack) {
-            if let Some(s) = self.stack_in_mut(slot).as_mut() {
-                s.count -= 1;
-                if s.count == 0 {
-                    *self.stack_in_mut(slot) = None;
-                }
-            }
+            self.consume_player_slot(slot, 1);
             if !ominous {
                 let bottle = ItemStack::new("minecraft:glass_bottle", 1);
                 if self.stack_in(slot).is_none() {

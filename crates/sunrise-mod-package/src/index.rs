@@ -627,12 +627,19 @@ impl Index {
 
     /// Why the file of `id` with this hash was taken down, if it was.
     pub fn revoked(&self, id: &str, sha256: &str) -> Option<&Revoked> {
-        self.revoked.iter().find(|r| {
-            r.id == id
-                && r.sha256
-                    .as_ref()
-                    .is_none_or(|h| h.eq_ignore_ascii_case(sha256))
-        })
+        self.revoked.iter().find(|r| r.covers(id, sha256))
+    }
+}
+
+impl Revoked {
+    /// Whether this takedown covers `id`'s file with this hash: every file of the project when it
+    /// names no hash.
+    pub(crate) fn covers(&self, id: &str, sha256: &str) -> bool {
+        self.id == id
+            && self
+                .sha256
+                .as_ref()
+                .is_none_or(|h| h.eq_ignore_ascii_case(sha256))
     }
 }
 

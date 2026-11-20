@@ -239,7 +239,7 @@ fn log_from(thread: &str, level: &str, message: &str) {
         "ERROR" => ::log::Level::Error,
         _ => ::log::Level::Info,
     };
-    sunrise_client::logging::write_as(thread, file_level, message);
+    sunrise_client::logging::write_mirrored_as(thread, file_level, message);
     CAPTURE.with_borrow_mut(|lines| {
         if let Some(lines) = lines {
             lines.push(message.to_owned());

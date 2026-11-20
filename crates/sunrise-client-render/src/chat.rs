@@ -480,10 +480,10 @@ impl Chat {
             return;
         }
         // ChatComponent.logChatMessage: every message shown is in the log.
-        let plain = message.content.plain();
-        crate::logging::write_only(log::Level::Info, &format!("[CHAT] {plain}"));
+        let plain = format!("[CHAT] {}", message.content.plain());
+        crate::logging::write_current(log::Level::Info, &plain, self.log);
         if self.log {
-            println!("[CHAT] {plain}");
+            println!("{plain}");
         }
         message.time = self.now();
         self.received += 1;
