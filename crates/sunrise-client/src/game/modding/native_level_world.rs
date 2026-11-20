@@ -149,18 +149,11 @@ impl Game<'_> {
         Some(self.sky_darken_in(world, Dim::from_id(level.dimension_id())))
     }
 
-    /// The enabled feature flags as this side knows them: a client's are the server's, sent at
-    /// join; a server's are its world's `enabled_features`, where an empty list is vanilla's
-    /// default (`FeatureFlags.DEFAULT_FLAGS`, which `WorldDataConfiguration` omits from level.dat),
-    /// so it reads as `minecraft:vanilla` on both sides.
+    /// The effective flags are set by the server's world or received by the client at join.
     pub(in crate::game) fn enabled_feature_ids(&self) -> &Arc<[String]> {
-        static VANILLA: std::sync::LazyLock<Arc<[String]>> =
-            std::sync::LazyLock::new(|| ["minecraft:vanilla".to_owned()].into());
-        match &self.remote {
-            Some(remote) => &remote.features,
-            None if self.level.enabled_features.is_empty() => &VANILLA,
-            None => &self.level.enabled_features,
-        }
+        self.remote
+            .as_ref()
+            .map_or(&self.level.enabled_features, |remote| &remote.features)
     }
     /// Dimension shape of a loaded server level, including parked levels.
     pub(super) fn level_dimension_shape(&self, level: LevelRef) -> Option<LevelDimensionShape> {
@@ -415,9 +408,7 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::super::native_entity_refs::tests::with_game;
-    use mod_api::{
-        FeatureFlags, GameRuleChangedEvent, GameRuleValue, Hooks, LevelHost, ModEntry, ServerHost,
-    };
+    use mod_api::{GameRuleChangedEvent, GameRuleValue, Hooks, LevelHost, ModEntry, ServerHost};
     use mod_platform::testing::with_mods;
     use std::sync::{Arc, Mutex};
     use sunrise_client::chunk::Chunk;
@@ -552,10 +543,6 @@ mod tests {
             let flags = game.level_enabled_features(level).unwrap();
             assert!(flags.contains("minecraft:redstone_experiments"));
             assert_eq!(flags.iter().count(), 2);
-            assert_eq!(
-                FeatureFlags::new(Arc::default()).iter().collect::<Vec<_>>(),
-                ["minecraft:vanilla"]
-            );
             let ids: Vec<String> = flags.iter().map(str::to_owned).collect();
             game.with_level(|_, host, _| {
                 assert_eq!(host.enabled_features().iter().collect::<Vec<_>>(), ids);

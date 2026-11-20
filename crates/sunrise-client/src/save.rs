@@ -3613,7 +3613,11 @@ pub fn write_world_gen_settings(dir: &Path, seed: i64, options: WorldGen) -> Res
     write_world_gen_settings_with(dir, seed, options, None, None, None)
 }
 include!("save/preset_generation.rs");
-#[derive(Clone, Debug, Default)]
+const VANILLA_FEATURE_FLAGS: [&str; 1] = ["minecraft:vanilla"];
+static DEFAULT_LEVEL_FEATURE_FLAGS: std::sync::LazyLock<Arc<[String]>> =
+    std::sync::LazyLock::new(|| VANILLA_FEATURE_FLAGS.map(str::to_owned).into());
+
+#[derive(Clone, Debug)]
 pub struct Level {
     pub name: String,
     pub seed: i64,
@@ -3689,9 +3693,8 @@ pub struct Level {
     /// `DataPackConfig` (Create World's Data Packs and Experiments): the
     /// enabled and disabled pack ids. Unset keeps vanilla's defaults.
     pub data_packs: Option<(Vec<String>, Vec<String>)>,
-    /// `WorldDataConfiguration`'s `enabled_features`: the feature flag ids
-    /// the world enables, `minecraft:vanilla` included. Empty is vanilla's
-    /// default, which the level.dat omits.
+    /// `WorldDataConfiguration`'s `enabled_features`: the effective feature flag ids.
+    /// An omitted `level.dat` tag decodes as vanilla's default, `minecraft:vanilla`.
     pub enabled_features: std::sync::Arc<[String]>,
     /// The code mods (`fml.LoadingModList` beside `Data`), then the content mods (`sunrise.ContentModList`), the world was saved with; `None` without either list or when both are empty.
     pub saved_mods: Option<Vec<level_mods::ModRecord>>,
@@ -3732,6 +3735,73 @@ pub struct Level {
     /// that file, not their own.
     pub singleplayer_file: bool,
 }
+
+impl Default for Level {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            seed: 0,
+            generator: None,
+            creative: false,
+            game_mode: 0,
+            previous_game_mode: None,
+            time: 0,
+            day_time: 0,
+            end_clock: None,
+            spawn: None,
+            respawn_elsewhere: None,
+            position: None,
+            rotation: [0.0; 2],
+            health: 0.0,
+            absorption: 0.0,
+            food: 0,
+            saturation: 0.0,
+            inventory: Vec::new(),
+            inventory_components: HashMap::new(),
+            xp_seed: 0,
+            seen_credits: false,
+            post_effects: Vec::new(),
+            last_death: None,
+            active_effects: Vec::new(),
+            ender_items: Vec::new(),
+            recipe_book: Default::default(),
+            xp_level: 0,
+            xp_progress: 0.0,
+            xp_total: 0,
+            weather: Default::default(),
+            dimension: String::new(),
+            world_spawn: None,
+            world_spawn_angle: [0.0; 2],
+            world_spawn_dimension: None,
+            difficulty: String::new(),
+            hardcore: false,
+            difficulty_locked: false,
+            allow_commands: None,
+            data_packs: None,
+            enabled_features: Arc::clone(&DEFAULT_LEVEL_FEATURE_FLAGS),
+            saved_mods: None,
+            game_rules: BTreeMap::new(),
+            rule_registry: Default::default(),
+            player_uuid: None,
+            selected_slot: 0,
+            motion: [0.0; 3],
+            fall_distance: 0.0,
+            on_ground: false,
+            fall_flying: false,
+            player_impulse_grace: None,
+            player_fall_particles: None,
+            food_exhaustion: 0.0,
+            food_tick_timer: 0,
+            flying: false,
+            fly_speed: None,
+            abilities: None,
+            root_vehicle: None,
+            player_extra: None,
+            singleplayer_file: false,
+        }
+    }
+}
+
 impl Level {
     /// `PrimaryLevelData.setDifficulty`: the level data holds the world's
     /// difficulty, so the game and the file follow each other and a world
@@ -4591,11 +4661,10 @@ impl Level {
                 map.insert("allowCommands".into(), Tag::Byte(i8::from(allow)));
             }
             map.entry("WasModded".into()).or_insert(Tag::Byte(0));
-            // lenientOptionalFieldOf("enabled_features", DEFAULT_FLAGS): the
-            // tag is left out when the set is vanilla's default, so a
-            // `["minecraft:vanilla"]`-only list does not reach the file.
-            let vanilla_only = *self.enabled_features == ["minecraft:vanilla"];
-            if !self.enabled_features.is_empty() && !vanilla_only {
+            // WorldDataConfiguration omits the default, even when the retained Data had a tag.
+            if *self.enabled_features == VANILLA_FEATURE_FLAGS {
+                map.remove(&JavaString::from("enabled_features"));
+            } else {
                 map.insert(
                     "enabled_features".into(),
                     Tag::List(self.enabled_features.iter().map(|s| string(s)).collect()),
@@ -9421,11 +9490,9 @@ mod tests {
         );
     }
 
-    /// `WorldDataConfiguration.MAP_CODEC`'s `lenientOptionalFieldOf
-    /// ("enabled_features", DEFAULT_FLAGS)`: a picked experiment's list
-    /// round-trips, a vanilla-only selection leaves the tag out.
+    /// A world with an experiment writes and reads its full feature set.
     #[test]
-    fn enabled_features_round_trip_and_omit_the_vanilla_default() {
+    fn experimental_feature_flags_round_trip() {
         let dir = gen_world("enabled-features");
         let mut level = Level {
             name: "Features".into(),
@@ -9439,29 +9506,41 @@ mod tests {
         level.write(&dir, &Default::default()).unwrap();
         let back = Level::read(&dir).unwrap();
         assert_eq!(back.enabled_features, level.enabled_features);
-        // The tag is in the file.
-        let raw = crate::save::read_level_dat(&dir).unwrap();
-        if let Tag::Compound(data) = &raw {
-            let data = data.get(&JavaString::from("Data")).unwrap();
-            assert!(matches!(data.get("enabled_features"), Some(Tag::List(_))));
-        }
-        // A vanilla-only selection writes no tag, and reads back as the
-        // same vanilla-only list. A fresh folder: write_internal keeps an
-        // older file's fields.
-        let dir2 = gen_world("enabled-features-vanilla");
-        level.enabled_features = ["minecraft:vanilla".into()].into();
-        level.write(&dir2, &Default::default()).unwrap();
-        let raw = crate::save::read_level_dat(&dir2).unwrap();
-        if let Tag::Compound(data) = &raw {
-            let data = data.get(&JavaString::from("Data")).unwrap();
-            assert!(data.get("enabled_features").is_none());
-        }
-        let back = Level::read(&dir2).unwrap();
-        // The read side keeps its own convention: empty is the vanilla
-        // default the file omitted.
-        assert!(back.enabled_features.is_empty());
+        let raw = read_level_dat(&dir).unwrap();
+        assert!(matches!(
+            raw.get("Data").unwrap().get("enabled_features"),
+            Some(Tag::List(_)),
+        ));
         let _ = fs::remove_dir_all(dir);
-        let _ = fs::remove_dir_all(dir2);
+    }
+
+    #[test]
+    fn omitted_feature_flags_decode_as_vanilla_and_stay_omitted() {
+        let dir = gen_world("omitted-feature-flags");
+        let output = gen_world("resaved-feature-flags");
+        let mut level = Level::default();
+        assert_eq!(*level.enabled_features, ["minecraft:vanilla"]);
+        level.write(&dir, &Default::default()).unwrap();
+        let raw = read_level_dat(&dir).unwrap();
+        assert!(raw.get("Data").unwrap().get("enabled_features").is_none());
+
+        let mut read = Level::read(&dir).unwrap();
+        assert_eq!(*read.enabled_features, ["minecraft:vanilla"]);
+        // The encoder must drop even a tag retained from an older file.
+        let mut experimental = Level {
+            enabled_features: [
+                "minecraft:vanilla".into(),
+                "minecraft:minecart_improvements".into(),
+            ]
+            .into(),
+            ..Level::default()
+        };
+        experimental.write(&output, &Default::default()).unwrap();
+        read.write(&output, &Default::default()).unwrap();
+        let raw = read_level_dat(&output).unwrap();
+        assert!(raw.get("Data").unwrap().get("enabled_features").is_none());
+        let _ = fs::remove_dir_all(dir);
+        let _ = fs::remove_dir_all(output);
     }
 
     fn gen_world(name: &str) -> PathBuf {
