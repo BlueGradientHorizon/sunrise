@@ -536,8 +536,8 @@ pub trait BlockEntityDrawContext {
         unimplemented!("BlockEntityDrawContext::draw_fluid_box")
     }
 }
-/// What `block_screen_effect_draw` draws with, one per hook call: quads in camera space, in
-/// blocks, with `+x` right, `+y` up and the camera at the origin looking down `-z`. It is the
+/// What a [`BlockScreenEffectRenderer`](crate::BlockScreenEffectRenderer) draws with: quads in
+/// camera space, in blocks, with `+x` right, `+y` up and the camera at the origin looking down `-z`. It is the
 /// space of `ScreenEffectRenderer`'s own quads, whose whole-view quad has corners at `(±1, ±1, -0.5)`,
 /// under the first-person hand's projection. Quads draw in the order given, after the level and
 /// the hand and before the GUI, alpha-blended with no depth test; give corners in order round the quad.

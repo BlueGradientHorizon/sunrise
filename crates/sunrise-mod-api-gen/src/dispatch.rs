@@ -618,10 +618,10 @@ pub(super) fn emit<'a>(
                 }
                 rollback.push((name.clone(), true));
             }
-            let visibility = if event_type == "ApplyEffectTickEvent" && name == "changes" {
-                "pub(super)"
-            } else {
-                "pub"
+            let visibility = match (event_type.as_str(), name.as_str()) {
+                ("ApplyEffectTickEvent", "changes")
+                | ("ExtractBlockScreenEffectEvent", "renderer") => "pub(super)",
+                _ => "pub",
             };
             fields.push_str(&format!(
                 "{visibility} {name}: {},\n",
@@ -2035,7 +2035,7 @@ fn main() {
     #[test]
     fn boundary_draw_context_is_borrowed_not_snapshotted() {
         let state: Type = syn::parse_quote!(BlockState);
-        let draw: Type = syn::parse_quote!(&mut dyn CameraDrawContext);
+        let draw: Type = syn::parse_quote!(&mut dyn BlockEntityDrawContext);
         let replace: Type = syn::parse_quote!(&mut bool);
         let crossing = stack_crossing(
             &[
@@ -2044,7 +2044,7 @@ fn main() {
                 ("replace".into(), &replace),
             ],
             None,
-            "BlockScreenEffectDraw",
+            "BlockEntitySubmit",
             false,
             &Default::default(),
         )

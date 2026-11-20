@@ -8,6 +8,49 @@ takes a buffer of `GuiDraw` ops for the same calls, with `Push` / `Pop` for the 
 `render_gui_post`, use it to leave space for the overlay. Always-on debug entries can make it visible with
 F3 off. F1 hides the overlay unless a screen is open. The read is available only on the client host.
 
+## Block overlays
+
+Block, water and fire overlays draw in camera space, after the level and hand and before the GUI. In
+`extract_block_screen_effect`, call `event.set_custom_renderer(&MY_RENDERER)` to choose a static
+`BlockScreenEffectRenderer` for just that overlay. The last eligible listener that sets a renderer wins.
+After cancellation, only `#[listener(receive_cancelled)]` listeners can change the choice; the selected
+renderer still submits even if the overlay remains canceled.
+
+`submit` receives a read-only `ClientHost`, the original extraction inputs and a `CameraDrawContext`.
+Return `false` to prepend your quads to the vanilla overlay, or `true` to skip just that overlay's vanilla
+quads. Returning `false` does not restore a canceled overlay. Submission runs in block, water, fire order;
+HUD camera overlays such as the vignette still draw above them.
+
+```rust,ignore
+use mod_api::{
+    BlockScreenEffect, BlockScreenEffectRender, BlockScreenEffectRenderer, ClientHost,
+    ExtractBlockScreenEffectEvent, Flow,
+};
+
+struct WaterTint;
+impl BlockScreenEffectRenderer for WaterTint {
+    fn submit(&self, _: &dyn ClientHost, render: BlockScreenEffectRender<'_>) -> bool {
+        render.draw.quad(
+            [[-1.0, -1.0, -0.5], [1.0, -1.0, -0.5], [1.0, 1.0, -0.5], [-1.0, 1.0, -0.5]],
+            0x3000_4040,
+        );
+        false
+    }
+}
+
+// Inside your impl Hooks:
+fn extract_block_screen_effect(
+    &self,
+    _: &dyn ClientHost,
+    event: &mut ExtractBlockScreenEffectEvent<'_>,
+) -> Flow {
+    if event.effect == BlockScreenEffect::Water {
+        event.set_custom_renderer(&WaterTint);
+    }
+    Flow::Continue
+}
+```
+
 ## Gradient fills
 
 `DrawContext::fill_gradient(rect, top, bottom)` is vanilla's `GuiGraphics.fillGradient`, the call screen
