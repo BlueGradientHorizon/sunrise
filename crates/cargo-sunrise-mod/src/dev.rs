@@ -444,7 +444,7 @@ pub(crate) fn run(
         .map_err(|e| format!("{}: {e}", executable.display()))?;
     status.success().then_some(()).ok_or_else(|| {
         format!(
-            "the game exited with {status}; its log is {}",
+            "the game exited with {status}; the default log path is {}",
             home.join("logs/latest.log").display()
         )
     })
