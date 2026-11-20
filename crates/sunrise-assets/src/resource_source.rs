@@ -63,13 +63,11 @@ enum Storage {
         source: ResourceSource,
         prefix: String,
     },
-    /// The winning files by name, and for the names several layers provide, every layer's file,
-    /// lowest first ([`ResourceSource::stack`]), and the sources the files came from, lowest
-    /// first, for the singleton files ([`ResourceSource::singleton_resources`]).
+    /// Winning files and any retained file or named source stacks, lowest layer first.
     Index(
         BTreeMap<String, Resource>,
         BTreeMap<String, Vec<Resource>>,
-        Arc<[ResourceSource]>,
+        Arc<[(String, ResourceSource)]>,
     ),
 }
 
@@ -91,13 +89,6 @@ impl Resource {
     }
     pub fn bytes(bytes: Vec<u8>) -> Self {
         Self(ResourceStorage::Bytes(bytes.into()))
-    }
-    /// The file's name in its source; none for bytes made by the game.
-    pub fn name(&self) -> Option<&str> {
-        match &self.0 {
-            ResourceStorage::File { name, .. } => Some(name),
-            ResourceStorage::Bytes(_) => None,
-        }
     }
     pub fn read(&self) -> io::Result<Vec<u8>> {
         match &self.0 {
@@ -336,38 +327,19 @@ impl ResourceSource {
     ) -> Self {
         Self::from(Storage::Index(files, layers, Arc::from([])))
     }
-    /// An index that also keeps the sources its files came from, lowest first, so that
-    /// [`ResourceSource::singleton_resources`] reads each source's copies in layer order.
+    /// Retain the named sources below the flattened index, lowest layer first.
     pub fn indexed_with_sources(
         files: BTreeMap<String, Resource>,
-        sources: Arc<[ResourceSource]>,
+        sources: Arc<[(String, ResourceSource)]>,
     ) -> Self {
         Self::from(Storage::Index(files, BTreeMap::new(), sources))
     }
-    /// The copies of the file `name` in every namespace of `top`, lowest layer first: an index
-    /// made by [`ResourceSource::indexed_with_sources`] gives each source's copies in turn (a
-    /// lower copy at the same path stays), any other source its winning copies. The namespaces
-    /// of one layer are in name order. Empty for a `top` or `name` that leaves the source.
-    pub fn singleton_resources(&self, top: &str, name: &str) -> Vec<Resource> {
-        if !stays_inside(top) || !stays_inside(name) || name.contains('/') {
-            return Vec::new();
+    /// The original named sources, when this index represents a composed pack.
+    pub fn named_sources(&self) -> &[(String, ResourceSource)] {
+        match self.0.as_ref() {
+            Storage::Index(.., sources) => sources,
+            _ => &[],
         }
-        if let Storage::Index(.., sources) = self.0.as_ref()
-            && !sources.is_empty()
-        {
-            return sources
-                .iter()
-                .flat_map(|source| source.singleton_resources(top, name))
-                .collect();
-        }
-        self.namespaces(top)
-            .into_iter()
-            .filter_map(|namespace| {
-                let path = format!("{top}/{namespace}/{name}");
-                self.contains(&path)
-                    .then(|| Resource::file(self.clone(), path))
-            })
-            .collect()
     }
     /// Every layer's file of `name`, lowest first, the winning one last: where the source was
     /// made from layers ([`ResourceSource::indexed_with_layers`]) their files, else the one

@@ -1,8 +1,9 @@
 # Recipe priorities
 
 When two recipes match the same input, the first one wins. A content mod or data
-pack picks the winner with `data/<namespace>/recipe_priorities.json`, in
-NeoForge's format:
+pack picks the winner with `data/neoforge/recipe_priorities.json`, the resource
+used by NeoForge's `RecipePriorityManager`. The same filename under any other
+namespace has no effect.
 
 ```json
 {"replace": false, "entries": {"example:specific": 5, "example:broad": -1}}
@@ -10,9 +11,9 @@ NeoForge's format:
 
 | Key | Meaning |
 |---|---|
-| `entries` | recipe id to priority, a signed 32-bit integer; an id without a namespace is `minecraft:` |
+| `entries` | recipe ID to priority, a signed 32-bit integer; an ID without a namespace is `minecraft:`. A layer cannot give the same ID twice using different spellings. |
 | `replace` | `true` clears every priority an earlier layer set, even when `entries` is absent or empty |
-| `neoforge:conditions` | [load conditions](load-conditions.md); a layer whose conditions fail changes nothing |
+| `neoforge:conditions` | an array of [load conditions](load-conditions.md); a valid false condition skips the entire layer |
 
 A recipe with no entry has priority 0.
 
@@ -20,18 +21,16 @@ A recipe with no entry has priority 0.
 
 Files apply lowest layer first: the game's own data, then content mods in
 dependency order (a mod's jars in declared order, below its own directory or
-`.smod` files), then the world's enabled data packs in pack order. The namespaces
-of one layer apply in name order. Every layer of this file counts, including a
-lower copy at the same path and a copy in another namespace; other passive
-resources keep their usual last-file-wins rule. A later entry overrides an
-earlier one. Ids no recipe has are kept quietly, including recipes absent because
-their load conditions failed.
+`.smod` files), then the world's enabled data packs in pack order. Every layer of
+this one path counts, including lower copies. Content mods need not claim the
+`neoforge` namespace to provide it. A later entry overrides an earlier one.
+Well-formed IDs that name no loaded recipe are kept quietly.
 
-A layer that is not valid is refused as a whole, and the load fails naming the
-pack and file: a root that is not an object, a `replace` that is not a boolean,
-an `entries` that is not an object, a priority outside the signed 32-bit range,
-or a file that cannot be read. Nothing of it applies. A layer whose load
-conditions fail is not read further.
+An unreadable file is logged with its pack and resource path and skipped. A
+readable file with malformed JSON, invalid load conditions, or invalid priority
+data refuses the load and names its pack and resource path. Nothing from that
+file applies. A layer with valid false conditions is skipped before its priority
+data is decoded.
 
 ## Order
 

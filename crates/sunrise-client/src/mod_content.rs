@@ -3712,10 +3712,14 @@ pub fn resolved_resources(
             assets_base = ResourceSource::indexed(files);
         }
     }
-    let mod_layers: std::sync::Arc<[ResourceSource]> = loaded
+    let data_layers: std::sync::Arc<[(String, ResourceSource)]> = loaded
         .iter()
         .flat_map(|group| &group.layers)
-        .map(|layer| layer.data.source().clone())
+        .map(|layer| (layer.data.id.clone(), layer.data.source().clone()))
+        .collect();
+    let mod_layers = data_layers
+        .iter()
+        .map(|(_, source)| source.clone())
         .collect();
     let layers = loaded
         .into_iter()
@@ -3738,15 +3742,10 @@ pub fn resolved_resources(
     }
     let assets = crate::packs::resources(assets_base, &layers)?;
     data.extend(changes.clone());
-    // Passive singleton files (`recipe_priorities.json`) keep every layer's copy, lowest first,
-    // though only the winning file of each path is indexed.
-    let all_layers: std::sync::Arc<[ResourceSource]> = std::iter::once(base_source)
-        .chain(mod_layers.iter().cloned())
-        .collect();
     Ok(ResourceRoot::new(prepared, cache, assets)
         .with_data(
-            ResourceSource::indexed_with_sources(data, all_layers),
-            ResourceSource::indexed_with_sources(changes, mod_layers.clone()),
+            ResourceSource::indexed(data),
+            ResourceSource::indexed_with_sources(changes, data_layers),
         )
         .with_mod_layers(mod_layers))
 }

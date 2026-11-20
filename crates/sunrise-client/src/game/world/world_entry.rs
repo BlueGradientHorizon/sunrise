@@ -244,7 +244,11 @@ impl Game<'_> {
         let mut contributed = Vec::new();
         self.native_data_pack_files(&mut contributed);
         let modifier_files = global_loot_modifiers::contributed(&contributed);
-        let (files, read_errors) = functions::overlay_files(
+        let functions::OverlayFiles {
+            files,
+            read_errors,
+            priority_layers,
+        } = functions::overlay_files(
             stack,
             contributed
                 .into_iter()
@@ -289,7 +293,7 @@ impl Game<'_> {
         let overlay = sunrise_world::loot::PackOverlay {
             conditions: &conditions,
             files: &files,
-            ..sunrise_world::loot::PackOverlay::default()
+            priority_layers: &priority_layers,
         };
         let packed_registry_definitions =
             if let Some(tables) = self.world_tables.as_ref().filter(|_| reload) {
@@ -520,6 +524,7 @@ impl Game<'_> {
                 conditions,
                 suffocation,
                 files,
+                priority_layers,
                 items: Arc::new(items),
                 packed_registries: packed_registry_definitions,
                 loot,
@@ -639,7 +644,7 @@ impl Game<'_> {
             let overlay = sunrise_world::loot::PackOverlay {
                 conditions: &tables.conditions,
                 files: &tables.files,
-                ..sunrise_world::loot::PackOverlay::default()
+                priority_layers: &tables.priority_layers,
             };
             lan::sync::install_server_sources(
                 &self.options.resources,

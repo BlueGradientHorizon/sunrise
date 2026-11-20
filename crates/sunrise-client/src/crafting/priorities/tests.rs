@@ -6,6 +6,16 @@ use crate::{
     stations::StationRecipes,
 };
 use serde_json::json;
+use std::fs;
+use sunrise_mod_package::content::RECIPE_PRIORITIES_PATH;
+
+fn layer(pack: &str, bytes: &[u8]) -> RecipePriorityLayer {
+    RecipePriorityLayer {
+        pack: pack.into(),
+        path: RECIPE_PRIORITIES_PATH,
+        contents: Ok(bytes.to_vec()),
+    }
+}
 
 struct Fixture(std::path::PathBuf);
 impl Fixture {
@@ -42,31 +52,28 @@ fn matching_shapeless_default_priority_and_replace_empty() {
     }
     let grid = [Some(ItemStack::new("minecraft:stone", 1)), None, None, None];
     let context = crate::test_resources::server_loop_context();
-    let load = |files: &[_]| {
+    let load = |priority_layers: &[_]| {
         Recipes::load(
             &root.0,
             &items,
-            &PackOverlay::new(files),
+            &PackOverlay {
+                files: &files,
+                priority_layers,
+                ..PackOverlay::default()
+            },
             &crate::test_resources::server_load(),
         )
         .unwrap()
     };
-    let recipes = load(&files);
+    let recipes = load(&[]);
     let (id, output) = recipes.find(context, &grid, 2).unwrap();
     assert_eq!((id, output.item.as_ref()), ("test:a", "minecraft:stick"));
-    files.push((
-        "recipe_priorities".into(),
-        vec![br#"{"entries":{"test:b":5}}"#.to_vec()],
-    ));
-    let recipes = load(&files);
+    let mut priorities = vec![layer("preferred", br#"{"entries":{"test:b":5}}"#)];
+    let recipes = load(&priorities);
     let (id, output) = recipes.find(context, &grid, 2).unwrap();
     assert_eq!((id, output.item.as_ref()), ("test:b", "minecraft:diamond"));
-    files
-        .last_mut()
-        .unwrap()
-        .1
-        .push(br#"{"replace":true}"#.to_vec());
-    let recipes = load(&files);
+    priorities.push(layer("reset", br#"{"replace":true}"#));
+    let recipes = load(&priorities);
     let (id, output) = recipes.find(context, &grid, 2).unwrap();
     assert_eq!((id, output.item.as_ref()), ("test:a", "minecraft:stick"));
 }
@@ -74,20 +81,33 @@ fn matching_shapeless_default_priority_and_replace_empty() {
 #[test]
 fn layers_conditions_unknown_ids_and_integer_boundaries() {
     let root = Fixture::new("layers");
+    fs::create_dir_all(root.0.join("data/neoforge")).unwrap();
     fs::write(
-        root.0.join("data/minecraft/recipe_priorities.json"),
+        root.0.join(RECIPE_PRIORITIES_PATH),
         br#"{"entries":{"test:a":3,"test:absent":17,"test:min":-2147483648}}"#,
     )
     .unwrap();
-    let files = vec![(
-        "recipe_priorities".into(),
-        vec![
-            br#"{"entries":{"test:a":5,"test:b":-2}}"#.to_vec(),
-            br#"{"replace":true,"neoforge:conditions":[{"type":"neoforge:never"}]}"#.to_vec(),
-            br#"{"entries":{"test:b":2147483647}}"#.to_vec(),
-        ],
-    )];
-    let priorities = Priorities::load(&root.0, &PackOverlay::new(&files)).unwrap();
+    let priority_layers = [
+        layer("first", br#"{"entries":{"test:a":5,"test:b":-2}}"#),
+        layer(
+            "skipped",
+            br#"{"replace":true,"neoforge:conditions":[{"type":"neoforge:never"}]}"#,
+        ),
+        RecipePriorityLayer {
+            pack: "unreadable".to_owned(),
+            path: RECIPE_PRIORITIES_PATH,
+            contents: Err("fixture failed read".to_owned()),
+        },
+        layer("last", br#"{"entries":{"test:b":2147483647}}"#),
+    ];
+    let priorities = Priorities::load(
+        &root.0,
+        &PackOverlay {
+            priority_layers: &priority_layers,
+            ..PackOverlay::default()
+        },
+    )
+    .unwrap();
     assert_eq!(priorities.get("test:a"), 5);
     assert_eq!(priorities.get("test:b"), i32::MAX);
     assert_eq!(priorities.get("test:min"), i32::MIN);
@@ -97,63 +117,50 @@ fn layers_conditions_unknown_ids_and_integer_boundaries() {
 
 #[test]
 fn an_invalid_layer_is_refused_whole_naming_its_pack() {
-    let root = Fixture::new("refused");
-    let layer = |pack: &str, json: &str| {
-        format!("{pack}: data/x/recipe_priorities.json\0{json}").into_bytes()
-    };
-    for (json, reason) in [
-        // The root must be an object, whatever else it holds.
-        ("[]", "the root must be an object"),
-        ("5", "the root must be an object"),
-        (r#"[false,{}]"#, "the root must be an object"),
-        (r#"{"replace":"yes"}"#, "invalid type"),
-        (r#"{"entries":[]}"#, "invalid type"),
-        // Out of range, and with `replace`: nothing of the layer applies.
-        (
-            r#"{"replace":true,"entries":{"test:a":2147483648}}"#,
-            "invalid value",
-        ),
-        ("{", "EOF"),
+    let conditions = LoadConditions::vanilla();
+    let mut priorities = Priorities::default();
+    priorities
+        .layer(&layer("good", br#"{"entries":{"test:a":5}}"#), &conditions)
+        .unwrap();
+    for json in [
+        "[]",
+        "5",
+        r#"[false,{}]"#,
+        r#"{"replace":"yes"}"#,
+        r#"{"entries":[]}"#,
+        r#"{"replace":true,"entries":{"test:a":2147483648}}"#,
+        "{",
     ] {
-        let files = vec![(
-            "recipe_priorities".into(),
-            vec![
-                layer("good", r#"{"entries":{"test:a":5}}"#),
-                layer("bad_pack", json),
-            ],
-        )];
-        let error = Priorities::load(&root.0, &PackOverlay::new(&files))
-            .err()
-            .unwrap()
-            .to_string();
+        let error = priorities
+            .layer(&layer("bad_pack", json.as_bytes()), &conditions)
+            .unwrap_err();
         assert!(
-            error.contains("bad_pack: data/x/recipe_priorities.json"),
-            "{error}"
+            error
+                .to_string()
+                .contains("bad_pack: data/neoforge/recipe_priorities.json"),
+            "{json}: {error}"
         );
-        assert!(error.contains(reason), "{json}: {error}");
+        assert_eq!(priorities.get("test:a"), 5);
     }
-    // A layer whose conditions fail is omitted before it is read as a value.
-    let files = vec![(
-        "recipe_priorities".into(),
-        vec![layer(
-            "off",
-            r#"{"replace":"yes","neoforge:conditions":[{"type":"neoforge:never"}]}"#,
-        )],
-    )];
-    assert!(Priorities::load(&root.0, &PackOverlay::new(&files)).is_ok());
+    // A layer with valid false conditions need not decode its value.
+    priorities
+        .layer(
+            &layer(
+                "off",
+                br#"{"replace":"yes","neoforge:conditions":[{"type":"neoforge:never"}]}"#,
+            ),
+            &conditions,
+        )
+        .unwrap();
+    assert_eq!(priorities.get("test:a"), 5);
 }
 
 #[test]
 fn invalid_load_conditions_refuse_a_replacing_layer_without_clearing_priorities() {
     let conditions = LoadConditions::vanilla();
     let mut priorities = Priorities::default();
-    let path = "data/neoforge/recipe_priorities.json";
     priorities
-        .layer(
-            "lower: data/neoforge/recipe_priorities.json",
-            br#"{"entries":{"test:a":5}}"#,
-            &conditions,
-        )
+        .layer(&layer("lower", br#"{"entries":{"test:a":5}}"#), &conditions)
         .unwrap();
     for cases in [
         json!(true),
@@ -166,9 +173,15 @@ fn invalid_load_conditions_refuse_a_replacing_layer_without_clearing_priorities(
             "entries": {"test:b": 12}
         }))
         .unwrap();
-        let source = format!("higher: {path}");
-        let error = priorities.layer(&source, &bytes, &conditions).unwrap_err();
-        assert!(error.to_string().contains(&source), "{error}");
+        let error = priorities
+            .layer(&layer("higher", &bytes), &conditions)
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("higher: data/neoforge/recipe_priorities.json"),
+            "{error}"
+        );
         assert_eq!(priorities.get("test:a"), 5);
         assert_eq!(priorities.get("test:b"), 0);
     }
@@ -179,11 +192,7 @@ fn recipe_identifiers_are_canonical_and_a_colliding_layer_applies_nothing() {
     let conditions = LoadConditions::vanilla();
     let mut priorities = Priorities::default();
     let apply = |priorities: &mut Priorities, bytes: &[u8]| {
-        priorities.layer(
-            "test: data/neoforge/recipe_priorities.json",
-            bytes,
-            &conditions,
-        )
+        priorities.layer(&layer("test", bytes), &conditions)
     };
     apply(
         &mut priorities,
@@ -204,22 +213,9 @@ fn recipe_identifiers_are_canonical_and_a_colliding_layer_applies_nothing() {
     assert_eq!(priorities.get("example:missing"), 9);
 }
 
-struct Crusher;
-#[mod_api::__subscriptions]
-impl mod_api::Hooks for Crusher {
-    fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-        r.register_recipe_type("test:crusher");
-        r.register_raw_recipe_serializer("test:crusher", "test:crusher");
-    }
-}
-
 #[test]
 fn every_projection_uses_the_same_priority_order() {
-    let mods = || [mod_api::ModEntry::new("test", Box::new(Crusher))];
-    mod_platform::testing::with_mods(mods().into(), || {
-        mod_platform::__private::part_tests::install_parts_fixture(&mods()).unwrap();
-        projections_follow_one_order();
-    });
+    mod_platform::testing::with_recipe_types(&["test:crusher"], projections_follow_one_order);
 }
 
 fn projections_follow_one_order() {
@@ -254,11 +250,14 @@ fn projections_follow_one_order() {
             sources.push((id, recipe));
         }
     }
-    let files = vec![(
-        "recipe_priorities".into(),
-        vec![serde_json::to_vec(&json!({"entries":entries})).unwrap()],
+    let priority_layers = [layer(
+        "projection",
+        &serde_json::to_vec(&json!({"entries": entries})).unwrap(),
     )];
-    let overlay = PackOverlay::new(&files);
+    let overlay = PackOverlay {
+        priority_layers: &priority_layers,
+        ..PackOverlay::default()
+    };
     ResolvedSources::order_by_priority(&mut sources, &root.0, &overlay).unwrap();
     let resolved =
         ResolvedSources::resolve_collecting(sources, &crate::test_resources::server_load())

@@ -1732,7 +1732,9 @@ mod tests {
             ),
         ] {
             if let Some(file) = priority_file {
-                std::fs::write(root.join("data/minecraft/recipe_priorities.json"), file).unwrap();
+                let path = root.join(sunrise_mod_package::content::RECIPE_PRIORITIES_PATH);
+                std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+                std::fs::write(path, file).unwrap();
             }
             let sources = crate::test_resources::server_sources(&root, &PackOverlay::NONE);
             let sync = SyncData::load(&root, &PackOverlay::NONE, &defaults, &sources).unwrap();

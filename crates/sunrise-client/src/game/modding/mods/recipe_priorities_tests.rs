@@ -1,7 +1,7 @@
 use super::*;
 use std::io::Write as _;
 use sunrise_client::crafting::ResolvedSources;
-use sunrise_mod_package::manifest::JarRef;
+use sunrise_mod_package::{content::RECIPE_PRIORITIES_PATH, manifest::JarRef};
 use sunrise_world::{loot::PackOverlay, native_load_context::DataLoadOrigin};
 
 fn write(path: &Path, bytes: impl AsRef<[u8]>) {
@@ -66,9 +66,9 @@ fn package(
     }
 }
 
-fn check_layers(kind: &str, identical_path: bool, replace_allowed: bool) {
+fn check_layers(kind: &str, replace_allowed: bool, malformed_jar: bool) {
     let fixture = Fixture::new(&format!(
-        "recipe-priorities-{kind}-{identical_path}-{replace_allowed}"
+        "recipe-priorities-{kind}-{replace_allowed}-{malformed_jar}"
     ));
     let base = fixture.0.join("resources");
     write(&base.join("sunrise-resources.json"), "{}");
@@ -82,21 +82,14 @@ fn check_layers(kind: &str, identical_path: bool, replace_allowed: bool) {
         r#"{{"replace":true,"entries":{{}},"neoforge:conditions":[{{"type":"neoforge:mod_loaded","modid":"{}"}}]}}"#,
         if replace_allowed { "alpha" } else { "not_loaded" },
     ).into_bytes();
-    let lower_namespace = if identical_path { "alpha" } else { "zbase" };
     let underlay = br#"{"entries":{"zbase:b":-5}}"#.to_vec();
     let first_jar = jar(
         &store,
         "zfirst",
         'c',
-        &[(
-            format!("data/{lower_namespace}/recipe_priorities.json"),
-            underlay.clone(),
-        )],
+        &[(RECIPE_PRIORITIES_PATH.into(), underlay.clone())],
     );
-    let mut lower_files = vec![(
-        format!("data/{lower_namespace}/recipe_priorities.json"),
-        lower.clone(),
-    )];
+    let mut lower_files = vec![(RECIPE_PRIORITIES_PATH.into(), lower.clone())];
     for (name, result) in [("a", "stick"), ("b", "diamond")] {
         lower_files.push((
             format!("data/zbase/recipe/{name}.json"),
@@ -109,14 +102,18 @@ fn check_layers(kind: &str, identical_path: bool, replace_allowed: bool) {
     let lower_ordinary = br#"{"layer":"lower"}"#.to_vec();
     let higher_ordinary = br#"{"layer":"higher"}"#.to_vec();
     let mut lower_jar_files = vec![(ordinary_path.into(), lower_ordinary)];
-    // Shared paths are legal through passive jars without giving two packages
-    // ownership of the same namespace. They still use real content admission.
-    if identical_path || kind == "jar" {
+    let lower_id = if kind == "jar" {
         lower_jar_files.append(&mut lower_files);
-    }
+        if malformed_jar {
+            lower_jar_files[1].1 = b"{".to_vec();
+        }
+        "zbase/asecond"
+    } else {
+        "zbase"
+    };
     let lower_jar = jar(&store, "asecond", 'a', &lower_jar_files);
     let higher_files = vec![
-        ("data/alpha/recipe_priorities.json".into(), higher.clone()),
+        (RECIPE_PRIORITIES_PATH.into(), higher.clone()),
         (ordinary_path.into(), higher_ordinary.clone()),
     ];
     let (higher_jars, higher_files) = if kind == "jar" {
@@ -158,15 +155,37 @@ fn check_layers(kind: &str, identical_path: bool, replace_allowed: bool) {
         &[],
         &[],
     );
-    let (files, _) = crate::game::functions::overlay_files(&stack, Vec::new());
+    let collected = crate::game::functions::overlay_files(&stack, Vec::new());
+    let files = &collected.files;
+    let layers = &collected.priority_layers;
     assert_eq!(
-        files
+        layers
             .iter()
-            .find(|(id, _)| id == "recipe_priorities")
-            .unwrap()
-            .1,
-        [underlay, lower, higher],
+            .map(|layer| (layer.pack.as_str(), layer.path))
+            .collect::<Vec<_>>(),
+        [
+            ("zbase/zfirst", RECIPE_PRIORITIES_PATH),
+            (lower_id, RECIPE_PRIORITIES_PATH),
+            (
+                if kind == "jar" {
+                    "alpha/higher"
+                } else {
+                    "alpha"
+                },
+                RECIPE_PRIORITIES_PATH
+            ),
+        ]
     );
+    assert_eq!(layers[0].contents.as_ref().unwrap(), &underlay);
+    assert_eq!(
+        layers[1].contents.as_ref().unwrap(),
+        if malformed_jar {
+            b"{".as_slice()
+        } else {
+            &lower
+        }
+    );
+    assert_eq!(layers[2].contents.as_ref().unwrap(), &higher);
     assert_eq!(
         overlay.root.data_changes().read(ordinary_path).unwrap(),
         higher_ordinary,
@@ -187,9 +206,25 @@ fn check_layers(kind: &str, identical_path: bool, replace_allowed: bool) {
         )),
         ["zbase", "alpha"],
     );
-    let resolved =
-        ResolvedSources::load(overlay.root.prepared(), &PackOverlay::new(&files), &context)
-            .unwrap();
+    let resolved = ResolvedSources::load(
+        overlay.root.prepared(),
+        &PackOverlay {
+            files,
+            priority_layers: layers,
+            ..PackOverlay::default()
+        },
+        &context,
+    );
+    if malformed_jar {
+        let error = resolved.err().unwrap().to_string();
+        assert!(
+            error.contains("zbase/asecond: data/neoforge/recipe_priorities.json"),
+            "{error}"
+        );
+        assert!(!error.contains("zbase/zfirst"), "{error}");
+        return;
+    }
+    let resolved = resolved.unwrap();
     assert_eq!(
         resolved
             .recipes
@@ -216,10 +251,9 @@ fn enabled_passive_recipe_priorities_preserve_dependency_layers_and_conditions()
         return;
     }
     for kind in ["directory", "package", "jar"] {
-        for identical_path in [false, true] {
-            for replace_allowed in [false, true] {
-                check_layers(kind, identical_path, replace_allowed);
-            }
+        for replace_allowed in [false, true] {
+            check_layers(kind, replace_allowed, false);
         }
     }
+    check_layers("jar", true, true);
 }
