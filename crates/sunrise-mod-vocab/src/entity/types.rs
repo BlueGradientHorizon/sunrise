@@ -1174,7 +1174,7 @@ pub struct PlayerFood {
 // no wire: borrows the connected player's profile from the host.
 /// A player's borrowed game profile (authlib's `GameProfile`): UUID, name and login
 /// properties, such as `textures` (the skin).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct GameProfile<'a> {
     /// The player's UUID.
@@ -1183,9 +1183,6 @@ pub struct GameProfile<'a> {
     pub name: &'a str,
     properties: &'a [AccountProperty],
 }
-
-// The protocol property's equality compares only its strings and optional signature.
-impl Eq for GameProfile<'_> {}
 
 impl<'a> GameProfile<'a> {
     /// Read the profile's properties in login order without copying the text.
@@ -1217,7 +1214,7 @@ pub(crate) mod profile_adapter {
 }
 
 // no wire: borrows one login property's strings from the host.
-/// One borrowed property of a [`GameProfile`] (authlib's `AccountProperty`).
+/// One borrowed property of a [`GameProfile`] (authlib's `Property`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct ProfileProperty<'a> {

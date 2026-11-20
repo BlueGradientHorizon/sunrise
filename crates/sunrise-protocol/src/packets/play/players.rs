@@ -8,8 +8,7 @@ use crate::{
     packet,
     packets::login::PropertyCodec,
 };
-use sunrise_core::nbt::Tag;
-use sunrise_core::vanilla_bytes::Writer;
+use sunrise_core::{nbt::Tag, profile::AccountProperty, vanilla_bytes::Writer};
 
 /// MessageSignature.Packed: an index into the last-seen cache or a full signature.
 pub struct PackedSignature;

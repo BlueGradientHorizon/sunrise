@@ -6,9 +6,9 @@ use crate::{
     Result,
     buf::{Codec, Reader},
     item::{Slot, Stack, Template},
+    packets::login::PropertyCodec,
 };
-use sunrise_core::nbt::Tag;
-use sunrise_core::vanilla_bytes::Writer;
+use sunrise_core::{nbt::Tag, profile::AccountProperty, vanilla_bytes::Writer};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
@@ -47,7 +47,7 @@ pub struct Profile {
     pub name: Option<String>,
     pub uuid: Option<u128>,
     /// `PropertyMap`: its `textures` property carries the skin.
-    pub properties: Vec<sunrise_core::profile::AccountProperty>,
+    pub properties: Vec<AccountProperty>,
     /// `PlayerSkin.Patch`: texture asset ids overriding the profile's.
     pub body: Option<String>,
     pub cape: Option<String>,
@@ -56,13 +56,11 @@ pub struct Profile {
     pub slim: Option<bool>,
 }
 /// `ByteBufCodecs.GAME_PROFILE_PROPERTIES`.
-fn read_properties(r: &mut Reader) -> Result<Vec<sunrise_core::profile::AccountProperty>> {
-    use crate::buf::Codec;
+fn read_properties(r: &mut Reader) -> Result<Vec<AccountProperty>> {
     let n = r.count(16)?;
     (0..n).map(|_| PropertyCodec::read(r)).collect()
 }
-fn write_properties(p: &[sunrise_core::profile::AccountProperty], w: &mut Writer) {
-    use crate::buf::Codec;
+fn write_properties(p: &[AccountProperty], w: &mut Writer) {
     w.varint(p.len() as i32);
     p.iter().for_each(|p| PropertyCodec::write(p, w));
 }
