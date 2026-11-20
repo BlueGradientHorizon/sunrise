@@ -851,8 +851,8 @@ impl ItemPlace {
                     .place_provider(provider)
                     .ok_or(())?;
                 let moved = match insert {
-                    true => provider.insert_at(host, tx, *key, resource, amount),
-                    false => provider.extract_at(host, tx, *key, resource, amount),
+                    true => provider.insert(host, tx, *key, resource, amount),
+                    false => provider.extract(host, tx, *key, resource, amount),
                 };
                 if moved > amount {
                     warn_broken(Some(owner), self);
