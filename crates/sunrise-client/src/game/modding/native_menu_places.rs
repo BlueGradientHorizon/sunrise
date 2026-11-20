@@ -199,15 +199,22 @@ impl Game<'_> {
         window: i32,
         n: usize,
     ) -> Option<MenuSlotPlace> {
-        let backed = self.lan.as_ref()?.menus.get(&conn)?.slot_places.as_ref()?;
+        let backed = self.active_menu_places(conn)?;
         (backed.window == window).then_some(())?;
         backed.places.get(n).copied()
     }
 
     /// The backing of `conn`'s menu: its window, how many slots and the locked hotbar slot.
     fn menu_places_of(&self, conn: u32) -> Option<(i32, usize, Option<usize>)> {
-        let backed = self.lan.as_ref()?.menus.get(&conn)?.slot_places.as_ref()?;
+        let backed = self.active_menu_places(conn)?;
         Some((backed.window, backed.places.len(), backed.locked))
+    }
+
+    fn active_menu_places(&self, conn: u32) -> Option<&MenuSlotPlaces> {
+        let lan = self.lan.as_ref()?;
+        let backed = lan.menus.get(&conn)?.slot_places.as_ref()?;
+        let open = lan.hub.guest(conn)?.menu.as_ref()?;
+        (open.window == backed.window && open.slots == Slots::Native).then_some(backed)
     }
 
     pub(super) fn forget_menu_places(&mut self, conn: u32) {
@@ -327,7 +334,7 @@ impl Game<'_> {
             .menus
             .get_mut(&conn)
             .and_then(|m| m.slot_places.as_mut())
-            .filter(|backed| !backed.noticed)
+            .filter(|backed| backed.window == window && !backed.noticed)
         else {
             return;
         };
@@ -364,7 +371,11 @@ impl Game<'_> {
     /// mirrored slots went with the menu (`native_menu` is cleared on close).
     pub(super) fn menu_places_closed(&mut self, uuid: u128, window: i32) {
         if let Some(conn) = self.native_conn(uuid)
-            && self.menu_places_of(conn).is_some_and(|(w, ..)| w == window)
+            && self
+                .lan
+                .as_ref()
+                .and_then(|lan| lan.menus.get(&conn)?.slot_places.as_ref())
+                .is_some_and(|backed| backed.window == window)
         {
             self.forget_menu_places(conn);
         }
@@ -776,7 +787,7 @@ mod tests {
                 game.as_guest(1, |game| back(game, held_places(Hand::Main, 0..1))),
                 Some(Ok(()))
             );
-            // A block's menu shows its block's slots: no backing is stored for it.
+            // A block's menu cannot use a backing, even with a leftover record for the window.
             edit_guest(game, |g| {
                 g.menu.as_mut().unwrap().slots = Slots::Block((0, 64, 0));
             });
