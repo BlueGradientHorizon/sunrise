@@ -4,7 +4,6 @@
 //! a client's copy, and only on the level in place.
 use super::{Game, Insertion, Kind, MoveIn, PlacementAttempt, Pos, Slots, View};
 use crate::game::transactions::After;
-use mod_api::__private::game::CapabilityChecked;
 use mod_api::{BlockSide, LevelRef, Transaction};
 use sunrise_client::items::ItemStack;
 use sunrise_core::geometry::Direction;
@@ -89,7 +88,6 @@ impl Game<'_> {
         &mut self,
         part: &mod_api::Capability<dyn mod_api::ResourceHandler<mod_api::ItemResource>>,
         stack: &ItemStack,
-        at: [i32; 3],
         source: &View,
         slot: usize,
     ) -> bool {
@@ -103,10 +101,9 @@ impl Game<'_> {
             game.journal_block_entity_slot(pos, index);
             // Reserve the offered item before writable insertion notices can re-enter.
             let reserved = game.take_one(source, slot).ok_or(())?;
-            let went = part.insert(game, tx, &resource, 1).map_err(|_| ())?;
             // A part answering more than it was offered is a broken mod: abort, undoing
             // whatever its insertion moved. A plain refusal still commits.
-            let accepted = part.checked(went, 1, &at).ok_or(())? == 1;
+            let accepted = part.insert(game, tx, &resource, 1).map_err(|_| ())? == 1;
             if !accepted {
                 match game.slot_mut_at(source, slot).ok_or(())? {
                     Some(held) if held.same_item_same_components(&reserved) => {

@@ -654,13 +654,7 @@ pub(crate) fn move_once<A: ?Sized, B: ?Sized, N: Copy + PartialOrd + Default>(
                     owner: Some(from.owner()),
                 }));
             };
-            let took = insert(host, tx, out).map_err(|mut error| {
-                if error.owner.is_none() {
-                    crate::block::item_place::warn_broken(to.owner, at);
-                    error.owner = Some(to.owner());
-                }
-                Err(error)
-            })?;
+            let took = insert(host, tx, out).map_err(Err)?;
             match to.checked(took, out, at) {
                 None => Err(Err(Overanswered {
                     owner: Some(to.owner()),

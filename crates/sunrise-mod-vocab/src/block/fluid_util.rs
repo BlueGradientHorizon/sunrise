@@ -196,9 +196,7 @@ pub fn try_pickup_world_fluid(
         let fluid = FluidResource::of(&picked);
         match destination
             .insert(host, tx, &fluid, picked.amount)
-            .map_err(|_| {
-                crate::block::item_place::warn_broken(destination.owner, &"fluid pickup")
-            })?
+            .map_err(|_| ())?
             == picked.amount
         {
             true => Ok(picked),

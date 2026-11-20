@@ -1548,7 +1548,6 @@ impl Game<'_> {
     pub(super) fn put_into_part(
         &mut self,
         part: &Capability<dyn ResourceHandler<ItemResource>>,
-        at: [i32; 3],
         stack: &ItemStack,
         take: impl FnOnce(&mut Self, u32) -> Option<()>,
     ) -> u32 {
@@ -1562,10 +1561,10 @@ impl Game<'_> {
             let went = part
                 .insert(host, tx, &resource, stack.count)
                 .map_err(|_| ())?;
-            match part.checked(went, stack.count, &at) {
-                Some(0) | None => Err(()),
-                Some(went) => take(game, went).map(|()| went).ok_or(()),
+            if went == 0 {
+                return Err(());
             }
+            take(game, went).map(|()| went).ok_or(())
         })
         .unwrap_or(0)
     }
@@ -1613,13 +1612,11 @@ impl Game<'_> {
                     continue;
                 };
                 let went = part.insert(game, tx, &resource, 1).map_err(|_| ())?;
-                let accepted = part.checked(went, 1, &at);
-                if accepted == Some(1) {
+                if went == 1 {
                     return Ok(());
                 }
                 one.count = snapshot.count();
                 *game.slot_mut_at(hopper, slot).ok_or(())? = Some(one);
-                accepted.ok_or(())?;
             }
             Err(())
         })
@@ -2277,8 +2274,7 @@ impl Game<'_> {
                     ControlFlow::Continue(inserted)
                 }
                 ContainerTarget::Part(part) => {
-                    let at = [target.0, target.1, target.2];
-                    game.dropper_into_part(&part, &stack, at, &view, slot);
+                    game.dropper_into_part(&part, &stack, &view, slot);
                     ControlFlow::Break(())
                 }
             });

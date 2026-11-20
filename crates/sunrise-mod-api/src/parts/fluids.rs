@@ -559,14 +559,11 @@ pub mod tests {
                 let second = move_resources(host, &source, &tank, |_| true, 300, Some(tx))?;
                 Ok(first + second)
             });
-            let owner = "doubler".to_owned();
-            assert_eq!(
-                moved,
-                Err(mod_vocab::__private::parts_installation::overanswered(
-                    owner
-                )),
-                "{liar}"
-            );
+            let error: Overanswered = moved.unwrap_err();
+            // Indexed answers cannot carry the provider; the boundary still logs it.
+            let owner = (at == TANK).then_some("doubler");
+            assert_eq!(error.owner.as_deref(), owner, "{liar}");
+            assert!(crate::parts::warned_about("doubler"));
             let held = [SOURCE, OTHER, TANK].map(|pos| world.held(pos));
             assert_eq!(held, [water(1000), water(1000), None], "{liar}");
         }

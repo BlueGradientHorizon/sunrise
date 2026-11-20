@@ -1,6 +1,6 @@
 use super::*;
 use crate::testing::FakeHost;
-use crate::{ItemResource, Tag};
+use crate::{Capability, ItemResource, Tag};
 use std::{cell::RefCell, rc::Rc};
 
 /// A mod's own resource, which the game knows nothing of.
@@ -632,7 +632,12 @@ fn a_maximum_transfer_propagates_nested_overanswers_and_aborts_the_tank() {
 
     // A caught error cannot commit the honest tank's write or fall through to the last sink.
     let refused = host.transaction(|host, tx| Ok::<_, ()>(to.insert(host, tx, stone, u32::MAX)));
-    assert_eq!(refused, Ok(Err(Overanswered { owner: None })));
+    assert_eq!(
+        refused,
+        Ok(Err(Overanswered {
+            owner: Some("test:liar".into())
+        }))
+    );
     assert_eq!(counts(&fake, B), [62]);
     assert_eq!(fake.journal.closed().last(), Some(&(1, true)));
 
@@ -717,5 +722,21 @@ fn maximum_batch_moves_without_splitting_a_quantized_handler() {
     assert_eq!(
         move_first_stacking(host, &from, &to, |_| true, u32::MAX, None),
         Ok(Some((HYDROGEN, u32::MAX)))
+    );
+}
+
+#[test]
+fn moves_accept_public_wrappers_without_registering_providers() {
+    let host: &mut dyn ServerHost = &mut FakeHost::new();
+    let source = RangedResourceHandler::of_single_index(
+        host,
+        Box::new(InfiniteResourceHandler::new(HYDROGEN)),
+        0,
+    )
+    .unwrap();
+    let sink = CombinedResourceHandler::new(host, vec![Box::new(VoidingResourceHandler)]);
+    assert_eq!(
+        move_resources(host, &source, &sink, |_| true, 17, None),
+        Ok(17)
     );
 }
