@@ -98,11 +98,11 @@ fn pack_files(world_tables: &Option<WorldTables>) -> sunrise_world::loot::PackOv
     }
 }
 include!(concat!(env!("OUT_DIR"), "/game_modules.rs"));
+pub use hot_paths::{HotPathsMods, note_hot_paths_listener_call};
 use sunrise_client_gameplay::frame_autotune;
 use sunrise_client_gameplay::occlusion_culling;
 use sunrise_gameplay::lan::idle as lan_idle;
 use sunrise_gameplay::{interaction_shapes, item_areas, mob_index, tick_profile};
-pub use hot_paths::{HotPathsMods, note_hot_paths_listener_call};
 
 mod host;
 mod native_hooks;
