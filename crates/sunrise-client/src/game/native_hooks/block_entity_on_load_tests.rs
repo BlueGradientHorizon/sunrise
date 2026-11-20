@@ -3,7 +3,10 @@ mod tests {
     use crate::game::native_entity_refs::tests::{
         fixture_root, run_fresh_cases, with_game, with_game_at,
     };
-    use mod_api::{BlockEntityOnLoadEvent, BlockEntityPart, Hooks, HostSide, ModEntry, Registrar};
+    use mod_api::{
+        Block, BlockEntityOnLoadEvent, BlockEntityPart, BlockEntityTicksEvent, BlocksEvent, Hooks,
+        Host, HostSide, ModEntry, Registrar, RegistrationContext,
+    };
     use std::sync::{Arc, Mutex};
     use sunrise_client::{
         chunk::Chunk,
@@ -16,6 +19,10 @@ mod tests {
     impl mod_api::BlockPart for Loaded {}
     #[mod_api::sunrise_part]
     impl BlockEntityPart for Loaded {
+        fn block_entity_ticks(&self, _: &dyn Host, event: &mut BlockEntityTicksEvent<'_>) {
+            event.ticks = true;
+        }
+
         fn block_entity_tick(
             &self,
             _: &mut dyn mod_api::ServerHost,
@@ -41,14 +48,22 @@ mod tests {
             self.0.lock().unwrap().push((pos[0], *count));
         }
     }
-    struct User(Log);
+    struct User(Log, &'static [&'static str]);
     #[mod_api::__subscriptions]
     impl Hooks for User {
-        fn register(&self, registrar: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
-            let kind = registrar.block_entity_type("holder").build();
+        fn register(&self, registrar: &mut dyn Registrar, _: &RegistrationContext) {
+            let kind = registrar.block_entity_type("holder").blocks(self.1).build();
             registrar
                 .block_entity_part(&kind, Loaded(self.0.clone()))
                 .unwrap();
+        }
+
+        fn blocks(&self, _: &RegistrationContext, event: &mut BlocksEvent<'_>) {
+            event.blocks.extend(
+                self.1
+                    .iter()
+                    .map(|&id| Block::new(id, "minecraft:stone").with_item(false)),
+            );
         }
     }
     fn holder(count: i32) -> BlockEntity {
@@ -63,17 +78,6 @@ mod tests {
             },
         )))
     }
-    fn saved(x: i32, count: i32) -> ((i32, i32, i32), BlockEntity) {
-        use sunrise_core::nbt::{Compound, Tag};
-        sunrise_client::save::decode_block_entity(&Tag::Compound(Compound::from([
-            ("id".into(), Tag::String("test:holder".into())),
-            ("x".into(), Tag::Int(x)),
-            ("y".into(), Tag::Int(64)),
-            ("z".into(), Tag::Int(1)),
-            ("count".into(), Tag::Int(count)),
-        ])))
-        .unwrap()
-    }
 
     #[test]
     #[ignore = "daily"]
@@ -84,28 +88,35 @@ mod tests {
             return;
         }
         let log = Log::default();
-        let mods: mod_api::Mods = vec![ModEntry::new("test", Box::new(User(log.clone())))].into();
+        let mods: mod_api::Mods = vec![ModEntry::new(
+            "test",
+            Box::new(User(log.clone(), &["test:holder_block"])),
+        )]
+        .into();
         mod_platform::testing::with_mods(mods.clone(), || {
             crate::game::api_values::install_parts(&mods).unwrap();
             let root =
                 crate::game::mods::content_root(&fixture_root(), &Default::default()).unwrap();
             with_game_at(root.prepared().to_path_buf(), |game| {
                 game.options.dedicated = Some(Vec::new());
-                game.world
-                    .chunks
-                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-                game.world
-                    .block_entities
-                    .load_chunk(vec![saved(1, 7), saved(2, 9)]);
-                game.fire_pending_block_entity_loads();
-                assert_eq!(*log.lock().unwrap(), [(2, 9), (1, 7)]);
-                game.world
-                    .block_entities
-                    .set_states(vec![sunrise_client::block_entities::Ticking::Yes]);
-                let tickers = game.world.block_entities.tickers(|_| 0);
-                for &(pos, _) in tickers.iter() {
-                    game.tick_mod_block_entity(pos);
+                let registry = game.pack.assets.registry;
+                let block = registry.default_state("test:holder_block").unwrap();
+                let mut chunk = Chunk::empty(0, 0);
+                for (x, count) in [(1, 7), (2, 9)] {
+                    chunk.set(x, 64, 1, block.0);
+                    chunk.block_entities.push(((x, 64, 1), holder(count)));
                 }
+                game.save
+                    .save(&[Arc::new(chunk)], registry, world_biomes!(game))
+                    .unwrap();
+
+                // The first resident instances come from a saved region, not from placement.
+                let mut chunk = game.save.load(0, 0, registry, world_biomes!(game)).unwrap();
+                game.world.install_chunk_block_entities(&mut chunk);
+                game.world.chunks.insert((0, 0), Arc::new(chunk));
+                assert!(game.streaming.set_forced(0, 0, true));
+                game.update_chunk_tickets();
+                game.tick_block_entities().unwrap();
                 assert_eq!(*log.lock().unwrap(), [(2, 9), (1, 7), (2, -1), (1, -1)]);
                 log.lock().unwrap().clear();
                 game.fire_pending_block_entity_loads();
@@ -148,7 +159,7 @@ mod tests {
         use sunrise_protocol::packets::play::SpawnInfo;
         let log = Log::default();
         mod_platform::testing::with_mods(
-            vec![ModEntry::new("test", Box::new(User(log.clone())))].into(),
+            vec![ModEntry::new("test", Box::new(User(log.clone(), &[])))].into(),
             || {
                 with_client_game(|game| {
                     mod_api::__private::resolve_block_entity_types(["test:holder"], |_| Some(()))
