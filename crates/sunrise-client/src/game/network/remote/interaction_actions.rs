@@ -582,3 +582,95 @@ impl Game<'_> {
         }
     }
 }
+
+impl Game<'_> {
+    /// `Entity.isColliding(pos, state)` for the local player: the state's own
+    /// collision shape, at the player's pose, against the player's box.
+    pub(super) fn block_meets_player(&self, pos: [i32; 3], state: BlockStateId) -> bool {
+        let Some(player) = self.player.as_ref() else {
+            return false;
+        };
+        let entity = player.bounds();
+        let context = sunrise_world::collision_context::CollisionContext::for_entity(
+            sunrise_world::collision_context::CollisionEntity {
+                identity: sunrise_world::entity_obstruction::EntityIdentity(0),
+                kind: sunrise_world::collision_context::EntityContextKind::Player,
+                y: player.position.y,
+                descending: player.shift_key_down,
+                main_hand: None,
+            },
+            false,
+        );
+        let mut scene = sunrise_client::collisions::SceneCollisions {
+            world: &self.world,
+            binding: self.collision,
+            subject: None,
+        };
+        let at = sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
+        match self
+            .collision
+            .collision_shape_with_context(&mut scene, state, at, &context)
+        {
+            Ok(shape) => shape_meets(&shape, pos, entity),
+            Err(_) => false,
+        }
+    }
+
+    /// Whether a main-hand right click with `held` would end on the block hit, for the gameplay
+    /// guide: what `remote_block_reacts` answers on its dry level, by the templates' rules alone,
+    /// so looking asks no mod's placement or survival hook.
+    pub(in crate::game) fn block_takes_click(
+        &mut self,
+        hit: &super::super::Hit,
+        held: Option<&ItemStack>,
+    ) -> bool {
+        self.remote_block_reacts(hit, held, false)
+            .0
+            .consumes_action()
+    }
+
+    /// `InteractionResult.CONSUME` for this click: the block keeps it and does nothing, so the
+    /// item in hand never gets it either (an empty flower pot, a pressed button). For the
+    /// guide's look, as `block_takes_click`.
+    pub(in crate::game) fn block_swallows_click(
+        &mut self,
+        hit: &super::super::Hit,
+        held: Option<&ItemStack>,
+    ) -> bool {
+        matches!(
+            self.remote_block_reacts(hit, held, false).0,
+            InteractionResult::Consume
+        )
+    }
+
+    /// The idle controller guide cannot know what these Parts will decide on a click.
+    pub(in crate::game) fn can_hint_block_placement(stack: &ItemStack) -> bool {
+        use mod_api::{__private::item_listens, HookId};
+        !item_listens(HookId::PlacementContext, &stack.item)
+            && !item_listens(HookId::MustSurvive, &stack.item)
+    }
+
+    /// Run BlockItem.place on a disposable level for a click: where it placed
+    /// and the blocks it set. The real level supplies collision shapes and
+    /// building-blocking entities; random draws, scheduled ticks and events
+    /// stay in the preview. `ItemStack.useOn` runs it in adventure mode only
+    /// when the used stack's `can_place_on` names the clicked block.
+    pub(in crate::game) fn remote_can_place(
+        &mut self,
+        hit: &super::super::Hit,
+        stack: &ItemStack,
+    ) -> Option<DryPlace> {
+        self.remote_place_preview(hit, stack, true)
+    }
+
+    /// Whether a click would place `stack` (the controller guide's look): as
+    /// `remote_can_place`, by the templates' rules alone, so looking asks no
+    /// mod's placement or survival hook.
+    pub(in crate::game) fn remote_would_place(
+        &mut self,
+        hit: &super::super::Hit,
+        stack: &ItemStack,
+    ) -> bool {
+        self.remote_place_preview(hit, stack, false).is_some()
+    }
+}
