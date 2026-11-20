@@ -2234,6 +2234,28 @@ capabilities = ["registries"]
     }
 
     #[test]
+    fn a_declared_friction_is_any_finite_number() {
+        let load = |value: &str| {
+            let file =
+                format!(r#"{{"template":"minecraft:stone","properties":{{"friction":{value}}}}}"#);
+            smod(
+                "friction-range",
+                MANIFEST_TEXT,
+                &[("data/ruby/sunrise/block/a.json", file.as_bytes())],
+            )
+        };
+        for (value, expected) in [("3.0", 3.0), ("-0.5", -0.5)] {
+            let content = load(value).unwrap();
+            assert_eq!(content.blocks[0].properties.friction, Some(expected));
+        }
+        // JSON has no NaN or infinity: a literal is a parse error, and a number past f32's range
+        // becomes infinity and is refused by the check.
+        assert!(load("NaN").is_err());
+        let error = load("1e39").unwrap_err();
+        assert!(error.contains("are numbers"), "{error}");
+    }
+
+    #[test]
     fn state_light_checks_ranges_selectors_and_native_declarations() {
         let load = |name: &str, table: &str| {
             let declaration = format!(

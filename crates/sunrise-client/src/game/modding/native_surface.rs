@@ -506,30 +506,87 @@ mod tests {
                 .set(floor.x, floor.y, floor.z + 1, material)
                 .unwrap();
             let level = game.level_ref(game.native_lifecycle.epoch().unwrap(), game.dim.key());
-            // The player's travel, at the two coefficients it has values for.
+            // The player's ground travel moves 0.2 along x with input (1, 0, 0) and a walking speed
+            // of 0.1F. Travel clamps the coefficient to 0..=1 (`computeModifiedFriction`) before
+            // it uses it, so the speed is scaled by 0.21600002F / friction³ above 0.6 of that
+            // clamped value, the distance is 0.2 + that speed, and the velocity after is the
+            // distance times (friction × 0.91F). The coefficient the part answered is read as given.
             let mut ice_travel = None;
-            for (block, player_friction, answers) in [
+            for (block, player_friction, expected_distance, expected_velocity, answers) in [
                 // No part: the block's own value.
-                ("minecraft:stone", 0.6, 0),
-                ("minecraft:ice", 0.98, 0),
+                (
+                    "minecraft:stone",
+                    0.6_f32,
+                    0.3000000014901163_f64,
+                    0.16380001983940612_f64,
+                    0,
+                ),
+                (
+                    "minecraft:ice",
+                    0.98_f32,
+                    0.2229496210813524_f64,
+                    0.19882648232869793_f64,
+                    0,
+                ),
                 // Glass queries the material at its own position, only for the player.
-                ("minecraft:glass", 0.98, 2),
-                ("minecraft:white_wool", 0.98, 1),
+                (
+                    "minecraft:glass",
+                    0.98_f32,
+                    0.2229496210813524_f64,
+                    0.19882648232869793_f64,
+                    2,
+                ),
+                (
+                    "minecraft:white_wool",
+                    0.98_f32,
+                    0.2229496210813524_f64,
+                    0.19882648232869793_f64,
+                    1,
+                ),
+                // A finite answer is used as given, whatever its size or sign.
+                (
+                    "minecraft:orange_wool",
+                    1.5_f32,
+                    0.221600002422929_f64,
+                    0.2016560080165566_f64,
+                    1,
+                ),
+                (
+                    "minecraft:blue_wool",
+                    3.0_f32,
+                    0.221600002422929_f64,
+                    0.2016560080165566_f64,
+                    1,
+                ),
+                (
+                    "minecraft:black_wool",
+                    -0.5_f32,
+                    0.3000000014901163_f64,
+                    0.0_f64,
+                    1,
+                ),
                 // A non-finite answer is dropped for the block's own.
-                ("minecraft:red_wool", 0.6, 1),
-                ("minecraft:green_wool", 0.6, 1),
+                (
+                    "minecraft:red_wool",
+                    0.6_f32,
+                    0.3000000014901163_f64,
+                    0.16380001983940612_f64,
+                    1,
+                ),
+                (
+                    "minecraft:green_wool",
+                    0.6_f32,
+                    0.3000000014901163_f64,
+                    0.16380001983940612_f64,
+                    1,
+                ),
             ] {
                 let state = registry.default_state(block).unwrap();
                 game.world.set(floor.x, floor.y, floor.z, state).unwrap();
                 let (coefficient, distance, velocity, reads) = player(game);
                 assert_eq!(coefficient, player_friction, "{block}");
-                let (speed, dragged) = if player_friction > 0.9 {
-                    (0.2229493, 0.1988262)
-                } else {
-                    (0.3, 0.1638)
-                };
-                assert!((distance - speed).abs() < 1.0e-6, "{block}: {distance}");
-                assert!((velocity - dragged).abs() < 1.0e-6, "{block}: {velocity}");
+                assert_eq!(distance.to_bits(), expected_distance.to_bits(), "{block}");
+                assert_eq!(velocity.to_bits(), expected_velocity.to_bits(), "{block}");
                 assert_eq!(reads, answers, "part answers per travel tick: {block}");
                 if block == "minecraft:ice" {
                     ice_travel = Some((distance, velocity));
