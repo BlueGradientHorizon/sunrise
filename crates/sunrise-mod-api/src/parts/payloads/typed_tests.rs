@@ -175,6 +175,12 @@ impl IPayloadContext for Unreached {
     ) -> Result<u32, PayloadSendError> {
         unreachable!()
     }
+    fn finish_configuration_task(
+        &mut self,
+        _: crate::ConfigurationTaskRef,
+    ) -> Result<(), crate::ConfigurationTaskError> {
+        Err(crate::ConfigurationTaskError::WrongContext)
+    }
     fn disconnect(&mut self, _: Text) {
         unreachable!()
     }

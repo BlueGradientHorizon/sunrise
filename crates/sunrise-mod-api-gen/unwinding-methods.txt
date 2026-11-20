@@ -183,8 +183,6 @@ config::tick_times
 config::translate
 config::world_data_files
 config::world_dir
-configuration_tasks::configuration_fail
-configuration_tasks::configuration_finish
 configuration_tasks::configuration_has_channel
 configuration_tasks::configuration_send_payload
 data_maps::data_map_entries

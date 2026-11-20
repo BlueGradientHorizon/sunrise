@@ -624,9 +624,14 @@ pub(super) fn emit<'a>(
                 ty.clone()
             };
             let (field, scalar) = lifetimes.field(&field_ty);
+            // Owned configuration tasks cannot be snapshotted. The connection's
+            // registration transaction owns the entire staging sink.
+            let task_registration =
+                event_type == "RegisterConfigurationTasksEvent" && name == "registration";
             if scalar {
                 rollback.push((name.clone(), false));
-            } else if matches!(&field_ty, Type::Reference(reference) if reference.mutability.is_some())
+            } else if !task_registration
+                && matches!(&field_ty, Type::Reference(reference) if reference.mutability.is_some())
             {
                 if matches!(&field_ty, Type::Reference(reference) if matches!(*reference.elem, Type::TraitObject(_)))
                 {
@@ -649,7 +654,11 @@ pub(super) fn emit<'a>(
             let visibility = match append {
                 Some((RegistrationAppend::Register, _)) => "",
                 Some((RegistrationAppend::Custom, _)) => "pub(super)",
-                None if event_type == "ApplyEffectTickEvent" && name == "changes" => "pub(super)",
+                None if task_registration
+                    || (event_type == "ApplyEffectTickEvent" && name == "changes") =>
+                {
+                    "pub(super)"
+                }
                 None => "pub",
             };
             fields.push_str(&format!(
