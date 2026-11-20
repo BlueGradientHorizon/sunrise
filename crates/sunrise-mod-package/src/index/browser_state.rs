@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fs;
 use std::io::{ErrorKind, Read};
-use std::path::Path;
+use std::path::{Component, Path};
 
 pub const MANIFEST: &str = "mod-browser.json";
 // There is at most one in-flight install in a home: all browser writers share the home lock.
@@ -82,11 +82,7 @@ fn reconcile_locked(home: &Path) -> Result<(), String> {
         // The journal settles only one row it can name: the project's single row, or none, and no
         // other entry claiming the same file. Anything else keeps the journal and refuses, so a
         // row edited since, or a second claim, is never overwritten or lost.
-        let mut rows = list.entries.iter().filter(|e| owned_by(e, &pending.id));
-        let current = rows.next();
-        if rows.next().is_some() {
-            return Err(error(&"several entries name this project"));
-        }
+        let current = list.single(&pending.id)?.map(|i| &list.entries[i]);
         if list.taken_by(&pending.file, &pending.id).is_some() {
             return Err(error(&"another entry claims its file"));
         }
@@ -117,25 +113,27 @@ fn owned_by(entry: &Value, id: &str) -> bool {
     entry["source"] == "sunrise" && entry["project"] == id
 }
 
-/// Whether two manifest paths, relative to the home, name the same file on this host: the same
-/// components after `.` ones, with `\` a separator and case ignored on Windows.
-fn same_file(a: &str, b: &str) -> bool {
-    let parts = |path: &str| -> Vec<String> {
-        Path::new(path)
-            .components()
-            .filter(|c| !matches!(c, std::path::Component::CurDir))
-            .map(|c| c.as_os_str().to_string_lossy().into_owned())
-            .collect()
-    };
-    let (a, b) = (parts(a), parts(b));
-    a.len() == b.len()
-        && a.iter().zip(&b).all(|(a, b)| {
-            if cfg!(windows) {
-                a.eq_ignore_ascii_case(b)
-            } else {
-                a == b
+/// A manifest file claim as a key that equal paths share: its components relative to the
+/// home, `.` ones left out, and on Windows with `\` a separator, case ignored and trailing dots
+/// and spaces dropped, as Win32 paths resolve them. `None` for a claim that can't be placed
+/// without the filesystem (absolute, or with `..`), which may alias any file.
+fn claim_key(path: &str) -> Option<Vec<String>> {
+    let mut key = Vec::new();
+    for component in Path::new(path).components() {
+        match component {
+            Component::CurDir => {}
+            Component::Normal(name) => {
+                let name = name.to_string_lossy();
+                key.push(if cfg!(windows) {
+                    name.trim_end_matches(['.', ' ']).to_ascii_lowercase()
+                } else {
+                    name.into_owned()
+                });
             }
-        })
+            _ => return None,
+        }
+    }
+    Some(key)
 }
 
 /// `mod-browser.json`, kept as JSON values so the launcher's entries this
@@ -192,7 +190,7 @@ impl Installed {
         let pending = Pending {
             id: id.to_owned(),
             file: content_file(id),
-            old: self.position(id).map(|i| self.entries[i].clone()),
+            old: self.single(id)?.map(|i| self.entries[i].clone()),
             new: entry,
         };
         let target = home.join(&pending.file);
@@ -213,15 +211,28 @@ impl Installed {
         self.entries.iter().position(|e| owned_by(e, id))
     }
 
-    /// The title of another entry that owns `file`, however its path is spelled.
+    /// The registry's one entry for project `id`, if any. Several are refused: which one holds
+    /// later edits is unknown, and replacing them would lose the others.
+    pub fn single(&self, id: &str) -> Result<Option<usize>, String> {
+        let mut rows = (0..self.entries.len()).filter(|&i| owned_by(&self.entries[i], id));
+        match (rows.next(), rows.next()) {
+            (_, Some(_)) => Err(format!("several entries in {MANIFEST} name {id}")),
+            (first, None) => Ok(first),
+        }
+    }
+
+    /// The title of another entry that owns `file` however its path is spelled, or whose path
+    /// can't be placed ([`claim_key`]) and so may own it.
     pub fn taken_by(&self, file: &str, id: &str) -> Option<String> {
+        let key = claim_key(file);
         self.entries
             .iter()
             .find(|e| {
-                e["file"]
-                    .as_str()
-                    .is_some_and(|other| same_file(other, file))
-                    && !owned_by(e, id)
+                !owned_by(e, id)
+                    && e["file"].as_str().is_some_and(|other| {
+                        let other = claim_key(other);
+                        other.is_none() || other == key
+                    })
             })
             .map(|e| e["title"].as_str().unwrap_or("another mod").to_owned())
     }
@@ -265,11 +276,7 @@ mod tests {
         };
         let old = entry("1", b"old");
         let new = entry("2", b"new");
-        for (bytes, current, expected) in [
-            (b"new", &old, &new),
-            (b"old", &old, &old),
-            (b"bad", &old, &old),
-        ] {
+        for (bytes, expected) in [(b"new", &new), (b"old", &old), (b"bad", &old)] {
             let dir = tempfile::tempdir().unwrap();
             let home = dir.path();
             let guard = lock_home(home).unwrap();
@@ -292,13 +299,6 @@ mod tests {
             assert_eq!(fs::read(&target).unwrap(), b"new");
             fs::remove_dir(&manifest).unwrap();
             fs::rename(&backup, &manifest).unwrap();
-            if current != &old {
-                Installed {
-                    entries: vec![current.clone()],
-                }
-                .save(home)
-                .unwrap();
-            }
             if bytes != b"new" {
                 // Also model a rename that did not reach disk, and bytes neither row expects.
                 durable::write(&target, bytes).unwrap();
@@ -328,15 +328,20 @@ mod tests {
         edited["dependency"] = Value::Bool(true);
         let mut duplicate = old.clone();
         duplicate["title"] = "Ruby, renamed later".into();
-        let mut other = row("1", b"other", "./sunrise-mods//ruby.smod");
-        other["project"] = "gem".into();
+        let claim = |file: &str| {
+            let mut other = row("1", b"other", file);
+            other["project"] = "gem".into();
+            other
+        };
         for manifest_rows in [
             // The project's row was edited after the install began.
             vec![edited.clone()],
             // Two rows name the project; the second carries a later edit.
             vec![old.clone(), duplicate.clone()],
-            // Another project claims the same file under another spelling.
-            vec![old.clone(), other.clone()],
+            // Another project claims the same file under another spelling, or by a path only
+            // the filesystem can place.
+            vec![old.clone(), claim("./sunrise-mods//ruby.smod")],
+            vec![old.clone(), claim("sunrise-mods/../sunrise-mods/ruby.smod")],
         ] {
             let dir = tempfile::tempdir().unwrap();
             let home = dir.path();
@@ -360,6 +365,55 @@ mod tests {
             assert_eq!(fs::read(home.join(PENDING)).unwrap(), journal);
             assert_eq!(fs::read(home.join(MANIFEST)).unwrap(), before);
         }
+    }
+
+    #[test]
+    fn file_claims_compare_as_the_host_resolves_them() {
+        let key = |path: &str| claim_key(path);
+        assert_eq!(
+            key("./sunrise-mods//ruby.smod"),
+            key("sunrise-mods/ruby.smod")
+        );
+        assert_ne!(key("sunrise-mods/ruby.smod"), key("sunrise-mods/gem.smod"));
+        assert_eq!(key("sunrise-mods/../sunrise-mods/ruby.smod"), None);
+        assert_eq!(key("/sunrise-mods/ruby.smod"), None);
+        // Win32 paths ignore case and trailing dots and spaces, and take `\` as a separator.
+        for alias in [
+            "sunrise-mods\\ruby.smod",
+            "SUNRISE-MODS/Ruby.smod",
+            "sunrise-mods/ruby.smod. ",
+        ] {
+            assert_eq!(
+                key(alias) == key("sunrise-mods/ruby.smod"),
+                cfg!(windows),
+                "{alias}"
+            );
+        }
+    }
+
+    #[test]
+    fn publication_refuses_several_rows_of_the_project_before_writing() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path();
+        let _guard = lock_home(home).unwrap();
+        let file = content_file("ruby");
+        fs::create_dir(home.join(crate::mod_list::DIR)).unwrap();
+        fs::write(home.join(&file), b"old").unwrap();
+        let download = home.join("download.part");
+        fs::write(&download, b"new").unwrap();
+        let row = |title: &str| serde_json::json!({ "source": "sunrise", "project": "ruby", "file": file, "title": title });
+        let mut list = Installed {
+            entries: vec![row("Ruby"), row("Ruby, renamed later")],
+        };
+        list.save(home).unwrap();
+        let before = fs::read(home.join(MANIFEST)).unwrap();
+        assert!(
+            list.publish(home, "ruby", &download, row("Ruby 2"))
+                .is_err()
+        );
+        assert_eq!(fs::read(home.join(MANIFEST)).unwrap(), before);
+        assert_eq!(fs::read(home.join(&file)).unwrap(), b"old");
+        assert!(!home.join(PENDING).exists());
     }
 
     #[test]
