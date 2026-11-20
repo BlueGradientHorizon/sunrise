@@ -65,6 +65,38 @@ fn network_quota_counts_heap_not_wire_bytes() {
 }
 
 #[test]
+fn modified_utf8_keys_charge_decoded_units_and_validate_after_spilling() {
+    // The eighth key unit uses an accepted overlong encoding; the value has a lone surrogate.
+    let mut bytes = vec![10, 8, 0, 9];
+    bytes.extend(b"abcdefg");
+    bytes.extend([0xc1, 0xa8, 0, 4, 0xed, 0xa0, 0x80, b'b', 0]);
+    let tag = Tag::compound([(
+        "abcdefgh",
+        Tag::String(JavaString::from(vec![0xd800, u16::from(b'b')])),
+    )]);
+    // 48 compound + (28 + 16) key + 36 entry + (36 + 4) string.
+    let quota = 168;
+    assert_eq!(
+        Tag::from_network_bytes(&bytes, Some(quota)).unwrap(),
+        (tag, bytes.len())
+    );
+    assert_eq!(
+        Tag::from_network_bytes(&bytes, Some(quota - 1))
+            .unwrap_err()
+            .reason,
+        "heap quota exceeded"
+    );
+    bytes[12] = b'h';
+    assert_eq!(
+        Tag::from_network_bytes(&bytes, Some(quota)).unwrap_err(),
+        Error {
+            offset: 13,
+            reason: "invalid Java modified UTF-8",
+        }
+    );
+}
+
+#[test]
 fn network_depth_512_and_malformed_inputs() {
     for compound in [false, true] {
         let mut tag = Tag::Int(1);

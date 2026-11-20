@@ -2,9 +2,7 @@
 use crate::{
     hashed_key::HashedKey,
     java_hash_map::{IntoIter, Iter, JavaHashMap, JavaKey},
-    java_string::{
-        INLINE_CAPACITY, Units, java_string_hash, java_string_hash_ascii, utf16_with_hash,
-    },
+    java_string::{INLINE_CAPACITY, Units, ascii_with_hash, java_string_hash, utf16_with_hash},
 };
 use std::{
     cmp::Ordering,
@@ -140,15 +138,19 @@ impl JavaString {
     }
     /// Encoded byte length for Java's `DataOutput.writeUTF`, including each surrogate separately.
     pub fn modified_utf8_len(&self) -> usize {
-        self.units()
-            .iter()
-            .map(|&unit| match unit {
-                1..=127 => 1,
-                0..=2047 => 2,
-                _ => 3,
-            })
-            .sum()
+        modified_utf8_len(self.units())
     }
+}
+
+fn modified_utf8_len(units: &[u16]) -> usize {
+    units
+        .iter()
+        .map(|&unit| match unit {
+            1..=127 => 1,
+            0..=2047 => 2,
+            _ => 3,
+        })
+        .sum()
 }
 
 /// Bytes reserved on the heap by this NBT string, excluding allocator overhead.
@@ -791,21 +793,37 @@ impl<'a> Reader<'a, '_> {
         }
         Ok(count)
     }
-    fn string(&mut self) -> Result<JavaString, Error> {
+    fn string<const ACCOUNT_HEAP: bool>(&mut self) -> Result<JavaString, Error> {
         let len = u16::from_be_bytes(self.number()?) as usize;
         let bytes = self.take(len)?;
-        modified_utf8(bytes).ok_or_else(|| self.error("invalid Java modified UTF-8"))
+        if bytes.is_ascii() {
+            if ACCOUNT_HEAP {
+                self.charge(2 * len as u64)?;
+            }
+            return Ok(bytes.iter().copied().map(u16::from).collect());
+        }
+        let text = modified_utf8_non_ascii(bytes)
+            .ok_or_else(|| self.error("invalid Java modified UTF-8"))?;
+        if ACCOUNT_HEAP && self.heap.is_some() {
+            self.charge(2 * text.units().len() as u64)?;
+        }
+        Ok(text)
     }
-    /// Decode a compound key and compute its `String.hashCode` separately.
+    /// Decode and charge for a compound key, keeping its `String.hashCode` for insertion.
     fn key(&mut self) -> Result<HashedKey<JavaString>, Error> {
         let len = u16::from_be_bytes(self.number()?) as usize;
         let bytes = self.take(len)?;
         if bytes.is_ascii() {
-            let hash = java_string_hash_ascii(bytes);
-            let units = bytes.iter().copied().map(u16::from).collect();
-            return Ok(HashedKey::from_parts(hash, units));
+            // ASCII has one UTF-16 unit per byte, regardless of the storage used below.
+            self.charge(28 + 2 * len as u64)?;
+            let (units, hash) = ascii_with_hash(bytes);
+            return Ok(HashedKey::from_parts(hash, JavaString(units)));
         }
-        let text = modified_utf8(bytes).ok_or_else(|| self.error("invalid Java modified UTF-8"))?;
+        let text = modified_utf8_non_ascii(bytes)
+            .ok_or_else(|| self.error("invalid Java modified UTF-8"))?;
+        if self.heap.is_some() {
+            self.charge(28 + 2 * text.units().len() as u64)?;
+        }
         Ok(HashedKey::from_parts(text.java_hash(), text))
     }
     /// `StringTag.skipString`: vanilla skips a file root's name unread, so a
@@ -876,12 +894,7 @@ impl<'a> Reader<'a, '_> {
                 self.charge(len as u64)?;
                 Tag::ByteArray(self.take(len)?.to_vec())
             }
-            8 => {
-                let value = self.string()?;
-                self.charge(2 * value.units().len() as u64)?;
-                Tag::String(value)
-            }
-
+            8 => Tag::String(self.string::<true>()?),
             11 => {
                 let len = self.count(4)?;
                 self.charge(4 * len as u64)?;
@@ -929,7 +942,6 @@ impl<'a> Reader<'a, '_> {
                 break;
             }
             let name = self.key()?;
-            self.charge(28 + 2 * name.text().units().len() as u64)?;
             if self.strict && keyed::contains_key(&map, &name) {
                 return Err(self.error("duplicate key"));
             }
@@ -1040,7 +1052,7 @@ impl<'a> Reader<'a, '_> {
                 let len = self.count(width)?;
                 self.take(len * width)?;
             }
-            8 => drop(self.string()?),
+            8 => drop(self.string::<false>()?),
             9 => {
                 let element_id = self.byte()?;
                 let len = self.count(0)?;
@@ -1057,7 +1069,7 @@ impl<'a> Reader<'a, '_> {
                 if id == 0 {
                     break;
                 }
-                self.string()?;
+                self.string::<false>()?;
                 self.skip(id, depth + 1)?;
             },
             _ => return Err(self.error("unknown tag type")),
@@ -1147,39 +1159,54 @@ fn is_key(name: &JavaString, key: &str) -> bool {
     name.units().iter().copied().eq(key.encode_utf16())
 }
 
+/// Consume one UTF-16 unit, including overlong forms accepted by `DataInput.readUTF`.
+#[inline]
+fn modified_utf8_unit(bytes: &mut &[u8]) -> Option<u16> {
+    let (&b, rest) = bytes.split_first()?;
+    let (unit, rest) = match (b, rest) {
+        (0..=127, rest) => (u16::from(b), rest),
+        (192..=223, [c @ 128..=191, rest @ ..]) => {
+            ((u16::from(b & 31) << 6) | u16::from(c & 63), rest)
+        }
+        (224..=239, [c @ 128..=191, d @ 128..=191, rest @ ..]) => (
+            (u16::from(b & 15) << 12) | (u16::from(c & 63) << 6) | u16::from(d & 63),
+            rest,
+        ),
+        _ => return None,
+    };
+    *bytes = rest;
+    Some(unit)
+}
+
 /// `DataInput.readUTF`'s decoding, accepting its overlong sequences; `None`
 /// for bytes that aren't modified UTF-8.
 fn modified_utf8(bytes: &[u8]) -> Option<JavaString> {
     if bytes.is_ascii() {
         return Some(bytes.iter().copied().map(u16::from).collect());
     }
-    let len = bytes.len();
-    let mut i = 0;
-    std::iter::from_fn(|| {
-        let &b = bytes.get(i)?;
-        let (unit, size) = match b {
-            0..=127 => (u16::from(b), 1),
-            192..=223 if i + 1 < len && bytes[i + 1] & 0xc0 == 0x80 => {
-                ((u16::from(b & 31) << 6) | u16::from(bytes[i + 1] & 63), 2)
-            }
-            224..=239
-                if i + 2 < len && bytes[i + 1] & 0xc0 == 0x80 && bytes[i + 2] & 0xc0 == 0x80 =>
-            {
-                (
-                    (u16::from(b & 15) << 12)
-                        | (u16::from(bytes[i + 1] & 63) << 6)
-                        | u16::from(bytes[i + 2] & 63),
-                    3,
-                )
-            }
-            _ => return Some(Err(())),
-        };
-        // Match DataInput.readUTF, including accepted overlong sequences.
-        i += size;
-        Some(Ok(unit))
-    })
-    .collect::<Result<JavaString, ()>>()
-    .ok()
+    modified_utf8_non_ascii(bytes)
+}
+
+fn modified_utf8_non_ascii(mut bytes: &[u8]) -> Option<JavaString> {
+    let mut inline = [0; INLINE_CAPACITY];
+    for (i, unit) in inline.iter_mut().enumerate() {
+        if bytes.is_empty() {
+            return Some(JavaString(Units::inline(inline, i)));
+        }
+        *unit = modified_utf8_unit(&mut bytes)?;
+    }
+    if bytes.is_empty() {
+        return Some(JavaString(Units::inline(inline, INLINE_CAPACITY)));
+    }
+    let next = modified_utf8_unit(&mut bytes)?;
+    // Each unconsumed byte emits at most one unit.
+    let mut units = Vec::with_capacity(INLINE_CAPACITY + 1 + bytes.len());
+    units.extend(inline);
+    units.push(next);
+    while !bytes.is_empty() {
+        units.push(modified_utf8_unit(&mut bytes)?);
+    }
+    Some(JavaString(Units::Heap(units)))
 }
 
 /// Read a file root (type, modified-UTF name, payload), returning bytes consumed.
@@ -1351,7 +1378,8 @@ impl Writer {
         self.put(&len.to_be_bytes())
     }
     fn string(&mut self, string: &JavaString) -> Result<(), Error> {
-        let Ok(len) = u16::try_from(string.modified_utf8_len()) else {
+        let units = string.units();
+        let Ok(len) = u16::try_from(modified_utf8_len(units)) else {
             if self.empty_long_strings {
                 return self.put(&0u16.to_be_bytes());
             }
@@ -1359,13 +1387,13 @@ impl Writer {
         };
         self.put(&len.to_be_bytes())?;
         // One byte per unit (most strings): written at once while they fit.
-        if usize::from(len) == string.units().len()
+        if usize::from(len) == units.len()
             && usize::from(len) <= self.limits.max_bytes.saturating_sub(self.bytes.len())
         {
-            self.bytes.extend(string.units().iter().map(|&c| c as u8));
+            self.bytes.extend(units.iter().map(|&c| c as u8));
             return Ok(());
         }
-        for &c in string.units() {
+        for &c in units {
             match c {
                 1..=127 => self.put(&[c as u8])?,
                 0..=2047 => self.put(&[0xc0 | (c >> 6) as u8, 0x80 | (c & 63) as u8])?,

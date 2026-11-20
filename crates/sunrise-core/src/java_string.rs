@@ -24,11 +24,10 @@ pub fn java_string_hash(units: &[u16]) -> i32 {
     fold(0, units) as i32
 }
 
-/// The UTF-16 units of `text` and their `String.hashCode`, made together. Short strings
-/// stay inline; longer ASCII text (each byte a unit) uses a vector widen and a vector hash.
-pub(crate) fn utf16_with_hash(text: &str) -> (Units, i32) {
-    let bytes = text.as_bytes();
-    if bytes.len() <= INLINE_CAPACITY && bytes.is_ascii() {
+/// Widen bytes already known to be ASCII, folding inline keys in the same pass.
+#[inline]
+pub(crate) fn ascii_with_hash(bytes: &[u8]) -> (Units, i32) {
+    if bytes.len() <= INLINE_CAPACITY {
         let mut units = [0; INLINE_CAPACITY];
         let mut hash = 0i32;
         for (out, &byte) in units.iter_mut().zip(bytes) {
@@ -37,9 +36,16 @@ pub(crate) fn utf16_with_hash(text: &str) -> (Units, i32) {
         }
         return (Units::inline(units, bytes.len()), hash);
     }
+    let units = bytes.iter().copied().map(u16::from).collect();
+    (Units::Heap(units), java_string_hash_ascii(bytes))
+}
+
+/// The UTF-16 units of `text` and their `String.hashCode`, made together. Short strings
+/// stay inline; longer ASCII text (each byte a unit) uses a vector widen and a vector hash.
+pub(crate) fn utf16_with_hash(text: &str) -> (Units, i32) {
+    let bytes = text.as_bytes();
     if bytes.is_ascii() {
-        let units = bytes.iter().map(|&b| u16::from(b)).collect();
-        return (units, java_string_hash_ascii(bytes));
+        return ascii_with_hash(bytes);
     }
     // At most three UTF-8 bytes per UTF-16 unit, so only these inputs can fit inline.
     if bytes.len() <= 3 * INLINE_CAPACITY {
