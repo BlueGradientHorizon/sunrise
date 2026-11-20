@@ -3057,8 +3057,8 @@ mod tests {
         assert!(fly_into_wall_damage(0.01, 0.0) < 0.0);
     }
 
-    use super::*;
     use super::environment::fly_into_wall_damage;
+    use super::*;
 
     /// `LocalPlayer.isHorizontalCollisionMinor`: sliding along a wall at a
     /// small angle to the input is minor; a sideways slide is not.
