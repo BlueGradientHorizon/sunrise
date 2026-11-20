@@ -276,6 +276,7 @@ mod explosion_start;
 mod extend_poi_types;
 mod extract_block_screen_effect;
 mod falling_tick;
+mod farmland_trample;
 mod fence_gate_in_wall;
 mod fence_gate_in_wall_tests;
 mod finalize_spawn;

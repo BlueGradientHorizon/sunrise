@@ -842,6 +842,11 @@ mod lan_quiet;
 mod lan_screen;
 #[path = "game/network/lan_stations.rs"]
 mod lan_stations;
+#[path = "game/network/lan_trade_decisions.rs"]
+mod lan_trade_decisions;
+#[cfg(test)]
+#[path = "game/network/lan_trade_decisions_tests.rs"]
+mod lan_trade_decisions_tests;
 #[path = "game/network/lan_trading.rs"]
 mod lan_trading;
 #[path = "game/network/lan_vehicles.rs"]
@@ -2323,6 +2328,8 @@ mod xp_repair_ratio_tests;
 mod zombie_reinforcements;
 #[path = "game/mobs/zombie_villagers.rs"]
 mod zombie_villagers;
+pub use hot_paths::{HotPathsMods, note_hot_paths_listener_call};
+
 use event_loop::EventLoopCtl;
 use hand::interact_location;
 pub(crate) use hit::Hit;
@@ -6309,7 +6316,14 @@ impl Game<'_> {
                     pos,
                     state,
                     kind: "push_entities_up",
-                } => self.push_entities_up(pos, state),
+                } => {
+                    self.push_entities_up(
+                        pos,
+                        state,
+                        self.world.block(pos.x, pos.y, pos.z),
+                        |_| true,
+                    );
+                }
                 LevelEvent::GrowTree { .. }
                 | LevelEvent::PlaceFeature { .. }
                 | LevelEvent::BlockEvent { .. } => {}
