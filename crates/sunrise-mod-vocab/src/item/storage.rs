@@ -98,10 +98,39 @@ pub trait ItemStorage {
         resource: &ItemResource,
         amount: u64,
     ) -> u64;
-    /// Visits occupied entries in provider order, keeping duplicate kinds and their individual
-    /// amounts. For a container, this is the order of the slots the queried side reaches.
-    /// `ControlFlow::Break(())` ends the visit successfully before another entry is read.
-    /// Clone a kind to keep it, and wait for the visit to succeed before making any writes.
+    /// Visits occupied entries in provider order. For a container, this is the order of the
+    /// slots exposed on the queried side, not necessarily physical slot order.
+    ///
+    /// Providers skip empty entries and report repeated kinds separately, each with its own
+    /// amount. Read entries as needed: `ControlFlow::Continue(())` asks for the next entry;
+    /// `ControlFlow::Break(())` returns `Ok(())` without reading another. Exhaustion also
+    /// returns `Ok(())`; a read failure returns `Err`.
+    ///
+    /// The provider may hold a read borrow for the duration of the visit. Use each kind only
+    /// within its callback or clone it to keep it. Do not re-enter the provider or write from
+    /// the callback: wait until the visit returns `Ok(())`.
+    ///
+    /// ```
+    /// use mod_api::{ItemResource, ItemStorage, ServerHost, StorageError};
+    /// use std::ops::ControlFlow;
+    ///
+    /// fn first_at_least(
+    ///     storage: &dyn ItemStorage,
+    ///     host: &mut dyn ServerHost,
+    ///     minimum: u64,
+    /// ) -> Result<Option<(ItemResource, u64)>, StorageError> {
+    ///     let mut found = None;
+    ///     storage.visit_entries(host, &mut |kind, amount| {
+    ///         if amount >= minimum {
+    ///             found = Some((kind.clone(), amount));
+    ///             ControlFlow::Break(())
+    ///         } else {
+    ///             ControlFlow::Continue(())
+    ///         }
+    ///     })?;
+    ///     Ok(found)
+    /// }
+    /// ```
     fn visit_entries(
         &self,
         host: &mut dyn ServerHost,
@@ -352,9 +381,13 @@ pub fn transfer(
 
 /// Moves up to `max` of what `filter` accepts out of `from` into `to` (NeoForge's
 /// `ResourceHandlerUtil.move`, by kind), in transaction `tx`: how much moved. A zero `max` does
-/// not read the source. Each visit stops at the next matching entry, then [`transfer`] runs
-/// after the visit succeeds. A zero move advances past that occurrence; a positive move starts
-/// again at the first entry because the transfer may have shifted the source's entries.
+/// not read the source. Visit the source in provider order and stop at the next matching
+/// entry. After the read succeeds and the provider's read borrow has ended, run the journaled
+/// [`transfer`] by kind. The move can take more than the amount in that one entry.
+///
+/// A zero move advances past that occurrence. After a positive move, rescan from the first
+/// entry: extraction can remove an entry and shift those after it. The filter can therefore
+/// see the same kind more than once, even if that kind previously failed to move.
 pub fn transfer_matching(
     host: &mut dyn ServerHost,
     from: &Capability<dyn ItemStorage>,
@@ -400,6 +433,7 @@ mod tests {
     use std::cell::{Cell, RefCell};
     use std::collections::HashMap;
     use std::hash::BuildHasher;
+    use std::rc::Rc;
 
     fn host_with(items: &[&str]) -> (FakeHost, Vec<ItemResource>) {
         let mut host = FakeHost::new();
@@ -568,6 +602,82 @@ mod tests {
     }
 
     #[test]
+    fn a_slots_visit_probes_only_through_the_first_match() {
+        #[derive(Default)]
+        struct Reads {
+            resources: RefCell<Vec<usize>>,
+            amounts: RefCell<Vec<usize>>,
+        }
+        struct Probe {
+            entries: [Option<(ItemResource, u32)>; 3],
+            reads: Rc<Reads>,
+        }
+
+        impl ResourceHandler<ItemResource> for Probe {
+            fn size(&self, _: &mut dyn ServerHost) -> usize {
+                self.entries.len()
+            }
+            fn resource(&self, _: &mut dyn ServerHost, index: usize) -> Option<ItemResource> {
+                self.reads.resources.borrow_mut().push(index);
+                self.entries[index].as_ref().map(|(kind, _)| kind.clone())
+            }
+            fn amount(&self, _: &mut dyn ServerHost, index: usize) -> u32 {
+                self.reads.amounts.borrow_mut().push(index);
+                self.entries[index]
+                    .as_ref()
+                    .map_or(0, |(_, amount)| *amount)
+            }
+            fn capacity(&self, _: &mut dyn ServerHost, _: usize, _: Option<&ItemResource>) -> u32 {
+                unreachable!("a visit does not ask for capacity")
+            }
+            fn insert_at(
+                &self,
+                _: &mut dyn ServerHost,
+                _: &Transaction,
+                _: usize,
+                _: &ItemResource,
+                _: u32,
+            ) -> u32 {
+                unreachable!("a visit does not insert")
+            }
+            fn extract_at(
+                &self,
+                _: &mut dyn ServerHost,
+                _: &Transaction,
+                _: usize,
+                _: &ItemResource,
+                _: u32,
+            ) -> u32 {
+                unreachable!("a visit does not extract")
+            }
+        }
+
+        let (mut host, r) = host_with(&["minecraft:stone", "minecraft:dirt"]);
+        let reads = Rc::new(Reads::default());
+        let storage = Slots(Capability {
+            handler: Box::new(Probe {
+                entries: [None, Some((r[0].clone(), 7)), Some((r[1].clone(), 13))],
+                reads: Rc::clone(&reads),
+            }),
+            owner: None,
+        });
+        let mut delivered = Vec::new();
+        storage
+            .visit_entries(&mut host, &mut |kind, amount| {
+                delivered.push((kind.clone(), amount));
+                if *kind == r[0] {
+                    ControlFlow::Break(())
+                } else {
+                    ControlFlow::Continue(())
+                }
+            })
+            .unwrap();
+        assert_eq!(reads.resources.borrow().as_slice(), &[0, 1]);
+        assert_eq!(reads.amounts.borrow().as_slice(), &[1]);
+        assert_eq!(delivered, [(r[0].clone(), 7)]);
+    }
+
+    #[test]
     fn a_transfer_moves_billions_in_four_calls() {
         let (mut host, r) = host_with(&["minecraft:cobblestone"]);
         let (from_store, from) = bulk(u64::MAX, &[(&r[0], 5_000_000_000)]);
@@ -613,6 +723,121 @@ mod tests {
         assert_eq!(moved, Ok(27));
         assert_eq!(from.amount(host, &r[0]), Ok(30));
         assert_eq!(into_store.held.borrow().get(&r[0]), None);
+    }
+
+    #[test]
+    fn transfer_matching_ends_reads_and_rescans_after_compaction() {
+        struct Ordered {
+            entries: Rc<RefCell<Vec<(ItemResource, u64)>>>,
+            refuses: Option<ItemResource>,
+        }
+
+        // These fixtures only make full moves or refuse during planning, so no journal is
+        // aborted. Extracting during a visit would conflict with the provider's read borrow.
+        impl ItemStorage for Ordered {
+            fn amount(
+                &self,
+                _: &mut dyn ServerHost,
+                kind: &ItemResource,
+            ) -> Result<u64, StorageError> {
+                Ok(self
+                    .entries
+                    .borrow()
+                    .iter()
+                    .find(|(held, _)| held == kind)
+                    .map_or(0, |(_, amount)| *amount))
+            }
+            fn space_for(
+                &self,
+                _: &mut dyn ServerHost,
+                kind: &ItemResource,
+            ) -> Result<u64, StorageError> {
+                Ok(if self.refuses.as_ref() == Some(kind) {
+                    0
+                } else {
+                    u64::MAX
+                })
+            }
+            fn insert(
+                &self,
+                host: &mut dyn ServerHost,
+                tx: &Transaction,
+                kind: &ItemResource,
+                amount: u64,
+            ) -> u64 {
+                assert_eq!(host.transaction_current().as_ref(), Some(tx));
+                let amount = amount.min(self.space_for(host, kind).unwrap());
+                if amount > 0 {
+                    self.entries.borrow_mut().push((kind.clone(), amount));
+                }
+                amount
+            }
+            fn extract(
+                &self,
+                host: &mut dyn ServerHost,
+                tx: &Transaction,
+                kind: &ItemResource,
+                amount: u64,
+            ) -> u64 {
+                assert_eq!(host.transaction_current().as_ref(), Some(tx));
+                let mut entries = self.entries.borrow_mut();
+                let Some(index) = entries.iter().position(|(held, _)| held == kind) else {
+                    return 0;
+                };
+                let held = &mut entries[index].1;
+                let moved = amount.min(*held);
+                *held -= moved;
+                if *held == 0 {
+                    entries.remove(index);
+                }
+                moved
+            }
+            fn visit_entries(
+                &self,
+                _: &mut dyn ServerHost,
+                visitor: &mut dyn FnMut(&ItemResource, u64) -> ControlFlow<()>,
+            ) -> Result<(), StorageError> {
+                let entries = self.entries.borrow();
+                for (kind, amount) in entries.iter() {
+                    if visitor(kind, *amount).is_break() {
+                        break;
+                    }
+                }
+                Ok(())
+            }
+        }
+
+        let (mut host, r) =
+            host_with(&["minecraft:stone", "minecraft:dirt", "minecraft:cobblestone"]);
+        let source = Rc::new(RefCell::new(vec![
+            (r[0].clone(), 3),
+            (r[1].clone(), 5),
+            (r[2].clone(), 7),
+        ]));
+        let destination = Rc::new(RefCell::new(Vec::new()));
+        let from = Capability::<dyn ItemStorage> {
+            handler: Box::new(Ordered {
+                entries: Rc::clone(&source),
+                refuses: None,
+            }),
+            owner: None,
+        };
+        let to = Capability::<dyn ItemStorage> {
+            handler: Box::new(Ordered {
+                entries: Rc::clone(&destination),
+                refuses: Some(r[0].clone()),
+            }),
+            owner: None,
+        };
+        let host: &mut dyn ServerHost = &mut host;
+        let moved =
+            host.transaction(|host, tx| transfer_matching(host, &from, &to, |_| true, 99, tx));
+        assert_eq!(moved, Ok(12));
+        assert_eq!(source.borrow().as_slice(), &[(r[0].clone(), 3)]);
+        assert_eq!(
+            destination.borrow().as_slice(),
+            &[(r[1].clone(), 5), (r[2].clone(), 7)]
+        );
     }
 
     #[test]

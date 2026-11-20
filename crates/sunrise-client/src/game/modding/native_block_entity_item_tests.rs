@@ -799,7 +799,7 @@ fn storage_asks_a_game_container_by_kind_and_rolls_back_with_its_transaction() {
                 visited,
                 [(stone.clone(), 64), (stone.clone(), 36), (dirt, 5)]
             );
-            // A furnace's top takes only into its input, and its bottom gives only its result.
+            // A furnace exposes only its input from above, and its output then fuel from below.
             let furnace = game
                 .pack
                 .assets
@@ -807,10 +807,11 @@ fn storage_asks_a_game_container_by_kind_and_rolls_back_with_its_transaction() {
                 .default_state("minecraft:furnace")
                 .unwrap();
             game.world.set(5, 64, 1, furnace).unwrap();
-            game.world.block_entities.insert(
-                (5, 64, 1),
-                BlockEntity::for_block("minecraft:furnace").unwrap(),
-            );
+            let (fuel, output) = ("minecraft:coal", "minecraft:iron_ingot");
+            let mut furnace_entity = BlockEntity::for_block("minecraft:furnace").unwrap();
+            furnace_entity.slots_mut()[1] = Some(ItemStack::new(fuel, 7));
+            furnace_entity.slots_mut()[2] = Some(ItemStack::new(output, 11));
+            game.world.block_entities.insert((5, 64, 1), furnace_entity);
             let top = level
                 .capability(
                     game,
@@ -831,6 +832,15 @@ fn storage_asks_a_game_container_by_kind_and_rolls_back_with_its_transaction() {
                 assert_eq!(top.insert(host, tx, &stone, 200), 64, "the input slot only");
                 assert_eq!(bottom.extract(host, tx, &stone, 64), 0, "not the input");
             });
+            assert_eq!(top.amount(game, &stone), Ok(64), "input is still occupied");
+            let mut bottom_entries = Vec::new();
+            bottom
+                .visit_entries(game, &mut |kind, amount| {
+                    bottom_entries.push((kind.clone(), amount));
+                    ControlFlow::Continue(())
+                })
+                .unwrap();
+            assert_eq!(bottom_entries, [(of(output), 11), (of(fuel), 7)]);
             assert!(game.transactions.is_empty());
         });
     });
