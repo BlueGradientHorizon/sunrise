@@ -855,6 +855,8 @@ def listed_result_records(line, expected, max_name_length):
 WORKSPACE_TEST_BUILD = ["cargo", "test", "--profile", "test", "--workspace", "--lib", "--bins", "--tests", "--no-run"]
 # The client-lib rows build at opt-level 3 (run()), which the workspace build does not.
 OWN_BUILD = {"sunrise-client-lib"}
+# Each test thread's stack (RUST_MIN_STACK), the one the parity harnesses give the same game fixtures.
+TEST_THREAD_STACK = 16 * 1024 * 1024
 
 
 def built_test_binaries():
@@ -929,6 +931,8 @@ def run(package, skip, number=None, count=None, only=None, binaries=None):
         for key in ("SUNRISE_LAUNCHER_TRASH", "SUNRISE_LAUNCHER_CLIPBOARD", "SUNRISE_LAUNCHER_DESKTOP"):
             homes[key] = Path(scratch) / key.lower()
         env = lab.game_env(**homes)
+        # A fixture holds a server Game by value, which the server thread gets a guest stack for: not libtest's 2 MiB.
+        env["RUST_MIN_STACK"] = str(TEST_THREAD_STACK)
         if package == "sunrise-client-lib":
             # Worldgen must meet its real-time deadlines without disabling test assertions.
             env["CARGO_PROFILE_TEST_OPT_LEVEL"] = "3"

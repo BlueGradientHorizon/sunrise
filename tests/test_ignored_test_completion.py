@@ -28,6 +28,16 @@ class IgnoredTests(unittest.TestCase):
             result = ignored_tests.run("example", [])
         return result, log.getvalue()
 
+    def test_test_threads_get_the_harnesses_stack(self):
+        # A server Game held by value overflowed libtest's 2 MiB test thread (#3744).
+        output = target(1, "test first ... ok\n", summary(passed=1))
+        with patch.object(ignored_tests.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, output)) as run, \
+                contextlib.redirect_stdout(io.StringIO()):
+            ignored_tests.run("sunrise-client", [])
+        stacks = [call.kwargs["env"].get("RUST_MIN_STACK") for call in run.call_args_list if call.args[0][:2] == ["cargo", "test"]]
+        self.assertTrue(stacks)
+        self.assertEqual(set(stacks), {str(16 * 1024 * 1024)})
+
     def test_success_and_multiple_targets(self):
         output = target(1, "test first ... ok\n", summary(passed=1))
         output += target(2, "test second ... ok\ntest third ... ok\n", summary(passed=2))

@@ -10,6 +10,7 @@ pub use super::open;
 use super::{
     File, Index, Kind, Project, Revoked, SCHEMA, Version, hex64, inspect, page as rules, valid_id,
 };
+use crate::manifest::parse_version;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::collections::BTreeMap;
 use std::io::{self, Read};
@@ -326,6 +327,63 @@ impl Checkout {
             listed.then_some((entry, cache))
         })
     }
+
+    /// The required `dependencies` (a package's facts) that no listed, not taken down mod version
+    /// for `game` satisfies, so `cargo sunrise-mod publish` can name them before the pull request.
+    /// Registry review, which reads every package, also checks sides and the dependencies' own
+    /// requirements.
+    pub fn unmet_dependencies(
+        &self,
+        game: &str,
+        dependencies: &[super::Dependency],
+    ) -> Vec<UnmetDependency> {
+        dependencies
+            .iter()
+            .filter(|dependency| !dependency.optional)
+            .filter_map(|dependency| {
+                let id = &dependency.id;
+                let listed: Vec<String> = self
+                    .listed()
+                    .filter(|(entry, _)| &entry.id == id && entry.kind.is_mod())
+                    .flat_map(|(entry, cache)| {
+                        let written = entry
+                            .versions
+                            .iter()
+                            .map(|v| (&v.version, &v.game, &v.sha256));
+                        let released = cache
+                            .into_iter()
+                            .flat_map(|c| &c.versions)
+                            .map(|v| (&v.version, &v.game, &v.file.sha256));
+                        written.chain(released)
+                    })
+                    .filter(|(_, g, sha256)| {
+                        *g == game && !self.revoked.iter().any(|r| r.covers(id, sha256))
+                    })
+                    .map(|(version, _, _)| version.clone())
+                    .collect();
+                let met = semver::VersionReq::parse(&dependency.version).is_ok_and(|range| {
+                    listed
+                        .iter()
+                        .any(|v| parse_version(v).is_ok_and(|v| range.matches(&v)))
+                });
+                (!met).then(|| UnmetDependency {
+                    id: id.clone(),
+                    range: dependency.version.clone(),
+                    listed,
+                })
+            })
+            .collect()
+    }
+}
+
+/// A required dependency that no listed version satisfies ([`Checkout::unmet_dependencies`]).
+#[derive(Debug, PartialEq)]
+pub struct UnmetDependency {
+    pub id: String,
+    /// The range as the package declares it.
+    pub range: String,
+    /// The versions the registry lists for the same game, as written; empty when none is.
+    pub listed: Vec<String>,
 }
 
 /// Reads `mods/*.toml`, `collections/*.toml`, `revoked.toml` and the repo-backed projects'

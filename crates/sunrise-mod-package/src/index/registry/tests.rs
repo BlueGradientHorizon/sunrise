@@ -856,6 +856,109 @@ fn native_binary_build_limits() {
 }
 
 #[test]
+fn unmet_dependencies_name_the_versions_listed_for_the_game() {
+    let hud: Entry = toml::from_str(&hud_entry()).unwrap();
+    let cozy: Entry = toml::from_str(COZY).unwrap();
+    let mut checkout = Checkout {
+        directory: PathBuf::new(),
+        entries: vec![hud, cozy],
+        collections: Vec::new(),
+        revoked: Vec::new(),
+        caches: BTreeMap::new(),
+    };
+    let required = |id: &str, version: &str| super::super::Dependency {
+        id: id.into(),
+        version: version.into(),
+        optional: false,
+        side: None,
+    };
+    let dependencies = [
+        required("coords_hud", "^0.1"),
+        required("cozy", "^1"),
+        required("absent", "^1"),
+        super::super::Dependency {
+            optional: true,
+            ..required("maybe", "^1")
+        },
+    ];
+    let unmet = |checkout: &Checkout, game: &str, dependencies: &[super::super::Dependency]| {
+        checkout
+            .unmet_dependencies(game, dependencies)
+            .into_iter()
+            .map(|u| (u.id, u.listed))
+            .collect::<Vec<_>>()
+    };
+    let none = Vec::<String>::new;
+    // A modpack is no mod to depend on; an optional dependency is never required.
+    assert_eq!(
+        unmet(&checkout, "26.3", &dependencies),
+        [("cozy".into(), none()), ("absent".into(), none())]
+    );
+    // Only versions for the same game count.
+    assert!(unmet(&checkout, "26.4", &dependencies).contains(&("coords_hud".into(), none())));
+    // A version outside the range is named, so the author sees what is there.
+    assert_eq!(
+        unmet(&checkout, "26.3", &[required("coords_hud", "^0.2")]),
+        [("coords_hud".into(), vec!["0.1.0".to_owned()])]
+    );
+    // A short label is padded as the resolver pads it.
+    checkout.entries[0].versions[0].version = "0.1".into();
+    assert!(unmet(&checkout, "26.3", &[required("coords_hud", "^0.1")]).is_empty());
+    // A version taken down by hash is not listed.
+    checkout.revoked.push(Revoked {
+        id: "coords_hud".into(),
+        sha256: Some(SMOD.into()),
+        reason: "lost key".into(),
+        date: String::new(),
+    });
+    assert_eq!(
+        unmet(&checkout, "26.3", &[required("coords_hud", "^0.1")]),
+        [("coords_hud".into(), none())]
+    );
+}
+
+#[test]
+fn a_cached_native_release_meets_a_dependency_until_its_project_is_taken_down() {
+    let mut lib: Entry = toml::from_str(&hud_entry()).unwrap();
+    lib.id = "lib".into();
+    lib.kind = Kind::NativeMod;
+    lib.repo = Some("ada/lib".into());
+    lib.versions.clear();
+    let mut release = sample().projects.remove(0).versions.remove(0);
+    release.version = "2.1.0".into();
+    release.game = "26.3".into();
+    let mut checkout = Checkout {
+        directory: PathBuf::new(),
+        entries: vec![lib],
+        collections: Vec::new(),
+        revoked: Vec::new(),
+        caches: BTreeMap::from([(
+            "lib".to_owned(),
+            Cache {
+                page: Page::default(),
+                versions: vec![release],
+            },
+        )]),
+    };
+    let dependency = [super::super::Dependency {
+        id: "lib".into(),
+        version: "^2".into(),
+        optional: false,
+        side: None,
+    }];
+    assert!(checkout.unmet_dependencies("26.3", &dependency).is_empty());
+    checkout.revoked.push(Revoked {
+        id: "lib".into(),
+        sha256: None,
+        reason: "malware".into(),
+        date: String::new(),
+    });
+    let unmet = checkout.unmet_dependencies("26.3", &dependency);
+    assert_eq!(unmet.len(), 1);
+    assert_eq!((unmet[0].id.as_str(), unmet[0].listed.len()), ("lib", 0));
+}
+
+#[test]
 fn the_screenshot_rule_covers_new_projects_new_versions_and_exempts_libraries() {
     let base: Entry = toml::from_str(&hud_entry()).unwrap();
     assert!(screenshot_required(None, &base));
